@@ -93,6 +93,12 @@ export function entryIsVisible(e: JsonlEntryData, ctx: VisibilityCtx): boolean {
     if (e.type === 'assistant' && isInvisibleAssistantEntry(e)) return false
     return true
   }
+  // Canonical (не-streaming) субагентская строка: скрываем из основного чата
+  // БЕЗУСЛОВНО. Раньше это делалось только через chain-uuid членство
+  // (isLatestSegment && chainUuids), но при реплее/не-последнем сегменте
+  // chainUuids=null, и sidechain-строки проваливались в основной чат («ответы
+  // субагентов в основном чате»). isSidechain от сервера — надёжный маркер.
+  if ((e as { isSidechain?: boolean }).isSidechain) return false
   if (!inActiveRange(e, ctx.uuidsInRange, ctx.entries, ctx.range)) return false
   // Bookkeeping rows have no rendering path — counting them as "visible" let a
   // run of them eat the whole render window and blank the chat (see the list).

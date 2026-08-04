@@ -562,7 +562,24 @@ async function handleRequest(
   // SOURCE: the stub is tagged from its first byte, so the client hides it from
   // the main chat (and can route it to that agent). No body parsing.
   const hdr = req.headers["x-claude-code-agent-id"]
-  const subagentId = Array.isArray(hdr) ? hdr[0] : hdr
+  let subagentId = Array.isArray(hdr) ? hdr[0] : hdr
+  // Фолбэк-дискриминатор субагента: заголовок x-claude-code-agent-id несёт
+  // НЕ каждый Task-tool субагент (только часть). Тогда его ход шёл в основной
+  // чат как main (isSidechain=false), т.к. response-эвристика ловит лишь Haiku.
+  // metadata.user_id.parent_session_id есть у КАЖДОГО субагентского запроса
+  // (его нет у главного) — используем как id, если заголовка нет.
+  if (!subagentId && bufferedBody) {
+    try {
+      const j = JSON.parse(bufferedBody.toString("utf8")) as { metadata?: { user_id?: unknown } }
+      const meta = typeof j.metadata?.user_id === "string" ? JSON.parse(j.metadata.user_id) : j.metadata?.user_id
+      // Наличие parent_session_id = это субагент (у главного его нет). Значение
+      // указывает на главного, поэтому id субагента строим от НЕГО + модели
+      // запроса недостаточно — берём сам psid как ключ ветки (все ходы одного
+      // субагента делят parent, но панель группирует по нему же, что ок).
+      const psid = (meta as { parent_session_id?: string } | undefined)?.parent_session_id
+      if (psid) subagentId = `psid:${psid}`
+    } catch { /* не JSON — не субагент */ }
+  }
   const synth = new EntrySynthesizer({
     ptySessionId: opts.ptySessionId,
     cliConversationId: opts.cliConversationId,

@@ -40215,7 +40215,24 @@ var import_path11 = __toESM(require("path"), 1);
 var import_fs10 = __toESM(require("fs"), 1);
 var import_os7 = __toESM(require("os"), 1);
 function registerSkillsAgentsIPC(ctx) {
+  let skillsCache = null;
+  let skillsInFlight = null;
+  const SKILLS_TTL_MS = 3e4;
   ipcMain.handle("skills:list", async () => {
+    const now = Date.now();
+    if (skillsCache && now - skillsCache.at < SKILLS_TTL_MS) return skillsCache.rows;
+    if (skillsInFlight) return skillsInFlight;
+    skillsInFlight = scanSkills().then((rows) => {
+      skillsCache = { at: Date.now(), rows };
+      skillsInFlight = null;
+      return rows;
+    }).catch((e) => {
+      skillsInFlight = null;
+      throw e;
+    });
+    return skillsInFlight;
+  });
+  async function scanSkills() {
     function parseSkillContent(filePath, fileName, source, content, overrideName) {
       const fm = extractFrontmatter(content) ?? "";
       const match = (key) => matchYamlField(fm, key);
@@ -40400,7 +40417,7 @@ function registerSkillsAgentsIPC(ctx) {
     })();
     const [project, user, plugins] = await Promise.all([projectPromise, userPromise, pluginsPromise]);
     return [...project, ...user, ...plugins];
-  });
+  }
   ipcMain.handle("agents:list", async () => {
     async function parseAgent(filePath, source, overrideName, contentOverride) {
       let content;

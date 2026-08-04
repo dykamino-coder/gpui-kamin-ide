@@ -92,6 +92,9 @@ interface StatEntry {
   model?: unknown
   usage?: UsageBlock
   message?: { id?: string; model?: unknown; usage?: UsageBlock }
+  /** Субагентский ход: у него своё окно контекста, к главному бару не относится. */
+  isSidechain?: boolean
+  subagentId?: string
 }
 
 export interface ContextStats {
@@ -137,6 +140,10 @@ export function computeContextStats(
 
   for (const e of entries) {
     if (e.type !== 'assistant') continue
+    // Субагентские ходы имеют СВОЁ окно контекста — включённые в общий стор
+    // (canonical sidechain-строки + живые streaming-стабы) они дёргали главный
+    // бар: он снапался к окну субагента и прыгал обратно (жалоба юзера).
+    if (e.isSidechain || e.subagentId) continue
     const model = e.model ?? e.message?.model
     if (model === '<synthetic>') continue
     const usage = e.usage ?? e.message?.usage

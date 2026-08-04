@@ -21,7 +21,32 @@ export interface SkillsAgentsContext {
 }
 
 export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
+  // Кэш skills:list: полный рекурсивный обход ~/.claude/plugins + команд + skills
+  // (сотни-тысячи readFile) стоил ~10с и запускался ЗАНОВО на КАЖДОЙ открытой
+  // странице настроек (useInit каждой customize-вью). Держим последний
+  // результат + дедуп конкурентных вызовов (один in-flight промис): страницы
+  // настроек, открываемые подряд, переиспользуют один скан. TTL 30с — свежий
+  // плагин/скилл подхватится при следующем открытии после протухания.
+  let skillsCache: { at: number; rows: unknown[] } | null = null
+  let skillsInFlight: Promise<unknown[]> | null = null
+  const SKILLS_TTL_MS = 30_000
+
   ipcMain.handle('skills:list', async () => {
+    const now = Date.now()
+    if (skillsCache && now - skillsCache.at < SKILLS_TTL_MS) return skillsCache.rows
+    if (skillsInFlight) return skillsInFlight
+    skillsInFlight = scanSkills().then((rows) => {
+      skillsCache = { at: Date.now(), rows }
+      skillsInFlight = null
+      return rows
+    }).catch((e) => {
+      skillsInFlight = null
+      throw e
+    })
+    return skillsInFlight
+  })
+
+  async function scanSkills(): Promise<unknown[]> {
     type SkillRow = {
       name: string
       fileName: string
@@ -216,7 +241,7 @@ export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
 
     const [project, user, plugins] = await Promise.all([projectPromise, userPromise, pluginsPromise])
     return [...project, ...user, ...plugins]
-  })
+  }
 
   // List subagents available to the CLI.
   ipcMain.handle('agents:list', async () => {
