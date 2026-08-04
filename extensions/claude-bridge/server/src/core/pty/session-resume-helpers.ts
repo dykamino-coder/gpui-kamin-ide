@@ -253,6 +253,70 @@ export function repairJsonl(jsonlPath: string): JsonlRepairStats {
 }
 
 /**
+ * Найти самый свежий файл ЦЕПОЧКИ беседы в slug-каталоге. Резюм по id из
+ * клиентского стора мог отстать от реального tip (watcher остановлен до смерти
+ * CLI, гонка compact-links, двойной писатель) — тогда CLI форкает от старой
+ * точки и хвост «пропадает» в осиротевшем файле. Watcher всё равно тейлит
+ * самый свежий файл каталога — резюмим его же.
+ *
+ * Проба «кандидат — потомок X»: форк копирует историю, значит либо есть
+ * пересечение uuid с X, либо кандидат начинается не позже X. Чужая беседа в
+ * том же каталоге стартует позже и uuid не разделяет. Не уверены — null
+ * (fail-safe: резюмим что просили).
+ */
+export function resolveNewestInChain(settingsDir: string, conversationId: string): string | null {
+  try {
+    const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
+    const dir = path.join(os.homedir(), '.claude', 'projects', slug)
+    if (!fs.existsSync(dir)) return null
+    const files = fs.readdirSync(dir)
+      .filter(f => f.endsWith('.jsonl'))
+      .map(f => {
+        const st = fs.statSync(path.join(dir, f))
+        return { id: f.slice(0, -'.jsonl'.length), mtime: st.mtimeMs, size: st.size }
+      })
+      .filter(f => f.size > 0)
+      .sort((a, b) => b.mtime - a.mtime)
+    const newest = files[0]
+    if (!newest) return null
+    if (newest.id === conversationId) return null // уже tip
+    const basePath = path.join(dir, `${conversationId}.jsonl`)
+    if (!fs.existsSync(basePath)) return null // базы нет — не с чем сверять
+    const uuidsOf = (p: string, max: number): Set<string> => {
+      const out = new Set<string>()
+      const text = fs.readFileSync(p, 'utf-8')
+      for (const line of text.split('\n')) {
+        if (out.size >= max) break
+        const m = line.match(/"uuid":"([0-9a-f-]{36})"/)
+        if (m?.[1]) out.add(m[1])
+      }
+      return out
+    }
+    const firstTs = (p: string): string | null => {
+      const head = fs.readFileSync(p, 'utf-8').slice(0, 64 * 1024)
+      const m = head.match(/"timestamp":"([^"]+)"/)
+      return m?.[1] ?? null
+    }
+    const candPath = path.join(dir, `${newest.id}.jsonl`)
+    const baseUuids = uuidsOf(basePath, 200)
+    const candUuids = uuidsOf(candPath, 200)
+    let related = false
+    for (const u of candUuids) {
+      if (baseUuids.has(u)) { related = true; break }
+    }
+    if (!related) {
+      const bt = firstTs(basePath)
+      const ct = firstTs(candPath)
+      related = bt !== null && ct !== null && ct <= bt
+    }
+    return related ? newest.id : null
+  } catch (e) {
+    warnLog('resolveNewestInChain failed', { conversationId, error: String(e) })
+    return null
+  }
+}
+
+/**
  * Repair the transcript for a session that resumes via reuseSettingsDir
  * (model/effort restart). The projects/ slug is derived from the settingsDir
  * the same way CLI derives it, so we can locate the JSONL without scanning.

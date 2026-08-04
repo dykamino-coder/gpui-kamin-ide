@@ -34,7 +34,7 @@ import {
   writeSessionClaudeMd,
   applySyncData,
 } from './session-settings'
-import { findOrRecreateSettingsDir, xbasename, repairTranscriptForResume } from './session-resume-helpers'
+import { findOrRecreateSettingsDir, xbasename, repairTranscriptForResume, resolveNewestInChain } from './session-resume-helpers'
 import { handleJsonlUserEntry } from './session-stats-recorder'
 import { resetJsonlStats, accumulateJsonlStats } from './session-jsonl-stats'
 import {
@@ -139,6 +139,21 @@ export async function createSession(
     // Each session gets its own unique directory to avoid JSONL cross-talk.
     const folderSuffix = config.cwd ? '-' + sanitizeDirName(config.cwd) : ''
     settingsDir = path.join(SESSIONS_BASE, tokenId + folderSuffix, sessionId)
+  }
+
+  // Финальная страховка резюма: даже с целой картой compact-links выбранный id
+  // мог отстать от реального tip цепочки (watcher остановлен до смерти CLI,
+  // гонка записи карты, двойной писатель). CLI с отставшим id форкает файл от
+  // старой точки — «после перезагрузки пропал кусок чата и консоли». Резюмим
+  // самый свежий файл цепочки — ровно тот, что будет тейлить watcher.
+  if (config.resumeConversationId) {
+    const newest = resolveNewestInChain(settingsDir, config.resumeConversationId)
+    if (newest && newest !== config.resumeConversationId) {
+      infoLog('Resume: newer file in chain — resuming tip', { requested: config.resumeConversationId, tip: newest })
+      recordCompactLink(config.resumeConversationId, newest) // самолечение карты
+      config.resumeConversationId = newest
+      repairTranscriptForResume(settingsDir, newest) // ремонт по ФИНАЛЬНОМУ id
+    }
   }
 
   // Create session directory + settings (overwrites existing on restart)
@@ -609,7 +624,12 @@ export function recordCompactLink(oldId: string, newId: string): void {
       for (const k of keys.slice(0, keys.length - COMPACT_LINKS_CAP)) delete links[k]
     }
     fs.mkdirSync(path.dirname(COMPACT_LINKS_PATH), { recursive: true })
-    fs.writeFileSync(COMPACT_LINKS_PATH, JSON.stringify(links))
+    // tmp+rename: рестарт приложения резюмит пачку вкладок разом, параллельные
+    // read→modify→write затирали рёбра друг друга (потерянное ребро = резюм
+    // устаревшего id = дыра в чате). rename атомарен в пределах каталога.
+    const tmp = `${COMPACT_LINKS_PATH}.tmp-${process.pid}-${Date.now()}`
+    fs.writeFileSync(tmp, JSON.stringify(links))
+    fs.renameSync(tmp, COMPACT_LINKS_PATH)
   } catch (err) {
     warnLog('recordCompactLink failed', { err: String(err) })
   }
@@ -661,6 +681,22 @@ export function destroySession(sessionId: string): void {
       try { session.pty.kill('SIGKILL') } catch { /* already gone */ }
     }
   }, KILL_ESCALATE_MS)
+  // Watcher уже остановлен, а CLI на выходе мог финализировать НОВЫЙ файл
+  // цепочки — без этого скана ребро терялось навсегда и следующий резюм шёл
+  // по устаревшему id (дыра в чате). Отложенный скан ловит файл после смерти.
+  const chainBase = session.cliConversationId
+  const chainDir = session.settingsDir
+  if (chainBase && chainDir) {
+    setTimeout(() => {
+      try {
+        const tip = resolveNewestInChain(chainDir, chainBase)
+        if (tip && tip !== chainBase) {
+          infoLog('Post-kill chain scan: recording missed edge', { from: chainBase, tip })
+          recordCompactLink(chainBase, tip)
+        }
+      } catch { /* best-effort */ }
+    }, KILL_ESCALATE_MS + 2000)
+  }
   cleanupSession(sessionId)
   eventBus.emit('session:destroyed', { sessionId, tokenId: session.tokenId, userName: session.userName, exitCode: -1 })
 }

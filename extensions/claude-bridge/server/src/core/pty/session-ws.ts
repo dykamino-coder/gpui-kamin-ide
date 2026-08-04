@@ -13,7 +13,7 @@ import { SKIP_LINE_MARKER } from './jsonl-watcher'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 import { registerWsRoute } from '../server/ws'
 import { resolveToken } from '../auth/tokens'
-import { debugLog, warnLog, errorLog } from '../logging'
+import { debugLog, warnLog, errorLog, infoLog } from '../logging'
 import type { ElectronToServerMsg, PtySession } from './types'
 import {
   createSession,
@@ -21,6 +21,7 @@ import {
   detachSession,
   reattachSession,
   findSessionByConversation,
+  followCompactLinks,
   writeInput,
   submitText,
   resizeTerminal,
@@ -312,6 +313,17 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Второй resume ждёт первого, затем находит его сессию live-поиском
           // и реаттачится. Страховочный таймер снимает лок, если владелец
           // умер, не дойдя до release (исключение вне внутреннего try).
+          // Канонизируем id ДО лока и live-поиска: вкладка с устаревшим id A
+          // иначе не находила живую сессию, идущую под tip B той же цепочки,
+          // и спавнила ВТОРОЙ CLI на ту же беседу (лок по сырому A тоже не
+          // спасал) — двойной писатель, хвост в осиротевшем файле.
+          if (msg.conversationId) {
+            const canonical = followCompactLinks(msg.conversationId)
+            if (canonical !== msg.conversationId) {
+              infoLog('Resume: canonicalized to chain tip before lock', { requested: msg.conversationId, tip: canonical })
+              msg.conversationId = canonical
+            }
+          }
           const resumeLockKey = msg.conversationId ? `${resolved.tokenId}:${msg.conversationId}` : null
           let releaseResumeLock: () => void = () => {}
           if (resumeLockKey) {

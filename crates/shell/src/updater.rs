@@ -125,7 +125,14 @@ fn download(url: &str, tx: &Sender<ShellEvent>) -> Result<std::path::PathBuf, St
         .map(|n| n.split(['?', '#']).next().unwrap_or(n))
         .filter(|n| n.to_ascii_lowercase().ends_with(".exe"))
         .unwrap_or("KaminIDE-setup.exe");
-    let path = std::env::temp_dir().join(name);
+    // НЕ %TEMP%: корпоративный AppLocker/SRP блокирует запуск exe из Temp
+    // («blocked by group policy, os error 1260») — кладём в %LOCALAPPDATA%,
+    // откуда приложение и так работает (значит запуск разрешён политикой).
+    let dir = std::env::var("LOCALAPPDATA")
+        .map(|d| std::path::PathBuf::from(d).join("KaminIDE-updates"))
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join(name);
     let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
 
     let mut body = resp.into_body().into_reader();

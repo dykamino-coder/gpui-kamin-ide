@@ -209,12 +209,19 @@ pub(crate) fn key(id: &str, keystroke: &gpui::Keystroke, up: bool) {
         .key_char
         .as_ref()
         .and_then(|c| c.chars().next())
-        .or_else(|| (keystroke.key == "space").then_some(' '));
+        .or_else(|| (keystroke.key == "space").then_some(' '))
+        // Enter/Tab — именованные клавиши без key_char, а textarea вставляет
+        // \n и \t только на CHAR-событии: без него Shift+Enter не давал новую
+        // строку, Tab не доходил (тот же класс, что «спейс не доходит»).
+        // preventDefault на keydown в странице подавляет вставку от CHAR —
+        // обычный Enter-отправка в чате не ломается.
+        .or_else(|| (keystroke.key == "enter").then_some('\r'))
+        .or_else(|| (keystroke.key == "tab").then_some('\t'));
     if !up
         && !keystroke.modifiers.control
         && !keystroke.modifiers.alt
         && let Some(ch) = typed_char
-        && !ch.is_control()
+        && (!ch.is_control() || ch == '\r' || ch == '\t')
     {
         let code = ch as u32 as u16;
         let event = KeyEvent {

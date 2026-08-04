@@ -184,21 +184,21 @@ pub fn tool_picker(
                 .rounded(px(m::RADIUS_SM))
                 .text_size(px(m::FS_SM))
                 .text_color(rgba(p.text_primary))
-                .when(!locked, |row| {
-                    row.cursor_pointer()
-                        .hover(move |s| s.bg(hover_bg))
-                        .on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
-                            cx.stop_propagation();
-                            let ev = if is_pinned {
-                                ShellEvent::UnpinTool(slot, item_id.clone())
-                            } else {
-                                ShellEvent::PinTool(slot, item_id.clone())
-                            };
-                            let _ = tx.try_send(ev);
-                        })
+                .cursor_pointer()
+                .hover(move |s| s.bg(hover_bg))
+                .on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
+                    cx.stop_propagation();
+                    // Одиночка из другой панели ПЕРЕНОСИТСЯ сюда (пропадает
+                    // там) — раньше строка была заблокирована (запрос юзера).
+                    let ev = if locked {
+                        ShellEvent::MoveToolTo(home.unwrap(), item_id.clone(), slot)
+                    } else if is_pinned {
+                        ShellEvent::UnpinTool(slot, item_id.clone())
+                    } else {
+                        ShellEvent::PinTool(slot, item_id.clone())
+                    };
+                    let _ = tx.try_send(ev);
                 })
-                // Занятая одиночка — приглушена, как `:disabled`-пункт меню
-                .when(locked, |row| row.opacity(0.5))
                 .child(tool_icon(&item_icon, p))
                 .child(div().flex_1().child(item_label.clone()))
                 // Пометка одиночки: замок 12 приглушённым — «экземпляр один»

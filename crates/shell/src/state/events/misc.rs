@@ -84,6 +84,9 @@ impl RootView {
             }
             ShellEvent::MoveToolTo(src, id, dst) => {
                 self.tool_tab_menu = None;
+                // Клик по «чужой» одиночке в tool_picker тоже шлёт MoveToolTo —
+                // поповер после переноса закрываем (для drag-пути это no-op).
+                self.tool_picker = None;
                 self.activity.move_activity(src, &id, dst, usize::MAX);
                 self.save_activity();
             }

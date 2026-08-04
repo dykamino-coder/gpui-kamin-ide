@@ -203,10 +203,18 @@ pub(crate) fn respawn_stalled() {
     }
 }
 
+/// Чат никогда не выгружаем: его холодный подъём — самый дорогой (реплей
+/// всей переписки) и самый заметный («чат перезагрузился»). Память чата
+/// оправдана всегда — это главная поверхность приложения.
+const NEVER_REAP: &[&str] = &["claudeBridgeChat"];
+
 pub(crate) fn reap_hidden() {
     let visible = VISIBLE.lock().map(|s| s.clone()).unwrap_or_default();
     let now = std::time::Instant::now();
     for id in browsers::ids() {
+        if NEVER_REAP.contains(&id.as_str()) {
+            continue;
+        }
         if visible.contains(&id) {
             if let Ok(mut m) = HIDDEN_AT.lock() {
                 m.remove(&id);

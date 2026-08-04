@@ -150,6 +150,9 @@ Function .onInit
   Pop $R3
   !insertmacro KLOG "schtasks run rc=$R3 — quit, ждём трамплин"
   StrCmp $R3 "0" 0 tramp_done
+  ; Без явного 0 Quit отдаёт код 2 — апдейтер показывал ложную ошибку
+  ; «installer exited early: 2» и не выходил.
+  SetErrorLevel 0
   Quit
   tramp_skip_logged:
   !insertmacro KLOG "trampolined instance — установка напрямую"
@@ -175,8 +178,10 @@ BrandingText "KaminIDE \${VER}"
 AutoCloseWindow true
 
 Section "Install"
-  ; Одноразовая задача-трамплин (см. .onInit) больше не нужна.
+  ; Одноразовые задачи (трамплин .onInit + прошлый relaunch) больше не нужны.
   nsExec::ExecToStack 'schtasks /Delete /F /TN "KaminIDE_SelfUpdate"'
+  Pop $R3
+  nsExec::ExecToStack 'schtasks /Delete /F /TN "KaminIDE_Relaunch"'
   Pop $R3
   ; Апгрейд поверх запущенного: закрыть приложение И сайдкары (kaminhost =
   ; переименованный node; живой ребёнок лочит runtime/ — File тогда молча
@@ -184,6 +189,10 @@ Section "Install"
   !insertmacro KLOG "install section start"
   ExecWait 'taskkill /F /IM kaminide-gpui.exe' $0
   ExecWait 'taskkill /F /IM kaminhost.exe' $0
+  ; CEF-дети: живой kaminide-web.exe держит файлы в runtime/ — «файлы заняты»
+  ; у сотрудников с DLP (Job добивает их при смерти главного, но не при
+  ; подвисшем главном или осиротевших с прошлого краша).
+  ExecWait 'taskkill /F /IM kaminide-web.exe' $0
   !insertmacro KLOG "taskkill done"
   ; Ждём РЕАЛЬНОГО освобождения файлов, а не фиксированные 1.5с: на машинах с
   ; DLP/антивирусом хэндлы распакованных файлов живут дольше, и File /r падал
@@ -253,12 +262,20 @@ Section "Install"
   IntFmt $0 "0x%08X" $0
   WriteRegDWORD HKCU "${uninstKey}" "EstimatedSize" "$0"
   ; Одноклик: приложение стартует само, окно инсталлера закрывается.
-  ; Запуск ЧЕРЕЗ explorer: прямой Exec делает приложение ребёнком инсталлера,
-  ; а трамплин-инсталлер живёт в Job задачи Планировщика — завершение задачи
-  ; убивало свежезапущенное приложение («обновился, но не перезапустился»).
-  ; Explorer — существующий процесс вне любых наших Job.
-  !insertmacro KLOG "install done — relaunch via explorer"
-  Exec 'explorer.exe "$INSTDIR\\kaminide-gpui.exe"'
+  ; Перезапуск ЧЕРЕЗ Планировщик: прямой Exec делает приложение ребёнком
+  ; инсталлера (в Job задачи — умрёт с её завершением), а explorer-трюк
+  ; (explorer.exe "путь") на проверке вовсе не запускал exe. Задача
+  ; Планировщика порождает процесс вне наших Job — механика уже доказана
+  ; трамплином самого инсталлера.
+  nsExec::ExecToStack 'schtasks /Create /F /TN "KaminIDE_Relaunch" /TR "\\"$INSTDIR\\kaminide-gpui.exe\\"" /SC ONCE /ST 23:59'
+  Pop $R3
+  nsExec::ExecToStack 'schtasks /Run /TN "KaminIDE_Relaunch"'
+  Pop $R4
+  !insertmacro KLOG "install done — relaunch via schtasks (create=$R3 run=$R4)"
+  StrCmp $R4 "0" relaunch_done
+  ; Фолбэк: хоть какой-то запуск лучше «не перезапустился».
+  Exec '"$INSTDIR\\kaminide-gpui.exe"'
+  relaunch_done:
 SectionEnd
 
 Section "Uninstall"
@@ -274,7 +291,9 @@ SectionEnd
 `
 // НЕ в dist — иначе File /r утащит сам .nsi в инсталлер.
 const nsiPath = join(root, "installer.nsi")
-writeFileSync(nsiPath, nsi)
+// UTF-8 BOM обязателен: makensis без BOM читает .nsi в ANSI-кодпейдже —
+// русские строки прогресса/ошибок превращались в кракозябры у сотрудников.
+writeFileSync(nsiPath, "﻿" + nsi)
 const makensis = join(process.env.LOCALAPPDATA, "tauri", "NSIS", "makensis.exe")
 const r = spawnSync(makensis, [nsiPath], { stdio: "inherit" })
 if (r.status !== 0) process.exit(r.status ?? 1)
