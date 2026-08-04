@@ -37986,6 +37986,8 @@ var ConnectionManager = class _ConnectionManager {
   // обязан слать НАСТОЯЩЕЕ agentName — под ключом-хэшем вид агента по имени
   // записи не находил («No messages from this agent yet» после рестарта).
   cachedSubagentEntries = /* @__PURE__ */ new Map();
+  // Предел записей на одного сабагента в кэше хоста (см. pushSubagentCache).
+  static SUBAGENT_CACHE_CAP = 5e3;
   cachedJsonlStatus = null;
   // Server's authoritative compact-segment index (delivered with replayComplete).
   // Held so an on-demand `loadBoundaries` re-request answers instantly; nulled on
@@ -38651,6 +38653,9 @@ var ConnectionManager = class _ConnectionManager {
       pushSubagentCache: (key, agentName, agentId, entries2) => {
         const slot = this.cachedSubagentEntries.get(key) ?? { agentName, agentId, entries: [] };
         slot.entries.push(...entries2);
+        if (slot.entries.length > _ConnectionManager.SUBAGENT_CACHE_CAP) {
+          slot.entries.splice(0, slot.entries.length - _ConnectionManager.SUBAGENT_CACHE_CAP);
+        }
         this.cachedSubagentEntries.set(key, slot);
       },
       setCachedJsonlStatus: (s) => {

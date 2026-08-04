@@ -204,6 +204,8 @@ export class ConnectionManager {
   // обязан слать НАСТОЯЩЕЕ agentName — под ключом-хэшем вид агента по имени
   // записи не находил («No messages from this agent yet» после рестарта).
   private cachedSubagentEntries = new Map<string, { agentName: string; agentId?: string; entries: any[] }>()
+  // Предел записей на одного сабагента в кэше хоста (см. pushSubagentCache).
+  private static readonly SUBAGENT_CACHE_CAP = 5000
   private cachedJsonlStatus: any = null
   // Server's authoritative compact-segment index (delivered with replayComplete).
   // Held so an on-demand `loadBoundaries` re-request answers instantly; nulled on
@@ -1015,6 +1017,13 @@ export class ConnectionManager {
       pushSubagentCache: (key, agentName, agentId, entries) => {
         const slot = this.cachedSubagentEntries.get(key) ?? { agentName, agentId, entries: [] }
         slot.entries.push(...entries)
+        // Крышка на слот (аналог trimJsonlCache для основного кэша): реплей
+        // повторяется на каждый resync, а чистка была ТОЛЬКО на реконнекте
+        // (clearJsonlCache) — долгая сессия с многими сабагентами копила все
+        // их записи в памяти хоста без предела (главный накопитель 1.2GB).
+        if (slot.entries.length > ConnectionManager.SUBAGENT_CACHE_CAP) {
+          slot.entries.splice(0, slot.entries.length - ConnectionManager.SUBAGENT_CACHE_CAP)
+        }
         this.cachedSubagentEntries.set(key, slot)
       },
       setCachedJsonlStatus: (s) => { this.cachedJsonlStatus = s },
