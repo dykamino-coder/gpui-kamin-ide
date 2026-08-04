@@ -114,7 +114,11 @@ impl RootView {
             }
         }
         if registry_incomplete {
-            return; // прошлый mark_visible остаётся в силе до полного снапшота
+            // Неполный снапшот: не сбрасываем прошлый набор (иначе «скроем»
+            // живые панели), но добавляем то, что видно точно — TTL остальных
+            // продолжает тикать, вью не зависают в вечно-видимых.
+            crate::web::mark_visible_union(visible);
+            return;
         }
         crate::web::mark_visible(visible);
     }

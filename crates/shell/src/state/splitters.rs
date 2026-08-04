@@ -176,6 +176,10 @@ impl RootView {
         };
         if let Ok(mut snap_v) = serde_json::to_value(&self.layout) {
             snap_v["sidebarVisible"] = serde_json::Value::Bool(self.sidebar_visible);
+            // Полное зеркало в layout.json при каждом стэше: глобальный файл
+            // всегда равен лейауту АКТИВНОЙ сессии — бут восстанавливает
+            // «ровно как оставил», химера из частичных патчей исключена.
+            crate::layout_store::save_patch(snap_v.clone());
             std::thread::spawn(move || {
                 if let Some(c) = crate::host_link::client() {
                     let _ = c.request(
@@ -187,6 +191,34 @@ impl RootView {
                     );
                 }
             });
+        }
+    }
+
+    /// Синхронный стэш активной сессии — для ШТАТНОГО выхода: фоновая версия
+    /// (thread::spawn выше) не успевает до убийства хоста Job'ом, и последние
+    /// изменения не попадали в sessions.json (дыра №3 аудита персиста).
+    pub(crate) fn persist_active_session_layout_sync(&self) {
+        let Some(active) = self
+            .sessions
+            .as_ref()
+            .and_then(|s| s.active_session_id.clone())
+        else {
+            return;
+        };
+        if let Ok(mut snap_v) = serde_json::to_value(&self.layout) {
+            snap_v["sidebarVisible"] = serde_json::Value::Bool(self.sidebar_visible);
+            if let Some(c) = crate::host_link::client() {
+                let _ = c.request(
+                    "kamin:sessions:setState",
+                    vec![
+                        serde_json::json!(active),
+                        serde_json::json!({ "layout": snap_v }),
+                    ],
+                );
+                // Хостовый JsonStore дебаунсит 200мс, а Job убьёт node раньше —
+                // просим сбросить на диск сейчас.
+                let _ = c.request("kamin:sessions:flush", vec![]);
+            }
         }
     }
 

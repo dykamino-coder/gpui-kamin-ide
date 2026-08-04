@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { HOST_WORKSPACE_SET } from "../protocol.js"
+import { JsonStore } from "../json-store.js"
 import { initAppPrefs, getAppPrefs, setAppPrefs } from "./app-prefs.js"
 import * as config from "./config.js"
 import * as documents from "./documents.js"
@@ -207,6 +208,9 @@ export function buildServiceMethods(opts: ServiceBootOptions): Map<string, Handl
   methods.set("kamin:sessions:deactivate", (id) => sessions.deactivateSession(id as string))
   methods.set("kamin:sessions:reorder", (id, beforeId) => sessions.moveSessionBefore(id as string, beforeId as string | null))
   methods.set("kamin:sessions:setState", (id, st) => sessions.setSessionState(id as string, st as Parameters<typeof sessions.setSessionState>[1]))
+  // Синхронный сброс JsonStore на диск: шелл зовёт на выходе — Job Object
+  // убивает node раньше 200мс-дебаунса, и последний лейаут сессии терялся.
+  methods.set("kamin:sessions:flush", () => { JsonStore.flushAllSync(); return true })
   methods.set("kamin:sessions:update", (id, patch) => sessions.updateSession(id as string, patch as { name?: string; metadata?: Record<string, unknown> }))
   // Legacy Electron Bridge cleanup: re-import saved sessions before the shell
   // deletes the old app's config (guarantees nothing is lost).

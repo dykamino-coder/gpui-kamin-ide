@@ -539,6 +539,11 @@ export class ConnectionManager {
       }
       // Remove listeners to avoid triggering reconnect on close
       this.ws.removeAllListeners()
+      // close() на CONNECTING-сокете эмитит 'error' («WebSocket was closed
+      // before the connection was established»); после removeAllListeners его
+      // некому ловить — uncaughtException и тост «Extension crashed» на
+      // старте приложения (гонка тёплого пула). Глушим осознанно.
+      this.ws.on('error', () => { /* teardown: сокет и так закрываем */ })
       if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
         this.ws.close()
       }

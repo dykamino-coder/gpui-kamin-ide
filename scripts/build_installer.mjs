@@ -90,6 +90,13 @@ const nodeExe = join(dist, "runtime", "node.exe")
 if (existsSync(nodeExe)) renameSync(nodeExe, join(dist, "runtime", "kaminhost.exe"))
 console.log("[installer] runtime/ распакован")
 
+// build_setup_rust.mjs переиспользует сборку dist-installer/ выше, а NSIS
+// не гонит — упаковка идёт Rust-инсталлером.
+if (process.env.KAMIN_ASSEMBLE_ONLY === "1") {
+  console.log("[installer] dist-installer/ собран (KAMIN_ASSEMBLE_ONLY) — NSIS пропущен")
+  process.exit(0)
+}
+
 // NSIS (MUI2): нормальный визард — welcome/директория/прогресс/finish с
 // запуском, иконка, полные поля в «Приложениях», закрытие запущенного
 // приложения перед установкой (апгрейд поверх живого).
@@ -113,9 +120,12 @@ SetCompressor /SOLID lzma
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
+!include "StrFunc.nsh"
 !insertmacro GetSize
 !insertmacro GetParameters
 !insertmacro GetOptions
+; StrFunc требует «инстанцировать» функцию до использования.
+\${StrLoc}
 
 ; Журнал установки (диагностика тихих провалов самообновления):
 ; последовательность шагов в $TEMP\\kaminide-install.log, append.
@@ -142,7 +152,16 @@ Function .onInit
   IntCmp $R2 0 tramp_done
   ; Провал любого шага schtasks → tramp_done: установка в Job хоть с шансом
   ; на успех лучше молчаливого Quit без установки.
-  nsExec::ExecToStack 'schtasks /Create /F /TN "KaminIDE_SelfUpdate" /TR "\\"$EXEPATH\\" $R0 /KAMINTRAMP" /SC ONCE /ST 23:59'
+  ; Задачу создаём на КОПИЮ себя в $INSTDIR: Планировщик стабильно запускает
+  ; exe из каталога установки, но отдаёт 0x80070002 «файл не найден» на пути
+  ; загрузки старых клиентов (%LOCALAPPDATA%\KaminIDE-updates) — причина не
+  ; ясна, обходим путём, который точно работает. Копия не совпадает по имени
+  ; с payload и прибирается в files_ok следующего цикла.
+  ClearErrors
+  CopyFiles /SILENT "$EXEPATH" "$INSTDIR\\kaminide-selfupdate.exe"
+  IfErrors tramp_done
+  !insertmacro KLOG "trampoline copy → $INSTDIR\\kaminide-selfupdate.exe"
+  nsExec::ExecToStack 'schtasks /Create /F /TN "KaminIDE_SelfUpdate" /TR "\\"$INSTDIR\\kaminide-selfupdate.exe\\" $R0 /KAMINTRAMP" /SC ONCE /ST 23:59'
   Pop $R3
   !insertmacro KLOG "schtasks create rc=$R3"
   StrCmp $R3 "0" 0 tramp_done
@@ -187,12 +206,17 @@ Section "Install"
   ; переименованный node; живой ребёнок лочит runtime/ — File тогда молча
   ; оставляет старые файлы, «установщик не обновляет версию»).
   !insertmacro KLOG "install section start"
-  ExecWait 'taskkill /F /IM kaminide-gpui.exe' $0
-  ExecWait 'taskkill /F /IM kaminhost.exe' $0
+  ; nsExec, не ExecWait: ExecWait мигает консольным окном на каждый taskkill —
+  ; юзеры видели «3 консоли поочерёдно мигнули» при апдейте.
+  nsExec::ExecToStack 'taskkill /F /IM kaminide-gpui.exe'
+  Pop $0
+  nsExec::ExecToStack 'taskkill /F /IM kaminhost.exe'
+  Pop $0
   ; CEF-дети: живой kaminide-web.exe держит файлы в runtime/ — «файлы заняты»
   ; у сотрудников с DLP (Job добивает их при смерти главного, но не при
   ; подвисшем главном или осиротевших с прошлого краша).
-  ExecWait 'taskkill /F /IM kaminide-web.exe' $0
+  nsExec::ExecToStack 'taskkill /F /IM kaminide-web.exe'
+  Pop $0
   !insertmacro KLOG "taskkill done"
   ; Ждём РЕАЛЬНОГО освобождения файлов, а не фиксированные 1.5с: на машинах с
   ; DLP/антивирусом хэндлы распакованных файлов живут дольше, и File /r падал
@@ -230,6 +254,11 @@ Section "Install"
     Abort "Не удалось записать файлы — закрой KaminIDE и запусти установку снова."
   files_ok:
   !insertmacro KLOG "files_ok"
+  ; Скачанные апдейтером инсталлеры и трамплин-копия лежат в $INSTDIR —
+  ; прибираем старые; ТЕКУЩИЙ запущенный залочен, Delete его молча пропустит,
+  ; его удалит следующий цикл обновления.
+  Delete "$INSTDIR\\KaminIDE_*-setup.exe"
+  Delete "$INSTDIR\\kaminide-selfupdate.exe"
   ; Маркер фактически установленной версии (быстрая проверка руками).
   FileOpen $1 "$INSTDIR\\version.txt" w
   FileWrite $1 "\${VER}"
@@ -269,12 +298,27 @@ Section "Install"
   ; трамплином самого инсталлера.
   nsExec::ExecToStack 'schtasks /Create /F /TN "KaminIDE_Relaunch" /TR "\\"$INSTDIR\\kaminide-gpui.exe\\"" /SC ONCE /ST 23:59'
   Pop $R3
-  nsExec::ExecToStack 'schtasks /Run /TN "KaminIDE_Relaunch"'
-  Pop $R4
-  !insertmacro KLOG "install done — relaunch via schtasks (create=$R3 run=$R4)"
-  StrCmp $R4 "0" relaunch_done
-  ; Фолбэк: хоть какой-то запуск лучше «не перезапустился».
-  Exec '"$INSTDIR\\kaminide-gpui.exe"'
+  ; До 3 попыток с проверкой, что процесс реально жив: разовый старт мог
+  ; упасть (антивирус сканирует свежезаписанный exe, 0x80000003 на стенде).
+  StrCpy $R5 0
+  relaunch_try:
+    IntOp $R5 $R5 + 1
+    nsExec::ExecToStack 'schtasks /Run /TN "KaminIDE_Relaunch"'
+    Pop $R4
+    !insertmacro KLOG "relaunch attempt $R5 (create=$R3 run=$R4)"
+    Sleep 3000
+    nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq kaminide-gpui.exe" /NH'
+    Pop $R6
+    Pop $R7
+    \${StrLoc} $R8 $R7 "kaminide-gpui.exe" ">"
+    StrCmp $R8 "" 0 relaunch_alive
+    IntCmp $R5 3 relaunch_fallback relaunch_try relaunch_fallback
+  relaunch_fallback:
+    !insertmacro KLOG "relaunch via task failed ×$R5 — direct Exec"
+    Exec '"$INSTDIR\\kaminide-gpui.exe"'
+    Goto relaunch_done
+  relaunch_alive:
+    !insertmacro KLOG "relaunch OK on attempt $R5"
   relaunch_done:
 SectionEnd
 

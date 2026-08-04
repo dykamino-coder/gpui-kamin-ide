@@ -89,6 +89,10 @@ pub enum CzEvent {
     /// Скачивание/запуск апдейта не удались — пилюля возвращается в обычный
     /// вид, пользователю уходит sticky-тост.
     UpdateInstallFailed(String),
+    /// Инсталлер запущен — выйти ШТАТНО (закрыть окно → web::shutdown()).
+    /// std::process::exit(0) пропускал CEF-шатдаун: грязный кэш ронял
+    /// libcef CHECK'ом (0x80000003) на ПЕРВОМ старте после каждого апдейта.
+    GracefulQuit,
     /// Клик в интерактивном семпле Design-панели (дропдаун/чекбоксы).
     DesignSample(crate::ui::design_samples::DesignAction),
     /// Иконка расширения: (id, data-URL или None).

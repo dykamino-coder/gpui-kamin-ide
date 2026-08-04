@@ -175,20 +175,18 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     if (conn) conn.sendRaw({ type: 'session:delete-data', conversationId })
   })
 
-  // ─── Session Tree (re-send cached tree + replay JSONL on renderer request) ───
+  // ─── Session Tree (re-send cached tree on renderer request) ───────────────
+  // БЕЗ реплея JSONL: канал зовётся из useInit КАЖДОЙ страницы (включая все
+  // customize-настройки) и реплей ВСЕХ табов здесь давал ~150 чанков × все
+  // вью — «каждая страница настроек грузится 10 секунд» + гигабайты
+  // транзиентных строк в хосте. Реплей живёт на своём канале
+  // jsonl:request-replay, который зовут только панели, которым он нужен.
   ipcMain.on('tree:request', (event) => {
     if (ConnectionManager.lastTree) {
       if (ConnectionManager.enrichTree) {
         ConnectionManager.enrichTree(ConnectionManager.lastTree as any[])
       }
       event.sender.send('tree-update', ConnectionManager.lastTree)
-    }
-    const mgr = tm()
-    if (mgr) {
-      for (const tab of mgr.listTabs()) {
-        const conn = mgr.getConnection(tab.id)
-        if (conn) conn.replayJsonlToRenderer()
-      }
     }
   })
 

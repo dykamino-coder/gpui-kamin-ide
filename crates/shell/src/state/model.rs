@@ -147,6 +147,9 @@ pub struct RootView {
     pub quick_pick: Option<crate::ui::quick_pick::QuickPickState>,
     /// Отложенный Tab-переход из probe (`apply` не видит `Window`).
     pub pending_focus_step: Option<bool>,
+    /// Апдейт скачан и инсталлер ждёт: закрыть окно штатно на ближайшем кадре
+    /// (см. CzEvent::QuitForUpdate — exit(0) ронял CEF-кэш).
+    pub pending_quit: bool,
     /// Идёт установка апдейта: (скачано, всего) — рисуется заливкой пилюли.
     pub update_progress: Option<(u64, Option<u64>)>,
     pub qp_input: Option<Entity<InputState>>,

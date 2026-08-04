@@ -56,6 +56,11 @@ impl RootView {
             ShellEvent::Cz(CzEvent::UpdateProgress(done, total)) => {
                 self.update_progress = Some((done, total));
             }
+            ShellEvent::Cz(CzEvent::GracefulQuit) => {
+                // apply без окна — закрытие сделает frame_focus ближайшего кадра.
+                self.pending_quit = true;
+                cx.notify();
+            }
             ShellEvent::Cz(CzEvent::UpdateInstallFailed(err)) => {
                 self.update_progress = None;
                 let _ = self

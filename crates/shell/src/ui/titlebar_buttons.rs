@@ -52,7 +52,17 @@ pub(crate) fn control_button(
             WindowControlArea::Min => window.minimize_window(),
             // `zoom_window()` на Windows умеет ТОЛЬКО разворачивать
             WindowControlArea::Max => crate::overlay::toggle_main_maximize(),
-            WindowControlArea::Close => window.remove_window(),
+            // Через GracefulQuit: перед закрытием стэшится лейаут активной
+            // сессии (см. frame_focus) — прямой remove_window его терял.
+            WindowControlArea::Close => {
+                if let Some(tx) = crate::host_link::event_tx() {
+                    let _ = tx.try_send(crate::host_link::ShellEvent::Cz(
+                        crate::host::events::CzEvent::GracefulQuit,
+                    ));
+                } else {
+                    window.remove_window();
+                }
+            }
             WindowControlArea::Drag => {}
         })
         // Замер оригинала (CDP): computed font-size глифа = 16px, ink

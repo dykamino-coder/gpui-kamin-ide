@@ -141,6 +141,24 @@ impl RootView {
                     {
                         self.sidebar_visible = snap.sidebar_visible;
                         self.layout = snap;
+                    } else {
+                        // НОВАЯ сессия (снапшота нет): default-пресет, иначе
+                        // заводской — а не лейаут прежней сессии (запрос юзера).
+                        let fresh = crate::layout_store::load_presets()
+                            .into_iter()
+                            .find(|p| p.default)
+                            .and_then(|p| serde_json::from_value(p.snapshot).ok())
+                            .unwrap_or_default();
+                        self.layout = fresh;
+                        self.sidebar_visible = self.layout.sidebar_visible;
+                    }
+                    // Зеркалим ПОЛНЫЙ снапшот в layout.json: частичные патчи
+                    // (ширины end_drag, одиночные флаги) поверх лейаута другой
+                    // сессии собирали на диске химеру, и перезагрузка
+                    // восстанавливала «случайный момент» (дыры №1/№2 аудита).
+                    if let Ok(mut v) = serde_json::to_value(&self.layout) {
+                        v["sidebarVisible"] = serde_json::Value::Bool(self.sidebar_visible);
+                        crate::layout_store::save_patch(v);
                     }
                 }
                 // Оптимистично: подсветка/переключение мгновенно, снапшот хоста

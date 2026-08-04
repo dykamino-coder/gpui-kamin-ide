@@ -38282,6 +38282,8 @@ var ConnectionManager = class _ConnectionManager {
         }
       }
       this.ws.removeAllListeners();
+      this.ws.on("error", () => {
+      });
       if (this.ws.readyState === wrapper_default.OPEN || this.ws.readyState === wrapper_default.CONNECTING) {
         this.ws.close();
       }
@@ -39927,13 +39929,6 @@ function registerSessionsIPC(ctx) {
         ConnectionManager.enrichTree(ConnectionManager.lastTree);
       }
       event.sender.send("tree-update", ConnectionManager.lastTree);
-    }
-    const mgr = tm();
-    if (mgr) {
-      for (const tab of mgr.listTabs()) {
-        const conn = mgr.getConnection(tab.id);
-        if (conn) conn.replayJsonlToRenderer();
-      }
     }
   });
   ipcMain.on("jsonl:request-replay", (_event, tabId) => {

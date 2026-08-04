@@ -205,6 +205,7 @@ impl RootView {
             | ShellEvent::Cz(CzEvent::StartUpdateInstall)
             | ShellEvent::Cz(CzEvent::UpdateProgress { .. })
             | ShellEvent::Cz(CzEvent::UpdateInstallFailed { .. })
+            | ShellEvent::Cz(CzEvent::GracefulQuit)
             | ShellEvent::SetThemeChoice { .. }
             | ShellEvent::Cz(CzEvent::SetContributedTheme { .. })
             | ShellEvent::RunCommand { .. }

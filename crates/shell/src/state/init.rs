@@ -144,6 +144,7 @@ impl RootView {
             contrib_theme_id: cached_contrib_id,
             quick_pick: None,
             pending_focus_step: None,
+            pending_quit: false,
             update_progress: None,
             qp_input: None,
             qp_sub: None,

@@ -8,6 +8,16 @@ use gpui::{Context, Window, px};
 
 impl RootView {
     pub(crate) fn frame_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Апдейт готов к установке: закрываем окно ШТАТНО — main() после
+        // цикла сделает web::shutdown(), CEF-кэш останется чистым.
+        if self.pending_quit {
+            self.pending_quit = false;
+            // Последний лейаут активной сессии — синхронно, до убийства хоста
+            // Job'ом (иначе «лейаут не тот, каким оставил» после перезагрузки).
+            self.persist_active_session_layout_sync();
+            window.remove_window();
+            return;
+        }
         // `:focus-visible`: снимок фокуса на кадр + чеканка новых хэндлов
         // (рисующие функции не получают ни `cx`, ни `window`)
         if let Some(forward) = self.pending_focus_step.take() {

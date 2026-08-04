@@ -202,6 +202,16 @@ export function useTerminal(tabId: string): TerminalRefs {
     terminal.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
       if (ev.type !== 'keydown') return true
 
+      // Печатный символ без модификаторов: НЕ отдавать xterm'у keydown —
+      // offscreen-рендерер CEF не получает смену раскладки (нет
+      // WM_INPUTLANGCHANGE), и keydown-трансляция VK→символ залипает на
+      // стартовом языке («ввод в консоли не переключается на русский»).
+      // keypress придёт следом с готовым юникодом из CHAR-события шелла
+      // (там раскладка юзера учтена) — его xterm и обработает.
+      if (ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+        return false
+      }
+
       // Ctrl+Shift+C → always copy selection
       if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyC') {
         const sel = terminal.getSelection()

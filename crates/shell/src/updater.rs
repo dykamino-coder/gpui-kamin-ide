@@ -125,13 +125,15 @@ fn download(url: &str, tx: &Sender<ShellEvent>) -> Result<std::path::PathBuf, St
         .map(|n| n.split(['?', '#']).next().unwrap_or(n))
         .filter(|n| n.to_ascii_lowercase().ends_with(".exe"))
         .unwrap_or("KaminIDE-setup.exe");
-    // НЕ %TEMP%: корпоративный AppLocker/SRP блокирует запуск exe из Temp
-    // («blocked by group policy, os error 1260») — кладём в %LOCALAPPDATA%,
-    // откуда приложение и так работает (значит запуск разрешён политикой).
-    let dir = std::env::var("LOCALAPPDATA")
-        .map(|d| std::path::PathBuf::from(d).join("KaminIDE-updates"))
-        .unwrap_or_else(|_| std::env::temp_dir());
-    let _ = std::fs::create_dir_all(&dir);
+    // Каталог ПРИЛОЖЕНИЯ, не %TEMP% и не отдельная папка: (а) AppLocker
+    // блокирует запуск из Temp («blocked by group policy, 1260»), (б) задача
+    // Планировщика (трамплин) из свежесозданного KaminIDE-updates падала с
+    // 0x80070002 «файл не найден», а из каталога установки запускается
+    // стабильно — приложение само оттуда работает.
+    let dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+        .unwrap_or_else(std::env::temp_dir);
     let path = dir.join(name);
     let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
 
@@ -199,8 +201,14 @@ pub fn install(url: String, tx: Sender<ShellEvent>) {
                             )));
                         }
                         _ => {
-                            ulog("installer alive/ok — app exiting");
-                            std::process::exit(0)
+                            // НЕ process::exit(0): он пропускал CEF-шатдаун,
+                            // грязный кэш ронял libcef на первом старте после
+                            // апдейта (0x80000003 «у всех умерло, со второго
+                            // запустилось»). Штатное закрытие окна доводит
+                            // main() до web::shutdown(); инсталлер ждёт
+                            // разблокировки файлов до 20с — успеваем.
+                            ulog("installer alive/ok — graceful app quit");
+                            let _ = tx.try_send(ShellEvent::Cz(CzEvent::GracefulQuit));
                         }
                     }
                 }
