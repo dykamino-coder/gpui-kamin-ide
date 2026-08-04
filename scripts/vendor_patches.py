@@ -46,8 +46,9 @@ EXPECTED: dict[str, tuple[int, str]] = {
         "мёртвая WebView2-эпоха)",
     ),
     "vendor/gpui/src/window.rs": (
-        15,
-        "отрисовка чужих текстур (`paint_external_texture`); счётчики "
+        17,
+        "отрисовка чужих текстур (`paint_external_texture`); `paint_image_region` "
+        "— вырезка региона software-кадра CEF без растяжения (RDP); `paint_external_texture_px` — спрайт по физическим px (нет ресемпла на дробном DPI); счётчики "
         "стоимости кадра (`frame_perf`); `focus_visible` — клавиатурная "
         "модальность фокуса (`:focus-visible`)",
     ),

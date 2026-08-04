@@ -1851,6 +1851,47 @@ impl Window {
         });
     }
 
+    /// KaminIDE patch: та же отрисовка чужой текстуры, но прямоугольник задан
+    /// В ФИЗИЧЕСКИХ пикселях — без `bounds.scale(scale_factor)`.
+    ///
+    /// Логический путь на дробном DPI (125/150 %, типично для RDP) никогда не
+    /// давал точного совпадения: `round(w_лог*scale)` ≠ размеру кадра на
+    /// доли пикселя, и вызывающему приходилось «догонять» разницу растяжением
+    /// (снэп ±1px) — постоянный субпиксельный ресемпл в установившемся режиме.
+    /// Здесь спрайт кладётся ровно на физические пиксели кадра: 1:1 всегда.
+    pub fn paint_external_texture_px(
+        &mut self,
+        bounds_px: Bounds<DevicePixels>,
+        corner_radii: Corners<Pixels>,
+        texture: &ExternalTexture,
+    ) {
+        self.invalidator.debug_assert_paint();
+        let scale_factor = self.scale_factor();
+        let bounds = Bounds {
+            origin: point(
+                ScaledPixels(bounds_px.origin.x.0 as f32),
+                ScaledPixels(bounds_px.origin.y.0 as f32),
+            ),
+            size: size(
+                ScaledPixels(bounds_px.size.width.0 as f32),
+                ScaledPixels(bounds_px.size.height.0 as f32),
+            ),
+        };
+        let content_mask = self.content_mask().scale(scale_factor);
+        let corner_radii = corner_radii.scale(scale_factor);
+        let opacity = self.element_opacity();
+        self.next_frame.scene.insert_primitive(PolychromeSprite {
+            order: 0,
+            pad: 0,
+            grayscale: false,
+            bounds,
+            content_mask,
+            corner_radii,
+            tile: texture.0.clone(),
+            opacity,
+        });
+    }
+
     /// Start moving the window (drag) via the platform.
     pub fn start_window_move(&self) {
         self.platform_window.start_window_move()
@@ -3273,6 +3314,75 @@ impl Window {
                 )))
             })?
             .expect("Callback above only returns Some");
+        let content_mask = self.content_mask().scale(scale_factor);
+        let corner_radii = corner_radii.scale(scale_factor);
+        let opacity = self.element_opacity();
+
+        self.next_frame.scene.insert_primitive(PolychromeSprite {
+            order: 0,
+            pad: 0,
+            grayscale,
+            bounds: bounds
+                .map_origin(|origin| origin.floor())
+                .map_size(|size| size.ceil()),
+            content_mask,
+            corner_radii,
+            tile,
+            opacity,
+        });
+        Ok(())
+    }
+
+    /// KaminIDE patch: нарисовать ЧАСТЬ образа 1:1 без масштабирования.
+    ///
+    /// `paint_image` вписывает ВЕСЬ образ в `bounds` — для software-кадров CEF
+    /// (RDP, где accelerated-пути нет) это означало обязательное растяжение,
+    /// когда кадр Chromium больше панели: страница «плыла» по каждой оси
+    /// отдельно, и виден был фриз с недорастянутой текстурой. Здесь тайл
+    /// атласа режется до региона (физические px кадра), и спрайт рисуется
+    /// пиксель-в-пиксель — ровно как `ExternalTexture::region` у GPU-пути.
+    pub fn paint_image_region(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+        grayscale: bool,
+        region: Bounds<DevicePixels>,
+    ) -> Result<()> {
+        self.invalidator.debug_assert_paint();
+
+        let scale_factor = self.scale_factor();
+        let bounds = bounds.scale(scale_factor);
+        let params = RenderImageParams {
+            image_id: data.id,
+            frame_index,
+        };
+
+        let mut tile = self
+            .sprite_atlas
+            .get_or_insert_with(&params.into(), &mut || {
+                Ok(Some((
+                    data.size(frame_index),
+                    Cow::Borrowed(
+                        data.as_bytes(frame_index)
+                            .expect("It's the caller's job to pass a valid frame index"),
+                    ),
+                )))
+            })?
+            .expect("Callback above only returns Some");
+        // Регион внутри тайла: origin смещаем, размер клампим — выйти за
+        // пределы тайла нельзя, иначе в спрайт попадут соседние атласные
+        // страницы.
+        let max_w = tile.bounds.size.width;
+        let max_h = tile.bounds.size.height;
+        let off_x = region.origin.x.max(DevicePixels(0)).min(max_w);
+        let off_y = region.origin.y.max(DevicePixels(0)).min(max_h);
+        tile.bounds.origin.x += off_x;
+        tile.bounds.origin.y += off_y;
+        tile.bounds.size.width = region.size.width.max(DevicePixels(1)).min(max_w - off_x);
+        tile.bounds.size.height = region.size.height.max(DevicePixels(1)).min(max_h - off_y);
+
         let content_mask = self.content_mask().scale(scale_factor);
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();

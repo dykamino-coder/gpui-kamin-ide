@@ -4,6 +4,7 @@ import { hasCliXmlTags } from './utils'
 import { CliXmlContent } from './CliXmlContent'
 import { JsonlTimestamp } from './JsonlTimestamp'
 import { MessageActions } from './MessageActions'
+import { GoalResultBlock, parseGoalResult } from './GoalResultBlock'
 
 interface EditorContext {
   openedFile?: string
@@ -66,6 +67,22 @@ export function UserEntry({ entry }: { entry: JsonlEntryData }): JSX.Element | n
   const { body: displayText, ctx: editorCtx } = splitEditorContext(rawText)
   const ctxFile = editorCtx?.openedFile
   const ctxRange = rangeLabel(editorCtx?.selectedRange)
+
+  // Результат проверки цели (`/goal`, Stop-хук) приходит одной строкой JSON —
+  // в пузыре это был сырой дамп на пол-экрана. Рисуем карточкой.
+  const goal = parseGoalResult(displayText)
+  if (goal) {
+    return (
+      <div class="jsonl-entry jsonl-entry-user">
+        <div class="entry-role">
+          <i class="fas fa-bullseye" style="font-size:10px" />
+          {' '}Goal{' '}
+          {entry.timestamp && <JsonlTimestamp timestamp={entry.timestamp} />}
+        </div>
+        <GoalResultBlock result={goal} />
+      </div>
+    )
+  }
 
   return (
     <div class="jsonl-entry jsonl-entry-user">

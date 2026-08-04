@@ -78,6 +78,33 @@ impl RootView {
                             }
                             _ => {}
                         }
+                        // БУТ: применить лейаут АКТИВНОЙ сессии из её снапшота.
+                        // Раньше пер-сессионный лейаут читался ТОЛЬКО при
+                        // переключении сессий (ниже), а на старте брался
+                        // глобальный layout.json — в который писали частичные
+                        // патчи разных сессий. Итог: «после перезагрузки лейаут
+                        // не тот, каким оставил, а какой-то более ранний».
+                        // Делается ОДИН раз за запуск, до первого показа.
+                        if !self.layout_booted {
+                            self.layout_booted = true;
+                            if let Some(snapshot) = snap
+                                .active_session_id
+                                .as_ref()
+                                .and_then(|id| snap.sessions.iter().find(|s| s.id == *id))
+                                .and_then(|s| s.layout.clone())
+                            {
+                                self.sidebar_visible = snapshot.sidebar_visible;
+                                self.layout = snapshot;
+                                // Зеркалим полный снапшот, чтобы layout.json не
+                                // расходился с применённым.
+                                if let Ok(mut v) = serde_json::to_value(&self.layout) {
+                                    v["sidebarVisible"] =
+                                        serde_json::Value::Bool(self.sidebar_visible);
+                                    crate::layout_store::save_patch(v);
+                                }
+                                cx.notify();
+                            }
+                        }
                         // Хост шлёт снапшот на каждый чих; одинаковый —
                         // не повод пересобирать сайдбар.
                         if self.sessions.as_ref() != Some(&snap) {

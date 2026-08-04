@@ -150,6 +150,8 @@ pub struct RootView {
     /// Апдейт скачан и инсталлер ждёт: закрыть окно штатно на ближайшем кадре
     /// (см. CzEvent::QuitForUpdate — exit(0) ронял CEF-кэш).
     pub pending_quit: bool,
+    /// Лейаут активной сессии уже применён на буте (один раз за запуск).
+    pub layout_booted: bool,
     /// Идёт установка апдейта: (скачано, всего) — рисуется заливкой пилюли.
     pub update_progress: Option<(u64, Option<u64>)>,
     pub qp_input: Option<Entity<InputState>>,

@@ -101,6 +101,7 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 // на прежнем 1:1-пути.
                 let big_mismatch = (tw - want_w).abs() * 10 > want_w || (th - want_h).abs() * 10 > want_h;
                 if big_mismatch {
+                    super::diag::stretched();
                     window.paint_external_texture(
                         gpui::Bounds { origin: bounds.origin, size: bounds.size },
                         Corners::all(px(radius)),
@@ -114,12 +115,26 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 // кадру размер на пиксель меньше панели, и при драге ширины
                 // вью дёргался по ВЫСОТЕ (полоса смазки появлялась/исчезала).
                 // Расхождение в пиксель растягиваем — глазу оно невидимо.
-                if f32::from(bounds.size.width) - draw_w <= 1.0 {
+                let mut snapped = false;
+                if f32::from(bounds.size.width) - draw_w <= 1.0
+                    && (f32::from(bounds.size.width) - draw_w).abs() > f32::EPSILON
+                {
                     draw_w = f32::from(bounds.size.width);
+                    snapped = true;
                 }
-                if f32::from(bounds.size.height) - draw_h <= 1.0 {
+                if f32::from(bounds.size.height) - draw_h <= 1.0
+                    && (f32::from(bounds.size.height) - draw_h).abs() > f32::EPSILON
+                {
                     draw_h = f32::from(bounds.size.height);
+                    snapped = true;
                 }
+                // Снэп больше НЕ растягивает: кадр кладётся по ФИЗИЧЕСКИМ
+                // границам (`paint_external_texture_px`), поэтому доли пикселя
+                // от дробного DPI не «догоняются» ресемплом. Флаг остаётся
+                // только как признак того, что зазор в пределах пикселя закрыт
+                // самим кадром (а не подложкой).
+                let _ = snapped;
+                super::diag::exact();
                 let draw = gpui::Bounds {
                     origin: bounds.origin,
                     size: gpui::size(px(draw_w), px(draw_h)),
@@ -127,6 +142,16 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 let crop_w = (draw_w * scale).round() as i32;
                 let crop_h = (draw_h * scale).round() as i32;
                 let shown = tex.cropped(crop_w, crop_h);
+                // Физический прямоугольник кадра: origin округляем ВНИЗ (как
+                // это делал gpui в `map_origin(floor)`), размер = ровно размер
+                // вырезанного тайла — спрайт 1:1.
+                let draw_px = gpui::Bounds {
+                    origin: gpui::point(
+                        gpui::DevicePixels((f32::from(bounds.origin.x) * scale).floor() as i32),
+                        gpui::DevicePixels((f32::from(bounds.origin.y) * scale).floor() as i32),
+                    ),
+                    size: gpui::size(gpui::DevicePixels(crop_w), gpui::DevicePixels(crop_h)),
+                };
                 let full_w = f32::from(bounds.size.width);
                 let full_h = f32::from(bounds.size.height);
                 // Прямой шов разрешён, только если зазор ШИРЕ радиуса: узкая
@@ -148,7 +173,8 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                         px(radius)
                     },
                 };
-                window.paint_external_texture(draw, c, &shown);
+                let _ = &draw; // логический прямоугольник больше не нужен для кадра
+                window.paint_external_texture_px(draw_px, c, &shown);
                 // Кадр УЖЕ панели (расширение не догнало) — недостающее
                 // закрываем РАСТЯНУТЫМ КРАЕМ кадра, а не цветной полосой:
                 // край страницы «тянется» за ручкой, как у нативной
@@ -207,6 +233,18 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 let scale = window.scale_factor();
                 let isz = image.size(0);
                 let (iw, ih) = (isz.width.0 as f32 / scale, isz.height.0 as f32 / scale);
+                // АНТИ-ЗАЛИПАНИЕ ДЛЯ SW-ПУТИ (RDP). Раньше проверка «кадр не
+                // того размера → nudge» была ТОЛЬКО в GPU-ветке: на RDP
+                // застрявший hold_resize у CEF не детектился никогда, и кадр
+                // оставался сжатым/растянутым до следующего события размера —
+                // это и есть «фриз с недорастянувшейся текстурой».
+                let want_w = (f32::from(bounds.size.width) * scale).round() as i32;
+                let want_h = (f32::from(bounds.size.height) * scale).round() as i32;
+                let (fw, fh_px) = (isz.width.0, isz.height.0);
+                if (fw - want_w).abs() > 2 || (fh_px - want_h).abs() > 2 {
+                    super::diag::cropped();
+                    super::browsers::nudge(id);
+                }
                 window
                     .paint_quad(gpui::fill(bounds, p_bg()).corner_radii(Corners::all(px(radius))));
                 let draw = gpui::Bounds {
@@ -216,16 +254,59 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                         px(ih.min(f32::from(bounds.size.height))),
                     ),
                 };
-                let _ = window.paint_image(draw, Corners::all(px(radius)), image, 0, false);
+                // 1:1 БЕЗ растяжения: режем кадр до нарисованного региона
+                // (`paint_image_region`, KaminIDE patch в vendored gpui).
+                // `paint_image` вписывал ВЕСЬ образ в `draw`, поэтому кадр
+                // больше панели всегда плющился по каждой оси отдельно — это и
+                // был RDP-фриз с недорастянутой текстурой.
+                let reg_w = (f32::from(draw.size.width) * scale).round() as i32;
+                let reg_h = (f32::from(draw.size.height) * scale).round() as i32;
+                // Пиксели не пересэмплены ни в одном из случаев: либо кадр
+                // равен области, либо рисуется его часть 1:1 (остальное
+                // закрывает подложка панели).
+                super::diag::exact();
+                let region = gpui::Bounds {
+                    origin: gpui::point(gpui::DevicePixels(0), gpui::DevicePixels(0)),
+                    size: gpui::size(gpui::DevicePixels(reg_w), gpui::DevicePixels(reg_h)),
+                };
+                let _ = window.paint_image_region(
+                    draw,
+                    Corners::all(px(radius)),
+                    image,
+                    0,
+                    false,
+                    region,
+                );
                 if let Some((pimg, (rx, ry, rw, rh))) = super::popup::sw_frame(id) {
+                    // Кадр попапа лежит в ФИЗИЧЕСКИХ px (плюс alignment-паддинг
+                    // буфера), а прямоугольник `on_popup_size` — в CSS-px.
+                    // Рисовали физический кадр в CSS-рект → на DPI≠100%
+                    // дропдаун всегда растянут + видно мусор паддинга. Берём
+                    // размер ИЗ КАДРА (÷scale) и режем регион 1:1.
+                    let psz = pimg.size(0);
+                    let want_w = (rw as f32 * scale).round() as i32;
+                    let want_h = (rh as f32 * scale).round() as i32;
+                    let reg_w = want_w.min(psz.width.0).max(1);
+                    let reg_h = want_h.min(psz.height.0).max(1);
                     let rect = gpui::Bounds {
                         origin: gpui::point(
                             bounds.origin.x + px(rx as f32),
                             bounds.origin.y + px(ry as f32),
                         ),
-                        size: gpui::size(px(rw as f32), px(rh as f32)),
+                        size: gpui::size(px(reg_w as f32 / scale), px(reg_h as f32 / scale)),
                     };
-                    let _ = window.paint_image(rect, Corners::default(), pimg, 0, false);
+                    let region = gpui::Bounds {
+                        origin: gpui::point(gpui::DevicePixels(0), gpui::DevicePixels(0)),
+                        size: gpui::size(gpui::DevicePixels(reg_w), gpui::DevicePixels(reg_h)),
+                    };
+                    let _ = window.paint_image_region(
+                        rect,
+                        Corners::default(),
+                        pimg,
+                        0,
+                        false,
+                        region,
+                    );
                 }
                 super::diag::sw_paint();
                 super::diag::paint();
@@ -453,6 +534,14 @@ pub(crate) fn screen_point(id: &str, vx: i32, vy: i32) -> Option<(i32, i32)> {
     }
     #[cfg(not(windows))]
     Some((cx, cy))
+}
+
+/// Последний известный РАЗМЕР вью (лог. px) с прошлой отрисовки — чтобы
+/// поднимать браузер сразу в нужном размере вместо жёстких 800×600 (иначе
+/// первые кадры приходят чужого размера и растягиваются: `big_mismatch`).
+pub(crate) fn last_size(id: &str) -> Option<(f32, f32)> {
+    let (_, _, w, h) = ORIGINS.lock().ok()?.get(id).copied()?;
+    (w > 1.0 && h > 1.0).then_some((w, h))
 }
 
 /// Точка вью (CSS px) → ЛОГИЧЕСКИЕ px окна (для слоя оверлеев).

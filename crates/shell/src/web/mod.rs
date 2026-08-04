@@ -168,6 +168,26 @@ pub fn mark_visible_union(ids: Vec<String>) {
     }
 }
 
+/// Сообщить exthost, что вью скрыто/показано (`kamin:webview:viewState`).
+/// Канал ПРИНИМАЛСЯ, но никем не слался: exthost считал вью вечно видимым,
+/// копил posts в очередь мёртвого iframe (`posts.purge` не звался) и держал
+/// его `resolvedHtml` (~1.6MB на вью) до dispose, которого после reap нет.
+fn notify_view_state(id: &str, visible: bool) {
+    let id = id.to_string();
+    std::thread::spawn(move || {
+        if let Some(c) = crate::host_link::client() {
+            let _ = c.request(
+                "kamin:webview:viewState",
+                vec![
+                    serde_json::json!(id),
+                    serde_json::json!(visible), // active
+                    serde_json::json!(visible),
+                ],
+            );
+        }
+    });
+}
+
 /// Выгрузить браузеры вью, скрытых дольше [`HIDDEN_TTL`]: их renderer-процессы
 /// держат десятки МБ на состояние, которое всё равно пересобирается при
 /// возврате (страница поднимается из HTML-стора и сама дозапрашивает данные —
@@ -244,6 +264,9 @@ pub(crate) fn reap_hidden() {
             if let Ok(mut m) = HIDDEN_AT.lock() {
                 m.remove(&id);
             }
+            // Renderer уходит — exthost обязан узнать, иначе копит посты и HTML
+            // для несуществующего iframe.
+            notify_view_state(&id, false);
             browsers::close(&id);
             shared_texture::forget_view(&id);
             copy_frame::forget_view(&id);
@@ -283,7 +306,19 @@ pub fn ensure_html_view(view_id: &str) {
     // схемы по адресу `kamin.localhost/<id>` (`web/scheme.rs`).
     let url = crate::ui::chat_webview::view_url(id);
     if !browsers::exists(id) {
-        open(id, &url, 800, 600, 1.0);
+        // Поднимаем СРАЗУ в последнем известном размере вью и с текущим
+        // scale: жёсткие 800×600@1.0 гарантировали, что первые кадры придут
+        // чужого размера — и `element` рисовал их растянутыми (`big_mismatch`).
+        // Это же било по возврату вью после `reap_hidden` (RDP: «недорастянутая
+        // текстура»). Нет прошлого размера (самый первый показ) — прежний
+        // дефолт, его тут же поправит первый prepaint.
+        let (w, h) = element::last_size(id).unwrap_or((800.0, 600.0));
+        let scale = browsers::scale_of(id);
+        let scale = if scale > 0.1 { scale } else { 1.0 };
+        open(id, &url, w.round() as i32, h.round() as i32, scale);
+        // Вью поднялось (первый показ или возврат после reap) — сообщаем
+        // exthost, иначе он считает его скрытым и не шлёт посты.
+        notify_view_state(id, true);
         return;
     }
     // Стор обновился — перечитываем ту же страницу: обработчик схемы отдаст
@@ -327,7 +362,32 @@ pub fn deliver(view_id: &str, json: String) {
     outbox::push(id, json);
     // Страница заберёт ВСЁ накопленное для себя: пачки идут быстрее, чем она
     // успевает приходить, и нумеровать их незачем.
-    browsers::execute_script(id, "window.__kaminPull()");
+    //
+    // КОАЛЕСИНГ: раньше `execute_script` шёл на КАЖДУЮ пачку — на реплей-
+    // шторме это сотни eval'ов в секунду, каждый провоцирует у страницы
+    // перевёрстку и новый кадр (на RDP это прямой источник фризов). Ставим
+    // флаг «есть непрочитанное» и дёргаем pull ОДИН раз за тик насоса.
+    if let Ok(mut set) = PULL_PENDING.lock() {
+        set.insert(id.to_string());
+    }
+}
+
+/// Вью с непрочитанным outbox — pull для них шлётся раз за тик (`pump`).
+static PULL_PENDING: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
+/// Разослать отложенные `__kaminPull()` — один вызов на вью за тик.
+pub(crate) fn flush_pending_pulls() {
+    let ids: Vec<String> = match PULL_PENDING.lock() {
+        Ok(mut set) => set.drain().collect(),
+        Err(_) => return,
+    };
+    for id in ids {
+        if browsers::exists(&id) {
+            browsers::execute_script(&id, "window.__kaminPull()");
+        }
+    }
 }
 
 /// Шаг назад по истории вью.

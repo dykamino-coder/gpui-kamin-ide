@@ -136,9 +136,24 @@ cef::wrap_life_span_handler! {
             if let Ok(mut set) = STARTING.lock() {
                 set.remove(&self.id);
             }
+            // Отложенное уведомление о смене scale: пока браузер создавался,
+            // DPI мог измениться (RDP-реконнект), а `on_browser` тогда терял
+            // задачу молча — CEF оставался в старом масштабе навсегда.
+            let pending = NOTIFY_PENDING
+                .lock()
+                .map(|mut p| p.remove(&self.id))
+                .unwrap_or(false);
+            if pending && let Some(host) = browser.host() {
+                host.notify_screen_info_changed();
+                host.was_resized();
+            }
         }
     }
 }
+
+/// Вью, которым смена scale не доехала (браузер ещё создавался).
+static NOTIFY_PENDING: LazyLock<Mutex<std::collections::HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
 
 /// Вью, чей браузер уже заказан, но ещё не создан. Без этого списка отрисовка
 /// заказывала бы его каждый кадр: `open` зовётся из `render`.
@@ -469,10 +484,19 @@ pub(crate) fn resize(id: &str, width: i32, height: i32, scale: f32) {
     if scale_changed {
         // Вне дебаунса ниже: его «отложили» съел бы одноразовый флаг — на
         // следующем вызове scale_of уже новый и уведомление не ушло бы никогда.
-        super::input::on_browser(id, |host| {
-            host.notify_screen_info_changed();
-            host.was_resized();
-        });
+        //
+        // Если браузер ещё STARTING, `on_browser` МОЛЧА теряет задачу — CEF
+        // остаётся в старом scale навсегда, и все кадры приходят в чужом
+        // физическом размере («вебвью вдвое меньше», вечный big_mismatch).
+        // Ставим флаг и досылаем после создания (`on_after_created`).
+        if handle(id).is_some() {
+            super::input::on_browser(id, |host| {
+                host.notify_screen_info_changed();
+                host.was_resized();
+            });
+        } else if let Ok(mut p) = NOTIFY_PENDING.lock() {
+            p.insert(id.to_string());
+        }
     }
     if changed
         && let Ok(mut pending) = PENDING.lock()

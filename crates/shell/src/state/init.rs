@@ -145,6 +145,7 @@ impl RootView {
             quick_pick: None,
             pending_focus_step: None,
             pending_quit: false,
+            layout_booted: false,
             update_progress: None,
             qp_input: None,
             qp_sub: None,

@@ -55,12 +55,27 @@ export class WebviewPostQueue {
 
   constructor(private readonly broadcast: Broadcast) {}
 
+  /** Размеры уже посчитанных сообщений. Фан-аут (BridgeHost.post в N вью) даёт
+   *  N записей на ОДНУ ссылку, и раньше каждая стрингифаилась заново; плюс тот
+   *  же объект мерился повторно на каждом кадре, пока лежал в очереди. На
+   *  реплей-шторме это гигабайты транзиентных строк (аудит памяти хоста). */
+  private static readonly sizeCache = new WeakMap<object, number>()
+
   /** Cheap size proxy — `JSON.stringify(...).length` is the honest cost since the
    *  broadcast serialises the same object, and the batch is ≤8 posts so this is
    *  bounded. A msg that fails to serialise counts as 0 (it can't inflate a frame
-   *  it can't be part of). */
+   *  it can't be part of). Результат кэшируется по ССЫЛКЕ (WeakMap — не держит
+   *  сообщение живым). */
   private static sizeOf(msg: unknown): number {
-    try { return JSON.stringify(msg).length } catch { return 0 }
+    if (msg === null || typeof msg !== 'object') {
+      try { return JSON.stringify(msg)?.length ?? 0 } catch { return 0 }
+    }
+    const cached = WebviewPostQueue.sizeCache.get(msg as object)
+    if (cached !== undefined) return cached
+    let size = 0
+    try { size = JSON.stringify(msg).length } catch { size = 0 }
+    WebviewPostQueue.sizeCache.set(msg as object, size)
+    return size
   }
 
   /** Queue a post; the promise settles when the frame carrying it is actually

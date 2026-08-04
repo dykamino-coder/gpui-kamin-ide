@@ -39,16 +39,32 @@ export function CliXmlContent({ text }: { text: string }): JSX.Element {
   return (
     <div class="entry-text cli-xml-content">
       {cmdName && (
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-          <span style="color:var(--accent-green);font-family:'Cascadia Code','Fira Code',monospace;font-weight:600;">
+        // flex-shrink:0 + nowrap на ИМЕНИ: без них длинные аргументы забирали
+        // всю ширину строки, и `/goal` схлопывался в вертикальный столбик из
+        // букв (жалоба юзера). Аргументы — отдельным блоком под именем: они
+        // бывают в абзац длиной, в одну строку с именем не помещаются.
+        <div style="margin-bottom:4px">
+          <span style="color:var(--accent-green);font-family:'Cascadia Code','Fira Code',monospace;font-weight:600;white-space:nowrap;flex-shrink:0">
             {cmdName}
           </span>
-          {cmdArgs && <span style="color:var(--accent-primary);">{cmdArgs}</span>}
+          {cmdArgs && (
+            <div style="color:var(--accent-primary);margin-top:3px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5">
+              {cmdArgs}
+            </div>
+          )}
         </div>
       )}
-      {stdout && (
-        <div style="color:var(--text-secondary);font-size:12px;padding:4px 0;">
+      {/* Вывод команды дублирует аргументы (`/goal <текст>` → «Goal set: <тот
+          же текст>») — печатаем только НЕ-дублирующую часть, иначе один и тот
+          же абзац стоял в пузыре дважды. */}
+      {stdout && !(cmdArgs && stdout.includes(cmdArgs.trim()) && cmdArgs.trim().length > 24) && (
+        <div style="color:var(--text-secondary);font-size:12px;padding:4px 0;white-space:pre-wrap;overflow-wrap:anywhere">
           {stdout.replace(/\x1b\[[0-9;]*m/g, '')}
+        </div>
+      )}
+      {stdout && cmdArgs && stdout.includes(cmdArgs.trim()) && cmdArgs.trim().length > 24 && (
+        <div style="color:var(--text-muted-2);font-size:11px;padding:2px 0">
+          {stdout.slice(0, stdout.indexOf(cmdArgs.trim())).replace(/\x1b\[[0-9;]*m/g, '').trim() || 'Готово'}
         </div>
       )}
       {stderr && (

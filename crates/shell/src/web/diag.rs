@@ -29,6 +29,19 @@ static ROWS: AtomicU32 = AtomicU32::new(0);
 static CTX_US: AtomicU32 = AtomicU32::new(0);
 /// Отрисовка обрезанным кадром: Chromium ещё не догнал размер панели.
 static CROPPED: AtomicU32 = AtomicU32::new(0);
+/// Кадр отрисован С МАСШТАБИРОВАНИЕМ (пиксели пересэмплены) — цель довести
+/// до нуля: «никогда не должно быть недорастянувшейся текстуры».
+static STRETCHED: AtomicU32 = AtomicU32::new(0);
+/// Кадр отрисован пиксель-в-пиксель. Инвариант: exact + stretched == paints.
+static EXACT: AtomicU32 = AtomicU32::new(0);
+
+pub(crate) fn stretched() {
+    STRETCHED.fetch_add(1, Ordering::Relaxed);
+}
+
+pub(crate) fn exact() {
+    EXACT.fetch_add(1, Ordering::Relaxed);
+}
 
 pub(crate) fn frame() {
     FRAMES.fetch_add(1, Ordering::Relaxed);
@@ -155,8 +168,10 @@ pub(crate) fn report() {
     let g_cachedl = gpui::frame_perf::CACHED_LINES.swap(0, Ordering::Relaxed);
     let g_shape_ms = gpui::frame_perf::SHAPE_US.swap(0, Ordering::Relaxed) / 1000;
     let ctx_avg = ctx.checked_div(d).unwrap_or(0);
+    let stretched = STRETCHED.swap(0, Ordering::Relaxed);
+    let exact = EXACT.swap(0, Ordering::Relaxed);
     emit_line(format!(
-        "[cef] за секунду: кадров {f}, кадров окна {d}, отрисовок {p}, заказов {r}, занято {b}, не тот размер {m}, обрезано {c}, кадр окна в среднем {avg} мкс, худший {mx} мкс, из них состояние {ctx_avg} мкс; текстуры {tex} мс, строк дерева {rows}; окно сложило {gf} кадров: сцена {gd} мс, презент {gp} мс (раскладка {g_pre} мс, попадания {g_hit} мс, рисование {g_pnt} мс); узлов на кадр {per}, замеров на кадр {per_meas}, проходов {g_runs}; taffy {g_taffy} мс, замеры {g_measus} мс; переиграно вью {g_reused}; шейпинг: промахов {g_shaped} ({g_shape_ms} мс), из кэша {g_cachedl}"
+        "[cef] за секунду: кадров {f}, кадров окна {d}, отрисовок {p}, заказов {r}, занято {b}, не тот размер {m}, обрезано {c}, растянуто {stretched}, точно {exact}, кадр окна в среднем {avg} мкс, худший {mx} мкс, из них состояние {ctx_avg} мкс; текстуры {tex} мс, строк дерева {rows}; окно сложило {gf} кадров: сцена {gd} мс, презент {gp} мс (раскладка {g_pre} мс, попадания {g_hit} мс, рисование {g_pnt} мс); узлов на кадр {per}, замеров на кадр {per_meas}, проходов {g_runs}; taffy {g_taffy} мс, замеры {g_measus} мс; переиграно вью {g_reused}; шейпинг: промахов {g_shaped} ({g_shape_ms} мс), из кэша {g_cachedl}"
     ));
     // #76: топ self-time prepaint по типам элементов (KAMIN_PREPAINT_PROF=1).
     let top = gpui::prepaint_prof::take_top(6);

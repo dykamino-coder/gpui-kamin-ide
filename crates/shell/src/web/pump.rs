@@ -41,6 +41,10 @@ pub fn start_pump(cx: &mut gpui::App) {
             // опустошали никогда — и до окна доходило 2-3 `WM_PAINT` из 60
             // тактов vsync (замер patch-счётчиками в vendored gpui). Отсюда и
             // «текстура застыла»: кадры есть, а рисовать их некогда.
+            // Отложенные pull'ы страниц — один вызов на вью за тик (см.
+            // `web::deliver`): eval на каждую пачку заставлял страницу
+            // перевёрстываться сотни раз в секунду.
+            super::flush_pending_pulls();
             bg.timer(std::time::Duration::from_millis(8)).await;
         }
     })
