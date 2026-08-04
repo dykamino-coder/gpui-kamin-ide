@@ -81,6 +81,9 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 if (tw - want_w).abs() > 2 || (th - want_h).abs() > 2 {
                     super::diag::cropped();
                     super::browsers::nudge(id);
+                    note_mismatch(id);
+                } else {
+                    clear_mismatch(id);
                 }
                 // ПОДЛОЖКА цветом панели под всей областью вью. На неё
                 // ложится всё, что кадр не покрыл: прозрачные пиксели самого
@@ -100,7 +103,15 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 // 10%: шаги драга различаются на единицы процентов и остаются
                 // на прежнем 1:1-пути.
                 let big_mismatch = (tw - want_w).abs() * 10 > want_w || (th - want_h).abs() * 10 > want_h;
-                if big_mismatch {
+                // Растяжение — АВАРИЙНЫЙ путь, не штатный. При быстром драге
+                // сплиттера кадры отстают, расхождение >10% держится десятки
+                // миллисекунд — и страница «плющилась» на каждом шаге (жалоба
+                // «если быстро ресайзить, растягивается»). Пока CEF догоняет,
+                // рисуем кадр 1:1 (остальное закрывает подложка). Растягиваем
+                // только если верного размера нет ДОЛЬШЕ порога — это спасает
+                // случай «кадр вдвое меньше и таким и останется» (старт/DPI).
+                let stale = big_mismatch && mismatch_ms(id) > STRETCH_AFTER_MS;
+                if stale {
                     super::diag::stretched();
                     window.paint_external_texture(
                         gpui::Bounds { origin: bounds.origin, size: bounds.size },
@@ -534,6 +545,38 @@ pub(crate) fn screen_point(id: &str, vx: i32, vy: i32) -> Option<(i32, i32)> {
     }
     #[cfg(not(windows))]
     Some((cx, cy))
+}
+
+/// Сколько кадр может быть «не того размера», прежде чем мы сдадимся и
+/// растянем его. Ниже порога рисуем 1:1: при быстром драге сплиттера CEF
+/// отстаёт на десятки мс, и растяжение на каждом шаге было заметнее, чем
+/// незакрытая полоса подложки.
+const STRETCH_AFTER_MS: u128 = 400;
+
+/// Когда у вью начался период «кадр не того размера» (None — размер верный).
+static MISMATCH_SINCE: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<&'static str, std::time::Instant>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+fn note_mismatch(id: &'static str) {
+    if let Ok(mut m) = MISMATCH_SINCE.lock() {
+        m.entry(id).or_insert_with(std::time::Instant::now);
+    }
+}
+
+fn clear_mismatch(id: &'static str) {
+    if let Ok(mut m) = MISMATCH_SINCE.lock() {
+        m.remove(id);
+    }
+}
+
+/// Сколько миллисекунд у вью держится неверный размер кадра.
+fn mismatch_ms(id: &'static str) -> u128 {
+    MISMATCH_SINCE
+        .lock()
+        .ok()
+        .and_then(|m| m.get(id).map(|t| t.elapsed().as_millis()))
+        .unwrap_or(0)
 }
 
 /// Последний известный РАЗМЕР вью (лог. px) с прошлой отрисовки — чтобы

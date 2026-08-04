@@ -3430,11 +3430,11 @@ dependencies = [
 
 [[package]]
 name = "kamin-metrics"
-version = "1.0.32"
+version = "1.0.34"
 
 [[package]]
 name = "kamin-model"
-version = "1.0.32"
+version = "1.0.34"
 dependencies = [
  "serde",
  "serde_json",
@@ -3442,7 +3442,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-probe"
-version = "1.0.32"
+version = "1.0.34"
 dependencies = [
  "serde",
  "serde_json",
@@ -3450,7 +3450,7 @@ dependencies = [
 
 [[package]]
 name = "kamin-sidecar"
-version = "1.0.32"
+version = "1.0.34"
 dependencies = [
  "serde",
  "serde_json",
@@ -3459,11 +3459,11 @@ dependencies = [
 
 [[package]]
 name = "kamin-theme"
-version = "1.0.32"
+version = "1.0.34"
 
 [[package]]
 name = "kamin-ws"
-version = "1.0.32"
+version = "1.0.34"
 dependencies = [
  "serde",
  "serde_json",
@@ -3472,7 +3472,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-gpui"
-version = "1.0.32"
+version = "1.0.34"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -3510,7 +3510,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-setup"
-version = "1.0.32"
+version = "1.0.34"
 dependencies = [
  "anyhow",
  "gpui",
@@ -3521,7 +3521,7 @@ dependencies = [
 
 [[package]]
 name = "kaminide-web-helper"
-version = "1.0.32"
+version = "1.0.34"
 dependencies = [
  "cef",
  "winres",

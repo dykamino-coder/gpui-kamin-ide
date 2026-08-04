@@ -17,10 +17,18 @@ actions!(root, [Tab, TabPrev]);
 
 const CONTEXT: &str = "Root";
 pub(crate) fn init(cx: &mut App) {
+    // KaminIDE patch: `!webview` в предикате. Tab на контексте Root
+    // перехватывался ДО листенера обёртки вебвью и переводил фокус по
+    // кнопкам gpui — в CEF он не доходил вообще: в консоли Bridge не работал
+    // автокомплит команд, в чате нельзя было ввести табуляцию (жалоба юзера).
+    // gpui матчит биндинги РАНЬШЕ key-листенеров, поэтому спасает только
+    // предикат: при фокусе В СТРАНИЦЕ биндинг молчит и клавиша уходит в
+    // Chromium (так же уже сделано для Enter/Escape/Ctrl+S).
     cx.bind_keys([
-        KeyBinding::new("tab", Tab, Some(CONTEXT)),
-        KeyBinding::new("shift-tab", TabPrev, Some(CONTEXT)),
+        KeyBinding::new("tab", Tab, Some("Root && !webview")),
+        KeyBinding::new("shift-tab", TabPrev, Some("Root && !webview")),
     ]);
+    let _ = CONTEXT;
 }
 
 /// Extension trait for [`Window`] to add dialog, sheet .. functionality.

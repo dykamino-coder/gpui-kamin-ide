@@ -14,3 +14,9 @@ pub(crate) fn set(on: bool) {
 pub(crate) fn active() -> bool {
     DRAGGING.load(Ordering::Relaxed)
 }
+
+/// То же для слоя вебвью (крейт `web` не входит в `state`): под драгом размер
+/// браузера квантуется, чтобы CEF успевал доводить перевёрстку до конца.
+pub fn is_dragging() -> bool {
+    DRAGGING.load(Ordering::Relaxed)
+}

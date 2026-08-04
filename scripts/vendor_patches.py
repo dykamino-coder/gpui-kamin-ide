@@ -125,7 +125,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
         "thumb на всю ширину, радиус 4, без инсетов",
     ),
     "vendor/gpui-component/src/webview.rs": (3, "WebView2: наши правки хостинга"),
-    "vendor/gpui-component/src/root.rs": (1, "Root: наш слой оверлеев"),
+    "vendor/gpui-component/src/root.rs": (2, "Root: наш слой оверлеев; Tab/Shift-Tab не перехватываются при фокусе в вебвью (!webview)"),
 }
 
 
