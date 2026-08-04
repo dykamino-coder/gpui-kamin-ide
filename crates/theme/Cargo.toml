@@ -1,0 +1,6 @@
+[package]
+name = "kamin-theme"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

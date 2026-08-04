@@ -1,0 +1,17 @@
+.btn {
+  width: 100%;
+  padding: 8px;
+  background: var(--accent-action);
+  border: 1px solid var(--accent-action);
+  color: var(--accent-action-fg);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: opacity 0.15s;
+  margin-top: 4px;
+}
+
+.btn:hover {
+  opacity: 0.9;
+}

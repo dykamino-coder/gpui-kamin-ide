@@ -1,0 +1,34 @@
+.mainPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 0 20px 20px 0;
+  border-radius: var(--radius-lg);
+  position: relative;
+  /* Gradient ring drawn via the layered-background + transparent-border
+     technique — see `.glint-border` in legacy-global.css for the full
+     rationale. Native border rasteriser handles the rounded corners so
+     anti-aliasing matches the rest of the UI. */
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--bg-mantle), var(--bg-mantle)) padding-box,
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.18) 0%,
+      var(--bg-base) 22%,
+      var(--bg-base) 78%,
+      rgba(255, 255, 255, 0.18) 100%
+    ) border-box;
+}
+:global([data-theme='light']) .mainPanel {
+  background:
+    linear-gradient(var(--bg-mantle), var(--bg-mantle)) padding-box,
+    linear-gradient(
+      135deg,
+      rgba(60, 40, 20, 0.18) 0%,
+      var(--bg-surface) 22%,
+      var(--bg-surface) 78%,
+      rgba(60, 40, 20, 0.18) 100%
+    ) border-box;
+}

@@ -1,0 +1,22 @@
+.tag {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  font-size: 9px;
+  margin-left: 6px;
+  vertical-align: middle;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.config {
+  color: var(--accent-yellow);
+}
+
+.plugin {
+  color: var(--accent-green);
+}
+
+.auto {
+  color: var(--text-muted);
+}

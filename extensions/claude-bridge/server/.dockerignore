@@ -1,0 +1,28 @@
+node_modules
+src/ui/node_modules
+dist/dashboard
+!dist/electron
+electron/node_modules
+electron/out
+electron/.vite
+electron/dist
+# KaminIDE (the Tauri/VSIX client) is NOT part of the server image — its Rust
+# target/ + node_modules are GBs and the running app writes to them mid-build
+# ("tar: write too long"). The server image only needs src/ + dist/.
+kamin-ide
+.playwright-mcp
+data
+logs
+*.log
+.git
+.claude
+.env
+.env.*
+workspace
+_old
+docs/architecture.md
+*.md
+!CLAUDE.md
+!README.md
+tests
+.github

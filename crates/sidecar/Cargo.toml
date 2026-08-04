@@ -1,0 +1,16 @@
+[package]
+name = "kamin-sidecar"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Security",           # SECURITY_ATTRIBUTES в сигнатуре CreateJobObjectW
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",   # IO_COUNTERS внутри JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+] }

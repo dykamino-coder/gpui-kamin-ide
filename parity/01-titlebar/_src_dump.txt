@@ -1,0 +1,213 @@
+import { useEffect } from "preact/hooks"
+import kaminoidLogo from "../../assets/kaminoid.svg"
+import { hostRpc } from "../../signals/host-rpc.js"
+import { isWindowMaximized, sidebarVisible, sidebarMode, sidebarWidth } from "../../signals/layout.js"
+import { SessionTabs } from "../session-tiles/SessionTabs.js"
+import { LayoutToggles } from "./LayoutToggles.js"
+import { ThemeQuickToggle } from "./ThemeQuickToggle.js"
+import styles from "./Titlebar.module.css"
+import { TitlebarButton } from "./TitlebarButton.js"
+import { TitlebarQuickActions } from "./TitlebarQuickActions.js"
+
+// Bridge-style titlebar: 42px tall, transparent (radial-gradient app
+// background bleeds through), drag-region everywhere except the
+// no-drag controls. Three clusters:
+//   1. Left cluster — width pinned to sidebar width, holds brand icon
+//      + quick-actions row (sidebar toggle + create/customize buttons).
+//   2. Tabs slot — flex 1, holds the open-session tabs strip. Phase A
+//      has zero sessions, so this is intentionally empty (a single
+//      orphan "Welcome" tab read as confusing — removed).
+//   3. Controls cluster — DevTools / minimize / maximize / close.
+export function Titlebar() {
+  useEffect(() => {
+    const off = window.kamin?.window.onMaximized((m) => { isWindowMaximized.value = m })
+    void window.kamin?.window.isMaximized().then((m) => { isWindowMaximized.value = m })
+    return off
+  }, [])
+
+  const sidebarShown = sidebarVisible.value || sidebarMode.value === "customize"
+  const leftStyle = sidebarShown
+    ? { width: `${sidebarWidth.value}px` }
+    : { width: "auto" }
+
+  return (
+    <header className={styles.titlebar}>
+      <div className={styles.leftCluster} style={leftStyle}>
+        <div className={styles.brand} aria-hidden="true">
+          <img className={styles.brandLogo} src={kaminoidLogo} alt="" draggable={false} />
+        </div>
+        <TitlebarQuickActions />
+      </div>
+      <div className={styles.tabsSlot} aria-label="Open sessions"><SessionTabs /></div>
+
+      <button
+        className={styles.searchButton}
+        aria-label="Open command palette (Ctrl+Shift+P)"
+        data-tooltip="Open command palette (Ctrl+Shift+P)"
+        onClick={() => { void hostRpc.commands.execute("workbench.action.showCommands") }}
+      >
+        <span className="codicon codicon-search" />
+        <span className={styles.searchHint}>Type a command…</span>
+      </button>
+      <LayoutToggles />
+      <ThemeQuickToggle />
+      <div className={styles.controls}>
+        <TitlebarButton
+          iconSet="fas"
+          icon="fa-bug"
+          variant="devtools"
+          label="DevTools"
+          onClick={() => { void window.kamin?.window.toggleDevTools() }}
+        />
+        {/* Window controls use codicons' chrome-* set — purpose-built
+            for this exact role and visually match Windows/macOS native
+            conventions. FontAwesome's `fa-square` solid (filled) read
+            wrong as a maximize affordance. */}
+        <TitlebarButton
+          iconSet="codicon"
+          icon="chrome-minimize"
+          label="Minimize"
+          onClick={() => { void window.kamin?.window.minimize() }}
+        />
+        <TitlebarButton
+          iconSet="codicon"
+          icon={isWindowMaximized.value ? "chrome-restore" : "chrome-maximize"}
+          label={isWindowMaximized.value ? "Restore" : "Maximize"}
+          onClick={() => { void window.kamin?.window.maximize() }}
+        />
+        <TitlebarButton
+          iconSet="codicon"
+          icon="chrome-close"
+          variant="close"
+          label="Close"
+          onClick={() => { void window.kamin?.window.close() }}
+        />
+      </div>
+    </header>
+  )
+}
+/* Mirrors electron/renderer/components/titlebar/Titlebar.module.css.
+   Same heights, same drag regions, same flex behaviour. Differences
+   are limited to where Bridge ships features Phase A doesn't yet
+   (mic status, theme toggle, version chip, header view toggles). */
+.titlebar {
+  display: flex;
+  align-items: center;
+  height: var(--layout-titlebar-height);
+  background: transparent;
+  -webkit-app-region: drag;
+  position: relative;
+  z-index: var(--z-toast-lower);
+  flex-shrink: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.brand {
+  width: var(--layout-titlebar-height);
+  height: var(--layout-titlebar-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+  color: var(--accent-primary);
+}
+
+.brand :global(.codicon) { font-size: 18px !important; }
+
+/* KaminIDE brand logo — the multi-tone kaminoid mark, sized to sit in the
+   42px brand slot with a little breathing room. */
+.brandLogo {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  display: block;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* Left cluster — pinned to exactly the sidebar's width so tabs visually
+   start where the chat column starts below. flex-shrink:0 prevents the
+   cluster from squeezing when the tab strip overflows; overflow:hidden
+   clips overflow rather than blowing the layout. */
+.leftCluster {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Tabs slot — flex:1 so the tab strip eats whatever horizontal space is
+   left between the icon and the controls cluster. min-width:0 lets the
+   inner overflow logic kick in. */
+.tabsSlot {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+  padding: 0 var(--space-3);
+}
+
+.welcomeTab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-3);
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+}
+
+.welcomeTab :global(.codicon) {
+  font-size: 13px !important;
+  color: var(--accent-primary);
+}
+
+.searchButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 26px;
+  padding: 0 var(--space-3);
+  margin-right: var(--space-2);
+  background: color-mix(in srgb, var(--bg-surface) 60%, transparent);
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--bg-overlay) 30%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  -webkit-app-region: no-drag;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.searchButton:hover {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+.searchButton :global(.codicon) {
+  font-size: 12px !important;
+}
+
+.searchHint { padding: 0 var(--space-2); }
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-overlay) 50%, transparent);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+  height: 100%;
+  padding-right: var(--space-1);
+}

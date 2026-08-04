@@ -1,0 +1,115 @@
+/* ==========================================================================
+   Open Claude Bridge — CSS Custom Properties (Theme System)
+   Based on DocClaude design system
+   ========================================================================== */
+
+:root,
+[data-theme="dark"] {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --bg-elevated: #1c2128;
+  --bg-hover: #30363d;
+  --bg-active: #363b44;
+  --bg-input: #0d1117;
+  --border-primary: #21262d;
+  --border-secondary: #30363d;
+  --border-tertiary: #484f58;
+  --border-focus: #58a6ff;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --text-disabled: #484f58;
+  --text-inverse: #0d1117;
+  --accent-blue: #58a6ff;
+  --accent-blue-hover: #388bfd;
+  --accent-purple: #bc8cff;
+  --accent-purple-hover: #a371f7;
+  --accent-green: #3fb950;
+  --accent-green-hover: #2ea043;
+  --accent-red: #f85149;
+  --accent-red-hover: #da3633;
+  --accent-yellow: #d29922;
+  --accent-yellow-hover: #bb8009;
+  --accent-orange: #db6d28;
+  --accent-coral: #d57455;
+  --accent-cyan: #39d2c0;
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+  --accent-green-bg: rgba(63, 185, 80, 0.15);
+  --accent-red-bg: rgba(248, 81, 73, 0.12);
+  --accent-yellow-bg: rgba(210, 153, 34, 0.15);
+  --accent-blue-bg: rgba(88, 166, 255, 0.1);
+  --accent-orange-bg: rgba(219, 109, 40, 0.12);
+  --ai-gradient: linear-gradient(135deg, rgba(188, 140, 255, 0.1), rgba(88, 166, 255, 0.1));
+  --ai-gradient-strong: linear-gradient(135deg, rgba(188, 140, 255, 0.2), rgba(88, 166, 255, 0.2));
+  --ai-gradient-solid: linear-gradient(135deg, #bc8cff, #58a6ff);
+  --ai-border: rgba(188, 140, 255, 0.3);
+  --ai-text: #bc8cff;
+  --ai-bg: rgba(188, 140, 255, 0.05);
+  --ai-glow: 0 0 20px rgba(188, 140, 255, 0.15);
+  --color-success: var(--accent-green);
+  --color-error: var(--accent-red);
+  --color-warning: var(--accent-yellow);
+  --color-info: var(--accent-blue);
+  --status-connected: var(--accent-green);
+  --status-disconnected: var(--accent-red);
+  --status-pending: var(--accent-yellow);
+  --status-processing: var(--accent-blue);
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px;
+  --radius-xs: 2px; --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px;
+  --radius-xl: 12px; --radius-2xl: 16px; --radius-full: 9999px;
+  --shadow-xs: 0 1px 2px rgba(1,4,9,0.3);
+  --shadow-sm: 0 1px 3px rgba(1,4,9,0.4);
+  --shadow-md: 0 4px 12px rgba(1,4,9,0.5);
+  --shadow-lg: 0 10px 30px rgba(1,4,9,0.6);
+  --shadow-xl: 0 16px 48px rgba(1,4,9,0.7);
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --text-xs: 13px; --text-sm: 14px; --text-base: 15px; --text-md: 16px;
+  --text-lg: 18px; --text-xl: 21px; --text-2xl: 25px; --text-3xl: 32px;
+  --leading-tight: 1.2; --leading-normal: 1.5; --leading-relaxed: 1.7;
+  --weight-normal: 400; --weight-medium: 500; --weight-semibold: 600; --weight-bold: 700;
+  --sidebar-width: 56px; --header-height: 48px;
+  --bg-terminal: #0a0c0f;
+  --canvas-bg: #0d1117;
+  --island-gap: 6px; --island-radius: 14px;
+  --island-shadow: 0 2px 8px rgba(1,4,9,0.4), 0 0 1px rgba(240,246,252,0.04);
+  --island-border: 1px solid #21262d;
+  --z-base: 0; --z-dropdown: 100; --z-sticky: 200;
+  --z-modal-backdrop: 300; --z-modal: 400; --z-notification: 700;
+  --transition-fast: 150ms ease; --transition-normal: 250ms ease; --transition-slow: 350ms ease;
+  --scrollbar-width: 6px; --scrollbar-track: transparent;
+  --scrollbar-thumb: #30363d; --scrollbar-thumb-hover: #484f58;
+
+  /* ---- Proxy-specific ---- */
+  --proxy-anthropic: #db6d28;
+  --proxy-anthropic-bg: rgba(219, 109, 40, 0.1);
+  --proxy-openai: #3fb950;
+  --proxy-openai-bg: rgba(63, 185, 80, 0.1);
+  --proxy-active: var(--accent-green);
+  --proxy-inactive: var(--text-muted);
+}
+
+[data-theme="light"] {
+  --bg-primary: #ffffff; --bg-secondary: #f9fafb; --bg-tertiary: #f3f4f6;
+  --bg-elevated: #ffffff; --bg-hover: #e5e7eb; --bg-active: #d1d5db; --bg-input: #ffffff;
+  --border-primary: #e5e7eb; --border-secondary: #d1d5db; --border-tertiary: #9ca3af; --border-focus: #7c3aed;
+  --text-primary: #111827; --text-secondary: #4b5563; --text-muted: #9ca3af;
+  --text-disabled: #d1d5db; --text-inverse: #ffffff;
+  --accent-blue: #2563eb; --accent-purple: #7c3aed; --accent-green: #16a34a;
+  --accent-red: #dc2626; --accent-yellow: #d97706; --accent-orange: #ea580c; --accent-cyan: #0891b2;
+  --ai-gradient: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(59,130,246,0.08));
+  --ai-text: #7c3aed; --ai-bg: rgba(139,92,246,0.04);
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.04); --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1); --shadow-lg: 0 10px 30px rgba(0,0,0,0.12);
+  --shadow-xl: 0 16px 48px rgba(0,0,0,0.16);
+  --overlay-bg: rgba(0, 0, 0, 0.4);
+  --accent-coral: #c9420e;
+  --canvas-bg: #e8e8ec;
+  --island-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 0 1px rgba(0,0,0,0.12);
+  --island-border: 1px solid rgba(0,0,0,0.06);
+  --scrollbar-thumb: #d1d5db; --scrollbar-thumb-hover: #9ca3af;
+  --proxy-anthropic: #b45309; --proxy-anthropic-bg: rgba(180,83,9,0.08);
+  --proxy-openai: #16a34a; --proxy-openai-bg: rgba(22,163,74,0.08);
+}

@@ -1,0 +1,57 @@
+/* Sidebar root — global .sidebar class used from index.html */
+.sidebar {
+  background: transparent;
+  border-right: none;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+  position: relative;
+  /* No overflow:hidden — it would clip the resize handle.
+     Inner regions handle their own overflow. */
+}
+
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 9999;
+  background: transparent;
+  user-select: none;
+  pointer-events: auto;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.resizeHandleBar {
+  display: block;
+  width: 2px;
+  height: 100%;
+  opacity: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--bg-overlay) 30%,
+    var(--bg-overlay) 70%,
+    transparent 100%
+  );
+  transition: opacity 0.15s, background 0.15s, width 0.15s;
+  pointer-events: none;
+}
+
+.resizeHandle:hover .resizeHandleBar,
+.resizeHandleActive .resizeHandleBar {
+  opacity: 1;
+  width: 3px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--tint-primary-strong) 30%,
+    var(--tint-primary-strong) 70%,
+    transparent 100%
+  );
+}

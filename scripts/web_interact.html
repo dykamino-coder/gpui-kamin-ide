@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- Стенд интерактивности OSR: страница кодирует своё состояние ЦВЕТОМ маркеров,
+     стенд читает их со скриншота (обратного канала у probe к странице нет). -->
+<html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:#1e1e2e;color:#eee;font:14px sans-serif}
+  #in{position:absolute;left:20px;top:20px;width:300px;height:28px;font-size:16px}
+  #sel{position:absolute;left:20px;top:70px;width:300px;height:28px}
+  #dl{position:absolute;left:20px;top:120px;color:#8cf}
+  /* Маркеры 40x40: len — длина инпута, key — код последней клавиши,
+     focus — есть ли фокус у инпута. */
+  .m{position:absolute;width:40px;height:40px;right:20px}
+  #m-len{top:20px}#m-key{top:70px}#m-focus{top:120px}
+</style></head><body>
+  <input id="in" placeholder="type here">
+  <select id="sel">
+    <option>alpha</option><option>bravo</option><option>charlie</option>
+    <option>delta</option><option>echo</option><option>foxtrot</option>
+  </select>
+  <a id="dl" href="#" download="kaminide-test.txt">download</a>
+  <input id="up" type="file" style="position:absolute;left:20px;top:170px;width:300px">
+  <div class="m" id="m-len"></div>
+  <div class="m" id="m-key"></div>
+  <div class="m" id="m-focus"></div>
+<script>
+  const inp = document.getElementById('in');
+  const mlen = document.getElementById('m-len');
+  const mkey = document.getElementById('m-key');
+  const mfocus = document.getElementById('m-focus');
+  function paint(){
+    mlen.style.background = `rgb(${(inp.value.length*10)%256},42,255)`;
+    mfocus.style.background = (document.hasFocus() && document.activeElement === inp) ? 'rgb(0,255,0)' : 'rgb(255,0,0)';
+  }
+  inp.addEventListener('input', paint);
+  document.addEventListener('focusin', paint);
+  document.addEventListener('focusout', paint);
+  window.addEventListener('focus', paint);
+  window.addEventListener('blur', paint);
+  document.addEventListener('keydown', e => {
+    // Код клавиши в цвет С ШАГОМ 7: enter=13 → 91, backspace=8 → 56 (шаг 1
+    // не отличался при допуске сравнения).
+    mkey.style.background = `rgb(${(e.keyCode*7)%256},200,255)`;
+    paint();
+  });
+  // Скачивание блобом — тот же путь, что у кнопок экспорта Bridge.
+  const dl = document.getElementById('dl');
+  dl.href = URL.createObjectURL(new Blob(['kaminide'], {type: 'text/plain'}));
+  paint();
+</script>
+</body></html>

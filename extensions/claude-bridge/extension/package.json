@@ -1,0 +1,24 @@
+{
+  "name": "claude-bridge-extension",
+  "private": true,
+  "type": "module",
+  "description": "Claude Bridge VSIX extension host (CLIENT). Ports electron/main (WS connection-manager, MCP executor + tools, permission/config) and bridges the webview postMessage channel to the vendored ipcMain handlers. Bundles to builtin-extensions/claude-bridge/extension.js — the only artifact that ships.",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fast-glob": "^3.3.2",
+    "turndown": "^7.2.0",
+    "ws": "^8.18.0",
+    "yaml": "^2.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/turndown": "^5.0.6",
+    "@types/vscode": "^1.95.0",
+    "@types/ws": "^8.5.12",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  }
+}

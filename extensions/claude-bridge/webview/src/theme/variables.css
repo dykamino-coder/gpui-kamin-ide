@@ -1,0 +1,211 @@
+/* Theme-neutral tokens shared by all themes (spacing, radius, font scale,
+   line heights, z-index, transitions) plus the `color-mix`-derived
+   semantic tints that auto-adapt when the underlying accent/surface
+   tokens are overridden in `dark-theme.css` / `light-theme.css`.
+
+   The actual colour palette (--bg-*, --text-*, --accent-*, --shadow-*,
+   alpha-black overlays) lives in the per-theme files — see
+   `dark-theme.css` and `light-theme.css`. The body element gets its
+   `data-theme` attribute set by `applyTheme()` in
+   `theme/apply-theme.ts` based on user preference.
+
+   The `:root` block below is the SAFETY FALLBACK used during the brief
+   window before theme application runs (initial paint). It mirrors
+   dark-theme.css. Once `[data-theme="dark"]` or `[data-theme="light"]`
+   is on the <html> element, the per-theme rules win by specificity. */
+
+:root {
+  /* ── Default palette (mirrors dark-theme.css) ─────────── */
+  --bg-primary: #313240;
+  --bg-base: #313240;
+  --bg-mantle: #262533;
+  --bg-sidebar: #1d1d28;
+  --bg-surface: #3d3f51;
+  --bg-overlay: #515567;
+
+  --text-primary: #cfd4e2;
+  --text-subtext: #afb6ca;
+  --text-secondary: #adb3c7;
+  --text-muted: #838aa0;
+  --text-disabled: #60667b;
+
+  --accent-blue: #89b4fa;
+  --accent-sapphire: #74c7ec;
+  --accent-red: #f38ba8;
+  --accent-maroon: #eba0ac;
+  --accent-green: #a6e3a1;
+  --accent-yellow: #f9e2af;
+  --accent-pink: #f5c2e7;
+  --accent-purple: #cba6f7;
+  --accent-orange: #fab387;
+  --accent-teal: #94e2d5;
+  --accent-rosewater: #f5e0dc;
+
+  --overlay-modal: rgba(0, 0, 0, 0.5);
+  --overlay-soft: rgba(0, 0, 0, 0.35);
+  --overlay-deep: rgba(0, 0, 0, 0.6);
+
+  --bg-surface-hover: #3b3b52;
+  --bg-overlay-hover: #3e3e56;
+  --bg-tint-red: #2e1e22;
+  --bg-tint-red-soft: #45283b;
+  --bg-tint-green: #1e2e1e;
+  --bg-tint-green-soft: #1e2e1e;
+  --bg-tint-orange: #2e1e1e;
+  --bg-tint-blue: #1a1a27;
+  --accent-blue-soft: #b4d0fb;
+  --accent-blue-soft-2: #b4befe;
+  --accent-blue-soft-3: #c0d3ff;
+  --accent-purple-soft: #b48bef;
+  --accent-green-soft: #94d899;
+  --accent-red-dark: #e06c8a;
+  --accent-red-dark-2: #e06c88;
+  --accent-red-dark-3: #e87c99;
+  --accent-orange-dark: #f9b36d;
+  --accent-yellow-dark: #8a7a2e;
+  --text-muted-2: #7f849c;
+  --text-muted-light: #acb2d2;
+
+  --accent-action: var(--accent-blue);
+  --accent-action-hover: var(--accent-sapphire);
+  --accent-action-fg: var(--bg-primary);
+
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 0 6px rgba(0, 0, 0, 0.2);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-tab: 0 6px 18px rgba(0, 0, 0, 0.45);
+  --shadow-toast: 0 10px 40px rgba(0, 0, 0, 0.4);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-mini: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-bar: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-card-popup: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* xterm fallback — mirrors dark-theme.css */
+  --term-bg: #1d1d28;
+  --term-fg: #cfd4e2;
+  --term-cursor: #f5e0dc;
+  --term-selection: #515567;
+  --term-black: #515567;
+  --term-red: #f38ba8;
+  --term-green: #a6e3a1;
+  --term-yellow: #f9e2af;
+  --term-blue: #89b4fa;
+  --term-magenta: #f5c2e7;
+  --term-cyan: #94e2d5;
+  --term-white: #afb6ca;
+  --term-bright-black: #60667b;
+  --term-bright-white: #adb3c7;
+
+  /* ── Semantic tints — derived via color-mix so they auto-adapt
+        when accents/surfaces change in light/dark themes. Names
+        describe intensity, not exact opacity. ─────────────────── */
+  --tint-red-soft: color-mix(in srgb, var(--accent-red) 10%, transparent);
+  --tint-red-soft-2: color-mix(in srgb, var(--accent-red) 8%, transparent);
+  --tint-red-medium: color-mix(in srgb, var(--accent-red) 18%, transparent);
+  --tint-red-border: color-mix(in srgb, var(--accent-red) 30%, transparent);
+  --tint-red-border-strong: color-mix(in srgb, var(--accent-red) 40%, transparent);
+  --tint-blue-soft: color-mix(in srgb, var(--accent-blue) 6%, transparent);
+  --tint-blue-medium: color-mix(in srgb, var(--accent-blue) 12%, transparent);
+  --tint-blue-strong: color-mix(in srgb, var(--accent-blue) 25%, transparent);
+  --tint-blue-border: color-mix(in srgb, var(--accent-blue) 25%, transparent);
+  --tint-blue-border-strong: color-mix(in srgb, var(--accent-blue) 50%, transparent);
+
+  /* ── Semantic primary — `--accent-primary` (and family) is the
+        UI's brand-color slot. Dark theme inherits the existing blue
+        accent; light theme overrides it to warm orange so links,
+        focus rings, role labels and other "primary" UI cues feel
+        cohesive with the cream-paper surface. Components reference
+        these aliases instead of `--accent-blue` whenever the colour
+        is semantic-primary, not literal-blue. ───────────────────── */
+  --accent-primary: var(--accent-blue);
+  --accent-primary-soft: var(--accent-blue-soft);
+  --accent-primary-soft-2: var(--accent-blue-soft-2);
+  --accent-primary-soft-3: var(--accent-blue-soft-3);
+  --bg-tint-primary: var(--bg-tint-blue);
+  --tint-primary-soft: var(--tint-blue-soft);
+  --tint-primary-medium: var(--tint-blue-medium);
+  --tint-primary-strong: var(--tint-blue-strong);
+  --tint-primary-border: var(--tint-blue-border);
+  --tint-primary-border-strong: var(--tint-blue-border-strong);
+  --tint-yellow-soft: color-mix(in srgb, var(--accent-yellow) 8%, transparent);
+  --tint-yellow-medium: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
+  --tint-yellow-strong: color-mix(in srgb, var(--accent-yellow) 18%, transparent);
+  --tint-yellow-border: color-mix(in srgb, var(--accent-yellow) 30%, transparent);
+  --tint-green-soft: color-mix(in srgb, var(--accent-green) 8%, transparent);
+  --tint-green-medium: color-mix(in srgb, var(--accent-green) 14%, transparent);
+  --tint-green-strong: color-mix(in srgb, var(--accent-green) 18%, transparent);
+  --tint-green-border: color-mix(in srgb, var(--accent-green) 40%, transparent);
+  --tint-purple-soft: color-mix(in srgb, var(--accent-purple) 8%, transparent);
+  --tint-purple-medium: color-mix(in srgb, var(--accent-purple) 12%, transparent);
+  --tint-purple-border: color-mix(in srgb, var(--accent-purple) 25%, transparent);
+  --tint-orange-soft: color-mix(in srgb, var(--accent-orange) 14%, transparent);
+  --tint-muted-soft: color-mix(in srgb, var(--text-muted) 8%, transparent);
+  --tint-muted-medium: color-mix(in srgb, var(--text-muted) 18%, transparent);
+  --tint-overlay-scrim: color-mix(in srgb, var(--bg-sidebar) 70%, transparent);
+  --tint-overlay-heavy: color-mix(in srgb, var(--bg-sidebar) 92%, transparent);
+  --tint-surface-soft: color-mix(in srgb, var(--bg-surface) 40%, transparent);
+  --tint-surface-medium: color-mix(in srgb, var(--bg-surface) 55%, transparent);
+  --tint-overlay-medium: color-mix(in srgb, var(--bg-overlay) 50%, transparent);
+  --tint-overlay-strong: color-mix(in srgb, var(--bg-overlay) 80%, transparent);
+  --divider-soft: color-mix(in srgb, var(--text-primary) 6%, transparent);
+
+  /* ── Spacing ──────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+
+  /* ── Border radius — 4-step concentric scale anchored at 16px outer.
+        Rule of thumb: outer = inner + padding (so a 16-radius card with
+        4px padding wraps a 12-radius child cleanly; a 12-card with 4px
+        padding wraps an 8-radius grandchild). ──────────────────────── */
+  --radius-xs: 4px;   /* chips, badges, inline code, micro buttons */
+  --radius-sm: 8px;   /* cards inside cards: code blocks, tables, plugin grid items */
+  --radius-md: 12px;  /* level-1 cards: chat bubbles, button groups, capsule buttons */
+  --radius-lg: 16px;  /* level-0 panels: mainPanel, terminal panel, asst-merge container */
+  --radius-xl: 16px;  /* alias of --radius-lg (kept for legacy callers) */
+
+  /* ── Fonts ────────────────────────────────────────────── */
+  --font-sans: 'Bricolage Grotesque', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+
+  /* ── Font sizes — 5-step scale (xs 11 / sm 12 / md 13 / lg 16 / xl 22).
+        Older fine-grained tokens (fs-10, fs-base, fs-15, fs-18, fs-2xl,
+        fs-xxs) are kept as aliases mapping into the new scale so existing
+        rules don't break, but new code should use only the five canonical
+        names. ───────────────────────────────────────────── */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 16px;
+  --fs-xl: 22px;
+  --fs-xxs: var(--fs-xs);
+  --fs-10: var(--fs-xs);
+  --fs-base: var(--fs-sm);
+  --fs-15: var(--fs-md);
+  --fs-18: var(--fs-lg);
+  --fs-2xl: var(--fs-lg);
+
+  /* ── Line heights ──────────────────────────────────────── */
+  --lh-none: 1;
+  --lh-snug: 1.3;
+  --lh-normal: 1.4;
+  --lh-base: 1.5;
+  --lh-relaxed: 1.6;
+
+  /* ── Z-index scale ─────────────────────────────────────── */
+  --z-base: 1;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 1000;
+  --z-modal: 9999;
+  --z-toast-lower: 10000;
+  --z-toast: 99999;
+
+  /* ── Transitions ──────────────────────────────────────── */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+}

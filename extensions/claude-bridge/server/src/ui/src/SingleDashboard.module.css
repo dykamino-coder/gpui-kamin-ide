@@ -1,0 +1,33 @@
+.dashboard { display: flex; flex-direction: column; gap: 20px; }
+
+.statusRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+.statsRow { display: flex; gap: 12px; align-items: stretch; }
+.statsRow > :first-child { flex: 1; }
+.statsRow > :last-child { width: 280px; flex-shrink: 0; }
+
+
+.loginBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent-coral);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.loginBtn:hover {
+  filter: brightness(1.1);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 900px) {
+  .statusRow { grid-template-columns: 1fr; }
+  .statsRow { flex-direction: column; }
+  .statsRow > :last-child { width: 100%; }
+}

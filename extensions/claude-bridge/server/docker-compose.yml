@@ -1,0 +1,62 @@
+# =============================================================================
+# Open Claude Bridge — Docker Compose
+# =============================================================================
+# Сервис: bridge — прокси-сервер (PTY → Claude CLI)
+#
+# СБОРКА:
+#   ./build.sh                    # собрать образ
+#   ./build.sh --no-cache         # без кеша
+#
+# Первый запуск:
+#   1. ./build.sh
+#   2. podman compose up -d
+#   3. podman compose exec bridge claude login   ← авторизация (один раз)
+#   4. Открыть http://localhost:3456/ui
+# =============================================================================
+
+services:
+  bridge:
+    image: opencode-claude-max-proxy_bridge:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claude-bridge
+    ports:
+      - "${BRIDGE_PORT:-3456}:3456"
+    volumes:
+      - bridge-data:/app/data
+      - claude-auth:/home/bridge/.claude
+      # Per-token synced skills/agents/settings live here (SYNC_BASE =
+      # ~/bridge-sync). Without a named volume it sat in the container layer and
+      # every `compose down`/recreate wiped it — persist it so redeploys keep it.
+      - bridge-sync:/home/bridge/bridge-sync
+      # Live-mount the installer directory so new Setup.exe + nupkg + RELEASES
+      # files produced by `npm run make` are picked up on the next container
+      # restart without having to rebuild the image.
+      - ./installer:/app/installer:ro
+    environment:
+      - CLAUDE_PROXY_HOST=0.0.0.0
+      - CLAUDE_PROXY_PORT=3456
+      - CLAUDE_PROXY_LOG_LEVEL=${CLAUDE_PROXY_LOG_LEVEL:-info}
+      - CLAUDE_PROXY_MAX_CONCURRENT=${CLAUDE_PROXY_MAX_CONCURRENT:-6}
+      # libuv threadpool — default 4 starves under DuckDB pool (8) +
+      # node-pty + native-mitm crypto + fs.promises. See Dockerfile.
+      - UV_THREADPOOL_SIZE=${UV_THREADPOOL_SIZE:-16}
+      # Off by default. Set KAMIN_MITM_REQDIAG=1 in the shell before `compose up`
+      # to log the shape of /v1/messages requests (subagent-attribution diag).
+      - KAMIN_MITM_REQDIAG=${KAMIN_MITM_REQDIAG:-}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3456/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  bridge-data:
+    driver: local
+  claude-auth:
+    driver: local
+  bridge-sync:
+    driver: local

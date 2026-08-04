@@ -1,0 +1,28 @@
+/* Bridge-as-VSIX overrides. The chat tool lives in KaminIDE's activity panel,
+   so it must blend with that panel — NOT paint its own dark card. The webview
+   iframe is opaque (a truly transparent body just shows black behind it), so we
+   match the host panel colour via the injected `--vscode-sideBar-background`
+   (fallback editor bg). Inner Bridge surfaces stay transparent (kamin-bridge.css)
+   so nothing stacks on top. */
+html,
+body,
+#app,
+#root {
+  /* Match the file EDITOR surface (user: "цвет по аналогии с редактором файла
+     или терминала") — the host frame is a rounded borderless card around this. */
+  background: var(--vscode-editor-background, var(--vscode-sideBar-background, transparent)) !important;
+}
+
+/* The chat scrolls inside its own panel — the document itself must not scroll
+   (a stray document scrollbar showed even with an empty chat). */
+html,
+body {
+  overflow: hidden !important;
+  height: 100%;
+}
+
+/* The chat column carried a 550px min-width from the wide Electron window; in the
+   narrow activity panel that forced a horizontal scrollbar. Let it fit the tool. */
+.chat-panel {
+  min-width: 0 !important;
+}

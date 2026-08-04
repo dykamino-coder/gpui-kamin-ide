@@ -1,0 +1,68 @@
+# ── Rust / Cargo ─────────────────────────────────────────────
+/target/
+vendor/**/target/
+*.rs.bk
+# Cargo.lock коммитим (workspace с бинарями)
+
+# ── Node ─────────────────────────────────────────────────────
+node_modules/
+*.tsbuildinfo
+.eslintcache
+.vite/
+
+# ── Build-выхлоп ─────────────────────────────────────────────
+/dist-host/
+/dist-installer/
+extensions/claude-bridge/server/dist/
+extensions/claude-bridge/webview/dist/
+# builtin-extensions/ содержит собранные extension.js / *.html —
+# коммитятся НАМЕРЕННО как рантайм-артефакт.
+
+# ── Runtime payload (генерит scripts/build-runtime-payload.mjs) ──
+/payload/
+
+# ── Инсталлеры и генерат NSIS ────────────────────────────────
+KaminIDE_*-setup.exe
+KaminIDE_*-setup.exe.sig
+/installer.nsi
+extensions/claude-bridge/server/installer/
+
+# ── Секреты ──────────────────────────────────────────────────
+.tauri/
+*.key
+*.pem
+.env
+.env.*
+!.env.example
+
+# ── Логи и дампы ─────────────────────────────────────────────
+*.log
+/logs/
+*.dmp
+*.heapsnapshot
+*.cpuprofile
+*.jsonl
+
+# ── Parity-аудит: отчёты .md нужны, скриншоты и логи — нет ──
+/parity/**/*.png
+
+# ── Временное ────────────────────────────────────────────────
+*.bak
+*.bak[0-9]*
+*.old
+*.rej
+*.tmp
+*~
+scratch_*
+Новая*папка*/
+
+# ── ОС / IDE ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc

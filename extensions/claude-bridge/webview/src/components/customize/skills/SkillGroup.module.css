@@ -1,0 +1,7 @@
+.header {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-disabled);
+  padding: 12px 16px 4px;
+}

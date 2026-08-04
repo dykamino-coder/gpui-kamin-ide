@@ -1,0 +1,119 @@
+.wrapper { display: flex; flex-direction: column; gap: 20px; }
+
+.section { display: flex; flex-direction: column; gap: 10px; }
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.sectionIcon {
+  font-size: 12px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sectionCount {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  min-width: 20px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-family: var(--font-mono);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(150px, 18%), 1fr));
+  gap: 8px;
+}
+
+.stat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: var(--island-border);
+  border-radius: var(--island-radius);
+  transition: all var(--transition-fast);
+}
+
+.stat:hover { border-color: var(--border-tertiary); }
+.stat.clickable { cursor: pointer; }
+.stat.clickable:hover { border-color: var(--accent-blue); background: rgba(56, 139, 253, 0.06); }
+
+.statIcon { font-size: 18px; flex-shrink: 0; opacity: 0.85; }
+
+.statContent { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.statValue {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.statSubValue {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.statLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.statTokens {
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--accent-blue);
+  opacity: 0.8;
+  font-family: var(--font-mono);
+}
+
+.statTime {
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  font-family: var(--font-mono);
+}
+
+.deleteBtn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.3;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+}
+.stat:hover .deleteBtn { opacity: 0.6; }
+.deleteBtn:hover { opacity: 1 !important; color: var(--accent-red); background: rgba(248, 81, 73, 0.1); }

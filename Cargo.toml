@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "1.0.18"
+edition = "2024"
+
+[workspace.dependencies]
+gpui = "0.2.2"
+gpui-component = { version = "0.5.1" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+mimalloc = "0.1"
+kamin-metrics = { path = "crates/metrics" }
+kamin-theme = { path = "crates/theme" }
+kamin-probe = { path = "crates/probe" }
+kamin-ws = { path = "crates/ws" }
+kamin-model = { path = "crates/model" }
+kamin-sidecar = { path = "crates/sidecar" }
+
+# Perf-профиль из plan/10 (DLP-иммунитет: mimalloc в shell; размер/скорость)
+[profile.release]
+lto = "fat"
+# СКОРОСТЬ, а не размер. С "s" раскладка taffy стоила 20 мс на кадр (968 узлов,
+# 4700 замеров) — 28 кадров в секунду на пустом интерфейсе; "s" душит именно
+# такой счётный код. Размер exe вырос, кадр подешевел (замер в Ф6 плана 101).
+opt-level = 3
+panic = "abort"
+codegen-units = 1
+strip = true
+
+# gpui в dev-профиле без оптимизаций неюзабелен — оптимизируем зависимости
+[profile.dev.package."*"]
+opt-level = 2
+
+# И НАШ код тоже. Дженерики gpui (div(), Styled, элементы) разворачиваются
+# ИМЕННО в нашем крейте, поэтому при opt-level 0 неоптимизированной остаётся
+# основная часть layout+paint: замер показал кадр окна 150 мс на сцене из 74
+# квадратов. Отладочная информация остаётся — под отладчиком код читается.
+[profile.dev]
+opt-level = 2
+
+# Vendored gpui-component: 1-строчный патч — pub scroll_handle у InputState
+# (sticky-scroll редактора требует скролл-оффсет; апстрим держит pub(crate)).
+[patch.crates-io]
+# Vendored gpui: per-window чтение GPUI_DISABLE_DIRECT_COMPOSITION
+# (main = blit для WebView2, overlay = dcomp premultiplied-альфа)
+gpui = { path = "vendor/gpui" }
+gpui-component = { path = "vendor/gpui-component" }

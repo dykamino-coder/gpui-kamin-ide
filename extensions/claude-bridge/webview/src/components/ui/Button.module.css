@@ -1,0 +1,36 @@
+/* Button primitive — one place for the primary/secondary/danger/ghost hierarchy
+   so every form and panel stops hand-rolling its own button chrome. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2, 6px);
+  padding: 7px 14px;
+  border-radius: var(--radius-xs, 6px);
+  border: 1px solid transparent;
+  font-size: var(--fs-sm, 12px);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn:focus-visible { outline: 2px solid var(--accent-action); outline-offset: 2px; }
+.icon { font-size: var(--fs-10, 11px); }
+
+/* Primary — the affirmative action. */
+.primary { background: var(--accent-action); color: var(--bg-primary); }
+.primary:not(:disabled):hover { background: var(--accent-action-hover, var(--accent-action)); }
+
+/* Secondary — a neutral, bordered surface for the non-committal action. */
+.secondary { background: var(--bg-overlay); color: var(--text-primary); border-color: var(--divider-soft, transparent); }
+.secondary:not(:disabled):hover { background: var(--bg-overlay-hover, var(--bg-surface)); }
+
+/* Danger — destructive, but subtle (tinted, not a shouty solid red). */
+.danger { background: color-mix(in srgb, var(--accent-red, #f85149) 16%, transparent); color: var(--accent-red, #f85149); }
+.danger:not(:disabled):hover { background: color-mix(in srgb, var(--accent-red, #f85149) 26%, transparent); }
+
+/* Ghost — text-only, for tertiary actions. */
+.ghost { background: transparent; color: var(--text-secondary); }
+.ghost:not(:disabled):hover { background: var(--bg-overlay); color: var(--text-primary); }

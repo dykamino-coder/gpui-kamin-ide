@@ -1,0 +1,13 @@
+/* Field wrapper — one label/required/hint/error scaffold so every form stops
+   redefining its own `.label` + help-text markup. Wraps any input as children. */
+.field { display: flex; flex-direction: column; gap: 5px; }
+
+.label {
+  font-size: var(--fs-sm, 12px);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.required { color: var(--accent-red, #f85149); margin-left: 3px; }
+
+.hint { font-size: var(--fs-xs, 11px); color: var(--text-muted); line-height: 1.45; }
+.error { font-size: var(--fs-xs, 11px); color: var(--accent-red, #f85149); line-height: 1.45; }

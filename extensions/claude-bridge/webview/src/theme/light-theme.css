@@ -1,0 +1,132 @@
+/* Light theme — "paper" palette.
+   Symmetric to `dark-theme.css` — both files own a complete palette
+   under their `[data-theme]` selector. Activation: set
+   `data-theme="light"` on the <html> element via `applyTheme()`.
+
+   Layer hierarchy (back → front):
+     #f4f1ea — page bg (sidebar + gaps)
+     #fbf9f4 — large floating panel (replaces Mantle)
+     #ffffff — message cards, tabs, summary, input (replaces Base)
+     #e6e1d4 — all borders & dividers
+
+   Text:
+     #1b1a16 — primary
+     #3d3a33 — secondary (user message body)
+     #77736a — muted (labels, ts, metrics)
+     #aba79c — disabled (placeholders, metric keys)
+
+   Accents are Catppuccin Latte values, slightly desaturated for
+   on-paper readability. */
+
+[data-theme="light"] {
+  /* Background — paper layer ramp */
+  --bg-primary: #f6efeb;             /* base — message cards, tabs, summary, input */
+  --bg-base: #fbf8f1;
+  --bg-mantle: #fbf7f4;              /* large floating panel */
+  --bg-sidebar: #f4f1ea;             /* page bg + sidebar */
+  --bg-surface: #e6e1d4;             /* borders & dividers */
+  --bg-overlay: #d6d0c0;             /* secondary surface, scrollbar thumb */
+
+  /* Text */
+  --text-primary: #161613;
+  --text-subtext: #2c2a25;
+  --text-secondary: #454138;
+  --text-muted: #77736a;
+  --text-disabled: #aba79c;
+
+  /* Accents — Catppuccin Latte, deepened for contrast on paper bg
+     (each accent drops ~12 lightness points + maxes saturation so
+     the colour reads as a clear ink stroke rather than washed pastel). */
+  --accent-blue: #0950d3;
+  --accent-sapphire: #0e7d97;
+  --accent-red: #a8002b;
+  --accent-maroon: #c81d2f;
+  --accent-green: #138f00;
+  --accent-yellow: #c27100;
+  --accent-pink: #c2188a;
+  --accent-purple: #6900e6;
+  --accent-orange: #d79247;
+  --accent-teal: #07747a;
+  --accent-rosewater: #b86753;
+
+  /* Modal scrims — ink-tinted instead of black for warmth */
+  --overlay-modal: rgba(27, 26, 22, 0.28);
+  --overlay-soft: rgba(27, 26, 22, 0.14);
+  --overlay-deep: rgba(27, 26, 22, 0.40);
+
+  /* State variants */
+  --bg-surface-hover: #d8d4c4;       /* between bg-surface and bg-overlay */
+  --bg-overlay-hover: #c2bcab;
+  --bg-tint-red: #fce4ea;
+  --bg-tint-red-soft: #f4c2cf;
+  --bg-tint-green: #e3f2dd;
+  --bg-tint-green-soft: #e3f2dd;
+  --bg-tint-orange: #f6e3cb;
+  --bg-tint-blue: #dde7fb;
+  /* Soft = slightly lighter hover variant (still readable on paper).
+     Dark = pressed/active variant (deeper than base). Same direction
+     as dark theme but mirrored — "soft" goes UP in light mode. */
+  --accent-blue-soft: #2c6cdc;
+  --accent-blue-soft-2: #3d59c0;     /* lavender slot */
+  --accent-blue-soft-3: #5773ce;     /* markdown code text */
+  --accent-purple-soft: #8225ec;
+  --accent-green-soft: #2ba517;
+  --accent-red-dark: #8a0023;
+  --accent-red-dark-2: #8a0023;
+  --accent-red-dark-3: #a3002a;
+  --accent-orange-dark: #ad6b2c;
+  --accent-yellow-dark: #8a5000;
+  --text-muted-2: #5a5e6b;
+  --text-muted-light: #5a5d6a;
+
+  /* Primary CTA — warm terracotta so it pops on the cream paper.
+     Hover goes one shade deeper. Foreground stays cream so the contrast
+     stays high (the deep orange has enough luminance gap to white text). */
+  --accent-action: var(--accent-orange);          /* #d79247 */
+  --accent-action-hover: #ad6b2c;                  /* matches --accent-orange-dark */
+  --accent-action-fg: #fbf9f4;                     /* cream-on-orange */
+
+  /* Semantic primary — orange family in light theme (everything that's
+     "primary" — links, focus, role labels, badges, info pills — picks
+     this up). Dark theme keeps the blue inherited from variables.css.
+     Tones harmonised around the new --accent-orange (#d79247). */
+  --accent-primary: var(--accent-orange);                          /* #d79247 */
+  --accent-primary-soft: #c08147;                                   /* mid terracotta */
+  --accent-primary-soft-2: #b27340;                                 /* lavender slot replacement */
+  --accent-primary-soft-3: #966232;                                 /* deeper — markdown code text */
+  --bg-tint-primary: var(--bg-tint-orange);                         /* #f6e3cb */
+  --tint-primary-soft:          color-mix(in srgb, var(--accent-orange) 6%,  transparent);
+  --tint-primary-medium:        color-mix(in srgb, var(--accent-orange) 12%, transparent);
+  --tint-primary-strong:        color-mix(in srgb, var(--accent-orange) 25%, transparent);
+  --tint-primary-border:        color-mix(in srgb, var(--accent-orange) 25%, transparent);
+  --tint-primary-border-strong: color-mix(in srgb, var(--accent-orange) 50%, transparent);
+
+  /* xterm palette — even deeper than UI accents because ANSI text on
+     paper bg needs maximum ink contrast (Latte values, even when
+     deepened, still read washed-out at 11px monospace). */
+  --term-bg: #f4f1ea;        /* same as bg-sidebar — terminal panel sits there */
+  --term-fg: #1b1a16;        /* primary ink */
+  --term-cursor: #c27100;    /* warm amber */
+  --term-selection: #d6d0c0;
+  --term-black: #1b1a16;
+  --term-red: #a40020;
+  --term-green: #0a6e00;
+  --term-yellow: #8a5000;    /* deep amber, not gold */
+  --term-blue: #003fa8;
+  --term-magenta: #9c0078;
+  --term-cyan: #035e63;
+  --term-white: #3d3a33;     /* secondary ink */
+  --term-bright-black: #77736a;
+  --term-bright-white: #1b1a16;
+
+  /* Shadows — much lighter, ink-tinted instead of harsh black */
+  --shadow-lg: 0 6px 14px rgba(27, 26, 22, 0.10);
+  --shadow-card: 0 0 4px rgba(27, 26, 22, 0.08);
+  --shadow-modal: 0 8px 32px rgba(27, 26, 22, 0.18);
+  --shadow-tab: 0 6px 18px rgba(27, 26, 22, 0.14);
+  --shadow-toast: 0 10px 40px rgba(27, 26, 22, 0.16);
+  --shadow-dropdown: 0 4px 16px rgba(27, 26, 22, 0.16);
+  --shadow-mini: 0 2px 8px rgba(27, 26, 22, 0.10);
+  --shadow-bar: 0 -4px 12px rgba(27, 26, 22, 0.10);
+  --shadow-card-popup: 0 8px 24px rgba(27, 26, 22, 0.16);
+}

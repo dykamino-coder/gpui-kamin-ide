@@ -1,0 +1,110 @@
+{
+  "name": "hello-world",
+  "displayName": "Hello World (built-in)",
+  "publisher": "dykamino-studio",
+  "version": "0.0.1",
+  "description": "Smoke-test extension. Registers a single command via vscode.commands.registerCommand and shows a toast when invoked. Proves the host's require('vscode') hook + activate() flow works.",
+  "engines": { "vscode": "^1.95.0" },
+  "main": "./extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "hello-world.sayHello",
+        "title": "Say Hello",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.mutateEnv",
+        "title": "Mutate Terminal Env",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.pickFruit",
+        "title": "Pick a Fruit",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.pickToppings",
+        "title": "Pick Toppings",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.decorate",
+        "title": "Decorate Lines",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.snippet",
+        "title": "Insert Snippet",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.selectLine",
+        "title": "Select Line 1",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.openPanel",
+        "title": "Open Retained Panel",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.bumpCount",
+        "title": "Bump Persisted Count",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.refreshTree",
+        "title": "Refresh Hello Tree",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.stashSecret",
+        "title": "Stash a Secret",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.revealLeaf",
+        "title": "Reveal Deep Leaf",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.diagnose",
+        "title": "Publish Demo Diagnostics",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.makeSession",
+        "title": "Make a Session (kaminide)",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.listSessions",
+        "title": "List Sessions (kaminide)",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.crashTest",
+        "title": "Crash Test (uncaught async throw)",
+        "category": "Hello World"
+      },
+      {
+        "command": "hello-world.hardCrash",
+        "title": "Hard Crash (native SIGABRT — isolation test)",
+        "category": "Hello World"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "helloPanel", "title": "Hello Panel", "icon": "rocket" }
+      ]
+    },
+    "views": {
+      "helloPanel": [
+        { "id": "helloView", "name": "Hello View", "type": "webview" },
+        { "id": "helloTree", "name": "Hello Tree" }
+      ]
+    }
+  }
+}

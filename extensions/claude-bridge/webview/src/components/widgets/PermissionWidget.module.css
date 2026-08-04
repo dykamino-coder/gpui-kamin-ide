@@ -1,0 +1,22 @@
+.card {
+  background: var(--bg-primary);
+  border: 1px solid var(--bg-surface);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  animation: widget-slide-in 0.2s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes widget-slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card.resolved {
+  opacity: 0.5;
+}
+
+.allowAlways {
+  opacity: 0.8;
+}

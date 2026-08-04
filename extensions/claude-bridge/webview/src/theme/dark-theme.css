@@ -1,0 +1,98 @@
+/* Dark theme tokens. Symmetric to `light-theme.css` — both files own a
+   complete palette under their `[data-theme]` selector. The `:root`
+   block in `variables.css` includes a fallback that mirrors this file
+   so the app renders dark when no `data-theme` attribute is set yet
+   (initial paint before the theme manager runs). */
+
+[data-theme="dark"] {
+  /* Background — custom-tuned neutral ramp (lighter & slightly warmer
+     than vanilla Catppuccin Mocha, keeps the purple tint). */
+  --bg-primary: #313240;             /* base — main app bg, input/row bg */
+  --bg-base: #313240;                /* alias of --bg-primary */
+  --bg-mantle: #262533;              /* slightly darker — panel bg */
+  --bg-sidebar: #1d1d28;             /* darkest — sidebar/crust */
+  --bg-surface: #3d3f51;             /* surface 0 — borders, hover, dividers */
+  --bg-overlay: #515567;             /* surface 1 — secondary surface, scrollbar */
+
+  /* Text */
+  --text-primary: #cfd4e2;           /* primary body text */
+  --text-subtext: #afb6ca;           /* slightly lighter than secondary — subtext 1 */
+  --text-secondary: #adb3c7;         /* secondary text — subtext 0 */
+  --text-muted: #838aa0;             /* tertiary text/icons — overlay 0 */
+  --text-disabled: #60667b;          /* disabled state — surface 2 */
+
+  /* Accent colors — Catppuccin Mocha palette */
+  --accent-blue: #89b4fa;
+  --accent-sapphire: #74c7ec;        /* between blue and teal */
+  --accent-red: #f38ba8;
+  --accent-maroon: #eba0ac;          /* between red and pink */
+  --accent-green: #a6e3a1;
+  --accent-yellow: #f9e2af;
+  --accent-pink: #f5c2e7;
+  --accent-purple: #cba6f7;
+  --accent-orange: #fab387;
+  --accent-teal: #94e2d5;
+  --accent-rosewater: #f5e0dc;
+
+  /* Modal / scrim overlays — common alpha-blacks */
+  --overlay-modal: rgba(0, 0, 0, 0.5);
+  --overlay-soft: rgba(0, 0, 0, 0.35);
+  --overlay-deep: rgba(0, 0, 0, 0.6);
+
+  /* State variants — hover lighten / press darken / tinted bg */
+  --bg-surface-hover: #3b3b52;       /* between bg-surface and bg-overlay */
+  --bg-overlay-hover: #3e3e56;       /* darker bg-overlay hover */
+  --bg-tint-red: #2e1e22;            /* dark red tinted bg (banners) */
+  --bg-tint-red-soft: #45283b;       /* dark red border (chips) */
+  --bg-tint-green: #1e2e1e;          /* dark green tinted bg */
+  --bg-tint-green-soft: #1e2e1e;
+  --bg-tint-orange: #2e1e1e;         /* dark orange tinted bg (legacy) */
+  --bg-tint-blue: #1a1a27;           /* very dark blue-bg */
+  --accent-blue-soft: #b4d0fb;       /* lightened accent-blue (hover) */
+  --accent-blue-soft-2: #b4befe;     /* lightened blue (link/badge) */
+  --accent-blue-soft-3: #c0d3ff;     /* very light blue (markdown code text) */
+  --accent-purple-soft: #b48bef;     /* lightened accent-purple (hover) */
+  --accent-green-soft: #94d899;      /* lightened accent-green (hover) */
+  --accent-red-dark: #e06c8a;        /* darker accent-red (active) */
+  --accent-red-dark-2: #e06c88;      /* darker red (stop button hover) */
+  --accent-red-dark-3: #e87c99;      /* darker red (deny button hover) */
+  --accent-orange-dark: #f9b36d;     /* darker accent-orange (label) */
+  --accent-yellow-dark: #8a7a2e;     /* darker yellow (sleeping pinned) */
+  --text-muted-2: #7f849c;           /* between text-muted and text-disabled */
+  --text-muted-light: #acb2d2;       /* slightly lighter text */
+
+  /* Primary CTA — Send button, "Save", "Connect", primary action buttons
+     throughout. Stays cool blue on dark, flips to warm orange on paper
+     so it pops against the cream background. */
+  --accent-action: var(--accent-blue);
+  --accent-action-hover: var(--accent-sapphire);
+  --accent-action-fg: var(--bg-primary);
+
+  /* xterm palette — same as UI accents in dark mode (Catppuccin Mocha
+     pastels read fine on the dark sidebar background). */
+  --term-bg: #1d1d28;
+  --term-fg: #cfd4e2;
+  --term-cursor: #f5e0dc;
+  --term-selection: #515567;
+  --term-black: #515567;
+  --term-red: #f38ba8;
+  --term-green: #a6e3a1;
+  --term-yellow: #f9e2af;
+  --term-blue: #89b4fa;
+  --term-magenta: #f5c2e7;
+  --term-cyan: #94e2d5;
+  --term-white: #afb6ca;
+  --term-bright-black: #60667b;
+  --term-bright-white: #adb3c7;
+
+  /* Shadows — drop hard rgba(0,0,0,*) tier suited to a dark surface. */
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 0 6px rgba(0, 0, 0, 0.2);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-tab: 0 6px 18px rgba(0, 0, 0, 0.45);
+  --shadow-toast: 0 10px 40px rgba(0, 0, 0, 0.4);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-mini: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-bar: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-card-popup: 0 8px 24px rgba(0, 0, 0, 0.5);
+}

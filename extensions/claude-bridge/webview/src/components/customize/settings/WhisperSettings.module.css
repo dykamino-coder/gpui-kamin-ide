@@ -1,0 +1,24 @@
+.saveBtn {
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px dashed var(--bg-overlay);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color 0.15s, color 0.15s;
+  margin-top: 8px;
+}
+
+.saveBtn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  opacity: 0.9;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-disabled);
+  margin: 4px 0 0;
+}

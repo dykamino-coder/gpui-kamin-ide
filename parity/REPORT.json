@@ -1,0 +1,1557 @@
+{
+  "total": 159,
+  "match": 141,
+  "diverges": 18,
+  "unjudged": 0,
+  "no_shots": [
+    11,
+    12,
+    14,
+    15,
+    16,
+    17,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    36,
+    37,
+    40,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    53,
+    54,
+    55,
+    58,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    78,
+    80,
+    82,
+    90,
+    92,
+    93,
+    95,
+    96,
+    97,
+    99,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    109,
+    112,
+    113,
+    123,
+    130,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139,
+    140,
+    141,
+    142,
+    143,
+    144,
+    145,
+    147,
+    148,
+    149,
+    150,
+    151,
+    152,
+    153,
+    156,
+    157
+  ],
+  "shared_shots": [
+    [
+      135,
+      136,
+      137,
+      138,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      147,
+      148,
+      149,
+      150,
+      151,
+      152,
+      153
+    ],
+    [
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      36,
+      37
+    ],
+    [
+      40,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51
+    ],
+    [
+      93,
+      95,
+      96,
+      97,
+      99,
+      100,
+      101,
+      104,
+      105,
+      106,
+      107
+    ],
+    [
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      109,
+      112,
+      113
+    ],
+    [
+      53,
+      54,
+      55,
+      72,
+      73,
+      74,
+      75,
+      76
+    ],
+    [
+      11,
+      12,
+      14,
+      15,
+      16,
+      17
+    ],
+    [
+      78,
+      131,
+      132,
+      133,
+      134
+    ],
+    [
+      80,
+      82,
+      130
+    ],
+    [
+      102,
+      103,
+      139
+    ],
+    [
+      58,
+      92
+    ]
+  ],
+  "closed": false,
+  "elements": [
+    {
+      "id": 1,
+      "slug": "titlebar",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 2,
+      "slug": "titlebar-left-cluster",
+      "verdict": "MATCH",
+      "cycle": "35",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 3,
+      "slug": "titlebar-brand-logo",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 4,
+      "slug": "titlebar-tabs-slot",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 5,
+      "slug": "titlebar-command-search-button",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 6,
+      "slug": "titlebar-window-controls-cluster",
+      "verdict": "MATCH",
+      "cycle": "35",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 7,
+      "slug": "titlebar-button",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 8,
+      "slug": "titlebar-quick-actions-row",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 9,
+      "slug": "titlebar-quick-action-button",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 10,
+      "slug": "layout-toggles-trigger",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 11,
+      "slug": "layout-toggles-menu",
+      "verdict": "MATCH",
+      "cycle": "34",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 12,
+      "slug": "layout-presets-section",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 13,
+      "slug": "theme-quick-toggle-trigger",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 14,
+      "slug": "theme-popover",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 15,
+      "slug": "theme-popover-column",
+      "verdict": "MATCH",
+      "cycle": "34",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 16,
+      "slug": "theme-popover-item",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 17,
+      "slug": "panel-icon-svg",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 18,
+      "slug": "session-tabs-strip",
+      "verdict": "DIVERGES",
+      "cycle": "35",
+      "shots": true,
+      "open": [
+        "«N ⌄» вместо `overflow-x: auto` — сознательное отклонение (у оригинала лишние чипы прокручиваются, у нас уходят в кнопку с поповером), жду решения, менять ли",
+        "`transform: scale(1.06)` у «+» — упор движка"
+      ]
+    },
+    {
+      "id": 19,
+      "slug": "session-tab-chip",
+      "verdict": "DIVERGES",
+      "cycle": "32",
+      "shots": true,
+      "open": [
+        "ширина чипа считается формулой вместо `flex: 0 1 180px",
+        "min-width: 44px`",
+        "transition у `.close` и `transform: scale(1.06)` — упоры движка"
+      ]
+    },
+    {
+      "id": 20,
+      "slug": "sidebar-root",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 21,
+      "slug": "sidebar-resize-handle",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 22,
+      "slug": "sidebar-body-resolver",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 23,
+      "slug": "sessions-mode-root",
+      "verdict": "MATCH",
+      "cycle": "34",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 24,
+      "slug": "project-group-header",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 25,
+      "slug": "project-actions-popover",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 26,
+      "slug": "project-sessions-list",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 27,
+      "slug": "project-inactive-toggle",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 28,
+      "slug": "session-item-row",
+      "verdict": "MATCH",
+      "cycle": "35",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 29,
+      "slug": "session-status-dot",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 30,
+      "slug": "session-pin-button",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 31,
+      "slug": "session-rename-input",
+      "verdict": "DIVERGES",
+      "cycle": "35",
+      "shots": false,
+      "open": [
+        "высота поля 20 против 18.4 — вендорный `Input` не отдаёт свою вертикальную метрику, лечится только патчем вендора (тот же узел, что сломал панель поиска в ц.30)"
+      ]
+    },
+    {
+      "id": 32,
+      "slug": "session-actions-popover",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 33,
+      "slug": "session-context-menu",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 34,
+      "slug": "session-color-swatches",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 35,
+      "slug": "customize-mode-nav",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 36,
+      "slug": "customize-nav-item",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 37,
+      "slug": "customize-contributed-tree",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 38,
+      "slug": "activity-bar-nav",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 39,
+      "slug": "activity-tile",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 40,
+      "slug": "activity-customize-tile",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 41,
+      "slug": "activity-drop-placeholder",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 42,
+      "slug": "activity-picker-dots-trigger",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 43,
+      "slug": "activity-picker-open-tool-pill",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 44,
+      "slug": "activity-picker-menu",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 45,
+      "slug": "activity-context-menu",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 46,
+      "slug": "activity-context-submenu",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 47,
+      "slug": "activity-drag-ghost",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 48,
+      "slug": "bottom-tab-bar-strip",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 49,
+      "slug": "bottom-tab",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 50,
+      "slug": "bottom-tab-drop-placeholder",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 51,
+      "slug": "tool-icon",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 52,
+      "slug": "app-shell",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 53,
+      "slug": "main-content",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 54,
+      "slug": "main-bottom-panel",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 55,
+      "slug": "main-bottom-resize-handle",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 56,
+      "slug": "right-panel-column",
+      "verdict": "MATCH",
+      "cycle": "35",
+      "shots": true,
+      "open": [
+        "свой кадр вместо кропа страницы Settings"
+      ]
+    },
+    {
+      "id": 57,
+      "slug": "right-panel-width-handle",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 58,
+      "slug": "right-panel-top-card",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 59,
+      "slug": "right-panel-split-handle",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 60,
+      "slug": "right-panel-bottom-card",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 61,
+      "slug": "file-panel-column",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 62,
+      "slug": "file-panel-width-handle",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 63,
+      "slug": "file-panel-top-card",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 64,
+      "slug": "file-panel-split-handle",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 65,
+      "slug": "file-panel-bottom-card",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 66,
+      "slug": "file-panel-mode-tabs",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 67,
+      "slug": "browser-pane",
+      "verdict": "MATCH",
+      "cycle": "24",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 68,
+      "slug": "panel-placeholder",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 69,
+      "slug": "activity-placeholder",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 70,
+      "slug": "webview-loading-skeleton",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 71,
+      "slug": "webview-load-error",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 72,
+      "slug": "chat-switch-skeleton",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 73,
+      "slug": "contributed-container-body",
+      "verdict": "MATCH",
+      "cycle": "22",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 74,
+      "slug": "contributed-view-section",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 75,
+      "slug": "webview-view-anchor",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 76,
+      "slug": "persistent-webview-layer",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 77,
+      "slug": "welcome-placeholder",
+      "verdict": "DIVERGES",
+      "cycle": "34",
+      "shots": true,
+      "open": [
+        "инстанцировать ось `opsz` (и проверить потолок `wght`) в шрифтовом слое gpui — иначе крупные заголовки всегда будут уже оригинала",
+        "свой кадр вместо общего"
+      ]
+    },
+    {
+      "id": 78,
+      "slug": "customize-content-panel",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 79,
+      "slug": "design-panel-shell",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 80,
+      "slug": "logs-panel",
+      "verdict": "DIVERGES",
+      "cycle": "33",
+      "shots": false,
+      "open": [
+        "высота поля фильтра ~34 против ~24 — её задаёт `input_h` компонента, снимается только вендорным патчем, а он ломает панель поиска редактора (проверено ц.31)",
+        "свой кадр вместо общего"
+      ]
+    },
+    {
+      "id": 81,
+      "slug": "system-log-panel",
+      "verdict": "MATCH",
+      "cycle": "35",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 82,
+      "slug": "settings-panel",
+      "verdict": "DIVERGES",
+      "cycle": "35",
+      "shots": false,
+      "open": [
+        "свой кадр вместо общего"
+      ]
+    },
+    {
+      "id": 83,
+      "slug": "legacy-bridge-card",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 84,
+      "slug": "extensions-panel",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 85,
+      "slug": "extension-row",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 86,
+      "slug": "problems-panel",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 87,
+      "slug": "problem-row",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 88,
+      "slug": "terminal-view",
+      "verdict": "MATCH",
+      "cycle": "19",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 89,
+      "slug": "terminal-toolbar",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 90,
+      "slug": "terminal-shell-menu",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 91,
+      "slug": "terminal-session-host",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 92,
+      "slug": "file-tree-root",
+      "verdict": "MATCH",
+      "cycle": "35",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 93,
+      "slug": "file-tree-empty-state",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 94,
+      "slug": "file-tree-folder-row",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 95,
+      "slug": "file-tree-file-row",
+      "verdict": "DIVERGES",
+      "cycle": "25",
+      "shots": false,
+      "open": [
+        "нативный OS-драг наружу (`startDrag({item, icon, mode:\"copy\"})`)"
+      ]
+    },
+    {
+      "id": 96,
+      "slug": "file-tree-children-states",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 97,
+      "slug": "file-tree-row-badge",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 98,
+      "slug": "file-tree-header-toolbar",
+      "verdict": "MATCH",
+      "cycle": "34",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 99,
+      "slug": "tree-icon-img",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 100,
+      "slug": "file-context-menu",
+      "verdict": "DIVERGES",
+      "cycle": "35",
+      "shots": false,
+      "open": [
+        "ползунок вендора ГАСНЕТ по бездействию (fade-out 3 с), а `::-webkit-scrollbar` оригинала виден всегда, пока есть переполнение",
+        "«Delete N items» сверх оригинала (жду решения)",
+        "обструкция вебвью в `clampToViewport`"
+      ]
+    },
+    {
+      "id": 101,
+      "slug": "file-context-submenu",
+      "verdict": "MATCH",
+      "cycle": "24",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 102,
+      "slug": "generic-tree",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 103,
+      "slug": "generic-tree-row",
+      "verdict": "MATCH",
+      "cycle": "21",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 104,
+      "slug": "contributed-tree-view-body",
+      "verdict": "MATCH",
+      "cycle": "22",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 105,
+      "slug": "contributed-tree-node-row",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 106,
+      "slug": "contributed-tree-checkbox",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 107,
+      "slug": "contributed-tree-node-icon",
+      "verdict": "MATCH",
+      "cycle": "22",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 108,
+      "slug": "file-viewer-wrapper",
+      "verdict": "DIVERGES",
+      "cycle": "26",
+      "shots": true,
+      "open": [
+        "брейдкрамб-строка и кнопка «Save Ctrl+S» — надстройки сверх оригинала, у него Ctrl+S висит на хуке и видимой кнопки нет",
+        "нет `.bodyFlush` и `.retainLayer` как следствие отсутствия вебвью-табов (114)",
+        "`.viewer` описан через `size_full` вместо `flex: 1`"
+      ]
+    },
+    {
+      "id": 109,
+      "slug": "file-viewer-empty",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 110,
+      "slug": "file-viewer-tabs-strip",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 111,
+      "slug": "file-viewer-tab",
+      "verdict": "MATCH",
+      "cycle": "34",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 112,
+      "slug": "file-viewer-tabs-overflow",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 113,
+      "slug": "monaco-editor-host",
+      "verdict": "DIVERGES",
+      "cycle": "34",
+      "shots": false,
+      "open": [
+        "у тумблера замены нет подписи/тултипа — что делает иконка, видно только по нажатию (тултипы вендорной кнопки рисуются в ГЛАВНОМ окне, а у нас все поповеры обязаны жить в overlay-окне, поэтому `.tooltip()` не подключаю)",
+        "оригинал — виджет Monaco, плавающий у ПРАВОГО края редактора, у нас бар во всю ширину сверху",
+        "нет тумблеров «слово целиком» и «регулярное выражение»"
+      ]
+    },
+    {
+      "id": 114,
+      "slug": "webview-panel-view",
+      "verdict": "DIVERGES",
+      "cycle": "26",
+      "shots": true,
+      "open": [
+        "сам элемент — вебвью как ВКЛАДКА редактора (`createWebviewPanel`, схема `kaminwebview://`, sandbox, retain-слой) отсутствует",
+        "нет crash-watchdog (`CRASH_PING_INTERVAL_MS 4000`, `CRASH_MISS_LIMIT 8`, `BUSY_GRACE_MS 180000`, `ProcessFailed`)",
+        "таймер `READY_FALLBACK_MS` стартует не по `onLoad`, а с появления записи крышки"
+      ]
+    },
+    {
+      "id": 115,
+      "slug": "webview-tab-icon",
+      "verdict": "DIVERGES",
+      "cycle": "26",
+      "shots": true,
+      "open": [
+        "элемент отсутствует целиком и требует подсистемного шага 114",
+        "уточнение ревью — резолв иконки расширения в порте УЖЕ есть (`kamin:extensions:icon` плюс кеш, используется панелью расширений), не хватает только самих вебвью-табов"
+      ]
+    },
+    {
+      "id": 116,
+      "slug": "status-bar-root",
+      "verdict": "MATCH",
+      "cycle": "17",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 117,
+      "slug": "status-item-builtin",
+      "verdict": "DIVERGES",
+      "cycle": "35",
+      "shots": true,
+      "open": [
+        "клики по встроенным счётчикам — зафиксированное отступление по просьбе пользователя, у оригинала их нет"
+      ]
+    },
+    {
+      "id": 118,
+      "slug": "status-item-contributed",
+      "verdict": "MATCH",
+      "cycle": "24",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 119,
+      "slug": "status-editor-encoding-eol",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 120,
+      "slug": "status-version-update",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 121,
+      "slug": "confirm-modal",
+      "verdict": "DIVERGES",
+      "cycle": "35",
+      "shots": true,
+      "open": [
+        "`transition: background 150ms` у кнопок — упор движка"
+      ]
+    },
+    {
+      "id": 122,
+      "slug": "prompt-modal",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 123,
+      "slug": "quick-pick-modal",
+      "verdict": "DIVERGES",
+      "cycle": "35",
+      "shots": false,
+      "open": [
+        "высота ряда ввода ~42 против ~33 — тот же вендорный `Input`, что и в досье 31"
+      ]
+    },
+    {
+      "id": 124,
+      "slug": "quick-open",
+      "verdict": "MATCH",
+      "cycle": "26",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 125,
+      "slug": "find-in-files",
+      "verdict": "DIVERGES",
+      "cycle": "29",
+      "shots": true,
+      "open": [
+        "Escape в оверлее — проверить РУКАМИ",
+        "способ диагностики известен и описан здесь: временный `eprintln!` в оба пути и живое нажатие покажут, какой из них срабатывает. Диагностические печати из кода убраны"
+      ]
+    },
+    {
+      "id": 126,
+      "slug": "workspace-symbols",
+      "verdict": "DIVERGES",
+      "cycle": "26",
+      "shots": true,
+      "open": [
+        "`MAX_ROWS = 100` — у оригинала капа нет ни на одном этаже (рендерер, exthost, мост), сто первый символ не отрисуется и стрелкой до него не дойти",
+        "сознательное перф-отклонение, нужно решение"
+      ]
+    },
+    {
+      "id": 127,
+      "slug": "command-palette",
+      "verdict": "MATCH",
+      "cycle": "35",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 128,
+      "slug": "toasts-stack",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 129,
+      "slug": "tooltip",
+      "verdict": "MATCH",
+      "cycle": "20",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 130,
+      "slug": "design-color-tokens",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 131,
+      "slug": "design-typography-tokens",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 132,
+      "slug": "design-spacing-tokens",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 133,
+      "slug": "design-radius-tokens",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 134,
+      "slug": "design-shadow-tokens",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 135,
+      "slug": "sample-buttons",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 136,
+      "slug": "sample-list-item",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 137,
+      "slug": "sample-input",
+      "verdict": "MATCH",
+      "cycle": "24",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 138,
+      "slug": "sample-dropdown",
+      "verdict": "DIVERGES",
+      "cycle": "35",
+      "shots": false,
+      "open": [
+        "`transition` — упор движка"
+      ]
+    },
+    {
+      "id": 139,
+      "slug": "sample-tree",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 140,
+      "slug": "sample-chips-kbd-code-badge",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 141,
+      "slug": "sample-toast-triggers",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 142,
+      "slug": "sample-modal-triggers",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 143,
+      "slug": "sample-external-toast-triggers",
+      "verdict": "MATCH",
+      "cycle": "35",
+      "shots": false,
+      "open": [
+        "анимаций `slide-in 180ms` и `transition` у кнопок нет (общий упор движка по всем элементам)",
+        "свой кадр вместо общего"
+      ]
+    },
+    {
+      "id": 144,
+      "slug": "sample-tooltip",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 145,
+      "slug": "sample-block-wrapper",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 146,
+      "slug": "sample-horizontal-tab-strip",
+      "verdict": "MATCH",
+      "cycle": "35",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 147,
+      "slug": "sample-vertical-icon-column",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 148,
+      "slug": "sample-checkbox-dropdown",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 149,
+      "slug": "sample-context-menu",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 150,
+      "slug": "sample-section-header",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 151,
+      "slug": "sample-status-bar-items",
+      "verdict": "MATCH",
+      "cycle": "33",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 152,
+      "slug": "sample-panel-icon-family",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 153,
+      "slug": "sample-placeholders",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 154,
+      "slug": "global-scrollbar",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 155,
+      "slug": "glint-surface-card-ring",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 156,
+      "slug": "focus-visible-ring",
+      "verdict": "MATCH",
+      "cycle": "34",
+      "shots": false,
+      "open": [
+        "текстовые инпуты не фокусируемы вовсе, а в браузере `<input>` — таб-стоп",
+        "`HANDLES` только пополняется — одинаковый id у разных элементов даст общий хэндл"
+      ]
+    },
+    {
+      "id": 157,
+      "slug": "activity-drop-highlight",
+      "verdict": "MATCH",
+      "cycle": "23",
+      "shots": false,
+      "open": []
+    },
+    {
+      "id": 158,
+      "slug": "dragging-body-classes",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": true,
+      "open": []
+    },
+    {
+      "id": 159,
+      "slug": "legacy-app-shell-css",
+      "verdict": "MATCH",
+      "cycle": "18",
+      "shots": true,
+      "open": []
+    }
+  ]
+}

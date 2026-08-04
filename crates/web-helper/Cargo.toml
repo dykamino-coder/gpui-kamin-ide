@@ -1,0 +1,18 @@
+[package]
+name = "kaminide-web-helper"
+version.workspace = true
+edition.workspace = true
+
+# Помощник дочерних процессов CEF. Собирается как `kaminide-web.exe`, а при
+# старте главный процесс кладёт его копию в `web\kaminide-gpui.exe`:
+# ИМЯ файла склеивает группу в диспетчере задач (группировка по имени), а
+# СВОЁ FileDescription подписывает строки детей «KaminIDE Web».
+[[bin]]
+name = "kaminide-web"
+path = "src/main.rs"
+
+[dependencies]
+cef = { version = "150", default-features = false }
+
+[build-dependencies]
+winres = "0.1"

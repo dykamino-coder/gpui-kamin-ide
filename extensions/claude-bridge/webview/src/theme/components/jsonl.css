@@ -1,0 +1,10 @@
+/* JSONL viewer family — entry cards, tool blocks, code blocks, segment tabs.
+ *
+ * E3 scaffolding (Sprint 5 / Stage E3). Currently EMPTY — rules still live
+ * in `theme/legacy-global.css`. Selectors that belong here:
+ *   `.jsonl-entry`, `.jsonl-entry-user`, `.jsonl-entry-assistant`,
+ *   `.jsonl-entry-system`, `.entry-header`, `.entry-role`, `.entry-tokens`,
+ *   `.tool-burst-*`, `.asst-merge-*`,
+ *   `.block-text`, `.block-text pre`, `.block-text code`, `.block-thinking`.
+ *
+ * 100 rules total — biggest family in legacy-global.css. */

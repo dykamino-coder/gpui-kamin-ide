@@ -1,0 +1,221 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-terminal);
+  overflow: hidden;
+  position: relative;
+  border-radius: var(--radius-xl);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  font-size: 12px;
+  color: var(--text-muted);
+  z-index: 6;
+}
+
+.toolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbarRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-yellow);
+}
+
+.statusDot[data-status="connected"] {
+  background: var(--accent-green);
+}
+
+.statusDot[data-status="disconnected"] {
+  background: var(--accent-red);
+}
+
+.reconnectBtn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reconnectBtn:hover {
+  background: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.quickActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  flex-wrap: wrap;
+  z-index: 6;
+}
+
+.quickBtn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.quickBtn:hover {
+  background: var(--border-primary);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.quickBtn i {
+  font-size: 10px;
+}
+
+.terminalWrapper {
+  flex: 1;
+  padding: 4px;
+  overflow: hidden;
+}
+
+/* xterm.js container must fill parent */
+.terminalWrapper :global(.xterm) {
+  height: 100%;
+}
+
+.terminalWrapper :global(.xterm-viewport) {
+  overflow-y: auto !important;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 12, 15, 0.85);
+  z-index: 10;
+}
+
+.overlayMessage {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.overlayMessage i {
+  font-size: 24px;
+  margin-bottom: 8px;
+  display: block;
+  color: var(--accent-blue);
+}
+
+/* Placeholder — VS Code-style welcome when terminal is empty */
+.placeholder {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  pointer-events: none;
+  gap: 16px;
+  background-color: var(--bg-terminal);
+}
+
+.asciiBanner {
+  font-family: var(--font-mono);
+  font-size: 5px;
+  line-height: 1.1;
+  color: var(--text-muted);
+  opacity: 0.5;
+  white-space: pre;
+  margin: 0;
+  text-align: center;
+  overflow: hidden;
+}
+
+.placeholderTitle {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.3px;
+}
+
+.placeholderHints {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.placeholderHints code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent-blue);
+}
+
+.placeholderShortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.shortcutRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcutRow kbd {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 80px;
+  text-align: center;
+}

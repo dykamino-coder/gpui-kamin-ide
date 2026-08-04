@@ -1,0 +1,89 @@
+.container { display: flex; flex-direction: column; gap: 12px; }
+.headerRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.filterLabel {
+  font-size: 13px; color: var(--text-secondary); font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+}
+.filterLabel i { color: var(--accent-blue); }
+.headerActions { display: flex; align-items: center; gap: 10px; }
+.count { font-size: 12px; color: var(--text-muted); }
+.chatExportBtn {
+  background: var(--bg-tertiary); border: 1px solid var(--border-primary);
+  border-radius: 4px; padding: 4px 10px; color: var(--text-secondary);
+  cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px;
+  transition: all var(--transition-fast);
+}
+.chatExportBtn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+.table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.table th {
+  text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.3px; color: var(--text-muted); border-bottom: 1px solid var(--border-primary);
+  font-weight: 600; white-space: nowrap;
+}
+.table td {
+  padding: 7px 10px; border-bottom: 1px solid var(--border-secondary);
+  color: var(--text-secondary); white-space: nowrap;
+}
+.table tr:hover td { background: var(--bg-tertiary); }
+.table tr:last-child td { border-bottom: none; }
+
+.badge {
+  display: inline-block; padding: 2px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+}
+.anthropic { background: var(--proxy-anthropic-bg); color: var(--proxy-anthropic); }
+.openai { background: var(--proxy-openai-bg); color: var(--proxy-openai); }
+
+.statusBadge {
+  display: inline-block; padding: 2px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 600;
+}
+.success { background: var(--accent-green-bg); color: var(--accent-green); }
+.error { background: var(--accent-red-bg); color: var(--accent-red); }
+.streaming { background: var(--accent-blue-bg); color: var(--accent-blue); }
+
+.typeBadge {
+  display: inline-block; padding: 2px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 600;
+}
+.typeUser { background: var(--accent-green-bg); color: var(--accent-green); }
+.typeTool { background: rgba(139, 148, 158, 0.15); color: var(--text-muted); }
+
+.userName { color: var(--accent-green); font-weight: 600; }
+.model { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.tokens { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.duration { font-family: var(--font-mono); font-size: 11px; }
+
+.empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 32px 0; color: var(--text-muted); font-size: 13px;
+}
+.empty i { font-size: 24px; opacity: 0.4; }
+
+.scrollArea { max-height: 400px; overflow-y: auto; }
+
+.pager {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding-top: 8px;
+}
+.pager button {
+  background: var(--bg-tertiary); border: 1px solid var(--border-primary);
+  border-radius: 4px; padding: 4px 12px; color: var(--text-secondary);
+  cursor: pointer; font-size: 12px;
+}
+.pager button:hover { border-color: var(--accent-blue); color: var(--text-primary); }
+.pager button:disabled { opacity: 0.4; cursor: default; }
+.pager span { font-size: 12px; color: var(--text-muted); }
+
+.dlBtn {
+  background: none; border: 1px solid var(--border-primary); border-radius: 3px;
+  color: var(--text-muted); cursor: pointer; padding: 2px 6px; font-size: 10px;
+  transition: all var(--transition-fast);
+}
+.dlBtn:hover { color: var(--accent-blue); border-color: var(--accent-blue); }
+
+.loadingMore {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 0; font-size: 12px; color: var(--text-muted);
+}

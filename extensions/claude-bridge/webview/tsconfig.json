@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [],
+    "paths": {
+      "@bridge/storage": [
+        "./src/lib/storage.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "shared"
+  ],
+  "exclude": [
+    "**/*.difftest.mts"
+  ]
+}

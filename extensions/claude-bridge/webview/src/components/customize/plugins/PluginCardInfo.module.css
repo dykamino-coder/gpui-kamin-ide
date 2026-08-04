@@ -1,0 +1,32 @@
+.row {
+  display: flex;
+  align-items: center;
+}
+
+.title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.version {
+  font-size: 11px;
+  color: var(--text-disabled);
+  margin-left: 4px;
+}
+
+.cachedIcon {
+  color: var(--accent-green);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.notCachedIcon {
+  color: var(--accent-yellow);
+  font-size: 11px;
+  margin-left: 6px;
+}

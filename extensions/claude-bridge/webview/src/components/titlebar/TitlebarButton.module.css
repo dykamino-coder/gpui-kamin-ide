@@ -1,0 +1,53 @@
+.btn {
+  width: 36px;
+  height: 36px;
+  margin: 4px 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  -webkit-app-region: no-drag;
+  border-radius: 50%;
+}
+
+/* Force every icon glyph into a uniform 16×16 inline-flex slot so
+   different FontAwesome icons (bug / minus / square / xmark — all of
+   which have different intrinsic bounding boxes) sit on the same
+   baseline. Without this, flex-centering them as inline elements lets
+   each one's own metrics drift vertically. */
+.btn > i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+}
+
+.btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.close:hover {
+  background: var(--accent-red);
+  color: var(--bg-primary);
+}
+
+.devtools {
+  font-size: 12px;
+  width: auto;
+  padding: 0 14px;
+  gap: 6px;
+  border-radius: var(--radius-md);
+}
+
+.devtools:hover {
+  background: var(--bg-surface);
+  color: var(--accent-primary);
+}

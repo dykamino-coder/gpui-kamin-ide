@@ -1,0 +1,80 @@
+.container {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  flex: 1;
+  padding: 12px;
+  min-height: 0;
+}
+
+/* History-still-loading bar: sticks to the top of the chat while older turns
+   stream in behind the already-painted tail. Unobtrusive by design — the chat
+   is usable, this is a background cue, not a blocker. */
+.replayBar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 3px;
+  margin: -12px -12px 8px;
+  background: color-mix(in srgb, var(--text-disabled) 22%, transparent);
+  overflow: visible;
+}
+.replayBarFill {
+  height: 100%;
+  background: var(--accent-primary, #6c8cff);
+  transition: width 180ms ease-out;
+}
+.replayBarText {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-disabled);
+  background: var(--bg-surface, rgba(0, 0, 0, 0.35));
+  padding: 1px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .replayBarFill { transition: none; }
+}
+
+/* Virtual-scroll via browser content-visibility:
+   off-screen entries skip layout+paint but remain in DOM for Ctrl+F/a11y.
+   contain-intrinsic-size reserves an estimated height so scrollbar stays stable. */
+.entryWrapper {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
+}
+
+/* The actively-streaming assistant entry MUST keep painting as its text grows.
+   With content-visibility:auto the browser skips paint for an entry it deems
+   off-screen, so a live turn's word-by-word deltas update the DOM but never
+   repaint — the whole answer then appears at once only when a structural change
+   (the canonical JSONL entry) forces layout. Opting the live entry out of
+   content-visibility makes streaming actually animate. Negligible cost: it's a
+   single entry, and the flag is dropped the moment the turn finalizes. */
+.liveEntry {
+  content-visibility: visible;
+  contain-intrinsic-size: auto;
+}
+
+/* The inner card (.jsonl-entry, legacy-global.css) has its OWN
+   content-visibility:auto — the wrapper exemption above isn't enough, so the
+   live turn's growing card could still clamp to its 80px placeholder and skip
+   painting mid-stream. Lift both layers for the in-flight turn. */
+.liveEntry :global(.jsonl-entry) {
+  content-visibility: visible;
+  contain-intrinsic-size: auto;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-disabled);
+}

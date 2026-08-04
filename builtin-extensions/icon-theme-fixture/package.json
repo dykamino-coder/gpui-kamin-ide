@@ -1,0 +1,17 @@
+{
+  "name": "icon-theme-fixture",
+  "displayName": "Fixture Icons (built-in)",
+  "publisher": "dykamino-studio",
+  "version": "0.0.1",
+  "description": "Smoke-test file-icon theme. Contributes contributes.iconThemes with distinctive SVGs so B10 icon resolution (file/extension/folder/rootFolder) can be verified live in the tree.",
+  "engines": { "vscode": "^1.95.0" },
+  "contributes": {
+    "iconThemes": [
+      {
+        "id": "fixture-icons",
+        "label": "Fixture Icons",
+        "path": "./theme/fixture-icon-theme.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 16px 24px 24px;
+  overflow-y: auto;
+  flex: 1;
+  align-content: start;
+}
+
+/* Native virtualization: a big marketplace can render 400+ cards, and laying
+   out / painting every one on open janks the panel. content-visibility:auto
+   lets the engine SKIP layout + paint for cards scrolled out of view while
+   still reserving their scroll height via contain-intrinsic-size (which the
+   `auto` keyword upgrades to the real measured height once a card has been
+   rendered once). Zero JS, handles the variable card heights (badges /
+   sub-plugins / clone errors) gracefully, and degrades to a normal grid on
+   engines without support. ~180px is the typical collapsed card height. */
+.grid > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
+}

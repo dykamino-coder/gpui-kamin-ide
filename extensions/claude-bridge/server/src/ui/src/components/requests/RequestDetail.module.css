@@ -1,0 +1,25 @@
+.grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;
+}
+.field { display: flex; flex-direction: column; gap: 4px; }
+.label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; }
+.value { font-size: 14px; font-weight: 500; color: var(--text-primary); font-family: var(--font-mono); }
+
+.section { margin-top: 16px; }
+.sectionTitle { font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 0 0 10px; }
+.tools { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.errorBlock {
+  background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-md); padding: 12px; font-size: 12px;
+  font-family: var(--font-mono); color: var(--accent-red);
+  overflow-x: auto; white-space: pre-wrap; margin: 0;
+}
+
+.codeBlock {
+  background: var(--bg-tertiary); border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md); padding: 12px; font-size: 12px;
+  font-family: var(--font-mono); color: var(--text-primary);
+  overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: 0;
+  line-height: 1.5;
+}

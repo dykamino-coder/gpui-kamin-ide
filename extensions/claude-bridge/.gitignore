@@ -1,0 +1,9 @@
+# Webview build project — source lives here, but its node_modules + intermediate
+# dist must NEVER ship in the runtime payload (only the built webview.html, which
+# is copied into builtin-extensions/claude-bridge/, is committed).
+webview/node_modules/
+webview/dist/
+
+# Extension host build project — node_modules never ships (only the bundled
+# extension.js, committed into builtin-extensions/claude-bridge/).
+extension/node_modules/

@@ -1,0 +1,6 @@
+[package]
+name = "kamin-metrics"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

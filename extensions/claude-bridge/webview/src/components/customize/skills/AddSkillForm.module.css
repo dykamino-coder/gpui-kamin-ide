@@ -1,0 +1,60 @@
+.form {}
+
+.header {
+  margin-bottom: 16px;
+}
+
+.header h2 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+}
+
+.input {
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-overlay);
+  color: var(--text-primary);
+  padding: 6px 10px;
+  border-radius: var(--radius-xs);
+  width: 100%;
+  margin: 4px 0 10px 0;
+  font-size: 12px;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--accent-primary);
+}
+
+.textarea {
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-overlay);
+  color: var(--text-primary);
+  padding: 6px 10px;
+  border-radius: var(--radius-xs);
+  width: 100%;
+  margin: 4px 0 10px 0;
+  font-size: 12px;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.grow {
+  flex: 1;
+}

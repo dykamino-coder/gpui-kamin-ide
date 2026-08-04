@@ -1,0 +1,329 @@
+.bar {
+  display: flex;
+  align-items: stretch;
+  height: 42px;
+  width: 100%;
+  flex: 1;
+  min-width: 0;
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+
+.strip {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 10px;
+  margin: 6px 1px;
+  /* Chrome-style: share width, shrink as more tabs open. flex-basis is the
+     "natural" size, min-width the floor. Once we hit the floor with no room
+     to grow, the parent .strip becomes overflowed and arrows appear. */
+  flex: 1 1 180px;
+  min-width: 44px;
+  max-width: 240px;
+  background: var(--bg-mantle);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+}
+
+.tab:first-child {
+  margin-left: 6px;
+}
+
+.tab:last-child {
+  margin-right: 6px;
+}
+
+.tab:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--bg-surface);
+  /* Active tab gets a slightly larger base so it keeps breathing room when
+     siblings shrink. It still shrinks, but wins a bit of the pixel war. */
+  flex-basis: 220px;
+  min-width: 60px;
+}
+
+/* Tinted tabs — sessions with a pinned/auto-derived agent colour. The
+   colour is exposed as `--tab-color` on each tab; the gradient + border
+   are computed from it so the cue replaces the old text-colour swap. */
+.tab.tinted {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--tab-color) 15%, transparent),
+    color-mix(in srgb, var(--tab-color) 8%, transparent)
+  );
+}
+.tab.tinted.active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--tab-color) 22%, transparent),
+    color-mix(in srgb, var(--tab-color) 12%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--tab-color) 45%, transparent);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.close {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity .12s, background .12s, color .12s;
+}
+
+.tab:hover .close,
+.active .close {
+  opacity: 1;
+}
+
+/* When tabs have shrunk past the point where the label is readable (<90px),
+   collapse the close button to the active tab only so inactive tabs keep
+   their title visible as long as possible. Users can still close via the
+   context menu or by activating first. */
+.tab:not(.active) {
+  container-type: inline-size;
+}
+@container (max-width: 88px) {
+  .close {
+    display: none;
+  }
+}
+
+.close:hover {
+  background: var(--accent-red);
+  color: var(--bg-primary);
+}
+
+/* .leading = dot+pin swap slot on the left of each tab. The dot is the
+   default affordance (status colour / working pulse). On hover the dot
+   hides and the pin button takes its spot — click to pin. A pinned tab
+   shows the pin permanently (dot hidden). */
+.leading {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.leading .dot { position: absolute; inset: 0; margin: auto; }
+.pin {
+  position: absolute;
+  inset: 0;
+  width: 16px;
+  height: 16px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  transition: color .12s, background .12s;
+}
+.pin > i {
+  display: inline-block;
+  transform: rotate(45deg);
+  transition: transform .18s;
+}
+.tab:hover .pin { display: flex; }
+.tab:hover .dot { display: none; }
+.pin:hover { color: var(--tab-color, var(--accent-yellow)); background: color-mix(in srgb, var(--tab-color, var(--accent-yellow)) 12%, transparent); }
+
+.tab.pinned .pin { display: flex; color: var(--tab-color, var(--accent-yellow)); }
+.tab.pinned .pin > i { transform: rotate(0deg); }
+.tab.pinned .dot { display: none; }
+
+/* DnD visual feedback */
+.dndDragging { opacity: 0.45; }
+.dndOverLeft { box-shadow: inset 3px 0 0 0 var(--accent-primary); }
+.dndOverRight { box-shadow: inset -3px 0 0 0 var(--accent-primary); }
+
+/* Sleeping tab — pinned session whose server side is disconnected / closed
+   (ghost). Still visible so the user can click to reconnect/resume. */
+.sleeping {
+  background: transparent;
+  color: var(--text-disabled);
+  border-color: transparent;
+}
+.sleeping .dot { background: var(--bg-overlay) !important; animation: none !important; }
+.sleeping.pinned .pin { color: var(--text-disabled); }
+.sleeping .label { color: var(--text-disabled) !important; }
+.sleeping:hover { color: var(--text-secondary); background: var(--bg-primary); }
+
+.arrow {
+  width: 28px;
+  min-width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-sidebar);
+  border: none;
+  border-right: 1px solid var(--bg-mantle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  transition: background .12s, color .12s;
+  flex-shrink: 0;
+}
+.arrow:last-child {
+  border-right: none;
+  border-left: 1px solid var(--bg-mantle);
+}
+
+.arrow:hover:not(:disabled) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.arrowDisabled,
+.arrow:disabled {
+  color: var(--bg-overlay);
+  cursor: default;
+}
+
+/* "New tab" affordance pinned right after the strip. Idle state is
+   muted to match inactive tab chrome (low-saturation bg, secondary
+   text colour) so it doesn't compete visually with the tab row. On
+   hover it lights up to the full accent tint — same as Chrome's
+   focus-on-action pattern. */
+.newTabButton {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 6px 6px 6px;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  transition: background 120ms, transform 120ms, color 120ms;
+  -webkit-app-region: no-drag;
+}
+.newTabButton:hover {
+  background: color-mix(in srgb, var(--accent-primary) 36%, var(--bg-surface));
+  color: var(--accent-primary);
+  transform: scale(1.06);
+}
+.newTabButton:active {
+  transform: scale(0.96);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.ctxMenu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 180px;
+  background: var(--bg-primary);
+  border: 1px solid var(--bg-surface);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-tab);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12px;
+}
+
+.ctxItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  transition: background .12s, color .12s;
+}
+
+.ctxItem > i {
+  width: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.ctxItem:hover:not(:disabled) {
+  background: var(--bg-surface);
+}
+
+.ctxItem:disabled {
+  color: var(--bg-overlay);
+  cursor: default;
+}
+
+.ctxItem:disabled > i {
+  color: var(--bg-overlay);
+}
+
+.ctxDanger:hover:not(:disabled) {
+  background: var(--tint-red-medium);
+  color: var(--accent-red);
+}
+
+.ctxDanger:hover:not(:disabled) > i {
+  color: var(--accent-red);
+}

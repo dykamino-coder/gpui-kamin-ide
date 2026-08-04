@@ -1,0 +1,9 @@
+[package]
+name = "kamin-ws"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tungstenite = "0.30"

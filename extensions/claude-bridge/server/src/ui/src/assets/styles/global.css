@@ -1,0 +1,22 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+body {
+  font-family: var(--font-sans); font-size: var(--text-base);
+  line-height: var(--leading-normal); color: var(--text-primary);
+  background: var(--canvas-bg); min-height: 100vh; overflow: hidden;
+}
+#app { height: 100vh; display: flex; }
+a { color: var(--accent-blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+::-webkit-scrollbar { width: calc(var(--scrollbar-width) + 6px); height: var(--scrollbar-width); }
+::-webkit-scrollbar-track { background: transparent; margin: 8px 0; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb); border-radius: 99px;
+  border-left: 2px solid transparent; border-right: 4px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); background-clip: padding-box; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+@keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+@keyframes slideInUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }

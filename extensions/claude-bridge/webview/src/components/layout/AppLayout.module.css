@@ -1,0 +1,17 @@
+.appWrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 1200px 600px at 20% 10%, color-mix(in srgb, var(--accent-purple) 8%, transparent), transparent 60%),
+    radial-gradient(ellipse 800px 500px at 90% 90%, color-mix(in srgb, var(--accent-primary) 6%, transparent), transparent 60%),
+    var(--bg-sidebar);
+}
+
+.body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+}

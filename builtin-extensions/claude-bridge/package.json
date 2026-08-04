@@ -1,0 +1,72 @@
+{
+  "name": "claude-bridge",
+  "displayName": "Claude Bridge",
+  "publisher": "dykamino-studio",
+  "version": "6.3.1",
+  "description": "Claude Bridge as a KaminIDE extension — the client (UI + MCP tool execution) that talks to the Bridge server (container) over WS. Port of the Electron app; server is unchanged.",
+  "engines": { "vscode": "^1.95.0" },
+  "main": "./extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "claudeBridge", "title": "Claude Bridge", "icon": "comment-discussion" }
+      ],
+      "auxiliarybar": [
+        { "id": "claudeBridgePlan", "title": "Bridge Plan", "icon": "list-tree" },
+        { "id": "claudeBridgeTodos", "title": "Bridge Todos", "icon": "checklist" },
+        { "id": "claudeBridgeAgents", "title": "Bridge Agents", "icon": "organization" },
+        { "id": "claudeBridgeToolsUsage", "title": "Bridge Tools", "icon": "tools" },
+        { "id": "claudeBridgeConsole", "title": "Bridge Console", "icon": "terminal" }
+      ],
+      "customize": [
+        { "id": "claudeBridgeCustomize", "title": "Claude Bridge", "icon": "comment-discussion" }
+      ]
+    },
+    "views": {
+      "claudeBridge": [
+        { "id": "claudeBridgeChat", "name": "Claude", "type": "webview" }
+      ],
+      "claudeBridgePlan": [
+        { "id": "claudeBridgePlanView", "name": "Plan", "type": "webview" }
+      ],
+      "claudeBridgeTodos": [
+        { "id": "claudeBridgeTodosView", "name": "Todos", "type": "webview" }
+      ],
+      "claudeBridgeAgents": [
+        { "id": "claudeBridgeAgentsView", "name": "Agents", "type": "webview" }
+      ],
+      "claudeBridgeToolsUsage": [
+        { "id": "claudeBridgeToolsUsageView", "name": "Tools", "type": "webview" }
+      ],
+      "claudeBridgeConsole": [
+        { "id": "claudeBridgeConsoleView", "name": "Console", "type": "webview" }
+      ],
+      "claudeBridgeCustomize": [
+        { "id": "claudeBridgeCzSettings", "name": "Settings", "type": "webview", "icon": "settings-gear" },
+        { "id": "claudeBridgeCzSkills", "name": "Skills", "type": "webview", "icon": "sparkle" },
+        { "id": "claudeBridgeCzAgents", "name": "Agents", "type": "webview", "icon": "organization" },
+        { "id": "claudeBridgeCzMcp", "name": "MCP Servers", "type": "webview", "icon": "plug" },
+        { "id": "claudeBridgeCzHooks", "name": "Hooks", "type": "webview", "icon": "link" },
+        { "id": "claudeBridgeCzPlugins", "name": "Plugins", "type": "webview", "icon": "extensions" },
+        { "id": "claudeBridgeCzMonitors", "name": "Monitors", "type": "webview", "icon": "pulse" },
+        { "id": "claudeBridgeCzSync", "name": "Synced data", "type": "webview", "icon": "cloud" },
+        { "id": "claudeBridgeCzLogs", "name": "Logs", "type": "webview", "icon": "output" },
+        { "id": "claudeBridgeCzStats", "name": "Stats", "type": "webview", "icon": "graph" }
+      ]
+    },
+    "commands": [
+      { "command": "claude-bridge.openChat", "title": "Open Chat", "category": "Claude Bridge" },
+      { "command": "claude-bridge.openTools", "title": "Open Plan/Todos/Agents", "category": "Claude Bridge" },
+      { "command": "claude-bridge.reconnect", "title": "Reconnect to Bridge server", "category": "Claude Bridge" }
+    ],
+    "themes": [
+      {
+        "id": "claude-bridge-dark",
+        "label": "Claude Bridge Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/claude-bridge-dark.json"
+      }
+    ]
+  }
+}

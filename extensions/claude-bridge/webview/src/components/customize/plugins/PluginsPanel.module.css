@@ -1,0 +1,114 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.topSection {
+  padding: 20px 24px 0;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: var(--fs-lg);
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.placeholder {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 40px;
+  color: var(--text-disabled);
+}
+
+/* Loader row — the outer flexbox centers the whole widget horizontally,
+   but inside we PIN the spinner + "Loading" word to the left of a
+   fixed-width slot so the text doesn't jitter while the counter and
+   current-plugin name change. Monospaced counter column keeps digits
+   tracking, and the plugin-name column is left-aligned + ellipsis. */
+.loaderRow {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  padding: 40px 16px;
+  color: var(--text-disabled);
+}
+.loaderInner {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  align-items: center;
+  gap: 8px;
+  max-width: 520px;
+  width: 100%;
+  font-size: 13px;
+}
+.loaderLabel {
+  color: var(--text-disabled);
+}
+.loaderCounter {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  min-width: 70px;
+  text-align: right;
+  font-weight: 500;
+}
+.loaderCurrent {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  padding-left: 4px;
+  border-left: 1px solid var(--bg-surface);
+}
+
+/* Non-blocking background-refresh bar (cache already shown; content stays live). */
+.bgBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 22px;
+  margin: 0 0 6px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  overflow: hidden;
+}
+.bgBarFill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: color-mix(in srgb, var(--accent-primary) 22%, transparent);
+  transition: width 0.2s ease;
+  pointer-events: none;
+}
+.bgBarFill[data-indeterminate] {
+  width: 30% !important;
+  animation: bgBarSlide 1.1s ease-in-out infinite;
+}
+@keyframes bgBarSlide {
+  0% { left: -30%; }
+  100% { left: 100%; }
+}
+.bgBarLabel {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs, 11px);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bgBarLabel > i { font-size: 10px; }

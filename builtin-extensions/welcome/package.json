@@ -1,0 +1,16 @@
+{
+  "name": "welcome",
+  "displayName": "Welcome (built-in)",
+  "publisher": "dykamino-studio",
+  "version": "0.0.1",
+  "description": "Default activity-bar containers and a couple of host commands so the activity bar isn't entirely empty in Phase A.",
+  "engines": { "vscode": "^1.95.0" },
+  "main": "./extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [
+      { "command": "welcome.openWelcome", "title": "Open Welcome", "category": "Welcome" },
+      { "command": "welcome.about", "title": "About KaminIDE", "category": "Welcome" }
+    ]
+  }
+}

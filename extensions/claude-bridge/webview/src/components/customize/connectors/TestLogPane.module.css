@@ -1,0 +1,112 @@
+.pane {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--bg-surface);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sidebar);
+  overflow: hidden;
+  min-height: 200px;
+  max-height: 400px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-mantle);
+  border-bottom: 1px solid var(--bg-surface);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.title {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.count {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.spacer { flex: 1; }
+
+.btn {
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--bg-overlay);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-overlay);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 6px 0;
+}
+
+.empty {
+  color: var(--text-disabled);
+  padding: 12px;
+  font-style: italic;
+  text-align: center;
+  font-family: inherit;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 88px 60px 1fr;
+  gap: 8px;
+  padding: 1px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.row:hover {
+  background: var(--bg-primary);
+}
+
+.ts {
+  color: var(--text-disabled);
+}
+
+.level {
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  padding-top: 1px;
+  color: var(--text-muted);
+}
+
+.msg {
+  color: var(--text-primary);
+}
+
+/* Level-specific coloring for the `msg` column only — the timestamp stays
+   muted so the eye tracks time first and severity second. */
+.lvl-info .level { color: var(--accent-primary); }
+.lvl-warn .level { color: var(--accent-yellow); }
+.lvl-warn .msg { color: var(--accent-yellow); }
+.lvl-error .level { color: var(--accent-red); }
+.lvl-error .msg { color: var(--accent-red); }
+.lvl-stderr .level { color: var(--accent-orange); }
+.lvl-stderr .msg { color: var(--accent-orange); }
+.lvl-stdout .level { color: var(--accent-teal); }

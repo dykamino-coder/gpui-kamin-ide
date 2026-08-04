@@ -1,0 +1,14 @@
+{
+  "iconDefinitions": {
+    "_file": { "iconPath": "../icons/file.svg" },
+    "_ts": { "iconPath": "../icons/ts.svg" },
+    "_folder": { "iconPath": "../icons/folder.svg" },
+    "_folderOpen": { "iconPath": "../icons/folder-open.svg" },
+    "_root": { "iconPath": "../icons/root.svg" }
+  },
+  "file": "_file",
+  "folder": "_folder",
+  "folderExpanded": "_folderOpen",
+  "rootFolder": "_root",
+  "fileExtensions": { "ts": "_ts" }
+}

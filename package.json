@@ -1,0 +1,49 @@
+{
+  "name": "kaminide-host",
+  "publisher": "dykamino-studio",
+  "version": "1.0.8",
+  "private": true,
+  "description": "KaminIDE node side: kamin-host sidecar + VS Code-compatible extension host + Claude Bridge (extension/webview/server). Shell = Rust/gpui (crates/).",
+  "author": "Dykamino Studio",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "build:host": "vite build --config vite.kamin-host.standalone.config.ts",
+    "build:payload": "node scripts/build-runtime-payload.mjs"
+  },
+  "dependencies": {
+    "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
+    "chokidar": "^5.0.0",
+    "jsonc-parser": "^3.3.1",
+    "minimatch": "^10.0.1",
+    "tm-grammars": "^1.31.15",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2",
+    "vscode-uri": "^3.0.8",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/node": "^25.6.0",
+    "@types/vscode": "^1.95.0",
+    "@types/ws": "^8.18.1",
+    "eslint": "^10.3.0",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import-x": "^4.16.2",
+    "tar": "^7.5.16",
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.13.0",
+    "vite": "^7.3.3",
+    "vitest": "^4.1.5"
+  }
+}

@@ -1,0 +1,4 @@
+/* InputBar module CSS — layout styles extend the global .input-bar classes from index.html */
+.inputBar {
+  composes: input-bar from global;
+}

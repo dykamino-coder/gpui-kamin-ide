@@ -1,0 +1,56 @@
+/* Toggle switch — the premium replacement for raw <input type=checkbox>. The
+   whole row is the button (one hit target, keyboard-operable); the track is a
+   visual span driven by the `.on` class. */
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.row.disabled { opacity: 0.5; cursor: default; }
+
+.track {
+  position: relative;
+  flex-shrink: 0;
+  margin-top: 1px;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--divider-soft, var(--bg-overlay));
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.track.on {
+  background: var(--accent-action);
+  border-color: var(--accent-action);
+}
+.row:focus-visible .track {
+  outline: 2px solid var(--accent-action);
+  outline-offset: 2px;
+}
+
+.thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+.track.on .thumb {
+  transform: translateX(14px);
+  background: var(--bg-primary);
+}
+
+.body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.label { font-size: var(--fs-md, 13px); color: var(--text-primary); }
+.desc { font-size: var(--fs-xs, 11px); color: var(--text-muted); line-height: 1.5; }

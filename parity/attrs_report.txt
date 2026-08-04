@@ -1,0 +1,11 @@
+78-customize-content-panel: ours �� ���������: �����, �����
+79-design-panel-shell: ours �� ���������: �����
+80-logs-panel: ours �� ���������: ����������
+81-system-log-panel: ours �� ���������: ����������
+82-settings-panel: ours �� ���������: �����, ������
+85-extension-row: ours �� ���������: �����
+86-problems-panel: ours �� ���������: �����, ����������
+89-terminal-toolbar: ours �� ���������: ����������
+90-terminal-shell-menu: ours �� ���������: ����������
+
+����������� �������: 150/159

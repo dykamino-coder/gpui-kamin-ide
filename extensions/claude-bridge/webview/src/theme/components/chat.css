@@ -1,0 +1,9 @@
+/* Chat family — chat panel container, message bubbles, input bar, prompts.
+ *
+ * E3 scaffolding (Sprint 5 / Stage E3). Currently EMPTY — rules still live
+ * in `theme/legacy-global.css`. Selectors that belong here when migrated:
+ *   `.chat-panel`, `.chat-header`, `.chat-header-row`,
+ *   `.input-bar`, `.input-wrapper`, `.input-textarea-row`, `#prompt-input`,
+ *   `.message-*`, `.attachment-*`.
+ *
+ * 24 rules total as of placeholder creation. */

@@ -1,0 +1,84 @@
+.container {}
+
+.header {
+  margin-bottom: 20px;
+}
+
+.header h2 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-disabled);
+  margin-top: 4px;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  background: var(--bg-surface);
+  color: var(--accent-primary);
+}
+
+.badgeConfig {
+  color: var(--accent-yellow);
+}
+
+.badgePlugin {
+  color: var(--accent-green);
+}
+
+.badgeAuto {
+  color: var(--text-muted);
+}
+
+.description {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.sourcePath {
+  margin-top: 4px;
+  color: var(--text-disabled);
+  font-size: 11px;
+  word-break: break-all;
+  cursor: pointer;
+}
+
+.sourcePath:hover {
+  color: var(--accent-primary);
+}
+
+.section {
+  margin-top: 20px;
+}
+
+.section h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.toolsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-3);
+  align-items: stretch;
+}
+
+.nativeNote {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--text-disabled);
+}

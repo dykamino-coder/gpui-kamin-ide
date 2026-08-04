@@ -1,0 +1,156 @@
+/* Two-column layout — bleeds to modal body edges */
+.layout {
+  display: flex;
+  height: 560px;
+  margin: -20px;
+  overflow: hidden;
+  border-radius: 0 0 var(--island-radius, 12px) var(--island-radius, 12px);
+}
+
+/* ── Left nav ─────────────────────────────────────────── */
+.nav {
+  width: 196px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+.navStats {
+  padding: 10px 12px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-secondary);
+  flex-shrink: 0;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  white-space: nowrap;
+}
+.navItem:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.navItem.navActive {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.navItem.navUsed .navName {
+  color: var(--accent-green, #22c55e);
+}
+
+.navName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-green, #22c55e);
+  flex-shrink: 0;
+}
+
+/* ── Right content ────────────────────────────────────── */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-tertiary);
+  scroll-margin-top: 8px;
+}
+
+.item.used {
+  border-color: var(--accent-green, #22c55e);
+  background: var(--accent-green-bg, rgba(34, 197, 94, 0.06));
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.usedBadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--accent-green-bg, rgba(34, 197, 94, 0.15));
+  color: var(--accent-green, #22c55e);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.desc {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.schema::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.schema {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}

@@ -1,0 +1,84 @@
+[package]
+name = "kaminide-gpui"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "kaminide-gpui"
+path = "src/main.rs"
+
+[features]
+# probe = debug-RPC (plan/96 §0); в release-дистрибутив не входит
+default = ["probe"]
+probe = ["dep:kamin-probe"]
+
+[dependencies]
+# Веб-содержимое (plan/101): offscreen-браузер вместо окон WebView2.
+# default-features off: `sandbox` на Windows меняет тип цели, `build-util` тянет clap.
+cef = { version = "150", default-features = false }
+# Кадр CEF заворачиваем в RenderImage gpui — тип кадра берём из image той же версии.
+image = { version = "0.25", default-features = false }
+# Пре-декод SVG-иконок дерева (icon_raster) — та же версия, что в vendored gpui.
+resvg = { version = "0.45.0", default-features = false }
+usvg = { version = "0.45.0", default-features = false }
+lsp-types = { version = "0.97.0", features = ["proposed"] }
+gpui.workspace = true
+gpui-component.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+mimalloc.workspace = true
+smol = "2"
+kamin-model.workspace = true
+kamin-sidecar.workspace = true
+kamin-ws.workspace = true
+kamin-metrics.workspace = true
+kamin-theme.workspace = true
+kamin-probe = { workspace = true, optional = true }
+# data:-иконки расширений (`isImageIcon`)
+base64 = "0.22.1"
+# radial-bg бейк + probe-скриншоты
+png = "0.18"
+# window_handle() для wry build_as_child (вебвью-оверлей)
+raw-window-handle = "0.6"
+serde = { workspace = true, features = ["derive"] }
+notify = "8.2.0"
+portable-pty = "0.9.0"
+alacritty_terminal = "0.26.0"
+trash = "5.2.6"
+ureq = "3.3.0"
+# when-clause движок (=~ /regex/)
+regex = "1.13.1"
+rfd = "0.17.2"
+arboard = "3.6.1"
+open = "5.4.0"
+
+[target.'cfg(windows)'.dependencies]
+# Visual hosting (plan/97): CompositionController поверх dcomp-underlay
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_JobObjects",         # общий Job: дети CEF умирают с главным
+  "Win32_System_Threading",          # GetCurrentProcess для Job
+  "Win32_Graphics_Gdi",
+  "Win32_Storage_Xps",        # PrintWindow живёт здесь
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input_KeyboardAndMouse", # SendInput (probe click/drag)
+  "Win32_UI_HiDpi",                  # GetDpiForWindow
+  "Win32_System_DataExchange",       # клипборд CF_HDROP
+  "Win32_System_Memory",
+  "Win32_System_Ole",
+  "Win32_UI_Shell",                  # DragQueryFileW
+  "Win32_Graphics_Direct3D11",       # общая текстура кадра CEF (plan/101)
+  "Win32_System_Diagnostics_Debug",  # отчёт о падении (crash_report)
+  "Win32_System_Kernel",             # перехватчик исключений
+  "Win32_System_Threading",          # текущий процесс для символов
+  "Win32_System_LibraryLoader",      # имя модуля по адресу падения
+  "Win32_Graphics_Dxgi_Common",
+] }
+
+[dev-dependencies]
+# VisualTestContext/TestAppContext доступны только с test-support
+gpui = { workspace = true, features = ["test-support"] }
+
+[build-dependencies]
+# Иконка и VERSIONINFO в exe — иначе диспетчер задач показывает пустой квадрат.
+winres = "0.1"

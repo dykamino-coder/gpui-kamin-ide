@@ -1,0 +1,121 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--bg-surface);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.toggle:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--bg-overlay);
+}
+
+.toggle > i {
+  font-size: 9px;
+  width: 9px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--bg-surface);
+  border-radius: var(--radius-sm);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.error {
+  color: var(--accent-yellow);
+  font-size: 11px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.itemList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  border-left: 2px solid var(--bg-surface);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.item:hover {
+  background: var(--tint-surface-soft);
+  border-left-color: var(--bg-overlay);
+}
+
+.itemName {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.itemDesc {
+  color: var(--text-secondary);
+  font-size: 10px;
+  margin-top: 1px;
+}
+
+.mcpList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mcpBadge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--tint-yellow-medium);
+  color: var(--accent-yellow);
+  font-family: var(--font-mono);
+}

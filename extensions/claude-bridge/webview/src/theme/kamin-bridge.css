@@ -1,0 +1,91 @@
+/* KaminIDE theme bridge. The Bridge content must sit FLUSH on the KaminIDE panel
+   surface — transparent, no nested cards/borders (user: "прозрачный и без
+   бордера") — and follow the IDE theme via the injected `--vscode-*` vars (see
+   kamin-ide src/renderer/components/file-viewer/webview-theme.ts). Imported LAST
+   so it wins over dark/light-theme.css at equal specificity.
+
+   Mapped under BOTH [data-theme] selectors (apply-theme sets data-theme from the
+   injected vscode-dark/light class). */
+
+[data-theme="dark"],
+[data-theme="light"] {
+  /* Big surfaces → the KaminIDE panel colour (same as the body), so the Bridge
+     merges seamlessly (looks transparent) WITHOUT going literally `transparent`.
+     transparent broke two things: an opaque iframe showed black behind it, and
+     components reuse --bg-primary/--bg-mantle as the ON-ACCENT text colour (it
+     must stay a solid panel colour that contrasts the accent + flips with theme). */
+  --bg-primary: var(--vscode-editor-background, #313240);
+  --bg-base: var(--vscode-editor-background, #313240);
+  --bg-mantle: var(--vscode-editor-background, #262533);
+  --bg-sidebar: var(--vscode-editor-background, #1d1d28);
+
+  /* Elevated surfaces (popovers, dropdowns, cards, inputs) MUST be SOLID — the
+     effort/model menus + tooltips use these; translucent values let the chat
+     bleed through. Map to opaque IDE surface colours, solid hex fallbacks. */
+  --bg-surface: var(--vscode-menu-background, var(--vscode-dropdown-background, var(--vscode-editorWidget-background, #3d3f51)));
+  --bg-overlay: var(--vscode-editorWidget-background, var(--vscode-dropdown-background, #515567));
+  --bg-surface-hover: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground, #3b3b52));
+  --bg-overlay-hover: var(--vscode-list-hoverBackground, #3e3e56);
+
+  /* Text → IDE foreground ramp. */
+  --text-primary: var(--vscode-foreground, #cfd4e2);
+  --text-subtext: var(--vscode-foreground, #afb6ca);
+  --text-secondary: var(--vscode-descriptionForeground, #adb3c7);
+  --text-muted: var(--vscode-descriptionForeground, #838aa0);
+  --text-disabled: var(--vscode-disabledForeground, #60667b);
+  --text-muted-2: var(--vscode-descriptionForeground, #7f849c);
+  --text-muted-light: var(--vscode-foreground, #acb2d2);
+
+  /* Primary CTA → VS Code button colors. */
+  --accent-action: var(--vscode-button-background, #89b4fa);
+  --accent-action-hover: var(--vscode-button-hoverBackground, #74c7ec);
+  --accent-action-fg: var(--vscode-button-foreground, #313240);
+  --accent-primary: var(--vscode-focusBorder, #89b4fa);
+
+  /* No borders/dividers carving up the panel. */
+  --divider-soft: transparent;
+
+  /* CLI terminal (Bridge Console tool) paints the SAME surface as KaminIDE's
+     native terminal: its xterm reads `--editor-bg/-fg/-cursor` (injected by
+     webview-theme.ts). Mirror them onto our `--term-*` tokens so buildTerminalTheme
+     produces an identical console look. */
+  --term-bg: var(--editor-bg, #1d1c25);
+  --term-fg: var(--editor-fg, #dcdce4);
+  --term-cursor: var(--editor-cursor, #a0a0d0);
+}
+
+/* The injected theme block adds `html,body{padding:0 20px}` for plain webviews;
+   the Bridge owns its own layout — drop the gutter. webview-overrides.css keeps
+   html/body transparent so the IDE panel shows through. */
+html,
+body {
+  padding: 0;
+}
+
+/* The JSONL container's 8px padding pushed the empty state ~16px past its scroll
+   area → a phantom vertical scrollbar with no content. Fold padding into the
+   flex height. */
+.chat-panel > div {
+  box-sizing: border-box;
+}
+
+/* Chat input box must READ AS A DISTINCT, ELEVATED SURFACE above the chat log —
+   exactly like KaminIDE's native dark theme, where the input sits on `--bg-surface`
+   (#3d3f51) a clear step above the chat's `--bg-primary` (#313240). Contributed
+   themes (e.g. Bridge Dark) collapse `--bg-mantle`/`--bg-primary`/`--editor-bg`
+   all onto the single `editor.background` key, flattening that hierarchy so the
+   input vanished into the log. `input.background` (#161b22) sits only ~9/channel
+   above `editor.background` (#0d1117) — too close to read as separate. Use
+   `editorWidget.background` (#21262d, ~20/channel above) to restore the same
+   visible elevation Kamin has, in BOTH enabled and disabled states. */
+.input-bar .input-wrapper,
+.input-bar.disabled .input-wrapper {
+  background: var(--vscode-editorWidget-background, #21262d);
+}
+
+/* User messages read as a distinct SUB-CARD (like the original) — its `--bg-base`
+   maps to the editor bg in KaminIDE, same as the chat surface, so the bubble
+   would blend in. Give it the elevated input surface so it stands out. */
+.jsonl-entry-user {
+  background: var(--vscode-input-background, #3d3f51);
+}

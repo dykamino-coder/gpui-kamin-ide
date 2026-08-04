@@ -1,0 +1,70 @@
+.panel {
+  width: 500px;
+  min-width: 200px;
+  max-width: 60vw;
+  display: none;
+  flex-direction: column;
+  margin: 6px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-sidebar);
+  position: relative;
+}
+
+.visible {
+  display: flex;
+}
+
+.terminalArea {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+}
+
+.xtermContainer {
+  position: absolute;
+  inset: 0;
+  padding: 4px;
+}
+
+.xtermContainer :global(.xterm) {
+  height: 100%;
+}
+
+/* "Connecting to session…" cover shown until the terminal gets its first
+   content (snapshot restore or first PTY chunk) — so a fresh session's attach
+   window reads as connecting, not a dead black surface. */
+.connecting {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--editor-bg, var(--bg-mantle, #262533));
+  color: var(--text-muted, #838aa0);
+  font-size: var(--fs-sm, 12px);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.resizeHandle {
+  width: 4px;
+  background: var(--bg-surface);
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  align-self: stretch;
+  position: relative;
+  /* Above the right-panel column's left-edge invisible drag handle so a
+     user grabbing the chat/terminal split is never intercepted by the
+     plan-files column when both are visible. */
+  z-index: 10;
+}
+
+.resizeHandle:hover,
+.resizeHandleDragging {
+  background: var(--accent-primary);
+}

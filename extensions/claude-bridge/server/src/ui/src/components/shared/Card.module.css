@@ -1,0 +1,23 @@
+.card {
+  background: var(--bg-secondary);
+  border: var(--island-border);
+  border-radius: var(--island-radius);
+  box-shadow: var(--island-shadow);
+  padding: 16px;
+  transition: all var(--transition-fast);
+}
+
+.noPadding { padding: 0; }
+
+.hoverable:hover {
+  border-color: var(--border-tertiary);
+  box-shadow: var(--shadow-md);
+}
+
+.clickable { cursor: pointer; }
+.clickable:active { transform: scale(0.99); }
+
+.selected {
+  border-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.03);
+}
