@@ -21,21 +21,27 @@ pub fn klog(msg: &str) {
 }
 
 fn quiet(cmd: &str, args: &[&str]) -> Result<i32> {
+    let st = quiet_cmd(cmd, args).status().with_context(|| format!("spawn {cmd}"))?;
+    Ok(st.code().unwrap_or(-1))
+}
+
+/// Команда с подавленным консольным окном — ЕДИНСТВЕННЫЙ способ порождать
+/// процессы в инсталлере (юзер: «много консолей вспыхивало»). reg-query и
+/// tasklist раньше звались напрямую и мигали окнами.
+fn quiet_cmd(cmd: &str, args: &[&str]) -> Command {
     #[cfg(windows)]
     use std::os::windows::process::CommandExt as _;
     let mut c = Command::new(cmd);
     c.args(args);
     #[cfg(windows)]
     c.creation_flags(CREATE_NO_WINDOW);
-    let st = c.status().with_context(|| format!("spawn {cmd}"))?;
-    Ok(st.code().unwrap_or(-1))
+    c
 }
 
 /// InstallDir прошлой установки из реестра (юзер мог выбрать свой) — иначе
 /// дефолт. Ровно семантика NSIS InstallDirRegKey.
 pub fn resolve_install_dir() -> PathBuf {
-    let from_reg = Command::new("reg")
-        .args(["query", r"HKCU\Software\KaminIDE-GPUI", "/v", "InstallDir"])
+    let from_reg = quiet_cmd("reg", &["query", r"HKCU\Software\KaminIDE-GPUI", "/v", "InstallDir"])
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -82,11 +88,18 @@ pub fn respawn_breakaway(args: &[String]) -> Result<()> {
 }
 
 pub fn install(dir: &Path, version: &str) -> Result<()> {
+    install_with_progress(dir, version, |_| {})
+}
+
+/// Установка с колбэком прогресса 0..100 (окно рисует полосу).
+pub fn install_with_progress(dir: &Path, version: &str, progress: impl Fn(u8)) -> Result<()> {
     klog("install section start");
+    progress(3);
     for image in ["kaminide-gpui.exe", "kaminhost.exe", "kaminide-web.exe"] {
         let _ = quiet("taskkill", &["/F", "/IM", image]);
     }
     klog("taskkill done");
+    progress(8);
 
     // Реальное освобождение файлов (DLP держит хэндлы): проба переименования
     // главного exe, до 20×1с — порт wait_unlock.
@@ -109,9 +122,30 @@ pub fn install(dir: &Path, version: &str) -> Result<()> {
             bail!("files still locked after 20s");
         }
     }
+    progress(15);
 
-    crate::payload::unpack_to(dir).context("payload unpack")?;
+    // Распаковка 553MB — самый долгий этап, а tar не даёт по-файловый прогресс.
+    // Плавно ползём 15→86% по времени (≈оценка ~9с), пока идёт unpack; поток
+    // гасим по флагу сразу как распаковка вернулась.
+    let ticking = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let tick_flag = ticking.clone();
+    let ticker = {
+        // progress — не Send (impl Fn), поэтому тикаем прямо в ui-стор.
+        std::thread::spawn(move || {
+            let mut p = 15u8;
+            while tick_flag.load(std::sync::atomic::Ordering::Relaxed) && p < 86 {
+                std::thread::sleep(std::time::Duration::from_millis(180));
+                p += 1;
+                crate::ui::set_progress(p);
+            }
+        })
+    };
+    let unpacked = crate::payload::unpack_to(dir).context("payload unpack");
+    ticking.store(false, std::sync::atomic::Ordering::Relaxed);
+    let _ = ticker.join();
+    unpacked?;
     klog("files_ok");
+    progress(88);
 
     // Старые скачанные инсталлеры/трамплин-копии в каталоге приложения:
     // текущий запущенный залочен — молча пропускается, приберёт следующий цикл.
@@ -127,9 +161,11 @@ pub fn install(dir: &Path, version: &str) -> Result<()> {
     }
 
     std::fs::write(dir.join("version.txt"), version).context("version.txt")?;
+    progress(92);
     write_registry(dir, version)?;
     write_shortcuts(dir)?;
     klog("registry+shortcuts done");
+    progress(98);
     Ok(())
 }
 
@@ -195,11 +231,13 @@ pub fn relaunch_app(dir: &Path) {
     for attempt in 1..=3u32 {
         let mut c = Command::new(&exe);
         #[cfg(windows)]
-        c.creation_flags(0x8 | 0x200); // DETACHED | NEW_PROCESS_GROUP
+        {
+            use std::os::windows::process::CommandExt as _;
+            c.creation_flags(0x8 | 0x200); // DETACHED | NEW_PROCESS_GROUP
+        }
         let ok = c.spawn().is_ok();
         std::thread::sleep(std::time::Duration::from_secs(3));
-        let alive = Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq kaminide-gpui.exe", "/NH"])
+        let alive = quiet_cmd("tasklist", &["/FI", "IMAGENAME eq kaminide-gpui.exe", "/NH"])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).contains("kaminide-gpui.exe"))
             .unwrap_or(false);

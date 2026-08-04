@@ -177,13 +177,13 @@ pub fn install(url: String, tx: Sender<ShellEvent>) {
             const DETACH: u32 = 0x8 | 0x200; // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
             const BREAKAWAY: u32 = 0x0100_0000; // CREATE_BREAKAWAY_FROM_JOB
             let spawned = std::process::Command::new(&path)
-                .arg("/S")
+                .arg("/update")
                 .creation_flags(DETACH | BREAKAWAY)
                 .spawn()
                 .inspect(|_| ulog("spawned with BREAKAWAY"))
                 .or_else(|e| {
                     ulog(&format!("BREAKAWAY spawn failed: {e} — fallback in-job"));
-                    std::process::Command::new(&path).arg("/S").creation_flags(DETACH).spawn()
+                    std::process::Command::new(&path).arg("/update").creation_flags(DETACH).spawn()
                 });
             match spawned {
                 Ok(mut child) => {

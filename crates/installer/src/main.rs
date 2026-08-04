@@ -14,6 +14,7 @@
 
 mod payload;
 mod steps;
+mod ui;
 
 use std::path::PathBuf;
 
@@ -54,18 +55,41 @@ fn main() {
         }
     }
 
-    let relaunch = has("/update") || !has("/S");
-    match steps::install(&install_dir, version) {
-        Ok(()) => {
-            steps::klog("install done");
-            if relaunch {
-                steps::relaunch_app(&install_dir);
+    let silent = has("/S");
+    let relaunch = has("/update") || !silent;
+
+    // Установка — в фоновом потоке; главный поток либо крутит окно (обычный
+    // запуск и /update), либо ждёт (тихий /S). Прогресс шлётся через ui::.
+    let dir = install_dir.clone();
+    let ver = version.to_string();
+    let worker = std::thread::spawn(move || {
+        let r = steps::install_with_progress(&dir, &ver, ui::set_progress);
+        match &r {
+            Ok(()) => {
+                steps::klog("install done");
+                if relaunch {
+                    steps::relaunch_app(&dir);
+                }
+                ui::set_progress(100);
+                ui::DONE.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            Err(e) => {
+                steps::klog(&format!("install FAILED: {e:#}"));
+                steps::relaunch_app(&dir); // вернуть рабочее приложение
+                ui::FAILED.store(true, std::sync::atomic::Ordering::Relaxed);
             }
         }
-        Err(e) => {
-            steps::klog(&format!("install FAILED: {e:#}"));
-            // Вернуть юзеру работающее приложение: старые файлы целы.
-            steps::relaunch_app(&install_dir);
+        r.is_ok()
+    });
+
+    if silent {
+        let ok = worker.join().unwrap_or(false);
+        if !ok {
+            std::process::exit(5);
+        }
+    } else {
+        ui::run_window(version.to_string()); // возвращается по DONE/FAILED
+        if ui::FAILED.load(std::sync::atomic::Ordering::Relaxed) {
             std::process::exit(5);
         }
     }
