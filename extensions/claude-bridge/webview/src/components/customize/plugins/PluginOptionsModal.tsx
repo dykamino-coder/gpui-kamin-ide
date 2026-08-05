@@ -24,6 +24,7 @@ interface OptionSchema {
   enum?: string[]
   min?: number
   max?: number
+  multiple?: boolean
 }
 
 export function PluginOptionsModal({ pluginId, pluginName, onClose, onSaved }: Props): JSX.Element {
@@ -63,7 +64,7 @@ export function PluginOptionsModal({ pluginId, pluginName, onClose, onSaved }: P
       if (!s.required) continue
       const v = values[k]
       const isSensitive = sensitiveKeys.has(k)
-      const empty = v === undefined || v === null || v === ''
+      const empty = v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)
       if (empty && !isSensitive) missing.push(k)
     }
     if (missing.length > 0) {
@@ -141,6 +142,16 @@ export function PluginOptionsModal({ pluginId, pluginName, onClose, onSaved }: P
             const raw = (e.target as HTMLInputElement).value
             updateValue(key, raw === '' ? null : Number(raw))
           }}
+        />
+      )
+    }
+    if (s.type === 'string' && s.multiple) {
+      return (
+        <textarea
+          class={styles.input}
+          value={Array.isArray(v) ? v.join('\n') : ''}
+          placeholder="one value per line"
+          onInput={(e) => updateValue(key, (e.target as HTMLTextAreaElement).value.split('\n').map(item => item.trim()).filter(Boolean))}
         />
       )
     }

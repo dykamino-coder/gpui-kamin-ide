@@ -9,7 +9,7 @@
 //   logs/<extId>/                 — context.logUri (always present)
 //   workspaceStorage/<hash>/<extId>/ — context.storageUri (only with a folder open)
 //
-// SECURITY NOTE: VS Code encrypts secrets at rest (Electron safeStorage /
+// SECURITY NOTE: VS Code encrypts secrets at rest (platform keychain /
 // keytar). This store holds whatever string it is handed; the kamin-host
 // adapter seals values via the Rust shell's DPAPI (services/secret-crypto.ts)
 // before they reach here, so on Windows the bytes on disk are `dpapi:<hex>`

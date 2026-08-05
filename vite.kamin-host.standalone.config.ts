@@ -1,14 +1,13 @@
 import { builtinModules } from "node:module"
 import { defineConfig } from "vite"
 
-// Standalone PRODUCTION bundle of the kamin-host for the Tauri shell (R2g).
+// Standalone production bundle of kamin-host for the native GPUI shell.
 //
 // Dev runs the TS source under `tsx`; the shipped app can't assume tsx or
 // the repo are present, so we bundle the host into one ESM file run under a
 // plain `node.exe`. node-pty stays external (its prebuilt `.node` binary
 // can't be bundled and is shipped alongside in node_modules); everything
-// else pure-JS (ws, chokidar, …) is inlined. The host tree never imports
-// electron, so it's external-and-unreferenced.
+// else pure-JS (ws, chokidar, …) is inlined.
 export default defineConfig({
   build: {
     outDir: "dist-host",
@@ -27,7 +26,6 @@ export default defineConfig({
       // child never executes the parent's service boot (and vice-versa).
       output: { inlineDynamicImports: true },
       external: [
-        "electron",
         // Native (.node binary) + packages with a "browser" field Vite
         // would otherwise resolve to their browser build (ws → a stub
         // whose WebSocketServer isn't a constructor). Shipped in the

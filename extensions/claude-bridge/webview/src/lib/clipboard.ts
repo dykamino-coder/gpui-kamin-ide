@@ -3,7 +3,7 @@
 // navigator.clipboard.writeText requires the DOCUMENT to be focused; a copy
 // gesture inside the Bridge iframe keeps focus in the iframe, so the direct
 // call rejects with "Document is not focused". The host bridge routes the
-// write through vscode.env.clipboard → native Tauri arboard, which has no
+// write through vscode.env.clipboard → the native KaminIDE clipboard, which has no
 // focus requirement (see memory: reference_kaminide_clipboard).
 import { showToast } from '../signals/toasts'
 
@@ -20,11 +20,11 @@ export async function copyToClipboard(bridge: ClipboardBridge, text: string): Pr
 }
 
 /** Convenience for call sites that don't already hold the bridge (global click
- *  delegates, tool renderers): reads window.electronBridge and routes through
+ *  delegates, tool renderers): reads window.kaminBridge and routes through
  *  the host clipboard, falling back to navigator.clipboard only outside the
  *  webview (dashboard). */
 export async function writeClipboardText(text: string): Promise<void> {
-  const bridge = (window as unknown as { electronBridge?: ClipboardBridge }).electronBridge
+  const bridge = (window as unknown as { kaminBridge?: ClipboardBridge }).kaminBridge
   await copyToClipboard(bridge ?? {}, text)
 }
 

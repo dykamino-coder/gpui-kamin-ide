@@ -1,5 +1,5 @@
-// Wire contract between the shell (Electron main today, Rust in R2) and
-// the kamin-host Node process. JSON frames over a message port — one
+// Wire contract between the Rust/GPUI shell and the kamin-host Node process.
+// JSON frames over the configured transport — one
 // shared module so both sides compile against the same shape.
 //
 // Three frame kinds:

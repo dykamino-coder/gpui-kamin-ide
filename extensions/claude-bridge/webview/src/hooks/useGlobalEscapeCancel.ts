@@ -23,14 +23,14 @@
 //   4. Restore queued text into Bridge textarea + clearLocalQueue.
 
 import { useEffect } from 'preact/hooks'
-import type { ElectronBridge } from '../../shared/types'
+import type { KaminBridgeApi } from '../../shared/types'
 import { activeTabId } from '../signals/tabs'
 import { tabPromptReady } from '../signals/connection'
 import { localQueue, clearLocalQueue } from '../signals/queue'
 import { abortStreamingForTab } from '../signals/jsonl'
 import { showToast } from '../signals/toasts'
 
-export function useGlobalEscapeCancel(bridge: ElectronBridge): void {
+export function useGlobalEscapeCancel(bridge: KaminBridgeApi): void {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {
       if (e.key !== 'Escape') return

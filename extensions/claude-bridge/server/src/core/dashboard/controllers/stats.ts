@@ -262,7 +262,7 @@ export function registerStatsRoutes(api: Hono): void {
   //
   // Two aggregation modes:
   //  - legacy (no `agg` param): hourly buckets per (hour × model × session).
-  //    Kept for the shipped Electron client. On busy multi-user servers the
+  //    Kept for the legacy standalone Electron client. On busy multi-user servers the
   //    per-session split multiplied the payload into the megabytes and the
   //    Stats panel never finished loading.
   //  - `agg=hm&tz=<getTimezoneOffset() minutes>`: buckets per (hour × model)

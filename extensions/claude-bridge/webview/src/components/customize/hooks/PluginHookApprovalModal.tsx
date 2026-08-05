@@ -1,10 +1,12 @@
 import type { JSX } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
+import { showToast } from '../../../signals/toasts'
 
 interface PendingApproval {
   pluginId: string
   hooks: Array<{ event: string; matcher?: string; handler: any; hash: string }>
+  approvedHashes?: string[]
 }
 
 const DANGEROUS_PATTERNS: RegExp[] = [
@@ -29,32 +31,63 @@ function looksDangerous(handler: any): boolean {
  *  manifest auto-approves; any change re-prompts. */
 export function PluginHookApprovalModal(): JSX.Element | null {
   const bridge = useBridge()
-  const [pending, setPending] = useState<PendingApproval | null>(null)
+  const [queue, setQueue] = useState<PendingApproval[]>([])
+  const pending = queue[0] ?? null
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    const off = (bridge as any).onPluginHooksAwaitingApproval?.((data: PendingApproval) => {
-      setPending(data)
-      // Pre-select all non-dangerous by default
-      const initial = new Set<string>()
-      for (const h of data.hooks) if (!looksDangerous(h.handler)) initial.add(h.hash)
-      setSelected(initial)
-    })
+    const enqueue = (data: PendingApproval) => {
+      setQueue(current => [...current.filter(item => item.pluginId !== data.pluginId), data])
+    }
+    const off = bridge.onPluginHooksAwaitingApproval(enqueue)
+    void bridge.hooksListPendingPluginApprovals().then((items) => {
+      setQueue(current => {
+        const refreshed = new Set(items.map(item => item.pluginId))
+        return [...current.filter(item => !refreshed.has(item.pluginId)), ...items]
+      })
+    }).catch(() => { /* keep runtime event fallback */ })
     return () => { try { off?.() } catch { /* ignore */ } }
   }, [])
+
+  useEffect(() => {
+    if (pending) {
+      // Pre-select all non-dangerous hooks plus hashes approved previously.
+      const initial = new Set<string>()
+      const alreadyApproved = new Set(pending.approvedHashes ?? [])
+      for (const h of pending.hooks) if (alreadyApproved.has(h.hash) || !looksDangerous(h.handler)) initial.add(h.hash)
+      setSelected(initial)
+    }
+  }, [pending])
 
   if (!pending) return null
 
   async function approveSelected(): Promise<void> {
     if (!pending) return
-    await bridge.hooksSetPluginApproval(pending.pluginId, Array.from(selected))
-    setPending(null)
+    setSaving(true)
+    try {
+      const result = await bridge.hooksSetPluginApproval(pending.pluginId, Array.from(selected))
+      if (!result?.ok) throw new Error(result?.error || 'Approval could not be saved')
+      setQueue(current => current.slice(1))
+    } catch (err) {
+      showToast({ type: 'error', title: pending.pluginId, message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function rejectAll(): Promise<void> {
     if (!pending) return
-    await bridge.hooksSetPluginApproval(pending.pluginId, [])
-    setPending(null)
+    setSaving(true)
+    try {
+      const result = await bridge.hooksSetPluginApproval(pending.pluginId, [])
+      if (!result?.ok) throw new Error(result?.error || 'Rejection could not be saved')
+      setQueue(current => current.slice(1))
+    } catch (err) {
+      showToast({ type: 'error', title: pending.pluginId, message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -128,6 +161,7 @@ export function PluginHookApprovalModal(): JSX.Element | null {
           <button
             type="button"
             onClick={rejectAll}
+            disabled={saving}
             style="padding:8px 16px;background:transparent;border:1px solid var(--accent-red);color:var(--accent-red);border-radius:var(--radius-sm);cursor:pointer;font-weight:600"
           >
             Reject all
@@ -135,6 +169,7 @@ export function PluginHookApprovalModal(): JSX.Element | null {
           <button
             type="button"
             onClick={() => setSelected(new Set(pending.hooks.map(h => h.hash)))}
+            disabled={saving}
             style="padding:8px 16px;background:transparent;border:1px solid var(--bg-surface);color:var(--text-secondary);border-radius:var(--radius-sm);cursor:pointer"
           >
             Select all
@@ -142,9 +177,10 @@ export function PluginHookApprovalModal(): JSX.Element | null {
           <button
             type="button"
             onClick={approveSelected}
+            disabled={saving}
             style="padding:8px 16px;background:var(--accent-green);color:var(--bg-mantle);border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600"
           >
-            Approve {selected.size} of {pending.hooks.length}
+            {saving ? 'Saving…' : `Approve ${selected.size} of ${pending.hooks.length}`}
           </button>
         </div>
       </div>

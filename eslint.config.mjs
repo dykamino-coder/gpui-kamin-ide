@@ -33,11 +33,10 @@ export default tseslint.config(
       // has its own eslint config + deps we don't install.
       "docs/vscode-ref/**",
       "builtin-extensions/**/extension.js",
-      // Bridge VSIX build projects (extensions/claude-bridge/{webview,extension}):
-      // self-contained Vite/esbuild builds with their own tsconfig. The webview
-      // is a 1:1 copy of electron/renderer and the extension vendors
-      // electron/main — neither follows kamin-ide's lint rules; both are
-      // typechecked by their own `tsc`. Only the built artifacts ship.
+      // Bridge VSIX build projects (extensions/claude-bridge/{webview,extension})
+      // are self-contained Vite/esbuild builds with their own tsconfig and
+      // validation contour. They are typechecked separately; only their built
+      // artifacts ship with KaminIDE.
       "extensions/**",
       "scripts/download-test-corpus.mjs",
       // The compat-smoke script hand-rolls a `vscode` shim and runs

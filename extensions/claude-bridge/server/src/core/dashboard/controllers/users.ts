@@ -8,7 +8,7 @@ import { getAllSessions } from '../../pty/session-manager'
 import { denyApiToken, denyForeignUser } from '../authz'
 
 // Anthropic per-1M-token rates by model family. Mirrors
-// electron/renderer/utils/session-cost.ts so server-side cost ≈ client.
+// the legacy standalone client's session-cost helper so server-side cost ≈ client.
 interface CostTier { input: number; output: number; cacheWrite: number; cacheRead: number }
 const TIER_3_15: CostTier = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }
 const TIER_15_75: CostTier = { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }

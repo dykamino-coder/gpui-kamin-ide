@@ -8,6 +8,7 @@
 // only accepts GET.
 
 import type { TransportContext } from './context'
+import { collectMcpList } from '../pagination'
 
 export async function connectSseLegacy(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
@@ -61,19 +62,13 @@ export async function connectSseLegacy(ctx: TransportContext, id: string): Promi
 
   await sseSendNotification(ctx, id, { jsonrpc: '2.0', method: 'notifications/initialized' })
 
-  const toolsResult = await sseJsonRpcRequest(ctx, id, {
-    jsonrpc: '2.0',
-    id: state.nextRequestId++,
-    method: 'tools/list',
-  })
-  const tools = (toolsResult as any)?.tools
-  if (Array.isArray(tools)) {
-    state.tools = tools.map((t: { name: string }) => t.name)
-    for (const tool of tools) state.toolSchemas.set(tool.name, tool)
-    ctx.appendLog(id, 'info', `[sse] ← tools/list: ${state.tools.length} tools`)
-  } else {
-    ctx.appendLog(id, 'warn', '[sse] ← tools/list: empty response')
-  }
+  const tools = await collectMcpList<any>((method, params) => sseJsonRpcRequest(ctx, id, {
+    jsonrpc: '2.0', id: state.nextRequestId++, method, params,
+  }), 'tools/list', 'tools')
+  state.tools = tools.map((tool: { name: string }) => tool.name)
+  state.toolSchemas.clear()
+  for (const tool of tools) state.toolSchemas.set(tool.name, tool)
+  ctx.appendLog(id, 'info', `[sse] ← tools/list: ${state.tools.length} tools`)
 }
 
 /** Read the SSE stream byte-by-byte, split into events, dispatch.

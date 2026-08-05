@@ -23,6 +23,21 @@ import { emitBridgeEvent } from './bridge-emitter'
 import { applyDeterministicStatus, isBridgeStatusEvent } from './bridge-status-hooks'
 import { BRIDGE_HOOK_EVENTS, type BridgeHookEvent } from './types'
 import { resolveToken } from '../auth/tokens'
+import type { ResolvedToken } from '../auth/tokens'
+import { getAllSessions } from '../pty/session-core'
+
+async function resolveCaller(c: import('hono').Context): Promise<ResolvedToken | null> {
+  const auth = c.req.header('Authorization') || ''
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  return token ? resolveToken(token) : null
+}
+
+export function findOwnedLiveSession<T extends { tokenId: string; ws?: unknown }>(
+  sessions: readonly T[],
+  tokenId: string,
+): T | undefined {
+  return sessions.find(session => Boolean(session.ws) && session.tokenId === tokenId)
+}
 
 export function createHooksRoutes(): Hono {
   const app = new Hono()
@@ -37,9 +52,7 @@ export function createHooksRoutes(): Hono {
     c: import('hono').Context,
     next: import('hono').Next,
   ): Promise<Response | void> => {
-    const auth = c.req.header('Authorization') || ''
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
-    if (!token || !(await resolveToken(token))) {
+    if (!(await resolveCaller(c))) {
       return c.json({ error: 'Unauthorized' }, 401)
     }
     return next()
@@ -88,7 +101,11 @@ export function createHooksRoutes(): Hono {
       }
     }
 
-    const result = await dispatchHook(sessionId, hookId, payload, session.ws ?? null)
+    // CLI runs in a synthetic container directory; local hooks must receive
+    // the real client project cwd both as process cwd and in their stdin JSON.
+    if (session.cwd) payload.cwd = session.cwd
+    const result = await dispatchHook(sessionId, hookId, payload, session.ws ?? null, session.tokenId)
+    c.header('X-Bridge-Hook-Exit-Code', String(result.exitCode))
 
     // Map our HookExecutionResult to a CLI-compatible response. CLI accepts:
     //   - non-2xx HTTP                                 → treated as hook error
@@ -129,12 +146,14 @@ export function createHooksRoutes(): Hono {
 
   // Recent executions — audit log entries newest-first.
   app.get('/api/hooks/log', async (c) => {
-    const limit = Math.min(1000, parseInt(c.req.query('limit') ?? '200', 10) || 200)
-    return c.json({ entries: await readRecentExecutions(limit) })
+    const limit = Math.max(1, Math.min(1000, parseInt(c.req.query('limit') ?? '200', 10) || 200))
+    const caller = await resolveCaller(c)
+    if (!caller) return c.json({ error: 'Unauthorized' }, 401)
+    return c.json({ entries: await readRecentExecutions(limit, caller.tokenId) })
   })
 
   // Fire a bridge-emit event (any of the 7 custom events). Used both by
-  // bridge-internal code and by Electron when it wants to notify
+  // bridge-internal code and by the VSIX host when it wants to notify
   // renderer-side handlers that something happened in the local environment
   // (auto-update found, plugin installed, etc).
   app.post('/api/hooks/emit/:event', async (c) => {
@@ -144,12 +163,24 @@ export function createHooksRoutes(): Hono {
     }
     let payload: Record<string, unknown> = {}
     try { payload = await c.req.json() } catch { /* allow empty body */ }
-    void emitBridgeEvent(event as BridgeHookEvent, payload)
+    const caller = await resolveCaller(c)
+    if (!caller) return c.json({ error: 'Unauthorized' }, 401)
+    const ownedSessionIds = getAllSessions()
+      .filter(session => session.tokenId === caller.tokenId)
+      .map(session => session.id)
+    const requestedSessionId = typeof payload.sessionId === 'string' ? payload.sessionId : undefined
+    if (requestedSessionId && !ownedSessionIds.includes(requestedSessionId)) {
+      return c.json({ ok: false, error: 'Session not found' }, 404)
+    }
+    const targets = requestedSessionId ? [requestedSessionId] : ownedSessionIds
+    await Promise.all(targets.map(sessionId => emitBridgeEvent(event as BridgeHookEvent, { ...payload, sessionId })))
     return c.json({ ok: true })
   })
 
   app.post('/api/hooks/log/clear', async (c) => {
-    await clearLog()
+    const caller = await resolveCaller(c)
+    if (!caller) return c.json({ error: 'Unauthorized' }, 401)
+    await clearLog(caller.tokenId)
     return c.json({ ok: true })
   })
 
@@ -185,11 +216,16 @@ export function createHooksRoutes(): Hono {
       // Local hooks need an active session WS — for tests we fall back to
       // server-side dispatch when no session is around.
       let ws: import('ws').WebSocket | null = null
+      const caller = await resolveCaller(c)
       const sessionsArr = Array.from((await import('../pty/session-core')).sessions.values())
-      const live = sessionsArr.find(s => s.ws)
+      // Never borrow an arbitrary live WebSocket: that would execute the
+      // caller's draft command on another tenant's client host. The auth
+      // middleware guarantees `caller`, and ownership is still checked here
+      // at the exact session-selection sink.
+      const live = caller ? findOwnedLiveSession(sessionsArr, caller.tokenId) : undefined
       if (live && effective === 'local') ws = live.ws ?? null
 
-      const result = await dispatchHook(fakeSessionId, hookId, payload, ws)
+      const result = await dispatchHook(fakeSessionId, hookId, payload, ws, caller?.tokenId)
       return c.json({ ok: true, result, effectiveHost: effective })
     } finally {
       clearSession(fakeSessionId)
@@ -220,8 +256,12 @@ export function createHooksRoutes(): Hono {
 
   // Active hooks for a specific session (what's registered now via the
   // session's settings.json). UI uses this to render the Active tab.
-  app.get('/api/hooks/active/:sessionId', (c) => {
+  app.get('/api/hooks/active/:sessionId', async (c) => {
     const sessionId = c.req.param('sessionId')
+    const caller = await resolveCaller(c)
+    if (!caller) return c.json({ error: 'Unauthorized' }, 401)
+    const session = getSession(sessionId)
+    if (!session || session.tokenId !== caller.tokenId) return c.json({ error: 'Session not found' }, 404)
     const hooks = listSession(sessionId).map(h => ({
       id: h.id,
       event: h.event,

@@ -1,10 +1,10 @@
 // ============================================================================
-// Test API — endpoints for testing Electron↔Server integration
+// Test API — endpoints for testing client-host ↔ server integration
 // ============================================================================
 //
 // These endpoints simulate MCP tool calls and elicitation requests
 // that would normally come from Claude CLI, routing them to the
-// connected Electron client for execution.
+// connected KaminIDE client for execution.
 //
 // All routes are under /api/test/*
 // Only available when NODE_ENV !== 'production'
@@ -92,9 +92,9 @@ export function createTestRoutes(): Hono {
     return c.json({ tree })
   })
 
-  // ── Simulate MCP tool call to Electron ────────────────
+  // ── Simulate MCP tool call to the client host ─────────
   // Uses the existing sendMcpCall() which creates a pending call,
-  // sends it to Electron via WS, and resolves when Electron responds.
+  // sends it to the client via WS, and resolves when the client responds.
   api.post('/api/test/mcp-call/:sessionId', async (c) => {
     const sessionId = c.req.param('sessionId')
     const session = getSession(sessionId)
@@ -117,8 +117,8 @@ export function createTestRoutes(): Hono {
     }
   })
 
-  // ── Simulate elicitation request to Electron ──────────
-  // Sends an elicitation:request to the connected Electron client
+  // ── Simulate elicitation request to the client ─────────
+  // Sends an elicitation:request to the connected KaminIDE client
   // and waits for the user to respond via the widget.
   api.post('/api/test/elicitation/:sessionId', async (c) => {
     const sessionId = c.req.param('sessionId')
@@ -174,7 +174,7 @@ export function createTestRoutes(): Hono {
     }
   })
 
-  // ── Send raw WS message to Electron ───────────────────
+  // ── Send raw WS message to the client ─────────────────
   api.post('/api/test/ws-send/:sessionId', async (c) => {
     const sessionId = c.req.param('sessionId')
     const ws = getSessionWs(sessionId)

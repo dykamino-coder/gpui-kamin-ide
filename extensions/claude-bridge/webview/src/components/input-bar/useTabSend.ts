@@ -5,7 +5,7 @@
 // for the server, and pending-Enter timer cleanup so a fast double-send
 // doesn't smear two messages together.
 
-import type { ElectronBridge } from '../../../shared/types'
+import type { KaminBridgeApi } from '../../../shared/types'
 import { pendingAttachments as attachSignal } from '../../signals/ui'
 import { activeSelection, attachActiveFile } from '../../signals/file-viewer'
 import { abortStreamingForTab } from '../../signals/jsonl'
@@ -18,7 +18,7 @@ export interface TabSendHandle {
   clearInput: (textarea: HTMLTextAreaElement | null) => void
 }
 
-export function useTabSend(bridge: ElectronBridge): TabSendHandle {
+export function useTabSend(bridge: KaminBridgeApi): TabSendHandle {
   function buildMessage(el: HTMLTextAreaElement | null): string | null {
     if (!el) return null
     const text = el.value

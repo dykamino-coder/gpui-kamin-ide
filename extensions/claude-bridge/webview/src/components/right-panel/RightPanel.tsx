@@ -65,7 +65,7 @@ export function RightPanel(): JSX.Element | null {
 
     // Hydrate ratio from storage. Prefer the new ratio key; fall
     // back to legacy absolute px (migrated to ratio against current
-    // viewport). Then apply against current viewport — Electron doesn't
+    // viewport). Then apply against current viewport — the host does not
     // fire 'resize' on initial paint, so without this manual call a
     // session saved on a maximised window would render at the saved px
     // on a smaller windowed reopen.
@@ -259,4 +259,3 @@ export function RightPanel(): JSX.Element | null {
     </div>
   )
 }
-

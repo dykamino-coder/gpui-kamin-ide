@@ -1,11 +1,13 @@
-import type { ElectronBridge } from '../../shared/types'
+import type { KaminBridgeApi } from '../../shared/types'
 
 declare global {
   interface Window {
-    electronBridge: ElectronBridge
+    /** @deprecated Compatibility alias for older vendored renderer code. */
+    electronBridge: KaminBridgeApi
+    kaminBridge: KaminBridgeApi
   }
 }
 
-export function useBridge(): ElectronBridge {
-  return window.electronBridge
+export function useBridge(): KaminBridgeApi {
+  return window.kaminBridge ?? window.electronBridge
 }

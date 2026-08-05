@@ -9,7 +9,7 @@
 // while the CLI was still generating: nothing re-evaluated visibility, so the
 // reveal never resynced and the panel stayed a turn behind forever).
 //
-// Generic over the view handle so it stays free of the vscode/electron import
+// Generic over the view handle so it stays free of vscode/host-compat imports
 // tree and is unit-testable on its own.
 export class ResyncTracker<V> {
   private readonly visible = new Map<V, boolean>()

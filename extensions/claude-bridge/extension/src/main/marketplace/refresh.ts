@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 import { assertValidName, assertAbsolutePath } from '../validators'
 import { redactUrl } from './url-auth'
 import { knownMarketplacesPath, readKnownMarketplaces, writeKnownMarketplaces } from './known-store'

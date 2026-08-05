@@ -1,12 +1,14 @@
 // IPC handlers: plugin source path resolution + cache sync + sub-clone pull.
 // Extracted from `electron/main/ipc/plugins.ts` (Sprint 2 / Stage C, C2).
 
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import { resolvePluginSource } from './shared'
 import { pullSubClone, syncPluginCacheFromSubClone } from '../../plugins/sub-clone'
+import { enableRequiredPluginDependencies, mergeMarketplaceDependencies, requestHookApproval } from './handlers-install'
+import { readPluginManifest } from '../../plugin-helpers'
 
 export function registerSourceHandlers(reloadMcp: () => Promise<void>): void {
   ipcMain.handle('plugins:get-source-path', async (_event: IpcMainInvokeEvent, pluginName: string, marketplace: string): Promise<string | null> => {
@@ -98,6 +100,7 @@ export function registerSourceHandlers(reloadMcp: () => Promise<void>): void {
           copyDir(srcPath, destPath)
         } else {
           fs.copyFileSync(srcPath, destPath)
+          try { fs.chmodSync(destPath, fs.statSync(srcPath).mode) } catch { /* best effort */ }
         }
       }
     }
@@ -109,6 +112,7 @@ export function registerSourceHandlers(reloadMcp: () => Promise<void>): void {
       try { data = JSON.parse(fs.readFileSync(installedFile, 'utf-8')) } catch {}
     }
     const key = `${pluginName}@${marketplace}`
+    const dependencyManifest = mergeMarketplaceDependencies(pluginName, marketplace, await readPluginManifest(pluginSourcePath) ?? {})
     const now = new Date().toISOString()
     const existing = data.plugins[key]?.[0]
     data.plugins[key] = [{
@@ -119,6 +123,8 @@ export function registerSourceHandlers(reloadMcp: () => Promise<void>): void {
       lastUpdated: now,
     }]
     fs.writeFileSync(installedFile, JSON.stringify(data, null, 2), 'utf-8')
+    await enableRequiredPluginDependencies(key, dependencyManifest)
+    await requestHookApproval(key, cacheDir)
     await reloadMcp()
 
     return { version, cacheDir }
@@ -165,7 +171,21 @@ export function registerSourceHandlers(reloadMcp: () => Promise<void>): void {
     if (!syncRes.ok) {
       return { ok: false, changed: pullResult.changed, error: `Pull OK but cache sync failed: ${syncRes.error}` }
     }
-    if (pullResult.changed) await reloadMcp()
+    if (pullResult.changed) {
+      const key = `${pluginName}@${marketplace}`
+      let refreshedRoot = ''
+      try {
+        refreshedRoot = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), 'utf-8'))
+          ?.plugins?.[key]?.[0]?.installPath ?? ''
+      } catch {}
+      if (refreshedRoot) {
+        await enableRequiredPluginDependencies(key, mergeMarketplaceDependencies(pluginName, marketplace, await readPluginManifest(refreshedRoot) ?? {}))
+        await requestHookApproval(key, refreshedRoot)
+      }
+      // Publish the refreshed runtime only after dependency validation and
+      // hook approval metadata have both caught up with the new cache.
+      await reloadMcp()
+    }
     return { ok: true, changed: pullResult.changed, version: syncRes.version }
   })
 }

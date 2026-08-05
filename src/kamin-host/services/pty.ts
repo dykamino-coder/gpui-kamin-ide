@@ -5,9 +5,8 @@
 // window when spawned from the windowed main process) holds here by
 // construction. One process fewer, one hop fewer for terminal data.
 //
-// Forking from inside a utilityProcess is NOT an option anyway:
-// `process.execPath` is the Electron binary and the packaged build
-// flips the RunAsNode fuse off.
+// The Rust/GPUI host already launches this as the window-less Node sidecar, so
+// another process hop would add no isolation and would complicate teardown.
 
 import { execFile } from "node:child_process"
 import { existsSync } from "node:fs"

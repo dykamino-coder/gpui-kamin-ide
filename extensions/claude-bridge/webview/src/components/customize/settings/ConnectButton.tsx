@@ -169,7 +169,7 @@ export function ConnectButton({ serverUrl, token, onTokenChange, whisperUrl, whi
               value={newTokenName}
               onInput={(e) => setNewTokenName((e.target as HTMLInputElement).value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleCreateToken() }}
-              placeholder="e.g. my-electron-app"
+              placeholder="e.g. my-kaminide-client"
               autoFocus
               style="width:100%;padding:10px 12px;background:var(--bg-mantle);border:1px solid var(--bg-surface);border-radius:var(--radius-sm);color:var(--text-primary);font-size: var(--fs-md);outline:none;box-sizing:border-box"
             />

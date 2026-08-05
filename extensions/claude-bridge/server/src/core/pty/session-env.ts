@@ -109,11 +109,12 @@ export function buildSessionEnv(sessionId: string, userName: string, effort?: st
   // multi-store bulk inflate.
   env.CLAUDE_CODE_DISABLE_MEMORY_PERIODIC_RESYNC = '1'
   env.CLAUDE_CODE_DISABLE_MEMORY_BULK_INFLATE = '1'
-  // We route our own MCP and use no marketplace plugins, cron, or workflows —
-  // stop the startup marketplace autoinstall and the cron/workflow schedulers.
+  // The bridge owns marketplace installation/dependency resolution and does
+  // not expose Cron, so disable those two native startup paths. Workflows stay
+  // enabled: plugin workflow entrypoints are materialized in proxy plugins.
   env.CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL = '1'
   env.CLAUDE_CODE_DISABLE_CRON = '1'
-  env.CLAUDE_CODE_DISABLE_WORKFLOWS = '1'
+  delete env.CLAUDE_CODE_DISABLE_WORKFLOWS
   // Pin the flicker-free fullscreen (alt-screen, virtualized-scrollback)
   // renderer. Without this the renderer is chosen by a gradual-rollout feature
   // flag, so sessions land on EITHER fullscreen or the classic main-screen
@@ -188,7 +189,7 @@ export function buildSessionEnv(sessionId: string, userName: string, effort?: st
   return env
 }
 
-export function buildClaudeArgs(sessionConfig: SessionConfig): string[] {
+export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readonly string[] = []): string[] {
   const args: string[] = [
     '--disallowedTools', getDisallowedBuiltinTools().join(','),
     '--dangerously-skip-permissions',
@@ -215,10 +216,11 @@ export function buildClaudeArgs(sessionConfig: SessionConfig): string[] {
   const systemPrompt = buildSystemPrompt(sessionConfig.cwd, sessionConfig.basePrompt, sessionConfig.transcriptMirrorDir)
   args.push('--append-system-prompt', systemPrompt)
 
+  for (const pluginDir of pluginDirs) args.push('--plugin-dir', pluginDir)
+
   if (sessionConfig.extraArgs) {
     args.push(...sessionConfig.extraArgs)
   }
 
   return args
 }
-

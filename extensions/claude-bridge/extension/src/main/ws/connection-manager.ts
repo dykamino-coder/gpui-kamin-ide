@@ -1,6 +1,6 @@
 import WebSocket from 'ws'
 import * as vscode from 'vscode'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 import type { ConnectionConfig, ConnectionState, PermissionDecision } from '../../shared/types'
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'

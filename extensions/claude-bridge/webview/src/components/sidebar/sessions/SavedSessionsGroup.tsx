@@ -10,7 +10,7 @@ interface SavedSessionsGroupProps {
 
 export function SavedSessionsGroup({ sessions, isVisible, onRemove }: SavedSessionsGroupProps): JSX.Element {
   async function handleResume(session: SavedSession): Promise<void> {
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     if (!bridge) return
     const config = await bridge.getConfig()
     if (!config.serverUrl || !config.token) return

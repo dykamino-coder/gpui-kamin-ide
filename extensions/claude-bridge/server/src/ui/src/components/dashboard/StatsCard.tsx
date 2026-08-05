@@ -1,4 +1,4 @@
-// Dashboard Stats card — same layout as Electron's StatsPanel but
+// Dashboard Stats card — same layout as the legacy Electron client's StatsPanel but
 // re-implemented for the web dashboard's React/Preact compat tree.
 // Reads /api/dashboard/stats/overview and /api/dashboard/tokens/:id/sessions.
 

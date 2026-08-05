@@ -3,11 +3,11 @@
 // chip visible. Clicking it asks the bridge to resume the conversation by
 // id, falling back to a fresh tab if the conversationId is missing.
 
-import type { ElectronBridge, PersistedTabState, SavedSession } from '../../../shared/types'
+import type { KaminBridgeApi, PersistedTabState, SavedSession } from '../../../shared/types'
 import { showToast } from '../../signals/toasts'
 
 export async function resumeGhostTab(
-  bridge: ElectronBridge,
+  bridge: KaminBridgeApi,
   ghost: PersistedTabState,
   savedByConv: Map<string, SavedSession>,
 ): Promise<void> {

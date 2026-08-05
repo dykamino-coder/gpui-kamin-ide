@@ -41,7 +41,7 @@ Options:
 
 Architecture:
   Claude CLI runs as PTY sessions on the server.
-  MCP tools are executed on the user's machine via Electron app.
+  MCP tools are executed on the user's machine via the KaminIDE VSIX bridge host.
   Dashboard: http://HOST:PORT/ui
 
 Config priority: CLI args > env vars > opencode.json > defaults
@@ -147,7 +147,7 @@ async function startup(): Promise<void> {
   const base = `http://${config.host}:${config.port}`
   console.log(`[bridge] Server running at ${base}`)
   console.log(`[bridge] Dashboard: ${base}/ui`)
-  console.log(`[bridge] Mode: PTY sessions (Electron MCP)`)
+  console.log(`[bridge] Mode: PTY sessions (client-host MCP)`)
   console.log(`[bridge] Tokens: Create user tokens at ${base}/ui#/tokens`)
 
   // Start session reaper (cleanup idle/expired sessions)

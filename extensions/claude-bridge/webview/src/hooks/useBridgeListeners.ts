@@ -1,6 +1,6 @@
 import { useEffect } from 'preact/hooks'
 
-import type { ElectronBridge } from '../../shared/types'
+import type { KaminBridgeApi } from '../../shared/types'
 import type { TabInfo, TreeNode } from '../../shared/types'
 import type { ElicitationRequest, PermissionRequest } from '../../shared/types'
 
@@ -68,7 +68,7 @@ function cancelStuckIdle(tabId: string): void {
 }
 
 export function useBridgeListeners(
-  bridge: ElectronBridge,
+  bridge: KaminBridgeApi,
   promptDebounceTimers: { current: Map<string, ReturnType<typeof setTimeout>> },
   vscodeAvailable: { value: boolean },
   role: WebviewRole = 'chat',

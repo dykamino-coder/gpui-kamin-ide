@@ -1,4 +1,4 @@
-// Electron → Server
+// VSIX bridge host → Server
 export type ClientMessage =
   | { type: 'session:create'; token: string; cwd?: string; cols?: number; rows?: number }
   | { type: 'session:input'; data: string }
@@ -13,7 +13,7 @@ export type ClientMessage =
   | { type: 'session:delete-data'; conversationId: string }
   | { type: 'hook:response'; requestId: string; result: { stdout: string; stderr: string; exitCode: number; outcome: 'success' | 'error' | 'timeout' | 'cancelled'; jsonOutput?: Record<string, unknown>; durationMs: number } }
 
-// Server → Electron
+// Server → VSIX bridge host
 export type ServerMessage =
   | { type: 'session:created'; sessionId: string; effort?: string; model?: string; settingsDir?: string }
   | { type: 'session:output'; data: string }

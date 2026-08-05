@@ -144,7 +144,7 @@ export class PermissionManager {
    *
    * Priority:
    * 1. Session-level override (set via setSessionPermission)
-   * 2. Persisted rule (stored in electron-store)
+   * 2. Persisted rule (stored in the bridge JSON store)
    * 3. Category default
    */
   checkPermission(toolName: string, _input: Record<string, unknown>): PermissionDecision {

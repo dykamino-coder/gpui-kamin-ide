@@ -1,7 +1,7 @@
 {
   "name": "open-claude-bridge",
   "version": "6.3.118",
-  "description": "Electron desktop app + Node.js server for Claude CLI via PTY",
+  "description": "Bridge server for the KaminIDE client and Claude CLI PTY sessions",
   "type": "module",
   "main": "./src/index.ts",
   "bin": {
@@ -31,22 +31,22 @@
   },
   "dependencies": {
     "@duckdb/node-api": "^1.5.2-r.1",
-    "@hono/node-server": "^1.19.9",
+    "@hono/node-server": "^2.1.0",
     "@peculiar/asn1-schema": "^2.7.0",
     "@peculiar/asn1-x509": "^2.7.0",
     "@peculiar/x509": "^2.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^12.6.2",
-    "hono": "^4.11.4",
+    "hono": "^4.13.0",
     "node-pty": "^1.1.0",
     "reflect-metadata": "^0.2.2",
-    "undici": "^8.2.0",
-    "ws": "^8.20.0"
+    "undici": "^8.10.0",
+    "ws": "^8.21.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4.1.10",
     "@xterm/addon-serialize": "^0.14.0",
     "@xterm/headless": "^6.0.0",
     "eslint": "^9.39.4",
@@ -56,7 +56,7 @@
     "tsx": "^4.21.0",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.59.1",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.10"
   },
   "files": [
     "bin/",
@@ -69,7 +69,7 @@
     "claude-code",
     "anthropic",
     "bridge",
-    "electron",
+    "kaminide",
     "pty",
     "llm",
     "ai-assistant"

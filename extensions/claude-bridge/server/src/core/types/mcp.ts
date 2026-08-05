@@ -1,5 +1,5 @@
 // ============================================================================
-// MCP tool call flow (Server ↔ Electron)
+// MCP tool call flow (server ↔ client host)
 // ============================================================================
 
 export interface McpToolRequest {

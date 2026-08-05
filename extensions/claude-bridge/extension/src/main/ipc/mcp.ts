@@ -1,4 +1,4 @@
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import type { McpServerManager } from '../mcp/mcp-server-manager'
 import type { ExternalMcpServerConfig } from '../../shared/types'
 

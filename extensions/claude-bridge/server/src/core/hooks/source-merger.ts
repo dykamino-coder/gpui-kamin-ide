@@ -44,6 +44,14 @@ function readJsonHooks(filePath: string): HookSettings | undefined {
   }
 }
 
+function hooksDisabled(filePath: string): boolean {
+  try {
+    return fs.existsSync(filePath) && JSON.parse(fs.readFileSync(filePath, 'utf-8'))?.disableAllHooks === true
+  } catch {
+    return false
+  }
+}
+
 interface InstalledPlugin {
   name: string
   marketplace: string
@@ -73,7 +81,9 @@ function loadEnabledPlugins(): InstalledPlugin[] {
       if (enabledMap[key] === false) continue
       const entry = Array.isArray(entries) ? entries[0] : null
       if (!entry?.installPath) continue
-      const [name, marketplace] = key.split('@')
+      const at = key.lastIndexOf('@')
+      const name = at > 0 ? key.slice(0, at) : key
+      const marketplace = at > 0 ? key.slice(at + 1) : 'unknown'
       out.push({
         name: name ?? key,
         marketplace: marketplace ?? 'unknown',
@@ -94,12 +104,37 @@ function readPluginHooks(plugin: InstalledPlugin): HookSettings | undefined {
     path.join(plugin.installPath, '.claude-plugin', 'plugin.json'),
     path.join(plugin.installPath, 'hooks.json'),
     path.join(plugin.installPath, '.claude-plugin', 'hooks.json'),
+    path.join(plugin.installPath, 'hooks', 'hooks.json'),
   ]
   for (const file of candidates) {
     const hooks = readJsonHooks(file)
     if (hooks && Object.keys(hooks).length > 0) return hooks
   }
   return undefined
+}
+
+interface SyncedPluginHooks {
+  id: string
+  sourceRoot: string
+  hooks: HookSettings
+}
+
+function loadSyncedPluginHooks(filePath: string | undefined): SyncedPluginHooks[] {
+  if (!filePath) return []
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Array<{
+      id?: string
+      sourceRoot?: string
+      hooks?: HookSettings
+    }>
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((entry) => {
+      if (!entry?.id || !entry.sourceRoot || !entry.hooks || typeof entry.hooks !== 'object') return []
+      return [{ id: entry.id, sourceRoot: entry.sourceRoot, hooks: entry.hooks }]
+    })
+  } catch {
+    return []
+  }
 }
 
 /** Collect hooks from all 3 layers + return source-map so registry can
@@ -111,9 +146,19 @@ function readPluginHooks(plugin: InstalledPlugin): HookSettings | undefined {
  *  path on the USER'S machine that doesn't exist on this filesystem, so
  *  without these the merge input was always empty and the generated
  *  session settings never contained a `hooks` key at all. */
-export function mergeAllHooks(userCwd?: string, syncedSettingsFiles?: string[]): MergedHooks {
+export function mergeAllHooks(
+  userCwd?: string,
+  syncedSettingsFiles?: string[],
+  syncedPluginsFile?: string,
+): MergedHooks {
   const merged: HookSettings = {}
   const sourceByMatcher = new Map<HookMatcher, HookSource>()
+
+  const effectiveSettingsFiles = [
+    path.join(os.homedir(), '.claude', 'settings.json'),
+    ...(syncedSettingsFiles ?? []),
+  ]
+  if (effectiveSettingsFiles.some(hooksDisabled)) return { hooks: merged, sourceByMatcher }
 
   // ── 1. user-global ─────────────────────────────────────────
   const userHooks = readJsonHooks(path.join(os.homedir(), '.claude', 'settings.json'))
@@ -125,12 +170,15 @@ export function mergeAllHooks(userCwd?: string, syncedSettingsFiles?: string[]):
   }
 
   // ── 1b. synced per-token settings (the user's REAL hooks) ──
-  for (const file of syncedSettingsFiles ?? []) {
+  for (const [index, file] of (syncedSettingsFiles ?? []).entries()) {
     const hooks = readJsonHooks(file)
     if (!hooks) continue
     pushAll(merged, hooks)
+    const source: HookSource = index === 0 || !userCwd
+      ? { kind: 'user' }
+      : { kind: 'project', projectPath: userCwd }
     for (const matchers of Object.values(hooks)) {
-      if (Array.isArray(matchers)) for (const m of matchers) sourceByMatcher.set(m, { kind: 'user' })
+      if (Array.isArray(matchers)) for (const m of matchers) sourceByMatcher.set(m, source)
     }
   }
 
@@ -158,6 +206,22 @@ export function mergeAllHooks(userCwd?: string, syncedSettingsFiles?: string[]):
     for (const matchers of Object.values(pluginHooks)) {
       if (Array.isArray(matchers)) for (const m of matchers) {
         sourceByMatcher.set(m, { kind: 'plugin', pluginId, manifestPath })
+      }
+    }
+  }
+
+  // The bridge container cannot see the client host's plugin cache. The VSIX
+  // host therefore uploads approved hook metadata alongside each proxy-plugin
+  // snapshot; commands still execute on the client host via the HTTP/WS proxy.
+  for (const plugin of loadSyncedPluginHooks(syncedPluginsFile)) {
+    pushAll(merged, plugin.hooks)
+    for (const matchers of Object.values(plugin.hooks)) {
+      if (Array.isArray(matchers)) for (const m of matchers) {
+        sourceByMatcher.set(m, {
+          kind: 'plugin',
+          pluginId: plugin.id,
+          manifestPath: path.join(plugin.sourceRoot, '.claude-plugin', 'plugin.json'),
+        })
       }
     }
   }

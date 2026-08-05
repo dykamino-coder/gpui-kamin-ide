@@ -19,10 +19,12 @@ const CLI_INTERNAL_TOOL_MATCHERS = new Set([
 
 /** Events whose handlers most naturally read/write host state. */
 const HOST_NATURAL_EVENTS = new Set<HookEvent>([
-  'PostToolUse', 'PostToolUseFailure', 'Notification',
-  'SessionStart', 'SessionEnd', 'Stop', 'Setup',
-  'PreCompact',
-  'PermissionRequest', 'MessageDisplay',
+  'PostToolUse', 'PostToolUseFailure', 'PostToolBatch', 'Notification',
+  'SessionStart', 'SessionEnd', 'Stop', 'StopFailure', 'Setup',
+  'PreCompact', 'PostCompact',
+  'PermissionRequest', 'PermissionDenied', 'MessageDisplay',
+  'InstructionsLoaded', 'ConfigChange', 'CwdChanged', 'DirectoryAdded',
+  'FileChanged', 'WorktreeCreate', 'WorktreeRemove',
   'TeammateIdle',
   'BridgeReconnect', 'MicAudioDetected', 'ConnectorStatusChanged',
   'AutoUpdateAvailable', 'PluginInstalled', 'PluginUninstalled', 'MarketplaceUpdated',
@@ -33,10 +35,10 @@ const HOST_NATURAL_EVENTS = new Set<HookEvent>([
  *  possible but informationally redundant. We default to server but allow
  *  override. */
 const SERVER_PREFERRED_EVENTS = new Set<HookEvent>([
-  'UserPromptSubmit',          // per-turn latency cost on local, transformation OK on server
-  'Elicitation',               // bridge proxied it itself
+  'UserPromptSubmit', 'UserPromptExpansion', // transformation is container-local
+  'Elicitation', 'ElicitationResult',        // bridge proxied it itself
   'SubagentStart', 'SubagentStop',
-  'TaskCompleted',             // postfactum, MCP-mirror works server-side
+  'TaskCreated', 'TaskCompleted',            // task state already lives in CLI
 ])
 
 /**
@@ -60,6 +62,7 @@ export function resolveHost(
 
   // http handler — kept as-is (CLI fetches the URL).
   if (handler.type === 'http') return 'http'
+  if (handler.type === 'mcp_tool') return 'server'
 
   // command type — check explicit override first.
   const explicit = (handler as { host?: HookHost }).host

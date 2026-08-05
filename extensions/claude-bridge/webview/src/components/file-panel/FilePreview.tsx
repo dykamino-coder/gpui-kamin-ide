@@ -23,7 +23,7 @@ export function isPreviewablePath(filePath: string): boolean {
 }
 
 /** Native preview for images + PDFs. Reads the file as base64 once and
- *  renders an <img> (image) or <iframe> (PDF — Electron's built-in
+ *  renders an <img> (image) or <iframe> (PDF — Chromium's built-in
  *  Chromium PDF viewer handles it). Skips CodeMirror entirely so the
  *  user doesn't see binary garbage. No editing — read-only by design. */
 export function FilePreview({ filePath }: { filePath: string }): JSX.Element {

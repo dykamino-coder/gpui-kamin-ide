@@ -1,6 +1,6 @@
 // Input validation helpers for child_process + filesystem ops.
 // Reject anything that could break out of an argv slot into a shell context.
-// We're on Electron main (user's own machine) so this is defense-in-depth —
+// We're in the VSIX bridge host (the user's own machine), so this is defense-in-depth —
 // the attacker model here is a malicious marketplace URL / folder name that
 // slipped past UI validation, not a general RCE vector.
 

@@ -1,6 +1,6 @@
 // Symmetric JSON-RPC endpoint over a MessagePortLike. Used on BOTH
-// sides of the shell ↔ kamin-host boundary (the shell wraps its
-// UtilityProcess handle into the same interface).
+// sides of the shell ↔ kamin-host boundary. The native shell uses stdio; the
+// extension-host child uses Node IPC behind the same transport interface.
 //
 // No call timeouts by design: host→shell calls can wait on the user
 // (sticky toast buttons, input boxes — same convention as Bridge's

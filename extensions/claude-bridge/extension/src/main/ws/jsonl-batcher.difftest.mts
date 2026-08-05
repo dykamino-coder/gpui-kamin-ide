@@ -11,7 +11,7 @@
 // leftovers trickle out AFTER the snapshot.
 //
 // Run: from the kamin-ide repo root →  npx tsx <abs path to this file>
-// Pure logic — the electron BrowserWindow import is type-only, so tsx erases it.
+// Pure logic — the host facade's BrowserWindow import is type-only, so tsx erases it.
 
 import { JsonlBatcher } from './jsonl-batcher.ts'
 

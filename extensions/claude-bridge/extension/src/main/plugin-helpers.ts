@@ -203,6 +203,128 @@ export async function readPluginManifest(pluginRoot: string): Promise<any | null
   try { return JSON.parse(raw) } catch { return null }
 }
 
+/** Read the plugin's entry from its configured marketplace catalog. Claude
+ * Code allows manifest component fields on this entry as well as in
+ * `.claude-plugin/plugin.json`, so harness discovery must not treat the local
+ * manifest as the only source of truth. */
+export async function readMarketplacePluginEntry(pluginName: string, marketplace: string): Promise<any | null> {
+  if (!pluginName || !marketplace || marketplace === 'local') return null
+  try {
+    const known = JSON.parse(await fs.promises.readFile(
+      path.join(os.homedir(), '.claude', 'plugins', 'known_marketplaces.json'),
+      'utf-8',
+    ))
+    const root = known?.[marketplace]?.installLocation
+    if (typeof root !== 'string') return null
+    const catalog = JSON.parse(await fs.promises.readFile(path.join(root, '.claude-plugin', 'marketplace.json'), 'utf-8'))
+    const entry = Array.isArray(catalog?.plugins)
+      ? catalog.plugins.find((candidate: any) => candidate?.name === pluginName)
+      : null
+    return entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : null
+  } catch {
+    return null
+  }
+}
+
+function mergeDeclaration(entryValue: unknown, manifestValue: unknown): unknown {
+  if (entryValue === undefined) return manifestValue
+  if (manifestValue === undefined) return entryValue
+  if (entryValue && manifestValue && typeof entryValue === 'object' && typeof manifestValue === 'object'
+      && !Array.isArray(entryValue) && !Array.isArray(manifestValue)) {
+    return { ...(entryValue as Record<string, unknown>), ...(manifestValue as Record<string, unknown>) }
+  }
+  const flatten = (value: unknown): unknown[] => Array.isArray(value) ? value : [value]
+  return [...flatten(entryValue), ...flatten(manifestValue)]
+}
+
+function mergeIndependentDeclaration(entryValue: unknown, manifestValue: unknown): unknown {
+  if (entryValue === undefined) return manifestValue
+  if (manifestValue === undefined) return entryValue
+  const flatten = (value: unknown): unknown[] => Array.isArray(value) ? value : [value]
+  return [...flatten(entryValue), ...flatten(manifestValue)]
+}
+
+/** Pure form of the marketplace + local manifest merge contract. Exported so
+ * discovery tests can exercise it without mutating the user's Claude config. */
+export function mergePluginDeclarations(
+  pluginRoot: string,
+  pluginName: string,
+  entry: Record<string, any> | null,
+  manifest: Record<string, any> | null,
+): Record<string, any> {
+  const effective: Record<string, any> = { ...(entry ?? {}), ...(manifest ?? {}) }
+
+  // These declarations are independent sources. In particular, two inline
+  // hook objects must both survive even when they contain the same event key;
+  // collectPluginHooks performs the event-level append later.
+  for (const key of ['hooks', 'dependencies']) {
+    const merged = mergeIndependentDeclaration(entry?.[key], manifest?.[key])
+    if (merged !== undefined) effective[key] = merged
+  }
+  // Named server maps merge by key; mixed path/map declarations concatenate.
+  for (const key of ['mcpServers', 'lspServers']) {
+    const merged = mergeDeclaration(entry?.[key], manifest?.[key])
+    if (merged !== undefined) effective[key] = merged
+  }
+  // These are keyed schemas/namespaces rather than replacement path fields.
+  for (const key of ['userConfig', 'experimental']) {
+    const merged = mergeDeclaration(entry?.[key], manifest?.[key])
+    if (merged !== undefined) effective[key] = merged
+  }
+
+  if (typeof entry?.defaultEnabled === 'boolean') effective.defaultEnabled = entry.defaultEnabled
+  // The marketplace entry name is the installed identity and component
+  // namespace even if a bundled manifest happens to use a different name.
+  effective.name = pluginName || manifest?.name || entry?.name || path.basename(pluginRoot)
+  return effective
+}
+
+/** Effective plugin declaration. Plugin manifest metadata/path fields override
+ * marketplace values, while declarations with independent merge semantics are
+ * combined. Marketplace `defaultEnabled` is the documented exception and wins. */
+export async function readEffectivePluginManifest(
+  pluginRoot: string,
+  pluginName: string,
+  marketplace: string,
+): Promise<Record<string, any>> {
+  const [entry, manifest] = await Promise.all([
+    readMarketplacePluginEntry(pluginName, marketplace),
+    readPluginManifest(pluginRoot),
+  ])
+  return mergePluginDeclarations(pluginRoot, pluginName, entry, manifest)
+}
+
+/** Synchronous counterpart for subprocess hot paths that already expose a
+ * synchronous API (hook/MCP command expansion). */
+export function readEffectivePluginManifestSync(
+  pluginRoot: string,
+  pluginName: string,
+  marketplace: string,
+): Record<string, any> {
+  let manifest: Record<string, any> | null = null
+  let entry: Record<string, any> | null = null
+  try {
+    manifest = JSON.parse(fs.readFileSync(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf-8'))
+  } catch { /* optional local manifest */ }
+  if (marketplace && marketplace !== 'local') {
+    try {
+      const known = JSON.parse(fs.readFileSync(
+        path.join(os.homedir(), '.claude', 'plugins', 'known_marketplaces.json'),
+        'utf-8',
+      ))
+      const root = known?.[marketplace]?.installLocation
+      if (typeof root === 'string') {
+        const catalog = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'marketplace.json'), 'utf-8'))
+        const match = Array.isArray(catalog?.plugins)
+          ? catalog.plugins.find((candidate: any) => candidate?.name === pluginName)
+          : null
+        if (match && typeof match === 'object' && !Array.isArray(match)) entry = match
+      }
+    } catch { /* optional marketplace declaration */ }
+  }
+  return mergePluginDeclarations(pluginRoot, pluginName, entry, manifest)
+}
+
 /** A plugin entry from `~/.claude/plugins/installed_plugins.json` that is
  *  both installed (cache directory present) and enabled by the user's
  *  `~/.claude/settings.json:enabledPlugins` toggle. */
@@ -216,6 +338,56 @@ export interface InstalledPlugin {
   /** Absolute path to the plugin's cache directory (contains `.claude-plugin/`,
    *  optional `.mcp.json`, `.lsp.json`, etc.). */
   installPath: string
+}
+
+function pluginNameFromId(pluginId: string): string {
+  const at = pluginId.lastIndexOf('@')
+  return at > 0 ? pluginId.slice(0, at) : pluginId
+}
+
+/** Claude's runtime component/MCP namespace is the plugin name, without its
+ * marketplace suffix. Refuse a proposed enabled set that would therefore be
+ * ambiguous instead of silently routing tools to whichever entry was read
+ * first. */
+export function assertUniqueEnabledPluginNames(pluginIds: Iterable<string>): void {
+  const byName = new Map<string, string[]>()
+  for (const pluginId of new Set(pluginIds)) {
+    const name = pluginNameFromId(pluginId)
+    const bucket = byName.get(name) ?? []
+    bucket.push(pluginId)
+    byName.set(name, bucket)
+  }
+  for (const [name, ids] of [...byName].sort(([a], [b]) => a.localeCompare(b))) {
+    ids.sort((a, b) => a.localeCompare(b))
+    if (ids.length > 1) {
+      throw new Error(
+        `Plugin namespace "${name}" conflict: ${ids[0]} and ${ids[1]} cannot be enabled together. `
+        + 'Disable one of them first.',
+      )
+    }
+  }
+}
+
+/** Legacy settings may already contain two enabled `name@marketplace` keys.
+ * Keep the runtime safe and deterministic: an explicit `true` beats an
+ * implicit default-enabled entry, then the lexicographically smaller id wins.
+ * New mutations are rejected by assertUniqueEnabledPluginNames instead. */
+export function selectPluginNamespaceWinners(
+  plugins: readonly InstalledPlugin[],
+  explicitlyEnabledKeys: ReadonlySet<string>,
+): InstalledPlugin[] {
+  const ranked = [...plugins].sort((a, b) => {
+    const explicitDelta = Number(explicitlyEnabledKeys.has(b.key)) - Number(explicitlyEnabledKeys.has(a.key))
+    return explicitDelta || a.key.localeCompare(b.key)
+  })
+  const claimed = new Set<string>()
+  const winners: InstalledPlugin[] = []
+  for (const plugin of ranked) {
+    if (claimed.has(plugin.name)) continue
+    claimed.add(plugin.name)
+    winners.push(plugin)
+  }
+  return winners.sort((a, b) => a.key.localeCompare(b.key))
 }
 
 /** List plugins that are BOTH installed (present in `installed_plugins.json`
@@ -244,9 +416,38 @@ export async function listEnabledInstalledPlugins(): Promise<InstalledPlugin[]> 
     const atIdx = key.lastIndexOf('@')
     const name = atIdx > 0 ? key.slice(0, atIdx) : key
     const marketplace = atIdx > 0 ? key.slice(atIdx + 1) : ''
+    // An explicit settings value wins. Otherwise `defaultEnabled: false`
+    // from the marketplace entry (which itself wins over plugin.json) keeps
+    // externally-installed opt-in plugins inert until the user enables them.
+    if (!enabled.has(key)) {
+      const manifest = await readEffectivePluginManifest(entry.installPath, name, marketplace)
+      if (manifest.defaultEnabled === false) continue
+    }
     out.push({ name, marketplace, key, installPath: entry.installPath })
   }
-  return out
+  const explicitlyEnabled = new Set(
+    [...enabled].filter(([, value]) => value === true).map(([key]) => key),
+  )
+  const winners = selectPluginNamespaceWinners(out, explicitlyEnabled)
+  if (winners.length !== out.length) {
+    const selected = new Set(winners.map(plugin => plugin.key))
+    const ignored = out.filter(plugin => !selected.has(plugin.key)).map(plugin => plugin.key).sort()
+    console.warn(`[plugins] Ignoring duplicate enabled plugin namespace(s): ${ignored.join(', ')}`)
+  }
+  return winners
+}
+
+/** Existing `bin/` directories from every enabled plugin, in deterministic
+ * order. Claude Code prepends these to Bash PATH; the bridge shell runs on the
+ * client host, so it must reproduce that part of the plugin harness there. */
+export async function listEnabledPluginBinDirs(): Promise<string[]> {
+  const plugins = await listEnabledInstalledPlugins()
+  return plugins
+    .map(plugin => path.join(plugin.installPath, 'bin'))
+    .filter(binDir => {
+      try { return fs.statSync(binDir).isDirectory() } catch { return false }
+    })
+    .sort()
 }
 
 /** Load saved user-configurable option values for a plugin — merges
@@ -260,6 +461,24 @@ export async function listEnabledInstalledPlugins(): Promise<InstalledPlugin[]> 
  *  the merged dictionary is ready for `${user_config.KEY}` substitution. */
 export function loadPluginOptions(pluginId: string): Record<string, unknown> {
   const out: Record<string, unknown> = {}
+
+  // Schema defaults participate even before the user opens Configure.
+  try {
+    const installedPath = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json')
+    const installed = JSON.parse(fs.readFileSync(installedPath, 'utf-8'))
+    const root = installed?.plugins?.[pluginId]?.[0]?.installPath
+    if (typeof root === 'string') {
+      const at = pluginId.lastIndexOf('@')
+      const pluginName = at > 0 ? pluginId.slice(0, at) : pluginId
+      const marketplace = at > 0 ? pluginId.slice(at + 1) : ''
+      const schema = readEffectivePluginManifestSync(root, pluginName, marketplace).userConfig
+      if (schema && typeof schema === 'object' && !Array.isArray(schema)) {
+        for (const [key, spec] of Object.entries(schema)) {
+          if (spec && typeof spec === 'object' && 'default' in spec) out[key] = (spec as { default: unknown }).default
+        }
+      }
+    }
+  } catch { /* optional manifest/defaults */ }
 
   const settingsPath = path.join(os.homedir(), '.claude', 'settings.json')
   try {

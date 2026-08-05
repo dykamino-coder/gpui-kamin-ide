@@ -1,4 +1,4 @@
-import { ipcMain, type IpcMainEvent } from 'electron'
+import { ipcMain, type IpcMainEvent } from '@kaminide/host-compat'
 import os from 'os'
 import type { ConfigStore } from '../config/store'
 import type { TabManager } from '../tab-manager'
@@ -31,7 +31,7 @@ export function registerConfigIPC(ctx: ConfigIpcContext): void {
     }
   })
 
-  // Layout persistence (sidebar width, etc.) — written to electron-store JSON file.
+  // Layout persistence (sidebar width, etc.) — written through ConfigStore.
   ipcMain.handle('layout:get', () => ctx.configStore.getLayout())
   ipcMain.on('layout:set', (_event: IpcMainEvent, patch: Record<string, unknown>) => {
     ctx.configStore.setLayout(patch as Partial<import('../config/store').LayoutState>)

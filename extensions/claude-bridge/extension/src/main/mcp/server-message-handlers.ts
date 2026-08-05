@@ -4,9 +4,10 @@
 // remain pure functions over per-server state.
 
 import { randomUUID } from 'crypto'
-import type { BrowserWindow, IpcMainEvent } from 'electron'
-import type { McpResourceInfo, McpPromptInfo } from '../../shared/types'
+import type { BrowserWindow, IpcMainEvent } from '@kaminide/host-compat'
+import type { McpResourceInfo, McpResourceTemplateInfo, McpPromptInfo } from '../../shared/types'
 import type { McpServerState } from './transports/context'
+import { collectMcpList } from './pagination'
 
 export interface MessageHandlerCtx {
   servers: Map<string, McpServerState>
@@ -75,7 +76,7 @@ async function handleServerRequest(ctx: MessageHandlerCtx, serverId: string, msg
     // Ask the renderer for user input. The renderer responds via IPC.
     const requestId = randomUUID()
     const params = msg.params ?? {}
-    const { ipcMain } = await import('electron')
+    const { ipcMain } = await import('@kaminide/host-compat')
     return await new Promise<any>((resolve) => {
       const responseChannel = `mcp-elicitation-response:${requestId}`
       let settled = false
@@ -145,38 +146,58 @@ function handleServerNotification(ctx: MessageHandlerCtx, serverId: string, msg:
 
   if (method === 'notifications/tools/list_changed') {
     // Re-fetch the tool catalog
-    ctx.rpcRequest(serverId, 'tools/list', {}).then((result: any) => {
-      if (result?.tools) {
-        state.tools = result.tools.map((t: { name: string }) => t.name)
-        state.toolSchemas.clear()
-        for (const tool of result.tools) state.toolSchemas.set(tool.name, tool)
-        ctx.notifyChanged()
-        ctx.onToolsChanged?.()
-      }
+    void collectMcpList<any>(
+      (listMethod, params) => ctx.rpcRequest(serverId, listMethod, params),
+      'tools/list',
+      'tools',
+    ).then(tools => {
+      state.tools = tools.map((tool: { name: string }) => tool.name)
+      state.toolSchemas.clear()
+      for (const tool of tools) state.toolSchemas.set(tool.name, tool)
+      ctx.notifyChanged()
+      ctx.onToolsChanged?.()
     }).catch(() => {})
     return
   }
 
   if (method === 'notifications/resources/list_changed') {
-    ctx.rpcRequest(serverId, 'resources/list', {}).then((result: any) => {
-      if (Array.isArray(result?.resources)) {
-        state.resources = result.resources.map((r: any) => ({
-          uri: String(r.uri ?? ''), name: String(r.name ?? r.uri ?? ''), description: r.description, mimeType: r.mimeType,
-        })).filter((r: McpResourceInfo) => r.uri)
-        ctx.notifyChanged()
+    const request = (listMethod: string, params: Record<string, unknown>) => ctx.rpcRequest(serverId, listMethod, params)
+    void Promise.allSettled([
+      collectMcpList<any>(request, 'resources/list', 'resources'),
+      collectMcpList<any>(request, 'resources/templates/list', 'resourceTemplates'),
+    ]).then(([resourcesResult, templatesResult]) => {
+      let changed = false
+      if (resourcesResult.status === 'fulfilled') {
+        state.resources = resourcesResult.value.map((resource: any) => ({
+          uri: String(resource.uri ?? ''), name: String(resource.name ?? resource.uri ?? ''), description: resource.description, mimeType: resource.mimeType,
+        })).filter((resource: McpResourceInfo) => resource.uri)
+        changed = true
       }
-    }).catch(() => {})
+      if (templatesResult.status === 'fulfilled') {
+        state.resourceTemplates = templatesResult.value.map((template: any) => ({
+          uriTemplate: String(template.uriTemplate ?? ''), name: String(template.name ?? template.uriTemplate ?? ''), description: template.description, mimeType: template.mimeType,
+        })).filter((template: McpResourceTemplateInfo) => template.uriTemplate)
+        changed = true
+      }
+      if (changed) {
+        ctx.notifyChanged()
+        ctx.onToolsChanged?.()
+      }
+    })
     return
   }
 
   if (method === 'notifications/prompts/list_changed') {
-    ctx.rpcRequest(serverId, 'prompts/list', {}).then((result: any) => {
-      if (Array.isArray(result?.prompts)) {
-        state.prompts = result.prompts.map((p: any) => ({
-          name: String(p.name ?? ''), description: p.description, arguments: Array.isArray(p.arguments) ? p.arguments : undefined,
-        })).filter((p: McpPromptInfo) => p.name)
-        ctx.notifyChanged()
-      }
+    void collectMcpList<any>(
+      (listMethod, params) => ctx.rpcRequest(serverId, listMethod, params),
+      'prompts/list',
+      'prompts',
+    ).then(prompts => {
+      state.prompts = prompts.map((prompt: any) => ({
+        name: String(prompt.name ?? ''), description: prompt.description, arguments: Array.isArray(prompt.arguments) ? prompt.arguments : undefined,
+      })).filter((prompt: McpPromptInfo) => prompt.name)
+      ctx.notifyChanged()
+      ctx.onToolsChanged?.()
     }).catch(() => {})
     return
   }

@@ -4,7 +4,7 @@
 // handler can poke back into the manager (callbacks, state setters,
 // batcher, IPC channel).
 
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 import type { ServerMessage } from '../../shared/mcp-protocol'
 import type { JsonlBatcher } from './jsonl-batcher'
 import type { ExtendedConnectionState } from './connection-manager'

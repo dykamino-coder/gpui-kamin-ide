@@ -2,7 +2,7 @@
 // `useTabSend` so the composer and the command API (`lib/command-api.ts`) cannot
 // drift: a scripted send must exercise exactly what a click does, or testing it
 // proves nothing about the button.
-import type { ElectronBridge } from '../../shared/types'
+import type { KaminBridgeApi } from '../../shared/types'
 import { tabPromptReady, lastSendAt } from '../signals/connection'
 import { tabActivity } from '../signals/ui'
 import { enqueueLocal } from '../signals/queue'
@@ -14,7 +14,7 @@ import { enqueueLocal } from '../signals/queue'
  *  our message. The 50ms gap lets Ink finish the clear-line before the paste
  *  envelope (one batched chunk confuses the parser). `promptReady` flips
  *  optimistically so Send becomes Stop without waiting for the server. */
-export function sendMessageToTab(bridge: ElectronBridge, tabId: string, message: string): void {
+export function sendMessageToTab(bridge: KaminBridgeApi, tabId: string, message: string): void {
   // Mirror it into the visual queue when the CLI is mid-turn. The message goes
   // to the CLI either way — the CLI queues it itself — so this only decides
   // whether the user SEES it pending. Lives here rather than in the composer so

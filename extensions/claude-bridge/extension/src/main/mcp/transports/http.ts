@@ -8,6 +8,7 @@
 // before surfacing the error.
 
 import type { McpResult } from '../tool-registry'
+import { collectMcpList } from '../pagination'
 import type { TransportContext } from './context'
 
 export async function connectHttp(ctx: TransportContext, id: string): Promise<void> {
@@ -18,7 +19,7 @@ export async function connectHttp(ctx: TransportContext, id: string): Promise<vo
   ctx.appendLog(id, 'info', `[http] POST ${url} → initialize`)
   const initResult = await httpJsonRpcAuth(ctx, id, {
     jsonrpc: '2.0',
-    id: 1,
+    id: state.nextRequestId++,
     method: 'initialize',
     params: {
       protocolVersion: '2024-11-05',
@@ -43,21 +44,19 @@ export async function connectHttp(ctx: TransportContext, id: string): Promise<vo
   })
 
   ctx.appendLog(id, 'info', '[http] → tools/list')
-  const toolsResult = await httpJsonRpcAuth(ctx, id, {
-    jsonrpc: '2.0',
-    id: 2,
-    method: 'tools/list',
-  })
-
-  if (toolsResult.result?.tools) {
-    state.tools = toolsResult.result.tools.map((t: { name: string }) => t.name)
-    for (const tool of toolsResult.result.tools) {
-      state.toolSchemas.set(tool.name, tool)
-    }
-    ctx.appendLog(id, 'info', `[http] ← tools/list: ${state.tools.length} tools (${state.tools.slice(0, 5).join(', ')}${state.tools.length > 5 ? ', …' : ''})`)
-  } else {
-    ctx.appendLog(id, 'warn', '[http] ← tools/list: empty response')
+  const tools = await collectMcpList<any>(async (method, params) => {
+    const response = await httpJsonRpcAuth(ctx, id, {
+      jsonrpc: '2.0', id: state.nextRequestId++, method, params,
+    })
+    if (response.error) throw new Error(response.error.message)
+    return response.result
+  }, 'tools/list', 'tools')
+  state.tools = tools.map((tool: { name: string }) => tool.name)
+  state.toolSchemas.clear()
+  for (const tool of tools) {
+    state.toolSchemas.set(tool.name, tool)
   }
+  ctx.appendLog(id, 'info', `[http] ← tools/list: ${state.tools.length} tools (${state.tools.slice(0, 5).join(', ')}${state.tools.length > 5 ? ', …' : ''})`)
 }
 
 export async function callHttpTool(

@@ -152,7 +152,7 @@ export function StatsPanel(): JSX.Element {
 
   // Local-time aggregation — heatmap, peakHour, longestStreak, activeDays,
   // modelsTimeseries are computed from the raw UTC hourly buckets in the
-  // user's browser/Electron locale.
+  // user's browser/webview locale.
   const local = useMemo(() => data ? aggregateLocal(data.hourly, data.dailySessions) : null, [data])
 
   const weeks = range === '7d' ? 5 : range === '30d' ? 8 : 26

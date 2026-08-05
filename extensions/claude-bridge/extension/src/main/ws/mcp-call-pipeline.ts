@@ -3,7 +3,7 @@
 // responsible for owning the pendingMcpCalls map, the WS send channel,
 // and the renderer IPC channel.
 
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 import type { PermissionDecision } from '../../shared/types'
 import type { ClientMessage } from '../../shared/mcp-protocol'
 import type { PermissionManager } from '../mcp/permission-manager'
@@ -28,6 +28,10 @@ export function checkToolPermission(
   toolName: string,
   input: Record<string, unknown>,
 ): boolean | Promise<boolean> {
+  // Internal resource/prompt relays are continuations of an MCP protocol
+  // request, not model-invokable shell tools. They are never advertised in
+  // tools/list and must not surface a misleading permission dialog.
+  if (toolName.startsWith('__bridge_mcp_')) return true
   const mode = ctx.permissionMode()
   if (mode === 'bypassPermissions') return true
 
@@ -66,6 +70,14 @@ export function checkToolPermission(
  *  exitCode 1 + outcome:error. */
 export async function handleHookExecute(ctx: McpCallCtx, msg: any): Promise<void> {
   try {
+    const { handleMonitorTriggerCommand } = await import('../plugin-monitors')
+    if (await handleMonitorTriggerCommand(ctx.tabId, String(msg.command ?? ''), msg.payload ?? {}, msg.pluginId)) {
+      ctx.send({
+        type: 'hook:response', requestId: msg.requestId,
+        result: { stdout: '', stderr: '', exitCode: 0, outcome: 'success', durationMs: 0 },
+      })
+      return
+    }
     const { executeHook } = await import('../hooks/executor')
     const result = await executeHook(msg)
     ctx.send({ type: 'hook:response', requestId: msg.requestId, result })

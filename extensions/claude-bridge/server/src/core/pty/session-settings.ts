@@ -138,7 +138,11 @@ export function writeSessionSettings(
       syncedSettingsFiles.push(path.join(getProjectSyncDir(bearerHash, userCwd), 'settings.json'))
     }
   }
-  const merged = mergeAllHooks(userCwd, syncedSettingsFiles)
+  const merged = mergeAllHooks(
+    userCwd,
+    syncedSettingsFiles,
+    bearerHash ? path.join(getUserSyncDir(bearerHash), 'plugins.json') : undefined,
+  )
   // Inject bridge-owned status hooks (deterministic session state — see
   // hooks/bridge-status-hooks.ts). Appended AFTER the user/project/plugin merge
   // so both coexist: the CLI runs every matcher for an event, and these no-op
@@ -322,7 +326,7 @@ export function copyDirRecursive(src: string, dest: string): void {
 
 /**
  * Apply per-token synced data (user-level and project-level) to a session's CWD.
- * - User skills/agents/commands → symlinked into .claude/ (fallback: copy)
+ * - User skills/agents/commands → copied into the session-local .claude/
  * - User CLAUDE.md → appended to session CLAUDE.md (idempotent strip+append)
  * - Project files → copied into settingsDir (except .mcp.json and settings.json)
  */
@@ -334,19 +338,26 @@ export function applySyncData(settingsDir: string, tokenId: string, userCwd: str
 
     // ─── User-level sync ───
     if (fs.existsSync(userDir)) {
-      const linkOrCopy = (src: string, dst: string, label: string) => {
-        if (!fs.existsSync(src) || fs.existsSync(dst)) return
-        try {
-          fs.symlinkSync(src, dst, 'junction')
-          debugLog(`[sync] Symlinked user ${label}`, { tokenId: hash, target: dst })
-        } catch {
-          copyDirRecursive(src, dst)
-          debugLog(`[sync] Copied user ${label} (symlink failed)`, { tokenId: hash, target: dst })
-        }
+      const replaceFromSync = (src: string, dst: string, label: string) => {
+        fs.rmSync(dst, { recursive: true, force: true })
+        if (!fs.existsSync(src)) return
+        copyDirRecursive(src, dst)
+        debugLog(`[sync] Copied user ${label}`, { tokenId: hash, target: dst })
       }
-      linkOrCopy(path.join(userDir, 'skills'), path.join(claudeDir, 'skills'), 'skills')
-      linkOrCopy(path.join(userDir, 'agents'), path.join(claudeDir, 'agents'), 'agents')
-      linkOrCopy(path.join(userDir, 'commands'), path.join(claudeDir, 'commands'), 'commands')
+      // Session-local copies are intentional. The former symlink made the
+      // project overlay below write project skills back into the shared user
+      // sync directory, leaking them into other projects for the same token.
+      replaceFromSync(path.join(userDir, 'skills'), path.join(claudeDir, 'skills'), 'skills')
+      replaceFromSync(path.join(userDir, 'agents'), path.join(claudeDir, 'agents'), 'agents')
+      replaceFromSync(path.join(userDir, 'commands'), path.join(claudeDir, 'commands'), 'commands')
+
+      // Proxy-plugin roots keep native plugin namespaces and are immutable for
+      // the lifetime of this CLI spawn. Plugin configuration changes require a
+      // session restart (same contract as Claude Code's plugin configuration).
+      const syncedPlugins = path.join(userDir, 'plugins')
+      const sessionPlugins = path.join(settingsDir, '.bridge-plugins')
+      fs.rmSync(sessionPlugins, { recursive: true, force: true })
+      if (fs.existsSync(syncedPlugins)) copyDirRecursive(syncedPlugins, sessionPlugins)
 
       // Append user CLAUDE.md (idempotent strip + append)
       const userClaudeMd = path.join(userDir, 'CLAUDE.md')
@@ -425,5 +436,19 @@ export function applySyncData(settingsDir: string, tokenId: string, userCwd: str
   } catch (err) {
     // Sync failure should never block session creation
     warnLog('[sync] Failed to apply sync data (non-fatal)', { error: String(err), tokenId })
+  }
+}
+
+/** Absolute proxy-plugin roots to pass as repeated `--plugin-dir` arguments. */
+export function getSessionPluginDirs(settingsDir: string): string[] {
+  const root = path.join(settingsDir, '.bridge-plugins')
+  if (!fs.existsSync(root)) return []
+  try {
+    return fs.readdirSync(root, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && fs.existsSync(path.join(root, entry.name, '.claude-plugin', 'plugin.json')))
+      .map(entry => path.join(root, entry.name))
+      .sort()
+  } catch {
+    return []
   }
 }

@@ -1,5 +1,6 @@
-// Real `window.electronBridge` for the Bridge webview (Phase 3 — replaces the
-// Phase-2b no-op stub). Mirrors electron/preload/index.ts: every method maps to
+// Kamin bridge API for the webview. `window.kaminBridge` is canonical;
+// `window.electronBridge` remains a deprecated compatibility alias for the
+// vendored renderer. Every method maps to
 // a postMessage transport call (inv/snd/sub) routed to the extension host's
 // BridgeHost, which turns them back into the vendored ipcMain handlers. Runs
 // before main.tsx (script order in index.html), so the copied renderer sees a
@@ -40,6 +41,7 @@ bridge.getVersion = () => cachedVersion
 // KaminIDE owns the window chrome — the webview has no titlebar controls.
 bridge.windowIsMaximized = () => false
 
+;(window as unknown as { kaminBridge: unknown }).kaminBridge = bridge
 ;(window as unknown as { electronBridge: unknown }).electronBridge = bridge
 
 // Reconnect recovery. When the extension's WS to the server drops and reconnects

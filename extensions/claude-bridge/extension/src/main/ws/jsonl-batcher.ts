@@ -6,7 +6,7 @@
 // per tab with a single IPC. Subagent entries keyed by agentId/name are
 // batched in their own queues so they stay separated.
 
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 
 const BATCH_MS = 50
 

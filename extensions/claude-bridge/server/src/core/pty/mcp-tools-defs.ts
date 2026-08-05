@@ -5,7 +5,7 @@
 // is safe to import from anywhere without circular issues.
 
 /** Default tool definitions — fallback when session.registeredTools is empty.
- * Expanded to 24+ tools matching the full Electron tool registry. */
+ * Expanded to 24+ tools matching the full client-host tool registry. */
 export const MCP_TOOLS = [
   // ── File system ─────────────────────────────────────
   {
@@ -281,7 +281,7 @@ Use only after the user is finished with the worktree. Use \`git worktree remove
       required: ['path'],
     },
   },
-  // ── UI — rendered as widget in Electron ────────────
+  // ── UI — rendered as a widget in KaminIDE ──────────
   {
     name: 'AskUserQuestion',
     description: `Use this tool when you need to ask the user questions during execution. This allows you to:
@@ -396,7 +396,7 @@ This is the way to communicate visually in this chat — prefer it over ASCII ar
     },
   },
 
-  // ─── LSP — backed by plugin-provided language servers (Electron side) ──
+  // ─── LSP — backed by plugin-provided language servers (client side) ────
   //
   // These tools are always advertised; when no plugin LSP knows the file's
   // extension they return an error, and Claude falls back to Grep/Read.

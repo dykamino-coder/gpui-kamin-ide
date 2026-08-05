@@ -38,7 +38,7 @@ export function useSavedSessions(): UseSavedSessionsResult {
   const savedSessions = savedSessionsSignal.value
 
   const load = useCallback(async () => {
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     if (!bridge?.getSavedSessions) return
     try {
       const sessions = await bridge.getSavedSessions()
@@ -50,7 +50,7 @@ export function useSavedSessions(): UseSavedSessionsResult {
   }, [])
 
   const removeSaved = useCallback((conversationId: string) => {
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     if (!bridge) return
     // Optimistic update — drop from the signal immediately so the UI
     // reacts before the IPC round-trip completes.
@@ -66,7 +66,7 @@ export function useSavedSessions(): UseSavedSessionsResult {
   }, [])
 
   const removeSavedBatch = useCallback((conversationIds: string[]) => {
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     if (!bridge) return
     const set = new Set(conversationIds)
     savedSessionsSignal.value = savedSessionsSignal.value.filter(
@@ -85,7 +85,7 @@ export function useSavedSessions(): UseSavedSessionsResult {
   // savedSession mutation) refreshes the sidebar immediately, without
   // waiting for the next mount.
   useEffect(() => {
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     const off = bridge?.onSavedSessionsChanged?.(() => { void load() })
     return () => { if (typeof off === 'function') off() }
   }, [load])

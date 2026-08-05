@@ -2,7 +2,7 @@
 // API. Only the state transitions live here; the strip keeps its own UI bits
 // (closing the overflow menu, scrolling the pill into view), which a scripted
 // call has no business doing.
-import type { ElectronBridge } from '../../shared/types'
+import type { KaminBridgeApi } from '../../shared/types'
 import type { DisplaySegment } from '../signals/compact-segments'
 import { setActiveSegment } from '../signals/compact-segments'
 import { clearJsonlEntries, setArchivedView, archivedViewTs } from '../signals/jsonl'
@@ -12,7 +12,7 @@ import { activeTabId } from '../signals/tabs'
  *  it from the mirror as an archived view. Latest → back to the live Current
  *  view, reloading if we were parked in an archived one. */
 export function openDisplaySegment(
-  bridge: ElectronBridge, seg: DisplaySegment, totalSegments: number,
+  bridge: KaminBridgeApi, seg: DisplaySegment, totalSegments: number,
 ): void {
   const id = activeTabId.value
   if (!id) return

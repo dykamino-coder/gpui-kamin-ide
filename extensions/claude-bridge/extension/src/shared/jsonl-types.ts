@@ -1,5 +1,5 @@
 // ============================================================================
-// JSONL Session Types — shared between server and Electron
+// JSONL Session Types — shared between server and the VSIX bridge host
 // Claude Code writes session data to ~/.claude/projects/<slug>/<session-id>.jsonl
 // ============================================================================
 
