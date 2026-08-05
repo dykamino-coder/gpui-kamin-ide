@@ -150,6 +150,10 @@ pub struct Computed {
     pub flex_basis: Option<Len>,
     pub justify_content: Option<Justify>,
     pub gap: Option<(Option<Len>, Option<Len>)>,
+    /// `box-sizing`. По умолчанию в CSS — `content-box`: заданная ширина
+    /// НЕ включает отступы и рамку. Движок раскладки под нами всегда считает
+    /// по `border-box`, поэтому разницу приходится компенсировать вручную.
+    pub border_box: Option<bool>,
     pub grid_cols: Option<u16>,
     /// Список дорожек, если он выразим: `auto`, `1fr`, px, `minmax()`.
     pub grid_tracks: Option<Vec<Track>>,
@@ -238,6 +242,7 @@ impl Computed {
     fn apply_one(&mut self, key: &str, val: &str) {
         let v = val.trim();
         match key {
+            "box-sizing" => self.border_box = Some(v == "border-box"),
             "display" => {
                 self.display = match v {
                     "flex" => Some(Display::Flex),

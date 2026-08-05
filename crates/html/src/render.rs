@@ -61,8 +61,10 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
 
 /// Разбор списка детей на блоки: инлайн-подряд склеивается в абзац.
 fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
+    let collapsed = collapse_margins(nodes);
     let mut out = vec![];
     let mut pending: Vec<Node> = vec![];
+    let nodes = collapsed.as_slice();
     for n in nodes {
         let is_inline = match n {
             Node::Text(t) => !t.trim().is_empty(),
@@ -81,6 +83,96 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     }
     if !pending.is_empty() {
         out.push(paragraph(&pending, inherited, opts));
+    }
+    out
+}
+
+/// Схлопывание вертикальных отступов соседних блоков.
+///
+/// В CSS нижний отступ одного блока и верхний отступ следующего не
+/// складываются, а сливаются в больший из двух. Движок раскладки под нами
+/// складывает их, и документ становится длиннее браузерного — расхождение
+/// накапливается сверху вниз и было поймано сравнением с Chrome.
+fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
+    let mut out: Vec<Node> = nodes.to_vec();
+    // Отступ первого ребёнка «протекает» наружу, если родителя от него не
+    // отделяют ни рамка, ни внутренний отступ: в CSS это один и тот же отступ,
+    // а не два. Без этого блок уезжает вниз на величину детского отступа.
+    for node in out.iter_mut() {
+        let Node::Element(e) = node else { continue };
+        if e.inline {
+            continue;
+        }
+        let separated = e.style.padding.top.is_some() || e.style.border_width.top.is_some();
+        if separated {
+            continue;
+        }
+        // Именно ПЕРВЫЙ блок в потоке: отступ второго и последующих
+        // схлопывается с соседом, а не выносится наружу.
+        let child_top = e
+            .children
+            .iter()
+            .find(|c| match c {
+                Node::Element(ch) => !ch.inline,
+                Node::Text(t) => !t.trim().is_empty(),
+            })
+            .and_then(|c| match c {
+                Node::Element(ch) => match ch.style.margin.top {
+                    Some(Len::Px(v)) if v > 0.0 => Some(v),
+                    _ => None,
+                },
+                _ => None,
+            });
+        if let Some(v) = child_top {
+            let own = match e.style.margin.top {
+                Some(Len::Px(t)) => t,
+                _ => 0.0,
+            };
+            e.style.margin.top = Some(Len::Px(own.max(v)));
+            for c in e.children.iter_mut() {
+                if let Node::Element(ch) = c
+                    && !ch.inline
+                    && matches!(ch.style.margin.top, Some(Len::Px(t)) if t > 0.0)
+                {
+                    ch.style.margin.top = Some(Len::Px(0.0));
+                    break;
+                }
+            }
+        }
+    }
+    let mut prev_bottom: Option<f32> = None;
+    for node in out.iter_mut() {
+        let Node::Element(e) = node else {
+            // Переводы строк между блоками разрывом потока не считаются: в
+            // форматированной разметке они стоят везде, и из-за них
+            // схлопывание не срабатывало ни разу (поймано сравнением с
+            // Chrome — документ уезжал вниз).
+            if matches!(node, Node::Text(t) if t.trim().is_empty()) {
+                continue;
+            }
+            prev_bottom = None;
+            continue;
+        };
+        // Отступы схлопываются только у блоков в обычном потоке.
+        if e.inline || e.style.position == Some(crate::computed::Position::Absolute) {
+            prev_bottom = None;
+            continue;
+        }
+        let top = match e.style.margin.top {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        if let Some(bottom) = prev_bottom
+            && top > 0.0
+        {
+            // Верхний отступ уменьшается на уже отданное нижним отступом
+            // предыдущего блока: в сумме получается больший из двух.
+            e.style.margin.top = Some(Len::Px((top - bottom).max(0.0)));
+        }
+        prev_bottom = match e.style.margin.bottom {
+            Some(Len::Px(v)) => Some(v),
+            _ => Some(0.0),
+        };
     }
     out
 }
@@ -382,5 +474,125 @@ fn collect_rows<'a>(nodes: &'a [Node], out: &mut Vec<&'a Element>) {
                 collect_rows(&e.children, out);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dom::parse;
+
+    fn find_class<'a>(nodes: &'a [Node], class: &str) -> Option<&'a Element> {
+        for n in nodes {
+            if let Node::Element(e) = n {
+                if e.attr("class")
+                    .is_some_and(|c| c.split_whitespace().any(|x| x == class))
+                {
+                    return Some(e);
+                }
+                if let Some(found) = find_class(&e.children, class) {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
+
+    /// Разворачивает обёртки документа до содержимого страницы.
+    fn page_children(html: &str) -> Vec<Node> {
+        fn dive(n: &[Node]) -> Vec<Node> {
+            match n.first() {
+                Some(Node::Element(e)) if e.tag == "html" || e.tag == "body" => dive(&e.children),
+                _ => n.to_vec(),
+            }
+        }
+        dive(&parse(html, ""))
+    }
+
+    #[test]
+    fn margin_collapse_matches_the_browser_on_the_fixture_case() {
+        // Ровно тот случай, на котором сравнение с Chrome показало сдвиг на
+        // 10 точек: блок-обёртка без своего отступа сверху и ребёнок с ним.
+        let page = page_children(
+            "<div class=\"page\">\
+               <div class=\"wrap\" style=\"margin: 0 0 10px\">w</div>\
+               <div class=\"stack\" style=\"margin: 0 0 10px\">\
+                 <div class=\"mt\" style=\"margin-top: 24px\">m</div>\
+               </div>\
+             </div>",
+        );
+        let children = match &page[0] {
+            Node::Element(e) => collapse_margins(&e.children),
+            _ => panic!("нет страницы"),
+        };
+        let stack = children
+            .iter()
+            .find_map(|n| match n {
+                Node::Element(e) if e.attr("class") == Some("stack") => Some(e),
+                _ => None,
+            })
+            .expect("нет обёртки");
+        // Отступ ребёнка вынесен наружу (24) и уменьшен на уже отданные
+        // предыдущим блоком 10 — суммарный зазор остаётся 24, как в браузере.
+        assert_eq!(stack.style.margin.top, Some(Len::Px(14.0)), "у обёртки");
+        let child_top = stack.children.iter().find_map(|n| match n {
+            Node::Element(e) => Some(e.style.margin.top),
+            _ => None,
+        });
+        assert_eq!(child_top, Some(Some(Len::Px(0.0))), "у ребёнка снят");
+    }
+
+    #[test]
+    fn adjacent_margins_collapse_into_the_larger() {
+        // В CSS нижний отступ одного блока и верхний отступ следующего не
+        // складываются: остаётся больший. Иначе документ растёт сверху вниз.
+        let nodes = parse(
+            "<div style=\"margin-bottom: 10px\">a</div><div style=\"margin-top: 24px\">b</div>",
+            "",
+        );
+        let inner = match &nodes[0] {
+            Node::Element(html) => collapse_margins(&html.children),
+            _ => panic!("нет корня"),
+        };
+        let body = match &inner[0] {
+            Node::Element(b) => collapse_margins(&b.children),
+            _ => panic!("нет body"),
+        };
+        let second = match &body[1] {
+            Node::Element(e) => e.style.margin.top,
+            _ => panic!("нет второго блока"),
+        };
+        // 24 всего, из них 10 уже дал нижний отступ предыдущего блока.
+        assert_eq!(second, Some(Len::Px(14.0)), "получено {second:?}");
+    }
+
+    #[test]
+    fn first_child_margin_leaks_through_a_borderless_parent() {
+        // Отступ первого ребёнка в CSS — тот же отступ, что у родителя, если
+        // между ними нет ни рамки, ни внутреннего отступа.
+        let nodes = parse(
+            "<div class=\"wrap\"><div class=\"in\" style=\"margin-top: 24px\">x</div></div>",
+            "",
+        );
+        let inner = match &nodes[0] {
+            Node::Element(html) => collapse_margins(&html.children),
+            _ => panic!("нет корня"),
+        };
+        let body = match &inner[0] {
+            Node::Element(b) => collapse_margins(&b.children),
+            _ => panic!("нет body"),
+        };
+        let wrap = match &body[0] {
+            Node::Element(e) => e,
+            _ => panic!("нет обёртки"),
+        };
+        assert_eq!(
+            wrap.style.margin.top,
+            Some(Len::Px(24.0)),
+            "отступ вынесен наружу"
+        );
+        let child_top =
+            find_class(std::slice::from_ref(&body[0]), "in").and_then(|e| e.style.margin.top);
+        assert_eq!(child_top, Some(Len::Px(0.0)), "у ребёнка отступ снят");
     }
 }

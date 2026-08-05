@@ -162,6 +162,36 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         }
     }
 
+    // Движок раскладки всегда трактует размер как `border-box`, а CSS по
+    // умолчанию — как `content-box`: заданная ширина не включает отступы и
+    // рамку. Без компенсации блок с рамкой 4px выходил на 8 точек уже, чем в
+    // браузере, и всё правее него уезжало (поймано сравнением с Chrome).
+    let content_box = c.border_box != Some(true);
+    let extra = |sides: &[Option<Len>]| -> f32 {
+        if !content_box {
+            return 0.0;
+        }
+        sides
+            .iter()
+            .filter_map(|s| match s {
+                Some(Len::Px(v)) => Some(*v),
+                _ => None,
+            })
+            .sum()
+    };
+    let pad_x = extra(&[
+        c.padding.left,
+        c.padding.right,
+        c.border_width.left,
+        c.border_width.right,
+    ]);
+    let pad_y = extra(&[
+        c.padding.top,
+        c.padding.bottom,
+        c.border_width.top,
+        c.border_width.bottom,
+    ]);
+
     for (val, f) in [
         (c.width, 0u8),
         (c.height, 1),
@@ -174,6 +204,12 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         if l == Len::Auto {
             continue;
         }
+        // Доли считаются от родителя и компенсации не требуют.
+        let l = match l {
+            Len::Px(v) if f % 2 == 0 => Len::Px(v + pad_x),
+            Len::Px(v) => Len::Px(v + pad_y),
+            other => other,
+        };
         let g = len_to_gpui(l);
         d = match f {
             0 => d.w(g),

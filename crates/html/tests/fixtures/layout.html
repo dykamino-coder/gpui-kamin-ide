@@ -1,0 +1,118 @@
+<!-- Эталон для попиксельного сравнения с Chrome.
+     Только геометрия и цвет: текст растрируется разными движками и совпасть
+     до пикселя не может, а прямоугольники обязаны совпадать точно. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff }
+  .page { width: 800px; padding: 20px; box-sizing: border-box }
+  .row { display: flex; gap: 10px; margin: 0 0 10px }
+  .box { width: 80px; height: 40px; background: #3b5bdb }
+  .tall { height: 70px; background: #2b8a3e }
+  .grow { flex-grow: 1; background: #c92a2a }
+  .col { display: flex; flex-direction: column; gap: 6px }
+  .pad { padding: 12px; background: #b8860b }
+  .bord { border: 4px solid #1a1c23; background: #dddddd; width: 100px; height: 50px }
+  .round { border-radius: 12px; background: #7048e8; width: 90px; height: 45px }
+  .half { width: 50%; height: 30px; background: #0ca678 }
+  .abs-wrap { position: relative; height: 80px; background: #e9ecef; margin: 0 0 10px }
+  .abs { position: absolute; top: 10px; left: 20px; width: 60px; height: 30px; background: #f76707 }
+  .abs2 { position: absolute; bottom: 8px; right: 12px; width: 40px; height: 24px; background: #ae3ec9 }
+  .grid { display: grid; grid-template-columns: 100px 1fr 60px; gap: 8px; margin: 0 0 10px }
+  .cell { height: 36px; background: #495057 }
+  .center { display: flex; align-items: center; justify-content: center;
+            height: 60px; background: #f1f3f5; margin: 0 0 10px }
+  .mark { width: 30px; height: 30px; background: #d6336c }
+  .wrap { display: flex; flex-wrap: wrap; gap: 6px; width: 300px; margin: 0 0 10px }
+  .chip { width: 70px; height: 24px; background: #1098ad }
+  .stack { margin: 0 0 10px }
+  .mt { margin-top: 24px; width: 120px; height: 20px; background: #66a80f }
+</style>
+
+<div class="page">
+  <!-- 1. Флекс-строка: фиксированные, высокий, растягивающийся -->
+  <div class="row">
+    <div class="box"></div>
+    <div class="box tall"></div>
+    <div class="box grow"></div>
+  </div>
+
+  <!-- 2. Отступы внутри и рамка -->
+  <div class="row">
+    <div class="pad"><div class="box"></div></div>
+    <div class="bord"></div>
+    <div class="round"></div>
+  </div>
+
+  <!-- 3. Доля от родителя -->
+  <div class="stack"><div class="half"></div></div>
+
+  <!-- 4. Абсолютное позиционирование от двух краёв -->
+  <div class="abs-wrap">
+    <div class="abs"></div>
+    <div class="abs2"></div>
+  </div>
+
+  <!-- 5. Сетка: фиксированная, растягивающаяся, фиксированная -->
+  <div class="grid">
+    <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+  </div>
+
+  <!-- 6. Центрирование по обеим осям -->
+  <div class="center"><div class="mark"></div></div>
+
+  <!-- 7. Перенос в гибкой строке -->
+  <div class="wrap">
+    <div class="chip"></div><div class="chip"></div><div class="chip"></div>
+    <div class="chip"></div><div class="chip"></div>
+  </div>
+
+  <!-- 8. Внешний отступ сверху -->
+  <div class="stack"><div class="mt"></div></div>
+
+  <!-- 9. Колонка с промежутками -->
+  <div class="col">
+    <div class="box"></div>
+    <div class="box"></div>
+  </div>
+</div>
+
+<!-- Вторая волна: случаи, добавленные после первого прогона сравнения. -->
+<div class="page">
+  <!-- 10. box-sizing: border-box против умолчания -->
+  <div class="row">
+    <div style="box-sizing: border-box; width: 120px; height: 40px;
+                padding: 10px; border: 5px solid #212529; background: #fab005"></div>
+    <div style="width: 120px; height: 40px;
+                padding: 10px; border: 5px solid #212529; background: #e64980"></div>
+  </div>
+
+  <!-- 11. Вложенные отступы и схлопывание через уровень -->
+  <div style="background: #d0bfff; margin-bottom: 16px">
+    <div style="margin-top: 20px; height: 24px; background: #5f3dc4"></div>
+  </div>
+
+  <!-- 12. Проценты ширины во вложенности -->
+  <div style="width: 400px; background: #e9ecef">
+    <div style="width: 50%; height: 26px; background: #087f5b"></div>
+  </div>
+
+  <!-- 13. Минимальная и максимальная ширина -->
+  <div class="row">
+    <div style="width: 500px; max-width: 150px; height: 30px; background: #f03e3e"></div>
+    <div style="width: 10px; min-width: 90px; height: 30px; background: #1864ab"></div>
+  </div>
+
+  <!-- 14. Выравнивание в конце строки и распределение -->
+  <div style="display: flex; justify-content: space-between; width: 500px; margin-bottom: 12px">
+    <div style="width: 60px; height: 28px; background: #5c940d"></div>
+    <div style="width: 60px; height: 28px; background: #862e9c"></div>
+  </div>
+
+  <!-- 15. Сетка с равными долями -->
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 520px">
+    <div style="height: 30px; background: #c2255c"></div>
+    <div style="height: 30px; background: #0b7285"></div>
+    <div style="height: 30px; background: #e67700"></div>
+    <div style="height: 30px; background: #364fc7"></div>
+  </div>
+</div>
