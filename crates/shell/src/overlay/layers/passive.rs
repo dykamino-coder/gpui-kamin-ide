@@ -84,8 +84,8 @@ pub(crate) fn add_passive(
                         .unwrap_or_else(|| "No folder".into());
                     (
                         crate::ui::sessions_list::project_actions_pill(pid, &name, count, tx, p),
-                        // 2 кнопки 24 + gap 2 + p 3×2
-                        56.0_f32,
+                        // 2 кнопки 24 + gap 2 + p 3×2 + border 1×2
+                        58.0_f32,
                     )
                 })
             })
@@ -96,7 +96,8 @@ pub(crate) fn add_passive(
                     let n = if s.open { 3.0 } else { 2.0 };
                     (
                         crate::ui::sessions_list::session_actions_pill(s, tx, p),
-                        n * 24.0 + (n - 1.0) * 2.0 + 6.0,
+                        // buttons + gaps + padding 3×2 + border 1×2
+                        n * 24.0 + (n - 1.0) * 2.0 + 8.0,
                     )
                 })
             })
@@ -107,6 +108,8 @@ pub(crate) fn add_passive(
                 a,
                 (vw, vh),
                 pill_w,
+                &hp,
+                tx,
             ));
         }
     }

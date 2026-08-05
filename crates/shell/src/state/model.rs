@@ -192,11 +192,14 @@ pub struct RootView {
     /// Живые таймеры тостов (каунтдаун/ховер-пауза/closing) по id.
     pub toast_timers:
         std::collections::HashMap<String, std::sync::Arc<crate::ui::toasts::ToastTimer>>,
-    /// Id строки/группы, над которой открыт hover-поповер действий (+gen для
-    /// анти-дребезга закрытия).
     /// Открытое контекст-меню веб-страницы (в теме, слой оверлеев).
     pub web_menu: Option<crate::ui::web_menu::WebMenuState>,
+    /// Id строки/группы, для которой открыт hover-поповер действий. Anchor и
+    /// panel хранятся отдельно: на прямом прыжке мыши panel-enter в GPUI может
+    /// прийти раньше anchor-leave, и общий bool тогда закрывал поповер.
     pub hover_pill: Option<String>,
+    pub hover_pill_anchor: Option<String>,
+    pub hover_pill_panel: Option<String>,
     pub hover_pill_gen: u64,
     /// Запечённый glow-спрайт под лого Welcome.
     pub(crate) welcome_glow: std::sync::Arc<gpui::Image>,

@@ -18,7 +18,7 @@ use smol::channel::Sender;
 
 /// Hover-пилюля действий сессии: rename / disconnect (open) / delete.
 pub fn session_actions_pill(s: &Session, tx: &Sender<ShellEvent>, p: &Palette) -> AnyElement {
-    let mut pill = pill_wrap(format!("pill-s-{}", s.id), s.id.clone(), tx, p).child(pill_btn(
+    let mut pill = pill_wrap(format!("pill-s-{}", s.id), p).child(pill_btn(
         format!("rn-{}", s.id),
         EDIT,
         "Rename",
@@ -142,7 +142,7 @@ pub fn project_actions_pill(
     tx: &Sender<ShellEvent>,
     p: &Palette,
 ) -> AnyElement {
-    pill_wrap(format!("pill-p-{pid}"), format!("grp:{pid}"), tx, p)
+    pill_wrap(format!("pill-p-{pid}"), p)
         .child(pill_btn(format!("padd-{pid}"), ADD, "New session here", Some(rgba(p.accent_primary)), false, 14.0, p, {
             let pid = pid.to_string();
             move || {
@@ -182,40 +182,5 @@ pub fn project_actions_pill(
                 }));
             }
         }))
-        .into_any_element()
-}
-/// Пилюля в overlay: absolute на якоре строки (справа от сайдбара).
-pub fn overlay_pill(
-    inner: AnyElement,
-    anchor: [f32; 4],
-    // Вьюпорт для клампа (`clampToViewport`, gutter 8)
-    viewport: (f32, f32),
-    // Оценка ширины пилюли по числу кнопок (24 + gap 2 каждая, p 3×2)
-    pill_w: f32,
-) -> AnyElement {
-    const GUTTER: f32 = 8.0;
-    const PILL_H: f32 = 32.0;
-    let (vw, vh) = viewport;
-    // side «right»: left = a.right + 4, иначе — влево от якоря, если справа
-    // не влезает (`clamp-popup.ts:91-94`); центрирование по вертикали с
-    // клампом в вьюпорт (`:99-113`). Клампа не было вовсе (ревью ц.13).
-    let mut left = anchor[0] + anchor[2] + 4.0;
-    if left + pill_w > vw - GUTTER {
-        let flipped = anchor[0] - 4.0 - pill_w;
-        left = if flipped >= GUTTER {
-            flipped
-        } else {
-            (vw - pill_w - GUTTER).max(GUTTER)
-        };
-    }
-    let top = (anchor[1] + anchor[3] / 2.0 - PILL_H / 2.0)
-        .min(vh - PILL_H - GUTTER)
-        .max(GUTTER);
-    div()
-        .absolute()
-        .left(px(left.round()))
-        .top(px(top.round()))
-        .child(crate::overlay::hit_area())
-        .child(inner)
         .into_any_element()
 }

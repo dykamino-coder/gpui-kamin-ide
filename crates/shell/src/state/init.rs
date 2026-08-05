@@ -189,6 +189,8 @@ impl RootView {
             toast_timers: std::collections::HashMap::new(),
             web_menu: None,
             hover_pill: None,
+            hover_pill_anchor: None,
+            hover_pill_panel: None,
             hover_pill_gen: 0,
             // ::before welcome: 220×220, accent 26% → transparent (ревью ц.1)
             welcome_glow: crate::ui::radial_bg::bake_glow_edge(
