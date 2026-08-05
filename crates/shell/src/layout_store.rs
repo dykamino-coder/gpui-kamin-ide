@@ -77,24 +77,30 @@ pub fn load_raw_key(key: &str) -> Option<Value> {
         .and_then(|v| v.get(key).cloned())
 }
 
-/// Загрузка на буте: default-пресет (star) имеет приоритет; иначе layout.json;
-/// отсутствие/битость → заводской DEFAULT.
+/// Валидный starred preset, если он есть.
+pub(crate) fn load_default_preset() -> Option<LayoutSnapshot> {
+    load_presets()
+        .into_iter()
+        .filter(|preset| preset.default)
+        .find_map(|preset| serde_json::from_value(preset.snapshot).ok())
+}
+
+/// Единый startup-приоритет: выбор пользователя сильнее состояния сессии,
+/// затем идёт последнее локальное состояние и только потом factory default.
+pub(crate) fn select_startup_layout(
+    default_preset: Option<LayoutSnapshot>,
+    session: Option<LayoutSnapshot>,
+    stored: Option<LayoutSnapshot>,
+) -> LayoutSnapshot {
+    default_preset.or(session).or(stored).unwrap_or_default()
+}
+
+/// Предварительная загрузка до прихода session snapshot.
 pub fn load() -> LayoutSnapshot {
-    // ПОСЛЕДНЕЕ живое состояние первично: default-пресет раньше побеждал
-    // layout.json на каждом старте, и юзер получал «что-то дефолтное»
-    // вместо раскладки, которую оставил. Пресет — только фолбэк, когда
-    // сохранённого состояния ещё нет (свежая установка / сброс).
-    if let Ok(raw) = std::fs::read_to_string(layout_path())
-        && let Ok(snap) = serde_json::from_str::<LayoutSnapshot>(&raw)
-    {
-        return snap;
-    }
-    if let Some(pr) = load_presets().into_iter().find(|p| p.default)
-        && let Ok(snap) = serde_json::from_value::<LayoutSnapshot>(pr.snapshot)
-    {
-        return snap;
-    }
-    LayoutSnapshot::default()
+    let stored = std::fs::read_to_string(layout_path())
+        .ok()
+        .and_then(|raw| serde_json::from_str::<LayoutSnapshot>(&raw).ok());
+    select_startup_layout(load_default_preset(), None, stored)
 }
 
 static SAVER: Mutex<Option<Sender<Value>>> = Mutex::new(None);
@@ -171,5 +177,43 @@ fn write_merged(patch: &Value) {
     };
     if std::fs::write(&tmp, text).is_ok() {
         let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn marked(width: f64) -> LayoutSnapshot {
+        LayoutSnapshot {
+            sidebar_width_px: width,
+            ..LayoutSnapshot::default()
+        }
+    }
+
+    #[test]
+    fn default_preset_wins_on_startup() {
+        let selected = select_startup_layout(
+            Some(marked(101.0)),
+            Some(marked(202.0)),
+            Some(marked(303.0)),
+        );
+        assert_eq!(selected.sidebar_width_px, 101.0);
+    }
+
+    #[test]
+    fn session_then_stored_then_factory_are_fallbacks() {
+        assert_eq!(
+            select_startup_layout(None, Some(marked(202.0)), Some(marked(303.0))).sidebar_width_px,
+            202.0
+        );
+        assert_eq!(
+            select_startup_layout(None, None, Some(marked(303.0))).sidebar_width_px,
+            303.0
+        );
+        assert_eq!(
+            select_startup_layout(None, None, None).sidebar_width_px,
+            LayoutSnapshot::default().sidebar_width_px
+        );
     }
 }
