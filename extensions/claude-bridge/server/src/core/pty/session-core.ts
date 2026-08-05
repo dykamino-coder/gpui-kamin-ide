@@ -21,8 +21,6 @@ import {
   attachStartupAutoResponder,
   attachOutputDebounce,
   clearInputThrottle,
-  clearSessionInputState,
-  notifySessionAttachmentChanged,
 } from './session-io'
 import { clearSession as clearHookSession, cancelSessionLocalExecs } from '../hooks'
 import {
@@ -49,7 +47,7 @@ import {
 } from './session-mcp-call'
 import { startNativeMitm } from '../proxy/native-mitm'
 import { getStreamingSettings } from '../proxy/streaming-settings'
-import { waitForSyncSnapshot } from '../sync/lock'
+import { waitForUserSyncSnapshot } from '../sync/lock'
 
 // Re-export the per-session MCP-call helpers so callers that historically
 // imported them from session-core/session-manager keep working.
@@ -172,7 +170,7 @@ export async function createSession(
 
   // Apply per-token synced data (skills, agents, CLAUDE.md, project files)
   if (config.bearerHash) {
-    await waitForSyncSnapshot(config.bearerHash, userCwd)
+    await waitForUserSyncSnapshot(config.bearerHash)
     applySyncData(settingsDir, config.bearerHash, userCwd)
   }
 
@@ -544,7 +542,6 @@ export function detachSession(sessionId: string): void {
   if (session.detachGraceTimer) return // already detached
 
   session.detachedAt = new Date()
-  notifySessionAttachmentChanged(session)
   session.detachGraceTimer = setTimeout(() => {
     debugLog('Detach grace expired — destroying session', { sessionId })
     destroySession(sessionId)
@@ -568,7 +565,6 @@ export function reattachSession(session: PtySession, ws: WS): void {
   session.detachedAt = null
   session.ws = ws
   session.lastActivityAt = new Date()
-  notifySessionAttachmentChanged(session)
 
   for (const [requestId, pe] of session.pendingElicitations) {
     sendToClient(ws, {
@@ -942,7 +938,6 @@ function cleanupSession(sessionId: string): void {
   }
   sessions.delete(sessionId)
   clearInputThrottle(sessionId)
-  clearSessionInputState(session)
   // Don't delete settingsDir — keep it so --continue can find conversation history.
   // The dir is in /tmp and gets cleaned on reboot anyway.
   broadcastSessionCount()
@@ -1002,7 +997,7 @@ export function handleElicitationResponse(
       // The PTY may have exited between the guard and here (session died while
       // the user was answering) — a write to a dead pty can throw synchronously.
       try {
-        submitTextToSession(session, text)
+        session.pty.write(`\x1b[200~${text}\x1b[201~\r`)
       } catch (err) {
         warnLog('Elicitation PTY write failed (session likely exited)', {
           sessionId, requestId, error: err instanceof Error ? err.message : String(err),

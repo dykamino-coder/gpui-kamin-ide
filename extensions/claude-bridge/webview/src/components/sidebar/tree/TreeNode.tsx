@@ -41,7 +41,7 @@ export function TreeNode({ node, depth }: TreeNodeProps): JSX.Element {
   function handleRename(e: MouseEvent): void {
     e.stopPropagation()
     const bridge = (window as any).kaminBridge
-    bridge?.submitText(node.id, '/rename')
+    bridge?.sendInput(node.id, '/rename\r')
   }
 
   function handleClose(e: MouseEvent): void {

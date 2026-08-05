@@ -1,47 +1,18 @@
-# Claude Bridge PR validation
+# Claude Bridge plugin harness validation
 
-This document covers the plugin-harness branch as a whole, with extra focus on
-the PTY input and live skills-reload regressions fixed in this PR.
+This document covers the plugin-harness changes in this branch. It intentionally
+does not define PTY submission or live skills-reload behavior.
 
-## What changed
+## Scope
 
-The server now owns every semantic text submission as one serialized
-transaction: `Ctrl+U`, Ink settle, bracketed paste, paste-echo quiet window, and
-exactly one `Enter`. Raw terminal bytes arriving during a transaction are
-buffered. `Ctrl+C` bypasses the queue, cancels delayed `Enter`, and drops queued
-submissions so Stop cannot be followed by a surprise send.
-
-`/reload-skills` is deferred maintenance, not an eager submit. It runs only
-while the session is running, attached, prompt-ready, free of another submit,
-and has no unfinished raw-console line. A sync while the app is closed keeps
-the reload pending across the existing detach grace period. Reattach does not
-clear or submit the user's line.
-
-The effective session-local skills tree now has one implementation for initial
-session creation and live sync:
-
-- user skills are the base;
-- project skills override the same relative paths;
-- files missing from the new complete snapshot are removed;
-- user and project uploads for one token are serialized;
-- unchanged skills maps are not rewritten and do not request another reload.
-
-The Cloud Bridge textarea draft remains storage-only until explicit Send. The
-webview sends one semantic `submitText` frame; the server owns clear/paste/Enter.
-UI-originated `/compact` and `/rename` actions use the same path.
-
-## Preserved behavior
-
-- Normal app/window close still detaches the live CLI for its grace period. It
-  does not send `session:end`, kill the PTY, or create a second JSONL writer on
-  quick reconnect.
-- Explicit tab close/Disconnect still sends `session:end`.
-- Paste echo quiet-window and the 2-second hard cap remain in place.
-- Raw bridge-console typing remains raw and interactive.
-- Per-tab Cloud Bridge textarea drafts still survive tab switch and iframe
-  reload without touching PTY stdin.
-- Project skills still override user skills; live refresh and removal now match
-  a newly-created session.
+- install, update, uninstall, and dependency handling for personal plugins;
+- namespaced plugin snapshots without cross-plugin component collisions;
+- hook relay with token and session isolation;
+- MCP tools, resources, resource templates, prompts, and pagination;
+- plugin monitors and LSP lifecycle;
+- sensitive option storage and redaction;
+- the KaminIDE compatibility-host boundary;
+- sync authentication, payload limits, and path validation.
 
 ## One-command automated validation
 
@@ -53,82 +24,69 @@ extensions/claude-bridge/verify-pr.sh --install
 
 Use `--install` on a fresh checkout; subsequent runs can omit it. The script
 runs repository-level typecheck, ESLint, and Vitest plus package-specific
-typechecks/suites for server, extension, and webview. It rebuilds all shipped
-bridge artifacts, rejects accidental Electron runtime imports, and verifies
-that generated output matches the committed sources.
+typechecks and complete suites for server, extension, and webview. It rebuilds
+all shipped bridge artifacts, rejects accidental Electron runtime imports, and
+verifies that generated output matches the committed sources.
 
 Focused regression coverage includes:
 
-- rapid submits remain `paste1, Enter, paste2, Enter`;
-- raw input is buffered around a programmatic submit;
-- interrupt cancels delayed Enter and queued sends;
-- raw `abc` plus detach/sync/reattach never writes `/reload-skills`;
-- the legacy two-frame `Ctrl+U` client path cannot be stolen by maintenance;
-- deleted skills disappear from the live snapshot;
-- project/user collisions resolve to the project version, including
-  file-versus-directory collisions;
-- user/project uploads for one token cannot expose a half-written overlay;
-- explicit webview Send emits one semantic frame;
-- restoring a per-tab textarea draft has no PTY/bridge dependency.
+- plugin dependency resolution and safe install/update rollback;
+- plugin namespace collisions and complete snapshot replacement;
+- sensitive option persistence without plaintext leakage;
+- hook ownership and cross-token/session rejection;
+- MCP resource-template expansion and paginated discovery;
+- monitor/LSP process limits and cleanup;
+- sync authentication, body limits, traversal rejection, and symlink escape;
+- compatibility-host IPC behavior used by the extension runtime.
 
 ## Manual acceptance matrix
 
-### 1. Raw bridge-console draft survives skills sync
+### 1. Install and update a personal plugin
 
-1. Start a session and wait for the normal prompt.
-2. In the bridge console type `KEEP-ME` without pressing Enter.
-3. Add, edit, disable, or delete a skill so the client uploads a changed skills
-   snapshot.
-4. Wait at least two seconds.
+1. Add a personal marketplace and install a plugin with dependencies.
+2. Confirm its skills, commands, hooks, MCP servers, monitors, and LSP entries
+   appear under the plugin's own namespace.
+3. Publish or select a newer plugin revision and update it.
 
-Expected: `KEEP-ME` remains the only unfinished input. `/reload-skills` is not
-appended and the line is not cleared. Press Enter (or deliberately clear the
-line with `Ctrl+U`); after the next prompt, one deferred `/reload-skills` may
-run.
+Expected: dependency failures are reported without leaving a partial install;
+successful updates replace the prior snapshot and preserve configured options.
 
-### 2. Detach and reattach preserve the same draft
+### 2. Namespace isolation
 
-1. Type `KEEP-AFTER-REATTACH` in the raw console without Enter.
-2. Close KaminIDE/the bridge UI without explicitly closing the tab.
-3. Change a skill during the server's detach grace period.
-4. Reopen KaminIDE and switch to the same session.
+1. Install two plugins that contribute the same skill or command name.
+2. Start a session with both enabled.
 
-Expected: the existing PTY is reattached, the text remains, and no reload is
-concatenated with it. Do not “fix” this by destroying the session on app close;
-that regresses JSONL safety.
+Expected: both plugin roots are passed independently to the CLI, and neither
+plugin overwrites the other's files.
 
-### 3. Cloud Bridge textarea draft remains local
+### 3. Hook relay isolation
 
-1. Type `CHAT-DRAFT` in the composer without Send.
-2. Switch to another tab/session and back; optionally reload the webview.
-3. Trigger a skills sync while away.
+1. Enable hooks from two users or tokens.
+2. Trigger matching hook events in separate sessions.
 
-Expected: the textarea restores `CHAT-DRAFT`; neither it nor
-`/reload-skillsCHAT-DRAFT` appears in PTY input. Only Send moves it to the
-session.
+Expected: each event reaches only its owning host/session. A token cannot read,
+approve, update, or dispatch another token's hooks.
 
-### 4. Submission ordering and Stop
+### 4. MCP capabilities
 
-1. Send two short messages rapidly.
-2. Repeat with a long message and press Stop before paste echo settles.
+1. Connect a plugin MCP server that exposes tools, resources, templates, and
+   prompts over more than one discovery page.
+2. Exercise one item of each capability.
 
-Expected: messages remain distinct turns. Stop does not produce a delayed Enter
-or unexpectedly deliver a second queued message.
+Expected: every page is discovered once, calls are routed to the owning plugin,
+and reconnect/disconnect cleans up pending work.
 
-### 5. Effective skills overlay
+### 5. Sensitive options
 
-1. Create the same relative skill path at user and project scope with different
-   descriptions.
-2. Sync and verify the project version is active.
-3. Delete the project copy and sync again.
-4. Delete the user copy and sync again.
+1. Configure a plugin option marked sensitive.
+2. Reopen the configuration UI and inspect logs and synced metadata.
 
-Expected: project wins first, then user becomes visible, then the skill is gone.
-A new session at each step must match the already-running session.
+Expected: the value remains usable by the plugin but is never returned as
+plaintext or written to diagnostic output.
 
 ## Review cautions
 
-An unconditional `Ctrl+U` before automatic reload only hides concatenation by
-deleting the user's draft. Ending sessions on normal app close regresses the
-detach/reattach protection against partial JSONL writes and double writers. A
-longer debounce alone does not remove either race.
+Do not flatten plugin components into shared user directories: identical names
+from unrelated plugins must coexist. Do not remove the user-snapshot lock
+without replacing the plugin directory swap with an atomic mechanism; a session
+must not copy a plugin tree between its removal and rewrite phases.

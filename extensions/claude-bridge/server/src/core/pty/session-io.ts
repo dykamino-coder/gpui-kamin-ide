@@ -102,342 +102,13 @@ export function sendToClient(ws: WS, msg: Record<string, unknown>): boolean {
 // Input
 // ---------------------------------------------------------------------------
 
-const INPUT_CLEAR_SETTLE_MS = 50
-const INPUT_ECHO_QUIET_MS = 80
-const INPUT_POST_ENTER_SETTLE_MS = 80
-const INPUT_HARD_MAX_MS = 2000
-const MAINTENANCE_INPUT_QUIET_MS = 300
-
-interface QueuedSubmission {
-  kind: 'user' | 'maintenance'
-  text: string
-  maintenanceKey?: string
-  maintenanceRevision?: number
-}
-
-interface ActiveSubmission extends QueuedSubmission {
-  clearTimer: ReturnType<typeof setTimeout> | null
-  quietTimer: ReturnType<typeof setTimeout> | null
-  hardTimer: ReturnType<typeof setTimeout> | null
-  postEnterTimer: ReturnType<typeof setTimeout> | null
-  outputSubscription: { dispose(): void } | null
-  fired: boolean
-}
-
-interface PendingMaintenance {
-  text: string
-  revision: number
-}
-
-interface SessionInputState {
-  promptReady: boolean
-  rawInputDirty: boolean
-  rawPasteMode: boolean
-  lastRawInputAt: number
-  queue: QueuedSubmission[]
-  active: ActiveSubmission | null
-  bufferedRawInput: string[]
-  pendingMaintenance: Map<string, PendingMaintenance>
-  maintenanceRevision: number
-  maintenanceTimer: ReturnType<typeof setTimeout> | null
-}
-
-const sessionInputStates = new WeakMap<PtySession, SessionInputState>()
-
-function inputState(session: PtySession): SessionInputState {
-  let state = sessionInputStates.get(session)
-  if (!state) {
-    state = {
-      promptReady: false,
-      rawInputDirty: false,
-      rawPasteMode: false,
-      lastRawInputAt: 0,
-      queue: [],
-      active: null,
-      bufferedRawInput: [],
-      pendingMaintenance: new Map(),
-      maintenanceRevision: 0,
-      maintenanceTimer: null,
-    }
-    sessionInputStates.set(session, state)
-  }
-  return state
-}
-
-function cancelMaintenanceTimer(state: SessionInputState): void {
-  if (!state.maintenanceTimer) return
-  clearTimeout(state.maintenanceTimer)
-  state.maintenanceTimer = null
-}
-
-function canRunMaintenance(session: PtySession, state: SessionInputState): boolean {
-  return session.state === 'running'
-    && !session.detachedAt
-    && state.promptReady
-    && !state.rawInputDirty
-    && !state.active
-    && state.queue.length === 0
-    && state.pendingMaintenance.size > 0
-}
-
-function schedulePendingMaintenance(session: PtySession, state = inputState(session)): void {
-  if (!canRunMaintenance(session, state)) {
-    cancelMaintenanceTimer(state)
-    return
-  }
-  if (state.maintenanceTimer) return
-
-  // A raw Ctrl+U is immediately followed by session:submitText in older
-  // clients. Keeping a short reservation window here prevents maintenance
-  // from occupying the freshly-cleared prompt between those two WS frames.
-  const delay = Math.max(0, state.lastRawInputAt + MAINTENANCE_INPUT_QUIET_MS - Date.now())
-  state.maintenanceTimer = setTimeout(() => {
-    state.maintenanceTimer = null
-    if (!canRunMaintenance(session, state)) return
-    const first = state.pendingMaintenance.entries().next().value as [string, PendingMaintenance] | undefined
-    if (!first) return
-    const [maintenanceKey, pending] = first
-    startSubmission(session, state, {
-      kind: 'maintenance',
-      text: pending.text,
-      maintenanceKey,
-      maintenanceRevision: pending.revision,
-    })
-  }, delay)
-}
-
-function updateRawInputState(state: SessionInputState, data: string): void {
-  const pasteStart = '\x1b[200~'
-  const pasteEnd = '\x1b[201~'
-  for (let i = 0; i < data.length;) {
-    if (data.startsWith(pasteStart, i)) {
-      state.rawPasteMode = true
-      i += pasteStart.length
-      continue
-    }
-    if (data.startsWith(pasteEnd, i)) {
-      state.rawPasteMode = false
-      i += pasteEnd.length
-      continue
-    }
-
-    const ch = data[i]!
-    i++
-    if (state.rawPasteMode) {
-      // Newlines inside bracketed paste are content, not a submitted line.
-      state.rawInputDirty = true
-      continue
-    }
-    if (ch === '\x15' || ch === '\x03') {
-      // Ctrl+U clears Ink's line; Ctrl+C cancels the current line/turn.
-      state.rawInputDirty = false
-      continue
-    }
-    if (ch === '\r' || ch === '\n') {
-      state.rawInputDirty = false
-      state.promptReady = false
-      continue
-    }
-    // Cursor/navigation/control sequences do not prove that the line contains
-    // text. Backspace is deliberately conservative: we cannot know whether it
-    // removed the final grapheme, so maintenance waits for Ctrl+U/Enter.
-    if (ch >= ' ' && ch !== '\x7f') state.rawInputDirty = true
-  }
-}
-
-function writeRawNow(session: PtySession, state: SessionInputState, data: string): void {
-  if (session.state !== 'running') return
-  cancelMaintenanceTimer(state)
-  session.pty.write(data)
-  state.lastRawInputAt = Date.now()
-  updateRawInputState(state, data)
-  schedulePendingMaintenance(session, state)
-}
-
-function disposeActiveTimers(active: ActiveSubmission): void {
-  if (active.clearTimer) clearTimeout(active.clearTimer)
-  if (active.quietTimer) clearTimeout(active.quietTimer)
-  if (active.hardTimer) clearTimeout(active.hardTimer)
-  if (active.postEnterTimer) clearTimeout(active.postEnterTimer)
-  try { active.outputSubscription?.dispose() } catch { /* noop */ }
-  active.clearTimer = null
-  active.quietTimer = null
-  active.hardTimer = null
-  active.postEnterTimer = null
-  active.outputSubscription = null
-}
-
-function finishSubmission(
-  session: PtySession,
-  state: SessionInputState,
-  active: ActiveSubmission,
-  submitted: boolean,
-): void {
-  if (state.active !== active) return
-  disposeActiveTimers(active)
-  state.active = null
-
-  if (submitted && active.kind === 'maintenance' && active.maintenanceKey) {
-    const pending = state.pendingMaintenance.get(active.maintenanceKey)
-    // A newer sync may have arrived while the old reload was being typed. Only
-    // acknowledge the exact revision we actually submitted.
-    if (pending?.revision === active.maintenanceRevision) {
-      state.pendingMaintenance.delete(active.maintenanceKey)
-    }
-  }
-
-  const buffered = state.bufferedRawInput.splice(0)
-  for (const data of buffered) writeRawNow(session, state, data)
-
-  const next = state.queue.shift()
-  if (next && session.state === 'running') startSubmission(session, state, next)
-  else schedulePendingMaintenance(session, state)
-}
-
-function startSubmission(session: PtySession, state: SessionInputState, queued: QueuedSubmission): void {
-  if (session.state !== 'running') return
-  cancelMaintenanceTimer(state)
-
-  const active: ActiveSubmission = {
-    ...queued,
-    clearTimer: null,
-    quietTimer: null,
-    hardTimer: null,
-    postEnterTimer: null,
-    outputSubscription: null,
-    fired: false,
-  }
-  state.active = active
-  state.rawInputDirty = false
-
-  // Clear + paste + Enter is one coordinator-owned transaction. No other raw
-  // or programmatic input can interleave between these writes.
-  try {
-    session.pty.write('\x15')
-  } catch {
-    finishSubmission(session, state, active, false)
-    return
-  }
-
-  active.clearTimer = setTimeout(() => {
-    active.clearTimer = null
-    if (state.active !== active || session.state !== 'running') {
-      finishSubmission(session, state, active, false)
-      return
-    }
-
-    const body = queued.text.replace(/\r\n?/g, '\n')
-    const fireEnter = () => {
-      if (active.fired || state.active !== active) return
-      active.fired = true
-      disposeActiveTimers(active)
-      let submitted = false
-      if (session.state === 'running') {
-        try {
-          session.pty.write('\r')
-          state.promptReady = false
-          submitted = true
-        } catch { /* PTY exited between the state check and write */ }
-      }
-      if (!submitted) finishSubmission(session, state, active, false)
-      else {
-        // Keep the transaction reserved briefly after Enter. Starting the next
-        // Ctrl+U in the same JS tick can clear the command before Ink consumes
-        // Enter, which recreates the exact concatenation/lost-submit race this
-        // coordinator is meant to remove.
-        active.postEnterTimer = setTimeout(
-          () => finishSubmission(session, state, active, true),
-          INPUT_POST_ENTER_SETTLE_MS,
-        )
-      }
-    }
-
-    active.outputSubscription = session.pty.onData(() => {
-      if (active.fired || state.active !== active) return
-      if (active.quietTimer) clearTimeout(active.quietTimer)
-      active.quietTimer = setTimeout(fireEnter, INPUT_ECHO_QUIET_MS)
-    })
-    active.hardTimer = setTimeout(fireEnter, INPUT_HARD_MAX_MS)
-    try {
-      session.pty.write(`\x1b[200~${body}\x1b[201~`)
-    } catch {
-      finishSubmission(session, state, active, false)
-    }
-  }, INPUT_CLEAR_SETTLE_MS)
-}
-
-function cancelActiveSubmission(state: SessionInputState): void {
-  const active = state.active
-  if (active) disposeActiveTimers(active)
-  state.active = null
-  state.queue = []
-  state.bufferedRawInput = []
-}
-
-/** Update the server-authoritative prompt state from deterministic CLI hooks. */
-export function setSessionPromptReady(session: PtySession, promptReady: boolean): void {
-  const state = inputState(session)
-  state.promptReady = promptReady
-  schedulePendingMaintenance(session, state)
-}
-
-/** Re-evaluate deferred maintenance after detach or reattach. */
-export function notifySessionAttachmentChanged(session: PtySession): void {
-  schedulePendingMaintenance(session)
-}
-
-/** Coalesce a maintenance command by key and run it only at a safe prompt. */
-export function requestMaintenanceSubmission(session: PtySession, key: string, text: string): void {
-  const state = inputState(session)
-  state.maintenanceRevision++
-  state.pendingMaintenance.set(key, { text, revision: state.maintenanceRevision })
-  schedulePendingMaintenance(session, state)
-}
-
-/** Read-only diagnostics used by regression tests and debug tooling. */
-export function getSessionInputSnapshot(session: PtySession): {
-  promptReady: boolean
-  rawInputDirty: boolean
-  activeKind: 'user' | 'maintenance' | null
-  queuedSubmissions: number
-  pendingMaintenance: string[]
-} {
-  const state = inputState(session)
-  return {
-    promptReady: state.promptReady,
-    rawInputDirty: state.rawInputDirty,
-    activeKind: state.active?.kind ?? null,
-    queuedSubmissions: state.queue.length,
-    pendingMaintenance: [...state.pendingMaintenance.keys()],
-  }
-}
-
-/** Drop all coordinator timers/listeners for a destroyed session. */
-export function clearSessionInputState(session: PtySession): void {
-  const state = sessionInputStates.get(session)
-  if (!state) return
-  cancelMaintenanceTimer(state)
-  if (state.active) disposeActiveTimers(state.active)
-  sessionInputStates.delete(session)
-}
-
 /**
  * Write PTY stdin data.
  */
 export function writeInputToSession(session: PtySession, data: string): void {
   if (session.state !== 'running') return
   session.lastActivityAt = new Date()
-  const state = inputState(session)
-  if (data.includes('\x03')) {
-    // Interrupt must bypass an in-flight delayed Enter and cancel queued user
-    // submissions; otherwise Stop can be followed by a surprise send.
-    cancelActiveSubmission(state)
-    writeRawNow(session, state, data)
-  } else if (state.active) {
-    state.bufferedRawInput.push(data)
-  } else {
-    writeRawNow(session, state, data)
-  }
+  session.pty.write(data)
 
   // Ctrl+C (\x03) is the user's interrupt (Stop button / Esc → sendInput). The
   // CLI aborts the turn but fires NO Stop hook (it didn't "finish"), so the
@@ -446,7 +117,6 @@ export function writeInputToSession(session: PtySession, data: string): void {
   // button never clear). Push an authoritative idle so the chat activity
   // indicator AND the native session-row dot both clear immediately on interrupt.
   if (data.includes('\x03')) {
-    setSessionPromptReady(session, true)
     sendToClient(session.ws, {
       type: 'session:activity',
       sessionId: session.id,
@@ -490,11 +160,42 @@ export function writeInputToSession(session: PtySession, data: string): void {
 export function submitTextToSession(session: PtySession, text: string): void {
   if (session.state !== 'running') return
   session.lastActivityAt = new Date()
-  const state = inputState(session)
-  cancelMaintenanceTimer(state)
-  const queued: QueuedSubmission = { kind: 'user', text }
-  if (state.active) state.queue.push(queued)
-  else startSubmission(session, state, queued)
+
+  const body = text.replace(/\r\n?/g, '\n')
+  session.pty.write(`\x1b[200~${body}\x1b[201~`)
+
+  // Press Enter once the paste has SETTLED: after the CLI's echo of the paste
+  // goes quiet, so the bracketed paste is fully committed to Ink's input model
+  // before the `\r` submits it.
+  const QUIET_MS = 80
+  const HARD_MAX_MS = 2000
+  let fired = false
+  let quietTimer: ReturnType<typeof setTimeout> | null = null
+
+  const fire = () => {
+    if (fired) return
+    fired = true
+    try { disposable.dispose() } catch { /* noop */ }
+    if (quietTimer) clearTimeout(quietTimer)
+    clearTimeout(hardTimer)
+    if (session.state === 'running') session.pty.write('\r')
+  }
+
+  // The quiet timer is armed ONLY after the first output chunk — the paste's
+  // echo — arrives, never on a fixed delay from the paste WRITE. The rare 1/90
+  // "text landed in the input but never entered" was this: when the CLI was mid-
+  // render (finishing a long answer) or GC-paused and didn't echo the paste
+  // within 80ms, a timer started from the write fired `\r` BEFORE the paste was
+  // committed, so Enter hit an input that Ink hadn't populated yet — the message
+  // sat in the box, un-submitted. Gating on first-echo means `\r` can only fire
+  // after the CLI has demonstrably begun processing the paste. The hard cap
+  // still guarantees an eventual Enter even in the (unusual) no-echo case.
+  const disposable = session.pty.onData(() => {
+    if (fired) return
+    if (quietTimer) clearTimeout(quietTimer)
+    quietTimer = setTimeout(fire, QUIET_MS)
+  })
+  const hardTimer = setTimeout(fire, HARD_MAX_MS)
 }
 
 /**
@@ -537,7 +238,7 @@ export function attachStartupAutoResponder(session: PtySession): void {
       debugLog('Auto-responding to trust prompt', { sessionId: session.id })
       setTimeout(() => {
         if (session.state === 'running') {
-          writeInputToSession(session, '\r')
+          session.pty.write('\r')
         }
       }, 200)
       accumulated = ''
@@ -549,7 +250,7 @@ export function attachStartupAutoResponder(session: PtySession): void {
       debugLog('Auto-responding to effort prompt', { sessionId: session.id })
       setTimeout(() => {
         if (session.state === 'running') {
-          writeInputToSession(session, '\r')
+          session.pty.write('\r')
         }
       }, 200)
       accumulated = ''

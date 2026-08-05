@@ -15,7 +15,6 @@ import { mergeAllHooks, rewriteHooksForCli } from '../hooks'
 import { bridgeStatusHookMatchers } from '../hooks/bridge-status-hooks'
 import type { HookMatcher } from '../hooks/types'
 import { DISALLOWED_BUILTIN_TOOLS } from './session-env'
-import { replaceSkillsOverlay } from './skills-snapshot'
 
 export const SESSIONS_BASE = path.join(os.homedir(), '.claude', 'bridge-sessions')
 
@@ -325,31 +324,6 @@ export function copyDirRecursive(src: string, dest: string): void {
   }
 }
 
-/** Rebuild the exact effective skills tree for one live/new session.
- *
- * User skills form the base; project skills overlay them and therefore win on
- * the same relative path. Replacing the destination first is essential: a
- * deleted or disabled skill must disappear instead of surviving as a stale
- * file in a long-running session. */
-export function refreshSessionSkills(
-  settingsDir: string,
-  tokenId: string,
-  userCwd: string | undefined,
-): void {
-  const destination = path.join(settingsDir, '.claude', 'skills')
-  const userSource = path.join(getUserSyncDir(tokenId), 'skills')
-  const projectSource = userCwd
-    ? path.join(getProjectSyncDir(tokenId, userCwd), 'skills')
-    : null
-
-  replaceSkillsOverlay(destination, userSource, projectSource)
-  debugLog('[sync] Rebuilt effective session skills', {
-    tokenId,
-    project: userCwd,
-    target: destination,
-  })
-}
-
 /**
  * Apply per-token synced data (user-level and project-level) to a session's CWD.
  * - User skills/agents/commands → copied into the session-local .claude/
@@ -362,9 +336,6 @@ export function applySyncData(settingsDir: string, tokenId: string, userCwd: str
     const userDir = getUserSyncDir(hash)
     const claudeDir = path.join(settingsDir, '.claude')
 
-    // Both initial spawn and live refresh use the same exact overlay semantics.
-    refreshSessionSkills(settingsDir, hash, userCwd)
-
     // ─── User-level sync ───
     if (fs.existsSync(userDir)) {
       const replaceFromSync = (src: string, dst: string, label: string) => {
@@ -376,6 +347,7 @@ export function applySyncData(settingsDir: string, tokenId: string, userCwd: str
       // Session-local copies are intentional. The former symlink made the
       // project overlay below write project skills back into the shared user
       // sync directory, leaking them into other projects for the same token.
+      replaceFromSync(path.join(userDir, 'skills'), path.join(claudeDir, 'skills'), 'skills')
       replaceFromSync(path.join(userDir, 'agents'), path.join(claudeDir, 'agents'), 'agents')
       replaceFromSync(path.join(userDir, 'commands'), path.join(claudeDir, 'commands'), 'commands')
 
@@ -420,6 +392,7 @@ export function applySyncData(settingsDir: string, tokenId: string, userCwd: str
           copyDirRecursive(src, dst)
           debugLog(`[sync] Copied project ${label}`, { tokenId: hash, project: userCwd })
         }
+        copyIfPresent(path.join(projDir, 'skills'), path.join(claudeDir, 'skills'), 'skills')
         copyIfPresent(path.join(projDir, 'rules'), path.join(claudeDir, 'rules'), 'rules')
         copyIfPresent(path.join(projDir, 'agents'), path.join(claudeDir, 'agents'), 'agents')
         copyIfPresent(path.join(projDir, 'commands'), path.join(claudeDir, 'commands'), 'commands')

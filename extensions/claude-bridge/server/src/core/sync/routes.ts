@@ -12,10 +12,10 @@ import { debugLog, warnLog } from '../logging'
 import type { SyncUserData, SyncProjectData } from '../pty/types'
 import { getAllSessions } from '../pty/session-core'
 import type { PtySession } from '../pty/types'
-import { requestMaintenanceSubmission } from '../pty/session-io'
-import { refreshSessionSkills } from '../pty/session-settings'
+import { submitTextToSession } from '../pty/session-io'
+import { copyDirRecursive } from '../pty/session-settings'
 import { resolveToken } from '../auth/tokens'
-import { withProjectSyncLock, withUserSyncLock } from './lock'
+import { withUserSyncLock } from './lock'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -138,6 +138,19 @@ async function writeFileMap(baseDir: string, files: Record<string, string>): Pro
   }
 }
 
+/** Merge skills without deleting absent paths. Exact replacement belongs to
+ * plugin snapshots; user/project skills retain the existing sync contract. */
+async function writeSkillsMap(baseDir: string, files: Record<string, string>): Promise<void> {
+  for (const [relPath, content] of Object.entries(files)) {
+    if (typeof content !== 'string' || !relPath || relPath.includes('\\')) continue
+    const fullPath = path.resolve(baseDir, relPath)
+    const relative = path.relative(path.resolve(baseDir), fullPath)
+    if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) continue
+    await fsp.mkdir(path.dirname(fullPath), { recursive: true })
+    await fsp.writeFile(fullPath, content, 'utf-8')
+  }
+}
+
 function safePluginDirName(pluginId: string): string {
   const slug = pluginId.replace(/[^a-zA-Z0-9_.-]/g, '-') || 'plugin'
   return `${slug}-${crypto.createHash('sha256').update(pluginId).digest('hex').slice(0, 8)}`
@@ -173,15 +186,28 @@ async function writePluginSnapshots(userDir: string, plugins: SyncUserData['plug
 
 /**
  * After a live skills upload, make the freshly-synced skills visible in
- * already-running sessions for this token WITHOUT a restart. Rebuild the exact
- * session-local user + project overlay, then leave `/reload-skills` pending in
- * the PTY coordinator. It is submitted only at an attached, clean, prompt-ready
- * boundary, so sync can never append to or erase a user's unfinished line.
- *
- * @param tokenId     the sync token hash (equals PtySession.bearerHash)
- * @param projectPath when set, only project sessions whose cwd matches are
- *                    reloaded (and their on-disk copy is refreshed first)
+ * already-running sessions for this token WITHOUT a restart. User skills are
+ * copied into `.claude/skills` at spawn, and project skills are overlaid there.
+ * For project changes we copy the fresh files before injecting the CLI's
+ * `/reload-skills` slash command. Best-effort: a mid-turn injection is queued by
+ * the CLI after the current turn.
  */
+// Debounce the /reload-skills injection PER SESSION. A single skills change often
+// arrives as back-to-back user + project uploads; without this each one submits
+// `/reload-skills` and the two concatenate in the PTY buffer as the garbled
+// `/reload-skills/reload-skills`. Coalescing to one submit per burst also spares
+// the user a redundant command.
+const RELOAD_DEBOUNCE_MS = 600
+const pendingReload = new WeakMap<PtySession, ReturnType<typeof setTimeout>>()
+function scheduleReload(s: PtySession): void {
+  const prev = pendingReload.get(s)
+  if (prev) clearTimeout(prev)
+  pendingReload.set(s, setTimeout(() => {
+    pendingReload.delete(s)
+    try { submitTextToSession(s, '/reload-skills') } catch { /* session may have just ended */ }
+  }, RELOAD_DEBOUNCE_MS))
+}
+
 /** Compare an incoming {relPath: content} map against what's already on disk —
  *  used to skip the /reload-skills injection when a sync upload didn't actually
  *  change anything (the client re-uploads on a poll, so most uploads are no-ops). */
@@ -193,13 +219,17 @@ async function fileMapEqual(dir: string, incoming: Record<string, string>): Prom
   return true
 }
 
-export function reloadSkillsForRunningSessions(tokenId: string, projectPath?: string): void {
+function reloadSkillsForRunningSessions(tokenId: string, projectPath?: string): void {
   for (const s of getAllSessions()) {
     if (s.bearerHash !== tokenId || s.state !== 'running') continue
-    if (projectPath && s.cwd !== projectPath) continue
-    try { refreshSessionSkills(s.settingsDir, tokenId, s.cwd || undefined) }
-    catch { /* re-copy best-effort — pending reload still refreshes any intact tree */ }
-    requestMaintenanceSubmission(s, 'reload-skills', '/reload-skills')
+    if (projectPath) {
+      if (s.cwd !== projectPath) continue
+      try {
+        const src = path.join(getProjectSyncDir(tokenId, projectPath), 'skills')
+        if (fs.existsSync(src)) copyDirRecursive(src, path.join(s.settingsDir, '.claude', 'skills'))
+      } catch { /* re-copy best-effort — /reload-skills still refreshes the cache */ }
+    }
+    scheduleReload(s)
   }
 }
 
@@ -253,13 +283,15 @@ export function createSyncRoutes(): Hono {
 
     return withUserSyncLock(hash, async () => {
       try {
-      // Write skills. Empty maps are meaningful: they remove stale files.
-      const incomingSkills = body.skills ?? {}
-      const skillsDir = path.join(userDir, 'skills')
-      const skillsChanged = !await fileMapEqual(skillsDir, incomingSkills)
-      if (skillsChanged) await writeFileMap(skillsDir, incomingSkills)
-      debugLog('[sync] User skills synced', { tokenId: hash, count: Object.keys(incomingSkills).length, changed: skillsChanged })
-      if (skillsChanged) reloadSkillsForRunningSessions(hash)
+      // Write skills when present. Missing paths are not treated as deletions.
+      if (body.skills && Object.keys(body.skills).length > 0) {
+        const skillsDir = path.join(userDir, 'skills')
+        const skillsChanged = !await fileMapEqual(skillsDir, body.skills)
+        await fsp.mkdir(skillsDir, { recursive: true })
+        await writeSkillsMap(skillsDir, body.skills)
+        debugLog('[sync] User skills synced', { tokenId: hash, count: Object.keys(body.skills).length, changed: skillsChanged })
+        if (skillsChanged) reloadSkillsForRunningSessions(hash)
+      }
 
       // Write agents
       await writeFileMap(path.join(userDir, 'agents'), body.agents ?? {})
@@ -315,17 +347,17 @@ export function createSyncRoutes(): Hono {
     const hash = tokenId
     const projDir = getProjectSyncDir(hash, body.projectPath)
 
-    return withProjectSyncLock(hash, body.projectPath, async () => {
-      try {
+    try {
       await fsp.mkdir(projDir, { recursive: true })
 
-      // Write skills (complete snapshot, including empty).
-      const projectSkills = body.skills ?? {}
-      const projectSkillsDir = path.join(projDir, 'skills')
-      const projectSkillsChanged = !await fileMapEqual(projectSkillsDir, projectSkills)
-      if (projectSkillsChanged) await writeFileMap(projectSkillsDir, projectSkills)
-      debugLog('[sync] Project skills synced', { tokenId: hash, project: body.projectPath, count: Object.keys(projectSkills).length, changed: projectSkillsChanged })
-      if (projectSkillsChanged) reloadSkillsForRunningSessions(hash, body.projectPath)
+      // Write skills when present. Missing paths are not treated as deletions.
+      if (body.skills && Object.keys(body.skills).length > 0) {
+        const skillsDir = path.join(projDir, 'skills')
+        const skillsChanged = !await fileMapEqual(skillsDir, body.skills)
+        await writeSkillsMap(skillsDir, body.skills)
+        debugLog('[sync] Project skills synced', { tokenId: hash, project: body.projectPath, count: Object.keys(body.skills).length, changed: skillsChanged })
+        if (skillsChanged) reloadSkillsForRunningSessions(hash, body.projectPath)
+      }
 
       // Write rules
       await writeFileMap(path.join(projDir, 'rules'), body.rules ?? {})
@@ -364,13 +396,12 @@ export function createSyncRoutes(): Hono {
       // Store the projectPath for later lookup
       await fsp.writeFile(path.join(projDir, '_projectPath.txt'), body.projectPath, 'utf-8')
 
-        return c.json({ ok: true })
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err)
-        warnLog('[sync] Failed to sync project data', { tokenId: hash, error: errMsg })
-        return c.json({ error: 'Sync failed', details: errMsg }, 500)
-      }
-    })
+      return c.json({ ok: true })
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      warnLog('[sync] Failed to sync project data', { tokenId: hash, error: errMsg })
+      return c.json({ error: 'Sync failed', details: errMsg }, 500)
+    }
   })
 
   // GET /api/sync/:tokenId/status — what's synced
