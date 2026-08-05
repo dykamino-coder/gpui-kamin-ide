@@ -1,5 +1,5 @@
 // ============================================================================
-// MCP HTTP Handler — receives JSON-RPC from Claude CLI, routes to Electron
+// MCP HTTP Handler — receives JSON-RPC from Claude CLI, routes to client host
 // ============================================================================
 //
 // Claude CLI spawned with settings.json pointing MCP server to:
@@ -7,7 +7,7 @@
 //
 // This handler:
 // 1. Receives JSON-RPC requests (tools/list, tools/call, initialize)
-// 2. For tools/call: forwards to Electron via WS, waits for response
+// 2. For tools/call: forwards to the VSIX bridge host via WS, waits for response
 // 3. For tools/list: returns the list of MCP tools
 // 4. For initialize: returns server info
 
@@ -20,6 +20,7 @@ import type { PtySession, ToolDefinition } from './types'
 import { getSessionWs } from './session-ws'
 import { sendToClient } from './session-io'
 import { MCP_TOOLS } from './mcp-tools-defs'
+import { matchesResourceTemplate } from './resource-template'
 
 export { MCP_TOOLS } from './mcp-tools-defs'
 
@@ -29,7 +30,7 @@ const MCP_LOG_MAX = 50 // keep last N entries per session
 // We truncate ~10% below that (≈180k tokens ≈ 720 KB, 4 chars/token) so the
 // CLI never triggers its spill-to-file behavior. The spill file is written
 // inside the CLI's process (our container) using the container's cwd — the
-// model would then Read() it, which runs on the *client* Electron host and
+// model would then Read() it, which runs on the *client* VSIX bridge host and
 // can't see /home/bridge/... paths. Truncating on our side keeps the whole
 // result inline and preserves client-server separation.
 const MCP_RESULT_HARD_CAP_BYTES = 720_000
@@ -388,6 +389,8 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         protocolVersion: clientVersion,
         capabilities: {
           tools: {},
+          resources: {},
+          prompts: {},
           elicitation: {},
         },
         serverInfo: {
@@ -472,7 +475,7 @@ Key tool capabilities:
           const dur = Date.now() - reqStart
           logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, dur)
 
-          // If Electron returned a properly-formatted MCP result (with content array),
+          // If the client host returned a properly-formatted MCP result (with content array),
           // pass it through directly. This preserves image content blocks and other types.
           if (result && typeof result === 'object' && !Array.isArray(result) &&
               'content' in (result as Record<string, unknown>) &&
@@ -570,31 +573,73 @@ Key tool capabilities:
     }
 
     case 'resources/list': {
-      // We advertise no `resources` capability in `initialize`, but the CLI's
-      // native ListMcpResourcesTool still probes every configured server. Return
-      // a valid empty list so the model gets a clean answer instead of the
-      // confusing -32601 the default arm used to emit.
-      // TODO(resources): the client MCP manager DOES fetch external servers'
-      // resources (manager.getResources / readResource). Full wiring = register
-      // them on the session (parallel to registeredTools) + proxy resources/read
-      // to the client. Deferred — low usage vs the coordinated client+server
-      // change it needs.
       logMcpRequest(session, 'resources/list', 'ok')
-      return jsonResponse(jsonRpcResponse(body.id, { resources: [] }))
+      return jsonResponse(jsonRpcResponse(body.id, {
+        resources: session.registeredResources.map(({ uri, name, description, mimeType }) => ({ uri, name, description, mimeType })),
+      }))
+    }
+
+    case 'resources/templates/list': {
+      logMcpRequest(session, 'resources/templates/list', 'ok')
+      return jsonResponse(jsonRpcResponse(body.id, {
+        resourceTemplates: session.registeredResourceTemplates.map(({ uriTemplate, name, description, mimeType }) => ({
+          uriTemplate, name, description, mimeType,
+        })),
+      }))
     }
 
     case 'resources/read': {
       const params = body.params as { uri?: string } | undefined
-      logMcpRequest(session, 'resources/read', 'error', 'no resources exposed')
-      return jsonResponse(
-        jsonRpcError(body.id, -32002, `Resource not found: ${params?.uri ?? '(no uri)'}`),
-      )
+      const resource = session.registeredResources.find(item => item.uri === params?.uri)
+      const template = !resource && typeof params?.uri === 'string'
+        ? session.registeredResourceTemplates.find(item => matchesResourceTemplate(item.uriTemplate, params.uri!))
+        : undefined
+      if (!resource && !template) {
+        logMcpRequest(session, 'resources/read', 'error', 'resource not found')
+        return jsonResponse(jsonRpcError(body.id, -32002, `Resource not found: ${params?.uri ?? '(no uri)'}`))
+      }
+      try {
+        const result = await sendMcpCall(sessionId, '__bridge_mcp_resource_read', resource
+          ? { uri: resource.uri }
+          : { uri: params!.uri!, serverId: template!.serverId })
+        if (!result || typeof result !== 'object' || !Array.isArray((result as { contents?: unknown[] }).contents)) {
+          throw new Error('External MCP server returned an invalid resources/read result')
+        }
+        logMcpRequest(session, 'resources/read', 'ok')
+        return jsonResponse(jsonRpcResponse(body.id, result))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logMcpRequest(session, 'resources/read', 'error', message)
+        return jsonResponse(jsonRpcError(body.id, -32002, message))
+      }
     }
 
     case 'prompts/list': {
-      // Same rationale as resources/list — advertise nothing, answer cleanly.
       logMcpRequest(session, 'prompts/list', 'ok')
-      return jsonResponse(jsonRpcResponse(body.id, { prompts: [] }))
+      return jsonResponse(jsonRpcResponse(body.id, {
+        prompts: session.registeredPrompts.map(({ name, description, arguments: args }) => ({ name, description, arguments: args })),
+      }))
+    }
+
+    case 'prompts/get': {
+      const params = body.params as { name?: string; arguments?: Record<string, unknown> } | undefined
+      const prompt = session.registeredPrompts.find(item => item.name === params?.name)
+      if (!prompt) return jsonResponse(jsonRpcError(body.id, -32602, `Prompt not found: ${params?.name ?? '(no name)'}`))
+      try {
+        const result = await sendMcpCall(sessionId, '__bridge_mcp_prompt_get', {
+          name: prompt.name,
+          arguments: params?.arguments ?? {},
+        })
+        if (!result || typeof result !== 'object' || !Array.isArray((result as { messages?: unknown[] }).messages)) {
+          throw new Error('External MCP server returned an invalid prompts/get result')
+        }
+        logMcpRequest(session, 'prompts/get', 'ok')
+        return jsonResponse(jsonRpcResponse(body.id, result))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logMcpRequest(session, 'prompts/get', 'error', message)
+        return jsonResponse(jsonRpcError(body.id, -32603, message))
+      }
     }
 
     default: {

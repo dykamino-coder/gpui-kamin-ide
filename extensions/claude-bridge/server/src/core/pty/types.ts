@@ -33,6 +33,7 @@ export type {
   WsMsgRegisterExternalTools,
   WsMsgJsonlDownloadRequest,
   WsMsgJsonlSyncRequest,
+  ClientToServerMsg,
   ElectronToServerMsg,
   WsMsgSessionCreated,
   WsMsgSessionOutput,
@@ -47,5 +48,6 @@ export type {
   WsMsgSessionRestarted,
   WsMsgSessionActivity,
   WsMsgJsonlDownloadResponse,
+  ServerToClientMsg,
   ServerToElectronMsg,
 } from '../types'

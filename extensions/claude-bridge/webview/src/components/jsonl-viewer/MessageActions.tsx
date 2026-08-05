@@ -19,7 +19,7 @@ export function MessageActions({
     e.stopPropagation()
     // Clipboard via the host — the sandboxed webview (opaque origin) can't use
     // navigator.clipboard, so route through vscode.env.clipboard (bridge).
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     try {
       if (bridge?.writeClipboard) await bridge.writeClipboard(text)
       else await navigator.clipboard.writeText(text)
@@ -32,7 +32,7 @@ export function MessageActions({
 
   async function handleSave(e: MouseEvent): Promise<void> {
     e.stopPropagation()
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     if (bridge?.saveTextAs) {
       const r = await bridge.saveTextAs(text, defaultName ?? `message-${Date.now()}.md`)
       if (r?.ok) {

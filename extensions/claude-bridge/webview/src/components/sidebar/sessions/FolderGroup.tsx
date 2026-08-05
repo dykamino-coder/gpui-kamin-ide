@@ -34,7 +34,7 @@ export function FolderGroup({
   const [savedExpanded, setSavedExpanded] = useState(false)
 
   async function handleAddSession(): Promise<void> {
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     if (!bridge) return
     const config = await bridge.getConfig()
     if (!config.serverUrl || !config.token) return
@@ -68,7 +68,7 @@ export function FolderGroup({
       : false
     if (!ok) return
     const ids = savedSessions.map(s => s.conversationId)
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     for (const tab of sessions) {
       bridge?.closeTab(tab.id)
     }
@@ -94,7 +94,7 @@ export function FolderGroup({
             tab={tab}
             isActive={tab.id === activeTabId}
             onClick={() => {
-              const bridge = (window as any).electronBridge
+              const bridge = (window as any).kaminBridge
               bridge?.switchTab(tab.id)
             }}
           />

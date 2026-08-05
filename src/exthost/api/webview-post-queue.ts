@@ -68,13 +68,19 @@ export class WebviewPostQueue {
    *  сообщение живым). */
   private static sizeOf(msg: unknown): number {
     if (msg === null || typeof msg !== 'object') {
-      try { return JSON.stringify(msg)?.length ?? 0 } catch { return 0 }
+      try {
+        const serialized: unknown = JSON.stringify(msg)
+        return typeof serialized === 'string' ? serialized.length : 0
+      } catch { return 0 }
     }
-    const cached = WebviewPostQueue.sizeCache.get(msg as object)
+    const cached = WebviewPostQueue.sizeCache.get(msg)
     if (cached !== undefined) return cached
-    let size = 0
-    try { size = JSON.stringify(msg).length } catch { size = 0 }
-    WebviewPostQueue.sizeCache.set(msg as object, size)
+    let size: number
+    try {
+      const serialized: unknown = JSON.stringify(msg)
+      size = typeof serialized === 'string' ? serialized.length : 0
+    } catch { size = 0 }
+    WebviewPostQueue.sizeCache.set(msg, size)
     return size
   }
 

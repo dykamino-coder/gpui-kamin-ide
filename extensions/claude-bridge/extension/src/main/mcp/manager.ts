@@ -15,6 +15,7 @@ import type {
   ExternalMcpServerConfig,
   ExternalMcpServerInfo,
   McpResourceInfo,
+  McpResourceTemplateInfo,
   McpPromptInfo,
 } from '../../shared/types'
 import {
@@ -50,6 +51,7 @@ import { connectHttp, callHttpTool, httpJsonRpcAuth } from './transports/http'
 import { connectSseLegacy, sseJsonRpcRequest } from './transports/sse-legacy'
 import { connectWs, callWsTool, wsJsonRpc } from './transports/ws'
 import type { McpServerState, TransportContext } from './transports/context'
+import { collectMcpList } from './pagination'
 
 export type { McpTestLogEntry } from './test-log'
 
@@ -59,6 +61,12 @@ export interface ExternalToolSchema {
   description: string
   inputSchema: Record<string, unknown>
   serverName: string
+}
+
+export interface ExternalContentCatalog {
+  resources: Array<{ uri: string; name: string; description?: string; mimeType?: string; serverId: string; rawUri: string }>
+  resourceTemplates: Array<{ uriTemplate: string; name: string; description?: string; mimeType?: string; serverId: string; rawUriTemplate: string }>
+  prompts: Array<{ name: string; description?: string; arguments?: unknown[]; serverId: string; rawName: string }>
 }
 
 /** Auto-reconnect budget for a flapping/failing server. Module-scoped so the
@@ -87,6 +95,22 @@ const LAZY_STDIO_MCP = process.env.KAMIN_EAGER_EXTERNAL_MCP !== '1'
 
 function isStdio(c: ExternalMcpServerConfig): boolean {
   return c.type !== 'http' && c.type !== 'sse' && c.type !== 'ws'
+}
+
+function toolScopePart(value: string): string {
+  return value.trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'server'
+}
+
+function exposedToolName(state: McpServerState, rawToolName: string): string {
+  const c = state.config
+  const server = toolScopePart(c.pluginServerName ?? c.name)
+  if (c.sourceType === 'plugin' && c.pluginName) {
+    return `plugin_${toolScopePart(c.pluginName)}_${server}__${rawToolName}`
+  }
+  // Preserve the bridge's long-standing public name for user/project MCP
+  // servers. Only plugin tools require namespacing to match Claude's plugin
+  // contract and avoid collisions between marketplaces.
+  return rawToolName
 }
 
 export class McpServerManager {
@@ -363,6 +387,7 @@ export class McpServerManager {
         tools: [],
         toolSchemas: new Map(),
         resources: [],
+        resourceTemplates: [],
         prompts: [],
         capabilities: {},
         pendingRequests: new Map(),
@@ -443,10 +468,11 @@ export class McpServerManager {
       for (const [_name, schema] of state.toolSchemas) {
         // Два живых сервера с одноимённым тулом: callTool всё равно выберет
         // первый по порядку итерации — вторая схема была бы ложной рекламой.
-        if (seen.has(schema.name)) continue
-        seen.add(schema.name)
+        const exposedName = exposedToolName(state, schema.name)
+        if (seen.has(exposedName)) continue
+        seen.add(exposedName)
         schemas.push({
-          name: schema.name,
+          name: exposedName,
           description: schema.description || `Tool from ${state.config.name}`,
           inputSchema: schema.inputSchema || { type: 'object', properties: {} },
           serverName: state.config.name,
@@ -458,12 +484,73 @@ export class McpServerManager {
       const cached = this.lazyCachedSchemasFor(state)
       if (!cached) continue
       for (const t of cached) {
-        if (seen.has(t.name)) continue
-        seen.add(t.name)
-        schemas.push({ ...t, serverName: state.config.name })
+        const exposedName = exposedToolName(state, t.name)
+        if (seen.has(exposedName)) continue
+        seen.add(exposedName)
+        schemas.push({ ...t, name: exposedName, serverName: state.config.name })
       }
     }
     return schemas
+  }
+
+  /** Flatten external MCP resources/prompts into the bridge's single MCP
+   * server namespace while retaining enough routing metadata for read/get. */
+  getExternalContentCatalog(): ExternalContentCatalog {
+    const resources: ExternalContentCatalog['resources'] = []
+    const resourceTemplates: ExternalContentCatalog['resourceTemplates'] = []
+    const prompts: ExternalContentCatalog['prompts'] = []
+    for (const [serverId, state] of this.servers) {
+      if (state.status !== 'connected') continue
+      const scope = state.config.sourceType === 'plugin' && state.config.pluginName
+        ? `plugin_${toolScopePart(state.config.pluginName)}_${toolScopePart(state.config.pluginServerName ?? state.config.name)}`
+        : toolScopePart(state.config.name)
+      for (const resource of state.resources) {
+        resources.push({
+          uri: `bridge-mcp://resource/${encodeURIComponent(serverId)}/${Buffer.from(resource.uri).toString('base64url')}`,
+          name: `${scope}: ${resource.name}`,
+          description: resource.description,
+          mimeType: resource.mimeType,
+          serverId,
+          rawUri: resource.uri,
+        })
+      }
+      for (const template of state.resourceTemplates) {
+        resourceTemplates.push({
+          // Keep the upstream URI template intact so the MCP client can expand
+          // RFC 6570 expressions. Reads carry serverId back through the bridge,
+          // avoiding any need to reverse or re-encode the expansion.
+          uriTemplate: template.uriTemplate,
+          name: `${scope}: ${template.name}`,
+          description: template.description,
+          mimeType: template.mimeType,
+          serverId,
+          rawUriTemplate: template.uriTemplate,
+        })
+      }
+      for (const prompt of state.prompts) {
+        prompts.push({
+          name: `${scope}__${prompt.name}`,
+          description: prompt.description,
+          arguments: prompt.arguments,
+          serverId,
+          rawName: prompt.name,
+        })
+      }
+    }
+    return { resources, resourceTemplates, prompts }
+  }
+
+  async readCatalogResource(uri: string, templateServerId?: string): Promise<any> {
+    if (templateServerId) return this.readResource(templateServerId, uri)
+    const item = this.getExternalContentCatalog().resources.find(resource => resource.uri === uri)
+    if (!item) throw new Error(`External MCP resource not found: ${uri}`)
+    return this.readResource(item.serverId, item.rawUri)
+  }
+
+  async getCatalogPrompt(name: string, args?: Record<string, unknown>): Promise<any> {
+    const item = this.getExternalContentCatalog().prompts.find(prompt => prompt.name === name)
+    if (!item) throw new Error(`External MCP prompt not found: ${name}`)
+    return this.getPromptContent(item.serverId, item.rawName, args)
   }
 
   /** Кэш схем для сервера, который сейчас обслуживается ЛЕНИВО (enabled
@@ -488,6 +575,7 @@ export class McpServerManager {
         description: (s.toolSchemas.get(name) as any)?.description,
       })),
       resources: s.resources,
+      resourceTemplates: s.resourceTemplates,
       prompts: s.prompts,
       error: s.error,
     }))
@@ -496,6 +584,11 @@ export class McpServerManager {
   /** Get the resources advertised by a connected server. */
   getResources(id: string): McpResourceInfo[] {
     return this.servers.get(id)?.resources ?? []
+  }
+
+  /** Get the resource templates advertised by a connected server. */
+  getResourceTemplates(id: string): McpResourceTemplateInfo[] {
+    return this.servers.get(id)?.resourceTemplates ?? []
   }
 
   /** Get the prompts advertised by a connected server. */
@@ -558,6 +651,7 @@ export class McpServerManager {
       tools: [],
       toolSchemas: new Map(),
       resources: [],
+      resourceTemplates: [],
       prompts: [],
       capabilities: {},
       pendingRequests: new Map(),
@@ -706,7 +800,7 @@ export class McpServerManager {
   /** Check if a tool name belongs to an external server */
   hasExternalTool(toolName: string): boolean {
     for (const state of this.servers.values()) {
-      if (state.status === 'connected' && state.tools.includes(toolName)) {
+      if (state.status === 'connected' && state.tools.some(raw => exposedToolName(state, raw) === toolName)) {
         return true
       }
     }
@@ -718,7 +812,7 @@ export class McpServerManager {
       for (const state of this.servers.values()) {
         if (!state.config.enabled || !isStdio(state.config)) continue
         const cached = this.lazySchemaCache[mcpConnectionFingerprint(state.config)]
-        if (cached?.some((t) => t.name === toolName)) return true
+        if (cached?.some((t) => exposedToolName(state, t.name) === toolName)) return true
       }
     }
     return false
@@ -730,7 +824,7 @@ export class McpServerManager {
     // поднимаем СЕЙЧАС (первое обращение) и продолжаем обычным путём.
     let hasLive = false
     for (const state of this.servers.values()) {
-      if (state.status === 'connected' && state.tools.includes(toolName)) { hasLive = true; break }
+      if (state.status === 'connected' && state.tools.some(raw => exposedToolName(state, raw) === toolName)) { hasLive = true; break }
     }
     if (!hasLive && LAZY_STDIO_MCP) {
       for (const [id, state] of this.servers) {
@@ -740,7 +834,7 @@ export class McpServerManager {
         // «No external server has tool».
         if (!state.config.enabled || !isStdio(state.config) || state.status === 'connected') continue
         const cached = this.lazySchemaCache[mcpConnectionFingerprint(state.config)]
-        if (cached?.some((t) => t.name === toolName)) {
+        if (cached?.some((t) => exposedToolName(state, t.name) === toolName)) {
           console.log(`[MCP] lazy start "${state.config.name}" for tool "${toolName}"`)
           await this.connectServer(id).catch((err) => {
             console.error(`[MCP] lazy connect "${state.config.name}" failed:`, err instanceof Error ? err.message : err)
@@ -750,22 +844,25 @@ export class McpServerManager {
       }
     }
     for (const [id, state] of this.servers) {
-      if (state.status === 'connected' && state.tools.includes(toolName)) {
+      const rawToolName = state.status === 'connected'
+        ? state.tools.find(raw => exposedToolName(state, raw) === toolName)
+        : undefined
+      if (rawToolName) {
         if (state.config.type === 'sse') {
           const result = await sseJsonRpcRequest(this.ctx(), id, {
             jsonrpc: '2.0',
             id: state.nextRequestId++,
             method: 'tools/call',
-            params: { name: toolName, arguments: input },
+            params: { name: rawToolName, arguments: input },
           }) as any
           if (result?.content && Array.isArray(result.content)) return result
           return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }] }
         } else if (state.config.type === 'http') {
-          return callHttpTool(this.ctx(), id, toolName, input)
+          return callHttpTool(this.ctx(), id, rawToolName, input)
         } else if (state.config.type === 'ws') {
-          return callWsTool(this.ctx(), id, toolName, input)
+          return callWsTool(this.ctx(), id, rawToolName, input)
         } else {
-          return callStdioTool(this.ctx(), id, toolName, input)
+          return callStdioTool(this.ctx(), id, rawToolName, input)
         }
       }
     }
@@ -848,8 +945,8 @@ export class McpServerManager {
         console.warn(`[MCP] Failed to fetch resources/prompts for "${state.config.name}":`, m)
         this.appendLog(id, 'warn', `[connect] resources/prompts fetch failed: ${m}`)
       })
-      this.appendLog(id, 'info', `[connect] done — ${state.tools.length} tools, ${state.resources.length} resources, ${state.prompts.length} prompts`)
-      console.log(`[MCP] Connected to "${state.config.name}" — ${state.tools.length} tools, ${state.resources.length} resources, ${state.prompts.length} prompts`)
+      this.appendLog(id, 'info', `[connect] done — ${state.tools.length} tools, ${state.resources.length} resources, ${state.resourceTemplates.length} resource templates, ${state.prompts.length} prompts`)
+      console.log(`[MCP] Connected to "${state.config.name}" — ${state.tools.length} tools, ${state.resources.length} resources, ${state.resourceTemplates.length} resource templates, ${state.prompts.length} prompts`)
     } catch (err) {
       state.status = 'error'
       try {
@@ -901,36 +998,51 @@ export class McpServerManager {
     teardownServer(state)
   }
 
-  /** Issue `resources/list` and `prompts/list` if the server declared support. */
+  /** Issue paginated resource/template/prompt list calls when advertised. */
   private async fetchExtraCapabilities(id: string): Promise<void> {
     const state = this.servers.get(id)!
     const caps = state.capabilities
 
     if (caps && typeof caps === 'object' && 'resources' in caps) {
       try {
-        const list = await this.rpcRequest(id, 'resources/list', {})
-        const arr = (list as any)?.resources
-        if (Array.isArray(arr)) {
-          state.resources = arr.map((r: any) => ({
-            uri: String(r.uri ?? ''),
-            name: String(r.name ?? r.uri ?? ''),
-            description: r.description,
-            mimeType: r.mimeType,
-          })).filter(r => r.uri)
-        }
+        const resources = await collectMcpList<any>(
+          (method, params) => this.rpcRequest(id, method, params),
+          'resources/list',
+          'resources',
+        )
+        state.resources = resources.map((resource: any) => ({
+          uri: String(resource.uri ?? ''),
+          name: String(resource.name ?? resource.uri ?? ''),
+          description: resource.description,
+          mimeType: resource.mimeType,
+        })).filter(resource => resource.uri)
       } catch { /* optional */ }
+      try {
+        const templates = await collectMcpList<any>(
+          (method, params) => this.rpcRequest(id, method, params),
+          'resources/templates/list',
+          'resourceTemplates',
+        )
+        state.resourceTemplates = templates.map((template: any) => ({
+          uriTemplate: String(template.uriTemplate ?? ''),
+          name: String(template.name ?? template.uriTemplate ?? ''),
+          description: template.description,
+          mimeType: template.mimeType,
+        })).filter(template => template.uriTemplate)
+      } catch { /* optional; older servers may not implement templates/list */ }
     }
     if (caps && typeof caps === 'object' && 'prompts' in caps) {
       try {
-        const list = await this.rpcRequest(id, 'prompts/list', {})
-        const arr = (list as any)?.prompts
-        if (Array.isArray(arr)) {
-          state.prompts = arr.map((p: any) => ({
-            name: String(p.name ?? ''),
-            description: p.description,
-            arguments: Array.isArray(p.arguments) ? p.arguments : undefined,
-          })).filter(p => p.name)
-        }
+        const prompts = await collectMcpList<any>(
+          (method, params) => this.rpcRequest(id, method, params),
+          'prompts/list',
+          'prompts',
+        )
+        state.prompts = prompts.map((prompt: any) => ({
+          name: String(prompt.name ?? ''),
+          description: prompt.description,
+          arguments: Array.isArray(prompt.arguments) ? prompt.arguments : undefined,
+        })).filter(prompt => prompt.name)
       } catch { /* optional */ }
     }
   }

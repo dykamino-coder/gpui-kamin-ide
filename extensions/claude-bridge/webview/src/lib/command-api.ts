@@ -14,7 +14,7 @@
 //
 // `raw()` is the general case: every bridge channel by name, so the surface
 // covers all of Bridge without this file having to enumerate it.
-import type { ElectronBridge } from '../../shared/types'
+import type { KaminBridgeApi } from '../../shared/types'
 import { activeTabId, tabs, switchTabLocal } from '../signals/tabs'
 import { jsonlEntriesByTab } from '../signals/jsonl'
 import { activeSegmentIdx, displaySegments } from '../signals/compact-segments'
@@ -60,7 +60,7 @@ export interface BridgeCommandApi {
   waitForChange(field: keyof BridgeState, timeoutMs?: number): Promise<BridgeState>
 }
 
-export function installCommandApi(bridge: ElectronBridge): void {
+export function installCommandApi(bridge: KaminBridgeApi): void {
   const requireTab = (): string => {
     const id = activeTabId.value
     if (!id) throw new Error('no active tab')

@@ -18,7 +18,7 @@ import { requestContextMiddleware, errorHandlerMiddleware } from "../middleware"
 import { VERSION } from "../config"
 
 /** Find latest desktop-app installer in ./installer/ (semver-aware sort).
- *  Matches both the KaminIDE Tauri NSIS setup (`KaminIDE_X.Y.Z_x64-setup.exe`,
+ *  Matches both the KaminIDE NSIS setup (`KaminIDE_X.Y.Z_x64-setup.exe`,
  *  lowercase "setup") and the legacy Bridge Squirrel installer (`…Setup.exe`);
  *  prefers a KaminIDE build when both are present. */
 function findInstaller(): { path: string; name: string } | null {
@@ -93,7 +93,7 @@ export function createApp() {
   app.route("/", createSyncRoutes())
 
   // Hook proxy — CLI POSTs here when a rewritten hook fires; bridge
-  // dispatches to local Electron / server / external HTTP per resolved host.
+  // dispatches to the client host / server / external HTTP per resolved host.
   app.route("/", createHooksRoutes())
 
   // Dashboard REST API
@@ -114,7 +114,7 @@ export function createApp() {
   // Public download landing page — unauthenticated, separate from /ui
   // (which is the dashboard and may be locked behind DASHBOARD_USER /
   // DASHBOARD_PASSWORD). Anyone with a server URL can grab the
-  // installer for the Electron client without minting a token first.
+  // KaminIDE installer without minting a token first.
   app.get("/download", (c) => {
     const installerFile = findInstaller()
     const v = VERSION
@@ -180,7 +180,7 @@ export function createApp() {
     ${exists ? `<span>Installer <b>${fileName}</b></span><span><b>${sizeMb} MB</b></span>` : ''}
   </div>
   ${exists
-    ? `<a class="btn" href="/download/electron" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download for Windows</a>`
+    ? `<a class="btn" href="/download/kaminide" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download for Windows</a>`
     : `<button class="btn btn-disabled" disabled>Installer not available on this server</button>`
   }
   <div class="hint">
@@ -195,8 +195,7 @@ export function createApp() {
     return c.body(html)
   })
 
-  // Electron installer download
-  app.get("/download/electron", (c) => {
+  const downloadKaminide = (c: Context) => {
     const installerFile = findInstaller()
     if (!installerFile) {
       return c.text("Installer not available", 404)
@@ -210,7 +209,10 @@ export function createApp() {
     c.header("Content-Disposition", `attachment; filename="${installerFile.name}"`)
     c.header("Content-Length", String(stat.size))
     return c.body(stream as unknown as ReadableStream)
-  })
+  }
+  app.get("/download/kaminide", downloadKaminide)
+  // Compatibility for bookmarks and pre-GPUI clients.
+  app.get("/download/electron", downloadKaminide)
 
   // Check if installer is available
   app.get("/api/download/check", (c) => {
@@ -223,7 +225,8 @@ export function createApp() {
   })
 
   // ── Auto-update feed ────────────────────────────────────────────────────
-  // `VERSION` is the server's build. Electron polls this and, if it's older,
+  // `VERSION` is the server's build. The legacy standalone Electron client
+  // polls this and, if it's older,
   // swaps its sidebar version label for an "Update to X.Y.Z" button. The
   // button hits the Squirrel feed below (RELEASES + .nupkg) via the built-in
   // `electron.autoUpdater`.
@@ -313,7 +316,7 @@ export function createApp() {
   return app
 }
 
-/** KaminIDE installer only (Tauri NSIS `KaminIDE_X.Y.Z_x64-setup.exe`) + its
+/** KaminIDE installer only (NSIS `KaminIDE_X.Y.Z_x64-setup.exe`) + its
  *  parsed version — the updater manifest needs the exact version. */
 function findKaminInstaller(): { path: string; name: string; version: string } | null {
   for (const dir of ["./installer", "./dist/electron"]) {

@@ -34,19 +34,19 @@ export function TreeNode({ node, depth }: TreeNodeProps): JSX.Element {
       window.dispatchEvent(new CustomEvent('show-agent-panel', { detail: node }))
       return
     }
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     bridge?.switchTab(node.id)
   }
 
   function handleRename(e: MouseEvent): void {
     e.stopPropagation()
-    const bridge = (window as any).electronBridge
-    bridge?.sendInput(node.id, '/rename\r')
+    const bridge = (window as any).kaminBridge
+    bridge?.submitText(node.id, '/rename')
   }
 
   function handleClose(e: MouseEvent): void {
     e.stopPropagation()
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     bridge?.closeTab(node.id)
   }
 

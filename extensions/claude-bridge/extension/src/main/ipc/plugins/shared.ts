@@ -13,7 +13,7 @@ import { runGit } from '../../lib/git-async'
 export interface PluginsIPCContext {
   /** Trigger an MCP re-discovery so plugin-sourced servers become live after
    *  install / sync / uninstall / refresh. Returns a promise when supplied. */
-  reloadMcpFromPlugins?: () => Promise<void> | void
+  reloadPluginRuntime?: () => Promise<void> | void
 }
 
 /** Result of `resolvePluginSource` — either a directory we can read from or

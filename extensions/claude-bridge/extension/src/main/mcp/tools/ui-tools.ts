@@ -1,5 +1,5 @@
 // UI tools — AskUserQuestion, PlanMode, Skill
-// These show interactive widgets in the Electron renderer.
+// These show interactive widgets in the KaminIDE webview.
 
 import type { BrowserWindow, IpcMainEvent } from 'electron'
 import { ipcMain } from 'electron'

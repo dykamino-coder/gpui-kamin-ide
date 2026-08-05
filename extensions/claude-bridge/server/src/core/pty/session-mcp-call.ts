@@ -1,5 +1,5 @@
 // MCP-call routing extracted from session-core.ts (Sprint 5 / Stage E1).
-// Server queues an MCP call, ships it over the WS to Electron, awaits the
+// Server queues an MCP call, ships it over the WS to the client host, awaits the
 // response (or denial). Pending calls + their timers live in this module.
 
 import { randomUUID } from 'crypto'
@@ -25,11 +25,11 @@ const HEAVY_TOOLS = new Set([
 ])
 const INTERACTIVE_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode'])
 
-/** Pending MCP calls waiting for Electron response. Key = requestId,
+/** Pending MCP calls waiting for a client response. Key = requestId,
  *  shared across all sessions. */
 export const pendingMcpCalls = new Map<string, PendingMcpCall>()
 
-/** True iff the given session has any tool call awaiting an Electron
+/** True iff the given session has any tool call awaiting a client
  *  response — used by the reaper to avoid killing sessions mid-Bash. */
 export function hasInflightMcpCall(sessionId: string): boolean {
   for (const [, pending] of pendingMcpCalls) {
@@ -82,7 +82,7 @@ export function sendMcpCall(
       input,
     })
 
-    debugLog('MCP call sent to Electron', { sessionId: session.id, requestId, toolName, delivered })
+    debugLog('MCP call sent to client host', { sessionId: session.id, requestId, toolName, delivered })
   })
 }
 

@@ -176,7 +176,7 @@ export function ApiTokens() {
         <div class={styles.guideContent}>
           <ol style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: '1.8' }}>
             <li>Create a token above</li>
-            <li>Download and install the Electron client</li>
+            <li>Download and install the KaminIDE client</li>
             <li>Enter the server URL and your token in the client settings</li>
             <li>Click Connect — you're ready to use Claude</li>
           </ol>

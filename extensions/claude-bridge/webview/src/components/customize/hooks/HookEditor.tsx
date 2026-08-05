@@ -7,15 +7,14 @@ import { Button } from '../../ui/Button'
 import { showToast } from '../../../signals/toasts'
 import { HookTestRunner } from './HookTestRunner'
 
-// Claude Code 2.1.198's real event set (verified against the CLI binary).
-// Keep in sync with src/core/hooks/types.ts:CLI_HOOK_EVENTS — events the CLI
-// never fires must not be offered here (they'd write dead settings keys).
+// Keep in sync with src/core/hooks/types.ts:CLI_HOOK_EVENTS.
 const CLI_EVENTS = [
-  'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification',
-  'UserPromptSubmit', 'SessionStart', 'SessionEnd', 'Stop',
-  'SubagentStart', 'SubagentStop', 'PreCompact',
-  'PermissionRequest', 'MessageDisplay', 'Elicitation',
-  'TaskCompleted', 'TeammateIdle', 'Setup',
+  'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PostToolBatch', 'Notification',
+  'UserPromptSubmit', 'UserPromptExpansion', 'SessionStart', 'SessionEnd', 'Stop', 'StopFailure',
+  'SubagentStart', 'SubagentStop', 'PreCompact', 'PostCompact',
+  'PermissionRequest', 'PermissionDenied', 'MessageDisplay', 'Elicitation', 'ElicitationResult',
+  'TaskCreated', 'TaskCompleted', 'TeammateIdle', 'Setup', 'DirectoryAdded',
+  'InstructionsLoaded', 'ConfigChange', 'CwdChanged', 'FileChanged', 'WorktreeCreate', 'WorktreeRemove',
 ] as const
 const BRIDGE_EVENTS = [
   'BridgeReconnect', 'MicAudioDetected', 'ConnectorStatusChanged',
@@ -43,6 +42,13 @@ export function HookEditor({ initial, onSave, onCancel }: Props): JSX.Element {
   const [host, setHost] = useState<string>(initial?.handler?.host ?? 'auto')
   const [timeout, setTimeoutSec] = useState<string>(String(initial?.handler?.timeout ?? 30))
   const [ifCond, setIfCond] = useState<string>(initial?.handler?.if ?? '')
+  const [execForm, setExecForm] = useState<boolean>(Array.isArray(initial?.handler?.args))
+  const [argsText, setArgsText] = useState<string>((initial?.handler?.args ?? []).join('\n'))
+  const [asyncHook, setAsyncHook] = useState<boolean>(initial?.handler?.async === true)
+  const [asyncRewake, setAsyncRewake] = useState<boolean>(initial?.handler?.asyncRewake === true)
+  const [mcpServer, setMcpServer] = useState<string>(initial?.handler?.server ?? '')
+  const [mcpTool, setMcpTool] = useState<string>(initial?.handler?.tool ?? '')
+  const [mcpInput, setMcpInput] = useState<string>(JSON.stringify(initial?.handler?.input ?? {}, null, 2))
 
   const [showTestRunner, setShowTestRunner] = useState(false)
 
@@ -54,25 +60,41 @@ export function HookEditor({ initial, onSave, onCancel }: Props): JSX.Element {
       h.command = command
       h.shell = shell
       h.host = host
+      if (execForm) h.args = argsText.split('\n').map(value => value.trim()).filter(Boolean)
+      if (asyncHook || asyncRewake) h.async = true
+      if (asyncRewake) h.asyncRewake = true
     } else if (type === 'prompt') {
       h.prompt = prompt
     } else if (type === 'agent') {
       h.prompt = prompt
     } else if (type === 'http') {
       h.url = url
+    } else if (type === 'mcp_tool') {
+      h.server = mcpServer
+      h.tool = mcpTool
+      h.input = mcpInput.trim() ? JSON.parse(mcpInput) : {}
     }
     return h
   }
 
   async function handleSave(): Promise<void> {
-    const draft = { event, matcher: matcher || undefined, handler: buildHandler(), index: initial?.index }
-    const r = await bridge.hooksSave(draft as any)
-    if (r?.ok) onSave()
-    else showToast({ type: 'error', title: 'Save failed', message: r?.error ?? 'unknown', duration: 5000 })
+    try {
+      const draft = { event, matcher: matcher || undefined, handler: buildHandler(), index: initial?.index }
+      const r = await bridge.hooksSave(draft as any)
+      if (r?.ok) onSave()
+      else showToast({ type: 'error', title: 'Save failed', message: r?.error ?? 'unknown', duration: 5000 })
+    } catch (err) {
+      showToast({ type: 'error', title: 'Invalid hook', message: err instanceof Error ? err.message : String(err), duration: 5000 })
+    }
   }
 
   function handleTest(): void {
-    setShowTestRunner(true)
+    try {
+      buildHandler()
+      setShowTestRunner(true)
+    } catch (err) {
+      showToast({ type: 'error', title: 'Invalid hook', message: err instanceof Error ? err.message : String(err), duration: 5000 })
+    }
   }
 
   const fieldStyle = `
@@ -128,7 +150,7 @@ export function HookEditor({ initial, onSave, onCancel }: Props): JSX.Element {
         <div style={rowStyle}>
           <Field label="Type">
           <div style="display:flex;gap:4px">
-            {['command', 'prompt', 'agent', 'http'].map(t => (
+            {['command', 'prompt', 'agent', 'http', 'mcp_tool'].map(t => (
               <button
                 key={t}
                 type="button"
@@ -183,6 +205,21 @@ export function HookEditor({ initial, onSave, onCancel }: Props): JSX.Element {
                 />
               </Field>
             </div>
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-2);color:var(--text-secondary);font-size:var(--fs-sm)">
+              <input type="checkbox" checked={execForm} onChange={(e) => setExecForm((e.target as HTMLInputElement).checked)} />
+              Exec form (one argument per line; required for safe user_config interpolation)
+            </label>
+            {execForm && (
+              <div style={rowStyle}>
+                <Field label="Arguments" hint="one argv value per line">
+                  <textarea style={fieldStyle + ';min-height:80px;font-family:var(--font-mono)'} value={argsText} onInput={(e: any) => setArgsText(e.target.value)} />
+                </Field>
+              </div>
+            )}
+            <div style="display:flex;gap:var(--space-4);margin-bottom:var(--space-3);color:var(--text-secondary);font-size:var(--fs-sm)">
+              <label><input type="checkbox" checked={asyncHook} onChange={(e) => setAsyncHook((e.target as HTMLInputElement).checked)} /> async</label>
+              <label><input type="checkbox" checked={asyncRewake} onChange={(e) => setAsyncRewake((e.target as HTMLInputElement).checked)} /> asyncRewake</label>
+            </div>
           </>
         )}
 
@@ -205,6 +242,18 @@ export function HookEditor({ initial, onSave, onCancel }: Props): JSX.Element {
               <input style={fieldStyle} value={url} onInput={(e: any) => setUrl(e.target.value)} placeholder="https://hooks.slack.com/..." />
             </Field>
           </div>
+        )}
+
+        {type === 'mcp_tool' && (
+          <>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);margin-bottom:var(--space-3)">
+              <Field label="MCP server"><input style={fieldStyle} value={mcpServer} onInput={(e: any) => setMcpServer(e.target.value)} placeholder="plugin:name:server" /></Field>
+              <Field label="Tool"><input style={fieldStyle} value={mcpTool} onInput={(e: any) => setMcpTool(e.target.value)} placeholder="tool_name" /></Field>
+            </div>
+            <div style={rowStyle}>
+              <Field label="Input (JSON)"><textarea style={fieldStyle + ';min-height:100px;font-family:var(--font-mono)'} value={mcpInput} onInput={(e: any) => setMcpInput(e.target.value)} /></Field>
+            </div>
+          </>
         )}
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);margin-bottom:var(--space-3)">

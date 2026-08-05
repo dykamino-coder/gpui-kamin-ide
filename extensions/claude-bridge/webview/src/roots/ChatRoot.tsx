@@ -28,6 +28,7 @@ import { Tooltip } from '../components/overlays/Tooltip'
 import { ConfirmModalHost } from '../components/overlays/ConfirmModalHost'
 import { DropOverlay } from '../components/overlays/DropOverlay'
 import { NoTokenGateModal } from '../components/overlays/NoTokenGateModal'
+import { PluginHookApprovalModal } from '../components/customize/hooks/PluginHookApprovalModal'
 const COLUMN = 'display:flex;flex-direction:column;flex:1;min-width:0;height:100%;overflow:hidden'
 
 // Center editor-area chat panel. Flush + transparent (no card/border) so it sits
@@ -62,6 +63,7 @@ export function ChatRoot(): JSX.Element {
       <Tooltip />
       <ConfirmModalHost />
       <NoTokenGateModal />
+      <PluginHookApprovalModal />
     </>
   )
 

@@ -30,6 +30,16 @@ export function rewriteHooksForCli(
   const out: HookSettings = {}
   const proxyOrigin = `http://127.0.0.1:${config.port}`
 
+  const asyncProxyCommand = (url: string): string => {
+    const script = [
+      'let d="";',
+      'process.stdin.setEncoding("utf8");',
+      'process.stdin.on("data",c=>d+=c);',
+      `process.stdin.on("end",async()=>{try{const r=await fetch(${JSON.stringify(url)},{method:"POST",headers:{"Content-Type":"application/json","Authorization":${JSON.stringify(`Bearer ${hookProxyToken}`)}},body:d});const t=await r.text();if(t)process.stdout.write(t);const x=Number(r.headers.get("x-bridge-hook-exit-code"));process.exit(Number.isFinite(x)?x:(r.ok?0:1))}catch(e){process.stderr.write(String(e));process.exit(1)}});`,
+    ].join('')
+    return `node -e "eval(Buffer.from('${Buffer.from(script).toString('base64')}','base64').toString('utf8'))"`
+  }
+
   for (const [event, matchers] of Object.entries(hooks)) {
     if (!Array.isArray(matchers)) continue
     const newMatchers = matchers.map(m => {
@@ -44,12 +54,30 @@ export function rewriteHooksForCli(
         // Server-side command hook — keep as-is, CLI runs it in container.
         if (reg.effectiveHost === 'server') return h
 
-        // local OR http → rewrite as http hook pointing at our proxy.
+        const proxyUrl = `${proxyOrigin}/api/hooks/${sessionId}/${encodeURIComponent(event)}/${reg.id}`
+
+        // Async is command-only in Claude Code. Keep it a command and run a
+        // tiny container-side Node relay in the background; the real command
+        // still executes on the client host through the authenticated proxy.
+        if (h.async || h.asyncRewake) {
+          return {
+            type: 'command',
+            command: asyncProxyCommand(proxyUrl),
+            timeout: h.timeout,
+            if: h.if,
+            statusMessage: h.statusMessage,
+            once: h.once,
+            async: true,
+            asyncRewake: h.asyncRewake,
+          }
+        }
+
+        // Synchronous local → rewrite as http hook pointing at our proxy.
         // CLI will POST the hook input JSON; the proxy looks up the original
         // command, dispatches per host, returns CLI-compatible response.
         return {
           type: 'http',
-          url: `${proxyOrigin}/api/hooks/${sessionId}/${encodeURIComponent(event)}/${reg.id}`,
+          url: proxyUrl,
           headers: {
             Authorization: `Bearer ${hookProxyToken}`,
           },

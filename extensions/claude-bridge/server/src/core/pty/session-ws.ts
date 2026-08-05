@@ -14,7 +14,7 @@ import type { JsonlEntry } from '../../shared/jsonl-types'
 import { registerWsRoute } from '../server/ws'
 import { resolveToken } from '../auth/tokens'
 import { debugLog, warnLog, errorLog, infoLog } from '../logging'
-import type { ElectronToServerMsg, PtySession } from './types'
+import type { ClientToServerMsg, PtySession } from './types'
 import {
   createSession,
   destroySession,
@@ -39,7 +39,7 @@ import { eventBus } from '../events/bus'
 
 /**
  * Map: sessionId → WS client.
- * Used by MCP HTTP handler to find the correct Electron client.
+ * Used by MCP HTTP handler to find the correct KaminIDE client.
  */
 /** Transcript download chunk size, in characters. Small enough that each frame
  *  serialises quickly and progress moves visibly; large enough that a 36MB
@@ -70,7 +70,7 @@ export function getSessionWs(sessionId: string): WS | undefined {
 }
 
 /**
- * Attach WebSocket server for Electron ↔ Server session communication.
+ * Attach WebSocket server for client host ↔ server session communication.
  * Path: /ws/session
  */
 export function attachSessionWebSocket(_server: HttpServer): void {
@@ -111,7 +111,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
     }, 15_000)
 
     ws.on('message', async (raw: Buffer | string) => {
-      let msg: ElectronToServerMsg
+      let msg: ClientToServerMsg
       try {
         msg = JSON.parse(typeof raw === 'string' ? raw : raw.toString())
       } catch {
@@ -265,7 +265,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         }
 
         case 'hook:response': {
-          // Local hook executor in Electron returned its result.
+          // Local hook executor in the client host returned its result.
           const { handleLocalHookResponse } = await import('../hooks/dispatcher')
           handleLocalHookResponse(msg.requestId, msg.result)
           break
@@ -463,7 +463,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             // Send initial tree to this client
             broadcastTree(resolved.tokenId)
 
-            // Fire BridgeReconnect bridge-emit event — Electron client just
+            // Fire BridgeReconnect bridge-emit event — the client just
             // re-attached to (or first-attached to) this resumed session.
             try {
               const { emitBridgeEvent } = await import('../hooks/bridge-emitter')
@@ -672,7 +672,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         }
 
         case 'mcp:register-external-tools': {
-          // Electron sends external MCP tool schemas to merge into session's tool list
+          // Client sends external MCP tool schemas to merge into the session tool list.
           if (!authenticatedSessionId) return
           const session = getSession(authenticatedSessionId)
           if (!session) return
@@ -680,18 +680,32 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           const externalTools = (msg as any).tools as Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>
           if (!Array.isArray(externalTools)) return
 
-          // Merge: keep existing registeredTools (built-in) and add/replace external ones
-          // External tools are identified by not being in the built-in set
-          const externalNames = new Set(externalTools.map(t => t.name))
-          // Remove old external tools (anything that was previously registered and is now being refreshed)
-          const keptTools = session.registeredTools.filter(t => !externalNames.has(t.name))
-          session.registeredTools = [...keptTools, ...externalTools]
+          // This message is a complete external-tool snapshot. Replacing the
+          // array removes tools from disabled/uninstalled/disconnected servers;
+          // the previous name-based merge kept every disappeared old tool.
+          session.registeredTools = externalTools
 
           debugLog('External MCP tools registered', {
             sessionId: authenticatedSessionId,
             externalCount: externalTools.length,
             totalCount: session.registeredTools.length,
             tools: externalTools.map(t => t.name),
+          })
+          break
+        }
+
+        case 'mcp:register-external-content': {
+          if (!authenticatedSessionId) return
+          const session = getSession(authenticatedSessionId)
+          if (!session) return
+          session.registeredResources = Array.isArray(msg.resources) ? msg.resources : []
+          session.registeredResourceTemplates = Array.isArray(msg.resourceTemplates) ? msg.resourceTemplates : []
+          session.registeredPrompts = Array.isArray(msg.prompts) ? msg.prompts : []
+          debugLog('External MCP content registered', {
+            sessionId: authenticatedSessionId,
+            resourceCount: session.registeredResources.length,
+            resourceTemplateCount: session.registeredResourceTemplates.length,
+            promptCount: session.registeredPrompts.length,
           })
           break
         }
@@ -897,7 +911,7 @@ function broadcastTree(tokenId: string): void {
   }
 }
 
-// Listen for tree changes and broadcast to affected Electron clients
+// Listen for tree changes and broadcast to affected clients.
 eventBus.on('session:tree-updated', (data: any) => {
   // Find the tokenId from the parent session
   const parentSession = getSession(data?.parentSessionId)

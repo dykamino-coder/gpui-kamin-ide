@@ -12,14 +12,20 @@ import { debugLog, warnLog } from '../logging'
 import type { SyncUserData, SyncProjectData } from '../pty/types'
 import { getAllSessions } from '../pty/session-core'
 import type { PtySession } from '../pty/types'
-import { submitTextToSession } from '../pty/session-io'
-import { copyDirRecursive } from '../pty/session-settings'
+import { requestMaintenanceSubmission } from '../pty/session-io'
+import { refreshSessionSkills } from '../pty/session-settings'
+import { resolveToken } from '../auth/tokens'
+import { withProjectSyncLock, withUserSyncLock } from './lock'
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const SYNC_BASE = path.join(os.homedir(), 'bridge-sync')
+const TOKEN_HASH_RE = /^[a-f0-9]{16}$/
+const MAX_SYNC_BODY_BYTES = 10 * 1024 * 1024
+const MAX_SYNC_STRING_BYTES = 1024 * 1024
+const MAX_SYNC_NODES = 25_000
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,6 +36,73 @@ export function tokenHash(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex').slice(0, 16)
 }
 
+function assertTokenHash(hash: string): void {
+  if (!TOKEN_HASH_RE.test(hash)) throw new Error('Invalid tokenId')
+}
+
+async function requireOwnedToken(c: import('hono').Context): Promise<Response | null> {
+  const hash = c.req.param('tokenId')
+  if (!hash || !TOKEN_HASH_RE.test(hash)) return c.json({ error: 'Invalid tokenId' }, 400)
+  const auth = c.req.header('Authorization') || ''
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (!bearer || !(await resolveToken(bearer))) return c.json({ error: 'Unauthorized' }, 401)
+  if (tokenHash(bearer) !== hash) return c.json({ error: 'Forbidden' }, 403)
+  return null
+}
+
+async function readJsonBodyLimited<T>(c: import('hono').Context): Promise<T> {
+  const declared = Number(c.req.header('Content-Length') || 0)
+  if (Number.isFinite(declared) && declared > MAX_SYNC_BODY_BYTES) throw new Error('Sync payload too large')
+  const stream = c.req.raw.body
+  if (!stream) throw new Error('Invalid JSON body')
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > MAX_SYNC_BODY_BYTES) {
+      await reader.cancel()
+      throw new Error('Sync payload too large')
+    }
+    chunks.push(value)
+  }
+  const merged = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  let parsed: unknown
+  try { parsed = JSON.parse(new TextDecoder().decode(merged)) } catch { throw new Error('Invalid JSON body') }
+  validateSnapshotShape(parsed)
+  return parsed as T
+}
+
+function validateSnapshotShape(root: unknown): void {
+  if (!root || typeof root !== 'object' || Array.isArray(root)) throw new Error('Invalid sync snapshot')
+  const stack: Array<{ value: unknown; depth: number }> = [{ value: root, depth: 0 }]
+  let nodes = 0
+  while (stack.length > 0) {
+    const { value, depth } = stack.pop()!
+    if (++nodes > MAX_SYNC_NODES || depth > 20) throw new Error('Sync snapshot is too complex')
+    if (typeof value === 'string') {
+      if (Buffer.byteLength(value, 'utf-8') > MAX_SYNC_STRING_BYTES) throw new Error('Sync snapshot contains an oversized value')
+      continue
+    }
+    if (!value || typeof value !== 'object') continue
+    if (Array.isArray(value)) {
+      for (const child of value) stack.push({ value: child, depth: depth + 1 })
+    } else {
+      for (const [key, child] of Object.entries(value)) {
+        if (Buffer.byteLength(key, 'utf-8') > 4_096) throw new Error('Sync snapshot contains an oversized key')
+        stack.push({ value: child, depth: depth + 1 })
+      }
+    }
+  }
+}
+
 /** Hash a project path for storage keying */
 function projectHash(projectPath: string): string {
   return crypto.createHash('sha256').update(projectPath).digest('hex').slice(0, 16)
@@ -37,11 +110,13 @@ function projectHash(projectPath: string): string {
 
 /** Get the user sync directory for a given token hash */
 export function getUserSyncDir(hash: string): string {
+  assertTokenHash(hash)
   return path.join(SYNC_BASE, 'users', hash)
 }
 
 /** Get the project sync directory for a given token hash + project path */
 export function getProjectSyncDir(hash: string, projectPath: string): string {
+  assertTokenHash(hash)
   return path.join(SYNC_BASE, 'projects', hash, projectHash(projectPath))
 }
 
@@ -49,46 +124,64 @@ export function getProjectSyncDir(hash: string, projectPath: string): string {
  *  upload handler (fires on every client poll) doesn't block the event loop on
  *  a recursive mkdir+write over the whole skills/agents/commands tree. */
 async function writeFileMap(baseDir: string, files: Record<string, string>): Promise<void> {
+  // A sync payload is a complete snapshot, not an additive patch. Removing the
+  // old tree first is what makes disable/uninstall/delete visible instead of
+  // leaving stale components discoverable forever.
+  await fsp.rm(baseDir, { recursive: true, force: true })
   for (const [relPath, content] of Object.entries(files)) {
-    // Sanitize: no path traversal
-    const safe = relPath.replace(/\.\./g, '_').replace(/^\//, '')
-    if (!safe) continue
-    const fullPath = path.join(baseDir, safe)
+    if (typeof content !== 'string' || !relPath || relPath.includes('\\')) continue
+    const fullPath = path.resolve(baseDir, relPath)
+    const relative = path.relative(path.resolve(baseDir), fullPath)
+    if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) continue
     await fsp.mkdir(path.dirname(fullPath), { recursive: true })
     await fsp.writeFile(fullPath, content, 'utf-8')
   }
 }
 
+function safePluginDirName(pluginId: string): string {
+  const slug = pluginId.replace(/[^a-zA-Z0-9_.-]/g, '-') || 'plugin'
+  return `${slug}-${crypto.createHash('sha256').update(pluginId).digest('hex').slice(0, 8)}`
+}
+
+async function writePluginSnapshots(userDir: string, plugins: SyncUserData['plugins']): Promise<void> {
+  const pluginsDir = path.join(userDir, 'plugins')
+  await fsp.rm(pluginsDir, { recursive: true, force: true })
+  await fsp.mkdir(pluginsDir, { recursive: true })
+
+  const index: Array<{ id: string; dirName: string; sourceRoot: string; hooks: Record<string, unknown> }> = []
+  for (const [pluginId, plugin] of Object.entries(plugins ?? {})) {
+    if (!plugin || plugin.id !== pluginId || typeof plugin.name !== 'string') continue
+    const dirName = safePluginDirName(pluginId)
+    const root = path.join(pluginsDir, dirName)
+    await fsp.mkdir(path.join(root, '.claude-plugin'), { recursive: true })
+    await fsp.writeFile(
+      path.join(root, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ ...plugin.manifest, name: plugin.name }, null, 2),
+      'utf-8',
+    )
+    await writeFileMap(path.join(root, 'skills'), plugin.skills ?? {})
+    await writeFileMap(path.join(root, 'agents'), plugin.agents ?? {})
+    await writeFileMap(path.join(root, 'commands'), plugin.commands ?? {})
+    await writeFileMap(path.join(root, 'workflows'), plugin.workflows ?? {})
+    await writeFileMap(path.join(root, 'output-styles'), plugin.outputStyles ?? {})
+    await writeFileMap(path.join(root, 'themes'), plugin.themes ?? {})
+    if (plugin.settings) await fsp.writeFile(path.join(root, 'settings.json'), plugin.settings, 'utf-8')
+    index.push({ id: pluginId, dirName, sourceRoot: plugin.sourceRoot, hooks: plugin.hooks ?? {} })
+  }
+  await fsp.writeFile(path.join(userDir, 'plugins.json'), JSON.stringify(index, null, 2), 'utf-8')
+}
+
 /**
  * After a live skills upload, make the freshly-synced skills visible in
- * already-running sessions for this token WITHOUT a restart. User skills are
- * symlinked into `.claude/skills` at spawn, so the new files are already live
- * on disk — we only need the CLI to re-scan. Project skills were *copied* at
- * spawn, so we re-copy the fresh dir first. Either way we then inject the CLI's
- * `/reload-skills` slash command (the documented live re-scan). Best-effort:
- * a mid-turn injection is queued by the CLI after the current turn, and the
- * bridge composes input in the webview so the raw PTY buffer is normally empty.
+ * already-running sessions for this token WITHOUT a restart. Rebuild the exact
+ * session-local user + project overlay, then leave `/reload-skills` pending in
+ * the PTY coordinator. It is submitted only at an attached, clean, prompt-ready
+ * boundary, so sync can never append to or erase a user's unfinished line.
  *
  * @param tokenId     the sync token hash (equals PtySession.bearerHash)
  * @param projectPath when set, only project sessions whose cwd matches are
  *                    reloaded (and their on-disk copy is refreshed first)
  */
-// Debounce the /reload-skills injection PER SESSION. A single skills change often
-// arrives as back-to-back user + project uploads; without this each one submits
-// `/reload-skills` and the two concatenate in the PTY buffer as the garbled
-// `/reload-skills/reload-skills`. Coalescing to one submit per burst also spares
-// the user a redundant command.
-const RELOAD_DEBOUNCE_MS = 600
-const pendingReload = new WeakMap<PtySession, ReturnType<typeof setTimeout>>()
-function scheduleReload(s: PtySession): void {
-  const prev = pendingReload.get(s)
-  if (prev) clearTimeout(prev)
-  pendingReload.set(s, setTimeout(() => {
-    pendingReload.delete(s)
-    try { submitTextToSession(s, '/reload-skills') } catch { /* session may have just ended */ }
-  }, RELOAD_DEBOUNCE_MS))
-}
-
 /** Compare an incoming {relPath: content} map against what's already on disk —
  *  used to skip the /reload-skills injection when a sync upload didn't actually
  *  change anything (the client re-uploads on a poll, so most uploads are no-ops). */
@@ -100,17 +193,13 @@ async function fileMapEqual(dir: string, incoming: Record<string, string>): Prom
   return true
 }
 
-function reloadSkillsForRunningSessions(tokenId: string, projectPath?: string): void {
+export function reloadSkillsForRunningSessions(tokenId: string, projectPath?: string): void {
   for (const s of getAllSessions()) {
     if (s.bearerHash !== tokenId || s.state !== 'running') continue
-    if (projectPath) {
-      if (s.cwd !== projectPath) continue
-      try {
-        const src = path.join(getProjectSyncDir(tokenId, projectPath), 'skills')
-        if (fs.existsSync(src)) copyDirRecursive(src, path.join(s.settingsDir, '.claude', 'skills'))
-      } catch { /* re-copy best-effort — /reload-skills still refreshes the cache */ }
-    }
-    scheduleReload(s)
+    if (projectPath && s.cwd !== projectPath) continue
+    try { refreshSessionSkills(s.settingsDir, tokenId, s.cwd || undefined) }
+    catch { /* re-copy best-effort — pending reload still refreshes any intact tree */ }
+    requestMaintenanceSubmission(s, 'reload-skills', '/reload-skills')
   }
 }
 
@@ -127,7 +216,7 @@ async function readFileMap(baseDir: string): Promise<Record<string, string>> {
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name
       if (entry.isDirectory()) {
         await walk(path.join(dir, entry.name), rel)
-      } else {
+      } else if (entry.isFile()) {
         try {
           result[rel] = await fsp.readFile(path.join(dir, entry.name), 'utf-8')
         } catch { /* unreadable file — skip */ }
@@ -148,164 +237,147 @@ export function createSyncRoutes(): Hono {
   // POST /api/sync/:tokenId/user — upload user-level files
   api.post('/api/sync/:tokenId/user', async (c) => {
     const tokenId = c.req.param('tokenId')
-    if (!tokenId || tokenId.length < 8) {
-      return c.json({ error: 'Invalid tokenId' }, 400)
-    }
+    const authError = await requireOwnedToken(c)
+    if (authError) return authError
 
     let body: SyncUserData
     try {
-      body = await c.req.json<SyncUserData>()
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400)
+      body = await readJsonBodyLimited<SyncUserData>(c)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Invalid JSON body'
+      return c.json({ error: message }, message.includes('too large') ? 413 : 400)
     }
 
-    const hash = tokenId // tokenId is already the hash from Electron
+    const hash = tokenId // tokenId is already the hash from the client host
     const userDir = getUserSyncDir(hash)
 
-    try {
-      // Write skills
-      if (body.skills && Object.keys(body.skills).length > 0) {
-        const skillsDir = path.join(userDir, 'skills')
-        // Only re-scan if the upload actually changed something — the client
-        // re-uploads on a poll, so most uploads are identical no-ops and would
-        // otherwise spam `/reload-skills` into the user's idle session.
-        const changed = !await fileMapEqual(skillsDir, body.skills)
-        await fsp.mkdir(skillsDir, { recursive: true })
-        await writeFileMap(skillsDir, body.skills)
-        debugLog('[sync] User skills synced', { tokenId: hash, count: Object.keys(body.skills).length, changed })
-        // Live-reload: user skills are symlinked into running sessions, so the
-        // new files are already on disk — just tell the CLI to re-scan.
-        if (changed) reloadSkillsForRunningSessions(hash)
-      }
+    return withUserSyncLock(hash, async () => {
+      try {
+      // Write skills. Empty maps are meaningful: they remove stale files.
+      const incomingSkills = body.skills ?? {}
+      const skillsDir = path.join(userDir, 'skills')
+      const skillsChanged = !await fileMapEqual(skillsDir, incomingSkills)
+      if (skillsChanged) await writeFileMap(skillsDir, incomingSkills)
+      debugLog('[sync] User skills synced', { tokenId: hash, count: Object.keys(incomingSkills).length, changed: skillsChanged })
+      if (skillsChanged) reloadSkillsForRunningSessions(hash)
 
       // Write agents
-      if (body.agents && Object.keys(body.agents).length > 0) {
-        const agentsDir = path.join(userDir, 'agents')
-        await fsp.mkdir(agentsDir, { recursive: true })
-        await writeFileMap(agentsDir, body.agents)
-        debugLog('[sync] User agents synced', { tokenId: hash, count: Object.keys(body.agents).length })
-      }
+      await writeFileMap(path.join(userDir, 'agents'), body.agents ?? {})
+      debugLog('[sync] User agents synced', { tokenId: hash, count: Object.keys(body.agents ?? {}).length })
 
       // Write commands (custom slash commands)
-      if (body.commands && Object.keys(body.commands).length > 0) {
-        const commandsDir = path.join(userDir, 'commands')
-        await fsp.mkdir(commandsDir, { recursive: true })
-        await writeFileMap(commandsDir, body.commands)
-        debugLog('[sync] User commands synced', { tokenId: hash, count: Object.keys(body.commands).length })
-      }
+      await writeFileMap(path.join(userDir, 'commands'), body.commands ?? {})
+      debugLog('[sync] User commands synced', { tokenId: hash, count: Object.keys(body.commands ?? {}).length })
+
+      // Namespaced plugin proxy roots + hook metadata. Executables are not
+      // materialised here; the host-side harness owns their processes.
+      await writePluginSnapshots(userDir, body.plugins ?? {})
+      debugLog('[sync] User plugins synced', { tokenId: hash, count: Object.keys(body.plugins ?? {}).length })
 
       // Write settings.json
-      if (body.settings) {
-        await fsp.mkdir(userDir, { recursive: true })
-        await fsp.writeFile(path.join(userDir, 'settings.json'), body.settings, 'utf-8')
-        debugLog('[sync] User settings.json synced', { tokenId: hash })
-      }
+      await fsp.mkdir(userDir, { recursive: true })
+      if (body.settings !== undefined) await fsp.writeFile(path.join(userDir, 'settings.json'), body.settings, 'utf-8')
+      else await fsp.rm(path.join(userDir, 'settings.json'), { force: true })
+      debugLog('[sync] User settings.json synced', { tokenId: hash, present: body.settings !== undefined })
 
       // Write CLAUDE.md
-      if (body.claudeMd) {
-        await fsp.mkdir(userDir, { recursive: true })
-        await fsp.writeFile(path.join(userDir, 'CLAUDE.md'), body.claudeMd, 'utf-8')
-        debugLog('[sync] User CLAUDE.md synced', { tokenId: hash })
-      }
+      if (body.claudeMd !== undefined) await fsp.writeFile(path.join(userDir, 'CLAUDE.md'), body.claudeMd, 'utf-8')
+      else await fsp.rm(path.join(userDir, 'CLAUDE.md'), { force: true })
+      debugLog('[sync] User CLAUDE.md synced', { tokenId: hash, present: body.claudeMd !== undefined })
 
-      return c.json({ ok: true })
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err)
-      warnLog('[sync] Failed to sync user data', { tokenId: hash, error: errMsg })
-      return c.json({ error: 'Sync failed', details: errMsg }, 500)
-    }
+        return c.json({ ok: true })
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        warnLog('[sync] Failed to sync user data', { tokenId: hash, error: errMsg })
+        return c.json({ error: 'Sync failed', details: errMsg }, 500)
+      }
+    })
   })
 
   // POST /api/sync/:tokenId/project — upload project-level files
   api.post('/api/sync/:tokenId/project', async (c) => {
     const tokenId = c.req.param('tokenId')
-    if (!tokenId || tokenId.length < 8) {
-      return c.json({ error: 'Invalid tokenId' }, 400)
-    }
+    const authError = await requireOwnedToken(c)
+    if (authError) return authError
 
     let body: SyncProjectData
     try {
-      body = await c.req.json<SyncProjectData>()
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400)
+      body = await readJsonBodyLimited<SyncProjectData>(c)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Invalid JSON body'
+      return c.json({ error: message }, message.includes('too large') ? 413 : 400)
     }
 
-    if (!body.projectPath) {
+    if (typeof body.projectPath !== 'string' || !body.projectPath || body.projectPath.length > 4_096) {
       return c.json({ error: 'Missing projectPath' }, 400)
     }
 
     const hash = tokenId
     const projDir = getProjectSyncDir(hash, body.projectPath)
 
-    try {
+    return withProjectSyncLock(hash, body.projectPath, async () => {
+      try {
       await fsp.mkdir(projDir, { recursive: true })
 
-      // Write skills
-      if (body.skills && Object.keys(body.skills).length > 0) {
-        const skillsDir = path.join(projDir, 'skills')
-        const changed = !await fileMapEqual(skillsDir, body.skills)
-        await writeFileMap(skillsDir, body.skills)
-        debugLog('[sync] Project skills synced', { tokenId: hash, project: body.projectPath, count: Object.keys(body.skills).length, changed })
-        // Live-reload: project skills were copied at spawn — refresh the on-disk
-        // copy for matching sessions, then re-scan (only when actually changed).
-        if (changed) reloadSkillsForRunningSessions(hash, body.projectPath)
-      }
+      // Write skills (complete snapshot, including empty).
+      const projectSkills = body.skills ?? {}
+      const projectSkillsDir = path.join(projDir, 'skills')
+      const projectSkillsChanged = !await fileMapEqual(projectSkillsDir, projectSkills)
+      if (projectSkillsChanged) await writeFileMap(projectSkillsDir, projectSkills)
+      debugLog('[sync] Project skills synced', { tokenId: hash, project: body.projectPath, count: Object.keys(projectSkills).length, changed: projectSkillsChanged })
+      if (projectSkillsChanged) reloadSkillsForRunningSessions(hash, body.projectPath)
 
       // Write rules
-      if (body.rules && Object.keys(body.rules).length > 0) {
-        await writeFileMap(path.join(projDir, 'rules'), body.rules)
-        debugLog('[sync] Project rules synced', { tokenId: hash, project: body.projectPath, count: Object.keys(body.rules).length })
-      }
+      await writeFileMap(path.join(projDir, 'rules'), body.rules ?? {})
+      debugLog('[sync] Project rules synced', { tokenId: hash, project: body.projectPath, count: Object.keys(body.rules ?? {}).length })
 
       // Write agents
-      if (body.agents && Object.keys(body.agents).length > 0) {
-        await writeFileMap(path.join(projDir, 'agents'), body.agents)
-        debugLog('[sync] Project agents synced', { tokenId: hash, project: body.projectPath, count: Object.keys(body.agents).length })
-      }
+      await writeFileMap(path.join(projDir, 'agents'), body.agents ?? {})
+      debugLog('[sync] Project agents synced', { tokenId: hash, project: body.projectPath, count: Object.keys(body.agents ?? {}).length })
 
       // Write commands
-      if (body.commands && Object.keys(body.commands).length > 0) {
-        await writeFileMap(path.join(projDir, 'commands'), body.commands)
-        debugLog('[sync] Project commands synced', { tokenId: hash, project: body.projectPath, count: Object.keys(body.commands).length })
-      }
+      await writeFileMap(path.join(projDir, 'commands'), body.commands ?? {})
+      debugLog('[sync] Project commands synced', { tokenId: hash, project: body.projectPath, count: Object.keys(body.commands ?? {}).length })
+
+      if (body.settings !== undefined) await fsp.writeFile(path.join(projDir, 'settings.json'), body.settings, 'utf-8')
+      else await fsp.rm(path.join(projDir, 'settings.json'), { force: true })
+      debugLog('[sync] Project settings.json synced', { tokenId: hash, project: body.projectPath, present: body.settings !== undefined })
 
       // Write root CLAUDE.md
-      if (body.claudeMd) {
-        await fsp.writeFile(path.join(projDir, 'CLAUDE.md'), body.claudeMd, 'utf-8')
-        debugLog('[sync] Project CLAUDE.md synced', { tokenId: hash, project: body.projectPath })
-      }
+      if (body.claudeMd !== undefined) await fsp.writeFile(path.join(projDir, 'CLAUDE.md'), body.claudeMd, 'utf-8')
+      else await fsp.rm(path.join(projDir, 'CLAUDE.md'), { force: true })
+      debugLog('[sync] Project CLAUDE.md synced', { tokenId: hash, project: body.projectPath, present: body.claudeMd !== undefined })
 
       // Write .claude/CLAUDE.md
-      if (body.dotClaudeMd) {
+      if (body.dotClaudeMd !== undefined) {
         const dotClaudeDir = path.join(projDir, '.claude')
         await fsp.mkdir(dotClaudeDir, { recursive: true })
         await fsp.writeFile(path.join(dotClaudeDir, 'CLAUDE.md'), body.dotClaudeMd, 'utf-8')
         debugLog('[sync] Project .claude/CLAUDE.md synced', { tokenId: hash, project: body.projectPath })
-      }
+      } else await fsp.rm(path.join(projDir, '.claude', 'CLAUDE.md'), { force: true })
 
       // Write .claude.json
-      if (body.claudeJson) {
-        await fsp.writeFile(path.join(projDir, '.claude.json'), body.claudeJson, 'utf-8')
-        debugLog('[sync] Project .claude.json synced', { tokenId: hash, project: body.projectPath })
-      }
+      if (body.claudeJson !== undefined) await fsp.writeFile(path.join(projDir, '.claude.json'), body.claudeJson, 'utf-8')
+      else await fsp.rm(path.join(projDir, '.claude.json'), { force: true })
+      debugLog('[sync] Project .claude.json synced', { tokenId: hash, project: body.projectPath, present: body.claudeJson !== undefined })
 
       // Store the projectPath for later lookup
       await fsp.writeFile(path.join(projDir, '_projectPath.txt'), body.projectPath, 'utf-8')
 
-      return c.json({ ok: true })
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err)
-      warnLog('[sync] Failed to sync project data', { tokenId: hash, error: errMsg })
-      return c.json({ error: 'Sync failed', details: errMsg }, 500)
-    }
+        return c.json({ ok: true })
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        warnLog('[sync] Failed to sync project data', { tokenId: hash, error: errMsg })
+        return c.json({ error: 'Sync failed', details: errMsg }, 500)
+      }
+    })
   })
 
   // GET /api/sync/:tokenId/status — what's synced
   api.get('/api/sync/:tokenId/status', async (c) => {
     const tokenId = c.req.param('tokenId')
-    if (!tokenId || tokenId.length < 8) {
-      return c.json({ error: 'Invalid tokenId' }, 400)
-    }
+    const authError = await requireOwnedToken(c)
+    if (authError) return authError
 
     const hash = tokenId
     const userDir = getUserSyncDir(hash)
@@ -366,11 +438,10 @@ export function createSyncRoutes(): Hono {
 
   // GET /api/sync/:tokenId/tree — returns absolute base path + recursive file tree
   // (name + size + children). Used by the UI to show what was actually written.
-  api.get('/api/sync/:tokenId/tree', (c) => {
+  api.get('/api/sync/:tokenId/tree', async (c) => {
     const tokenId = c.req.param('tokenId')
-    if (!tokenId || tokenId.length < 8) {
-      return c.json({ error: 'Invalid tokenId' }, 400)
-    }
+    const authError = await requireOwnedToken(c)
+    if (authError) return authError
     const hash = tokenId
     const userDir = getUserSyncDir(hash)
     const projectsBase = path.join(SYNC_BASE, 'projects', hash)
@@ -390,7 +461,7 @@ export function createSyncRoutes(): Hono {
           const full = path.join(dir, entry.name)
           if (entry.isDirectory()) {
             out.push({ name: entry.name, type: 'dir', children: buildTree(full) })
-          } else {
+          } else if (entry.isFile()) {
             let size = 0
             try { size = fs.statSync(full).size } catch {}
             out.push({ name: entry.name, type: 'file', size })
@@ -429,25 +500,35 @@ export function createSyncRoutes(): Hono {
   // GET /api/sync/:tokenId/file?path=<abs-path-under-sync-base>
   // Returns raw content of a single synced file, with a hard cap so the
   // response never blows up the client. Refuses anything outside SYNC_BASE.
-  api.get('/api/sync/:tokenId/file', (c) => {
+  api.get('/api/sync/:tokenId/file', async (c) => {
     const tokenId = c.req.param('tokenId')
-    if (!tokenId || tokenId.length < 8) return c.json({ error: 'Invalid tokenId' }, 400)
+    const authError = await requireOwnedToken(c)
+    if (authError) return authError
     const q = c.req.query('path')
     if (!q) return c.json({ error: 'Missing path query' }, 400)
 
     const abs = path.resolve(q)
     // Sandbox: must be inside SYNC_BASE and tied to this tokenId
-    const sandboxA = path.resolve(SYNC_BASE, 'users', tokenId) + path.sep
+    const sandboxA = getUserSyncDir(tokenId) + path.sep
     const sandboxB = path.resolve(SYNC_BASE, 'projects', tokenId) + path.sep
     if (!(abs.startsWith(sandboxA) || abs.startsWith(sandboxB))) {
       return c.json({ error: 'Path outside sync sandbox' }, 403)
     }
     try {
-      const stat = fs.statSync(abs)
+      const real = fs.realpathSync(abs)
+      const allowedRoots = [getUserSyncDir(tokenId), path.resolve(SYNC_BASE, 'projects', tokenId)]
+        .filter(root => fs.existsSync(root))
+        .map(root => fs.realpathSync(root))
+      const insideRealRoot = allowedRoots.some((root) => {
+        const relative = path.relative(root, real)
+        return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
+      })
+      if (!insideRealRoot) return c.json({ error: 'Path outside sync sandbox' }, 403)
+      const stat = fs.statSync(real)
       if (stat.isDirectory()) return c.json({ error: 'Is a directory' }, 400)
       const CAP = 512 * 1024  // 512 KB cap for viewer
       const truncated = stat.size > CAP
-      const buf = fs.readFileSync(abs)
+      const buf = fs.readFileSync(real)
       const content = buf.subarray(0, CAP).toString('utf-8')
       return c.json({
         path: abs,

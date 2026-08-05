@@ -6,13 +6,31 @@ import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { getHookApprovalReviewMarker, listPendingHookApprovals } from './plugins/handlers-install'
+import { readEffectivePluginManifestSync } from '../plugin-helpers'
 import type { ConfigStore } from '../config/store'
+import { resetSyncTimers, syncUserData } from '../sync/sync-client'
 
 export interface HooksIpcContext {
   configStore: ConfigStore
 }
 
-interface MinimalHookCmd { type: string; command?: string; prompt?: string; url?: string; host?: string; if?: string; matcher?: string; timeout?: number }
+interface MinimalHookCmd {
+  type: string
+  command?: string
+  args?: string[]
+  prompt?: string
+  url?: string
+  server?: string
+  tool?: string
+  input?: Record<string, unknown>
+  host?: string
+  if?: string
+  matcher?: string
+  timeout?: number
+  async?: boolean
+  asyncRewake?: boolean
+}
 interface MinimalMatcher { matcher?: string; hooks: MinimalHookCmd[] }
 interface MinimalSettings { hooks?: Record<string, MinimalMatcher[]> }
 
@@ -65,6 +83,12 @@ function loadEnabledPluginsHost(): Array<{ pluginId: string; installPath: string
       if (enabledMap[key] === false) continue
       const entry = Array.isArray(entries) ? entries[0] : null
       if (!entry?.installPath) continue
+      if (!Object.prototype.hasOwnProperty.call(enabledMap, key)) {
+        const at = key.lastIndexOf('@')
+        const name = at > 0 ? key.slice(0, at) : key
+        const marketplace = at > 0 ? key.slice(at + 1) : ''
+        if (readEffectivePluginManifestSync(entry.installPath, name, marketplace).defaultEnabled === false) continue
+      }
       out.push({ pluginId: key, installPath: entry.installPath })
     }
     return out
@@ -172,6 +196,11 @@ async function bridgeFetch(ctx: HooksIpcContext, suffix: string, init?: RequestI
 }
 
 export function registerHooksIPC(ctx: HooksIpcContext): void {
+  const syncHookConfig = async (): Promise<void> => {
+    resetSyncTimers()
+    const cfg = ctx.configStore.get()
+    if (cfg?.serverUrl && cfg?.token) await syncUserData(cfg.serverUrl, cfg.token)
+  }
   // ── Read user-defined hooks straight from host settings.json. ──
   ipcMain.handle('hooks:list', async () => {
     const settings = readSettings()
@@ -179,7 +208,7 @@ export function registerHooksIPC(ctx: HooksIpcContext): void {
   })
 
   // ── Merged view of user + project + plugins (with source labels). ──
-  // We do the merge on the Electron side, reading host files directly. The
+  // We do the merge on the client-host side, reading host files directly. The
   // bridge container only sees synced copies of these files, and freshly
   // installed user-hooks haven't propagated there yet, so a server-side
   // merge would lag the host's true state.
@@ -258,7 +287,8 @@ export function registerHooksIPC(ctx: HooksIpcContext): void {
         hooks: [tmpl.handler],
       })
       writeSettings(settings)
-      return { ok: true }
+      await syncHookConfig()
+      return { ok: true, restartRequired: true }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
@@ -281,17 +311,18 @@ export function registerHooksIPC(ctx: HooksIpcContext): void {
         matchers.push({ matcher: draft.matcher, hooks: [draft.handler] })
       }
       writeSettings(settings)
-      return { ok: true }
+      await syncHookConfig()
+      return { ok: true, restartRequired: true }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
 
   // ── Test a hook with a mock payload (HookEditor "Test"). ──
-  // For type=command + host=local we execute directly via Electron's own
+  // For type=command + host=local we execute directly via the VSIX host's
   // spawn (the server-side route requires a live PTY-session WS to dispatch
   // to, which doesn't exist when the user is just inspecting the Hooks
-  // tab — would always fail with "No active Electron WS"). For other types
+  // tab — would always fail with "No active client-host WS"). For other types
   // (server-only commands, http, prompt/agent) fall through to the server
   // which already knows how to handle them.
   ipcMain.handle('hooks:test', async (_e, draft: { event: string; matcher?: string; handler: MinimalHookCmd; mockPayload?: Record<string, unknown> }) => {
@@ -335,6 +366,8 @@ export function registerHooksIPC(ctx: HooksIpcContext): void {
   })
 
   // ── Plugin hook approval store. ──
+  ipcMain.handle('hooks:list-pending-plugin-approvals', async () => listPendingHookApprovals())
+
   ipcMain.handle('hooks:get-plugin-approval', async (_e, pluginId: string) => {
     try {
       const approvalsFile = path.join(os.homedir(), '.claude', 'open-claude-bridge', 'plugin-hook-approvals.json')
@@ -352,9 +385,11 @@ export function registerHooksIPC(ctx: HooksIpcContext): void {
       fs.mkdirSync(path.dirname(approvalsFile), { recursive: true })
       let parsed: Record<string, string[]> = {}
       try { if (fs.existsSync(approvalsFile)) parsed = JSON.parse(fs.readFileSync(approvalsFile, 'utf-8')) } catch { /* ignore */ }
-      parsed[pluginId] = hashes
+      const reviewMarker = await getHookApprovalReviewMarker(pluginId)
+      parsed[pluginId] = [...new Set([...hashes, ...(reviewMarker ? [reviewMarker] : [])])]
       fs.writeFileSync(approvalsFile, JSON.stringify(parsed, null, 2))
-      return { ok: true }
+      await syncHookConfig()
+      return { ok: true, restartRequired: true }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
@@ -370,7 +405,8 @@ export function registerHooksIPC(ctx: HooksIpcContext): void {
       if (matchers[matcherIdx]!.hooks.length === 0) matchers.splice(matcherIdx, 1)
       if (matchers.length === 0) delete settings.hooks![event]
       writeSettings(settings)
-      return { ok: true }
+      await syncHookConfig()
+      return { ok: true, restartRequired: true }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }

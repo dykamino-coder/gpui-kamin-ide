@@ -17,7 +17,7 @@
 //                      idle nudge, question)
 
 import type { HookMatcher, HookSource, HookInputPayload } from './types'
-import { sendToClient } from '../pty/session-io'
+import { sendToClient, setSessionPromptReady } from '../pty/session-io'
 import type { PtySession } from '../types/pty'
 
 export const BRIDGE_STATUS_EVENTS = [
@@ -57,6 +57,9 @@ export function applyDeterministicStatus(
     void session.jsonlWatcher?.scanSubagents?.()
     return
   }
+  if (event === 'UserPromptSubmit' || event === 'SessionEnd') setSessionPromptReady(session, false)
+  else if (event === 'Stop' || event === 'SessionStart') setSessionPromptReady(session, true)
+
   const ws = session.ws
   if (!ws) return
   const base = { type: 'session:activity', sessionId: session.id, hookDriven: true as const }

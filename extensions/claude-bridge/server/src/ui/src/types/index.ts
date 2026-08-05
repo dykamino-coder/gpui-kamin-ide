@@ -11,9 +11,10 @@ export interface ExtendedStats extends Stats {
 }
 export interface RequestLogEntry {
   id: string; timestamp: string; endpoint: string; method: string;
+  pluginId: string;
   model: string; userName?: string; durationMs: number; inputTokens: number;
   outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number;
-  toolsUsed: string[]; status: 'success' | 'error' | 'streaming';
+  toolsUsed: string[]; status: 'success' | 'error' | 'streaming' | 'cancelled';
   statusCode: number; error?: string;
   requestBody?: unknown; responseText?: string;
   isUserRequest?: boolean; userMessage?: string;

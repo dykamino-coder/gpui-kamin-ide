@@ -2,6 +2,17 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getOrCreateSnapshot, wrapCommandWithSnapshot, shouldUseLoginShell } from './shell-snapshot'
+import { listEnabledPluginBinDirs } from '../../plugin-helpers'
+
+async function shellEnv(): Promise<NodeJS.ProcessEnv> {
+  const binDirs = await listEnabledPluginBinDirs()
+  return {
+    ...process.env,
+    PATH: [...binDirs, process.env.PATH ?? ''].filter(Boolean).join(path.delimiter),
+    GIT_EDITOR: 'true',
+    CLAUDECODE: '1',
+  }
+}
 
 function whichAsync(cmd: string, timeoutMs = 5000): Promise<string | null> {
   return new Promise((resolve) => {
@@ -35,7 +46,7 @@ const MAX_OUTPUT_BYTES = 100 * 1024 // 100 KB
 /**
  * Shim functions prepended to every bash command on Windows. Certain CLI
  * tools pop a Windows MessageBox when invoked without a real console window
- * (our spawn of `bash.exe -c …` from an Electron main process has no
+ * (our spawn of `bash.exe -c …` from the VSIX bridge host has no
  * attached conhost). The modal blocks the entire agent turn until the user
  * clicks OK — useless and scary.
  *
@@ -148,7 +159,7 @@ export async function powerShellExecute(input: Record<string, unknown>): Promise
   const timeout = typeof input.timeout === 'number' ? Math.min(input.timeout, 1_800_000) : 1_500_000
 
   const pwshPath = await resolvePowerShell()
-  return runForegroundCommand(command, pwshPath, timeout)
+  return runForegroundCommand(command, pwshPath, timeout, ['-c'], await shellEnv())
 }
 
 export async function bashExecute(input: Record<string, unknown>): Promise<McpResult> {
@@ -173,12 +184,13 @@ export async function bashExecute(input: Record<string, unknown>): Promise<McpRe
   const snapshot = await getOrCreateSnapshot(shell)
   const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + command, snapshot)
   const shellFlags = shouldUseLoginShell(snapshot) ? ['-lc'] : ['-c']
+  const env = await shellEnv()
 
   if (runInBackground) {
-    return runBackgroundCommand(wrapped, shell, description, shellFlags)
+    return runBackgroundCommand(wrapped, shell, description, shellFlags, env)
   }
 
-  return runForegroundCommand(wrapped, shell, timeout, shellFlags)
+  return runForegroundCommand(wrapped, shell, timeout, shellFlags, env)
 }
 
 const BG_OUTPUT_CAP = 100 * 1024
@@ -199,7 +211,7 @@ function appendBounded(chunks: Buffer[], lengthRef: { size: number }, chunk: Buf
   }
 }
 
-function runBackgroundCommand(command: string, shell: string, description: string, shellFlags: string[] = ['-c']): McpResult {
+function runBackgroundCommand(command: string, shell: string, description: string, shellFlags: string[] = ['-c'], env: NodeJS.ProcessEnv = process.env): McpResult {
   evictOldBackgroundOutput()
   const bgId = nextBgId++
 
@@ -213,7 +225,7 @@ function runBackgroundCommand(command: string, shell: string, description: strin
     // Match CLI: GIT_EDITOR=true silences interactive git editor prompts
     // (commit without -m, merge w/o --no-edit). CLAUDECODE=1 is a marker
     // some plugin-provided scripts check for to adjust behaviour.
-    env: { ...process.env, GIT_EDITOR: 'true', CLAUDECODE: '1' },
+    env,
   })
 
   if (child.pid) {
@@ -325,7 +337,7 @@ async function resolvePowerShell(): Promise<string> {
   return pwshLookupInFlight
 }
 
-function runForegroundCommand(command: string, shell: string, timeout: number, shellFlags: string[] = ['-c']): Promise<McpResult> {
+function runForegroundCommand(command: string, shell: string, timeout: number, shellFlags: string[] = ['-c'], env: NodeJS.ProcessEnv = process.env): Promise<McpResult> {
   return new Promise((resolve) => {
     const stdoutChunks: Buffer[] = []
     const stderrChunks: Buffer[] = []
@@ -340,7 +352,7 @@ function runForegroundCommand(command: string, shell: string, timeout: number, s
       // Match CLI: GIT_EDITOR=true blocks interactive git editor; CLAUDECODE=1
       // identifies our session so plugins/scripts can adapt. See CLI's
       // `utils/Shell.ts` — same two flags.
-      env: { ...process.env, GIT_EDITOR: 'true', CLAUDECODE: '1' },
+      env,
     })
 
     const timer = setTimeout(() => {

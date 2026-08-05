@@ -52,7 +52,10 @@ export function registerContentHandlers(): void {
                 if (fs.existsSync(mktJson)) {
                   const mkt = JSON.parse(fs.readFileSync(mktJson, 'utf-8'))
                   const found = mkt.plugins?.find((p: any) => p.name === name)
-                  if (found) description = found.description || ''
+                  if (found) {
+                    description = found.description || ''
+                    if (!rawDeps) rawDeps = found.dependencies
+                  }
                 }
               } catch {}
             }
@@ -95,6 +98,7 @@ export function registerContentHandlers(): void {
           return {
             name,
             marketplace: marketplace || '',
+            enabled: enabledMap.get(key) !== false,
             version: entry?.version || 'unknown',
             scope: entry?.scope || 'user',
             installPath,

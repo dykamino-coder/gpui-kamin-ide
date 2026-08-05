@@ -12,6 +12,7 @@ const LOG_DIR = path.join(os.homedir(), '.claude', 'open-claude-bridge', 'data',
 
 export interface HookExecutionRecord {
   ts: number                    // unix-ms
+  tokenId?: string              // API-token owner; legacy rows may omit it
   sessionId: string
   hookId: string
   event: HookEvent | string
@@ -48,7 +49,7 @@ export function appendExecution(rec: HookExecutionRecord): void {
 }
 
 /** Read recent executions (newest first). Across multiple daily files. */
-export async function readRecentExecutions(limit = 200): Promise<HookExecutionRecord[]> {
+export async function readRecentExecutions(limit = 200, tokenId?: string): Promise<HookExecutionRecord[]> {
   try {
     const files = (await fsp.readdir(LOG_DIR))
       .filter(f => f.endsWith('.jsonl'))
@@ -59,7 +60,10 @@ export async function readRecentExecutions(limit = 200): Promise<HookExecutionRe
       const content = await fsp.readFile(path.join(LOG_DIR, f), 'utf-8')
       const lines = content.split('\n').filter(Boolean).reverse()
       for (const line of lines) {
-        try { out.push(JSON.parse(line)) } catch { /* skip corrupt */ }
+        try {
+          const record = JSON.parse(line) as HookExecutionRecord
+          if (!tokenId || record.tokenId === tokenId) out.push(record)
+        } catch { /* skip corrupt */ }
         if (out.length >= limit) return out
       }
     }
@@ -69,10 +73,20 @@ export async function readRecentExecutions(limit = 200): Promise<HookExecutionRe
   }
 }
 
-export async function clearLog(): Promise<void> {
-  try {
-    for (const f of await fsp.readdir(LOG_DIR)) {
-      if (f.endsWith('.jsonl')) await fsp.unlink(path.join(LOG_DIR, f))
-    }
-  } catch { /* ignore — nothing to clear */ }
+export async function clearLog(tokenId: string): Promise<void> {
+  writeChain = writeChain.then(async () => {
+    try {
+      for (const f of await fsp.readdir(LOG_DIR)) {
+        if (!f.endsWith('.jsonl')) continue
+        const filePath = path.join(LOG_DIR, f)
+        const content = await fsp.readFile(filePath, 'utf-8')
+        const kept = content.split('\n').filter(Boolean).filter((line) => {
+          try { return (JSON.parse(line) as HookExecutionRecord).tokenId !== tokenId } catch { return true }
+        })
+        if (kept.length === 0) await fsp.unlink(filePath)
+        else await fsp.writeFile(filePath, `${kept.join('\n')}\n`, 'utf-8')
+      }
+    } catch { /* ignore — nothing to clear */ }
+  })
+  await writeChain
 }

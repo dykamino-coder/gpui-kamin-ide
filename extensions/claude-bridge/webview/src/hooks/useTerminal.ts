@@ -109,7 +109,7 @@ export function useTerminal(tabId: string): TerminalRefs {
     terminal.loadAddon(new WebLinksAddon())
 
     // Scrollback snapshot — restores terminal contents across renderer
-    // reloads (HMR, devtools refresh, full Electron relaunch). Without
+    // reloads (HMR, devtools refresh, full application relaunch). Without
     // this, every reload presents the user with an empty xterm even
     // though the PTY session is still running on the server side; the
     // server replays JSONL but not the raw PTY output stream that

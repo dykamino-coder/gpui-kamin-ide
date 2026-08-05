@@ -23,8 +23,8 @@ applyInitialTheme()
 installHljsThemeSwapper()
 installExternalLinkHandler()
 // `window.bridgeCmd` — scripted access to the same functions the buttons call.
-// Installed after `./bridge-shim`, which populates `window.electronBridge`.
-installCommandApi(window.electronBridge)
+// Installed after `./bridge-shim`, which populates `window.kaminBridge`.
+installCommandApi(window.kaminBridge)
 
 const root = document.getElementById('root') ?? (() => {
   const d = document.createElement('div'); d.id = 'root'; document.body.appendChild(d); return d

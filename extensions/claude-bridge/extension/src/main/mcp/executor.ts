@@ -3,7 +3,12 @@
 import { toolRegistry, type McpResult } from './tool-registry'
 
 // External MCP server manager (set by main process after creation)
-let externalManager: { hasExternalTool(name: string): boolean; callTool(name: string, input: Record<string, unknown>): Promise<McpResult> } | null = null
+let externalManager: {
+  hasExternalTool(name: string): boolean
+  callTool(name: string, input: Record<string, unknown>): Promise<McpResult>
+  readCatalogResource(uri: string, templateServerId?: string): Promise<unknown>
+  getCatalogPrompt(name: string, args?: Record<string, unknown>): Promise<unknown>
+} | null = null
 
 export function setExternalMcpManager(manager: typeof externalManager): void {
   externalManager = manager
@@ -27,6 +32,15 @@ export async function executeTool(
   input: Record<string, unknown>,
   context?: ToolCallContext,
 ): Promise<McpResult> {
+  if (toolName === '__bridge_mcp_resource_read') {
+    if (!externalManager || typeof input.uri !== 'string') throw new Error('External MCP resource bridge is unavailable')
+    const templateServerId = typeof input.serverId === 'string' ? input.serverId : undefined
+    return await externalManager.readCatalogResource(input.uri, templateServerId) as McpResult
+  }
+  if (toolName === '__bridge_mcp_prompt_get') {
+    if (!externalManager || typeof input.name !== 'string') throw new Error('External MCP prompt bridge is unavailable')
+    return await externalManager.getCatalogPrompt(input.name, input.arguments as Record<string, unknown> | undefined) as McpResult
+  }
   // 1. Check built-in tool registry
   const handler = toolRegistry.get(toolName)
 

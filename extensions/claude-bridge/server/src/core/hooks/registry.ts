@@ -47,6 +47,13 @@ export function registerSessionHooks(
       const source = resolveSource(m)
       for (const h of m.hooks) {
         const id = randomUUID()
+        // Plugin commands reference files and binaries on the client host.
+        // Claude plugins do not know the bridge-only `host` extension, so their
+        // default must be local even for events otherwise preferred on server.
+        const explicitHost = h.type === 'command' ? h.host : undefined
+        const effectiveHost = source.kind === 'plugin' && h.type === 'command' && (!explicitHost || explicitHost === 'auto')
+          ? 'local'
+          : resolveHost(event as HookEvent, h, m.matcher)
         const reg: RegisteredHook = {
           id,
           sessionId,
@@ -54,7 +61,7 @@ export function registerSessionHooks(
           matcher: m.matcher,
           handler: h,
           source,
-          effectiveHost: resolveHost(event as HookEvent, h, m.matcher),
+          effectiveHost,
         }
         bucket.set(id, reg)
         annotated.set(h, reg)

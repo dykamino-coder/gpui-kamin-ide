@@ -1,7 +1,7 @@
 import type { JSX } from 'preact'
 import { sidebarMode, activeCustomizePanel } from '../../../signals/ui'
 
-declare const electronBridge: any
+declare const kaminBridge: any
 
 function leaveCustomize(): void {
   if (sidebarMode.value === 'customize') {
@@ -11,7 +11,7 @@ function leaveCustomize(): void {
 }
 
 async function handleNewSession(): Promise<void> {
-  const bridge = (window as any).electronBridge
+  const bridge = (window as any).kaminBridge
   if (!bridge) return
   const folder = await bridge.selectFolder()
   if (!folder) return
@@ -22,7 +22,7 @@ async function handleNewSession(): Promise<void> {
 }
 
 async function handleNewSessionNoFolder(): Promise<void> {
-  const bridge = (window as any).electronBridge
+  const bridge = (window as any).kaminBridge
   if (!bridge) return
   const config = await bridge.getConfig()
   if (!config.serverUrl || !config.token) return

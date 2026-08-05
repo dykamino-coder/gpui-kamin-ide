@@ -14,7 +14,7 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import type { ExternalMcpServerConfig } from '../../shared/types'
-import { listEnabledInstalledPlugins, loadPluginOptions, substituteUserConfig } from '../plugin-helpers'
+import { listEnabledInstalledPlugins, loadPluginOptions, readEffectivePluginManifest, substituteUserConfig } from '../plugin-helpers'
 
 /** Substitute ${ENV_VAR} / ${ENV_VAR:-default} references with process.env values.
  *  The `:-default` form matches POSIX `${var:-default}` expansion: when the
@@ -191,42 +191,44 @@ export async function discoverPluginConfigs(pluginsDir: string): Promise<Externa
     //    manifest-level `description` so it beats the marketplace.json
     //    fallback — plugin authors usually put a better blurb there.
     const manifestJson = path.join(installPath, '.claude-plugin', 'plugin.json')
-    const manifestRaw = await fs.promises.readFile(manifestJson, 'utf-8').catch(() => null)
+    const effectiveManifest = await readEffectivePluginManifest(installPath, name, marketplace)
     let manifestDescription: string | undefined
-    if (manifestRaw !== null) {
-      try {
-        const m = JSON.parse(manifestRaw)
-        if (typeof m?.description === 'string' && m.description.trim()) {
-          manifestDescription = m.description.trim()
-        }
-        const spec = m?.mcpServers
-        // CLI accepts four shapes:
-        //   1. string — path to a .mcp.json / .mcpb relative to the plugin
-        //   2. array — mixed strings (paths) + inline server objects
-        //   3. object — inline { name: config } record
-        //   4. missing — no MCP servers declared via manifest
-        const items: unknown[] = Array.isArray(spec) ? spec
-          : (typeof spec === 'string' || (spec && typeof spec === 'object' && !Array.isArray(spec))) ? [spec]
-          : []
+    try {
+      if (typeof effectiveManifest.description === 'string' && effectiveManifest.description.trim()) {
+        manifestDescription = effectiveManifest.description.trim()
+      }
+      const spec = effectiveManifest.mcpServers
+      // CLI accepts four shapes:
+      //   1. string — path to a .mcp.json / .mcpb relative to the plugin
+      //   2. array — mixed strings (paths) + inline server objects
+      //   3. object — inline { name: config } record
+      //   4. missing — no MCP servers declared via manifest
+      const items: unknown[] = Array.isArray(spec) ? spec
+        : (typeof spec === 'string' || (spec && typeof spec === 'object' && !Array.isArray(spec))) ? [spec]
+        : []
 
-        for (const item of items) {
-          if (typeof item === 'string') {
-            if (item.toLowerCase().endsWith('.mcpb') || item.toLowerCase().endsWith('.dxt')) {
-              console.warn(`[MCP] ${name}: .mcpb bundles not supported (${item})`)
-              continue
-            }
-            const resolved = path.isAbsolute(item) ? item : path.join(installPath, item)
-            const raw = await fs.promises.readFile(resolved, 'utf-8').catch(() => null)
-            if (raw !== null) sources.push({ path: resolved, raw })
-          } else if (item && typeof item === 'object' && !Array.isArray(item)) {
-            // Inline object — wrap in `mcpServers` so parseMcpJson reads it.
-            // Point the sourcePath at the manifest so `${CLAUDE_PLUGIN_ROOT}`
-            // resolves relative to the plugin root (parent of `.claude-plugin/`).
-            sources.push({ path: manifestJson, raw: JSON.stringify({ mcpServers: item }) })
+      for (const item of items) {
+        if (typeof item === 'string') {
+          if (item.toLowerCase().endsWith('.mcpb') || item.toLowerCase().endsWith('.dxt')) {
+            console.warn(`[MCP] ${name}: .mcpb bundles not supported (${item})`)
+            continue
           }
+          const resolved = path.resolve(installPath, item)
+          const relative = path.relative(installPath, resolved)
+          if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+            console.warn(`[MCP] ${name}: refusing config path outside plugin root (${item})`)
+            continue
+          }
+          const raw = await fs.promises.readFile(resolved, 'utf-8').catch(() => null)
+          if (raw !== null) sources.push({ path: resolved, raw })
+        } else if (item && typeof item === 'object' && !Array.isArray(item)) {
+          // Inline object — wrap in `mcpServers` so parseMcpJson reads it.
+          // Point the sourcePath at the manifest so `${CLAUDE_PLUGIN_ROOT}`
+          // resolves relative to the plugin root (parent of `.claude-plugin/`).
+          sources.push({ path: manifestJson, raw: JSON.stringify({ mcpServers: item }) })
         }
-      } catch { /* ignore malformed manifest */ }
-    }
+      }
+    } catch { /* ignore malformed effective manifest */ }
 
     if (sources.length === 0) return []
     const desc = manifestDescription || marketplaceDescriptions.get(`${name}@${marketplace}`)
@@ -237,8 +239,11 @@ export async function discoverPluginConfigs(pluginsDir: string): Promise<Externa
       try { parsed = JSON.parse(src.raw) } catch { continue }
       const configs = parseMcpJson(parsed, src.path, pluginId)
       for (const config of configs) {
+        const pluginServerName = config.name
+        config.name = `plugin:${name}@${marketplace}:${pluginServerName}`
         config.sourceType = 'plugin'
         config.pluginName = name
+        config.pluginServerName = pluginServerName
         config.marketplace = marketplace
         if (desc) config.description = desc
       }

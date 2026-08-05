@@ -18,7 +18,7 @@ let nextId = 1
 // present; the local `toasts` signal + ToastContainer stay only as the standalone
 // dashboard fallback (unused in KaminIDE — ToastContainer is not mounted there).
 export function showToast(opts: Omit<Toast, 'id'>): string {
-  const bridge = (window as { electronBridge?: { showNotification?: (severity: string, message: string) => void } }).electronBridge
+  const bridge = (window as { kaminBridge?: { showNotification?: (severity: string, message: string) => void } }).kaminBridge
   if (bridge?.showNotification) {
     const severity = opts.type === 'error' ? 'error' : 'info'
     bridge.showNotification(severity, opts.message ? `${opts.title}: ${opts.message}` : opts.title)

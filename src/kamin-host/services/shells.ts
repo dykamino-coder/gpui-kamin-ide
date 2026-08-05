@@ -9,7 +9,7 @@
 // touches the FS and spawns several child processes (slow on corp
 // machines), no point re-running on every "+ new terminal" click.
 //
-// Ported 1:1 from Bridge's `electron/main/shells/discover.ts`.
+// Ported 1:1 from the legacy Bridge desktop client's shell discovery.
 
 import { execFile } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"

@@ -1,7 +1,7 @@
-// Method-name → IPC-channel maps mirroring electron/preload/index.ts. Each
-// table drives a generic transport call (see bridge-shim.ts). Methods whose
-// preload definition reshapes arguments, returns synchronously, or uses a
-// dynamic channel are handled as specials in bridge-shim.ts (NOT here).
+// Method-name → bridge-channel maps retained from the legacy desktop client.
+// Each table drives a generic postMessage transport call (see bridge-shim.ts).
+// Methods that reshape arguments, return synchronously, or use a dynamic
+// channel are handled as specials in bridge-shim.ts (NOT here).
 
 /** ipcRenderer.invoke → inv(channel, ...args) (returns Promise). */
 export const INVOKE: Record<string, string> = {
@@ -52,6 +52,7 @@ export const INVOKE: Record<string, string> = {
   hooksSave: "hooks:save",
   hooksTest: "hooks:test",
   hooksGetPluginApproval: "hooks:get-plugin-approval",
+  hooksListPendingPluginApprovals: "hooks:list-pending-plugin-approvals",
   hooksSetPluginApproval: "hooks:set-plugin-approval",
   openImageDialog: "open-image-dialog",
   openFileDialog: "open-file-dialog",
@@ -102,6 +103,7 @@ export const INVOKE: Record<string, string> = {
   installPlugin: "plugins:install",
   installLocalPlugin: "plugins:install-local",
   uninstallPlugin: "plugins:uninstall",
+  setPluginEnabled: "plugins:set-enabled",
   addMarketplace: "plugins:add-marketplace",
   setMarketplaceAuth: "plugins:set-marketplace-auth",
   removeMarketplace: "plugins:remove-marketplace",

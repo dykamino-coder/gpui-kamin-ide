@@ -1,6 +1,6 @@
 import { useEffect } from 'preact/hooks'
 
-import type { ElectronBridge } from '../../shared/types'
+import type { KaminBridgeApi } from '../../shared/types'
 
 // Signals
 import { tabs, applyTabSwitch } from '../signals/tabs'
@@ -17,7 +17,7 @@ import { jsonlEntriesByTab } from '../signals/jsonl'
  * - Requests tree update and JSONL replay
  * - Falls back to customize/settings only if no config exists (first launch)
  */
-export function useInit(bridge: ElectronBridge, role: WebviewRole = 'chat'): void {
+export function useInit(bridge: KaminBridgeApi, role: WebviewRole = 'chat'): void {
   useEffect(() => {
     // Name what THIS panel retains in freeze/OOM reports. The shared heap number
     // is identical from every panel (one same-origin renderer), so counts are the

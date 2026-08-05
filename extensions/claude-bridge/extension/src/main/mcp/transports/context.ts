@@ -11,6 +11,7 @@ import type WebSocket from 'ws'
 import type {
   ExternalMcpServerConfig,
   McpResourceInfo,
+  McpResourceTemplateInfo,
   McpPromptInfo,
 } from '../../../shared/types'
 import type { McpTestLogEntry } from '../test-log'
@@ -23,6 +24,7 @@ export interface McpServerState {
   tools: string[]
   toolSchemas: Map<string, { name: string; description: string; inputSchema: Record<string, unknown> }>
   resources: McpResourceInfo[]
+  resourceTemplates: McpResourceTemplateInfo[]
   prompts: McpPromptInfo[]
   /** Server-declared capabilities, as returned by `initialize`. */
   capabilities: Record<string, unknown>

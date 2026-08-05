@@ -1,4 +1,4 @@
-// Tiny helper used by Electron-internal code to fire a bridge-emit hook
+// Tiny helper used by client-host code to fire a bridge-emit hook
 // event. Posts to bridge's /api/hooks/emit/:event endpoint with the active
 // session's bearer token. Fire-and-forget by design — never blocks the
 // caller, errors are swallowed (a missing emit should never crash the app).

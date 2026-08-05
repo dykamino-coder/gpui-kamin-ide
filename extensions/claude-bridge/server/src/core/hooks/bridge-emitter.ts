@@ -45,7 +45,7 @@ export async function emitBridgeEvent(
         if (targetField === undefined) continue
       }
       try {
-        await dispatchHook(sessionId, reg.id, hookPayload, ws)
+        await dispatchHook(sessionId, reg.id, hookPayload, ws, session?.tokenId)
       } catch (err) {
         debugLog('Bridge-emit hook error', { event, hookId: reg.id, err })
       }

@@ -38,13 +38,13 @@ export function SessionItem({ tab, isActive, onClick }: SessionItemProps): JSX.E
   )
 
   function handleRename(): void {
-    const bridge = (window as any).electronBridge
-    bridge?.sendInput(tab.id, '/rename\r')
+    const bridge = (window as any).kaminBridge
+    bridge?.submitText(tab.id, '/rename')
   }
 
   function handleClose(e: Event): void {
     e.stopPropagation()
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     bridge?.closeTab(tab.id)
   }
 

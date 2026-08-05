@@ -8,6 +8,7 @@ import WebSocket from 'ws'
 import { resolveEnvVars } from '../discovery'
 import { loadTokens } from '../oauth-store'
 import type { McpResult } from '../tool-registry'
+import { collectMcpList } from '../pagination'
 import type { TransportContext } from './context'
 
 export async function connectWs(ctx: TransportContext, id: string): Promise<void> {
@@ -79,16 +80,13 @@ export async function connectWs(ctx: TransportContext, id: string): Promise<void
 
   // tools/list
   ctx.appendLog(id, 'info', '[ws] → tools/list')
-  const toolsResult: any = await wsJsonRpc(ctx, id, {
-    jsonrpc: '2.0', id: state.nextRequestId++, method: 'tools/list',
-  })
-  if (toolsResult?.tools) {
-    state.tools = toolsResult.tools.map((t: { name: string }) => t.name)
-    for (const tool of toolsResult.tools) state.toolSchemas.set(tool.name, tool)
-    ctx.appendLog(id, 'info', `[ws] ← tools/list: ${state.tools.length} tools`)
-  } else {
-    ctx.appendLog(id, 'warn', '[ws] ← tools/list: empty response')
-  }
+  const tools = await collectMcpList<any>((method, params) => wsJsonRpc(ctx, id, {
+    jsonrpc: '2.0', id: state.nextRequestId++, method, params,
+  }), 'tools/list', 'tools')
+  state.tools = tools.map((tool: { name: string }) => tool.name)
+  state.toolSchemas.clear()
+  for (const tool of tools) state.toolSchemas.set(tool.name, tool)
+  ctx.appendLog(id, 'info', `[ws] ← tools/list: ${state.tools.length} tools`)
 }
 
 export async function callWsTool(

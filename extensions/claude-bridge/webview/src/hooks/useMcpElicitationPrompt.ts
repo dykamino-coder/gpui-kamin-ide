@@ -7,10 +7,10 @@
 // whole renderer thread (and the shared host window) until dismissed.
 
 import { useEffect } from 'preact/hooks'
-import type { ElectronBridge } from '../../shared/types'
+import type { KaminBridgeApi } from '../../shared/types'
 import { activeWidgets } from '../signals/widgets'
 
-export function useMcpElicitationPrompt(bridge: ElectronBridge): void {
+export function useMcpElicitationPrompt(bridge: KaminBridgeApi): void {
   useEffect(() => {
     return bridge.onMcpElicitation((req) => {
       // Replace any older unresolved request from the same server, then queue

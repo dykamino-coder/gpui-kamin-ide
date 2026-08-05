@@ -1,32 +1,40 @@
 // Type definitions for the bridge hook system.
-// Mirror Claude Code 2.1.198's hook schema (4 handler types, 17 events —
-// verified against the actual CLI binary 2026-07-02) and add bridge-emit
-// custom events. Events the CLI никогда не fires (StopFailure, PostCompact,
-// PermissionDenied, TaskCreated, ElicitationResult, ConfigChange,
-// WorktreeCreate/Remove, InstructionsLoaded, CwdChanged, FileChanged from the
-// old 2.1.121 list) were dropped: configuring them produced silently-ignored
-// settings.json keys.
+// Mirror the current Claude Code hook schema (5 handler types) and add the
+// bridge-emit custom events. Keep this list in sync with the official hooks
+// reference and the webview editor.
 
 export const CLI_HOOK_EVENTS = [
   'PreToolUse',
   'PostToolUse',
   'PostToolUseFailure',
+  'PostToolBatch',
   'Notification',
   'UserPromptSubmit',
+  'UserPromptExpansion',
   'SessionStart',
   'SessionEnd',
   'Stop',
+  'StopFailure',
   'SubagentStart',
   'SubagentStop',
   'PreCompact',
+  'PostCompact',
   'PermissionRequest',
+  'PermissionDenied',
   'MessageDisplay',
   'Elicitation',
+  'ElicitationResult',
+  'TaskCreated',
   'TaskCompleted',
   'TeammateIdle',
   'Setup',
-  // CLI 2.1.219: после /add-dir или SDK register_repo_root.
   'DirectoryAdded',
+  'InstructionsLoaded',
+  'ConfigChange',
+  'CwdChanged',
+  'FileChanged',
+  'WorktreeCreate',
+  'WorktreeRemove',
 ] as const
 export type CliHookEvent = (typeof CLI_HOOK_EVENTS)[number]
 
@@ -43,13 +51,14 @@ export type BridgeHookEvent = (typeof BRIDGE_HOOK_EVENTS)[number]
 export type HookEvent = CliHookEvent | BridgeHookEvent
 
 export type HookHost = 'auto' | 'local' | 'server' | 'http'
-export type HookType = 'command' | 'prompt' | 'agent' | 'http'
+export type HookType = 'command' | 'prompt' | 'agent' | 'http' | 'mcp_tool'
 
 /** Single hook handler config. Subset of Claude Code's HookCommandSchema +
  *  our `host:` annotation. */
 export interface BashCommandHook {
   type: 'command'
   command: string
+  args?: string[]
   if?: string
   shell?: 'bash' | 'powershell' | 'sh' | 'zsh'
   timeout?: number
@@ -88,7 +97,17 @@ export interface HttpHookHandler {
   statusMessage?: string
   once?: boolean
 }
-export type HookHandler = BashCommandHook | PromptHook | AgentHook | HttpHookHandler
+export interface McpToolHook {
+  type: 'mcp_tool'
+  server: string
+  tool: string
+  input?: Record<string, unknown>
+  if?: string
+  timeout?: number
+  statusMessage?: string
+  once?: boolean
+}
+export type HookHandler = BashCommandHook | PromptHook | AgentHook | HttpHookHandler | McpToolHook
 
 export interface HookMatcher {
   matcher?: string

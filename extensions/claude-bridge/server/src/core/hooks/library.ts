@@ -28,7 +28,7 @@ export const HOOK_LIBRARY: HookLibraryTemplate[] = [
     matcher: 'Edit|Write',
     handler: {
       type: 'command',
-      command: 'prettier --write "$CLAUDE_FILE_PATHS" 2>/dev/null || true',
+      command: 'p=$(cat); f=$(printf "%s" "$p" | jq -r ".tool_input.file_path // empty"); [ -z "$f" ] || prettier --write "$f" 2>/dev/null || true',
       shell: 'bash',
       timeout: 30,
       host: 'local',
@@ -45,7 +45,7 @@ export const HOOK_LIBRARY: HookLibraryTemplate[] = [
     matcher: 'Edit|Write',
     handler: {
       type: 'command',
-      command: 'eslint --fix "$CLAUDE_FILE_PATHS" 2>/dev/null || true',
+      command: 'p=$(cat); f=$(printf "%s" "$p" | jq -r ".tool_input.file_path // empty"); [ -z "$f" ] || eslint --fix "$f" 2>/dev/null || true',
       shell: 'bash',
       timeout: 30,
       host: 'local',
@@ -56,8 +56,8 @@ export const HOOK_LIBRARY: HookLibraryTemplate[] = [
   },
   {
     id: 'desktop-notify-on-stop',
-    title: 'Desktop notify on Stop',
-    description: 'Toast when Claude finishes a turn.',
+    title: 'Completion message on Stop',
+    description: 'Adds a visible hook message when Claude finishes a turn.',
     event: 'Stop',
     handler: {
       type: 'command',
@@ -65,36 +65,33 @@ export const HOOK_LIBRARY: HookLibraryTemplate[] = [
       shell: 'bash',
       host: 'local',
     },
-    rationale: 'Pops a toast so you know to come back to the chat. Useful on long-running tool chains.',
+    rationale: 'Makes completion visible in the conversation hook output. Useful on long-running tool chains.',
     category: 'notification',
     recommendedHost: 'local',
   },
   {
     id: 'backup-jsonl-precompact',
     title: 'Backup transcript before Compact',
-    description: 'Copies the full session JSONL into ~/.claude/backups/ before CLI compacts it.',
+    description: 'Copies the server-side session JSONL into ~/.claude/backups/ before CLI compacts it.',
     event: 'PreCompact',
     handler: {
       type: 'command',
-      command: 'mkdir -p ~/.claude/backups && cp "$TRANSCRIPT_PATH" ~/.claude/backups/$(date +%Y%m%d-%H%M%S).jsonl',
+      command: 'p=$(cat); t=$(printf "%s" "$p" | jq -r ".transcript_path // empty"); [ -z "$t" ] || { mkdir -p ~/.claude/backups && cp "$t" ~/.claude/backups/$(date +%Y%m%d-%H%M%S).jsonl; }',
       shell: 'bash',
-      host: 'local',
+      host: 'server',
     },
     rationale: 'Compaction is irreversible — keeping the original transcript lets you recover full history if needed.',
     category: 'archive',
-    recommendedHost: 'local',
+    recommendedHost: 'server',
   },
   {
     id: 'open-worktree-in-vscode',
     title: 'Open worktree in VS Code',
-    description: 'Auto-opens a new git worktree in VS Code after the EnterWorktree tool runs.',
-    // 2.1.198 has no WorktreeCreate event — the real signal is the
-    // EnterWorktree tool finishing, i.e. PostToolUse with a tool matcher.
-    event: 'PostToolUse',
-    matcher: 'EnterWorktree',
+    description: 'Auto-opens a new git worktree in VS Code after Claude creates it.',
+    event: 'WorktreeCreate',
     handler: {
       type: 'command',
-      command: 'p=$(echo "$TOOL_RESPONSE" | jq -r ".worktreePath // empty" 2>/dev/null); [ -n "$p" ] && code "$p" || true',
+      command: 'p=$(cat | jq -r ".path // empty" 2>/dev/null); [ -n "$p" ] && code "$p" || true',
       shell: 'bash',
       host: 'local',
     },
@@ -121,11 +118,10 @@ export const HOOK_LIBRARY: HookLibraryTemplate[] = [
     id: 'log-permission-requests',
     title: 'Audit permission requests',
     description: 'Append every PermissionRequest event to ~/.claude/audit.log.',
-    // 2.1.198 fires PermissionRequest (there is no separate denial event).
     event: 'PermissionRequest',
     handler: {
       type: 'command',
-      command: 'echo "$(date -Iseconds) PERMISSION $TOOL_NAME" >> ~/.claude/audit.log',
+      command: 'p=$(cat); n=$(printf "%s" "$p" | jq -r ".tool_name // \"unknown\""); echo "$(date -Iseconds) PERMISSION $n" >> ~/.claude/audit.log',
       shell: 'bash',
       host: 'local',
     },
@@ -152,7 +148,7 @@ export const HOOK_LIBRARY: HookLibraryTemplate[] = [
   {
     id: 'session-start-load-todos',
     title: 'Inject project TODOs on SessionStart',
-    description: 'Reads ~/.claude/projects/<cwd>/TODO.md and prepends to context as additionalContext.',
+    description: 'Reads TODO.md from the client project root and prepends it as additionalContext.',
     event: 'SessionStart',
     handler: {
       type: 'command',
@@ -171,7 +167,7 @@ export const HOOK_LIBRARY: HookLibraryTemplate[] = [
     event: 'TaskCompleted',
     handler: {
       type: 'command',
-      command: 'echo "$(date -Iseconds) DONE $(echo "$HOOK_PAYLOAD" | jq -r ".task_subject // .task_id // empty" 2>/dev/null)" >> ~/.claude/tasks.log',
+      command: 'p=$(cat); s=$(printf "%s" "$p" | jq -r ".task_subject // .task_id // empty" 2>/dev/null); echo "$(date -Iseconds) DONE $s" >> ~/.claude/tasks.log',
       shell: 'bash',
       host: 'local',
     },

@@ -114,10 +114,9 @@ export function SessionStats(): JSX.Element | null {
   function sendCompact(): void {
     const id = activeTabId.value
     if (!id) return
-    // CLI reads slash commands from stdin; follow with CR so the REPL actually
-    // dispatches. `/compact <instructions>` steers the summary toward a clean
-    // hand-off (see HANDOFF_COMPACT_INSTRUCTIONS).
-    bridge.sendInput(id, `/compact ${HANDOFF_COMPACT_INSTRUCTIONS}\r`)
+    // `/compact <instructions>` steers the summary toward a clean hand-off.
+    // submitText delegates clear/paste/Enter ordering to the server coordinator.
+    bridge.submitText(id, `/compact ${HANDOFF_COMPACT_INSTRUCTIONS}`)
   }
 
   return (

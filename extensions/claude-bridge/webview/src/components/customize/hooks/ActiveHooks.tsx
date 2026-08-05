@@ -65,11 +65,14 @@ export function ActiveHooks(): JSX.Element {
     if (showSpinner) setLoading(true)
     setLoadError(false)
     try {
-      const [merged, settingsList] = await Promise.all([
-        bridge.hooksListAll(),
+      const [activeTabId, tabs, settingsList] = await Promise.all([
+        bridge.getActiveTab(),
+        bridge.listTabs(),
         bridge.hooksList(),
       ])
-      const flat = (merged?.hooks ?? []) as unknown as FlatHook[]
+      const sessionId = tabs.find(tab => tab.id === activeTabId)?.sessionId
+      const active = sessionId ? await bridge.hooksActive(sessionId) : { hooks: [] }
+      const flat = (active?.hooks ?? []) as unknown as FlatHook[]
       const user = (settingsList?.hooks ?? {}) as unknown as HooksByEvent
       setFlatHooks(flat)
       setUserHooks(user)

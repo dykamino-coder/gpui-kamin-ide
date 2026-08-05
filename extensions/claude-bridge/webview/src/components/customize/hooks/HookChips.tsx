@@ -41,7 +41,7 @@ export function EventChip({ event }: { event: string }): JSX.Element {
 }
 
 export function TypeChip({ type }: { type: string }): JSX.Element {
-  const icons: Record<string, string> = { command: 'fa-terminal', prompt: 'fa-sparkles', agent: 'fa-robot', http: 'fa-globe' }
+  const icons: Record<string, string> = { command: 'fa-terminal', prompt: 'fa-sparkles', agent: 'fa-robot', http: 'fa-globe', mcp_tool: 'fa-plug' }
   return (
     <span style="display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-xs);padding:1px 6px;border-radius:999px;background:var(--tint-muted-medium);color:var(--text-secondary);font-weight:600">
       <i class={`fas ${icons[type] ?? 'fa-cog'}`} /> {type}
@@ -51,7 +51,7 @@ export function TypeChip({ type }: { type: string }): JSX.Element {
 
 export function HostChip({ host }: { host: 'local' | 'server' | 'http' | 'auto' }): JSX.Element {
   const conf: Record<string, { color: string; icon: string; label: string; tooltip: string }> = {
-    local: { color: 'var(--accent-orange)', icon: 'fa-bolt', label: 'Local', tooltip: 'Runs on your local machine via Electron — has access to files, git, npm, IDE' },
+    local: { color: 'var(--accent-orange)', icon: 'fa-bolt', label: 'Local', tooltip: 'Runs on your local machine via the VSIX bridge host — has access to files, git, npm, IDE' },
     server: { color: 'var(--accent-primary)', icon: 'fa-server', label: 'Server', tooltip: 'Runs inside the bridge container — limited to JSON transformations and HTTP calls' },
     http: { color: 'var(--accent-green)', icon: 'fa-globe', label: 'HTTP', tooltip: 'POSTs to external URL' },
     auto: { color: 'var(--text-muted)', icon: 'fa-shuffle', label: 'Auto', tooltip: 'Bridge picks default based on event/matcher' },
