@@ -45,6 +45,15 @@ pub struct CzPage {
     pub icon: String,
 }
 
+/// Часть составной hover-зоны панели действий сессии/проекта.
+/// Строка и вынесенная панель учитываются независимо, чтобы их одновременные
+/// leave/enter не зависели от порядка mouse-listener'ов GPUI.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HoverPillSource {
+    Anchor,
+    Panel,
+}
+
 /// События к UI (перекачиваются в RootView foreground-циклом).
 #[derive(Clone)]
 pub enum ShellEvent {
@@ -238,7 +247,13 @@ pub enum ShellEvent {
     /// Показать ВНЕШНИЙ тост — отдельное окно поверх всех
     /// (`externalToast.show` оригинала), не строка внутреннего стека.
     ExternalToast(crate::ui::toasts::Toast),
-    /// Наведение на строку/группу сессий (id) → показать hover-поповер; None =
-    /// увести (закрытие с задержкой).
-    HoverPill(Option<String>),
+    /// Изменение hover одной из двух частей панели действий. `id` обязателен
+    /// и на leave: иначе запоздавший leave старой строки может закрыть новую.
+    HoverPill {
+        id: String,
+        source: HoverPillSource,
+        hovered: bool,
+    },
+    /// Безусловно закрыть панель действий и сбросить обе hover-зоны.
+    DismissHoverPill,
 }

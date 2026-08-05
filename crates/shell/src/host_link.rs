@@ -10,7 +10,7 @@
 //! места вызова не изменились.
 
 pub use crate::host::connect::{KNOWN_WEBVIEWS, register_dynamic_webview, resolve_webview, start};
-pub use crate::host::events::{CzContainer, FsUndo, ShellEvent};
+pub use crate::host::events::{CzContainer, FsUndo, HoverPillSource, ShellEvent};
 pub use crate::host::paths::data_dirs;
 pub use crate::host::requests_search::{
     request_commands, request_find_in_files, request_read_file, request_workspace_symbols,

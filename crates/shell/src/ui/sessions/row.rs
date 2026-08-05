@@ -4,7 +4,7 @@
 
 use crate::colors::tint;
 use crate::colors::{parse_hex, rgba};
-use crate::host_link::ShellEvent;
+use crate::host_link::{HoverPillSource, ShellEvent};
 use crate::ui::sessions::actions::label_deduction;
 use crate::ui::sessions::actions::menu_data;
 use crate::ui::sessions::pill::{anchor_probe, pin_btn};
@@ -166,7 +166,11 @@ pub(crate) fn session_row(
             let tx = tx.clone();
             let id = s.id.clone();
             move |h: &bool, _, _| {
-                let _ = tx.try_send(ShellEvent::HoverPill(h.then(|| id.clone())));
+                let _ = tx.try_send(ShellEvent::HoverPill {
+                    id: id.clone(),
+                    source: HoverPillSource::Anchor,
+                    hovered: *h,
+                });
             }
         })
         .child(dot)

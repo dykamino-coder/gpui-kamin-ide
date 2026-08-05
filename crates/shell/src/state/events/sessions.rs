@@ -5,6 +5,7 @@
 //! «вариант события → модуль» проверяет `scripts/check_event_routing.py`.
 
 use crate::host_link::{self, ShellEvent};
+use crate::state::hover_pill::{HoverPillUpdate, update_hover_pill_state};
 use gpui::Context;
 use kamin_model::SessionsSnapshot;
 
@@ -338,27 +339,50 @@ impl RootView {
                 }
             }
             ShellEvent::ChipRelease => self.commit_chip_drag(),
-            ShellEvent::HoverPill(id) => {
-                self.hover_pill_gen = self.hover_pill_gen.wrapping_add(1);
-                match id {
-                    // Драг ручки: пилюля не всплывает (мерцала под мышью).
-                    Some(_) if crate::state::drag_flag::active() => {}
-                    Some(id) => self.hover_pill = Some(id),
-                    None => {
-                        // Закрытие с задержкой — успеть перевести курсор на поповер
-                        let g = self.hover_pill_gen;
-                        cx.spawn(async move |this, cx| {
-                            smol::Timer::after(std::time::Duration::from_millis(160)).await;
-                            let _ = this.update(cx, |this, cx| {
-                                if this.hover_pill_gen == g {
-                                    this.hover_pill = None;
-                                    cx.notify();
-                                }
-                            });
-                        })
-                        .detach();
-                    }
+            ShellEvent::HoverPill {
+                id,
+                source,
+                hovered,
+            } => {
+                // Драг ручки: пилюля не всплывает (мерцала под мышью).
+                if hovered && crate::state::drag_flag::active() {
+                    return;
                 }
+
+                if let HoverPillUpdate::Inactive { id, generation } = update_hover_pill_state(
+                    &mut self.hover_pill,
+                    &mut self.hover_pill_anchor,
+                    &mut self.hover_pill_panel,
+                    &mut self.hover_pill_gen,
+                    id,
+                    source,
+                    hovered,
+                ) {
+                    // Grace остаётся страховкой для редких пропущенных
+                    // mouse-move, но зазор теперь покрыт реальным hitbox.
+                    cx.spawn(async move |this, cx| {
+                        smol::Timer::after(std::time::Duration::from_millis(160)).await;
+                        let _ = this.update(cx, |this, cx| {
+                            let still_hovered = this.hover_pill_anchor.as_deref()
+                                == Some(id.as_str())
+                                || this.hover_pill_panel.as_deref() == Some(id.as_str());
+                            if this.hover_pill_gen == generation
+                                && this.hover_pill.as_deref() == Some(id.as_str())
+                                && !still_hovered
+                            {
+                                this.hover_pill = None;
+                                cx.notify();
+                            }
+                        });
+                    })
+                    .detach();
+                }
+            }
+            ShellEvent::DismissHoverPill => {
+                self.hover_pill_gen = self.hover_pill_gen.wrapping_add(1);
+                self.hover_pill = None;
+                self.hover_pill_anchor = None;
+                self.hover_pill_panel = None;
             }
             // Сюда диспетчер чужого не пришлёт
             _ => {}

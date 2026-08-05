@@ -4,7 +4,7 @@
 
 use crate::colors::rgba;
 use crate::colors::tint;
-use crate::host_link::{self, ShellEvent};
+use crate::host_link::{self, HoverPillSource, ShellEvent};
 use crate::ui::icon::{FA_FAMILY, codicon, fa};
 use crate::ui::sessions::glyphs::FA_THUMBTACK;
 use gpui::prelude::*;
@@ -148,20 +148,10 @@ pub(crate) fn pill_btn(
     crate::ui::focus_ring::focusable(b, &fid, m::RADIUS_XS, rgba(p.accent_primary))
         .into_any_element()
 }
-/// Обёртка hover-пилюли: bg-surface, border, shadow; вылетает ВПРАВО (left
-/// 100%). Рендерится ТОЛЬКО когда строка hovered (invisible-вариант ловил
-/// hit-test и глушил ховер соседних пилюль). occlude: под пилюлей ховеры/
-/// скролл сайдбара игнорятся. Свой on_hover держит поповер открытым.
-pub(crate) fn pill_wrap(
-    id: String,
-    hover_id: String,
-    tx: &Sender<ShellEvent>,
-    p: &Palette,
-) -> gpui::Stateful<gpui::Div> {
-    let tx = tx.clone();
+/// Визуальная обёртка; составной hitbox задаёт `overlay_pill`.
+pub(crate) fn pill_wrap(id: String, p: &Palette) -> gpui::Stateful<gpui::Div> {
     div()
         .id(SharedString::from(id))
-        .occlude()
         .flex_shrink_0()
         .flex()
         .items_center()
@@ -184,7 +174,76 @@ pub(crate) fn pill_wrap(
             blur_radius: px(16.),
             spread_radius: px(0.),
         }])
+}
+/// Пилюля в overlay: absolute на якоре строки (справа от сайдбара).
+pub fn overlay_pill(
+    inner: AnyElement,
+    anchor: [f32; 4],
+    viewport: (f32, f32),
+    pill_w: f32,
+    hover_id: &str,
+    tx: &Sender<ShellEvent>,
+) -> AnyElement {
+    const GUTTER: f32 = 8.0;
+    const PILL_H: f32 = 32.0;
+    const OFFSET: f32 = 4.0;
+    // Как `.actionsPop::before`: перекрывает offset и 6px строки.
+    const HOVER_BRIDGE: f32 = 10.0;
+    let (vw, vh) = viewport;
+    // Справа: a.right + 4; при нехватке места — flip влево. По вертикали
+    // панель центрируется на якоре и клампится в viewport.
+    let mut panel_left = anchor[0] + anchor[2] + OFFSET;
+    let mut on_right = true;
+    if panel_left + pill_w > vw - GUTTER {
+        on_right = false;
+        let flipped = anchor[0] - OFFSET - pill_w;
+        panel_left = if flipped >= GUTTER {
+            flipped
+        } else {
+            (vw - pill_w - GUTTER).max(GUTTER)
+        };
+    }
+    let top = (anchor[1] + anchor[3] / 2.0 - PILL_H / 2.0)
+        .min(vh - PILL_H - GUTTER)
+        .max(GUTTER);
+    // При flip мост справа; inner остаётся на прежнем panel_left.
+    let hover_left = if on_right {
+        panel_left - HOVER_BRIDGE
+    } else {
+        panel_left
+    };
+    let tx = tx.clone();
+    let hover_id = hover_id.to_string();
+    let wrapper = div()
+        .id(SharedString::from(format!("pill-hover-{hover_id}")))
+        .absolute()
+        .left(px(hover_left.round()))
+        .top(px(top.round()))
+        .w(px(pill_w + HOVER_BRIDGE))
+        .h(px(PILL_H))
+        .flex()
+        .items_center()
+        .occlude()
         .on_hover(move |h: &bool, _, _| {
-            let _ = tx.try_send(ShellEvent::HoverPill(h.then(|| hover_id.clone())));
+            let _ = tx.try_send(ShellEvent::HoverPill {
+                id: hover_id.clone(),
+                source: HoverPillSource::Panel,
+                hovered: *h,
+            });
         })
+        // Visible region не включает мост: fallback без alpha остаётся чистым.
+        .child(crate::overlay::input_area())
+        .child(
+            div()
+                .relative()
+                .w(px(pill_w))
+                .h(px(PILL_H))
+                .child(crate::overlay::hit_area())
+                .child(inner),
+        );
+    if on_right {
+        wrapper.justify_end().into_any_element()
+    } else {
+        wrapper.justify_start().into_any_element()
+    }
 }

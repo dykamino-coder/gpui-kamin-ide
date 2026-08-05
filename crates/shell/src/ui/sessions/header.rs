@@ -3,7 +3,7 @@
 //! Перенесено без изменения поведения (`plan/100-refactor-250.md`).
 
 use crate::colors::rgba;
-use crate::host_link::ShellEvent;
+use crate::host_link::{HoverPillSource, ShellEvent};
 use crate::ui::icon::{CHEVRON_DOWN, CHEVRON_RIGHT, codicon};
 use crate::ui::sessions::pill::anchor_probe;
 use gpui::prelude::*;
@@ -109,7 +109,11 @@ pub(crate) fn project_header(
         .on_hover({
             let tx = tx.clone();
             move |h: &bool, _, _| {
-                let _ = tx.try_send(ShellEvent::HoverPill(h.then(|| hover_key.clone())));
+                let _ = tx.try_send(ShellEvent::HoverPill {
+                    id: hover_key.clone(),
+                    source: HoverPillSource::Anchor,
+                    hovered: *h,
+                });
             }
         })
         .on_mouse_down(gpui::MouseButton::Right, {

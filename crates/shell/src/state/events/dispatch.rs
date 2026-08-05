@@ -157,7 +157,9 @@ impl RootView {
             | ShellEvent::ToggleWorkspaceSymbols
             | ShellEvent::CloseWorkspaceSymbols
             | ShellEvent::WorkspaceSymbolsResults { .. } => self.apply_overlays(event, cx),
-            ShellEvent::HoverPill { .. } => self.apply_sessions(event, cx),
+            ShellEvent::HoverPill { .. } | ShellEvent::DismissHoverPill => {
+                self.apply_sessions(event, cx)
+            }
             ShellEvent::Term(TermEvent::TermClose { .. })
             | ShellEvent::Term(TermEvent::ToggleTermMenu) => self.apply_terminal(event, cx),
             ShellEvent::Cz(CzEvent::ToggleCustomizeContribGroup { .. })

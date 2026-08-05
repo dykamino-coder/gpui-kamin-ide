@@ -38,6 +38,7 @@ pub mod frame_ctx;
 pub mod fs_ops;
 pub mod handlers;
 pub mod handlers_mouse;
+pub(crate) mod hover_pill;
 pub mod splitters;
 pub mod term_grid;
 pub mod terminal_body;

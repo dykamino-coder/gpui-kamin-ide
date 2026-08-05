@@ -43,6 +43,9 @@ impl RootView {
         // Открытый тултип/пилюля не должны пережить начало драга.
         self.tooltip_live = None;
         self.hover_pill = None;
+        self.hover_pill_anchor = None;
+        self.hover_pill_panel = None;
+        self.hover_pill_gen = self.hover_pill_gen.wrapping_add(1);
         let file_w = self.file_w_live.unwrap_or_else(|| {
             m::layout_math::width_from_ratio(
                 self.layout.file_panel_width_ratio as f32,

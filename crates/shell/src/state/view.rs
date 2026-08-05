@@ -109,7 +109,7 @@ impl Render for RootView {
                             let tx = tx.clone();
                             window.on_mouse_event(move |_: &gpui::MouseDownEvent, phase, _, _| {
                                 if phase == gpui::DispatchPhase::Capture {
-                                    let _ = tx.try_send(ShellEvent::HoverPill(None));
+                                    let _ = tx.try_send(ShellEvent::DismissHoverPill);
                                 }
                             });
                         },
