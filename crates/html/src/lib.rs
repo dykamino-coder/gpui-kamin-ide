@@ -16,11 +16,13 @@
 pub mod apply;
 pub mod computed;
 pub mod css;
+pub mod doc;
 pub mod dom;
 pub mod inline;
 pub mod render;
 pub mod svg;
 pub mod value;
 
+pub use doc::Document;
 pub use dom::{Element, Node, parse};
-pub use render::{RenderOpts, render};
+pub use render::{RenderOpts, render, render_block};

@@ -36,9 +36,27 @@ fn styled_div(e: &Element) -> gpui::Div {
 }
 
 /// Отрисовать корневые узлы документа.
+///
+/// Годится для короткого документа — виджета, ответа модели. Длинный документ
+/// рисуйте по блокам (`render_block`): раскладка в GPUI считается заново
+/// каждый кадр, поэтому стоимость кадра обязана зависеть от видимой части, а
+/// не от размера документа.
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let root = Computed::default();
     blocks(nodes, &root, opts)
+}
+
+/// Один блок верхнего уровня — единица виртуализации.
+///
+/// Список GPUI спрашивает только видимые блоки, и невидимая часть документа
+/// не стоит ничего: ни раскладки, ни отрисовки. Это то же ухищрение, которым
+/// держится дерево файлов и чат.
+pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
+    let node = nodes.get(index)?;
+    let root = Computed::default();
+    blocks(std::slice::from_ref(node), &root, opts)
+        .into_iter()
+        .next()
 }
 
 /// Разбор списка детей на блоки: инлайн-подряд склеивается в абзац.
