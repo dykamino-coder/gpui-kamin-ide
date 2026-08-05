@@ -4,7 +4,7 @@
 // "Test" pane can show the user what happened instead of leaving them
 // staring at a 30-second timeout. The buffer survives reconnects.
 
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 
 /** A single line in the per-server connection log. Shown in the "Test" pane
  *  so the user can see what happened during connect instead of just staring

@@ -1,6 +1,6 @@
 // IPC for the Customize → Monitors panel and plugin-provided LSP harness.
 
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import { listMonitors, getMonitorLog } from '../plugin-monitors'
 import { pluginLspManager } from '../plugin-lsp'
 

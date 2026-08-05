@@ -222,7 +222,7 @@ export interface TreeNode {
   sessionTitle?: string
 }
 
-/** Saved session for resume (stored in electron-store) */
+/** Saved session for resume (stored in the bridge configuration store). */
 export interface SavedSession {
   conversationId: string
   cwd: string

@@ -6,7 +6,7 @@
 import * as kaminide from "kaminide"
 import type { KaminSession } from "kaminide"
 import type { BridgeHost } from "./bridge-host"
-import { ipcMain } from "./shim/electron"
+import { ipcMain } from "@kaminide/host-compat"
 import { ConnectionManager } from "./main/ws/connection-manager"
 import { setSessionActivateHandler } from "./session-activation"
 import { getDisplayedTab, onDisplayedTabChange } from "./displayed-tab"

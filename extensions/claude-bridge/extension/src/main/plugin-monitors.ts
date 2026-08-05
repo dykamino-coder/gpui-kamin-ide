@@ -22,7 +22,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { spawn, type ChildProcess } from 'child_process'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 import {
   listEnabledInstalledPlugins,
   readEffectivePluginManifest,

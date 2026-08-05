@@ -5,7 +5,7 @@
 // circular import on the McpServerManager class itself, they take a
 // structural context that exposes the few manager internals they need.
 
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 import type { ChildProcess } from 'child_process'
 import type WebSocket from 'ws'
 import type {

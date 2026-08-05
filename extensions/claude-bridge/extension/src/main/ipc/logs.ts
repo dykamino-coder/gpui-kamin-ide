@@ -3,7 +3,7 @@
 // dock re-open could recreate it; the kamin sink is a stable fan-out object,
 // so a single setLogsWindow call suffices.
 
-import { ipcMain, type BrowserWindow } from 'electron'
+import { ipcMain, type BrowserWindow } from '@kaminide/host-compat'
 import { getLogs, clearLogs, setLogsWindow } from '../error-log'
 
 export function registerLogsIPC(getMainWindow: () => BrowserWindow | null): void {

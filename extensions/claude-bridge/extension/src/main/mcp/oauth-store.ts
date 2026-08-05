@@ -31,7 +31,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
-import { app, safeStorage } from 'electron'
+import { app, safeStorage } from '@kaminide/host-compat'
 import type { OAuthTokens } from './oauth-flow'
 
 export interface StoredTokens extends OAuthTokens {

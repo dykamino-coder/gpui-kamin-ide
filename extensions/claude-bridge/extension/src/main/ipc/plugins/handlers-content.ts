@@ -1,7 +1,7 @@
 // IPC handlers: plugin content discovery (preview + installed list).
 // Extracted from `electron/main/ipc/plugins.ts` (Sprint 2 / Stage C, C2).
 
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'

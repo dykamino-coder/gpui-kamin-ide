@@ -5,7 +5,7 @@ import path from 'node:path'
 
 const ipcHandlers = vi.hoisted(() => new Map<string, (...args: any[]) => unknown>())
 
-vi.mock('electron', () => ({
+vi.mock('@kaminide/host-compat', () => ({
   ipcMain: {
     handle: (channel: string, handler: (...args: any[]) => unknown) => ipcHandlers.set(channel, handler),
   },

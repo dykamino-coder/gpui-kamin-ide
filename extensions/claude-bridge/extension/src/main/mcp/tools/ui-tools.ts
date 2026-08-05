@@ -1,8 +1,8 @@
 // UI tools — AskUserQuestion, PlanMode, Skill
 // These show interactive widgets in the KaminIDE webview.
 
-import type { BrowserWindow, IpcMainEvent } from 'electron'
-import { ipcMain } from 'electron'
+import type { BrowserWindow, IpcMainEvent } from '@kaminide/host-compat'
+import { ipcMain } from '@kaminide/host-compat'
 import type { McpResult } from '../tool-registry'
 import { randomUUID } from 'crypto'
 

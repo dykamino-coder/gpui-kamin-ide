@@ -1,7 +1,7 @@
 // MCP OAuth 2.0 authorization-code flow with PKCE.
 //
-// Standalone helpers — no Electron imports here so the module can be unit-tested
-// against a mock OAuth server. The Electron-specific glue (browser open, token
+// Standalone helpers — no host-runtime imports here, so the module can be tested
+// against a mock OAuth server. Host integration (browser open and token
 // storage) lives in `oauth-store.ts` and the UI wiring.
 
 import { createServer, type Server } from 'http'

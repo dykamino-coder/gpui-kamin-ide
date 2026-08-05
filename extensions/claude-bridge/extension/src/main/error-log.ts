@@ -12,7 +12,7 @@
 //    with an `exthost` source rather than pretending to be bridge-only.
 // ============================================================================
 
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 import { CircularBuffer } from './utils/circular-buffer'
 
 export interface LogEntry {

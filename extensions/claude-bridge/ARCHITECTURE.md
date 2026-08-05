@@ -19,10 +19,13 @@ Use these names in new code and reviews:
 - **Kamin bridge API** — the webview-to-VSIX postMessage API. New code may use
   `window.kaminBridge` / `KaminBridgeApi`.
 
-The remaining Electron names are compatibility boundaries, not runtime claims:
+The remaining Electron names are legacy or compatibility boundaries, not
+runtime claims:
 
-- imports from `electron` are aliased by `extension/build.mjs` to
-  `extension/src/shim/electron.ts`;
+- current extension source imports `@kaminide/host-compat`, implemented by
+  `extension/src/shim/host-compat.ts`;
+- Electron-shaped members exposed by that facade are local VSIX adapters, not
+  an Electron package dependency;
 - `window.electronBridge` and `ElectronBridge` are deprecated aliases retained
   for the vendored webview and third-party integrations;
 - `ElectronToServerMsg`, old `electron-store` paths, `/download/electron`, and
@@ -31,4 +34,4 @@ The remaining Electron names are compatibility boundaries, not runtime claims:
 
 A full removal of the deprecated webview alias is a separate breaking migration.
 Do not infer Electron from structural names such as `BrowserWindow`, `ipcMain`,
-or `webContents`: those interfaces are implemented locally by the VSIX shim.
+or `webContents`: those interfaces are implemented locally by the host facade.

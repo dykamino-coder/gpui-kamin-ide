@@ -2,7 +2,7 @@
   "name": "claude-bridge-extension",
   "private": true,
   "type": "module",
-  "description": "Claude Bridge VSIX extension host (CLIENT). Ports legacy Electron-era handlers (WS connection manager, MCP executor + tools, permission/config) onto the KaminIDE webview postMessage channel. Bundles to builtin-extensions/claude-bridge/extension.js — the only artifact that ships.",
+  "description": "Claude Bridge VSIX extension host for KaminIDE. Ports legacy handlers onto the local host-compat and webview postMessage APIs; it has no Electron runtime dependency. Bundles to builtin-extensions/claude-bridge/extension.js — the only artifact that ships.",
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",

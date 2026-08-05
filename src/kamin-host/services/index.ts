@@ -1,5 +1,5 @@
 // Service registration for kamin-host — fills the shared method table
-// (served to BOTH the shell parentPort link and the renderer WS
+// (served to BOTH the native shell's stdio RPC link and runtime WebSocket
 // clients) and orchestrates the workspace lifecycle (watch + index
 // follow the open folder). Split from `kamin-host.ts` so the entry
 // stays a thin boot file.

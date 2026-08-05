@@ -42,9 +42,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/shim/electron.ts
-var electron_exports = {};
-__export(electron_exports, {
+// src/shim/host-compat.ts
+var host_compat_exports = {};
+__export(host_compat_exports, {
   BrowserWindow: () => BrowserWindow,
   app: () => app,
   dialog: () => dialog,
@@ -57,8 +57,8 @@ function registerShimWindow(win) {
   if (!_windows.includes(win)) _windows.push(win);
 }
 var import_node_events, os, path, vscode, _windows, BrowserWindow, IpcMainShim, ipcMain, shell, app, safeStorage, dialog;
-var init_electron = __esm({
-  "src/shim/electron.ts"() {
+var init_host_compat = __esm({
+  "src/shim/host-compat.ts"() {
     "use strict";
     import_node_events = require("node:events");
     os = __toESM(require("node:os"), 1);
@@ -37055,7 +37055,7 @@ var import_crypto, pendingQuestions, mainWindow2, activeTabId, sendToPty, DEFERR
 var init_ui_tools = __esm({
   "src/main/mcp/tools/ui-tools.ts"() {
     "use strict";
-    init_electron();
+    init_host_compat();
     import_crypto = require("crypto");
     pendingQuestions = /* @__PURE__ */ new Map();
     mainWindow2 = null;
@@ -40401,7 +40401,7 @@ var ResyncTracker = class {
 };
 
 // src/bridge-host.ts
-init_electron();
+init_host_compat();
 
 // src/main/tab-manager.ts
 var import_path9 = __toESM(require("path"), 1);
@@ -43355,7 +43355,7 @@ var ConfigStore = class {
 };
 
 // src/main/ipc/sessions.ts
-init_electron();
+init_host_compat();
 var import_fs10 = __toESM(require("fs"), 1);
 var import_path11 = __toESM(require("path"), 1);
 init_ui_tools();
@@ -43550,7 +43550,7 @@ function registerSessionsIPC(ctx) {
   ipcMain.handle("jsonl:download", async (_event, tabId) => {
     const conn = tm()?.getConnection(tabId);
     if (!conn) return { success: false, error: "No connection" };
-    const { dialog: dialog2 } = await Promise.resolve().then(() => (init_electron(), electron_exports));
+    const { dialog: dialog2 } = await Promise.resolve().then(() => (init_host_compat(), host_compat_exports));
     const win = ctx.getMainWindow();
     if (!win) return { success: false, error: "No main window" };
     const convId = conn.getConversationId();
@@ -43571,7 +43571,7 @@ function registerSessionsIPC(ctx) {
     if (!cfg.token) return { success: false, error: "No token configured" };
     const httpBase = cfg.serverUrl.replace(/^ws(s?):\/\//i, "http$1://").replace(/\/+$/, "");
     const headers = { Authorization: `Bearer ${cfg.token}` };
-    const { dialog: dialog2 } = await Promise.resolve().then(() => (init_electron(), electron_exports));
+    const { dialog: dialog2 } = await Promise.resolve().then(() => (init_host_compat(), host_compat_exports));
     const win = ctx.getMainWindow();
     if (!win) return { success: false, error: "No main window" };
     const picked = await dialog2.showOpenDialog({
@@ -43636,7 +43636,7 @@ function registerSessionsIPC(ctx) {
     return { success: true, dir, count: transcripts.length };
   });
   ipcMain.handle("diag:save", async (_event, fileName, content) => {
-    const { dialog: dialog2 } = await Promise.resolve().then(() => (init_electron(), electron_exports));
+    const { dialog: dialog2 } = await Promise.resolve().then(() => (init_host_compat(), host_compat_exports));
     const win = ctx.getMainWindow();
     if (!win) return { success: false, error: "No main window" };
     const { canceled, filePath } = await dialog2.showSaveDialog(win, {
@@ -43650,7 +43650,7 @@ function registerSessionsIPC(ctx) {
 }
 
 // src/main/ipc/config.ts
-init_electron();
+init_host_compat();
 var import_os7 = __toESM(require("os"), 1);
 init_toast_window();
 function registerConfigIPC(ctx) {
@@ -43729,7 +43729,7 @@ function registerConfigIPC(ctx) {
 }
 
 // src/main/ipc/tabs.ts
-init_electron();
+init_host_compat();
 
 // src/main/tabs-state-store.ts
 var import_fs11 = __toESM(require("fs"), 1);
@@ -43790,7 +43790,7 @@ function registerTabsIPC(ctx) {
 }
 
 // src/main/ipc/skills-agents.ts
-init_electron();
+init_host_compat();
 var import_path13 = __toESM(require("path"), 1);
 var import_fs12 = __toESM(require("fs"), 1);
 var import_os9 = __toESM(require("os"), 1);
@@ -44341,13 +44341,13 @@ function registerSkillsAgentsIPC(ctx) {
 }
 
 // src/main/ipc/hooks.ts
-init_electron();
+init_host_compat();
 var import_fs15 = __toESM(require("fs"), 1);
 var import_os12 = __toESM(require("os"), 1);
 var import_path16 = __toESM(require("path"), 1);
 
 // src/main/ipc/plugins/handlers-install.ts
-init_electron();
+init_host_compat();
 var import_path15 = __toESM(require("path"), 1);
 var import_fs14 = __toESM(require("fs"), 1);
 var import_os11 = __toESM(require("os"), 1);
@@ -44932,7 +44932,7 @@ function registerInstallHandlers(reloadMcp) {
     }
   });
   ipcMain.handle("plugins:install-local", async () => {
-    const { dialog: dialog2 } = await Promise.resolve().then(() => (init_electron(), electron_exports));
+    const { dialog: dialog2 } = await Promise.resolve().then(() => (init_host_compat(), host_compat_exports));
     const result = await dialog2.showOpenDialog({
       properties: ["openDirectory"],
       title: "Select plugin folder"
@@ -45385,7 +45385,7 @@ function registerHooksIPC(ctx) {
 }
 
 // src/main/ipc/logs.ts
-init_electron();
+init_host_compat();
 
 // src/main/error-log.ts
 init_circular_buffer();
@@ -45464,7 +45464,7 @@ function registerLogsIPC(getMainWindow) {
 }
 
 // src/main/ipc/mcp.ts
-init_electron();
+init_host_compat();
 function registerMcpIPC(ctx) {
   const mgr = () => ctx.getMcpServerManager();
   ipcMain.handle("mcp:get-servers", () => {
@@ -45618,7 +45618,7 @@ function registerMcpIPC(ctx) {
 }
 
 // src/main/ipc/plugins/handlers-content.ts
-init_electron();
+init_host_compat();
 var import_path19 = __toESM(require("path"), 1);
 var import_fs18 = __toESM(require("fs"), 1);
 var import_os15 = __toESM(require("os"), 1);
@@ -46093,7 +46093,7 @@ function registerContentHandlers() {
 }
 
 // src/main/ipc/plugins/handlers-options.ts
-init_electron();
+init_host_compat();
 var import_path20 = __toESM(require("path"), 1);
 var import_fs19 = __toESM(require("fs"), 1);
 var import_os16 = __toESM(require("os"), 1);
@@ -46260,7 +46260,7 @@ function registerOptionsHandlers(reloadRuntime) {
 }
 
 // src/main/ipc/plugins/handlers-browse.ts
-init_electron();
+init_host_compat();
 var import_path21 = __toESM(require("path"), 1);
 var import_fs20 = __toESM(require("fs"), 1);
 var import_os17 = __toESM(require("os"), 1);
@@ -46546,7 +46546,7 @@ function registerBrowseHandlers() {
 }
 
 // src/main/ipc/plugins/handlers-source.ts
-init_electron();
+init_host_compat();
 var import_path23 = __toESM(require("path"), 1);
 var import_fs22 = __toESM(require("fs"), 1);
 var import_os19 = __toESM(require("os"), 1);
@@ -46854,7 +46854,7 @@ function registerPluginsIPC(ctx = {}) {
 }
 
 // src/main/ipc/marketplaces.ts
-init_electron();
+init_host_compat();
 
 // src/main/marketplace/known-store.ts
 var import_fs23 = __toESM(require("fs"), 1);
@@ -47220,7 +47220,7 @@ function registerMarketplaceIPC(getMainWindow) {
 }
 
 // src/main/ipc/monitors.ts
-init_electron();
+init_host_compat();
 init_plugin_monitors();
 init_plugin_lsp();
 function registerMonitorsIPC() {
@@ -47330,7 +47330,7 @@ var import_fs31 = __toESM(require("fs"), 1);
 var import_path30 = __toESM(require("path"), 1);
 var import_os24 = __toESM(require("os"), 1);
 var import_crypto9 = __toESM(require("crypto"), 1);
-init_electron();
+init_host_compat();
 var CREDS_PATH = import_path30.default.join(import_os24.default.homedir(), ".claude", ".credentials.json");
 function readCreds() {
   try {
@@ -48652,7 +48652,7 @@ async function handleServerRequest(ctx, serverId, msg) {
   if (method === "elicitation/create") {
     const requestId = (0, import_crypto11.randomUUID)();
     const params = msg.params ?? {};
-    const { ipcMain: ipcMain2 } = await Promise.resolve().then(() => (init_electron(), electron_exports));
+    const { ipcMain: ipcMain2 } = await Promise.resolve().then(() => (init_host_compat(), host_compat_exports));
     return await new Promise((resolve) => {
       const responseChannel = `mcp-elicitation-response:${requestId}`;
       let settled = false;
@@ -49776,7 +49776,7 @@ var McpServerManager = class _McpServerManager {
 
 // src/bridge-host.ts
 init_executor2();
-init_electron();
+init_host_compat();
 init_emit_bridge_event();
 
 // src/core-ipc.ts
@@ -49784,7 +49784,7 @@ var vscode5 = __toESM(require("vscode"), 1);
 var import_fs33 = __toESM(require("fs"), 1);
 var import_path33 = __toESM(require("path"), 1);
 var import_os27 = __toESM(require("os"), 1);
-init_electron();
+init_host_compat();
 
 // src/main/tree-enrichment.ts
 function enrichTreeWithTabs(tree, tabManager) {
@@ -50391,7 +50391,7 @@ var BridgeHost = class {
 
 // src/editor-context.ts
 var vscode7 = __toESM(require("vscode"), 1);
-init_electron();
+init_host_compat();
 var EDITOR_SELECTION_DEBOUNCE_MS = 120;
 var MAX_SELECTION_TEXT = 4e4;
 function snapshot() {
@@ -50488,7 +50488,7 @@ function installMcpStatusBar(mgr) {
 
 // src/sessions-bridge.ts
 var kaminide = __toESM(require("kaminide"), 1);
-init_electron();
+init_host_compat();
 init_session_activation();
 var WARM_RESTORE_DELAY_MS = 4e3;
 var WARM_POOL_MAX = 4;
@@ -50740,7 +50740,7 @@ var SessionsBridge = class {
 };
 
 // src/index.ts
-init_electron();
+init_host_compat();
 var CHAT_VIEW_ID = "claudeBridgeChat";
 var TOOLS_VIEW_IDS = ["claudeBridgePlanView", "claudeBridgeTodosView", "claudeBridgeAgentsView", "claudeBridgeConsoleView", "claudeBridgeToolsUsageView"];
 var CUSTOMIZE_VIEW_IDS = [

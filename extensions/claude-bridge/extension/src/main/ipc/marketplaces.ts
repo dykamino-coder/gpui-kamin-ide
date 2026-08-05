@@ -1,4 +1,4 @@
-import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import {
   listMarketplaces,
   cloneMarketplace,

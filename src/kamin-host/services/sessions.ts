@@ -47,7 +47,7 @@ export function initSessions(dataDir: string, bc: (channel: string, payload: unk
   importBridgeSessions()
 }
 
-interface ElectronSaved { conversationId?: string; cwd?: string; label?: string; folderName?: string; lastActivity?: string }
+interface LegacyBridgeSavedSession { conversationId?: string; cwd?: string; label?: string; folderName?: string; lastActivity?: string }
 
 /** One-shot: seed the native project/session tree from the Electron Bridge's
  *  saved sessions so a user upgrading from the Electron app sees their old
@@ -81,7 +81,7 @@ function importBridgeSessions(force = false): number {
   }
   let imported = 0
   for (const file of files) {
-    let raw: { savedSessionsByToken?: Record<string, ElectronSaved[]> }
+    let raw: { savedSessionsByToken?: Record<string, LegacyBridgeSavedSession[]> }
     try { raw = JSON.parse(readFileSync(file, "utf8")) as typeof raw } catch { continue }
     for (const arr of Object.values(raw.savedSessionsByToken ?? {})) {
       if (!Array.isArray(arr)) continue

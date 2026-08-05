@@ -1,7 +1,7 @@
 // IPC handlers: install / uninstall / install-from-local-folder.
 // Extracted from `electron/main/ipc/plugins.ts` (Sprint 2 / Stage C, C2).
 
-import { ipcMain, BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, BrowserWindow, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
@@ -468,7 +468,7 @@ export function registerInstallHandlers(reloadMcp: () => Promise<void>): void {
   })
 
   ipcMain.handle('plugins:install-local', async () => {
-    const { dialog } = await import('electron')
+    const { dialog } = await import('@kaminide/host-compat')
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
       title: 'Select plugin folder',

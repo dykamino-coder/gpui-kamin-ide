@@ -54,7 +54,8 @@ extensions/claude-bridge/verify-pr.sh --install
 Use `--install` on a fresh checkout; subsequent runs can omit it. The script
 runs repository-level typecheck, ESLint, and Vitest plus package-specific
 typechecks/suites for server, extension, and webview. It rebuilds all shipped
-bridge artifacts and verifies that they match the committed sources.
+bridge artifacts, rejects accidental Electron runtime imports, and verifies
+that generated output matches the committed sources.
 
 Focused regression coverage includes:
 

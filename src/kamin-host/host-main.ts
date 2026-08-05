@@ -186,7 +186,7 @@ export async function runHost(endpoint: RpcEndpoint): Promise<void> {
 
   ws = await startWsRpcServer(methods)
 
-  // Shell aliases + lifecycle on the parentPort (Rust) link.
+  // Shell aliases + lifecycle on the native Rust shell's stdio link.
   for (const [m, fn] of methods) endpoint.handle(m, fn)
   endpoint.handle(HOST_SNAPSHOT, () => exthost.invoke("snapshot"))
   endpoint.handle(HOST_EXECUTE_COMMAND, (id, ...args) => exthost.invoke("executeCommand", id, ...args))

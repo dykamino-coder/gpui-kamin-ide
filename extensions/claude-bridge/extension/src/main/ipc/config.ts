@@ -1,4 +1,4 @@
-import { ipcMain, type IpcMainEvent } from 'electron'
+import { ipcMain, type IpcMainEvent } from '@kaminide/host-compat'
 import os from 'os'
 import type { ConfigStore } from '../config/store'
 import type { TabManager } from '../tab-manager'

@@ -3,7 +3,7 @@
 // responsible for owning the pendingMcpCalls map, the WS send channel,
 // and the renderer IPC channel.
 
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 import type { PermissionDecision } from '../../shared/types'
 import type { ClientMessage } from '../../shared/mcp-protocol'
 import type { PermissionManager } from '../mcp/permission-manager'

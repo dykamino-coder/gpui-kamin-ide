@@ -5,7 +5,7 @@
 // (registered host-side in src/exthost/lsp-commands.ts) and `vscode.languages
 // .getDiagnostics`. When no provider matches the file (no language extension
 // active, or the LSP server hasn't loaded that file), the provider result is
-// empty and we return the SAME graceful "no server" result the Electron app
+// empty and we return the same graceful "no server" result as the legacy client
 // produced, so the model falls back to Grep/Read.
 import path from 'path'
 import * as vscode from 'vscode'

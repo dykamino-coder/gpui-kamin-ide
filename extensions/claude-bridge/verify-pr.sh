@@ -28,6 +28,13 @@ npm --prefix "$BRIDGE_DIR/webview" test
 npm --prefix "$BRIDGE_DIR/extension" run build
 npm --prefix "$BRIDGE_DIR/webview" run build
 
+if rg -n "from ['\"]electron['\"]|import\\(['\"]electron['\"]\\)|require\\(['\"]electron['\"]\\)" \
+  "$BRIDGE_DIR/extension/src" \
+  "$PROJECT_DIR/builtin-extensions/claude-bridge/extension.js"; then
+  echo "current Bridge runtime must import @kaminide/host-compat, not electron" >&2
+  exit 1
+fi
+
 git -C "$PROJECT_DIR" diff --exit-code -- \
   builtin-extensions/claude-bridge/extension.js \
   builtin-extensions/claude-bridge/chat.html \

@@ -1,5 +1,5 @@
 // ============================================================================
-// Sync Types — shared between Electron sync client and bridge server
+// Sync Types — shared between the VSIX bridge host and bridge server
 // ============================================================================
 
 export interface SyncUserData {

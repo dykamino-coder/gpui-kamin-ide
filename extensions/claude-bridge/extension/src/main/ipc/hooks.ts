@@ -2,7 +2,7 @@
 // bridge's `/api/hooks/*` endpoints (read-only views) plus host-side
 // settings.json mutations (install template, toggle, delete).
 
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'

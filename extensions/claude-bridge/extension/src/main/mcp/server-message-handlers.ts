@@ -4,7 +4,7 @@
 // remain pure functions over per-server state.
 
 import { randomUUID } from 'crypto'
-import type { BrowserWindow, IpcMainEvent } from 'electron'
+import type { BrowserWindow, IpcMainEvent } from '@kaminide/host-compat'
 import type { McpResourceInfo, McpResourceTemplateInfo, McpPromptInfo } from '../../shared/types'
 import type { McpServerState } from './transports/context'
 import { collectMcpList } from './pagination'
@@ -76,7 +76,7 @@ async function handleServerRequest(ctx: MessageHandlerCtx, serverId: string, msg
     // Ask the renderer for user input. The renderer responds via IPC.
     const requestId = randomUUID()
     const params = msg.params ?? {}
-    const { ipcMain } = await import('electron')
+    const { ipcMain } = await import('@kaminide/host-compat')
     return await new Promise<any>((resolve) => {
       const responseChannel = `mcp-elicitation-response:${requestId}`
       let settled = false

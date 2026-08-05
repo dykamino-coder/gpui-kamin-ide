@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 import type {
   ExternalMcpServerConfig,
   ExternalMcpServerInfo,

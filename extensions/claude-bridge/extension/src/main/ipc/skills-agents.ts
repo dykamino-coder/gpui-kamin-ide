@@ -1,4 +1,4 @@
-import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, shell, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'

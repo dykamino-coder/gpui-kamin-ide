@@ -42,7 +42,7 @@ export function MessageActions({
       }
       return
     }
-    // Fallback for non-Electron (dashboard) — browser blob download
+    // Browser-only fallback for the standalone dashboard — blob download.
     try {
       const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' })
       const url = URL.createObjectURL(blob)
