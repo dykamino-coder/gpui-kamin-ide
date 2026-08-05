@@ -362,7 +362,7 @@ This is the way to communicate visually in this chat — prefer it over ASCII ar
       properties: {
         html: { type: 'string', description: 'The self-contained HTML to render inline. Inline all CSS/JS; no external resources.' },
         title: { type: 'string', description: 'Optional caption shown above the widget.' },
-        height: { type: 'number', description: 'Optional frame height in px (default 360). The frame scrolls if content is taller.' },
+        height: { type: 'number', description: 'Optional cap on the widget height in px — it scrolls if the content is taller. Omit for natural height.' },
       },
       required: ['html'],
     },

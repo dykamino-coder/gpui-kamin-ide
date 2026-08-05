@@ -8,9 +8,18 @@ import styles from './WidgetBlock.module.css'
  *  CSP; `innerHTML` never runs `<script>`, so the widget stays declarative
  *  HTML/CSS/SVG). Natural height — it grows with its content. */
 export function WidgetBlock({ input }: { input: unknown }): JSX.Element | null {
-  const i = (input ?? {}) as { html?: string; title?: string; __streaming?: boolean }
+  const i = (input ?? {}) as {
+    html?: string
+    title?: string
+    height?: number
+    __streaming?: boolean
+  }
   const html = typeof i.html === 'string' ? i.html : ''
   const title = typeof i.title === 'string' ? i.title : ''
+  // `height` was advertised to the model but never read here, so a widget that
+  // asked to be capped grew to full height instead. Cap + scroll when asked;
+  // omitted stays natural height (which is what most widgets want).
+  const cap = typeof i.height === 'number' && i.height > 0 ? Math.round(i.height) : 0
 
   const hostRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -34,7 +43,11 @@ export function WidgetBlock({ input }: { input: unknown }): JSX.Element | null {
   return (
     <div class={styles.widget}>
       {title && <div class={styles.caption}>{title}</div>}
-      <div ref={hostRef} class={styles.host} />
+      <div
+        ref={hostRef}
+        class={styles.host}
+        style={cap ? `max-height:${cap}px;overflow-y:auto` : undefined}
+      />
     </div>
   )
 }
