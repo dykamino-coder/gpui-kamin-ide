@@ -6,6 +6,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { submitTextToSession } from './session-io'
 import type { PtySession } from './types'
 
+const CLEAR_SETTLE_MS = 50
+
 function fakePty() {
   const writes: string[] = []
   let onDataCb: ((d: string) => void) | null = null
@@ -26,9 +28,11 @@ beforeEach(() => { vi.useFakeTimers() })
 afterEach(() => { vi.useRealTimers() })
 
 describe('submitTextToSession — Enter timing', () => {
-  it('writes the bracketed paste immediately', () => {
+  it('clears first, then writes the bracketed paste after Ink settles', () => {
     const f = fakePty()
     submitTextToSession(f.session, 'hello')
+    expect(f.writes).toEqual(['\x15'])
+    vi.advanceTimersByTime(CLEAR_SETTLE_MS)
     expect(f.pasteWritten()).toBe(true)
     expect(f.enterCount()).toBe(0) // not yet — paste hasn't been echoed
   })
@@ -45,6 +49,7 @@ describe('submitTextToSession — Enter timing', () => {
   it('presses Enter once, 80ms after the paste echo settles', () => {
     const f = fakePty()
     submitTextToSession(f.session, 'hello')
+    vi.advanceTimersByTime(CLEAR_SETTLE_MS)
     f.echo('hello') // CLI echoes the paste
     vi.advanceTimersByTime(79)
     expect(f.enterCount()).toBe(0) // still within the quiet window
@@ -55,6 +60,7 @@ describe('submitTextToSession — Enter timing', () => {
   it('waits for the echo to STOP — a burst of echo chunks keeps resetting the window', () => {
     const f = fakePty()
     submitTextToSession(f.session, 'a long message rendered in chunks')
+    vi.advanceTimersByTime(CLEAR_SETTLE_MS)
     f.echo('a long '); vi.advanceTimersByTime(50)
     f.echo('message '); vi.advanceTimersByTime(50)
     f.echo('rendered'); vi.advanceTimersByTime(50)
@@ -66,13 +72,14 @@ describe('submitTextToSession — Enter timing', () => {
   it('still enters via the hard cap if the paste produces no echo at all', () => {
     const f = fakePty()
     submitTextToSession(f.session, 'hello')
-    vi.advanceTimersByTime(2000) // HARD_MAX_MS
+    vi.advanceTimersByTime(CLEAR_SETTLE_MS + 2000) // clear settle + HARD_MAX_MS
     expect(f.enterCount()).toBe(1)
   })
 
   it('never presses Enter more than once', () => {
     const f = fakePty()
     submitTextToSession(f.session, 'hello')
+    vi.advanceTimersByTime(CLEAR_SETTLE_MS)
     f.echo('hello')
     vi.advanceTimersByTime(5000)
     f.echo('more output after submit')

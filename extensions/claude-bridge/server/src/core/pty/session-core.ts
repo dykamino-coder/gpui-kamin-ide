@@ -22,6 +22,7 @@ import {
   attachOutputDebounce,
   clearInputThrottle,
 } from './session-io'
+import { clearSessionInputState, notifySessionAttachmentChanged } from './session-input-coordinator'
 import { clearSession as clearHookSession, cancelSessionLocalExecs } from '../hooks'
 import {
   buildSessionEnv as buildEnv,
@@ -46,6 +47,7 @@ import {
 } from './session-mcp-call'
 import { startNativeMitm } from '../proxy/native-mitm'
 import { getStreamingSettings } from '../proxy/streaming-settings'
+import { withSyncSnapshotLock } from '../sync/lock'
 
 // Re-export the per-session MCP-call helpers so callers that historically
 // imported them from session-core/session-manager keep working.
@@ -168,7 +170,9 @@ export async function createSession(
 
   // Apply per-token synced data (skills, agents, CLAUDE.md, project files)
   if (config.bearerHash) {
-    applySyncData(settingsDir, config.bearerHash, userCwd)
+    await withSyncSnapshotLock(config.bearerHash, () => {
+      applySyncData(settingsDir, config.bearerHash!, userCwd)
+    })
   }
 
   debugLog('Creating PTY session', { sessionId, userName, cwd: config.cwd })
@@ -536,6 +540,7 @@ export function detachSession(sessionId: string): void {
   if (session.detachGraceTimer) return // already detached
 
   session.detachedAt = new Date()
+  notifySessionAttachmentChanged(session)
   session.detachGraceTimer = setTimeout(() => {
     debugLog('Detach grace expired — destroying session', { sessionId })
     destroySession(sessionId)
@@ -559,6 +564,7 @@ export function reattachSession(session: PtySession, ws: WS): void {
   session.detachedAt = null
   session.ws = ws
   session.lastActivityAt = new Date()
+  notifySessionAttachmentChanged(session)
 
   for (const [requestId, pe] of session.pendingElicitations) {
     sendToClient(ws, {
@@ -854,6 +860,7 @@ export function shutdownAll(): void {
   for (const [id, session] of sessions) {
     try { session.pty.kill() } catch {}
     try { session.ws.close() } catch {}
+    clearSessionInputState(session)
     cleanupSessionDir(session.settingsDir)
   }
   sessions.clear()
@@ -932,6 +939,7 @@ function cleanupSession(sessionId: string): void {
   }
   sessions.delete(sessionId)
   clearInputThrottle(sessionId)
+  clearSessionInputState(session)
   // Don't delete settingsDir — keep it so --continue can find conversation history.
   // The dir is in /tmp and gets cleaned on reboot anyway.
   broadcastSessionCount()
@@ -975,9 +983,8 @@ export function handleElicitationResponse(
   session.pendingElicitations.delete(requestId)
 
   if (pending.deferred) {
-    // HTTP already answered; inject the user's real reply via PTY stdin as a
-    // normal follow-up message. Wrap in bracketed paste so CLI submits the
-    // whole buffer as one event (avoids partial-Enter races seen on long text).
+    // HTTP already answered; inject the user's real reply as a normal follow-up
+    // through the same serialized clear/paste/Enter path as every other submit.
     if (session.pty) {
       let text: string
       if (action === 'accept' && content) {
@@ -991,7 +998,7 @@ export function handleElicitationResponse(
       // The PTY may have exited between the guard and here (session died while
       // the user was answering) — a write to a dead pty can throw synchronously.
       try {
-        session.pty.write(`\x1b[200~${text}\x1b[201~\r`)
+        submitTextToSession(session, text)
       } catch (err) {
         warnLog('Elicitation PTY write failed (session likely exited)', {
           sessionId, requestId, error: err instanceof Error ? err.message : String(err),

@@ -1,9 +1,7 @@
 // Send/queue/stop logic extracted from InputBar.tsx (Sprint 5 / Stage E1).
-// Owns the bridge dance for shipping a textarea's contents to the active
-// PTY tab: Ctrl+U scrub → bracketed paste with a 50ms gap, optimistic
-// promptReady flip so the Send button transitions to Stop without waiting
-// for the server, and pending-Enter timer cleanup so a fast double-send
-// doesn't smear two messages together.
+// Owns the bridge path for shipping a textarea's contents to the active PTY
+// tab. The server serializes Ctrl+U → bracketed paste → Enter; this layer owns
+// the optimistic promptReady flip so Send transitions to Stop immediately.
 
 import type { ElectronBridge } from '../../../shared/types'
 import { pendingAttachments as attachSignal } from '../../signals/ui'
