@@ -10,7 +10,7 @@ use crate::computed::{
     Align, Computed, Corners, Display, FlexDir, Justify, Overflow, Position, Sides, Track,
 };
 use crate::value::Len;
-use gpui::{Div, Styled, px, relative};
+use gpui::{Div, InteractiveElement, Styled, px, relative};
 
 /// Ширина/высота/отступ: доля родителя или пиксели.
 fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
@@ -34,6 +34,46 @@ fn track(t: &Track) -> gpui::GridTrack {
         Track::MaxContent => gpui::GridTrack::MaxContent,
     };
     gpui::GridTrack::MinMax(Box::new((gpui::GridTrack::MinContent, upper)))
+}
+
+/// Стиль наведения: `.btn:hover { … }`.
+///
+/// Отдельная функция, потому что GPUI принимает состояние наведения не
+/// цепочкой методов, а правкой стиля в замыкании. Поддержано подмножество,
+/// которое и встречается в наведении: цвет, фон, рамка, прозрачность, вес и
+/// начертание шрифта. Отступы и размеры в наведении менять нельзя — это
+/// сдвинуло бы раскладку под курсором.
+pub fn apply_hover(d: Div, hover: &Computed) -> Div {
+    let h = hover.clone();
+    d.hover(move |mut s| {
+        if let Some(bg) = h.background {
+            s.background = Some(gpui::Fill::Color(bg.to_hsla().into()));
+        }
+        if let Some(g) = h.gradient {
+            s.background = Some(gpui::Fill::Color(gpui::linear_gradient(
+                g.angle_deg,
+                gpui::linear_color_stop(g.from.to_hsla(), 0.0),
+                gpui::linear_color_stop(g.to.to_hsla(), 1.0),
+            )));
+        }
+        if let Some(bc) = h.border_color {
+            s.border_color = Some(bc.to_hsla());
+        }
+        if let Some(o) = h.opacity {
+            s.opacity = Some(o);
+        }
+        if let Some(col) = h.color {
+            s.text.get_or_insert_with(Default::default).color = Some(col.to_hsla());
+        }
+        if let Some(w) = h.font_weight {
+            s.text.get_or_insert_with(Default::default).font_weight =
+                Some(gpui::FontWeight(w as f32));
+        }
+        if h.italic == Some(true) {
+            s.text.get_or_insert_with(Default::default).font_style = Some(gpui::FontStyle::Italic);
+        }
+        s
+    })
 }
 
 pub fn apply(d: Div, c: &Computed) -> Div {

@@ -4,7 +4,7 @@
 //! собираются в один абзац (`inline.rs`). Списки, таблицы и картинки имеют
 //! свои правила — они и описаны в доке отдельными разделами.
 
-use crate::apply::apply;
+use crate::apply::{apply, apply_hover};
 use crate::computed::{Computed, Display};
 use crate::dom::{Element, Node};
 use crate::inline::{self};
@@ -23,6 +23,15 @@ pub struct RenderOpts {
 impl RenderOpts {
     fn base_size(&self) -> f32 {
         f32::from(self.text.font_size.to_pixels(px(16.)))
+    }
+}
+
+/// Базовый стиль элемента плюс слой наведения, если он есть.
+fn styled_div(e: &Element) -> gpui::Div {
+    let d = apply(div(), &e.style);
+    match &e.hover {
+        Some(h) => apply_hover(d, h),
+        None => d,
     }
 }
 
@@ -87,7 +96,7 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         _ if has_own_box(&e.style) => {
             let merged = inline::inherit(inherited, &e.style);
             Some(
-                apply(div(), &e.style)
+                styled_div(e)
                     .children(blocks(&e.children, &merged, opts))
                     .into_any_element(),
             )
@@ -111,12 +120,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let merged = inline::inherit(inherited, &e.style);
     match e.tag.as_str() {
         "img" => image(e),
-        "hr" => apply(div(), &e.style).w_full().into_any_element(),
+        "hr" => styled_div(e).w_full().into_any_element(),
         "table" => table(e, &merged, opts),
         "ul" | "ol" => list(e, &merged, opts),
         "pre" => pre(e, &merged, opts),
         _ => {
-            let mut d = apply(div(), &e.style);
+            let mut d = styled_div(e);
             // Блок без явного display — колонка: в HTML блоки идут сверху вниз.
             if e.style.display.is_none() {
                 d = d.flex().flex_col();
@@ -134,7 +143,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
 /// рисуется в чате, где сеть запрещена по тем же причинам, что и в вебвью.
 fn image(e: &Element) -> AnyElement {
     let src = e.attr("src").unwrap_or_default();
-    let mut d = apply(div(), &e.style);
+    let mut d = styled_div(e);
     if let Some(Len::Px(w)) = e.style.width {
         d = d.w(px(w));
     }
@@ -191,7 +200,7 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .into_any_element(),
         );
     }
-    apply(div(), &e.style)
+    styled_div(e)
         .flex()
         .flex_col()
         .children(rows)
@@ -212,7 +221,7 @@ fn pre(e: &Element, inherited: &Computed, _opts: &RenderOpts) -> AnyElement {
                 .into_any_element()
         })
         .collect();
-    apply(div(), &e.style)
+    styled_div(e)
         .flex()
         .flex_col()
         .children(lines)
@@ -262,7 +271,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 Node::Element(cell) if cell.tag == "td" || cell.tag == "th" => {
                     let cm = inline::inherit(&merged, &cell.style);
                     Some(
-                        apply(div(), &cell.style)
+                        styled_div(cell)
                             .flex()
                             .flex_col()
                             .children(blocks(&cell.children, &cm, opts))
@@ -273,14 +282,14 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             })
             .collect();
         out.push(
-            apply(div(), &row.style)
+            styled_div(row)
                 .grid()
                 .grid_template_cols(track_list(cols))
                 .children(cells)
                 .into_any_element(),
         );
     }
-    apply(div(), &e.style)
+    styled_div(e)
         .flex()
         .flex_col()
         .children(out)

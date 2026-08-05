@@ -22,6 +22,9 @@ pub enum Node {
 pub struct Element {
     pub tag: String,
     pub style: Computed,
+    /// Стиль наведения, собранный из правил с `:hover`. Пустой, если таких
+    /// правил не было.
+    pub hover: Option<Computed>,
     pub children: Vec<Node>,
     /// Атрибуты, которые нужны при отрисовке: `src`, `href`, `colspan`.
     pub attrs: Vec<(String, String)>,
@@ -184,6 +187,15 @@ fn walk(handle: &Handle, rules: &[Rule], path: &[Ancestor], out: &mut Vec<Node>)
                 .filter(|r| matches(&r.sel, &me, path))
                 .collect();
             let style = Computed::resolve(&mut matched, &inline_decls);
+            // Правила с `:hover` собираются отдельным слоем: в базовый стиль
+            // им нельзя, иначе элемент выглядел бы всегда наведённым.
+            let mut hovered: Vec<&Rule> = rules
+                .iter()
+                .filter(|r| r.sel.pseudo.as_deref() == Some("hover"))
+                .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path))
+                .collect();
+            let hover =
+                (!hovered.is_empty()).then(|| Computed::resolve(&mut hovered, &Decls::new()));
 
             if style.display == Some(Display::None) {
                 return;
@@ -200,6 +212,7 @@ fn walk(handle: &Handle, rules: &[Rule], path: &[Ancestor], out: &mut Vec<Node>)
                 inline: INLINE_TAGS.contains(&tag.as_str()),
                 tag,
                 style,
+                hover,
                 children,
                 attrs,
             }));
@@ -219,6 +232,11 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor]) -> bool {
     if sel.pseudo.is_some() {
         return false;
     }
+    matches_ignoring_pseudo(sel, me, path)
+}
+
+/// То же сопоставление, но без отсева по псевдоклассу — для слоя наведения.
+fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor]) -> bool {
     if !matches_compound(sel, me) {
         return false;
     }
@@ -334,6 +352,29 @@ mod tests {
                 collect_spans(&e.children, out);
             }
         }
+    }
+
+    #[test]
+    fn hover_rules_form_a_separate_layer() {
+        let nodes = parse(
+            "<style>.b { color: #ffffff } .b:hover { color: #ff0000 }</style>             <div class=\"b\">кнопка</div>",
+            "",
+        );
+        let d = first_element(&nodes);
+        assert_eq!(d.style.color.map(|c| c.r), Some(1.0), "базовый цвет белый");
+        assert_eq!(
+            d.style.color.map(|c| c.g),
+            Some(1.0),
+            "и не покрашен наведением"
+        );
+        let hover = d.hover.as_ref().expect("слой наведения собран");
+        assert_eq!(hover.color.map(|c| c.g), Some(0.0), "в наведении — красный");
+    }
+
+    #[test]
+    fn no_hover_rules_means_no_layer() {
+        let nodes = parse("<div class=\"b\">без наведения</div>", "");
+        assert!(first_element(&nodes).hover.is_none());
     }
 
     #[test]
