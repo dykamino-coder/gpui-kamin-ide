@@ -91,6 +91,7 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
 fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     match e.tag.as_str() {
         "img" => Some(image(e)),
+        "svg" => crate::svg::element(e).or_else(|| Some(image(e))),
         // Свой бокс (фон, рамка, отступы) означает, что кусок не может быть
         // прогоном текста: прогон не умеет рисовать вокруг себя рамку.
         _ if has_own_box(&e.style) => {
@@ -120,6 +121,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let merged = inline::inherit(inherited, &e.style);
     match e.tag.as_str() {
         "img" => image(e),
+        // Рисунок не разобрался — показываем запасной текст, а не пустоту.
+        "svg" => crate::svg::element(e).unwrap_or_else(|| {
+            styled_div(e)
+                .child(SharedString::from("[рисунок]"))
+                .into_any_element()
+        }),
         "hr" => styled_div(e).w_full().into_any_element(),
         "table" => table(e, &merged, opts),
         "ul" | "ol" => list(e, &merged, opts),

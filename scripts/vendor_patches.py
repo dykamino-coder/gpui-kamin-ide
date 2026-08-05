@@ -59,7 +59,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
         "вместе с underlay-цепочкой)",
     ),
     "vendor/gpui/src/gpui.rs": (
-        3,
+        4,
         "модуль `frame_perf`: счётчики стоимости кадра + счётчики шейпинга и "
         "реэкспорт prepaint_prof (#76)",
     ),
@@ -67,6 +67,11 @@ EXPECTED: dict[str, tuple[int, str]] = {
         6,
         "ExternalTexture: кадры CEF в атласе — cropped/with_size/size/region "
         "(region — вырезка content_rect со смещением, план 101 Ф7)",
+    ),
+    "vendor/gpui/src/svg_renderer.rs": (
+        1,
+        "растеризация SVG из строки в цветное изображение: штатный путь значков "
+        "отдаёт одноцветную маску, а график из документа обязан сохранить цвета",
     ),
     "vendor/gpui/src/style.rs": (
         3,

@@ -19,6 +19,7 @@ pub mod css;
 pub mod dom;
 pub mod inline;
 pub mod render;
+pub mod svg;
 pub mod value;
 
 pub use dom::{Element, Node, parse};

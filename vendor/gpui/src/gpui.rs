@@ -137,6 +137,8 @@ pub use style::*;
 pub use styled::*;
 pub use subscription::*;
 use svg_renderer::*;
+// KaminIDE patch: растеризация SVG из строки — нужна крейту разметки.
+pub use svg_renderer::svg_markup_to_image;
 pub(crate) use tab_stop::*;
 pub use taffy::{AvailableSpace, LayoutId};
 #[cfg(any(test, feature = "test-support"))]

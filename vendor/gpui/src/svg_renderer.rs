@@ -25,6 +25,51 @@ pub enum SvgSize {
     ScaleFactor(f32),
 }
 
+/// KaminIDE patch: разметка SVG → готовое цветное изображение.
+///
+/// Штатных путей два, и оба не годятся для рисунка из документа: элемент
+/// `svg()` превращает картинку в одноцветную маску (это путь иконок, цвета
+/// теряются), а `img()` принимает только источник-ресурс, тогда как разметка
+/// приходит строкой из чужого HTML. Поэтому — растеризация из строки, теми же
+/// resvg/usvg, что уже стоят в GPUI: тащить их вторым комплектом в свой крейт
+/// значило бы держать две копии одного растеризатора.
+///
+/// `None`, если разметка не разбирается: вызывающий покажет запасной текст.
+pub fn svg_markup_to_image(
+    markup: &str,
+    width: f32,
+    height: f32,
+    density: f32,
+) -> Option<Arc<crate::RenderImage>> {
+    use image::{Frame, ImageBuffer};
+
+    let opts = usvg::Options::default();
+    let tree = usvg::Tree::from_str(markup, &opts).ok()?;
+    let pw = (width * density).round().max(1.0) as u32;
+    let ph = (height * density).round().max(1.0) as u32;
+    // Потолок: рисунок в чате не бывает больше половины экрана, а промах в
+    // атрибутах размера иначе съел бы память гигабайтами.
+    if pw > 4096 || ph > 4096 {
+        return None;
+    }
+    let mut pixmap = Pixmap::new(pw, ph)?;
+    let size = tree.size();
+    let scale = (pw as f32 / size.width()).min(ph as f32 / size.height());
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+
+    let mut buffer = ImageBuffer::from_raw(pw, ph, pixmap.take())?;
+    for pixel in buffer.chunks_exact_mut(4) {
+        crate::swap_rgba_pa_to_bgra(pixel);
+    }
+    let mut image = crate::RenderImage::new(smallvec::SmallVec::from_elem(Frame::new(buffer), 1));
+    image.scale_factor = density;
+    Some(Arc::new(image))
+}
+
 impl SvgRenderer {
     pub fn new(asset_source: Arc<dyn AssetSource>) -> Self {
         static FONT_DB: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
