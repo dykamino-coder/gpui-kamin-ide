@@ -51,8 +51,8 @@ pub(crate) fn update_hover_pill_state(
     *slot = None;
     *generation = (*generation).wrapping_add(1);
 
-    let still_hovered = slot.as_deref() == Some(id.as_str())
-        || other.as_deref() == Some(id.as_str());
+    let still_hovered =
+        slot.as_deref() == Some(id.as_str()) || other.as_deref() == Some(id.as_str());
     if visible.as_deref() == Some(id.as_str()) && !still_hovered {
         HoverPillUpdate::Inactive {
             id,
@@ -76,12 +76,7 @@ mod tests {
     }
 
     impl State {
-        fn apply(
-            &mut self,
-            id: &str,
-            source: HoverPillSource,
-            hovered: bool,
-        ) -> HoverPillUpdate {
+        fn apply(&mut self, id: &str, source: HoverPillSource, hovered: bool) -> HoverPillUpdate {
             update_hover_pill_state(
                 &mut self.visible,
                 &mut self.anchor,

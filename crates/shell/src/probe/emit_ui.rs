@@ -58,15 +58,17 @@ pub(crate) fn emit_session(
             action: ModalAction::DeleteSession(sid),
         }),
         "rename" => ShellEvent::BeginRename(sid),
-        "hoverPill" => if sid == "probe-session" {
-            ShellEvent::DismissHoverPill
-        } else {
-            ShellEvent::HoverPill {
-                id: sid,
-                source: crate::host_link::HoverPillSource::Anchor,
-                hovered: true,
+        "hoverPill" => {
+            if sid == "probe-session" {
+                ShellEvent::DismissHoverPill
+            } else {
+                ShellEvent::HoverPill {
+                    id: sid,
+                    source: crate::host_link::HoverPillSource::Anchor,
+                    hovered: true,
+                }
             }
-        },
+        }
         "toast" => ShellEvent::Toast(crate::ui::toasts::Toast {
             id: "probe-toast".into(),
             // Агенты шлют и `severity`, и `level` — принимаем оба, иначе
