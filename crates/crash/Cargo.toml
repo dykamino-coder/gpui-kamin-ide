@@ -1,0 +1,19 @@
+[package]
+name = "kamin-crash"
+version.workspace = true
+edition.workspace = true
+
+# Общий на ДВА бинаря: главный процесс и помощник CEF (`kaminide-web.exe`).
+# Дети-хромиумы падают чаще главного, а до этого крейта они падали молча —
+# оставляя человеку только системную модалку «KaminIDE has stopped working»
+# и ни строчки в наших логах (поймано на рабочей машине юзера, где Event
+# Viewer недоступен).
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Kernel",        # перехватчик исключений живёт здесь
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+] }

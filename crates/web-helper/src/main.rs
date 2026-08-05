@@ -15,6 +15,12 @@ wrap_app! {
 }
 
 fn main() {
+    // Падение ребёнка (renderer/gpu) до этого оставляло человеку ТОЛЬКО
+    // системную модалку «KaminIDE has stopped working» и ни строчки в логах —
+    // а на рабочей машине Event Viewer недоступен. Теперь код, адрес, модуль и
+    // стек уходят в `<cache>/crash.log`, а модалка гасится: смерть рендерера
+    // лечится перезагрузкой вью, пугать ею незачем.
+    kamin_crash::install("web", kamin_crash::AfterReport::QuitSilently);
     // Рукопожатие версий обязательно любому процессу CEF: без него libcef
     // обрывает работу с «CefApp called with invalid version -1».
     let _ = api_hash(sys::CEF_API_VERSION_LAST, 0);

@@ -42,8 +42,12 @@ cef::wrap_client! {
         display: DisplayHandler,
         download: DownloadHandler,
         context_menu: ContextMenuHandler,
+        requests: RequestHandler,
     }
     impl Client {
+        fn request_handler(&self) -> Option<RequestHandler> {
+            Some(self.requests.clone())
+        }
         fn render_handler(&self) -> Option<RenderHandler> {
             Some(self.render.clone())
         }
@@ -112,6 +116,46 @@ cef::wrap_download_handler! {
                 cb.cont(None, 1);
             }
             1
+        }
+    }
+}
+
+cef::wrap_request_handler! {
+    struct ViewRequests {
+        id: String,
+    }
+    impl RequestHandler {
+        /// Renderer этого вью умер (падение, OOM, убит системой).
+        ///
+        /// Сам ребёнок в этот момент записать о себе уже ничего не может —
+        /// пишем МЫ, и в тот же `crash.log`, что и его перехватчик. Без этого
+        /// у человека оставалась только системная модалка «KaminIDE has
+        /// stopped working» при живой оболочке (скрин с рабочей машины).
+        ///
+        /// И сразу лечим: страница после смерти renderer'а мертва навсегда,
+        /// пока её не перезагрузить — иначе панель просто застывает.
+        fn on_render_process_terminated(
+            &self,
+            browser: Option<&mut Browser>,
+            status: TerminationStatus,
+            error_code: ::std::os::raw::c_int,
+            error_string: Option<&CefString>,
+        ) {
+            let reason = error_string.map(|s| s.to_string()).unwrap_or_default();
+            kamin_crash::note(&format!(
+                "[КРАХ] renderer вью «{}» умер: статус {:?}, код {error_code}, {reason}",
+                self.id,
+                *status.as_ref()
+            ));
+            super::diag::renderer_died();
+            if let Some(browser) = browser
+                && let Some(mut frame) = browser.main_frame()
+            {
+                use cef::ImplFrame as _;
+                let url = CefStringUtf16::from(&frame.url());
+                frame.load_url(Some(&url));
+            }
+            super::repaint_requested();
         }
     }
 }
@@ -269,6 +313,7 @@ pub(crate) fn open(id: &str, url: &str, width: i32, height: i32, scale: f32) {
         ViewDisplay::new(id.to_string()),
         ViewDownload::new(id.to_string()),
         super::context_menu::ViewContextMenu::new(id.to_string()),
+        ViewRequests::new(id.to_string()),
     );
     let window_info = WindowInfo {
         windowless_rendering_enabled: 1,

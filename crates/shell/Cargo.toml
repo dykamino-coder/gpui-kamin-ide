@@ -30,6 +30,7 @@ mimalloc.workspace = true
 smol = "2"
 kamin-model.workspace = true
 kamin-sidecar.workspace = true
+kamin-crash.workspace = true
 kamin-ws.workspace = true
 kamin-metrics.workspace = true
 kamin-theme.workspace = true

@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 cef = { version = "150", default-features = false }
+kamin-crash = { path = "../crash" }
 
 [build-dependencies]
 winres = "0.1"

@@ -1,6 +1,6 @@
 {
   "name": "open-claude-bridge",
-  "version": "6.3.116",
+  "version": "6.3.117",
   "description": "Electron desktop app + Node.js server for Claude CLI via PTY",
   "type": "module",
   "main": "./src/index.ts",

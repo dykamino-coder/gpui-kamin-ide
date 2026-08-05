@@ -24,7 +24,6 @@ mod assets;
 mod colors;
 #[cfg(windows)]
 mod contrib_keys;
-mod crash_report;
 mod editor_lsp;
 mod file_names;
 mod fs_watch;
@@ -72,8 +71,10 @@ fn main() {
     job::adopt_children();
 
     // Падение в чужом коде (D3D11, Chromium) уносит процесс молча — ставим
-    // перехватчик, который назовёт модуль и адрес.
-    crash_report::install();
+    // перехватчик, который назовёт модуль и адрес. Отчёт идёт в файл
+    // `<cache>/crash.log`: у packaged GUI-сборки консоли нет, а именно с
+    // машины человека нужны цифры.
+    kamin_crash::install("main", kamin_crash::AfterReport::SystemDialog);
 
     // DirectComposition ВКЛЮЧЁН: непокрытая при ресайзе область окна
     // ПРОЗРАЧНА (просвечивает то, что за окном) — а не чёрные полосы blit

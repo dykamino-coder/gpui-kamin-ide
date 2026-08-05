@@ -35,6 +35,14 @@ static STRETCHED: AtomicU32 = AtomicU32::new(0);
 /// Кадр отрисован пиксель-в-пиксель. Инвариант: exact + stretched == paints.
 static EXACT: AtomicU32 = AtomicU32::new(0);
 
+/// Смерти renderer-процессов за секунду: видно в общей строке, чтобы «панель
+/// застыла» не приходилось искать по чужим логам.
+static RENDERER_DIED: AtomicU32 = AtomicU32::new(0);
+
+pub(crate) fn renderer_died() {
+    RENDERER_DIED.fetch_add(1, Ordering::Relaxed);
+}
+
 pub(crate) fn stretched() {
     STRETCHED.fetch_add(1, Ordering::Relaxed);
 }
@@ -170,6 +178,12 @@ pub(crate) fn report() {
     let ctx_avg = ctx.checked_div(d).unwrap_or(0);
     let stretched = STRETCHED.swap(0, Ordering::Relaxed);
     let exact = EXACT.swap(0, Ordering::Relaxed);
+    let died = RENDERER_DIED.swap(0, Ordering::Relaxed);
+    if died > 0 {
+        emit_line(format!(
+            "[cef] УМЕРЛО renderer-процессов за секунду: {died} (подробности в crash.log)"
+        ));
+    }
     emit_line(format!(
         "[cef] за секунду: кадров {f}, кадров окна {d}, отрисовок {p}, заказов {r}, занято {b}, не тот размер {m}, обрезано {c}, растянуто {stretched}, точно {exact}, кадр окна в среднем {avg} мкс, худший {mx} мкс, из них состояние {ctx_avg} мкс; текстуры {tex} мс, строк дерева {rows}; окно сложило {gf} кадров: сцена {gd} мс, презент {gp} мс (раскладка {g_pre} мс, попадания {g_hit} мс, рисование {g_pnt} мс); узлов на кадр {per}, замеров на кадр {per_meas}, проходов {g_runs}; taffy {g_taffy} мс, замеры {g_measus} мс; переиграно вью {g_reused}; шейпинг: промахов {g_shaped} ({g_shape_ms} мс), из кэша {g_cachedl}"
     ));
