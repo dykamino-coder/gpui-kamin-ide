@@ -1,0 +1,301 @@
+//! Разбор CSS: декларации из `style=""` и правила из `<style>`.
+//!
+//! Своя реализация вместо `cssparser`: по замеру нашего же кода 82% селекторов —
+//! одиночный класс, глубина не больше трёх, комбинаторов `>`/`+` на весь проект
+//! четырнадцать. Полноценная CSS-машина здесь не окупается, а лишняя
+//! зависимость — окупается ещё меньше.
+
+use std::collections::HashMap;
+
+/// Пара «свойство: значение». Значение хранится сырым — разбор откладывается
+/// до момента применения, чтобы неизвестные свойства не стоили ничего.
+pub type Decls = HashMap<String, String>;
+
+/// Одно правило: с чем сопоставлять и что применять.
+#[derive(Clone, Debug)]
+pub struct Rule {
+    pub sel: Selector,
+    pub decls: Decls,
+    /// Порядок в исходнике: при равной специфичности выигрывает последнее.
+    pub order: usize,
+}
+
+/// Простой селектор — ровно то подмножество, которое встречается на практике.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Selector {
+    pub tag: Option<String>,
+    pub id: Option<String>,
+    pub classes: Vec<String>,
+    /// Псевдокласс `:hover` и т.п. — применяется отдельным слоем.
+    pub pseudo: Option<String>,
+    /// Предок для `.a .b` и `.a > .b`. Прямой ли — во втором поле.
+    pub ancestor: Option<Box<(Selector, bool)>>,
+}
+
+impl Selector {
+    /// Специфичность как в CSS: (id, класс+псевдо, тег). Сравнивается лексикографически.
+    pub fn specificity(&self) -> (u32, u32, u32) {
+        let mut s = (
+            self.id.is_some() as u32,
+            self.classes.len() as u32 + self.pseudo.is_some() as u32,
+            self.tag.is_some() as u32,
+        );
+        if let Some(anc) = &self.ancestor {
+            let a = anc.0.specificity();
+            s = (s.0 + a.0, s.1 + a.1, s.2 + a.2);
+        }
+        s
+    }
+
+    fn parse_compound(raw: &str) -> Option<Selector> {
+        let s = raw.trim();
+        if s.is_empty() || s == "*" {
+            return Some(Selector {
+                tag: None,
+                id: None,
+                classes: vec![],
+                pseudo: None,
+                ancestor: None,
+            });
+        }
+        let mut sel = Selector {
+            tag: None,
+            id: None,
+            classes: vec![],
+            pseudo: None,
+            ancestor: None,
+        };
+        // Разбираем слева направо: имя тега идёт первым, дальше .класс/#id/:псевдо.
+        let mut rest = s;
+        let head_end = rest.find(['.', '#', ':']).unwrap_or(rest.len());
+        if head_end > 0 {
+            sel.tag = Some(rest[..head_end].trim().to_ascii_lowercase());
+        }
+        rest = &rest[head_end..];
+        while !rest.is_empty() {
+            let kind = rest.as_bytes()[0] as char;
+            let body = &rest[1..];
+            let end = body.find(['.', '#', ':']).unwrap_or(body.len());
+            let name = &body[..end];
+            match kind {
+                '.' => sel.classes.push(name.to_string()),
+                '#' => sel.id = Some(name.to_string()),
+                ':' => sel.pseudo = Some(name.trim_start_matches(':').to_ascii_lowercase()),
+                _ => return None,
+            }
+            rest = &body[end..];
+        }
+        Some(sel)
+    }
+
+    /// `.card > .title`, `.card .title`, `div.card` — всё сюда.
+    pub fn parse(raw: &str) -> Option<Selector> {
+        // Атрибутные селекторы и прочее, чего мы не умеем, отбрасываем целиком:
+        // тихо применить половину правила хуже, чем не применить его совсем.
+        if raw.contains('[') || raw.contains('~') || raw.contains('+') || raw.contains("::") {
+            return None;
+        }
+        let mut parts: Vec<(String, bool)> = vec![];
+        for chunk in raw.split('>') {
+            let direct = !parts.is_empty();
+            let mut first = true;
+            for word in chunk.split_whitespace() {
+                parts.push((word.to_string(), direct && first));
+                first = false;
+            }
+        }
+        let (last, head) = parts.split_last()?;
+        let mut sel = Selector::parse_compound(&last.0)?;
+        // Флаг «предок обязан быть прямым» принадлежит ПОТОМКУ, а не предку:
+        // в `.a > .b` его несёт `.b`. Поэтому при подъёме вверх флаг берётся
+        // от текущего узла, а не от того, которого мы сейчас разбираем.
+        let mut direct = last.1;
+        let mut cursor = &mut sel;
+        for (raw_part, part_direct) in head.iter().rev() {
+            let parent = Selector::parse_compound(raw_part)?;
+            cursor.ancestor = Some(Box::new((parent, direct)));
+            direct = *part_direct;
+            cursor = &mut cursor.ancestor.as_mut()?.0;
+        }
+        Some(sel)
+    }
+}
+
+/// Разбор `style="a: 1; b: 2"`.
+pub fn parse_decls(raw: &str) -> Decls {
+    let mut out = Decls::new();
+    for item in split_top_level(raw, ';') {
+        let Some((k, v)) = item.split_once(':') else {
+            continue;
+        };
+        let key = k.trim().to_ascii_lowercase();
+        let val = v.trim().trim_end_matches("!important").trim();
+        if !key.is_empty() && !val.is_empty() {
+            out.insert(key, val.to_string());
+        }
+    }
+    out
+}
+
+/// Разбор содержимого `<style>` — список правил в порядке появления.
+pub fn parse_stylesheet(css: &str) -> Vec<Rule> {
+    let mut out = vec![];
+    let cleaned = strip_comments(css);
+    let mut rest = cleaned.as_str();
+    let mut order = 0usize;
+    while let Some(brace) = rest.find('{') {
+        let head = rest[..brace].trim();
+        let Some(close) = find_matching(&rest[brace..]) else {
+            break;
+        };
+        let body = &rest[brace + 1..brace + close];
+        rest = &rest[brace + close + 1..];
+        // At-правила (`@media`, `@keyframes`) не поддерживаем: у них другое
+        // тело, и молча применить их содержимое как обычные правила нельзя.
+        if head.starts_with('@') {
+            continue;
+        }
+        let decls = parse_decls(body);
+        if decls.is_empty() {
+            continue;
+        }
+        for one in head.split(',') {
+            if let Some(sel) = Selector::parse(one) {
+                out.push(Rule {
+                    sel,
+                    decls: decls.clone(),
+                    order,
+                });
+                order += 1;
+            }
+        }
+    }
+    out
+}
+
+/// Аргументы функции CSS через запятую, не заходя внутрь вложенных скобок:
+/// `rgba(0,0,0,.4), inset 0 0 2px red` — два аргумента, а не пять.
+pub fn split_args(raw: &str) -> Vec<&str> {
+    split_top_level(raw, ',')
+        .into_iter()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Индекс `}` , парный первой `{`.
+fn find_matching(from_brace: &str) -> Option<usize> {
+    let mut depth = 0i32;
+    for (i, ch) in from_brace.char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn strip_comments(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(start) = rest.find("/*") {
+        out.push_str(&rest[..start]);
+        match rest[start + 2..].find("*/") {
+            Some(end) => rest = &rest[start + 2 + end + 2..],
+            None => return out,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Разрезание по разделителю, не заходя внутрь скобок: `rgba(0, 0, 0, .5)`
+/// содержит запятые, а `grid-template: repeat(2, 1fr)` — и запятые, и скобки.
+fn split_top_level(raw: &str, sep: char) -> Vec<&str> {
+    let mut out = vec![];
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (i, ch) in raw.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            c if c == sep && depth == 0 => {
+                out.push(&raw[start..i]);
+                start = i + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    out.push(&raw[start..]);
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decls_keep_commas_inside_functions() {
+        let d = parse_decls("color: rgba(1, 2, 3, .5); padding : 4px ");
+        assert_eq!(
+            d.get("color").map(String::as_str),
+            Some("rgba(1, 2, 3, .5)")
+        );
+        assert_eq!(d.get("padding").map(String::as_str), Some("4px"));
+    }
+
+    #[test]
+    fn important_is_stripped_not_kept_in_value() {
+        let d = parse_decls("color: red !important");
+        assert_eq!(d.get("color").map(String::as_str), Some("red"));
+    }
+
+    #[test]
+    fn selector_parts_and_specificity() {
+        let s = Selector::parse("div.card#main:hover").unwrap();
+        assert_eq!(s.tag.as_deref(), Some("div"));
+        assert_eq!(s.id.as_deref(), Some("main"));
+        assert_eq!(s.classes, vec!["card".to_string()]);
+        assert_eq!(s.pseudo.as_deref(), Some("hover"));
+        assert_eq!(s.specificity(), (1, 2, 1));
+    }
+
+    #[test]
+    fn descendant_and_child_combinators() {
+        let s = Selector::parse(".card > .title").unwrap();
+        assert_eq!(s.classes, vec!["title".to_string()]);
+        let anc = s.ancestor.as_ref().unwrap();
+        assert_eq!(anc.0.classes, vec!["card".to_string()]);
+        assert!(anc.1, "после > предок обязан быть прямым");
+
+        let s = Selector::parse(".card .title").unwrap();
+        assert!(!s.ancestor.as_ref().unwrap().1, "пробел = любой предок");
+    }
+
+    #[test]
+    fn unsupported_selectors_are_dropped_whole() {
+        assert!(Selector::parse("a[href]").is_none());
+        assert!(Selector::parse("li::before").is_none());
+        assert!(Selector::parse("h1 + p").is_none());
+    }
+
+    #[test]
+    fn stylesheet_skips_at_rules_and_comments() {
+        let css = "
+            /* заметка */
+            .a { color: red }
+            @media (min-width: 10px) { .b { color: blue } }
+            .c, .d { padding: 2px }
+        ";
+        let rules = parse_stylesheet(css);
+        let sels: Vec<String> = rules.iter().map(|r| r.sel.classes.join(",")).collect();
+        assert_eq!(sels, vec!["a", "c", "d"]);
+        assert_eq!(rules[0].decls.get("color").map(String::as_str), Some("red"));
+    }
+}

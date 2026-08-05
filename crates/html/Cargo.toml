@@ -1,0 +1,20 @@
+[package]
+name = "kamin-html"
+version.workspace = true
+edition.workspace = true
+
+# HTML+CSS → элементы GPUI, без браузера.
+#
+# Зачем: наши собственные панели рисует CEF только потому, что написаны на
+# HTML; каждый его renderer стоит 100-300 МБ и своей копии данных. Тот HTML,
+# который мы рисуем сами (markdown ответа модели, виджеты ShowWidget), скрипты
+# не выполняет — значит браузер под него не нужен, нужен переводчик разметки в
+# элементы GPUI. Полный охват CSS не ставится целью и недостижим; охват
+# измерен по нашему же коду и задокументирован в `docs/html-css-mapping.html`.
+
+[dependencies]
+gpui.workspace = true
+html5ever = "0.27"
+markup5ever_rcdom = "0.3.0"
+
+[dev-dependencies]

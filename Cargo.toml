@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "1.0.42"
+version = "1.0.43"
 edition = "2024"
 
 [workspace.dependencies]
@@ -20,6 +20,7 @@ kamin-ws = { path = "crates/ws" }
 kamin-model = { path = "crates/model" }
 kamin-sidecar = { path = "crates/sidecar" }
 kamin-crash = { path = "crates/crash" }
+kamin-html = { path = "crates/html" }
 
 # Perf-профиль из plan/10 (DLP-иммунитет: mimalloc в shell; размер/скорость)
 [profile.release]
