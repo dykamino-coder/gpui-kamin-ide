@@ -10,12 +10,13 @@
 //!
 //!     cargo run -p kamin-html --example demo
 
+use gpui::ScrollHandle;
 use gpui::{
     AppContext as _, Application, Bounds, Context, Entity, InteractiveElement, IntoElement,
     ParentElement, Render, StatefulInteractiveElement, Styled, Window, WindowBounds, WindowOptions,
     div, px, rgb, size,
 };
-use kamin_html::{Document, RenderOpts, render_block};
+use kamin_html::{Document, RenderOpts, render_block, scroll::scroll_area};
 use std::rc::Rc;
 
 const INK: u32 = 0xe6e6ee;
@@ -32,7 +33,85 @@ const DOC: &str = r##"
   .muted   { color: #9aa0b4; font-size: 12px }
   .grad    { background: linear-gradient(90deg, #3b5bdb, #2b8a3e);
              border-radius: 6px; padding: 10px; color: #ffffff }
+  .btn     { background: #3d3f51; color: #e6e6ee; border: 1px solid #4a4a5a;
+             border-radius: 4px; padding: 3px 10px; font-size: 12px }
+  .btn:hover { background: #4a4d63 }
+  .danger  { border-color: #c92a2a; color: #ff8787 }
+  blockquote { color: #b9bcc9 }
 </style>
+
+<div class="card">
+  <p class="title">Формы</p>
+  <div class="row" style="flex-wrap: wrap; gap: 8px">
+    <input type="text" value="заполненное поле">
+    <input type="text" placeholder="подсказка">
+    <input type="checkbox" checked><span class="muted">флажок включён</span>
+    <input type="checkbox"><span class="muted">выключен</span>
+    <input type="radio" checked><span class="muted">переключатель</span>
+    <select><option>Первый</option><option selected>Выбранный</option></select>
+    <input type="color" value="#3b5bdb">
+  </div>
+  <div style="margin-top: 10px">
+    <input type="range" min="0" max="100" value="70">
+  </div>
+  <div style="margin-top: 10px">
+    <progress value="0.62" max="1"></progress>
+  </div>
+  <div style="margin-top: 10px">
+    <textarea rows="2" placeholder="многострочное поле"></textarea>
+  </div>
+</div>
+
+<div class="card">
+  <p class="title">Кнопки и компоненты в таблице</p>
+  <table>
+    <tr><th>Проект</th><th>Прогресс</th><th>Действия</th></tr>
+    <tr>
+      <td>Первый</td>
+      <td><progress value="0.8" max="1"></progress></td>
+      <td>
+        <div class="row" style="gap: 6px">
+          <button class="btn">Открыть</button>
+          <button class="btn danger">Удалить</button>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>Второй</td>
+      <td><progress value="0.25" max="1"></progress></td>
+      <td>
+        <div class="row" style="gap: 6px">
+          <span class="chip">в работе</span>
+          <input type="checkbox" checked>
+        </div>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div class="card">
+  <p class="title">Позиционирование и оверлей</p>
+  <div style="position: relative; height: 90px; background: #22232e; border-radius: 6px">
+    <span class="muted" style="position: absolute; top: 8px; left: 10px">absolute сверху слева</span>
+    <span class="chip" style="position: absolute; top: 8px; right: 10px">привязка к углу</span>
+    <div style="position: absolute; left: 50%; top: 46px; background: #3d3f51;
+                border: 1px solid #5c7cfa; border-radius: 6px; padding: 6px 10px;
+                box-shadow: 0 6px 18px rgba(0,0,0,.6)">
+      оверлей поверх содержимого
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <p class="title">Вложенные списки и цитата</p>
+  <ul>
+    <li>Верхний уровень
+      <ul><li>Вложенный пункт</li><li>Ещё один</li></ul>
+    </li>
+    <li>Второй верхний</li>
+  </ul>
+  <blockquote>Цитата с полосой слева — проверка border-left и отступа.</blockquote>
+</div>
 
 <div class="card">
   <p class="title">Бокс, флекс и текст</p>
@@ -87,6 +166,7 @@ const DOC: &str = r##"
 }</pre>
 </div>
 
+
 <div class="card">
   <p class="title">Прокрутка</p>
   <p class="muted">Ниже — намеренно длинный хвост, чтобы проверить и полосу
@@ -97,6 +177,8 @@ const DOC: &str = r##"
 struct Demo {
     /// Разобран ОДИН раз: на кадре только отрисовка.
     doc: Rc<Document>,
+    /// Состояние прокрутки живёт между кадрами — иначе оно сбрасывалось бы.
+    scroll: ScrollHandle,
 }
 
 impl Demo {
@@ -111,6 +193,7 @@ impl Demo {
         }
         Demo {
             doc: Rc::new(Document::new(&html, "")),
+            scroll: ScrollHandle::new(),
         }
     }
 }
@@ -133,20 +216,15 @@ impl Render for Demo {
             .p(px(18.))
             .flex()
             .flex_col()
-            .child(
-                div()
-                    .id("doc")
-                    .flex_1()
-                    .min_h(px(0.))
-                    .overflow_y_scroll()
-                    .flex()
-                    .flex_col()
-                    .children((0..self.doc.top_level_blocks()).filter_map(|ix| {
-                        // Блоки собираются по одному — той же функцией, которой
-                        // их берёт виртуализованный список в реальном приложении.
-                        render_block(self.doc.nodes(), ix, &opts)
-                    })),
-            )
+            .child(scroll_area(
+                "doc",
+                &self.scroll,
+                (0..self.doc.top_level_blocks()).filter_map(|ix| {
+                    // Блоки собираются по одному — той же функцией, которой их
+                    // берёт виртуализованный список в реальном приложении.
+                    render_block(self.doc.nodes(), ix, &opts)
+                }),
+            ))
             .child(
                 div()
                     .pt(px(8.))

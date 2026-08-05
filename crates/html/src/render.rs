@@ -107,6 +107,9 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
 
 /// Не-текстовые инлайн-элементы, которые в поток встроить нельзя.
 fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+    if let Some(el) = crate::forms::element(e, &e.style) {
+        return Some(el);
+    }
     match e.tag.as_str() {
         "img" => Some(image(e)),
         "svg" => crate::svg::element(e).or_else(|| Some(image(e))),
@@ -137,6 +140,11 @@ fn has_own_box(c: &Computed) -> bool {
 /// Блочный элемент.
 fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let merged = inline::inherit(inherited, &e.style);
+    // Элементы форм рисуются своим набором: без него поле ввода — пустой
+    // прямоугольник, что выглядит поломкой разметки.
+    if let Some(el) = crate::forms::element(e, &e.style) {
+        return el;
+    }
     match e.tag.as_str() {
         "img" => image(e),
         // Рисунок не разобрался — показываем запасной текст, а не пустоту.
@@ -253,6 +261,11 @@ fn pre(e: &Element, inherited: &Computed, _opts: &RenderOpts) -> AnyElement {
         .into_any_element()
 }
 
+/// Текст поддерева — нужен формам (`<textarea>`, `<option>`).
+pub fn gather_text_public(nodes: &[Node], out: &mut String) {
+    gather_text(nodes, out)
+}
+
 fn gather_text(nodes: &[Node], out: &mut String) {
     for n in nodes {
         match n {
@@ -286,38 +299,59 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         .unwrap_or(1)
         .max(1) as u16;
 
-    let mut out = vec![];
+    // ОДНА сетка на всю таблицу, а не по сетке на строку. Со строками-сетками
+    // ширина колонки считалась внутри строки, и соседние строки расходились —
+    // заголовок стоял над одним столбцом, значения под другим. Колонки общие
+    // только если ячейки живут в общей сетке.
+    let mut cells: Vec<AnyElement> = vec![];
     for row in rows {
-        let merged = inline::inherit(inherited, &row.style);
-        let cells: Vec<AnyElement> = row
-            .children
-            .iter()
-            .filter_map(|c| match c {
-                Node::Element(cell) if cell.tag == "td" || cell.tag == "th" => {
-                    let cm = inline::inherit(&merged, &cell.style);
-                    Some(
-                        styled_div(cell)
-                            .flex()
-                            .flex_col()
-                            .children(blocks(&cell.children, &cm, opts))
-                            .into_any_element(),
-                    )
-                }
-                _ => None,
-            })
-            .collect();
-        out.push(
-            styled_div(row)
-                .grid()
-                .grid_template_cols(track_list(cols))
-                .children(cells)
-                .into_any_element(),
-        );
+        let row_style = inline::inherit(inherited, &row.style);
+        for child in &row.children {
+            let Node::Element(cell) = child else { continue };
+            if cell.tag != "td" && cell.tag != "th" {
+                continue;
+            }
+            let cm = inline::inherit(&row_style, &cell.style);
+            // Фон и рамка строки переносятся на её ячейки: своей строки как
+            // элемента больше нет, а зебра и разделители нужны.
+            let mut d = styled_div(cell);
+            if let Some(bg) = row.style.background {
+                d = d.bg(bg.to_hsla());
+            }
+            cells.push(
+                d.flex()
+                    .flex_col()
+                    .children(blocks(&cell.children, &cm, opts))
+                    .into_any_element(),
+            );
+        }
     }
+
+    // Заголовок таблицы: браузер рисует его над сеткой, а не ячейкой.
+    let caption = e.children.iter().find_map(|c| match c {
+        Node::Element(cap) if cap.tag == "caption" => {
+            let cm = inline::inherit(inherited, &cap.style);
+            Some(
+                styled_div(cap)
+                    .flex()
+                    .flex_col()
+                    .children(blocks(&cap.children, &cm, opts))
+                    .into_any_element(),
+            )
+        }
+        _ => None,
+    });
+
     styled_div(e)
         .flex()
         .flex_col()
-        .children(out)
+        .children(caption)
+        .child(
+            div()
+                .grid()
+                .grid_template_cols(track_list(cols))
+                .children(cells),
+        )
         .into_any_element()
 }
 

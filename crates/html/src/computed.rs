@@ -144,6 +144,10 @@ pub struct Computed {
     pub flex_grow: Option<f32>,
     pub flex_shrink: Option<f32>,
     pub align_items: Option<Align>,
+    /// `align-self` — про сам элемент; отдельное поле, иначе он выравнивал
+    /// бы своих детей вместо себя.
+    pub align_self: Option<Align>,
+    pub flex_basis: Option<Len>,
     pub justify_content: Option<Justify>,
     pub gap: Option<(Option<Len>, Option<Len>)>,
     pub grid_cols: Option<u16>,
@@ -182,24 +186,52 @@ pub struct Computed {
     pub line_height: Option<Len>,
     pub text_align: Option<TextAlign>,
     pub nowrap: Option<bool>,
+    /// Переводы строк значимы (`white-space: pre*`).
+    pub preserve_newlines: Option<bool>,
     pub monospace: Option<bool>,
+    /// `border-color: currentColor` — цвет берётся из `color` того же узла.
+    pub border_color_is_current: bool,
 }
 
 impl Computed {
     /// Собрать стиль узла: правила таблицы (по специфичности), затем `style=""`.
     pub fn resolve(matched: &mut Vec<&Rule>, inline: &Decls) -> Computed {
+        Computed::resolve_with_vars(matched, inline, &Decls::new())
+    }
+
+    /// То же с переменными темы.
+    pub fn resolve_with_vars(matched: &mut Vec<&Rule>, inline: &Decls, vars: &Decls) -> Computed {
         matched.sort_by_key(|r| (r.sel.specificity(), r.order));
         let mut c = Computed::default();
         for rule in matched.iter() {
-            c.apply_decls(&rule.decls);
+            c.apply_decls_with_vars(&rule.decls, vars);
         }
-        c.apply_decls(inline);
+        c.apply_decls_with_vars(inline, vars);
+        // `currentColor` в рамке и фоне значит «цвет текста этого элемента» —
+        // подставляем уже после того, как цвет стал известен.
+        if c.border_color_is_current {
+            c.border_color = c.color;
+        }
         c
     }
 
     pub fn apply_decls(&mut self, d: &Decls) {
         for (k, v) in d {
             self.apply_one(k, v);
+        }
+    }
+
+    /// То же, но со словарём переменных: `var(--x)` подставляется значением.
+    ///
+    /// Без этого современные темы не работают вовсе — они целиком построены на
+    /// переменных, и каждое такое объявление молча терялось.
+    pub fn apply_decls_with_vars(&mut self, d: &Decls, vars: &Decls) {
+        for (k, v) in d {
+            if k.starts_with("--") {
+                continue;
+            }
+            let resolved = resolve_vars(v, vars);
+            self.apply_one(k, &resolved);
         }
     }
 
@@ -238,7 +270,18 @@ impl Computed {
                     self.flex_grow = Some(g);
                 }
             }
-            "align-items" | "align-self" => {
+            "flex-basis" => self.flex_basis = Len::parse(v),
+            "align-self" => {
+                self.align_self = match v {
+                    "center" => Some(Align::Center),
+                    "flex-start" | "start" => Some(Align::Start),
+                    "flex-end" | "end" => Some(Align::End),
+                    "stretch" => Some(Align::Stretch),
+                    "baseline" => Some(Align::Baseline),
+                    _ => self.align_self,
+                }
+            }
+            "align-items" => {
                 self.align_items = match v {
                     "center" => Some(Align::Center),
                     "flex-start" | "start" => Some(Align::Start),
@@ -297,7 +340,13 @@ impl Computed {
             "border-bottom" => self.apply_border_shorthand(v, Some(2)),
             "border-left" => self.apply_border_shorthand(v, Some(3)),
             "border-width" => self.border_width = Sides::shorthand(v),
-            "border-color" => self.border_color = Color::parse(v),
+            "border-color" => {
+                if v.eq_ignore_ascii_case("currentcolor") {
+                    self.border_color_is_current = true;
+                } else {
+                    self.border_color = Color::parse(v);
+                }
+            }
             "border-radius" => self.radius = radius_shorthand(v),
             "border-top-left-radius" => self.radius.tl = Len::parse(v),
             "border-top-right-radius" => self.radius.tr = Len::parse(v),
@@ -306,9 +355,15 @@ impl Computed {
 
             "position" => {
                 self.position = match v {
-                    "absolute" | "fixed" => Some(Position::Absolute),
-                    "relative" | "sticky" => Some(Position::Relative),
+                    "absolute" => Some(Position::Absolute),
+                    "relative" => Some(Position::Relative),
                     "static" => Some(Position::Static),
+                    // `fixed` и `sticky` раньше молча подменялись на
+                    // `absolute`/`relative`. Это выглядело как поддержка, а
+                    // вело себя иначе: фиксированный элемент уезжал вместе с
+                    // прокруткой, липкий переставал липнуть. Честнее не
+                    // применять ничего — расхождение видно сразу.
+                    "fixed" | "sticky" => self.position,
                     _ => self.position,
                 }
             }
@@ -370,7 +425,16 @@ impl Computed {
                     _ => self.text_align,
                 }
             }
-            "white-space" => self.nowrap = Some(v == "nowrap" || v == "pre"),
+            // `pre` сохраняет переводы строк — это не то же самое, что запрет
+            // переноса: раньше `pre` помечался как `nowrap`, и текст склеивался
+            // в одну строку.
+            "white-space" => {
+                self.nowrap = Some(v == "nowrap");
+                self.preserve_newlines = Some(matches!(
+                    v,
+                    "pre" | "pre-wrap" | "pre-line" | "break-spaces"
+                ));
+            }
             _ => {}
         }
     }
@@ -449,6 +513,35 @@ fn radius_shorthand(raw: &str) -> Corners {
         },
         _ => Corners::default(),
     }
+}
+
+/// Подстановка `var(--x)` и `var(--x, запасное)`.
+fn resolve_vars(value: &str, vars: &Decls) -> String {
+    if !value.contains("var(") {
+        return value.to_string();
+    }
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(at) = rest.find("var(") {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + 4..];
+        let Some(close) = after.find(')') else {
+            out.push_str(&rest[at..]);
+            return out;
+        };
+        let inner = &after[..close];
+        let (name, fallback) = match inner.split_once(',') {
+            Some((n, f)) => (n.trim(), f.trim()),
+            None => (inner.trim(), ""),
+        };
+        match vars.get(name) {
+            Some(v) => out.push_str(v),
+            None => out.push_str(fallback),
+        }
+        rest = &after[close + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Одна дорожка сетки в терминах CSS.

@@ -7,7 +7,8 @@
 //! пользователя, а не в тесте.
 
 use crate::computed::{
-    Align, Computed, Corners, Display, FlexDir, Justify, Overflow, Position, Sides, Track,
+    Align, Computed, Corners, Display, FlexDir, Justify, Overflow, Position, Sides, TextAlign,
+    Track,
 };
 use crate::value::Len;
 use gpui::{Div, InteractiveElement, Styled, px, relative};
@@ -130,6 +131,20 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         Some(Align::Baseline) => d = d.items_baseline(),
         Some(Align::Stretch) | None => {}
     }
+    // `align-self` — про САМ элемент, а не про его детей. Раньше оба свойства
+    // писались в одно поле, и элемент выравнивал содержимое вместо себя.
+    if let Some(a) = c.align_self {
+        d.style().align_self = Some(match a {
+            Align::Center => gpui::AlignItems::Center,
+            Align::Start => gpui::AlignItems::FlexStart,
+            Align::End => gpui::AlignItems::FlexEnd,
+            Align::Baseline => gpui::AlignItems::Baseline,
+            Align::Stretch => gpui::AlignItems::Stretch,
+        });
+    }
+    if let Some(b) = c.flex_basis {
+        d = d.flex_basis(len_to_gpui(b));
+    }
     match c.justify_content {
         Some(Justify::Center) => d = d.justify_center(),
         Some(Justify::Start) => d = d.justify_start(),
@@ -179,7 +194,17 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     d = apply_radius(d, &c.radius);
 
     match c.position {
-        Some(Position::Absolute) => d = d.absolute(),
+        Some(Position::Absolute) => {
+            d = d.absolute();
+            // Абсолютный элемент, у которого задан только один край, не имеет
+            // определённой ширины — раскладка сжимает его до самого узкого
+            // содержимого, и текст встаёт столбиком по букве. В браузере такой
+            // элемент занимает ширину содержимого без переносов; повторяем это.
+            let horizontal = c.inset.left.is_some() && c.inset.right.is_some();
+            if !horizontal && c.width.is_none() {
+                d = d.flex_shrink_0().whitespace_nowrap();
+            }
+        }
         Some(Position::Relative) => d = d.relative(),
         // `static` в GPUI недостижим: элемент всегда участвует в потоке
         // относительно родителя, что соответствует `relative`.
@@ -225,7 +250,18 @@ enum SideKind {
 fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
     for (val, side) in [(s.top, 0u8), (s.right, 1), (s.bottom, 2), (s.left, 3)] {
         let Some(l) = val else { continue };
+        // `margin: auto` — это центрирование блока, а не «нет значения».
+        // Отступы и рамки с `auto` смысла не имеют, их пропускаем.
         if l == Len::Auto {
+            if matches!(kind, SideKind::Margin) {
+                d.style().margin.top = None;
+                d = match side {
+                    0 => d.mt(gpui::Length::Auto),
+                    1 => d.mr(gpui::Length::Auto),
+                    2 => d.mb(gpui::Length::Auto),
+                    _ => d.ml(gpui::Length::Auto),
+                };
+            }
             continue;
         }
         let g = len_to_gpui(l);
@@ -320,6 +356,14 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
     }
     if c.nowrap == Some(true) {
         d = d.whitespace_nowrap();
+    }
+    // Выравнивание текста разбиралось, но до элемента не доходило — поле
+    // оставалось мёртвым, и `text-align: center` не делал ничего.
+    match c.text_align {
+        Some(TextAlign::Center) => d = d.text_center(),
+        Some(TextAlign::Right) => d = d.text_right(),
+        Some(TextAlign::Left) => d = d.text_left(),
+        None => {}
     }
     if c.monospace == Some(true) {
         d = d.font_family("JetBrains Mono");

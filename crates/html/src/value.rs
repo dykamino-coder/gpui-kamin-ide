@@ -87,6 +87,15 @@ impl Color {
         {
             return Self::parse_rgb(inner);
         }
+        // `hsl()` — ирония: внутреннее представление GPUI и есть HSL, но записи
+        // этой не понимали, и цвет молча терялся.
+        if let Some(inner) = s
+            .strip_prefix("hsla(")
+            .or_else(|| s.strip_prefix("hsl("))
+            .and_then(|v| v.strip_suffix(')'))
+        {
+            return Self::parse_hsl(inner);
+        }
         named(s)
     }
 
@@ -130,6 +139,36 @@ impl Color {
             }),
             _ => None,
         }
+    }
+
+    /// `hsl(210 40% 50% / 80%)` и `hsl(210, 40%, 50%)`.
+    fn parse_hsl(inner: &str) -> Option<Self> {
+        let cleaned = inner.replace('/', " ");
+        let parts: Vec<&str> = cleaned
+            .split([',', ' '])
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .collect();
+        if parts.len() < 3 {
+            return None;
+        }
+        let h = parts[0].trim_end_matches("deg").parse::<f32>().ok()? / 360.0;
+        let s_ = parts[1].trim_end_matches('%').parse::<f32>().ok()? / 100.0;
+        let l = parts[2].trim_end_matches('%').parse::<f32>().ok()? / 100.0;
+        let a = parts.get(3).map_or(Some(1.0), |p| {
+            if let Some(pct) = p.strip_suffix('%') {
+                pct.parse::<f32>().ok().map(|v| v / 100.0)
+            } else {
+                p.parse::<f32>().ok()
+            }
+        })?;
+        let rgba: gpui::Rgba = gpui::hsla(h, s_, l, a).into();
+        Some(Color {
+            r: rgba.r,
+            g: rgba.g,
+            b: rgba.b,
+            a: rgba.a,
+        })
     }
 
     fn parse_rgb(inner: &str) -> Option<Self> {

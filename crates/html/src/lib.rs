@@ -18,8 +18,10 @@ pub mod computed;
 pub mod css;
 pub mod doc;
 pub mod dom;
+pub mod forms;
 pub mod inline;
 pub mod render;
+pub mod scroll;
 pub mod svg;
 pub mod value;
 

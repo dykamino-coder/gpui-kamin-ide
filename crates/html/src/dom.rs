@@ -114,9 +114,28 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
         });
     }
 
+    // Переменные темы: `:root { --x: … }` и `--x` в инлайн-стиле корня.
+    // Собираются до обхода, потому что нужны каждому узлу.
+    let vars = collect_vars(&rules);
+
     let mut out = vec![];
-    walk(&dom.document, &rules, &[], &mut out);
+    walk(&dom.document, &rules, &vars, &[], &mut out);
     out
+}
+
+/// Кастомные свойства из правил. Селектор не важен: в документе переменные
+/// почти всегда объявлены на корне, а разбирать их область видимости — это
+/// уже полноценный каскад, которого мы намеренно избегаем.
+fn collect_vars(rules: &[Rule]) -> Decls {
+    let mut vars = Decls::new();
+    for rule in rules {
+        for (k, v) in &rule.decls {
+            if k.starts_with("--") {
+                vars.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    vars
 }
 
 /// Содержимое всех `<style>` документа — html5ever кладёт его текстом внутрь.
@@ -144,7 +163,7 @@ struct Ancestor {
     classes: Vec<String>,
 }
 
-fn walk(handle: &Handle, rules: &[Rule], path: &[Ancestor], out: &mut Vec<Node>) {
+fn walk(handle: &Handle, rules: &[Rule], vars: &Decls, path: &[Ancestor], out: &mut Vec<Node>) {
     match &handle.data {
         NodeData::Text { contents } => {
             let text = contents.borrow().to_string();
@@ -186,7 +205,7 @@ fn walk(handle: &Handle, rules: &[Rule], path: &[Ancestor], out: &mut Vec<Node>)
                 .iter()
                 .filter(|r| matches(&r.sel, &me, path))
                 .collect();
-            let style = Computed::resolve(&mut matched, &inline_decls);
+            let style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
             // Правила с `:hover` собираются отдельным слоем: в базовый стиль
             // им нельзя, иначе элемент выглядел бы всегда наведённым.
             let mut hovered: Vec<&Rule> = rules
@@ -205,7 +224,7 @@ fn walk(handle: &Handle, rules: &[Rule], path: &[Ancestor], out: &mut Vec<Node>)
             path2.push(me);
             let mut children = vec![];
             for child in handle.children.borrow().iter() {
-                walk(child, rules, &path2, &mut children);
+                walk(child, rules, vars, &path2, &mut children);
             }
 
             out.push(Node::Element(Element {
@@ -219,7 +238,7 @@ fn walk(handle: &Handle, rules: &[Rule], path: &[Ancestor], out: &mut Vec<Node>)
         }
         _ => {
             for child in handle.children.borrow().iter() {
-                walk(child, rules, path, out);
+                walk(child, rules, vars, path, out);
             }
         }
     }
@@ -352,6 +371,28 @@ mod tests {
                 collect_spans(&e.children, out);
             }
         }
+    }
+
+    #[test]
+    fn css_variables_are_substituted() {
+        // На переменных построены все современные темы: без подстановки такое
+        // объявление терялось молча.
+        let nodes = parse(":root { --brand: #00ff00 } .b { color: var(--brand) }", "");
+        let _ = &nodes;
+        let nodes = parse(
+            "<style>:root { --brand: #00ff00 } .b { color: var(--brand) }</style>             <div class=\"b\">текст</div>",
+            "",
+        );
+        assert_eq!(first_element(&nodes).style.color.map(|c| c.g), Some(1.0));
+    }
+
+    #[test]
+    fn variable_fallback_is_used_when_undefined() {
+        let nodes = parse(
+            "<style>.b { color: var(--missing, #0000ff) }</style><div class=\"b\">t</div>",
+            "",
+        );
+        assert_eq!(first_element(&nodes).style.color.map(|c| c.b), Some(1.0));
     }
 
     #[test]
