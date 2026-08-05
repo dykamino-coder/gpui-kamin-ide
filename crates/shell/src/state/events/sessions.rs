@@ -79,37 +79,34 @@ impl RootView {
                             }
                             _ => {}
                         }
-                        // БУТ: применить лейаут АКТИВНОЙ сессии из её снапшота.
-                        // Раньше пер-сессионный лейаут читался ТОЛЬКО при
-                        // переключении сессий (ниже), а на старте брался
-                        // глобальный layout.json — в который писали частичные
-                        // патчи разных сессий. Итог: «после перезагрузки лейаут
-                        // не тот, каким оставил, а какой-то более ранний».
-                        // Делается ОДИН раз за запуск, до первого показа.
+                        // БУТ: starred preset сильнее снапшота активной сессии,
+                        // затем идёт уже загруженный layout.json/factory default.
+                        // Один порядок исключает поздний откат после первого
+                        // кадра, когда session snapshot приходит от хоста.
+                        let mut sync_boot_layout = false;
                         if !self.layout_booted {
                             self.layout_booted = true;
-                            if let Some(snapshot) = snap
+                            let session_layout = snap
                                 .active_session_id
                                 .as_ref()
                                 .and_then(|id| snap.sessions.iter().find(|s| s.id == *id))
-                                .and_then(|s| s.layout.clone())
-                            {
-                                self.sidebar_visible = snapshot.sidebar_visible;
-                                self.layout = snapshot;
-                                // Зеркалим полный снапшот, чтобы layout.json не
-                                // расходился с применённым.
-                                if let Ok(mut v) = serde_json::to_value(&self.layout) {
-                                    v["sidebarVisible"] =
-                                        serde_json::Value::Bool(self.sidebar_visible);
-                                    crate::layout_store::save_patch(v);
-                                }
-                                cx.notify();
-                            }
+                                .and_then(|s| s.layout.clone());
+                            self.layout = crate::layout_store::select_startup_layout(
+                                crate::layout_store::load_default_preset(),
+                                session_layout,
+                                Some(self.layout.clone()),
+                            );
+                            self.sidebar_visible = self.layout.sidebar_visible;
+                            sync_boot_layout = snap.active_session_id.is_some();
+                            cx.notify();
                         }
                         // Хост шлёт снапшот на каждый чих; одинаковый —
                         // не повод пересобирать сайдбар.
                         if self.sessions.as_ref() != Some(&snap) {
                             self.sessions = Some(snap)
+                        }
+                        if sync_boot_layout {
+                            self.persist_active_session_layout();
                         }
                     }
                     Err(e) => eprintln!("sessions snapshot parse failed: {e}"),
