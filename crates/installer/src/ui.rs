@@ -6,7 +6,7 @@ use gpui::{
     App, AppContext as _, Application, Bounds, Context, Hsla, IntoElement, ParentElement, Render,
     Styled, Window, WindowBounds, WindowOptions, black, div, hsla, point, px, rgb, size,
 };
-use std::sync::atomic::{AtomicU8, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 /// Прогресс 0..100 и флаг завершения — установка идёт в фоновом потоке,
 /// окно только рисует их раз в кадр.
@@ -77,22 +77,31 @@ impl Render for Setup {
             )
             // Полоса: трек + заполнение градиентом.
             .child(
-                div()
-                    .w_full()
-                    .h(px(10.0))
-                    .rounded(px(5.0))
-                    .bg(track)
-                    .child(
-                        div()
-                            .h_full()
-                            .rounded(px(5.0))
-                            .w(gpui::relative(f32::from(pct) / 100.0))
-                            .bg(gpui::linear_gradient(
-                                90.0,
-                                gpui::linear_color_stop(if failed { hsla(0.0, 0.7, 0.55, 1.0) } else { accent_a }, 0.0),
-                                gpui::linear_color_stop(if failed { hsla(0.02, 0.7, 0.5, 1.0) } else { accent_b }, 1.0),
-                            )),
-                    ),
+                div().w_full().h(px(10.0)).rounded(px(5.0)).bg(track).child(
+                    div()
+                        .h_full()
+                        .rounded(px(5.0))
+                        .w(gpui::relative(f32::from(pct) / 100.0))
+                        .bg(gpui::linear_gradient(
+                            90.0,
+                            gpui::linear_color_stop(
+                                if failed {
+                                    hsla(0.0, 0.7, 0.55, 1.0)
+                                } else {
+                                    accent_a
+                                },
+                                0.0,
+                            ),
+                            gpui::linear_color_stop(
+                                if failed {
+                                    hsla(0.02, 0.7, 0.5, 1.0)
+                                } else {
+                                    accent_b
+                                },
+                                1.0,
+                            ),
+                        )),
+                ),
             )
             .child(
                 div()
@@ -122,19 +131,26 @@ pub fn run_window(version: String) {
                     size: win,
                 }
             })
-            .unwrap_or(Bounds { origin: point(px(0.0), px(0.0)), size: win });
+            .unwrap_or(Bounds {
+                origin: point(px(0.0), px(0.0)),
+                size: win,
+            });
         let opts = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             titlebar: None,
             is_movable: true,
-            is_resizable: false,     // фиксированный размер (запрос юзера)
+            is_resizable: false, // фиксированный размер (запрос юзера)
             is_minimizable: false,
             window_min_size: Some(win),
             ..Default::default()
         };
         let _ = black();
         let handle = cx
-            .open_window(opts, |_w, cx| cx.new(|_| Setup { version: version.clone() }))
+            .open_window(opts, |_w, cx| {
+                cx.new(|_| Setup {
+                    version: version.clone(),
+                })
+            })
             .expect("open setup window");
 
         // На передний план: gpui открывает окно без фокуса, и оно всплывало

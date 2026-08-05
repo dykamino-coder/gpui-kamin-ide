@@ -23,9 +23,9 @@ pub fn phosphor_path(icon: &str) -> Option<&'static str> {
 pub fn codicon_glyph(icon: &str) -> &'static str {
     match icon {
         // Bridge-вклады шлют id контейнера, а не имя кодикона
-        "claudeBridgePlan" => "\u{eab3}",   // checklist
-        "claudeBridgeTodos" => "\u{eb67}",  // tasklist
-        "claudeBridgeAgents" => "\u{ec20}", // robot
+        "claudeBridgePlan" => "\u{eab3}",       // checklist
+        "claudeBridgeTodos" => "\u{eb67}",      // tasklist
+        "claudeBridgeAgents" => "\u{ec20}",     // robot
         "claudeBridgeToolsUsage" => "\u{eb1c}", // tools
         // Остальное — ОБЩАЯ карта имён: своя 4-строчная таблица её
         // игнорировала и отдавала codicon-file даже для известных имён

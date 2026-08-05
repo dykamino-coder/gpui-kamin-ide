@@ -373,9 +373,8 @@ pub fn deliver(view_id: &str, json: String) {
 }
 
 /// Вью с непрочитанным outbox — pull для них шлётся раз за тик (`pump`).
-static PULL_PENDING: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashSet<String>>,
-> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+static PULL_PENDING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
 /// Разослать отложенные `__kaminPull()` — один вызов на вью за тик.
 pub(crate) fn flush_pending_pulls() {

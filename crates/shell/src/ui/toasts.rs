@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
 use gpui::prelude::*;
-use gpui::{AnyElement, Animation, AnimationExt, SharedString, div, px, relative};
+use gpui::{Animation, AnimationExt, AnyElement, SharedString, div, px, relative};
 use kamin_metrics as m;
 use kamin_theme::Palette;
 use smol::channel::Sender;
@@ -187,7 +187,9 @@ fn toast_card(
 
     let tx_dismiss = tx.clone();
     let id = t.id.clone();
-    let closing = timer.map(|tm| tm.closing.load(Ordering::Relaxed)).unwrap_or(false);
+    let closing = timer
+        .map(|tm| tm.closing.load(Ordering::Relaxed))
+        .unwrap_or(false);
     let mut card = div()
         .id(SharedString::from(format!("toast-{}", t.id)))
         // Тост — верхний слой: клики и ховеры по его телу не должны

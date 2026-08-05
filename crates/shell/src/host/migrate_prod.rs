@@ -78,18 +78,26 @@ fn dedup_sessions_store(own_v: &mut serde_json::Value) -> bool {
             .replace('/', "\\")
             .to_lowercase();
         if folder.is_empty() {
-            format!("name:{}", p.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+            format!(
+                "name:{}",
+                p.get("name").and_then(|v| v.as_str()).unwrap_or("")
+            )
         } else {
             format!("folder:{}", folder.trim_end_matches('\\'))
         }
     };
     let mut id_remap: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     if let Some(projects) = own_v.get_mut("projects").and_then(|v| v.as_array_mut()) {
-        let mut kept_by_key: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut kept_by_key: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         let before = projects.len();
         projects.retain(|p| {
             let key = proj_key(p);
-            let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let id = p
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             match kept_by_key.get(&key) {
                 Some(kept_id) => {
                     id_remap.insert(id, kept_id.clone());
@@ -106,7 +114,11 @@ fn dedup_sessions_store(own_v: &mut serde_json::Value) -> bool {
     if let Some(sessions) = own_v.get_mut("sessions").and_then(|v| v.as_array_mut()) {
         // Переназначить сессии схлопнутых проектов.
         for s in sessions.iter_mut() {
-            let pid = s.get("projectId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let pid = s
+                .get("projectId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             if let Some(new_pid) = id_remap.get(&pid) {
                 s["projectId"] = serde_json::json!(new_pid);
                 changed = true;
@@ -123,7 +135,8 @@ fn dedup_sessions_store(own_v: &mut serde_json::Value) -> bool {
         };
         let last_opened =
             |s: &serde_json::Value| s.get("lastOpened").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let mut best: std::collections::HashMap<String, (usize, f64)> = std::collections::HashMap::new();
+        let mut best: std::collections::HashMap<String, (usize, f64)> =
+            std::collections::HashMap::new();
         for (i, s) in sessions.iter().enumerate() {
             let k = sess_key(s);
             let lo = last_opened(s);
@@ -149,7 +162,9 @@ fn dedup_sessions_store(own_v: &mut serde_json::Value) -> bool {
 }
 
 fn merge_sessions_file(prod: &Path, own_path: &Path) -> usize {
-    let Some(prod_v) = read_json(prod) else { return 0 };
+    let Some(prod_v) = read_json(prod) else {
+        return 0;
+    };
     let mut own_v = read_json(own_path).unwrap_or_else(|| serde_json::json!({}));
     let mut added = 0;
     for field in ["projects", "sessions"] {
@@ -186,7 +201,9 @@ fn merge_sessions_file(prod: &Path, own_path: &Path) -> usize {
 }
 
 fn merge_bridge_config(prod: &Path, own_path: &Path) -> usize {
-    let Some(prod_v) = read_json(prod) else { return 0 };
+    let Some(prod_v) = read_json(prod) else {
+        return 0;
+    };
     let mut own_v = read_json(own_path).unwrap_or_else(|| serde_json::json!({}));
     let mut added = 0;
     // token/serverUrl — только если своих нет (не перетирать вход юзера).
@@ -199,7 +216,10 @@ fn merge_bridge_config(prod: &Path, own_path: &Path) -> usize {
         added += 1;
     }
     // savedSessionsByToken: union бакетов по conversationId (свои выигрывают).
-    if let Some(prod_map) = prod_v.get("savedSessionsByToken").and_then(|v| v.as_object()) {
+    if let Some(prod_map) = prod_v
+        .get("savedSessionsByToken")
+        .and_then(|v| v.as_object())
+    {
         if own_v.get("savedSessionsByToken").is_none() {
             own_v["savedSessionsByToken"] = serde_json::json!({});
         }
@@ -207,8 +227,7 @@ fn merge_bridge_config(prod: &Path, own_path: &Path) -> usize {
             .as_object_mut()
             .expect("savedSessionsByToken is an object");
         for (bucket, sessions) in prod_map {
-            let prod_arr: Vec<serde_json::Value> =
-                sessions.as_array().cloned().unwrap_or_default();
+            let prod_arr: Vec<serde_json::Value> = sessions.as_array().cloned().unwrap_or_default();
             let entry = own_map
                 .entry(bucket.clone())
                 .or_insert_with(|| serde_json::Value::Array(Vec::new()));
@@ -247,7 +266,11 @@ pub fn run() {
     let marker = read_json(&marker_path).unwrap_or_else(|| serde_json::json!({}));
 
     let jobs: [(&str, PathBuf, PathBuf); 2] = [
-        ("sessions", prod.join("sessions.json"), data.join("sessions.json")),
+        (
+            "sessions",
+            prod.join("sessions.json"),
+            data.join("sessions.json"),
+        ),
         (
             "bridgeConfig",
             prod.join("globalStorage")

@@ -234,11 +234,13 @@ fn main() {
                         origin: gpui::point(px(x as f32), px(y as f32)),
                         size: size(px(w as f32), px(h as f32)),
                     };
-                    Some(if v.get("maximized").and_then(|m| m.as_bool()) == Some(true) {
-                        WindowBounds::Maximized(b)
-                    } else {
-                        WindowBounds::Windowed(b)
-                    })
+                    Some(
+                        if v.get("maximized").and_then(|m| m.as_bool()) == Some(true) {
+                            WindowBounds::Maximized(b)
+                        } else {
+                            WindowBounds::Windowed(b)
+                        },
+                    )
                 })
                 .unwrap_or(WindowBounds::Windowed(bounds));
             let options = WindowOptions {

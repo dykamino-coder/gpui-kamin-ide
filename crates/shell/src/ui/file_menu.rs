@@ -161,8 +161,7 @@ pub fn file_menu(
     let close_sub = {
         let tx = tx.clone();
         move || {
-            let my_gen =
-                CASCADE_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            let my_gen = CASCADE_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             let tx = tx.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_millis(CASCADE_CLOSE_DELAY_MS));

@@ -58,7 +58,9 @@ pub fn register_context_menu() {
     use std::os::windows::process::CommandExt as _;
     use std::process::Stdio;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let Ok(exe) = std::env::current_exe() else { return };
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
     let exe_str = exe.display().to_string();
     // `%V` — папка из клика; шелл сам квотит.
     let command = format!("\"{exe_str}\" \"%V\"");
@@ -91,9 +93,24 @@ pub fn register_context_menu() {
         let hk = format!("HKCU\\{key}");
         reg(&["add", &hk, "/ve", "/d", "Open with KaminIDE", "/f"]);
         reg(&["add", &hk, "/v", "Icon", "/d", &exe_str, "/f"]);
-        reg(&["add", &format!("{hk}\\command"), "/ve", "/d", &command, "/f"]);
+        reg(&[
+            "add",
+            &format!("{hk}\\command"),
+            "/ve",
+            "/d",
+            &command,
+            "/f",
+        ]);
     }
-    reg(&["add", &root0, "/v", "_Fingerprint", "/d", &fingerprint, "/f"]);
+    reg(&[
+        "add",
+        &root0,
+        "/v",
+        "_Fingerprint",
+        "/d",
+        &fingerprint,
+        "/f",
+    ]);
     flush_icon_cache();
     eprintln!("[win] контекстное меню папок → {command}");
 }

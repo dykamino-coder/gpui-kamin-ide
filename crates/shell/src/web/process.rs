@@ -143,7 +143,11 @@ pub fn init() {
             .unwrap_or_default(),
         // DevTools вебвью по CDP (правило тестируемости: e2e должен видеть
         // консоль/DOM чата). Только dev: в packaged-раскладке порт не открыт.
-        remote_debugging_port: if cfg!(debug_assertions) || std::env::var("KAMIN_CEF_CDP").is_ok() { 9224 } else { 0 },
+        remote_debugging_port: if cfg!(debug_assertions) || std::env::var("KAMIN_CEF_CDP").is_ok() {
+            9224
+        } else {
+            0
+        },
         ..Default::default()
     };
     let t_cef = std::time::Instant::now();

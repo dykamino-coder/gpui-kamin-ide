@@ -109,10 +109,7 @@ impl RootView {
                         if let Some(c) = crate::host_link::client() {
                             let _ = c.request(
                                 "kamin:sessions:reorder",
-                                vec![
-                                    serde_json::json!(moved),
-                                    serde_json::json!(before),
-                                ],
+                                vec![serde_json::json!(moved), serde_json::json!(before)],
                             );
                         }
                     });

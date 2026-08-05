@@ -136,15 +136,13 @@ impl RootView {
                 // kamin:updater:check НЕ существует (тост-жалоба юзера).
                 let tx = self.tx.clone();
                 std::thread::spawn(move || {
-                    let toast = |sev: &str, msg: String| {
-                        crate::ui::toasts::Toast {
-                            id: "updater-check".into(),
-                            severity: sev.into(),
-                            title: None,
-                            message: msg,
-                            actions: Vec::new(),
-                            sticky: false,
-                        }
+                    let toast = |sev: &str, msg: String| crate::ui::toasts::Toast {
+                        id: "updater-check".into(),
+                        severity: sev.into(),
+                        title: None,
+                        message: msg,
+                        actions: Vec::new(),
+                        sticky: false,
                     };
                     let base = crate::host_link::client()
                         .and_then(|c| c.request("kamin:bridge:serverUrl", vec![]).ok())

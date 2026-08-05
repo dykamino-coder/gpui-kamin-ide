@@ -39,7 +39,6 @@ fn scrim(dark_a: f32, light_a: f32) -> gpui::Rgba {
 /// литерал `rgba(0, 0, 0, 0.35)` в обеих темах (`QuickOpen.module.css:9`,
 /// `FindInFiles.module.css:9`), для них есть `soft_literal()`.
 
-
 /// Литеральный `rgba(0, 0, 0, 0.35)` — ровно как в CSS этих трёх оверлеев
 /// (ревью ц.14: тем-зависимая подмена осветлила их в светлой теме вдвое).
 pub fn soft_literal() -> gpui::Rgba {

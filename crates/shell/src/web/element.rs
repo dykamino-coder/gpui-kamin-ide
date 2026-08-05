@@ -102,7 +102,8 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 // растягиваем на панель — секунда мыла вместо сжатия. Порог
                 // 10%: шаги драга различаются на единицы процентов и остаются
                 // на прежнем 1:1-пути.
-                let big_mismatch = (tw - want_w).abs() * 10 > want_w || (th - want_h).abs() * 10 > want_h;
+                let big_mismatch =
+                    (tw - want_w).abs() * 10 > want_w || (th - want_h).abs() * 10 > want_h;
                 // Растяжение — АВАРИЙНЫЙ путь, не штатный. При быстром драге
                 // сплиттера кадры отстают, расхождение >10% держится десятки
                 // миллисекунд — и страница «плющилась» на каждом шаге (жалоба
@@ -114,7 +115,10 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                 if stale {
                     super::diag::stretched();
                     window.paint_external_texture(
-                        gpui::Bounds { origin: bounds.origin, size: bounds.size },
+                        gpui::Bounds {
+                            origin: bounds.origin,
+                            size: bounds.size,
+                        },
                         Corners::all(px(radius)),
                         &tex.cropped(tw, th),
                     );
@@ -310,14 +314,8 @@ pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
                         origin: gpui::point(gpui::DevicePixels(0), gpui::DevicePixels(0)),
                         size: gpui::size(gpui::DevicePixels(reg_w), gpui::DevicePixels(reg_h)),
                     };
-                    let _ = window.paint_image_region(
-                        rect,
-                        Corners::default(),
-                        pimg,
-                        0,
-                        false,
-                        region,
-                    );
+                    let _ =
+                        window.paint_image_region(rect, Corners::default(), pimg, 0, false, region);
                 }
                 super::diag::sw_paint();
                 super::diag::paint();

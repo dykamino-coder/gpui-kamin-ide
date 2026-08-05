@@ -12,9 +12,19 @@ use super::gpu_texture::GpuTexture;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
-/// Наши приватные текстуры по вью.
-static OWN: LazyLock<Mutex<HashMap<String, GpuTexture>>> =
+/// Наши приватные текстуры по вью: НЕСКОЛЬКО последних размеров, а не одна.
+///
+/// При ресайзе кадры идут вперемешку — старый размер (перевёрстка ещё не
+/// доехала) и новый; с одной текстурой каждый такой перескок = `CreateTexture2D`
+/// заново, а это десятки мс на RDP и ровно тот случай, когда панель «залипает».
+/// Держим до `OWN_KEEP` штук и выбираем подходящую по описанию.
+static OWN: LazyLock<Mutex<HashMap<String, Vec<GpuTexture>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Сколько размеров помнить на вью. Двух хватает на «туда-обратно» при драге,
+/// третий — запас на промежуточный размер; больше держать незачем: каждая
+/// текстура это w×h×4 байт видеопамяти.
+const OWN_KEEP: usize = 3;
 
 /// Забыть свою текстуру одного вью (закрытие браузера).
 pub(crate) fn forget_view(id: &str) {
@@ -62,13 +72,18 @@ pub(crate) fn copy_into_own(
 
         let own = (|| {
             // Прежняя своя текстура годится, только если описание сходится.
+            // Ищем среди запомненных размеров — при осцилляции ресайза нужный
+            // почти всегда уже создан.
             let fitting = OWN.lock().ok().and_then(|m| {
-                m.get(id).and_then(|texture| {
-                    let desc = texture.desc();
-                    let same = desc.Width == src_desc.Width
-                        && desc.Height == src_desc.Height
-                        && desc.Format == src_desc.Format;
-                    same.then(|| texture.clone())
+                m.get(id).and_then(|pool| {
+                    pool.iter()
+                        .find(|texture| {
+                            let desc = texture.desc();
+                            desc.Width == src_desc.Width
+                                && desc.Height == src_desc.Height
+                                && desc.Format == src_desc.Format
+                        })
+                        .cloned()
                 })
             });
             let own = match fitting {
@@ -86,7 +101,11 @@ pub(crate) fn copy_into_own(
                         .ok()?;
                     let texture = GpuTexture::from_owned(created?.into_raw())?;
                     if let Ok(mut m) = OWN.lock() {
-                        m.insert(id.to_string(), texture.clone());
+                        // Свежую — в начало: она же самая нужная, и при
+                        // переполнении вылетает самый давний размер.
+                        let pool = m.entry(id.to_string()).or_default();
+                        pool.insert(0, texture.clone());
+                        pool.truncate(OWN_KEEP);
                     }
                     texture
                 }

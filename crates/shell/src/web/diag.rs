@@ -195,7 +195,9 @@ fn emit_line(line: String) {
     static FILE: std::sync::LazyLock<std::sync::Mutex<Option<std::fs::File>>> =
         std::sync::LazyLock::new(|| {
             let path = crate::host::paths::data_dirs().1.join("diag.log");
-            let rotate = std::fs::metadata(&path).map(|m| m.len() > ROTATE_BYTES).unwrap_or(false);
+            let rotate = std::fs::metadata(&path)
+                .map(|m| m.len() > ROTATE_BYTES)
+                .unwrap_or(false);
             let mut file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(!rotate)

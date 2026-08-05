@@ -219,15 +219,14 @@ impl RootView {
                             }
                             Err(e) => {
                                 eprintln!("drop-move failed: {e}");
-                                let _ =
-                                    tx.try_send(ShellEvent::Toast(crate::ui::toasts::Toast {
-                                        id: format!("dropmove-{src}"),
-                                        severity: "error".into(),
-                                        title: None,
-                                        message: format!("Перемещение не удалось: {e}"),
-                                        actions: Vec::new(),
-                                        sticky: false,
-                                    }));
+                                let _ = tx.try_send(ShellEvent::Toast(crate::ui::toasts::Toast {
+                                    id: format!("dropmove-{src}"),
+                                    severity: "error".into(),
+                                    title: None,
+                                    message: format!("Перемещение не удалось: {e}"),
+                                    actions: Vec::new(),
+                                    sticky: false,
+                                }));
                             }
                         }
                     }

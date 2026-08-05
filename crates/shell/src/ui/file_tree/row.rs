@@ -117,8 +117,11 @@ pub(crate) fn row_of(
         let dest_ext = path.clone();
         row = row.on_drop(move |ext: &gpui::ExternalPaths, _, _| {
             if let Some(tx) = crate::host_link::event_tx() {
-                let paths: Vec<String> =
-                    ext.paths().iter().map(|p| p.display().to_string()).collect();
+                let paths: Vec<String> = ext
+                    .paths()
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect();
                 let _ = tx.try_send(crate::host_link::ShellEvent::Ed(
                     crate::host::events::EdEvent::FsDropMove {
                         dest: dest_ext.clone(),

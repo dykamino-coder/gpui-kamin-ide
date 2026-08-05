@@ -183,7 +183,10 @@ pub fn install(url: String, tx: Sender<ShellEvent>) {
                 .inspect(|_| ulog("spawned with BREAKAWAY"))
                 .or_else(|e| {
                     ulog(&format!("BREAKAWAY spawn failed: {e} — fallback in-job"));
-                    std::process::Command::new(&path).arg("/update").creation_flags(DETACH).spawn()
+                    std::process::Command::new(&path)
+                        .arg("/update")
+                        .creation_flags(DETACH)
+                        .spawn()
                 });
             match spawned {
                 Ok(mut child) => {
@@ -214,7 +217,8 @@ pub fn install(url: String, tx: Sender<ShellEvent>) {
                 }
                 Err(e) => {
                     ulog(&format!("spawn failed: {e}"));
-                    let _ = tx.try_send(ShellEvent::Cz(CzEvent::UpdateInstallFailed(e.to_string())));
+                    let _ =
+                        tx.try_send(ShellEvent::Cz(CzEvent::UpdateInstallFailed(e.to_string())));
                 }
             }
         }

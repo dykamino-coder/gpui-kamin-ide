@@ -297,7 +297,11 @@ pub(crate) fn open(id: &str, url: &str, width: i32, height: i32, scale: f32) {
         // RDP рендерит 60 — ставим те же 60, лаг ввода снимают глушённые
         // ФОНОВЫЕ анимации, не кап интерактивных кадров (оценивается при
         // создании вью; сменился транспорт — новые вью получат новый темп).
-        windowless_frame_rate: if crate::win_integration::reduce_motion() { 60 } else { 120 },
+        windowless_frame_rate: if crate::win_integration::reduce_motion() {
+            60
+        } else {
+            120
+        },
         // Непрозрачный фон под цвет карточки. Пока Chromium не перевёрстывал
         // страницу под новый размер, незакрытая часть кадра приходит
         // прозрачной — и рисовалась ЧЁРНОЙ полосой (видно на быстром драге).
@@ -514,9 +518,7 @@ pub(crate) fn resize(id: &str, width: i32, height: i32, scale: f32) {
             p.insert(id.to_string());
         }
     }
-    if changed
-        && let Ok(mut pending) = PENDING.lock()
-    {
+    if changed && let Ok(mut pending) = PENDING.lock() {
         {
             pending
                 .entry(id.to_string())

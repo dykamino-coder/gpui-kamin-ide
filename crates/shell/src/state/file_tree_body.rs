@@ -107,11 +107,11 @@ impl RootView {
         if self.layout.file_panel_visible && self.layout.file_panel_mode == "web" {
             visible.push("browser".to_string());
         }
-        if self.cz.customize_open {
-            if let Some(active) = self.cz.customize_contrib.clone() {
-                // Открыта contributed-страница Customize — её вью под своим id.
-                visible.push(active);
-            }
+        if self.cz.customize_open
+            && let Some(active) = self.cz.customize_contrib.clone()
+        {
+            // Открыта contributed-страница Customize — её вью под своим id.
+            visible.push(active);
         }
         if registry_incomplete {
             // Неполный снапшот: не сбрасываем прошлый набор (иначе «скроем»

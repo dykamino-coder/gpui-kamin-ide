@@ -25,7 +25,9 @@ fn main() {
     let version = env!("CARGO_PKG_VERSION");
     steps::klog(&format!(
         "onInit exe={} params=[{}]",
-        std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default(),
+        std::env::current_exe()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default(),
         args.join(" ")
     ));
 
