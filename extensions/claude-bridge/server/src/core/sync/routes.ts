@@ -11,9 +11,9 @@ import os from 'os'
 import { debugLog, warnLog } from '../logging'
 import type { SyncUserData, SyncProjectData } from '../pty/types'
 import { getAllSessions } from '../pty/session-core'
-import type { PtySession } from '../pty/types'
-import { submitTextToSession } from '../pty/session-io'
-import { copyDirRecursive } from '../pty/session-settings'
+import { requestMaintenanceSubmission } from '../pty/session-input-coordinator'
+import { refreshSessionSkills } from '../pty/session-settings'
+import { withProjectSyncLock, withUserSyncLock } from './lock'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -59,36 +59,23 @@ async function writeFileMap(baseDir: string, files: Record<string, string>): Pro
   }
 }
 
+/** Skills payloads are complete snapshots. Removing the previous tree first
+ * makes disabled/deleted skills disappear instead of accumulating forever. */
+async function replaceFileMap(baseDir: string, files: Record<string, string>): Promise<void> {
+  await fsp.rm(baseDir, { recursive: true, force: true })
+  await writeFileMap(baseDir, files)
+}
+
 /**
  * After a live skills upload, make the freshly-synced skills visible in
- * already-running sessions for this token WITHOUT a restart. User skills are
- * symlinked into `.claude/skills` at spawn, so the new files are already live
- * on disk — we only need the CLI to re-scan. Project skills were *copied* at
- * spawn, so we re-copy the fresh dir first. Either way we then inject the CLI's
- * `/reload-skills` slash command (the documented live re-scan). Best-effort:
- * a mid-turn injection is queued by the CLI after the current turn, and the
- * bridge composes input in the webview so the raw PTY buffer is normally empty.
+ * already-running sessions for this token WITHOUT a restart. Rebuild the exact
+ * session-local user + project overlay, then leave `/reload-skills` pending in
+ * the PTY coordinator. It runs only at an attached, clean, prompt-ready boundary.
  *
  * @param tokenId     the sync token hash (equals PtySession.bearerHash)
  * @param projectPath when set, only project sessions whose cwd matches are
  *                    reloaded (and their on-disk copy is refreshed first)
  */
-// Debounce the /reload-skills injection PER SESSION. A single skills change often
-// arrives as back-to-back user + project uploads; without this each one submits
-// `/reload-skills` and the two concatenate in the PTY buffer as the garbled
-// `/reload-skills/reload-skills`. Coalescing to one submit per burst also spares
-// the user a redundant command.
-const RELOAD_DEBOUNCE_MS = 600
-const pendingReload = new WeakMap<PtySession, ReturnType<typeof setTimeout>>()
-function scheduleReload(s: PtySession): void {
-  const prev = pendingReload.get(s)
-  if (prev) clearTimeout(prev)
-  pendingReload.set(s, setTimeout(() => {
-    pendingReload.delete(s)
-    try { submitTextToSession(s, '/reload-skills') } catch { /* session may have just ended */ }
-  }, RELOAD_DEBOUNCE_MS))
-}
-
 /** Compare an incoming {relPath: content} map against what's already on disk —
  *  used to skip the /reload-skills injection when a sync upload didn't actually
  *  change anything (the client re-uploads on a poll, so most uploads are no-ops). */
@@ -103,14 +90,10 @@ async function fileMapEqual(dir: string, incoming: Record<string, string>): Prom
 function reloadSkillsForRunningSessions(tokenId: string, projectPath?: string): void {
   for (const s of getAllSessions()) {
     if (s.bearerHash !== tokenId || s.state !== 'running') continue
-    if (projectPath) {
-      if (s.cwd !== projectPath) continue
-      try {
-        const src = path.join(getProjectSyncDir(tokenId, projectPath), 'skills')
-        if (fs.existsSync(src)) copyDirRecursive(src, path.join(s.settingsDir, '.claude', 'skills'))
-      } catch { /* re-copy best-effort — /reload-skills still refreshes the cache */ }
-    }
-    scheduleReload(s)
+    if (projectPath && s.cwd !== projectPath) continue
+    try { refreshSessionSkills(s.settingsDir, tokenId, s.cwd || undefined) }
+    catch { /* pending reload still refreshes any intact tree */ }
+    requestMaintenanceSubmission(s, 'reload-skills', '/reload-skills')
   }
 }
 
@@ -163,19 +146,19 @@ export function createSyncRoutes(): Hono {
     const userDir = getUserSyncDir(hash)
 
     try {
-      // Write skills
-      if (body.skills && Object.keys(body.skills).length > 0) {
-        const skillsDir = path.join(userDir, 'skills')
-        // Only re-scan if the upload actually changed something — the client
-        // re-uploads on a poll, so most uploads are identical no-ops and would
-        // otherwise spam `/reload-skills` into the user's idle session.
-        const changed = !await fileMapEqual(skillsDir, body.skills)
-        await fsp.mkdir(skillsDir, { recursive: true })
-        await writeFileMap(skillsDir, body.skills)
-        debugLog('[sync] User skills synced', { tokenId: hash, count: Object.keys(body.skills).length, changed })
-        // Live-reload: user skills are symlinked into running sessions, so the
-        // new files are already on disk — just tell the CLI to re-scan.
-        if (changed) reloadSkillsForRunningSessions(hash)
+      // A present skills field is a complete snapshot; omission keeps the
+      // previous snapshot for compatibility with older partial-sync clients.
+      if (body.skills !== undefined) {
+        const skills = body.skills
+        await withUserSyncLock(hash, async () => {
+          const skillsDir = path.join(userDir, 'skills')
+          // The client re-uploads unchanged maps during polling. Avoid a reload
+          // unless the complete snapshot actually changed.
+          const changed = !await fileMapEqual(skillsDir, skills)
+          if (changed) await replaceFileMap(skillsDir, skills)
+          debugLog('[sync] User skills synced', { tokenId: hash, count: Object.keys(skills).length, changed })
+          if (changed) reloadSkillsForRunningSessions(hash)
+        })
       }
 
       // Write agents
@@ -240,15 +223,16 @@ export function createSyncRoutes(): Hono {
     try {
       await fsp.mkdir(projDir, { recursive: true })
 
-      // Write skills
-      if (body.skills && Object.keys(body.skills).length > 0) {
-        const skillsDir = path.join(projDir, 'skills')
-        const changed = !await fileMapEqual(skillsDir, body.skills)
-        await writeFileMap(skillsDir, body.skills)
-        debugLog('[sync] Project skills synced', { tokenId: hash, project: body.projectPath, count: Object.keys(body.skills).length, changed })
-        // Live-reload: project skills were copied at spawn — refresh the on-disk
-        // copy for matching sessions, then re-scan (only when actually changed).
-        if (changed) reloadSkillsForRunningSessions(hash, body.projectPath)
+      // Like user skills, a present field is an exact snapshot, including {}.
+      if (body.skills !== undefined) {
+        const skills = body.skills
+        await withProjectSyncLock(hash, body.projectPath, async () => {
+          const skillsDir = path.join(projDir, 'skills')
+          const changed = !await fileMapEqual(skillsDir, skills)
+          if (changed) await replaceFileMap(skillsDir, skills)
+          debugLog('[sync] Project skills synced', { tokenId: hash, project: body.projectPath, count: Object.keys(skills).length, changed })
+          if (changed) reloadSkillsForRunningSessions(hash, body.projectPath)
+        })
       }
 
       // Write rules
