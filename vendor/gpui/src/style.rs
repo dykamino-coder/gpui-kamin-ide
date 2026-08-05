@@ -7,7 +7,8 @@ use std::{
 use crate::{
     AbsoluteLength, App, Background, BackgroundTag, BorderStyle, Bounds, ContentMask, Corners,
     CornersRefinement, CursorStyle, DefiniteLength, DevicePixels, Edges, EdgesRefinement, Font,
-    FontFallbacks, FontFeatures, FontStyle, FontWeight, GridLocation, Hsla, Length, Pixels, Point,
+    FontFallbacks, FontFeatures, FontStyle, FontWeight, GridLocation, GridTrack, Hsla, Length,
+    Pixels, Point,
     PointRefinement, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun, Window, black, phi,
     point, quad, rems, size,
 };
@@ -272,6 +273,18 @@ pub struct Style {
     /// The row span of this element
     /// Equivalent to the Tailwind `grid-rows-<number>`
     pub grid_rows: Option<u16>,
+
+    /// KaminIDE patch: произвольный список дорожек колонок.
+    ///
+    /// Штатный `grid_cols` умеет только «N равных колонок», а taffy под ним
+    /// поддерживает полный CSS Grid. Из-за этого была недостижима самая
+    /// частая задача разметки — колонка шириной по содержимому: именно так
+    /// раскладываются таблицы, и без неё их приходилось делать равными
+    /// долями. Список дорожек имеет приоритет над `grid_cols`.
+    pub grid_template_cols: Option<Vec<GridTrack>>,
+
+    /// KaminIDE patch: то же для строк.
+    pub grid_template_rows: Option<Vec<GridTrack>>,
 
     /// The grid location of this element
     pub grid_location: Option<GridLocation>,
@@ -783,6 +796,8 @@ impl Default for Style {
             grid_rows: None,
             grid_cols: None,
             grid_cols_min: None,
+            grid_template_cols: None,
+            grid_template_rows: None,
             grid_location: None,
 
             #[cfg(debug_assertions)]

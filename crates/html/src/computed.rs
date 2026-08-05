@@ -147,6 +147,8 @@ pub struct Computed {
     pub justify_content: Option<Justify>,
     pub gap: Option<(Option<Len>, Option<Len>)>,
     pub grid_cols: Option<u16>,
+    /// Список дорожек, если он выразим: `auto`, `1fr`, px, `minmax()`.
+    pub grid_tracks: Option<Vec<Track>>,
 
     pub width: Option<Len>,
     pub height: Option<Len>,
@@ -266,9 +268,10 @@ impl Computed {
             }
             "row-gap" => self.gap = Some((Len::parse(v), self.gap.and_then(|g| g.1))),
             "column-gap" => self.gap = Some((self.gap.and_then(|g| g.0), Len::parse(v))),
-            // Из произвольного track-list берём только число колонок: GPUI
-            // умеет ровно `repeat(n, 1fr)` (см. доку, раздел Grid).
-            "grid-template-columns" => self.grid_cols = count_tracks(v),
+            "grid-template-columns" => {
+                self.grid_cols = count_tracks(v);
+                self.grid_tracks = parse_tracks(v);
+            }
 
             "width" => self.width = Len::parse(v),
             "height" => self.height = Len::parse(v),
@@ -446,6 +449,59 @@ fn radius_shorthand(raw: &str) -> Corners {
         },
         _ => Corners::default(),
     }
+}
+
+/// Одна дорожка сетки в терминах CSS.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Track {
+    Px(f32),
+    Fr(f32),
+    Auto,
+    MinContent,
+    MaxContent,
+}
+
+/// Разбор списка дорожек. `repeat(n, X)` разворачивается в n одинаковых;
+/// `minmax()` сводится к своей верхней грани — нижняя у нас всегда
+/// `min-content`, чего достаточно для разметки документов.
+fn parse_tracks(v: &str) -> Option<Vec<Track>> {
+    let one = |t: &str| -> Option<Track> {
+        let t = t.trim();
+        if t == "auto" {
+            return Some(Track::Auto);
+        }
+        if t == "min-content" {
+            return Some(Track::MinContent);
+        }
+        if t == "max-content" {
+            return Some(Track::MaxContent);
+        }
+        if let Some(fr) = t.strip_suffix("fr") {
+            return fr.trim().parse().ok().map(Track::Fr);
+        }
+        if let Some(inner) = t.strip_prefix("minmax(").and_then(|s| s.strip_suffix(')')) {
+            let upper = inner.split(',').nth(1)?.trim().to_string();
+            return parse_tracks(&upper)?.into_iter().next();
+        }
+        match Len::parse(t) {
+            Some(Len::Px(px)) => Some(Track::Px(px)),
+            _ => None,
+        }
+    };
+    if let Some(inner) = v
+        .trim()
+        .strip_prefix("repeat(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        let mut it = inner.splitn(2, ',');
+        let n: usize = it.next()?.trim().parse().ok()?;
+        let track = one(it.next()?)?;
+        return Some(vec![track; n]);
+    }
+    // Разрезаем по пробелам, не заходя внутрь скобок: `minmax(120px, auto)` —
+    // одна дорожка, а не две половинки.
+    let list: Vec<Track> = tokenize_shadow(v).iter().filter_map(|t| one(t)).collect();
+    (!list.is_empty()).then_some(list)
 }
 
 /// Число колонок в `grid-template-columns`: и `repeat(3, 1fr)`, и `1fr 1fr`.
@@ -660,6 +716,40 @@ mod tests {
             computed("grid-template-columns: 1fr 1fr").grid_cols,
             Some(2)
         );
+    }
+
+    #[test]
+    fn track_list_keeps_the_kind_of_each_track() {
+        let t = computed("grid-template-columns: 120px auto 1fr")
+            .grid_tracks
+            .unwrap();
+        assert_eq!(t, vec![Track::Px(120.0), Track::Auto, Track::Fr(1.0)]);
+    }
+
+    #[test]
+    fn repeat_expands_into_equal_tracks() {
+        let t = computed("grid-template-columns: repeat(3, 1fr)")
+            .grid_tracks
+            .unwrap();
+        assert_eq!(t, vec![Track::Fr(1.0); 3]);
+    }
+
+    #[test]
+    fn minmax_collapses_to_its_upper_bound() {
+        // Нижняя грань всегда `min-content` — её ставит слой применения,
+        // поэтому из записи достаточно забрать верхнюю.
+        let t = computed("grid-template-columns: minmax(120px, max-content)")
+            .grid_tracks
+            .unwrap();
+        assert_eq!(t, vec![Track::MaxContent]);
+    }
+
+    #[test]
+    fn content_sized_tracks_are_recognised() {
+        let t = computed("grid-template-columns: min-content max-content")
+            .grid_tracks
+            .unwrap();
+        assert_eq!(t, vec![Track::MinContent, Track::MaxContent]);
     }
 
     #[test]

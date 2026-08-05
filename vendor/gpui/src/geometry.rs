@@ -3650,6 +3650,33 @@ impl From<()> for Length {
     }
 }
 
+/// KaminIDE patch: одна дорожка сетки.
+///
+/// Штатный путь умеет только «N равных колонок» (`grid_cols`), хотя taffy под
+/// ним поддерживает полный набор. Из-за этого была недостижима колонка
+/// шириной по содержимому — то, на чём держится раскладка таблиц.
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema)]
+pub enum GridTrack {
+    /// Фиксированная ширина.
+    Pixels(Pixels),
+    /// Доля свободного места: `1fr`.
+    Fraction(f32),
+    /// Ширина по содержимому: `auto`.
+    Auto,
+    /// Минимально возможная ширина содержимого: `min-content`.
+    MinContent,
+    /// Ширина содержимого без переносов: `max-content`.
+    MaxContent,
+    /// `minmax(min, max)` — пара из двух дорожек выше.
+    MinMax(Box<(GridTrack, GridTrack)>),
+}
+
+impl Default for GridTrack {
+    fn default() -> Self {
+        GridTrack::Auto
+    }
+}
+
 /// A location in a grid layout.
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct GridLocation {

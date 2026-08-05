@@ -228,8 +228,15 @@ fn gather_text(nodes: &[Node], out: &mut String) {
     }
 }
 
-/// Таблица: колонки одинаковой ширины через grid — в GPUI доступен только
-/// `repeat(n, 1fr)`, поэтому ширина по содержимому недостижима (см. доку).
+/// Таблица.
+///
+/// Колонки — по содержимому: каждая дорожка это `minmax(min-content, auto)`,
+/// последняя забирает остаток (`1fr`). Так ведёт себя и настоящая табличная
+/// раскладка: узкие колонки сжимаются до содержимого, широкая тянется.
+///
+/// Это стало возможно только вместе с патчем произвольных дорожек в GPUI —
+/// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
+/// текста разъезжалась пополам.
 fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let mut rows: Vec<&Element> = vec![];
     collect_rows(&e.children, &mut rows);
@@ -268,7 +275,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         out.push(
             apply(div(), &row.style)
                 .grid()
-                .grid_cols(cols)
+                .grid_template_cols(track_list(cols))
                 .children(cells)
                 .into_any_element(),
         );
@@ -278,6 +285,24 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         .flex_col()
         .children(out)
         .into_any_element()
+}
+
+/// Дорожки таблицы: все по содержимому, последняя забирает остаток строки.
+/// `min-content` снизу не даёт колонке сжаться в ноль на узкой панели.
+fn track_list(cols: u16) -> Vec<gpui::GridTrack> {
+    (0..cols)
+        .map(|i| {
+            let last = i + 1 == cols;
+            gpui::GridTrack::MinMax(Box::new((
+                gpui::GridTrack::MinContent,
+                if last {
+                    gpui::GridTrack::Fraction(1.0)
+                } else {
+                    gpui::GridTrack::Auto
+                },
+            )))
+        })
+        .collect()
 }
 
 fn collect_rows<'a>(nodes: &'a [Node], out: &mut Vec<&'a Element>) {

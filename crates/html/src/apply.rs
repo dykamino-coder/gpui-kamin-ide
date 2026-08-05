@@ -7,7 +7,7 @@
 //! пользователя, а не в тесте.
 
 use crate::computed::{
-    Align, Computed, Corners, Display, FlexDir, Justify, Overflow, Position, Sides,
+    Align, Computed, Corners, Display, FlexDir, Justify, Overflow, Position, Sides, Track,
 };
 use crate::value::Len;
 use gpui::{Div, Styled, px, relative};
@@ -21,6 +21,19 @@ fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         // ограничения, а не значение; вызывающий такие поля не применяет.
         Len::Auto => relative(1.0),
     }
+}
+
+/// Дорожка сетки в терминах GPUI. Нижняя грань всегда `min-content`: без неё
+/// колонка на узкой панели схлопывается в ноль и содержимое обрезается.
+fn track(t: &Track) -> gpui::GridTrack {
+    let upper = match t {
+        Track::Px(v) => gpui::GridTrack::Pixels(px(*v)),
+        Track::Fr(f) => gpui::GridTrack::Fraction(*f),
+        Track::Auto => gpui::GridTrack::Auto,
+        Track::MinContent => gpui::GridTrack::MinContent,
+        Track::MaxContent => gpui::GridTrack::MaxContent,
+    };
+    gpui::GridTrack::MinMax(Box::new((gpui::GridTrack::MinContent, upper)))
 }
 
 pub fn apply(d: Div, c: &Computed) -> Div {
@@ -37,8 +50,12 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         Some(Display::Flex) | Some(Display::InlineFlex) => d = d.flex(),
         Some(Display::Grid) => {
             d = d.grid();
-            if let Some(n) = c.grid_cols {
-                d = d.grid_cols(n);
+            // Список дорожек точнее числа колонок: он несёт ширину по
+            // содержимому и фиксированные колонки (патч GPUI, см. доку).
+            match (&c.grid_tracks, c.grid_cols) {
+                (Some(tracks), _) => d = d.grid_template_cols(tracks.iter().map(track).collect()),
+                (None, Some(n)) => d = d.grid_cols(n),
+                _ => {}
             }
         }
         // `display: none` отсеивается ещё при разборе дерева: узел не строится.

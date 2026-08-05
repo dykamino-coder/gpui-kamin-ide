@@ -677,6 +677,22 @@ pub trait Styled: Sized {
         self
     }
 
+    /// KaminIDE patch: произвольный список дорожек колонок.
+    ///
+    /// Короткие формы выше умеют только равные колонки, а разметке нужна
+    /// ширина по содержимому — на ней держатся таблицы. Имеет приоритет над
+    /// `grid_cols`/`grid_cols_min`.
+    fn grid_template_cols(mut self, tracks: Vec<crate::GridTrack>) -> Self {
+        self.style().grid_template_cols = Some(tracks);
+        self
+    }
+
+    /// KaminIDE patch: то же для строк.
+    fn grid_template_rows(mut self, tracks: Vec<crate::GridTrack>) -> Self {
+        self.style().grid_template_rows = Some(tracks);
+        self
+    }
+
     /// Sets the grid rows of this element.
     fn grid_rows(mut self, rows: u16) -> Self {
         self.style().grid_rows = Some(rows);

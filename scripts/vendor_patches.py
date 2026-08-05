@@ -68,9 +68,25 @@ EXPECTED: dict[str, tuple[int, str]] = {
         "ExternalTexture: кадры CEF в атласе — cropped/with_size/size/region "
         "(region — вырезка content_rect со смещением, план 101 Ф7)",
     ),
+    "vendor/gpui/src/style.rs": (
+        3,
+        "поля произвольных дорожек сетки (`grid_template_cols/rows`) — без них "
+        "колонка по содержимому невыразима; см. taffy.rs",
+    ),
+    "vendor/gpui/src/styled.rs": (
+        3,
+        "методы `grid_template_cols/rows` — публичный доступ к дорожкам",
+    ),
+    "vendor/gpui/src/geometry.rs": (
+        1,
+        "тип `GridTrack`: px / fr / auto / min-content / max-content / minmax",
+    ),
     "vendor/gpui/src/taffy.rs": (
-        2,
-        "счётчики раскладки (узлы, проходы, замеры, время) — план 101, Ф6",
+        4,
+        "счётчики раскладки (узлы, проходы, замеры, время) — план 101, Ф6; "
+        "произвольные дорожки сетки: короткая форма умела только N равных "
+        "колонок, из-за чего колонка по содержимому — то, на чём стоит "
+        "раскладка таблиц — была недостижима",
     ),
     "vendor/gpui/src/text_system.rs": (
         3,

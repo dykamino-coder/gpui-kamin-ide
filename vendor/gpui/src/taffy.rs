@@ -318,6 +318,43 @@ impl ToTaffy<taffy::style::Style> for Style {
             }
         }
 
+        /// KaminIDE patch: одна дорожка нашего типа → дорожка taffy.
+        ///
+        /// `minmax` вложенный: сам taffy разделяет «что можно ставить в
+        /// minmax» и «что можно ставить дорожкой», поэтому пара сводится к
+        /// своим граням по отдельности.
+        fn to_grid_track<T: taffy::style::CheapCloneStr>(
+            track: &crate::GridTrack,
+        ) -> taffy::GridTemplateComponent<T> {
+            use crate::GridTrack as G;
+            use taffy::style_helpers::{auto, fr, length, max_content, min_content, minmax};
+            fn side(t: &G) -> taffy::MinTrackSizingFunction {
+                match t {
+                    G::Pixels(px) => length(f32::from(*px)),
+                    G::Fraction(_) | G::Auto => auto(),
+                    G::MinContent => min_content(),
+                    G::MaxContent => max_content(),
+                    G::MinMax(pair) => side(&pair.0),
+                }
+            }
+            fn side_max(t: &G) -> taffy::MaxTrackSizingFunction {
+                match t {
+                    G::Pixels(px) => length(f32::from(*px)),
+                    G::Fraction(f) => fr(*f),
+                    G::Auto => auto(),
+                    G::MinContent => min_content(),
+                    G::MaxContent => max_content(),
+                    G::MinMax(pair) => side_max(&pair.1),
+                }
+            }
+            match track {
+                crate::GridTrack::MinMax(pair) => {
+                    taffy::GridTemplateComponent::Single(minmax(side(&pair.0), side_max(&pair.1)))
+                }
+                other => taffy::GridTemplateComponent::Single(minmax(side(other), side_max(other))),
+            }
+        }
+
         fn to_grid_repeat<T: taffy::style::CheapCloneStr>(
             unit: &Option<u16>,
         ) -> Vec<taffy::GridTemplateComponent<T>> {
@@ -349,17 +386,23 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_basis: self.flex_basis.to_taffy(rem_size, scale_factor),
             flex_grow: self.flex_grow,
             flex_shrink: self.flex_shrink,
-            grid_template_rows: to_grid_repeat(&self.grid_rows),
-            grid_template_columns: match self.grid_cols_min {
-                // repeat(auto-fill, minmax(<min>, 1fr))
-                Some(min) => vec![repeat(
-                    taffy::style::RepetitionCount::AutoFill,
-                    vec![minmax(
-                        length(f32::from(min) * scale_factor),
-                        fr(1.0),
+            // KaminIDE patch: явный список дорожек имеет приоритет — он
+            // выражает то, чего короткая форма не умеет (колонка по
+            // содержимому, фиксированная ширина, `minmax`).
+            grid_template_rows: match &self.grid_template_rows {
+                Some(tracks) => tracks.iter().map(to_grid_track).collect(),
+                None => to_grid_repeat(&self.grid_rows),
+            },
+            grid_template_columns: match &self.grid_template_cols {
+                Some(tracks) => tracks.iter().map(to_grid_track).collect(),
+                None => match self.grid_cols_min {
+                    // repeat(auto-fill, minmax(<min>, 1fr))
+                    Some(min) => vec![repeat(
+                        taffy::style::RepetitionCount::AutoFill,
+                        vec![minmax(length(f32::from(min) * scale_factor), fr(1.0))],
                     )],
-                )],
-                None => to_grid_repeat(&self.grid_cols),
+                    None => to_grid_repeat(&self.grid_cols),
+                },
             },
             grid_row: self
                 .grid_location
