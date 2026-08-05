@@ -172,7 +172,7 @@ def boxes_by_colour(img, scale: float = 1.0) -> dict:
             if c[0] > 230 and c[1] > 230 and c[2] > 230:
                 continue
             # Грубый ключ: сглаживание кромок иначе плодит мнимые блоки.
-            key = (c[0] // 32, c[1] // 32, c[2] // 32)
+            key = (c[0] // 8, c[1] // 8, c[2] // 8)
             b = found.get(key)
             if b is None:
                 found[key] = [x, y, x, y, 1]
@@ -246,6 +246,14 @@ def main() -> int:
     h = int(sys.argv[3]) if len(sys.argv) > 3 else 700
     OUT.mkdir(parents=True, exist_ok=True)
 
+    import ctypes
+
+    screen_h = ctypes.windll.user32.GetSystemMetrics(1)
+    scale = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0
+    usable = int(screen_h / scale) - 80
+    if h > usable:
+        print(f"высота {h} больше видимой части экрана ({usable}) — снимок обрежется; беру {usable}")
+        h = usable
     print(f"эталон: {html}")
     a = shot_chrome(html, w, h)
     if not a.exists():

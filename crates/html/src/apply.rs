@@ -89,6 +89,8 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     match c.display {
         // Блок в GPUI — дефолт; отдельного вызова не требует.
         Some(Display::Flex) | Some(Display::InlineFlex) => d = d.flex(),
+        // Инлайновая коробка в строке не растягивается по ширине родителя.
+        Some(Display::InlineBlock) => d = d.flex_shrink_0(),
         Some(Display::Grid) => {
             d = d.grid();
             // Список дорожек точнее числа колонок: он несёт ширину по
@@ -354,6 +356,26 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     if let Some(o) = c.opacity {
         d = d.opacity(o);
     }
+    // `visibility: hidden` — элемент занимает своё место, но не рисуется.
+    if c.hidden == Some(true) {
+        d.style().visibility = Some(gpui::Visibility::Hidden);
+    }
+    if let Some(name) = &c.cursor {
+        // Набор GPUI совпадает с CSS почти буква в букву; неизвестное имя
+        // оставляем без изменений, а не подменяем стрелкой.
+        let style = match name.as_str() {
+            "pointer" => Some(gpui::CursorStyle::PointingHand),
+            "text" => Some(gpui::CursorStyle::IBeam),
+            "crosshair" => Some(gpui::CursorStyle::Crosshair),
+            "grab" => Some(gpui::CursorStyle::OpenHand),
+            "grabbing" => Some(gpui::CursorStyle::ClosedHand),
+            "default" => Some(gpui::CursorStyle::Arrow),
+            _ => None,
+        };
+        if let Some(st) = style {
+            d.style().mouse_cursor = Some(st);
+        }
+    }
     if !c.shadows.is_empty() {
         d = d.shadow(
             c.shadows
@@ -403,6 +425,12 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
     }
     if c.monospace == Some(true) {
         d = d.font_family("JetBrains Mono");
+    }
+    if let Some(Len::Px(v)) = c.letter_spacing {
+        d = d.letter_spacing(px(v));
+    }
+    if c.ellipsis == Some(true) {
+        d = d.text_ellipsis();
     }
     d
 }

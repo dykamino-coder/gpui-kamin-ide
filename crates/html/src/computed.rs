@@ -64,6 +64,10 @@ pub struct Corners {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Display {
     Block,
+    /// `inline-block`: коробка со своими размерами, но стоящая В СТРОКЕ.
+    /// Отдельный вариант нужен потому, что раньше он схлопывался в `Block` и
+    /// два таких элемента вставали друг под друга вместо одной строки.
+    InlineBlock,
     Flex,
     InlineFlex,
     Grid,
@@ -195,6 +199,16 @@ pub struct Computed {
     pub monospace: Option<bool>,
     /// `border-color: currentColor` — цвет берётся из `color` того же узла.
     pub border_color_is_current: bool,
+    /// Форма курсора: у GPUI набор совпадает с CSS почти буква в букву.
+    pub cursor: Option<String>,
+    /// `visibility: hidden` — место занимает, но не рисуется.
+    pub hidden: Option<bool>,
+    pub letter_spacing: Option<Len>,
+    pub ellipsis: Option<bool>,
+    /// `list-style: none` — навигация, свёрстанная на списках, иначе идёт с
+    /// точками.
+    pub no_marker: Option<bool>,
+    pub object_fit: Option<String>,
 }
 
 impl Computed {
@@ -249,7 +263,9 @@ impl Computed {
                     "inline-flex" => Some(Display::InlineFlex),
                     "grid" => Some(Display::Grid),
                     "none" => Some(Display::None),
-                    "block" | "inline-block" => Some(Display::Block),
+                    "block" => Some(Display::Block),
+                    "inline-block" => Some(Display::InlineBlock),
+                    "inline" => Some(Display::InlineBlock),
                     _ => self.display,
                 }
             }
@@ -433,6 +449,12 @@ impl Computed {
             // `pre` сохраняет переводы строк — это не то же самое, что запрет
             // переноса: раньше `pre` помечался как `nowrap`, и текст склеивался
             // в одну строку.
+            "cursor" => self.cursor = Some(v.to_string()),
+            "visibility" => self.hidden = Some(v == "hidden" || v == "collapse"),
+            "letter-spacing" => self.letter_spacing = Len::parse(v),
+            "text-overflow" => self.ellipsis = Some(v == "ellipsis"),
+            "list-style" | "list-style-type" => self.no_marker = Some(v.contains("none")),
+            "object-fit" => self.object_fit = Some(v.to_string()),
             "white-space" => {
                 self.nowrap = Some(v == "nowrap");
                 self.preserve_newlines = Some(matches!(

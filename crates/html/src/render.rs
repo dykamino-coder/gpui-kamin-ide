@@ -9,7 +9,9 @@ use crate::computed::{Computed, Display};
 use crate::dom::{Element, Node};
 use crate::inline::{self};
 use crate::value::Len;
-use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, TextStyle, div, px};
+use gpui::{
+    AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, TextStyle, div, px,
+};
 
 /// Настройки отрисовки: то, что задаёт приложение, а не документ.
 #[derive(Clone)]
@@ -68,7 +70,13 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     for n in nodes {
         let is_inline = match n {
             Node::Text(t) => !t.trim().is_empty(),
-            Node::Element(e) => e.inline && e.style.display.is_none(),
+            Node::Element(e) => match e.style.display {
+                // Явно заявленная инлайновая коробка остаётся в строке даже у
+                // блочного по природе тега.
+                Some(Display::InlineBlock) | Some(Display::InlineFlex) => true,
+                Some(_) => false,
+                None => e.inline,
+            },
         };
         if is_inline {
             pending.push(n.clone());
@@ -247,7 +255,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         }),
         "hr" => styled_div(e).w_full().into_any_element(),
         "table" => table(e, &merged, opts),
-        "ul" | "ol" => list(e, &merged, opts),
+        // Список с заданной раскладкой — это уже не список, а контейнер:
+        // на `ul` верстают навигацию и наборы чипов.
+        "ul" | "ol" if e.style.display.is_none() => list(e, &merged, opts),
         "pre" => pre(e, &merged, opts),
         _ => {
             let mut d = styled_div(e);
@@ -273,9 +283,16 @@ fn image(e: &Element) -> AnyElement {
         d = d.w(px(w));
     }
     if src.starts_with("data:") || src.starts_with("file:") || src.starts_with('/') {
-        return d
-            .child(gpui::img(SharedString::from(src.to_string())))
-            .into_any_element();
+        let mut image = gpui::img(SharedString::from(src.to_string()));
+        // По умолчанию картинка вписывается в бокс; CSS-умолчание — заполнить.
+        image = match e.style.object_fit.as_deref() {
+            Some("cover") => image.object_fit(gpui::ObjectFit::Cover),
+            Some("fill") => image.object_fit(gpui::ObjectFit::Fill),
+            Some("scale-down") => image.object_fit(gpui::ObjectFit::ScaleDown),
+            Some("none") => image.object_fit(gpui::ObjectFit::None),
+            _ => image.object_fit(gpui::ObjectFit::Contain),
+        };
+        return d.child(image).into_any_element();
     }
     // Пустая рамка вместо чужой картинки: молча ничего не показать хуже —
     // в разметке останется дыра без объяснения.
@@ -303,6 +320,9 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             "•".to_string()
         };
         idx += 1;
+        // `list-style: none` — на списках верстают навигацию и наборы чипов,
+        // и точки там лишние.
+        let no_marker = e.style.no_marker == Some(true) || li.style.no_marker == Some(true);
         let merged = inline::inherit(inherited, &li.style);
         rows.push(
             div()
@@ -310,12 +330,12 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .flex_row()
                 .gap_x(px(6.))
                 .items_start()
-                .child(
+                .children((!no_marker).then(|| {
                     div()
                         .flex_shrink_0()
                         .min_w(px(14.))
-                        .child(SharedString::from(marker)),
-                )
+                        .child(SharedString::from(marker))
+                }))
                 .child(
                     div()
                         .flex()

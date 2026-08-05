@@ -47,6 +47,11 @@ const INLINE_TAGS: &[&str] = &[
     "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark",
     "q", "rp", "rt", "ruby", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u",
     "var", "wbr", "img", "svg",
+    // Правки текста: без них `~~зачёркнутое~~` из markdown разрывало абзац.
+    "del", "ins",
+    // Управление формой стоит В СТРОКЕ: иначе «Согласен» уезжает под флажок,
+    // а ряд кнопок выстраивается в столбик.
+    "button", "label", "input", "select", "textarea", "output", "meter", "progress",
 ];
 
 /// Теги, содержимое которых не рисуется.
@@ -65,6 +70,16 @@ fn user_agent_css() -> &'static str {
     h5, h6 { font-size: 13px; font-weight: 600; margin: 8px 0 4px }
     p { margin: 6px 0 }
     b, strong { font-weight: 700 }
+    del, s { text-decoration: line-through }
+    ins { text-decoration: underline }
+    mark { background: #ffe066; color: #1a1c23 }
+    button { background: #3d3f51; border: 1px solid #4a4a5a; color: #e6e6ee }
+    dd { margin-left: 32px }
+    dt { font-weight: 700; margin: 6px 0 2px }
+    figure { margin: 8px 0 }
+    figcaption { font-size: 11px; color: #9aa0b4; margin: 4px 0 0 }
+    caption { font-weight: 600; margin: 0 0 4px }
+    canvas { background: #2a2b36; border: 1px dashed #4a4a5a }
     i, em { font-style: italic }
     u { text-decoration: underline }
     s, del { text-decoration: line-through }
