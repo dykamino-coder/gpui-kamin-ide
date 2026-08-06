@@ -1,8 +1,8 @@
 //! Customize-режим (CustomizeMode + CustomizePanel 1:1, builtin-часть):
 //! сайдбар = навигация (Settings/Design/Extensions/Logs/System), main-область
 //! = панель с заголовком и телом. Settings — реальные prefs хоста
-//! (kamin:prefs:get/set): background-тосты + ConPTY DLL. Design/Logs/System/
-//! Extensions — заглушки до своих фаз.
+//! (kamin:prefs:get/set): background-тосты, ConPTY DLL и удаление сессий без
+//! подтверждения. Design/Logs/System/Extensions — заглушки до своих фаз.
 
 pub use crate::ui::cz::nav::{PANELS, customize_nav};
 pub use crate::ui::cz::page::contrib_page;
@@ -26,7 +26,8 @@ use crate::host_link::ShellEvent;
 #[allow(clippy::too_many_arguments)]
 pub fn customize_panel(
     active: &str,
-    prefs: Option<(bool, bool)>,
+    // (backgroundToasts, useConptyDll, skipDeleteConfirm); None = не загружены
+    prefs: Option<(bool, bool, bool)>,
     extensions: Option<&Vec<crate::ui::extensions_panel::ExtDesc>>,
     // Кэш иконок расширений (id → data-URL), как `iconCache` оригинала
     ext_icons: &std::collections::HashMap<String, Option<String>>,
@@ -54,7 +55,7 @@ pub fn customize_panel(
     let body: AnyElement = match active {
         "settings" => {
             let loaded = prefs.is_some();
-            let (toasts, conpty) = prefs.unwrap_or((true, false));
+            let (toasts, conpty, skip_delete_confirm) = prefs.unwrap_or((true, false, false));
             div()
                 .when_some(legacy_fp.and_then(|fp| legacy_bridge_card(fp, legacy_busy, tx, p)), |d, card| d.child(card))
                 .flex()
@@ -77,6 +78,16 @@ pub fn customize_panel(
                     "Use the system ConPTY DLL (Windows-signed)",
                     "Off (default) uses node-pty's bundled ConPTY — instant on desktop Windows 11. Turn on if corp AppLocker blocks the bundled (unsigned) OpenConsole.exe and shell spawns hang. Re-open the terminal to apply.",
                     conpty,
+                    loaded,
+                    tx,
+                    p,
+                )], p))
+                .child(section("Sessions", vec![pref_row(
+                    "pref-skip-delete-confirm",
+                    "skipDeleteConfirm",
+                    "Delete sessions and project folders without asking",
+                    "Off (default) asks before a session — or a whole project folder with every session in it — is removed. Turn on to delete straight away. Files deleted from the file tree still ask.",
+                    skip_delete_confirm,
                     loaded,
                     tx,
                     p,

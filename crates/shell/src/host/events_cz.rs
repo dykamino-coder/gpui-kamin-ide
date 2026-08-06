@@ -17,8 +17,9 @@ pub enum CzEvent {
     /// Открыть Customize НА разделе (без переключения туда-обратно):
     /// `SetCustomizePanel` сам режим не включает.
     OpenCustomizePanel(&'static str),
-    /// Прилетели app-prefs хоста: (backgroundToasts, useConptyDll).
-    PrefsLoaded(bool, bool),
+    /// Прилетели app-prefs хоста:
+    /// (backgroundToasts, useConptyDll, skipDeleteConfirm).
+    PrefsLoaded(bool, bool, bool),
     /// Список расширений хоста (kamin:extensions:list).
     ExtensionsLoaded(Vec<crate::ui::extensions_panel::ExtDesc>),
     /// Вкл/выкл расширение (RPC + перезагрузка списка).
@@ -78,7 +79,8 @@ pub enum CzEvent {
     CustomizePages(Vec<CzContainer>),
     /// Клик по contributed-странице Customize: открыть её вебвью.
     SetCustomizeContribPage(String),
-    /// Тумблер настройки: ("backgroundToasts"|"useConptyDll", значение).
+    /// Тумблер настройки: ключ app-prefs хоста и новое значение
+    /// ("backgroundToasts"|"useConptyDll"|"skipDeleteConfirm").
     SetPref(&'static str, bool),
     /// Счётчики статус-бара (расширения/команды).
     StatusCounts(crate::ui::status_bar::StatusCounts),

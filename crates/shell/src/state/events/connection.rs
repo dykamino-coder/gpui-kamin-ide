@@ -18,6 +18,9 @@ impl RootView {
             ShellEvent::WsConnected => {
                 self.ws_connected = true;
                 self.push_syslog("info", "shell", "Connected to kamin-host");
+                // Префы нужны ДО Customize: `skipDeleteConfirm` спрашивают на
+                // первом же удалении сессии, а панель могут не открыть вовсе.
+                crate::host_link::request_app_prefs(self.tx.clone());
             }
             ShellEvent::WsDisconnected => {
                 self.ws_connected = false;
