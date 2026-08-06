@@ -48,6 +48,21 @@ impl RootView {
                 self.spawn_shell_in(&crate::term::profiles()[0], Some(dir));
             }
             ShellEvent::OpenModal(modal) => {
+                // Настройка «удалять без подтверждения» гасит РОВНО две
+                // модалки — сессии и проекта. Развилка одна и здесь, а не в
+                // местах открытия: их четыре (пилюля сессии, пилюля группы,
+                // RMB по строке проекта, контекст-меню сессии), и все живут в
+                // `ui/`, которому про `state/` знать нельзя (ARCHITECTURE.md) —
+                // пронести туда значение префа было бы нечем.
+                if self.cz.app_prefs.is_some_and(|(_, _, skip)| skip)
+                    && matches!(
+                        modal.action,
+                        ModalAction::DeleteSession(_) | ModalAction::DeleteProject(_)
+                    )
+                {
+                    self.run_modal_action(modal, None);
+                    return;
+                }
                 // Запоминаем, кто был в фокусе, и просим автофокус Confirm
                 self.modal_focus_return = crate::ui::focus_ring::focused_id();
                 self.modal_autofocus_pending = true;

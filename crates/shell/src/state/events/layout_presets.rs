@@ -36,24 +36,9 @@ impl RootView {
                     host_link::request_status(self.tx.clone());
                 }
                 if self.cz.customize_open && self.cz.app_prefs.is_none() {
-                    // Лениво подтянуть prefs хоста
-                    let tx = self.tx.clone();
-                    std::thread::spawn(move || {
-                        if let Some(c) = host_link::client()
-                            && let Ok(v) = c.request("kamin:prefs:get", vec![])
-                        {
-                            let toasts = v
-                                .get("backgroundToasts")
-                                .and_then(serde_json::Value::as_bool)
-                                .unwrap_or(true);
-                            let conpty = v
-                                .get("useConptyDll")
-                                .and_then(serde_json::Value::as_bool)
-                                .unwrap_or(false);
-                            let _ =
-                                tx.try_send(ShellEvent::Cz(CzEvent::PrefsLoaded(toasts, conpty)));
-                        }
-                    });
+                    // Добор: обычно префы уже пришли по `WsConnected`, но
+                    // панель могли открыть раньше ответа или после обрыва WS.
+                    host_link::request_app_prefs(self.tx.clone());
                 }
             }
             ShellEvent::Cz(CzEvent::SetCustomizePanel(id)) => {
@@ -87,15 +72,16 @@ impl RootView {
                     Some(sev)
                 };
             }
-            ShellEvent::Cz(CzEvent::PrefsLoaded(toasts, conpty)) => {
-                self.cz.app_prefs = Some((toasts, conpty));
+            ShellEvent::Cz(CzEvent::PrefsLoaded(toasts, conpty, skip_delete_confirm)) => {
+                self.cz.app_prefs = Some((toasts, conpty, skip_delete_confirm));
             }
             ShellEvent::Cz(CzEvent::SetPref(key, value)) => {
                 // Оптимистично + RPC в фоне
-                if let Some((toasts, conpty)) = self.cz.app_prefs.as_mut() {
+                if let Some((toasts, conpty, skip_delete_confirm)) = self.cz.app_prefs.as_mut() {
                     match key {
                         "backgroundToasts" => *toasts = value,
                         "useConptyDll" => *conpty = value,
+                        "skipDeleteConfirm" => *skip_delete_confirm = value,
                         _ => {}
                     }
                 }

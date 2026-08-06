@@ -10,7 +10,9 @@
 div flex-col, gap 16 (`.root { gap: var(--space-4) }`)
 ├─ LegacyBridgeCard (если найден след старого Bridge) — см. 83
 ├─ section «NOTIFICATIONS» → pref_row #pref-toasts (backgroundToasts)
-└─ section «TERMINAL»      → pref_row #pref-conpty (useConptyDll)
+├─ section «TERMINAL»      → pref_row #pref-conpty (useConptyDll)
+└─ section «SESSIONS»      → pref_row #pref-skip-delete-confirm
+                              (skipDeleteConfirm) — НАШЕ ДОБАВЛЕНИЕ
 
 section: flex-col, gap 8
 └─ sectionTitle — 11px, Semibold, text_muted, UPPERCASE
@@ -37,6 +39,13 @@ pref_row: flex, items_start, gap 10, py 4, cursor_pointer,
 ритм между секциями даёт `gap: space-4` контейнера, а не margin заголовка
 (из-за него у первой секции был лишний отступ 16, а между заголовком и
 строкой — 4 вместо 8); LegacyBridgeCard реализован.
+
+## Осознанное расхождение с оригиналом
+
+Секция «SESSIONS» — новая функция, а не пропущенный при порте элемент: у
+оригинала третьей настройки нет. Гасит подтверждение удаления сессии и
+проекта (`DeleteSession` / `DeleteProject`); удаление из дерева файлов
+спрашивает всегда. Сверять эту секцию с `original.md` не нужно.
 
 ## Осталось
 
