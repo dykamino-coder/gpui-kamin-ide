@@ -335,13 +335,16 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
         // над обычными правилами, `@keyframes` — отдельно (см.
         // `parse_keyframes`), остальные пропускаются.
         if head.starts_with('@') {
-            let inner = if head.starts_with("@media") {
-                media.matches(head)
+            // Имя at-правила регистронезависимо (§3.3): `@MeDIa` — то же
+            // самое, что `@media` (`case-sensitive-001`).
+            let name = head.to_ascii_lowercase();
+            let inner = if name.starts_with("@media") {
+                media.matches(&name)
             } else {
                 // `@supports` проверяет поддержку свойства браузером; своё
                 // покрытие мы знаем не в разборе, поэтому считаем условие
                 // выполненным — в разметке им включают современный вариант.
-                head.starts_with("@supports")
+                name.starts_with("@supports")
             };
             if inner {
                 for r in parse_stylesheet_media(body, media) {
