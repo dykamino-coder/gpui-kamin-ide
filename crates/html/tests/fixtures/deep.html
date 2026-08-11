@@ -1,0 +1,147 @@
+<!-- Глубокая вложенность и свойства второй волны: логические отступы,
+     размещение в сетке, обводка, order, вложенные таблицы с компонентами.
+     У каждого блока свой цвет — по нему сверяется геометрия против Chrome. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff }
+  .page { width: 860px; padding: 16px; box-sizing: border-box }
+
+  /* 12 уровней вложенности с отступом на каждом */
+  .n { padding: 6px; box-sizing: border-box }
+  .n1 { background: #f8f9fa } .n2 { background: #f1f3f5 } .n3 { background: #e9ecef }
+  .n4 { background: #dee2e6 } .n5 { background: #ced4da } .n6 { background: #adb5bd }
+  .n7 { background: #868e96 } .n8 { background: #495057 } .n9 { background: #343a40 }
+  .n10 { background: #212529 } .n11 { background: #1864ab } .n12 { background: #1c7ed6; height: 20px }
+
+  /* Логические отступы — должны лечь как физические */
+  .log { background: #d0ebff; margin-block: 8px; padding-inline: 20px;
+         padding-block: 6px; width: 300px; box-sizing: border-box }
+  .logi { background: #1971c2; height: 18px }
+
+  /* Сетка с явным размещением, неявными дорожками и обратным порядком */
+  .grid { display: grid; grid-template-columns: 100px 1fr 100px;
+          grid-template-rows: 30px 30px; gap: 6px; width: 500px; margin-bottom: 10px }
+  .ga { grid-column: 1 / 3; background: #e03131 }
+  .gb { grid-column: 3; grid-row: 1 / 3; background: #2f9e44 }
+  .gc { background: #f59f00 }
+  .gd { background: #6741d9 }
+
+  .autogrid { display: grid; grid-template-columns: 60px 60px;
+              grid-auto-rows: 24px; gap: 4px; width: 200px; margin-bottom: 10px }
+  .au { background: #0c8599 }
+
+  /* order: визуальный порядок обратен разметке */
+  .ord { display: flex; gap: 6px; width: 400px; margin-bottom: 10px }
+  .o1 { order: 3; width: 80px; height: 24px; background: #a61e4d }
+  .o2 { order: 2; width: 80px; height: 24px; background: #5f3dc4 }
+  .o3 { order: 1; width: 80px; height: 24px; background: #087f5b }
+
+  /* Обводка вне коробки — соседей не двигает */
+  .outl { display: flex; gap: 24px; margin-bottom: 16px; padding: 6px 0 }
+  .ob { width: 70px; height: 30px; background: #f76707; outline: 3px solid #d6336c }
+  .ob2 { width: 70px; height: 30px; background: #d6336c;
+         outline: 3px solid #0b7285; outline-offset: 4px }
+
+  /* Разные цвета сторон рамки */
+  .multi { width: 120px; height: 40px; background: #fff9db; box-sizing: border-box;
+           border-width: 6px; border-style: solid;
+           border-top-color: #c92a2a; border-right-color: #2b8a3e;
+           border-bottom-color: #5c7cfa; border-left-color: #e8590c;
+           margin-bottom: 10px }
+
+  /* Соотношение сторон и распределения */
+  .ratio { width: 120px; aspect-ratio: 3 / 1; background: #862e9c; margin-bottom: 10px }
+  .evenly { display: flex; justify-content: space-evenly; width: 420px;
+            height: 30px; background: #f1f3f5; margin-bottom: 10px }
+  .ev { width: 50px; height: 20px; background: #0b7285 }
+
+  /* Таблица с фиксированной раскладкой, зазором и компонентами в ячейках */
+  table.fixed { table-layout: fixed; border-spacing: 6px; width: 460px; margin-bottom: 12px }
+  table.fixed td { padding: 4px }
+  .cellbtn { background: #364fc7; border-radius: 6px; height: 22px }
+  .cellchip { background: #ff8787; border-radius: 11px; height: 22px; width: 60px }
+  .cellbar { background: #99e9f2; height: 10px; border-radius: 5px }
+
+  /* Скругления и рамки в паре */
+  .rr { display: flex; gap: 8px }
+  .rr div { width: 54px; height: 34px }
+  .k1 { border-radius: 17px; background: #37b24d }
+  .k2 { border-radius: 2px 16px; background: #1098ad }
+  .k3 { border-radius: 50% 8px 50% 8px; background: #e64980 }
+  .k4 { border: 4px solid #7048e8; border-radius: 10px; background: #ffec99;
+        box-sizing: border-box }
+</style>
+
+<div class="page">
+  <!-- 12 уровней вложенности -->
+  <div class="n n1"><div class="n n2"><div class="n n3"><div class="n n4">
+    <div class="n n5"><div class="n n6"><div class="n n7"><div class="n n8">
+      <div class="n n9"><div class="n n10"><div class="n n11">
+        <div class="n12"></div>
+      </div></div></div>
+    </div></div></div></div>
+  </div></div></div></div>
+
+  <!-- Логические отступы -->
+  <div class="log"><div class="logi"></div></div>
+
+  <!-- Сетка с размещением -->
+  <div class="grid">
+    <div class="ga"></div>
+    <div class="gb"></div>
+    <div class="gc"></div>
+    <div class="gd"></div>
+  </div>
+
+  <!-- Неявные строки -->
+  <div class="autogrid">
+    <div class="au"></div>
+    <div class="au" style="background: #66a80f"></div>
+    <div class="au" style="background: #c2255c"></div>
+    <div class="au" style="background: #e67700"></div>
+  </div>
+
+  <!-- Обратный порядок -->
+  <div class="ord">
+    <div class="o1"></div><div class="o2"></div><div class="o3"></div>
+  </div>
+
+  <!-- Обводка -->
+  <div class="outl">
+    <div class="ob"></div>
+    <div class="ob2"></div>
+  </div>
+
+  <!-- Разноцветные стороны рамки -->
+  <div class="multi"></div>
+
+  <!-- Соотношение сторон и space-evenly -->
+  <div class="ratio"></div>
+  <div class="evenly">
+    <div class="ev"></div>
+    <div class="ev" style="background: #5c940d"></div>
+  </div>
+
+  <!-- Таблица фиксированной раскладки с компонентами -->
+  <table class="fixed">
+    <tr>
+      <td><div class="cellbtn"></div></td>
+      <td><div class="cellchip"></div></td>
+      <td><div class="cellbar"></div></td>
+    </tr>
+    <tr>
+      <td><div class="cellbtn" style="background: #5f3dc4"></div></td>
+      <td>
+        <div style="display: flex; gap: 4px">
+          <div style="width: 26px; height: 22px; background: #f03e3e; border-radius: 4px"></div>
+          <div style="width: 26px; height: 22px; background: #0ca678; border-radius: 4px"></div>
+        </div>
+      </td>
+      <td><div class="cellbar" style="background: #b197fc"></div></td>
+    </tr>
+  </table>
+
+  <!-- Скругления -->
+  <div class="rr">
+    <div class="k1"></div><div class="k2"></div><div class="k3"></div><div class="k4"></div>
+  </div>
+</div>

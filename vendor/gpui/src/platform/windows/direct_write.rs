@@ -385,11 +385,16 @@ impl DirectWriteState {
         Ok(direct_write_features)
     }
 
+    #[allow(clippy::too_many_arguments)]
     unsafe fn get_font_id_from_font_collection(
         &mut self,
         family_name: &str,
         font_weight: FontWeight,
         font_style: FontStyle,
+        // KaminIDE patch: ширина начертания (`font-stretch`). Узкое или
+        // широкое начертание — это ОТДЕЛЬНЫЙ шрифт семейства, поэтому
+        // выбирается здесь, при подборе, а не включается возможностью.
+        font_stretch: crate::FontStretch,
         font_features: &FontFeatures,
         font_fallbacks: Option<&FontFallbacks>,
         is_system_font: bool,
@@ -405,7 +410,7 @@ impl DirectWriteState {
                 .GetMatchingFonts(
                     &HSTRING::from(family_name),
                     font_weight.into(),
-                    DWRITE_FONT_STRETCH_NORMAL,
+                    to_dwrite_stretch(font_stretch),
                     font_style.into(),
                 )
                 .log_err()?
@@ -465,6 +470,7 @@ impl DirectWriteState {
                     family.as_ref(),
                     target_font.weight,
                     target_font.style,
+                    target_font.stretch,
                     &target_font.features,
                     target_font.fallbacks.as_ref(),
                 )
@@ -475,37 +481,41 @@ impl DirectWriteState {
                     font_name_with_fallbacks(target_font.family.as_ref(), family.as_ref()),
                     target_font.weight,
                     target_font.style,
+                    target_font.stretch,
                     &target_font.features,
                     target_font.fallbacks.as_ref(),
                 )
                 .unwrap_or_else(|| {
-                    #[cfg(any(test, feature = "test-support"))]
-                    {
-                        panic!("ERROR: {} font not found!", target_font.family);
-                    }
-                    #[cfg(not(any(test, feature = "test-support")))]
-                    {
-                        log::error!("{} not found, use {} instead.", target_font.family, family);
-                        self.get_font_id_from_font_collection(
-                            family.as_ref(),
-                            target_font.weight,
-                            target_font.style,
-                            &target_font.features,
-                            target_font.fallbacks.as_ref(),
-                            true,
-                        )
-                        .unwrap()
-                    }
+                    // KaminIDE patch: недостающее семейство заменяется всегда,
+                    // а не только в обычной сборке. Прежняя проверка обрывала
+                    // ПРОЦЕСС, стоило странице попросить шрифт, которого на
+                    // машине нет, — а страницы мы рисуем чужие. Прогон
+                    // reftest-ов из-за этого умирал посреди раздела, и то, что
+                    // не успело замериться, выглядело как отсутствие тестов.
+                    log::error!("{} not found, use {} instead.", target_font.family, family);
+                    self.get_font_id_from_font_collection(
+                        family.as_ref(),
+                        target_font.weight,
+                        target_font.style,
+                        target_font.stretch,
+                        &target_font.features,
+                        target_font.fallbacks.as_ref(),
+                        true,
+                    )
+                    .unwrap()
                 })
             }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     unsafe fn find_font_id(
         &mut self,
         family_name: &str,
         weight: FontWeight,
         style: FontStyle,
+        // KaminIDE patch: ширина начертания участвует в подборе шрифта.
+        stretch: crate::FontStretch,
         features: &FontFeatures,
         fallbacks: Option<&FontFallbacks>,
     ) -> Option<FontId> {
@@ -515,6 +525,7 @@ impl DirectWriteState {
                 family_name,
                 weight,
                 style,
+                stretch,
                 features,
                 fallbacks,
                 false,
@@ -524,6 +535,7 @@ impl DirectWriteState {
                     family_name,
                     weight,
                     style,
+                    stretch,
                     features,
                     fallbacks,
                     true,
@@ -535,6 +547,7 @@ impl DirectWriteState {
                     family_name,
                     weight,
                     style,
+                    stretch,
                     features,
                     fallbacks,
                     true,
@@ -577,8 +590,11 @@ impl DirectWriteState {
                         collection,
                         font_info.font_face.GetWeight(),
                         font_info.font_face.GetStyle(),
-                        DWRITE_FONT_STRETCH_NORMAL,
-                        font_size.0,
+                        // Ширина уже учтена при подборе начертания.
+                        font_info.font_face.GetStretch(),
+                        // KaminIDE patch: кегль ПЕРВОГО прогона, а не блока —
+                        // у прогонов он теперь свой.
+                        first_run.font_size.0,
                         &HSTRING::from(&self.components.locale),
                     )?
                     .cast()?;
@@ -606,16 +622,9 @@ impl DirectWriteState {
             };
 
             let mut first_run = true;
-            let mut ascent = Pixels::default();
-            let mut descent = Pixels::default();
             for run in font_runs {
                 if first_run {
                     first_run = false;
-                    let mut metrics = vec![DWRITE_LINE_METRICS::default(); 4];
-                    let mut line_count = 0u32;
-                    text_layout.GetLineMetrics(Some(&mut metrics), &mut line_count as _)?;
-                    ascent = px(metrics[0].baseline);
-                    descent = px(metrics[0].height - metrics[0].baseline);
                     continue;
                 }
                 let font_info = &self.fonts[run.font_id.0];
@@ -636,11 +645,22 @@ impl DirectWriteState {
                 text_layout.SetFontCollection(collection, text_range)?;
                 text_layout
                     .SetFontFamilyName(&HSTRING::from(&font_info.font_family), text_range)?;
-                text_layout.SetFontSize(font_size.0, text_range)?;
+                // KaminIDE patch: кегль прогона (`font-size` у куска строки).
+                text_layout.SetFontSize(run.font_size.0, text_range)?;
                 text_layout.SetFontStyle(font_info.font_face.GetStyle(), text_range)?;
                 text_layout.SetFontWeight(font_info.font_face.GetWeight(), text_range)?;
                 text_layout.SetTypography(&font_info.features, text_range)?;
             }
+
+            // KaminIDE patch: подъём и спуск строки считаются, когда все
+            // прогоны уже расставлены: кусок крупнее поднимает всю строку,
+            // как и в браузере. Раньше метрики снимались по первому прогону,
+            // и высокий кусок вылезал за строку.
+            let mut metrics = vec![DWRITE_LINE_METRICS::default(); 4];
+            let mut line_count = 0u32;
+            text_layout.GetLineMetrics(Some(&mut metrics), &mut line_count as _)?;
+            let ascent = px(metrics[0].baseline);
+            let descent = px(metrics[0].height - metrics[0].baseline);
 
             let mut runs = Vec::new();
             let renderer_context = RendererContext {
@@ -1351,6 +1371,16 @@ struct RendererContext<'t, 'a, 'b> {
     width: f32,
 }
 
+/// KaminIDE patch: знак «умолчательно игнорируемый» по Юникоду — служебный,
+/// своего изображения не имеет.
+fn is_default_ignorable(ch: char) -> bool {
+    matches!(ch as u32,
+        0x00AD | 0x034F | 0x061C | 0x115F | 0x1160 | 0x17B4 | 0x17B5
+            | 0x180B..=0x180F | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x206F
+            | 0x3164 | 0xFE00..=0xFE0F | 0xFEFF | 0xFFA0 | 0xFFF0..=0xFFF8
+            | 0x1D173..=0x1D17A | 0xE0000..=0xE0FFF)
+}
+
 #[derive(Debug)]
 struct ClusterAnalyzer<'t> {
     utf16_idx: usize,
@@ -1498,6 +1528,19 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
         for (cluster_utf16_len, cluster_glyph_count) in cluster_analyzer {
             context.index_converter.advance_to_utf16_ix(utf16_idx);
             utf16_idx += cluster_utf16_len;
+            // KaminIDE patch: знак-указание своего изображения не имеет.
+            // Форму соседних букв он уже определил (соединитель, разделитель
+            // направления), но шрифт его чаще всего не содержит — и подмена
+            // рисует пустой квадрат, раздвигая строку. Так же поступает
+            // HarfBuzz, а за ним и браузеры.
+            let ignorable = context.index_converter.text[context.index_converter.utf8_ix..]
+                .chars()
+                .next()
+                .is_some_and(is_default_ignorable);
+            if ignorable {
+                glyph_idx += cluster_glyph_count;
+                continue;
+            }
             for (cluster_glyph_idx, glyph_id) in glyph_ids
                 [glyph_idx..(glyph_idx + cluster_glyph_count)]
                 .iter()
@@ -1520,7 +1563,12 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
             }
             glyph_idx += cluster_glyph_count;
         }
-        context.runs.push(ShapedRun { font_id, glyphs });
+        // KaminIDE patch: кегль прогона знает сам прогон глифов.
+        context.runs.push(ShapedRun {
+            font_id,
+            glyphs,
+            font_size: px(glyphrun.fontEmSize),
+        });
         Ok(())
     }
 
@@ -1684,6 +1732,7 @@ fn get_font_identifier_and_font_struct(
         features: FontFeatures::default(),
         weight: weight.into(),
         style: style.into(),
+        stretch: crate::FontStretch::default(),
         fallbacks: None,
     };
     let is_emoji = unsafe { font_face.IsColorFont().as_bool() };
@@ -1919,5 +1968,21 @@ mod tests {
         assert_eq!(next, Some((5, 1)));
         let next = analyzer.next();
         assert_eq!(next, None);
+    }
+}
+
+/// KaminIDE patch: ступень ширины начертания в термины DirectWrite.
+fn to_dwrite_stretch(stretch: crate::FontStretch) -> DWRITE_FONT_STRETCH {
+    use crate::FontStretch as S;
+    match stretch {
+        S::UltraCondensed => DWRITE_FONT_STRETCH_ULTRA_CONDENSED,
+        S::ExtraCondensed => DWRITE_FONT_STRETCH_EXTRA_CONDENSED,
+        S::Condensed => DWRITE_FONT_STRETCH_CONDENSED,
+        S::SemiCondensed => DWRITE_FONT_STRETCH_SEMI_CONDENSED,
+        S::Normal => DWRITE_FONT_STRETCH_NORMAL,
+        S::SemiExpanded => DWRITE_FONT_STRETCH_SEMI_EXPANDED,
+        S::Expanded => DWRITE_FONT_STRETCH_EXPANDED,
+        S::ExtraExpanded => DWRITE_FONT_STRETCH_EXTRA_EXPANDED,
+        S::UltraExpanded => DWRITE_FONT_STRETCH_ULTRA_EXPANDED,
     }
 }

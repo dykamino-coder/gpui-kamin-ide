@@ -1,0 +1,50 @@
+<!-- Градиенты: линейные по всем осям, наклонные, многостоповые, радиальные.
+     Здесь сверяется не геометрия, а цвет — блоки крупные и стоят по сетке. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff }
+  .page { width: 860px; padding: 16px; box-sizing: border-box;
+          display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px }
+  .g { height: 90px; border-radius: 8px }
+
+  .lin-down  { background: linear-gradient(180deg, #1c7ed6, #0b7285) }
+  .lin-up    { background: linear-gradient(0deg, #1c7ed6, #0b7285) }
+  .lin-right { background: linear-gradient(90deg, #e8590c, #862e9c) }
+  .lin-left  { background: linear-gradient(270deg, #e8590c, #862e9c) }
+  .lin-diag  { background: linear-gradient(45deg, #2f9e44, #fcc419) }
+  .lin-diag2 { background: linear-gradient(135deg, #c92a2a, #1864ab) }
+
+  .three-v { background: linear-gradient(180deg, #e03131 0%, #fcc419 50%, #2f9e44 100%) }
+  .three-h { background: linear-gradient(90deg, #7048e8 0%, #22b8cf 50%, #f76707 100%) }
+  .four-v  { background: linear-gradient(180deg, #a61e4d 0%, #5f3dc4 30%,
+                                         #1098ad 70%, #66a80f 100%) }
+  .uneven  { background: linear-gradient(90deg, #212529 0%, #adb5bd 20%, #f8f9fa 100%) }
+
+  .rad     { background: radial-gradient(#ffd43b, #c2255c) }
+  .rad-c   { background: radial-gradient(circle at center, #d0ebff, #1864ab) }
+
+  .named   { background: linear-gradient(to right, #0ca678, #364fc7) }
+  .to-b     { background: linear-gradient(to bottom, #f783ac, #495057) }
+  .keyword { background: linear-gradient(to top right, #fab005, #0b7285) }
+</style>
+
+<div class="page">
+  <div class="g lin-down"></div>
+  <div class="g lin-up"></div>
+  <div class="g lin-right"></div>
+
+  <div class="g lin-left"></div>
+  <div class="g lin-diag"></div>
+  <div class="g lin-diag2"></div>
+
+  <div class="g three-v"></div>
+  <div class="g three-h"></div>
+  <div class="g four-v"></div>
+
+  <div class="g uneven"></div>
+  <div class="g rad"></div>
+  <div class="g rad-c"></div>
+
+  <div class="g named"></div>
+  <div class="g to-b"></div>
+  <div class="g keyword"></div>
+</div>

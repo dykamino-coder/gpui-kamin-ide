@@ -1,0 +1,45 @@
+<!-- Смешивание: каждая пара — одинаковый жёлтый квадрат поверх одинаковой
+     синей полосы, отличается только режим. Формулы CSS считаются по цвету
+     назначения, поэтому проверяются и разделимые режимы, и те, что берут у
+     сторон тон, насыщенность или светлоту целиком. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; font: 12px system-ui }
+  .page { width: 620px; padding: 16px; box-sizing: border-box; display: flex;
+          flex-wrap: wrap; gap: 12px }
+  .cell { width: 132px; height: 92px; background: #1c7ed6; position: relative }
+  .cell .over { position: absolute; left: 26px; top: 20px;
+                width: 80px; height: 52px; background: #ffd43b }
+  .m1  .over { mix-blend-mode: multiply }
+  .m2  .over { mix-blend-mode: screen }
+  .m3  .over { mix-blend-mode: darken }
+  .m4  .over { mix-blend-mode: lighten }
+  .m5  .over { mix-blend-mode: overlay }
+  .m6  .over { mix-blend-mode: color-dodge }
+  .m7  .over { mix-blend-mode: color-burn }
+  .m8  .over { mix-blend-mode: hard-light }
+  .m9  .over { mix-blend-mode: soft-light }
+  .m10 .over { mix-blend-mode: difference }
+  .m11 .over { mix-blend-mode: exclusion }
+  .m12 .over { mix-blend-mode: hue }
+  .m13 .over { mix-blend-mode: saturation }
+  .m14 .over { mix-blend-mode: color }
+  .m15 .over { mix-blend-mode: luminosity }
+</style>
+
+<div class="page">
+  <div class="cell m1"><div class="over"></div></div>
+  <div class="cell m2"><div class="over"></div></div>
+  <div class="cell m3"><div class="over"></div></div>
+  <div class="cell m4"><div class="over"></div></div>
+  <div class="cell m5"><div class="over"></div></div>
+  <div class="cell m6"><div class="over"></div></div>
+  <div class="cell m7"><div class="over"></div></div>
+  <div class="cell m8"><div class="over"></div></div>
+  <div class="cell m9"><div class="over"></div></div>
+  <div class="cell m10"><div class="over"></div></div>
+  <div class="cell m11"><div class="over"></div></div>
+  <div class="cell m12"><div class="over"></div></div>
+  <div class="cell m13"><div class="over"></div></div>
+  <div class="cell m14"><div class="over"></div></div>
+  <div class="cell m15"><div class="over"></div></div>
+</div>

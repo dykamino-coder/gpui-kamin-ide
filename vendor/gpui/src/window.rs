@@ -838,6 +838,12 @@ pub struct Window {
     pub(crate) text_style_stack: Vec<TextStyleRefinement>,
     pub(crate) rendered_entity_stack: Vec<EntityId>,
     pub(crate) element_offset_stack: Vec<Point<Pixels>>,
+    /// KaminIDE patch: стек преобразований (`transform` в CSS).
+    ///
+    /// Матрица действует на всё, что рисуется внутри: на подложку, рамку,
+    /// текст и картинки. Раскладка её не видит — элемент занимает своё место,
+    /// а рисуется преобразованным, ровно как в CSS.
+    transformation_stack: Vec<TransformationMatrix>,
     pub(crate) element_opacity: f32,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
@@ -1236,6 +1242,7 @@ impl Window {
             text_style_stack: Vec::new(),
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
+            transformation_stack: Vec::new(),
             content_mask_stack: Vec::new(),
             element_opacity: 1.0,
             requested_autoscroll: None,
@@ -1839,7 +1846,9 @@ impl Window {
         let content_mask = self.content_mask().scale(scale_factor);
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
+        let transformation = self.current_transformation();
         self.next_frame.scene.insert_primitive(PolychromeSprite {
+            transformation,
             order: 0,
             pad: 0,
             grayscale: false,
@@ -1880,7 +1889,9 @@ impl Window {
         let content_mask = self.content_mask().scale(scale_factor);
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
+        let transformation = self.current_transformation();
         self.next_frame.scene.insert_primitive(PolychromeSprite {
+            transformation,
             order: 0,
             pad: 0,
             grayscale: false,
@@ -2690,6 +2701,32 @@ impl Window {
     }
     /// Obtain the current element offset. This method should only be called during the
     /// prepaint phase of element drawing.
+    /// KaminIDE patch: действующее преобразование.
+    pub fn current_transformation(&self) -> TransformationMatrix {
+        self.transformation_stack
+            .last()
+            .copied()
+            .unwrap_or_else(TransformationMatrix::unit)
+    }
+
+    /// KaminIDE patch: нарисовать содержимое преобразованным.
+    ///
+    /// Матрицы вкладываются: внутреннее преобразование применяется поверх
+    /// внешнего — так же, как вложенные `transform` в CSS.
+    pub fn with_transformation<R>(
+        &mut self,
+        transformation: TransformationMatrix,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let combined = transformation.compose(self.current_transformation());
+        self.transformation_stack.push(combined);
+        let result = f(self);
+        self.transformation_stack.pop();
+        result
+    }
+
+    /// Obtain the current element offset. This method should only be called during the
+    /// prepaint phase of element drawing.
     pub fn element_offset(&self) -> Point<Pixels> {
         self.invalidator.debug_assert_prepaint();
         self.element_offset_stack
@@ -2968,14 +3005,36 @@ impl Window {
         corner_radii: Corners<Pixels>,
         shadows: &[BoxShadow],
     ) {
+        self.paint_shadows_inset(bounds, corner_radii, shadows, false);
+    }
+
+    /// KaminIDE patch: то же для внутренней тени (`box-shadow: inset`).
+    ///
+    /// Отличие одно: плотность считается ВНУТРИ фигуры. Примитив тот же,
+    /// разница — флаг, который читает шейдер.
+    pub fn paint_shadows_inset(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        shadows: &[BoxShadow],
+        inset: bool,
+    ) {
         self.invalidator.debug_assert_paint();
 
         let scale_factor = self.scale_factor();
         let content_mask = self.content_mask();
         let opacity = self.element_opacity();
         for shadow in shadows {
-            let shadow_bounds = (bounds + shadow.offset).dilate(shadow.spread_radius);
+            // Внутренняя тень не расширяет фигуру, а сжимает её.
+            let spread = if inset {
+                -shadow.spread_radius
+            } else {
+                shadow.spread_radius
+            };
+            let shadow_bounds = (bounds + shadow.offset).dilate(spread);
             self.next_frame.scene.insert_primitive(Shadow {
+                // KaminIDE patch: внутренняя тень отмечена в самой тени.
+                inset: u32::from(inset),
                 order: 0,
                 blur_radius: shadow.blur_radius.scale(scale_factor),
                 bounds: shadow_bounds.scale(scale_factor),
@@ -3001,7 +3060,10 @@ impl Window {
         let scale_factor = self.scale_factor();
         let content_mask = self.content_mask();
         let opacity = self.element_opacity();
+        // KaminIDE patch: действующее преобразование едет вместе с квадом.
+        let transformation = self.current_transformation();
         self.next_frame.scene.insert_primitive(Quad {
+            transformation,
             order: 0,
             bounds: quad.bounds.scale(scale_factor),
             content_mask: content_mask.scale(scale_factor),
@@ -3152,7 +3214,9 @@ impl Window {
                 content_mask,
                 color: color.opacity(element_opacity),
                 tile,
-                transformation: TransformationMatrix::unit(),
+                // KaminIDE patch: глиф едет тем же преобразованием, что и
+                // подложка, — иначе повёрнутая кнопка оставляла бы ровный текст.
+                transformation: self.current_transformation(),
             });
         }
         Ok(())
@@ -3204,7 +3268,9 @@ impl Window {
             let content_mask = self.content_mask().scale(scale_factor);
             let opacity = self.element_opacity();
 
+            let transformation = self.current_transformation();
             self.next_frame.scene.insert_primitive(PolychromeSprite {
+                transformation,
                 order: 0,
                 pad: 0,
                 grayscale: false,
@@ -3318,7 +3384,9 @@ impl Window {
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
 
+        let transformation = self.current_transformation();
         self.next_frame.scene.insert_primitive(PolychromeSprite {
+            transformation,
             order: 0,
             pad: 0,
             grayscale,
@@ -3387,7 +3455,9 @@ impl Window {
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
 
+        let transformation = self.current_transformation();
         self.next_frame.scene.insert_primitive(PolychromeSprite {
+            transformation,
             order: 0,
             pad: 0,
             grayscale,
@@ -3412,6 +3482,16 @@ impl Window {
     /// This method should only be called as part of the paint phase of element drawing.
     #[cfg(target_os = "windows")]
     pub fn paint_backdrop_blur(&mut self, bounds: Bounds<Pixels>, corner_radii: Corners<Pixels>) {
+        self.paint_backdrop_blur_radius(bounds, corner_radii, 8.0);
+    }
+
+    /// KaminIDE patch: то же с заданным радиусом размытия (`blur(N)`).
+    pub fn paint_backdrop_blur_radius(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        blur_radius: f32,
+    ) {
         use crate::PaintSurface;
 
         self.invalidator.debug_assert_paint();
@@ -3424,7 +3504,79 @@ impl Window {
             bounds,
             content_mask,
             corner_radii: corner_radii.scale(scale_factor),
+            blur_radius: blur_radius * scale_factor,
+            group: 0,
+            opacity: 1.0,
         });
+    }
+
+    /// KaminIDE patch: нарисовать поддерево в отдельный буфер и положить в
+    /// кадр целиком.
+    ///
+    /// Обычная отрисовка кладёт примитивы прямо в кадр, поэтому эффект,
+    /// которому нужна готовая картинка поддерева, был невозможен: размытие
+    /// поддерева, прозрачность группы без просвечивания детей друг через
+    /// друга, изоляция смешивания. Здесь дети рисуются в свою сцену, а в кадр
+    /// попадает метка — на её месте буфер группы и композитится.
+    ///
+    /// Группы вкладываются друг в друга: список кадра плоский, а вложенная
+    /// группа попадает в него раньше объемлющей — к сборке объемлющей её
+    /// буфер уже готов.
+    #[allow(clippy::too_many_arguments)]
+    pub fn paint_group<R>(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        blur_radius: f32,
+        opacity: f32,
+        blend: u32,
+        polygon: &[Point<Pixels>],
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        use crate::{PaintGroup, PaintSurface};
+
+        self.invalidator.debug_assert_paint();
+
+        let scale_factor = self.scale_factor();
+        let scaled = bounds.scale(scale_factor);
+        let content_mask = self.content_mask().scale(scale_factor);
+
+        let mut outer = crate::Scene::default();
+        std::mem::swap(&mut self.next_frame.scene, &mut outer);
+        let result = f(self);
+        std::mem::swap(&mut self.next_frame.scene, &mut outer);
+
+        let mut inner = outer;
+        inner.finish();
+        // Группы, вложенные в эту, переезжают в общий список кадра ПЕРЕД ней:
+        // их номера были местными, поэтому сдвигаются на длину списка.
+        let mut nested = std::mem::take(&mut inner.groups);
+        let base = self.next_frame.scene.groups.len() as u32;
+        if !nested.is_empty() {
+            inner.shift_group_ids(base);
+            for group in &mut nested {
+                group.scene.shift_group_ids(base);
+            }
+            self.next_frame.scene.groups.append(&mut nested);
+        }
+        let index = self.next_frame.scene.groups.len() as u32;
+        self.next_frame.scene.groups.push(PaintGroup {
+            scene: inner,
+            bounds: scaled,
+            blur_radius: blur_radius * scale_factor,
+            blend,
+            polygon: polygon.iter().map(|p| p.scale(scale_factor)).collect(),
+        });
+        self.next_frame.scene.insert_primitive(PaintSurface {
+            order: 0,
+            bounds: scaled,
+            content_mask,
+            corner_radii: corner_radii.scale(scale_factor),
+            blur_radius: 0.0,
+            group: index + 1,
+            opacity,
+        });
+        result
     }
 
     /// This method should only be called as part of the paint phase of element drawing.
@@ -3510,6 +3662,35 @@ impl Window {
             .as_mut()
             .unwrap()
             .request_measured_layout(style, rem_size, scale_factor, measure)
+    }
+
+    /// То же, что `request_measured_layout`, но замер отдаёт ещё и первую
+    /// базовую линию содержимого — от верха коробки содержимого вниз.
+    ///
+    /// Без неё выравнивание `align-items: baseline` в раскладке считает
+    /// базовой линией нижний край коробки, и текст разного кегля в одном ряду
+    /// не сходится.
+    pub fn request_measured_layout_with_baseline<
+        F: FnMut(
+                Size<Option<Pixels>>,
+                Size<AvailableSpace>,
+                &mut Window,
+                &mut App,
+            ) -> (Size<Pixels>, Option<Pixels>)
+            + 'static,
+    >(
+        &mut self,
+        style: Style,
+        measure: F,
+    ) -> LayoutId {
+        self.invalidator.debug_assert_prepaint();
+
+        let rem_size = self.rem_size();
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_mut()
+            .unwrap()
+            .request_measured_layout_with_baseline(style, rem_size, scale_factor, measure)
     }
 
     /// Compute the layout for the given id within the given available space.

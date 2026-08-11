@@ -1,0 +1,30 @@
+<!-- Переполнение по осям: `overflow-x` и `overflow-y` задаются порознь, и по
+     спецификации ось `visible` рядом с не-`visible` становится `auto`. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; font: 13px/1.4 system-ui }
+  .page { width: 560px; padding: 16px; box-sizing: border-box;
+          display: flex; flex-wrap: wrap; gap: 14px }
+  .box { width: 150px; height: 90px; background: #f1f3f5; position: relative }
+  .wide { width: 260px; height: 60px; background: #1c7ed6 }
+  .tall { width: 80px; height: 160px; background: #e8590c }
+
+  .v  { overflow: visible }
+  .h  { overflow: hidden }
+  .s  { overflow: scroll }
+  .xh { overflow-x: hidden; overflow-y: visible }
+  .yh { overflow-x: visible; overflow-y: hidden }
+  .xs { overflow-x: scroll; overflow-y: hidden }
+  .ys { overflow-x: hidden; overflow-y: scroll }
+  .xa { overflow-x: auto; overflow-y: auto }
+</style>
+
+<div class="page">
+  <div class="box v"><div class="wide"></div></div>
+  <div class="box h"><div class="wide"></div></div>
+  <div class="box xh"><div class="wide"></div></div>
+  <div class="box yh"><div class="tall"></div></div>
+  <div class="box xs"><div class="wide"></div></div>
+  <div class="box ys"><div class="tall"></div></div>
+  <div class="box xa"><div class="tall"></div></div>
+  <div class="box s"><div class="wide"></div></div>
+</div>

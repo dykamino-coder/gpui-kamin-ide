@@ -484,6 +484,11 @@ struct Quad {
     border_color: Hsla,
     corner_radii: Corners,
     border_widths: Edges,
+    // KaminIDE patch: преобразование квада (`transform` в CSS). Поле обязано
+    // совпадать с концом `struct Quad` в scene.rs — иначе шаг массива
+    // разъезжается молча. Здесь оно только для раскладки: сам этот бэкенд у
+    // нас не собирается, применяет матрицу конвейер DirectX.
+    transformation: TransformationMatrix,
 }
 var<storage, read> b_quads: array<Quad>;
 
@@ -1202,6 +1207,8 @@ struct PolychromeSprite {
     content_mask: Bounds,
     corner_radii: Corners,
     tile: AtlasTile,
+    // KaminIDE patch: см. `Quad.transformation`.
+    transformation: TransformationMatrix,
 }
 var<storage, read> b_poly_sprites: array<PolychromeSprite>;
 

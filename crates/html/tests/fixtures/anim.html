@@ -1,0 +1,42 @@
+<!-- Анимации. Кадры сделаны ПЛОЩАДКАМИ: цвет держится ровно, а меняется
+     быстро — тогда снимок не зависит от того, на сколько миллисекунд
+     разошлись часы браузера и наши. Фаза задаётся снаружи: Chrome получает
+     виртуальное время, наше окно — задержку перед снимком. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff }
+  .page { width: 600px; padding: 16px; box-sizing: border-box }
+  .b { width: 120px; height: 60px; margin: 0 0 16px }
+
+  /* Цвет: две площадки по 45% с быстрым переходом между ними */
+  @keyframes swap {
+    0%   { background: #1c7ed6 }
+    45%  { background: #1c7ed6 }
+    55%  { background: #2f9e44 }
+    100% { background: #2f9e44 }
+  }
+  .a1 { animation: swap 60s infinite; background: #1c7ed6 }
+
+  /* Размер: тот же приём, но меняется ширина */
+  @keyframes widen {
+    0%   { width: 80px }
+    45%  { width: 80px }
+    55%  { width: 200px }
+    100% { width: 200px }
+  }
+  .a2 { animation: widen 60s infinite; background: #e8590c; width: 80px }
+
+  /* Прозрачность: сплошная и наполовину */
+  @keyframes fade {
+    0%   { opacity: 1 }
+    45%  { opacity: 1 }
+    55%  { opacity: 0.35 }
+    100% { opacity: 0.35 }
+  }
+  .a3 { animation: fade 60s infinite; background: #862e9c }
+</style>
+
+<div class="page">
+  <div class="b a1"></div>
+  <div class="b a2"></div>
+  <div class="b a3"></div>
+</div>

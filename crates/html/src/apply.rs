@@ -7,8 +7,8 @@
 //! пользователя, а не в тесте.
 
 use crate::computed::{
-    Align, Computed, Corners, Display, FlexDir, Justify, Overflow, Position, Sides, TextAlign,
-    Track,
+    Align, AutoFlow, Computed, Display, FlexDir, Gradient, Justify, Overflow, Placement, Position,
+    Sides, TextAlign, Track, TrackSize,
 };
 use crate::value::Len;
 use gpui::{Div, InteractiveElement, Styled, px, relative};
@@ -18,23 +18,54 @@ fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
     match l {
         Len::Px(v) => px(v).into(),
         Len::Pct(v) => relative(v),
+        // Сюда `em` доходит только у узлов вне наследования (элементы форм,
+        // корень) — считаем от базового кегля, как браузер от `:root`.
+        Len::Em(k) => px(k * 16.0).into(),
+        // Тем же путём доходят `ch` и `ex`: семейство шрифта здесь неизвестно,
+        // поэтому работает запасное значение спецификации.
+        Len::Ch(k) => px(k * crate::metrics::ch_ex_px("", 16.0).0).into(),
+        Len::Ex(k) => px(k * crate::metrics::ch_ex_px("", 16.0).1).into(),
+        // Единицы окна разрешает сборщик дерева; сюда они доходят только у
+        // узлов вне его — доля родителя ближе всего по смыслу.
+        Len::Vw(k) | Len::Vh(k) => relative(k),
         // `auto` в размере значит «пусть решает раскладка» — это отсутствие
         // ограничения, а не значение; вызывающий такие поля не применяет.
-        Len::Auto => relative(1.0),
+        // Размер по содержимому — то же самое: его ставит обёртка-сетка
+        // (`render::content_sized`), а не длина.
+        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => relative(1.0),
     }
 }
 
 /// Дорожка сетки в терминах GPUI. Нижняя грань всегда `min-content`: без неё
 /// колонка на узкой панели схлопывается в ноль и содержимое обрезается.
-fn track(t: &Track) -> gpui::GridTrack {
-    let upper = match t {
+/// Одна грань дорожки.
+fn bound(t: &Track) -> gpui::GridTrack {
+    match t {
         Track::Px(v) => gpui::GridTrack::Pixels(px(*v)),
-        Track::Fr(f) => gpui::GridTrack::Fraction(*f),
         Track::Auto => gpui::GridTrack::Auto,
         Track::MinContent => gpui::GridTrack::MinContent,
         Track::MaxContent => gpui::GridTrack::MaxContent,
-    };
-    gpui::GridTrack::MinMax(Box::new((gpui::GridTrack::MinContent, upper)))
+        Track::Fr(f) => gpui::GridTrack::Fraction(*f),
+        Track::Pct(p) => gpui::GridTrack::Percent(*p),
+    }
+}
+
+/// Дорожка сетки: одиночная либо пара граней.
+///
+/// Одиночная переносится как есть — оборачивать её в `minmax` нельзя, иначе
+/// нижняя грань разрешает колонке вырасти сверх заданного (поймано сравнением
+/// с Chrome: колонка 120px выходила 200). Исключение — доля свободного места:
+/// `1fr` в CSS и есть `minmax(auto, 1fr)`, иначе она схлопывается под
+/// содержимым.
+fn track(t: &TrackSize) -> gpui::GridTrack {
+    match t {
+        TrackSize::MinMax(lo, hi) => gpui::GridTrack::MinMax(Box::new((bound(lo), bound(hi)))),
+        TrackSize::Single(Track::Fr(f)) => gpui::GridTrack::MinMax(Box::new((
+            gpui::GridTrack::Auto,
+            gpui::GridTrack::Fraction(*f),
+        ))),
+        TrackSize::Single(one) => bound(one),
+    }
 }
 
 /// Стиль наведения: `.btn:hover { … }`.
@@ -50,12 +81,8 @@ pub fn apply_hover(d: Div, hover: &Computed) -> Div {
         if let Some(bg) = h.background {
             s.background = Some(gpui::Fill::Color(bg.to_hsla().into()));
         }
-        if let Some(g) = h.gradient {
-            s.background = Some(gpui::Fill::Color(gpui::linear_gradient(
-                g.angle_deg,
-                gpui::linear_color_stop(g.from.to_hsla(), 0.0),
-                gpui::linear_color_stop(g.to.to_hsla(), 1.0),
-            )));
+        if let Some(g) = &h.gradient {
+            s.background = Some(gpui::Fill::Color(fill(g)));
         }
         if let Some(bc) = h.border_color {
             s.border_color = Some(bc.to_hsla());
@@ -77,6 +104,76 @@ pub fn apply_hover(d: Div, hover: &Computed) -> Div {
     })
 }
 
+/// `justify-content`/`align-content` → распределение GPUI.
+fn to_content(j: Justify) -> gpui::AlignContent {
+    match j {
+        Justify::Center => gpui::AlignContent::Center,
+        Justify::Start => gpui::AlignContent::FlexStart,
+        Justify::End => gpui::AlignContent::FlexEnd,
+        // Начало и конец ОСИ ПИСЬМА: у раскладки это отдельные значения, и
+        // при обратном направлении ряда они не совпадают с гибкими.
+        Justify::WmStart => gpui::AlignContent::Start,
+        Justify::WmEnd => gpui::AlignContent::End,
+        Justify::Between => gpui::AlignContent::SpaceBetween,
+        Justify::Around => gpui::AlignContent::SpaceAround,
+        // `space-evenly` отличается от `space-around` шириной крайних
+        // промежутков — сводить их в одно значение нельзя.
+        Justify::Evenly => gpui::AlignContent::SpaceEvenly,
+        Justify::Stretch => gpui::AlignContent::Stretch,
+    }
+}
+
+fn to_items(a: Align) -> gpui::AlignItems {
+    match a {
+        Align::Center => gpui::AlignItems::Center,
+        Align::Start => gpui::AlignItems::FlexStart,
+        Align::End => gpui::AlignItems::FlexEnd,
+        Align::Stretch => gpui::AlignItems::Stretch,
+        Align::Baseline => gpui::AlignItems::Baseline,
+    }
+}
+
+fn to_placement(p: Placement) -> gpui::GridPlacement {
+    match p {
+        Placement::Auto => gpui::GridPlacement::Auto,
+        Placement::Line(n) => gpui::GridPlacement::Line(n),
+        Placement::Span(n) => gpui::GridPlacement::Span(n),
+    }
+}
+
+/// Заливка градиентом: радиальный — своим тегом (патч GPUI), линейный —
+/// парой крайних стопов; промежуточные рисует сборщик дерева полосами.
+pub fn fill(g: &Gradient) -> gpui::Background {
+    let last = g.stops.len().saturating_sub(1);
+    let (from, to) = (
+        gpui::linear_color_stop(
+            g.from.to_hsla(),
+            g.stops.first().map(|s| s.1).unwrap_or(0.0),
+        ),
+        gpui::linear_color_stop(
+            g.to.to_hsla(),
+            g.stops.get(last).map(|s| s.1).unwrap_or(1.0),
+        ),
+    );
+    let base = if g.radial {
+        gpui::radial_gradient(from, to, g.circle)
+    } else {
+        gpui::linear_gradient(g.angle_deg, from, to)
+    };
+    // Промежуточные цвета: до четырёх стопов заливка несёт сама (патч GPUI),
+    // сверх того сборщик дерева по-прежнему кладёт полосы.
+    if g.stops.len() > 2 {
+        let stops: Vec<gpui::LinearColorStop> = g
+            .stops
+            .iter()
+            .take(4)
+            .map(|(c, p)| gpui::linear_color_stop(c.to_hsla(), *p))
+            .collect();
+        return base.with_stops(&stops);
+    }
+    base
+}
+
 pub fn apply(d: Div, c: &Computed) -> Div {
     let mut d = d;
     d = apply_layout(d, c);
@@ -85,26 +182,166 @@ pub fn apply(d: Div, c: &Computed) -> Div {
     apply_text(d, c)
 }
 
+/// Стиль контейнера-сетки: дорожки, неявные дорожки, направление.
+fn grid_style(mut d: Div, c: &Computed) -> Div {
+    d = d.grid();
+    // Оси сетки ЛОГИЧЕСКИЕ: «колонки» идут вдоль строки, «ряды» — вдоль
+    // потока. При вертикальном письме строка идёт сверху вниз, а поток —
+    // поперёк, поэтому колонки становятся физическими рядами и наоборот.
+    // Раскладка под нами письма не знает и считает оси физическими, так что
+    // переставляем здесь, на границе.
+    let flip = c.vertical == Some(true);
+    let along_line = |d: Div, tracks: Vec<gpui::GridTrack>| -> Div {
+        if flip {
+            d.grid_template_rows(tracks)
+        } else {
+            d.grid_template_cols(tracks)
+        }
+    };
+    // Список дорожек точнее числа колонок: он несёт ширину по
+    // содержимому и фиксированные колонки (патч GPUI, см. доку).
+    // Доля дорожки в `repeat(auto-fill, 25%)` считается от размера контейнера,
+    // а он известен прямо здесь: `25%` в трёхстах точках — четыре дорожки по
+    // 75. Пока доля отбрасывалась, сетка не получала дорожек вовсе
+    // (`column-auto-repeat-002` и родня).
+    let auto_fill = c.grid_auto_fill_min.or_else(|| {
+        let k = c.auto_repeat_cols?.track_pct?;
+        match c.width {
+            Some(Len::Px(w)) => Some(k * w),
+            _ => None,
+        }
+    });
+    match (&c.grid_tracks, c.grid_cols, auto_fill) {
+        (Some(tracks), _, _) => d = along_line(d, tracks.iter().map(track).collect()),
+        // «Сколько влезет» умеет сама раскладка — короткая форма GPUI.
+        (None, _, Some(min)) if !flip => d = d.grid_cols_min(px(min)),
+        (None, Some(n), _) if !flip => d = d.grid_cols(n),
+        (None, Some(n), _) => {
+            d = d.grid_template_rows((0..n).map(|_| gpui::GridTrack::Auto).collect())
+        }
+        _ => {}
+    }
+    if let Some(rows) = &c.grid_rows {
+        let tracks: Vec<gpui::GridTrack> = rows.iter().map(track).collect();
+        d = if flip {
+            d.grid_template_cols(tracks)
+        } else {
+            d.grid_template_rows(tracks)
+        };
+    }
+    // Неявные дорожки: элементов больше, чем описано — их размер задаёт
+    // `grid-auto-*`, иначе они выходят по содержимому.
+    let (auto_line, auto_flow_axis) = if flip {
+        (&c.grid_auto_cols, &c.grid_auto_rows)
+    } else {
+        (&c.grid_auto_rows, &c.grid_auto_cols)
+    };
+    if let Some(t) = auto_line {
+        d.style().grid_auto_rows = Some(track(t));
+    }
+    if let Some(t) = auto_flow_axis {
+        d.style().grid_auto_cols = Some(track(t));
+    }
+    if let Some(f) = c.grid_auto_flow {
+        // Направление наполнения тоже логическое: «по рядам» значит «вдоль
+        // строки», а строка при вертикальном письме идёт сверху вниз.
+        let f = if flip {
+            match f {
+                AutoFlow::Row => AutoFlow::Col,
+                AutoFlow::Col => AutoFlow::Row,
+                AutoFlow::RowDense => AutoFlow::ColDense,
+                AutoFlow::ColDense => AutoFlow::RowDense,
+            }
+        } else {
+            f
+        };
+        d.style().grid_auto_flow = Some(match f {
+            AutoFlow::Row => gpui::GridAutoFlow::Row,
+            AutoFlow::Col => gpui::GridAutoFlow::Column,
+            AutoFlow::RowDense => gpui::GridAutoFlow::RowDense,
+            AutoFlow::ColDense => gpui::GridAutoFlow::ColumnDense,
+        });
+    }
+    d
+}
+
 fn apply_layout(mut d: Div, c: &Computed) -> Div {
     match c.display {
         // Блок в GPUI — дефолт; отдельного вызова не требует.
         Some(Display::Flex) | Some(Display::InlineFlex) => d = d.flex(),
         // Инлайновая коробка в строке не растягивается по ширине родителя.
         Some(Display::InlineBlock) => d = d.flex_shrink_0(),
-        Some(Display::Grid) => {
-            d = d.grid();
-            // Список дорожек точнее числа колонок: он несёт ширину по
-            // содержимому и фиксированные колонки (патч GPUI, см. доку).
-            match (&c.grid_tracks, c.grid_cols) {
-                (Some(tracks), _) => d = d.grid_template_cols(tracks.iter().map(track).collect()),
-                (None, Some(n)) => d = d.grid_cols(n),
-                _ => {}
-            }
+        Some(Display::InlineGrid) => {
+            d = d.flex_shrink_0();
+            d = grid_style(d, c);
         }
+        Some(Display::TableRow) => d = d.flex().flex_row(),
+        // Ячейка ведёт себя как блок; саму решётку строит контейнер.
+        Some(Display::TableCell) => d = d.flex().flex_col(),
+        // Контейнер таблицы собирается отдельной веткой сборки дерева.
+        Some(Display::Table) => {}
+        Some(Display::Grid) => d = grid_style(d, c),
         // `display: none` отсеивается ещё при разборе дерева: узел не строится.
         _ => {}
     }
-    match c.flex_dir {
+    // `direction: rtl` переворачивает главную ось и выравнивание по
+    // умолчанию: ряд идёт справа налево, текст прижимается вправо.
+    if c.rtl == Some(true) {
+        // Разворот главной оси — дело ТОЛЬКО гибкого ряда: обычный блок
+        // собирается колонкой, и разворот переставлял его детей снизу вверх.
+        // Ряд с явно заданным направлением разворачивается ниже, вместе с
+        // остальными случаями.
+        let default_row = c.flex_dir.is_none()
+            && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex));
+        if default_row {
+            d = d.flex_row_reverse();
+        }
+        if c.text_align.is_none() {
+            d = d.text_right();
+        }
+    }
+    // При вертикальном письме оси меняются местами: `row` — это ось СТРОКИ,
+    // а она идёт сверху вниз; `column` — ось потока, справа налево
+    // (`vertical-rl`) или слева направо (`vertical-lr`).
+    let dir = match (c.flex_dir, c.vertical == Some(true)) {
+        // Ось СТРОКИ при вертикальном письме идёт сверху вниз, а
+        // `direction: rtl` разворачивает её снизу вверх — как и в обычном
+        // письме он разворачивает строку справа налево
+        // (`flexbox-writing-mode-005`).
+        (Some(d), true) => Some(match (d, c.vertical_rl == Some(true)) {
+            (FlexDir::Row, _) if c.rtl == Some(true) => FlexDir::ColReverse,
+            (FlexDir::RowReverse, _) if c.rtl == Some(true) => FlexDir::Col,
+            (FlexDir::Row, _) => FlexDir::Col,
+            (FlexDir::RowReverse, _) => FlexDir::ColReverse,
+            (FlexDir::Col, true) => FlexDir::RowReverse,
+            (FlexDir::Col, false) => FlexDir::Row,
+            (FlexDir::ColReverse, true) => FlexDir::Row,
+            (FlexDir::ColReverse, false) => FlexDir::RowReverse,
+        }),
+        // Умолчание `flex-direction: row` в стиле НЕ записано, а ось менять
+        // всё равно надо: в вертикальном письме строка идёт сверху вниз,
+        // значит главная ось гибкого ряда — вертикальная. Пока сюда попадало
+        // `None`, контейнер оставался горизонтальным (замерено пробой: ряд в
+        // `vertical-rl` против колонки с прижимом вправо — 5.42%).
+        (None, true)
+            if matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex)) =>
+        {
+            if c.rtl == Some(true) {
+                Some(FlexDir::ColReverse)
+            } else {
+                Some(FlexDir::Col)
+            }
+        }
+        (d, _) => d,
+    };
+    // Разворот по `direction: rtl` — только для обычного письма: при
+    // вертикальном он уже учтён в переводе осей выше, и второй раз
+    // переворачивать нельзя (`flexbox-writing-mode-005`: колонки в
+    // `vertical-rl` шли слева направо).
+    let rtl_row = c.rtl == Some(true) && c.vertical != Some(true);
+    match dir {
+        Some(FlexDir::Row) if rtl_row => d = d.flex_row_reverse(),
+        Some(FlexDir::RowReverse) if rtl_row => d = d.flex_row(),
         Some(FlexDir::Row) => d = d.flex_row(),
         Some(FlexDir::RowReverse) => d = d.flex_row_reverse(),
         Some(FlexDir::Col) => d = d.flex_col(),
@@ -113,18 +350,53 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     }
     if c.flex_wrap == Some(true) {
         d = d.flex_wrap();
+        // При `vertical-rl` поперечная ось строки идёт справа налево — обратно
+        // тому, как переносит колонку раскладка. Перенос разворачивается,
+        // иначе вторая строка уходит не в ту сторону.
+        // Поперечная ось — та, что осталась. У РЯДА (ось строки) это ось
+        // потока: она разворачивается при `vertical-rl`. У КОЛОНКИ (ось
+        // потока) поперечная — ось строки, и её разворачивает `direction: rtl`
+        // (`flexbox-writing-mode-004/005`: контейнеры-колонки шли зеркально).
+        let flip = if matches!(c.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse)) {
+            c.rtl == Some(true)
+        } else {
+            c.vertical_rl == Some(true)
+        };
+        if (c.flex_wrap_reverse == Some(true)) != flip {
+            d.style().flex_wrap = Some(gpui::FlexWrap::WrapReverse);
+        }
+    }
+    if c.grid_col.is_some() || c.grid_row.is_some() {
+        let span = |p: Option<(Placement, Placement)>| {
+            let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
+            to_placement(a)..to_placement(b)
+        };
+        d.style().grid_location = Some(gpui::GridLocation {
+            row: span(c.grid_row),
+            column: span(c.grid_col),
+        });
     }
     if let Some(g) = c.flex_grow {
         // `flex_grow()` в GPUI ставит жёсткую единицу, а `flex: 2` встречается —
         // пишем значение в стиль напрямую.
         d.style().flex_grow = Some(g);
     }
-    if let Some(s) = c.flex_shrink {
-        d = if s == 0.0 {
-            d.flex_shrink_0()
-        } else {
-            d.flex_shrink()
-        };
+    if let Some(shrink) = c.flex_shrink {
+        // Вес сжатия — число, а не флаг: при `flex-shrink: 1` и `3` соседи
+        // ужимаются в отношении 1:3. Через `flex_shrink()` доезжала единица,
+        // и оба сжимались поровну (поймано сравнением с Chrome).
+        d.style().flex_shrink = Some(shrink);
+    }
+    // В письме `vertical-rl` поперечная ось идёт СПРАВА НАЛЕВО: её начало —
+    // правый край. У гибкой раскладки обратной поперечной оси нет, поэтому
+    // элемент, который не растягивается, прижимается к концу — это и есть
+    // правый край (замерено пробой: ряд в `vertical-rl` против колонки с
+    // прижимом вправо расходился на 5.42%).
+    if c.vertical_rl == Some(true)
+        && c.align_items.is_none()
+        && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
+    {
+        d = d.items_end();
     }
     match c.align_items {
         Some(Align::Center) => d = d.items_center(),
@@ -144,22 +416,42 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
             Align::Stretch => gpui::AlignItems::Stretch,
         });
     }
-    if let Some(b) = c.flex_basis {
+    // `flex-basis: auto` — это ОТСУТСТВИЕ основы, а не «во всю ширину»:
+    // без отсева `flex: none` растягивал кнопку на всю строку.
+    if let Some(b) = c.flex_basis.filter(|b| *b != Len::Auto) {
         d = d.flex_basis(len_to_gpui(b));
     }
-    match c.justify_content {
-        Some(Justify::Center) => d = d.justify_center(),
-        Some(Justify::Start) => d = d.justify_start(),
-        Some(Justify::End) => d = d.justify_end(),
-        Some(Justify::Between) => d = d.justify_between(),
-        Some(Justify::Around) => d = d.justify_around(),
-        None => {}
+    if let Some(j) = c.justify_content {
+        d.style().justify_content = Some(to_content(j));
+    }
+    // `align-content` — распределение СТРОК, когда их несколько: без него
+    // перенесённые строки прижимались к началу вместо заданного распределения.
+    if let Some(a) = c.align_content {
+        d.style().align_content = Some(to_content(a));
+    }
+    if let Some(a) = c.justify_items {
+        d.style().justify_items = Some(to_items(a));
+    }
+    if let Some(a) = c.justify_self {
+        d.style().justify_self = Some(to_items(a));
+    }
+    if let Some(r) = c.aspect_ratio {
+        d.style().aspect_ratio = Some(r);
     }
     if let Some((row, col)) = c.gap {
-        if let Some(r) = row {
+        // При вертикальном письме ось блока горизонтальна: `row-gap` — зазор
+        // ПО ГОРИЗОНТАЛИ, `column-gap` — по вертикали. Главную ось выше уже
+        // переставили, зазор обязан ехать за ней. Сокращение `gap: 20px`
+        // пишет оба поля одинаково и ошибку маскировало.
+        let (down, across) = if c.vertical == Some(true) {
+            (col, row)
+        } else {
+            (row, col)
+        };
+        if let Some(r) = down {
             d = d.gap_y(len_to_gpui(r));
         }
-        if let Some(cg) = col {
+        if let Some(cg) = across {
             d = d.gap_x(len_to_gpui(cg));
         }
     }
@@ -181,18 +473,9 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
             })
             .sum()
     };
-    let pad_x = extra(&[
-        c.padding.left,
-        c.padding.right,
-        c.border_width.left,
-        c.border_width.right,
-    ]);
-    let pad_y = extra(&[
-        c.padding.top,
-        c.padding.bottom,
-        c.border_width.top,
-        c.border_width.bottom,
-    ]);
+    let bw = c.borders();
+    let pad_x = extra(&[c.padding.left, c.padding.right, bw.left, bw.right]);
+    let pad_y = extra(&[c.padding.top, c.padding.bottom, bw.top, bw.bottom]);
 
     for (val, f) in [
         (c.width, 0u8),
@@ -203,7 +486,14 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         (c.max_height, 5),
     ] {
         let Some(l) = val else { continue };
-        if l == Len::Auto {
+        // Размер по содержимому длиной не выражается: его ставит
+        // обёртка-сетка (`render::content_sized`). Здесь он обязан
+        // ПРОПУСКАТЬСЯ, иначе доходит до общей ветки и становится долей
+        // родителя в сто процентов — то есть ровно обратным по смыслу.
+        if matches!(
+            l,
+            Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent
+        ) {
             continue;
         }
         // Доли считаются от родителя и компенсации не требуют.
@@ -228,11 +518,47 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
 fn apply_box(mut d: Div, c: &Computed) -> Div {
     d = apply_sides(d, &c.padding, SideKind::Padding);
     d = apply_sides(d, &c.margin, SideKind::Margin);
-    d = apply_sides(d, &c.border_width, SideKind::Border);
-    d = apply_radius(d, &c.radius);
+    d = apply_sides(d, &c.borders(), SideKind::Border);
+    d = apply_radius(d, c);
+    // `clip-path: circle()` — обрезка содержимого по кругу. Прямоугольная
+    // обрезка со скруглением — единственная в конвейере, но для круга и
+    // эллипса она точна.
+    if let Some(round) = c.clip_round {
+        let base = match (c.width, c.height) {
+            (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
+            (Some(Len::Px(w)), _) => w,
+            (_, Some(Len::Px(h))) => h,
+            _ => 0.0,
+        };
+        // Доля без известного размера — это «половина стороны», то есть
+        // заведомо большое значение: растеризатор обрежет его сам. Раньше
+        // 0.5 понималось как полпикселя, и круг выходил квадратом.
+        let radius = if round <= 1.0 {
+            if base > 0.0 {
+                round * base
+            } else {
+                9999.0 * round
+            }
+        } else {
+            round
+        };
+        // Обрезка НЕ отменяет собственное скругление: берётся более сильное
+        // из двух, иначе `border-radius` рядом с `clip-path` пропадал.
+        let own = match c.radius.tl {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        d = d.rounded(px(radius.max(own))).overflow_hidden();
+    }
+    // `contain: paint` — содержимое не выходит за коробку.
+    if c.contain_paint == Some(true) {
+        d = d.overflow_hidden();
+    }
 
     match c.position {
-        Some(Position::Absolute) => {
+        // Слой окна для `fixed` создаёт сборщик дерева; внутри него элемент
+        // размещается так же, как абсолютный.
+        Some(Position::Fixed) | Some(Position::Absolute) => {
             d = d.absolute();
             // Абсолютный элемент, у которого задан только один край, не имеет
             // определённой ширины — раскладка сжимает его до самого узкого
@@ -244,9 +570,34 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
             }
         }
         Some(Position::Relative) => d = d.relative(),
+        // Липкий остаётся в потоке: край для него — порог прилипания, а не
+        // сдвиг, поэтому вставки ниже к нему не применяются.
+        Some(Position::Sticky) => return d.relative(),
         // `static` в GPUI недостижим: элемент всегда участвует в потоке
         // относительно родителя, что соответствует `relative`.
         _ => {}
+    }
+    // Обрезка — ДО разбора краёв: ниже стоит ранний выход для непозиционированных,
+    // и всё, что после него, у обычного блока не выполнялось вовсе. Из-за этого
+    // `overflow: hidden` не обрезал ничего (проверено пробой: коробка с ним и
+    // без него рисовались одинаково).
+    //
+    // Прокрутка: в GPUI скролл требует своего состояния и обработчика, поэтому
+    // на уровне стиля выражается только обрезка. Прокручиваемый контейнер
+    // собирается вызывающим (см. доку, раздел «Прокрутка»).
+    if c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll) {
+        d = d.overflow_x_hidden();
+    }
+    if c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll) {
+        d = d.overflow_y_hidden();
+    }
+    // Края двигают только позиционированный элемент. У обычного (`static`)
+    // браузер их игнорирует, а мы сдвигали — блок с `top` в потоке уезжал.
+    if !matches!(
+        c.position,
+        Some(Position::Relative) | Some(Position::Absolute) | Some(Position::Fixed)
+    ) {
+        return d;
     }
     for (val, f) in [
         (c.inset.top, 0u8),
@@ -267,16 +618,38 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         };
     }
 
-    // Прокрутка: в GPUI скролл требует своего состояния и обработчика, поэтому
-    // на уровне стиля выражается только обрезка. Прокручиваемый контейнер
-    // собирается вызывающим (см. доку, раздел «Прокрутка»).
-    if c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll) {
-        d = d.overflow_x_hidden();
+    // `translate` двигает элемент ВИЗУАЛЬНО, не трогая раскладку. Считается
+    // ПОСЛЕ краёв и складывается с ними: раньше цикл краёв затирал сдвиг, и
+    // у абсолютного элемента с `left` он пропадал.
+    if let Some((x, y)) = c.translate {
+        let shift = |base: Option<Len>, delta: Len| -> Option<Len> {
+            match (base, delta) {
+                (Some(Len::Px(b)), Len::Px(v)) => Some(Len::Px(b + v)),
+                (None, Len::Px(v)) if v != 0.0 => Some(Len::Px(v)),
+                (base, _) => base,
+            }
+        };
+        if c.position.is_none() {
+            d = d.relative();
+        }
+        if let Some(l) = shift(c.inset.left, x) {
+            d = d.left(len_to_gpui(l));
+        }
+        if let Some(t) = shift(c.inset.top, y) {
+            d = d.top(len_to_gpui(t));
+        }
     }
-    if c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll) {
-        d = d.overflow_y_hidden();
-    }
+
     d
+}
+
+/// Наружные отступы отдельно от остального стиля.
+///
+/// Нужно ленте прокрутки: её видимая область — это коробка БЕЗ наружных
+/// отступов, и когда отступ оставался на прокручиваемом узле, лента считала
+/// его своей высотой и показывала лишнее.
+pub fn margins(d: Div, s: &Sides) -> Div {
+    apply_sides(d, s, SideKind::Margin)
 }
 
 enum SideKind {
@@ -292,7 +665,6 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
         // Отступы и рамки с `auto` смысла не имеют, их пропускаем.
         if l == Len::Auto {
             if matches!(kind, SideKind::Margin) {
-                d.style().margin.top = None;
                 d = match side {
                     0 => d.mt(gpui::Length::Auto),
                     1 => d.mr(gpui::Length::Auto),
@@ -325,9 +697,37 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
     d
 }
 
-fn apply_radius(mut d: Div, r: &Corners) -> Div {
+/// Скругление углов.
+///
+/// Доля считается от размера коробки: `border-radius: 50%` — это круглый
+/// аватар, самая частая запись после пикселей. GPUI принимает только
+/// абсолютную длину, поэтому долю разрешаем сами по заданному размеру, а без
+/// него берём заведомо большое значение — растеризатор обрежет его половиной
+/// меньшей стороны, что и даёт круг.
+fn apply_radius(mut d: Div, c: &Computed) -> Div {
+    let r = &c.radius;
+    let base = match (c.width, c.height) {
+        (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
+        (Some(Len::Px(w)), _) => w,
+        (_, Some(Len::Px(h))) => h,
+        _ => f32::NAN,
+    };
+    let resolve = |l: Option<Len>| -> Option<f32> {
+        match l? {
+            Len::Px(v) => Some(v),
+            Len::Pct(p) if base.is_nan() => Some(9999.0 * p.min(1.0)),
+            Len::Pct(p) => Some(base * p),
+            // Неразрешённый `em` — от базового кегля (см. `len_to_gpui`).
+            Len::Em(k) => Some(k * 16.0),
+            Len::Ch(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
+            Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
+            Len::Vw(_) | Len::Vh(_) => None,
+            // Размер по содержимому числом не выражается.
+            Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
+        }
+    };
     for (val, corner) in [(r.tl, 0u8), (r.tr, 1), (r.br, 2), (r.bl, 3)] {
-        let Some(Len::Px(v)) = val else { continue };
+        let Some(v) = resolve(val) else { continue };
         d = match corner {
             0 => d.rounded_tl(px(v)),
             1 => d.rounded_tr(px(v)),
@@ -339,19 +739,26 @@ fn apply_radius(mut d: Div, r: &Corners) -> Div {
 }
 
 fn apply_paint(mut d: Div, c: &Computed) -> Div {
-    if let Some(g) = c.gradient {
-        // GPUI берёт ровно два стопа: первый и последний. Промежуточные
-        // отброшены на разборе — см. доку, раздел «Градиенты».
-        d = d.bg(gpui::linear_gradient(
-            g.angle_deg,
-            gpui::linear_color_stop(g.from.to_hsla(), 0.0),
-            gpui::linear_color_stop(g.to.to_hsla(), 1.0),
-        ));
+    // Смешивание больше не живёт на заливке: раньше блендер знал четыре
+    // формулы и красил только фон узла, а CSS смешивает ВСЁ поддерево целиком.
+    // Теперь оно считается при сборке буфера группы (см. `render::grouped`).
+    if let Some(g) = &c.gradient {
+        d = d.bg(fill(g));
     } else if let Some(bg) = c.background {
-        d = d.bg(bg.to_hsla());
+        d = d.bg(gpui::Background::from(bg.to_hsla()));
     }
-    if let Some(bc) = c.border_color {
+    // Цвет рамки: единый — прямо в стиль. Разные цвета сторон рисуются
+    // полосами в сборщике дерева: у GPUI цвет рамки один на элемент.
+    let sides: Vec<_> = c.border_colors.iter().flatten().collect();
+    let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
+    if let Some(bc) = uniform.copied().copied().or(c.border_color) {
         d = d.border_color(bc.to_hsla());
+    }
+    if c.border_dashed == Some(true) {
+        d = d.border_dashed();
+    }
+    if c.border_dotted == Some(true) {
+        d.style().border_style = Some(gpui::BorderStyle::Dotted);
     }
     if let Some(o) = c.opacity {
         d = d.opacity(o);
@@ -360,21 +767,55 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     if c.hidden == Some(true) {
         d.style().visibility = Some(gpui::Visibility::Hidden);
     }
-    if let Some(name) = &c.cursor {
+    // Элемент, не ловящий курсор, не меняет и его форму.
+    if let Some(name) = c
+        .cursor
+        .as_ref()
+        .filter(|_| c.pointer_events_none != Some(true))
+    {
         // Набор GPUI совпадает с CSS почти буква в букву; неизвестное имя
         // оставляем без изменений, а не подменяем стрелкой.
         let style = match name.as_str() {
             "pointer" => Some(gpui::CursorStyle::PointingHand),
-            "text" => Some(gpui::CursorStyle::IBeam),
+            "text" | "vertical-text" => Some(gpui::CursorStyle::IBeam),
             "crosshair" => Some(gpui::CursorStyle::Crosshair),
             "grab" => Some(gpui::CursorStyle::OpenHand),
-            "grabbing" => Some(gpui::CursorStyle::ClosedHand),
-            "default" => Some(gpui::CursorStyle::Arrow),
+            "grabbing" | "move" | "all-scroll" => Some(gpui::CursorStyle::ClosedHand),
+            "default" | "auto" => Some(gpui::CursorStyle::Arrow),
+            "not-allowed" | "no-drop" => Some(gpui::CursorStyle::OperationNotAllowed),
+            "context-menu" => Some(gpui::CursorStyle::ContextualMenu),
+            "copy" => Some(gpui::CursorStyle::DragCopy),
+            "alias" => Some(gpui::CursorStyle::DragLink),
+            "ew-resize" | "col-resize" => Some(gpui::CursorStyle::ResizeLeftRight),
+            "ns-resize" | "row-resize" => Some(gpui::CursorStyle::ResizeUpDown),
+            "e-resize" => Some(gpui::CursorStyle::ResizeRight),
+            "w-resize" => Some(gpui::CursorStyle::ResizeLeft),
+            "n-resize" => Some(gpui::CursorStyle::ResizeUp),
+            "s-resize" => Some(gpui::CursorStyle::ResizeDown),
+            "nwse-resize" | "nw-resize" | "se-resize" => {
+                Some(gpui::CursorStyle::ResizeUpLeftDownRight)
+            }
+            "nesw-resize" | "ne-resize" | "sw-resize" => {
+                Some(gpui::CursorStyle::ResizeUpRightDownLeft)
+            }
             _ => None,
         };
         if let Some(st) = style {
             d.style().mouse_cursor = Some(st);
         }
+    }
+    if !c.inset_shadows.is_empty() {
+        d.style().inset_box_shadow = Some(
+            c.inset_shadows
+                .iter()
+                .map(|s| gpui::BoxShadow {
+                    color: s.color.to_hsla(),
+                    offset: gpui::point(px(s.x), px(s.y)),
+                    blur_radius: px(s.blur),
+                    spread_radius: px(s.spread),
+                })
+                .collect(),
+        );
     }
     if !c.shadows.is_empty() {
         d = d.shadow(
@@ -393,6 +834,47 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
 }
 
 fn apply_text(mut d: Div, c: &Computed) -> Div {
+    // Оформление текста нужно и на блоке: в ветке «строка из кусков» текст
+    // рисуется обычными `div`, и подчёркивание, живущее только в прогонах,
+    // там пропадало.
+    if c.underline == Some(true) {
+        d.style()
+            .text
+            .get_or_insert_with(Default::default)
+            .underline = Some(gpui::UnderlineStyle {
+            thickness: px(1.),
+            color: c.color.map(|col| col.to_hsla()),
+            wavy: false,
+        });
+    }
+    if c.line_through == Some(true) {
+        d.style()
+            .text
+            .get_or_insert_with(Default::default)
+            .strikethrough = Some(gpui::StrikethroughStyle {
+            thickness: px(1.),
+            color: c.color.map(|col| col.to_hsla()),
+        });
+    }
+    // Возможности шрифта: капитель, старостильные цифры, ширина начертания —
+    // всё это таблицы OpenType, и GPUI умеет их включать.
+    if let Some(family) = &c.font_family {
+        d = d.font_family(family.clone());
+    }
+    if let Some(pct) = c.font_stretch {
+        d.style()
+            .text
+            .get_or_insert_with(Default::default)
+            .font_stretch = Some(gpui::FontStretch::from_percent(pct));
+    }
+    if !c.font_features.is_empty() {
+        d.style()
+            .text
+            .get_or_insert_with(Default::default)
+            .font_features = Some(gpui::FontFeatures(std::sync::Arc::new(
+            c.font_features.clone(),
+        )));
+    }
     if let Some(col) = c.color {
         d = d.text_color(col.to_hsla());
     }
@@ -409,7 +891,11 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
         d = match lh {
             Len::Px(v) => d.line_height(px(v)),
             Len::Pct(mult) => d.line_height(relative(mult)),
-            Len::Auto => d,
+            Len::Em(k) => d.line_height(px(k * 16.0)),
+            Len::Ch(k) => d.line_height(px(k * crate::metrics::ch_ex_px("", 16.0).0)),
+            Len::Ex(k) => d.line_height(px(k * crate::metrics::ch_ex_px("", 16.0).1)),
+            Len::Vw(k) | Len::Vh(k) => d.line_height(relative(k)),
+            Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => d,
         };
     }
     if c.nowrap == Some(true) {
@@ -421,10 +907,15 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
         Some(TextAlign::Center) => d = d.text_center(),
         Some(TextAlign::Right) => d = d.text_right(),
         Some(TextAlign::Left) => d = d.text_left(),
+        Some(TextAlign::Justify) => d = d.text_align(gpui::TextAlign::Justify),
+        // Логические края разворачивает наследование; сюда они доходят только
+        // у узлов вне него — там письмо слева направо, как в корне документа.
+        Some(TextAlign::Start) => d = d.text_left(),
+        Some(TextAlign::End) => d = d.text_right(),
         None => {}
     }
     if c.monospace == Some(true) {
-        d = d.font_family("JetBrains Mono");
+        d = d.font_family(crate::metrics::mono_family());
     }
     if let Some(Len::Px(v)) = c.letter_spacing {
         d = d.letter_spacing(px(v));

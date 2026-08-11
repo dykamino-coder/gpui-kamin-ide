@@ -51,8 +51,9 @@ struct Background {
     uint color_space;
     Hsla solid;
     float gradient_angle_or_pattern_height;
-    LinearColorStop colors[2];
-    uint pad;
+    // KaminIDE patch: до четырёх опорных цветов, см. Background в color.rs.
+    LinearColorStop colors[4];
+    uint stop_count;
 };
 
 struct GradientColor {
@@ -302,11 +303,12 @@ float quad_sdf(float2 pt, Bounds bounds, Corners corner_radii) {
     return quad_sdf_impl(corner_center_to_point, corner_radius);
 }
 
-GradientColor prepare_gradient_color(uint tag, uint color_space, Hsla solid, LinearColorStop colors[2]) {
+GradientColor prepare_gradient_color(uint tag, uint color_space, Hsla solid, LinearColorStop colors[4]) {
     GradientColor output;
     if (tag == 0 || tag == 2) {
         output.solid = hsla_to_rgba(solid);
-    } else if (tag == 1) {
+    } else if (tag == 1 || tag == 3) {
+        // KaminIDE patch: тег 3 — радиальный, цвета готовятся так же.
         output.color0 = hsla_to_rgba(colors[0].color);
         output.color1 = hsla_to_rgba(colors[1].color);
 
@@ -320,6 +322,46 @@ GradientColor prepare_gradient_color(uint tag, uint color_space, Hsla solid, Lin
     }
 
     return output;
+}
+
+/// KaminIDE patch: цвет градиента в точке `t` с учётом промежуточных стопов.
+///
+/// Два стопа готовит вершинный шейдер (так дешевле), поэтому они приходят
+/// готовыми. Промежуточные встречаются заметно реже, и ради них не стоит
+/// растить вершинные выходы: нужный отрезок ищется здесь, и переводятся
+/// только два его цвета.
+float4 gradient_mix(Background background, float t, float4 color0, float4 color1) {
+    if (background.stop_count <= 2u) {
+        float u = (t - background.colors[0].percentage)
+                / max(background.colors[1].percentage - background.colors[0].percentage, 0.0001);
+        u = clamp(u, 0.0, 1.0);
+        float4 mixed = lerp(color0, color1, u);
+        return background.color_space == 1u ? oklab_to_srgb(mixed) : mixed;
+    }
+    uint last = background.stop_count - 1u;
+    uint i = 0u;
+    // Отрезок, в который попала точка: стопы упорядочены по доле.
+    for (uint k = 0u; k + 1u < background.stop_count; k++) {
+        if (t >= background.colors[k].percentage) {
+            i = k;
+        }
+    }
+    if (t <= background.colors[0].percentage) {
+        i = 0u;
+    } else if (t >= background.colors[last].percentage) {
+        i = last - 1u;
+    }
+    float lo = background.colors[i].percentage;
+    float hi = background.colors[i + 1u].percentage;
+    float u = clamp((t - lo) / max(hi - lo, 0.0001), 0.0, 1.0);
+    float4 a = hsla_to_rgba(background.colors[i].color);
+    float4 b = hsla_to_rgba(background.colors[i + 1u].color);
+    if (background.color_space == 1u) {
+        a = srgb_to_oklab(a);
+        b = srgb_to_oklab(b);
+        return oklab_to_srgb(lerp(a, b, u));
+    }
+    return lerp(a, b, u);
 }
 
 float2x2 rotate2d(float angle) {
@@ -344,41 +386,35 @@ float4 gradient_color(Background background,
             float radians = (fmod(gradient_angle, 360.0) - 90.0) * (M_PI_F / 180.0);
             float2 direction = float2(cos(radians), sin(radians));
 
-            // Expand the short side to be the same as the long side
-            if (bounds.size.x > bounds.size.y) {
-                direction.y *= bounds.size.y / bounds.size.x;
-            } else {
-                direction.x *=  bounds.size.x / bounds.size.y;
-            }
-
-            // Get the t value for the linear gradient with the color stop percentages.
+            // KaminIDE patch: линия градиента по правилам CSS. Прежняя
+            // формула ужимала направление по соотношению сторон и на
+            // невадратной коробке заваливала угол: у наклонного градиента
+            // полосы шли круче браузерных. Длина линии — проекция коробки на
+            // направление, доля точки считается от её середины.
             float2 half_size = bounds.size * 0.5;
             float2 center = bounds.origin + half_size;
-            float2 center_to_point = position - center;
-            float t = dot(center_to_point, direction) / length(direction);
-            // Check the direct to determine the use x or y
-            if (abs(direction.x) > abs(direction.y)) {
-                t = (t + half_size.x) / bounds.size.x;
-            } else {
-                t = (t + half_size.y) / bounds.size.y;
-            }
+            float line_length = abs(bounds.size.x * direction.x)
+                              + abs(bounds.size.y * direction.y);
+            float t = 0.5 + dot(position - center, direction) / max(line_length, 0.0001);
 
-            // Adjust t based on the stop percentages
-            t = (t - background.colors[0].percentage)
-                / (background.colors[1].percentage
-                - background.colors[0].percentage);
-            t = clamp(t, 0.0, 1.0);
+            color = gradient_mix(background, t, color0, color1);
+            break;
+        }
+        // KaminIDE patch: радиальный градиент. Расстояние от центра меряется
+        // в долях полуосей эллипса, увеличенных до дальнего угла — это и есть
+        // умолчание CSS `radial-gradient(farthest-corner at center)`.
+        case 3: {
+            float2 half_size = bounds.size * 0.5;
+            float2 center = bounds.origin + half_size;
+            // `circle` — один радиус до дальнего угла; `ellipse` — полуоси
+            // коробки, растянутые до того же угла.
+            float2 radii = background.gradient_angle_or_pattern_height > 0.5
+                ? float2(length(half_size), length(half_size))
+                : half_size * 1.41421356;
+            float2 d = (position - center) / max(radii, float2(0.0001, 0.0001));
+            float t = length(d);
 
-            switch (background.color_space) {
-                case 0:
-                    color = lerp(color0, color1, t);
-                    break;
-                case 1: {
-                    float4 oklab_color = lerp(color0, color1, t);
-                    color = oklab_to_srgb(oklab_color);
-                    break;
-                }
-            }
+            color = gradient_mix(background, t, color0, color1);
             break;
         }
         case 2: {
@@ -397,6 +433,25 @@ float4 gradient_color(Background background,
             color.a *= saturate(0.5 - distance);
             break;
         }
+    }
+
+    // KaminIDE patch: сглаживание ступенек градиента.
+    //
+    // Плавный переход между близкими цветами ложится в 8 бит с видимыми
+    // полосами: браузер от них уходит упорядоченным подмешиванием шума
+    // амплитудой в одну ступень цвета, и градиент выглядит мягким. Без
+    // этого наш градиент читался полосатым против того же места в Chrome.
+    if (background.tag == 1 || background.tag == 3) {
+        const float bayer[16] = {
+             0.0,  8.0,  2.0, 10.0,
+            12.0,  4.0, 14.0,  6.0,
+             3.0, 11.0,  1.0,  9.0,
+            15.0,  7.0, 13.0,  5.0
+        };
+        uint bx = (uint)position.x & 3u;
+        uint by = (uint)position.y & 3u;
+        float noise = (bayer[by * 4u + bx] + 0.5) / 16.0 - 0.5;
+        color.rgb += noise / 255.0;
     }
 
     return color;
@@ -468,6 +523,10 @@ struct Quad {
     Hsla border_color;
     Corners corner_radii;
     Edges border_widths;
+    // KaminIDE patch: преобразование квада. Поле обязано идти последним и
+    // совпадать с `Quad` в scene.rs — раскладка структуры не проверяется
+    // сборкой, расхождение видно только мусором на экране.
+    TransformationMatrix transformation;
 };
 
 struct QuadVertexOutput {
@@ -494,7 +553,9 @@ StructuredBuffer<Quad> quads: register(t1);
 QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     Quad quad = quads[quad_id];
-    float4 device_position = to_device_position(unit_vertex, quad.bounds);
+    // KaminIDE patch: вершина проходит через матрицу — так же, как у спрайтов.
+    float4 device_position =
+        to_device_position_transformed(unit_vertex, quad.bounds, quad.transformation);
 
     GradientColor gradient = prepare_gradient_color(
         quad.background.tag,
@@ -502,7 +563,8 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
         quad.background.solid,
         quad.background.colors
     );
-    float4 clip_distance = distance_from_clip_rect(unit_vertex, quad.bounds, quad.content_mask);
+    float4 clip_distance = distance_from_clip_rect_transformed(
+        unit_vertex, quad.bounds, quad.content_mask, quad.transformation);
     float4 border_color = hsla_to_rgba(quad.border_color);
 
     QuadVertexOutput output;
@@ -516,9 +578,27 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
     return output;
 }
 
+// KaminIDE patch: обратное преобразование точки в систему координат квада.
+//
+// Форма квада (скругления, рамки, градиент) считается по его собственным
+// границам. Пока матрица единичная, точка экрана и точка квада совпадают; с
+// поворотом — нет, и без обратного хода скругления «съезжали» бы с фигуры.
+float2 untransform(float2 position, TransformationMatrix t) {
+    float2x2 m = t.rotation_scale;
+    float det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+    if (abs(det) < 1e-6) {
+        return position;
+    }
+    float2 p = position - t.translation;
+    float2x2 inv = float2x2(m[1][1], -m[0][1], -m[1][0], m[0][0]) / det;
+    return mul(p, inv);
+}
+
 float4 quad_fragment(QuadFragmentInput input): SV_Target {
     Quad quad = quads[input.quad_id];
-    float4 background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
+    // KaminIDE patch: дальше работаем в координатах самого квада.
+    float2 local_position = untransform(input.position.xy, quad.transformation);
+    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
     input.background_solid, input.background_color0, input.background_color1);
 
     bool unrounded = quad.corner_radii.top_left == 0.0 &&
@@ -537,7 +617,7 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
 
     float2 size = quad.bounds.size;
     float2 half_size = size / 2.;
-    float2 the_point = input.position.xy - quad.bounds.origin;
+    float2 the_point = local_position - quad.bounds.origin;
     float2 center_to_point = the_point - half_size;
 
     // Signed distance field threshold for inclusion of pixels. 0.5 is the
@@ -628,7 +708,8 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
     if (border_sdf < antialias_threshold) {
         float4 border_color = input.border_color;
         // Dashed border logic when border_style == 1
-        if (quad.border_style == 1) {
+        // KaminIDE patch: 2 — точечная рамка, тот же узор с квадратной ячейкой.
+        if (quad.border_style == 1 || quad.border_style == 2) {
             // Position along the perimeter in "dash space", where each dash
             // period has length 1
             float t = 0.0;
@@ -642,7 +723,9 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
             // overlapping when dash size is smaller than the border width.
             //
             // Dash pattern: (2 * border width) dash, (1 * border width) gap
-            const float dash_length_per_width = 2.0;
+            // KaminIDE patch: у точечной рамки штрих равен зазору — так её и
+            // рисует браузер; у штриховой штрих вдвое длиннее.
+            const float dash_length_per_width = (quad.border_style == 2) ? 1.0 : 2.0;
             const float dash_gap_per_width = 1.0;
             const float dash_period_per_width = dash_length_per_width + dash_gap_per_width;
 
@@ -820,6 +903,9 @@ struct Shadow {
     Corners corner_radii;
     Bounds content_mask;
     Hsla color;
+    // KaminIDE patch: внутренняя тень. Раскладка обязана совпадать с
+    // `struct Shadow` в scene.rs.
+    uint inset;
 };
 
 struct ShadowVertexOutput {
@@ -884,6 +970,15 @@ float4 shadow_fragment(ShadowFragmentInput input): SV_TARGET {
         y += step;
     }
 
+    // KaminIDE patch: у внутренней тени плотность обратная — она видна
+    // ВНУТРИ фигуры и гаснет к её середине, а снаружи её нет вовсе.
+    if ((shadow.inset & 0xFFu) != 0u) {
+        float inside = 1.0 - alpha;
+        float shape = quad_sdf(input.position.xy, shadow.bounds, shadow.corner_radii);
+        // За пределами фигуры внутренняя тень не рисуется.
+        inside *= saturate(0.5 - shape);
+        return input.color * float4(1., 1., 1., inside);
+    }
     return input.color * float4(1., 1., 1., alpha);
 }
 
@@ -1134,6 +1229,8 @@ struct PolychromeSprite {
     Bounds content_mask;
     Corners corner_radii;
     AtlasTile tile;
+    // KaminIDE patch: см. `Quad::transformation`.
+    TransformationMatrix transformation;
 };
 
 struct PolychromeSpriteVertexOutput {
@@ -1154,9 +1251,12 @@ StructuredBuffer<PolychromeSprite> poly_sprites: register(t1);
 PolychromeSpriteVertexOutput polychrome_sprite_vertex(uint vertex_id: SV_VertexID, uint sprite_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     PolychromeSprite sprite = poly_sprites[sprite_id];
-    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
-    float4 clip_distance = distance_from_clip_rect(unit_vertex, sprite.bounds,
-                                                    sprite.content_mask);
+    // KaminIDE patch: картинка внутри преобразованного элемента поворачивается
+    // вместе с ним.
+    float4 device_position =
+        to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
+    float4 clip_distance = distance_from_clip_rect_transformed(
+        unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
     float2 tile_position = to_tile_position(unit_vertex, sprite.tile);
 
     PolychromeSpriteVertexOutput output;
@@ -1169,8 +1269,10 @@ PolychromeSpriteVertexOutput polychrome_sprite_vertex(uint vertex_id: SV_VertexI
 
 float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Target {
     PolychromeSprite sprite = poly_sprites[input.sprite_id];
+    // KaminIDE patch: координаты самого спрайта.
+    float2 local_position = untransform(input.position.xy, sprite.transformation);
     float4 sample = t_sprite.Sample(s_sprite, input.tile_position);
-    float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
+    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
 
     float4 color = sample;
     if ((sprite.grayscale & 0xFFu) != 0u) {
@@ -1198,11 +1300,121 @@ struct BlurQuad {
     float2 src_origin;    // uv начала области в сэмплируемой текстуре
     float2 src_scale;     // uv размер области
     float2 texel;         // 1/размер сэмплируемой текстуры
-    float blur_pass;      // 1 = даунсемпл, 0 = финальный композит
-    float pad;
+    float blur_pass;      // 1 = даунсемпл, 0 = композит фона,
+                          // 2 = даунсемпл с прозрачностью, 3 = композит группы
+    float pad;            // при blur_pass == 3 — прозрачность группы
+    uint blend_mode;      // режим смешивания группы с кадром (0 — обычный)
+    uint poly_count;      // вершин обрезающего многоугольника (0 — не обрезать)
+    float2 pad2;
+    float4 poly[4];       // вершины парами: (x0, y0, x1, y1)
 };
 
 StructuredBuffer<BlurQuad> blur_quads: register(t1);
+// KaminIDE patch: копия кадра — цвет назначения для формул смешивания.
+Texture2D<float4> t_backdrop: register(t2);
+
+// KaminIDE patch: расстояние со знаком до многоугольника (`clip-path`).
+//
+// Прямоугольная маска со скруглением берёт круг и вставку, но не звезду и не
+// стрелку. Знак даёт проверка пересечений, модуль — ближайшее ребро; вместе
+// это край, который можно сгладить, а не ступенька.
+float poly_sdf(float4 poly[4], uint n, float2 p) {
+    float2 first = poly[0].xy;
+    float d = dot(p - first, p - first);
+    float sign_acc = 1.0;
+    for (uint i = 0u; i < n; i++) {
+        uint j = (i + n - 1u) % n;
+        float2 vi = (i % 2u == 0u) ? poly[i / 2u].xy : poly[i / 2u].zw;
+        float2 vj = (j % 2u == 0u) ? poly[j / 2u].xy : poly[j / 2u].zw;
+        float2 e = vj - vi;
+        float2 w = p - vi;
+        float2 b = w - e * clamp(dot(w, e) / max(dot(e, e), 0.0001), 0.0, 1.0);
+        d = min(d, dot(b, b));
+        bool3 c = bool3(p.y >= vi.y, p.y < vj.y, e.x * w.y > e.y * w.x);
+        if (all(c) || all(!c)) {
+            sign_acc = -sign_acc;
+        }
+    }
+    return sign_acc * sqrt(d);
+}
+
+// KaminIDE patch: формулы смешивания CSS.
+//
+// Аппаратный блендер считает по одной формуле на состояние и знает лишь
+// умножение, обратное умножение, минимум и максимум. Остальные режимы CSS
+// требуют читать цвет назначения — здесь он есть, поэтому считаются все.
+float blend_channel(uint mode, float cb, float cs) {
+    switch (mode) {
+        case 1u: return cb * cs;                        // multiply
+        case 2u: return cb + cs - cb * cs;              // screen
+        case 3u: return min(cb, cs);                    // darken
+        case 4u: return max(cb, cs);                    // lighten
+        case 5u:                                        // overlay = hard-light наоборот
+            return cb <= 0.5 ? 2.0 * cb * cs : 1.0 - 2.0 * (1.0 - cb) * (1.0 - cs);
+        case 6u:                                        // color-dodge
+            if (cb <= 0.0) return 0.0;
+            if (cs >= 1.0) return 1.0;
+            return min(1.0, cb / (1.0 - cs));
+        case 7u:                                        // color-burn
+            if (cb >= 1.0) return 1.0;
+            if (cs <= 0.0) return 0.0;
+            return 1.0 - min(1.0, (1.0 - cb) / cs);
+        case 8u:                                        // hard-light
+            return cs <= 0.5 ? 2.0 * cs * cb : 1.0 - 2.0 * (1.0 - cs) * (1.0 - cb);
+        case 9u: {                                      // soft-light
+            float d = cb <= 0.25 ? ((16.0 * cb - 12.0) * cb + 4.0) * cb : sqrt(cb);
+            return cs <= 0.5 ? cb - (1.0 - 2.0 * cs) * cb * (1.0 - cb)
+                             : cb + (2.0 * cs - 1.0) * (d - cb);
+        }
+        case 10u: return abs(cb - cs);                  // difference
+        case 11u: return cb + cs - 2.0 * cb * cs;       // exclusion
+        default: return cs;
+    }
+}
+
+float blend_lum(float3 c) {
+    return dot(c, float3(0.3, 0.59, 0.11));
+}
+
+/// Вернуть цвету заданную светлоту, не выходя за пределы диапазона.
+float3 blend_set_lum(float3 c, float l) {
+    c += l - blend_lum(c);
+    float lo = min(c.r, min(c.g, c.b));
+    float hi = max(c.r, max(c.g, c.b));
+    float lum = blend_lum(c);
+    if (lo < 0.0) {
+        c = lum + (c - lum) * lum / max(lum - lo, 1e-5);
+    }
+    if (hi > 1.0) {
+        c = lum + (c - lum) * (1.0 - lum) / max(hi - lum, 1e-5);
+    }
+    return c;
+}
+
+float blend_sat(float3 c) {
+    return max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+}
+
+/// Вернуть цвету заданную насыщенность, сохранив порядок каналов.
+float3 blend_set_sat(float3 c, float sat) {
+    float lo = min(c.r, min(c.g, c.b));
+    float hi = max(c.r, max(c.g, c.b));
+    if (hi <= lo) {
+        return float3(0.0, 0.0, 0.0);
+    }
+    return (c - lo) * sat / (hi - lo);
+}
+
+/// Несмешиваемые режимы: они берут у сторон целые характеристики цвета —
+/// тон, насыщенность или светлоту, — а не считают канал за каналом.
+float3 blend_nonseparable(uint mode, float3 cb, float3 cs) {
+    switch (mode) {
+        case 12u: return blend_set_lum(blend_set_sat(cs, blend_sat(cb)), blend_lum(cb));
+        case 13u: return blend_set_lum(blend_set_sat(cb, blend_sat(cs)), blend_lum(cb));
+        case 14u: return blend_set_lum(cs, blend_lum(cb));
+        default:  return blend_set_lum(cb, blend_lum(cs));
+    }
+}
 
 struct BlurVertexOutput {
     nointerpolation uint quad_id: TEXCOORD0;
@@ -1231,6 +1443,42 @@ BlurVertexOutput blur_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
 float4 blur_fragment(BlurFragmentInput input): SV_Target {
     BlurQuad q = blur_quads[input.quad_id];
     float2 t = q.texel;
+    // KaminIDE patch: композит буфера группы. Картинка уже готова — её
+    // нельзя размазывать, поэтому выборка одна, а маска скруглений и
+    // прозрачность группы гасят и цвет, и альфу (цвет премультиплирован).
+    if (q.blur_pass > 2.5) {
+        float4 src = t_sprite.Sample(s_sprite, input.uv);
+        float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
+        float mask = saturate(0.5 - distance) * q.pad;
+        if (q.poly_count >= 3u) {
+            mask *= saturate(0.5 - poly_sdf(q.poly, q.poly_count, input.position.xy));
+        }
+        src *= mask;
+        if (q.blend_mode == 0u) {
+            return src;
+        }
+        // Цвет назначения — копия кадра под группой. Формулы CSS работают с
+        // НЕумноженным цветом, поэтому обе стороны сначала делятся на свою
+        // прозрачность, а результат умножается обратно уже целиком.
+        float4 dst = t_backdrop.Sample(s_sprite, input.uv);
+        float3 cs = src.a > 0.0 ? src.rgb / src.a : float3(0.0, 0.0, 0.0);
+        float3 cb = dst.a > 0.0 ? dst.rgb / dst.a : float3(0.0, 0.0, 0.0);
+        float3 mixed;
+        if (q.blend_mode >= 12u) {
+            mixed = blend_nonseparable(q.blend_mode, cb, cs);
+        } else {
+            mixed = float3(
+                blend_channel(q.blend_mode, cb.r, cs.r),
+                blend_channel(q.blend_mode, cb.g, cs.g),
+                blend_channel(q.blend_mode, cb.b, cs.b));
+        }
+        // Формула композита из спецификации: смешанный цвет виден только там,
+        // где обе стороны непрозрачны.
+        float3 co = (1.0 - dst.a) * src.a * cs
+                  + dst.a * src.a * mixed
+                  + (1.0 - src.a) * dst.a * cb;
+        return float4(co, src.a + dst.a * (1.0 - src.a));
+    }
     // Tent 3x3: с билинейкой и каскадом /2 → мягкое размытие без колец.
     float4 c = t_sprite.Sample(s_sprite, input.uv) * 0.25;
     c += t_sprite.Sample(s_sprite, input.uv + float2(-t.x, 0.0)) * 0.125;
@@ -1245,8 +1493,11 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
         float mask = saturate(0.5 - distance);
         c = float4(c.rgb * mask, mask);
-    } else {
+    } else if (q.blur_pass < 1.5) {
+        // Фон непрозрачен по определению: копия кадра.
         c.a = 1.0;
     }
+    // KaminIDE patch: у группы прозрачность — часть картинки (режим 2),
+    // поэтому её оставляем как есть.
     return c;
 }

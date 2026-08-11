@@ -1,0 +1,31 @@
+<!-- `position: sticky`: заголовок прилипает к краю видимой части ленты и не
+     выходит за пределы родителя. Лента не прокручена, но порог `top` уже
+     сдвигает заголовок вниз — ровно так же, как в браузере. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; font: 13px system-ui }
+  .page { width: 620px; padding: 16px; box-sizing: border-box }
+  .scroller { height: 170px; overflow: auto; background: #f1f3f5; margin: 0 0 16px }
+  .head { position: sticky; top: 12px; height: 30px; background: #1c7ed6 }
+  .row { height: 40px; background: #ffd8a8; margin: 6px 0 }
+  .row.alt { background: #e8590c }
+
+  /* Липкий у нижнего края: порог отсчитывается снизу видимой части */
+  .down .head { top: auto; bottom: 12px; background: #2f9e44 }
+</style>
+
+<div class="page">
+  <div class="scroller">
+    <div class="head"></div>
+    <div class="row"></div>
+    <div class="row alt"></div>
+    <div class="row"></div>
+    <div class="row alt"></div>
+  </div>
+
+  <div class="scroller down">
+    <div class="row"></div>
+    <div class="row alt"></div>
+    <div class="head"></div>
+    <div class="row"></div>
+  </div>
+</div>

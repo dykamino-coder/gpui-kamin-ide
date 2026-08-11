@@ -1,0 +1,41 @@
+<!-- Сжатие текста: гибкий элемент с длинной строкой обязан ужиматься до
+     самого длинного слова, а не распирать контейнер. Цвета уникальны. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; font: 14px system-ui }
+  .page { width: 620px; padding: 16px; box-sizing: border-box }
+  .row { display: flex; gap: 10px; margin: 0 0 14px; width: 500px;
+         align-items: flex-start }
+
+  /* Текст слева, фиксированный блок справа: текст обязан уступить место */
+  .r1 .text { background: #d0ebff; padding: 4px }
+  .r1 .fixed { width: 160px; height: 40px; background: #1c7ed6; flex-shrink: 0 }
+
+  /* Два текстовых блока делят строку поровну */
+  .r2 .a { background: #b2f2bb; padding: 4px; flex: 1 }
+  .r2 .b { background: #2f9e44; padding: 4px; flex: 1; color: #fff }
+
+  /* Колонка таблицы с длинным текстом на узкой панели */
+  table { width: 300px; margin: 0 0 14px; border-spacing: 0 }
+  td { padding: 4px; vertical-align: top }
+  .c1 { background: #ffd8a8 }
+  .c2 { background: #e8590c; color: #fff }
+</style>
+
+<div class="page">
+  <div class="row r1">
+    <div class="text">Длинная строка, которую контейнер обязан заставить перенестись по словам</div>
+    <div class="fixed"></div>
+  </div>
+
+  <div class="row r2">
+    <div class="a">Первый столбец с текстом достаточной длины для переноса</div>
+    <div class="b">Второй столбец тоже с текстом достаточной длины</div>
+  </div>
+
+  <table>
+    <tr>
+      <td class="c1">Ячейка с довольно длинным содержимым для узкой колонки</td>
+      <td class="c2">Соседняя</td>
+    </tr>
+  </table>
+</div>

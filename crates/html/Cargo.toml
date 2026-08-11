@@ -13,8 +13,34 @@ edition.workspace = true
 # измерен по нашему же коду и задокументирован в `docs/html-css-mapping.html`.
 
 [dependencies]
+encoding_rs = "0.8.35"
+# Распаковка шрифтов в упаковках `woff` и `woff2` (правило `@font-face`):
+# у второй сверх сжатия ещё и перестроение таблицы глифов, руками её не брать.
+wuff = { version = "0.2.8", features = ["z", "brotli"] }
 gpui.workspace = true
-html5ever = "0.27"
-markup5ever_rcdom = "0.3.0"
+# KaminIDE patch: своя копия — добавлены инструкции обработки (`<?…>`),
+# которых в разборе не было (см. vendor/html5ever).
+html5ever = { path = "../../vendor/html5ever" }
+# KaminIDE patch: своя копия — в реестровой пуст крючок переноса
+# `<option>` в `<selectedcontent>` (см. vendor/markup5ever_rcdom).
+markup5ever_rcdom = { path = "../../vendor/markup5ever_rcdom" }
+# Точки возможного разрыва строки по UAX-14 — для своей строчной раскладки.
+unicode-linebreak = "0.1"
+# Уровни встроенности по UBA: порядок ПРОГОНОВ строки на экране. Знаки внутри
+# прогона переставляет набор, здесь только порядок самих прогонов.
+unicode-bidi = "0.3.18"
 
 [dev-dependencies]
+# Снимок окна для прогона reftest-ов WPT (см. examples/wptrun.rs).
+raw-window-handle = "0.6"
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Storage_Xps",
+  "Win32_UI_WindowsAndMessaging",
+] }
+encoding_rs = "0.8"
+serde_json.workspace = true
+# Выгрузка снимков разошедшихся пар (`WPT_DUMP=1`): без картинки причину
+# расхождения приходится угадывать по одному числу.
+png = "0.18.1"

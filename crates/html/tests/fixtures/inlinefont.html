@@ -1,0 +1,18 @@
+<!-- Начертания внутри строки: жирный, курсив, моноширинный, свой кегль,
+     свой цвет и подчёркивание — всё в одном абзаце, с переносом сквозь них. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; font: 15px/1.5 system-ui }
+  .page { width: 520px; padding: 16px; box-sizing: border-box }
+  p { margin: 0 0 12px }
+  .big { font-size: 22px }
+  .small { font-size: 11px }
+  .mono { font-family: monospace; background: #e9ecef; padding: 0 3px }
+  .col { color: #e8590c }
+  .thin { font-weight: 300 }
+</style>
+<div class="page">
+  <p>Обычный текст, <b>жирный кусок</b>, <i>курсивный кусок</i> и <b><i>оба сразу</i></b> в одной строке с переносом по словам.</p>
+  <p>Строка с <span class="mono">моноширинным кодом</span> и <span class="col">цветным куском</span>, дальше обычный текст до самого переноса строки.</p>
+  <p>Кегли рядом: <span class="big">крупный кусок</span>, обычный и <span class="small">мелкий кусок</span> — базовая линия у всех общая.</p>
+  <p>Насыщенность: <span class="thin">тонкий</span>, обычный, <b>жирный</b>, <u>подчёркнутый</u> и <s>зачёркнутый</s>.</p>
+</div>

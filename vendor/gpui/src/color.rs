@@ -658,6 +658,9 @@ pub(crate) enum BackgroundTag {
     Solid = 0,
     LinearGradient = 1,
     PatternSlash = 2,
+    /// KaminIDE patch: радиальный градиент от центра к краям. Номер обязан
+    /// совпадать с веткой `case 3` в шейдере.
+    RadialGradient = 3,
 }
 
 /// A color space for color interpolation.
@@ -692,9 +695,20 @@ pub struct Background {
     pub(crate) color_space: ColorSpace,
     pub(crate) solid: Hsla,
     pub(crate) gradient_angle_or_pattern_height: f32,
-    pub(crate) colors: [LinearColorStop; 2],
-    /// Padding for alignment for repr(C) layout.
-    pad: u32,
+    /// KaminIDE patch: до четырёх опорных цветов.
+    ///
+    /// Двух хватало только на переход из цвета в цвет. Градиент из трёх и
+    /// более цветов приходилось изображать полосами — по слою на пару
+    /// соседних стопов, — а полосы ложатся лишь вдоль оси коробки: у
+    /// наклонного градиента середина просто пропадала. Четыре покрывают
+    /// разметку интерфейсов, а размер инстанса растёт на сорок байт.
+    pub(crate) colors: [LinearColorStop; 4],
+    /// Сколько из них заполнено (2..=4).
+    ///
+    /// Раньше поле было выравнивающим. Оно же держало режим смешивания —
+    /// теперь смешивание считается при сборке буфера группы, и место
+    /// освободилось.
+    pub(crate) stop_count: u32,
 }
 
 impl std::fmt::Debug for Background {
@@ -715,6 +729,9 @@ impl std::fmt::Debug for Background {
                     self.solid, self.gradient_angle_or_pattern_height
                 )
             }
+            BackgroundTag::RadialGradient => {
+                write!(f, "RadialGradient({:?}, {:?})", self.colors[0], self.colors[1])
+            }
         }
     }
 }
@@ -727,8 +744,8 @@ impl Default for Background {
             solid: Hsla::default(),
             color_space: ColorSpace::default(),
             gradient_angle_or_pattern_height: 0.0,
-            colors: [LinearColorStop::default(), LinearColorStop::default()],
-            pad: 0,
+            colors: [LinearColorStop::default(); 4],
+            stop_count: 2,
         }
     }
 }
@@ -762,6 +779,32 @@ pub fn solid_background(color: impl Into<Hsla>) -> Background {
 /// The `angle` is in degrees value in the range 0.0 to 360.0.
 ///
 /// <https://developer.mozilla.org/en-US/docs/Web/CSS/gradient/linear-gradient>
+/// KaminIDE patch: радиальный градиент `radial-gradient(a, b)`.
+///
+/// Штатно у фона было два вида — заливка и линейный градиент, поэтому
+/// радиальный приходилось подделывать наложением слоёв, и он нигде не
+/// совпадал с оригиналом. Форма — эллипс по краям коробки от центра, как
+/// умолчание CSS (`farthest-corner`). `circle` — окружность: радиус один на
+/// обе оси, иначе эллипс по краям коробки.
+pub fn radial_gradient(
+    from: impl Into<LinearColorStop>,
+    to: impl Into<LinearColorStop>,
+    circle: bool,
+) -> Background {
+    Background {
+        tag: BackgroundTag::RadialGradient,
+        // Форма передаётся в поле угла: у радиального угла нет, а заводить
+        // ещё одно поле — менять раскладку структуры под шейдер.
+        gradient_angle_or_pattern_height: if circle { 1.0 } else { 0.0 },
+        colors: [from.into(), to.into(), LinearColorStop::default(), LinearColorStop::default()],
+        stop_count: 2,
+        ..Default::default()
+    }
+}
+
+/// Creates a new linear gradient background with the given angle and color stops.
+///
+/// The angle is in degrees value between 0 and 360, with 0 starting at the bottom.
 pub fn linear_gradient(
     angle: f32,
     from: impl Into<LinearColorStop>,
@@ -770,7 +813,8 @@ pub fn linear_gradient(
     Background {
         tag: BackgroundTag::LinearGradient,
         gradient_angle_or_pattern_height: angle,
-        colors: [from.into(), to.into()],
+        colors: [from.into(), to.into(), LinearColorStop::default(), LinearColorStop::default()],
+        stop_count: 2,
         ..Default::default()
     }
 }
@@ -816,6 +860,21 @@ impl Background {
         self
     }
 
+    /// KaminIDE patch: задать список опорных цветов целиком (до четырёх).
+    ///
+    /// Первый и последний остаются крайними цветами перехода, промежуточные
+    /// ложатся между ними по своим долям. Лишние отбрасываются: место в
+    /// инстансе на все стопы CSS не отвести, а четырёх хватает разметке
+    /// интерфейсов.
+    pub fn with_stops(mut self, stops: &[LinearColorStop]) -> Self {
+        let n = stops.len().clamp(2, 4);
+        for (slot, stop) in self.colors.iter_mut().zip(stops.iter()).take(n) {
+            *slot = *stop;
+        }
+        self.stop_count = n as u32;
+        self
+    }
+
     /// Returns a new background color with the same hue, saturation, and lightness, but with a modified alpha value.
     pub fn opacity(&self, factor: f32) -> Self {
         let mut background = *self;
@@ -823,6 +882,8 @@ impl Background {
         background.colors = [
             self.colors[0].opacity(factor),
             self.colors[1].opacity(factor),
+            self.colors[2].opacity(factor),
+            self.colors[3].opacity(factor),
         ];
         background
     }
@@ -831,7 +892,10 @@ impl Background {
     pub fn is_transparent(&self) -> bool {
         match self.tag {
             BackgroundTag::Solid => self.solid.is_transparent(),
-            BackgroundTag::LinearGradient => self.colors.iter().all(|c| c.color.is_transparent()),
+            // KaminIDE patch: у радиального цвета лежат там же, где у линейного.
+            BackgroundTag::LinearGradient | BackgroundTag::RadialGradient => {
+                self.colors.iter().all(|c| c.color.is_transparent())
+            }
             BackgroundTag::PatternSlash => self.solid.is_transparent(),
         }
     }

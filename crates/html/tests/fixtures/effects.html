@@ -1,0 +1,71 @@
+<!-- Свойства последнего захода: преобразования, фильтры, обрезка, смешивание,
+     колонки, обтекание. Цвета уникальны — по ним сверяется геометрия. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff }
+  .page { width: 860px; padding: 16px; box-sizing: border-box }
+  .row { display: flex; gap: 24px; align-items: flex-start; margin: 0 0 24px }
+  .b { width: 80px; height: 50px }
+
+  /* Преобразования: раскладку не трогают, рисуются изменёнными */
+  .t1 { background: #1c7ed6; transform: rotate(20deg) }
+  .t2 { background: #2f9e44; transform: scale(1.4) }
+  .t3 { background: #e8590c; transform: translate(20px, 10px) }
+  .t4 { background: #862e9c; transform: rotate(45deg); transform-origin: left top }
+  .t5 { background: #0b7285; rotate: 30deg }
+  .t6 { background: #a61e4d; scale: 0.6 }
+
+  /* Цветовые фильтры считаются арифметикой над собственным цветом */
+  .f1 { background: #e03131; filter: grayscale(1) }
+  .f2 { background: #e03131; filter: brightness(0.5) }
+  .f3 { background: #4c6ef5; filter: saturate(0.3) }
+  .f4 { background: #f59f00; filter: invert(1) }
+  .f5 { background: #37b24d; filter: sepia(1) }
+  .f6 { background: #7048e8; filter: opacity(0.4) }
+
+  /* Обрезка по кругу */
+  .c1 { background: #d6336c; clip-path: circle(50%); width: 50px }
+  .c2 { background: #099268; clip-path: inset(0 round 16px) }
+
+  /* Многоколоночный поток из блоков */
+  .cols { column-count: 3; width: 400px; margin: 0 0 24px }
+  .cols div { height: 24px; margin: 0 0 6px }
+
+  /* Обтекание */
+  .floatbox { width: 420px; background: #f1f3f5; margin: 0 0 24px; overflow: hidden }
+  .fl { float: left; width: 90px; height: 60px; background: #5f3dc4 }
+  .fr { height: 60px; background: #ffd8a8 }
+</style>
+
+<div class="page">
+  <div class="row">
+    <div class="b t1"></div><div class="b t2"></div><div class="b t3"></div>
+  </div>
+  <div class="row">
+    <div class="b t4"></div><div class="b t5"></div><div class="b t6"></div>
+  </div>
+
+  <div class="row">
+    <div class="b f1"></div><div class="b f2"></div><div class="b f3"></div>
+  </div>
+  <div class="row">
+    <div class="b f4"></div><div class="b f5"></div><div class="b f6"></div>
+  </div>
+
+  <div class="row">
+    <div class="b c1" style="width: 50px"></div><div class="b c2"></div>
+  </div>
+
+  <div class="cols">
+    <div style="background: #c2255c"></div>
+    <div style="background: #087f5b"></div>
+    <div style="background: #e67700"></div>
+    <div style="background: #1864ab"></div>
+    <div style="background: #66a80f"></div>
+    <div style="background: #ae3ec9"></div>
+  </div>
+
+  <div class="floatbox">
+    <div class="fl"></div>
+    <div class="fr"></div>
+  </div>
+</div>

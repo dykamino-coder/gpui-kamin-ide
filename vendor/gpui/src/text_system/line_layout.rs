@@ -35,6 +35,11 @@ pub struct ShapedRun {
     pub font_id: FontId,
     /// The glyphs that make up this run
     pub glyphs: Vec<ShapedGlyph>,
+    /// KaminIDE patch: кегль ЭТОГО прогона.
+    ///
+    /// Растеризация брала кегль всей строки, и кусок другого размера рисовался
+    /// чужими глифами: положения от своего кегля, картинка — от блочного.
+    pub font_size: Pixels,
 }
 
 /// A single glyph, ready to paint.
@@ -141,6 +146,8 @@ impl LineLayout {
         };
         let mut last_boundary_x = px(0.);
         let mut prev_ch = '\0';
+        // KaminIDE patch: ширина хвостовых пробелов — они висят за краем.
+        let mut trailing_space = px(0.);
         let mut glyphs = self
             .runs
             .iter()
@@ -170,7 +177,14 @@ impl LineLayout {
                     last_candidate_x = x;
                 }
             } else {
-                if ch != ' ' && first_non_whitespace_ix.is_some() {
+                // KaminIDE patch: `!is_no_break_after` keeps an opening bracket
+                // glued to what follows — UAX #14 forbids ending a line with it.
+                // The same guard lives in `LineWrapper::wrap_line`; this copy of
+                // the algorithm is the one shaped text goes through.
+                if ch != ' '
+                    && first_non_whitespace_ix.is_some()
+                    && !LineWrapper::is_no_break_after(prev_ch)
+                {
                     last_candidate_ix = Some(boundary);
                     last_candidate_x = x;
                 }
@@ -183,7 +197,16 @@ impl LineLayout {
             let next_x = glyphs.peek().map_or(self.width, |(_, _, x)| *x);
             let width = next_x - last_boundary_x;
 
-            if width > wrap_width && boundary > last_boundary {
+            // KaminIDE patch: пробелы в конце строки ВИСЯТ за краем — по CSS
+            // они никогда не вызывают перенос. Без этого сохранённый пробел
+            // уносил следующее слово на строку ниже на знак раньше.
+            if ch == ' ' {
+                trailing_space += next_x - x;
+            } else {
+                trailing_space = px(0.);
+            }
+
+            if width - trailing_space > wrap_width && boundary > last_boundary {
                 // When used line_clamp, we should limit the number of lines.
                 if let Some(max_lines) = max_lines
                     && boundaries.len() >= max_lines - 1
@@ -677,6 +700,13 @@ impl LineLayoutCache {
 pub struct FontRun {
     pub(crate) len: usize,
     pub(crate) font_id: FontId,
+    /// KaminIDE patch: свой кегль прогона.
+    ///
+    /// Кегль был один на всю строку, и кусок другого размера внутри абзаца
+    /// собрать в общий текстовый блок было нельзя: разметка уходила в
+    /// запасную ветку из отдельных слов, где строки наезжали друг на друга.
+    /// Ноль означает «кегль строки».
+    pub(crate) font_size: Pixels,
 }
 
 trait AsCacheKeyRef {

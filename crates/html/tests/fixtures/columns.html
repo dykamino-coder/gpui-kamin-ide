@@ -1,0 +1,15 @@
+<!-- Многоколоночный поток: сплошной текст режется по строкам, а не по детям.
+     Второй блок — колонки из детей, они и раньше работали. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; font: 13px/1.5 system-ui }
+  .page { width: 560px; padding: 16px; box-sizing: border-box }
+  .flow { column-count: 3; column-gap: 16px; margin: 0 0 20px }
+  .boxes { column-count: 3; column-gap: 16px }
+  .boxes div { height: 22px; background: #1c7ed6; margin: 0 0 6px }
+</style>
+<div class="page">
+  <div class="flow">Сплошной текст обязан разрезаться на колонки по строкам: сколько строк помещается в колонку, столько в неё и уходит, а остальное переносится в следующую. Раньше такой абзац оставался в первой колонке целиком, потому что колонки набирались из детей, а ребёнок здесь один. Проверяем на достаточно длинном куске, чтобы строк хватило на все три колонки и разница читалась глазом.</div>
+  <div class="boxes">
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+  </div>
+</div>

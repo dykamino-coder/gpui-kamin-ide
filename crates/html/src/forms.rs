@@ -22,10 +22,10 @@ const ACCENT: u32 = 0x3b5bdb;
 const MUTED: u32 = 0x8a90a4;
 
 /// Отрисовать элемент формы. `None` — тег не относится к формам.
-pub fn element(e: &Element, style: &Computed) -> Option<AnyElement> {
+pub fn element(e: &Element, style: &Computed, opts: &crate::RenderOpts) -> Option<AnyElement> {
     match e.tag.as_str() {
         "input" => Some(input(e, style)),
-        "textarea" => Some(textarea(e, style)),
+        "textarea" => Some(textarea(e, style, opts)),
         "select" => Some(select(e, style)),
         "progress" => Some(progress(e, style)),
         "meter" => Some(progress(e, style)),
@@ -56,6 +56,15 @@ fn text_field(e: &Element, style: &Computed) -> AnyElement {
         (_, Some(p)) => (p.to_string(), true),
         _ => (String::new(), true),
     };
+    // `caret-color` видна только в поле с фокусом — рисуем её ровно там,
+    // где фокус объявлен разметкой, иначе каретка стояла бы в каждом поле.
+    let caret = e.attr("autofocus").is_some().then(|| {
+        div().w(px(1.)).h(px(14.)).ml(px(1.)).bg(style
+            .caret_color
+            .or(style.color)
+            .map(|c| c.to_hsla())
+            .unwrap_or_else(|| rgb(0xd4d4d4).into()))
+    });
     field_box(style)
         .child(
             div()
@@ -63,30 +72,35 @@ fn text_field(e: &Element, style: &Computed) -> AnyElement {
                 .child(SharedString::from(text))
                 .into_any_element(),
         )
+        .children(caret)
         .into_any_element()
 }
 
-fn textarea(e: &Element, style: &Computed) -> AnyElement {
+fn textarea(e: &Element, style: &Computed, opts: &crate::RenderOpts) -> AnyElement {
     let mut text = String::new();
     crate::render::gather_text_public(&e.children, &mut text);
     let muted = text.trim().is_empty();
-    let shown = if muted {
-        e.attr("placeholder").unwrap_or("").to_string()
-    } else {
-        text
-    };
     // Высота — по числу строк, как `rows` в HTML: без этого поле схлопывается
     // до одной строки и перестаёт быть похожим на себя.
     let rows: f32 = e.attr("rows").and_then(|r| r.parse().ok()).unwrap_or(3.0);
+    // Содержимое поля — обычный текст, и считать его обязана та же строчная
+    // раскладка, что и весь остальной текст: у поля работают и сохранённые
+    // пробелы, и выключка, и висящий хвост. Пока внутри стоял простой блок,
+    // всё это проходило мимо (`trailing-space-and-text-alignment`).
+    let body = if muted {
+        let hint = e.attr("placeholder").unwrap_or("").to_string();
+        div()
+            .when_muted(true)
+            .child(SharedString::from(hint))
+            .into_any_element()
+    } else {
+        crate::render::paragraph_public(&e.children, style, opts)
+    };
+    let _ = text;
     field_box(style)
         .min_h(px(rows * 18.0 + 12.0))
         .items_start()
-        .child(
-            div()
-                .when_muted(muted)
-                .child(SharedString::from(shown))
-                .into_any_element(),
-        )
+        .child(div().w_full().child(body))
         .into_any_element()
 }
 
@@ -124,6 +138,12 @@ fn select(e: &Element, style: &Computed) -> AnyElement {
 /// Флажок и переключатель отличаются только скруглением и отметкой.
 fn toggle(e: &Element, style: &Computed, round: bool) -> AnyElement {
     let on = e.attr("checked").is_some();
+    // `accent-color` красит именно отметку флажка и переключателя — это
+    // единственное, на что оно влияет.
+    let accent: gpui::Hsla = style
+        .accent_color
+        .map(|c| c.to_hsla())
+        .unwrap_or_else(|| rgb(ACCENT).into());
     let mut mark = apply(div(), style)
         .w(px(15.))
         .h(px(15.))
@@ -132,8 +152,8 @@ fn toggle(e: &Element, style: &Computed, round: bool) -> AnyElement {
         .items_center()
         .justify_center()
         .border_1()
-        .border_color(rgb(if on { ACCENT } else { BORDER }))
-        .bg(rgb(if on { ACCENT } else { FIELD_BG }));
+        .border_color(if on { accent } else { rgb(BORDER).into() })
+        .bg(if on { accent } else { rgb(FIELD_BG).into() });
     mark = if round {
         mark.rounded_full()
     } else {
@@ -171,6 +191,10 @@ fn range(e: &Element, style: &Computed) -> AnyElement {
         e.attr(name).and_then(|v| v.parse().ok()).unwrap_or(default)
     };
     let (min, max, val) = (num("min", 0.), num("max", 100.), num("value", 50.));
+    let accent: gpui::Hsla = style
+        .accent_color
+        .map(|c| c.to_hsla())
+        .unwrap_or_else(|| rgb(ACCENT).into());
     let frac = if max > min {
         ((val - min) / (max - min)).clamp(0., 1.)
     } else {
@@ -196,7 +220,7 @@ fn range(e: &Element, style: &Computed) -> AnyElement {
                         .h(px(4.))
                         .w(gpui::relative(frac))
                         .rounded(px(2.))
-                        .bg(rgb(ACCENT)),
+                        .bg(accent),
                 ),
         )
         .into_any_element()
@@ -225,6 +249,11 @@ fn progress(e: &Element, style: &Computed) -> AnyElement {
         e.attr(name).and_then(|v| v.parse().ok()).unwrap_or(default)
     };
     let frac = (num("value", 0.) / num("max", 1.).max(0.0001)).clamp(0., 1.);
+    // Заполненную часть полосы `accent-color` красит так же, как флажок.
+    let accent: gpui::Hsla = style
+        .accent_color
+        .map(|c| c.to_hsla())
+        .unwrap_or_else(|| rgb(ACCENT).into());
     apply(div(), style)
         .h(px(8.))
         .w_full()
@@ -240,23 +269,41 @@ fn progress(e: &Element, style: &Computed) -> AnyElement {
                 .h_full()
                 .w(gpui::relative(frac))
                 .rounded(px(4.))
-                .bg(rgb(ACCENT)),
+                .bg(accent),
         )
         .into_any_element()
 }
 
 /// Общая рамка поля ввода.
+/// Общая рамка поля ввода.
+///
+/// Умолчания ставятся ТОЛЬКО там, где документ ничего не сказал: раньше они
+/// шли безусловно и затирали фон, рамку, скругление и отступы из CSS.
 fn field_box(style: &Computed) -> gpui::Div {
-    apply(div(), style)
-        .flex()
-        .items_center()
-        .px(px(8.))
-        .py(px(4.))
-        .min_h(px(24.))
-        .rounded(px(4.))
-        .bg(rgb(FIELD_BG))
-        .border_1()
-        .border_color(rgb(BORDER))
+    let mut d = apply(div(), style).flex().items_center().min_h(px(24.));
+    if style.background.is_none() && style.gradient.is_none() {
+        d = d.bg(rgb(FIELD_BG));
+    }
+    // «Автор ничего не сказал» — это когда не заданы НИ толщина, НИ рисунок.
+    // По `borders()` отличить нельзя: он гасит толщину без рисунка, и
+    // `border: none` выглядел бы как отсутствие правила — умолчание UA
+    // возвращало рамку обратно.
+    if style.border_width.top.is_none() && style.border_visible[0].is_none() {
+        d = d.border_1();
+    }
+    if style.border_color.is_none() {
+        d = d.border_color(rgb(BORDER));
+    }
+    if style.radius.tl.is_none() {
+        d = d.rounded(px(4.));
+    }
+    if style.padding.left.is_none() {
+        d = d.px(px(8.));
+    }
+    if style.padding.top.is_none() {
+        d = d.py(px(4.));
+    }
+    d
 }
 
 /// Приглушить текст подсказки — иначе она неотличима от введённого значения.

@@ -205,8 +205,14 @@ impl Render for Demo {
         let mut text = window.text_style();
         text.color = rgb(INK).into();
         let opts = RenderOpts {
+            viewport: (
+                f32::from(window.viewport_size().width),
+                f32::from(window.viewport_size().height),
+            ),
             text: text.clone(),
             table_min_col: 80.,
+            // `line-height: normal` как в браузере, а не золотое сечение GPUI.
+            normal_line_height: 1.31,
         };
         div()
             .size_full()

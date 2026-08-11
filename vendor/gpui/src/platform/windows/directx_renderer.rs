@@ -47,6 +47,18 @@ pub(crate) struct DirectXRenderer {
     font_info: &'static FontInfo,
     /// KaminIDE patch: скретч backdrop blur (см. draw_surfaces).
     blur: BlurScratch,
+    /// KaminIDE patch: куда идёт отрисовка сейчас. Пока рисуется группа
+    /// (`Window::paint_group`), это её буфер, а не бэкбуфер — иначе проходы,
+    /// возвращающие цель кадра (пути через MSAA), уводили бы примитивы
+    /// группы прямо в кадр.
+    group_target: Option<[Option<ID3D11RenderTargetView>; 1]>,
+    /// KaminIDE patch: блендер для картинок с уже умноженным на прозрачность
+    /// цветом (буферы групп). Обычный блендер умножает на неё второй раз —
+    /// края группы уходили в чёрный ореол.
+    blend_premultiplied: Option<ID3D11BlendState>,
+    /// KaminIDE patch: блендер «писать поверх» — для групп, у которых
+    /// смешивание с кадром посчитано в шейдере.
+    blend_replace: Option<ID3D11BlendState>,
 }
 
 /// KaminIDE patch: ресурсы backdrop blur. Копия бэкбуфера (сэмплить
@@ -57,6 +69,15 @@ struct BlurScratch {
     copy: Option<BlurTexture>,
     down: Vec<BlurTexture>,
     globals: [Option<ID3D11Buffer>; 1],
+    /// KaminIDE patch: буферы групп, по два на группу — сырая картинка и её
+    /// размытая копия (сэмплировать связанную с целью текстуру нельзя).
+    groups: Vec<BlurTexture>,
+    /// Готовый буфер каждой группы: сырой или размытый.
+    group_slots: Vec<usize>,
+    /// Режим смешивания каждой группы (`mix-blend-mode`).
+    group_blend: Vec<u32>,
+    /// Обрезающий многоугольник каждой группы: вершины парами и их число.
+    group_poly: Vec<([[f32; 4]; 4], u32)>,
 }
 
 struct BlurTexture {
@@ -79,6 +100,12 @@ struct BlurQuad {
     texel: [f32; 2],
     blur_pass: f32,
     pad: f32,
+    blend_mode: u32,
+    /// Число вершин обрезающего многоугольника (0 — не обрезать).
+    poly_count: u32,
+    pad2: [f32; 2],
+    /// Вершины парами: (x0, y0, x1, y1).
+    poly: [[f32; 4]; 4],
 }
 
 fn create_blur_texture(
@@ -143,6 +170,8 @@ fn blur_down_pass(
     src_size: (f32, f32),
     uv_origin: [f32; 2],
     uv_scale: [f32; 2],
+    keep_alpha: bool,
+    blend: Option<&ID3D11BlendState>,
 ) -> Result<()> {
     let viewport = [D3D11_VIEWPORT {
         TopLeftX: 0.0,
@@ -169,14 +198,20 @@ fn blur_down_pass(
         src_origin: uv_origin,
         src_scale: uv_scale,
         texel: [1.0 / src_size.0, 1.0 / src_size.1],
-        blur_pass: 1.0,
+        // KaminIDE patch: у группы прозрачность — часть картинки, гасить её
+        // до единицы нельзя (у копии кадра она и так единица).
+        blur_pass: if keep_alpha { 2.0 } else { 1.0 },
         pad: 0.0,
+        blend_mode: 0,
+        poly_count: 0,
+        pad2: [0.0; 2],
+        poly: [[0.0; 4]; 4],
     };
     pipeline.update_buffer(device, dc, &[quad])?;
     unsafe {
         dc.OMSetRenderTargets(Some(&dest.rtv), None);
     }
-    pipeline.draw_with_texture(dc, src, &viewport, globals, sampler, 1)
+    pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
 }
 
 /// Direct3D objects
@@ -313,6 +348,9 @@ impl DirectXRenderer {
             direct_composition,
             font_info: Self::get_font_info(),
             blur: BlurScratch::default(),
+            group_target: None,
+            blend_premultiplied: None,
+            blend_replace: None,
         })
     }
 
@@ -473,6 +511,30 @@ impl DirectXRenderer {
         Ok(())
     }
 
+    /// KaminIDE patch: блендер для буферов групп (создаётся по требованию).
+    fn premultiplied_blend(&mut self) -> Result<ID3D11BlendState> {
+        if self.blend_premultiplied.is_none() {
+            self.blend_premultiplied =
+                Some(create_blend_state_premultiplied(&self.devices.device)?);
+        }
+        Ok(self.blend_premultiplied.clone().unwrap())
+    }
+
+    /// KaminIDE patch: писать результат поверх — смешивание уже посчитано.
+    fn replace_blend(&mut self) -> Result<ID3D11BlendState> {
+        if self.blend_replace.is_none() {
+            self.blend_replace = Some(create_blend_state_replace(&self.devices.device)?);
+        }
+        Ok(self.blend_replace.clone().unwrap())
+    }
+
+    /// KaminIDE patch: цель отрисовки сейчас — буфер группы или кадр.
+    fn current_target(&self) -> &[Option<ID3D11RenderTargetView>; 1] {
+        self.group_target
+            .as_ref()
+            .unwrap_or(&self.resources.render_target_view)
+    }
+
     pub(crate) fn draw(&mut self, scene: &Scene) -> Result<()> {
         // KaminIDE patch (#76): буфер свапчейна занят компоузером (DWM/RDP
         // ещё кодирует прошлый кадр) — НЕ рисовать и НЕ блокироваться:
@@ -494,6 +556,17 @@ impl DirectXRenderer {
             }
         }
         self.pre_draw()?;
+        // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
+        // от них остаётся метка, по которой готовый буфер и композитится.
+        if let Err(e) = self.render_groups(scene) {
+            log::warn!("paint group failed: {e}");
+        }
+        self.draw_scene(scene)?;
+        self.present()
+    }
+
+    /// KaminIDE patch: примитивы одной сцены — кадра или группы.
+    fn draw_scene(&mut self, scene: &Scene) -> Result<()> {
         for batch in scene.batches() {
             match batch {
                 PrimitiveBatch::Shadows(shadows) => self.draw_shadows(shadows),
@@ -521,7 +594,287 @@ impl DirectXRenderer {
                     scene.polychrome_sprites.len(),
                     scene.surfaces.len(),))?;
         }
-        self.present()
+        Ok(())
+    }
+
+    /// KaminIDE patch: нарисовать каждую группу в свой буфер.
+    ///
+    /// Эффектам вроде размытия поддерева нужна готовая картинка целиком,
+    /// поэтому дети группы идут не в кадр, а в свою текстуру размером с окно
+    /// — тогда координаты примитивов остаются кадровыми и ничего пересчитывать
+    /// не нужно.
+    fn render_groups(&mut self, scene: &Scene) -> Result<()> {
+        if scene.groups.is_empty() {
+            self.blur.groups.clear();
+            self.blur.group_slots.clear();
+            self.blur.group_blend.clear();
+            self.blur.group_poly.clear();
+            return Ok(());
+        }
+        let device = self.devices.device.clone();
+        let dc = self.devices.device_context.clone();
+        let (vw, vh) = (self.resources.width, self.resources.height);
+
+        let need = scene.groups.len() * 2;
+        if self.blur.groups.len() < need
+            || self
+                .blur
+                .groups
+                .first()
+                .is_some_and(|t| t.width != vw || t.height != vh)
+        {
+            self.blur.groups.clear();
+            for _ in 0..need {
+                self.blur
+                    .groups
+                    .push(create_blur_texture(&device, vw, vh, true)?);
+            }
+        }
+        self.blur.group_slots.clear();
+        self.blur.group_blend.clear();
+        self.blur.group_poly.clear();
+
+        for (i, group) in scene.groups.iter().enumerate() {
+            let raw_rtv = self.blur.groups[i * 2].rtv.clone();
+            unsafe {
+                dc.ClearRenderTargetView(raw_rtv[0].as_ref().unwrap(), &[0.0; 4]);
+                dc.OMSetRenderTargets(Some(&raw_rtv), None);
+                dc.RSSetViewports(Some(&self.resources.viewport));
+            }
+            self.group_target = Some(raw_rtv);
+            let drawn = self.draw_scene(&group.scene);
+            self.group_target = None;
+            drawn?;
+
+            let slot = if group.blur_radius > 0.0 {
+                self.blur_group(i, group)?;
+                i * 2 + 1
+            } else {
+                i * 2
+            };
+            self.blur.group_slots.push(slot);
+            self.blur.group_blend.push(group.blend);
+            let mut poly = [[0.0f32; 4]; 4];
+            for (i, point) in group.polygon.iter().take(8).enumerate() {
+                poly[i / 2][(i % 2) * 2] = point.x.0;
+                poly[i / 2][(i % 2) * 2 + 1] = point.y.0;
+            }
+            self.blur
+                .group_poly
+                .push((poly, group.polygon.len().min(8) as u32));
+        }
+
+        // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
+        unsafe {
+            dc.OMSetRenderTargets(Some(&self.resources.render_target_view), None);
+            dc.RSSetViewports(Some(&self.resources.viewport));
+        }
+        self.restore_frame_globals()
+    }
+
+    /// KaminIDE patch: размыть готовый буфер группы (`filter: blur(N)`).
+    fn blur_group(&mut self, index: usize, group: &crate::scene::PaintGroup) -> Result<()> {
+        let device = self.devices.device.clone();
+        let dc = self.devices.device_context.clone();
+        let (vw, vh) = (self.resources.width as f32, self.resources.height as f32);
+        // Шаг каскада от радиуса: делитель подобран сравнением с Chrome на
+        // фикстуре blur.html — при 8 (как у фона) размытие выходило заметно
+        // шире браузерного.
+        let strength = (group.blur_radius / 14.0).clamp(0.2, 6.0);
+        // Поля под растекание: размытая картинка шире исходной.
+        let margin = (24.0 * strength).min(96.0);
+        let bx = (group.bounds.origin.x.0 - margin).max(0.0).floor();
+        let by = (group.bounds.origin.y.0 - margin).max(0.0).floor();
+        let bx1 = (group.bounds.origin.x.0 + group.bounds.size.width.0 + margin)
+            .min(vw)
+            .ceil();
+        let by1 = (group.bounds.origin.y.0 + group.bounds.size.height.0 + margin)
+            .min(vh)
+            .ceil();
+        let (rw, rh) = (bx1 - bx, by1 - by);
+        if rw < 8.0 || rh < 8.0 {
+            return Ok(());
+        }
+
+        let src = self.blur.groups[index * 2].srv.clone();
+        self.blur_cascade(&src, (vw, vh), (bx, by, rw, rh), strength, true)?;
+
+        // Вернуть размытую область на её место в полноразмерном буфере: он и
+        // будет композититься в кадр.
+        let dest_rtv = self.blur.groups[index * 2 + 1].rtv.clone();
+        let last = self.blur.down[2].srv.clone();
+        let (lw, lh) = (
+            self.blur.down[2].width as f32,
+            self.blur.down[2].height as f32,
+        );
+        update_buffer(
+            &dc,
+            self.blur.globals[0].as_ref().unwrap(),
+            &[GlobalParams {
+                gamma_ratios: self.font_info.gamma_ratios,
+                viewport_size: [vw, vh],
+                grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
+                _pad: 0,
+            }],
+        )?;
+        let quad = BlurQuad {
+            bounds: [bx, by, rw, rh],
+            content_mask: [bx, by, rw, rh],
+            corner_radii: [0.0; 4],
+            src_origin: [0.0, 0.0],
+            src_scale: [1.0, 1.0],
+            texel: [1.0 / lw, 1.0 / lh],
+            blur_pass: 2.0,
+            pad: 0.0,
+            blend_mode: 0,
+            poly_count: 0,
+            pad2: [0.0; 2],
+            poly: [[0.0; 4]; 4],
+        };
+        self.pipelines
+            .blur_pipeline
+            .update_buffer(&device, &dc, &[quad])?;
+        unsafe {
+            dc.ClearRenderTargetView(dest_rtv[0].as_ref().unwrap(), &[0.0; 4]);
+            dc.OMSetRenderTargets(Some(&dest_rtv), None);
+        }
+        let blend = self.premultiplied_blend()?;
+        self.pipelines.blur_pipeline.draw_with_texture_blended(
+            &dc,
+            &last,
+            &self.resources.viewport,
+            &self.blur.globals,
+            &self.globals.sampler,
+            1,
+            Some(&blend),
+        )
+    }
+
+    /// KaminIDE patch: каскад уменьшений области текстуры.
+    ///
+    /// Широкое размытие одним фильтром стоит квадрат радиуса выборок; цепочка
+    /// /2 → /4 → /8 с tent-фильтром даёт ту же мягкость за десятки.
+    fn blur_cascade(
+        &mut self,
+        src: &[Option<ID3D11ShaderResourceView>; 1],
+        src_size: (f32, f32),
+        region: (f32, f32, f32, f32),
+        strength: f32,
+        keep_alpha: bool,
+    ) -> Result<()> {
+        let device = self.devices.device.clone();
+        let dc = self.devices.device_context.clone();
+        // Прозрачность значима только у групп — там цвет премультиплирован.
+        let blend = if keep_alpha {
+            Some(self.premultiplied_blend()?)
+        } else {
+            None
+        };
+        let (bx, by, rw, rh) = region;
+        let step = |d: f32| -> (u32, u32) { (((rw / d) as u32).max(1), ((rh / d) as u32).max(1)) };
+        let sizes = [
+            step(2.0 * strength),
+            step(4.0 * strength),
+            step(8.0 * strength),
+        ];
+        if self.blur.down.len() != 3
+            || self
+                .blur
+                .down
+                .iter()
+                .zip(sizes.iter())
+                .any(|(t, s)| t.width != s.0 || t.height != s.1)
+        {
+            self.blur.down.clear();
+            for (w, h) in sizes {
+                self.blur.down.push(create_blur_texture(&device, w, h, true)?);
+            }
+        }
+        self.ensure_blur_globals(&device)?;
+
+        blur_down_pass(
+            &device,
+            &dc,
+            &mut self.pipelines.blur_pipeline,
+            &self.blur.globals,
+            &self.globals.sampler,
+            self.font_info,
+            &self.blur.down[0],
+            src,
+            src_size,
+            [bx / src_size.0, by / src_size.1],
+            [rw / src_size.0, rh / src_size.1],
+            keep_alpha,
+            blend.as_ref(),
+        )?;
+        // split_at: цель и источник — разные элементы одного вектора.
+        let (a, b) = self.blur.down.split_at(1);
+        blur_down_pass(
+            &device,
+            &dc,
+            &mut self.pipelines.blur_pipeline,
+            &self.blur.globals,
+            &self.globals.sampler,
+            self.font_info,
+            &b[0],
+            &a[0].srv,
+            (a[0].width as f32, a[0].height as f32),
+            [0.0, 0.0],
+            [1.0, 1.0],
+            keep_alpha,
+            blend.as_ref(),
+        )?;
+        blur_down_pass(
+            &device,
+            &dc,
+            &mut self.pipelines.blur_pipeline,
+            &self.blur.globals,
+            &self.globals.sampler,
+            self.font_info,
+            &b[1],
+            &b[0].srv,
+            (b[0].width as f32, b[0].height as f32),
+            [0.0, 0.0],
+            [1.0, 1.0],
+            keep_alpha,
+            blend.as_ref(),
+        )
+    }
+
+    /// KaminIDE patch: свой буфер параметров у проходов размытия — их вьюпорты
+    /// не равны вьюпорту кадра.
+    fn ensure_blur_globals(&mut self, device: &ID3D11Device) -> Result<()> {
+        if self.blur.globals[0].is_some() {
+            return Ok(());
+        }
+        let desc = D3D11_BUFFER_DESC {
+            ByteWidth: std::mem::size_of::<GlobalParams>() as u32,
+            Usage: D3D11_USAGE_DYNAMIC,
+            BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
+            CPUAccessFlags: D3D11_CPU_ACCESS_WRITE.0 as u32,
+            ..Default::default()
+        };
+        let mut buffer = None;
+        unsafe { device.CreateBuffer(&desc, None, Some(&mut buffer))? };
+        self.blur.globals[0] = buffer;
+        Ok(())
+    }
+
+    /// KaminIDE patch: вернуть параметры кадра после проходов с чужим вьюпортом.
+    fn restore_frame_globals(&mut self) -> Result<()> {
+        update_buffer(
+            &self.devices.device_context,
+            self.globals.global_params_buffer[0].as_ref().unwrap(),
+            &[GlobalParams {
+                gamma_ratios: self.font_info.gamma_ratios,
+                viewport_size: [
+                    self.resources.viewport[0].Width,
+                    self.resources.viewport[0].Height,
+                ],
+                grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
+                _pad: 0,
+            }],
+        )
     }
 
     pub(crate) fn resize(&mut self, new_size: Size<DevicePixels>) -> Result<()> {
@@ -662,7 +1015,7 @@ impl DirectXRenderer {
             // Restore main render target
             self.devices
                 .device_context
-                .OMSetRenderTargets(Some(&self.resources.render_target_view), None);
+                .OMSetRenderTargets(Some(self.current_target()), None);
         }
 
         Ok(())
@@ -796,8 +1149,15 @@ impl DirectXRenderer {
             return Ok(());
         }
         for surface in surfaces {
-            if let Err(e) = self.draw_backdrop_blur(surface) {
-                log::warn!("backdrop blur failed: {e}");
+            // KaminIDE patch: метка группы (`Window::paint_group`) — не
+            // размытие фона, а «положить сюда готовый буфер группы».
+            let drawn = if surface.group > 0 {
+                self.draw_group_composite(surface)
+            } else {
+                self.draw_backdrop_blur(surface)
+            };
+            if let Err(e) = drawn {
+                log::warn!("surface pass failed: {e}");
             }
         }
         // Вернуть состояние кадра (проходы меняли RTV/вьюпорт/globals).
@@ -830,14 +1190,19 @@ impl DirectXRenderer {
         let device = self.devices.device.clone();
         let dc = self.devices.device_context.clone();
         let (vw, vh) = (self.resources.width, self.resources.height);
+        // KaminIDE patch: сила размытия из CSS. Каскад уменьшений задаёт
+        // радиус: чем сильнее ужимаем перед растяжением обратно, тем шире
+        // размывается. 8 — прежнее умолчание, от него и считаем.
+        let strength = (s.blur_radius / 8.0).clamp(0.25, 6.0);
         // Область + поля под радиус размытия, кламп в кадр.
-        const MARGIN: f32 = 24.0;
-        let bx = (s.bounds.origin.x.0 - MARGIN).max(0.0).floor();
-        let by = (s.bounds.origin.y.0 - MARGIN).max(0.0).floor();
-        let bx1 = (s.bounds.origin.x.0 + s.bounds.size.width.0 + MARGIN)
+        let margin: f32 = 24.0 * strength;
+        let margin = margin.min(96.0);
+        let bx = (s.bounds.origin.x.0 - margin).max(0.0).floor();
+        let by = (s.bounds.origin.y.0 - margin).max(0.0).floor();
+        let bx1 = (s.bounds.origin.x.0 + s.bounds.size.width.0 + margin)
             .min(vw as f32)
             .ceil();
-        let by1 = (s.bounds.origin.y.0 + s.bounds.size.height.0 + MARGIN)
+        let by1 = (s.bounds.origin.y.0 + s.bounds.size.height.0 + margin)
             .min(vh as f32)
             .ceil();
         let (rw, rh) = ((bx1 - bx) as u32, (by1 - by) as u32);
@@ -855,88 +1220,21 @@ impl DirectXRenderer {
             self.blur.copy = Some(create_blur_texture(&device, vw, vh, false)?);
         }
 
-        // Каскад /2, /4, /8 по размеру области (кэш по размерам).
-        let sizes = [
-            ((rw / 2).max(1), (rh / 2).max(1)),
-            ((rw / 4).max(1), (rh / 4).max(1)),
-            ((rw / 8).max(1), (rh / 8).max(1)),
-        ];
-        if self.blur.down.len() != 3
-            || self
-                .blur
-                .down
-                .iter()
-                .zip(sizes.iter())
-                .any(|(t, s)| t.width != s.0 || t.height != s.1)
-        {
-            self.blur.down.clear();
-            for (w, h) in sizes {
-                self.blur.down.push(create_blur_texture(&device, w, h, true)?);
+        // Копия кадра под областью → каскад уменьшений.
+        let copy_srv = {
+            let copy = self.blur.copy.as_ref().unwrap();
+            unsafe {
+                dc.CopyResource(&copy.texture, &*self.resources.render_target);
             }
-        }
-        if self.blur.globals[0].is_none() {
-            let desc = D3D11_BUFFER_DESC {
-                ByteWidth: std::mem::size_of::<GlobalParams>() as u32,
-                Usage: D3D11_USAGE_DYNAMIC,
-                BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
-                CPUAccessFlags: D3D11_CPU_ACCESS_WRITE.0 as u32,
-                ..Default::default()
-            };
-            let mut buffer = None;
-            unsafe { device.CreateBuffer(&desc, None, Some(&mut buffer))? };
-            self.blur.globals[0] = buffer;
-        }
-
-        let copy = self.blur.copy.as_ref().unwrap();
-        unsafe {
-            dc.CopyResource(&copy.texture, &*self.resources.render_target);
-        }
-
-        // 1) копия кадра → /2 (uv = область в кадре)
-        blur_down_pass(
-            &device,
-            &dc,
-            &mut self.pipelines.blur_pipeline,
-            &self.blur.globals,
-            &self.globals.sampler,
-            self.font_info,
-            &self.blur.down[0],
-            &copy.srv,
+            copy.srv.clone()
+        };
+        self.blur_cascade(
+            &copy_srv,
             (vw as f32, vh as f32),
-            [bx / vw as f32, by / vh as f32],
-            [rw as f32 / vw as f32, rh as f32 / vh as f32],
+            (bx, by, rw as f32, rh as f32),
+            strength,
+            false,
         )?;
-        // 2) /2 → /4, 3) /4 → /8 (uv весь текстур). split_at_mut не нужен:
-        // dest и src — разные элементы, берём по индексам через split.
-        {
-            let (a, b) = self.blur.down.split_at(1);
-            blur_down_pass(
-                &device,
-                &dc,
-                &mut self.pipelines.blur_pipeline,
-                &self.blur.globals,
-                &self.globals.sampler,
-                self.font_info,
-                &b[0],
-                &a[0].srv,
-                (a[0].width as f32, a[0].height as f32),
-                [0.0, 0.0],
-                [1.0, 1.0],
-            )?;
-            blur_down_pass(
-                &device,
-                &dc,
-                &mut self.pipelines.blur_pipeline,
-                &self.blur.globals,
-                &self.globals.sampler,
-                self.font_info,
-                &b[1],
-                &b[0].srv,
-                (b[0].width as f32, b[0].height as f32),
-                [0.0, 0.0],
-                [1.0, 1.0],
-            )?;
-        }
 
         // Композит в бэкбуфер: bounds/маска исходной области, uv = положение
         // bounds внутри области каскада.
@@ -984,6 +1282,10 @@ impl DirectXRenderer {
             texel: [1.0 / last.width as f32, 1.0 / last.height as f32],
             blur_pass: 0.0,
             pad: 0.0,
+            blend_mode: 0,
+            poly_count: 0,
+            pad2: [0.0; 2],
+            poly: [[0.0; 4]; 4],
         };
         self.pipelines
             .blur_pipeline
@@ -999,6 +1301,124 @@ impl DirectXRenderer {
             &self.globals.sampler,
             1,
         )
+    }
+
+    /// KaminIDE patch: положить готовый буфер группы в кадр.
+    ///
+    /// Буфер размером с окно, поэтому координаты совпадают один в один:
+    /// берётся ровно прямоугольник группы, гасится маской скруглений и
+    /// прозрачностью группы.
+    fn draw_group_composite(&mut self, s: &PaintSurface) -> Result<()> {
+        let device = self.devices.device.clone();
+        let dc = self.devices.device_context.clone();
+        let Some(&slot) = self.blur.group_slots.get(s.group as usize - 1) else {
+            return Ok(());
+        };
+        let Some(texture) = self.blur.groups.get(slot) else {
+            return Ok(());
+        };
+        let srv = texture.srv.clone();
+        let blend_mode = self
+            .blur
+            .group_blend
+            .get(s.group as usize - 1)
+            .copied()
+            .unwrap_or(0);
+        let (poly, poly_count) = self
+            .blur
+            .group_poly
+            .get(s.group as usize - 1)
+            .copied()
+            .unwrap_or(([[0.0; 4]; 4], 0));
+        let (vw, vh) = (self.resources.width as f32, self.resources.height as f32);
+
+        // Смешивание считается в шейдере, а ему нужен цвет назначения:
+        // сэмплировать связанный с целью буфер нельзя, поэтому копия.
+        if blend_mode != 0 {
+            let (rw, rh) = (self.resources.width, self.resources.height);
+            if self
+                .blur
+                .copy
+                .as_ref()
+                .is_none_or(|t| t.width != rw || t.height != rh)
+            {
+                self.blur.copy = Some(create_blur_texture(&device, rw, rh, false)?);
+            }
+            let copy = self.blur.copy.as_ref().unwrap();
+            unsafe {
+                dc.CopyResource(&copy.texture, &*self.resources.render_target);
+                dc.PSSetShaderResources(2, Some(&copy.srv));
+            }
+        }
+
+        self.ensure_blur_globals(&device)?;
+        update_buffer(
+            &dc,
+            self.blur.globals[0].as_ref().unwrap(),
+            &[GlobalParams {
+                gamma_ratios: self.font_info.gamma_ratios,
+                viewport_size: [vw, vh],
+                grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
+                _pad: 0,
+            }],
+        )?;
+        let quad = BlurQuad {
+            bounds: [
+                s.bounds.origin.x.0,
+                s.bounds.origin.y.0,
+                s.bounds.size.width.0,
+                s.bounds.size.height.0,
+            ],
+            content_mask: [
+                s.content_mask.bounds.origin.x.0,
+                s.content_mask.bounds.origin.y.0,
+                s.content_mask.bounds.size.width.0,
+                s.content_mask.bounds.size.height.0,
+            ],
+            corner_radii: [
+                s.corner_radii.top_left.0,
+                s.corner_radii.top_right.0,
+                s.corner_radii.bottom_right.0,
+                s.corner_radii.bottom_left.0,
+            ],
+            src_origin: [s.bounds.origin.x.0 / vw, s.bounds.origin.y.0 / vh],
+            src_scale: [s.bounds.size.width.0 / vw, s.bounds.size.height.0 / vh],
+            texel: [1.0 / vw, 1.0 / vh],
+            blur_pass: 3.0,
+            pad: s.opacity,
+            blend_mode,
+            poly_count,
+            pad2: [0.0; 2],
+            poly,
+        };
+        self.pipelines
+            .blur_pipeline
+            .update_buffer(&device, &dc, &[quad])?;
+        unsafe {
+            dc.OMSetRenderTargets(Some(&self.resources.render_target_view), None);
+        }
+        // Смешанный цвет шейдер считает целиком, вместе с прозрачностью —
+        // блендеру тут делать нечего, результат пишется поверх.
+        let blend = if blend_mode == 0 {
+            self.premultiplied_blend()?
+        } else {
+            self.replace_blend()?
+        };
+        let drawn = self.pipelines.blur_pipeline.draw_with_texture_blended(
+            &dc,
+            &srv,
+            &self.resources.viewport,
+            &self.blur.globals,
+            &self.globals.sampler,
+            1,
+            Some(&blend),
+        );
+        if blend_mode != 0 {
+            // Копия кадра больше не нужна: оставленная привязка запретила бы
+            // рисовать в неё следующим кадром.
+            unsafe { dc.PSSetShaderResources(2, Some(&[None])) };
+        }
+        drawn
     }
 
     pub(crate) fn gpu_specs(&self) -> Result<GpuSpecs> {
@@ -1389,6 +1809,33 @@ impl<T> PipelineState<T> {
         vertex_count: u32,
         instance_count: u32,
     ) -> Result<()> {
+        self.draw_blended(
+            device_context,
+            viewport,
+            global_params,
+            topology,
+            vertex_count,
+            instance_count,
+            None,
+        )
+    }
+
+    /// KaminIDE patch: та же отрисовка с ЧУЖИМ состоянием блендера.
+    ///
+    /// Штатный `draw` ставит своё состояние прямо перед вызовом отрисовки,
+    /// поэтому режим смешивания, выставленный снаружи, затирался — и
+    /// `mix-blend-mode` не делал ничего. Режим передаётся сюда явно.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_blended(
+        &self,
+        device_context: &ID3D11DeviceContext,
+        viewport: &[D3D11_VIEWPORT],
+        global_params: &[Option<ID3D11Buffer>],
+        topology: D3D_PRIMITIVE_TOPOLOGY,
+        vertex_count: u32,
+        instance_count: u32,
+        blend_override: Option<&ID3D11BlendState>,
+    ) -> Result<()> {
         set_pipeline_state(
             device_context,
             &self.view,
@@ -1397,7 +1844,7 @@ impl<T> PipelineState<T> {
             &self.vertex,
             &self.fragment,
             global_params,
-            &self.blend_state,
+            blend_override.unwrap_or(&self.blend_state),
         );
         unsafe {
             device_context.DrawInstanced(vertex_count, instance_count, 0, 0);
@@ -1414,6 +1861,30 @@ impl<T> PipelineState<T> {
         sampler: &[Option<ID3D11SamplerState>],
         instance_count: u32,
     ) -> Result<()> {
+        self.draw_with_texture_blended(
+            device_context,
+            texture,
+            viewport,
+            global_params,
+            sampler,
+            instance_count,
+            None,
+        )
+    }
+
+    /// KaminIDE patch: то же со своим блендером — буферы групп несут цвет,
+    /// уже умноженный на прозрачность.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_with_texture_blended(
+        &self,
+        device_context: &ID3D11DeviceContext,
+        texture: &[Option<ID3D11ShaderResourceView>],
+        viewport: &[D3D11_VIEWPORT],
+        global_params: &[Option<ID3D11Buffer>],
+        sampler: &[Option<ID3D11SamplerState>],
+        instance_count: u32,
+        blend_override: Option<&ID3D11BlendState>,
+    ) -> Result<()> {
         set_pipeline_state(
             device_context,
             &self.view,
@@ -1422,7 +1893,7 @@ impl<T> PipelineState<T> {
             &self.vertex,
             &self.fragment,
             global_params,
-            &self.blend_state,
+            blend_override.unwrap_or(&self.blend_state),
         );
         unsafe {
             device_context.PSSetSamplers(0, Some(sampler));
@@ -1688,6 +2159,39 @@ fn set_rasterizer_state(device: &ID3D11Device, device_context: &ID3D11DeviceCont
     Ok(())
 }
 
+/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
+fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
+    let mut desc = D3D11_BLEND_DESC::default();
+    desc.RenderTarget[0].BlendEnable = false.into();
+    desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8;
+    unsafe {
+        let mut state = None;
+        device.CreateBlendState(&desc, Some(&mut state))?;
+        Ok(state.unwrap())
+    }
+}
+
+/// KaminIDE patch: блендер для премультиплированного источника.
+///
+/// Цвет буфера группы уже умножен на прозрачность (так его сложил обычный
+/// блендер при отрисовке детей), поэтому второй раз умножать нельзя.
+fn create_blend_state_premultiplied(device: &ID3D11Device) -> Result<ID3D11BlendState> {
+    let mut desc = D3D11_BLEND_DESC::default();
+    desc.RenderTarget[0].BlendEnable = true.into();
+    desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+    desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8;
+    unsafe {
+        let mut state = None;
+        device.CreateBlendState(&desc, Some(&mut state))?;
+        Ok(state.unwrap())
+    }
+}
+
 // https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_blend_desc
 #[inline]
 fn create_blend_state(device: &ID3D11Device) -> Result<ID3D11BlendState> {
@@ -1709,7 +2213,6 @@ fn create_blend_state(device: &ID3D11Device) -> Result<ID3D11BlendState> {
     }
 }
 
-#[inline]
 fn create_blend_state_for_path_rasterization(device: &ID3D11Device) -> Result<ID3D11BlendState> {
     // If the feature level is set to greater than D3D_FEATURE_LEVEL_9_3, the display
     // device performs the blend in linear space, which is ideal.

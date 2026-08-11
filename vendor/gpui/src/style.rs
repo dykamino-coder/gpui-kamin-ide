@@ -7,7 +7,8 @@ use std::{
 use crate::{
     AbsoluteLength, App, Background, BackgroundTag, BorderStyle, Bounds, ContentMask, Corners,
     CornersRefinement, CursorStyle, DefiniteLength, DevicePixels, Edges, EdgesRefinement, Font,
-    FontFallbacks, FontFeatures, FontStyle, FontWeight, GridLocation, GridTrack, Hsla, Length,
+    FontFallbacks, FontFeatures, FontStyle, FontWeight, GridAutoFlow, GridLocation, GridTrack,
+    Hsla, Length,
     Pixels, Point,
     PointRefinement, Rgba, SharedString, Size, SizeRefinement, Styled, TextRun, Window, black, phi,
     point, quad, rems, size,
@@ -252,6 +253,13 @@ pub struct Style {
     /// Box shadow of the element
     pub box_shadow: Vec<BoxShadow>,
 
+    /// KaminIDE patch: внутренние тени (`box-shadow: inset`).
+    ///
+    /// Отдельным списком, а не признаком у `BoxShadow`: сама структура
+    /// строится макросом из внешнего пакета, и новое обязательное поле
+    /// сломало бы его сгенерированный код.
+    pub inset_box_shadow: Vec<BoxShadow>,
+
     /// The text style of this element
     pub text: TextStyleRefinement,
 
@@ -285,6 +293,22 @@ pub struct Style {
 
     /// KaminIDE patch: то же для строк.
     pub grid_template_rows: Option<Vec<GridTrack>>,
+
+    /// KaminIDE patch: `justify-items` — выравнивание содержимого ячеек
+    /// сетки вдоль главной оси. Штатно задавалось только поперечное.
+    pub justify_items: Option<AlignItems>,
+
+    /// KaminIDE patch: `justify-self` — то же для одной ячейки.
+    pub justify_self: Option<AlignItems>,
+
+    /// KaminIDE patch: `grid-auto-flow`.
+    pub grid_auto_flow: Option<GridAutoFlow>,
+
+    /// KaminIDE patch: размер неявных строк (`grid-auto-rows`).
+    pub grid_auto_rows: Option<GridTrack>,
+
+    /// KaminIDE patch: размер неявных колонок (`grid-auto-columns`).
+    pub grid_auto_cols: Option<GridTrack>,
 
     /// The grid location of this element
     pub grid_location: Option<GridLocation>,
@@ -364,6 +388,13 @@ pub enum TextAlign {
 
     /// Align the text to the right of the element
     Right,
+
+    /// KaminIDE patch: выключка по ширине (`text-align: justify`).
+    ///
+    /// Остаток строки раздаётся её пробелам, кроме последней строки абзаца —
+    /// так и делает браузер. Прежде значение сводилось к прижиму влево, и
+    /// правый край колонки оставался рваным.
+    Justify,
 }
 
 /// The properties that can be used to style text in GPUI
@@ -393,6 +424,9 @@ pub struct TextStyle {
 
     /// The font style, e.g. italic
     pub font_style: FontStyle,
+
+    /// KaminIDE patch: ширина начертания (`font-stretch`).
+    pub font_stretch: crate::FontStretch,
 
     /// The background color of the text
     pub background_color: Option<Hsla>,
@@ -424,6 +458,7 @@ pub struct TextStyle {
 impl Default for TextStyle {
     fn default() -> Self {
         TextStyle {
+            font_stretch: crate::FontStretch::default(),
             color: black(),
             // todo(linux) make this configurable or choose better default
             font_family: ".SystemUIFont".into(),
@@ -487,6 +522,8 @@ impl TextStyle {
             fallbacks: self.font_fallbacks.clone(),
             weight: self.font_weight,
             style: self.font_style,
+            // KaminIDE patch: ширина начертания живёт в стиле текста.
+            stretch: self.font_stretch,
         }
     }
 
@@ -505,9 +542,18 @@ impl TextStyle {
                 fallbacks: self.font_fallbacks.clone(),
                 weight: self.font_weight,
                 style: self.font_style,
+                stretch: self.font_stretch,
             },
             color: self.color,
             background_color: self.background_color,
+            // KaminIDE patch: кегль прогона задаёт разметка; у стиля он один
+            // на блок, поэтому здесь его нет.
+            font_size: None,
+            // KaminIDE patch: поля строчного бокса задаёт разметка, а не
+            // текстовый стиль — здесь их нет.
+            background_pad: Default::default(),
+            background_radius: Default::default(),
+            background_border: None,
             underline: self.underline,
             strikethrough: self.strikethrough,
         }
@@ -649,12 +695,24 @@ impl Style {
             .clamp_radii_for_quad_size(bounds.size);
 
         window.paint_shadows(bounds, corner_radii, &self.box_shadow);
+        // KaminIDE patch: внутренние тени рисуются ПОСЛЕ фона — они лежат
+        // поверх заливки, как в браузере.
+        if !self.inset_box_shadow.is_empty() {
+            window.paint_shadows_inset(bounds, corner_radii, &self.inset_box_shadow, true);
+        }
 
         let background_color = self.background.as_ref().and_then(Fill::color);
         if background_color.is_some_and(|color| !color.is_transparent()) {
             let mut border_color = match background_color {
                 Some(color) => match color.tag {
                     BackgroundTag::Solid => color.solid,
+                    // KaminIDE patch: радиальный хранит цвета там же, где
+                    // линейный, — берём первый стоп.
+                    BackgroundTag::RadialGradient => color
+                        .colors
+                        .first()
+                        .map(|stop| stop.color)
+                        .unwrap_or_default(),
                     BackgroundTag::LinearGradient => color
                         .colors
                         .first()
@@ -779,6 +837,12 @@ impl Default for Style {
             align_self: None,
             align_content: None,
             justify_content: None,
+            // KaminIDE patch
+            justify_items: None,
+            justify_self: None,
+            grid_auto_flow: None,
+            grid_auto_rows: None,
+            grid_auto_cols: None,
             // Flexbox
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::NoWrap,
@@ -790,6 +854,7 @@ impl Default for Style {
             border_style: BorderStyle::default(),
             corner_radii: Corners::default(),
             box_shadow: Default::default(),
+            inset_box_shadow: Default::default(),
             text: TextStyleRefinement::default(),
             mouse_cursor: None,
             opacity: None,

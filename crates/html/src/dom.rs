@@ -6,10 +6,14 @@
 //! Наша часть — превратить его дерево в своё: с каскадом и без узлов, которые
 //! ничего не рисуют.
 
-use crate::computed::{Computed, Display};
-use crate::css::{Decls, Rule, Selector, parse_decls, parse_stylesheet};
+use crate::computed::{Computed, Display, Position};
+use crate::css::{
+    Decls, Keyframes, Media, Rule, Selector, parse_decls, parse_keyframes, parse_stylesheet_media,
+};
+use crate::value::Len;
 use html5ever::tendril::TendrilSink;
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
+use std::collections::HashMap;
 
 /// Узел документа: либо текст, либо элемент со своими детьми.
 #[derive(Clone, Debug)]
@@ -20,11 +24,24 @@ pub enum Node {
 
 #[derive(Clone, Debug)]
 pub struct Element {
+    /// Устойчивый номер узла в документе.
+    ///
+    /// Нужен анимации: GPUI хранит её состояние по идентификатору элемента, а
+    /// он обязан совпадать от кадра к кадру, иначе анимация каждый раз
+    /// начинается заново.
+    pub node_id: u64,
+    /// Кадры анимации, уже разрешённые в стиль: доля времени → стиль.
+    pub anim: Option<Vec<(f32, Computed)>>,
     pub tag: String,
     pub style: Computed,
     /// Стиль наведения, собранный из правил с `:hover`. Пустой, если таких
     /// правил не было.
     pub hover: Option<Computed>,
+    /// Стиль первой буквы абзаца (`::first-letter`) — отдельным слоем поверх
+    /// базового: это буквица, а не стиль всего блока.
+    pub first_letter: Option<Computed>,
+    /// Стиль первой строки абзаца (`::first-line`).
+    pub first_line: Option<Computed>,
     pub children: Vec<Node>,
     /// Атрибуты, которые нужны при отрисовке: `src`, `href`, `colspan`.
     pub attrs: Vec<(String, String)>,
@@ -103,6 +120,11 @@ fn user_agent_css() -> &'static str {
 /// `extra_css` — таблица уровня приложения (тема чата), применяется до
 /// `<style>` документа и до `style=""`.
 pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
+    parse_media(html, extra_css, Media::default())
+}
+
+/// То же, но с известными условиями окружения для `@media`.
+pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     let dom = html5ever::parse_document(RcDom::default(), Default::default())
         .from_utf8()
         .read_from(&mut html.as_bytes())
@@ -111,9 +133,12 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
         });
 
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
-    let mut rules = parse_stylesheet(user_agent_css());
+    let mut rules = parse_stylesheet_media(user_agent_css(), media);
     let base = rules.len();
-    for (i, r) in parse_stylesheet(extra_css).into_iter().enumerate() {
+    for (i, r) in parse_stylesheet_media(extra_css, media)
+        .into_iter()
+        .enumerate()
+    {
         rules.push(Rule {
             order: base + i,
             ..r
@@ -122,7 +147,10 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
     let mut doc_css = String::new();
     collect_style_tags(&dom.document, &mut doc_css);
     let base = rules.len();
-    for (i, r) in parse_stylesheet(&doc_css).into_iter().enumerate() {
+    for (i, r) in parse_stylesheet_media(&doc_css, media)
+        .into_iter()
+        .enumerate()
+    {
         rules.push(Rule {
             order: base + i,
             ..r
@@ -134,8 +162,149 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
     let vars = collect_vars(&rules);
 
     let mut out = vec![];
-    walk(&dom.document, &rules, &vars, &[], &mut out);
+    // Наборы кадров собираются из тех же источников, что и правила.
+    let mut frames = parse_keyframes(&user_agent_css());
+    frames.extend(parse_keyframes(extra_css));
+    frames.extend(parse_keyframes(&doc_css));
+    let mut counter = 0u64;
+    // Счётчики документа: имя → текущее значение. Обход идёт в порядке
+    // разметки, поэтому значение на узле — это то же, что видит браузер.
+    let mut counters: HashMap<String, i32> = HashMap::new();
+    walk_children(
+        &dom.document,
+        &rules,
+        &vars,
+        &frames,
+        &mut counter,
+        &mut counters,
+        &[],
+        &mut out,
+    );
+    hoist_grid_abspos(&mut out);
+    content_box_static_position(&mut out);
     out
+}
+
+/// Абсолютный ребёнок СЕТКИ или ГИБКОГО контейнера без заданных краёв стоит
+/// на статической позиции, а она отсчитывается от СОДЕРЖИМОГО контейнера
+/// (css-grid-2 §9.1, css-flexbox-1 §4.1), тогда как раскладка под нами кладёт
+/// такого ребёнка в коробку ПОЛЕЙ. Разницу забирает поле элемента: при
+/// выравнивании к началу оно даёт левый отступ, к концу — правый, по центру —
+/// сдвиг на половину разницы, при растяжении — обе стороны сразу.
+fn content_box_static_position(nodes: &mut [Node]) {
+    for node in nodes.iter_mut() {
+        let Node::Element(el) = node else { continue };
+        content_box_static_position(&mut el.children);
+        if !matches!(
+            el.style.display,
+            Some(Display::Grid)
+                | Some(Display::InlineGrid)
+                | Some(Display::Flex)
+                | Some(Display::InlineFlex)
+        ) {
+            continue;
+        }
+        let pad = el.style.padding;
+        for child in el.children.iter_mut() {
+            let Node::Element(child) = child else { continue };
+            if child.style.position != Some(Position::Absolute) {
+                continue;
+            }
+            // Элемент с заданными линиями стоит не на статической позиции, а в
+            // СВОЕЙ области сетки — поля туда добавлять нечего.
+            if child.style.grid_col.is_some() || child.style.grid_row.is_some() {
+                continue;
+            }
+            // `left: auto` — это ОТСУТСТВИЕ края, а не заданный край: именно
+            // при `auto` с обеих сторон элемент стоит на статической позиции.
+            let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
+            let inset = child.style.inset;
+            if auto(inset.left) && auto(inset.right) {
+                child.style.margin.left = add_len(child.style.margin.left, pad.left);
+                child.style.margin.right = add_len(child.style.margin.right, pad.right);
+            }
+            if auto(inset.top) && auto(inset.bottom) {
+                child.style.margin.top = add_len(child.style.margin.top, pad.top);
+                child.style.margin.bottom = add_len(child.style.margin.bottom, pad.bottom);
+            }
+        }
+    }
+}
+
+/// Сумма двух длин. Складываются только точки: смешивать доли и кегли здесь
+/// не с чем — контейнера в этот момент нет.
+fn add_len(a: Option<Len>, b: Option<Len>) -> Option<Len> {
+    match (a, b) {
+        (Some(Len::Px(x)), Some(Len::Px(y))) => Some(Len::Px(x + y)),
+        (None, b) => b,
+        (a, _) => a,
+    }
+}
+
+/// Абсолютный ПОТОМОК сетки размещается по её линиям, а не по статической
+/// позиции: если содержащий блок такого элемента — сама сетка, то `grid-row`
+/// и `grid-column` задают ему прямоугольник области (css-grid-2 §9). Раскладка
+/// знает только ПРЯМЫХ детей сетки, поэтому потомок поднимается к ней. Стиль к
+/// этому моменту уже вычислен, и переезд по дереву его не меняет.
+fn hoist_grid_abspos(nodes: &mut [Node]) {
+    for node in nodes.iter_mut() {
+        let Node::Element(el) = node else { continue };
+        hoist_grid_abspos(&mut el.children);
+        if !is_grid(&el.style) || !own_containing_block(&el.style) {
+            continue;
+        }
+        let mut taken = vec![];
+        for child in el.children.iter_mut() {
+            let Node::Element(child) = child else { continue };
+            if own_containing_block(&child.style) || is_grid(&child.style) {
+                continue;
+            }
+            steal_placed(&mut child.children, &mut taken);
+        }
+        el.children.extend(taken);
+    }
+}
+
+/// Забрать из поддерева абсолютные элементы с заданными линиями сетки.
+fn steal_placed(children: &mut Vec<Node>, out: &mut Vec<Node>) {
+    let mut kept = Vec::with_capacity(children.len());
+    for mut node in children.drain(..) {
+        if let Node::Element(el) = &mut node {
+            let placed = el.style.grid_col.is_some() || el.style.grid_row.is_some();
+            if el.style.position == Some(Position::Absolute) && placed {
+                out.push(node);
+                continue;
+            }
+            // Свой содержащий блок — дальше уже чужие абсолютные элементы.
+            // Останавливает и ПОДСЕТКА: она размещает своих абсолютных детей
+            // сама, и счёт с конца (`grid-column: 3 / -1`) идёт по её
+            // собственному числу дорожек (`subgrid/abs-pos-001`). А вот обычная
+            // вложенная сетка без своего отсчёта помехой не служит: её потомок
+            // по-прежнему принадлежит внешней сетке (css-grid-2 §9).
+            if !own_containing_block(&el.style) && !el.style.subgrid {
+                steal_placed(&mut el.children, out);
+            }
+        }
+        kept.push(node);
+    }
+    *children = kept;
+}
+
+/// Контейнер сетки — это и `inline-grid`: разница только в том, как коробка
+/// встаёт в поток снаружи.
+fn is_grid(c: &Computed) -> bool {
+    matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid))
+}
+
+/// Задаёт ли элемент отсчёт для абсолютных потомков.
+fn own_containing_block(c: &Computed) -> bool {
+    matches!(
+        c.position,
+        Some(Position::Relative)
+            | Some(Position::Absolute)
+            | Some(Position::Fixed)
+            | Some(Position::Sticky)
+    )
 }
 
 /// Кастомные свойства из правил. Селектор не важен: в документе переменные
@@ -160,7 +329,16 @@ fn collect_style_tags(handle: &Handle, out: &mut String) {
     {
         for child in handle.children.borrow().iter() {
             if let NodeData::Text { contents } = &child.data {
-                out.push_str(&contents.borrow());
+                // Обёртка `<![CDATA[ … ]]>` встречается в эталонах XHTML: там
+                // она прячет стиль от разбора XML. Разбору CSS она мусор, и
+                // правила до первой закрывающей скобки пропадали вместе с ней.
+                let text = contents.borrow();
+                let trimmed = text.trim();
+                let body = trimmed
+                    .strip_prefix("<![CDATA[")
+                    .and_then(|rest| rest.strip_suffix("]]>"))
+                    .unwrap_or(&text);
+                out.push_str(body);
                 out.push('\n');
             }
         }
@@ -176,13 +354,160 @@ struct Ancestor {
     tag: String,
     id: Option<String>,
     classes: Vec<String>,
+    /// Место среди соседей: нужно структурным псевдоклассам.
+    spot: Spot,
 }
 
-fn walk(handle: &Handle, rules: &[Rule], vars: &Decls, path: &[Ancestor], out: &mut Vec<Node>) {
+/// Направление письма, заданное АТРИБУТОМ: `<div dir="rtl">`.
+///
+/// В разметке направление задают именно атрибутом, а не стилем: он и есть
+/// обычный способ написать страницу справа налево. Тег `<bdo>` вдобавок
+/// ОТМЕНЯЕТ разбор двунаправленности — знаки идут ровно в заданную сторону.
+fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
+    let Some((_, value)) = attrs.iter().find(|(k, _)| k == "dir") else {
+        if tag == "bdo" {
+            style.bidi_override = Some(true);
+        }
+        return;
+    };
+    match value.to_ascii_lowercase().as_str() {
+        "rtl" => {
+            if style.rtl.is_none() {
+                style.rtl = Some(true)
+            }
+        }
+        "ltr" => {
+            if style.rtl.is_none() {
+                style.rtl = Some(false)
+            }
+        }
+        // `dir="auto"` — сторону выбирает первый сильный знак текста; это
+        // делает разбор двунаправленности сам, поэтому здесь ничего не ставим.
+        _ => {}
+    }
+    if tag == "bdo" {
+        style.bidi_override = Some(true);
+    }
+}
+
+/// Размер, заданный АТРИБУТОМ: `<img width="100" height="36">`.
+///
+/// В HTML это «представленческая подсказка» — стиль самого слабого веса, и
+/// без него картинка в разметке без CSS выходит по своему пикселю, а не по
+/// заявленному размеру. Атрибут проигрывает любому правилу CSS, поэтому
+/// применяется, только если размера ещё нет.
+fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
+    if !matches!(
+        tag,
+        "img" | "canvas" | "embed" | "iframe" | "video" | "object"
+    ) {
+        return;
+    }
+    let value = |name: &str| {
+        attrs
+            .iter()
+            .find(|(k, _)| k == name)
+            .and_then(|(_, v)| match v.strip_suffix('%') {
+                Some(pct) => pct.trim().parse::<f32>().ok().map(|p| Len::Pct(p / 100.0)),
+                None => v.trim().parse::<f32>().ok().map(Len::Px),
+            })
+    };
+    style.attr_width = value("width");
+    style.attr_height = value("height");
+    // Своего пикселя у холста нет, но размер по умолчанию задан разметкой:
+    // 300 на 150 (HTML §4.12.5). Без него `<canvas width="20">` выходил
+    // нулевой высоты, а холст без атрибутов — пустым местом.
+    if tag == "canvas" {
+        style.attr_width = style.attr_width.or(Some(Len::Px(300.0)));
+        style.attr_height = style.attr_height.or(Some(Len::Px(150.0)));
+    }
+    if style.width.is_none() {
+        style.width = style.attr_width;
+    }
+    if style.height.is_none() {
+        style.height = style.attr_height;
+    }
+}
+
+/// Место элемента среди соседей — по нему считаются структурные псевдоклассы.
+#[derive(Clone, Copy, Default)]
+struct Spot {
+    /// Номер среди соседей-элементов, с единицы.
+    index: usize,
+    /// Сколько всего соседей-элементов.
+    total: usize,
+    /// То же, но среди соседей с ТЕМ ЖЕ тегом (`:nth-of-type`).
+    of_type: usize,
+    of_type_total: usize,
+}
+
+/// Обойти детей узла, посчитав каждому его место среди соседей.
+#[allow(clippy::too_many_arguments)]
+fn walk_children(
+    handle: &Handle,
+    rules: &[Rule],
+    vars: &Decls,
+    frames: &HashMap<String, Keyframes>,
+    counter: &mut u64,
+    counters: &mut HashMap<String, i32>,
+    path: &[Ancestor],
+    out: &mut Vec<Node>,
+) {
+    let children = handle.children.borrow();
+    // Сначала перепись: сколько всего элементов и сколько с каждым тегом.
+    let tags: Vec<Option<String>> = children
+        .iter()
+        .map(|c| match &c.data {
+            NodeData::Element { name, .. } => Some(name.local.to_string()),
+            _ => None,
+        })
+        .collect();
+    let total = tags.iter().filter(|t| t.is_some()).count();
+    let mut seen = 0usize;
+    let mut seen_of_type: HashMap<String, usize> = HashMap::new();
+    for (child, tag) in children.iter().zip(&tags) {
+        let spot = match tag {
+            Some(tag) => {
+                seen += 1;
+                let of_type = seen_of_type.entry(tag.clone()).or_insert(0);
+                *of_type += 1;
+                Spot {
+                    index: seen,
+                    total,
+                    of_type: *of_type,
+                    of_type_total: tags.iter().filter(|t| t.as_deref() == Some(tag)).count(),
+                }
+            }
+            None => Spot::default(),
+        };
+        walk(
+            child, rules, vars, frames, counter, counters, path, spot, out,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn walk(
+    handle: &Handle,
+    rules: &[Rule],
+    vars: &Decls,
+    frames: &HashMap<String, Keyframes>,
+    counter: &mut u64,
+    counters: &mut HashMap<String, i32>,
+    path: &[Ancestor],
+    spot: Spot,
+    out: &mut Vec<Node>,
+) {
     match &handle.data {
         NodeData::Text { contents } => {
             let text = contents.borrow().to_string();
-            if !text.trim().is_empty() || text.contains(' ') {
+            // Пустой узел ПО CSS — только схлопываемые пробелы
+            // (`space`/`tab`/`CR`/`LF`). `str::trim` снимает весь юникодный
+            // пробел, и узел из идеографических U+3000 отбрасывался прямо на
+            // разборе: строка из них не доезжала до раскладки вовсе
+            // (`trailing-ideographic-space-017`).
+            let collapsible = |c: char| matches!(c, ' ' | '\t' | '\r' | '\n');
+            if !text.chars().all(collapsible) || text.contains(' ') {
                 out.push(Node::Text(text));
             }
         }
@@ -209,6 +534,7 @@ fn walk(handle: &Handle, rules: &[Rule], vars: &Decls, path: &[Ancestor], out: &
                 tag: tag.clone(),
                 id: id.clone(),
                 classes: classes.clone(),
+                spot,
             };
 
             let inline_decls: Decls = attrs
@@ -220,7 +546,9 @@ fn walk(handle: &Handle, rules: &[Rule], vars: &Decls, path: &[Ancestor], out: &
                 .iter()
                 .filter(|r| matches(&r.sel, &me, path))
                 .collect();
-            let style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+            let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+            apply_presentational_size(&mut style, &tag, &attrs);
+            apply_direction(&mut style, &tag, &attrs);
             // Правила с `:hover` собираются отдельным слоем: в базовый стиль
             // им нельзя, иначе элемент выглядел бы всегда наведённым.
             let mut hovered: Vec<&Rule> = rules
@@ -228,45 +556,325 @@ fn walk(handle: &Handle, rules: &[Rule], vars: &Decls, path: &[Ancestor], out: &
                 .filter(|r| r.sel.pseudo.as_deref() == Some("hover"))
                 .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path))
                 .collect();
-            let hover =
-                (!hovered.is_empty()).then(|| Computed::resolve(&mut hovered, &Decls::new()));
+            hovered.sort_by_key(|r| (r.sel.specificity(), r.order));
+            // Слой наведения собирается ПОВЕРХ базового стиля, а не с нуля:
+            // правило `:hover` меняет два-три свойства, а не весь стиль. Со
+            // сборкой «с нуля» плавный переход на середине пути показывал
+            // голый огрызок — без отступов, размеров и шрифта.
+            let hover = (!hovered.is_empty()).then(|| {
+                let mut merged = style.clone();
+                for rule in hovered.iter() {
+                    merged.apply_decls_with_vars(&rule.decls, vars);
+                }
+                merged
+            });
+            // Псевдоэлементы первой буквы и первой строки — тем же слоем
+            // поверх базового стиля: они меняют начертание куска, а не блок.
+            let layer = |name: &str| {
+                let mut found: Vec<&Rule> = rules
+                    .iter()
+                    .filter(|r| r.sel.pseudo.as_deref() == Some(name))
+                    .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path))
+                    .collect();
+                found.sort_by_key(|r| (r.sel.specificity(), r.order));
+                (!found.is_empty()).then(|| {
+                    let mut merged = style.clone();
+                    for rule in found.iter() {
+                        merged.apply_decls_with_vars(&rule.decls, vars);
+                    }
+                    merged
+                })
+            };
+            let first_letter = layer("first-letter");
+            let first_line = layer("first-line");
 
             if style.display == Some(Display::None) {
                 return;
             }
 
-            let mut path2 = path.to_vec();
-            path2.push(me);
-            let mut children = vec![];
-            for child in handle.children.borrow().iter() {
-                walk(child, rules, vars, &path2, &mut children);
+            // Счётчики: сброс и увеличение действуют на узле, до его детей.
+            for decl in [&style.counter_reset, &style.counter_increment] {
+                let Some(text) = decl else { continue };
+                let reset = std::ptr::eq(decl, &style.counter_reset);
+                let mut it = text.split_whitespace();
+                while let Some(name) = it.next() {
+                    let value: i32 = it
+                        .clone()
+                        .next()
+                        .and_then(|n| n.parse().ok())
+                        .unwrap_or(if reset { 0 } else { 1 });
+                    if it
+                        .clone()
+                        .next()
+                        .and_then(|n| n.parse::<i32>().ok())
+                        .is_some()
+                    {
+                        it.next();
+                    }
+                    let slot = counters.entry(name.to_string()).or_insert(0);
+                    if reset {
+                        *slot = value;
+                    } else {
+                        *slot += value;
+                    }
+                }
             }
 
+            let mut path2 = path.to_vec();
+            path2.push(me.clone());
+            let mut children = vec![];
+            walk_children(
+                handle,
+                rules,
+                vars,
+                frames,
+                counter,
+                counters,
+                &path2,
+                &mut children,
+            );
+            // Псевдоэлементы: коробка появляется, только если у правила есть
+            // `content`. Значками, стрелками и разделителями в вёрстке
+            // занимаются именно они, и без них разметка теряет часть смысла.
+            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, "after", &attrs) {
+                children.push(Node::Element(el));
+            }
+            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, "before", &attrs) {
+                children.insert(0, Node::Element(el));
+            }
+
+            *counter += 1;
+            // Кадры разрешаются здесь же: к моменту отрисовки таблицы стилей
+            // уже нет, а интерполировать нужно готовые стили, а не текст.
+            let anim = style.animation.as_ref().and_then(|a| {
+                let track = frames.get(&a.name)?;
+                let resolved: Vec<(f32, Computed)> = track
+                    .iter()
+                    .map(|(at, decls)| {
+                        let mut c = style.clone();
+                        c.apply_decls_with_vars(decls, vars);
+                        (*at, c)
+                    })
+                    .collect();
+                (resolved.len() >= 2).then_some(resolved)
+            });
+            // `dir="auto"` — сторону задаёт ПЕРВЫЙ СИЛЬНЫЙ знак содержимого
+            // (HTML §3.2.6.4). Раньше здесь не ставилось ничего в расчёте на
+            // разбор двунаправленности, но он берёт сторону абзаца, а не
+            // куска: строка `1;234;56א;` внутри `<span dir=auto>` выходила
+            // слева направо (`empty-span-001`).
+            if attrs
+                .iter()
+                .any(|(k, v)| k == "dir" && v.eq_ignore_ascii_case("auto"))
+            {
+                // `dir="auto"` в HTML — это `unicode-bidi: plaintext`: сторона
+                // решается для КАЖДОГО абзаца между жёсткими разрывами, а не
+                // для элемента целиком (`text-align-end-016`).
+                style.bidi_plaintext = Some(true);
+                if style.rtl.is_none()
+                    && let Some(rtl) = first_strong(&children)
+                {
+                    style.rtl = Some(rtl);
+                }
+            }
             out.push(Node::Element(Element {
+                node_id: *counter,
+                anim,
                 inline: INLINE_TAGS.contains(&tag.as_str()),
                 tag,
                 style,
                 hover,
+                first_letter,
+                first_line,
                 children,
                 attrs,
             }));
         }
-        _ => {
-            for child in handle.children.borrow().iter() {
-                walk(child, rules, vars, path, out);
-            }
-        }
+        _ => walk_children(handle, rules, vars, frames, counter, counters, path, out),
     }
+}
+
+/// Коробка псевдоэлемента `::before`/`::after`, если правила её создают.
+///
+/// В CSS это настоящий потомок с собственным стилем; так его и собираем —
+/// обычным инлайновым элементом с текстовым содержимым. `attr(имя)`
+/// подставляется значением атрибута хозяина.
+fn pseudo_box(
+    rules: &[Rule],
+    vars: &Decls,
+    counters: &HashMap<String, i32>,
+    me: &Ancestor,
+    path: &[Ancestor],
+    which: &str,
+    attrs: &[(String, String)],
+) -> Option<Element> {
+    let mut matched: Vec<&Rule> = rules
+        .iter()
+        .filter(|r| r.sel.pseudo.as_deref() == Some(which))
+        .filter(|r| matches_ignoring_pseudo(&r.sel, me, path))
+        .collect();
+    if matched.is_empty() {
+        return None;
+    }
+    let style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
+    let raw = style.content.clone()?;
+    // `counter(имя)` — значение счётчика на этом узле.
+    if let Some(name) = raw
+        .strip_prefix("counter(")
+        .and_then(|r| r.strip_suffix(')'))
+    {
+        let value = counters.get(name.trim()).copied().unwrap_or(0);
+        return Some(Element {
+            node_id: 0,
+            anim: None,
+            inline: true,
+            tag: format!("::{which}"),
+            style,
+            hover: None,
+            first_letter: None,
+            first_line: None,
+            children: vec![Node::Text(value.to_string())],
+            attrs: vec![],
+        });
+    }
+    let text = match raw.strip_prefix("attr(").and_then(|r| r.strip_suffix(')')) {
+        Some(name) => attrs
+            .iter()
+            .find(|(k, _)| k == name.trim())
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default(),
+        None => raw,
+    };
+    if style.display == Some(Display::None) {
+        return None;
+    }
+    Some(Element {
+        // Псевдоэлемент своей анимации не несёт: правило `::before` задаёт
+        // содержимое, а не движение.
+        node_id: 0,
+        anim: None,
+        inline: true,
+        tag: format!("::{which}"),
+        style,
+        hover: None,
+        first_letter: None,
+        first_line: None,
+        children: vec![Node::Text(text)],
+        attrs: vec![],
+    })
 }
 
 /// Сопоставление селектора с узлом и его цепочкой предков.
 fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor]) -> bool {
-    // Псевдоклассы (`:hover`) применяются отдельным слоем при отрисовке —
-    // в базовый стиль они попадать не должны.
-    if sel.pseudo.is_some() {
-        return false;
+    if let Some(pseudo) = &sel.pseudo {
+        // `:not(...)` — отрицание вложенного селектора. Разбирается здесь, а
+        // не среди структурных: внутри скобок может стоять тег или класс, а им
+        // нужен сам узел, а не только его место среди соседей.
+        if let Some(inner) = pseudo
+            .strip_prefix("not(")
+            .and_then(|rest| rest.strip_suffix(')'))
+        {
+            let Some(inner) = Selector::parse(inner) else {
+                return false;
+            };
+            if matches(&inner, me, path) {
+                return false;
+            }
+            return matches_ignoring_pseudo(sel, me, path);
+        }
+        // Структурный псевдокласс — часть обычного каскада: он зависит только
+        // от места узла в дереве. Остальные (`:hover`, `::before`) сюда не
+        // попадают: их применяет отдельный слой при отрисовке.
+        // `:root` — корень документа, то есть `<html>`. Он не структурный по
+        // месту среди соседей, поэтому решается здесь: без него объявления
+        // вроде `:root { font: 25px/1 Ahem }` не доезжали НИКУДА, и страница
+        // набиралась шрифтом по умолчанию (`text-align-last-015`).
+        if pseudo == "root" {
+            if me.tag != "html" {
+                return false;
+            }
+            return matches_ignoring_pseudo(sel, me, path);
+        }
+        let Some(ok) = structural(pseudo, me.spot) else {
+            return false;
+        };
+        if !ok {
+            return false;
+        }
     }
     matches_ignoring_pseudo(sel, me, path)
+}
+
+/// Структурные псевдоклассы: место узла среди соседей.
+///
+/// `None` — псевдокласс не структурный, решение принимает вызывающий.
+fn structural(pseudo: &str, spot: Spot) -> Option<bool> {
+    let (name, arg) = match pseudo.split_once('(') {
+        Some((n, rest)) => (n, rest.trim_end_matches(')').trim()),
+        None => (pseudo, ""),
+    };
+    let (index, total) = match name {
+        "first-child" | "last-child" | "only-child" | "nth-child" | "nth-last-child" => {
+            (spot.index, spot.total)
+        }
+        "first-of-type" | "last-of-type" | "only-of-type" | "nth-of-type" | "nth-last-of-type" => {
+            (spot.of_type, spot.of_type_total)
+        }
+        _ => return None,
+    };
+    // Узел без места — не элемент; таким структурные правила не адресуются.
+    if index == 0 {
+        return Some(false);
+    }
+    Some(match name {
+        "first-child" | "first-of-type" => index == 1,
+        "last-child" | "last-of-type" => index == total,
+        "only-child" | "only-of-type" => total == 1,
+        "nth-child" | "nth-of-type" => nth_matches(arg, index),
+        "nth-last-child" | "nth-last-of-type" => nth_matches(arg, total + 1 - index),
+        _ => false,
+    })
+}
+
+/// Запись `an+b` из `:nth-child()`: подходит ли номер.
+fn nth_matches(arg: &str, index: usize) -> bool {
+    let arg = arg.trim().to_ascii_lowercase();
+    let (a, b) = match arg.as_str() {
+        "odd" => (2i64, 1i64),
+        "even" => (2, 0),
+        _ => match arg.split_once('n') {
+            None => match arg.parse::<i64>() {
+                Ok(b) => (0, b),
+                Err(_) => return false,
+            },
+            Some((head, tail)) => {
+                let a = match head.trim() {
+                    "" | "+" => 1,
+                    "-" => -1,
+                    other => match other.parse::<i64>() {
+                        Ok(v) => v,
+                        Err(_) => return false,
+                    },
+                };
+                let tail = tail.replace(' ', "");
+                let b = if tail.is_empty() {
+                    0
+                } else {
+                    match tail.parse::<i64>() {
+                        Ok(v) => v,
+                        Err(_) => return false,
+                    }
+                };
+                (a, b)
+            }
+        },
+    };
+    let index = index as i64;
+    if a == 0 {
+        return index == b;
+    }
+    let diff = index - b;
+    diff % a == 0 && diff / a >= 0
 }
 
 /// То же сопоставление, но без отсева по псевдоклассу — для слоя наведения.
@@ -321,6 +929,76 @@ fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Цвета детей по порядку — короткая запись для проверок каскада.
+    fn child_colors(html: &str) -> Vec<Option<crate::value::Color>> {
+        fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
+            for n in nodes {
+                if let Node::Element(e) = n {
+                    if e.attr("id") == Some(id) {
+                        return Some(e);
+                    }
+                    if let Some(found) = find(&e.children, id) {
+                        return Some(found);
+                    }
+                }
+            }
+            None
+        }
+        let nodes = parse(html, "");
+        find(&nodes, "box")
+            .map(|e| {
+                e.children
+                    .iter()
+                    .filter_map(|n| match n {
+                        Node::Element(c) => Some(c.style.color),
+                        Node::Text(_) => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn nth_child_selects_by_position() {
+        let red = crate::value::Color::parse("red");
+        let colors = child_colors(
+            "<style>i:nth-child(2) { color: red }</style>\
+             <div id=box><i></i><i></i><i></i></div>",
+        );
+        assert_eq!(colors, vec![None, red, None], "получено {colors:?}");
+    }
+
+    #[test]
+    fn nth_child_understands_an_plus_b() {
+        let red = crate::value::Color::parse("red");
+        let colors = child_colors(
+            "<style>i:nth-child(2n+1) { color: red }</style>\
+             <div id=box><i></i><i></i><i></i><i></i></div>",
+        );
+        assert_eq!(colors, vec![red, None, red, None], "получено {colors:?}");
+    }
+
+    #[test]
+    fn last_child_counts_from_the_end() {
+        let red = crate::value::Color::parse("red");
+        let colors = child_colors(
+            "<style>i:last-child { color: red }</style>\
+             <div id=box><i></i><i></i></div>",
+        );
+        assert_eq!(colors, vec![None, red], "получено {colors:?}");
+    }
+
+    #[test]
+    fn of_type_counts_only_the_same_tag() {
+        let red = crate::value::Color::parse("red");
+        // Второй `<i>` — четвёртый ребёнок, но второй своего тега.
+        let colors = child_colors(
+            "<style>i:nth-of-type(2) { color: red }</style>\
+             <div id=box><b></b><i></i><b></b><i></i></div>",
+        );
+        assert_eq!(colors, vec![None, None, None, red], "получено {colors:?}");
+    }
 
     fn first_element(nodes: &[Node]) -> &Element {
         fn find(nodes: &[Node]) -> Option<&Element> {
@@ -466,4 +1144,131 @@ mod tests {
             .count();
         assert_eq!(ps, 2, "html5ever закрывает <p> сам");
     }
+}
+
+#[cfg(test)]
+mod presentational_tests {
+    use super::*;
+
+    /// `<img width=100>` — представленческая подсказка, и без неё картинка
+    /// набирается по своему пикселю вместо заявленного размера.
+    #[test]
+    fn image_size_attributes_reach_the_style() {
+        let nodes = parse(r#"<img src="x.png" width="100" height="40">"#, "");
+        fn find<'a>(nodes: &'a [Node]) -> Option<&'a Element> {
+            for n in nodes {
+                if let Node::Element(e) = n {
+                    if e.tag == "img" {
+                        return Some(e);
+                    }
+                    if let Some(found) = find(&e.children) {
+                        return Some(found);
+                    }
+                }
+            }
+            None
+        }
+        let img = find(&nodes).expect("картинка в дереве");
+        assert_eq!(img.style.width, Some(Len::Px(100.0)));
+        assert_eq!(img.style.height, Some(Len::Px(40.0)));
+    }
+}
+
+#[cfg(test)]
+mod nth_child_tests {
+    use super::*;
+
+    fn spans(nodes: &[Node], out: &mut Vec<Computed>) {
+        for n in nodes {
+            if let Node::Element(e) = n {
+                if e.tag == "span" {
+                    out.push(e.style.clone());
+                }
+                spans(&e.children, out);
+            }
+        }
+    }
+
+    /// `:nth-child(1)` адресует ПЕРВОГО ребёнка — на нём держатся эталоны
+    /// целого набора тестов гибкой раскладки.
+    #[test]
+    fn first_child_is_addressable() {
+        let html = r#"<style>
+            span { background: white }
+            span:nth-child(1) { background: yellow }
+            span:first-child { color: red }
+        </style><div style="display:flex"><span>a</span><span>b</span><span>c</span></div>"#;
+        let mut found = vec![];
+        spans(&parse(html, ""), &mut found);
+        assert_eq!(found.len(), 3, "три куска");
+        let first = &found[0];
+        assert_ne!(
+            first.background, found[1].background,
+            "фон первого куска обязан отличаться от второго"
+        );
+        assert!(first.color.is_some(), ":first-child тоже обязан сработать");
+    }
+}
+
+#[cfg(test)]
+mod white_space_tests {
+    use super::*;
+
+    /// `white-space: break-spaces` обязан доехать до правил переноса: от него
+    /// зависит, считается ли хвостовой пробел в ширину строки.
+    #[test]
+    fn break_spaces_reaches_the_wrap_rules() {
+        let nodes = parse(
+            r#"<div style="white-space: break-spaces">X XX X</div>"#,
+            "",
+        );
+        fn find(nodes: &[Node]) -> Option<&Element> {
+            for n in nodes {
+                if let Node::Element(e) = n {
+                    if e.tag == "div" {
+                        return Some(e);
+                    }
+                    if let Some(f) = find(&e.children) {
+                        return Some(f);
+                    }
+                }
+            }
+            None
+        }
+        let div = find(&nodes).expect("блок в дереве");
+        assert_eq!(div.style.break_after_spaces, Some(true), "разбор");
+        let wrap = crate::lines::rules(&div.style).expect("правила");
+        assert!(wrap.break_spaces, "правила переноса");
+        assert!(wrap.keep_spaces, "сохранение пробелов");
+    }
+}
+
+/// Первый СИЛЬНЫЙ знак содержимого: `true` — справа налево, `None` — сильных
+/// знаков нет вовсе и сторона остаётся унаследованной.
+fn first_strong(nodes: &[Node]) -> Option<bool> {
+    use unicode_bidi::BidiClass::*;
+    for node in nodes {
+        match node {
+            Node::Text(t) => {
+                for ch in t.chars() {
+                    match unicode_bidi::bidi_class(ch) {
+                        L => return Some(false),
+                        R | AL => return Some(true),
+                        _ => {}
+                    }
+                }
+            }
+            Node::Element(e) => {
+                // Внутри куска со СВОЕЙ стороной искать нечего: он сам себе
+                // абзац для этого правила.
+                if e.style.rtl.is_some() {
+                    continue;
+                }
+                if let Some(found) = first_strong(&e.children) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
 }

@@ -70,6 +70,28 @@ pub fn svg_markup_to_image(
     Some(Arc::new(image))
 }
 
+/// KaminIDE patch: растровая картинка из байтов в готовый образ.
+///
+/// Зачем: фон `background-image: url(...)` в разметке — это ЗАЛИВКА, а не
+/// отдельный элемент: её надо мостить плитками, смещать и обрезать по коробке.
+/// Штатный путь картинки (`img()`) отдаёт элемент и умеет только вписать одну
+/// копию, поэтому фон рисуется своим проходом, а ему нужен уже декодированный
+/// образ с известным размером. Декодер тот же, что у самого GPUI — второй
+/// комплект кодеков в свой крейт тащить незачем.
+///
+/// `None`, если формат не распознан: вызывающий просто не нарисует фон.
+pub fn raster_bytes_to_image(bytes: &[u8]) -> Option<Arc<crate::RenderImage>> {
+    use image::Frame;
+
+    let mut buffer = image::load_from_memory(bytes).ok()?.into_rgba8();
+    for pixel in buffer.chunks_exact_mut(4) {
+        crate::swap_rgba_pa_to_bgra(pixel);
+    }
+    Some(Arc::new(crate::RenderImage::new(
+        smallvec::SmallVec::from_elem(Frame::new(buffer), 1),
+    )))
+}
+
 impl SvgRenderer {
     pub fn new(asset_source: Arc<dyn AssetSource>) -> Self {
         static FONT_DB: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {

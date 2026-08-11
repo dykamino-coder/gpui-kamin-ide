@@ -402,6 +402,9 @@ impl WindowTextSystem {
                 len: run.len as u32,
                 color: run.color,
                 background_color: run.background_color,
+                background_pad: run.background_pad,
+                background_radius: run.background_radius,
+                background_border: run.background_border,
                 underline: run.underline,
                 strikethrough: run.strikethrough,
             });
@@ -412,6 +415,123 @@ impl WindowTextSystem {
         ShapedLine {
             layout,
             text,
+            decoration_runs,
+        }
+    }
+
+    /// KaminIDE patch: строка справа налево — набор тот же, порядок глифов
+    /// обратный.
+    ///
+    /// Набор решает форму знака (арабская вязь, лигатуры) в ЛОГИЧЕСКОМ
+    /// порядке, а на экран знаки идут в обратном. Переставлять сам текст
+    /// нельзя — соседство букв изменится и вязь распадётся, поэтому
+    /// переставляются уже готовые глифы.
+    pub fn shape_line_rtl(
+        &self,
+        text: SharedString,
+        font_size: Pixels,
+        runs: &[TextRun],
+        letter_spacing: Pixels,
+    ) -> ShapedLine {
+        let line = self.shape_line_spaced(text, font_size, runs, None, letter_spacing);
+        let layout = line.layout.as_ref();
+        // Продвижение каждого глифа: положения накопительные, поэтому шаг —
+        // разница с соседом, а у последнего — остаток до ширины строки.
+        let mut flat: Vec<(usize, ShapedGlyph, Pixels)> = Vec::new();
+        for (run_ix, run) in layout.runs.iter().enumerate() {
+            for glyph in &run.glyphs {
+                flat.push((run_ix, glyph.clone(), px(0.)));
+            }
+        }
+        for i in 0..flat.len() {
+            let next = flat
+                .get(i + 1)
+                .map(|(_, g, _)| g.position.x)
+                .unwrap_or(layout.width);
+            flat[i].2 = next - flat[i].1.position.x;
+        }
+        // Переставляются ГРОЗДЬЯ, а не отдельные глифы: знак с огласовкой или
+        // с надстрочной меткой — это несколько глифов на одном месте текста, и
+        // внутри грозди порядок обязан остаться прежним.
+        let mut clusters: Vec<Vec<(usize, ShapedGlyph, Pixels)>> = Vec::new();
+        for item in flat {
+            match clusters.last_mut() {
+                Some(last) if last[0].1.index == item.1.index => last.push(item),
+                _ => clusters.push(vec![item]),
+            }
+        }
+        // Оформление (цвет, подчёркивание) раздаётся по ходу глифов: длины
+        // отсчитываются от начала текста и только вперёд. После перестановки
+        // порядок байтов уже не растёт, поэтому оформление пересобирается под
+        // ВИДИМЫЙ порядок — по грозди на запись.
+        let mut spans: Vec<(usize, usize)> = Vec::new();
+        for (i, cluster) in clusters.iter().enumerate() {
+            let start = cluster[0].1.index;
+            let end = clusters
+                .get(i + 1)
+                .map(|next| next[0].1.index)
+                .unwrap_or(layout.len);
+            spans.push((start, end.max(start)));
+        }
+        let mut decoration_runs: SmallVec<[DecorationRun; 32]> = SmallVec::new();
+        for (start, end) in spans.iter().rev() {
+            let mut at = 0usize;
+            let style = line.decoration_runs.iter().find(|run| {
+                let covers = at <= *start && *start < at + run.len as usize;
+                at += run.len as usize;
+                covers
+            });
+            let Some(style) = style else { continue };
+            let mut piece = style.clone();
+            piece.len = (end - start) as u32;
+            match decoration_runs.last_mut() {
+                Some(last)
+                    if last.color == piece.color
+                        && last.background_color == piece.background_color
+                        && last.underline == piece.underline
+                        && last.strikethrough == piece.strikethrough =>
+                {
+                    last.len += piece.len
+                }
+                _ => decoration_runs.push(piece),
+            }
+        }
+        let mut runs: Vec<ShapedRun> = Vec::new();
+        let mut x = px(0.);
+        // Место знака в тексте тоже пересчитывается: оформление раздаётся по
+        // нему, и в видимом порядке оно обязано расти слева направо.
+        let mut visual_index = 0usize;
+        for (cluster, (start, end)) in clusters.into_iter().rev().zip(spans.iter().rev()) {
+            for (run_ix, mut glyph, advance) in cluster {
+                glyph.position.x = x;
+                glyph.index = visual_index;
+                x += advance;
+                let source = &layout.runs[run_ix];
+                match runs.last_mut() {
+                    Some(last)
+                        if last.font_id == source.font_id && last.font_size == source.font_size =>
+                    {
+                        last.glyphs.push(glyph)
+                    }
+                    _ => runs.push(ShapedRun {
+                        font_id: source.font_id,
+                        font_size: source.font_size,
+                        glyphs: vec![glyph],
+                    }),
+                }
+            }
+            visual_index += end - start;
+        }
+        ShapedLine {
+            layout: Arc::new(LineLayout {
+                font_size: layout.font_size,
+                width: layout.width,
+                ascent: layout.ascent,
+                descent: layout.descent,
+                runs,
+                len: layout.len,
+            }),
+            text: line.text,
             decoration_runs,
         }
     }
@@ -477,6 +597,9 @@ impl WindowTextSystem {
                         len: run_len_within_line as u32,
                         color: run.color,
                         background_color: run.background_color,
+                        background_pad: run.background_pad,
+                        background_radius: run.background_radius,
+                        background_border: run.background_border,
                         underline: run.underline,
                         strikethrough: run.strikethrough,
                     });
@@ -484,8 +607,10 @@ impl WindowTextSystem {
                 };
 
                 let font_id = self.resolve_font(&run.font);
+                let run_size = run.font_size.unwrap_or(font_size);
                 if let Some(font_run) = font_runs.last_mut()
                     && font_id == font_run.font_id
+                    && font_run.font_size == run_size
                     && !decoration_changed
                 {
                     font_run.len += run_len_within_line;
@@ -493,6 +618,7 @@ impl WindowTextSystem {
                     font_runs.push(FontRun {
                         len: run_len_within_line,
                         font_id,
+                        font_size: run_size,
                     });
                 }
 
@@ -600,8 +726,10 @@ impl WindowTextSystem {
                 true
             };
 
+            let run_size = run.font_size.unwrap_or(font_size);
             if let Some(font_run) = font_runs.last_mut()
                 && Some(font_run.font_id) == last_font
+                && font_run.font_size == run_size
                 && !decoration_changed
             {
                 font_run.len += run.len;
@@ -611,6 +739,7 @@ impl WindowTextSystem {
                 font_runs.push(FontRun {
                     len: run.len,
                     font_id,
+                    font_size: run_size,
                 });
             }
         }
@@ -782,6 +911,21 @@ pub struct TextRun {
     pub color: Hsla,
     /// The background color (if any)
     pub background_color: Option<Hsla>,
+    /// KaminIDE patch: свой кегль прогона (`font-size` у `<span>` в строке).
+    ///
+    /// `None` — кегль всего блока. Без этого поля кусок другого размера
+    /// нельзя было положить в общий текстовый блок.
+    pub font_size: Option<Pixels>,
+    /// KaminIDE patch: поля вокруг фона прогона (`padding` строчного бокса).
+    ///
+    /// У строчного бокса CSS нет коробки: фон тянется по строкам и рвётся на
+    /// переносах. Прогон это умеет, но рисовал фон впритык к глифам, и
+    /// подсветка выходила уже браузерной.
+    pub background_pad: Point<Pixels>,
+    /// KaminIDE patch: скругление фона прогона (`border-radius`).
+    pub background_radius: Pixels,
+    /// KaminIDE patch: рамка строчного бокса (цвет, толщина).
+    pub background_border: Option<(Hsla, Pixels)>,
     /// The underline style (if any)
     pub underline: Option<UnderlineStyle>,
     /// The strikethrough style (if any)
@@ -844,6 +988,55 @@ pub struct Font {
 
     /// The font style.
     pub style: FontStyle,
+
+    /// KaminIDE patch: ширина начертания (`font-stretch`).
+    ///
+    /// Раньше её не было вовсе, и в DirectWrite всегда уходило `NORMAL`:
+    /// `font-stretch: condensed` не делал ничего. Это НЕ возможность
+    /// OpenType — узкое начертание выбирается при подборе шрифта, поэтому
+    /// список возможностей тут не помогает.
+    pub stretch: FontStretch,
+}
+
+/// KaminIDE patch: ширина начертания шрифта — шкала CSS `font-stretch`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize, JsonSchema)]
+pub enum FontStretch {
+    /// 50% от обычной.
+    UltraCondensed,
+    /// 62.5%.
+    ExtraCondensed,
+    /// 75%.
+    Condensed,
+    /// 87.5%.
+    SemiCondensed,
+    /// Обычная ширина.
+    #[default]
+    Normal,
+    /// 112.5%.
+    SemiExpanded,
+    /// 125%.
+    Expanded,
+    /// 150%.
+    ExtraExpanded,
+    /// 200%.
+    UltraExpanded,
+}
+
+impl FontStretch {
+    /// Ближайшая ступень шкалы к проценту из CSS.
+    pub fn from_percent(percent: f32) -> FontStretch {
+        match percent {
+            p if p < 56.0 => FontStretch::UltraCondensed,
+            p if p < 68.0 => FontStretch::ExtraCondensed,
+            p if p < 81.0 => FontStretch::Condensed,
+            p if p < 93.0 => FontStretch::SemiCondensed,
+            p if p < 106.0 => FontStretch::Normal,
+            p if p < 118.0 => FontStretch::SemiExpanded,
+            p if p < 137.0 => FontStretch::Expanded,
+            p if p < 175.0 => FontStretch::ExtraExpanded,
+            _ => FontStretch::UltraExpanded,
+        }
+    }
 }
 
 /// Get a [`Font`] for a given name.
@@ -853,6 +1046,7 @@ pub fn font(family: impl Into<SharedString>) -> Font {
         features: FontFeatures::default(),
         weight: FontWeight::default(),
         style: FontStyle::default(),
+        stretch: crate::FontStretch::default(),
         fallbacks: None,
     }
 }

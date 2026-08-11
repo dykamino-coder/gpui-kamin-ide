@@ -3661,6 +3661,12 @@ pub enum GridTrack {
     Pixels(Pixels),
     /// Доля свободного места: `1fr`.
     Fraction(f32),
+    /// KaminIDE patch: доля ширины контейнера — `25%`.
+    ///
+    /// Это НЕ `fr`: процент считается от всей ширины сетки, а доля — только
+    /// от свободного остатка. Без своего варианта проценты в дорожках
+    /// сводились к равным долям, и колонки расходились с браузером.
+    Percent(f32),
     /// Ширина по содержимому: `auto`.
     Auto,
     /// Минимально возможная ширина содержимого: `min-content`.
@@ -3675,6 +3681,23 @@ impl Default for GridTrack {
     fn default() -> Self {
         GridTrack::Auto
     }
+}
+
+/// KaminIDE patch: `grid-auto-flow` — куда добавлять неявные дорожки.
+///
+/// Нужен для разметки, где элементов больше, чем описано дорожек: без него
+/// такие элементы всегда шли новыми строками, а `column` — обычная запись.
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
+pub enum GridAutoFlow {
+    /// Заполнять построчно.
+    #[default]
+    Row,
+    /// Заполнять по колонкам.
+    Column,
+    /// Построчно, затыкая ранее оставленные дыры.
+    RowDense,
+    /// По колонкам, затыкая дыры.
+    ColumnDense,
 }
 
 /// A location in a grid layout.

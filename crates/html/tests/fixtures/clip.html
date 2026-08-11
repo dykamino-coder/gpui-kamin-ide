@@ -1,0 +1,16 @@
+<!-- Обрезка формой: многоугольник гасит готовую картинку поддерева, поэтому
+     обрезается не только фон, но и всё содержимое. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; font: 13px system-ui }
+  .page { width: 620px; padding: 16px; box-sizing: border-box; display: flex; gap: 24px }
+  .shape { width: 160px; height: 140px; background: #1c7ed6 }
+  .tri { clip-path: polygon(50% 0%, 100% 100%, 0% 100%) }
+  .arrow { clip-path: polygon(0% 20%, 60% 20%, 60% 0%, 100% 50%, 60% 100%, 60% 80%, 0% 80%);
+           background: #e8590c }
+  .rhomb { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); background: #2f9e44 }
+</style>
+<div class="page">
+  <div class="shape tri"></div>
+  <div class="shape arrow"></div>
+  <div class="shape rhomb"></div>
+</div>

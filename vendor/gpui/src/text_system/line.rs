@@ -18,6 +18,14 @@ pub struct DecorationRun {
 
     /// The background color for this run
     pub background_color: Option<Hsla>,
+    /// KaminIDE patch: поля вокруг фона прогона (строчный бокс).
+    pub background_pad: Point<Pixels>,
+    /// KaminIDE patch: скругление фона прогона (строчный бокс).
+    pub background_radius: Pixels,
+    /// KaminIDE patch: рамка строчного бокса — цвет и толщина. Рисуется по
+    /// КУСКАМ строк вместе с фоном: строчная коробка в браузере разрезается
+    /// переносом, и рамка каждого куска своя.
+    pub background_border: Option<(Hsla, Pixels)>,
 
     /// The underline style for this run
     pub underline: Option<UnderlineStyle>,
@@ -69,6 +77,7 @@ impl ShapedLine {
     ) -> Result<()> {
         paint_line(
             origin,
+            &self.text,
             &self.layout,
             line_height,
             TextAlign::default(),
@@ -92,6 +101,7 @@ impl ShapedLine {
     ) -> Result<()> {
         paint_line_background(
             origin,
+            &self.text,
             &self.layout,
             line_height,
             TextAlign::default(),
@@ -141,6 +151,7 @@ impl WrappedLine {
 
         paint_line(
             origin,
+            &self.text,
             &self.layout.unwrapped_layout,
             line_height,
             align,
@@ -171,6 +182,7 @@ impl WrappedLine {
 
         paint_line_background(
             origin,
+            &self.text,
             &self.layout.unwrapped_layout,
             line_height,
             align,
@@ -185,8 +197,51 @@ impl WrappedLine {
     }
 }
 
+/// KaminIDE patch: добавка на один межсловный пробел в каждой строке.
+///
+/// Выключка растягивает не буквы, а промежутки между словами, и только в
+/// строках, которые переносятся: последняя строка абзаца остаётся как есть.
+/// Пробел на самом переносе не растягивается — в браузере он схлопнут.
+fn justify_extras(
+    text: &str,
+    layout: &LineLayout,
+    wrap_boundaries: &[WrapBoundary],
+    align_width: Pixels,
+) -> Vec<Pixels> {
+    let mut extras = Vec::with_capacity(wrap_boundaries.len() + 1);
+    let mut wraps = wrap_boundaries.iter().peekable();
+    let mut line_start = px(0.);
+    let mut gaps = 0usize;
+    let mut prev_space = false;
+    for (run_ix, run) in layout.runs.iter().enumerate() {
+        for (glyph_ix, glyph) in run.glyphs.iter().enumerate() {
+            if wraps.peek() == Some(&&WrapBoundary { run_ix, glyph_ix }) {
+                wraps.next();
+                let width = glyph.position.x - line_start;
+                extras.push(if gaps > 0 {
+                    ((align_width - width) / gaps as f32).max(px(0.))
+                } else {
+                    px(0.)
+                });
+                line_start = glyph.position.x;
+                gaps = 0;
+                prev_space = false;
+            }
+            let space = text.as_bytes().get(glyph.index) == Some(&b' ');
+            if prev_space && !space {
+                gaps += 1;
+            }
+            prev_space = space;
+        }
+    }
+    // Последняя строка не растягивается.
+    extras.push(px(0.));
+    extras
+}
+
 fn paint_line(
     origin: Point<Pixels>,
+    text: &str,
     layout: &LineLayout,
     line_height: Pixels,
     align: TextAlign,
@@ -204,6 +259,16 @@ fn paint_line(
         ),
     );
     window.paint_layer(line_bounds, |window| {
+        // KaminIDE patch: выключка по ширине — остаток строки раздаётся её
+        // межсловным промежуткам (см. `justify_extras`).
+        let justify = (align == TextAlign::Justify).then(|| {
+            justify_extras(
+                text,
+                layout,
+                wrap_boundaries,
+                align_width.unwrap_or(layout.width),
+            )
+        });
         let padding_top = (line_height - layout.ascent - layout.descent) / 2.;
         let baseline_offset = point(px(0.), padding_top + layout.ascent);
         let mut decoration_runs = decoration_runs.iter();
@@ -227,8 +292,12 @@ fn paint_line(
         let mut prev_glyph_position = Point::default();
         let mut max_glyph_size = size(px(0.), px(0.));
         let mut first_glyph_x = origin.x;
+        // KaminIDE patch: выключка — добавка на каждый пройденный промежуток.
+        let mut line_ix = 0usize;
+        let mut gaps_passed = 0usize;
+        let mut prev_space = false;
         for (run_ix, run) in layout.runs.iter().enumerate() {
-            max_glyph_size = text_system.bounding_box(run.font_id, layout.font_size).size;
+            max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
 
             for (glyph_ix, glyph) in run.glyphs.iter().enumerate() {
                 glyph_origin.x += glyph.position.x - prev_glyph_position.x;
@@ -236,8 +305,23 @@ fn paint_line(
                     first_glyph_x = glyph_origin.x;
                 }
 
+                let space = text.as_bytes().get(glyph.index) == Some(&b' ');
+                if let Some(extras) = justify.as_ref() {
+                    // Добавка отдаётся ОДИН раз на промежуток: положение
+                    // глифа копится от предыдущего, и повторное прибавление
+                    // растащило бы буквы внутри слова.
+                    if prev_space && !space {
+                        gaps_passed += 1;
+                        glyph_origin.x += extras.get(line_ix).copied().unwrap_or(px(0.));
+                    }
+                }
+                prev_space = space;
+
                 if wraps.peek() == Some(&&WrapBoundary { run_ix, glyph_ix }) {
                     wraps.next();
+                    line_ix += 1;
+                    gaps_passed = 0;
+                    prev_space = false;
                     if let Some((underline_origin, underline_style)) = current_underline.as_mut() {
                         if glyph_origin.x == underline_origin.x {
                             underline_origin.x -= max_glyph_size.width.half();
@@ -374,14 +458,16 @@ fn paint_line(
                             glyph_origin + baseline_offset,
                             run.font_id,
                             glyph.id,
-                            layout.font_size,
+                            run.font_size,
                         )?;
                     } else {
                         window.paint_glyph(
                             glyph_origin + baseline_offset,
                             run.font_id,
                             glyph.id,
-                            layout.font_size,
+                            // KaminIDE patch: кегль ПРОГОНА — иначе кусок
+                            // другого размера рисовался чужими глифами.
+                            run.font_size,
                             color,
                         )?;
                     }
@@ -424,6 +510,7 @@ fn paint_line(
 
 fn paint_line_background(
     origin: Point<Pixels>,
+    text: &str,
     layout: &LineLayout,
     line_height: Pixels,
     align: TextAlign,
@@ -440,11 +527,26 @@ fn paint_line_background(
             line_height * (wrap_boundaries.len() as f32 + 1.),
         ),
     );
+        // KaminIDE patch: выключка по ширине — остаток строки раздаётся её
+        // межсловным промежуткам (см. `justify_extras`).
+        let justify = (align == TextAlign::Justify).then(|| {
+            justify_extras(
+                text,
+                layout,
+                wrap_boundaries,
+                align_width.unwrap_or(layout.width),
+            )
+        });
     window.paint_layer(line_bounds, |window| {
         let mut decoration_runs = decoration_runs.iter();
         let mut wraps = wrap_boundaries.iter().peekable();
         let mut run_end = 0;
-        let mut current_background: Option<(Point<Pixels>, Hsla)> = None;
+        // Пятое поле — рамка строчного бокса: она живёт вместе с фоном и
+        // режется переносом так же, как он.
+        let mut current_background: Option<(
+            Point<Pixels>,
+            (Hsla, Point<Pixels>, Pixels, bool, Option<(Hsla, Pixels)>),
+        )> = None;
         let text_system = cx.text_system().clone();
         let mut glyph_origin = point(
             aligned_origin_x(
@@ -459,26 +561,50 @@ fn paint_line_background(
         );
         let mut prev_glyph_position = Point::default();
         let mut max_glyph_size = size(px(0.), px(0.));
+        // KaminIDE patch: выключка — добавка на каждый пройденный промежуток.
+        let mut line_ix = 0usize;
+        let mut gaps_passed = 0usize;
+        let mut prev_space = false;
         for (run_ix, run) in layout.runs.iter().enumerate() {
-            max_glyph_size = text_system.bounding_box(run.font_id, layout.font_size).size;
+            max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
 
             for (glyph_ix, glyph) in run.glyphs.iter().enumerate() {
                 glyph_origin.x += glyph.position.x - prev_glyph_position.x;
 
+                let space = text.as_bytes().get(glyph.index) == Some(&b' ');
+                if let Some(extras) = justify.as_ref() {
+                    // Та же добавка, что и в проходе глифов: подложки прогонов
+                    // обязаны стоять там же, где буквы.
+                    if prev_space && !space {
+                        gaps_passed += 1;
+                        glyph_origin.x += extras.get(line_ix).copied().unwrap_or(px(0.));
+                    }
+                }
+                prev_space = space;
+
                 if wraps.peek() == Some(&&WrapBoundary { run_ix, glyph_ix }) {
                     wraps.next();
+                    line_ix += 1;
+                    gaps_passed = 0;
+                    prev_space = false;
                     if let Some((background_origin, background_color)) = current_background.as_mut()
                     {
                         if glyph_origin.x == background_origin.x {
                             background_origin.x -= max_glyph_size.width.half()
                         }
-                        window.paint_quad(fill(
-                            Bounds {
-                                origin: *background_origin,
-                                size: size(glyph_origin.x - background_origin.x, line_height),
-                            },
-                            *background_color,
+                        window.paint_quad(run_background_quad(
+                            *background_origin,
+                            glyph_origin.x - background_origin.x,
+                            line_height,
+                            layout.font_size,
+                            background_color.0,
+                            background_color.1,
+                            background_color.2,
+                            background_color.3,
+                            false,
+                            background_color.4,
                         ));
+                        background_color.3 = false;
                         background_origin.x = origin.x;
                         background_origin.y += line_height;
                     }
@@ -495,7 +621,10 @@ fn paint_line_background(
                 }
                 prev_glyph_position = glyph.position;
 
-                let mut finished_background: Option<(Point<Pixels>, Hsla)> = None;
+                let mut finished_background: Option<(
+                    Point<Pixels>,
+                    (Hsla, Point<Pixels>, Pixels, bool, Option<(Hsla, Pixels)>),
+                )> = None;
                 if glyph.index >= run_end {
                     let mut style_run = decoration_runs.next();
 
@@ -510,14 +639,22 @@ fn paint_line_background(
 
                     if let Some(style_run) = style_run {
                         if let Some((_, background_color)) = &mut current_background
-                            && style_run.background_color.as_ref() != Some(background_color)
+                            && style_run.background_color.as_ref() != Some(&background_color.0)
                         {
                             finished_background = current_background.take();
                         }
                         if let Some(run_background) = style_run.background_color {
                             current_background.get_or_insert((
                                 point(glyph_origin.x, glyph_origin.y),
-                                run_background,
+                                (
+                                    run_background,
+                                    style_run.background_pad,
+                                    style_run.background_radius,
+                                    // Поле слева — только у начала прогона:
+                                    // на переносе подсветка продолжается.
+                                    true,
+                                    style_run.background_border,
+                                ),
                             ));
                         }
                         run_end += style_run.len as usize;
@@ -532,12 +669,17 @@ fn paint_line_background(
                     if background_origin.x == glyph_origin.x {
                         background_origin.x -= max_glyph_size.width.half();
                     };
-                    window.paint_quad(fill(
-                        Bounds {
-                            origin: background_origin,
-                            size: size(width, line_height),
-                        },
-                        background_color,
+                    window.paint_quad(run_background_quad(
+                        background_origin,
+                        width,
+                        line_height,
+                        layout.font_size,
+                        background_color.0,
+                        background_color.1,
+                        background_color.2,
+                        background_color.3,
+                        true,
+                        background_color.4,
                     ));
                 }
             }
@@ -554,17 +696,75 @@ fn paint_line_background(
             if last_line_end_x == background_origin.x {
                 background_origin.x -= max_glyph_size.width.half()
             };
-            window.paint_quad(fill(
-                Bounds {
-                    origin: background_origin,
-                    size: size(last_line_end_x - background_origin.x, line_height),
-                },
-                background_color,
+            window.paint_quad(run_background_quad(
+                background_origin,
+                last_line_end_x - background_origin.x,
+                line_height,
+                layout.font_size,
+                background_color.0,
+                background_color.1,
+                background_color.2,
+                background_color.3,
+                true,
+                background_color.4,
             ));
         }
 
         Ok(())
     })
+}
+
+/// KaminIDE patch: прямоугольник фона прогона (`<span>` с фоном внутри строки).
+///
+/// Браузер рисует такой фон по коробке содержимого — высотой в кегль с
+/// выносными, а не во всю строку, — и раздвигает её внутренними отступами.
+/// Прежний квад занимал строку целиком, поэтому подсветка получалась выше и
+/// уже браузерной.
+#[allow(clippy::too_many_arguments)]
+fn run_background_quad(
+    origin: Point<Pixels>,
+    width: Pixels,
+    line_height: Pixels,
+    font_size: Pixels,
+    color: Hsla,
+    pad: Point<Pixels>,
+    radius: Pixels,
+    pad_left: bool,
+    pad_right: bool,
+    border: Option<(Hsla, Pixels)>,
+) -> crate::PaintQuad {
+    // 1.16 кегля — высота коробки содержимого у типовых интерфейсных
+    // шрифтов; она же центрируется в строке, как половинный интерлиньяж.
+    let band = font_size * 1.16 + pad.y * 2.0;
+    let top = origin.y + (line_height - band).half();
+    // Поля стоят на КОНЦАХ прогона: на переносе подсветка идёт впритык, иначе
+    // она вылезала бы за край колонки с обеих сторон каждой строки.
+    let left = if pad_left { pad.x } else { px(0.) };
+    let right = if pad_right { pad.x } else { px(0.) };
+    let quad = crate::fill(
+        Bounds {
+            origin: point(origin.x - left, top),
+            size: size(width + left + right, band),
+        },
+        color,
+    )
+    .corner_radii(crate::Corners::all(radius));
+    // Рамка строчной коробки: у КУСКА строки она своя, поэтому рисуется тем же
+    // прямоугольником, что и фон. На переносе боковые грани не ставятся —
+    // коробка продолжается на следующей строке.
+    match border {
+        Some((border_color, width)) => crate::PaintQuad {
+            border_widths: crate::Edges {
+                top: width,
+                right: if pad_right { width } else { px(0.) },
+                bottom: width,
+                left: if pad_left { width } else { px(0.) },
+            },
+            border_color,
+            ..quad
+        },
+        None => quad,
+    }
 }
 
 fn aligned_origin_x(
@@ -584,7 +784,9 @@ fn aligned_origin_x(
     let line_width = end_of_line - last_glyph_x;
 
     match align {
-        TextAlign::Left => origin.x,
+        // Выключка начинается от левого края: остаток раздают пробелы внутри
+        // строки, а не сдвиг всей строки (см. `justify_extras`).
+        TextAlign::Left | TextAlign::Justify => origin.x,
         TextAlign::Center => (origin.x * 2.0 + align_width - line_width) / 2.0,
         TextAlign::Right => origin.x + align_width - line_width,
     }

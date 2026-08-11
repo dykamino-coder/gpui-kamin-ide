@@ -20,9 +20,42 @@ pub(crate) type PathVertex_ScaledPixels = PathVertex<ScaledPixels>;
 
 pub(crate) type DrawOrder = u32;
 
+/// KaminIDE patch: поддерево, нарисованное в отдельный буфер.
+///
+/// Нужно там, где картинка сначала должна сложиться целиком и только потом
+/// попасть в кадр: размытие поддерева (`filter: blur`), собственная
+/// прозрачность группы (`opacity` без просвечивания детей друг через друга),
+/// изоляция смешивания (`isolation: isolate`). Внутри — обычная сцена, её
+/// рисуют теми же конвейерами, только в свою текстуру.
+#[derive(Default)]
+pub(crate) struct PaintGroup {
+    pub(crate) scene: Scene,
+    pub(crate) bounds: Bounds<ScaledPixels>,
+    /// Радиус размытия готовой картинки группы; 0 — не размывать.
+    pub(crate) blur_radius: f32,
+    /// Режим смешивания группы с кадром (`mix-blend-mode`), 0 — обычный.
+    ///
+    /// Смешивать умеет и блендер, но лишь четырьмя формулами и только
+    /// заливку одного узла. Готовый буфер группы даёт цвет источника
+    /// целиком, а копия кадра — цвет назначения: обе стороны формулы CSS
+    /// оказываются в шейдере, и режимы считаются все.
+    pub(crate) blend: u32,
+    /// Обрезка многоугольником (`clip-path: polygon(…)`), до восьми вершин.
+    ///
+    /// Прямоугольной маской многоугольник не выразить, а буфер группы даёт
+    /// готовую картинку, которую можно погасить по любой форме.
+    pub(crate) polygon: Vec<Point<ScaledPixels>>,
+}
+
 #[derive(Default)]
 pub(crate) struct Scene {
     pub(crate) paint_operations: Vec<PaintOperation>,
+    /// KaminIDE patch: группы, нарисованные в отдельные буферы.
+    ///
+    /// Список плоский и упорядочен по зависимости: вложенная группа стоит
+    /// раньше объемлющей, поэтому её буфер к моменту сборки объемлющей уже
+    /// готов (см. `Window::paint_group`).
+    pub(crate) groups: Vec<PaintGroup>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<DrawOrder>,
     pub(crate) shadows: Vec<Shadow>,
@@ -35,8 +68,26 @@ pub(crate) struct Scene {
 }
 
 impl Scene {
+    /// KaminIDE patch: сдвинуть номера групп у меток этой сцены.
+    ///
+    /// Нужно при переносе вложенных групп в общий список кадра: их номера
+    /// были местными, а становятся сквозными.
+    pub(crate) fn shift_group_ids(&mut self, base: u32) {
+        for surface in self.surfaces.iter_mut().filter(|s| s.group > 0) {
+            surface.group += base;
+        }
+        for operation in &mut self.paint_operations {
+            if let PaintOperation::Primitive(Primitive::Surface(surface)) = operation {
+                if surface.group > 0 {
+                    surface.group += base;
+                }
+            }
+        }
+    }
+
     pub fn clear(&mut self) {
         self.paint_operations.clear();
+        self.groups.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
         self.paths.clear();
@@ -459,6 +510,16 @@ pub(crate) struct Quad {
     pub border_color: Hsla,
     pub corner_radii: Corners<ScaledPixels>,
     pub border_widths: Edges<ScaledPixels>,
+    /// KaminIDE patch: преобразование квада (`transform` в CSS).
+    ///
+    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
+    /// или отмасштабировать можно было только текст, но не его подложку.
+    /// Раскладка матрицу не знает: элемент занимает своё место, а рисуется
+    /// преобразованным — ровно как в CSS.
+    ///
+    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
+    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
+    pub transformation: TransformationMatrix,
 }
 
 impl From<Quad> for Primitive {
@@ -494,6 +555,13 @@ pub(crate) struct Shadow {
     pub corner_radii: Corners<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
     pub color: Hsla,
+    /// KaminIDE patch: внутренняя тень (`box-shadow: inset`).
+    ///
+    /// Раньше примитив умел только внешнюю, и `inset` не рисовался вовсе.
+    /// Отличие одно: плотность считается ВНУТРИ фигуры, а не снаружи —
+    /// поэтому это флаг, а не новый примитив. Поле идёт последним и обязано
+    /// совпадать с концом `struct Shadow` в шейдере.
+    pub inset: u32,
 }
 
 impl From<Shadow> for Primitive {
@@ -511,6 +579,11 @@ pub enum BorderStyle {
     Solid = 0,
     /// A dashed border.
     Dashed = 1,
+    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
+    ///
+    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
+    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
+    Dotted = 2,
 }
 
 /// A data type representing a 2 dimensional transformation that can be applied to an element.
@@ -558,6 +631,18 @@ impl TransformationMatrix {
     pub fn scale(self, size: Size<f32>) -> Self {
         self.compose(Self {
             rotation_scale: [[size.width, 0.0], [0.0, size.height]],
+            translation: [0.0, 0.0],
+        })
+    }
+
+    /// KaminIDE patch: скос (`transform: skew`).
+    ///
+    /// Матрица общая, поэтому скос выражается ею напрямую — отдельного
+    /// примитива не нужно. Углы в радианах: `x` наклоняет по горизонтали,
+    /// `y` по вертикали.
+    pub fn skew(self, x: Radians, y: Radians) -> Self {
+        self.compose(Self {
+            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
             translation: [0.0, 0.0],
         })
     }
@@ -645,6 +730,9 @@ pub(crate) struct PolychromeSprite {
     pub content_mask: ContentMask<ScaledPixels>,
     pub corner_radii: Corners<ScaledPixels>,
     pub tile: AtlasTile,
+    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
+    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
+    pub transformation: TransformationMatrix,
 }
 
 /// KaminIDE patch: описатель ЧУЖОЙ текстуры (кадр браузера), лежащей в
@@ -715,6 +803,17 @@ pub(crate) struct PaintSurface {
     /// backdrop blur — скругление маски композита.
     #[cfg(not(target_os = "macos"))]
     pub corner_radii: Corners<ScaledPixels>,
+    /// KaminIDE patch: радиус размытия из `backdrop-filter: blur(N)`.
+    /// Без него `blur(2px)` и `blur(40px)` рисовались одинаково.
+    #[cfg(not(target_os = "macos"))]
+    pub blur_radius: f32,
+    /// KaminIDE patch: номер группы плюс единица, если примитив — не размытие
+    /// фона, а метка «здесь положить готовый буфер группы N».
+    #[cfg(not(target_os = "macos"))]
+    pub group: u32,
+    /// KaminIDE patch: прозрачность группы целиком.
+    #[cfg(not(target_os = "macos"))]
+    pub opacity: f32,
 }
 
 impl From<PaintSurface> for Primitive {

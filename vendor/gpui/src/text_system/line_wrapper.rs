@@ -29,6 +29,73 @@ impl LineWrapper {
         }
     }
 
+    /// KaminIDE patch: минимальная ширина строки — самый длинный кусок,
+    /// который нельзя разорвать.
+    ///
+    /// Раскладке она нужна, чтобы понять, насколько текст МОЖНО сжать. Без
+    /// неё замер при `min-content` шейпил строку целиком, и минимальной
+    /// шириной текста оказывалась вся строка: гибкий элемент с текстом не
+    /// сжимался никогда и выпирал за контейнер, а колонка таблицы не
+    /// сужалась. Меряем теми же метриками, что и перенос, — иначе замер и
+    /// перенос разошлись бы между собой.
+    pub fn min_content_width(&mut self, text: &str) -> Pixels {
+        let mut longest = px(0.);
+        let mut chunk_start = 0usize;
+        let mut prev = ' ';
+        let mut cut_at = |this: &mut Self, from: usize, to: usize, longest: &mut Pixels| {
+            if to <= from {
+                return;
+            }
+            // Кусок меряется НАБОРОМ, а не суммой ширин знаков: перенос
+            // считает по положениям глифов, и посимвольная сумма с ними
+            // расходится — слово рвалось посередине (1.0.44).
+            let run = FontRun {
+                len: to - from,
+                font_id: this.font_id,
+                font_size: this.font_size,
+            };
+            let width = this
+                .platform_text_system
+                .layout_line(&text[from..to], this.font_size, &[run])
+                .width;
+            *longest = (*longest).max(width);
+        };
+        for (ix, c) in text.char_indices() {
+            // Пробел и перевод строки — законные точки разрыва.
+            if c.is_whitespace() {
+                cut_at(self, chunk_start, ix, &mut longest);
+                chunk_start = ix + c.len_utf8();
+                prev = c;
+                continue;
+            }
+            // Граница слова: разрыв разрешён между двумя не-словесными
+            // знаками — те же правила, по которым идёт перенос.
+            if prev != ' ' && !Self::is_word_char(c) && !Self::is_word_char(prev) {
+                cut_at(self, chunk_start, ix, &mut longest);
+                chunk_start = ix;
+            }
+            prev = c;
+        }
+        cut_at(self, chunk_start, text.len(), &mut longest);
+        longest
+    }
+
+    /// KaminIDE patch: ширина строки без переносов — верхняя грань колонки.
+    ///
+    /// Табличная раскладка раздаёт излишек ширины пропорционально разнице
+    /// между этой гранью и минимальной: без верхней грани колонку не с чем
+    /// сравнить, и излишек доставался последней колонке целиком.
+    pub fn max_content_width(&mut self, text: &str) -> Pixels {
+        let mut width = px(0.);
+        for c in text.chars() {
+            if c == '\n' {
+                continue;
+            }
+            width += self.width_for_char(c);
+        }
+        width
+    }
+
     /// Wrap a line of text to the given width with this wrapper's font and font size.
     pub fn wrap_line<'a>(
         &'a mut self,
@@ -65,7 +132,13 @@ impl LineWrapper {
                             }
                         } else {
                             // CJK may not be space separated, e.g.: `Hello world你好世界`
-                            if c != ' ' && first_non_whitespace_ix.is_some() {
+                            // KaminIDE patch: `!is_no_break_after` keeps an
+                            // opening bracket glued to what follows — it may
+                            // not be left dangling at the end of a line.
+                            if c != ' '
+                                && first_non_whitespace_ix.is_some()
+                                && !Self::is_no_break_after(prev_c)
+                            {
                                 last_candidate_ix = ix;
                                 last_candidate_width = width;
                             }
@@ -186,7 +259,40 @@ impl LineWrapper {
         // `2^3`, `a~b`, `a=1`, `Self::new`, etc.
         matches!(c, '-' | '_' | '.' | '\'' | '$' | '%' | '@' | '#' | '^' | '~' | ',' | '=' | ':') ||
         // `⋯` character is special used in Zed, to keep this at the end of the line.
-        matches!(c, '⋯')
+        matches!(c, '⋯') ||
+        // KaminIDE patch: characters a line may not START with — closing
+        // brackets, terminators, non-starters. Taken from the real UAX #14
+        // classes, not a hand-written list: the set spans the whole of
+        // Unicode (CJK, fullwidth forms, quotes, small kana).
+        Self::is_no_break_before(c)
+    }
+
+    /// KaminIDE patch: a line may not END with these (UAX #14 class OP/GL).
+    ///
+    /// Every non-word character is a wrap candidate above, so without this an
+    /// opening bracket would be left dangling at the end of a line.
+    pub(crate) fn is_no_break_after(c: char) -> bool {
+        use unicode_linebreak::BreakClass::*;
+        matches!(
+            unicode_linebreak::break_property(c as u32),
+            OpenPunctuation | NonBreakingGlue | WordJoiner
+        )
+    }
+
+    /// KaminIDE patch: a line may not START with these (UAX #14 CL/CP/EX/IS/NS/SY).
+    fn is_no_break_before(c: char) -> bool {
+        use unicode_linebreak::BreakClass::*;
+        matches!(
+            unicode_linebreak::break_property(c as u32),
+            ClosePunctuation
+                | CloseParenthesis
+                | Exclamation
+                | InfixSeparator
+                | NonStarter
+                | Symbol
+                | NonBreakingGlue
+                | WordJoiner
+        )
     }
 
     #[inline(always)]
@@ -218,6 +324,7 @@ impl LineWrapper {
                 &[FontRun {
                     len: buffer.len(),
                     font_id: self.font_id,
+                                    font_size: self.font_size,
                 }],
             )
             .width

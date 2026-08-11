@@ -395,6 +395,9 @@ version = "2.0.12"
 version = "0.45.0"
 default-features = false
 
+[dependencies.unicode-linebreak]
+version = "0.1"
+
 [dependencies.util]
 version = "0.2.2"
 package = "gpui_util"

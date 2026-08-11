@@ -633,6 +633,9 @@ pub trait Styled: Sized {
     fn font(mut self, font: Font) -> Self {
         let Font {
             family,
+            // KaminIDE patch: ширина начертания — до стиля текста, иначе
+            // `font-stretch` терялся бы при установке шрифта целиком.
+            stretch,
             features,
             fallbacks,
             weight,
@@ -644,6 +647,7 @@ pub trait Styled: Sized {
         text_style.font_features = Some(features);
         text_style.font_weight = Some(weight);
         text_style.font_style = Some(style);
+        text_style.font_stretch = Some(stretch);
         text_style.font_fallbacks = fallbacks;
 
         self

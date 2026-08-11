@@ -347,6 +347,17 @@ impl TextLayout {
                 let wrap_width = if text_style.white_space == WhiteSpace::Normal {
                     known_dimensions.width.or(match available_space.width {
                         crate::AvailableSpace::Definite(x) => Some(x),
+                        // KaminIDE patch: минимальная ширина текста — самый
+                        // широкий кусок, который нельзя разорвать; каждый
+                        // кусок меряется НАБОРОМ (см. `min_content_width`).
+                        // Нулевая ширина переноса тут не годится: она
+                        // включает аварийный разрыв и рвёт по буквам.
+                        crate::AvailableSpace::MinContent => {
+                            let mut wrapper = window
+                                .text_system()
+                                .line_wrapper(text_style.font(), font_size);
+                            Some(wrapper.min_content_width(text.as_ref()))
+                        }
                         _ => None,
                     })
                 } else {
@@ -370,9 +381,20 @@ impl TextLayout {
                         (None, "".into())
                     };
 
-                if let Some(text_layout) = element_state.0.borrow().as_ref()
+                // KaminIDE patch: спрос МИНИМАЛЬНОГО содержимого — проба, а
+                // не раскладка. Раскладка спрашивает элемент несколько раз
+                // (минимум, максимум, окончательный размер), а состояние у
+                // элемента ОДНО, и рисуется то, что осталось от последнего
+                // спроса. Пока проба писала в него свои строки, надпись
+                // кнопки оставалась набранной по самому длинному слову, хотя
+                // коробка получала полную ширину. Поэтому проба ничего не
+                // читает из состояния и ничего в него не пишет.
+                let min_probe = known_dimensions.width.is_none()
+                    && matches!(available_space.width, crate::AvailableSpace::MinContent);
+                if !min_probe
+                    && let Some(text_layout) = element_state.0.borrow().as_ref()
                     && text_layout.size.is_some()
-                    && (wrap_width.is_none() || wrap_width == text_layout.wrap_width)
+                    && wrap_width == text_layout.wrap_width
                 {
                     return text_layout.size.unwrap();
                 }
@@ -422,14 +444,27 @@ impl TextLayout {
                     size.width = size.width.max(line_size.width).ceil();
                 }
 
-                element_state.0.borrow_mut().replace(TextLayoutInner {
+                let measured = TextLayoutInner {
                     lines,
                     len,
                     line_height,
                     wrap_width,
                     size: Some(size),
                     bounds: None,
-                });
+                };
+                if min_probe {
+                    // Проба отдаёт только размер и НЕ трогает готовое
+                    // состояние — оно принадлежит настоящему проходу. Но
+                    // пустое завести обязана: у элемента, которому досталась
+                    // одна лишь проба, отрисовке иначе нечего рисовать
+                    // (падение «measurement has not been performed»).
+                    let mut slot = element_state.0.borrow_mut();
+                    if slot.is_none() {
+                        slot.replace(measured);
+                    }
+                    return size;
+                }
+                element_state.0.borrow_mut().replace(measured);
 
                 size
             }

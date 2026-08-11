@@ -1,0 +1,83 @@
+<!-- Единицы длины и глубокая вложенность раскладок: флекс внутри флекса
+     внутри сетки. Цвета уникальны — по ним сверяются габариты. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; font-size: 16px }
+  .page { width: 860px; padding: 16px; box-sizing: border-box }
+  .row { margin: 0 0 12px }
+
+  /* 1. rem не зависит от родительского кегля, em зависит */
+  .u1 { font-size: 20px; margin: 0 0 12px }
+  .u1 .rem { width: 10rem; height: 1.5rem; background: #1c7ed6 }
+  .u1 .em  { width: 10em;  height: 1.5em;  background: #2f9e44 }
+
+  /* 2. em в отступах считается от СВОЕГО кегля */
+  .u2 { font-size: 10px; width: 400px; background: #f1f3f5; margin: 0 0 12px }
+  .u2 .box { font-size: 20px; padding: 1em; background: #e8590c }
+  .u2 .inner { height: 10px; background: #862e9c }
+
+  /* 3. Проценты ширины и отступов от родителя */
+  .u3 { width: 400px; background: #e9ecef; margin: 0 0 12px }
+  .u3 .half { width: 50%; padding: 5%; box-sizing: border-box; background: #0b7285 }
+  .u3 .mark { height: 12px; background: #a61e4d }
+
+  /* 4. em наследуется вглубь: 2em от 12px = 24px, вложенный 2em = 48px */
+  .u4 { font-size: 12px; margin: 0 0 12px }
+  .u4 .l1 { font-size: 2em; height: 1em; background: #5f3dc4 }
+  .u4 .l2 { font-size: 2em; height: 1em; background: #087f5b }
+
+  /* 5. Флекс внутри флекса внутри сетки */
+  .deep { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; width: 520px;
+          margin: 0 0 12px }
+  .deep .cell { display: flex; gap: 8px; height: 60px; background: #dee2e6;
+                padding: 6px; box-sizing: border-box }
+  .deep .col { display: flex; flex-direction: column; gap: 4px; flex: 1 }
+  .deep .col > div { flex: 1 }
+  .deep .p1 { background: #364fc7 }
+  .deep .p2 { background: #1864ab }
+  .deep .p3 { background: #c2255c }
+  .deep .p4 { background: #e67700 }
+  .deep .side { width: 40px; background: #37b24d }
+
+  /* 6. Сетка внутри флекса внутри сетки */
+  .deep2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 520px }
+  .deep2 .wrap { display: flex; gap: 6px; background: #ced4da; padding: 5px;
+                 box-sizing: border-box }
+  .deep2 .g { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px;
+              flex: 1 }
+  .deep2 .g div { height: 16px }
+</style>
+
+<div class="page">
+  <div class="row u1"><div class="rem"></div><div class="em"></div></div>
+
+  <div class="row u2"><div class="box"><div class="inner"></div></div></div>
+
+  <div class="row u3"><div class="half"><div class="mark"></div></div></div>
+
+  <div class="row u4"><div class="l1"><div class="l2"></div></div></div>
+
+  <div class="row deep">
+    <div class="cell">
+      <div class="col"><div class="p1"></div><div class="p2"></div></div>
+      <div class="col"><div class="p3"></div><div class="p4"></div></div>
+    </div>
+    <div class="cell"><div class="side"></div></div>
+  </div>
+
+  <div class="row deep2">
+    <div class="wrap">
+      <div class="g">
+        <div style="background: #099268"></div>
+        <div style="background: #0c8599"></div>
+        <div style="background: #1971c2"></div>
+      </div>
+    </div>
+    <div class="wrap">
+      <div class="g">
+        <div style="background: #6741d9"></div>
+        <div style="background: #ae3ec9"></div>
+        <div style="background: #d6336c"></div>
+      </div>
+    </div>
+  </div>
+</div>

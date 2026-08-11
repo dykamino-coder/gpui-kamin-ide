@@ -1,0 +1,19 @@
+<!-- Строчный бокс: подсветка внутри абзаца обязана переноситься вместе с
+     текстом, выключка — растягивать строки, а первая буква и первая строка
+     иметь свой стиль. -->
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; font: 15px/1.5 system-ui }
+  .page { width: 520px; padding: 16px; box-sizing: border-box }
+  p { margin: 0 0 14px }
+  .mark { background: #ffd8a8; padding: 2px 4px; border-radius: 3px }
+  .code { background: #e9ecef; font-family: monospace; padding: 0 3px }
+  .just { text-align: justify }
+  .lead::first-line { font-weight: 700; color: #1c7ed6 }
+  .drop::first-letter { font-size: 32px; color: #e8590c; font-weight: 700 }
+</style>
+<div class="page">
+  <p>Обычная строка, внутри которой <span class="mark">подсветка переносится через край строки вместе с текстом</span> и продолжается дальше.</p>
+  <p class="just">Выключка по ширине растягивает пробелы так, чтобы правый край строк совпадал с краем колонки, кроме последней строки абзаца.</p>
+  <p class="lead">Первая строка этого абзаца набрана жирным и другим цветом, а остальные строки идут обычным начертанием без изменений.</p>
+  <p class="drop">Первая буква этого абзаца крупнее остальных и другого цвета, как буквица в книге.</p>
+</div>
