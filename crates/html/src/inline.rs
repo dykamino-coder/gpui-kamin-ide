@@ -562,7 +562,14 @@ pub fn hyphenate_pieces(pieces: &mut [Piece]) {
                 map.push((whole.len(), i));
                 whole.push_str(text);
             }
-            _ => {
+            // Кусок ВНЕ потока места в строке не занимает и слова не рвёт:
+            // текста абзаца он не составляет вовсе
+            // (`hyphens-out-of-flow-002`: `high<span abspos>…</span>way` —
+            // это по-прежнему одно слово `highway`).
+            Piece::Overlay(_) => {}
+            // А вот атомарная коробка (картинка, `inline-block`) в строке
+            // стоит и соседство букв разрывает.
+            Piece::Atom(_) => {
                 map.push((whole.len(), usize::MAX));
                 whole.push('\u{0}');
             }
