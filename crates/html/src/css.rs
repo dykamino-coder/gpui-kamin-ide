@@ -316,35 +316,102 @@ pub fn split_args(raw: &str) -> Vec<&str> {
         .collect()
 }
 
+/// Где кончается строка в кавычках, начавшаяся на `quote`.
+///
+/// Внутри неё не значат ничего ни скобки, ни точка с запятой, ни начало
+/// комментария (CSS Syntax §4.3.5): `content: "}"` не закрывает правило, а
+/// `content: "a;b"` — одно объявление. Обратный слэш снимает особость
+/// следующего знака, в том числе самой кавычки.
+fn skip_string(text: &str, quote: char) -> usize {
+    let mut it = text.char_indices();
+    while let Some((i, ch)) = it.next() {
+        if ch == '\\' {
+            it.next();
+            continue;
+        }
+        if ch == quote {
+            return i + ch.len_utf8();
+        }
+        // Незакрытая строка обрывается на переводе строки (§4.3.4): дальше
+        // идёт обычный текст, а не бесконечная строка до конца таблицы.
+        if ch == '\n' {
+            return i;
+        }
+    }
+    text.len()
+}
+
 /// Индекс `}` , парный первой `{`.
 fn find_matching(from_brace: &str) -> Option<usize> {
     let mut depth = 0i32;
-    for (i, ch) in from_brace.char_indices() {
+    let bytes = from_brace.as_bytes();
+    let mut at = 0usize;
+    while at < bytes.len() {
+        let ch = from_brace[at..].chars().next().unwrap_or('\0');
         match ch {
+            '\\' => {
+                at += ch.len_utf8();
+                at += from_brace[at..].chars().next().map_or(0, char::len_utf8);
+                continue;
+            }
+            '"' | '\'' => {
+                at += ch.len_utf8();
+                at += skip_string(&from_brace[at..], ch);
+                continue;
+            }
             '{' => depth += 1,
             '}' => {
                 depth -= 1;
                 if depth == 0 {
-                    return Some(i);
+                    return Some(at);
                 }
             }
             _ => {}
         }
+        at += ch.len_utf8();
     }
     None
 }
 
 fn strip_comments(css: &str) -> String {
     let mut out = String::with_capacity(css.len());
-    let mut rest = css;
-    while let Some(start) = rest.find("/*") {
-        out.push_str(&rest[..start]);
-        match rest[start + 2..].find("*/") {
-            Some(end) => rest = &rest[start + 2 + end + 2..],
-            None => return out,
+    let mut at = 0usize;
+    while at < css.len() {
+        let ch = css[at..].chars().next().unwrap_or('\0');
+        // Кавычки и экранирование сильнее комментария: `content: "/*"` — это
+        // текст, а не начало комментария до конца таблицы.
+        match ch {
+            '\\' => {
+                let next = css[at + ch.len_utf8()..].chars().next();
+                out.push(ch);
+                if let Some(n) = next {
+                    out.push(n);
+                    at += ch.len_utf8() + n.len_utf8();
+                } else {
+                    at += ch.len_utf8();
+                }
+                continue;
+            }
+            '"' | '\'' => {
+                let body = at + ch.len_utf8();
+                let end = body + skip_string(&css[body..], ch);
+                out.push_str(&css[at..end]);
+                at = end;
+                continue;
+            }
+            _ => {}
         }
+        if css[at..].starts_with("/*") {
+            match css[at + 2..].find("*/") {
+                Some(end) => at += 2 + end + 2,
+                // Незакрытый комментарий тянется до конца файла (§4.3.2).
+                None => return out,
+            }
+            continue;
+        }
+        out.push(ch);
+        at += ch.len_utf8();
     }
-    out.push_str(rest);
     out
 }
 
@@ -354,16 +421,31 @@ fn split_top_level(raw: &str, sep: char) -> Vec<&str> {
     let mut out = vec![];
     let mut depth = 0i32;
     let mut start = 0usize;
-    for (i, ch) in raw.char_indices() {
+    let mut at = 0usize;
+    while at < raw.len() {
+        let ch = raw[at..].chars().next().unwrap_or('\0');
         match ch {
+            // Экранированный разделитель разделителем не служит:
+            // `background: red\;` — одно объявление со значением `red;`.
+            '\\' => {
+                at += ch.len_utf8();
+                at += raw[at..].chars().next().map_or(0, char::len_utf8);
+                continue;
+            }
+            '"' | '\'' => {
+                at += ch.len_utf8();
+                at += skip_string(&raw[at..], ch);
+                continue;
+            }
             '(' => depth += 1,
             ')' => depth -= 1,
             c if c == sep && depth == 0 => {
-                out.push(&raw[start..i]);
-                start = i + ch.len_utf8();
+                out.push(&raw[start..at]);
+                start = at + ch.len_utf8();
             }
             _ => {}
         }
+        at += ch.len_utf8();
     }
     out.push(&raw[start..]);
     out
