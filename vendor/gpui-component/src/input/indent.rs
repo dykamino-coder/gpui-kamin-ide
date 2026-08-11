@@ -98,6 +98,11 @@ impl TextElement {
                 font: style.font(),
                 color: Hsla::default(),
                 background_color: None,
+                // KaminIDE patch: поля строчного бокса вокруг фона прогона.
+                font_size: None,
+                background_pad: Default::default(),
+                background_radius: Default::default(),
+                background_border: None,
                 strikethrough: None,
                 underline: None,
             }],

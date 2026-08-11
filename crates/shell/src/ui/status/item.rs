@@ -42,6 +42,9 @@ pub(crate) fn item(
             d.child(crate::probe::registry::probe_area("status-item"))
         })
         .flex()
+        // Счётчик шириной со свою подпись: сжимать его нельзя, иначе
+        // «0 active» переносится по словам и уезжает за нижний край.
+        .flex_shrink_0()
         .items_center()
         .gap(px(4.0))
         .px(px(m::SPACE_2))

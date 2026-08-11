@@ -66,3 +66,7 @@ desktop.ini
 # Python
 __pycache__/
 *.pyc
+
+# Корпуса тестов: свои репозитории, клонируются отдельно
+vendor/wpt-parsing/
+vendor/html5lib-tests/

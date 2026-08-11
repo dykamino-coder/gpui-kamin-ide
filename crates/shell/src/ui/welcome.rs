@@ -23,6 +23,11 @@ const TERMINAL: &str = "\u{f120}";
 fn feature(glyph: &'static str, label: &'static str, p: &Palette) -> AnyElement {
     div()
         .flex()
+        // Подпись чипа НЕ переносится: ширину задаёт она сама, и сжимать её
+        // до самого длинного слова нечего — соседи в ряду с переносом
+        // отодвинутся сами. Пока намерение не было заявлено, раскладка
+        // вправе была сжать чип до минимума содержимого.
+        .flex_shrink_0()
         .items_center()
         .gap(px(m::SPACE_2))
         .text_size(px(m::FS_SM))
@@ -127,6 +132,10 @@ pub fn welcome(
         .child(
             div()
                 .flex()
+                // Ряд занимает ВСЮ ширину колонки, а кнопки в нём центрируются.
+                // Без заявленной ширины ряд садится на минимальное содержимое,
+                // и надписи кнопок переносятся по словам.
+                .w_full()
                 .flex_wrap()
                 .gap(px(m::SPACE_3))
                 .justify_center()
@@ -135,6 +144,9 @@ pub fn welcome(
                     div()
                         .id("welcome-folder")
                         .flex()
+                        // Кнопка шириной со свою надпись: сжимать её нельзя,
+                        // иначе надпись переносится по словам внутри неё.
+                        .flex_shrink_0()
                         .items_center()
                         .gap(px(m::SPACE_2))
                         .px(px(m::SPACE_4))
@@ -162,6 +174,9 @@ pub fn welcome(
                     div()
                         .id("welcome-empty")
                         .flex()
+                        // Кнопка шириной со свою надпись: сжимать её нельзя,
+                        // иначе надпись переносится по словам внутри неё.
+                        .flex_shrink_0()
                         .items_center()
                         .gap(px(m::SPACE_2))
                         .px(px(m::SPACE_4))
@@ -194,6 +209,9 @@ pub fn welcome(
         .child(
             div()
                 .flex()
+                // Та же причина, что и у ряда кнопок: ширина ряда объявлена,
+                // потолок в 544 точки её ограничивает.
+                .w_full()
                 .flex_wrap()
                 .gap_x(px(m::SPACE_5))
                 .gap_y(px(m::SPACE_2))

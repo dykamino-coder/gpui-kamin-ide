@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "1.0.43"
+version = "1.0.48"
 edition = "2024"
 
 [workspace.dependencies]
@@ -51,3 +51,6 @@ opt-level = 2
 # (main = blit для WebView2, overlay = dcomp premultiplied-альфа)
 gpui = { path = "vendor/gpui" }
 gpui-component = { path = "vendor/gpui-component" }
+# Вендорён ради базовой линии текста: замер ЛИСТА теперь может её отдать
+# (`MeasureOutput`), иначе `align-items: baseline` выравнивает по нижним краям.
+taffy = { path = "vendor/taffy" }

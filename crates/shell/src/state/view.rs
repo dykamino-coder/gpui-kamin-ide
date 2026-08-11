@@ -220,6 +220,7 @@ impl Render for RootView {
                 fallbacks: None,
                 weight: FontWeight::NORMAL,
                 style: FontStyle::Normal,
+                stretch: gpui::FontStretch::Normal,
             })
             .text_color(rgba(p.text_primary))
             // Браузерный `line-height: normal` для Bricolage = 1.169 (замер в

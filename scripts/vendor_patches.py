@@ -46,17 +46,17 @@ EXPECTED: dict[str, tuple[int, str]] = {
         "мёртвая WebView2-эпоха)",
     ),
     "vendor/gpui/src/window.rs": (
-        17,
+        26,
         "отрисовка чужих текстур (`paint_external_texture`); `paint_image_region` "
         "— вырезка региона software-кадра CEF без растяжения (RDP); `paint_external_texture_px` — спрайт по физическим px (нет ресемпла на дробном DPI); счётчики "
         "стоимости кадра (`frame_perf`); `focus_visible` — клавиатурная "
-        "модальность фокуса (`:focus-visible`)",
+        "модальность фокуса (`:focus-visible`); `paint_group` — отрисовка поддерева в отдельный буфер (размытие, смешивание, изоляция, обрезка формой)",
     ),
     "vendor/gpui/src/platform/windows/directx_renderer.rs": (
-        23,
+        45,
         "чужие текстуры в атласе; present без dcomp-Commit (пер-кадровый "
         "WaitForCommitCompletion = 30-90мс/кадр под RDP — удалён в 1.0.5 "
-        "вместе с underlay-цепочкой)",
+        "вместе с underlay-цепочкой); проход групп: буфер на группу, каскад размытия с сохранением прозрачности, композит премультиплированно, смешивание по формулам CSS с копией кадра, обрезка многоугольником",
     ),
     "vendor/gpui/src/gpui.rs": (
         4,
@@ -64,43 +64,56 @@ EXPECTED: dict[str, tuple[int, str]] = {
         "реэкспорт prepaint_prof (#76)",
     ),
     "vendor/gpui/src/scene.rs": (
-        6,
+        17,
         "ExternalTexture: кадры CEF в атласе — cropped/with_size/size/region "
-        "(region — вырезка content_rect со смещением, план 101 Ф7)",
+        "(region — вырезка content_rect со смещением, план 101 Ф7); `PaintGroup` — плоский список групп кадра (вложенная раньше объемлющей), метка группы в Surface-примитиве; скос в матрице преобразования (`transform: skew`)",
     ),
     "vendor/gpui/src/svg_renderer.rs": (
-        1,
+        2,
         "растеризация SVG из строки в цветное изображение: штатный путь значков "
         "отдаёт одноцветную маску, а график из документа обязан сохранить цвета",
     ),
     "vendor/gpui/src/style.rs": (
-        3,
+        17,
         "поля произвольных дорожек сетки (`grid_template_cols/rows`) — без них "
-        "колонка по содержимому невыразима; см. taffy.rs",
+        "колонка по содержимому невыразима; см. taffy.rs; внутренние тени отдельным списком (`BoxShadow` строит внешний макрос); выключка по ширине (`TextAlign::Justify`); кегль прогона в `to_run`",
     ),
     "vendor/gpui/src/styled.rs": (
-        3,
+        4,
         "методы `grid_template_cols/rows` — публичный доступ к дорожкам",
     ),
+    "vendor/gpui/src/color.rs": (
+        5,
+        "радиальный градиент: свой тег фона и конструктор с формой; до четырёх "
+        "опорных цветов вместо двух — иначе наклонный градиент из трёх цветов "
+        "терял середину (аппаратное смешивание отсюда снесено: оно уехало в "
+        "проход групп)",
+    ),
+    "vendor/gpui/src/platform/windows/shaders.hlsl": (
+        23,
+        "размытие подложки; ветка радиального градиента; сглаживание ступенек "
+        "градиента шумом; преобразование квадов и картинок с обратным ходом "
+        "точки во фрагменте — без него скругления съезжали бы с повёрнутой фигуры; композит группы: размытие, все режимы смешивания CSS, многоугольная маска; линия линейного градиента по правилам CSS и до четырёх стопов",
+    ),
     "vendor/gpui/src/geometry.rs": (
-        1,
+        3,
         "тип `GridTrack`: px / fr / auto / min-content / max-content / minmax",
     ),
     "vendor/gpui/src/taffy.rs": (
-        4,
+        11,
         "счётчики раскладки (узлы, проходы, замеры, время) — план 101, Ф6; "
         "произвольные дорожки сетки: короткая форма умела только N равных "
         "колонок, из-за чего колонка по содержимому — то, на чём стоит "
         "раскладка таблиц — была недостижима",
     ),
     "vendor/gpui/src/text_system.rs": (
-        3,
-        "letter-spacing: `shape_line_spaced` / `layout_line_spaced` — обёртки с трекингом, старые вызовы не тронуты (план 99)",
+        8,
+        "letter-spacing: `shape_line_spaced` / `layout_line_spaced` — обёртки с трекингом, старые вызовы не тронуты (план 99); поля и скругление фона прогона — фон строчного бокса (`<span>`); кегль прогона едет в `FontRun`",
     ),
     "vendor/gpui/src/text_system/line_layout.rs": (
-        7,
+        9,
         "letter-spacing: поле в ключах кэша строк + сдвиг глифов рядом с проходом "
-        "force_width; счётчики промахов/попаданий кэша шейпинга (#76)",
+        "force_width; счётчики промахов/попаданий кэша шейпинга (#76); свой кегль у `FontRun` и `ShapedRun` — без него кусок другого размера нельзя было положить в общий текстовый блок",
     ),
     "vendor/gpui/src/platform/windows/platform.rs": (1, "WM_CHAR для child-HWND сторонних вью"),
     "vendor/gpui/src/platform/windows/events.rs": (
@@ -128,11 +141,47 @@ EXPECTED: dict[str, tuple[int, str]] = {
         2,
         "prepaint_prof: self-time профиль prepaint по типам элементов (KAMIN_PREPAINT_PROF=1, #76)",
     ),
+    "vendor/html5ever/src/tokenizer/mod.rs": (
+        11,
+        "инструкции обработки (`<?target data>`): свои состояния разбора, "
+        "проверка имени и зарезервированного `xml`, комментарий при негодном "
+        "имени — браузеры кладут в дерево узел инструкции, а разбор делал "
+        "мусорный комментарий (набор WPT `processing-instructions.dat`)",
+    ),
+    "vendor/html5ever/src/tokenizer/interface.rs": (
+        2,
+        "токен инструкции обработки",
+    ),
+    "vendor/html5ever/src/tokenizer/states.rs": (
+        3,
+        "состояния разбора инструкции обработки",
+    ),
+    "vendor/html5ever/src/tree_builder/types.rs": (
+        1,
+        "токен инструкции обработки в построителе дерева",
+    ),
+    "vendor/html5ever/src/tree_builder/mod.rs": (
+        3,
+        "вставка инструкции обработки: на место вставки, в документ и в корень",
+    ),
+    "vendor/html5ever/src/tree_builder/rules.rs": (
+        0,
+        "инструкции обработки кладутся туда же, куда комментарии (арм рядом с "
+        "каждым `Token::Comment`)",
+    ),
+    "vendor/markup5ever_rcdom/lib.rs": (
+        6,
+        "перенос выбранного `<option>` в `<selectedcontent>`: выбранность по "
+        "правилу сброса (последний с `selected`, иначе первый), поиск цели "
+        "смотрел имя самого `<select>` вместо потомка, и крючок зовётся при "
+        "снятии пункта со стека и на конце разбора",
+    ),
     "vendor/gpui-component/src/input/element.rs": (
-        8,
+        18,
         "спаны prepaint_prof + append вместо O(n^2) combine_highlights + "
         "инкрементальный run-курсор в layout_lines (O(строки×runs) → O(runs)) + "
-        "кэш склейки styles видимого диапазона (#76: 19->60fps)",
+        "кэш склейки styles видимого диапазона (#76: 19->60fps); поля фона "
+        "прогона в литералах TextRun",
     ),
     "vendor/gpui-component/src/highlighter/highlighter.rs": (
         7,

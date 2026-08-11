@@ -57,6 +57,8 @@ impl RootView {
                 fallbacks: None,
                 weight: gpui::FontWeight::NORMAL,
                 style: gpui::FontStyle::Normal,
+                // Ширина начертания у шрифтов оболочки обычная.
+                stretch: gpui::FontStretch::Normal,
             })
             .text_color(crate::colors::rgba(p.text_primary))
             .line_height(gpui::relative(1.169));

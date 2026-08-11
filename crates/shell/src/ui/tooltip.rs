@@ -108,9 +108,15 @@ fn half_width(text: &SharedString, window: &mut Window) -> f32 {
             fallbacks: None,
             weight: gpui::FontWeight::NORMAL,
             style: gpui::FontStyle::Normal,
+            stretch: gpui::FontStretch::Normal,
         },
         color: gpui::black(),
         background_color: None,
+        // Поля строчного бокса вокруг фона прогона: здесь их нет.
+        font_size: None,
+        background_pad: Default::default(),
+        background_radius: Default::default(),
+        background_border: None,
         underline: None,
         strikethrough: None,
     };
@@ -153,9 +159,16 @@ impl Render for KaminTooltip {
                 fallbacks: None,
                 weight: gpui::FontWeight::NORMAL,
                 style: gpui::FontStyle::Normal,
+                // Ширина начертания у шрифтов оболочки обычная.
+                stretch: gpui::FontStretch::Normal,
             },
             color: gpui::black(),
             background_color: None,
+            // Поля строчного бокса вокруг фона прогона: здесь их нет.
+            font_size: None,
+            background_pad: Default::default(),
+            background_radius: Default::default(),
+            background_border: None,
             underline: None,
             strikethrough: None,
         };

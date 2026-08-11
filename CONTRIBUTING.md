@@ -195,8 +195,11 @@ cargo build --release
 node scripts/build_setup_rust.mjs
 ```
 
-Рабочая точка входа — `scripts/build_setup_rust.mjs`. Скрипт
-`scripts/build_rust_installer.mjs` устарел и не используется.
+Единственная точка входа — `scripts/build_setup_rust.mjs`: он зовёт
+`scripts/build_installer.mjs` за раскладкой `dist-installer/` и приклеивает её
+к своему стабу. NSIS удалён из репозитория (`installer.nsi`,
+`scripts/build_rust_installer.mjs`, NSIS-секция сборщика): его стаб ловился
+эвристиками антивирусов как дроппер — Kaspersky ругался на 1.0.47.
 
 Результат имеет имя `KaminIDE_<version>_x64-setup.exe`. Build guard проверяет,
 что release binary новее `Cargo.toml`, и не позволяет упаковать старый exe под

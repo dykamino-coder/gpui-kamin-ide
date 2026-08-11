@@ -12,6 +12,7 @@
 """
 
 import io
+import math
 import os
 import subprocess
 import sys
@@ -29,8 +30,29 @@ OUT = ROOT / "target" / "compare"
 THRESHOLD_PCT = 3.0
 
 
-def shot_chrome(html: Path, w: int, h: int) -> Path:
-    """Снимок из Chrome в headless-режиме."""
+def phase_ms() -> int:
+    """Фаза анимации: сколько времени должно пройти до снимка.
+
+    Анимацию статическим снимком не проверить: нужно поймать её в известный
+    момент. Chrome умеет виртуальное время (`--virtual-time-budget`), наше
+    окно — просто ждёт. Кадры в эталоне сделаны площадками, поэтому разница
+    в десятки миллисекунд между двумя часами роли не играет.
+    """
+    for arg in sys.argv:
+        if arg.startswith("--at="):
+            return int(arg.split("=", 1)[1])
+    return 0
+
+
+def shot_chrome(html: Path, w: int, h: int, scale: float) -> Path:
+    """Снимок из Chrome в headless-режиме.
+
+    Масштаб дисплея задаётся тот же, что у нашего окна. Иначе снимки
+    приходится приводить друг к другу растяжением, и края блоков размываются:
+    метрика начинает мерить интерполяцию вместо раскладки. Дробный масштаб
+    вдобавок округляет отступы до целых физических точек — при разных
+    масштабах эта разница накапливалась по глубине вложенности.
+    """
     out = OUT / "chrome.png"
     profile = OUT / "chrome-profile"
     cmd = [
@@ -38,12 +60,17 @@ def shot_chrome(html: Path, w: int, h: int) -> Path:
         "--headless=new",
         "--disable-gpu",
         "--hide-scrollbars",
-        "--force-device-scale-factor=1",
+        f"--force-device-scale-factor={scale}",
         f"--user-data-dir={profile}",
         f"--window-size={w},{h}",
         f"--screenshot={out}",
-        html.as_uri(),
     ]
+    at = phase_ms()
+    if at:
+        # Виртуальное время: браузер прокручивает анимацию до нужной фазы и
+        # только потом снимает — реальных задержек это не требует.
+        cmd.append(f"--virtual-time-budget={at}")
+    cmd.append(html.as_uri())
     subprocess.run(cmd, capture_output=True, timeout=120)
     return out
 
@@ -61,7 +88,10 @@ def shot_ours(html: Path, w: int, h: int) -> Path:
     )
     time.sleep(1)
     proc = subprocess.Popen([str(exe), str(html), str(w), str(h)])
-    time.sleep(6)
+    # Столько же, сколько прокрутил браузер: анимация у нас идёт по настоящим
+    # часам, виртуального времени в окне нет. Ждём ОБЩЕЕ время от запуска, а
+    # не добавку к нему — иначе фаза уезжает на время старта окна.
+    time.sleep(max(6.0, phase_ms() / 1000.0))
     out = OUT / "ours.png"
     ps = f'''
 Add-Type -AssemblyName System.Drawing
@@ -116,7 +146,8 @@ def compare(a: Path, b: Path) -> float:
     if (ib.width, ib.height) != (ia.width, ia.height):
         scale = ia.width / ib.width
         print(f"масштаб нашего снимка {ib.width}x{ib.height} → {ia.width}x{ia.height} (×{scale:.3f})")
-        ib = ib.resize((ia.width, round(ib.height * scale)), Image.LANCZOS)
+        if abs(scale - 1.0) > 0.001:
+            ib = ib.resize((ia.width, round(ib.height * scale)), Image.LANCZOS)
     w = min(ia.width, ib.width)
     h = min(ia.height, ib.height)
     ia = ia.crop((0, 0, w, h))
@@ -200,8 +231,8 @@ def boxes_by_colour(img, scale: float = 1.0) -> dict:
     }
 
 
-def compare_geometry(a: Path, b: Path) -> int:
-    """Сравнение по габаритам блоков. Возвращает число расхождений > 2 точек."""
+def compare_geometry(a: Path, b: Path, display_scale: float = 1.0) -> int:
+    """Сравнение по габаритам блоков. Возвращает число расхождений выше допуска."""
     from PIL import Image
 
     ia = Image.open(a).convert("RGB")
@@ -210,15 +241,27 @@ def compare_geometry(a: Path, b: Path) -> int:
     ba = boxes_by_colour(ia)
     bb = boxes_by_colour(ib, scale)
 
-    # Допуск: округление логических точек в физические и обратно даёт ±2.
-    tol = 2
+    # Допуск задан в ЛОГИЧЕСКИХ точках (две), а меряем в физических: на
+    # масштабе 125% один и тот же край приходится на половину физической
+    # точки, и движки вправе округлить её в разные стороны. Больше двух
+    # логических точек — это уже разъехавшийся блок, а не округление.
+    # Округление вверх: половина точки на дробном масштабе — это ещё
+    # округление, а не смещение блока.
+    tol = max(2, math.ceil(2 * display_scale))
+    widths_only = "--widths" in sys.argv
     only_chrome = sorted(set(ba) - set(bb))
     only_ours = sorted(set(bb) - set(ba))
     mismatches = []
     for key in sorted(set(ba) & set(bb)):
         x1, y1, w1, h1 = ba[key]
         x2, y2, w2, h2 = bb[key]
-        d = (abs(x1 - x2), abs(y1 - y2), abs(w1 - w2), abs(h1 - h2))
+        # Эталон с текстом сверяется только по горизонтали: высота строки
+        # зависит от растеризатора шрифта, и совпасть до точки не может, а
+        # ширина — это чистая раскладка.
+        if widths_only:
+            d = (abs(x1 - x2), 0, abs(w1 - w2), 0)
+        else:
+            d = (abs(x1 - x2), abs(y1 - y2), abs(w1 - w2), abs(h1 - h2))
         if max(d) > tol:
             mismatches.append((key, ba[key], bb[key], d))
 
@@ -230,20 +273,51 @@ def compare_geometry(a: Path, b: Path) -> int:
     if only_ours:
         print(f"ЛИШНИЕ у нас: {len(only_ours)} цвет(ов) — {only_ours[:6]}")
     if mismatches:
-        print(f"РАСХОЖДЕНИЯ ГЕОМЕТРИИ (допуск {tol} тчк): {len(mismatches)}")
+        print(f"РАСХОЖДЕНИЯ ГЕОМЕТРИИ (допуск {tol} физ. тчк): {len(mismatches)}")
         for key, chrome, ours, d in mismatches[:12]:
             print(f"  цвет {key}: хром {chrome} → наш {ours}, разница {d}")
     else:
-        print(f"геометрия совпала для всех {len(ba)} блоков (допуск {tol} тчк)")
+        print(f"геометрия совпала для всех {len(ba)} блоков (допуск {tol} физ. тчк)")
     return len(mismatches) + len(only_chrome) + len(only_ours)
 
 
+def resolve_links(html: Path) -> Path:
+    """Разрешить ссылки набора WPT: `/fonts/ahem.css` и подобные.
+
+    Тесты набора пишут адреса от корня набора. Браузер, открывший файл с диска,
+    ищет их от корня ДИСКА и не находит: снимок выходит другим шрифтом, и стенд
+    меряет разницу шрифтов вместо раскладки. Переписываем такие адреса в
+    абсолютные и кладём рядом — обоим движкам достаётся один и тот же файл.
+    """
+    text = html.read_text(encoding="utf-8", errors="ignore")
+    if 'href="/' not in text and 'src="/' not in text:
+        return html
+    root = next(
+        (
+            p
+            for p in html.parents
+            if (p / "css").is_dir() and (p / "fonts").is_dir()
+        ),
+        None,
+    )
+    if root is None:
+        return html
+    base = root.as_uri().rstrip("/")
+    for attr in ("href", "src"):
+        text = text.replace(f'{attr}="/', f'{attr}="{base}/')
+    out = OUT / f"resolved-{html.name}"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    return out
+
+
 def main() -> int:
-    html = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 and sys.argv[1] else (
+    html = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else (
         ROOT / "crates" / "html" / "tests" / "fixtures" / "layout.html"
     )
-    w = int(sys.argv[2]) if len(sys.argv) > 2 else 800
-    h = int(sys.argv[3]) if len(sys.argv) > 3 else 700
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    w = int(args[1]) if len(args) > 1 else 800
+    h = int(args[2]) if len(args) > 2 else 700
     OUT.mkdir(parents=True, exist_ok=True)
 
     import ctypes
@@ -254,8 +328,9 @@ def main() -> int:
     if h > usable:
         print(f"высота {h} больше видимой части экрана ({usable}) — снимок обрежется; беру {usable}")
         h = usable
-    print(f"эталон: {html}")
-    a = shot_chrome(html, w, h)
+    html = resolve_links(html)
+    print(f"эталон: {html}, масштаб дисплея {scale}")
+    a = shot_chrome(html, w, h, scale)
     if not a.exists():
         print("Chrome не отдал снимок")
         return 1
@@ -264,7 +339,13 @@ def main() -> int:
         print("наш снимок не получен")
         return 1
     pct = compare(a, b)
-    bad = compare_geometry(a, b)
+    # Габариты по цвету на градиенте не считаются: у плавного перехода сотни
+    # оттенков, и каждый превращается в мнимый блок. Такой эталон судят по
+    # доле разошедшихся точек.
+    if "--pixels" in sys.argv:
+        print("эталон градиентный — судим по доле точек, не по габаритам")
+        return 0 if pct < THRESHOLD_PCT else 1
+    bad = compare_geometry(a, b, scale)
     # Решает геометрия: пиксельная доля меряет сглаживание кромок при
     # приведении масштабов, а не правильность раскладки.
     return 0 if bad == 0 else 1

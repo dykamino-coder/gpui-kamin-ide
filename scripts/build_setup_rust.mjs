@@ -1,10 +1,11 @@
-// Собрать собственный Rust-инсталлер: crate kaminide-setup + приклеить payload
+// ЕДИНСТВЕННЫЙ сборщик инсталлера: crate kaminide-setup + приклеенный payload
 // (tar.zst каталога dist-installer) с футером [len:u64 LE]["KMNSETUP"].
-// Замена NSIS (мигал консолями + ловился AV-эвристиками).
+// NSIS удалён из репозитория: его стаб мигал консолями и ловился эвристиками
+// антивирусов как дроппер (Kaspersky на 1.0.47).
 //
 // Порядок:
-//   1. build_installer.mjs с KAMIN_ASSEMBLE_ONLY=1 — собирает dist-installer/
-//      (шелл+CEF+runtime+builtin-extensions), NSIS не гонит.
+//   1. build_installer.mjs — собирает раскладку dist-installer/
+//      (шелл+CEF+runtime+builtin-extensions).
 //   2. cargo build -p kaminide-setup — стаб-exe без payload.
 //   3. Копия стаба → dist-installer/kaminide-setup.exe (нужен для /uninstall).
 //   4. tar.zst(dist-installer) приклеить к свежей копии стаба + футер.
@@ -26,10 +27,7 @@ const MAGIC = Buffer.from("KMNSETUP")
 
 // 1. Собрать dist-installer/ (проверенная сборка из build_installer.mjs).
 console.log("[setup] assembling dist-installer/ …")
-execFileSync("node", [join(root, "scripts", "build_installer.mjs")], {
-  stdio: "inherit",
-  env: { ...process.env, KAMIN_ASSEMBLE_ONLY: "1" },
-})
+execFileSync("node", [join(root, "scripts", "build_installer.mjs")], { stdio: "inherit" })
 
 // 2. Собрать стаб.
 console.log("[setup] building kaminide-setup crate …")

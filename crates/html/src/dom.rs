@@ -178,6 +178,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
         &mut counter,
         &mut counters,
         &[],
+        false,
         &mut out,
     );
     hoist_grid_abspos(&mut out);
@@ -451,6 +452,7 @@ fn walk_children(
     counter: &mut u64,
     counters: &mut HashMap<String, i32>,
     path: &[Ancestor],
+    preserve: bool,
     out: &mut Vec<Node>,
 ) {
     let children = handle.children.borrow();
@@ -481,7 +483,7 @@ fn walk_children(
             None => Spot::default(),
         };
         walk(
-            child, rules, vars, frames, counter, counters, path, spot, out,
+            child, rules, vars, frames, counter, counters, path, spot, preserve, out,
         );
     }
 }
@@ -496,6 +498,7 @@ fn walk(
     counters: &mut HashMap<String, i32>,
     path: &[Ancestor],
     spot: Spot,
+    preserve: bool,
     out: &mut Vec<Node>,
 ) {
     match &handle.data {
@@ -507,7 +510,11 @@ fn walk(
             // разборе: строка из них не доезжала до раскладки вовсе
             // (`trailing-ideographic-space-017`).
             let collapsible = |c: char| matches!(c, ' ' | '\t' | '\r' | '\n');
-            if !text.chars().all(collapsible) || text.contains(' ') {
+            // Под `white-space: pre*` схлопывания нет вовсе: узел из одного
+            // перевода строки — это жёсткий разрыв, и выбрасывать его нельзя
+            // (`word-space-transform-011`: `あ<wbr>い<wbr>\n<wbr>う` шло одной
+            // строкой, потому что перевод пропадал ещё на разборе).
+            if preserve || !text.chars().all(collapsible) || text.contains(' ') {
                 out.push(Node::Text(text));
             }
         }
@@ -631,6 +638,7 @@ fn walk(
                 counter,
                 counters,
                 &path2,
+                style.preserve_newlines.unwrap_or(preserve),
                 &mut children,
             );
             // Псевдоэлементы: коробка появляется, только если у правила есть
@@ -690,7 +698,9 @@ fn walk(
                 attrs,
             }));
         }
-        _ => walk_children(handle, rules, vars, frames, counter, counters, path, out),
+        _ => walk_children(
+            handle, rules, vars, frames, counter, counters, path, preserve, out,
+        ),
     }
 }
 

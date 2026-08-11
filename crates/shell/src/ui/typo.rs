@@ -22,6 +22,8 @@ pub fn tnum(weight: FontWeight) -> Font {
         fallbacks: None,
         weight,
         style: FontStyle::Normal,
+        // Ширина начертания у шрифтов оболочки обычная.
+        stretch: gpui::FontStretch::Normal,
     }
 }
 
@@ -33,5 +35,7 @@ pub fn ss01(weight: FontWeight) -> Font {
         fallbacks: None,
         weight,
         style: FontStyle::Normal,
+        // Ширина начертания у шрифтов оболочки обычная.
+        stretch: gpui::FontStretch::Normal,
     }
 }

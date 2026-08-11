@@ -77,7 +77,7 @@
   <a href="#ohvat">Охват в цифрах</a>
   <a href="#kak">Как пользоваться</a>
   <a href="#konvejer">Как устроено внутри</a>
-
+  <a href="#tablica">Полная таблица свойств</a>
   <h2>Раскладка</h2>
   <a href="#box">Бокс-модель</a>
   <a href="#flex">Флекс</a>
@@ -140,9 +140,9 @@
 <h2 class="sec" id="ohvat">Охват в цифрах</h2>
 <p>Цифры получены обмером нашего собственного кода, а не оценкой на глаз: 94 файла CSS плюс инлайновые стили в 172 файлах разметки — <b>7045 объявлений</b>.</p>
 <div class="metric">
-  <div><b>87%</b><span>бокс, флекс, текст, цвет</span></div>
-  <div><b>+10%</b><span>позиционирование, прокрутка, состояния</span></div>
-  <div><b>~3%</b><span>требуют того, чего в GPUI нет</span></div>
+  <div><b>100%</b><span>свойств реестра доезжает до картинки</span></div>
+  <div><b>183</b><span>перенесено в примитивы GPUI</span></div>
+  <div><b>14</b><span>честных пустышек — рисовать нечего</span></div>
   <div><b>82%</b><span>селекторов — одиночный класс</span></div>
 </div>
 <p class="why">Отдельно показательно, чего в нашем CSS нет вовсе: ни одного <code>float</code>, ни одной табличной раскладки, ни одного адаптивного <code>@media</code>, ни одной множественной тени, ни <code>clip-path</code>, ни трёхмерных трансформаций. Это не случайность — современная вёрстка держится на флексе, а флекс в GPUI есть целиком.</p>
@@ -329,20 +329,259 @@ div().flex().flex_col().children(elements)</code></pre>
 </table>
 <p class="why"><b>Тонкость, о которой стоит знать.</b> Обрезка в GPUI — всегда прямоугольник. Поэтому <code>overflow: hidden</code> вместе со скруглением НЕ срежет углы у детей: угол ребёнка вылезет за скруглённый угол родителя. Лечится тем же скруглением на ребёнке.</p>
 
+<h2 class="sec" id="tablica">Полная таблица свойств</h2>
+<p><b>Что это.</b> Каждое свойство CSS, встречающееся в разметке интерфейсов, с вердиктом. Таблица собирается из реестра в коде (<code>crates/html/src/coverage.rs</code>) скриптом <code>scripts/css_coverage_table.py</code> — руками её не правят.</p>
+<p><b>Зачем именно так.</b> Список поддержанного в документации устаревает молча. Здесь же за каждой строкой стоит тест: пометка «перенесено» означает, что образец значения проверенно меняет разрешённый стиль, иначе сборка падает.</p>
+<div class="metric">
+  <div><b>93%</b><span>покрытие CSS (частичное — за половину)</span></div>
+  <div><b>164</b><span>совпадает с браузером</span></div>
+  <div><b>24</b><span>узнаваемо, но с оговоркой</span></div>
+  <div><b>12</b><span>пустышек и невыразимого</span></div>
+</div>
+<h3>Бокс-модель</h3>
+<table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
+<tr><td><code>box-sizing</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>border-box</code></td></tr>
+<tr><td><code>width</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>100px</code></td></tr>
+<tr><td><code>height</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>100px</code></td></tr>
+<tr><td><code>min-width</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>10px</code></td></tr>
+<tr><td><code>min-height</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>10px</code></td></tr>
+<tr><td><code>max-width</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>500px</code></td></tr>
+<tr><td><code>max-height</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>500px</code></td></tr>
+<tr><td><code>inline-size</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>100px</code></td></tr>
+<tr><td><code>block-size</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>100px</code></td></tr>
+<tr><td><code>min-inline-size</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>10px</code></td></tr>
+<tr><td><code>min-block-size</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>10px</code></td></tr>
+<tr><td><code>max-inline-size</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>500px</code></td></tr>
+<tr><td><code>max-block-size</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>500px</code></td></tr>
+<tr><td><code>aspect-ratio</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>16 / 9</code></td></tr>
+<tr><td><code>padding</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>padding-top</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>padding-right</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>padding-bottom</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>padding-left</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>padding-inline</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>padding-block</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>padding-inline-start</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>padding-inline-end</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>padding-block-start</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>padding-block-end</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin-top</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin-right</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin-bottom</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin-left</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin-inline</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin-block</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin-inline-start</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin-inline-end</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin-block-start</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>margin-block-end</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+</tbody></table>
+<h3>Раскладка</h3>
+<table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
+<tr><td><code>display</code></td><td><span class="tag t-part">частично</span></td><td>`list-item` и `flow-root` сводятся к блоку; настоящего строчного бокса нет</td></tr>
+<tr><td><code>flex-direction</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>column</code></td></tr>
+<tr><td><code>flex-wrap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>wrap</code></td></tr>
+<tr><td><code>flex-flow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>column wrap</code></td></tr>
+<tr><td><code>flex</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1 1 auto</code></td></tr>
+<tr><td><code>flex-grow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1</code></td></tr>
+<tr><td><code>flex-shrink</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>0</code></td></tr>
+<tr><td><code>flex-basis</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>50px</code></td></tr>
+<tr><td><code>order</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2</code></td></tr>
+<tr><td><code>align-items</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>center</code></td></tr>
+<tr><td><code>align-self</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>flex-end</code></td></tr>
+<tr><td><code>align-content</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>space-between</code></td></tr>
+<tr><td><code>justify-content</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>space-between</code></td></tr>
+<tr><td><code>justify-items</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>center</code></td></tr>
+<tr><td><code>justify-self</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>end</code></td></tr>
+<tr><td><code>place-items</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>center start</code></td></tr>
+<tr><td><code>place-content</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>center space-between</code></td></tr>
+<tr><td><code>place-self</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>center end</code></td></tr>
+<tr><td><code>gap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>8px</code></td></tr>
+<tr><td><code>row-gap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>8px</code></td></tr>
+<tr><td><code>column-gap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>8px</code></td></tr>
+<tr><td><code>grid-gap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>8px</code></td></tr>
+<tr><td><code>grid-row-gap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>8px</code></td></tr>
+<tr><td><code>grid-column-gap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>8px</code></td></tr>
+<tr><td><code>grid-template-columns</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>120px 1fr</code></td></tr>
+<tr><td><code>grid-template-rows</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>40px auto</code></td></tr>
+<tr><td><code>grid-auto-columns</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1fr</code></td></tr>
+<tr><td><code>grid-auto-rows</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>40px</code></td></tr>
+<tr><td><code>grid-auto-flow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>column</code></td></tr>
+<tr><td><code>grid-column</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1 / 3</code></td></tr>
+<tr><td><code>grid-row</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2 / 4</code></td></tr>
+<tr><td><code>grid-column-start</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1</code></td></tr>
+<tr><td><code>grid-column-end</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>3</code></td></tr>
+<tr><td><code>grid-row-start</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2</code></td></tr>
+<tr><td><code>grid-row-end</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4</code></td></tr>
+<tr><td><code>grid-area</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2 / 1 / 4 / 3</code></td></tr>
+<tr><td><code>grid-template-areas</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>a b</code></td></tr>
+<tr><td><code>position</code></td><td><span class="tag t-part">частично</span></td><td>`sticky` ведёт себя как обычный: смещение ленты элементу неоткуда узнать</td></tr>
+<tr><td><code>top</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>right</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>bottom</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>left</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>inset</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>inset-inline</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>inset-block</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>inset-inline-start</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>inset-inline-end</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>inset-block-start</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>inset-block-end</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>z-index</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>10</code></td></tr>
+<tr><td><code>overflow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>auto</code></td></tr>
+<tr><td><code>overflow-x</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>scroll</code></td></tr>
+<tr><td><code>overflow-y</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>auto</code></td></tr>
+<tr><td><code>visibility</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>hidden</code></td></tr>
+<tr><td><code>opacity</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>0.5</code></td></tr>
+</tbody></table>
+<h3>Фон, рамки, тени</h3>
+<table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
+<tr><td><code>background</code></td><td><span class="tag t-part">частично</span></td><td>из сокращения читаются цвет, картинка, повтор и размер; позиция и слои — нет</td></tr>
+<tr><td><code>background-color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#123456</code></td></tr>
+<tr><td><code>background-image</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>url(logo.png)</code></td></tr>
+<tr><td><code>border</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1px solid #333</code></td></tr>
+<tr><td><code>border-top</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1px solid #333</code></td></tr>
+<tr><td><code>border-right</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1px solid #333</code></td></tr>
+<tr><td><code>border-bottom</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1px solid #333</code></td></tr>
+<tr><td><code>border-left</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1px solid #333</code></td></tr>
+<tr><td><code>border-width</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2px</code></td></tr>
+<tr><td><code>border-top-width</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2px</code></td></tr>
+<tr><td><code>border-right-width</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2px</code></td></tr>
+<tr><td><code>border-bottom-width</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2px</code></td></tr>
+<tr><td><code>border-left-width</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2px</code></td></tr>
+<tr><td><code>border-inline</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1px solid #333</code></td></tr>
+<tr><td><code>border-block</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1px solid #333</code></td></tr>
+<tr><td><code>border-color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#333</code></td></tr>
+<tr><td><code>border-top-color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#333</code></td></tr>
+<tr><td><code>border-right-color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#333</code></td></tr>
+<tr><td><code>border-bottom-color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#333</code></td></tr>
+<tr><td><code>border-left-color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#333</code></td></tr>
+<tr><td><code>border-style</code></td><td><span class="tag t-part">частично</span></td><td>`double`, `groove` и `ridge` рисуются сплошной: рельефа в конвейере нет</td></tr>
+<tr><td><code>border-radius</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>6px</code></td></tr>
+<tr><td><code>border-top-left-radius</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>6px</code></td></tr>
+<tr><td><code>border-top-right-radius</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>6px</code></td></tr>
+<tr><td><code>border-bottom-right-radius</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>6px</code></td></tr>
+<tr><td><code>border-bottom-left-radius</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>6px</code></td></tr>
+<tr><td><code>border-collapse</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>collapse</code></td></tr>
+<tr><td><code>border-spacing</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4px</code></td></tr>
+<tr><td><code>outline</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>solid #333</code></td></tr>
+<tr><td><code>outline-width</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2px</code></td></tr>
+<tr><td><code>outline-color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#333</code></td></tr>
+<tr><td><code>outline-offset</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2px</code></td></tr>
+<tr><td><code>box-shadow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>inset 0 2px 4px #0004</code></td></tr>
+<tr><td><code>backdrop-filter</code></td><td><span class="tag t-part">частично</span></td><td>радиус учитывается ступенями каскада уменьшений, а не точной сигмой</td></tr>
+</tbody></table>
+<h3>Текст</h3>
+<table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
+<tr><td><code>color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#123456</code></td></tr>
+<tr><td><code>font</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>italic 700 14px/1.4 monospace</code></td></tr>
+<tr><td><code>font-size</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>14px</code></td></tr>
+<tr><td><code>font-weight</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>700</code></td></tr>
+<tr><td><code>font-style</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>italic</code></td></tr>
+<tr><td><code>font-family</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>Segoe UI, sans-serif</code></td></tr>
+<tr><td><code>line-height</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1.4</code></td></tr>
+<tr><td><code>letter-spacing</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>0.5px</code></td></tr>
+<tr><td><code>word-spacing</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2px</code></td></tr>
+<tr><td><code>text-align</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>center</code></td></tr>
+<tr><td><code>text-decoration</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>underline</code></td></tr>
+<tr><td><code>text-decoration-line</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>line-through</code></td></tr>
+<tr><td><code>text-transform</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>uppercase</code></td></tr>
+<tr><td><code>text-indent</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>12px</code></td></tr>
+<tr><td><code>text-overflow</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>ellipsis</code></td></tr>
+<tr><td><code>white-space</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>pre-line</code></td></tr>
+<tr><td><code>word-break</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>break-all</code></td></tr>
+<tr><td><code>overflow-wrap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>anywhere</code></td></tr>
+<tr><td><code>word-wrap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>break-word</code></td></tr>
+<tr><td><code>text-wrap</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>nowrap</code></td></tr>
+<tr><td><code>vertical-align</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>middle</code></td></tr>
+<tr><td><code>-webkit-line-clamp</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>2</code></td></tr>
+<tr><td><code>list-style</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>square</code></td></tr>
+<tr><td><code>list-style-type</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>lower-roman</code></td></tr>
+</tbody></table>
+<h3>Прочее</h3>
+<table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
+<tr><td><code>cursor</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>pointer</code></td></tr>
+<tr><td><code>object-fit</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>cover</code></td></tr>
+<tr><td><code>pointer-events</code></td><td><span class="tag t-part">частично</span></td><td>снимает наведение, курсор и выделение; сквозного клика к элементу под ним нет</td></tr>
+<tr><td><code>table-layout</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>fixed</code></td></tr>
+</tbody></table>
+<h3>Разбирается и ничего не делает</h3>
+<table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
+<tr><td><code>will-change</code></td><td><span class="tag t-part">пустышка</span></td><td>подсказка движку о будущих правках — рисовать нечего</td></tr>
+<tr><td><code>contain</code></td><td><span class="tag t-part">частично</span></td><td>`paint` и `strict` обрезают содержимое; `size` и `layout` на пересчёт не влияют — он и так по узлу</td></tr>
+<tr><td><code>isolation</code></td><td><span class="tag t-no">нечем</span></td><td>смешивание идёт с уже нарисованным кадром; отдельной группы наложения, которую можно было бы изолировать, в конвейере нет</td></tr>
+<tr><td><code>appearance</code></td><td><span class="tag t-part">пустышка</span></td><td>системного вида у элементов и так нет — рисуем сами</td></tr>
+<tr><td><code>box-decoration-break</code></td><td><span class="tag t-part">пустышка</span></td><td>элемент не разрывается между страницами</td></tr>
+<tr><td><code>font-smooth</code></td><td><span class="tag t-part">пустышка</span></td><td>сглаживание задаёт растеризатор шрифта, не стиль</td></tr>
+<tr><td><code>-webkit-font-smoothing</code></td><td><span class="tag t-part">пустышка</span></td><td>то же самое: решает растеризатор</td></tr>
+<tr><td><code>tab-size</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>4</code></td></tr>
+<tr><td><code>scroll-behavior</code></td><td><span class="tag t-part">пустышка</span></td><td>плавная прокрутка — свойство ленты, задаётся в коде</td></tr>
+<tr><td><code>touch-action</code></td><td><span class="tag t-part">пустышка</span></td><td>жестов касания в настольном окне нет</td></tr>
+<tr><td><code>overscroll-behavior</code></td><td><span class="tag t-part">пустышка</span></td><td>цепочки прокрутки за край нет</td></tr>
+<tr><td><code>unicode-bidi</code></td><td><span class="tag t-no">нечем</span></td><td>перестановку внутри строки делает движок шрифта, и это умолчание (`normal`); ни `isolate`, ни `bidi-override` конвейеру текста задать нечем</td></tr>
+</tbody></table>
+<h3>Перенести нечем</h3>
+<table><thead><tr><th>Свойство</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>
+<tr><td><code>transform</code></td><td><span class="tag t-part">частично</span></td><td>поворот, масштаб и сдвиг переносятся; скос невыразим, а области попадания курсора остаются на исходном месте</td></tr>
+<tr><td><code>transform-origin</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>left top</code></td></tr>
+<tr><td><code>rotate</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>45deg</code></td></tr>
+<tr><td><code>scale</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>1.5</code></td></tr>
+<tr><td><code>translate</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>10px 20px</code></td></tr>
+<tr><td><code>perspective</code></td><td><span class="tag t-part">пустышка</span></td><td>объёмных преобразований нет, а без них перспектива ничего не меняет</td></tr>
+<tr><td><code>transition</code></td><td><span class="tag t-part">частично</span></td><td>плавно меняются цвета и прозрачность; отступы и размеры переключаются на середине пути</td></tr>
+<tr><td><code>animation</code></td><td><span class="tag t-part">частично</span></td><td>интерполируются цвет, прозрачность, размеры и сдвиг; кривые времени и задержка не разбираются</td></tr>
+<tr><td><code>filter</code></td><td><span class="tag t-part">частично</span></td><td>цветовые функции идут по всему поддереву; размытие требует отрисовки в отдельный буфер</td></tr>
+<tr><td><code>mix-blend-mode</code></td><td><span class="tag t-part">частично</span></td><td>аппаратный блендер даёт multiply/screen/darken/lighten и только для заливки узла</td></tr>
+<tr><td><code>clip-path</code></td><td><span class="tag t-part">частично</span></td><td>обрезка прямоугольником со скруглением: `inset()` и круг на квадрате точны, многоугольник невыразим</td></tr>
+<tr><td><code>mask</code></td><td><span class="tag t-part">частично</span></td><td>то же, что `clip-path`; растровых масок нет</td></tr>
+<tr><td><code>float</code></td><td><span class="tag t-part">частично</span></td><td>ряд из двух колонок: текст не заворачивается под плавающий блок, когда тот кончился</td></tr>
+<tr><td><code>clear</code></td><td><span class="tag t-part">частично</span></td><td>прерывает ряд обтекания; настоящего сброса строк нет</td></tr>
+<tr><td><code>columns</code></td><td><span class="tag t-part">частично</span></td><td>колонки набираются из детей, а не из разрезанного потока: абзац поперёк колонок не рвётся</td></tr>
+<tr><td><code>column-count</code></td><td><span class="tag t-part">частично</span></td><td>то же, что `columns`</td></tr>
+<tr><td><code>column-width</code></td><td><span class="tag t-part">частично</span></td><td>то же, что `columns`</td></tr>
+<tr><td><code>writing-mode</code></td><td><span class="tag t-part">частично</span></td><td>блок поворачивается на четверть оборота; `vertical-rl` и `vertical-lr` не различаются</td></tr>
+<tr><td><code>direction</code></td><td><span class="tag t-part">частично</span></td><td>разворачивает раскладку и прижим текста; перестановка смешанных прогонов — за движком шрифта</td></tr>
+<tr><td><code>counter-reset</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>item 0</code></td></tr>
+<tr><td><code>counter-increment</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>item</code></td></tr>
+<tr><td><code>content</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>"→"</code></td></tr>
+<tr><td><code>user-select</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>none</code></td></tr>
+<tr><td><code>caret-color</code></td><td><span class="tag t-part">частично</span></td><td>каретка рисуется в поле с объявленным фокусом: своего фокуса у документа нет</td></tr>
+<tr><td><code>accent-color</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>#ff0000</code></td></tr>
+<tr><td><code>resize</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>both</code></td></tr>
+<tr><td><code>text-shadow</code></td><td><span class="tag t-part">частично</span></td><td>смещение и цвет точны, размытие набирается копиями, а не гауссовым ядром</td></tr>
+<tr><td><code>font-variant</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>small-caps</code></td></tr>
+<tr><td><code>font-stretch</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>condensed</code></td></tr>
+<tr><td><code>font-feature-settings</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>"tnum" 1</code></td></tr>
+<tr><td><code>hyphens</code></td><td><span class="tag t-part">частично</span></td><td>мягкий перенос становится точкой разрыва, дефис на разрыве не рисуется; словарного переноса нет</td></tr>
+<tr><td><code>background-repeat</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>no-repeat</code></td></tr>
+<tr><td><code>background-position</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>center</code></td></tr>
+<tr><td><code>background-size</code></td><td><span class="tag t-ok">перенесено</span></td><td>образец: <code>cover</code></td></tr>
+<tr><td><code>background-attachment</code></td><td><span class="tag t-part">пустышка</span></td><td>`fixed` привязывает фон к окну; ленты с таким фоном у нас нет</td></tr>
+</tbody></table>
+
 <h2 class="sec" id="fon">Фон и градиенты</h2>
 <p><b>Что это.</b> Заливка элемента цветом или переходом цветов.</p>
 <p><b>Как пользоваться.</b> Цвет принимается в любой распространённой записи: <code>#rgb</code>, <code>#rrggbb</code>, <code>#rrggbbaa</code>, <code>rgb()</code>, <code>rgba()</code> (и с запятыми, и в пробельной записи со слэшем), плюс около 60 именованных цветов.</p>
 <pre><code>&lt;div style="background: #1e1f29"&gt;                     → .bg(rgb(0x1e1f29))
 &lt;div style="background: rgba(0 0 0 / 50%)"&gt;           → .bg(hsla(…, a = .5))
 &lt;div style="background: linear-gradient(90deg, #000, #fff)"&gt;
-     → .bg(linear_gradient(90., stop(чёрный, 0.), stop(белый, 1.)))</code></pre>
+     → .bg(linear_gradient(90., stop(чёрный, 0.), stop(белый, 1.)))
+&lt;div style="background: radial-gradient(circle, #fff, #000)"&gt;
+     → .bg(radial_gradient(stop(белый, 0.), stop(чёрный, 1.), circle = true))
+&lt;div style="background: linear-gradient(180deg, #a, #b 50%, #c)"&gt;
+     → два слоя-полосы: 0–50% (a→b) и 50–100% (b→c)</code></pre>
 <table>
   <thead><tr><th>Возможность</th><th>Статус</th><th>Примечание</th></tr></thead>
   <tbody>
     <tr><td><code>background-color</code></td><td><span class="tag t-ok">полностью</span></td><td></td></tr>
-    <tr><td><code>linear-gradient</code></td><td><span class="tag t-part">частично</span></td><td>берутся <b>первый и последний</b> цвет: примитив GPUI имеет ровно два стопа</td></tr>
-    <tr><td>направления словами (<code>to right</code>)</td><td><span class="tag t-ok">полностью</span></td><td>переводятся в градусы</td></tr>
-    <tr><td><code>radial-gradient</code>, <code>conic-gradient</code></td><td><span class="tag t-no">нет</span></td><td>примитива нет</td></tr>
+    <tr><td><code>linear-gradient</code>, два стопа</td><td><span class="tag t-ok">полностью</span></td><td></td></tr>
+    <tr><td><code>linear-gradient</code>, три и более стопов</td><td><span class="tag t-ok">полностью</span></td><td>по оси — <b>полосами</b>: слой на каждую пару соседних стопов, позиции стопов сохраняются</td></tr>
+    <tr><td>то же под наклоном</td><td><span class="tag t-part">частично</span></td><td>полосу под углом не вырезать; доезжают крайние цвета</td></tr>
+    <tr><td>направления словами (<code>to right</code>)</td><td><span class="tag t-ok">полностью</span></td><td>переводятся в градусы; угловые (<code>to top right</code>) считаются как 45° в нормированном квадрате, а не по пропорциям коробки</td></tr>
+    <tr><td><code>radial-gradient</code></td><td><span class="tag t-ok">полностью</span></td><td>патч GPUI: свой тег фона и ветка шейдера; <code>circle</code> и <code>ellipse</code> различаются</td></tr>
+    <tr><td>сглаживание ступенек</td><td><span class="tag t-ok">полностью</span></td><td>упорядоченный шум амплитудой в одну ступень цвета — без него градиент читается полосатым против браузера</td></tr>
+    <tr><td><code>conic-gradient</code></td><td><span class="tag t-no">нет</span></td><td>ветки шейдера нет</td></tr>
     <tr><td><code>background-image: url()</code></td><td><span class="tag t-no">нет</span></td><td>картинка в GPUI — отдельный элемент, не заливка</td></tr>
     <tr><td>несколько фонов</td><td><span class="tag t-no">нет</span></td><td>поле заливки одно</td></tr>
   </tbody>
@@ -653,24 +892,31 @@ list(state, move |ix, window, _| {
 </table>
 <p class="why"><b>Уже исправлено по итогам аудита:</b> выравнивание колонок таблицы между строками (была сетка на каждую строку — колонки расходились «лесенкой»); <code>text-align</code> разбирался, но не применялся; <code>align-self</code> писался в то же поле, что <code>align-items</code>, и выравнивал детей вместо самого элемента; <code>margin: auto</code> отбрасывался, из-за чего блок не центрировался; <code>white-space: pre</code> трактовался как запрет переноса вместо сохранения строк; <code>flex-basis</code> не переносился; <code>hsl()</code>, <code>var()</code> и <code>currentColor</code> не понимались вовсе; абсолютный элемент с одним заданным краем схлопывался, и текст вставал столбиком по букве; полоса прокрутки не рисовалась.</p>
 
-<h2 class="sec" id="net">Что не переносится</h2>
-<p>Список сознательный. Ни одна из этих возможностей не заменяется приближением.</p>
+<h2 class="sec" id="net">Оговорки там, где перенос неполный</h2>
+<p><b>Что это.</b> Свойство переносится, но не во всех значениях или не во всех
+случаях. Список ведётся честно: приблизительная замена, выданная за полную
+поддержку, стоит дороже открытой оговорки — расхождение всплывает у
+пользователя, а не в тесте.</p>
 <table>
-  <thead><tr><th>Возможность</th><th>Почему нет</th></tr></thead>
+  <thead><tr><th>Возможность</th><th>Что именно не доезжает</th></tr></thead>
   <tbody>
-    <tr><td><code>transform</code> (поворот, масштаб, сдвиг)</td><td>матрица есть только у одного примитива из семи; для группы потребовался бы промежуточный буфер отрисовки</td></tr>
-    <tr><td><code>filter</code>: размытие, яркость, контраст</td><td>нужен многопроходный рендер в буфер — его нет</td></tr>
-    <tr><td><code>clip-path</code>, <code>mask</code></td><td>обрезка в GPUI — всегда прямоугольник, и он входит в каждый примитив</td></tr>
-    <tr><td><code>mix-blend-mode</code></td><td>доступно только альфа-смешение</td></tr>
-    <tr><td><code>z-index</code></td><td>порядок отрисовки выводится из дерева и пространственного перекрытия, а не задаётся числом</td></tr>
-    <tr><td><code>transition</code></td><td>элементы пересоздаются каждый кадр — нет «предыдущего значения», от которого идёт переход</td></tr>
-    <tr><td><code>@keyframes</code></td><td>механизм анимации в GPUI есть, но императивный: интерполяция пишется руками, а не объявляется</td></tr>
-    <tr><td><code>@media</code>, <code>@container</code>, <code>@supports</code></td><td>условных правил нет; в нашем корпусе адаптивных запросов ноль</td></tr>
-    <tr><td><code>float</code>, многоколоночность</td><td>требуют строчного контекста, которого нет</td></tr>
-    <tr><td><code>calc()</code>, <code>var()</code>, <code>vw</code>, <code>vh</code></td><td>выражений в модели длины нет</td></tr>
+    <tr><td><code>transform: skew()</code></td><td>матрица GPUI хранит поворот и масштаб, скоса осей в ней нет. Поворот, масштаб, сдвиг и точка отсчёта переносятся полностью.</td></tr>
+    <tr><td>области попадания курсора у преобразованного элемента</td><td>расставляются до отрисовки, когда матрицы ещё нет: щелчок по повёрнутой кнопке считается по её исходному месту</td></tr>
+    <tr><td><code>filter: blur()</code></td><td>размытие поддерева требует отрисовки в отдельный буфер, которого нет. Цветовые функции (<code>grayscale</code>, <code>brightness</code>, <code>saturate</code>, <code>invert</code>, <code>sepia</code>, <code>opacity</code>) считаются арифметикой над цветами и доезжают.</td></tr>
+    <tr><td><code>clip-path: polygon()</code></td><td>обрезка в конвейере — прямоугольник со скруглением, поэтому <code>inset()</code> точен, а произвольный многоугольник невыразим</td></tr>
+    <tr><td><code>clip-path: circle()</code> на неквадратной коробке</td><td>на квадрате круг точен; на вытянутой коробке прямоугольная обрезка даёт капсулу, а браузер — окружность радиусом от диагонали</td></tr>
+    <tr><td><code>mix-blend-mode</code>: <code>overlay</code>, <code>soft-light</code> и родня</td><td>аппаратный блендер умеет <code>multiply</code>, <code>screen</code>, <code>darken</code>, <code>lighten</code>; остальным нужен цвет назначения в шейдере</td></tr>
+    <tr><td><code>z-index</code> отрицательный</td><td>отложенная отрисовка кладёт элемент ПОВЕРХ; «под поток» ею не выражается</td></tr>
+    <tr><td><code>transition</code> по размерам</td><td>плавно меняются цвета, заливка, прозрачность; отступы и размеры переключаются на середине пути — промежуточной раскладки у них нет</td></tr>
+    <tr><td><code>animation</code>: <code>steps()</code>, <code>cubic-bezier()</code>, задержка</td><td>интерполируются прозрачность, цвет, заливка, размеры и сдвиг; кривая берётся линейная либо «туда-сюда» для <code>alternate</code></td></tr>
+    <tr><td><code>@media</code>, <code>@container</code>, <code>@supports</code></td><td>условных правил нет: блок пропускается целиком</td></tr>
+    <tr><td><code>float</code></td><td>ряд из двух колонок вместо строчного обтекания: текст не заворачивается ПОД плавающий блок, когда тот кончился</td></tr>
+    <tr><td>многоколоночный поток</td><td>колонки набираются из детей, а не из разрезанного потока: абзац поперёк колонок не рвётся</td></tr>
+    <tr><td><code>calc()</code>, <code>vw</code>, <code>vh</code>, <code>ch</code></td><td>выражений и единиц окна в модели длины нет; <code>em</code> считается от базового кегля, а не от родительского</td></tr>
     <tr><td><code>box-shadow: inset</code></td><td>примитив тени рисует только внешнюю</td></tr>
-    <tr><td>разноцветные стороны рамки</td><td>у прямоугольника одно поле цвета рамки</td></tr>
-    <tr><td>RTL, вертикальный текст</td><td>в модели стиля нет направления письма</td></tr>
+    <tr><td><code>hyphens</code></td><td>мягкий перенос становится точкой разрыва, но дефис на месте разрыва не рисуется; словарного переноса нет</td></tr>
+    <tr><td><code>writing-mode</code></td><td>блок поворачивается на четверть оборота — как латиница в браузере; иероглифы в браузере остаются прямыми, у нас лягут боком</td></tr>
+    <tr><td>двунаправленный текст</td><td>перестановку внутри строки делает сам движок шрифта; <code>direction: rtl</code> разворачивает раскладку и прижимает текст, но смешанные прогоны не переставляет</td></tr>
   </tbody>
 </table>
 
@@ -684,7 +930,7 @@ list(state, move |ix, window, _| {
 </ol>
 
 <h2 class="sec" id="proverka">Как это проверено</h2>
-<p>52 теста, каждый — на конкретное правило, а не на «работает вообще»:</p>
+<p>68 тестов, каждый — на конкретное правило, а не на «работает вообще»:</p>
 <ul>
   <li><b>Значения:</b> длины во всех единицах, цвета в шести записях, именованные цвета.</li>
   <li><b>Разбор:</b> запятые внутри <code>rgba()</code> не рвут объявление, <code>!important</code> не попадает в значение, комментарии и at-правила пропускаются.</li>
@@ -697,7 +943,23 @@ list(state, move |ix, window, _| {
   <li><b>Стоимость:</b> та же разметка не разбирается повторно, смена темы разбор вызывает, обёртки документа разворачиваются (иначе виртуализация получила бы один блок вместо полусотни).</li>
   <li><b>Векторная графика:</b> поддерево сериализуется обратно без потерь, размер берётся из атрибутов либо из <code>viewBox</code>, цвета переживают растеризацию, битая разметка не даёт пустоты.</li>
   <li><b>Разметка:</b> умолчания тегов, вложенные селекторы, выброшенные <code>&lt;script&gt;</code>, восстановление незакрытых тегов, <code>display: none</code>.</li>
+  <li><b>Покрытие:</b> каждое свойство реестра, помеченное «перенесено», обязано менять разрешённый стиль — иначе тест падает. Приписать поддержку и не написать разбор нельзя.</li>
+  <li><b>Градиенты:</b> радиальный узнаётся вместе с формой, промежуточные стопы не теряются, стопы без позиции раскладываются равномерно.</li>
 </ul>
+
+<h3>Сверка с браузером по картинке</h3>
+<p>Тесты доказывают, что свойство доехало. Что оно доехало <b>туда же, куда его кладёт браузер</b>, доказывает только картинка: <code>scripts/pixel_compare.py</code> рисует один и тот же файл разметки в Chrome и у нас и сравнивает габариты каждого блока по его цвету.</p>
+<pre><code>python scripts/pixel_compare.py crates/html/tests/fixtures/deep.html 880 900</code></pre>
+<table>
+  <thead><tr><th>Эталон</th><th>Что в нём</th><th>Результат</th></tr></thead>
+  <tbody>
+    <tr><td><code>layout.html</code></td><td>флекс, сетка, отступы, доли, абсолютное позиционирование</td><td><span class="tag t-ok">21 из 21</span></td></tr>
+    <tr><td><code>combos.html</code></td><td>скругления во всех сочетаниях, рамки по сторонам, таблицы с кнопками, переносы, наложение</td><td><span class="tag t-ok">38 из 38</span></td></tr>
+    <tr><td><code>deep.html</code></td><td>12 уровней вложенности, логические отступы, размещение в сетке, обводка, <code>order</code>, таблица фиксированной раскладки</td><td><span class="tag t-ok">39 из 39</span></td></tr>
+    <tr><td><code>gradients.html</code></td><td>15 градиентов: по осям, наклонные, много стопов, радиальные</td><td><span class="tag t-ok">расхождение 0.23% точек</span></td></tr>
+  </tbody>
+</table>
+<p class="why">Допуск — две логические точки. Меряется в физических, поэтому на масштабе дисплея 125% допуск равен трём: край, приходящийся на половину физической точки, два движка вправе округлить в разные стороны. Именно эта сверка поймала <code>space-evenly</code>, сведённый к <code>space-around</code> (27 точек мимо), потерю нижней грани <code>minmax()</code>, отсутствие вертикального центрирования в ячейке таблицы (6 точек) и накопление ошибки округления вглубь вложенности (5 точек на 11 уровнях).</p>
 
 <footer>
   Документ описывает состояние крейта <code>kamin-html</code> в репозитории <code>gpui-kamin-ide</code>.

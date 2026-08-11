@@ -87,6 +87,11 @@ pub(crate) fn body_text(body: &str, p: &Palette, base: gpui::Font) -> AnyElement
                 _ => rgba(p.text_secondary).into(),
             },
             background_color: None,
+            // Поля строчного бокса вокруг фона прогона: здесь их нет.
+            font_size: None,
+            background_pad: Default::default(),
+            background_radius: Default::default(),
+            background_border: None,
             underline: None,
             strikethrough: None,
         })

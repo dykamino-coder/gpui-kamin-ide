@@ -1,0 +1,309 @@
+# Правка taffy для KaminIDE: базовая линия текста от ЗАМЕРА листа
+#
+# Зачем. Замер листа в taffy отдаёт только размер, поэтому `first_baselines`
+# у него всегда пуст, а гибкая раскладка берёт `unwrap_or(height)` — то есть
+# `align-items: baseline` выравнивает коробки по НИЖНИМ краям. Абзац движка —
+# это замеряемый лист, и без правки выравнивание текста по базовой линии
+# невозможно в принципе.
+#
+# Что внутри (85 изменённых строк в пяти файлах):
+#   * tree/layout.rs      — тип `MeasureOutput { size, baseline }`;
+#   * tree/mod.rs         — его экспорт;
+#   * compute/leaf.rs     — замер отдаёт `MeasureOutput`, линия кладётся в
+#                           `first_baselines.y` со сдвигом на верхний отступ;
+#   * tree/taffy_tree.rs  — 10 бондов `MeasureFunction` и два пустых замыкания;
+#   * compute/block.rs    — блочный контейнер пропускает вверх базовую линию
+#                           ПЕРВОГО потокового ребёнка (абзац почти всегда
+#                           завёрнут в обычный `div`, без этого линия теряется).
+#
+# Как накатить на новую версию taffy:
+#   1. распаковать новую версию в vendor/taffy (заменив старую);
+#   2. `git apply --3way vendor/taffy-kaminide.patch`;
+#   3. разобрать отказы — вся правка локальна, конфликтов ждать только в
+#      сигнатурах `MeasureFunction`, если апстрим их менял;
+#   4. ВЕРСИЮ в vendor/taffy/Cargo.toml оставить ту, которую пинит
+#      vendor/gpui/Cargo.toml (`taffy = "=0.9.0"`), иначе cargo откажет;
+#   5. пересобрать и прогнать стенд по разделам с базовой линией.
+#
+# Проверять апстрим: `curl https://index.crates.io/ta/ff/taffy`.
+# На 2026-08-10 последняя версия 0.13.0, у нас 0.9.0 — версию держит пин gpui.
+
+--- a/src/tree/layout.rs
++++ b/src/tree/layout.rs
+@@ -177,6 +177,24 @@
+     pub margins_can_collapse_through: bool,
+ }
+ 
++/// KaminIDE patch: результат замера ЛИСТА — размер и, если он есть, первая
++/// базовая линия. Без неё выравнивание `align-items: baseline` вырождается в
++/// выравнивание по нижним краям коробок: `compute_leaf_layout` ставил
++/// `Point::NONE`, а гибкая раскладка берёт `unwrap_or(height)`.
++#[derive(Debug, Copy, Clone, PartialEq)]
++pub struct MeasureOutput {
++    /// Размер листа.
++    pub size: Size<f32>,
++    /// Первая базовая линия по вертикали, от ВЕРХА коробки содержимого.
++    pub baseline: Option<f32>,
++}
++
++impl From<Size<f32>> for MeasureOutput {
++    fn from(size: Size<f32>) -> Self {
++        Self { size, baseline: None }
++    }
++}
++
+ impl LayoutOutput {
+     /// An all-zero `LayoutOutput` for hidden nodes
+     pub const HIDDEN: Self = Self {
+--- a/src/tree/mod.rs
++++ b/src/tree/mod.rs
+@@ -10,7 +10,10 @@
+ pub mod traits;
+ 
+ pub use cache::{Cache, ClearState};
+-pub use layout::{CollapsibleMarginSet, Layout, LayoutInput, LayoutOutput, RequestedAxis, RunMode, SizingMode};
++pub use layout::{
++    CollapsibleMarginSet, Layout, LayoutInput, LayoutOutput, MeasureOutput, RequestedAxis, RunMode,
++    SizingMode,
++};
+ pub use node::NodeId;
+ pub(crate) use traits::LayoutPartialTreeExt;
+ pub use traits::{LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree, TraverseTree};
+--- a/src/compute/leaf.rs
++++ b/src/compute/leaf.rs
+@@ -19,7 +19,7 @@
+     measure_function: MeasureFunction,
+ ) -> LayoutOutput
+ where
+-    MeasureFunction: FnOnce(Size<Option<f32>>, Size<AvailableSpace>) -> Size<f32>,
++    MeasureFunction: FnOnce(Size<Option<f32>>, Size<AvailableSpace>) -> crate::tree::MeasureOutput,
+ {
+     let LayoutInput { known_dimensions, parent_size, available_space, sizing_mode, run_mode, .. } = inputs;
+ 
+@@ -132,7 +132,7 @@
+     };
+ 
+     // Measure node
+-    let measured_size = measure_function(
++    let measured = measure_function(
+         match run_mode {
+             RunMode::ComputeSize => known_dimensions,
+             RunMode::PerformLayout => Size::NONE,
+@@ -140,6 +140,7 @@
+         },
+         available_space,
+     );
++    let measured_size = measured.size;
+     let clamped_size = known_dimensions
+         .or(node_size)
+         .unwrap_or(measured_size + content_box_inset.sum_axes())
+@@ -154,7 +155,10 @@
+         size,
+         #[cfg(feature = "content_size")]
+         content_size: measured_size + padding.sum_axes(),
+-        first_baselines: Point::NONE,
++        // KaminIDE patch: базовая линия листа приходит из замера. Она
++        // отсчитывается от верха коробки СОДЕРЖИМОГО, поэтому к ней
++        // прибавляется верхний внутренний отступ с рамкой.
++        first_baselines: Point { x: None, y: measured.baseline.map(|b| b + content_box_inset.top) },
+         top_margin: CollapsibleMarginSet::ZERO,
+         bottom_margin: CollapsibleMarginSet::ZERO,
+         margins_can_collapse_through: !has_styles_preventing_being_collapsed_through
+--- a/src/tree/taffy_tree.rs
++++ b/src/tree/taffy_tree.rs
+@@ -275,7 +275,7 @@
+ pub(crate) struct TaffyView<'t, NodeContext, MeasureFunction>
+ where
+     MeasureFunction:
+-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>,
++        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+ {
+     /// A reference to the TaffyTree
+     pub(crate) taffy: &'t mut TaffyTree<NodeContext>,
+@@ -287,7 +287,7 @@
+ impl<NodeContext, MeasureFunction> TraversePartialTree for TaffyView<'_, NodeContext, MeasureFunction>
+ where
+     MeasureFunction:
+-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>,
++        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+ {
+     type ChildIter<'a>
+         = TaffyTreeChildIter<'a>
+@@ -313,7 +313,7 @@
+ // TraverseTree impl for TaffyView
+ impl<NodeContext, MeasureFunction> TraverseTree for TaffyView<'_, NodeContext, MeasureFunction> where
+     MeasureFunction:
+-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>
++        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput
+ {
+ }
+ 
+@@ -321,7 +321,7 @@
+ impl<NodeContext, MeasureFunction> LayoutPartialTree for TaffyView<'_, NodeContext, MeasureFunction>
+ where
+     MeasureFunction:
+-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>,
++        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+ {
+     type CoreContainerStyle<'a>
+         = &'a Style
+@@ -400,7 +400,7 @@
+ impl<NodeContext, MeasureFunction> CacheTree for TaffyView<'_, NodeContext, MeasureFunction>
+ where
+     MeasureFunction:
+-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>,
++        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+ {
+     fn cache_get(
+         &self,
+@@ -432,7 +432,7 @@
+ impl<NodeContext, MeasureFunction> LayoutBlockContainer for TaffyView<'_, NodeContext, MeasureFunction>
+ where
+     MeasureFunction:
+-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>,
++        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+ {
+     type BlockContainerStyle<'a>
+         = &'a Style
+@@ -458,7 +458,7 @@
+ impl<NodeContext, MeasureFunction> LayoutFlexboxContainer for TaffyView<'_, NodeContext, MeasureFunction>
+ where
+     MeasureFunction:
+-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>,
++        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+ {
+     type FlexboxContainerStyle<'a>
+         = &'a Style
+@@ -484,7 +484,7 @@
+ impl<NodeContext, MeasureFunction> LayoutGridContainer for TaffyView<'_, NodeContext, MeasureFunction>
+ where
+     MeasureFunction:
+-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>,
++        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+ {
+     type GridContainerStyle<'a>
+         = &'a Style
+@@ -516,7 +516,7 @@
+ impl<NodeContext, MeasureFunction> RoundTree for TaffyView<'_, NodeContext, MeasureFunction>
+ where
+     MeasureFunction:
+-        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>,
++        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+ {
+     #[inline(always)]
+     fn get_unrounded_layout(&self, node: NodeId) -> Layout {
+@@ -907,7 +907,7 @@
+     ) -> Result<(), TaffyError>
+     where
+         MeasureFunction:
+-            FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> Size<f32>,
++            FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+     {
+         let use_rounding = self.config.use_rounding;
+         let mut taffy_view = TaffyView { taffy: self, measure_function };
+@@ -920,7 +920,7 @@
+ 
+     /// Updates the stored layout of the provided `node` and its children
+     pub fn compute_layout(&mut self, node: NodeId, available_space: Size<AvailableSpace>) -> Result<(), TaffyError> {
+-        self.compute_layout_with_measure(node, available_space, |_, _, _, _, _| Size::ZERO)
++        self.compute_layout_with_measure(node, available_space, |_, _, _, _, _| Size::ZERO.into())
+     }
+ 
+     /// Prints a debug representation of the tree's layout
+@@ -932,7 +932,7 @@
+     /// Returns an instance of LayoutTree representing the TaffyTree
+     #[cfg(test)]
+     pub(crate) fn as_layout_tree(&mut self) -> impl LayoutPartialTree + CacheTree + '_ {
+-        TaffyView { taffy: self, measure_function: |_, _, _, _, _| Size::ZERO }
++        TaffyView { taffy: self, measure_function: |_, _, _, _, _| Size::ZERO.into() }
+     }
+ }
+ 
+@@ -950,8 +950,8 @@
+         _node_id: NodeId,
+         node_context: Option<&mut Size<f32>>,
+         _style: &Style,
+-    ) -> Size<f32> {
+-        known_dimensions.unwrap_or(node_context.cloned().unwrap_or(Size::ZERO))
++    ) -> crate::tree::MeasureOutput {
++        known_dimensions.unwrap_or(node_context.cloned().unwrap_or(Size::ZERO)).into()
+     }
+ 
+     #[test]
+--- a/src/compute/block.rs
++++ b/src/compute/block.rs
+@@ -220,8 +220,13 @@
+     let resolved_padding = raw_padding.resolve_or_zero(Some(container_outer_width), |val, basis| tree.calc(val, basis));
+     let resolved_border = raw_border.resolve_or_zero(Some(container_outer_width), |val, basis| tree.calc(val, basis));
+     let resolved_content_box_inset = resolved_padding + resolved_border + scrollbar_gutter;
+-    let (inflow_content_size, intrinsic_outer_height, first_child_top_margin_set, last_child_bottom_margin_set) =
+-        perform_final_layout_on_in_flow_children(
++    let (
++        inflow_content_size,
++        intrinsic_outer_height,
++        first_child_top_margin_set,
++        last_child_bottom_margin_set,
++        first_baseline,
++    ) = perform_final_layout_on_in_flow_children(
+             tree,
+             &mut items,
+             container_outer_width,
+@@ -278,7 +283,7 @@
+         size: final_outer_size,
+         #[cfg(feature = "content_size")]
+         content_size,
+-        first_baselines: Point::NONE,
++        first_baselines: Point { x: None, y: first_baseline },
+         top_margin: if own_margins_collapse_with_children.start {
+             first_child_top_margin_set
+         } else {
+@@ -398,7 +403,7 @@
+     resolved_content_box_inset: Rect<f32>,
+     text_align: TextAlign,
+     own_margins_collapse_with_children: Line<bool>,
+-) -> (Size<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet) {
++) -> (Size<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Option<f32>) {
+     // Resolve container_inner_width for sizing child nodes using initial content_box_inset
+     let container_inner_width = container_outer_width - content_box_inset.horizontal_axis_sum();
+     let parent_size = Size { width: Some(container_outer_width), height: None };
+@@ -412,6 +417,9 @@
+     let mut first_child_top_margin_set = CollapsibleMarginSet::ZERO;
+     let mut active_collapsible_margin_set = CollapsibleMarginSet::ZERO;
+     let mut is_collapsing_with_first_margin_set = true;
++    // KaminIDE patch: базовая линия ПЕРВОГО потокового ребёнка — она же
++    // базовая линия блока.
++    let mut first_baseline: Option<f32> = None;
+     for item in items.iter_mut() {
+         if item.position == Position::Absolute {
+             item.static_position = Point { x: resolved_content_box_inset.left, y: y_offset_for_absolute }
+@@ -446,6 +454,7 @@
+                 Line::TRUE,
+             );
+             let final_size = item_layout.size;
++            let item_first_baseline = item_layout.first_baselines.y;
+ 
+             let top_margin_set = item_layout.top_margin.collapse_with_margin(item_margin.top.unwrap_or(0.0));
+             let bottom_margin_set = item_layout.bottom_margin.collapse_with_margin(item_margin.bottom.unwrap_or(0.0));
+@@ -515,6 +524,13 @@
+                 height: if item.overflow.x == Overflow::Scroll { item.scrollbar_width } else { 0.0 },
+             };
+ 
++            // KaminIDE patch: блочный контейнер ПРОПУСКАЕТ вверх базовую линию
++            // первого потокового ребёнка. Без этого абзац, завёрнутый в
++            // обычный `div`, для гибкой раскладки базовой линии не имеет, и
++            // `align-items: baseline` выравнивает по нижним краям коробок.
++            if first_baseline.is_none() {
++                first_baseline = item_first_baseline.map(|b| location.y + b);
++            }
+             tree.set_unrounded_layout(
+                 item.node_id,
+                 &Layout {
+@@ -572,7 +588,7 @@
+ 
+     committed_y_offset += resolved_content_box_inset.bottom + bottom_y_margin_offset;
+     let content_height = f32_max(0.0, committed_y_offset);
+-    (inflow_content_size, content_height, first_child_top_margin_set, last_child_bottom_margin_set)
++    (inflow_content_size, content_height, first_child_top_margin_set, last_child_bottom_margin_set, first_baseline)
+ }
+ 
+ /// Perform absolute layout on all absolutely positioned children.

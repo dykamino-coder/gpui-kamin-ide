@@ -39,12 +39,19 @@ impl RootView {
                 fallbacks: None,
                 weight: gpui::FontWeight(req.weight),
                 style: gpui::FontStyle::Normal,
+                // Ширина начертания у шрифтов оболочки обычная.
+                stretch: gpui::FontStretch::Normal,
             };
             let run = gpui::TextRun {
                 len: req.text.len(),
                 font,
                 color: gpui::black(),
                 background_color: None,
+                // Поля строчного бокса вокруг фона прогона: здесь их нет.
+                font_size: None,
+                background_pad: Default::default(),
+                background_radius: Default::default(),
+                background_border: None,
                 underline: None,
                 strikethrough: None,
             };

@@ -1335,7 +1335,14 @@ fn is_stop(ch: char) -> bool {
 
 /// Буквенная единица письма: между такими знаками `word-break: keep-all`
 /// запрещает разрыв. Знаки препинания сюда не входят — после них рвать можно.
+///
+/// Пробел единицей письма не является НИКАКОЙ, даже идеографический: по
+/// классу переноса он иероглиф (ID), и запрет заодно снимал перенос по нему
+/// (`word-space-transform-013`: коробка шла одной строкой за край).
 fn letter_unit(ch: char) -> bool {
+    if ch.is_whitespace() {
+        return false;
+    }
     use unicode_linebreak::BreakClass::*;
     matches!(
         unicode_linebreak::break_property(ch as u32),
