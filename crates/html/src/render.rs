@@ -1703,7 +1703,7 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         let nodes_owned = nodes.to_vec();
         let opts_owned = opts.clone();
         let mut plain = String::new();
-        gather_text(nodes, &mut plain);
+        gather_until_break(nodes, &mut plain);
         let plain = crate::inline::transform_case(&normalize_for_shadow(&plain), inherited);
         if !plain.trim().is_empty() {
             let size = match base.font_size {
@@ -3093,6 +3093,33 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
 /// Текст поддерева — нужен формам (`<textarea>`, `<option>`).
 pub fn gather_text_public(nodes: &[Node], out: &mut String) {
     gather_text(nodes, out)
+}
+
+/// Текст ДО первого жёсткого разрыва: дальше первая строка не идёт никогда.
+///
+/// Замер первой строки ищет, сколько знаков влезет по ширине, и про `<br>` он
+/// не знает — с широкой коробкой в первую строку попадал весь абзац, и её
+/// начертание доставалось второй строке тоже
+/// (`text-autospace-first-line-001`).
+fn gather_until_break(nodes: &[Node], out: &mut String) -> bool {
+    for n in nodes {
+        match n {
+            Node::Text(t) => {
+                if let Some(cut) = t.find('\n') {
+                    out.push_str(&t[..cut]);
+                    return true;
+                }
+                out.push_str(t);
+            }
+            Node::Element(e) if e.tag == "br" => return true,
+            Node::Element(e) => {
+                if gather_until_break(&e.children, out) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 fn gather_text(nodes: &[Node], out: &mut String) {
