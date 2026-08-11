@@ -143,7 +143,7 @@ impl Selector {
         for chunk in raw.split('>') {
             let direct = !parts.is_empty();
             let mut first = true;
-            for word in chunk.split_whitespace() {
+            for word in split_words(chunk) {
                 parts.push((word.to_string(), direct && first));
                 first = false;
             }
@@ -380,6 +380,41 @@ pub fn split_args(raw: &str) -> Vec<&str> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .collect()
+}
+
+/// Разрез селектора по пробелам — не считая тех, что съедены экранированием.
+///
+/// Один пробел после шестнадцатеричного кода — его ограничитель, а не
+/// комбинатор потомка: `.css\\0032 p` это ОДИН класс `css2p`, и в разметке
+/// он так и записан (`escapes-013`). Пока резали обычным `split_whitespace`,
+/// селектор превращался в «`p` внутри `.css2`» и совпадал не с тем узлом.
+fn split_words(chunk: &str) -> Vec<&str> {
+    let mut out = vec![];
+    let mut start = None;
+    let mut at = 0usize;
+    while at < chunk.len() {
+        let ch = chunk[at..].chars().next().unwrap_or('\u{0}');
+        if ch == '\\' {
+            if start.is_none() {
+                start = Some(at);
+            }
+            at += ch.len_utf8();
+            at += first_escape(&chunk[at..]).len();
+            continue;
+        }
+        if ch.is_whitespace() {
+            if let Some(from) = start.take() {
+                out.push(&chunk[from..at]);
+            }
+        } else if start.is_none() {
+            start = Some(at);
+        }
+        at += ch.len_utf8();
+    }
+    if let Some(from) = start {
+        out.push(&chunk[from..]);
+    }
+    out
 }
 
 /// Имя без экранирования (CSS Syntax §4.3.7).
