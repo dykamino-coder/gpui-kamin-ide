@@ -1845,7 +1845,7 @@ impl Element for Paragraph {
             // табуляции обязаны совпасть с нерастянутой строкой), но выключку
             // ПОСЛЕДНЕЙ строки (`text-align-last`) она не получает: к
             // табуляции та отношения не имеет.
-            let no_stretch = last_line || body.contains('\t');
+            let no_stretch = last_line;
             // При `plaintext` сторона письма своя у каждого АБЗАЦА между
             // жёсткими разрывами (не у строки: мягкий перенос сторону не
             // меняет). От неё же зависят `start` и `end`.
@@ -2342,6 +2342,26 @@ impl Paragraph {
         }
         // Растягивается КАЖДЫЙ пробел, а не промежуток между словами: там, где
         // подряд стоят два сохранённых пробела, добавка идёт дважды.
+        //
+        // Пробелы ЛЕВЕЕ последней табуляции добавки не получают: табуляция
+        // доводит строку до своей позиции и всё лишнее место слева от себя
+        // поглощает, поэтому позиции табуляции совпадают с нерастянутой
+        // строкой (css-text-4 §8.1). Отсюда оба поведения сразу: строка, где
+        // все пробелы левее табуляции, не растягивается вовсе
+        // (`text-align-justify-tabs-001`, обе коробки обязаны совпасть), а
+        // остаток достаётся только пробелам правее (`-002`: их ровно два, и
+        // каждый вырастает на пробел).
+        let absorbed = self.text[range.clone()].rfind('\u{9}').map_or(0, |at| {
+            self.text[range.start..range.start + at]
+                .chars()
+                .filter(|c| word_separator(*c))
+                .count()
+        });
+        if absorbed > 0 {
+            for w in words.iter_mut() {
+                w.spaces_before = w.spaces_before.saturating_sub(absorbed);
+            }
+        }
         let opportunities = words.last().map(|w| w.spaces_before).unwrap_or(0);
         let step = if opportunities > 0 {
             free / opportunities as f32
