@@ -2813,8 +2813,26 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     }
     // Псевдоэлементы принадлежат ЭТОМУ узлу: они едут в стиль его детей на
     // один уровень, а глубже слитый стиль их уже не несёт.
-    merged.first_letter = e.first_letter.clone().map(Box::new);
-    merged.first_line = e.first_line.clone().map(Box::new);
+    // Кегль слоя приводится к точкам ЗДЕСЬ: слой применяется мимо
+    // наследования, и `font-size: 200%` доезжал до набора неразрешённым —
+    // первая строка оставалась обычного размера
+    // (`text-autospace-first-line-001`). Доля считается от кегля самого блока.
+    let resolved = |layer: &Computed| {
+        let mut c = layer.clone();
+        if let Some(Len::Px(base)) = merged.font_size {
+            // ТОЛЬКО доля: `em` у слоя разрешает набор строк, и он считает
+            // её от кегля РОДИТЕЛЯ абзаца (`inline::max_font_size`). Перевод
+            // здесь давал второе умножение — буквица уезжала в четыре кегля
+            // вместо одного (`text-transform-shaping-001`).
+            c.font_size = match c.font_size {
+                Some(Len::Pct(k)) => Some(Len::Px(k * base)),
+                other => other,
+            };
+        }
+        Box::new(c)
+    };
+    merged.first_letter = e.first_letter.as_ref().map(&resolved);
+    merged.first_line = e.first_line.as_ref().map(&resolved);
     // Единицы окна разрешаются здесь: размер окна знает только сборщик.
     merged.resolve_viewport(opts.viewport);
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
