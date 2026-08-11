@@ -1807,6 +1807,9 @@ fn paragraph_pieces(
     }
     // Точка переноса показывается знаком по СОСЕДЯМ, а они лежат в других
     // кусках — проход идёт по всему абзацу сразу.
+    // Слогораздел идёт ПЕРВЫМ: он меняет сам текст кусков, а всё дальше
+    // считает по готовому тексту байтовые смещения.
+    inline::hyphenate_pieces(&mut pieces);
     inline::space_transform_pieces(&mut pieces);
     let mut pieces = pieces;
     inline::trim_edge_spaces(&mut pieces);

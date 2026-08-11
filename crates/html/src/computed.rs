@@ -698,6 +698,10 @@ pub struct Computed {
     pub text_fit: Option<TextFit>,
     /// `hyphenate-character` — чем показывать перенос слова. Пусто — ничем.
     pub hyphen_char: Option<String>,
+    /// `hyphens: auto` — слогораздел ставит сам движок, а не разметка.
+    pub hyphens_auto: Option<bool>,
+    /// Язык узла (атрибут `lang`): по нему выбираются образцы слогораздела.
+    pub lang: Option<String>,
     /// `vertical-align` внутри строки и ячейки таблицы.
     pub vertical_align: Option<Align>,
     pub pointer_events_none: Option<bool>,
@@ -2578,7 +2582,13 @@ impl Computed {
             }
 
             // --- Переносы и обрезка -------------------------------------------
-            "hyphens" => self.hyphenate = Some(v != "none"),
+            "hyphens" => {
+                self.hyphenate = Some(v != "none");
+                // `manual` только УВАЖАЕТ расставленные знаки мягкого
+                // переноса, сам их не ставит. Разделять обязательно: под одним
+                // флагом `auto` и `manual` вели себя одинаково.
+                self.hyphens_auto = Some(v == "auto");
+            }
             "tab-size" => match v.parse::<u8>() {
                 // Число — множитель ширины знака, длина — готовый шаг. Одно
                 // отменяет другое: последнее объявление и есть значение.

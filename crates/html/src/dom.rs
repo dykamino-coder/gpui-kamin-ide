@@ -559,6 +559,11 @@ fn walk(
                 .collect();
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
             apply_presentational_size(&mut style, &tag, &attrs);
+            // Язык — свойство узла, а не CSS: по нему выбираются образцы
+            // слогораздела (`hyphens: auto`).
+            if let Some((_, v)) = attrs.iter().find(|(k, _)| k == "lang") {
+                style.lang = Some(v.clone());
+            }
             apply_direction(&mut style, &tag, &attrs);
             // Правила с `:hover` собираются отдельным слоем: в базовый стиль
             // им нельзя, иначе элемент выглядел бы всегда наведённым.
