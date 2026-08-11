@@ -271,29 +271,21 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
     let cleaned = strip_comments(css);
     let mut rest = cleaned.as_str();
     let mut order = 0usize;
-    while let Some(brace) = rest.find('{') {
+    while let Some((piece, tail)) = next_piece(rest) {
+        rest = tail;
         // At-правило-ПРЕДЛОЖЕНИЕ блока не имеет и кончается точкой с запятой:
-        // `@import`, `@charset`, `@namespace`, `@layer a, b;`. Селектор в них
-        // не заходит, поэтому заголовком считается только хвост после
-        // последней точки с запятой. Пока считался весь кусок до скобки,
-        // `@import "…/ahem.css"; .contain { … }` выглядел одним at-правилом,
-        // и ПЕРВОЕ настоящее правило таблицы пропадало вместе со своим телом
-        // (`letter-spacing-200`: коробки теряли и рамку, и шрифт).
-        let head = rest[..brace]
-            .rsplit(';')
-            .next()
-            .unwrap_or("")
-            .trim();
+        // `@import`, `@charset`, `@namespace`, `@layer a, b;`. Ни одно из них
+        // ничего не задаёт нашей отрисовке, поэтому запись просто пропускается
+        // вместе со всей своей преамбулой.
+        let (head, body) = match piece {
+            Piece::Statement { .. } => continue,
+            Piece::Block { head, body } => (head.trim(), body),
+        };
         // Незакрытый блок в КОНЦЕ таблицы закрывается неявно (CSS Syntax
         // §5.4.1): правило всё равно действует. Прежде такое правило
         // отбрасывалось целиком — а в наборе оно встречается прямо в тесте
         // (`break-spaces-009`: у `.test` нет закрывающей скобки, и коробка
         // теряла свою ширину вместе со всем остальным).
-        let (body, tail) = match find_matching(&rest[brace..]) {
-            Some(close) => (&rest[brace + 1..brace + close], &rest[brace + close + 1..]),
-            None => (&rest[brace + 1..], ""),
-        };
-        rest = tail;
         // At-правила: тело у них устроено иначе, поэтому обычными правилами
         // их применять нельзя. `@media` и `@supports` разбираются как обёртка
         // над обычными правилами, `@keyframes` — отдельно (см.
@@ -466,6 +458,74 @@ fn first_escape(tail: &str) -> &str {
     &tail[..end]
 }
 
+/// Чем кончилась очередная запись таблицы.
+enum Piece<'a> {
+    /// Правило с телом: заголовок и содержимое фигурных скобок.
+    Block { head: &'a str, body: &'a str },
+    /// At-правило-предложение: заголовок до точки с запятой, тела нет.
+    Statement { head: &'a str },
+}
+
+/// Отрезать от таблицы одну запись, вернув её и остаток.
+///
+/// Скобки ВСЕХ ВИДОВ считаются вместе (§5.4.1): преамбула правила поглощает
+/// уравновешенные `[]`, `()` и `{}`, а кончается на точке с запятой или на
+/// теле в фигурных скобках — смотря что встретится раньше НА ВЕРХНЕМ УРОВНЕ.
+/// Пока искалась просто первая `{`, неизвестное at-правило с мусором в
+/// преамбуле (`@foo ] } ) … ;`) уводило разбор внутрь своего мусора, и вся
+/// таблица за ним разъезжалась (`matching-brackets-001`, `core-syntax-001`).
+fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
+    let mut square = 0i32;
+    let mut round = 0i32;
+    let mut at = 0usize;
+    while at < text.len() {
+        let ch = text[at..].chars().next().unwrap_or('\u{0}');
+        match ch {
+            '\\' => {
+                at += ch.len_utf8();
+                at += text[at..].chars().next().map_or(0, char::len_utf8);
+                continue;
+            }
+            '"' | '\'' => {
+                at += ch.len_utf8();
+                at += skip_string(&text[at..], ch);
+                continue;
+            }
+            _ if at_url(&text[at..]) => {
+                at += skip_url(&text[at..]);
+                continue;
+            }
+            // Глубина не уходит в минус: лишняя `]` или `)` — просто знак
+            // (§5.4.1), а не закрытие несуществующей скобки. Пока уходила,
+            // преамбула `@foo ] } ) …` делала следующую настоящую `[`
+            // нулевым уровнем, и точка с запятой ВНУТРИ скобок обрывала
+            // at-правило раньше времени (`matching-brackets-001`).
+            '[' => square += 1,
+            ']' => square = (square - 1).max(0),
+            '(' => round += 1,
+            ')' => round = (round - 1).max(0),
+            ';' if square == 0 && round == 0 => {
+                let head = &text[..at];
+                return Some((Piece::Statement { head }, &text[at + 1..]));
+            }
+            '{' if square == 0 && round == 0 => {
+                let head = &text[..at];
+                let rest = &text[at..];
+                let (body, tail) = match find_matching(rest) {
+                    Some(close) => (&rest[1..close], &rest[close + 1..]),
+                    // Незакрытый блок в КОНЦЕ таблицы закрывается неявно
+                    // (§5.4.1): правило всё равно действует.
+                    None => (&rest[1..], ""),
+                };
+                return Some((Piece::Block { head, body }, tail));
+            }
+            _ => {}
+        }
+        at += ch.len_utf8();
+    }
+    None
+}
+
 /// Начинается ли здесь запись `url(`.
 fn at_url(text: &str) -> bool {
     // Сравнение по БАЙТАМ: срез по четвёртому байту может разрезать
@@ -530,6 +590,8 @@ fn skip_string(text: &str, quote: char) -> usize {
 /// Индекс `}` , парный первой `{`.
 fn find_matching(from_brace: &str) -> Option<usize> {
     let mut depth = 0i32;
+    let mut square = 0i32;
+    let mut round = 0i32;
     let bytes = from_brace.as_bytes();
     let mut at = 0usize;
     while at < bytes.len() {
@@ -549,8 +611,13 @@ fn find_matching(from_brace: &str) -> Option<usize> {
                 at += skip_url(&from_brace[at..]);
                 continue;
             }
-            '{' => depth += 1,
-            '}' => {
+            // Внутри `[` и `(` фигурная скобка ничего не закрывает.
+            '[' => square += 1,
+            ']' => square = (square - 1).max(0),
+            '(' => round += 1,
+            ')' => round = (round - 1).max(0),
+            '{' if square == 0 && round == 0 => depth += 1,
+            '}' if square == 0 && round == 0 => {
                 depth -= 1;
                 if depth == 0 {
                     return Some(at);
