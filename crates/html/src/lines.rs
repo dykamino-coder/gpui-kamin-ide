@@ -2573,7 +2573,13 @@ pub fn align_for(c: &crate::computed::Computed) -> Align {
         .text_align
         .unwrap_or(crate::computed::TextAlign::Start)
         .physical(rtl);
-    align_of_value(value)
+    let align = align_of_value(value);
+    // `text-justify: none` — растягивать запрещено, и строка идёт к началу:
+    // у письма справа налево началом служит правый край.
+    if align == Align::Justify && c.no_justify == Some(true) {
+        return if rtl { Align::Right } else { Align::Left };
+    }
+    align
 }
 
 /// Выключка из заданного значения.

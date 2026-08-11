@@ -362,6 +362,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.line_through = own.line_through.or(parent.line_through);
     c.line_height = own.line_height.or(parent.line_height);
     c.text_align = own.text_align.or(parent.text_align);
+    c.no_justify = own.no_justify.or(parent.no_justify);
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
     c.hanging = own.hanging.or(parent.hanging);
     c.monospace = own.monospace.or(parent.monospace);

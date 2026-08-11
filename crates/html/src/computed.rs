@@ -585,6 +585,8 @@ pub struct Computed {
     /// свойство, потому что по умолчанию последняя строка не растягивается:
     /// иначе абзац из одного слова разъехался бы во всю ширину.
     pub text_align_last: Option<TextAlign>,
+    /// `text-justify: none` — выключка запрещена, строка идёт как `start`.
+    pub no_justify: Option<bool>,
     /// `hanging-punctuation` — какая пунктуация выходит за край строки.
     pub hanging: Option<Hanging>,
     pub nowrap: Option<bool>,
@@ -1617,6 +1619,18 @@ impl Computed {
                     Ok(mult) if !v.ends_with("px") => Some(Len::Pct(mult)),
                     _ => Len::parse(v),
                 }
+            }
+            // `text-justify: none` запрещает выключку целиком: строка с
+            // `text-align: justify` прижимается к началу, как `start`
+            // (css-text-3 §7.3). Прочие значения различают, ЧТО растягивать —
+            // пробелы или знаки; у нас растягиваются пробелы, и это поведение
+            // `auto`/`inter-word`.
+            "text-justify" => {
+                self.no_justify = match v {
+                    "none" => Some(true),
+                    "auto" | "inter-word" | "inter-character" | "distribute" => Some(false),
+                    _ => self.no_justify,
+                };
             }
             "text-align" => {
                 self.text_align = match v {
@@ -3730,6 +3744,7 @@ fn initial_value(key: &str) -> Option<&'static str> {
         "overflow-wrap" | "word-wrap" => "normal",
         "tab-size" => "8",
         "text-align" => "start",
+        "text-justify" => "auto",
         "text-combine-upright" => "none",
         "text-indent" => "0",
         "text-orientation" => "mixed",
