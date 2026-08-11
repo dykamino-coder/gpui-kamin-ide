@@ -809,6 +809,7 @@ pub fn letter_spans(
     base_size: f32,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
+    let mut zero = Vec::new();
     let mut at = 0usize;
     for p in pieces {
         let Piece::Text { text, style } = p else {
@@ -830,11 +831,35 @@ pub fn letter_spans(
             )
         });
         if let Some(v) = extra {
+            // Знак нулевой ширины единицей письма не является, и трекинг за
+            // ним не идёт (css-text-3 §8.2: интервал ставится МЕЖДУ
+            // единицами). Пока шёл, строка с невидимыми знаками разъезжалась
+            // на их число (`letter-spacing-control-chars-001`).
+            //
+            // Кусок из ОДНОГО такого знака — наша распорка (`spacer_style`):
+            // в её трекинге лежит поле строчной коробки или зазор, и снимать
+            // его нельзя.
+            if text.chars().nth(1).is_some() {
+                for (off, ch) in text.char_indices().filter(|(_, c)| zero_width_format(*c)) {
+                    zero.push((at + off..at + off + ch.len_utf8(), gpui::px(0.)));
+                }
+            }
             out.push((at..end, gpui::px(v)));
         }
         at = end;
     }
-    out
+    // Нули идут ПЕРВЫМИ: поиск диапазона берёт первое попадание.
+    zero.extend(out);
+    zero
+}
+
+/// Знак нулевой ширины, управляющий набором, а не письмом: единицей письма он
+/// не считается, и межбуквенный интервал вокруг него не ставится.
+fn zero_width_format(ch: char) -> bool {
+    matches!(
+        ch as u32,
+        0x200B..=0x200F | 0x2060..=0x2064 | 0x206A..=0x206F | 0xFEFF
+    )
 }
 
 /// Межсловный интервал ПО КУСКАМ: отрезок байт → добавка к каждому пробелу.
