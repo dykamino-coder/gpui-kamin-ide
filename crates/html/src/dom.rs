@@ -104,6 +104,10 @@ fn user_agent_css() -> &'static str {
     a { color: #8ab4f8; text-decoration: underline }
     code, kbd, samp { font-family: monospace; font-size: 12px }
     pre { font-family: monospace; margin: 6px 0; padding: 8px; overflow-x: auto }
+    /* Заранее размеченный текст зазоров `text-autospace` не получает: правка
+       ширины ломает выравнивание в столбик, ради которого его и пишут
+       (css-text-4 §7, таблица стилей агента). */
+    pre, code, kbd, samp, tt, textarea, input { text-autospace: no-autospace }
     ul, ol { margin: 6px 0; padding-left: 18px }
     li { margin: 2px 0 }
     blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid #4a4a5a }

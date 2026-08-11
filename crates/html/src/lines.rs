@@ -2281,12 +2281,30 @@ impl Paragraph {
         // слова не действовал вовсе.
         if !self.letter_spans.is_empty() || !self.shift_spans.is_empty() {
             let mut cuts: Vec<usize> = Vec::new();
-            for (r, _) in self.letter_spans.iter().chain(self.shift_spans.iter()) {
-                for edge in [r.start, r.end] {
-                    if edge > range.start && edge < range.end {
-                        cuts.push(edge);
-                    }
+            let mut cut = |edge: usize| {
+                if edge > range.start && edge < range.end {
+                    cuts.push(edge);
                 }
+            };
+            for (r, _) in self.letter_spans.iter() {
+                // Трекинг знака — это промежуток ПОСЛЕ него, поэтому у
+                // последнего знака отрезка он на набор внутри отрезка не
+                // влияет. Резать по началу нужно только там, где знаков в
+                // диапазоне несколько: одиночный (зазор `text-autospace`)
+                // спокойно доживает в общем отрезке, а свой разрез оставлял
+                // между половинками слова шов в точку — соседние отрезки
+                // округляются независимо (`text-autospace-001`: `XX`
+                // расходились).
+                if self.text[r.clone()].chars().nth(1).is_some() {
+                    cut(r.start);
+                }
+                cut(r.end);
+            }
+            // Сдвиг по вертикали — свойство самого глифа: он обязан ехать
+            // отдельным вызовом целиком.
+            for (r, _) in self.shift_spans.iter() {
+                cut(r.start);
+                cut(r.end);
             }
             cuts.sort_unstable();
             cuts.dedup();
@@ -2472,7 +2490,13 @@ impl IntoElement for Paragraph {
 /// остаётся на выделяемом элементе движка. Сюда уходит только то, что иначе
 /// не выразить.
 pub fn rules(c: &crate::computed::Computed) -> Option<Wrap> {
-    let wrap = wrap_of(c);    let needed = wrap.break_spaces
+    let wrap = wrap_of(c);
+    let needed = wrap.break_spaces
+        // Зазоры `text-autospace` живут диапазонами трекинга, а выделяемый
+        // текст движка диапазонов не знает — без своей раскладки они пропали
+        // бы вовсе.
+        || c.autospace_alpha == Some(true)
+        || c.autospace_numeric == Some(true)
         || wrap.break_all
         || wrap.anywhere
         || wrap.keep_all

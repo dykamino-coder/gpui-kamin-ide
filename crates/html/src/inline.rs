@@ -124,6 +124,17 @@ pub fn collect(
                 if let Some((color, width)) = uniform_border(&e.style) {
                     merged.inline_border = Some((color, width));
                 }
+                // Контур строчного куска рисует тот же прогон: коробки у
+                // куска нет, а место контур и не занимает.
+                if merged.inline_border.is_none()
+                    && e.style.display.is_none()
+                    && let Some(o) = e.style.outline
+                    && let Some(Len::Px(width)) = o.width
+                    && width > 0.0
+                    && let Some(color) = o.color.or(e.style.color)
+                {
+                    merged.inline_border = Some((color, width));
+                }
                 // Атомарная строчная коробка — ГРАНИЦА переноса, даже когда
                 // своей коробки в раскладке ей не завели (размер не задан, и
                 // она осталась куском текста). По CSS строку можно рвать
@@ -863,47 +874,69 @@ fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool) {
     }
 }
 
-/// Зазоры `text-autospace` ПО КУСКАМ абзаца.
+/// Зазоры `text-autospace` — диапазонами трекинга по тексту абзаца.
 ///
 /// По css-text-4 §7 между иероглифом и соседней буквой (`ideograph-alpha`) или
-/// цифрой (`ideograph-numeric`) стоит зазор в 1/8 кегля. Соседи сплошь и рядом
-/// лежат в разных кусках (`<b>永</b>abc`), поэтому проход идёт по всему абзацу
-/// — как и замена нулевого пробела идеографическим.
+/// цифрой (`ideograph-numeric`) стоит зазор в 1/8 кегля. Соседство считается
+/// по ЗНАКАМ, а не по кускам: пара лежит и внутри одного текстового узла
+/// (`国国XX国`), и по разные стороны границы (`<b>永</b>abc`).
 ///
-/// Зазор ставится знаком-распоркой: своей ширины у него нет, её даёт трекинг
-/// на его куске. Соединитель слов (U+FEFF) точкой переноса не является —
-/// строка из-за зазора не рвётся.
-pub fn autospace_pieces(pieces: Vec<Piece>) -> Vec<Piece> {
-    // Первый и последний знаки каждого куска: между ними и решается вопрос.
-    let edges: Vec<Option<(char, char, f32)>> = pieces
-        .iter()
-        .map(|p| match p {
-            Piece::Text { text, style } if !text.is_empty() => {
-                let size = match style.font_size {
-                    Some(Len::Px(v)) => v,
-                    _ => 16.0,
-                };
-                Some((text.chars().next()?, text.chars().next_back()?, size))
+/// Зазор — трекинг на знаке ПЕРЕД границей, и ставится он диапазоном, не
+/// разрезая кусок. Два тупика, из которых это единственный выход:
+///
+/// * знаком-распоркой зазор сделать нельзя: любая распорка нулевой ширины
+///   (U+FEFF, U+2060) имеет класс переноса WJ и запрещает разрыв по обе
+///   стороны, а зазор на перенос влиять не должен;
+/// * резать кусок ради своего трекинга тоже нельзя: соседние прогоны кладутся
+///   с независимым округлением, и между половинками слова появлялся шов
+///   в точку (`text-autospace-001`, две буквы `XX` расходились).
+///
+/// Трекинг вдобавок схлопывается на краю строки сам — как и требует
+/// спецификация: строка рвётся по границе зазора, и на новой строке зазора
+/// уже нет.
+pub fn autospace_spans(
+    pieces: &[Piece],
+    base_size: f32,
+) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
+    let mut out = Vec::new();
+    // Знак перед курсором: его смещение, длина, стиль и кегль куска.
+    let mut prev: Option<(usize, usize, char, f32, &Computed)> = None;
+    let mut at = 0usize;
+    for p in pieces {
+        let Piece::Text { text, style } = p else {
+            // Картинка иероглифом не бывает и соседство разрывает.
+            prev = None;
+            continue;
+        };
+        let size = match style.font_size {
+            Some(Len::Px(v)) => v,
+            _ => base_size,
+        };
+        for (off, ch) in text.char_indices() {
+            // Соединительный знак (огласовка, диакритика) письменности не
+            // меняет: он прозрачен, а класс пары берётся у БАЗОВОЙ буквы.
+            // Пока знак считался обычным, арабское слово с огласовкой на
+            // конце теряло зазор перед иероглифом (`text-autospace-mixed-001`,
+            // `text-autospace-combining-marks`).
+            if combining(ch) {
+                if let Some(p) = prev.as_mut() {
+                    // Место зазора — после ВСЕГО сочетания, поэтому отрезок
+                    // переезжает на знак, а буква для решения прежняя.
+                    p.0 = at + off;
+                    p.1 = ch.len_utf8();
+                }
+                continue;
             }
-            _ => None,
-        })
-        .collect();
-    let mut out: Vec<Piece> = Vec::with_capacity(pieces.len());
-    for (i, piece) in pieces.into_iter().enumerate() {
-        if let Piece::Text { style, .. } = &piece
-            && let (Some(prev), Some((first, _, size))) = (
-                edges[..i].iter().rev().find_map(|e| e.as_ref()),
-                edges[i].as_ref(),
-            )
-            && autospace_between(prev.1, *first, style)
-        {
-            let gap = size / 8.0;
-            out.push(Piece::Text {
-                text: "\u{feff}".into(),
-                style: spacer_style(style, gap),
-            });
+            if let Some((p_at, p_len, p_ch, p_size, p_style)) = prev
+                && autospace_between(p_ch, ch, style)
+            {
+                let family = p_style.font_family.clone().unwrap_or_default();
+                let had = crate::metrics::spacing_px(p_style.letter_spacing, &family, p_size);
+                out.push((p_at..p_at + p_len, gpui::px(had + p_size / 8.0)));
+            }
+            prev = Some((at + off, ch.len_utf8(), ch, size, style));
         }
-        out.push(piece);
+        at += text.len();
     }
     out
 }
@@ -918,6 +951,15 @@ fn autospace_between(left: char, right: char, style: &Computed) -> bool {
                 || (numeric && other.is_ascii_digit()))
     };
     pair(left, right) || pair(right, left)
+}
+
+/// Соединительный ли знак: своей ширины нет, письменность задаёт базовая
+/// буква перед ним.
+fn combining(ch: char) -> bool {
+    matches!(
+        unicode_linebreak::break_property(ch as u32),
+        unicode_linebreak::BreakClass::CombiningMark
+    )
 }
 
 /// Иероглиф ли знак — по классу переноса строк.

@@ -1808,9 +1808,7 @@ fn paragraph_pieces(
     // Точка переноса показывается знаком по СОСЕДЯМ, а они лежат в других
     // кусках — проход идёт по всему абзацу сразу.
     inline::space_transform_pieces(&mut pieces);
-    // Зазоры между иероглифом и буквой ставятся ПОСЛЕ замены пробелов:
-    // они смотрят на соседей по готовому тексту куска.
-    let mut pieces = inline::autospace_pieces(pieces);
+    let mut pieces = pieces;
     inline::trim_edge_spaces(&mut pieces);
     // Свой `unicode-bidi` у самого абзаца знаками не обрамлялся: их ставит
     // сборка КУСКОВ, а корень абзаца куском не бывает. Из-за этого
@@ -1940,7 +1938,15 @@ fn paragraph_pieces(
             )
             .spans(inline::wrap_spans(&pieces, inherited))
             .word_spans(inline::word_spans(&pieces, biggest))
-            .letter_spans(inline::letter_spans(&pieces, biggest))
+            // Автозазоры идут ПЕРВЫМИ: поиск диапазона берёт первое
+            // попадание, и зазор обязан перебить трекинг всего куска.
+            .letter_spans(
+                [
+                    inline::autospace_spans(&pieces, biggest),
+                    inline::letter_spans(&pieces, biggest),
+                ]
+                .concat(),
+            )
             .shift_spans(inline::shift_spans(&pieces, biggest))
             .align_last(
                 inherited
@@ -2359,7 +2365,13 @@ fn has_own_box(c: &Computed) -> bool {
                 || set(&c.radius.bl)))
         || !c.shadows.is_empty()
         || c.opacity.is_some()
-        || c.outline.is_some()
+        // Контур на раскладку не влияет ВООБЩЕ (css-ui §2): он рисуется за
+        // краем коробки и места не занимает. Строчному куску коробку он
+        // поэтому не заводит — иначе `<span>` с контуром переставал
+        // переноситься вместе с абзацем и уезжал одной строкой за край
+        // (`text-autospace-break-001`). Рисует его прогон строки, как и
+        // ровную рамку (см. `inline::uniform_border`).
+        || (!inline_level && c.outline.is_some())
 }
 
 /// Обернуть элемент преобразованием, если оно задано.
