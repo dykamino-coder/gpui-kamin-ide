@@ -295,7 +295,8 @@ fn resolve_links(html: &str, path: &str) -> String {
     // отдельным проходом, потому что в тегах они не лежат.
     let mut with_urls = String::with_capacity(out.len());
     let mut tail = out.as_str();
-    while let Some(at) = tail.find("url(") {
+    // Имя записи регистронезависимо (§3.3): `URL(` и `Url(` — та же запись.
+    while let Some(at) = find_url(tail) {
         with_urls.push_str(&tail[..at + 4]);
         let rest = &tail[at + 4..];
         let Some(close) = rest.find(')') else {
@@ -304,8 +305,16 @@ fn resolve_links(html: &str, path: &str) -> String {
         };
         let raw = rest[..close].trim();
         let bare = raw.trim_matches(|c| c == '\'' || c == '"');
-        match resolve(bare) {
-            Some(file) => with_urls.push_str(&format!("'{}'", file.display())),
+        // Проценты раскодируются: в адресе они стоят вместо знаков, которые в
+        // имени файла записаны как есть (`%27green%20block.png` — это файл
+        // `'green block.png`). Браузер раскодирует их при обращении к файлу,
+        // и без этого путь просто не находится (`uri-004`).
+        let decoded = percent_decode(bare);
+        match resolve(&decoded).or_else(|| resolve(bare)) {
+            // Кавычки ДВОЙНЫЕ: в имени файла апостроф встречается
+            // (`'green block.png` из `uri-004`), а двойная кавычка в пути
+            // Windows невозможна вовсе.
+            Some(file) => with_urls.push_str(&format!("\"{}\"", file.display())),
             None => with_urls.push_str(raw),
         }
         with_urls.push(')');
@@ -313,6 +322,35 @@ fn resolve_links(html: &str, path: &str) -> String {
     }
     with_urls.push_str(tail);
     with_urls
+}
+
+/// Ближайшая запись `url(` без учёта регистра.
+fn find_url(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    (0..bytes.len().saturating_sub(3)).find(|&i| bytes[i..i + 4].eq_ignore_ascii_case(b"url("))
+}
+
+/// Адрес с раскодированными процентами.
+fn percent_decode(raw: &str) -> String {
+    if !raw.contains('%') {
+        return raw.to_string();
+    }
+    let bytes = raw.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut at = 0usize;
+    while at < bytes.len() {
+        if bytes[at] == b'%' && at + 2 < bytes.len() {
+            let hex = std::str::from_utf8(&bytes[at + 1..at + 3]).unwrap_or("");
+            if let Ok(byte) = u8::from_str_radix(hex, 16) {
+                out.push(byte);
+                at += 3;
+                continue;
+            }
+        }
+        out.push(bytes[at]);
+        at += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| raw.to_string())
 }
 
 /// Значение атрибута в теге — в кавычках или без.

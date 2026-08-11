@@ -571,7 +571,7 @@ fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
 }
 
 /// Начинается ли здесь запись `url(`.
-fn at_url(text: &str) -> bool {
+pub(crate) fn at_url(text: &str) -> bool {
     // Сравнение по БАЙТАМ: срез по четвёртому байту может разрезать
     // многобайтовый знак, и обычный срез строки на этом падает.
     let b = text.as_bytes();
@@ -584,7 +584,7 @@ fn at_url(text: &str) -> bool {
 /// скобка, точка с запятой и начало комментария внутри него ничего не значат.
 /// Пока запись разбиралась как обычный текст, `url( { test )` открывал блок,
 /// и остаток таблицы съезжал (`uri-012`).
-fn skip_url(text: &str) -> usize {
+pub(crate) fn skip_url(text: &str) -> usize {
     let mut at = 4; // `url(`
     while at < text.len() {
         let ch = text[at..].chars().next().unwrap_or('\u{0}');
@@ -612,7 +612,7 @@ fn skip_url(text: &str) -> usize {
 /// комментария (CSS Syntax §4.3.5): `content: "}"` не закрывает правило, а
 /// `content: "a;b"` — одно объявление. Обратный слэш снимает особость
 /// следующего знака, в том числе самой кавычки.
-fn skip_string(text: &str, quote: char) -> usize {
+pub(crate) fn skip_string(text: &str, quote: char) -> usize {
     let mut it = text.char_indices();
     while let Some((i, ch)) = it.next() {
         if ch == '\\' {

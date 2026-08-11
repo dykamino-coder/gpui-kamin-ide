@@ -2943,11 +2943,42 @@ fn split_font(v: &str) -> (&str, &str) {
 }
 
 /// `url(...)` из значения фона; кавычки внутри необязательны.
+///
+/// Имя записи регистронезависимо (§3.3), поэтому `URL(` и `Url(` — та же
+/// запись; экранирование в нём разбор объявления уже снял. Конец ищется
+/// с учётом кавычек и экранирования: закрывающая скобка внутри строки записи
+/// не закрывает (§4.3.6). И искать `url(` внутри строки нельзя вовсе —
+/// `content: "url(x)"` записью не является.
 fn parse_url(v: &str) -> Option<String> {
-    let start = v.find("url(")? + 4;
-    let end = v[start..].find(')')? + start;
-    let inner = v[start..end].trim().trim_matches(|c| c == '"' || c == '\'');
-    (!inner.is_empty()).then(|| inner.to_string())
+    let mut at = 0usize;
+    while at < v.len() {
+        let ch = v[at..].chars().next().unwrap_or('\u{0}');
+        match ch {
+            '\\' => {
+                at += ch.len_utf8();
+                at += v[at..].chars().next().map_or(0, char::len_utf8);
+                continue;
+            }
+            '"' | '\'' => {
+                at += ch.len_utf8();
+                at += crate::css::skip_string(&v[at..], ch);
+                continue;
+            }
+            _ if crate::css::at_url(&v[at..]) => {
+                let end = at + crate::css::skip_url(&v[at..]);
+                let inner = v[at + 4..end.saturating_sub(1).max(at + 4)].trim();
+                let inner = match inner.chars().next() {
+                    Some(q @ ('"' | '\'')) if inner.ends_with(q) && inner.len() > 1 => {
+                        &inner[1..inner.len() - 1]
+                    }
+                    _ => inner,
+                };
+                return (!inner.is_empty()).then(|| inner.to_string());
+            }
+            _ => at += ch.len_utf8(),
+        }
+    }
+    None
 }
 
 /// Помечено ли объявление как важное.
