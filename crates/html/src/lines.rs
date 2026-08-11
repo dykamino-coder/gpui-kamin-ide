@@ -2474,6 +2474,18 @@ impl Paragraph {
                     });
                 }
                 spaces += 1;
+            } else if ch == '\u{9}' {
+                // Табуляция — ГРАНИЦА слова, хотя точкой раздачи и не служит.
+                // Её продвижение задаёт позиция табуляции (`Seg::offset`), и
+                // внутри слова оно пропадало: строка без пробелов уходила в
+                // набор одним куском, и табуляция рисовалась глифом шрифта
+                // (`text-indent-tab-positions-001`: `a⇥b⇥c` выходило `abc`).
+                if let Some(s) = start.take() {
+                    out.push(Word {
+                        range: s..at,
+                        spaces_before: spaces,
+                    });
+                }
             } else if start.is_none() {
                 start = Some(at);
             }
