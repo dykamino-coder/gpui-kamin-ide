@@ -1129,6 +1129,29 @@ pub fn space_transform_pieces(pieces: &mut [Piece]) {
     }
 }
 
+/// Титульный регистр знака — там, где он ОТЛИЧАЕТСЯ от прописного.
+///
+/// Таких мест в Юникоде немного: составные буквы, у которых прописной вариант
+/// пишется двумя большими (`ǄǅǆЛЈ…`), и греческие с приданной йотой, где
+/// полное прописное отображение даёт ДВА знака. `None` — отличий нет, годится
+/// обычное `to_uppercase`.
+fn titlecase(ch: char) -> Option<char> {
+    let c = ch as u32;
+    let title = match c {
+        0x01C4..=0x01C6 => 0x01C5,
+        0x01C7..=0x01C9 => 0x01C8,
+        0x01CA..=0x01CC => 0x01CB,
+        0x01F1..=0x01F3 => 0x01F2,
+        // Приданная йота: заглавная форма стоит ровно на восемь позиций выше.
+        0x1F80..=0x1F87 | 0x1F90..=0x1F97 | 0x1FA0..=0x1FA7 => c + 8,
+        0x1FB3 => 0x1FBC,
+        0x1FC3 => 0x1FCC,
+        0x1FF3 => 0x1FFC,
+        _ => return None,
+    };
+    char::from_u32(title)
+}
+
 /// `text-transform`: регистр меняется до шейпинга — шрифт про него не знает.
 pub fn transform_case(text: &str, style: &Computed) -> String {
     match style.text_transform {
@@ -1149,7 +1172,14 @@ pub fn transform_case(text: &str, style: &Computed) -> String {
             let mut at_start = true;
             for ch in text.chars() {
                 if at_start {
-                    out.extend(ch.to_uppercase());
+                    // ТИТУЛЬНЫЙ регистр, а не прописной (css-text-3 §2.1).
+                    // У диграфов и у греческого с приданной йотой это разные
+                    // знаки: `ǆ` даёт `ǅ`, а не `Ǆ`; `ᾀ` даёт `ᾈ`, а не пару
+                    // `ἈΙ` (`text-transform-capitalize-007` и `-016`).
+                    match titlecase(ch) {
+                        Some(title) => out.push(title),
+                        None => out.extend(ch.to_uppercase()),
+                    }
                 } else {
                     out.push(ch);
                 }
