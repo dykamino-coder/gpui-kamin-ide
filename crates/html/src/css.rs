@@ -165,6 +165,38 @@ impl Selector {
     }
 }
 
+/// Где в значении стоит восклицательный знак — вне строк, скобок и
+/// экранирования. `content: "!"` пометкой важности не является.
+fn top_level_bang(value: &str) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut at = 0usize;
+    while at < value.len() {
+        let ch = value[at..].chars().next().unwrap_or('\u{0}');
+        match ch {
+            '\\' => {
+                at += ch.len_utf8();
+                at += value[at..].chars().next().map_or(0, char::len_utf8);
+                continue;
+            }
+            '"' | '\'' => {
+                at += ch.len_utf8();
+                at += skip_string(&value[at..], ch);
+                continue;
+            }
+            _ if at_url(&value[at..]) => {
+                at += skip_url(&value[at..]);
+                continue;
+            }
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = (depth - 1).max(0),
+            '!' if depth == 0 => return Some(at),
+            _ => {}
+        }
+        at += ch.len_utf8();
+    }
+    None
+}
+
 /// Разбор `style="a: 1; b: 2"`.
 pub fn parse_decls(raw: &str) -> Decls {
     let mut out = Decls::new();
@@ -194,7 +226,19 @@ pub fn parse_decls(raw: &str) -> Decls {
         };
         let (k, v) = (&item[..colon], &item[colon + 1..]);
         let key = unescape(k.trim()).to_ascii_lowercase();
-        let val = v.trim().trim_end_matches("!important").trim();
+        // После восклицательного знака в объявлении стоит ровно `important` и
+        // ничего больше; всё прочее делает объявление недействительным, и
+        // отбрасывается оно целиком (CSS 2.1 §4.1.8). Пока пометка просто
+        // срезалась с конца, `background: red ! fail` доезжало значением
+        // `red ! fail`, а разбор цвета брал из него первое слово и красил
+        // (`core-syntax-006`).
+        let mut val = v.trim();
+        if let Some(bang) = top_level_bang(val) {
+            if !val[bang + 1..].trim().eq_ignore_ascii_case("important") {
+                continue;
+            }
+            val = val[..bang].trim();
+        }
         let val = &unescape_value(val);
         if !key.is_empty() && !val.is_empty() {
             out.insert(key, val.to_string());
@@ -704,8 +748,13 @@ fn split_top_level(raw: &str, sep: char) -> Vec<&str> {
                 at += skip_url(&raw[at..]);
                 continue;
             }
-            '(' => depth += 1,
-            ')' => depth -= 1,
+            // Блоки ЛЮБОГО вида непрозрачны: объявление с фигурными скобками
+            // внутри (`test { :nested; color: yellow }`) — одно объявление, и
+            // недействительное. Пока считались только круглые скобки, его
+            // внутренности разбирались как отдельные объявления и применялись
+            // (`core-syntax-001`).
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = (depth - 1).max(0),
             c if c == sep && depth == 0 => {
                 out.push(&raw[start..at]);
                 start = at + ch.len_utf8();
