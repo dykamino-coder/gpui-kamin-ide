@@ -29,6 +29,18 @@ cef::wrap_app! {
                     Some(&"renderer-process-limit".into()),
                     Some(&"2".into()),
                 );
+                // Расширения Chrome нам не нужны НИ ОДНО: показываем свои
+                // страницы. А CEF на Chrome-рантайме читает тот же ключ
+                // реестра, что и Chrome (`SOFTWARE\Google\Chrome\Extensions`),
+                // и ставил в наш профиль чужое — Adobe Acrobat
+                // (`efaidnbmnnnibpcajpcglclefindmkaj`) и соседей: качал их с
+                // `clients2.google.com` и падал на разборе
+                // (`Failed to parse schema for extension …`, дальше CHECK в
+                // libcef и «KaminIDE has stopped working» на пустом экране).
+                cl.append_switch(Some(&"disable-extensions".into()));
+                // Второй источник того же — «внешние» расширения из папок
+                // установки: гасим и его, иначе запрет обходится каталогом.
+                cl.append_switch(Some(&"disable-default-apps".into()));
                 // Эмуляция RDP/WARP для стендов: без GPU-композитинга
                 // Chromium шлёт кадры только `on_paint` — так проверяется
                 // software-путь отрисовки.
