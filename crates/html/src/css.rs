@@ -71,9 +71,15 @@ impl Selector {
         // псевдокласса и правило не совпадало ни с чем.
         let delim = |s: &str| {
             let mut depth = 0i32;
+            let mut escaped = false;
             s.char_indices()
                 .find(|(_, ch)| {
+                    if escaped {
+                        escaped = false;
+                        return false;
+                    }
                     match ch {
+                        '\\' => escaped = true,
                         '(' => depth += 1,
                         ')' => depth -= 1,
                         '.' | '#' | ':' if depth == 0 => return true,
@@ -87,7 +93,7 @@ impl Selector {
         let mut rest = s;
         let head_end = delim(rest);
         if head_end > 0 {
-            sel.tag = Some(rest[..head_end].trim().to_ascii_lowercase());
+            sel.tag = Some(unescape(rest[..head_end].trim()).to_ascii_lowercase());
         }
         rest = &rest[head_end..];
         while !rest.is_empty() {
@@ -96,11 +102,13 @@ impl Selector {
             let end = delim(body);
             let name = &body[..end];
             match kind {
-                '.' => sel.classes.push(name.to_string()),
-                '#' => sel.id = Some(name.to_string()),
+                '.' => sel.classes.push(unescape(name)),
+                '#' => sel.id = Some(unescape(name)),
                 // `:hover` и `::before` дают одно и то же имя: различать их
                 // незачем — псевдоэлементы отбираются по имени.
-                ':' => sel.pseudo = Some(name.trim_start_matches(':').to_ascii_lowercase()),
+                ':' => {
+                    sel.pseudo = Some(unescape(name.trim_start_matches(':')).to_ascii_lowercase())
+                }
                 _ => return None,
             }
             rest = &body[end..];
@@ -161,11 +169,33 @@ impl Selector {
 pub fn parse_decls(raw: &str) -> Decls {
     let mut out = Decls::new();
     for item in split_top_level(raw, ';') {
-        let Some((k, v)) = item.split_once(':') else {
+        // Двоеточие ищется НЕэкранированное: `bac\\kground` — это имя
+        // `background`, а `background\\:` — имя с двоеточием внутри, то есть
+        // объявление без двоеточия вовсе, и его надо отбросить
+        // (`escapes-002`, `escapes-003`).
+        let mut colon = None;
+        let mut escaped = false;
+        for (i, ch) in item.char_indices() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                ':' => {
+                    colon = Some(i);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        let Some(colon) = colon else {
             continue;
         };
-        let key = k.trim().to_ascii_lowercase();
+        let (k, v) = (&item[..colon], &item[colon + 1..]);
+        let key = unescape(k.trim()).to_ascii_lowercase();
         let val = v.trim().trim_end_matches("!important").trim();
+        let val = &unescape_value(val);
         if !key.is_empty() && !val.is_empty() {
             out.insert(key, val.to_string());
         }
@@ -314,6 +344,126 @@ pub fn split_args(raw: &str) -> Vec<&str> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .collect()
+}
+
+/// Имя без экранирования (CSS Syntax §4.3.7).
+///
+/// `BSL0031 ` — знак по шестнадцатеричному коду, до шести цифр, и один
+/// пробел после них съедается как ограничитель. `BSL.` — сама точка, а не
+/// разделитель составного селектора. Пока этого не было, `p\\.class`
+/// разбирался как тег `p` с классом `class` и совпадал с `p class="class"`,
+/// хотя обязан искать тег с точкой в имени, то есть не совпадать ни с чем.
+pub fn unescape(name: &str) -> String {
+    if !name.contains('\\') {
+        return name.to_string();
+    }
+    let mut out = String::with_capacity(name.len());
+    let mut it = name.chars().peekable();
+    while let Some(ch) = it.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+        let mut hex = String::new();
+        while hex.len() < 6 {
+            match it.peek() {
+                Some(c) if c.is_ascii_hexdigit() => {
+                    hex.push(*c);
+                    it.next();
+                }
+                _ => break,
+            }
+        }
+        if hex.is_empty() {
+            // Экранирован обычный знак — он и остаётся, уже без особого
+            // значения. Перевод строки экранировать нельзя, но в имени его и
+            // не бывает.
+            if let Some(c) = it.next() {
+                out.push(c);
+            }
+            continue;
+        }
+        // Один пробел после цифр — ограничитель кода, а не часть имени.
+        if it.peek().is_some_and(|c| c.is_whitespace()) {
+            it.next();
+        }
+        match u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
+            // Нулевой знак и суррогаты заменяются знаком замены (§4.3.7).
+            Some(c) if c != '\u{0}' => out.push(c),
+            _ => out.push('\u{fffd}'),
+        }
+    }
+    out
+}
+
+/// Значение без экранирования — но кавычки не трогая.
+///
+/// Раскрывается всё, что раскрывается в имени, кроме внутренности строк:
+/// `"\\""` — это кавычка ВНУТРИ строки, и раскрыв её, мы получили бы три
+/// кавычки подряд и порвали значение (`escapes-001`).
+///
+/// Обрезать результат НЕЛЬЗЯ: `\\0020yellow` раскрывается в имя с пробелом
+/// внутри, а такое значение недействительно; обрезка сделала бы из него
+/// `yellow` и применила то, что применять нечего (`escapes-014`).
+fn unescape_value(value: &str) -> String {
+    if !value.contains('\\') {
+        return value.to_string();
+    }
+    let mut out = String::with_capacity(value.len());
+    let mut at = 0usize;
+    while at < value.len() {
+        let ch = value[at..].chars().next().unwrap_or('\u{0}');
+        if ch == '"' || ch == '\'' {
+            let body = at + ch.len_utf8();
+            let end = body + skip_string(&value[body..], ch);
+            out.push_str(&value[at..end]);
+            at = end;
+            continue;
+        }
+        if ch != '\\' {
+            out.push(ch);
+            at += ch.len_utf8();
+            continue;
+        }
+        let tail = &value[at + ch.len_utf8()..];
+        let taken = first_escape(tail);
+        let one = unescape(&format!("\\{taken}"));
+        // Пробел, полученный из кода, — часть ИМЕНИ, а не отступ, и
+        // значение с таким именем недействительно. Наш конвейер
+        // обрезает значение при использовании, поэтому раскрытие
+        // потеряло бы ровно ту особенность, из-за которой объявление и
+        // должно отпасть (`escapes-014`, `color:\\0020yellow`).
+        if one.chars().all(char::is_whitespace) {
+            out.push(ch);
+            out.push_str(taken);
+        } else {
+            out.push_str(&one);
+        }
+        at += ch.len_utf8() + taken.len();
+    }
+    out
+}
+
+/// Сколько байт после обратного слэша съедает одно экранирование: до шести
+/// шестнадцатеричных цифр и один пробел за ними, либо ровно один знак.
+fn first_escape(tail: &str) -> &str {
+    let mut end = 0usize;
+    let mut digits = 0usize;
+    for (i, ch) in tail.char_indices() {
+        if digits < 6 && ch.is_ascii_hexdigit() {
+            digits += 1;
+            end = i + ch.len_utf8();
+            continue;
+        }
+        if digits > 0 && ch.is_whitespace() {
+            end = i + ch.len_utf8();
+        }
+        break;
+    }
+    if digits == 0 {
+        end = tail.chars().next().map_or(0, char::len_utf8);
+    }
+    &tail[..end]
 }
 
 /// Где кончается строка в кавычках, начавшаяся на `quote`.
