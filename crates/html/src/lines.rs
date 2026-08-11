@@ -861,8 +861,13 @@ impl Paragraph {
         let mut out: Vec<Line> = Vec::new();
         // Начало строки: схлопываемые пробелы после переноса не рисуются и в
         // ширину не входят. При сохранённых пробелах (`pre*`) они значимы.
+        // Правило берётся В ЭТОМ МЕСТЕ, а не у абзаца целиком: `white-space`
+        // на вложенном `<span>`/`display: inline` действует на свои знаки, и
+        // абзац об этом не знает. Пока смотрели правило абзаца, сохранённые
+        // пробелы вложенного куска исчезали с начала перенесённой строки
+        // (`ws-break-spaces-applies-to-001`).
         let bol = |at: usize| -> usize {
-            if self.wrap.keep_spaces {
+            if self.wrap_at(at).keep_spaces {
                 at
             } else {
                 at + skip_leading(&self.text[at..])
