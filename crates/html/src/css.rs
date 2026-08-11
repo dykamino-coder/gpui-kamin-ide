@@ -466,6 +466,42 @@ fn first_escape(tail: &str) -> &str {
     &tail[..end]
 }
 
+/// Начинается ли здесь запись `url(`.
+fn at_url(text: &str) -> bool {
+    // Сравнение по БАЙТАМ: срез по четвёртому байту может разрезать
+    // многобайтовый знак, и обычный срез строки на этом падает.
+    let b = text.as_bytes();
+    b.len() >= 4 && b[..4].eq_ignore_ascii_case(b"url(")
+}
+
+/// Где кончается запись `url(…)`, считая от `u`.
+///
+/// Незакавыченное содержимое — отдельный вид токена (§4.3.6): фигурная
+/// скобка, точка с запятой и начало комментария внутри него ничего не значат.
+/// Пока запись разбиралась как обычный текст, `url( { test )` открывал блок,
+/// и остаток таблицы съезжал (`uri-012`).
+fn skip_url(text: &str) -> usize {
+    let mut at = 4; // `url(`
+    while at < text.len() {
+        let ch = text[at..].chars().next().unwrap_or('\u{0}');
+        match ch {
+            '\\' => {
+                at += ch.len_utf8();
+                at += text[at..].chars().next().map_or(0, char::len_utf8);
+                continue;
+            }
+            '"' | '\'' => {
+                at += ch.len_utf8();
+                at += skip_string(&text[at..], ch);
+                continue;
+            }
+            ')' => return at + ch.len_utf8(),
+            _ => at += ch.len_utf8(),
+        }
+    }
+    text.len()
+}
+
 /// Где кончается строка в кавычках, начавшаяся на `quote`.
 ///
 /// Внутри неё не значат ничего ни скобки, ни точка с запятой, ни начало
@@ -509,6 +545,10 @@ fn find_matching(from_brace: &str) -> Option<usize> {
                 at += skip_string(&from_brace[at..], ch);
                 continue;
             }
+            _ if at_url(&from_brace[at..]) => {
+                at += skip_url(&from_brace[at..]);
+                continue;
+            }
             '{' => depth += 1,
             '}' => {
                 depth -= 1;
@@ -549,6 +589,12 @@ fn strip_comments(css: &str) -> String {
                 at = end;
                 continue;
             }
+            _ if at_url(&css[at..]) => {
+                let end = at + skip_url(&css[at..]);
+                out.push_str(&css[at..end]);
+                at = end;
+                continue;
+            }
             _ => {}
         }
         if css[at..].starts_with("/*") {
@@ -585,6 +631,10 @@ fn split_top_level(raw: &str, sep: char) -> Vec<&str> {
             '"' | '\'' => {
                 at += ch.len_utf8();
                 at += skip_string(&raw[at..], ch);
+                continue;
+            }
+            _ if at_url(&raw[at..]) => {
+                at += skip_url(&raw[at..]);
                 continue;
             }
             '(' => depth += 1,
