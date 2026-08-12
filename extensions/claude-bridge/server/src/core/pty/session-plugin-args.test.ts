@@ -4,7 +4,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-  buildSessionClaudeArgs,
+  buildSessionClaudeArgs, cliDebugLogPath,
   getSessionPluginDirs,
 } from "./session-plugin-args";
 
@@ -60,5 +60,27 @@ describe("session plugin launch args", () => {
     expect(sessionCore).toMatch(
       /buildSessionClaudeArgs\(config,\s*settingsDir\)/,
     );
+  });
+});
+
+describe("cliDebugArgs", () => {
+  const before = process.env.BRIDGE_CLI_DEBUG_LOG;
+  afterEach(() => {
+    if (before === undefined) delete process.env.BRIDGE_CLI_DEBUG_LOG;
+    else process.env.BRIDGE_CLI_DEBUG_LOG = before;
+  });
+
+  it("stays out of the arguments unless asked for", () => {
+    delete process.env.BRIDGE_CLI_DEBUG_LOG;
+    const args = buildSessionClaudeArgs({ cwd: "/repo" } as never, "/tmp/session");
+    expect(args).not.toContain("--debug-file");
+  });
+
+  it("points the CLI at a log inside the session directory", () => {
+    process.env.BRIDGE_CLI_DEBUG_LOG = "1";
+    const args = buildSessionClaudeArgs({ cwd: "/repo" } as never, "/tmp/session");
+    const at = args.indexOf("--debug-file");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(args[at + 1]).toBe(cliDebugLogPath("/tmp/session"));
   });
 });
