@@ -14,9 +14,19 @@ export interface AppPrefs {
    *  Off by default (bundled is instant on desktop Win11); on for corp AppLocker
    *  setups that block the unsigned OpenConsole.exe. */
   useConptyDll: boolean
+  /** Drop the confirmation dialog when a session or a whole project folder is
+   *  deleted from the sessions sidebar. Off by default — deleting a project
+   *  takes its sessions with it and nothing on the host restores them. File
+   *  tree deletions are not covered: those ask regardless (they go to the
+   *  recycle bin, but the prompt is the only undo hint the user gets). */
+  skipDeleteConfirm: boolean
 }
 
-const DEFAULTS: AppPrefs = { backgroundToasts: true, useConptyDll: false }
+const DEFAULTS: AppPrefs = {
+  backgroundToasts: true,
+  useConptyDll: false,
+  skipDeleteConfirm: false,
+}
 
 let store: JsonStore<AppPrefs> | null = null
 

@@ -178,7 +178,8 @@ export function buildServiceMethods(opts: ServiceBootOptions): Map<string, Handl
   // Bridge server URL to build the update endpoint; only the host knows the
   // data dir where the extension stored it.
   methods.set("kamin:bridge:serverUrl", () => readBridgeServerUrl(opts.dataDir))
-  // Native app preferences (background toasts, ConPTY) — see app-prefs.ts.
+  // Native app preferences (background toasts, ConPTY, delete confirmation)
+  // — see app-prefs.ts.
   methods.set("kamin:prefs:get", () => getAppPrefs())
   methods.set("kamin:prefs:set", (patch) => {
     const next = setAppPrefs(patch as Partial<ReturnType<typeof getAppPrefs>>)

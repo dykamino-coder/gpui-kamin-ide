@@ -43,8 +43,9 @@ pub struct CustomizeState {
     pub customize_contrib: Option<String>,
     /// Что уже открыто в czShared: гасит повторные navigate на кадрах.
     pub cz_nav_done: Option<String>,
-    /// App-prefs хоста: (backgroundToasts, useConptyDll); None = не загружены.
-    pub app_prefs: Option<(bool, bool)>,
+    /// App-prefs хоста: (backgroundToasts, useConptyDll, skipDeleteConfirm);
+    /// None = не загружены.
+    pub app_prefs: Option<(bool, bool, bool)>,
     /// Расширения хоста; None = не загружены.
     pub extensions: Option<Vec<crate::ui::extensions_panel::ExtDesc>>,
     pub system_log: Vec<crate::output_log::SysEntry>,
