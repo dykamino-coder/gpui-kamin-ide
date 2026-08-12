@@ -167,7 +167,9 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
 
     // Переменные темы: `:root { --x: … }` и `--x` в инлайн-стиле корня.
     // Собираются до обхода, потому что нужны каждому узлу.
-    let vars = collect_vars(&rules);
+    // Пользовательские свойства НАСЛЕДУЮТСЯ и каскадируют, поэтому корень
+    // стартует пустым: каждый узел добавляет свои и передаёт вниз.
+    let vars = Decls::new();
 
     let mut out = vec![];
     // Наборы кадров собираются из тех же источников, что и правила.
@@ -318,18 +320,6 @@ fn own_containing_block(c: &Computed) -> bool {
 
 /// Кастомные свойства из правил. Селектор не важен: в документе переменные
 /// почти всегда объявлены на корне, а разбирать их область видимости — это
-/// уже полноценный каскад, которого мы намеренно избегаем.
-fn collect_vars(rules: &[Rule]) -> Decls {
-    let mut vars = Decls::new();
-    for rule in rules {
-        for (k, v) in &rule.decls {
-            if k.starts_with("--") {
-                vars.insert(k.clone(), v.clone());
-            }
-        }
-    }
-    vars
-}
 
 /// Содержимое всех `<style>` документа — html5ever кладёт его текстом внутрь.
 fn collect_style_tags(handle: &Handle, out: &mut String) {
@@ -561,6 +551,31 @@ fn walk(
                 .iter()
                 .filter(|r| matches(&r.sel, &me, path))
                 .collect();
+            // Свои переменные: родительские, поверх них объявления
+            // совпавших правил в порядке каскада, поверх — свои же в
+            // атрибуте. Пока словарь был один на документ, `:root{--c:red}`
+            // и `.dark{--c:blue}` складывались в него подряд, и последнее
+            // объявление красило ВЕСЬ документ — переключение темы классом
+            // не работало в принципе.
+            let own_vars = {
+                let mut own = vars.clone();
+                let mut by_cascade: Vec<&&Rule> = matched.iter().collect();
+                by_cascade.sort_by_key(|r| (r.origin, r.sel.specificity(), r.order));
+                for rule in by_cascade {
+                    for (k, v) in &rule.decls {
+                        if k.starts_with("--") {
+                            own.insert(k.clone(), v.clone());
+                        }
+                    }
+                }
+                for (k, v) in &inline_decls {
+                    if k.starts_with("--") {
+                        own.insert(k.clone(), v.clone());
+                    }
+                }
+                own
+            };
+            let vars = &own_vars;
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
             apply_presentational_size(&mut style, &tag, &attrs);
             // Язык — свойство узла, а не CSS: по нему выбираются образцы
@@ -980,6 +995,20 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    #[test]
+    fn custom_properties_cascade_and_inherit() {
+        let red = crate::value::Color::parse("red");
+        let blue = crate::value::Color::parse("blue");
+        // Переключение темы классом: у потомка внутри `.dark` своё значение
+        // переменной, у остальных — корневое. Пока переменные собирались в
+        // один плоский словарь на документ, последнее объявление красило ВЕСЬ
+        // документ, и тема классом не переключалась в принципе.
+        let colors = child_colors(
+            "<style>:root { --c: red } .dark { --c: blue } i { color: var(--c) }</style>             <div id=box><i></i><i class=dark></i></div>",
+        );
+        assert_eq!(colors, vec![red, blue], "получено {colors:?}");
     }
 
     #[test]
