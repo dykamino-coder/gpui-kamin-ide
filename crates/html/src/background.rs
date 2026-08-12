@@ -75,7 +75,20 @@ impl Source {
         match self {
             Source::Raster(image) => Some(image.clone()),
             Source::Vector { markup, .. } => {
-                crate::svg::rasterize(&with_viewport(markup, tile), tile.0, tile.1)
+                // Растр не бывает больше потолка: при `cover` с вытянутым
+                // соотношением плитка выходит в тысячи точек по длинной
+                // стороне, и растеризатор возвращал НИЧЕГО — страница
+                // оставалась пустой (`wide--cover--*`, `tall--cover--*`).
+                // Геометрия при этом не страдает: плитка рисуется своим
+                // размером, теряется только плотность, а видна всё равно
+                // только та её часть, что попала в коробку.
+                const LIMIT: f32 = 2048.0;
+                let k = (LIMIT / tile.0.max(tile.1)).min(1.0);
+                // Точка по каждой оси — минимум: у плитки с крайним
+                // соотношением (`viewBox="0 0 2147483647 1"`) короткая сторона
+                // после сжатия обращалась в ноль, и растра не выходило вовсе.
+                let raster = ((tile.0 * k).max(1.0), (tile.1 * k).max(1.0));
+                crate::svg::rasterize(&with_viewport(markup, raster), raster.0, raster.1)
             }
         }
     }
@@ -280,6 +293,9 @@ fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
     });
     match size {
         BgSize::Auto => auto,
+        // Без своего соотношения картинка растягивается на место под фон
+        // ЦЕЛИКОМ: сохранять нечего (css-images-3 §5.3).
+        BgSize::Cover | BgSize::Contain if i.ratio.is_none() => box_size,
         BgSize::Cover | BgSize::Contain => {
             let (iw, ih) = (ratio.max(0.0001), 1.0);
             let sx = bw / iw;
@@ -361,10 +377,21 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                 // копией. Иначе на `background-size: 0.2px` выходило по 500
                 // копий на ось, четверть миллиона отрисовок за кадр, и кадр не
                 // успевал появиться вовсе (`background-size-near-zero-*`).
+                // Сливаются только МОСТЯЩИЕСЯ оси: одна копия так и остаётся
+                // невидимой полоской, и это верно — вырожденная плитка
+                // (`contain` при крайнем соотношении) не рисуется вовсе, как
+                // и в браузере (`tall--contain--*` с пустым эталоном).
                 const MERGE: f32 = 0.5;
+                let merge = |len: f32, box_len: f32, mode: Tiling| {
+                    if len < MERGE && mode != Tiling::None {
+                        box_len
+                    } else {
+                        len
+                    }
+                };
                 let tile = (
-                    if tile.0 < MERGE { box_size.0 } else { tile.0 },
-                    if tile.1 < MERGE { box_size.1 } else { tile.1 },
+                    merge(tile.0, box_size.0, repeat.axis(true)),
+                    merge(tile.1, box_size.1, repeat.axis(false)),
                 );
                 // `round` меняет САМ размер плитки, поэтому считается до
                 // смещения: доля в `background-position` берётся уже от
