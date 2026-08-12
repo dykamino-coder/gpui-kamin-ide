@@ -350,11 +350,14 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
             let name = head.to_ascii_lowercase();
             let inner = if name.starts_with("@media") {
                 media.matches(&name)
+            } else if name.starts_with("@supports") {
+                supports(name.trim_start_matches("@supports"))
             } else {
-                // `@supports` проверяет поддержку свойства браузером; своё
-                // покрытие мы знаем не в разборе, поэтому считаем условие
-                // выполненным — в разметке им включают современный вариант.
-                name.starts_with("@supports")
+                // Слой — прозрачная обёртка: внутри обычные правила, и вся
+                // разница в приоритете, которого у нас пока нет. Отбрасывая
+                // блок целиком, мы теряли всю разметку современных наборов
+                // стилей — они целиком лежат в `@layer`.
+                name.starts_with("@layer")
             };
             if inner {
                 for r in parse_stylesheet_media(body, media) {
@@ -431,6 +434,21 @@ fn split_words(chunk: &str) -> Vec<&str> {
         out.push(&chunk[from..]);
     }
     out
+}
+
+/// Выполнено ли условие `@supports`.
+///
+/// Своё покрытие свойств мы в разборе не знаем, поэтому простое условие
+/// считаем выполненным — им в разметке включают современный вариант. А вот
+/// ОТРИЦАНИЕ обязано быть разобрано: `@supports not (display: grid)` — это
+/// запасная ветка для движка БЕЗ поддержки, и, считая её выполненной, мы
+/// применяли ровно то, что применять не должны, да ещё вместе с основной.
+fn supports(condition: &str) -> bool {
+    let c = condition.trim();
+    match c.strip_prefix("not ") {
+        Some(rest) => !supports(rest),
+        None => true,
+    }
 }
 
 /// Имя без экранирования (CSS Syntax §4.3.7).
@@ -830,6 +848,21 @@ mod tests {
             Some("rgba(1, 2, 3, .5)")
         );
         assert_eq!(d.get("padding").map(String::as_str), Some("4px"));
+    }
+
+    #[test]
+    fn layer_block_is_transparent_and_supports_not_is_honoured() {
+        let media = Media::default();
+        // Слой — обёртка: правило внутри него живёт.
+        let rules = parse_stylesheet_media("@layer base { p { color: red } }", media);
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].decls.get("color").map(String::as_str), Some("red"));
+        // Отрицание — запасная ветка для движка БЕЗ поддержки; применять её
+        // нельзя, иначе применяются обе ветки пары сразу.
+        let neg = parse_stylesheet_media("@supports not (display: grid) { p { color: red } }", media);
+        assert!(neg.is_empty());
+        let pos = parse_stylesheet_media("@supports (display: grid) { p { color: red } }", media);
+        assert_eq!(pos.len(), 1);
     }
 
     #[test]
