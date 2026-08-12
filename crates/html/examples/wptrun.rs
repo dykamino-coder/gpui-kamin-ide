@@ -309,8 +309,13 @@ fn resolve_links(html: &str, path: &str) -> String {
         // имени файла записаны как есть (`%27green%20block.png` — это файл
         // `'green block.png`). Браузер раскодирует их при обращении к файлу,
         // и без этого путь просто не находится (`uri-004`).
-        let decoded = percent_decode(bare);
-        match resolve(&decoded).or_else(|| resolve(bare)) {
+        // Экранирование снимается ДО поиска файла: в адресе оно записывает
+        // знаки, которые в имени файла стоят как есть (`support/\\'green\\ block.png`
+        // — это файл `'green block.png`). Стенд ищет файл так же, как его
+        // нашёл бы браузер (`uri-005`).
+        let bare = kamin_html::css::unescape(bare);
+        let decoded = percent_decode(&bare);
+        match resolve(&decoded).or_else(|| resolve(&bare)) {
             // Кавычки ДВОЙНЫЕ: в имени файла апостроф встречается
             // (`'green block.png` из `uri-004`), а двойная кавычка в пути
             // Windows невозможна вовсе.
