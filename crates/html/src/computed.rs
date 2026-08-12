@@ -3128,6 +3128,34 @@ fn radius_shorthand(raw: &str) -> Corners {
 /// Потолок нужен от кольцевых ссылок.
 const VAR_DEPTH: usize = 8;
 
+/// Смещение скобки, парной той, что открыла запись.
+fn balanced_close(after_open: &str) -> Option<usize> {
+    let mut depth = 0i32;
+    for (i, ch) in after_open.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' if depth == 0 => return Some(i),
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Смещение первой запятой ВНЕ вложенных скобок.
+fn top_level_comma(inner: &str) -> Option<usize> {
+    let mut depth = 0i32;
+    for (i, ch) in inner.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
 fn resolve_vars(value: &str, vars: &Decls) -> String {
     let mut out = resolve_vars_once(value, vars);
     for _ in 1..VAR_DEPTH {
@@ -3152,13 +3180,20 @@ fn resolve_vars_once(value: &str, vars: &Decls) -> String {
     while let Some(at) = rest.find("var(") {
         out.push_str(&rest[..at]);
         let after = &rest[at + 4..];
-        let Some(close) = after.find(')') else {
+        // Конец записи — ПАРНАЯ скобка, а не первая попавшаяся: запасное
+        // значение само бывает записью со скобками. Пока бралась первая,
+        // `var(--c, rgba(0,0,0,.5))` при ЗАДАННОЙ переменной давал `red)` —
+        // лишняя скобка убивала значение. При незаданной выходило случайно
+        // верно, поэтому дефект и жил (CSS Variables §3).
+        let Some(close) = balanced_close(after) else {
             out.push_str(&rest[at..]);
             return out;
         };
         let inner = &after[..close];
-        let (name, fallback) = match inner.split_once(',') {
-            Some((n, f)) => (n.trim(), f.trim()),
+        // Запятая тоже ищется на верхнем уровне: внутри `rgba(0,0,0,.5)` их
+        // три, и разрез по первой откусил бы запасное значение.
+        let (name, fallback) = match top_level_comma(inner) {
+            Some(i) => (inner[..i].trim(), inner[i + 1..].trim()),
             None => (inner.trim(), ""),
         };
         match vars.get(name) {
@@ -3537,6 +3572,29 @@ fn tokenize_shadow(s: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn var_fallback_with_nested_parens_survives_a_defined_variable() {
+        // Конец записи — парная скобка, а запятая ищется на верхнем уровне:
+        // иначе при ЗАДАННОЙ переменной оставалась лишняя скобка и значение
+        // умирало, а при незаданной выходило случайно верно — из-за чего
+        // дефект и не был виден.
+        let mut vars = super::super::css::Decls::new();
+        vars.insert("--c".into(), "red".into());
+        let mut c = super::Computed::default();
+        c.apply_decls_with_vars(
+            &super::super::css::parse_decls("color: var(--c, rgba(0,0,0,.5))"),
+            &vars,
+        );
+        assert_eq!(c.color, super::super::value::Color::parse("red"));
+        // Незаданная переменная берёт запасное значение ЦЕЛИКОМ.
+        let mut c = super::Computed::default();
+        c.apply_decls_with_vars(
+            &super::super::css::parse_decls("color: var(--none, rgba(0,0,0,1))"),
+            &super::super::css::Decls::new(),
+        );
+        assert_eq!(c.color, super::super::value::Color::parse("rgba(0,0,0,1)"));
+    }
+
     #[test]
     fn important_survives_a_later_ordinary_rule() {
         // Важность — самый старший ключ сравнения (CSS Cascade §6.1): важное
