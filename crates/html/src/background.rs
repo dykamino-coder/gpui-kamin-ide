@@ -10,7 +10,7 @@
 //! Образ декодируется один раз и лежит в кэше: разбор PNG на каждом кадре
 //! стоил бы дороже всей остальной отрисовки документа.
 
-use crate::computed::{BgPos, BgRepeat, BgSize, Computed};
+use crate::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::value::Len;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
@@ -167,19 +167,26 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                 if tile.0 <= 0.5 || tile.1 <= 0.5 {
                     return;
                 }
+                // `round` меняет САМ размер плитки, поэтому считается до
+                // смещения: доля в `background-position` берётся уже от
+                // подогнанной плитки.
+                let tile = (
+                    rounded(repeat.axis(true), tile.0, box_size.0),
+                    rounded(repeat.axis(false), tile.1, box_size.1),
+                );
                 let start = origin(pos, box_size, tile);
-                // Мостим только по тем осям, где это разрешено; по остальным
-                // копия одна. Начало сдвигается назад на целое число плиток,
-                // иначе смещение съедало бы первый ряд.
-                let (cols, first_x) = tiling(repeat.x(), start.0, tile.0, box_size.0);
-                let (rows, first_y) = tiling(repeat.y(), start.1, tile.1, box_size.1);
+                // Каждая ось укладывается по своему правилу: сплошняком,
+                // одной плиткой, целым числом с равными зазорами (`space`)
+                // или подогнанной плиткой (`round`).
+                let xs = tiling(repeat.axis(true), start.0, tile.0, box_size.0);
+                let ys = tiling(repeat.axis(false), start.1, tile.1, box_size.1);
                 let corners = gpui::Corners::all(px(radius));
                 window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
-                    for row in 0..rows {
-                        for col in 0..cols {
+                    for y in &ys {
+                        for x in &xs {
                             let at = gpui::point(
-                                bounds.origin.x + px(first_x + col as f32 * tile.0),
-                                bounds.origin.y + px(first_y + row as f32 * tile.1),
+                                bounds.origin.x + px(*x),
+                                bounds.origin.y + px(*y),
                             );
                             let cell = Bounds {
                                 origin: at,
@@ -200,16 +207,53 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     )
 }
 
-/// Сколько копий нужно вдоль оси и с какой координаты начинать.
-fn tiling(repeat: bool, start: f32, tile: f32, box_len: f32) -> (u32, f32) {
-    if !repeat {
-        return (1, start);
+/// Размер плитки после подгонки под целое их число (`background-repeat: round`).
+///
+/// css-backgrounds-3 §3.4: плитка растягивается или сжимается так, чтобы вдоль
+/// оси уложилось целое их число без зазоров. Одна плитка — минимум: меньше
+/// целой копии не бывает.
+fn rounded(mode: Tiling, tile: f32, box_len: f32) -> f32 {
+    if mode != Tiling::Round || tile <= 0.0 || box_len <= 0.0 {
+        return tile;
     }
-    let back = (start / tile).ceil();
-    let first = start - back * tile;
-    let count = ((box_len - first) / tile).ceil().max(1.0);
-    // Потолок: битый `background-size` иначе просит миллионы плиток.
-    (count.min(512.0) as u32, first)
+    let count = (box_len / tile).round().max(1.0);
+    box_len / count
+}
+
+/// Координаты плиток вдоль оси — по одной на каждую копию.
+///
+/// Возврат списком, а не парой «сколько и откуда»: при `space` плитки стоят
+/// НЕ через равные шаги в размер плитки, а через зазор, и одной формулой
+/// смещения их уже не описать.
+fn tiling(mode: Tiling, start: f32, tile: f32, box_len: f32) -> Vec<f32> {
+    // Потолок на число плиток: битый `background-size` иначе просит миллионы.
+    const MAX: f32 = 512.0;
+    match mode {
+        Tiling::None => vec![start],
+        // Зазоры раздаются между ЦЕЛЫМИ плитками, крайние прижаты к краям, а
+        // `background-position` вдоль этой оси не действует. Если целиком
+        // влезает меньше двух — плитка одна и смещение своё (§3.4).
+        Tiling::Space => {
+            let fit = (box_len / tile).floor();
+            if fit < 2.0 {
+                return vec![start];
+            }
+            let count = fit.min(MAX);
+            let gap = (box_len - count * tile) / (count - 1.0);
+            (0..count as u32)
+                .map(|i| i as f32 * (tile + gap))
+                .collect()
+        }
+        // `round` уже подогнал размер плитки — дальше это обычная кладка.
+        Tiling::Repeat | Tiling::Round => {
+            // Начало сдвигается назад на целое число плиток, иначе смещение
+            // съедало бы первый ряд.
+            let back = (start / tile).ceil();
+            let first = start - back * tile;
+            let count = ((box_len - first) / tile).ceil().max(1.0).min(MAX);
+            (0..count as u32).map(|i| first + i as f32 * tile).collect()
+        }
+    }
 }
 
 #[cfg(test)]

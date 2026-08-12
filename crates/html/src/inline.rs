@@ -47,6 +47,9 @@ pub fn collect(
 ) -> Vec<Piece> {
     let mut out = vec![];
     for child in children {
+        // Куски ЭТОГО ребёнка: по ним ставится зазор на границе с тем, что
+        // идёт следом (см. `set_boundary_spacing` ниже).
+        let from = out.len();
         match child {
             Node::Text(t) => {
                 // `white-space: pre*` сохраняет пробелы как есть: отступы кода
@@ -166,7 +169,7 @@ pub fn collect(
                 let (lead, trail) = inline_sides(e, &merged);
                 if lead != 0.0 {
                     out.push(Piece::Text {
-                        text: "\u{feff}".into(),
+                        text: SPACER.into(),
                         style: spacer_style(&merged, lead),
                     });
                 }
@@ -192,7 +195,7 @@ pub fn collect(
                 }
                 if trail != 0.0 {
                     out.push(Piece::Text {
-                        text: "\u{feff}".into(),
+                        text: SPACER.into(),
                         style: spacer_style(&merged, trail),
                     });
                 }
@@ -202,10 +205,33 @@ pub fn collect(
                         style: marker,
                     });
                 }
+                // Зазор между последним знаком этого элемента и первым знаком
+                // того, что идёт следом, лежит ВНУТРИ текущего узла — значит,
+                // и величина его отсюда (css-text-3 §8.2). Ставится всегда, а
+                // снимается ниже с последнего куска: за ним границы уже нет.
+                set_boundary_spacing(&mut out[from..], inherited.letter_spacing);
             }
         }
     }
+    // За последним куском границы внутри ЭТОГО узла нет: зазор там задаст тот
+    // предок, у которого дальше идёт своё содержимое. Он и поставит его на
+    // этот же кусок, когда сборка вернётся к нему.
+    set_boundary_spacing(&mut out, None);
     out
+}
+
+/// Зазор на границе элементов — на последний ЗНАЧАЩИЙ кусок набора.
+///
+/// Распорка строчной коробки пропускается: в её трекинге лежит поле коробки, а
+/// не межбуквенный интервал, и перебивать его нельзя.
+fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
+    let last = pieces.iter_mut().rev().find_map(|p| match p {
+        Piece::Text { text, style } if !text.is_empty() && text != SPACER => Some(style),
+        _ => None,
+    });
+    if let Some(style) = last {
+        style.letter_spacing_after = spacing;
+    }
 }
 
 /// Кусок вне потока в РЯДУ: сам абзац его разместить не может (ряд собирает
@@ -389,6 +415,8 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.word_spacing = own.word_spacing.or(parent.word_spacing);
     c.text_transform = own.text_transform.or(parent.text_transform);
     c.text_indent = own.text_indent.or(parent.text_indent);
+    c.text_indent_each_line = own.text_indent_each_line.or(parent.text_indent_each_line);
+    c.text_indent_hanging = own.text_indent_hanging.or(parent.text_indent_hanging);
     c.break_anywhere = own.break_anywhere.or(parent.break_anywhere);
     c.break_word = own.break_word.or(parent.break_word);
     c.balance_lines = own.balance_lines.or(parent.balance_lines);
@@ -846,6 +874,20 @@ pub fn letter_spans(
                 }
             }
             out.push((at..end, gpui::px(v)));
+        }
+        // Зазор на ГРАНИЦЕ элементов: он принадлежит не куску, а ближайшему
+        // общему предку обоих знаков (css-text-3 §8.2). Ставится на последний
+        // знак куска и обязан перебить его собственный трекинг, поэтому идёт
+        // впереди — поиск диапазона берёт первое попадание.
+        if let Some(len) = style.letter_spacing_after
+            && let Some(last) = text.char_indices().next_back()
+        {
+            let v = crate::metrics::spacing_px(
+                Some(len),
+                &style.font_family.clone().unwrap_or_default(),
+                size,
+            );
+            zero.push((at + last.0..end, gpui::px(v)));
         }
         at = end;
     }
@@ -1443,6 +1485,33 @@ pub fn text_and_runs(pieces: &[Piece], base: &TextStyle) -> Option<(String, Vec<
         }
     }
     (!text.is_empty()).then_some((text, runs))
+}
+
+/// Знак-распорка: место под поля, рамки и отступы СТРОЧНОЙ коробки.
+///
+/// Своей коробки в раскладке у неё нет, поэтому ширину даёт трекинг на этом
+/// знаке. Соединитель слов (U+FEFF) взят за то, что точкой переноса он не
+/// является: строка не должна рваться по краю `<span>`. Но по UAX-14 его класс
+/// (WJ) запрещает разрыв и ПЕРЕД собой — а значит, и по пробелу перед коробкой.
+/// Поэтому точки переноса считаются по тексту БЕЗ распорок (`Paragraph`).
+pub const SPACER: &str = "\u{feff}";
+
+/// Места распорок в тексте абзаца — байтовые смещения.
+///
+/// Считаются по тем же правилам, что и `text_and_runs`. Распорка — всегда
+/// СВОЙ кусок ровно из одного знака: так она и отличается от того же знака,
+/// пришедшего из документа.
+pub fn spacers(pieces: &[Piece]) -> Vec<usize> {
+    let mut at = 0usize;
+    let mut out = Vec::new();
+    for p in pieces {
+        let Piece::Text { text, .. } = p else { continue };
+        if text == SPACER {
+            out.push(at);
+        }
+        at += text.len();
+    }
+    out
 }
 
 /// Куски ВНЕ потока и их место в тексте абзаца — байтовое смещение.

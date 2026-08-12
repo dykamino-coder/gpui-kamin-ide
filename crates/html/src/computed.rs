@@ -309,6 +309,20 @@ pub struct Gradient {
     pub stops: Vec<(Color, f32)>,
 }
 
+/// `background-clip`: до какого края коробки красится фон
+/// (css-backgrounds-3 §3.7).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BgClip {
+    /// До внутреннего края рамки.
+    PaddingBox,
+    /// До края содержимого — внутрь ещё и на поля.
+    ContentBox,
+    /// По форме текста. Своей отрисовки для него нет: фон под текстом мы
+    /// показать не умеем, поэтому такой фон не рисуется вовсе — это ближе к
+    /// правде, чем закрасить всю коробку.
+    Text,
+}
+
 /// `background-size`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BgSize {
@@ -333,14 +347,42 @@ pub enum BgRepeat {
     RepeatX,
     RepeatY,
     NoRepeat,
+    /// Своя укладка по каждой оси: `background-repeat: round space`.
+    Axes(Tiling, Tiling),
+}
+
+/// Укладка плиток вдоль ОДНОЙ оси (css-backgrounds-3 §3.4).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Tiling {
+    /// Плитки идут подряд, крайние обрезаются краем коробки.
+    #[default]
+    Repeat,
+    /// Одна плитка.
+    None,
+    /// Целое число плиток, остаток раздан РАВНЫМИ зазорами между ними.
+    Space,
+    /// Плитка растянута так, чтобы целое их число заняло коробку без зазоров.
+    Round,
 }
 
 impl BgRepeat {
     pub fn x(self) -> bool {
-        matches!(self, BgRepeat::Repeat | BgRepeat::RepeatX)
+        self.axis(true) == Tiling::Repeat
     }
     pub fn y(self) -> bool {
-        matches!(self, BgRepeat::Repeat | BgRepeat::RepeatY)
+        self.axis(false) == Tiling::Repeat
+    }
+
+    /// Укладка вдоль оси: `true` — вдоль строки (горизонталь).
+    pub fn axis(self, horizontal: bool) -> Tiling {
+        match (self, horizontal) {
+            (BgRepeat::Axes(x, _), true) => x,
+            (BgRepeat::Axes(_, y), false) => y,
+            (BgRepeat::Repeat, _) => Tiling::Repeat,
+            (BgRepeat::NoRepeat, _) => Tiling::None,
+            (BgRepeat::RepeatX, true) | (BgRepeat::RepeatY, false) => Tiling::Repeat,
+            (BgRepeat::RepeatX, false) | (BgRepeat::RepeatY, true) => Tiling::None,
+        }
     }
 }
 
@@ -666,8 +708,20 @@ pub struct Computed {
     pub backdrop_blur: Option<f32>,
 
     pub word_spacing: Option<Len>,
+    /// Межбуквенный интервал ПОСЛЕ последнего знака этого куска.
+    ///
+    /// На границе двух элементов зазор задаёт не сам кусок, а ближайший общий
+    /// предок обоих знаков (css-text-3 §8.2: зазор «задаётся и рисуется внутри
+    /// самого внутреннего элемента, который содержит эту границу»). Видно эту
+    /// границу только сборке кусков, она поле и ставит; из стилей документа
+    /// оно не приходит и по дереву не наследуется.
+    pub letter_spacing_after: Option<Len>,
     pub text_transform: Option<TextTransform>,
     pub text_indent: Option<Len>,
+    /// `text-indent: … each-line` — отступ повторяется после жёстких разрывов.
+    pub text_indent_each_line: Option<bool>,
+    /// `text-indent: … hanging` — отступ получают все строки, КРОМЕ первой.
+    pub text_indent_hanging: Option<bool>,
     /// `word-break: break-all` и родня — рвать слово, а не переносить целиком.
     pub break_anywhere: Option<bool>,
     /// `overflow-wrap: break-word|anywhere` — рвать слово, ТОЛЬКО если иначе
@@ -792,6 +846,9 @@ pub struct Computed {
     pub inline_pad: Option<(f32, f32)>,
     /// Скругление фона строчного бокса.
     pub inline_radius: Option<f32>,
+    /// `background-clip`: до какого края красится фон. `None` — до внешнего
+    /// края рамки, как по умолчанию в CSS.
+    pub bg_clip: Option<BgClip>,
     /// `clip-path: polygon(…)`: вершины в долях или точках коробки.
     pub clip_polygon: Option<Vec<(Len, Len)>>,
     /// `mix-blend-mode`: как слой смешивается с тем, что под ним.
@@ -1558,10 +1615,29 @@ impl Computed {
             // — и цвет, и картинку, и режим повтора. Раньше побеждало что-то
             // одно, и картинка терялась при заданном цвете.
             "background" | "background-color" => {
-                if v.starts_with("linear-gradient(") || v.starts_with("radial-gradient(") {
-                    self.gradient = parse_gradient(v);
+                // Фон — СПИСОК слоёв через запятую (css-backgrounds-3 §3.10):
+                // первый рисуется ПОВЕРХ остальных, цвет разрешён только
+                // последнему. Рисуем верхний слой и цвет нижнего: своего места
+                // под остальные у нас пока нет, но терять их молча нельзя —
+                // список целиком уходил в разбор ОДНОГО слоя, тот его не
+                // понимал, и фон пропадал весь (`background-attachment-margin-
+                // root-001`: страница выходила пустой).
+                let layers = background_layers(v);
+                let top = layers.first().copied().unwrap_or(v);
+                let bottom = layers.last().copied().unwrap_or(v);
+                if top.starts_with("linear-gradient(") || top.starts_with("radial-gradient(") {
+                    self.gradient = parse_gradient(top);
+                    // Цвет ищется в НИЖНЕМ слое: он один его и допускает.
+                    if layers.len() > 1 {
+                        for token in split_outside_parens(bottom) {
+                            if let Some(c) = Color::parse(&token) {
+                                self.background = Some(c);
+                            }
+                        }
+                    }
                     return;
                 }
+                let v = top;
                 if let Some(url) = parse_url(v) {
                     self.bg_image = Some(url);
                 }
@@ -1582,6 +1658,14 @@ impl Computed {
                             if let Some(c) = Color::parse(t) {
                                 self.background = Some(c);
                             }
+                        }
+                    }
+                }
+                // Цвет живёт в НИЖНЕМ слое списка — верхний его не допускает.
+                if layers.len() > 1 {
+                    for token in split_outside_parens(bottom) {
+                        if let Some(c) = Color::parse(&token) {
+                            self.background = Some(c);
                         }
                     }
                 }
@@ -2054,7 +2138,23 @@ impl Computed {
                     });
                 }
             }
-            "text-indent" => self.text_indent = Len::parse(v),
+            // Отступ первой строки. Кроме длины значение несёт до двух
+            // ключевых слов (css-text-3 §7.1): `each-line` повторяет отступ
+            // после КАЖДОГО жёсткого разрыва, `hanging` переворачивает выбор —
+            // отступ получают все строки, КРОМЕ той, что получила бы его.
+            // Порядок слов свободный, поэтому значение разбирается по словам.
+            "text-indent" => {
+                let (mut each, mut hang) = (false, false);
+                for word in v.split_ascii_whitespace() {
+                    match word.to_ascii_lowercase().as_str() {
+                        "each-line" => each = true,
+                        "hanging" => hang = true,
+                        len => self.text_indent = Len::parse(len).or(self.text_indent),
+                    }
+                }
+                self.text_indent_each_line = each.then_some(true);
+                self.text_indent_hanging = hang.then_some(true);
+            }
             // Свисающая пунктуация: знак выходит ЗА край коробки, чтобы край
             // текста читался ровным. Значения складываются: `first last`.
             "hanging-punctuation" => {
@@ -2199,13 +2299,38 @@ impl Computed {
             "table-layout" => self.table_fixed = Some(v == "fixed"),
 
             // --- Фоновая картинка --------------------------------------------
+            // Запись бывает и ПОосевой: `repeat space`, `round no-repeat`.
+            // Один keyword задаёт обе оси, два — свою каждой.
             "background-repeat" => {
-                self.bg_repeat = Some(match v {
-                    "no-repeat" => BgRepeat::NoRepeat,
-                    "repeat-x" => BgRepeat::RepeatX,
-                    "repeat-y" => BgRepeat::RepeatY,
-                    _ => BgRepeat::Repeat,
-                })
+                let word = |w: &str| match w {
+                    "no-repeat" => Some(Tiling::None),
+                    "space" => Some(Tiling::Space),
+                    "round" => Some(Tiling::Round),
+                    "repeat" => Some(Tiling::Repeat),
+                    _ => None,
+                };
+                let mut it = v.split_whitespace();
+                self.bg_repeat = match (it.next(), it.next()) {
+                    (Some("repeat-x"), None) => Some(BgRepeat::RepeatX),
+                    (Some("repeat-y"), None) => Some(BgRepeat::RepeatY),
+                    (Some(x), Some(y)) => match (word(x), word(y)) {
+                        (Some(x), Some(y)) => Some(BgRepeat::Axes(x, y)),
+                        _ => None,
+                    },
+                    (Some(x), None) => word(x).map(|t| BgRepeat::Axes(t, t)),
+                    _ => None,
+                }
+            }
+            // Область покраски фона. `border-box` — умолчание, поэтому оно
+            // же и сбрасывает признак: свойство наследуемым не является, но
+            // перебить заданное ранее в том же наборе обязано.
+            "background-clip" | "-webkit-background-clip" => {
+                self.bg_clip = match v.trim() {
+                    "padding-box" => Some(BgClip::PaddingBox),
+                    "content-box" => Some(BgClip::ContentBox),
+                    "text" => Some(BgClip::Text),
+                    _ => None,
+                }
             }
             "background-size" => {
                 self.bg_size = match v {
@@ -3146,6 +3271,21 @@ fn balanced_close(after_open: &str) -> Option<usize> {
 }
 
 /// Смещение первой запятой ВНЕ вложенных скобок.
+/// Слои фона: значение режется по запятым ВНЕ скобок.
+///
+/// Запятая внутри `rgba(…)` или `linear-gradient(…)` слой не кончает, поэтому
+/// делить строку простым `split(',')` нельзя.
+fn background_layers(v: &str) -> Vec<&str> {
+    let mut out = vec![];
+    let mut rest = v;
+    while let Some(at) = top_level_comma(rest) {
+        out.push(rest[..at].trim());
+        rest = &rest[at + 1..];
+    }
+    out.push(rest.trim());
+    out
+}
+
 fn top_level_comma(inner: &str) -> Option<usize> {
     let mut depth = 0i32;
     for (i, ch) in inner.char_indices() {

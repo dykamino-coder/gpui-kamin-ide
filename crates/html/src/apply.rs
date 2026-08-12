@@ -744,10 +744,15 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // Смешивание больше не живёт на заливке: раньше блендер знал четыре
     // формулы и красил только фон узла, а CSS смешивает ВСЁ поддерево целиком.
     // Теперь оно считается при сборке буфера группы (см. `render::grouped`).
-    if let Some(g) = &c.gradient {
-        d = d.bg(fill(g));
-    } else if let Some(bg) = c.background {
-        d = d.bg(gpui::Background::from(bg.to_hsla()));
+    // Фон, обрезанный внутренним краем (`background-clip`), красит не сама
+    // коробка, а отдельный слой внутри неё (`render::clip_layer`): коробка в
+    // раскладке красится целиком, вместе с рамкой и полями.
+    if c.bg_clip.is_none() {
+        if let Some(g) = &c.gradient {
+            d = d.bg(fill(g));
+        } else if let Some(bg) = c.background {
+            d = d.bg(gpui::Background::from(bg.to_hsla()));
+        }
     }
     // Цвет рамки: единый — прямо в стиль. Разные цвета сторон рисуются
     // полосами в сборщике дерева: у GPUI цвет рамки один на элемент.

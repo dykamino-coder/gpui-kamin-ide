@@ -45,8 +45,17 @@ impl Render for Page {
             text,
             normal_line_height: 1.31,
         };
+        // Начальный содержащий блок — ВИДИМАЯ ОБЛАСТЬ, и размер ему нужен
+        // точный, в точках. С долей (`size_full`) высота корня остаётся
+        // неопределённой, и абсолютный элемент, растянутый краями
+        // (`top: 0; bottom: 0`), схлопывается в ноль — целые семейства
+        // css-backgrounds и css-position выходили пустыми.
+        if std::env::var("HTML_VIEWPORT").is_ok() {
+            eprintln!("VIEWPORT {:?}", opts.viewport);
+        }
         div()
-            .size_full()
+            .w(px(opts.viewport.0))
+            .h(px(opts.viewport.1))
             .bg(rgb(0xffffff))
             .text_size(px(16.))
             .children(render(self.doc.nodes(), &opts))
@@ -142,6 +151,30 @@ fn dump(name: &str, shot: &(u32, u32, Vec<u8>)) {
         px[3] = 255;
     }
     let _ = writer.write_image_data(&rgba);
+}
+
+/// Своя рабочая память в мегабайтах — второй след деградации стенда рядом со
+/// временем пары. Растёт вместе с ним, если дело в утечке ресурсов окна.
+fn rss_mb() -> u64 {
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::ProcessStatus::{
+            GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+        };
+        use windows::Win32::System::Threading::GetCurrentProcess;
+        let mut counters = PROCESS_MEMORY_COUNTERS {
+            cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+            ..Default::default()
+        };
+        unsafe {
+            if GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, counters.cb).is_ok() {
+                return (counters.WorkingSetSize / (1024 * 1024)) as u64;
+            }
+        }
+        0
+    }
+    #[cfg(not(windows))]
+    0
 }
 
 /// Сколько точек снимка ЯВНО красные.
@@ -498,6 +531,13 @@ fn main() {
             // ПРЕДЫДУЩЕЙ. По числам это выглядит как совпадение (ноль
             // расхождения) или как случайные скачки между прогонами.
             // Поэтому кадр опрашивается, пока не сменится и не устоится.
+            // Чем кончился опрос кадра у каждого показа пары: `s` — кадр
+            // сменился и устоялся, `b` — страница осталась равной разделителю,
+            // `o` — запас опроса вышел, кадр есть, `n` — окно за весь запас не
+            // отдало НИ ОДНОГО кадра. Без этого «пара идёт 27 секунд» и «пара
+            // пустая» — два разных наблюдения без связи между ними.
+            let trace = Rc::new(std::cell::RefCell::new(String::new()));
+            let note = trace.clone();
             let mut show = async |html: String, prev: Option<Vec<u8>>, want_flat: bool| {
                 let _ = cx.update_window(window.into(), |view, window, cx| {
                     if let Ok(page) = view.downcast::<Page>() {
@@ -559,6 +599,7 @@ fn main() {
                     // и чернила — то есть следующая страница выглядит пустой
                     // (`css-position/multicol/static-position/*`).
                     if changed && steady + 1 >= need && (!want_flat || flat(&now.2)) {
+                        note.borrow_mut().push('s');
                         return Some(now);
                     }
                     // Страница, которая НЕ нарисовалась, равна разделителю, и
@@ -582,10 +623,12 @@ fn main() {
                     // (`css-position/multicol/static-position/*`: все 16 пар
                     // выходили пустыми, а по одной рисуются).
                     if same >= 120 {
+                        note.borrow_mut().push('b');
                         return Some(now);
                     }
                     last = Some(now);
                 }
+                note.borrow_mut().push(if last.is_some() { 'o' } else { 'n' });
                 last
             };
             // Время на пару: страница, у которой один кадр считается
@@ -593,6 +636,8 @@ fn main() {
             // зависшего стенда. В отчёт оно не идёт (там сравниваются числа
             // расхождения), зато сразу видно, что тормозит.
             let mut slow: Vec<(u128, String)> = vec![];
+            let mut timing = String::new();
+            let mut timing_lines = 0usize;
             for (test, reference) in &pairs {
                 let started = std::time::Instant::now();
                 let mut shots = vec![];
@@ -624,7 +669,13 @@ fn main() {
                         let drew = shot
                             .as_ref()
                             .is_some_and(|s| ink(&s.2, blank.as_ref()) >= INK_MIN);
-                        if drew {
+                        // Повтор нужен странице, которая НЕ УСПЕЛА, а не той,
+                        // что устоялась пустой: `b` в следе означает 120 равных
+                        // разделителю кадров подряд — рисовать там нечего, и
+                        // ещё два показа только жгут по две секунды каждый
+                        // (css-backgrounds: 23 с на пару вместо 0.6 с).
+                        let settled_blank = trace.borrow().ends_with('b');
+                        if drew || settled_blank {
                             break;
                         }
                         shot = show(html.clone(), blank.clone(), false).await;
@@ -794,6 +845,19 @@ fn main() {
                 if spent > 8000 {
                     slow.push((spent, test.clone()));
                 }
+                // Замер по КАЖДОЙ паре, не только по медленным. Стенд
+                // деградирует на длинном прогоне — страницы перестают отдавать
+                // кадр, показ выбирает весь запас опроса, и числа раздела
+                // становятся недостоверными. Порог в 8 секунд ловит только
+                // хвост; кривая времени и памяти показывает, КОГДА поворот.
+                timing.push_str(&format!(
+                    "{}|{spent}|{}|{}\n",
+                    timing_lines,
+                    rss_mb(),
+                    trace.replace(String::new()),
+                ));
+                timing_lines += 1;
+                let _ = std::fs::write("target/wpt-timing.txt", &timing);
             }
             let _ = std::fs::write("target/wpt-report.txt", report);
             slow.sort_by(|a, b| b.0.cmp(&a.0));

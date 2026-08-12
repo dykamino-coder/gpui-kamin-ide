@@ -114,6 +114,11 @@ pub struct Paragraph {
     ortho_limit: Option<Pixels>,
     /// Какая пунктуация свисает за край (`hanging-punctuation`).
     hanging: crate::computed::Hanging,
+    /// Отступ первой строки (`text-indent`).
+    indent: Indent,
+    /// Места знаков-распорок (`inline::SPACER`) — байтовые смещения по
+    /// возрастанию. Точки переноса считаются по тексту без них.
+    spacers: Vec<usize>,
     /// Опознание абзаца для памяти выделения. Без него абзац не выделяется:
     /// состояние между кадрами хранит раскладка по этому ключу.
     id: Option<ElementId>,
@@ -152,6 +157,25 @@ struct Line {
     ellipsis: bool,
     /// Строка кончилась мягким переносом: за ней рисуется знак переноса.
     hyphen: bool,
+    /// Отступ строки (`text-indent`). Отрицательный выводит строку за край.
+    indent: Pixels,
+}
+
+/// `text-indent`: отступ первой строки блока.
+///
+/// Значение хранится ДВУМЯ частями. Абсолютную (`px`) считает разбор стилей,
+/// а доля (`pct`) берётся от ширины содержащего блока и известна только там,
+/// где ширина уже решена, — в раскладке строк.
+#[derive(Default, Clone, Copy, PartialEq)]
+pub struct Indent {
+    /// Абсолютная часть в точках; отрицательная выводит строку за край.
+    pub px: f32,
+    /// Доля ширины строки: `10%` — это `0.1`.
+    pub pct: f32,
+    /// `each-line`: отступ повторяется после каждого жёсткого разрыва.
+    pub each_line: bool,
+    /// `hanging`: отступ получают все строки, КРОМЕ той, что получила бы его.
+    pub hanging: bool,
 }
 
 impl Paragraph {
@@ -177,6 +201,8 @@ impl Paragraph {
             vertical_rl: false,
             ortho_limit: None,
             hanging: crate::computed::Hanging::default(),
+            indent: Indent::default(),
+            spacers: Vec::new(),
             id: None,
             highlight: Hsla::default(),
             wrap,
@@ -280,6 +306,36 @@ impl Paragraph {
     pub fn hanging(mut self, hanging: Option<crate::computed::Hanging>) -> Self {
         self.hanging = hanging.unwrap_or_default();
         self
+    }
+
+    /// Места знаков-распорок строчных коробок.
+    pub fn spacers(mut self, spacers: Vec<usize>) -> Self {
+        self.spacers = spacers;
+        self
+    }
+
+    /// Отступ первой строки (`text-indent`).
+    pub fn indent(mut self, indent: Indent) -> Self {
+        self.indent = indent;
+        self
+    }
+
+    /// Отступ ЭТОЙ строки в точках.
+    ///
+    /// Доля считается от ширины строки (css-text-3 §7.1: процент берётся от
+    /// ширины содержащего блока), поэтому предел приходит сюда: при замере по
+    /// содержимому его нет, и доля обращается в ноль — как в браузере.
+    fn indent_of(&self, head_of_part: bool, first_part: bool, limit: Option<Pixels>) -> Pixels {
+        let own = if self.indent.each_line {
+            head_of_part
+        } else {
+            head_of_part && first_part
+        };
+        if own == self.indent.hanging {
+            return px(0.);
+        }
+        let pct = self.indent.pct * f32::from(limit.unwrap_or(px(0.)));
+        px(self.indent.px + pct)
     }
 
     /// Сколько байт в начале строки свисает за левый край.
@@ -631,6 +687,7 @@ impl Paragraph {
             width,
             ellipsis: true,
             hyphen: false,
+            indent: last.indent,
         });
         lines
     }
@@ -874,6 +931,14 @@ impl Paragraph {
             }
         };
         let mut start = bol(part.start);
+        // Отступ первой строки (`text-indent`) — свойство СТРОКИ, а не абзаца:
+        // его получает первая строка блока, при `each-line` — первая после
+        // каждого жёсткого разрыва, при `hanging` — все остальные. Поэтому
+        // здесь ведётся, начинает ли строка кусок и первый ли это кусок блока:
+        // группы между жёсткими разрывами набираются и по отдельности
+        // (выравнивание длин), и подряд в одном проходе.
+        let mut head_of_part = true;
+        let mut first_part = part.start == 0;
         let mut last_fit: Option<usize> = None;
         let mut opportunities: Vec<Stop> = self
             .opportunities()
@@ -896,6 +961,10 @@ impl Paragraph {
                 i += 1;
                 continue;
             }
+            // Отступ отбирает место у СВОЕЙ строки: на неё остаётся уже
+            // меньшая ширина, а отрицательный отступ, наоборот, добавляет.
+            let ind = self.indent_of(head_of_part, first_part, limit);
+            let limit = limit.map(|w| w - ind);
             // Хвостовые пробелы висят за краем: в ширину строки они не входят.
             // Хвостовые пробелы висят за краем СТРОКИ — то есть когда край
             // вообще есть. При замере по максимальному содержимому предела
@@ -937,8 +1006,13 @@ impl Paragraph {
                     width,
                     ellipsis: false,
                     hyphen: false,
+                    indent: ind,
                 });
                 start = bol(at);
+                // За жёстким разрывом начинается новый кусок: при `each-line`
+                // отступ повторяется, но «первым куском блока» он уже не будет.
+                head_of_part = true;
+                first_part = false;
                 last_fit = None;
                 i += 1;
                 continue;
@@ -979,8 +1053,12 @@ impl Paragraph {
                     width: self.span(&segs, head, tail) - self.tail_spacing(tail) + extra,
                     ellipsis: false,
                     hyphen,
+                    indent: ind,
                 });
                 start = bol(cut);
+                // Мягкий перенос кусок не кончает: следующая строка отступа
+                // не получает (кроме `hanging`, где его получают именно они).
+                head_of_part = false;
                 last_fit = None;
                 // Ту же точку проверяем заново от нового начала строки: за
                 // одним переносом может идти следующий.
@@ -1006,6 +1084,7 @@ impl Paragraph {
                 width: self.span(&segs, head, tail) - self.tail_spacing(tail),
                 ellipsis: false,
                 hyphen: false,
+                indent: self.indent_of(head_of_part, first_part, limit),
             });
         }
         // Печать разреза строк: `HTML_LINES=1`. Себя окупила — ею нашлось,
@@ -1119,6 +1198,37 @@ impl Paragraph {
             .unwrap_or(self.wrap)
     }
 
+    /// Точки переноса по UAX-14 — по тексту БЕЗ знаков-распорок.
+    ///
+    /// Распорка (`inline::SPACER`) — не знак документа, а место под поля
+    /// строчной коробки. Класс WJ запрещает разрыв и перед собой, поэтому
+    /// пробел ПЕРЕД `<span>` с отступом переставал быть точкой переноса, и
+    /// строка уходила за край коробки вместо переноса. Разрыв возвращается на
+    /// место распорки: поле уезжает на новую строку вместе со своим текстом.
+    fn linebreaks(&self) -> Vec<(usize, unicode_linebreak::BreakOpportunity)> {
+        if self.spacers.is_empty() {
+            return unicode_linebreak::linebreaks(&self.text).collect();
+        }
+        let mut clean = String::with_capacity(self.text.len());
+        let mut map: Vec<usize> = Vec::with_capacity(self.text.len() + 1);
+        let mut pending: Option<usize> = None;
+        for (at, ch) in self.text.char_indices() {
+            if self.spacers.binary_search(&at).is_ok() {
+                pending.get_or_insert(at);
+                continue;
+            }
+            map.push(pending.take().unwrap_or(at));
+            for k in 1..ch.len_utf8() {
+                map.push(at + k);
+            }
+            clean.push(ch);
+        }
+        map.push(self.text.len());
+        unicode_linebreak::linebreaks(&clean)
+            .map(|(at, kind)| (map.get(at).copied().unwrap_or(self.text.len()), kind))
+            .collect()
+    }
+
     fn opportunities(&self) -> Vec<Stop> {
         let mut out: Vec<Stop> = Vec::new();
         // Обязательные разрывы есть всегда, даже при `nowrap`.
@@ -1152,7 +1262,7 @@ impl Paragraph {
                         });
                     }
                 }
-                for (at, kind) in unicode_linebreak::linebreaks(&self.text) {
+                for (at, kind) in self.linebreaks() {
                     // Обязательные разрывы Юникода — это не только перевод
                     // строки: подача страницы, вертикальная табуляция,
                     // разделители строки и абзаца, NEL. Все они заканчивают
@@ -1610,6 +1720,11 @@ impl Element for Paragraph {
         let clamp = self.clamp;
         let fit = self.fit;
         let tab_stop = self.tab_stop;
+        // Отступ первой строки решает и число строк, и ширину коробки —
+        // без него щуп мерил абзац по чужой раскладке.
+        let indent = self.indent;
+        let hanging = self.hanging;
+        let spacers = self.spacers.clone();
         let id = window.request_measured_layout_with_baseline(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -1629,6 +1744,9 @@ impl Element for Paragraph {
                 probe.clamp = clamp;
                 probe.fit = fit;
                 probe.tab_stop = tab_stop;
+                probe.indent = indent;
+                probe.hanging = hanging;
+                probe.spacers = spacers.clone();
                 // Предел переноса берётся ПО ОСИ СТРОКИ: по горизонтали это
                 // ширина коробки, по вертикали — её высота. Уже решённая
                 // родителем сторона сильнее доступной.
@@ -1680,9 +1798,12 @@ impl Element for Paragraph {
                 // раздаётся пробелам, и без полной колонки раздавать нечего.
                 // В остальных случаях абзац обтягивает текст, иначе ломается
                 // размер по содержимому у родителя.
+                // Отступ строки входит в её место в колонке: коробка по
+                // содержимому обязана вместить и его. Отрицательный уходит в
+                // поле и ширины не требует, поэтому в ноль он и упирается.
                 let content = lines
                     .iter()
-                    .map(|l| l.width)
+                    .map(|l| l.width + l.indent.max(px(0.)))
                     .fold(px(0.), |a: Pixels, b| if b > a { b } else { a });
                 let width = known_along.unwrap_or(content);
                 // Шире отведённого коробка не бывает: у абзаца блочного уровня
@@ -1880,8 +2001,16 @@ impl Element for Paragraph {
             } else {
                 own_align
             };
-            let free = bounds.size.width - line.width;
+            // Отступ первой строки занимает место В колонке: остаток на
+            // выключку считается уже без него.
+            let free = bounds.size.width - line.width - line.indent;
             let free = if free < px(0.) { px(0.) } else { free };
+            // Свисающий открывающий знак уходит ЗА край: строка сдвигается
+            // влево на его ширину. Считается до выбора пути отрисовки —
+            // выключенная строка свисает так же, как обычная.
+            let hang = self.hang_first(line.range.start);
+            let shift = self.span(&segs, line.range.start, line.range.start + hang);
+            let lead = line.indent - shift;
             // Строка с межсловным интервалом рисуется ПО СЛОВАМ: одним
             // набором промежутки не показать — шейпер о них не знает. Раздача
             // остатка при этом нулевая, слова просто встают по своим местам.
@@ -1904,14 +2033,14 @@ impl Element for Paragraph {
                 || !self.shift_spans.is_empty()
             {
                 let (free, dx) = if align == Align::Justify {
-                    (free, px(0.))
+                    (free, lead)
                 } else {
                     let dx = match align {
                         Align::Center => free / 2.,
                         Align::Right => free,
                         _ => px(0.),
                     };
-                    (px(0.), dx)
+                    (px(0.), dx + lead)
                 };
                 self.paint_justified(&range, &segs, free, bounds, y, dx, window, cx);
                 if line.ellipsis {
@@ -1927,13 +2056,11 @@ impl Element for Paragraph {
                 y += self.line_height;
                 continue;
             }
-            let hang = self.hang_first(line.range.start);
-            let shift = self.span(&segs, line.range.start, line.range.start + hang);
             let dx = match align {
                 Align::Center => free / 2.,
                 Align::Right => free,
                 _ => px(0.),
-            } - shift;
+            } + lead;
             let at = point(bounds.origin.x + dx, y);
             // Висящие пробелы конца строки при письме справа налево уходят по
             // правилу L1 на ЛЕВЫЙ край и отодвигали бы текст от края коробки.
@@ -2059,6 +2186,8 @@ impl Paragraph {
             vertical: self.vertical,
             vertical_rl: self.vertical_rl,
             hanging: self.hanging,
+            indent: self.indent,
+            spacers: self.spacers.clone(),
             id: None,
             highlight: self.highlight,
             wrap: self.wrap,
@@ -2654,6 +2783,61 @@ mod tests {
         assert_eq!(trim_hanging("ab  "), 2);
         assert_eq!(trim_hanging("ab"), 2);
         assert_eq!(trim_hanging("  "), 0);
+    }
+
+    /// Распорка строчной коробки не должна съедать точку переноса ПЕРЕД собой:
+    /// её класс по UAX-14 (WJ) запрещает разрыв с обеих сторон, и пробел
+    /// перед `<span>` с отступом переставал быть точкой переноса.
+    #[test]
+    fn spacer_keeps_the_break_before_it() {
+        let text = "aaa \u{feff}bbb";
+        let mut para = para(text, Wrap::default());
+        assert!(
+            !para.opportunities().iter().any(|s| s.at == 4),
+            "пока распорка не объявлена, разрыв по пробелу запрещён"
+        );
+        para.spacers = vec![4];
+        let stops: Vec<usize> = para.opportunities().iter().map(|s| s.at).collect();
+        // Разрыв встаёт НА распорку: поле коробки уходит на новую строку
+        // вместе со своим текстом.
+        assert_eq!(stops, vec![4]);
+    }
+
+    /// Отступ первой строки: кому он достаётся при `each-line` и `hanging`.
+    #[test]
+    fn indent_goes_to_the_right_lines() {
+        let mut para = para("a", Wrap::default());
+        let of = |p: &Paragraph, head, first| f32::from(p.indent_of(head, first, None));
+        para.indent = Indent {
+            px: 40.,
+            ..Default::default()
+        };
+        assert_eq!(of(&para, true, true), 40., "первая строка блока");
+        assert_eq!(of(&para, true, false), 0., "первая строка ВТОРОГО куска");
+        assert_eq!(of(&para, false, true), 0., "перенесённая строка");
+        para.indent.each_line = true;
+        assert_eq!(of(&para, true, false), 40., "each-line: каждый кусок");
+        assert_eq!(of(&para, false, true), 0., "each-line: не перенос");
+        para.indent = Indent {
+            px: 40.,
+            hanging: true,
+            ..Default::default()
+        };
+        assert_eq!(of(&para, true, true), 0., "hanging: кроме первой");
+        assert_eq!(of(&para, false, true), 40.);
+        assert_eq!(of(&para, true, false), 40.);
+    }
+
+    /// Доля берётся от ширины строки, а при замере по содержимому её нет.
+    #[test]
+    fn indent_share_needs_a_limit() {
+        let mut para = para("a", Wrap::default());
+        para.indent = Indent {
+            pct: 0.1,
+            ..Default::default()
+        };
+        assert_eq!(f32::from(para.indent_of(true, true, Some(px(300.)))), 30.);
+        assert_eq!(f32::from(para.indent_of(true, true, None)), 0.);
     }
 }
 

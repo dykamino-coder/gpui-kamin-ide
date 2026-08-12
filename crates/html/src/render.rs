@@ -67,6 +67,64 @@ fn styled_div(e: &Element) -> gpui::Div {
 ///
 /// Наследование даёт две вещи: текстовые свойства и разрешённые `em` — без
 /// него отступ в `em` считался бы от базового кегля, а не от своего.
+/// Слой фона, обрезанного внутренним краем коробки (`background-clip`).
+///
+/// Коробка в раскладке красит весь свой прямоугольник, включая рамку и поля,
+/// а `padding-box`/`content-box` требуют красить меньше. Поэтому фон снимается
+/// с коробки (см. `apply::apply_paint`) и рисуется отдельным слоем, вжатым
+/// внутрь: на рамку, а для `content-box` ещё и на поля. Слой идёт ПЕРВЫМ
+/// ребёнком — порядок детей задаёт порядок рисования, и содержимое остаётся
+/// поверх фона.
+///
+/// `text` слоя не даёт вовсе: фон по форме глифов мы не рисуем, и закрасить
+/// вместо него всю коробку — заметно хуже, чем не красить (тесты на него
+/// прямо пишут «no red» про залитый прямоугольник).
+fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+    let clip = c.bg_clip?;
+    if c.gradient.is_none() && c.background.is_none() {
+        return None;
+    }
+    if clip == crate::computed::BgClip::Text {
+        return None;
+    }
+    let size = own_size(c, opts);
+    let family = c.font_family.clone().unwrap_or_default();
+    let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, &family, size);
+    let border = c.borders();
+    let pad = |b: Option<Len>, p: Option<Len>| {
+        px_of(b)
+            + if clip == crate::computed::BgClip::ContentBox {
+                px_of(p)
+            } else {
+                0.0
+            }
+    };
+    let mut layer = div()
+        .absolute()
+        .top(px(pad(border.top, c.padding.top)))
+        .right(px(pad(border.right, c.padding.right)))
+        .bottom(px(pad(border.bottom, c.padding.bottom)))
+        .left(px(pad(border.left, c.padding.left)));
+    layer = match (&c.gradient, c.background) {
+        (Some(g), _) => layer.bg(crate::apply::fill(g)),
+        (None, Some(bg)) => layer.bg(gpui::Background::from(bg.to_hsla())),
+        _ => return None,
+    };
+    // Скругление внутреннего края меньше внешнего ровно на толщину рамки
+    // (css-backgrounds-3 §5.4): слой со скруглением коробки вылезал бы
+    // уголками за неё.
+    let inner = |r: Option<Len>, a: Option<Len>, b: Option<Len>| {
+        let cut = px_of(a).max(px_of(b));
+        (px_of(r) - cut).max(0.0)
+    };
+    layer = layer
+        .rounded_tl(px(inner(c.radius.tl, border.top, border.left)))
+        .rounded_tr(px(inner(c.radius.tr, border.top, border.right)))
+        .rounded_br(px(inner(c.radius.br, border.bottom, border.right)))
+        .rounded_bl(px(inner(c.radius.bl, border.bottom, border.left)));
+    Some(layer.into_any_element())
+}
+
 fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     let c = style;
     let mut d = apply(div(), c);
@@ -1862,14 +1920,29 @@ fn paragraph_pieces(
         Some(Len::Px(v)) => v,
         _ => 0.0,
     };
-    let indent = match inherited.text_indent {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
+    // Отступ первой строки. Абсолютную часть разбор уже свёл к точкам, доля
+    // же берётся от ширины содержащего блока и здесь ещё неизвестна — её
+    // считает раскладка строк, когда ширина решена.
+    let indent = crate::lines::Indent {
+        px: match inherited.text_indent {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        },
+        pct: match inherited.text_indent {
+            Some(Len::Pct(k)) => k,
+            _ => 0.0,
+        },
+        each_line: inherited.text_indent_each_line == Some(true),
+        hanging: inherited.text_indent_hanging == Some(true),
     };
     // Межсловный интервал считает своя раскладка строк: ряд из слов ломает
     // выключку, висящие пробелы и перенос. Ряд остаётся только под отступ
     // первой строки, который своей раскладке пока неизвестен.
-    let spaced = indent != 0.0;
+    // Отступ первой строки умеет своя раскладка строк: она одна знает, где
+    // строка кончается, и отрицательный отступ ей не помеха. Ряд из слов
+    // остаётся запасным путём — на нём отступ становится распоркой, а она
+    // отрицательной ширины не бывает.
+    let spaced = indent != crate::lines::Indent::default() && crate::lines::rules(inherited).is_none();
     if !spaced
         && inline::single_block(&pieces, opts.base_size())
         && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text)
@@ -1965,6 +2038,8 @@ fn paragraph_pieces(
                 biggest,
             )))
             .hanging(inherited.hanging)
+            .indent(indent)
+            .spacers(inline::spacers(&pieces))
             .line_clamp(inherited.line_clamp.map(|n| n as usize))
             .text_fit(inherited.text_fit)
             .hyphen_char(inherited.hyphen_char.clone())
@@ -2007,7 +2082,7 @@ fn paragraph_pieces(
         return inline::as_word_row(
             pieces,
             word,
-            indent,
+            indent.px,
             inherited.vertical_align,
             Some(align),
             &mut render_text,
@@ -2872,6 +2947,24 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // строчную раскладку (`white-space-pre-031`).
         _ => {
             let mut d = styled_div_with(e, &merged);
+            // Корневая коробка документа — начальный содержащий блок, а он
+            // ростом с видимую область (CSS 2.1 §10.1). Абсолютный потомок
+            // статического `body` в браузере считается именно от неё; в нашей
+            // раскладке содержащим блоком служит любой родитель, поэтому без
+            // этой высоты `top: 0; bottom: 0` схлопывалось в ноль, и страница
+            // выходила ПУСТОЙ (`background-attachment-margin-root-001` и вся
+            // родня в css-backgrounds и css-position).
+            // Только при горизонтальном письме: у вертикального ось блока —
+            // горизонтальная, высота там задаёт ДЛИНУ строки, и навязанный
+            // минимум ломает подбор размера ортогонального потока
+            // (`available-size-022`).
+            if matches!(e.tag.as_str(), "html" | "body")
+                && merged.vertical != Some(true)
+                && e.style.height.is_none()
+                && e.style.min_height.is_none()
+            {
+                d = d.min_h(px(opts.viewport.1));
+            }
             // Многоколоночный поток. Своей многоколоночной раскладки нет, но
             // сетка даёт то же расположение: число рядов считаем по числу
             // детей, а заполнение идёт по колонкам — тогда порядок совпадает
@@ -2954,8 +3047,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             } else {
                 children
             };
-            d.children(blocks(&children, &merged, opts))
-                .into_any_element()
+            let mut kids: Vec<AnyElement> = Vec::new();
+            kids.extend(clip_layer(&merged, opts));
+            kids.extend(blocks(&children, &merged, opts));
+            d.children(kids).into_any_element()
         }
     }
 }
