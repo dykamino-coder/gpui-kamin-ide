@@ -348,10 +348,25 @@ fn resolve_links(html: &str, path: &str) -> String {
         let bare = kamin_html::css::unescape(bare);
         let decoded = percent_decode(&bare);
         match resolve(&decoded).or_else(|| resolve(&bare)) {
-            // Кавычки ДВОЙНЫЕ: в имени файла апостроф встречается
-            // (`'green block.png` из `uri-004`), а двойная кавычка в пути
-            // Windows невозможна вовсе.
-            Some(file) => with_urls.push_str(&format!("\"{}\"", file.display())),
+            // Кавычки ставятся ТОЛЬКО когда без них нельзя: адрес попадает и
+            // в атрибут `style="…"`, а двойная кавычка внутри него обрывает
+            // сам атрибут — правило теряется целиком вместе с картинкой
+            // (`background-size-near-zero-png` и вся родня с оформлением по
+            // месту). В имени файла из набора встречается апостроф
+            // (`'green block.png` из `uri-004`), поэтому запасные кавычки —
+            // двойные: в пути Windows их не бывает.
+            Some(file) => {
+                // Разделитель — ПРЯМАЯ косая: обратная в записи адреса
+                // означает экранирование, и путь Windows терял её вместе со
+                // следующим знаком (`C:\Users` превращалось в `C:Users`).
+                let path = file.display().to_string().replace('\\', "/");
+                let plain = !path.contains([' ', '\'', '"', '(', ')', ',', '\t']);
+                if plain {
+                    with_urls.push_str(&path);
+                } else {
+                    with_urls.push_str(&format!("\"{path}\""));
+                }
+            }
             None => with_urls.push_str(raw),
         }
         with_urls.push(')');

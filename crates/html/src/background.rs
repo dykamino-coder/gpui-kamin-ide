@@ -16,17 +16,73 @@ use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-type Cache = Mutex<HashMap<String, Option<Arc<RenderImage>>>>;
+type Cache = Mutex<HashMap<String, Option<Source>>>;
 static CACHE: OnceLock<Cache> = OnceLock::new();
 
 /// Сколько разных картинок держим декодированными.
 const CACHE_CAP: usize = 32;
+
+/// Потолок на число плиток вдоль оси: битый `background-size` иначе просит
+/// миллионы копий.
+const MAX_TILES: f32 = 2048.0;
 
 /// Декодировать по ссылке из `url(...)`: `data:`-URI или путь на диске.
 ///
 /// Сеть не трогаем по тем же причинам, что и в элементе-картинке: документ
 /// рисуется в чате, где загрузка чужих адресов недопустима.
 pub fn load(src: &str) -> Option<Arc<RenderImage>> {
+    match source(src)? {
+        Source::Raster(image) => Some(image),
+        // Своя величина рисунка — то же, что для растра: он растрируется под
+        // неё, а нужный размер плитки посчитает вызывающий.
+        Source::Vector { markup, size } => {
+            let (w, h) = default_size(size, (300.0, 150.0));
+            crate::svg::rasterize(&markup, w, h)
+        }
+    }
+}
+
+/// Чем задана фоновая картинка: готовым растром или разметкой рисунка.
+///
+/// Рисунок нельзя раскодировать раз и навсегда: у него нет своих точек, и
+/// растрировать его надо ПОД РАЗМЕР ПЛИТКИ — иначе он выходит мыльным при
+/// увеличении и лишним расходом при уменьшении.
+#[derive(Clone)]
+pub enum Source {
+    Raster(Arc<RenderImage>),
+    Vector { markup: String, size: Intrinsic },
+}
+
+impl Source {
+    /// Своя величина картинки.
+    pub fn intrinsic(&self) -> Intrinsic {
+        match self {
+            Source::Raster(image) => {
+                let s = image.size(0);
+                let (w, h) = ((s.width.0 as f32).max(1.0), (s.height.0 as f32).max(1.0));
+                Intrinsic {
+                    w: Some(w),
+                    h: Some(h),
+                    ratio: Some(w / h),
+                }
+            }
+            Source::Vector { size, .. } => *size,
+        }
+    }
+
+    /// Растр под нужный размер плитки.
+    pub fn raster(&self, tile: (f32, f32)) -> Option<Arc<RenderImage>> {
+        match self {
+            Source::Raster(image) => Some(image.clone()),
+            Source::Vector { markup, .. } => {
+                crate::svg::rasterize(&with_viewport(markup, tile), tile.0, tile.1)
+            }
+        }
+    }
+}
+
+/// Разобрать ссылку в источник картинки; результат запоминается.
+pub fn source(src: &str) -> Option<Source> {
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(map) = cache.lock()
         && let Some(hit) = map.get(src)
@@ -34,14 +90,110 @@ pub fn load(src: &str) -> Option<Arc<RenderImage>> {
         return hit.clone();
     }
     let bytes = read_bytes(src);
-    let image = bytes.as_deref().and_then(gpui::raster_bytes_to_image);
+    let found = bytes.as_deref().and_then(decode);
     if let Ok(mut map) = cache.lock() {
         if map.len() >= CACHE_CAP {
             map.clear();
         }
-        map.insert(src.to_string(), image.clone());
+        map.insert(src.to_string(), found.clone());
     }
-    image
+    found
+}
+
+/// Задать рисунку область просмотра размером с плитку.
+///
+/// Область просмотра фонового рисунка — это его ПЛИТКА, а не что-то своё:
+/// доли внутри рисунка (`height="50%"`, `<rect width="100%">`) считаются от
+/// неё. Растеризатор же разбирает разметку как отдельный документ, и рисунок
+/// с долевым размером корня не имеет для него размера вовсе — выходил пустой
+/// растр, а с ним и пустая страница (вся папка `background-size/vector`).
+/// Поэтому свои `width`/`height` корня заменяются размером плитки.
+fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
+    let Some(open) = markup.find("<svg") else {
+        return markup.to_string();
+    };
+    let Some(close) = markup[open..].find('>').map(|e| open + e) else {
+        return markup.to_string();
+    };
+    let mut head = markup[open + 4..close].to_string();
+    for name in ["width", "height"] {
+        while let Some(at) = head.find(&format!("{name}=")) {
+            let rest = &head[at + name.len() + 1..];
+            let Some(quote) = rest.chars().next() else { break };
+            let Some(end) = rest[1..].find(quote) else { break };
+            head.replace_range(at..at + name.len() + 2 + end + 1, "");
+        }
+    }
+    format!(
+        "{}<svg width=\"{}\" height=\"{}\"{head}>{}",
+        &markup[..open],
+        tile.0,
+        tile.1,
+        &markup[close + 1..]
+    )
+}
+
+/// Растр или рисунок — по содержимому файла, а не по расширению: у `data:`-URI
+/// расширения нет вовсе.
+fn decode(bytes: &[u8]) -> Option<Source> {
+    let head = &bytes[..bytes.len().min(512)];
+    // Ищем корневой тег, а не начало файла: перед ним стоят и объявление XML,
+    // и комментарий с лицензией — с них начинается добрая половина рисунков
+    // набора (`background-size/vector/support/*`).
+    let looks_svg = std::str::from_utf8(head)
+        .ok()
+        .map(|t| t.contains("<svg"))
+        .unwrap_or(false);
+    if looks_svg {
+        let markup = String::from_utf8(bytes.to_vec()).ok()?;
+        let size = svg_size(&markup);
+        return Some(Source::Vector { markup, size });
+    }
+    gpui::raster_bytes_to_image(bytes).map(Source::Raster)
+}
+
+/// Своя величина рисунка: `width`/`height` корневого тега, иначе `viewBox`.
+///
+/// Разбирается по тексту, а не деревом: дерево документа рисунка нам не нужно
+/// нигде больше, а растеризатору всё равно идёт исходная разметка.
+fn svg_size(markup: &str) -> Intrinsic {
+    let head = match markup.find("<svg") {
+        Some(at) => &markup[at..markup[at..].find('>').map(|e| at + e).unwrap_or(markup.len())],
+        None => markup,
+    };
+    let raw = |name: &str| -> Option<&str> {
+        let at = head.find(&format!("{name}="))?;
+        let rest = head[at + name.len() + 1..].trim_start();
+        let quote = rest.chars().next()?;
+        Some(rest[1..].split(quote).next()?.trim())
+    };
+    // Доля СВОЕЙ величиной не является: она считается от места под фон, то
+    // есть сторона у рисунка отсутствует (SVG §7.2 и css-images-3 §4.1).
+    let side = |name: &str| -> Option<f32> {
+        let v = raw(name)?;
+        if v.ends_with('%') {
+            return None;
+        }
+        v.trim_end_matches("px").parse().ok().filter(|n: &f32| *n > 0.0)
+    };
+    let ratio = raw("viewBox").and_then(|vb| {
+        let nums: Vec<f32> = vb
+            .split([' ', ','])
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        (nums.len() == 4 && nums[2] > 0.0 && nums[3] > 0.0).then(|| nums[2] / nums[3])
+    });
+    let (w, h) = (side("width"), side("height"));
+    Intrinsic {
+        w,
+        h,
+        // Обе стороны заданы — соотношение из них, иначе из `viewBox`.
+        ratio: match (w, h) {
+            (Some(w), Some(h)) => Some(w / h),
+            _ => ratio,
+        },
+    }
 }
 
 fn read_bytes(src: &str) -> Option<Vec<u8>> {
@@ -79,26 +231,57 @@ fn base64_decode(text: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Своя величина картинки: стороны и соотношение — каждое, только если есть.
+///
+/// У растра есть всё. У рисунка бывает что угодно: `width="50%"` своей
+/// величиной НЕ является (доля считается от места под фон, а не от картинки),
+/// а `viewBox` даёт одно соотношение без сторон. От этого набора и зависит,
+/// каким выйдет размер плитки при `background-size: auto`.
+///
+/// Величина в CSS — это размер в ТОЧКАХ САМОЙ КАРТИНКИ (css-images-3 §4.1):
+/// изображение 60×60 занимает 60×60 точек CSS при любом масштабе дисплея.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Intrinsic {
+    pub w: Option<f32>,
+    pub h: Option<f32>,
+    /// Ширина, делённая на высоту.
+    pub ratio: Option<f32>,
+}
+
+/// Умолчальный размер картинки (css-images-3 §5.3).
+///
+/// Недостающие стороны берутся из соотношения, а когда и его нет — из места
+/// под фон. На этом стоит вся папка `background-size/vector`: рисунок с
+/// долевым размером своих сторон не имеет вовсе и обязан занять место под
+/// фон целиком.
+fn default_size(i: Intrinsic, area: (f32, f32)) -> (f32, f32) {
+    match (i.w, i.h, i.ratio) {
+        (Some(w), Some(h), _) => (w, h),
+        (Some(w), None, Some(r)) if r > 0.0 => (w, w / r),
+        (None, Some(h), Some(r)) => (h * r, h),
+        (Some(w), None, None) => (w, area.1),
+        (None, Some(h), None) => (area.0, h),
+        // Только соотношение — вписываемся в место под фон, сохраняя его.
+        (None, None, Some(r)) if r > 0.0 => {
+            let k = (area.0 / r).min(area.1);
+            (k * r, k)
+        }
+        _ => area,
+    }
+}
+
 /// Размер одной плитки в точках по правилам `background-size`.
-fn tile_size(
-    image: &RenderImage,
-    box_size: (f32, f32),
-    size: BgSize,
-    scale_factor: f32,
-) -> (f32, f32) {
-    let s = image.size(0);
-    // Размер образа приходит в ФИЗИЧЕСКИХ точках, а коробка — в логических:
-    // без деления на масштаб дисплея плитка на 150% выходила в полтора раза
-    // крупнее браузерной.
-    let k = scale_factor.max(0.01);
-    let (iw, ih) = (
-        (s.width.0 as f32 / k).max(1.0),
-        (s.height.0 as f32 / k).max(1.0),
-    );
+fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
     let (bw, bh) = box_size;
+    // Соотношение для растяжений: своё, иначе — из умолчального размера.
+    let auto = default_size(i, box_size);
+    let ratio = i.ratio.unwrap_or_else(|| {
+        if auto.1 > 0.0 { auto.0 / auto.1 } else { 1.0 }
+    });
     match size {
-        BgSize::Auto => (iw, ih),
+        BgSize::Auto => auto,
         BgSize::Cover | BgSize::Contain => {
+            let (iw, ih) = (ratio.max(0.0001), 1.0);
             let sx = bw / iw;
             let sy = bh / ih;
             // `cover` закрывает коробку целиком, `contain` вписывается в неё.
@@ -109,12 +292,14 @@ fn tile_size(
             };
             (iw * k, ih * k)
         }
-        // Заданная одна сторона тянет вторую пропорционально — как в CSS.
+        // Заданная одна сторона тянет вторую по соотношению — как в CSS.
         BgSize::Fixed(w, h) => match (len_px(w, bw), len_px(h, bh)) {
             (Some(w), Some(h)) => (w, h),
-            (Some(w), None) => (w, ih * w / iw),
-            (None, Some(h)) => (iw * h / ih, h),
-            (None, None) => (iw, ih),
+            (Some(w), None) if i.ratio.is_some() || i.w.is_some() => (w, w / ratio),
+            (Some(w), None) => (w, auto.1),
+            (None, Some(h)) if i.ratio.is_some() || i.h.is_some() => (h * ratio, h),
+            (None, Some(h)) => (auto.0, h),
+            (None, None) => auto,
         },
     }
 }
@@ -161,12 +346,26 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
         gpui::canvas(
             |_, _, _| {},
             move |bounds: Bounds<Pixels>, _, window, _| {
-                let Some(image) = load(&src) else { return };
+                let Some(found) = source(&src) else { return };
                 let box_size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                let tile = tile_size(&image, box_size, size, window.scale_factor());
-                if tile.0 <= 0.5 || tile.1 <= 0.5 {
+                let tile = tile_size(found.intrinsic(), box_size, size);
+                // Нулевая плитка не рисуется вовсе, а вот МЕЛКАЯ — рисуется:
+                // браузер мостит и долями точки, и коробка заливается
+                // сплошняком (`background-size-near-zero-*`). Ограничивать
+                // надо не размер плитки, а их ЧИСЛО.
+                if tile.0 <= 0.0 || tile.1 <= 0.0 {
                     return;
                 }
+                // Плитка мельче половины точки неразличима: копии сливаются в
+                // сплошную заливку, и мы делаем ровно её — одной растянутой
+                // копией. Иначе на `background-size: 0.2px` выходило по 500
+                // копий на ось, четверть миллиона отрисовок за кадр, и кадр не
+                // успевал появиться вовсе (`background-size-near-zero-*`).
+                const MERGE: f32 = 0.5;
+                let tile = (
+                    if tile.0 < MERGE { box_size.0 } else { tile.0 },
+                    if tile.1 < MERGE { box_size.1 } else { tile.1 },
+                );
                 // `round` меняет САМ размер плитки, поэтому считается до
                 // смещения: доля в `background-position` берётся уже от
                 // подогнанной плитки.
@@ -180,6 +379,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                 // или подогнанной плиткой (`round`).
                 let xs = tiling(repeat.axis(true), start.0, tile.0, box_size.0);
                 let ys = tiling(repeat.axis(false), start.1, tile.1, box_size.1);
+                let Some(image) = found.raster(tile) else { return };
                 let corners = gpui::Corners::all(px(radius));
                 window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
                     for y in &ys {
@@ -226,8 +426,7 @@ fn rounded(mode: Tiling, tile: f32, box_len: f32) -> f32 {
 /// НЕ через равные шаги в размер плитки, а через зазор, и одной формулой
 /// смещения их уже не описать.
 fn tiling(mode: Tiling, start: f32, tile: f32, box_len: f32) -> Vec<f32> {
-    // Потолок на число плиток: битый `background-size` иначе просит миллионы.
-    const MAX: f32 = 512.0;
+    let max = MAX_TILES;
     match mode {
         Tiling::None => vec![start],
         // Зазоры раздаются между ЦЕЛЫМИ плитками, крайние прижаты к краям, а
@@ -238,7 +437,7 @@ fn tiling(mode: Tiling, start: f32, tile: f32, box_len: f32) -> Vec<f32> {
             if fit < 2.0 {
                 return vec![start];
             }
-            let count = fit.min(MAX);
+            let count = fit.min(max);
             let gap = (box_len - count * tile) / (count - 1.0);
             (0..count as u32)
                 .map(|i| i as f32 * (tile + gap))
@@ -250,7 +449,7 @@ fn tiling(mode: Tiling, start: f32, tile: f32, box_len: f32) -> Vec<f32> {
             // съедало бы первый ряд.
             let back = (start / tile).ceil();
             let first = start - back * tile;
-            let count = ((box_len - first) / tile).ceil().max(1.0).min(MAX);
+            let count = ((box_len - first) / tile).ceil().max(1.0).min(max);
             (0..count as u32).map(|i| first + i as f32 * tile).collect()
         }
     }
@@ -264,17 +463,65 @@ mod tests {
     fn tiling_starts_before_the_box_and_covers_it() {
         // Смещение 30 при плитке 20: первая копия обязана начаться левее нуля,
         // иначе между краем коробки и первой плиткой остаётся дыра.
-        let (count, first) = tiling(true, 30.0, 20.0, 100.0);
+        let xs = tiling(Tiling::Repeat, 30.0, 20.0, 100.0);
+        let first = xs[0];
         assert!(first <= 0.0, "первая плитка начинается не правее коробки");
         assert!(
-            first + count as f32 * 20.0 >= 100.0,
+            first + xs.len() as f32 * 20.0 >= 100.0,
             "плитки обязаны закрыть коробку целиком"
         );
     }
 
     #[test]
     fn without_repeat_there_is_exactly_one_copy() {
-        assert_eq!(tiling(false, 12.0, 20.0, 100.0), (1, 12.0));
+        assert_eq!(tiling(Tiling::None, 12.0, 20.0, 100.0), vec![12.0]);
+    }
+
+    /// `space` раздаёт остаток РАВНЫМИ зазорами, а крайние плитки прижимает к
+    /// краям (css-backgrounds-3 §3.4).
+    #[test]
+    fn space_pins_the_edges_and_shares_the_rest() {
+        let xs = tiling(Tiling::Space, 0.0, 32.0, 106.0);
+        assert_eq!(xs.len(), 3, "целых плиток влезает три");
+        assert_eq!(xs[0], 0.0);
+        assert!((xs[2] + 32.0 - 106.0).abs() < 0.01, "последняя у края");
+    }
+
+    /// `round` подгоняет САМУ плитку под целое их число.
+    #[test]
+    fn round_fits_a_whole_number_of_tiles() {
+        assert_eq!(rounded(Tiling::Round, 30.0, 100.0), 100.0 / 3.0);
+        assert_eq!(rounded(Tiling::Repeat, 30.0, 100.0), 30.0);
+    }
+
+    /// Умолчальный размер: доля своей стороной не является, и рисунок
+    /// занимает место под фон целиком (css-images-3 §5.3).
+    #[test]
+    fn default_size_falls_back_to_the_area() {
+        let none = Intrinsic::default();
+        assert_eq!(default_size(none, (256.0, 768.0)), (256.0, 768.0));
+        let ratio = Intrinsic {
+            ratio: Some(2.0),
+            ..Default::default()
+        };
+        assert_eq!(default_size(ratio, (200.0, 400.0)), (200.0, 100.0));
+        let sides = Intrinsic {
+            w: Some(60.0),
+            h: Some(30.0),
+            ratio: Some(2.0),
+        };
+        assert_eq!(default_size(sides, (200.0, 400.0)), (60.0, 30.0));
+    }
+
+    /// Своя величина рисунка: доля стороной не считается, `viewBox` даёт
+    /// только соотношение.
+    #[test]
+    fn svg_percent_side_is_not_intrinsic() {
+        let i = svg_size("<svg xmlns=\"…\" height=\"50%\"></svg>");
+        assert_eq!(i, Intrinsic::default());
+        let i = svg_size("<svg viewBox=\"0 0 2560 208\"></svg>");
+        assert_eq!(i.w, None);
+        assert_eq!(i.ratio, Some(2560.0 / 208.0));
     }
 
     #[test]
