@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import fs from 'fs'
 import { withProjectSyncLock, withSyncSnapshotLock, withUserSyncLock } from './lock'
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -49,5 +50,10 @@ describe('sync snapshot lock', () => {
     expect(order).toEqual(['a:start', 'b'])
     gate.resolve()
     await first
+  })
+
+  it('keeps the project route connected to the token-level lock', () => {
+    const routes = fs.readFileSync(new URL('./routes.ts', import.meta.url), 'utf-8')
+    expect(routes).toMatch(/return withProjectSyncLock\(hash,\s*body\.projectPath/)
   })
 })

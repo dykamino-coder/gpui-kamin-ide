@@ -4,6 +4,29 @@
 автоматическим `/reload-skills`. Изменения не зависят от plugin harness и могут
 проверяться локально одним checkout ветки PR.
 
+## Post-merge recovery
+
+После merge PR #5 (`b23a037`) часть инвариантов ниже исчезла при ручном
+разрешении конфликтов с PR #3. GitHub не содержит review, comments или review
+threads для PR #5; единственное объяснение решения сохранилось в конфликтном
+коде: user/project skills были объявлены additive, а exact replacement оставлен
+только plugin snapshots.
+
+Корректирующий PR сохраняет вероятную цель этого решения — совместимость со
+старыми partial-sync clients — без накопления удалённых skills:
+
+- отсутствующее поле `skills` не меняет сохранённый snapshot;
+- присутствующее поле, включая `{}`, является полным snapshot;
+- user/project skills образуют отдельный exact session overlay;
+- plugin snapshots остаются immutable и namespaced в `.bridge-plugins`;
+- security validation, token ownership и path confinement из PR #3 не меняются;
+- deprecated `window.electronBridge` остаётся compatibility alias, но новый код
+  использует `window.kaminBridge`.
+
+Также восстановлена фактическая передача `.bridge-plugins/*` в Claude CLI через
+`--plugin-dir`. Plugin configuration по-прежнему применяется только к новой или
+явно перезапущенной CLI session; `/reload-skills` не мутирует plugin roots.
+
 ## Что было не так
 
 До исправления webview отправлял `Ctrl+U` и `session:submitText` двумя разными
@@ -53,6 +76,7 @@ npm --prefix extensions/claude-bridge/server run format:check
 
 npm --prefix extensions/claude-bridge/extension ci
 npm --prefix extensions/claude-bridge/extension run typecheck
+npm --prefix extensions/claude-bridge/extension test
 npm --prefix extensions/claude-bridge/extension run build
 
 npm --prefix extensions/claude-bridge/webview ci
@@ -71,17 +95,23 @@ npm --prefix extensions/claude-bridge/server exec vitest run -- \
   src/core/pty/submit-text.test.ts \
   src/core/pty/input-coordinator.test.ts \
   src/core/pty/skills-snapshot.test.ts \
-  src/core/sync/lock.test.ts
+  src/core/pty/session-settings-skills.test.ts \
+  src/core/pty/session-plugin-args.test.ts \
+  src/core/sync/skills-contract.test.ts \
+  src/core/sync/lock.test.ts \
+  src/core/hooks/plugin-harness.test.ts
 
 npm --prefix extensions/claude-bridge/webview exec vitest run -- \
   src/lib/send-message.test.ts \
+  src/lib/session-actions.test.ts \
   src/components/input-bar/useInputDraft.test.ts
 ```
 
 Они покрывают transaction ordering, delayed echo, hard timeout, double submit,
 raw-input buffering, `Ctrl+C`, detach/reattach, old-client split frames,
 maintenance revision coalescing, exact overlay, token lock, semantic webview
-submit и восстановление несохранённого chat draft без PTY side effect.
+submit, route-level `skills` compatibility contract, production spawn args и
+восстановление несохранённого chat draft без PTY side effect.
 
 ## Ручная матрица
 
@@ -135,6 +165,17 @@ project-версией. User snapshot не содержит project-only фай�
 - Переключить session во время обычного assistant turn: queued user message и
   visual queue сохраняют прежнее поведение.
 
+### 6. Plugin snapshot при старте
+
+1. Включить plugin с skill/command и дождаться user sync.
+2. Запустить новую session или явно перезапустить существующую.
+3. Проверить, что plugin content доступен в Claude CLI и plugin hooks по-прежнему
+   проходят через authenticated Bridge relay.
+
+Ожидание: каждый валидный materialized root передан отдельным `--plugin-dir`;
+неполные каталоги без `.claude-plugin/plugin.json` игнорируются. Уже работающая
+CLI session не меняет plugin roots без restart.
+
 ## Ограничения
 
 Изменений визуального UI нет. Проверка настоящего CLI TUI требует локальной
@@ -154,8 +195,7 @@ Release-версии намеренно не меняются.
 - server `npm run format:check` перечисляет 197 уже существующих файлов без
   Prettier-formatting.
 
-Полный webview build также переписывает неизменённые `tools.html` и
-`customize.html` из-за существующего generated-artifact drift. Они не входят в
-этот PR. Целевой `chat.html` после удаления trailing end-of-line whitespace
-воспроизводится с SHA-256
-`691588c9f16fc965bf47c343eed5ca37f037d89bf06176a8fe86946c8b25ca9e`.
+Corrective PR обязан запускать полный extension/webview build после объединения
+исходников. Все изменившиеся committed artifacts (`extension.js`, `chat.html`,
+`tools.html`, `customize.html`) входят в тот же PR; отсутствие generated diff
+после повторной сборки является отдельной проверкой воспроизводимости.
