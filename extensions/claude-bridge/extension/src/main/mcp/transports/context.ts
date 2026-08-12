@@ -5,12 +5,13 @@
 // circular import on the McpServerManager class itself, they take a
 // structural context that exposes the few manager internals they need.
 
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow } from '@kaminide/host-compat'
 import type { ChildProcess } from 'child_process'
 import type WebSocket from 'ws'
 import type {
   ExternalMcpServerConfig,
   McpResourceInfo,
+  McpResourceTemplateInfo,
   McpPromptInfo,
 } from '../../../shared/types'
 import type { McpTestLogEntry } from '../test-log'
@@ -23,6 +24,7 @@ export interface McpServerState {
   tools: string[]
   toolSchemas: Map<string, { name: string; description: string; inputSchema: Record<string, unknown> }>
   resources: McpResourceInfo[]
+  resourceTemplates: McpResourceTemplateInfo[]
   prompts: McpPromptInfo[]
   /** Server-declared capabilities, as returned by `initialize`. */
   capabilities: Record<string, unknown>

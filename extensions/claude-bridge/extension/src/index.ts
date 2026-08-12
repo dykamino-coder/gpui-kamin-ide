@@ -14,7 +14,7 @@ import { BridgeHost, type WebviewRole } from "./bridge-host"
 import { installEditorContext } from "./editor-context"
 import { installMcpStatusBar } from "./mcp-status-bar"
 import { SessionsBridge } from "./sessions-bridge"
-import { ipcMain } from "./shim/electron"
+import { ipcMain } from "@kaminide/host-compat"
 
 const CHAT_VIEW_ID = "claudeBridgeChat"
 // Plan / Todos / Agents / Console are SEPARATE tools (own auxiliarybar container

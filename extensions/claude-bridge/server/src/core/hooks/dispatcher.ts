@@ -2,7 +2,7 @@
 // /api/hooks/<sessionId>/<event>/<hookId>, looks up the original handler
 // and routes execution per its effectiveHost.
 //
-//   local  → forward via WS to Electron, await response
+//   local  → forward via WS to the VSIX bridge host, await response
 //   server → spawn child_process inside the bridge container
 //   http   → forward as-is to user's URL (rare; usually pre-resolved)
 
@@ -19,6 +19,7 @@ import { appendExecution } from './audit-log'
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
 
 interface PendingHookExec {
+  sessionId: string
   resolve: (r: HookExecutionResult) => void
   reject: (err: Error) => void
   timer: NodeJS.Timeout | null
@@ -32,6 +33,7 @@ export async function dispatchHook(
   hookId: string,
   payload: HookInputPayload,
   ws: WS | null,
+  auditTokenId?: string,
 ): Promise<HookExecutionResult> {
   const reg = getHook(sessionId, hookId)
   if (!reg) {
@@ -42,7 +44,7 @@ export async function dispatchHook(
   try {
     if (reg.effectiveHost === 'local') {
       if (!ws) {
-        result = errorResult('No active Electron WS — local hook unavailable', start)
+        result = errorResult('No active client-host WS — local hook unavailable', start)
       } else {
         result = await dispatchLocal(reg, payload, ws)
       }
@@ -63,6 +65,7 @@ export async function dispatchHook(
   // UI Log tab and downstream compliance tooling can see what happened.
   appendExecution({
     ts: Date.now(),
+    tokenId: auditTokenId,
     sessionId,
     hookId: reg.id,
     event: reg.event,
@@ -97,7 +100,7 @@ async function dispatchLocal(
         exitCode: 124, outcome: 'timeout', durationMs: Date.now() - start,
       })
     }, timeoutMs)
-    pendingLocalExecs.set(requestId, { resolve, reject, timer, startedAt: start })
+    pendingLocalExecs.set(requestId, { sessionId: reg.sessionId, resolve, reject, timer, startedAt: start })
     try {
       ws.send(JSON.stringify({
         type: 'hook:execute',
@@ -106,6 +109,8 @@ async function dispatchLocal(
         hookId: reg.id,
         event: reg.event,
         command: (reg.handler as { command: string }).command,
+        args: (reg.handler as { args?: string[] }).args,
+        pluginId: reg.source.kind === 'plugin' ? reg.source.pluginId : undefined,
         shell: (reg.handler as { shell?: string }).shell ?? 'bash',
         cwd: payload.cwd,
         env: { CLAUDE_BRIDGE_HOOK: '1' },
@@ -120,7 +125,7 @@ async function dispatchLocal(
   })
 }
 
-/** Resolve a pending local hook from Electron's WS response. */
+/** Resolve a pending local hook from the VSIX bridge host's WS response. */
 export function handleLocalHookResponse(requestId: string, result: HookExecutionResult): void {
   const pending = pendingLocalExecs.get(requestId)
   if (!pending) {
@@ -135,6 +140,7 @@ export function handleLocalHookResponse(requestId: string, result: HookExecution
 /** Cancel any pending local execs for a session (called on PTY teardown). */
 export function cancelSessionLocalExecs(sessionId: string): void {
   for (const [id, p] of pendingLocalExecs) {
+    if (p.sessionId !== sessionId) continue
     if (p.timer) clearTimeout(p.timer)
     pendingLocalExecs.delete(id)
     p.resolve({

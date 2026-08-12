@@ -41,6 +41,7 @@ interface Props {
   author?: string
   isCached?: boolean
   isInstalled?: boolean
+  enabled?: boolean
   installPath?: string
   pluginPath?: string
   counts?: Counts
@@ -73,6 +74,7 @@ export function PluginCard({
   author,
   isCached = false,
   isInstalled = false,
+  enabled = true,
   installPath,
   pluginPath,
   counts,
@@ -213,6 +215,7 @@ export function PluginCard({
           isCached={isCached}
           installPath={installPath}
           isRemoteSource={isRemoteSource}
+          enabled={enabled}
           onRefresh={onRefresh}
         />
       )}

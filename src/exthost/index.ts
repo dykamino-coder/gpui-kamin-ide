@@ -1,6 +1,6 @@
-// Extension host entry. Phase A runs in the same process as Electron
-// main; Phase B will fork it to a worker_thread. Either way, this module
-// owns the registry and the loader.
+// Extension-host child entry. The Rust/GPUI shell starts the Node kamin-host
+// parent, which forks this child over Node IPC. This module owns the extension
+// registry and loader.
 import type { Notification } from "../api/types.js"
 import { Diagnostics } from "./api/diagnostics.js"
 import { FileDecorations } from "./api/file-decorations.js"

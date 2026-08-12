@@ -196,6 +196,7 @@ export function PluginsPanel(): JSX.Element {
               marketplace={p.marketplace}
               isCached={(p as any).isCached}
               isInstalled={true}
+              enabled={(p as any).enabled !== false}
               installPath={p.installPath}
               counts={(p as any).counts}
               dependencies={(p as any).dependencies}

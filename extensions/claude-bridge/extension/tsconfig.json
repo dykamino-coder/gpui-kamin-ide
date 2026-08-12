@@ -11,7 +11,7 @@
     "resolveJsonModule": true,
     "types": ["node"],
     "paths": {
-      "electron": ["./src/shim/electron.ts"]
+      "@kaminide/host-compat": ["./src/shim/host-compat.ts"]
     }
   },
   "include": ["src/**/*.ts", "build.mjs"]

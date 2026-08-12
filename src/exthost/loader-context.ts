@@ -1,10 +1,9 @@
 // ExtensionContext + ExtensionFacade builders.
 //
 // Both shapes mirror the d.ts contract that extensions consume via
-// `vscode.ExtensionContext` and `vscode.Extension<T>`. Neither has any
-// real persistence yet (Phase A skeleton); state is per-process and
-// vanishes on reload. Phase B will back globalState/workspaceState
-// with electron-store partitions and secrets with `safeStorage`.
+// `vscode.ExtensionContext` and `vscode.Extension<T>`. Persistence is supplied
+// through the host-service adapters; this module has no dependency on an
+// Electron store or Electron safeStorage.
 //
 // The facade uses two off-spec mutators (`__setActive`, `__setExports`)
 // stitched onto the public shape — they're exposed via a sibling

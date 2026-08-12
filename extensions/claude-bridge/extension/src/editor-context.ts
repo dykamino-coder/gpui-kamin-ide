@@ -4,7 +4,7 @@
 // wiring: there the composer sat next to the editor; here Monaco lives in the
 // host renderer, so we observe it through the VS Code API and push snapshots.
 import * as vscode from "vscode"
-import { ipcMain } from "./shim/electron"
+import { ipcMain } from "@kaminide/host-compat"
 import type { BridgeHost } from "./bridge-host"
 
 // Coalesce the burst of selection events fired on every caret move into one push.

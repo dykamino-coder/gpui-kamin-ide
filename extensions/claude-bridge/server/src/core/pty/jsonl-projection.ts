@@ -1,7 +1,7 @@
 // Lean-DTO projection for JSONL entries on their way to the client.
 //
 // The CLI writes several heavy fields into each JSONL row that NO Bridge client
-// ever reads (verified by grep across webview + electron renderers). Stripping
+// ever reads (verified across current and legacy client renderers). Stripping
 // them at send time — the server keeps the full row on disk as source of truth —
 // cuts 40-60% of jsonl:entries wire bytes on tool-heavy sessions and shrinks the
 // extension's 20k-entry RAM cache proportionally.

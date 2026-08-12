@@ -1,4 +1,4 @@
-import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, shell, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
@@ -11,13 +11,35 @@ import {
   extractFrontmatter,
   firstBodyLine,
   matchYamlField,
-  readPluginManifest,
+  readEffectivePluginManifest,
 } from '../plugin-helpers'
 import type { TabManager } from '../tab-manager'
 
 export interface SkillsAgentsContext {
   getTabManager: () => TabManager | null
   getUserCwd: () => string | null
+}
+
+let skillsCache: { at: number; rows: unknown[] } | null = null
+let skillsInFlight: Promise<unknown[]> | null = null
+let skillsCacheGeneration = 0
+const SKILLS_TTL_MS = 30_000
+
+/** Drop discovery results after any plugin mutation. An in-flight scan may
+ * still resolve for its original caller, but its generation can no longer
+ * repopulate the shared cache with stale plugin state. */
+export function invalidateSkillsCache(): void {
+  skillsCache = null
+  skillsInFlight = null
+  skillsCacheGeneration += 1
+}
+
+function resolvePluginComponentPath(pluginRoot: string, ref: string): string | null {
+  const resolved = path.isAbsolute(ref) ? path.resolve(ref) : path.resolve(pluginRoot, ref)
+  const relative = path.relative(path.resolve(pluginRoot), resolved)
+  return relative === '' || (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative))
+    ? resolved
+    : null
 }
 
 export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
@@ -27,23 +49,19 @@ export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
   // результат + дедуп конкурентных вызовов (один in-flight промис): страницы
   // настроек, открываемые подряд, переиспользуют один скан. TTL 30с — свежий
   // плагин/скилл подхватится при следующем открытии после протухания.
-  let skillsCache: { at: number; rows: unknown[] } | null = null
-  let skillsInFlight: Promise<unknown[]> | null = null
-  const SKILLS_TTL_MS = 30_000
-
   ipcMain.handle('skills:list', async () => {
     const now = Date.now()
     if (skillsCache && now - skillsCache.at < SKILLS_TTL_MS) return skillsCache.rows
     if (skillsInFlight) return skillsInFlight
-    skillsInFlight = scanSkills().then((rows) => {
-      skillsCache = { at: Date.now(), rows }
-      skillsInFlight = null
+    const generation = skillsCacheGeneration
+    const request = scanSkills().then((rows) => {
+      if (generation === skillsCacheGeneration) skillsCache = { at: Date.now(), rows }
       return rows
-    }).catch((e) => {
-      skillsInFlight = null
-      throw e
+    }).finally(() => {
+      if (skillsInFlight === request) skillsInFlight = null
     })
-    return skillsInFlight
+    skillsInFlight = request
+    return request
   })
 
   async function scanSkills(): Promise<unknown[]> {
@@ -156,17 +174,33 @@ export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
         return nested.flat()
       }
 
+      async function scanSkillFiles(dir: string): Promise<string[]> {
+        let entries: import('fs').Dirent[]
+        try { entries = await fs.promises.readdir(dir, { withFileTypes: true }) }
+        catch { return [] }
+        const nested = await Promise.all(entries.map(async (entry): Promise<string[]> => {
+          const full = path.join(dir, entry.name)
+          if (entry.isDirectory()) return scanSkillFiles(full)
+          return entry.isFile() && entry.name.toLowerCase() === 'skill.md' ? [full] : []
+        }))
+        return nested.flat()
+      }
+
       const perPlugin = await Promise.all(
         Object.entries(data.plugins as Record<string, any[]>).map(async ([key, entries]) => {
           if (enabledPlugins.get(key) === false) return []
-          const [pluginName] = key.split('@')
+          const at = key.lastIndexOf('@')
+          const pluginName = at > 0 ? key.slice(0, at) : key
+          const marketplace = at > 0 ? key.slice(at + 1) : ''
           const entry = entries[0]
           if (!entry?.installPath) return []
           const pluginRoot = entry.installPath
           const rows: SkillRow[] = []
 
+          const manifest = await readEffectivePluginManifest(pluginRoot, pluginName, marketplace)
+
           const commandsDirLocal = path.join(pluginRoot, 'commands')
-          const cmds = await scanCommandsDir(commandsDirLocal)
+          const cmds = manifest.commands === undefined ? await scanCommandsDir(commandsDirLocal) : []
           const scanRows = await Promise.all(cmds.map(async (cmd): Promise<SkillRow | null> => {
             const content = await safeReadFile(cmd.filePath)
             if (content === null) return null
@@ -180,20 +214,32 @@ export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
           }))
           for (const r of scanRows) if (r) rows.push(r)
 
-          const pluginSkillsDir = path.join(pluginRoot, 'skills')
-          let skillDirs: import('fs').Dirent[] = []
-          try {
-            skillDirs = (await fs.promises.readdir(pluginSkillsDir, { withFileTypes: true })).filter(d => d.isDirectory())
-          } catch { /* dir absent */ }
-          const skillRows = await Promise.all(skillDirs.map(async (d): Promise<SkillRow | null> => {
-            const skillMd = path.join(pluginSkillsDir, d.name, 'SKILL.md')
+          const marketplaceRootSource = fs.existsSync(path.join(pluginRoot, '.claude-plugin', 'marketplace.json'))
+          const skillRefs = [
+            ...(!(marketplaceRootSource && manifest.skills !== undefined) ? ['skills'] : []),
+            ...(Array.isArray(manifest.skills) ? manifest.skills : [manifest.skills]).filter((v): v is string => typeof v === 'string'),
+          ]
+          const skillPaths = new Set<string>()
+          for (const ref of skillRefs) {
+            const resolved = path.resolve(pluginRoot, ref)
+            const relative = path.relative(pluginRoot, resolved)
+            if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) continue
+            let stat: fs.Stats
+            try { stat = await fs.promises.stat(resolved) } catch { continue }
+            if (stat.isDirectory()) {
+              for (const filePath of await scanSkillFiles(resolved)) skillPaths.add(filePath)
+            } else if (stat.isFile() && path.basename(resolved).toLowerCase() === 'skill.md') {
+              skillPaths.add(resolved)
+            }
+          }
+          for (const skillMd of skillPaths) {
             const content = await safeReadFile(skillMd)
-            if (content === null) return null
-            return parseSkillContent(skillMd, d.name, `plugin:${pluginName}`, content, d.name)
-          }))
-          for (const r of skillRows) if (r) rows.push(r)
+            if (content === null) continue
+            const skillName = path.basename(path.dirname(skillMd))
+            const parsed = parseSkillContent(skillMd, skillName, `plugin:${pluginName}`, content, skillName)
+            if (parsed) rows.push(parsed)
+          }
 
-          const manifest = await readPluginManifest(pluginRoot)
           const spec = manifest?.commands
           const items: unknown[] = Array.isArray(spec) ? spec
             : (typeof spec === 'string' || (spec && typeof spec === 'object' && !Array.isArray(spec))) ? [spec]
@@ -201,17 +247,30 @@ export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
           const seenPaths = new Set(scanRows.filter(Boolean).map(r => (r as SkillRow).path))
           for (const item of items) {
             if (typeof item === 'string') {
-              const resolved = path.isAbsolute(item) ? item : path.join(pluginRoot, item)
-              const content = await safeReadFile(resolved)
-              if (content === null) continue
-              if (seenPaths.has(resolved)) continue
-              const parsed = parseSkillContent(resolved, path.basename(resolved), `plugin:${pluginName}`, content)
-              if (parsed) { rows.push(parsed); seenPaths.add(resolved) }
+              const resolved = resolvePluginComponentPath(pluginRoot, item)
+              if (!resolved) continue
+              let stat: fs.Stats
+              try { stat = await fs.promises.stat(resolved) } catch { continue }
+              const declared = stat.isDirectory()
+                ? await scanCommandsDir(resolved)
+                : [{ relName: path.basename(resolved, '.md'), filePath: resolved }]
+              for (const command of declared) {
+                const content = await safeReadFile(command.filePath)
+                if (content === null || seenPaths.has(command.filePath)) continue
+                const parsed = parseSkillContent(
+                  command.filePath,
+                  path.basename(command.filePath),
+                  `plugin:${pluginName}`,
+                  content,
+                  command.relName,
+                )
+                if (parsed) { rows.push(parsed); seenPaths.add(command.filePath) }
+              }
             } else if (item && typeof item === 'object' && !Array.isArray(item)) {
               for (const [cmdName, meta] of Object.entries(item as Record<string, any>)) {
                 if (!meta || typeof meta !== 'object') continue
                 const srcPath = typeof meta.source === 'string'
-                  ? (path.isAbsolute(meta.source) ? meta.source : path.join(pluginRoot, meta.source))
+                  ? resolvePluginComponentPath(pluginRoot, meta.source)
                   : null
                 let content: string | null = null
                 if (srcPath) content = await safeReadFile(srcPath)
@@ -355,29 +414,41 @@ export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
       const perPlugin = await Promise.all(
         Object.entries(data.plugins as Record<string, any[]>).map(async ([key, entries]) => {
           if (enabledPluginsForAgents.get(key) === false) return []
-          const [pluginName] = key.split('@')
+          const at = key.lastIndexOf('@')
+          const pluginName = at > 0 ? key.slice(0, at) : key
+          const marketplace = at > 0 ? key.slice(at + 1) : ''
           const entry = entries[0]
           if (!entry?.installPath) return []
           const pluginRoot = entry.installPath
-          const scanned = await scanAgentsDir(path.join(pluginRoot, 'agents'), `plugin:${pluginName}`)
+          const manifest = await readEffectivePluginManifest(pluginRoot, pluginName, marketplace)
+          const scanned = manifest.agents === undefined
+            ? await scanAgentsDir(path.join(pluginRoot, 'agents'), `plugin:${pluginName}`)
+            : []
           const seenPaths = new Set(scanned.map(a => a.path))
 
-          const manifest = await readPluginManifest(pluginRoot)
           const spec = manifest?.agents
           const items: unknown[] = Array.isArray(spec) ? spec
             : (typeof spec === 'string' || (spec && typeof spec === 'object' && !Array.isArray(spec))) ? [spec]
             : []
           for (const item of items) {
             if (typeof item === 'string') {
-              const resolved = path.isAbsolute(item) ? item : path.join(pluginRoot, item)
-              if (seenPaths.has(resolved)) continue
-              const parsed = await parseAgent(resolved, `plugin:${pluginName}`)
-              if (parsed) { scanned.push(parsed); seenPaths.add(resolved) }
+              const resolved = resolvePluginComponentPath(pluginRoot, item)
+              if (!resolved) continue
+              let stat: fs.Stats
+              try { stat = await fs.promises.stat(resolved) } catch { continue }
+              if (stat.isDirectory()) {
+                for (const parsed of await scanAgentsDir(resolved, `plugin:${pluginName}`)) {
+                  if (!seenPaths.has(parsed.path)) { scanned.push(parsed); seenPaths.add(parsed.path) }
+                }
+              } else if (!seenPaths.has(resolved)) {
+                const parsed = await parseAgent(resolved, `plugin:${pluginName}`)
+                if (parsed) { scanned.push(parsed); seenPaths.add(resolved) }
+              }
             } else if (item && typeof item === 'object' && !Array.isArray(item)) {
               for (const [agentName, meta] of Object.entries(item as Record<string, any>)) {
                 if (!meta || typeof meta !== 'object') continue
                 const srcPath = typeof meta.source === 'string'
-                  ? (path.isAbsolute(meta.source) ? meta.source : path.join(pluginRoot, meta.source))
+                  ? resolvePluginComponentPath(pluginRoot, meta.source)
                   : null
                 const contentOverride = typeof meta.content === 'string' ? meta.content : undefined
                 const parsed = await parseAgent(
@@ -428,40 +499,55 @@ export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
 
     for (const [key, entries] of Object.entries(data.plugins as Record<string, any[]>)) {
       if (enabled.get(key) === false) continue
-      const [pluginName] = key.split('@')
+      const at = key.lastIndexOf('@')
+      const pluginName = at > 0 ? key.slice(0, at) : key
+      const marketplace = at > 0 ? key.slice(at + 1) : ''
       const entry = entries[0]
       if (!entry?.installPath) continue
       const pluginRoot = entry.installPath
       const source = `plugin:${pluginName}`
 
-      const stylesDir = path.join(pluginRoot, 'output-styles')
-      try {
-        const files = await fs.promises.readdir(stylesDir, { withFileTypes: true })
-        for (const f of files) {
-          if (!f.isFile() || !f.name.endsWith('.md')) continue
-          const fp = path.join(stylesDir, f.name)
-          const meta = await readMdMeta(fp)
-          if (!meta) continue
-          rows.push({ name: f.name.replace(/\.md$/, ''), description: meta.description, path: fp, source })
-        }
-      } catch { /* no dir */ }
+      const manifest = await readEffectivePluginManifest(pluginRoot, pluginName, marketplace)
 
-      const manifest = await readPluginManifest(pluginRoot)
+      if (manifest.outputStyles === undefined) {
+        const stylesDir = path.join(pluginRoot, 'output-styles')
+        try {
+          const files = await fs.promises.readdir(stylesDir, { withFileTypes: true })
+          for (const f of files) {
+            if (!f.isFile() || !f.name.endsWith('.md')) continue
+            const fp = path.join(stylesDir, f.name)
+            const meta = await readMdMeta(fp)
+            if (!meta) continue
+            rows.push({ name: f.name.replace(/\.md$/, ''), description: meta.description, path: fp, source })
+          }
+        } catch { /* no dir */ }
+      }
+
       const spec = manifest?.outputStyles
       const items: unknown[] = Array.isArray(spec) ? spec
         : (typeof spec === 'string' || (spec && typeof spec === 'object' && !Array.isArray(spec))) ? [spec]
         : []
       for (const item of items) {
         if (typeof item === 'string') {
-          const resolved = path.isAbsolute(item) ? item : path.join(pluginRoot, item)
-          const meta = await readMdMeta(resolved)
-          if (!meta) continue
-          rows.push({ name: path.basename(resolved, '.md'), description: meta.description, path: resolved, source })
+          const resolved = resolvePluginComponentPath(pluginRoot, item)
+          if (!resolved) continue
+          let stat: fs.Stats
+          try { stat = await fs.promises.stat(resolved) } catch { continue }
+          const files = stat.isDirectory()
+            ? (await fs.promises.readdir(resolved, { withFileTypes: true }))
+              .filter(file => file.isFile() && file.name.endsWith('.md'))
+              .map(file => path.join(resolved, file.name))
+            : [resolved]
+          for (const filePath of files) {
+            const meta = await readMdMeta(filePath)
+            if (!meta) continue
+            rows.push({ name: path.basename(filePath, '.md'), description: meta.description, path: filePath, source })
+          }
         } else if (item && typeof item === 'object' && !Array.isArray(item)) {
           for (const [styleName, m] of Object.entries(item as Record<string, any>)) {
             if (!m || typeof m !== 'object') continue
             const srcPath = typeof m.source === 'string'
-              ? (path.isAbsolute(m.source) ? m.source : path.join(pluginRoot, m.source))
+              ? resolvePluginComponentPath(pluginRoot, m.source)
               : null
             const description = typeof m.description === 'string' ? m.description
               : (srcPath ? (await readMdMeta(srcPath))?.description ?? '' : '')
@@ -485,13 +571,17 @@ export function registerSkillsAgentsIPC(ctx: SkillsAgentsContext): void {
     const fileName = name.replace(/[^a-zA-Z0-9_-]/g, '-') + '.md'
     const filePath = path.join(skillsDir, fileName)
     fs.writeFileSync(filePath, content, 'utf-8')
+    invalidateSkillsCache()
     return { name, fileName, path: filePath }
   })
 
   ipcMain.handle('skills:delete', (_event: IpcMainInvokeEvent, fileName: string) => {
     const cwd = ctx.getUserCwd() || process.cwd()
     const filePath = path.join(cwd, '.claude', 'commands', fileName)
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+    }
+    invalidateSkillsCache()
   })
 
   ipcMain.handle('skills:open', (_event: IpcMainInvokeEvent, filePath: string) => {

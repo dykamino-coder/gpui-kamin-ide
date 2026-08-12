@@ -49,7 +49,9 @@ export function useSyncedData(): SyncedDataHandle {
       }
       const httpUrl = cfg.serverUrl.replace(/^ws(s?):\/\//, 'http$1://')
       const hash = await computeHash(cfg.token)
-      const resp = await serverFetch(bridge, httpUrl, `/api/sync/${hash}/tree`)
+      const resp = await serverFetch(bridge, httpUrl, `/api/sync/${hash}/tree`, {
+        headers: { Authorization: `Bearer ${cfg.token}` },
+      })
       if (!resp.ok) {
         setError(resp.error || `Server returned ${resp.status}`)
         setLoading(false)
@@ -76,7 +78,9 @@ export function useSyncedData(): SyncedDataHandle {
       }
       const httpUrl = cfg.serverUrl.replace(/^ws(s?):\/\//, 'http$1://')
       const hash = await computeHash(cfg.token)
-      const resp = await serverFetch(bridge, httpUrl, `/api/sync/${hash}/file?path=${encodeURIComponent(sel.absPath)}`)
+      const resp = await serverFetch(bridge, httpUrl, `/api/sync/${hash}/file?path=${encodeURIComponent(sel.absPath)}`, {
+        headers: { Authorization: `Bearer ${cfg.token}` },
+      })
       if (!resp.ok) {
         setFileError(resp.error || `Server returned ${resp.status}`)
         return

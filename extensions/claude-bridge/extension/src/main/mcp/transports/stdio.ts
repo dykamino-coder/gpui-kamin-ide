@@ -7,6 +7,7 @@
 
 import { spawn } from 'child_process'
 import type { McpResult } from '../tool-registry'
+import { collectMcpList } from '../pagination'
 import type { McpServerState, TransportContext } from './context'
 
 export async function connectStdio(ctx: TransportContext, id: string): Promise<void> {
@@ -220,17 +221,17 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
 
       // Get tools
       ctx.appendLog(id, 'info', '[stdio] → tools/list')
-      const toolsResult = await stdioJsonRpc(ctx, id, 'tools/list', {})
-      if ((toolsResult as any)?.tools) {
-        const toolsArr = (toolsResult as any).tools
-        state.tools = toolsArr.map((t: { name: string }) => t.name)
-        for (const tool of toolsArr) {
-          state.toolSchemas.set(tool.name, tool)
-        }
-        ctx.appendLog(id, 'info', `[stdio] ← tools/list: ${state.tools.length} tools (${state.tools.slice(0, 5).join(', ')}${state.tools.length > 5 ? ', …' : ''})`)
-      } else {
-        ctx.appendLog(id, 'warn', '[stdio] ← tools/list: empty response')
+      const tools = await collectMcpList<any>(
+        (method, params) => stdioJsonRpc(ctx, id, method, params),
+        'tools/list',
+        'tools',
+      )
+      state.tools = tools.map((tool: { name: string }) => tool.name)
+      state.toolSchemas.clear()
+      for (const tool of tools) {
+        state.toolSchemas.set(tool.name, tool)
       }
+      ctx.appendLog(id, 'info', `[stdio] ← tools/list: ${state.tools.length} tools (${state.tools.slice(0, 5).join(', ')}${state.tools.length > 5 ? ', …' : ''})`)
 
       finish(true)
     }).catch((err) => {

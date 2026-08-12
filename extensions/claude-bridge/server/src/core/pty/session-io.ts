@@ -394,7 +394,7 @@ export function attachOutputDebounce(session: PtySession): void {
     if (oscMatch) {
       const rawOscTitle = (oscMatch[1] ?? '').trim()
 
-      // Send activity status to Electron on every OSC (spinner detection)
+      // Send activity status to the client on every OSC (spinner detection)
       // Spinner chars: Braille dots (⠂⠒⠴⠦ etc.), ✳ = idle, › = prompt ready
       const isWorking = !!rawOscTitle && !rawOscTitle.startsWith('✳') && !rawOscTitle.startsWith('›')
       // Prefer the live CLI status line ("Shenaniganing… (58s · ↓ 219 tokens)")
@@ -433,7 +433,7 @@ export function attachOutputDebounce(session: PtySession): void {
             } catch { /* best-effort */ }
           })()
         }
-        // Notify Electron client of title change
+        // Notify the client of the title change.
         sendToClient(session.ws, { type: 'session:title', sessionId: session.id, title })
         // Emit event for dashboard / tree update
         eventBus.emit('session:updated', {

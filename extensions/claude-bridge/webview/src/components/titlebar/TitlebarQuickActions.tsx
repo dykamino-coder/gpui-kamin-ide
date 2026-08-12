@@ -14,7 +14,7 @@ export function TitlebarQuickActions(): JSX.Element {
     }
   }
   async function newSessionNoFolder(): Promise<void> {
-    const bridge = (window as { electronBridge?: any }).electronBridge
+    const bridge = (window as { kaminBridge?: any }).kaminBridge
     if (!bridge) return
     const config = await bridge.getConfig()
     if (!config?.serverUrl || !config?.token) return
@@ -22,7 +22,7 @@ export function TitlebarQuickActions(): JSX.Element {
     leaveCustomize()
   }
   async function newSessionWithFolder(): Promise<void> {
-    const bridge = (window as { electronBridge?: any }).electronBridge
+    const bridge = (window as { kaminBridge?: any }).kaminBridge
     if (!bridge) return
     const folder = await bridge.selectFolder?.()
     if (!folder) return

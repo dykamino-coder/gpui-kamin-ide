@@ -1,4 +1,4 @@
-import type { ElectronBridge } from '../../shared/types'
+import type { KaminBridgeApi } from '../../shared/types'
 
 // The sandboxed webview can't hit http://localhost:3456 directly (CSP
 // `connect-src 'self' https:`). All Bridge-server dashboard calls (token list,
@@ -37,7 +37,7 @@ function explain(httpBase: string, error?: string): string {
 /** Proxy an HTTP request to the Bridge server through the ext-host. `path` is
  *  appended to the server's http base (e.g. "/api/dashboard/tokens"). */
 export async function serverFetch(
-  bridge: ElectronBridge,
+  bridge: KaminBridgeApi,
   httpBase: string,
   path: string,
   init?: ServerFetchInit,

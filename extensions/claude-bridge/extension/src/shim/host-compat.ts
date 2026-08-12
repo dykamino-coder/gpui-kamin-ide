@@ -1,10 +1,8 @@
-// Electron shim — KaminIDE VSIX.
+// KaminIDE host-compatibility facade for the VSIX bridge.
 //
-// esbuild aliases every `from 'electron'` in the vendored main-process code to
-// this module (see build.mjs). The Electron app's IPC layer is built on
-// `ipcMain.handle/.on` + `window.webContents.send`; we reproduce just that
-// surface over the webview postMessage bridge so the copied handlers
-// (ipc/sessions.ts, ipc/config.ts, tab-manager.ts, ui-tools.ts) run verbatim.
+// The legacy standalone client used Electron-shaped IPC. Current source imports
+// this module as `@kaminide/host-compat`; it implements only the small facade
+// required by the ported handlers over the VSIX webview postMessage bridge.
 import { EventEmitter } from "node:events"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -103,8 +101,8 @@ export const safeStorage = {
   decryptString(b: Buffer): string { return b.toString("utf8") },
 }
 
-// Save-file dialog used by the vendored `jsonl:download` handler via
-// `await import('electron')`. Mapped to the host's native save dialog.
+// Save-file dialog used by the ported `jsonl:download` handler. Mapped to the
+// host's native save dialog.
 export const dialog = {
   async showSaveDialog(
     _win: BrowserWindow | null,

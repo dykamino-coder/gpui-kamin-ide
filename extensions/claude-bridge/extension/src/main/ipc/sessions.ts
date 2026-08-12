@@ -1,4 +1,4 @@
-import { ipcMain, type BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import fs from 'fs'
 import path from 'path'
 import type { TabManager } from '../tab-manager'
@@ -264,7 +264,7 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     // and if the user then cancelled, the whole transfer was wasted. The
     // server names the file `basename(jsonlPath)` = `<conversationId>.jsonl`,
     // which we already know locally, so the dialog needs nothing from it.
-    const { dialog } = await import('electron')
+    const { dialog } = await import('@kaminide/host-compat')
     const win = ctx.getMainWindow()
     if (!win) return { success: false, error: 'No main window' }
     const convId = conn.getConversationId()
@@ -296,7 +296,7 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     const httpBase = cfg.serverUrl.replace(/^ws(s?):\/\//i, 'http$1://').replace(/\/+$/, '')
     const headers = { Authorization: `Bearer ${cfg.token}` }
 
-    const { dialog } = await import('electron')
+    const { dialog } = await import('@kaminide/host-compat')
     const win = ctx.getMainWindow()
     if (!win) return { success: false, error: 'No main window' }
     const picked = await dialog.showOpenDialog({
@@ -366,7 +366,7 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   // truncate, and gone the moment anything else is copied. A file can just be
   // attached to a report.
   ipcMain.handle('diag:save', async (_event: IpcMainInvokeEvent, fileName: string, content: string) => {
-    const { dialog } = await import('electron')
+    const { dialog } = await import('@kaminide/host-compat')
     const win = ctx.getMainWindow()
     if (!win) return { success: false, error: 'No main window' }
     const { canceled, filePath } = await dialog.showSaveDialog(win, {

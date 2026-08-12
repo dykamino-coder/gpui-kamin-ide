@@ -4,7 +4,7 @@ import { storage } from "@bridge/storage"
 // MainPanel composition based on which mode the app is in.
 
 import type { JSX } from 'preact'
-import type { ElectronBridge, TabInfo } from '../../../shared/types'
+import type { KaminBridgeApi, TabInfo } from '../../../shared/types'
 import { NoSessionEmptyContent, RestoringContent } from './EmptyState'
 import { initializing } from '../../signals/ui'
 import { MainPanel } from './MainPanel'
@@ -25,7 +25,7 @@ import { viewerVisible, jsonlVisible, pinnedTitleColors } from '../../signals/ui
 import { getAgentColor, resolvePinnedColor } from '../../utils/agent-color'
 
 interface Props {
-  bridge: ElectronBridge
+  bridge: KaminBridgeApi
   isCustomizeOpen: boolean
   tabId: string | null
   activeTab: TabInfo | null

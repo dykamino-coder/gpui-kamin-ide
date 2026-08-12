@@ -1,12 +1,9 @@
-// WebSocket RPC server — the renderer's DIRECT line to kamin-host
-// (R1c). Same JSON frames as the parentPort link; each authenticated
-// client gets its own RpcEndpoint wired to the shared method table.
+// WebSocket RPC server — the native Rust shell's direct runtime line to
+// kamin-host. Same JSON frames as the startup/lifecycle stdio RPC link; each
+// authenticated shell client gets its own RpcEndpoint and shared method table.
 // Loopback only, random port, token in the connect URL — the shell
-// hands {port, token} to the renderer over the preload bridge, nothing
-// is discoverable from outside the machine.
-//
-// This is the transport the R2 Rust shell inherits unchanged: the
-// renderer never learns which shell spawned the host.
+// receives {port, token} from the sidecar-ready stdio event, so nothing is
+// discoverable from outside the machine.
 import { randomBytes } from "node:crypto"
 import { createServer, type Server } from "node:http"
 import { WebSocketServer, type WebSocket } from "ws"
@@ -21,9 +18,9 @@ export interface WsRpcServer {
   token: string
   /** Fire-and-forget event to every connected client. */
   broadcast(channel: string, payload: unknown): void
-  /** Request/response toward the renderer (host→renderer, B5b-2b). Targets the
-   *  most-recently connected client — the single app window in practice.
-   *  Rejects if no renderer is attached. */
+  /** Request/response toward the native shell. Targets the most-recently
+   *  connected client — the single app process in practice. Rejects if the
+   *  shell WebSocket is not attached. */
   request<T>(method: string, ...params: unknown[]): Promise<T>
   close(): void
 }
@@ -61,7 +58,7 @@ export function startWsRpcServer(methods: MethodTable): Promise<WsRpcServer> {
   const httpServer: Server = createServer()
   const wss = new WebSocketServer({ noServer: true })
   // Insertion-ordered: the last entry is the most-recently connected window,
-  // which `request()` targets for host→renderer calls.
+  // which `request()` targets for host→shell calls.
   const clients = new Set<RpcEndpoint>()
 
   httpServer.on("upgrade", (req, socket, head) => {
@@ -89,11 +86,11 @@ export function startWsRpcServer(methods: MethodTable): Promise<WsRpcServer> {
       clients.add(endpoint)
       ws.on("close", () => {
         clients.delete(endpoint)
-        // Reject this endpoint's in-flight host→renderer calls — otherwise a
+        // Reject this endpoint's in-flight host→shell calls — otherwise a
         // window reload/reconnect (frequent here) leaves every pending
         // showQuickPick / TextEditor.edit / secrets.store awaiting forever,
         // deadlocking the calling extension and leaking the pending entry.
-        endpoint.failAll("renderer disconnected")
+        endpoint.failAll("shell client disconnected")
       })
     })
   })
@@ -114,7 +111,7 @@ export function startWsRpcServer(methods: MethodTable): Promise<WsRpcServer> {
         },
         request: <T>(method: string, ...params: unknown[]): Promise<T> => {
           const target = [...clients].at(-1)
-          if (!target) return Promise.reject(new Error("ws-server: no renderer attached"))
+          if (!target) return Promise.reject(new Error("ws-server: no shell client attached"))
           return target.call<T>(method, ...params)
         },
         close: () => { wss.close(); httpServer.close() },

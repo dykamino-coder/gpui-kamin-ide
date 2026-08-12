@@ -4,7 +4,7 @@ import { storage } from "@bridge/storage"
 // per (tabId, filePath) so undo/redo + scroll position survive tab and
 // file switches without resetting.
 //
-// Only the path lists persist via electron-store between sessions.
+// Only the path lists persist via the webview storage adapter between sessions.
 // Editor state itself (history stack, scroll, selection) is renderer-
 // only — restoring file content from disk on next session is enough,
 // undo across reloads would require a much bigger persistence model.
@@ -60,7 +60,7 @@ export const activeSelection = computed<SelectionInfo | null>(() => {
   if (hostEditorSelection.value) return hostEditorSelection.value
   // Fallback: the legacy per-tab CodeMirror selection (setActiveSelection). Only
   // FileEditor/FilePanel write it, and neither is mounted in KaminIDE (Monaco is
-  // the editor) — this branch is dead here, kept for the Electron build only.
+  // the editor) — this branch is retained only for legacy renderer behavior.
   const id = activeTabId.value
   return (id ? activeSelectionByTab.value.get(id) : null) ?? null
 })

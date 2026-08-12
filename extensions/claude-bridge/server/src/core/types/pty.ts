@@ -28,7 +28,7 @@ export interface PtySession {
   tokenId: string
   /** Temp directory for this session's settings.json, .claude/, etc. */
   settingsDir: string
-  /** User's working directory on their machine (from Electron) */
+  /** User's working directory on their machine (from the client host) */
   cwd: string
   state: SessionState
   createdAt: Date
@@ -78,6 +78,10 @@ export interface PtySession {
   }
   /** Tool definitions registered for this session (dynamic list) */
   registeredTools: ToolDefinition[]
+  /** External MCP resources/prompts flattened into the bridge MCP server. */
+  registeredResources: ExternalResourceDefinition[]
+  registeredResourceTemplates: ExternalResourceTemplateDefinition[]
+  registeredPrompts: ExternalPromptDefinition[]
   /** Claude CLI's internal conversation ID (for --resume) */
   cliConversationId: string | null
   /** Прежние conversationId этой сессии (авто-compact меняет файл/id):
@@ -137,6 +141,32 @@ export interface ToolDefinition {
   inputSchema: Record<string, unknown>
 }
 
+export interface ExternalResourceDefinition {
+  uri: string
+  name: string
+  description?: string
+  mimeType?: string
+  serverId: string
+  rawUri: string
+}
+
+export interface ExternalResourceTemplateDefinition {
+  uriTemplate: string
+  name: string
+  description?: string
+  mimeType?: string
+  serverId: string
+  rawUriTemplate: string
+}
+
+export interface ExternalPromptDefinition {
+  name: string
+  description?: string
+  arguments?: unknown[]
+  serverId: string
+  rawName: string
+}
+
 // ---------------------------------------------------------------------------
 // Session config for creation
 // ---------------------------------------------------------------------------
@@ -192,7 +222,7 @@ export interface TreeNode {
   sessionTitle?: string
 }
 
-/** Saved session for resume (stored in electron-store) */
+/** Saved session for resume (stored in the bridge configuration store). */
 export interface SavedSession {
   conversationId: string
   cwd: string
@@ -204,13 +234,30 @@ export interface SavedSession {
 }
 
 // ---------------------------------------------------------------------------
-// Per-token sync data (Electron → Bridge)
+// Per-token sync data (VSIX bridge host → Bridge)
 // ---------------------------------------------------------------------------
+
+export interface SyncPluginData {
+  id: string
+  name: string
+  marketplace: string
+  sourceRoot: string
+  manifest: Record<string, unknown>
+  skills: Record<string, string>
+  agents: Record<string, string>
+  commands: Record<string, string>
+  workflows: Record<string, string>
+  outputStyles: Record<string, string>
+  themes: Record<string, string>
+  hooks: Record<string, unknown>
+  settings?: string
+}
 
 export interface SyncUserData {
   skills: Record<string, string>   // relativePath → fileContent
   agents: Record<string, string>
   commands: Record<string, string> // ~/.claude/commands/*.md — custom slash commands
+  plugins: Record<string, SyncPluginData>
   settings?: string
   claudeMd?: string
 }
@@ -220,6 +267,7 @@ export interface SyncProjectData {
   rules: Record<string, string>
   agents: Record<string, string>
   commands: Record<string, string> // .claude/commands/*.md
+  settings?: string       // .claude/settings.json (hooks and project config)
   claudeMd?: string        // root CLAUDE.md
   dotClaudeMd?: string     // .claude/CLAUDE.md
   claudeJson?: string      // .claude.json

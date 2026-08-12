@@ -1,5 +1,5 @@
 // ============================================================================
-// JSONL Session Types — shared between server and Electron
+// JSONL Session Types — shared between server and client host
 // Claude Code writes session data to ~/.claude/projects/<slug>/<session-id>.jsonl
 // ============================================================================
 

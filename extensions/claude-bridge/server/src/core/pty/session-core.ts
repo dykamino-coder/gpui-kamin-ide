@@ -33,6 +33,7 @@ import {
   writeSessionSettings,
   writeSessionClaudeMd,
   applySyncData,
+  getSessionPluginDirs,
 } from './session-settings'
 import { findOrRecreateSettingsDir, xbasename, repairTranscriptForResume, resolveNewestInChain } from './session-resume-helpers'
 import { handleJsonlUserEntry } from './session-stats-recorder'
@@ -46,6 +47,7 @@ import {
 } from './session-mcp-call'
 import { startNativeMitm } from '../proxy/native-mitm'
 import { getStreamingSettings } from '../proxy/streaming-settings'
+import { waitForUserSyncSnapshot } from '../sync/lock'
 
 // Re-export the per-session MCP-call helpers so callers that historically
 // imported them from session-core/session-manager keep working.
@@ -168,6 +170,7 @@ export async function createSession(
 
   // Apply per-token synced data (skills, agents, CLAUDE.md, project files)
   if (config.bearerHash) {
+    await waitForUserSyncSnapshot(config.bearerHash)
     applySyncData(settingsDir, config.bearerHash, userCwd)
   }
 
@@ -177,7 +180,7 @@ export async function createSession(
   const nodePty = await import('node-pty')
 
   const env = buildEnv(sessionId, userName, config.effort)
-  const args = buildClaudeArgs(config)
+  const args = buildClaudeArgs(config, getSessionPluginDirs(settingsDir))
 
   let streamThrottle: Map<string, { timer: NodeJS.Timeout; latest: any }> | null = null
   // ── Live streaming MITM proxy (per-token toggle).
@@ -245,7 +248,7 @@ export async function createSession(
           const isSideQuest = !!entry.isSidechain
           // Throttle streaming pushes: 100ms between sends per message-id.
           // Without this, ~30 sends/sec for a single turn collide in one
-          // microtask flush of the bridge↔Electron WS, and the client
+          // microtask flush of the bridge↔client WS, and the client
           // observably sees only 2 of 37 frames (start + finalize). The
           // coalescer keeps "latest entry" buffered and emits at most
           // 10 fps — visually smooth, well within ws buffer limits.
@@ -322,7 +325,7 @@ export async function createSession(
 
   // ALWAYS use settingsDir as cwd on the server.
   // User's real path (config.cwd) is written to CLAUDE.md for context only.
-  // Actual file operations go through MCP → Electron → user's machine.
+  // Actual file operations go through MCP → client host → user's machine.
   const cwd = settingsDir
 
   // On Windows, node-pty needs .cmd extension for npm global binaries
@@ -373,6 +376,9 @@ export async function createSession(
     lastResizeAt: Date.now(),
     consoleShrunk: false,
     registeredTools: [],
+    registeredResources: [],
+    registeredResourceTemplates: [],
+    registeredPrompts: [],
     cliConversationId: config.resumeConversationId || null,
     isSubAgent: config.isSubAgent || false,
     parentSessionId: config.parentSessionId || null,
@@ -894,11 +900,11 @@ export function resizeTerminal(sessionId: string, cols: number, rows: number): v
 }
 
 // ---------------------------------------------------------------------------
-// MCP call management (Server → Electron → Server)
+// MCP call management (server → client host → server)
 // ---------------------------------------------------------------------------
 
 /**
- * Send an MCP tool call to Electron via WebSocket. Resolves when Electron
+ * Send an MCP tool call to the client host via WebSocket. Resolves when it
  * responds (or rejects on timeout/denial).
  */
 export function sendMcpCall(
@@ -950,12 +956,12 @@ function broadcastSessionCount(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Elicitation handling (resolving pending elicitation from Electron)
+// Elicitation handling (resolving pending elicitation from the client)
 // ---------------------------------------------------------------------------
 
 /**
  * Resolve a pending elicitation for a session.
- * Called when Electron sends elicitation:response.
+ * Called when the client sends elicitation:response.
  */
 export function handleElicitationResponse(
   sessionId: string,

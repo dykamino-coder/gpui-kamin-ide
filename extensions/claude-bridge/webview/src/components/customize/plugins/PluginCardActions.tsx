@@ -2,6 +2,7 @@ import type { JSX } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import { useBridge } from '../../../hooks/useBridge'
 import { PluginOptionsModal } from './PluginOptionsModal'
+import { showToast } from '../../../signals/toasts'
 import styles from './PluginCardActions.module.css'
 
 interface Props {
@@ -10,15 +11,18 @@ interface Props {
   isCached: boolean
   installPath?: string
   isRemoteSource?: boolean
+  enabled: boolean
   onRefresh: () => void
 }
 
-export function PluginCardActions({ name, marketplace, isCached, installPath, isRemoteSource = false, onRefresh }: Props): JSX.Element {
+export function PluginCardActions({ name, marketplace, isCached, installPath, isRemoteSource = false, enabled, onRefresh }: Props): JSX.Element {
   const bridge = useBridge()
   const [cacheLabel, setCacheLabel] = useState<string | null>(null)
   const [cacheDisabled, setCacheDisabled] = useState(false)
   const [hasUserConfig, setHasUserConfig] = useState(false)
   const [showOptions, setShowOptions] = useState(false)
+  const [toggling, setToggling] = useState(false)
+  const [restartNotice, setRestartNotice] = useState(false)
 
   const pluginId = `${name}@${marketplace}`
 
@@ -70,9 +74,34 @@ export function PluginCardActions({ name, marketplace, isCached, installPath, is
     } catch {}
   }
 
+  async function handleToggle(): Promise<void> {
+    setToggling(true)
+    try {
+      const result = await bridge.setPluginEnabled(pluginId, !enabled)
+      if (!result?.ok) throw new Error(result?.error || 'toggle failed')
+      if (result.restartRequired) {
+        setRestartNotice(true)
+        showToast({
+          type: 'info',
+          title: `${name}: restart required`,
+          message: 'Existing chats can still use the previous plugin commands and hooks. Close and reopen those chats to apply the change.',
+          duration: 12_000,
+        })
+      }
+      onRefresh()
+    } catch (err) {
+      showToast({ type: 'error', title: name, message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setToggling(false)
+    }
+  }
+
   return (
     <>
       <div class={styles.actions}>
+        <button class={styles.btn} onClick={handleToggle} disabled={toggling} title="Restart the session after changing plugin state">
+          <i class={`fas ${enabled ? 'fa-toggle-on' : 'fa-toggle-off'}`} /> {enabled ? 'Enabled' : 'Disabled'}
+        </button>
         <button class={`${styles.btn} ${styles.cacheBtn}`} onClick={handleCache} disabled={cacheDisabled}>
           {isCached ? <><i class="fas fa-sync-alt" /> Update</> : <><i class="fas fa-download" /> Cache</>}
         </button>
@@ -90,6 +119,11 @@ export function PluginCardActions({ name, marketplace, isCached, installPath, is
           <i class="fas fa-store" />
         </button>
       </div>
+      {restartNotice && (
+        <div style="margin-top:6px;color:var(--accent-yellow);font-size:var(--fs-xs);line-height:var(--lh-base)">
+          Existing chats still have the previous plugin commands and hooks. Close and reopen them to apply this change.
+        </div>
+      )}
       {showOptions && (
         <PluginOptionsModal
           pluginId={pluginId}

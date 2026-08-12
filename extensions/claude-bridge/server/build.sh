@@ -6,6 +6,7 @@
 #   ./build.sh                    # Build bridge image
 #   ./build.sh bridge             # Build bridge image (explicit)
 #   ./build.sh --no-cache         # Build without cache
+#   ./build.sh --skip-dashboard   # Reuse an existing dashboard build
 # =============================================================================
 
 set -e
@@ -14,47 +15,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 NO_CACHE=""
-SKIP_INSTALLER=""
+SKIP_DASHBOARD=""
 
 for arg in "$@"; do
   case "$arg" in
     --no-cache) NO_CACHE="--no-cache" ;;
-    --skip-installer) SKIP_INSTALLER=1 ;;
+    --skip-dashboard) SKIP_DASHBOARD=1 ;;
+    --skip-installer) SKIP_DASHBOARD=1 ;; # deprecated compatibility alias
     bridge) ;; # default target, accept silently
-    *) echo "Unknown argument: $arg"; echo "Usage: $0 [bridge] [--no-cache] [--skip-installer]"; exit 1 ;;
+    *) echo "Unknown argument: $arg"; echo "Usage: $0 [bridge] [--no-cache] [--skip-dashboard]"; exit 1 ;;
   esac
 done
 
-# Ensure the dashboard build + Squirrel installer match the current version
-# of the server. Skipping this step is a recurring footgun — the server bumps
-# to N.M.K, the image gets rebuilt, but `installer/` still serves the old
-# nupkg, and the in-app autoupdater fails with "Update failed — retry N.M.K".
-# Pass --skip-installer when you've already produced the installer artifacts.
-if [ -z "$SKIP_INSTALLER" ]; then
-  ROOT_VERSION=$(node -p "require('./package.json').version")
-  ELECTRON_VERSION=$(node -p "require('./electron/package.json').version")
-  if [ "$ROOT_VERSION" != "$ELECTRON_VERSION" ]; then
-    echo "==> ERROR: package.json ($ROOT_VERSION) and electron/package.json ($ELECTRON_VERSION) versions differ"
-    echo "==> Bump both before invoking build.sh, or pass --skip-installer to bypass."
-    exit 1
-  fi
-  EXISTING_NUPKG=$(ls -1 installer/open_claude_bridge_electron-${ROOT_VERSION}-full.nupkg 2>/dev/null || true)
-  if [ -z "$EXISTING_NUPKG" ]; then
-    echo "==> Building dashboard (vite)..."
-    npm run build > /dev/null
-    echo "==> Packaging Electron app v${ROOT_VERSION}..."
-    (cd electron && npm run package > /dev/null)
-    echo "==> Making Squirrel installer..."
-    (cd electron && npm run make > /dev/null)
-    echo "==> Copying installer artifacts to installer/..."
-    rm -f installer/RELEASES installer/*Setup.exe installer/*.nupkg
-    cp "electron/out/make/squirrel.windows/x64/OpenClaudeBridge-${ROOT_VERSION} Setup.exe" \
-       "electron/out/make/squirrel.windows/x64/RELEASES" \
-       "electron/out/make/squirrel.windows/x64/open_claude_bridge_electron-${ROOT_VERSION}-full.nupkg" \
-       installer/
-  else
-    echo "==> Installer for v${ROOT_VERSION} already in installer/ — reusing"
-  fi
+# The standalone Electron client was removed. This script now builds only the
+# server dashboard; the KaminIDE installer is produced by the desktop release
+# pipeline and copied into installer/ before the image build.
+if [ -z "$SKIP_DASHBOARD" ]; then
+  echo "==> Building dashboard (vite)..."
+  npm run build > /dev/null
 fi
 
 # Prune installer/ to keep only the latest Setup.exe + nupkg (RELEASES is
@@ -71,7 +49,7 @@ if [ -d installer ] && [ -f installer/RELEASES ]; then
 fi
 
 # Prune KaminIDE installers — keep ONLY the highest version's setup.exe + .sig.
-# The Dockerfile bakes installer/KaminIDE_*_x64-setup.exe* by GLOB, and the Tauri
+# The Dockerfile bakes installer/KaminIDE_*_x64-setup.exe* by GLOB, and the GPUI
 # updater / /download only ever serve the newest build, so every older version is
 # dead weight: each setup.exe is ~36MB and already LZMA-compressed, so it lands in
 # the image layer ~1:1 (docker can't re-compress it). Left unpruned they pile up

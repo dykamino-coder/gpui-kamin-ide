@@ -143,6 +143,8 @@ export interface ExternalMcpServerConfig {
   sourceType?: 'plugin' | 'claude-config' | 'project'
   /** Plugin name (for plugin-sourced servers) */
   pluginName?: string
+  /** Original server key inside the plugin before bridge-internal scoping. */
+  pluginServerName?: string
   /** Marketplace name (for plugin-sourced servers) */
   marketplace?: string
   /** Human-readable description */
@@ -172,12 +174,20 @@ export interface ExternalMcpServerInfo extends ExternalMcpServerConfig {
   tools: string[]
   toolInfos?: McpToolInfo[]
   resources?: McpResourceInfo[]
+  resourceTemplates?: McpResourceTemplateInfo[]
   prompts?: McpPromptInfo[]
   error?: string
 }
 
 export interface McpResourceInfo {
   uri: string
+  name: string
+  description?: string
+  mimeType?: string
+}
+
+export interface McpResourceTemplateInfo {
+  uriTemplate: string
   name: string
   description?: string
   mimeType?: string
@@ -228,8 +238,9 @@ export interface MarketplacePlugin {
   hasCommands: boolean
 }
 
-// Electron bridge API exposed to renderer via contextBridge
-export interface ElectronBridge {
+// Kamin webview bridge API. The historical Electron name remains below as a
+// compatibility type only.
+export interface KaminBridgeApi {
   // ─── Tabs ──────────────────────────────────────────────
   createTab(config: ConnectionConfig): Promise<string>
   closeTab(tabId: string): void
@@ -419,8 +430,9 @@ export interface ElectronBridge {
   hooksSave(draft: { event: string; matcher?: string; handler: Record<string, unknown>; index?: { matcherIdx: number; handlerIdx: number } }): Promise<{ ok: boolean; error?: string }>
   hooksTest(draft: { event: string; matcher?: string; handler: Record<string, unknown>; mockPayload?: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; result?: { stdout: string; stderr: string; exitCode: number; outcome: string; durationMs: number }; effectiveHost?: string }>
   hooksGetPluginApproval(pluginId: string): Promise<{ approved: boolean; hashes: string[] }>
+  hooksListPendingPluginApprovals(): Promise<Array<{ pluginId: string; hooks: Array<{ event: string; matcher?: string; handler: Record<string, unknown>; hash: string }>; approvedHashes: string[] }>>
   hooksSetPluginApproval(pluginId: string, hashes: string[]): Promise<{ ok: boolean; error?: string }>
-  onPluginHooksAwaitingApproval(cb: (data: { pluginId: string; hooks: Array<{ event: string; matcher?: string; handler: Record<string, unknown>; hash: string }> }) => void): () => void
+  onPluginHooksAwaitingApproval(cb: (data: { pluginId: string; hooks: Array<{ event: string; matcher?: string; handler: Record<string, unknown>; hash: string }>; approvedHashes?: string[] }) => void): () => void
   openExternal(url: string): Promise<void>
 
   // ─── Chrome mic proxy (bypasses corporate endpoint protection on Windows) ──
@@ -546,6 +558,7 @@ export interface ElectronBridge {
   installPlugin(pluginName: string, marketplace: string, pluginPath: string): Promise<void>
   installLocalPlugin(): Promise<{ name: string; marketplace: string; version: string; installPath: string } | null>
   uninstallPlugin(pluginName: string, marketplace: string): Promise<void>
+  setPluginEnabled(pluginId: string, enabled: boolean): Promise<{ ok: boolean; restartRequired?: boolean; error?: string }>
   addMarketplace(name: string, gitUrl: string, auth?: { username?: string; token?: string } | null): Promise<MarketplaceInfo>
   setMarketplaceAuth(name: string, auth: { username?: string; token?: string } | null): Promise<{ ok: boolean; error?: string; warning?: string }>
   removeMarketplace(name: string): Promise<void>
@@ -615,3 +628,6 @@ export interface ElectronBridge {
    *  method instead — this exists for parity with preload's open invoke. */
   invoke(channel: string, ...args: unknown[]): Promise<unknown>
 }
+
+/** @deprecated Use KaminBridgeApi. */
+export type ElectronBridge = KaminBridgeApi

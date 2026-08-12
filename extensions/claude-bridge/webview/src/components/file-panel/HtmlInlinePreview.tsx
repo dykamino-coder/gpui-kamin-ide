@@ -2,7 +2,7 @@ import type { JSX } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 import { useBridge } from '../../hooks/useBridge'
 
-/** Renders an HTML file via Electron's `<webview>` tag pointed at the
+/** Renders an HTML file via the host-provided `<webview>` guest element at the
  *  real `file://` URL. Because the webview itself runs in the file://
  *  origin, it can load relative `<link>`/`<script>`/`<img>` assets
  *  from the same directory without Chromium's "Not allowed to load
@@ -24,7 +24,7 @@ export function HtmlInlinePreview({ filePath }: { filePath: string }): JSX.Eleme
   const url = 'file:///' + filePath.replace(/\\/g, '/').replace(/^\//, '')
   const dir = filePath.replace(/[\\/][^\\/]+$/, '')
 
-  // Mount the <webview> imperatively — Preact JSX has no Electron tag
+  // Mount the <webview> imperatively — Preact JSX has no guest-element tag
   // type, and we want a stable reference to the element for
   // executeJavaScript() calls.
   useEffect(() => {
@@ -32,7 +32,7 @@ export function HtmlInlinePreview({ filePath }: { filePath: string }): JSX.Eleme
     if (!host) return
     host.innerHTML = `<webview src="${escapeAttr(url)}" disablewebsecurity allowpopups style="display:flex;flex:1;min-height:0;width:100%;border:none;background:#fff"></webview>`
 
-    const wv = host.querySelector('webview') as ElectronWebviewElement | null
+    const wv = host.querySelector('webview') as GuestWebviewElement | null
     if (!wv) return
 
     // Inject the live-reload bootstrap once per page load. `dom-ready`
@@ -59,7 +59,7 @@ export function HtmlInlinePreview({ filePath }: { filePath: string }): JSX.Eleme
       if (e.root !== dir) return
       const changed = e.changedPath
       if (!changed) return
-      const wv = containerRef.current?.querySelector('webview') as ElectronWebviewElement | null
+      const wv = containerRef.current?.querySelector('webview') as GuestWebviewElement | null
       if (!wv) return
       // The HTML itself was changed → full reload. Anything else
       // (CSS / image / generic asset) is hot-patched in the guest.
@@ -80,7 +80,7 @@ export function HtmlInlinePreview({ filePath }: { filePath: string }): JSX.Eleme
   return <div ref={containerRef} style="flex:1;min-height:0;display:flex;flex-direction:column" />
 }
 
-interface ElectronWebviewElement extends HTMLElement {
+interface GuestWebviewElement extends HTMLElement {
   reload: () => void
   loadURL: (url: string) => void
   executeJavaScript: (code: string) => Promise<unknown>

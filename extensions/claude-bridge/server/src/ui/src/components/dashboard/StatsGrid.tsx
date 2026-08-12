@@ -5,6 +5,7 @@ import styles from './StatsGrid.module.css'
 export interface StatFilter {
   label: string
   endpoint?: string
+  pluginId?: string
   userName?: string
   status?: string
 }

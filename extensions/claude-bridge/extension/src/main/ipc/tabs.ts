@@ -1,4 +1,4 @@
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from '@kaminide/host-compat'
 import type { ConfigStore } from '../config/store'
 import { saveTabsState, loadTabsState, type PersistedTab } from '../tabs-state-store'
 

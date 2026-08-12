@@ -54,7 +54,7 @@ export function scheduleSaveTabsState(): void {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(async () => {
     saveTimer = null
-    const bridge = (window as any).electronBridge
+    const bridge = (window as any).kaminBridge
     if (!bridge?.saveTabsState) return
     try {
       const snapshot = buildPersistedSnapshot(tabs.value, pinnedTabs.value, tabOrder.value)

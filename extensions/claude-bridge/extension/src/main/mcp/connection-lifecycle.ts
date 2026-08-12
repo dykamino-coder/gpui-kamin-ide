@@ -39,6 +39,7 @@ export function teardownServer(state: McpServerState | undefined): void {
   state.tools = []
   state.toolSchemas.clear()
   state.resources = []
+  state.resourceTemplates = []
   state.prompts = []
   state.capabilities = {}
   state.inputBuffer = ''

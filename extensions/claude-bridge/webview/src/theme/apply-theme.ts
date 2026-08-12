@@ -63,7 +63,7 @@ function apply(resolved: ResolvedTheme): void {
   resolvedTheme.value = resolved
   // Push to main so toast mini-windows flip live too. Bridge may not be
   // exposed yet during initial paint — guard the call.
-  try { (window as any).electronBridge?.setTheme?.(resolved) } catch { /* noop */ }
+  try { (window as any).kaminBridge?.setTheme?.(resolved) } catch { /* noop */ }
 }
 
 /** Initial paint — read stored choice and apply before render so we

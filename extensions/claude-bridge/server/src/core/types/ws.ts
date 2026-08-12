@@ -5,7 +5,7 @@
 import type { JsonlEntry } from '../../shared/jsonl-types'
 import type { ToolDefinition, TreeNode } from './pty'
 
-// -- Electron → Server --
+// -- Client host → Server --
 
 export interface WsMsgSessionCreate {
   type: 'session:create'
@@ -70,7 +70,7 @@ export interface WsMsgMcpDenied {
   reason: string
 }
 
-/** Electron responds to an elicitation request (AskUserQuestion, ExitPlanMode, etc.) */
+/** Client responds to an elicitation request (AskUserQuestion, ExitPlanMode, etc.) */
 export interface WsMsgElicitationResponse {
   type: 'elicitation:response'
   requestId: string
@@ -85,7 +85,7 @@ export interface WsMsgSessionEnd {
   type: 'session:end'
 }
 
-/** Electron requests session resume */
+/** Client requests session resume */
 export interface WsMsgSessionResume {
   type: 'session:resume'
   token: string
@@ -105,31 +105,38 @@ export interface WsMsgSessionResume {
   transcriptMirrorDir?: string
 }
 
-/** Electron requests effort level change (requires PTY restart) */
+/** Client requests effort level change (requires PTY restart) */
 export interface WsMsgSessionChangeEffort {
   type: 'session:change-effort'
   effort: string
 }
 
-/** Electron requests model change (requires PTY restart) */
+/** Client requests model change (requires PTY restart) */
 export interface WsMsgSessionChangeModel {
   type: 'session:change-model'
   model: string
 }
 
-/** Electron requests deletion of session data (settingsDir + JSONL) */
+/** Client requests deletion of session data (settingsDir + JSONL) */
 export interface WsMsgSessionDeleteData {
   type: 'session:delete-data'
   conversationId: string
 }
 
-/** Electron registers external MCP tools with the server session */
+/** Client registers external MCP tools with the server session */
 export interface WsMsgRegisterExternalTools {
   type: 'mcp:register-external-tools'
   tools: ToolDefinition[]
 }
 
-/** Electron requests raw JSONL file download */
+export interface WsMsgRegisterExternalContent {
+  type: 'mcp:register-external-content'
+  resources: import('./pty').ExternalResourceDefinition[]
+  resourceTemplates: import('./pty').ExternalResourceTemplateDefinition[]
+  prompts: import('./pty').ExternalPromptDefinition[]
+}
+
+/** Client requests raw JSONL file download */
 export interface WsMsgJsonlDownloadRequest {
   type: 'jsonl:download-request'
 }
@@ -152,7 +159,7 @@ export interface WsMsgJsonlSyncRequest {
   lastUuid?: string
 }
 
-/** Electron asks the server to load ONE archived compact segment whole, by
+/** Client asks the server to load ONE archived compact segment whole, by
  *  TIMESTAMP range — the "view an old conversation" path. Served from the
  *  authoritative transcript file (the client's local mirror is a bounded tail
  *  and may not hold this range). Empty `fromTs` = from the start; empty `toTs` =
@@ -163,7 +170,7 @@ export interface WsMsgJsonlSegmentRequest {
   toTs: string
 }
 
-/** Electron's reply to a server-initiated `hook:execute` — local-host shell
+/** VSIX bridge host's reply to a server-initiated `hook:execute` — local-host shell
  *  finished running the hook command, returns stdout/stderr/exit. */
 export interface WsMsgHookResponse {
   type: 'hook:response'
@@ -178,7 +185,7 @@ export interface WsMsgHookResponse {
   }
 }
 
-export type ElectronToServerMsg =
+export type ClientToServerMsg =
   | WsMsgSessionCreate
   | WsMsgSessionEnd
   | WsMsgSessionInput
@@ -193,12 +200,13 @@ export type ElectronToServerMsg =
   | WsMsgSessionChangeModel
   | WsMsgSessionDeleteData
   | WsMsgRegisterExternalTools
+  | WsMsgRegisterExternalContent
   | WsMsgJsonlDownloadRequest
   | WsMsgJsonlSyncRequest
   | WsMsgJsonlSegmentRequest
   | WsMsgHookResponse
 
-// -- Server → Electron --
+// -- Server → client host --
 
 export interface WsMsgSessionCreated {
   type: 'session:created'
@@ -230,7 +238,7 @@ export interface WsMsgMcpCall {
   input: Record<string, unknown>
 }
 
-// JSONL streaming messages (Server → Electron)
+// JSONL streaming messages (Server → Client host)
 export interface WsMsgJsonlEntries {
   type: 'jsonl:entries'
   entries: JsonlEntry[]
@@ -259,7 +267,7 @@ export interface WsMsgJsonlSegmentResponse {
   records: JsonlEntry[]
 }
 
-/** Server sends elicitation request to Electron (show widget) */
+/** Server sends elicitation request to the client (show widget) */
 export interface WsMsgElicitationRequest {
   type: 'elicitation:request'
   requestId: string
@@ -268,7 +276,7 @@ export interface WsMsgElicitationRequest {
   requestedSchema?: Record<string, unknown>
 }
 
-/** Server notifies Electron about agent spawn */
+/** Server notifies the client about agent spawn */
 export interface WsMsgAgentSpawned {
   type: 'session:agent-spawned'
   parentSessionId: string
@@ -283,7 +291,7 @@ export interface WsMsgTreeUpdate {
   tree: TreeNode[]
 }
 
-/** Server notifies Electron that session was restarted (e.g., effort or model change) */
+/** Server notifies the client that session was restarted (e.g., effort or model change) */
 export interface WsMsgSessionRestarted {
   type: 'session:restarted'
   sessionId: string
@@ -323,7 +331,7 @@ export interface WsMsgJsonlDownloadResponse {
   error?: string
 }
 
-export type ServerToElectronMsg =
+export type ServerToClientMsg =
   | WsMsgSessionCreated
   | WsMsgSessionOutput
   | WsMsgSessionExit
@@ -338,3 +346,8 @@ export type ServerToElectronMsg =
   | WsMsgSessionActivity
   | WsMsgJsonlDownloadResponse
   | WsMsgJsonlSegmentResponse
+
+/** @deprecated Use ClientToServerMsg. */
+export type ElectronToServerMsg = ClientToServerMsg
+/** @deprecated Use ServerToClientMsg. */
+export type ServerToElectronMsg = ServerToClientMsg

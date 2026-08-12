@@ -1,9 +1,7 @@
-// Message-port abstraction for the kamin-host CHILD side. The host code
-// never imports `electron` — it runs either inside an Electron
-// `utilityProcess` (parentPort transport) or as a plain Node child /
-// Rust-spawned node.exe (process.send transport). Detection is runtime:
-// utilityProcess children get `process.parentPort`, forked Node children
-// get `process.send`.
+// Transport abstraction shared by the Node kamin-host processes. The native
+// Rust/GPUI shell talks to the kamin-host parent over stdio; that parent forks
+// the extension-host child over Node IPC (`process.send`). `parentPort` remains
+// as compatibility for the retired utility-process launcher.
 import { isRpcFrame, type RpcFrame } from "./protocol.js"
 
 export interface MessagePortLike {
@@ -11,8 +9,8 @@ export interface MessagePortLike {
   onFrame(fn: (frame: RpcFrame) => void): void
 }
 
-/** Electron's utilityProcess child surface — typed locally so this
- *  module compiles without the `electron` package in scope. */
+/** Legacy utility-process parent-port surface, typed without importing an
+ * Electron runtime dependency. */
 interface ParentPortLike {
   postMessage(message: unknown): void
   on(event: "message", listener: (e: { data: unknown }) => void): void
@@ -24,10 +22,9 @@ function getParentPort(): ParentPortLike | null {
 }
 
 export function openChildPort(): MessagePortLike {
-  // R2: the Rust shell spawns a plain `node.exe` which gets NEITHER
-  // `parentPort` (utilityProcess) NOR `process.send` (fork IPC). It
-  // signals stdio transport explicitly via env so this branch is never
-  // taken by accident under Electron. Frames are newline-delimited JSON
+  // The Rust shell spawns the kamin-host parent as plain `node.exe`, which gets
+  // neither `parentPort` nor `process.send`. It signals stdio explicitly via
+  // env. Frames are newline-delimited JSON
   // on stdin/stdout; the reader skips any non-frame line, so interleaved
   // log output on stdout is tolerated.
   if (process.env.KAMIN_HOST_TRANSPORT === "stdio") {
@@ -71,5 +68,5 @@ export function openChildPort(): MessagePortLike {
       },
     }
   }
-  throw new Error("kamin-host: no parent transport (run via utilityProcess.fork or child_process.fork)")
+  throw new Error("kamin-host: no parent transport (set KAMIN_HOST_TRANSPORT=stdio or launch with an IPC parent)")
 }

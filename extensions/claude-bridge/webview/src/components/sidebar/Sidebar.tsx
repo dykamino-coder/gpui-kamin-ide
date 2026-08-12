@@ -45,7 +45,7 @@ export function Sidebar(): JSX.Element | null {
 
     // Apply intendedRatio against the current side area. Always called on
     // every window resize, plus once after layout hydration so the panel
-    // adapts to the actual viewport at launch (Electron doesn't fire
+    // adapts to the actual viewport at launch (the host does not fire
     // 'resize' on initial paint, so without this manual call a session
     // saved on a maximised window would render at the saved px on a
     // smaller windowed reopen).

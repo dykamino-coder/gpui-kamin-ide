@@ -10,7 +10,7 @@ import { resolveTokenSync } from '../auth/tokens'
 const PUBLIC_PATHS = [
   '/api/dashboard/auth/login',
   '/api/dashboard/auth/session',
-  // Token listing + creation is used by the Electron app's Connection
+  // Token listing + creation is used by the KaminIDE client's Connection
   // settings to resolve the token → name mapping and bootstrap a new
   // install. Requiring dashboard auth here would create a chicken-and-
   // egg problem: the user has no token yet, so they can't log in, so
@@ -40,7 +40,7 @@ export async function dashboardAuthMiddleware(c: Context, next: Next) {
     return
   }
 
-  // Fallback: accept a per-user API token (the same one Electron uses for
+  // Fallback: accept a per-user API token (the same one the client uses for
   // /ws/session). Stamp the resolved userName onto the request context so
   // downstream endpoints can scope responses to the caller's data only —
   // an API-token holder must never see another user's stats.

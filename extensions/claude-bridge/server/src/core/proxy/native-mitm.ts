@@ -532,7 +532,7 @@ async function handleRequest(
   //
   //  1. **Decouple upstream pace from CLI's write rate.** Chained
   //     `pipe(upstream → tee → res)` propagates backpressure: if CLI's
-  //     local TLS write is slow (Electron renderer busy, PTY buffer full),
+  //     local TLS write is slow (client webview busy, PTY buffer full),
   //     `res` slows tee, tee slows upstream, undici reads slower, and the
   //     corp proxy sees a "stalled" connection and RSTs it. We instead
   //     pull from upstream at full speed and fan-out to tee + res with

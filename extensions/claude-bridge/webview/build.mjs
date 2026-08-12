@@ -24,6 +24,14 @@ for (const entry of ["chat", "tools", "customize"]) {
       rollupOptions: { input: path.resolve(dir, `${entry}.html`) },
     },
   })
-  fs.copyFileSync(path.resolve(dir, `dist/${entry}/${entry}.html`), path.join(dest, `${entry}.html`))
+  const builtPath = path.resolve(dir, `dist/${entry}/${entry}.html`)
+  let html = fs.readFileSync(builtPath, "utf8")
+  // esbuild emits Highlight.js' PHP whitespace character class as a multiline
+  // template literal containing a real space + TAB before the newline. A
+  // generic trailing-whitespace cleanup then silently changes `[ \t\n]` into
+  // `[\n]`. Store the equivalent escaped JS string in the shipped artifact so
+  // formatting tools cannot alter its runtime value.
+  html = html.split("`[ \t\n]`").join('"[ \\t\\n]"')
+  fs.writeFileSync(path.join(dest, `${entry}.html`), html, "utf8")
   console.log(`[claude-bridge] webview → ${entry}.html`)
 }

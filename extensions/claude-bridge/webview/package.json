@@ -2,11 +2,12 @@
   "name": "claude-bridge-webview",
   "private": true,
   "type": "module",
-  "description": "Claude Bridge webview UI (Preact). Copied from electron/renderer. Builds a single inlined webview.html into builtin-extensions/claude-bridge/ (the only artifact that ships). node_modules/dist are gitignored and never enter the runtime payload.",
+  "description": "Claude Bridge webview UI (Preact), ported from the legacy standalone client to the KaminIDE bridge API. Builds inlined HTML into builtin-extensions/claude-bridge/; node_modules/dist never enter the runtime payload.",
   "scripts": {
     "build": "node build.mjs",
     "dev": "vite build --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "preact": "^10.29.0",
@@ -47,6 +48,7 @@
     "vite": "^6.0.0",
     "@preact/preset-vite": "^2.10.5",
     "vite-plugin-singlefile": "^2.1.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.5"
   }
 }

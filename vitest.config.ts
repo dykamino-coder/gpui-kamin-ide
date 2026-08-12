@@ -1,14 +1,12 @@
-// Vitest config — runs unit tests under `src/`. The Playwright-driven
-// e2e file lives at `tests/e2e/` and is invoked separately via
-// `npm run e2e` (it spawns a real Electron, so vitest's worker model
-// can't host it).
+// Vitest config for the TypeScript unit suites. Native UI integration tests
+// live outside this worker-based test contour.
 import { defineConfig } from "vitest/config"
 
 export default defineConfig({
   test: {
     include: [
       "src/**/*.{test,spec}.{ts,tsx}",
-      // Bridge units that are free of the vscode/electron/preact-signal trees.
+      // Bridge units that can run without the live vscode/webview runtimes.
       "extensions/claude-bridge/extension/src/**/*.{test,spec}.ts",
       "extensions/claude-bridge/webview/src/**/*.{test,spec}.ts",
       "extensions/claude-bridge/server/src/**/*.{test,spec}.ts",

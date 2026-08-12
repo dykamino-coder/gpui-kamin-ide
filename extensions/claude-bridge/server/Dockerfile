@@ -63,12 +63,12 @@ COPY --from=builder --chown=bridge:bridge /app/bin ./bin
 COPY --from=builder --chown=bridge:bridge /app/package.json /app/package-lock.json /app/tsconfig.json ./
 COPY --chown=bridge:bridge --chmod=755 docker-entrypoint.sh /app/docker-entrypoint.sh
 
-# KaminIDE Tauri installer (the desktop client) + its updater signature — the
+# KaminIDE installer (the GPUI desktop client) — the
 # ONLY installer shipped. `/download` serves the setup.exe for fresh installs;
-# `/updates/kaminide` serves setup + .sig to the in-app Tauri updater. The
+# `/updates/kaminide` serves it to the in-app GPUI updater. The
 # legacy Electron Squirrel artifacts (RELEASES / *.nupkg / *Setup.exe) are
 # deliberately no longer baked — KaminIDE fully replaces the Electron client.
-# The trailing `*` catches both the .exe and its .exe.sig in one COPY.
+# The trailing `*` also tolerates legacy .exe.sig files in existing releases.
 COPY --chown=bridge:bridge installer/KaminIDE_*_x64-setup.exe* /app/installer/
 
 USER bridge
