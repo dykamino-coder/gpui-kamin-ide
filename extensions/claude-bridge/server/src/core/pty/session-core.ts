@@ -22,6 +22,7 @@ import {
   attachOutputDebounce,
   clearInputThrottle,
 } from './session-io'
+import { clearSessionInputState, notifySessionAttachmentChanged } from './session-input-coordinator'
 import { clearSession as clearHookSession, cancelSessionLocalExecs } from '../hooks'
 import {
   buildSessionEnv as buildEnv,
@@ -33,7 +34,6 @@ import {
   writeSessionSettings,
   writeSessionClaudeMd,
   applySyncData,
-  getSessionPluginDirs,
 } from './session-settings'
 import { findOrRecreateSettingsDir, xbasename, repairTranscriptForResume, resolveNewestInChain } from './session-resume-helpers'
 import { handleJsonlUserEntry } from './session-stats-recorder'
@@ -47,7 +47,7 @@ import {
 } from './session-mcp-call'
 import { startNativeMitm } from '../proxy/native-mitm'
 import { getStreamingSettings } from '../proxy/streaming-settings'
-import { waitForUserSyncSnapshot } from '../sync/lock'
+import { withSyncSnapshotLock } from '../sync/lock'
 
 // Re-export the per-session MCP-call helpers so callers that historically
 // imported them from session-core/session-manager keep working.
@@ -170,8 +170,9 @@ export async function createSession(
 
   // Apply per-token synced data (skills, agents, CLAUDE.md, project files)
   if (config.bearerHash) {
-    await waitForUserSyncSnapshot(config.bearerHash)
-    applySyncData(settingsDir, config.bearerHash, userCwd)
+    await withSyncSnapshotLock(config.bearerHash, () => {
+      applySyncData(settingsDir, config.bearerHash!, userCwd)
+    })
   }
 
   debugLog('Creating PTY session', { sessionId, userName, cwd: config.cwd })
@@ -180,7 +181,7 @@ export async function createSession(
   const nodePty = await import('node-pty')
 
   const env = buildEnv(sessionId, userName, config.effort)
-  const args = buildClaudeArgs(config, getSessionPluginDirs(settingsDir))
+  const args = buildClaudeArgs(config)
 
   let streamThrottle: Map<string, { timer: NodeJS.Timeout; latest: any }> | null = null
   // ── Live streaming MITM proxy (per-token toggle).
@@ -248,7 +249,7 @@ export async function createSession(
           const isSideQuest = !!entry.isSidechain
           // Throttle streaming pushes: 100ms between sends per message-id.
           // Without this, ~30 sends/sec for a single turn collide in one
-          // microtask flush of the bridge↔client WS, and the client
+          // microtask flush of the bridge↔Electron WS, and the client
           // observably sees only 2 of 37 frames (start + finalize). The
           // coalescer keeps "latest entry" buffered and emits at most
           // 10 fps — visually smooth, well within ws buffer limits.
@@ -325,7 +326,7 @@ export async function createSession(
 
   // ALWAYS use settingsDir as cwd on the server.
   // User's real path (config.cwd) is written to CLAUDE.md for context only.
-  // Actual file operations go through MCP → client host → user's machine.
+  // Actual file operations go through MCP → Electron → user's machine.
   const cwd = settingsDir
 
   // On Windows, node-pty needs .cmd extension for npm global binaries
@@ -542,6 +543,7 @@ export function detachSession(sessionId: string): void {
   if (session.detachGraceTimer) return // already detached
 
   session.detachedAt = new Date()
+  notifySessionAttachmentChanged(session)
   session.detachGraceTimer = setTimeout(() => {
     debugLog('Detach grace expired — destroying session', { sessionId })
     destroySession(sessionId)
@@ -565,6 +567,7 @@ export function reattachSession(session: PtySession, ws: WS): void {
   session.detachedAt = null
   session.ws = ws
   session.lastActivityAt = new Date()
+  notifySessionAttachmentChanged(session)
 
   for (const [requestId, pe] of session.pendingElicitations) {
     sendToClient(ws, {
@@ -860,6 +863,7 @@ export function shutdownAll(): void {
   for (const [id, session] of sessions) {
     try { session.pty.kill() } catch {}
     try { session.ws.close() } catch {}
+    clearSessionInputState(session)
     cleanupSessionDir(session.settingsDir)
   }
   sessions.clear()
@@ -900,11 +904,11 @@ export function resizeTerminal(sessionId: string, cols: number, rows: number): v
 }
 
 // ---------------------------------------------------------------------------
-// MCP call management (server → client host → server)
+// MCP call management (Server → Electron → Server)
 // ---------------------------------------------------------------------------
 
 /**
- * Send an MCP tool call to the client host via WebSocket. Resolves when it
+ * Send an MCP tool call to Electron via WebSocket. Resolves when Electron
  * responds (or rejects on timeout/denial).
  */
 export function sendMcpCall(
@@ -938,6 +942,7 @@ function cleanupSession(sessionId: string): void {
   }
   sessions.delete(sessionId)
   clearInputThrottle(sessionId)
+  clearSessionInputState(session)
   // Don't delete settingsDir — keep it so --continue can find conversation history.
   // The dir is in /tmp and gets cleaned on reboot anyway.
   broadcastSessionCount()
@@ -956,12 +961,12 @@ function broadcastSessionCount(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Elicitation handling (resolving pending elicitation from the client)
+// Elicitation handling (resolving pending elicitation from Electron)
 // ---------------------------------------------------------------------------
 
 /**
  * Resolve a pending elicitation for a session.
- * Called when the client sends elicitation:response.
+ * Called when Electron sends elicitation:response.
  */
 export function handleElicitationResponse(
   sessionId: string,
@@ -981,9 +986,8 @@ export function handleElicitationResponse(
   session.pendingElicitations.delete(requestId)
 
   if (pending.deferred) {
-    // HTTP already answered; inject the user's real reply via PTY stdin as a
-    // normal follow-up message. Wrap in bracketed paste so CLI submits the
-    // whole buffer as one event (avoids partial-Enter races seen on long text).
+    // HTTP already answered; inject the user's real reply as a normal follow-up
+    // through the same serialized clear/paste/Enter path as every other submit.
     if (session.pty) {
       let text: string
       if (action === 'accept' && content) {
@@ -997,7 +1001,7 @@ export function handleElicitationResponse(
       // The PTY may have exited between the guard and here (session died while
       // the user was answering) — a write to a dead pty can throw synchronously.
       try {
-        session.pty.write(`\x1b[200~${text}\x1b[201~\r`)
+        submitTextToSession(session, text)
       } catch (err) {
         warnLog('Elicitation PTY write failed (session likely exited)', {
           sessionId, requestId, error: err instanceof Error ? err.message : String(err),

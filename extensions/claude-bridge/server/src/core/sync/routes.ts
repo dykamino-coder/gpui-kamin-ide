@@ -12,10 +12,10 @@ import { debugLog, warnLog } from '../logging'
 import type { SyncUserData, SyncProjectData } from '../pty/types'
 import { getAllSessions } from '../pty/session-core'
 import type { PtySession } from '../pty/types'
-import { submitTextToSession } from '../pty/session-io'
+import { requestMaintenanceSubmission } from '../pty/session-input-coordinator'
 import { copyDirRecursive } from '../pty/session-settings'
 import { resolveToken } from '../auth/tokens'
-import { withUserSyncLock } from './lock'
+import { withProjectSyncLock, withUserSyncLock } from './lock'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -192,22 +192,6 @@ async function writePluginSnapshots(userDir: string, plugins: SyncUserData['plug
  * `/reload-skills` slash command. Best-effort: a mid-turn injection is queued by
  * the CLI after the current turn.
  */
-// Debounce the /reload-skills injection PER SESSION. A single skills change often
-// arrives as back-to-back user + project uploads; without this each one submits
-// `/reload-skills` and the two concatenate in the PTY buffer as the garbled
-// `/reload-skills/reload-skills`. Coalescing to one submit per burst also spares
-// the user a redundant command.
-const RELOAD_DEBOUNCE_MS = 600
-const pendingReload = new WeakMap<PtySession, ReturnType<typeof setTimeout>>()
-function scheduleReload(s: PtySession): void {
-  const prev = pendingReload.get(s)
-  if (prev) clearTimeout(prev)
-  pendingReload.set(s, setTimeout(() => {
-    pendingReload.delete(s)
-    try { submitTextToSession(s, '/reload-skills') } catch { /* session may have just ended */ }
-  }, RELOAD_DEBOUNCE_MS))
-}
-
 /** Compare an incoming {relPath: content} map against what's already on disk —
  *  used to skip the /reload-skills injection when a sync upload didn't actually
  *  change anything (the client re-uploads on a poll, so most uploads are no-ops). */
@@ -229,7 +213,9 @@ function reloadSkillsForRunningSessions(tokenId: string, projectPath?: string): 
         if (fs.existsSync(src)) copyDirRecursive(src, path.join(s.settingsDir, '.claude', 'skills'))
       } catch { /* re-copy best-effort — /reload-skills still refreshes the cache */ }
     }
-    scheduleReload(s)
+    // Через координатор, а не впрыском: он держит команду до чистой границы
+    // приглашения. Впрыск в середине хода съедал набранный ввод.
+    requestMaintenanceSubmission(s, 'reload-skills', '/reload-skills')
   }
 }
 

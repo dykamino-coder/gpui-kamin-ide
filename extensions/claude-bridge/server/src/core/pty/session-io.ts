@@ -6,6 +6,11 @@ import type { WebSocket as WS } from 'ws'
 import type { PtySession } from './types'
 import { eventBus } from '../events/bus'
 import { debugLog } from '../logging'
+import {
+  setSessionPromptReady,
+  submitCoordinatedText,
+  writeCoordinatedInput,
+} from './session-input-coordinator'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -108,7 +113,7 @@ export function sendToClient(ws: WS, msg: Record<string, unknown>): boolean {
 export function writeInputToSession(session: PtySession, data: string): void {
   if (session.state !== 'running') return
   session.lastActivityAt = new Date()
-  session.pty.write(data)
+  writeCoordinatedInput(session, data)
 
   // Ctrl+C (\x03) is the user's interrupt (Stop button / Esc → sendInput). The
   // CLI aborts the turn but fires NO Stop hook (it didn't "finish"), so the
@@ -117,6 +122,7 @@ export function writeInputToSession(session: PtySession, data: string): void {
   // button never clear). Push an authoritative idle so the chat activity
   // indicator AND the native session-row dot both clear immediately on interrupt.
   if (data.includes('\x03')) {
+    setSessionPromptReady(session, true)
     sendToClient(session.ws, {
       type: 'session:activity',
       sessionId: session.id,
@@ -145,57 +151,20 @@ export function writeInputToSession(session: PtySession, data: string): void {
 }
 
 /**
- * Submit a full user message deterministically using a quiet-window gate:
- *   1. Send the bracketed-paste envelope with the message body (with any
+ * Submit a full user message through the per-session input coordinator:
+ *   1. Clear the current line, then send the bracketed-paste envelope (with any
  *      bare CR normalized to LF so it never commits mid-paste).
  *   2. Subscribe to PTY output. Every chunk pushes a 80ms "quiet" timer
  *      forward. The first 80ms of silence after the paste write means the
  *      CLI has finished rendering the paste echo / input-buffer redraw →
  *      send exactly one CR.
- *   3. Hard ceiling 2000ms: if the session keeps streaming (e.g. assistant
- *      response still coming in) we still fire a CR so we never hang
- *      forever. User Enter lands on the next prompt in that pathological
- *      case, same as before.
+ *   3. A hard ceiling of 2000ms guarantees an eventual Enter if no echo arrives.
+ *      Raw input and additional submissions stay serialized around this unit.
  */
 export function submitTextToSession(session: PtySession, text: string): void {
   if (session.state !== 'running') return
   session.lastActivityAt = new Date()
-
-  const body = text.replace(/\r\n?/g, '\n')
-  session.pty.write(`\x1b[200~${body}\x1b[201~`)
-
-  // Press Enter once the paste has SETTLED: after the CLI's echo of the paste
-  // goes quiet, so the bracketed paste is fully committed to Ink's input model
-  // before the `\r` submits it.
-  const QUIET_MS = 80
-  const HARD_MAX_MS = 2000
-  let fired = false
-  let quietTimer: ReturnType<typeof setTimeout> | null = null
-
-  const fire = () => {
-    if (fired) return
-    fired = true
-    try { disposable.dispose() } catch { /* noop */ }
-    if (quietTimer) clearTimeout(quietTimer)
-    clearTimeout(hardTimer)
-    if (session.state === 'running') session.pty.write('\r')
-  }
-
-  // The quiet timer is armed ONLY after the first output chunk — the paste's
-  // echo — arrives, never on a fixed delay from the paste WRITE. The rare 1/90
-  // "text landed in the input but never entered" was this: when the CLI was mid-
-  // render (finishing a long answer) or GC-paused and didn't echo the paste
-  // within 80ms, a timer started from the write fired `\r` BEFORE the paste was
-  // committed, so Enter hit an input that Ink hadn't populated yet — the message
-  // sat in the box, un-submitted. Gating on first-echo means `\r` can only fire
-  // after the CLI has demonstrably begun processing the paste. The hard cap
-  // still guarantees an eventual Enter even in the (unusual) no-echo case.
-  const disposable = session.pty.onData(() => {
-    if (fired) return
-    if (quietTimer) clearTimeout(quietTimer)
-    quietTimer = setTimeout(fire, QUIET_MS)
-  })
-  const hardTimer = setTimeout(fire, HARD_MAX_MS)
+  submitCoordinatedText(session, text)
 }
 
 /**
@@ -238,7 +207,7 @@ export function attachStartupAutoResponder(session: PtySession): void {
       debugLog('Auto-responding to trust prompt', { sessionId: session.id })
       setTimeout(() => {
         if (session.state === 'running') {
-          session.pty.write('\r')
+          writeInputToSession(session, '\r')
         }
       }, 200)
       accumulated = ''
@@ -250,7 +219,7 @@ export function attachStartupAutoResponder(session: PtySession): void {
       debugLog('Auto-responding to effort prompt', { sessionId: session.id })
       setTimeout(() => {
         if (session.state === 'running') {
-          session.pty.write('\r')
+          writeInputToSession(session, '\r')
         }
       }, 200)
       accumulated = ''

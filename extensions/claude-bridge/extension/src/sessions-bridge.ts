@@ -190,7 +190,7 @@ export class SessionsBridge {
     const tm = this.host.getTabManager()
     if (!tm.getTab(tabId)) return
     if (kaminId) void kaminide.sessions.updateSession(kaminId, { metadata: { nameSetByUser: false } })
-    tm.sendInput(tabId, "/rename\r")
+    tm.submitText(tabId, '/rename')
   }
   /** From the native session context menu (host renderer → command). */
   regenerateTitleByKamin(kaminId: string): void {
