@@ -157,6 +157,10 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     {
         rules.push(Rule {
             order: base + i,
+            // Таблица ДОКУМЕНТА: её происхождение старше нашего умолчания и
+            // темы приложения, поэтому она перебивает их независимо от
+            // специфичности (CSS Cascade §6.4.4).
+            origin: 1,
             ..r
         });
     }

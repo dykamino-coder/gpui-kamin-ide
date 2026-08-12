@@ -1154,7 +1154,7 @@ impl Computed {
 
     /// То же с переменными темы.
     pub fn resolve_with_vars(matched: &mut Vec<&Rule>, inline: &Decls, vars: &Decls) -> Computed {
-        matched.sort_by_key(|r| (r.sel.specificity(), r.order));
+        matched.sort_by_key(|r| (r.origin, r.sel.specificity(), r.order));
         let mut c = Computed::default();
         for rule in matched.iter() {
             c.apply_decls_with_vars(&rule.decls, vars);
@@ -3519,6 +3519,29 @@ fn tokenize_shadow(s: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn author_sheet_beats_user_agent_regardless_of_specificity() {
+        // Происхождение старше специфичности (CSS Cascade §6.4.4). Пока обе
+        // таблицы сравнивались только специфичностью, `* { margin: 0 }` со
+        // специфичностью (0,0,0) проигрывал умолчанию `p { margin: 6px 0 }`
+        // — то есть не работал ни один reset.
+        let ua = super::super::css::Rule {
+            sel: super::super::css::Selector::parse("p").expect("селектор тега"),
+            decls: super::super::css::parse_decls("margin-top: 6px"),
+            order: 0,
+            origin: 0,
+        };
+        let author = super::super::css::Rule {
+            sel: super::super::css::Selector::parse("*").expect("универсальный селектор"),
+            decls: super::super::css::parse_decls("margin-top: 0"),
+            order: 1,
+            origin: 1,
+        };
+        let mut matched = vec![&ua, &author];
+        let c = super::Computed::resolve(&mut matched, &super::super::css::Decls::new());
+        assert_eq!(c.margin.top, Some(super::Len::Px(0.0)));
+    }
+
     #[test]
     fn font_shorthand_takes_size_with_line_height_and_family() {
         // Пробелы вокруг косой черты допустимы, и семейство начинается ПОСЛЕ
