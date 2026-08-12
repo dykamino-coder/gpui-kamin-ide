@@ -24,10 +24,8 @@ import {
 } from './session-io'
 import { clearSessionInputState, notifySessionAttachmentChanged } from './session-input-coordinator'
 import { clearSession as clearHookSession, cancelSessionLocalExecs } from '../hooks'
-import {
-  buildSessionEnv as buildEnv,
-  buildClaudeArgs,
-} from './session-env'
+import { buildSessionEnv as buildEnv } from './session-env'
+import { buildSessionClaudeArgs } from './session-plugin-args'
 import {
   SESSIONS_BASE,
   sanitizeDirName,
@@ -181,7 +179,7 @@ export async function createSession(
   const nodePty = await import('node-pty')
 
   const env = buildEnv(sessionId, userName, config.effort)
-  const args = buildClaudeArgs(config)
+  const args = buildSessionClaudeArgs(config, settingsDir)
 
   let streamThrottle: Map<string, { timer: NodeJS.Timeout; latest: any }> | null = null
   // ── Live streaming MITM proxy (per-token toggle).

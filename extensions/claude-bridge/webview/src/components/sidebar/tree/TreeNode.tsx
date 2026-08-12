@@ -5,6 +5,7 @@ import { activeTabId } from '../../../signals/tabs'
 import { TreeToggle } from './TreeToggle'
 import { TreeIcon } from './TreeIcon'
 import { TreeStatusDot } from './TreeStatusDot'
+import { submitSessionRename } from '../../../lib/session-actions'
 
 interface TreeNodeProps {
   node: TreeNodeType
@@ -41,7 +42,7 @@ export function TreeNode({ node, depth }: TreeNodeProps): JSX.Element {
   function handleRename(e: MouseEvent): void {
     e.stopPropagation()
     const bridge = (window as any).kaminBridge
-    bridge?.sendInput(node.id, '/rename\r')
+    submitSessionRename(bridge, node.id)
   }
 
   function handleClose(e: MouseEvent): void {

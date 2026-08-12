@@ -13,6 +13,7 @@ import { SessionPinButton } from './SessionPinButton'
 import { togglePinTab, moveTabTo } from '../../../lib/tabs-persist'
 import { getAgentColor, resolvePinnedColor } from '../../../utils/agent-color'
 import { pinnedTitleColors } from '../../../signals/ui'
+import { submitSessionRename } from '../../../lib/session-actions'
 
 interface SessionItemProps {
   tab: TabInfo
@@ -39,7 +40,7 @@ export function SessionItem({ tab, isActive, onClick }: SessionItemProps): JSX.E
 
   function handleRename(): void {
     const bridge = (window as any).kaminBridge
-    bridge?.sendInput(tab.id, '/rename\r')
+    submitSessionRename(bridge, tab.id)
   }
 
   function handleClose(e: Event): void {
