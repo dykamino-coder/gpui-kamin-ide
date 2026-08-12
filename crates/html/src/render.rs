@@ -18,8 +18,6 @@ use gpui::{
 pub struct RenderOpts {
     /// Базовый стиль текста — от него считаются прогоны и наследование.
     pub text: TextStyle,
-    /// Ширина колонок таблицы, если документ её не задал.
-    pub table_min_col: f32,
     /// Размер окна в точках — от него считаются `vh` и `vw`.
     pub viewport: (f32, f32),
     /// Множитель строки при `line-height: normal`.
@@ -1141,11 +1139,10 @@ fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElem
             .children(blocks(nodes, &merged, opts))
             .into_any_element()
     };
-    // Порядок детей задаёт сторону: плавающий блок либо первый, либо второй.
-    let (float_ix, text_ix) = match row.children.first() {
-        Some(Node::Element(first)) if first.tag != "div" || first.children.is_empty() => (0, 1),
-        _ => (0, 1),
-    };
+    // Плавающий блок в этой паре всегда первый, текстовая колонка — вторая.
+    // Раньше здесь стоял `match`, у которого ОБЕ ветви давали `(0, 1)`:
+    // условие вычислялось и ни на что не влияло.
+    let (float_ix, text_ix) = (0, 1);
     let (Some(Node::Element(floater)), Some(Node::Element(column))) =
         (row.children.get(float_ix), row.children.get(text_ix))
     else {
@@ -4136,16 +4133,6 @@ fn shortest_lane_free(
     (0..=count.saturating_sub(span))
         .min_by(|a, b| {
             top_of(used, *a, span, height).total_cmp(&top_of(used, *b, span, height))
-        })
-        .unwrap_or(0)
-}
-
-fn shortest_lane(filled: &[f32], span: usize) -> usize {
-    let n = filled.len();
-    (0..=n.saturating_sub(span))
-        .min_by(|a, b| {
-            let top = |s: usize| filled[s..s + span].iter().copied().fold(0.0f32, f32::max);
-            top(*a).total_cmp(&top(*b))
         })
         .unwrap_or(0)
 }

@@ -43,7 +43,6 @@ impl Render for Page {
                 f32::from(window.viewport_size().height),
             ),
             text,
-            table_min_col: 80.,
             normal_line_height: 1.31,
         };
         div()

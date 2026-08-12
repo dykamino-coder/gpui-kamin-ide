@@ -1008,6 +1008,9 @@ impl Computed {
                 let (_, ex) = crate::metrics::ch_ex_px(&family, parent_font_px);
                 self.font_size = Some(Len::Px(k * ex));
             }
+            Some(Len::Ic(k)) => {
+                self.font_size = Some(Len::Px(k * crate::metrics::ic_px(&family, parent_font_px)));
+            }
             _ => {}
         }
         let base = match self.font_size {
@@ -1025,10 +1028,13 @@ impl Computed {
         if self.vertical == Some(true) && self.upright == Some(true) {
             ch = base;
         }
+        // `ic` меряется по тому же семейству и тем же шагом, что `ch` и `ex`.
+        let ic = crate::metrics::ic_px(&family, base);
         let to_px = move |l: &mut Option<Len>| match *l {
             Some(Len::Em(k)) => *l = Some(Len::Px(k * base)),
             Some(Len::Ch(k)) => *l = Some(Len::Px(k * ch)),
             Some(Len::Ex(k)) => *l = Some(Len::Px(k * ex)),
+            Some(Len::Ic(k)) => *l = Some(Len::Px(k * ic)),
             _ => {}
         };
         let fix = to_px;
@@ -1873,10 +1879,6 @@ impl Computed {
                     // Одно значение — это ИМЯ области: номера линий для него
                     // знает только контейнер со своей раскладкой имён.
                     self.grid_area_name = Some((*name).to_string());
-                } else if let Some(name) = parts.first().filter(|n| !n.is_empty()) {
-                    // Одно значение — это ИМЯ области: номера линий для него
-                    // знает только контейнер со своей раскладкой имён.
-                    self.grid_area_name = Some((*name).to_string());
                 }
             }
             "z-index" => self.z_index = v.parse().ok(),
@@ -2699,6 +2701,7 @@ impl Computed {
                             Len::Pct(p) => Some(p),
                             Len::Em(k) => Some(k * 16.0),
                             Len::Ch(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
+                            Len::Ic(k) => Some(k * crate::metrics::ic_px("", 16.0)),
                             Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
                             Len::Vw(_) | Len::Vh(_) => None,
                             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,

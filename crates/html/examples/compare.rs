@@ -33,7 +33,6 @@ impl Render for Page {
                 f32::from(window.viewport_size().height),
             ),
             text,
-            table_min_col: 80.,
             // `line-height: normal` как в браузере, а не золотое сечение GPUI.
             normal_line_height: 1.31,
         };

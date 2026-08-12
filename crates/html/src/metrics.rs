@@ -13,14 +13,16 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 /// Щуп: по имени семейства и кеглю отдаёт ширину нуля и высоту строчной.
-type Probe = Box<dyn Fn(&str, f32) -> (f32, f32, f32)>;
+type Probe = Box<dyn Fn(&str, f32) -> (f32, f32, f32, f32)>;
 
 /// Кегль, на котором меряются метрики. Метрики линейны по кеглю, поэтому
 /// хватает одного замера на семейство: остальное — умножение.
 const PROBE_SIZE: f32 = 100.0;
 
 /// Доли кегля по спецификации, когда глифа нет или щуп не поставлен.
-const FALLBACK: (f32, f32, f32) = (0.5, 0.5, 1.2);
+// Продвижение иероглифа без замера — целый кегль: так его определяет
+// спецификация для шрифта, в котором знака `水` нет (CSS Values §6.1.4).
+const FALLBACK: (f32, f32, f32, f32) = (0.5, 0.5, 1.2, 1.0);
 
 /// Моноширинные семейства в порядке предпочтения: своё встроенное, затем то,
 /// что подставляет за `font-family: monospace` браузер на этой системе.
@@ -28,7 +30,7 @@ const MONO_FAMILIES: [&str; 3] = ["JetBrains Mono", "Consolas", "Courier New"];
 
 thread_local! {
     static PROBE: RefCell<Option<Probe>> = const { RefCell::new(None) };
-    static CACHE: RefCell<HashMap<String, (f32, f32, f32)>> = RefCell::new(HashMap::new());
+    static CACHE: RefCell<HashMap<String, (f32, f32, f32, f32)>> = RefCell::new(HashMap::new());
     static MONO: RefCell<&'static str> = const { RefCell::new(MONO_FAMILIES[0]) };
 }
 
@@ -44,15 +46,24 @@ pub fn mono_family() -> &'static str {
 
 /// Поставить щуп метрик. Вызывается один раз при старте: замер шрифта
 /// возможен только там, где живёт система шрифтов.
-pub fn install_probe(probe: impl Fn(&str, f32) -> (f32, f32, f32) + 'static) {
+pub fn install_probe(probe: impl Fn(&str, f32) -> (f32, f32, f32, f32) + 'static) {
     PROBE.with(|p| *p.borrow_mut() = Some(Box::new(probe)));
     CACHE.with(|c| c.borrow_mut().clear());
 }
 
 /// Длина `1ch` и `1ex` в точках для семейства и кегля.
 pub fn ch_ex_px(family: &str, size_px: f32) -> (f32, f32) {
-    let (ch, ex, _) = fractions(family);
+    let (ch, ex, _, _) = fractions(family);
     (ch * size_px, ex * size_px)
+}
+
+/// Продвижение знака `水` — единица `ic` (CSS Values §6.1.4).
+///
+/// Своя метрика, а не синоним `em`: у текстового шрифта иероглиф либо шире
+/// кегля, либо его нет вовсе, и подмена кеглем врала на четверть
+/// (`ic-unit-*`).
+pub fn ic_px(family: &str, size_px: f32) -> f32 {
+    fractions(family).3 * size_px
 }
 
 /// Межбуквенный и межсловный интервал в точках.
@@ -79,7 +90,7 @@ pub fn normal_line(family: &str) -> f32 {
 }
 
 /// Доли кегля для семейства: замер идёт один раз и запоминается.
-fn fractions(family: &str) -> (f32, f32, f32) {
+fn fractions(family: &str) -> (f32, f32, f32, f32) {
     if let Some(hit) = CACHE.with(|c| c.borrow().get(family).copied()) {
         return hit;
     }
@@ -87,13 +98,27 @@ fn fractions(family: &str) -> (f32, f32, f32) {
         p.borrow()
             .as_ref()
             .map(|probe| probe(family, PROBE_SIZE))
-            .map(|(ch, ex, line)| (ch / PROBE_SIZE, ex / PROBE_SIZE, line / PROBE_SIZE))
+            .map(|(ch, ex, line, ic)| {
+                (
+                    ch / PROBE_SIZE,
+                    ex / PROBE_SIZE,
+                    line / PROBE_SIZE,
+                    ic / PROBE_SIZE,
+                )
+            })
     });
     // Нулевая метрика — это не «шрифт шириной ноль», а неудавшийся замер:
     // такой ответ хуже запасного значения, потому что схлопывает коробку.
     let out = match measured {
-        Some((ch, ex, line)) if ch > 0.0 && ex > 0.0 && line > 0.0 => (ch, ex, line),
-        Some((ch, _, line)) if ch > 0.0 => (ch, FALLBACK.1, if line > 0.0 { line } else { FALLBACK.2 }),
+        Some((ch, ex, line, ic)) if ch > 0.0 && ex > 0.0 && line > 0.0 => {
+            (ch, ex, line, if ic > 0.0 { ic } else { FALLBACK.3 })
+        }
+        Some((ch, _, line, ic)) if ch > 0.0 => (
+            ch,
+            FALLBACK.1,
+            if line > 0.0 { line } else { FALLBACK.2 },
+            if ic > 0.0 { ic } else { FALLBACK.3 },
+        ),
         _ => FALLBACK,
     };
     CACHE.with(|c| c.borrow_mut().insert(family.to_string(), out));
@@ -133,7 +158,13 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
         // ровно кегль, у текстовых шрифтов около 1.15–1.3 — из-за постоянной
         // 1.31 соседние коробки одной страницы расходились по высоте строк.
         let line = f32::from(text_system.ascent(id, size)) - f32::from(text_system.descent(id, size));
-        (ch, f32::from(text_system.x_height(id, size)), line)
+        // `ic` — продвижение знака `水`. Шрифт без него отдаёт запасной глиф,
+        // и такой замер отбрасывается в пользу целого кегля.
+        let ic = text_system
+            .advance(id, size, '水')
+            .map(|a| f32::from(a.width))
+            .unwrap_or(0.0);
+        (ch, f32::from(text_system.x_height(id, size)), line, ic)
     });
 }
 
@@ -149,10 +180,11 @@ mod tests {
     #[test]
     fn probe_result_scales_with_the_font_size() {
         install_probe(|family, size| {
+            // У Ahem все знаки в кегль, включая иероглиф.
             if family == "Ahem" {
-                (size, size * 0.8, size)
+                (size, size * 0.8, size, size)
             } else {
-                (size * 0.5, size * 0.5, size * 1.2)
+                (size * 0.5, size * 0.5, size * 1.2, size)
             }
         });
         assert_eq!(ch_ex_px("Ahem", 20.0), (20.0, 16.0));

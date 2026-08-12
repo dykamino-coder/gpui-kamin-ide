@@ -2,7 +2,7 @@
 //!
 //! ```ignore
 //! let nodes = kamin_html::parse(html, theme_css);
-//! let elements = kamin_html::render(&nodes, &RenderOpts { text, table_min_col: 80. });
+//! let elements = kamin_html::render(&nodes, &RenderOpts { text, ..Default::default() });
 //! ```
 //!
 //! Что покрыто, что нет и почему — `docs/html-css-mapping.html`; там же по

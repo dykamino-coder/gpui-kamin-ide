@@ -37,6 +37,8 @@ pub enum Len {
     /// с семейством шрифта и меряются в `metrics.rs`.
     Ch(f32),
     Ex(f32),
+    /// Продвижение знака `水` — единица `ic` (CSS Values §6.1.4).
+    Ic(f32),
     /// `auto`
     Auto,
 }
@@ -81,11 +83,11 @@ impl Len {
             }
         }
         // `ic` — ширина иероглифа (advance у 水). У шрифтов CJK она равна
-        // кеглю, поэтому считается как `em`: своей метрики под неё у нас нет,
-        // а без разбора запись пропадала совсем и коробка растягивалась во всю
-        // страницу (`white-space-intrinsic-size-022`: эталон в `4ic`/`1ic`).
+        // `ic` — продвижение знака `水`, своя метрика шрифта (CSS Values
+        // §6.1.4). Синонимом `em` она была только потому, что замера не было:
+        // у текстового шрифта иероглиф либо шире кегля, либо его нет вовсе.
         if let Some(num) = s.strip_suffix("ic") {
-            return num.trim().parse::<f32>().ok().map(Len::Em);
+            return num.trim().parse::<f32>().ok().map(Len::Ic);
         }
         // `ch` и `ex` разбираются в свои единицы: перевести их в точки можно
         // только зная шрифт, а он известен после наследования.
@@ -512,6 +514,7 @@ struct Sum {
     em: f32,
     ch: f32,
     ex: f32,
+    ic: f32,
     vh: f32,
     vw: f32,
 }
@@ -531,6 +534,7 @@ impl Sum {
             Len::Pct(v) => s.pct = v,
             Len::Em(v) => s.em = v,
             Len::Ch(v) => s.ch = v,
+            Len::Ic(v) => s.ic = v,
             Len::Ex(v) => s.ex = v,
             Len::Vh(v) => s.vh = v,
             Len::Vw(v) => s.vw = v,
@@ -545,6 +549,7 @@ impl Sum {
             pct: self.pct * k,
             em: self.em * k,
             ch: self.ch * k,
+            ic: self.ic * k,
             ex: self.ex * k,
             vh: self.vh * k,
             vw: self.vw * k,
@@ -557,6 +562,7 @@ impl Sum {
             pct: self.pct + sign * other.pct,
             em: self.em + sign * other.em,
             ch: self.ch + sign * other.ch,
+            ic: self.ic + sign * other.ic,
             ex: self.ex + sign * other.ex,
             vh: self.vh + sign * other.vh,
             vw: self.vw + sign * other.vw,
@@ -571,6 +577,7 @@ impl Sum {
             (self.pct, Len::Pct as fn(f32) -> Len),
             (self.em, Len::Em as fn(f32) -> Len),
             (self.ch, Len::Ch as fn(f32) -> Len),
+            (self.ic, Len::Ic as fn(f32) -> Len),
             (self.ex, Len::Ex as fn(f32) -> Len),
             (self.vh, Len::Vh as fn(f32) -> Len),
             (self.vw, Len::Vw as fn(f32) -> Len),
