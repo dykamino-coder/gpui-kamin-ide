@@ -1156,10 +1156,23 @@ impl Computed {
     pub fn resolve_with_vars(matched: &mut Vec<&Rule>, inline: &Decls, vars: &Decls) -> Computed {
         matched.sort_by_key(|r| (r.origin, r.sel.specificity(), r.order));
         let mut c = Computed::default();
+        // Два прохода по ВСЕМУ каскаду, а не внутри каждого правила: важность
+        // — самый старший ключ сравнения (CSS Cascade §6.1), поэтому важное
+        // объявление раннего правила обязано пережить обычное объявление
+        // позднего. Пока проходы шли внутри правила, `!important` действовал
+        // только против соседей по тому же блоку.
         for rule in matched.iter() {
-            c.apply_decls_with_vars(&rule.decls, vars);
+            c.apply_pass(&rule.decls, vars, false);
         }
-        c.apply_decls_with_vars(inline, vars);
+        c.apply_pass(inline, vars, false);
+        // Важные идут в ОБРАТНОМ порядке происхождений: важное правило агента
+        // старше важного авторского (§6.4.4), поэтому применяется последним.
+        let mut important: Vec<&&Rule> = matched.iter().collect();
+        important.sort_by_key(|r| (std::cmp::Reverse(r.origin), r.sel.specificity(), r.order));
+        for rule in important {
+            c.apply_pass(&rule.decls, vars, true);
+        }
+        c.apply_pass(inline, vars, true);
         // `currentColor` в рамке и фоне значит «цвет текста этого элемента» —
         // подставляем уже после того, как цвет стал известен.
         if c.border_color_is_current {
@@ -1210,17 +1223,22 @@ impl Computed {
         // случайного обхода хеш-таблицы — от запуска к запуску РАЗНОГО
         // (`abs-pos-border-offset-001`). Общность меряется числом дефисов:
         // `border` < `border-width` < `border-top-width`.
+        for important in [false, true] {
+            self.apply_pass(d, vars, important);
+        }
+    }
+
+    /// Один проход: только обычные объявления либо только важные.
+    fn apply_pass(&mut self, d: &Decls, vars: &Decls, important: bool) {
         let mut keys: Vec<&String> = d.keys().collect();
         keys.sort_by_key(|k| (k.matches('-').count(), k.as_str()));
-        for important in [false, true] {
-            for k in &keys {
-                let Some(v) = d.get(*k) else { continue };
-                if k.starts_with("--") || is_important(v) != important {
-                    continue;
-                }
-                let resolved = resolve_vars(strip_important(v), vars);
-                self.apply_one(k, &resolved);
+        for k in &keys {
+            let Some(v) = d.get(*k) else { continue };
+            if k.starts_with("--") || is_important(v) != important {
+                continue;
             }
+            let resolved = resolve_vars(strip_important(v), vars);
+            self.apply_one(k, &resolved);
         }
     }
 
@@ -3519,6 +3537,29 @@ fn tokenize_shadow(s: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn important_survives_a_later_ordinary_rule() {
+        // Важность — самый старший ключ сравнения (CSS Cascade §6.1): важное
+        // объявление раннего правила переживает обычное объявление позднего,
+        // даже если то и специфичнее. Пока проходы шли внутри правила,
+        // `!important` действовал только против соседей по своему блоку.
+        let early = super::super::css::Rule {
+            sel: super::super::css::Selector::parse("p").expect("селектор тега"),
+            decls: super::super::css::parse_decls("color: red !important"),
+            order: 0,
+            origin: 1,
+        };
+        let late = super::super::css::Rule {
+            sel: super::super::css::Selector::parse("p.x").expect("селектор класса"),
+            decls: super::super::css::parse_decls("color: green"),
+            order: 1,
+            origin: 1,
+        };
+        let mut matched = vec![&early, &late];
+        let c = super::Computed::resolve(&mut matched, &super::super::css::Decls::new());
+        assert_eq!(c.color, super::super::value::Color::parse("red"));
+    }
+
     #[test]
     fn author_sheet_beats_user_agent_regardless_of_specificity() {
         // Происхождение старше специфичности (CSS Cascade §6.4.4). Пока обе

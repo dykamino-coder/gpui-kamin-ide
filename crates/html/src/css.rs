@@ -240,13 +240,15 @@ pub fn parse_decls(raw: &str) -> Decls {
         // срезалась с конца, `background: red ! fail` доезжало значением
         // `red ! fail`, а разбор цвета брал из него первое слово и красил
         // (`core-syntax-006`).
-        let mut val = v.trim();
-        if let Some(bang) = top_level_bang(val) {
-            if !val[bang + 1..].trim().eq_ignore_ascii_case("important") {
-                continue;
-            }
-            val = val[..bang].trim();
+        let val = v.trim();
+        if let Some(bang) = top_level_bang(val)
+            && !val[bang + 1..].trim().eq_ignore_ascii_case("important")
+        {
+            continue;
         }
+        // Пометка важности ОСТАЁТСЯ в значении: снимет её тот, кто раскладывает
+        // каскад (`Computed::resolve_with_vars`), а срезав её здесь, мы теряли
+        // важность целиком — объявление конкурировало на общих основаниях.
         let val = &unescape_value(val);
         if !key.is_empty() && !val.is_empty() {
             out.insert(key, val.to_string());
@@ -831,9 +833,22 @@ mod tests {
     }
 
     #[test]
-    fn important_is_stripped_not_kept_in_value() {
+    fn important_stays_in_the_value_for_the_cascade() {
+        // Раньше тест закреплял обратное — что пометка срезается при разборе.
+        // Именно из-за этого важность не работала вовсе: до каскада значение
+        // доезжало неотличимым от обычного. Снимает пометку тот, кто
+        // раскладывает каскад (`Computed::resolve_with_vars`).
         let d = parse_decls("color: red !important");
-        assert_eq!(d.get("color").map(String::as_str), Some("red"));
+        assert_eq!(d.get("color").map(String::as_str), Some("red !important"));
+    }
+
+    #[test]
+    fn bang_that_is_not_important_kills_the_declaration() {
+        // После восклицательного знака стоит ровно `important` (CSS 2.1
+        // §4.1.8); всё прочее делает объявление недействительным целиком.
+        let d = parse_decls("color: red ! fail; background: green");
+        assert_eq!(d.get("color"), None);
+        assert_eq!(d.get("background").map(String::as_str), Some("green"));
     }
 
     #[test]
