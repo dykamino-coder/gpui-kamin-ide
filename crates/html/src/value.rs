@@ -453,6 +453,48 @@ fn named(name: &str) -> Option<Color> {
         "whitesmoke" => rgb(245, 245, 245),
         "yellow" => rgb(255, 255, 0),
         "yellowgreen" => rgb(154, 205, 50),
+        other => system(other, rgb),
+    }
+}
+
+/// Системные цвета CSS Color 4 §6.1 и устаревшие имена §6.2.
+///
+/// Устаревшее имя обязано давать РОВНО тот же цвет, что и его современная
+/// замена: на этом стоит целое семейство проверок (`deprecated-sameas-*`).
+/// Сами величины взяты светлой темой браузера — точных значений спецификация
+/// не задаёт, важна только согласованность имён между собой.
+fn system(name: &str, rgb: impl Fn(u8, u8, u8) -> Option<Color>) -> Option<Color> {
+    match name {
+        // Полотно страницы и текст на нём.
+        "canvas" | "activecaption" | "appworkspace" | "background" | "inactivecaption"
+        | "infobackground" | "menu" | "scrollbar" | "window" => rgb(255, 255, 255),
+        "canvastext" | "captiontext" | "infotext" | "menutext" | "windowtext" => rgb(0, 0, 0),
+        // Кнопки.
+        "buttonface" | "buttonhighlight" | "buttonshadow" | "threedface" => rgb(240, 240, 240),
+        "buttontext" => rgb(0, 0, 0),
+        "buttonborder" | "activeborder" | "inactiveborder" | "threeddarkshadow"
+        | "threedhighlight" | "threedlightshadow" | "threedshadow" | "windowframe" => {
+            rgb(118, 118, 118)
+        }
+        // Поля ввода.
+        "field" => rgb(255, 255, 255),
+        "fieldtext" => rgb(0, 0, 0),
+        // Выделение и подсветка.
+        "highlight" => rgb(0, 117, 255),
+        "highlighttext" => rgb(255, 255, 255),
+        "selecteditem" => rgb(0, 117, 255),
+        "selecteditemtext" => rgb(255, 255, 255),
+        "mark" => rgb(255, 255, 0),
+        "marktext" => rgb(0, 0, 0),
+        // Ссылки.
+        "linktext" => rgb(0, 0, 238),
+        "visitedtext" => rgb(85, 26, 139),
+        "activetext" => rgb(255, 0, 0),
+        // Погашенный текст.
+        "graytext" | "inactivecaptiontext" => rgb(109, 109, 109),
+        // Цвет выделения оформления.
+        "accentcolor" => rgb(0, 117, 255),
+        "accentcolortext" => rgb(255, 255, 255),
         _ => None,
     }
 }
