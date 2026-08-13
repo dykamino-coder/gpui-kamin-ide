@@ -182,6 +182,17 @@ impl Color {
         {
             return Self::parse_hsl(inner);
         }
+        // Записи CSS Color 4 (`lab`, `oklch`, `color()`, `color-mix()` и
+        // родня) — своим разбором: они задают цвет в других системах
+        // координат, и без настоящего преобразования не приблизить.
+        if let Some((r, g, b, a)) = crate::color_space::parse(s) {
+            return Some(Color {
+                r: r.clamp(0.0, 1.0),
+                g: g.clamp(0.0, 1.0),
+                b: b.clamp(0.0, 1.0),
+                a,
+            });
+        }
         named(s)
     }
 
