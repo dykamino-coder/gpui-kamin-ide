@@ -15,6 +15,7 @@
 
 pub mod apply;
 pub mod background;
+pub mod border_image;
 pub mod computed;
 pub mod coverage;
 pub mod css;

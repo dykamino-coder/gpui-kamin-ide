@@ -309,6 +309,43 @@ pub struct Gradient {
     pub stops: Vec<(Color, f32)>,
 }
 
+/// `border-image`: картинка вместо рамки (css-backgrounds-3 §6).
+///
+/// Рисуется девятью кусками: углы, четыре края и середина. Всё, что нужно для
+/// этого разбора, лежит здесь, а рисование — в `border_image`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BorderImage {
+    pub src: String,
+    /// Срезы образа: верх, право, низ, лево.
+    pub slice: [BorderImageSlice; 4],
+    /// `fill` — рисовать и середину.
+    pub fill: bool,
+    /// Ширина кусков рамки на экране: верх, право, низ, лево.
+    pub width: [BorderImageWidth; 4],
+    /// Насколько рамка выходит за коробку: верх, право, низ, лево.
+    pub outset: [f32; 4],
+    /// Как мостятся края: вдоль строки и вдоль колонки.
+    pub repeat: (Tiling, Tiling),
+}
+
+/// Срез образа: своё число точек образа или доля его стороны.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BorderImageSlice {
+    Px(f32),
+    Pct(f32),
+}
+
+/// Ширина куска рамки.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BorderImageWidth {
+    /// Число — во столько раз толще самой рамки.
+    Times(f32),
+    Px(f32),
+    /// Доля стороны коробки.
+    Pct(f32),
+    Auto,
+}
+
 /// `background-clip`: до какого края коробки красится фон
 /// (css-backgrounds-3 §3.7).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -849,6 +886,8 @@ pub struct Computed {
     /// `background-clip`: до какого края красится фон. `None` — до внешнего
     /// края рамки, как по умолчанию в CSS.
     pub bg_clip: Option<BgClip>,
+    /// `border-image`: картинка вместо рамки.
+    pub border_image: Option<BorderImage>,
     /// `clip-path: polygon(…)`: вершины в долях или точках коробки.
     pub clip_polygon: Option<Vec<(Len, Len)>>,
     /// `mix-blend-mode`: как слой смешивается с тем, что под ним.
@@ -2321,6 +2360,14 @@ impl Computed {
                     _ => None,
                 }
             }
+            // Картинка вместо рамки. Свойств пять, и каждое дополняет одну и
+            // ту же запись — поэтому разбор общий.
+            "border-image"
+            | "border-image-source"
+            | "border-image-slice"
+            | "border-image-width"
+            | "border-image-outset"
+            | "border-image-repeat" => self.set_border_image(key, v),
             // Область покраски фона. `border-box` — умолчание, поэтому оно
             // же и сбрасывает признак: свойство наследуемым не является, но
             // перебить заданное ранее в том же наборе обязано.
@@ -2842,6 +2889,135 @@ impl Computed {
     /// Толщина рамки, как её видит модель коробки. Начальный `border-style`
     /// — `none`, а рамка без рисунка вычисляется в ноль (css-backgrounds-3
     /// §4.3), поэтому заданная, но не нарисованная толщина не занимает места.
+    /// Разбор всех пяти свойств рамки-картинки в одну запись.
+    ///
+    /// Сокращение несёт до трёх частей через косую: `<источник> <срез> /
+    /// <ширина> / <вылет>` и укладку в конце. Отдельные свойства дополняют ту
+    /// же запись, поэтому она заводится по первому же из них.
+    fn set_border_image(&mut self, name: &str, v: &str) {
+        let mut image = self.border_image.clone().unwrap_or(BorderImage {
+            src: String::new(),
+            slice: [BorderImageSlice::Pct(1.0); 4],
+            fill: false,
+            width: [BorderImageWidth::Times(1.0); 4],
+            outset: [0.0; 4],
+            repeat: (Tiling::None, Tiling::None),
+        });
+        let mut set = |part: &str, value: &str| match part {
+            "border-image-source" => {
+                if value.trim() == "none" {
+                    image.src.clear();
+                } else if let Some(url) = parse_url(value) {
+                    image.src = url;
+                }
+            }
+            "border-image-slice" => {
+                image.fill = value.split_whitespace().any(|w| w == "fill");
+                let nums: Vec<&str> = value.split_whitespace().filter(|w| *w != "fill").collect();
+                let one = |t: &str| match t.strip_suffix('%') {
+                    Some(n) => n.parse().ok().map(|k: f32| BorderImageSlice::Pct(k / 100.0)),
+                    None => t.parse().ok().map(BorderImageSlice::Px),
+                };
+                if let Some(sides) = four(&nums, one) {
+                    image.slice = sides;
+                }
+            }
+            "border-image-width" => {
+                let one = |t: &str| {
+                    if t == "auto" {
+                        return Some(BorderImageWidth::Auto);
+                    }
+                    if let Some(n) = t.strip_suffix('%') {
+                        return n.parse().ok().map(|k: f32| BorderImageWidth::Pct(k / 100.0));
+                    }
+                    match Len::parse(t) {
+                        Some(Len::Px(v)) => Some(BorderImageWidth::Px(v)),
+                        // Голое число — множитель толщины рамки.
+                        _ => t.parse().ok().map(BorderImageWidth::Times),
+                    }
+                };
+                let words: Vec<&str> = value.split_whitespace().collect();
+                if let Some(sides) = four(&words, one) {
+                    image.width = sides;
+                }
+            }
+            "border-image-outset" => {
+                let one = |t: &str| match Len::parse(t) {
+                    Some(Len::Px(v)) => Some(v),
+                    // Голое число — тоже множитель толщины рамки, но её здесь
+                    // ещё нет; берём как точки, это ближе всего к правде.
+                    _ => t.parse().ok(),
+                };
+                let words: Vec<&str> = value.split_whitespace().collect();
+                if let Some(sides) = four(&words, one) {
+                    image.outset = sides;
+                }
+            }
+            "border-image-repeat" => {
+                let one = |t: &str| match t {
+                    "stretch" => Some(Tiling::None),
+                    "repeat" => Some(Tiling::Repeat),
+                    "round" => Some(Tiling::Round),
+                    "space" => Some(Tiling::Space),
+                    _ => None,
+                };
+                let mut it = value.split_whitespace();
+                if let (Some(x), y) = (it.next().and_then(one), it.next().and_then(one)) {
+                    image.repeat = (x, y.unwrap_or(x));
+                }
+            }
+            _ => {}
+        };
+        if name == "border-image" {
+            // Части сокращения разделены косой: источник со срезом, ширина,
+            // вылет. Укладка и `fill` живут в своих частях и находятся по
+            // ключевым словам.
+            // Косая режет части ТОЛЬКО вне скобок: в адресе она разделяет
+            // каталоги, и запись рвалась по первому же пути (`url(C:/tmp/…)`).
+            let mut parts: Vec<&str> = vec![];
+            let mut depth = 0i32;
+            let mut from = 0usize;
+            for (at, ch) in v.char_indices() {
+                match ch {
+                    '(' => depth += 1,
+                    ')' => depth -= 1,
+                    '/' if depth == 0 => {
+                        parts.push(&v[from..at]);
+                        from = at + 1;
+                    }
+                    _ => {}
+                }
+            }
+            parts.push(&v[from..]);
+            let head = parts.first().copied().unwrap_or("");
+            let words: Vec<&str> = head.split_whitespace().collect();
+            let (urls, rest): (Vec<&str>, Vec<&str>) =
+                words.iter().partition(|w| w.starts_with("url(") || **w == "none");
+            if let Some(src) = urls.first() {
+                set("border-image-source", src);
+            }
+            let (repeat, slice): (Vec<&str>, Vec<&str>) = rest
+                .iter()
+                .partition(|w| matches!(**w, "stretch" | "repeat" | "round" | "space"));
+            if !slice.is_empty() {
+                set("border-image-slice", &slice.join(" "));
+            }
+            if !repeat.is_empty() {
+                set("border-image-repeat", &repeat.join(" "));
+            }
+            if let Some(width) = parts.get(1) {
+                set("border-image-width", width);
+            }
+            if let Some(outset) = parts.get(2) {
+                set("border-image-outset", outset);
+            }
+        } else {
+            set(name, v);
+        }
+        drop(set);
+        self.border_image = (!image.src.is_empty()).then_some(image);
+    }
+
     pub fn borders(&self) -> Sides {
         let vis = self.border_visible;
         let keep = |w, i: usize| if vis[i] == Some(true) { w } else { None };
@@ -3271,6 +3447,19 @@ fn balanced_close(after_open: &str) -> Option<usize> {
 }
 
 /// Смещение первой запятой ВНЕ вложенных скобок.
+/// Раскрытие записи в четыре стороны: 1 значение — все, 2 — верт/гориз,
+/// 3 — верх/гориз/низ, 4 — по часовой. `None`, если разобрать не удалось.
+fn four<T: Copy>(words: &[&str], one: impl Fn(&str) -> Option<T>) -> Option<[T; 4]> {
+    let v: Vec<T> = words.iter().filter_map(|w| one(w)).collect();
+    match v.len() {
+        1 => Some([v[0]; 4]),
+        2 => Some([v[0], v[1], v[0], v[1]]),
+        3 => Some([v[0], v[1], v[2], v[1]]),
+        4 => Some([v[0], v[1], v[2], v[3]]),
+        _ => None,
+    }
+}
+
 /// Слои фона: значение режется по запятым ВНЕ скобок.
 ///
 /// Запятая внутри `rgba(…)` или `linear-gradient(…)` слой не кончает, поэтому
@@ -4053,4 +4242,33 @@ fn initial_value(key: &str) -> Option<&'static str> {
         "writing-mode" => "horizontal-tb",
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod border_image_tests {
+    use super::*;
+
+    /// Сокращение несёт источник, срез и укладку разом.
+    #[test]
+    fn shorthand_carries_source_slice_and_repeat() {
+        let mut c = Computed::default();
+        c.apply_one("border-image", "url(C:/tmp/border.png) 27 round");
+        let bi = c.border_image.expect("рамка-картинка разобрана");
+        assert_eq!(bi.src, "C:/tmp/border.png");
+        assert_eq!(bi.slice[0], BorderImageSlice::Px(27.0));
+        assert_eq!(bi.repeat, (Tiling::Round, Tiling::Round));
+    }
+
+    /// Отдельные свойства дополняют ту же запись.
+    #[test]
+    fn longhands_add_up() {
+        let mut c = Computed::default();
+        c.apply_one("border-image-source", "url(C:/tmp/b.png)");
+        c.apply_one("border-image-slice", "30% fill");
+        c.apply_one("border-image-repeat", "round space");
+        let bi = c.border_image.expect("рамка-картинка разобрана");
+        assert!(bi.fill);
+        assert_eq!(bi.slice[1], BorderImageSlice::Pct(0.3));
+        assert_eq!(bi.repeat, (Tiling::Round, Tiling::Space));
+    }
 }

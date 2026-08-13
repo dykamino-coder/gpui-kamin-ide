@@ -157,6 +157,11 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
         out.push(layer);
     }
 
+    // Рамка-картинка рисуется ПОВЕРХ фона и заменяет обычную рамку.
+    if let Some(layer) = crate::border_image::layer(c) {
+        out.push(layer);
+    }
+
     // `backdrop-filter: blur(N)`: размывает то, что под элементом. Рисуется
     // проходом рендера (патч gpui), поэтому это канвас, а не стиль.
     if let Some(radius) = c.backdrop_blur {
