@@ -2691,6 +2691,59 @@ impl Computed {
                         "skewY" => t.skew_rad.1 += angle,
                         "scaleX" => t.scale.0 *= first,
                         "scaleY" => t.scale.1 *= first,
+                        // Поворот вокруг оси экрана БЕЗ перспективы — это
+                        // прямая проекция на плоскость, то есть сжатие поперёк
+                        // оси ровно на косинус угла (css-transforms-2 §11):
+                        // `rotateX(60deg)` даёт половину высоты. Перспективы у
+                        // нас нет, и приближением это не является — при
+                        // `perspective: none` так считает и браузер.
+                        "rotateX" => t.scale.1 *= angle.cos(),
+                        "rotateY" => t.scale.0 *= angle.cos(),
+                        // Поворот вокруг произвольной оси: та же проекция, но
+                        // ось задана вектором. Ось экрана даёт обычный поворот,
+                        // остальные — сжатие поперёк себя.
+                        "rotate3d" => {
+                            let (x, y, z) = (
+                                nums.first().copied().unwrap_or(0.0),
+                                nums.get(1).copied().unwrap_or(0.0),
+                                nums.get(2).copied().unwrap_or(0.0),
+                            );
+                            let len = (x * x + y * y + z * z).sqrt();
+                            if len > 0.0 {
+                                let last = nums.get(3).copied().unwrap_or(0.0);
+                                let a = if arg.contains("rad") {
+                                    last
+                                } else {
+                                    last.to_radians()
+                                };
+                                let (x, y, z) = (x / len, y / len, z / len);
+                                t.rotate_rad += a * z;
+                                t.scale.1 *= 1.0 - x.abs() * (1.0 - a.cos());
+                                t.scale.0 *= 1.0 - y.abs() * (1.0 - a.cos());
+                            }
+                        }
+                        // Третья ось без перспективы ничего не меняет: смещение
+                        // по ней не видно, а масштаб по ней не на что влиять.
+                        "translateZ" | "perspective" => {}
+                        "scaleZ" => {}
+                        "scale3d" => {
+                            t.scale.0 *= first;
+                            t.scale.1 *= nums.get(1).copied().unwrap_or(1.0);
+                        }
+                        "translate3d" => {
+                            let parts: Vec<&str> = arg.split(',').map(str::trim).collect();
+                            for (i, dest) in [&mut t.translate.0, &mut t.translate.1]
+                                .into_iter()
+                                .enumerate()
+                            {
+                                if let Some(raw) = parts.get(i) {
+                                    *dest += raw
+                                        .trim_end_matches("px")
+                                        .parse::<f32>()
+                                        .unwrap_or(0.0);
+                                }
+                            }
+                        }
                         // Проценты в сдвиге считаются от СВОЕГО размера —
                         // на этом стоит типовое центрирование
                         // `translate(-50%, -50%)`. Раньше процент срезался как
