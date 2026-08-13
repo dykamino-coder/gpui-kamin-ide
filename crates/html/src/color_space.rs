@@ -295,6 +295,11 @@ fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
         "srgb" => return Some((c[0], c[1], c[2], a)),
         "srgb-linear" => mul(LINEAR_SRGB_TO_XYZ, c),
         "display-p3" => mul(P3_TO_XYZ, lin(c)),
+        // Линейный вариант: те же основные цвета, но без кривой.
+        "display-p3-linear" => mul(P3_TO_XYZ, c),
+        "rec2020-linear" => mul(REC2020_TO_XYZ, c),
+        "a98-rgb-linear" => mul(A98_TO_XYZ, c),
+        "prophoto-rgb-linear" => mul(D50_TO_D65, mul(PROPHOTO_TO_XYZ, c)),
         // У Adobe RGB своя степень кривой, простая и без прямого куска.
         "a98-rgb" => {
             let g = |v: f32| v.signum() * v.abs().powf(563.0 / 256.0);
