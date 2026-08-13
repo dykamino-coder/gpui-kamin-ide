@@ -894,6 +894,8 @@ pub struct Computed {
     /// `background-origin`: от какого края коробки отсчитывается фоновая
     /// картинка. `None` — от внутреннего края рамки, как по умолчанию в CSS.
     pub bg_origin: Option<BgClip>,
+    /// `overflow-clip-margin`: на сколько обрезка отступает НАРУЖУ от коробки.
+    pub clip_margin: Option<f32>,
     /// `clip-path: polygon(…)`: вершины в долях или точках коробки.
     pub clip_polygon: Option<Vec<(Len, Len)>>,
     /// `mix-blend-mode`: как слой смешивается с тем, что под ним.
@@ -1655,6 +1657,18 @@ impl Computed {
             "overflow-x" => self.overflow_x = parse_overflow(v),
             "overflow-y" => self.overflow_y = parse_overflow(v),
             "opacity" => self.opacity = v.parse().ok(),
+            // Поле обрезки: край, по которому режется вылезшее содержимое,
+            // отодвигается наружу (css-overflow-3 §5). Запись допускает и
+            // указание коробки отсчёта — её мы не различаем, край один.
+            "overflow-clip-margin" => {
+                self.clip_margin = v
+                    .split_whitespace()
+                    .find_map(Len::parse)
+                    .and_then(|l| match l {
+                        Len::Px(px) if px > 0.0 => Some(px),
+                        _ => None,
+                    })
+            }
 
             // Сокращение несёт всё сразу: `background: #fff url(a.png) no-repeat`
             // — и цвет, и картинку, и режим повтора. Раньше побеждало что-то

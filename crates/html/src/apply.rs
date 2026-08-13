@@ -586,10 +586,14 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // Прокрутка: в GPUI скролл требует своего состояния и обработчика, поэтому
     // на уровне стиля выражается только обрезка. Прокручиваемый контейнер
     // собирается вызывающим (см. доку, раздел «Прокрутка»).
-    if c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll) {
+    // Обрезка с ПОЛЕМ снимается с коробки: раскладка режет ровно по её краю,
+    // а поле требует резать дальше наружу. Маску ставит свой слой
+    // (`interact::ClipMargin`), его заводит сборщик дерева.
+    let boxed = c.clip_margin.is_none();
+    if boxed && (c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll)) {
         d = d.overflow_x_hidden();
     }
-    if c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll) {
+    if boxed && (c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll)) {
         d = d.overflow_y_hidden();
     }
     // Края двигают только позиционированный элемент. У обычного (`static`)

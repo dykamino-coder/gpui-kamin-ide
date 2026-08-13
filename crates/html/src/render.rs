@@ -620,7 +620,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Анимация оборачивает ЛЮБОЙ элемент: таблицу, список, картинку —
             // раньше она доставалась только простому блоку.
             let built = grouped(
-                transformed(animated(e, inherited, opts), &e.style),
+                clip_margin(transformed(animated(e, inherited, opts), &e.style), &e.style),
                 &e.style,
             );
             let built = vertical_hug(built, e, inherited);
@@ -2516,6 +2516,20 @@ fn sticky_wrap(
         .into_any_element()
 }
 
+/// Обрезка с полем: маска шире коробки на `overflow-clip-margin`.
+fn clip_margin(el: AnyElement, c: &Computed) -> AnyElement {
+    let Some(margin) = c.clip_margin else {
+        return el;
+    };
+    // Поле имеет смысл только там, где обрезка вообще есть.
+    if c.overflow_x == Some(crate::computed::Overflow::Visible)
+        && c.overflow_y == Some(crate::computed::Overflow::Visible)
+    {
+        return el;
+    }
+    crate::interact::ClipMargin::new(el, margin).into_any_element()
+}
+
 /// Отрисовать поддерево в отдельный буфер, когда эффекту нужна готовая
 /// картинка целиком.
 ///
@@ -2974,7 +2988,21 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // сетка даёт то же расположение: число рядов считаем по числу
             // детей, а заполнение идёт по колонкам — тогда порядок совпадает
             // с браузерным (сверху вниз, затем в следующую колонку).
-            if let Some(cols) = e.style.column_count.filter(|n| *n > 1) {
+            // Число колонок бывает задано и КОСВЕННО — их шириной: сколько
+            // целых колонок этой ширины влезает в коробку, столько их и будет
+            // (css-multicol-1 §7.3). Ширина коробки нужна заданная: без неё
+            // считать не от чего, и остаётся прежняя дорожечная раскладка.
+            let by_width = match (e.style.column_count, e.style.column_width, e.style.width) {
+                (None, Some(Len::Px(w)), Some(Len::Px(box_w))) if w > 0.0 => {
+                    let gap = match e.style.column_gap {
+                        Some(Len::Px(v)) => v,
+                        _ => 0.0,
+                    };
+                    Some((((box_w + gap) / (w + gap)).floor().max(1.0)) as u16)
+                }
+                _ => None,
+            };
+            if let Some(cols) = e.style.column_count.or(by_width).filter(|n| *n > 1) {
                 // Сплошной текст режется на колонки по строкам, а не по детям:
                 // один длинный абзац иначе оставался в первой колонке целиком.
                 if let Some(el) = column_flow(e, &merged, opts, cols as usize) {
