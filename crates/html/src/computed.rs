@@ -350,6 +350,9 @@ pub enum BorderImageWidth {
 /// (css-backgrounds-3 §3.7).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BgClip {
+    /// До внешнего края рамки. Умолчание `background-clip`, поэтому там оно
+    /// же выражается отсутствием значения; у `background-origin` — нет.
+    BorderBox,
     /// До внутреннего края рамки.
     PaddingBox,
     /// До края содержимого — внутрь ещё и на поля.
@@ -888,6 +891,9 @@ pub struct Computed {
     pub bg_clip: Option<BgClip>,
     /// `border-image`: картинка вместо рамки.
     pub border_image: Option<BorderImage>,
+    /// `background-origin`: от какого края коробки отсчитывается фоновая
+    /// картинка. `None` — от внутреннего края рамки, как по умолчанию в CSS.
+    pub bg_origin: Option<BgClip>,
     /// `clip-path: polygon(…)`: вершины в долях или точках коробки.
     pub clip_polygon: Option<Vec<(Len, Len)>>,
     /// `mix-blend-mode`: как слой смешивается с тем, что под ним.
@@ -2371,6 +2377,15 @@ impl Computed {
             // Область покраски фона. `border-box` — умолчание, поэтому оно
             // же и сбрасывает признак: свойство наследуемым не является, но
             // перебить заданное ранее в том же наборе обязано.
+            // Откуда отсчитывается картинка. Умолчание — внутренний край
+            // рамки, и `padding-box` его же и означает.
+            "background-origin" => {
+                self.bg_origin = match v.trim() {
+                    "border-box" => Some(BgClip::BorderBox),
+                    "content-box" => Some(BgClip::ContentBox),
+                    _ => None,
+                }
+            }
             "background-clip" | "-webkit-background-clip" => {
                 self.bg_clip = match v.trim() {
                     "padding-box" => Some(BgClip::PaddingBox),

@@ -354,6 +354,31 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     let size = c.bg_size;
     let pos = c.bg_pos;
     let repeat = c.bg_repeat.unwrap_or(BgRepeat::Repeat);
+    // Отступ слоя от ВНУТРЕННЕГО края рамки: слой лежит внутри коробки и
+    // меряется именно им, а `background-origin` может требовать другого края
+    // (css-backgrounds-3 §3.6). Положительное значение вжимает внутрь.
+    let family = c.font_family.clone().unwrap_or_default();
+    let font = match c.font_size {
+        Some(Len::Px(v)) => v,
+        _ => 16.0,
+    };
+    let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, &family, font);
+    let border = c.borders();
+    let inset = match c.bg_origin {
+        Some(crate::computed::BgClip::BorderBox) => [
+            -px_of(border.top),
+            -px_of(border.right),
+            -px_of(border.bottom),
+            -px_of(border.left),
+        ],
+        Some(crate::computed::BgClip::ContentBox) => [
+            px_of(c.padding.top),
+            px_of(c.padding.right),
+            px_of(c.padding.bottom),
+            px_of(c.padding.left),
+        ],
+        _ => [0.0; 4],
+    };
     let radius = match c.radius.tl {
         Some(Len::Px(v)) => v,
         _ => 0.0,
@@ -363,6 +388,17 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
             |_, _, _| {},
             move |bounds: Bounds<Pixels>, _, window, _| {
                 let Some(found) = source(&src) else { return };
+                // Место под фон: свой край по `background-origin`.
+                let bounds = Bounds {
+                    origin: gpui::point(
+                        bounds.origin.x + px(inset[3]),
+                        bounds.origin.y + px(inset[0]),
+                    ),
+                    size: gpui::size(
+                        bounds.size.width - px(inset[1] + inset[3]),
+                        bounds.size.height - px(inset[0] + inset[2]),
+                    ),
+                };
                 let box_size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
                 let tile = tile_size(found.intrinsic(), box_size, size);
                 // Нулевая плитка не рисуется вовсе, а вот МЕЛКАЯ — рисуется:
