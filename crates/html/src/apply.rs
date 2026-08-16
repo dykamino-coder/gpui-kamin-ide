@@ -212,7 +212,21 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
             _ => None,
         }
     });
-    match (&c.grid_tracks, c.grid_cols, auto_fill) {
+    // `grid-template-columns: subgrid` — дорожки у РОДИТЕЛЬСКОЙ сетки. Своей
+    // передачи дорожек вниз у раскладки нет; ближе всего к правде — столько
+    // же СВОИХ дорожек по содержимому, сколько линий сетки родителя элемент
+    // перекрывает (`grid-column: 2 / 5` — три). Пока признак не читался
+    // вовсе, вложенная сетка получала одну колонку, и всё шло столбиком.
+    let subgrid_cols = (c.subgrid && c.grid_tracks.is_none())
+        .then(|| match c.grid_col {
+            Some((crate::computed::Placement::Line(a), crate::computed::Placement::Line(b))) => {
+                (b - a).unsigned_abs().max(1) as u16
+            }
+            Some((_, crate::computed::Placement::Span(n))) => n.max(1),
+            _ => 1,
+        })
+        .filter(|n: &u16| *n > 1);
+    match (&c.grid_tracks, c.grid_cols.or(subgrid_cols), auto_fill) {
         (Some(tracks), _, _) => d = along_line(d, tracks.iter().map(track).collect()),
         // «Сколько влезет» умеет сама раскладка — короткая форма GPUI.
         (None, _, Some(min)) if !flip => d = d.grid_cols_min(px(min)),
