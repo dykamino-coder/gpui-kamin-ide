@@ -1427,6 +1427,12 @@ impl Computed {
                     // порождают вовсе: они только задают ширину столбцам.
                     "table-caption" => Some(Display::Block),
                     "table-column" | "table-column-group" => Some(Display::None),
+                    // Запись из ДВУХ слов: из неё берётся только внутренний
+                    // вид «лунки» — его иначе не выразить вовсе. Полный разбор
+                    // двух слов ЗАМЕРЕН и откачен (см. комментарий выше).
+                    two if two.split_whitespace().any(|w| w == "grid-lanes" || w == "masonry") => {
+                        Some(Display::GridLanes)
+                    }
                     _ => self.display,
                 }
             }
