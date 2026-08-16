@@ -212,21 +212,13 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
             _ => None,
         }
     });
-    // `grid-template-columns: subgrid` — дорожки у РОДИТЕЛЬСКОЙ сетки. Своей
-    // передачи дорожек вниз у раскладки нет; ближе всего к правде — столько
-    // же СВОИХ дорожек по содержимому, сколько линий сетки родителя элемент
-    // перекрывает (`grid-column: 2 / 5` — три). Пока признак не читался
-    // вовсе, вложенная сетка получала одну колонку, и всё шло столбиком.
-    let subgrid_cols = (c.subgrid && c.grid_tracks.is_none())
-        .then(|| match c.grid_col {
-            Some((crate::computed::Placement::Line(a), crate::computed::Placement::Line(b))) => {
-                (b - a).unsigned_abs().max(1) as u16
-            }
-            Some((_, crate::computed::Placement::Span(n))) => n.max(1),
-            _ => 1,
-        })
-        .filter(|n: &u16| *n > 1);
-    match (&c.grid_tracks, c.grid_cols.or(subgrid_cols), auto_fill) {
+    // ПРОБОВАЛИ И ОТКАТИЛИ: `grid-template-columns: subgrid` разворачивать в
+    // столько СВОИХ дорожек, сколько линий родителя элемент перекрывает.
+    // Семейству subgrid-gap +10, но −17 по subgrid-auto-fill и базовым линиям:
+    // прежде зелёные пары совпадали с эталоном ИМЕННО одноколоночным
+    // поведением, а свои дорожки без настоящих ширин родителя их разломали.
+    // Возвращаться только с настоящей передачей дорожек родителя вниз.
+    match (&c.grid_tracks, c.grid_cols, auto_fill) {
         (Some(tracks), _, _) => d = along_line(d, tracks.iter().map(track).collect()),
         // «Сколько влезет» умеет сама раскладка — короткая форма GPUI.
         (None, _, Some(min)) if !flip => d = d.grid_cols_min(px(min)),
@@ -774,9 +766,15 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     }
     // Цвет рамки: единый — прямо в стиль. Разные цвета сторон рисуются
     // полосами в сборщике дерева: у GPUI цвет рамки один на элемент.
+    // Рамка-картинка рисуется ВМЕСТО обычной рамки (css-backgrounds-3 §6):
+    // толщина остаётся держать раскладку, а цвет не красится — иначе рамка
+    // проступала из-под картинки (`border-image-00*`: «no red», а красная
+    // рамка видна).
     let sides: Vec<_> = c.border_colors.iter().flatten().collect();
     let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
-    if let Some(bc) = uniform.copied().copied().or(c.border_color) {
+    if c.border_image.is_none()
+        && let Some(bc) = uniform.copied().copied().or(c.border_color)
+    {
         d = d.border_color(bc.to_hsla());
     }
     if c.border_dashed == Some(true) {
