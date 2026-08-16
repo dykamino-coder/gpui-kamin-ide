@@ -719,6 +719,12 @@ pub struct Computed {
     /// `grid-lanes-direction: row` — лунки идут РЯДАМИ, элементы укладываются
     /// вдоль строки, а не вдоль колонки.
     pub lanes_row: Option<bool>,
+    /// `fill-reverse` — лунки заполняются С ДРУГОГО КОНЦА: первым выбирается
+    /// самое правое (нижнее) свободное место, а не левое.
+    pub lanes_fill_reverse: bool,
+    /// `track-reverse` — сами лунки перечислены в обратном порядке: первая
+    /// дорожка списка встаёт последней.
+    pub lanes_track_reverse: bool,
     /// `grid-lanes-pack: dense` — элемент встаёт в САМОЕ ВЕРХНЕЕ свободное
     /// место, а не под всё уже уложенное: дыры, оставленные многолуночными
     /// соседями, заполняются следующими элементами.
@@ -1393,7 +1399,12 @@ impl Computed {
                     // CSS Grid 3: раскладка ЛУНКАМИ. Элементы идут в самую
                     // короткую лунку, а не в решётку — поэтому это отдельный
                     // вид, а не разновидность сетки.
-                    "grid-lanes" | "masonry" => Some(Display::GridLanes),
+                    // Строчный вариант ведёт себя в потоке иначе, но лунки
+                    // внутри те же: без него контейнер падал в умолчание, и
+                    // вся укладка шла столбиком (`*-subgrid-grid-gap-*`).
+                    "grid-lanes" | "masonry" | "inline-grid-lanes" | "inline-masonry" => {
+                        Some(Display::GridLanes)
+                    }
                     "none" => Some(Display::None),
                     "block" => Some(Display::Block),
                     "inline-block" => Some(Display::InlineBlock),
@@ -1940,8 +1951,13 @@ impl Computed {
             // track-reverse`. Сверка со строкой ЦЕЛИКОМ путала ось на каждом
             // таком тесте.
             "grid-lanes-pack" => self.lanes_dense = v.contains("dense"),
+            // Первая часть — ось лунок, дальше — реверсы: `fill-reverse`
+            // заполняет лунки с другого конца, `track-reverse` перечисляет
+            // сами лунки в обратном порядке (css-grid-3).
             "grid-lanes-direction" => {
                 self.lanes_row = Some(v.split_whitespace().next() == Some("row"));
+                self.lanes_fill_reverse = v.split_whitespace().any(|w| w == "fill-reverse");
+                self.lanes_track_reverse = v.split_whitespace().any(|w| w == "track-reverse");
             }
             "justify-self" => self.justify_self = parse_align(v),
             // `place-*` — сокращения «поперёк / вдоль»; одно значение задаёт обе оси.

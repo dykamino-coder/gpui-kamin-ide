@@ -3883,6 +3883,14 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     } else {
         merged.grid_cols.unwrap_or(1).max(1) as usize
     };
+    // Реверсы направления (css-grid-3): `fill-reverse` выбирает при равной
+    // высоте ПРАВУЮ лунку, `track-reverse` перечисляет сами дорожки задом
+    // наперёд — их список просто зеркалится, вместе с ним встают и элементы.
+    let fill_reverse = merged.lanes_fill_reverse;
+    let mut tracks = tracks;
+    if merged.lanes_track_reverse {
+        tracks.reverse();
+    }
     let extent = |item: &Element| -> f32 {
         if row_dir {
             item_width(item)
@@ -3973,7 +3981,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             let span = span.clamp(1, count);
             let height = extent(item);
             let at = fixed
-                .unwrap_or_else(|| shortest_lane_free(&probe, count, span, height, &free_top))
+                .unwrap_or_else(|| shortest_lane_free(&probe, count, span, height, &free_top, fill_reverse))
                 .min(count - span);
             let top = free_top(&probe, at, span, height);
             placed.push((idx, at, span, top, height));
@@ -4017,7 +4025,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         let span = span.clamp(1, count);
         let mut height = extent(item);
         let at = fixed
-            .unwrap_or_else(|| shortest_lane_free(&used, count, span, height, &free_top))
+            .unwrap_or_else(|| shortest_lane_free(&used, count, span, height, &free_top, fill_reverse))
             .min(count - span);
         // Верх элемента — низ самой заполненной из перекрытых лунок; при
         // плотной укладке — верхняя свободная отметка, не выше своей лунки.
@@ -4291,12 +4299,19 @@ fn shortest_lane_free(
     span: usize,
     height: f32,
     top_of: &dyn Fn(&[Vec<(f32, f32)>], usize, usize, f32) -> f32,
+    reverse: bool,
 ) -> usize {
-    (0..=count.saturating_sub(span))
-        .min_by(|a, b| {
-            top_of(used, *a, span, height).total_cmp(&top_of(used, *b, span, height))
-        })
-        .unwrap_or(0)
+    // При равной высоте побеждает ПЕРВАЯ лунка в порядке обхода: обычно левая,
+    // при `fill-reverse` — правая (css-grid-3, `grid-lanes-direction`).
+    let pick = |it: &mut dyn Iterator<Item = usize>| {
+        it.min_by(|a, b| top_of(used, *a, span, height).total_cmp(&top_of(used, *b, span, height)))
+            .unwrap_or(0)
+    };
+    if reverse {
+        pick(&mut (0..=count.saturating_sub(span)).rev())
+    } else {
+        pick(&mut (0..=count.saturating_sub(span)))
+    }
 }
 
 /// Ширина элемента по его же стилю — для раздачи по лункам-рядам.
