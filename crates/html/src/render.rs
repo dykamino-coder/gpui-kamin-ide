@@ -3515,6 +3515,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // расхождение копится вниз по таблице.
                 .gap_x(px(spacing.0))
                 .gap_y(px(spacing.1))
+                // Зазор действует и МЕЖДУ краем таблицы и крайними ячейками
+                // (CSS 2.1 §17.6.1), не только между ячейками. Эталоны
+                // гасят его отрицательным полем на таблице.
+                .px(px(spacing.0))
+                .py(px(spacing.1))
                 .children(cells)
                 .into_any_element(),
         )
