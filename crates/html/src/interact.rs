@@ -492,6 +492,8 @@ pub struct Transformed {
     pub translate_pct: (f32, f32),
     /// Доли от размера элемента: 0.5, 0.5 — центр.
     pub origin: (f32, f32),
+    /// Точка отсчёта В ТОЧКАХ по осям — сильнее доли, когда задана.
+    pub origin_px: (Option<f32>, Option<f32>),
 }
 
 impl Transformed {
@@ -504,6 +506,7 @@ impl Transformed {
             translate: (0.0, 0.0),
             translate_pct: (0.0, 0.0),
             origin: (0.5, 0.5),
+            origin_px: (None, None),
         }
     }
 }
@@ -556,14 +559,24 @@ impl Element for Transformed {
         let scale_factor = window.scale_factor();
         // Матрица живёт в физических точках устройства.
         let dev = |v: f32| px(v).scale(scale_factor);
-        // Точка отсчёта — в устройстве, от неё и разворачиваем.
+        // Точка отсчёта — в устройстве, от неё и разворачиваем. Записанная
+        // длиной, она сильнее доли: `transform-origin: 0 0` — левый верх, а
+        // не центр (доля из длины считается только здесь, где размер известен).
+        let ox = self
+            .origin_px
+            .0
+            .unwrap_or(f32::from(bounds.size.width) * self.origin.0);
+        let oy = self
+            .origin_px
+            .1
+            .unwrap_or(f32::from(bounds.size.height) * self.origin.1);
         let origin = gpui::point(
-            dev(f32::from(bounds.origin.x) + f32::from(bounds.size.width) * self.origin.0),
-            dev(f32::from(bounds.origin.y) + f32::from(bounds.size.height) * self.origin.1),
+            dev(f32::from(bounds.origin.x) + ox),
+            dev(f32::from(bounds.origin.y) + oy),
         );
         let back = gpui::point(
-            dev(-(f32::from(bounds.origin.x) + f32::from(bounds.size.width) * self.origin.0)),
-            dev(-(f32::from(bounds.origin.y) + f32::from(bounds.size.height) * self.origin.1)),
+            dev(-(f32::from(bounds.origin.x) + ox)),
+            dev(-(f32::from(bounds.origin.y) + oy)),
         );
         // Порядок как в CSS: сдвиг, затем поворот, затем масштаб — всё вокруг
         // точки отсчёта, поэтому она сначала уводится в ноль и возвращается.

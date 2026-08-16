@@ -2575,6 +2575,7 @@ fn transformed(el: AnyElement, c: &Computed) -> AnyElement {
     if let Some(o) = c.transform_origin {
         wrapper.origin = o;
     }
+    wrapper.origin_px = c.transform_origin_px;
     wrapper.into_any_element()
 }
 

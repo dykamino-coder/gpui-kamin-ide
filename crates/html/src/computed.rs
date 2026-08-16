@@ -826,6 +826,9 @@ pub struct Computed {
     pub transform: Option<Transform>,
     /// `transform-origin` в долях размера элемента.
     pub transform_origin: Option<(f32, f32)>,
+    /// Точка отсчёта преобразования В ТОЧКАХ по осям — когда записана длиной,
+    /// а не долей. Долю из неё делает отрисовка: размер коробки известен там.
+    pub transform_origin_px: (Option<f32>, Option<f32>),
     /// `float`: -1 — влево, 1 — вправо, 0 — не обтекается.
     pub float: Option<i8>,
     /// `clear` — прервать обтекание перед этим блоком.
@@ -2831,6 +2834,11 @@ impl Computed {
                 self.transform = Some(t);
             }
             "transform-origin" => {
+                // Точка отсчёта хранится ДОЛЯМИ коробки. Точечная запись
+                // (`transform-origin: 0 0`, `20px 40px`) до неё не доводилась
+                // и молча превращалась в центр — скос и поворот шли вокруг
+                // другой точки (`css-skew-001`). Точки в доли переводит
+                // отрисовка (`transform_origin_px`) — размер известен там.
                 let axis = |t: &str, default: f32| -> f32 {
                     match t {
                         "left" | "top" => 0.0,
@@ -2842,6 +2850,15 @@ impl Computed {
                         },
                     }
                 };
+                let px_axis = |t: &str| -> Option<f32> {
+                    match Len::parse(t) {
+                        Some(Len::Px(v)) => Some(v),
+                        _ => None,
+                    }
+                };
+                let mut px_it = v.split_whitespace();
+                let (a, b) = (px_it.next().unwrap_or(""), px_it.next().unwrap_or("center"));
+                self.transform_origin_px = (px_axis(a), px_axis(b));
                 let mut it = v.split_whitespace();
                 let first = it.next().unwrap_or("center");
                 let second = it.next().unwrap_or("center");
