@@ -147,7 +147,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                         );
                         if std::env::var("HTML_BI").is_ok() {
                             eprintln!(
-                                "BI r{row} c{col} src=({sx},{sy},{sw},{sh}) dest=({dx:.0},{dy:.0},{dw:.0},{dh:.0}) cells={}",
+                                "BI r{row} c{col} src=({sx},{sy},{sw},{sh}) dest=({dx:.3},{dy:.3},{dw:.3},{dh:.3}) cells={}",
                                 cells.len()
                             );
                         }
@@ -237,7 +237,11 @@ fn along(mode: Tiling, span: f32, piece: f32) -> Vec<(f32, f32)> {
         // `space` кладёт целые копии и раздаёт остаток зазорами, в том числе
         // по краям (css-backgrounds-3 §6.2 — не так, как у фона).
         Tiling::Space => {
-            let count = (span / piece).floor().min(MAX);
+            // Число копий — от округлённой длины: раскладка снэпит коробку к
+            // девайс-сетке (при 125% масштабе 135 становится 134.8), и целая
+            // копия терялась на ровно влезающих полосах (`space-5`: две
+            // вместо трёх). Сами копии и зазоры считаются от настоящей длины.
+            let count = (span.round() / piece + 1e-3).floor().min(MAX);
             if count < 1.0 {
                 return vec![];
             }
