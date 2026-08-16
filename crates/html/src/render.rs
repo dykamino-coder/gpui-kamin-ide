@@ -3830,6 +3830,16 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                         } else {
                             item_width(item)
                         };
+                        // Доля элемента считается от места контейнера:
+                        // `width: 25%` в трёхстах шестидесяти — дорожка 90
+                        // (`column-auto-repeat-auto-002`). Точечный замер её
+                        // не видел, и дорожки не разворачивались вовсе.
+                        let pct = match (row_dir, item.style.height, item.style.width) {
+                            (true, Some(Len::Pct(k)), _) => Some(k * room),
+                            (false, _, Some(Len::Pct(k))) => Some(k * room),
+                            _ => None,
+                        };
+                        let size = pct.unwrap_or(size);
                         // Вклад элемента НА НЕСКОЛЬКО дорожек делится между
                         // ними (css-grid-2 §11.5.1): `width: 200px` при
                         // `span 2` — это две дорожки по сто, а не одна в
