@@ -3755,7 +3755,20 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // `grid-lanes-direction: row` — лунки идут РЯДАМИ: дорожки задаёт
     // `grid-template-rows`, элементы укладываются вдоль строки, а роль
     // `align-items` играет `justify-items`.
-    let row_dir = merged.lanes_row == Some(true);
+    //
+    // Без явного направления его выдаёт ТА ОСЬ, по которой объявлены дорожки:
+    // `grid-template-rows: repeat(auto-fill, auto)` без колоночных дорожек —
+    // это лунки рядами (`row-auto-repeat-*`: вся укладка шла столбиком,
+    // потому что направление читалось только из свойства).
+    let row_tracks =
+        merged.grid_rows.is_some() || merged.auto_repeat_rows.is_some() || merged.grid_auto_fill_row.is_some();
+    let col_tracks = merged.grid_tracks.is_some()
+        || merged.auto_repeat_cols.is_some()
+        || merged.grid_auto_fill_min.is_some();
+    let row_dir = match merged.lanes_row {
+        Some(explicit) => explicit,
+        None => row_tracks && !col_tracks,
+    };
     let tracks = if row_dir {
         merged.grid_rows.clone().unwrap_or_default()
     } else {
