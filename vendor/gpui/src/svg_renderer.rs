@@ -124,6 +124,22 @@ pub fn crop_image(
     )))
 }
 
+/// KaminIDE patch: готовый образ из СЫРЫХ точек BGRA.
+///
+/// Нужен источникам-картинкам, которые считаются на месте (градиент в
+/// `border-image-source`): у них нет ни файла, ни разметки — только точки.
+pub fn bgra_bytes_to_image(w: u32, h: u32, bytes: Vec<u8>) -> Option<Arc<crate::RenderImage>> {
+    use image::Frame;
+
+    if (w * h * 4) as usize != bytes.len() {
+        return None;
+    }
+    let buffer = image::RgbaImage::from_raw(w, h, bytes)?;
+    Some(Arc::new(crate::RenderImage::new(
+        smallvec::SmallVec::from_elem(Frame::new(buffer), 1),
+    )))
+}
+
 /// KaminIDE patch: растровая картинка из байтов в готовый образ.
 ///
 /// Фон `background-image: url(...)` — заливка, а не элемент: ей нужен уже

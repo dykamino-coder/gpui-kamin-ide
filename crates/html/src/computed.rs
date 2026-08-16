@@ -3026,8 +3026,17 @@ impl Computed {
         });
         let mut set = |part: &str, value: &str| match part {
             "border-image-source" => {
-                if value.trim() == "none" {
+                let value = value.trim();
+                if value == "none" {
                     image.src.clear();
+                } else if value.starts_with("linear-gradient(")
+                    || value.starts_with("radial-gradient(")
+                    || value.starts_with("conic-gradient(")
+                {
+                    // Источником может быть любой `<image>`, включая градиент
+                    // (css-backgrounds-3 §6.1). Запись хранится как есть:
+                    // растрирует её загрузчик картинок.
+                    image.src = value.to_string();
                 } else if let Some(url) = parse_url(value) {
                     image.src = url;
                 }
@@ -3111,20 +3120,30 @@ impl Computed {
             }
             parts.push(&v[from..]);
             let head = parts.first().copied().unwrap_or("");
-            let words: Vec<&str> = head.split_whitespace().collect();
-            let (urls, rest): (Vec<&str>, Vec<&str>) =
-                words.iter().partition(|w| w.starts_with("url(") || **w == "none");
+            // Слова головы режутся ВНЕ скобок: у градиента-источника пробелы
+            // внутри (`linear-gradient(green, green)`), и он должен остаться
+            // одним словом.
+            let words = split_outside_parens(head);
+            let (urls, rest): (Vec<&String>, Vec<&String>) = words.iter().partition(|w| {
+                w.starts_with("url(")
+                    || w.starts_with("linear-gradient(")
+                    || w.starts_with("radial-gradient(")
+                    || w.starts_with("conic-gradient(")
+                    || w.as_str() == "none"
+            });
             if let Some(src) = urls.first() {
                 set("border-image-source", src);
             }
-            let (repeat, slice): (Vec<&str>, Vec<&str>) = rest
+            let (repeat, slice): (Vec<&&String>, Vec<&&String>) = rest
                 .iter()
-                .partition(|w| matches!(**w, "stretch" | "repeat" | "round" | "space"));
+                .partition(|w| matches!(w.as_str(), "stretch" | "repeat" | "round" | "space"));
             if !slice.is_empty() {
-                set("border-image-slice", &slice.join(" "));
+                let joined: Vec<&str> = slice.iter().map(|w| w.as_str()).collect();
+                set("border-image-slice", &joined.join(" "));
             }
             if !repeat.is_empty() {
-                set("border-image-repeat", &repeat.join(" "));
+                let joined: Vec<&str> = repeat.iter().map(|w| w.as_str()).collect();
+                set("border-image-repeat", &joined.join(" "));
             }
             if let Some(width) = parts.get(1) {
                 set("border-image-width", width);
@@ -3450,7 +3469,7 @@ fn strip_important(v: &str) -> &str {
 /// `rgba(0, 0, 0, .5)` — это один токен, а не четыре: обычное деление по
 /// пробелам разрывало функции с пробелами после запятых, и значение молча
 /// пропадало.
-fn split_outside_parens(v: &str) -> Vec<String> {
+pub(crate) fn split_outside_parens(v: &str) -> Vec<String> {
     let mut out = vec![];
     let mut depth = 0usize;
     let mut cur = String::new();
@@ -3880,7 +3899,7 @@ fn count_tracks(v: &str) -> Option<u16> {
 ///
 /// Позиции стопов сохраняются: без них полосы не расставить, а именно они
 /// задают, где цвет меняется.
-fn parse_gradient(v: &str) -> Option<Gradient> {
+pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     let radial = v.starts_with("radial-gradient(");
     let inner = v
         .strip_prefix(if radial {

@@ -102,8 +102,14 @@ pub fn source(src: &str) -> Option<Source> {
     {
         return hit.clone();
     }
-    let bytes = read_bytes(src);
-    let found = bytes.as_deref().and_then(decode);
+    let found = if src.starts_with("linear-gradient(")
+        || src.starts_with("radial-gradient(")
+        || src.starts_with("conic-gradient(")
+    {
+        gradient_image(src)
+    } else {
+        read_bytes(src).as_deref().and_then(decode)
+    };
     if let Ok(mut map) = cache.lock() {
         if map.len() >= CACHE_CAP {
             map.clear();
@@ -144,6 +150,163 @@ fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
         tile.1,
         &markup[close + 1..]
     )
+}
+
+/// Градиент как источник картинки: считается по своей формуле в растр 64×64.
+///
+/// Для рамки-картинки соотношение сторон источника роли не играет — куски всё
+/// равно растягиваются под свои места, поэтому мелкого растра достаточно.
+/// Линейный и конический считаются честно; радиальный отдаёт осевой ход
+/// цвета — девятке рамки радиальной решётки и не нужно.
+fn gradient_image(src: &str) -> Option<Source> {
+    const N: u32 = 64;
+    enum Mode {
+        /// Ход цвета вдоль оси под углом.
+        Axis { dx: f32, dy: f32 },
+        /// Оборот вокруг середины от верха по часовой (css-images-4 §2.3).
+        Sweep { from: f32 },
+    }
+    let (mode, stops) = if let Some(inner) = src
+        .strip_prefix("conic-gradient(")
+        .and_then(|t| t.strip_suffix(')'))
+    {
+        let parts = crate::css::split_args(inner);
+        let mut idx = 0usize;
+        let mut from = 0.0f32;
+        if let Some(first) = parts.first().map(|f| f.trim())
+            && (first.starts_with("from ") || first.starts_with("at "))
+        {
+            idx = 1;
+            if let Some(a) = first.strip_prefix("from ") {
+                from = angle_fraction(a.split_whitespace().next().unwrap_or("")).unwrap_or(0.0);
+            }
+        }
+        // Стоп: цвет и до двух позиций-углов; две позиции — это ДВА стопа
+        // одного цвета. Цвет с запятыми внутри (`rgba(…)`) остаётся одним
+        // словом только при резке вне скобок.
+        let mut raw: Vec<(crate::value::Color, Option<f32>)> = vec![];
+        for part in &parts[idx..] {
+            let words = crate::computed::split_outside_parens(part);
+            let Some(colour) = words.first().and_then(|w| crate::value::Color::parse(w)) else {
+                continue;
+            };
+            let angles: Vec<f32> = words[1..].iter().filter_map(|w| angle_fraction(w)).collect();
+            if angles.is_empty() {
+                raw.push((colour, None));
+            }
+            for a in angles {
+                raw.push((colour, Some(a)));
+            }
+        }
+        if raw.is_empty() {
+            return None;
+        }
+        (Mode::Sweep { from }, place_stops(raw))
+    } else {
+        let g = crate::computed::parse_gradient(src)?;
+        let angle = g.angle_deg.to_radians();
+        (Mode::Axis { dx: angle.sin(), dy: -angle.cos() }, g.stops.clone())
+    };
+
+    let mut bytes = Vec::with_capacity((N * N * 4) as usize);
+    for y in 0..N {
+        for x in 0..N {
+            let (fx, fy) = (x as f32 / (N - 1) as f32 - 0.5, y as f32 / (N - 1) as f32 - 0.5);
+            let t = match mode {
+                Mode::Axis { dx, dy } => (fx * dx + fy * dy + 0.5).clamp(0.0, 1.0),
+                Mode::Sweep { from } => {
+                    let turn = fx.atan2(-fy) / std::f32::consts::TAU;
+                    (turn - from).rem_euclid(1.0)
+                }
+            };
+            let colour = colour_at(&stops, t);
+            // Порядок BGRA, премультипликация по прозрачности.
+            bytes.push((colour.b * colour.a * 255.0) as u8);
+            bytes.push((colour.g * colour.a * 255.0) as u8);
+            bytes.push((colour.r * colour.a * 255.0) as u8);
+            bytes.push((colour.a * 255.0) as u8);
+        }
+    }
+    let image = gpui::bgra_bytes_to_image(N, N, bytes)?;
+    Some(Source::Raster(image))
+}
+
+/// Угол позиции стопа в долях оборота: `90deg`, `25%`, `0.25turn`, голый `0`.
+fn angle_fraction(token: &str) -> Option<f32> {
+    let token = token.trim();
+    if let Some(n) = token.strip_suffix('%') {
+        return n.parse::<f32>().ok().map(|v| v / 100.0);
+    }
+    if let Some(n) = token.strip_suffix("deg") {
+        return n.parse::<f32>().ok().map(|v| v / 360.0);
+    }
+    if let Some(n) = token.strip_suffix("grad") {
+        return n.parse::<f32>().ok().map(|v| v / 400.0);
+    }
+    if let Some(n) = token.strip_suffix("rad") {
+        return n.parse::<f32>().ok().map(|v| v / std::f32::consts::TAU);
+    }
+    if let Some(n) = token.strip_suffix("turn") {
+        return n.parse::<f32>().ok();
+    }
+    // Ноль без единицы — законный угол в CSS; прочие голые числа — нет.
+    (token == "0").then_some(0.0)
+}
+
+/// Расставить позиции стопов по правилам css-images: крайние без позиции — на
+/// края, промежуточные — поровну между соседями с позициями, и позиции не
+/// убывают.
+fn place_stops(
+    raw: Vec<(crate::value::Color, Option<f32>)>,
+) -> Vec<(crate::value::Color, f32)> {
+    let last = raw.len() - 1;
+    let mut out: Vec<(crate::value::Color, f32)> = Vec::with_capacity(raw.len());
+    let mut floor = 0.0f32;
+    for (i, (colour, pos)) in raw.iter().enumerate() {
+        let at = match pos {
+            Some(v) => v.max(floor),
+            None if i == 0 => 0.0,
+            None if i == last => 1.0f32.max(floor),
+            None => {
+                // Доля до следующего стопа с позицией (или до конца).
+                let (mut next, mut steps) = (1.0f32, (last - i + 1) as f32);
+                for (j, (_, p)) in raw.iter().enumerate().skip(i + 1) {
+                    if let Some(v) = p {
+                        next = v.max(floor);
+                        steps = (j - i + 1) as f32;
+                        break;
+                    }
+                }
+                floor + (next - floor) / steps
+            }
+        };
+        floor = at;
+        out.push((*colour, at));
+    }
+    out
+}
+
+/// Цвет градиента в точке `t` (0..1) по расставленным стопам.
+fn colour_at(stops: &[(crate::value::Color, f32)], t: f32) -> crate::value::Color {
+    let Some(first) = stops.first() else {
+        return crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+    };
+    if t <= first.1 {
+        return first.0;
+    }
+    for pair in stops.windows(2) {
+        let (a, b) = (&pair[0], &pair[1]);
+        if t >= a.1 && t <= b.1 {
+            let k = if b.1 > a.1 { (t - a.1) / (b.1 - a.1) } else { 1.0 };
+            return crate::value::Color {
+                r: a.0.r + (b.0.r - a.0.r) * k,
+                g: a.0.g + (b.0.g - a.0.g) * k,
+                b: a.0.b + (b.0.b - a.0.b) * k,
+                a: a.0.a + (b.0.a - a.0.a) * k,
+            };
+        }
+    }
+    stops.last().map(|s| s.0).unwrap_or(first.0)
 }
 
 /// Растр или рисунок — по содержимому файла, а не по расширению: у `data:`-URI
@@ -211,11 +374,36 @@ fn svg_size(markup: &str) -> Intrinsic {
 
 fn read_bytes(src: &str) -> Option<Vec<u8>> {
     if let Some(rest) = src.strip_prefix("data:") {
-        let payload = rest.split_once("base64,")?.1;
-        return base64_decode(payload);
+        let (head, payload) = rest.split_once(',')?;
+        // RFC 2397: без пометки `base64` содержимое лежит прямо в адресе,
+        // процентно-кодированным (`%3Csvg…`). Такое встречается у рисунков.
+        if head.ends_with("base64") {
+            return base64_decode(payload);
+        }
+        return Some(percent_decode(payload));
     }
     let path = src.strip_prefix("file:///").unwrap_or(src);
     std::fs::read(path).ok()
+}
+
+/// Процентное кодирование адресов: `%3C` → `<`. Остальные знаки как есть.
+fn percent_decode(text: &str) -> Vec<u8> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(v) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+        {
+            out.push(v);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    out
 }
 
 /// Base64 без зависимости: нужен ровно один раз и только на чтение.
