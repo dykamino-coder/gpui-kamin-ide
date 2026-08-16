@@ -2996,6 +2996,21 @@ impl Window {
         result
     }
 
+    /// KaminIDE patch: нарисовать поддерево ПОД всем остальным кадром.
+    ///
+    /// Нужен отрицательному `z-index` из HTML (CSS 2.1 §9.9, шаг 3): элемент
+    /// в потоке остаётся на своём месте раскладки, но его краска ложится ниже
+    /// содержимого, нарисованного до него.
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    pub fn paint_bottom_layer<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        self.invalidator.debug_assert_paint();
+        self.next_frame.scene.push_bottom_layer();
+        let result = f(self);
+        self.next_frame.scene.pop_layer();
+        result
+    }
+
     /// Paint one or more drop shadows into the scene for the next frame at the current z-index.
     ///
     /// This method should only be called as part of the paint phase of element drawing.

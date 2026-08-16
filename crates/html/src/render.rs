@@ -681,7 +681,15 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 continue;
             }
             let _ = hoist_margins;
-            out.push(content_sized(layered(built, &e.style, layer_ok), &e.style));
+            let mut done = content_sized(layered(built, &e.style, layer_ok), &e.style);
+            // Релятивный элемент с отрицательным `z-index`: место в потоке —
+            // своё, краска — под содержимым до него (CSS 2.1 §9.9, шаг 3).
+            if e.style.z_index.is_some_and(|z| z < 0)
+                && e.style.position == Some(crate::computed::Position::Relative)
+            {
+                done = crate::interact::Underlay::new(done).into_any_element();
+            }
+            out.push(done);
         }
     }
     if !pending.is_empty() {
@@ -1427,8 +1435,18 @@ fn by_layer(mut nodes: Vec<Node>) -> Vec<Node> {
     // есть его координата. `z-index` меняет только порядок отрисовки, а
     // перестановка меняла и раскладку — абсолютный блок с `z-index: -1`
     // уезжал к началу родителя и накрывал собой абзац над собой.
-    let movable =
-        |e: &Element| e.style.z_index.is_some_and(|z| z < 0) && !at_static_position(&e.style);
+    // Двигать можно только ВНЕПОТОЧНЫЙ элемент: у релятивного слот в потоке и
+    // есть его координата, перестановка меняла раскладку всего родителя
+    // (красная полоса `overlapped-red` уезжала в начало страницы). Релятивный
+    // с отрицательным `z-index` остаётся на месте и рисуется подложкой.
+    let movable = |e: &Element| {
+        e.style.z_index.is_some_and(|z| z < 0)
+            && matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            )
+            && !at_static_position(&e.style)
+    };
     let has_negative = nodes.iter().any(|n| match n {
         Node::Element(e) => movable(e),
         Node::Text(_) => false,

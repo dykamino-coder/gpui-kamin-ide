@@ -115,6 +115,17 @@ impl Scene {
         self.paint_operations.push(PaintOperation::EndLayer);
     }
 
+    /// KaminIDE patch: слой ПОД всем нарисованным кадром.
+    ///
+    /// Порядок примитива берётся из дерева границ и начинается с 1; ноль не
+    /// выдаётся никому, поэтому геометрия этого слоя ложится ниже любой
+    /// другой. Нужен отрицательному `z-index` из HTML: элемент в потоке обязан
+    /// рисоваться ПОД содержимым, которое идёт до него.
+    pub fn push_bottom_layer(&mut self) {
+        self.layer_stack.push(0);
+        self.paint_operations.push(PaintOperation::StartBottomLayer);
+    }
+
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
         let mut primitive = primitive.into();
         let clipped_bounds = primitive
@@ -170,6 +181,7 @@ impl Scene {
             match operation {
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
+                PaintOperation::StartBottomLayer => self.push_bottom_layer(),
                 PaintOperation::EndLayer => self.pop_layer(),
             }
         }
@@ -243,6 +255,8 @@ pub(crate) enum PrimitiveKind {
 pub(crate) enum PaintOperation {
     Primitive(Primitive),
     StartLayer(Bounds<ScaledPixels>),
+    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
+    StartBottomLayer,
     EndLayer,
 }
 
