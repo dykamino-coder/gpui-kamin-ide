@@ -53,12 +53,16 @@ impl Render for Page {
         if std::env::var("HTML_VIEWPORT").is_ok() {
             eprintln!("VIEWPORT {:?}", opts.viewport);
         }
+        let children = render(self.doc.nodes(), &opts);
+        if std::env::var("HTML_VIEWPORT").is_ok() {
+            eprintln!("BUILT {} детей", children.len());
+        }
         div()
             .w(px(opts.viewport.0))
             .h(px(opts.viewport.1))
             .bg(rgb(0xffffff))
             .text_size(px(16.))
-            .children(render(self.doc.nodes(), &opts))
+            .children(children)
     }
 }
 
@@ -453,6 +457,13 @@ fn attr_value(tag: &str, name: &str) -> Option<String> {
 }
 
 fn main() {
+    // Паника В КАДРЕ не роняет процесс: оконный вызов Windows её глотает, и
+    // на экране молча остаётся предыдущая страница — стенд считает её пустой.
+    // След в файле — единственный способ увидеть такую панику.
+    std::panic::set_hook(Box::new(|info| {
+        let _ = std::fs::write("target/wpt-panic.txt", format!("{info}"));
+        eprintln!("{info}");
+    }));
     let args: Vec<String> = std::env::args().collect();
     let list = args.get(1).cloned().unwrap_or_default();
     let w: f32 = args.get(2).and_then(|v| v.parse().ok()).unwrap_or(800.);
@@ -467,7 +478,14 @@ fn main() {
         .unwrap_or_default()
         .lines()
         .filter_map(|line| line.split_once('|'))
-        .map(|(a, b)| (a.to_string(), b.to_string()))
+        // Хвост после ВТОРОЙ черты отрезается: списки часто нарезаются из
+        // ОТЧЁТА, где третьим полем стоит вердикт, и он молча приклеивался к
+        // пути эталона. Путь становился битым, страница показывалась пустой,
+        // и пара выглядела сломанной по несуществующей причине.
+        .map(|(a, b)| {
+            let b = b.split('|').next().unwrap_or(b).trim();
+            (a.trim().to_string(), b.to_string())
+        })
         .collect();
     if pairs.is_empty() {
         eprintln!("пустой список пар: {list}");
@@ -580,8 +598,23 @@ fn main() {
                 // устоявшемуся кадру. Прежние 120 шагов (около двух секунд)
                 // такие страницы обрезали, и одна и та же пара скакала между
                 // прогонами на 15% расхождения.
-                for _ in 0..400 {
+                for step in 0..400u32 {
                     Timer::after(Duration::from_millis(16)).await;
+                    // Окно ИНОГДА не перерисовывается после подмены документа:
+                    // экран продолжает показывать разделитель, и страница
+                    // числится пустой (`column-auto-repeat-auto-001`: эталон
+                    // одиночно рисуется, в паре — нет; след `sssb`).
+                    // Напоминание раз в полсекунды выводит его из этого
+                    // состояния; на здоровых показах до него не доходит —
+                    // кадр устаивается раньше.
+                    if step % 30 == 29 {
+                        let _ = cx.update_window(window.into(), |view, window, cx| {
+                            if let Ok(page) = view.downcast::<Page>() {
+                                page.update(cx, |_, cx| cx.notify());
+                            }
+                            window.refresh();
+                        });
+                    }
                     let shot = capture(hwnd);
                     let Some(now) = shot else { continue };
                     let changed = prev.as_ref().is_none_or(|before| *before != now.2);
