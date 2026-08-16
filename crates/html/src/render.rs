@@ -3824,11 +3824,21 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             e.children
                 .iter()
                 .filter_map(|n| match n {
-                    Node::Element(item) => Some(if row_dir {
-                        item_height(item, merged, opts)
-                    } else {
-                        item_width(item)
-                    }),
+                    Node::Element(item) => {
+                        let size = if row_dir {
+                            item_height(item, merged, opts)
+                        } else {
+                            item_width(item)
+                        };
+                        // Вклад элемента НА НЕСКОЛЬКО дорожек делится между
+                        // ними (css-grid-2 §11.5.1): `width: 200px` при
+                        // `span 2` — это две дорожки по сто, а не одна в
+                        // двести. Пока считали целиком, число повторов
+                        // выходило 300/200 = 1, и вся укладка шла столбиком
+                        // (`column-auto-repeat-auto-001`).
+                        let (_, span) = lane_span(item, usize::MAX, row_dir);
+                        Some(size / span.max(1) as f32)
+                    }
                     _ => None,
                 })
                 .fold(0.0f32, f32::max)
