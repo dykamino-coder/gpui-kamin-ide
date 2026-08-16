@@ -3526,7 +3526,32 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // вертикальном письме строка идёт сверху вниз, и дорожки колонок
     // становятся физическими рядами. Своей ветки у таблицы не было, и её
     // сетка строилась физической — мимо уже переставленных осей.
-    let tracks = track_list(cols, e.style.table_fixed == Some(true));
+    // Ширины колонок фиксированной раскладки — из ПЕРВОГО ряда
+    // (CSS 2.1 §17.5.2.1): ячейка с шириной держит её, остальные делят
+    // остаток поровну.
+    let first_row_widths: Vec<Option<f32>> = row_elements
+        .first()
+        .map(|row| {
+            let mut out = vec![];
+            for c in &row.children {
+                if let Node::Element(cell) = c
+                    && is_cell(cell)
+                {
+                    let span = cell
+                        .attr("colspan")
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(1)
+                        .max(1);
+                    match cell.style.width {
+                        Some(Len::Px(v)) if span == 1 => out.push(Some(v)),
+                        _ => out.extend(std::iter::repeat_n(None, span)),
+                    }
+                }
+            }
+            out
+        })
+        .unwrap_or_default();
+    let tracks = track_list(cols, e.style.table_fixed == Some(true), &first_row_widths);
     // Таблица ЗАДАННОЙ высоты раздаёт лишнее место рядам БЕЗ своей высоты
     // (CSS 2.1 §17.5.3): ряд с высотой (своей или ячеек) держит её, остальные
     // делят остаток. Без этого средний ряд решётки 64/auto/64 в таблице 224px
@@ -3603,10 +3628,16 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
 /// переносов, сохранённых пробелов и вложенных коробок; снят по замеру:
 /// css-text +1, flexbox +1, css-grid +1, поломок нет.
 /// `min-content` снизу не даёт колонке сжаться в ноль на узкой панели.
-fn track_list(cols: u16, fixed: bool) -> Vec<gpui::GridTrack> {
-    // `table-layout: fixed` — колонки равной ширины, содержимое не меряется.
+fn track_list(cols: u16, fixed: bool, first_row: &[Option<f32>]) -> Vec<gpui::GridTrack> {
+    // `table-layout: fixed` — ширины из первого ряда, безразмерные колонки
+    // делят остаток поровну; содержимое не меряется.
     if fixed {
-        return (0..cols).map(|_| gpui::GridTrack::Fraction(1.0)).collect();
+        return (0..cols as usize)
+            .map(|i| match first_row.get(i).copied().flatten() {
+                Some(w) => gpui::GridTrack::Pixels(px(w)),
+                None => gpui::GridTrack::Fraction(1.0),
+            })
+            .collect();
     }
     // Все колонки по содержимому. Остаток строки НЕ отдаётся последней:
     // раньше она забирала его целиком, и таблица из двух коротких ячеек
