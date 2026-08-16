@@ -3158,11 +3158,29 @@ impl Computed {
                 let joined: Vec<&str> = repeat.iter().map(|w| w.as_str()).collect();
                 set("border-image-repeat", &joined.join(" "));
             }
-            if let Some(width) = parts.get(1) {
-                set("border-image-width", width);
+            // Укладка (`stretch|repeat|round|space`) по грамматике `||` может
+            // стоять и ПОСЛЕ ширины без своей косой: `/ 0px space round`.
+            // Слова укладки вынимаются из хвостовых частей, остаток — ширина
+            // и вылет.
+            let mut tail_repeat: Vec<String> = vec![];
+            let mut strip = |part: &str, reps: &mut Vec<String>| -> String {
+                let (found, rest): (Vec<&str>, Vec<&str>) = part
+                    .split_whitespace()
+                    .partition(|w| matches!(*w, "stretch" | "repeat" | "round" | "space"));
+                reps.extend(found.into_iter().map(str::to_string));
+                rest.join(" ")
+            };
+            let width = parts.get(1).map(|p| strip(p, &mut tail_repeat));
+            let outset = parts.get(2).map(|p| strip(p, &mut tail_repeat));
+            drop(strip);
+            if let Some(width) = width.filter(|w| !w.is_empty()) {
+                set("border-image-width", &width);
             }
-            if let Some(outset) = parts.get(2) {
-                set("border-image-outset", outset);
+            if let Some(outset) = outset.filter(|o| !o.is_empty()) {
+                set("border-image-outset", &outset);
+            }
+            if !tail_repeat.is_empty() {
+                set("border-image-repeat", &tail_repeat.join(" "));
             }
         } else {
             set(name, v);
