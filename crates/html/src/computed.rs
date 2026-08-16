@@ -3060,10 +3060,15 @@ impl Computed {
                     if let Some(n) = t.strip_suffix('%') {
                         return n.parse().ok().map(|k: f32| BorderImageWidth::Pct(k / 100.0));
                     }
+                    // Голое число — множитель толщины рамки, и проверяется ДО
+                    // Len: та принимает числа без единиц как точки, и
+                    // `border-image-width: 1` превращался в рамку 1px.
+                    if let Ok(k) = t.parse::<f32>() {
+                        return Some(BorderImageWidth::Times(k));
+                    }
                     match Len::parse(t) {
                         Some(Len::Px(v)) => Some(BorderImageWidth::Px(v)),
-                        // Голое число — множитель толщины рамки.
-                        _ => t.parse().ok().map(BorderImageWidth::Times),
+                        _ => None,
                     }
                 };
                 let words: Vec<&str> = value.split_whitespace().collect();

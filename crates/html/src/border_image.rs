@@ -139,14 +139,15 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                                 cells.len()
                             );
                         }
-                        for cell in cells {
-                            paint_slice(
-                                window,
-                                &raster,
-                                (iw, ih),
-                                (sx, sy, sw, sh),
-                                cell,
+                        for (cell, (fx, fy)) in cells {
+                            // Источник обрезанной копии — та же доля куска.
+                            let part = (
+                                sx + fx.0 * sw,
+                                sy + fy.0 * sh,
+                                (fx.1 - fx.0) * sw,
+                                (fy.1 - fy.0) * sh,
                             );
+                            paint_slice(window, &raster, (iw, ih), part, cell);
                         }
                     }
                 }
@@ -165,12 +166,14 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
 /// Растянутый кусок — это один прямоугольник во всю полосу. Мостящийся (`repeat`,
 /// `round`, `space`) режется на копии своего размера: вдоль полосы их столько,
 /// сколько влезает, поперёк кусок всё равно растягивается.
+type Cell = ((f32, f32, f32, f32), ((f32, f32), (f32, f32)));
+
 fn pieces(
     mode: (Tiling, Tiling),
     dest: (f32, f32, f32, f32),
     src: (f32, f32),
     tile: (bool, bool),
-) -> Vec<(f32, f32, f32, f32)> {
+) -> Vec<Cell> {
     let (dx, dy, dw, dh) = dest;
     let xs = if tile.0 {
         along(mode.0, dw, src.0)
@@ -185,7 +188,19 @@ fn pieces(
     let mut out = vec![];
     for (oy, h) in &ys {
         for (ox, w) in &xs {
-            out.push((dx + ox, dy + oy, *w, *h));
+            // Копия не выходит за свою полосу: девятка клипается по областям
+            // (css-backgrounds-3 §6.2), а `repeat` кладёт копии от середины и
+            // крайние выступают. Видимой части копии отвечает та же ДОЛЯ
+            // исходного куска — обрезанная плитка показывает свой край, а не
+            // сжатый целый кусок.
+            let (x0, x1) = (ox.max(0.0), (ox + w).min(dw));
+            let (y0, y1) = (oy.max(0.0), (oy + h).min(dh));
+            if x1 <= x0 || y1 <= y0 {
+                continue;
+            }
+            let fx = ((x0 - ox) / w, (x1 - ox) / w);
+            let fy = ((y0 - oy) / h, (y1 - oy) / h);
+            out.push(((dx + x0, dy + y0, x1 - x0, y1 - y0), (fx, fy)));
         }
     }
     out
