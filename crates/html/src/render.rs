@@ -195,7 +195,38 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
         let vertical = matches!(g.angle_deg as i32, 0 | 180);
         let horizontal = matches!(g.angle_deg as i32, 90 | 270);
         let reverse = matches!(g.angle_deg as i32, 0 | 270);
-        if g.stops.len() > 4 && !g.radial && (vertical || horizontal) {
+        // Стопы в точках рисуются полосами точной ширины: доля от них не
+        // считается, длина оси известна только коробке. Отсчёт полос — от
+        // верха/лева; обратное направление (0/270deg) идёт от низа/права.
+        if !g.stops_px.is_empty() && !g.radial && (vertical || horizontal) {
+            for pair in g.stops_px.windows(2) {
+                let (a, b) = (pair[0], pair[1]);
+                let (p0, p1) = (a.1, b.1);
+                if p1 <= p0 {
+                    continue;
+                }
+                let (from, to) = (a.0, b.0);
+                let band = crate::computed::Gradient {
+                    angle_deg: if vertical { 180.0 } else { 90.0 },
+                    radial: false,
+                    circle: false,
+                    from: if reverse { to } else { from },
+                    to: if reverse { from } else { to },
+                    stops: vec![(from, 0.0), (to, 1.0)],
+                    stops_px: vec![],
+                };
+                let layer = div().absolute().bg(crate::apply::fill(&band));
+                out.push(
+                    match (vertical, reverse) {
+                        (true, false) => layer.left_0().right_0().top(px(p0)).h(px(p1 - p0)),
+                        (true, true) => layer.left_0().right_0().bottom(px(p0)).h(px(p1 - p0)),
+                        (false, false) => layer.top_0().bottom_0().left(px(p0)).w(px(p1 - p0)),
+                        (false, true) => layer.top_0().bottom_0().right(px(p0)).w(px(p1 - p0)),
+                    }
+                    .into_any_element(),
+                );
+            }
+        } else if g.stops.len() > 4 && !g.radial && (vertical || horizontal) {
             // Полоса перекрывает фон родителя целиком, поэтому скругление
             // приходится повторять на крайних полосах: иначе углы блока
             // становятся прямыми.
@@ -224,6 +255,7 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
                     from,
                     to,
                     stops: vec![(from, 0.0), (to, 1.0)],
+                    stops_px: vec![],
                 };
                 let mut layer = div().absolute().bg(crate::apply::fill(&band));
                 // «Первая» полоса по направлению отрисовки, а не по списку:

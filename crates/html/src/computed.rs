@@ -307,6 +307,10 @@ pub struct Gradient {
     pub to: Color,
     /// Все стопы с позициями в долях: `[(цвет, доля)]`, включая крайние.
     pub stops: Vec<(Color, f32)>,
+    /// Стопы, заданные в ТОЧКАХ (`yellow 0px 28px`): доля от них не считается
+    /// без длины оси, поэтому рисуются полосами в точках. Пусто, если хоть у
+    /// одного стопа позиция не в точках.
+    pub stops_px: Vec<(Color, f32)>,
 }
 
 /// `border-image`: картинка вместо рамки (css-backgrounds-3 §6).
@@ -3959,19 +3963,38 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         _ => 180.0,
     };
 
-    let raw: Vec<(Color, Option<f32>)> = parts[idx..]
-        .iter()
-        .filter_map(|p| {
-            let mut it = p.split_whitespace();
-            let colour = Color::parse(it.next()?)?;
-            let pos = it.next().and_then(|t| {
-                t.strip_suffix('%')
-                    .and_then(|n| n.trim().parse::<f32>().ok())
-                    .map(|n| n / 100.0)
-            });
-            Some((colour, pos))
-        })
-        .collect();
+    // Стоп несёт до ДВУХ позиций (css-images-4 §3.4.1): `yellow 0% 25%` — это
+    // два стопа одного цвета, так записывают жёсткие полосы. Цвет с запятыми
+    // внутри (`rgba(…)`) остаётся одним словом только при резке вне скобок.
+    let mut raw: Vec<(Color, Option<f32>)> = vec![];
+    let mut raw_px: Vec<(Color, Option<f32>)> = vec![];
+    let mut any_pct = false;
+    for p in &parts[idx..] {
+        let words = split_outside_parens(p);
+        let Some(colour) = words.first().and_then(|w| Color::parse(w)) else {
+            continue;
+        };
+        if words.len() == 1 {
+            raw.push((colour, None));
+            raw_px.push((colour, None));
+            continue;
+        }
+        for t in &words[1..] {
+            if let Some(n) = t.strip_suffix('%').and_then(|n| n.trim().parse::<f32>().ok()) {
+                any_pct = true;
+                raw.push((colour, Some(n / 100.0)));
+                raw_px.push((colour, None));
+            } else if let Some(Len::Px(v)) = Len::parse(t) {
+                // Позиция в точках: долей не выразить, длина оси известна
+                // только при отрисовке. Хранится своим списком.
+                raw.push((colour, None));
+                raw_px.push((colour, Some(v)));
+            } else {
+                raw.push((colour, None));
+                raw_px.push((colour, None));
+            }
+        }
+    }
     if raw.len() < 2 {
         return None;
     }
@@ -3982,6 +4005,13 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         .enumerate()
         .map(|(i, (c, pos))| (*c, pos.unwrap_or(i as f32 / last as f32)))
         .collect();
+    // Точечные стопы пригодны к отрисовке, только когда позиции есть у ВСЕХ:
+    // смешение точек с долями требует длины оси уже при разборе.
+    let stops_px: Vec<(Color, f32)> = if !any_pct && raw_px.iter().all(|(_, p)| p.is_some()) {
+        raw_px.iter().map(|(c, p)| (*c, p.unwrap_or(0.0))).collect()
+    } else {
+        vec![]
+    };
     Some(Gradient {
         angle_deg: angle,
         radial,
@@ -3989,6 +4019,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         from: stops[0].0,
         to: stops[last].0,
         stops,
+        stops_px,
     })
 }
 fn parse_shadows(v: &str) -> Vec<Shadow> {

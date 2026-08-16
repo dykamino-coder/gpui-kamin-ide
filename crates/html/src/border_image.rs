@@ -117,9 +117,21 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                         let unit = if row == 1 && col == 1 {
                             // Середина: ширина копии масштабируется как у
                             // ВЕРХНЕГО края, высота — как у ЛЕВОГО (§6.2).
-                            let kx = rows[0] / src_rows[0].max(0.0001);
-                            let ky = cols[0] / src_cols[0].max(0.0001);
-                            (sw * kx.max(0.0001), sh * ky.max(0.0001))
+                            // Вырожденный множитель (край нулевой толщины —
+                            // `border-style: none`) считается единицей: копия
+                            // идёт своими точками и центрируется, в окно
+                            // попадает середина образа (`slice-fill-003`).
+                            let kx = if rows[0] > 0.0 && src_rows[0] > 0.0 {
+                                rows[0] / src_rows[0]
+                            } else {
+                                1.0
+                            };
+                            let ky = if cols[0] > 0.0 && src_cols[0] > 0.0 {
+                                cols[0] / src_cols[0]
+                            } else {
+                                1.0
+                            };
+                            (sw * kx, sh * ky)
                         } else if row == 1 {
                             (dw.max(1.0), sh * dw / sw.max(0.0001))
                         } else if col == 1 {
