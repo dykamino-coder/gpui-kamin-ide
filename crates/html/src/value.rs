@@ -240,7 +240,9 @@ impl Color {
 
     /// `hsl(210 40% 50% / 80%)` и `hsl(210, 40%, 50%)`.
     fn parse_hsl(inner: &str) -> Option<Self> {
-        let cleaned = inner.replace('/', " ");
+        // `none` — отсутствующий компонент, при счёте он ноль
+        // (CSS Color 4 §4.4).
+        let cleaned = inner.replace('/', " ").replace("none", "0");
         let parts: Vec<&str> = cleaned
             .split([',', ' '])
             .map(str::trim)

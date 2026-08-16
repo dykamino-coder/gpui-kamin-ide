@@ -655,6 +655,13 @@ pub struct Computed {
     pub opacity: Option<f32>,
 
     pub background: Option<Color>,
+    /// Относительный цвет фона (css-color-5): функция с `from currentColor`
+    /// не решается при разборе — она наследуется КАК ФУНКЦИЯ и считается от
+    /// цвета каждого элемента заново.
+    pub background_rcs: Option<String>,
+    /// `background-color: inherit`: фон не наследуемый, слово переносит
+    /// вычисленное значение родителя (включая нерешённую функцию).
+    pub(crate) background_inherit: bool,
     pub gradient: Option<Gradient>,
     pub shadows: Vec<Shadow>,
     /// Внутренние тени (`box-shadow: inset`) — отдельным списком: рисуются
@@ -1702,6 +1709,17 @@ impl Computed {
             // — и цвет, и картинку, и режим повтора. Раньше побеждало что-то
             // одно, и картинка терялась при заданном цвете.
             "background" | "background-color" => {
+                if v == "inherit" {
+                    self.background_inherit = true;
+                    return;
+                }
+                // Относительный цвет от `currentColor` решается не здесь:
+                // цвет элемента известен только после каскада, а функция
+                // наследуется нерешённой (css-color-5 §4.1).
+                if v.contains("(from ") && !v.contains("gradient(") {
+                    self.background_rcs = Some(v.to_string());
+                    return;
+                }
                 // Фон — СПИСОК слоёв через запятую (css-backgrounds-3 §3.10):
                 // первый рисуется ПОВЕРХ остальных, цвет разрешён только
                 // последнему. Рисуем верхний слой и цвет нижнего: своего места

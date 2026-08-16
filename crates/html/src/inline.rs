@@ -382,6 +382,26 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.color = own.color.or(parent.color);
+    // `background-color: inherit` переносит вычисленное значение родителя —
+    // вместе с нерешённой относительной функцией (css-color-5 §4.1).
+    if own.background_inherit {
+        c.background = parent.background;
+        c.background_rcs = own.background_rcs.clone().or(parent.background_rcs.clone());
+    }
+    // Относительный цвет решается ЗДЕСЬ: только теперь известен цвет самого
+    // элемента. Функция остаётся в поле — её унаследуют дети и решат своим
+    // цветом заново.
+    if let Some(expr) = c.background_rcs.clone() {
+        let current = c.color.unwrap_or(crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
+        if let Some(resolved) = crate::color_space::resolve_relative(&expr, current) {
+            c.background = Some(resolved);
+        }
+    }
     c.font_size = own.font_size.or(parent.font_size);
     c.font_weight = own.font_weight.or(parent.font_weight);
     c.italic = own.italic.or(parent.italic);

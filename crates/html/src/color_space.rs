@@ -383,6 +383,157 @@ fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
     ))
 }
 
+
+/// Относительный цвет (css-color-5 §4): `hsl(from currentColor h s l)`.
+///
+/// Тождественные каналы дают сам базовый цвет: преобразование туда-обратно в
+/// плавающих пространствах без потерь. Подстановки каналов считаются честно
+/// для `rgb()` и `hsl()` — прочим пространствам хватает тождества: обратные
+/// преобразования им пока не заведены.
+pub(crate) fn resolve_relative(
+    expr: &str,
+    current: crate::value::Color,
+) -> Option<crate::value::Color> {
+    use crate::value::Color;
+    let open = expr.find('(')?;
+    let name = expr[..open].trim();
+    let inner = expr[open + 1..].trim().strip_suffix(')')?;
+    let rest = inner.trim().strip_prefix("from ")?;
+    let words = crate::computed::split_outside_parens(rest);
+    let base_tok = words.first()?;
+    let base = if base_tok.eq_ignore_ascii_case("currentcolor") {
+        current
+    } else {
+        Color::parse(base_tok)?
+    };
+    // Прозрачность после косой: `alpha` — своя, число — новая.
+    let mut channels: Vec<&str> = vec![];
+    let mut alpha = base.a;
+    let mut after_slash = false;
+    for w in words[1..].iter().map(|w| w.as_str()) {
+        if w == "/" {
+            after_slash = true;
+        } else if after_slash {
+            alpha = match w {
+                "alpha" => base.a,
+                t => t
+                    .strip_suffix('%')
+                    .and_then(|n| n.parse::<f32>().ok().map(|v| v / 100.0))
+                    .or_else(|| t.parse().ok())
+                    .unwrap_or(base.a),
+            };
+        } else {
+            channels.push(w);
+        }
+    }
+    let identity: &[&str] = match name {
+        "rgb" | "rgba" => &["r", "g", "b"],
+        "hsl" | "hsla" => &["h", "s", "l"],
+        "hwb" => &["h", "w", "b"],
+        "lab" | "oklab" => &["l", "a", "b"],
+        "lch" | "oklch" => &["l", "c", "h"],
+        "color" => {
+            // Первый канал — имя пространства.
+            let space = channels.first().copied().unwrap_or("");
+            let rest = &channels[1..];
+            let names: &[&str] = if space.starts_with("xyz") {
+                &["x", "y", "z"]
+            } else {
+                &["r", "g", "b"]
+            };
+            return (rest == names).then_some(Color { a: alpha, ..base });
+        }
+        _ => return None,
+    };
+    if channels == identity {
+        return Some(Color { a: alpha, ..base });
+    }
+    match name {
+        "rgb" | "rgba" => {
+            let chan = |t: &str| match t {
+                "r" => Some(base.r),
+                "g" => Some(base.g),
+                "b" => Some(base.b),
+                t => t
+                    .strip_suffix('%')
+                    .and_then(|n| n.parse::<f32>().ok().map(|v| v / 100.0))
+                    .or_else(|| t.parse::<f32>().ok().map(|v| v / 255.0)),
+            };
+            Some(Color {
+                r: chan(channels.first()?)?.clamp(0.0, 1.0),
+                g: chan(channels.get(1)?)?.clamp(0.0, 1.0),
+                b: chan(channels.get(2)?)?.clamp(0.0, 1.0),
+                a: alpha,
+            })
+        }
+        "hsl" | "hsla" => {
+            let (h, s, l) = rgb_to_hsl(base);
+            let chan = |t: &str, own: f32, pct: bool| match t {
+                "h" => Some(h),
+                "s" => Some(s),
+                "l" => Some(l),
+                t => {
+                    let _ = own;
+                    if pct {
+                        t.strip_suffix('%')
+                            .and_then(|n| n.parse::<f32>().ok().map(|v| v / 100.0))
+                            .or_else(|| t.parse().ok())
+                    } else {
+                        t.strip_suffix("deg")
+                            .unwrap_or(t)
+                            .parse::<f32>()
+                            .ok()
+                    }
+                }
+            };
+            let (h, s, l) = (
+                chan(channels.first()?, h, false)?,
+                chan(channels.get(1)?, s, true)?.clamp(0.0, 1.0),
+                chan(channels.get(2)?, l, true)?.clamp(0.0, 1.0),
+            );
+            let (r, g, b) = hsl_to_rgb(h, s, l);
+            Some(Color { r, g, b, a: alpha })
+        }
+        _ => None,
+    }
+}
+
+/// sRGB → HSL: тон в градусах, насыщенность и светлота в долях.
+fn rgb_to_hsl(c: crate::value::Color) -> (f32, f32, f32) {
+    let (max, min) = (c.r.max(c.g).max(c.b), c.r.min(c.g).min(c.b));
+    let l = (max + min) / 2.0;
+    if (max - min).abs() < 1e-6 {
+        return (0.0, 0.0, l);
+    }
+    let d = max - min;
+    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let h = if (max - c.r).abs() < 1e-6 {
+        ((c.g - c.b) / d).rem_euclid(6.0)
+    } else if (max - c.g).abs() < 1e-6 {
+        (c.b - c.r) / d + 2.0
+    } else {
+        (c.r - c.g) / d + 4.0
+    };
+    (h * 60.0, s, l)
+}
+
+/// HSL → sRGB.
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let hp = h.rem_euclid(360.0) / 60.0;
+    let x = c * (1.0 - (hp % 2.0 - 1.0).abs());
+    let (r, g, b) = match hp as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    let m = l - c / 2.0;
+    (r + m, g + m, b + m)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
