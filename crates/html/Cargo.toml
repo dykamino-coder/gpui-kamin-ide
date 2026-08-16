@@ -49,3 +49,10 @@ serde_json.workspace = true
 # Выгрузка снимков разошедшихся пар (`WPT_DUMP=1`): без картинки причину
 # расхождения приходится угадывать по одному числу.
 png = "0.18.1"
+
+[dev-dependencies.image]
+version = "0.25"
+default-features = false
+
+[dev-dependencies.smallvec]
+version = "1"

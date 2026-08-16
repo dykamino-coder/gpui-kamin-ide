@@ -3136,7 +3136,13 @@ impl Computed {
             set(name, v);
         }
         drop(set);
-        self.border_image = (!image.src.is_empty()).then_some(image);
+        // Запись хранится и БЕЗ источника: лонгхенды приходят в любом порядке,
+        // и `border-image-slice` до `border-image-source` иначе выбрасывался —
+        // источник, пришедший следом, получал срезы по умолчанию (вся
+        // картинка), и рамка рисовалась четырьмя сжатыми копиями образа.
+        // Не рисовать и не подавлять обычную рамку при пустом источнике —
+        // забота потребителей.
+        self.border_image = Some(image);
     }
 
     pub fn borders(&self) -> Sides {

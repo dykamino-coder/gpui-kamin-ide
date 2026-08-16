@@ -79,7 +79,56 @@ pub fn svg_markup_to_image(
 /// образ с известным размером. Декодер тот же, что у самого GPUI — второй
 /// комплект кодеков в свой крейт тащить незачем.
 ///
-/// `None`, если формат не распознан: вызывающий просто не нарисует фон.
+/// KaminIDE patch: вырезать из образа прямоугольник и растянуть его до
+/// целевого размера В НОВЫЙ образ.
+///
+/// Нужен рамке-картинке (`border-image`): кусок в один знак, растянутый на
+/// видеокарте, размывается в поля атласа (кромка уходила в прозрачность
+/// градиентом), а заранее растянутый на процессоре кусок рисуется 1:1 и
+/// сэмплируется чисто. Координаты — в точках растра.
+pub fn crop_image(
+    data: &crate::RenderImage,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    out_w: u32,
+    out_h: u32,
+) -> Option<Arc<crate::RenderImage>> {
+    use image::Frame;
+
+    let size = data.size(0);
+    let (full_w, full_h) = (size.width.0 as u32, size.height.0 as u32);
+    let x = x.min(full_w.saturating_sub(1));
+    let y = y.min(full_h.saturating_sub(1));
+    let w = w.clamp(1, full_w - x);
+    let h = h.clamp(1, full_h - y);
+    let bytes = data.as_bytes(0)?;
+    let mut out = Vec::with_capacity((w * h * 4) as usize);
+    for row in y..y + h {
+        let from = ((row * full_w + x) * 4) as usize;
+        out.extend_from_slice(&bytes[from..from + (w * 4) as usize]);
+    }
+    let buffer = image::RgbaImage::from_raw(w, h, out)?;
+    // Потолок здравого смысла: рамка шире экрана не бывает, а битые срезы
+    // иначе просили бы гигабайты.
+    let out_w = out_w.clamp(1, 4096);
+    let out_h = out_h.clamp(1, 4096);
+    let buffer = if (out_w, out_h) != (w, h) {
+        image::imageops::resize(&buffer, out_w, out_h, image::imageops::FilterType::Triangle)
+    } else {
+        buffer
+    };
+    Some(Arc::new(crate::RenderImage::new(
+        smallvec::SmallVec::from_elem(Frame::new(buffer), 1),
+    )))
+}
+
+/// KaminIDE patch: растровая картинка из байтов в готовый образ.
+///
+/// Фон `background-image: url(...)` — заливка, а не элемент: ей нужен уже
+/// декодированный образ с известным размером. Декодер тот же, что у самого
+/// GPUI. `None`, если формат не распознан.
 pub fn raster_bytes_to_image(bytes: &[u8]) -> Option<Arc<crate::RenderImage>> {
     use image::Frame;
 

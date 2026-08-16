@@ -772,7 +772,11 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // рамка видна).
     let sides: Vec<_> = c.border_colors.iter().flatten().collect();
     let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
-    if c.border_image.is_none()
+    let border_image_on = c
+        .border_image
+        .as_ref()
+        .is_some_and(|bi| !bi.src.is_empty());
+    if !border_image_on
         && let Some(bc) = uniform.copied().copied().or(c.border_color)
     {
         d = d.border_color(bc.to_hsla());

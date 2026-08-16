@@ -17,7 +17,7 @@ use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 
 /// Слой рамки-картинки поверх коробки.
 pub fn layer(c: &Computed) -> Option<AnyElement> {
-    let image = c.border_image.clone()?;
+    let image = c.border_image.clone().filter(|bi| !bi.src.is_empty())?;
     let family = c.font_family.clone().unwrap_or_default();
     let size = match c.font_size {
         Some(Len::Px(v)) => v,
@@ -115,6 +115,12 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                             (sw, sh),
                             (col == 1, row == 1),
                         );
+                        if std::env::var("HTML_BI").is_ok() {
+                            eprintln!(
+                                "BI r{row} c{col} src=({sx},{sy},{sw},{sh}) dest=({dx:.0},{dy:.0},{dw:.0},{dh:.0}) cells={}",
+                                cells.len()
+                            );
+                        }
                         for cell in cells {
                             paint_slice(
                                 window,
@@ -206,11 +212,18 @@ fn along(mode: Tiling, span: f32, piece: f32) -> Vec<(f32, f32)> {
     }
 }
 
-/// Нарисовать ОДИН кусок образа в своё место.
+/// Кэш вырезанных кусков: (образ, прямоугольник растра) → свой образ.
 ///
-/// Вырезать прямоугольник из образа нечем, поэтому образ рисуется целиком —
-/// увеличенным во столько раз, во сколько кусок отличается от места, и
-/// сдвинутым так, чтобы кусок встал ровно. Лишнее срезает маска.
+/// Кусок обязан быть ОТДЕЛЬНЫМ образом, а не регионом атласа: регион в один
+/// знак, растянутый на всю сторону рамки, размывается фильтрацией с соседями
+/// по атласу — зелёная кромка тонула в красной середине (`border-image-002`).
+/// Вырезка на каждый кадр непозволительна, поэтому куски запоминаются.
+type SliceKey = (usize, u32, u32, u32, u32, u32, u32);
+type SliceCache = std::sync::Mutex<std::collections::HashMap<SliceKey, std::sync::Arc<gpui::RenderImage>>>;
+static SLICES: std::sync::OnceLock<SliceCache> = std::sync::OnceLock::new();
+const SLICE_CAP: usize = 256;
+
+/// Нарисовать ОДИН кусок образа в своё место.
 fn paint_slice(
     window: &mut gpui::Window,
     raster: &std::sync::Arc<gpui::RenderImage>,
@@ -220,18 +233,54 @@ fn paint_slice(
 ) {
     let (sx, sy, sw, sh) = src;
     let (dx, dy, dw, dh) = dest;
-    let (kx, ky) = (dw / sw, dh / sh);
-    let whole = Bounds {
-        origin: gpui::point(px(dx - sx * kx), px(dy - sy * ky)),
-        size: gpui::size(px(image.0 * kx), px(image.1 * ky)),
+    // Источник задан в точках CSS-картинки, а вырезка — в точках РАСТРА:
+    // у рисунка, растрированного плотнее, они различаются.
+    let s = raster.size(0);
+    let (kx, ky) = (
+        s.width.0 as f32 / image.0.max(1.0),
+        s.height.0 as f32 / image.1.max(1.0),
+    );
+    // В ключе и целевой размер: тот же кусок в другой рамке растягивается
+    // иначе. Размер целевого растра — в физических точках устройства, чтобы
+    // на дробном масштабе кусок не мылился повторным растяжением.
+    let scale = window.scale_factor();
+    let (out_w, out_h) = (
+        ((dw * scale).round() as u32).max(1),
+        ((dh * scale).round() as u32).max(1),
+    );
+    let key: SliceKey = (
+        std::sync::Arc::as_ptr(raster) as usize,
+        (sx * kx).round() as u32,
+        (sy * ky).round() as u32,
+        (sw * kx).round().max(1.0) as u32,
+        (sh * ky).round().max(1.0) as u32,
+        out_w,
+        out_h,
+    );
+    let cache = SLICES.get_or_init(Default::default);
+    let piece = {
+        let hit = cache.lock().ok().and_then(|m| m.get(&key).cloned());
+        match hit {
+            Some(found) => found,
+            None => {
+                let Some(cut) = gpui::crop_image(raster, key.1, key.2, key.3, key.4, out_w, out_h) else {
+                    return;
+                };
+                if let Ok(mut m) = cache.lock() {
+                    if m.len() >= SLICE_CAP {
+                        m.clear();
+                    }
+                    m.insert(key, cut.clone());
+                }
+                cut
+            }
+        }
     };
-    let mask = Bounds {
+    let cell = Bounds {
         origin: gpui::point(px(dx), px(dy)),
         size: gpui::size(px(dw), px(dh)),
     };
-    window.with_content_mask(Some(gpui::ContentMask { bounds: mask }), |window| {
-        let _ = window.paint_image(whole, gpui::Corners::default(), raster.clone(), 0, false);
-    });
+    let _ = window.paint_image(cell, gpui::Corners::default(), piece, 0, false);
 }
 
 /// Ширина куска рамки: число — во столько раз толще самой рамки, длина — как
@@ -254,6 +303,35 @@ impl crate::computed::BorderImageSlice {
         match self {
             crate::computed::BorderImageSlice::Px(v) => v,
             crate::computed::BorderImageSlice::Pct(k) => k * side,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Вырезка с растяжением: угловой знак образа приходит чистым, без
+    /// подмешивания соседей.
+    #[test]
+    fn crop_keeps_the_corner_colour() {
+        use image::Frame;
+        // 2×2: (0,0) зелёный, остальные красные. Байты в порядке BGRA.
+        let g = [0u8, 128, 0, 255];
+        let r = [0u8, 0, 255, 255];
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&g);
+        bytes.extend_from_slice(&r);
+        bytes.extend_from_slice(&r);
+        bytes.extend_from_slice(&r);
+        let buffer = image::RgbaImage::from_raw(2, 2, bytes).unwrap();
+        let image = gpui::RenderImage::new(smallvec::SmallVec::<[Frame; 1]>::from_elem(
+            Frame::new(buffer),
+            1,
+        ));
+        let cut = gpui::crop_image(&image, 0, 0, 1, 1, 4, 4).expect("вырезка");
+        let out = cut.as_bytes(0).unwrap();
+        assert_eq!(out.len(), 4 * 4 * 4);
+        for px in out.chunks_exact(4) {
+            assert_eq!(px, &g, "весь кусок — цвет углового знака");
         }
     }
 }
