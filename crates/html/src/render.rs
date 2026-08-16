@@ -2298,7 +2298,22 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
     // Таблица в строке — атомарная коробка со своей табличной раскладкой:
     // путь блока строил бы детей-ряды как обычные блоки, без решётки.
     if e.style.display == Some(Display::InlineTable) {
-        return Some(table(e, &inline::inherit(inherited, &e.style), opts));
+        let built = table(e, &inline::inherit(inherited, &e.style), opts);
+        // `vertical-align` коробки в строке: низ/верх/середина СТРОКИ, а не
+        // базовая линия. Строка — гибкий ряд, и место коробки задаёт её
+        // собственный `align-self`.
+        let self_align = match e.style.vertical_align {
+            Some(Align::End) => Some(gpui::AlignItems::FlexEnd),
+            Some(Align::Start) => Some(gpui::AlignItems::FlexStart),
+            Some(Align::Center) => Some(gpui::AlignItems::Center),
+            _ => None,
+        };
+        if let Some(a) = self_align {
+            let mut wrap = div().flex_shrink_0();
+            wrap.style().align_self = Some(a);
+            return Some(wrap.child(built).into_any_element());
+        }
+        return Some(built);
     }
     match e.tag.as_str() {
         "img" => Some(image(e)),
