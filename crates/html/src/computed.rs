@@ -78,6 +78,8 @@ pub enum Display {
     TableRowGroup,
     /// `display: table` — контейнер табличной раскладки.
     Table,
+    /// `display: inline-table` — та же таблица, но стоящая В СТРОКЕ.
+    InlineTable,
     /// `display: table-cell` — ячейка.
     TableCell,
     /// `display: inline-grid`.
@@ -1420,7 +1422,9 @@ impl Computed {
                     // Табличные роли: своей табличной раскладки у нас нет,
                     // но строка — это ряд, ячейка — блок, а сама таблица
                     // ведёт себя как блок. Это ближе к правде, чем ничего.
-                    "table" | "inline-table" => Some(Display::Table),
+                    "table" => Some(Display::Table),
+                    // Таблица, стоящая В СТРОКЕ, как inline-block.
+                    "inline-table" => Some(Display::InlineTable),
                     "table-row-group" | "table-header-group" | "table-footer-group" => {
                         Some(Display::TableRowGroup)
                     }

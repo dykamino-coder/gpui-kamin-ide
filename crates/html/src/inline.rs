@@ -148,6 +148,7 @@ pub fn collect(
                     Some(crate::computed::Display::InlineBlock)
                         | Some(crate::computed::Display::InlineFlex)
                         | Some(crate::computed::Display::InlineGrid)
+                        | Some(crate::computed::Display::InlineTable)
                 );
                 // Ограничитель атомарной коробки — служебный знак, а не текст
                 // документа: замена нулевого пробела идеографическим его

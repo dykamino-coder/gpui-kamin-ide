@@ -199,6 +199,10 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
         // считается, длина оси известна только коробке. Отсчёт полос — от
         // верха/лева; обратное направление (0/270deg) идёт от низа/права.
         if !g.stops_px.is_empty() && !g.radial && (vertical || horizontal) {
+            // Полосы в точках могут выйти за коробку (стопы длиннее оси) —
+            // фон обрезается её краем, поэтому все полосы живут в общем
+            // обрезающем слое на всю коробку.
+            let mut bands: Vec<AnyElement> = vec![];
             for pair in g.stops_px.windows(2) {
                 let (a, b) = (pair[0], pair[1]);
                 let (p0, p1) = (a.1, b.1);
@@ -216,7 +220,7 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
                     stops_px: vec![],
                 };
                 let layer = div().absolute().bg(crate::apply::fill(&band));
-                out.push(
+                bands.push(
                     match (vertical, reverse) {
                         (true, false) => layer.left_0().right_0().top(px(p0)).h(px(p1 - p0)),
                         (true, true) => layer.left_0().right_0().bottom(px(p0)).h(px(p1 - p0)),
@@ -226,6 +230,17 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
                     .into_any_element(),
                 );
             }
+            out.push(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .overflow_hidden()
+                    .children(bands)
+                    .into_any_element(),
+            );
         } else if g.stops.len() > 4 && !g.radial && (vertical || horizontal) {
             // Полоса перекрывает фон родителя целиком, поэтому скругление
             // приходится повторять на крайних полосах: иначе углы блока
@@ -557,7 +572,9 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // или сетки: там каждый ребёнок сам себе элемент раскладки
                 // («блокирование» из CSS). Иначе колонка из таких коробок
                 // выкладывалась рядом: они склеивались в один абзац.
-                Some(Display::InlineBlock) | Some(Display::InlineFlex) => !ordered_context,
+                Some(Display::InlineBlock)
+                | Some(Display::InlineFlex)
+                | Some(Display::InlineTable) => !ordered_context,
                 Some(_) => false,
                 // Дети гибкого контейнера и сетки блокируются по CSS: каждый
                 // сам себе элемент раскладки. Без оговорки `<span>` без
@@ -1528,6 +1545,7 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
                 | Some(Display::InlineGrid)
                 | Some(Display::InlineBlock)
                 | Some(Display::Table)
+                | Some(Display::InlineTable)
         ) || matches!(
             e.style.position,
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
@@ -2210,9 +2228,10 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // позиция и находится: левый край содержимого родителя, верх — низ
         // текущей строки. Строчный остаётся точкой в самой строке.
         let inline_level = match e.style.display {
-            Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid) => {
-                true
-            }
+            Some(Display::InlineBlock)
+            | Some(Display::InlineFlex)
+            | Some(Display::InlineGrid)
+            | Some(Display::InlineTable) => true,
             Some(_) => false,
             None => e.inline,
         };
@@ -2275,6 +2294,11 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 .child(inner)
                 .into_any_element(),
         );
+    }
+    // Таблица в строке — атомарная коробка со своей табличной раскладкой:
+    // путь блока строил бы детей-ряды как обычные блоки, без решётки.
+    if e.style.display == Some(Display::InlineTable) {
+        return Some(table(e, &inline::inherit(inherited, &e.style), opts));
     }
     match e.tag.as_str() {
         "img" => Some(image(e)),
@@ -2439,7 +2463,10 @@ fn has_own_box(c: &Computed) -> bool {
     // по ним коробка заводилась бы только затем, чтобы уехать за экран.
     let atomic = matches!(
         c.display,
-        Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
+        Some(Display::InlineBlock)
+            | Some(Display::InlineFlex)
+            | Some(Display::InlineGrid)
+            | Some(Display::InlineTable)
     ) && (c.width.is_some() || c.height.is_some());
     // Позиционированный кусок — тем же порядком: его коробку двигают края, а
     // краёв у прогона нет.
@@ -2997,7 +3024,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // Табличная раскладка включается и стилем: `display: table` на
         // контейнере значит ровно то же, что тег.
         _ if merged.display == Some(Display::GridLanes) => lanes(e, &merged, opts),
-        _ if e.style.display == Some(Display::Table) => table(e, &merged, opts),
+        _ if matches!(
+            e.style.display,
+            Some(Display::Table) | Some(Display::InlineTable)
+        ) =>
+        {
+            table(e, &merged, opts)
+        }
         "table" => table(e, &merged, opts),
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
@@ -3375,6 +3408,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // С первого раза правка была в минус (ломалась арабская вязь) — но ломал
     // её свой замер ширин, который мерил текст ячейки отдельно от раскладки.
     // Со снятым замером она проходит чисто.
+    let row_elements: Vec<&Element> = rows.iter().map(|(r, _)| *r).collect();
     for (row, carry) in rows {
         let shift = (carry.0, carry.1);
         // Письмо и направление к строкам и группам строк НЕ применяются: ось
@@ -3493,10 +3527,45 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // становятся физическими рядами. Своей ветки у таблицы не было, и её
     // сетка строилась физической — мимо уже переставленных осей.
     let tracks = track_list(cols, e.style.table_fixed == Some(true));
+    // Таблица ЗАДАННОЙ высоты раздаёт лишнее место рядам БЕЗ своей высоты
+    // (CSS 2.1 §17.5.3): ряд с высотой (своей или ячеек) держит её, остальные
+    // делят остаток. Без этого средний ряд решётки 64/auto/64 в таблице 224px
+    // схлопывался по содержимому, и вся середина уезжала.
+    let row_tracks: Option<Vec<gpui::GridTrack>> = match e.style.height {
+        Some(Len::Px(_)) if e.style.vertical != Some(true) => Some(
+            row_elements
+                .iter()
+                .map(|row| {
+                    let cell_h = |c: &Node| match c {
+                        Node::Element(cell) if is_cell(cell) => match cell.style.height {
+                            Some(Len::Px(v)) => Some(v),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let own = match row.style.height {
+                        Some(Len::Px(v)) => Some(v),
+                        _ => None,
+                    };
+                    match own.into_iter().chain(row.children.iter().filter_map(cell_h)).fold(None::<f32>, |a, v| Some(a.map_or(v, |x| x.max(v)))) {
+                        Some(h) => gpui::GridTrack::Pixels(px(h)),
+                        None => gpui::GridTrack::Fraction(1.0),
+                    }
+                })
+                .collect(),
+        ),
+        _ => None,
+    };
     let grid_box = if e.style.vertical == Some(true) {
         div().grid().grid_template_rows(tracks)
     } else {
-        div().grid().grid_template_cols(tracks)
+        let mut g = div().grid().grid_template_cols(tracks);
+        if let Some(rt) = row_tracks {
+            // Сетка обязана занять ВСЮ высоту таблицы: доли рядов считаются
+            // от её остатка, а auto-высота ребёнка гибкой колонки — ноль.
+            g = g.grid_template_rows(rt).flex_grow();
+        }
+        g
     };
     let mut outer = styled_div_with(e, inherited).flex().flex_col();
     // Таблица без заданной ширины СЖИМАЕТСЯ по содержимому, а не растягивается

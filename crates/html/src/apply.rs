@@ -286,7 +286,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // Ячейка ведёт себя как блок; саму решётку строит контейнер.
         Some(Display::TableCell) => d = d.flex().flex_col(),
         // Контейнер таблицы собирается отдельной веткой сборки дерева.
-        Some(Display::Table) => {}
+        Some(Display::Table) | Some(Display::InlineTable) => {}
         Some(Display::Grid) => d = grid_style(d, c),
         // `display: none` отсеивается ещё при разборе дерева: узел не строится.
         _ => {}
