@@ -3372,14 +3372,18 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         (_, Some((x, y))) => (
             match x {
                 Some(Len::Px(v)) => v,
-                _ => 2.0,
+                _ => 0.0,
             },
             match y {
                 Some(Len::Px(v)) => v,
-                _ => 2.0,
+                _ => 0.0,
             },
         ),
-        _ => (2.0, 2.0),
+        // Начальное значение `border-spacing` — НОЛЬ: два пикселя — это
+        // умолчание браузера для ТЕГА `<table>`, и оно приходит сюда
+        // каскадом из своего стилевого листа. `div` с `display: table`
+        // зазора не имеет.
+        _ => (0.0, 0.0),
     };
     let mut rows: Vec<(&Element, RowCarry)> = vec![];
     // ПРОБОВАЛИ И ОТКАТИЛИ: переносить `<thead>` в начало, а `<tfoot>` в
