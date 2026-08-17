@@ -3832,7 +3832,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     if e.style.width.is_none() {
         outer.style().align_self = Some(gpui::AlignItems::FlexStart);
     }
-    outer
+    // КОРНЕВОЙ стол (`<html display: table>`): родитель — блок стенда, где
+    // `align-self` не работает, и стол растягивался на всё окно. Гибкая
+    // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
+    let root_table = matches!(e.tag.as_str(), "html" | "body") && e.style.width.is_none();
+    let outer = outer
         .children(caption)
         .child(
             grid_box
@@ -3848,8 +3852,16 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .py(px(spacing.1))
                 .children(cells)
                 .into_any_element(),
-        )
-        .into_any_element()
+        );
+    if root_table {
+        return div()
+            .flex()
+            .flex_row()
+            .w_full()
+            .child(outer)
+            .into_any_element();
+    }
+    outer.into_any_element()
 }
 
 /// Дорожки таблицы: все по содержимому, последняя забирает остаток строки.
