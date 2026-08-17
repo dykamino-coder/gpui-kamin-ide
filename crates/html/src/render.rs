@@ -3442,6 +3442,38 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // её свой замер ширин, который мерил текст ячейки отдельно от раскладки.
     // Со снятым замером она проходит чисто.
     let row_elements: Vec<&Element> = rows.iter().map(|(r, _)| *r).collect();
+    // Заявленные ширины ячеек по КОЛОНКАМ: ширина ячейки в таблице задаёт
+    // колонку, а не свою коробку (CSS 2.1 §17.5.2.2) — колонка не уже
+    // содержимого (пол min-content), процентная забирает долю остатка.
+    let mut col_widths: Vec<(Option<f32>, Option<f32>)> = vec![(None, None); cols as usize];
+    for row in &row_elements {
+        let mut ix = 0usize;
+        for c in &row.children {
+            let Node::Element(cell) = c else { continue };
+            if !is_cell(cell) {
+                continue;
+            }
+            let span = cell
+                .attr("colspan")
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(1)
+                .max(1);
+            if span == 1 && ix < col_widths.len() {
+                match cell.style.width {
+                    Some(Len::Px(v)) => {
+                        let slot = &mut col_widths[ix].0;
+                        *slot = Some(slot.map_or(v, |old| old.max(v)));
+                    }
+                    Some(Len::Pct(k)) => {
+                        let slot = &mut col_widths[ix].1;
+                        *slot = Some(slot.map_or(k, |old| old.max(k)));
+                    }
+                    _ => {}
+                }
+            }
+            ix += span;
+        }
+    }
     for (row, carry) in rows {
         let shift = (carry.0, carry.1);
         // Письмо и направление к строкам и группам строк НЕ применяются: ось
@@ -3494,6 +3526,13 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if clipped {
                 cell.style.overflow_x = None;
                 cell.style.overflow_y = None;
+            }
+            // Ширину ячейки несёт КОЛОНКА (см. col_widths): на коробке она
+            // резала бы ячейку уже содержимого (`width: 0` прятал текст).
+            if span_cols == 1
+                && matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_)))
+            {
+                cell.style.width = None;
             }
             let cell = &cell;
             let mut d = styled_div(cell);
@@ -3584,7 +3623,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             out
         })
         .unwrap_or_default();
-    let tracks = track_list(cols, e.style.table_fixed == Some(true), &first_row_widths);
+    let tracks = track_list(
+        cols,
+        e.style.table_fixed == Some(true),
+        &first_row_widths,
+        &col_widths,
+    );
     // Таблица ЗАДАННОЙ высоты раздаёт лишнее место рядам БЕЗ своей высоты
     // (CSS 2.1 §17.5.3): ряд с высотой (своей или ячеек) держит её, остальные
     // делят остаток. Без этого средний ряд решётки 64/auto/64 в таблице 224px
@@ -3661,7 +3705,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
 /// переносов, сохранённых пробелов и вложенных коробок; снят по замеру:
 /// css-text +1, flexbox +1, css-grid +1, поломок нет.
 /// `min-content` снизу не даёт колонке сжаться в ноль на узкой панели.
-fn track_list(cols: u16, fixed: bool, first_row: &[Option<f32>]) -> Vec<gpui::GridTrack> {
+fn track_list(
+    cols: u16,
+    fixed: bool,
+    first_row: &[Option<f32>],
+    col_widths: &[(Option<f32>, Option<f32>)],
+) -> Vec<gpui::GridTrack> {
     // `table-layout: fixed` — ширины из первого ряда, безразмерные колонки
     // делят остаток поровну; содержимое не меряется.
     if fixed {
@@ -3677,12 +3726,22 @@ fn track_list(cols: u16, fixed: bool, first_row: &[Option<f32>]) -> Vec<gpui::Gr
     // расползалась по краям окна (видно на `shaping-join-001`). Излишек
     // раздаёт раскладка между дорожками `auto` — это ближе к табличной
     // раздаче «пропорционально разнице полной и минимальной ширины».
-    (0..cols)
-        .map(|_| {
-            gpui::GridTrack::MinMax(Box::new((
+    (0..cols as usize)
+        .map(|i| match col_widths.get(i).copied().unwrap_or((None, None)) {
+            // Заявленная ширина, но не уже содержимого: minmax с потолком
+            // ниже пола отдаёт пол (правило сетки), то есть
+            // max(min-content, ширина).
+            (Some(w), _) => gpui::GridTrack::MinMax(Box::new((
+                gpui::GridTrack::MinContent,
+                gpui::GridTrack::Pixels(px(w)),
+            ))),
+            // Процентная колонка забирает долю ОСТАТКА: соседние колонки по
+            // содержимому, свободное место делится по долям.
+            (None, Some(k)) => gpui::GridTrack::Fraction(k),
+            (None, None) => gpui::GridTrack::MinMax(Box::new((
                 gpui::GridTrack::MinContent,
                 gpui::GridTrack::Auto,
-            )))
+            ))),
         })
         .collect()
 }
