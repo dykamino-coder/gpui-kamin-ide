@@ -3781,6 +3781,18 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // растит ячейку, а не режется. `height: 20px` с блоком в 300
             // прятал всё под обрезкой.
             if let Some(Len::Px(h)) = cell.style.height {
+                // Процентная высота ПРЯМОГО ребёнка решается от ЗАДАННОЙ
+                // высоты ячейки (CSS 2.1 §10.5): раскладка под нами при
+                // auto-росте ячейки трактует долю как auto, и ребёнок с
+                // overflow и height:100% раздувался содержимым вместо
+                // прокрутки в заданных ста точках.
+                for child in cell.children.iter_mut() {
+                    if let Node::Element(el) = child
+                        && let Some(Len::Pct(k)) = el.style.height
+                    {
+                        el.style.height = Some(Len::Px(h * k));
+                    }
+                }
                 cell.style.height = None;
                 let floor = match cell.style.min_height {
                     Some(Len::Px(v)) => v.max(h),
