@@ -205,10 +205,28 @@ pub fn element(e: &Element) -> Option<AnyElement> {
         }
         m
     };
-    let visible_y = e.style.overflow_y == Some(crate::computed::Overflow::Visible);
-    let visible_x = e.style.overflow_x == Some(crate::computed::Overflow::Visible);
-    let rw = if visible_x { w.max(child_extent(true)) } else { w };
-    let rh = if visible_y { h.max(child_extent(false)) } else { h };
+    // `contain: paint` перебивает видимое переполнение: край обрезки —
+    // коробка плюс `overflow-clip-margin` (css-overflow-3 §overflow-clip).
+    let contained = e.style.contain_paint == Some(true);
+    let clip_margin = if contained {
+        e.style.clip_margin.unwrap_or(0.0)
+    } else {
+        0.0
+    };
+    let visible_y = !contained
+        && e.style.overflow_y == Some(crate::computed::Overflow::Visible);
+    let visible_x = !contained
+        && e.style.overflow_x == Some(crate::computed::Overflow::Visible);
+    let rw = if visible_x {
+        w.max(child_extent(true))
+    } else {
+        (w + clip_margin).min(child_extent(true).max(w))
+    };
+    let rh = if visible_y {
+        h.max(child_extent(false))
+    } else {
+        (h + clip_margin).min(child_extent(false).max(h))
+    };
     let image = rasterize(&serialize_sized(e, rw, rh), rw, rh)?;
     let img = gpui::img(ImageSource::Render(image))
         .w(gpui::px(rw))
