@@ -1712,9 +1712,13 @@ impl Computed {
             "left" => self.inset.left = Len::parse(v),
             "inset" => self.inset = Sides::shorthand(v),
             "overflow" => {
-                let o = parse_overflow(v);
-                self.overflow_x = o;
-                self.overflow_y = o;
+                // Запись из двух слов — оси по отдельности
+                // (css-overflow-3 §3): `overflow: clip visible`.
+                let mut it = v.split_whitespace();
+                let x = it.next().and_then(parse_overflow);
+                let y = it.next().and_then(parse_overflow).or(x);
+                self.overflow_x = x;
+                self.overflow_y = y;
             }
             "overflow-x" => self.overflow_x = parse_overflow(v),
             "overflow-y" => self.overflow_y = parse_overflow(v),
