@@ -322,6 +322,11 @@ fn decode(bytes: &[u8]) -> Option<Source> {
         .unwrap_or(false);
     if looks_svg {
         let markup = String::from_utf8(bytes.to_vec()).ok()?;
+        // Вырожденная область просмотра (нулевая ось `viewBox`) — картинки
+        // НЕТ вовсе (SVG intrinsic sizing): браузер такой фон не рисует.
+        if degenerate_viewbox(&markup) {
+            return None;
+        }
         let size = svg_size(&markup);
         return Some(Source::Vector { markup, size });
     }
@@ -340,6 +345,30 @@ fn decode(bytes: &[u8]) -> Option<Source> {
 ///
 /// Разбирается по тексту, а не деревом: дерево документа рисунка нам не нужно
 /// нигде больше, а растеризатору всё равно идёт исходная разметка.
+/// Нулевая ось `viewBox`: соотношение вырождено, рисовать нечего.
+fn degenerate_viewbox(markup: &str) -> bool {
+    let head = match markup.find("<svg") {
+        Some(at) => &markup[at..markup[at..].find('>').map(|e| at + e).unwrap_or(markup.len())],
+        None => return false,
+    };
+    let Some(at) = head.find("viewBox=") else {
+        return false;
+    };
+    let rest = head[at + 8..].trim_start();
+    let Some(quote) = rest.chars().next() else {
+        return false;
+    };
+    let Some(vb) = rest[1..].split(quote).next() else {
+        return false;
+    };
+    let nums: Vec<f32> = vb
+        .split([' ', ','])
+        .filter(|s| !s.is_empty())
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    nums.len() == 4 && (nums[2] <= 0.0 || nums[3] <= 0.0)
+}
+
 fn svg_size(markup: &str) -> Intrinsic {
     let head = match markup.find("<svg") {
         Some(at) => &markup[at..markup[at..].find('>').map(|e| at + e).unwrap_or(markup.len())],
