@@ -523,6 +523,13 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
 }
 
 fn apply_box(mut d: Div, c: &Computed) -> Div {
+    // `contain: size`: коробка меряется как пустая — рост от содержимого
+    // подменяется `contain-intrinsic-size` (или нулём). Подмена касается
+    // размера ПО СОДЕРЖИМОМУ: высота auto считается от содержимого — её и
+    // задаём; ширина блока в потоке и так не от содержимого, её не трогаем.
+    if c.contain_size == Some(true) && c.height.is_none() {
+        d = d.h(px(c.contain_intrinsic.1.unwrap_or(0.0)));
+    }
     d = apply_sides(d, &c.padding, SideKind::Padding);
     d = apply_sides(d, &c.margin, SideKind::Margin);
     d = apply_sides(d, &c.borders(), SideKind::Border);

@@ -946,6 +946,11 @@ pub struct Computed {
     pub tab_size_len: Option<Len>,
     /// `contain: paint` — содержимое обрезается по коробке.
     pub contain_paint: Option<bool>,
+    /// `contain: size` — коробка меряется ПУСТОЙ (css-contain-1 §3):
+    /// размер задают явные свойства и `contain-intrinsic-size`.
+    pub contain_size: Option<bool>,
+    /// `contain-intrinsic-size`: подменная своя величина (css-sizing-5 §5).
+    pub contain_intrinsic: (Option<f32>, Option<f32>),
     /// `clip-path`/`mask`: обрезка по кругу или скруглённому прямоугольнику.
     /// Хранится долей радиуса от меньшей стороны либо радиусом в точках.
     pub clip_round: Option<f32>,
@@ -2991,6 +2996,40 @@ impl Computed {
                 // `paint` и `strict` обрезают содержимое по коробке — это
                 // ровно то, что делает скрытое переполнение.
                 self.contain_paint = Some(v.contains("paint") || v.contains("strict"));
+                // `size` считает коробку ПУСТОЙ: её размер задают явные
+                // свойства и `contain-intrinsic-size`, содержимое не растит.
+                self.contain_size = Some(v.contains("size") || v.contains("strict"));
+            }
+            "contain-intrinsic-size" => {
+                // Одно или два значения; `auto <длина>` — длина как запас.
+                let nums: Vec<f32> = v
+                    .split_whitespace()
+                    .filter(|w| *w != "auto")
+                    .filter_map(|w| match Len::parse(w) {
+                        Some(Len::Px(px)) => Some(px),
+                        _ => None,
+                    })
+                    .collect();
+                self.contain_intrinsic = match nums.as_slice() {
+                    [one] => (Some(*one), Some(*one)),
+                    [w, h, ..] => (Some(*w), Some(*h)),
+                    _ => (None, None),
+                };
+            }
+            "contain-intrinsic-width" => {
+                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                    self.contain_intrinsic.0 = Some(w);
+                }
+            }
+            "contain-intrinsic-height" | "contain-intrinsic-block-size" => {
+                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                    self.contain_intrinsic.1 = Some(h);
+                }
+            }
+            "contain-intrinsic-inline-size" => {
+                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                    self.contain_intrinsic.0 = Some(w);
+                }
             }
             "mix-blend-mode" => {
                 // Номера совпадают с формулами в шейдере: смешивание считается
