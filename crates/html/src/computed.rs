@@ -1713,10 +1713,16 @@ impl Computed {
                     self.background_inherit = true;
                     return;
                 }
-                // Относительный цвет от `currentColor` решается не здесь:
-                // цвет элемента известен только после каскада, а функция
-                // наследуется нерешённой (css-color-5 §4.1).
-                if v.contains("(from ") && !v.contains("gradient(") {
+                // Цвет от `currentColor` решается не здесь: цвет элемента
+                // известен только после каскада, а запись наследуется
+                // нерешённой — и голое слово, и относительная функция, и
+                // `color-mix` с ним (css-color-4 §7.1, css-color-5 §4.1).
+                let low = v.to_ascii_lowercase();
+                if !v.contains("gradient(")
+                    && (low == "currentcolor"
+                        || low.contains("(from ")
+                        || (low.starts_with("color-mix(") && low.contains("currentcolor")))
+                {
                     self.background_rcs = Some(v.to_string());
                     return;
                 }

@@ -209,7 +209,9 @@ fn lab(body: &str, ok: bool) -> Option<(f32, f32, f32, f32)> {
         return None;
     }
     // Доля светлоты считается от 100 в CIE Lab и от единицы в OKLab.
-    let l = number(&list[0], if ok { 1.0 } else { 100.0 })?;
+    // Светлота ЗАЖИМАЕТСЯ в свой диапазон (CSS Color 4 §9.2): значения
+    // сверх сотни законны в записи, но обрезаются при вычислении.
+    let l = number(&list[0], if ok { 1.0 } else { 100.0 })?.clamp(0.0, if ok { 1.0 } else { 100.0 });
     let x = number(&list[1], if ok { 0.4 } else { 125.0 })?;
     let y = number(&list[2], if ok { 0.4 } else { 125.0 })?;
     let (r, g, b) = if ok {
@@ -226,7 +228,7 @@ fn lch(body: &str, ok: bool) -> Option<(f32, f32, f32, f32)> {
     if list.len() < 3 {
         return None;
     }
-    let l = number(&list[0], if ok { 1.0 } else { 100.0 })?;
+    let l = number(&list[0], if ok { 1.0 } else { 100.0 })?.clamp(0.0, if ok { 1.0 } else { 100.0 });
     let c = number(&list[1], if ok { 0.4 } else { 150.0 })?;
     let h = number(&list[2], 1.0)?.to_radians();
     let (x, y) = (c * h.cos(), c * h.sin());
@@ -395,6 +397,23 @@ pub(crate) fn resolve_relative(
     current: crate::value::Color,
 ) -> Option<crate::value::Color> {
     use crate::value::Color;
+    // Голое слово: цвет текста этого же элемента.
+    if expr.eq_ignore_ascii_case("currentcolor") {
+        return Some(current);
+    }
+    // `color-mix` с `currentColor`: слово подставляется уже решённым цветом,
+    // дальше работает обычный разбор смеси.
+    let low = expr.to_ascii_lowercase();
+    if low.starts_with("color-mix(") {
+        let rgb = format!(
+            "rgb({} {} {} / {})",
+            (current.r * 255.0).round(),
+            (current.g * 255.0).round(),
+            (current.b * 255.0).round(),
+            current.a
+        );
+        return Color::parse(&low.replace("currentcolor", &rgb));
+    }
     let open = expr.find('(')?;
     let name = expr[..open].trim();
     let inner = expr[open + 1..].trim().strip_suffix(')')?;
