@@ -3774,6 +3774,17 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             out
         })
         .unwrap_or_default();
+    // `<col>`-ширины старше ячеек первого ряда (§17.5.2.1).
+    let from_cols = col_element_widths(&e.children);
+    let first_row_widths: Vec<Option<f32>> = (0..cols as usize)
+        .map(|i| {
+            from_cols
+                .get(i)
+                .copied()
+                .flatten()
+                .or_else(|| first_row_widths.get(i).copied().flatten())
+        })
+        .collect();
     let tracks = track_list(
         cols,
         e.style.table_fixed == Some(true),
@@ -4037,6 +4048,10 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                 }
             }
             Node::Element(el) => {
+                // Колоночные элементы — не содержимое: их читают дорожки.
+                if matches!(el.tag.as_str(), "col" | "colgroup") {
+                    continue;
+                }
                 let group = el.style.display == Some(Display::TableRowGroup)
                     || matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot");
                 let row = el.tag == "tr"
@@ -4061,6 +4076,33 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
         }
     }
     flush(&mut stray, &mut out);
+    out
+}
+
+/// Ширины колонок из элементов `<col>`/`<colgroup>` (атрибут `span`
+/// повторяет запись): при фиксированной раскладке они СТАРШЕ ячеек первого
+/// ряда (CSS 2.1 §17.5.2.1).
+fn col_element_widths(children: &[Node]) -> Vec<Option<f32>> {
+    let mut out = vec![];
+    for child in children {
+        let Node::Element(el) = child else { continue };
+        match el.tag.as_str() {
+            "col" => {
+                let w = match el.style.width {
+                    Some(Len::Px(v)) => Some(v),
+                    _ => None,
+                };
+                let span = el
+                    .attr("span")
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(1)
+                    .max(1);
+                out.extend(std::iter::repeat_n(w, span));
+            }
+            "colgroup" => out.extend(col_element_widths(&el.children)),
+            _ => {}
+        }
+    }
     out
 }
 
