@@ -4088,20 +4088,27 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     if e.style.border_collapse == Some(true) {
         cells.push(crate::interact::EdgePainter::new(table_edges.clone()).into_any_element());
     }
-    // Заголовок таблицы: браузер рисует его над сеткой, а не ячейкой.
-    let caption = e.children.iter().find_map(|c| match c {
-        Node::Element(cap) if cap.tag == "caption" => {
+    // Заголовок таблицы живёт ВНЕ коробки таблицы (CSS 2.1 §17.4:
+    // анонимная обёртка держит заголовок и коробку) — рамка и обрезка
+    // таблицы его не трогают; `caption-side: bottom` ставит его под сетку.
+    let mut caption: Option<AnyElement> = None;
+    let mut caption_bottom = false;
+    for c in &e.children {
+        if let Node::Element(cap) = c
+            && cap.tag == "caption"
+        {
             let cm = inline::inherit(inherited, &cap.style);
-            Some(
+            caption_bottom = cap.style.caption_bottom == Some(true);
+            caption = Some(
                 styled_div(cap)
                     .flex()
                     .flex_col()
                     .children(blocks(&cap.children, &cm, opts))
                     .into_any_element(),
-            )
+            );
+            break;
         }
-        _ => None,
-    });
+    }
 
     // Оси таблицы ЛОГИЧЕСКИЕ, как и у сетки: колонки идут вдоль строки. При
     // вертикальном письме строка идёт сверху вниз, и дорожки колонок
@@ -4242,7 +4249,6 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
     let root_table = matches!(e.tag.as_str(), "html" | "body") && e.style.width.is_none();
     let mut outer = outer
-        .children(caption)
         .child(
             grid_box
                 // `border-spacing: 2px` — умолчание браузера для таблицы с
@@ -4281,6 +4287,18 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         ));
     }
     let outer = outer;
+    // Обёртка «заголовок + коробка»: заголовок вне рамки и обрезки.
+    let outer = if let Some(cap) = caption {
+        let mut wrap = div().flex().flex_col();
+        wrap.style().align_self = Some(gpui::AlignItems::FlexStart);
+        if caption_bottom {
+            wrap.child(outer).child(cap).into_any_element()
+        } else {
+            wrap.child(cap).child(outer).into_any_element()
+        }
+    } else {
+        outer.into_any_element()
+    };
     if root_table {
         return div()
             .flex()

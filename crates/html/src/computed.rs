@@ -774,6 +774,8 @@ pub struct Computed {
     /// 0 none, 1 hidden, 3 inset, 4 groove, 5 outset, 6 ridge, 7 dotted,
     /// 8 dashed, 9 solid, 10 double. `None` — стиль не задавался.
     pub border_side_styles: [Option<u8>; 4],
+    /// `caption-side: bottom` — заголовок таблицы под сеткой.
+    pub caption_bottom: Option<bool>,
     pub border_dashed: Option<bool>,
     /// `border-style: dotted` — точечный узор.
     pub border_dotted: Option<bool>,
@@ -1963,6 +1965,7 @@ impl Computed {
             // переноса: раньше `pre` помечался как `nowrap`, и текст склеивался
             // в одну строку.
             "cursor" => self.cursor = Some(v.to_string()),
+            "caption-side" => self.caption_bottom = Some(v.eq_ignore_ascii_case("bottom")),
             "visibility" => {
                 self.hidden = Some(v == "hidden" || v == "collapse");
                 self.collapsed = Some(v == "collapse");
