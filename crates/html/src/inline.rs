@@ -386,6 +386,14 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.color = own.color.or(parent.color);
     // `background-color: inherit` переносит вычисленное значение родителя —
     // вместе с нерешённой относительной функцией (css-color-5 §4.1).
+    if own.border_inherit {
+        c.border_width = parent.border_width;
+        c.border_color = parent.border_color.or(parent.color);
+        c.border_colors = parent.border_colors;
+    }
+    if own.padding_inherit {
+        c.padding = parent.padding;
+    }
     if own.background_inherit {
         c.background = parent.background;
         c.background_rcs = own.background_rcs.clone().or(parent.background_rcs.clone());

@@ -655,6 +655,11 @@ pub struct Computed {
     pub opacity: Option<f32>,
 
     pub background: Option<Color>,
+    /// `border: inherit` / `padding: inherit`: свойства не наследуемые, слово
+    /// копирует вычисленное значение родителя — оно известно только при
+    /// слиянии стилей.
+    pub(crate) border_inherit: bool,
+    pub(crate) padding_inherit: bool,
     /// Относительный цвет фона (css-color-5): функция с `from currentColor`
     /// не решается при разборе — она наследуется КАК ФУНКЦИЯ и считается от
     /// цвета каждого элемента заново.
@@ -1639,7 +1644,13 @@ impl Computed {
             "max-width" => self.max_width = Len::parse(v),
             "max-height" => self.max_height = Len::parse(v),
 
-            "padding" => self.padding = Sides::shorthand(v),
+            "padding" => {
+                if v == "inherit" {
+                    self.padding_inherit = true;
+                    return;
+                }
+                self.padding = Sides::shorthand(v)
+            }
             "padding-top" => self.padding.top = Len::parse(v),
             "padding-right" => self.padding.right = Len::parse(v),
             "padding-bottom" => self.padding.bottom = Len::parse(v),
@@ -1650,7 +1661,15 @@ impl Computed {
             "margin-bottom" => self.margin.bottom = Len::parse(v),
             "margin-left" => self.margin.left = Len::parse(v),
 
-            "border" => self.apply_border_shorthand(v, None),
+            "border" => {
+                // `border: inherit` — рамка родителя целиком: слово копирует
+                // вычисленное значение, самим разбором его не выразить.
+                if v == "inherit" {
+                    self.border_inherit = true;
+                    return;
+                }
+                self.apply_border_shorthand(v, None)
+            }
             "border-top" => self.apply_border_shorthand(v, Some(0)),
             "border-right" => self.apply_border_shorthand(v, Some(1)),
             "border-bottom" => self.apply_border_shorthand(v, Some(2)),
