@@ -3549,9 +3549,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             // Ширину ячейки несёт КОЛОНКА (см. col_widths): на коробке она
             // резала бы ячейку уже содержимого (`width: 0` прятал текст).
-            if span_cols == 1
-                && matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_)))
-            {
+            // Снимается с ЛЮБОЙ ячейки: у объединённой (colspan) ширина на
+            // коробке резала её до одной колонки, хотя место ей — весь охват.
+            if matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
                 cell.style.width = None;
             }
             // Высота ячейки — МИНИМУМ (css-tables §3.6): содержимое выше
