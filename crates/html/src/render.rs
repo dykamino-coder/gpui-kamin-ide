@@ -4221,17 +4221,42 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // рамку кольцевой квад ПОСЛЕ сетки.
     let collapse = e.style.border_collapse == Some(true)
         || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
+    // Минимумы таблицы меряются ПОЛНОЙ коробкой с рамкой и паддингом
+    // (css-tables-3 §computing-the-table-height, CSSWG #5336): пороги
+    // пересчитываются в контентные, компенсацию вернёт общий слой.
+    let min_fix = |len: Option<Len>, edges: f32| match len {
+        Some(Len::Px(v)) if e.style.border_box != Some(true) => {
+            Some(Len::Px((v - edges).max(0.0)))
+        }
+        other => other,
+    };
+    let pad = &e.style.padding;
+    let pad_px = [
+        px_of(pad.top),
+        px_of(pad.right),
+        px_of(pad.bottom),
+        px_of(pad.left),
+    ];
+    let min_h = min_fix(e.style.min_height, bw[0] + bw[2] + pad_px[0] + pad_px[2]);
+    let min_w = min_fix(e.style.min_width, bw[1] + bw[3] + pad_px[1] + pad_px[3]);
+    let needs_clone = collapse
+        || min_h != e.style.min_height
+        || min_w != e.style.min_width;
     let host_style;
-    let mut outer = if collapse {
+    let mut outer = if needs_clone {
         let mut c = inherited.clone();
-        c.border_width = Default::default();
-        c.border_visible = [None; 4];
-        c.padding = crate::computed::Sides {
-            top: Some(Len::Px(bw[0])),
-            right: Some(Len::Px(bw[1])),
-            bottom: Some(Len::Px(bw[2])),
-            left: Some(Len::Px(bw[3])),
-        };
+        if collapse {
+            c.border_width = Default::default();
+            c.border_visible = [None; 4];
+            c.padding = crate::computed::Sides {
+                top: Some(Len::Px(bw[0])),
+                right: Some(Len::Px(bw[1])),
+                bottom: Some(Len::Px(bw[2])),
+                left: Some(Len::Px(bw[3])),
+            };
+        }
+        c.min_height = min_h;
+        c.min_width = min_w;
         host_style = c;
         styled_div_with(e, &host_style).flex().flex_col()
     } else {
