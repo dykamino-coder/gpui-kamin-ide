@@ -3827,7 +3827,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             col_ix += span_cols as usize;
             let inside = blocks(&cell.children, &cm, opts);
-            let inside: Vec<AnyElement> = if clipped {
+            // Обрезанная ячейка не расталкивает колонки: её минимальный
+            // вклад в дорожки НУЛЕВОЙ (css-sizing: automatic minimum при
+            // overflow, отличном от visible, равен нулю) — иначе длинное
+            // слово в обрезаемой объединённой ячейке раздавало ширину
+            // колонкам, которых оно не должно касаться.
+            if clipped {
+                d = d.min_w(px(0.0));
+            }
+            let inside: Vec<AnyElement> = if spans_collapsed {
+                // Ячейка через схлопнутую колонку: содержимое НЕ влияет на
+                // ширины колонок вовсе (css-tables-3 §visibility-collapse) —
+                // раскладка не должна его мерить, поэтому слой абсолютный.
+                vec![
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .overflow_hidden()
+                        .children(inside)
+                        .into_any_element(),
+                ]
+            } else if clipped {
                 vec![
                     div()
                         .overflow_hidden()
