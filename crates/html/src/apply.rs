@@ -792,7 +792,15 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // раскладке красится целиком, вместе с рамкой и полями.
     if c.bg_clip.is_none() {
         if let Some(g) = &c.gradient {
-            d = d.bg(fill(g));
+            // Градиенту с размером/повтором/позицией нужна механика плитки —
+            // его рисует слой-картинка (см. render::decorations), заливка
+            // красила бы всю коробку.
+            if !c.gradient_as_tile() {
+                d = d.bg(fill(g));
+            }
+            if let Some(bg) = c.background {
+                d = d.bg(gpui::Background::from(bg.to_hsla()));
+            }
         } else if let Some(bg) = c.background {
             d = d.bg(gpui::Background::from(bg.to_hsla()));
         }

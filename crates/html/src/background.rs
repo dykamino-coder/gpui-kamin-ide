@@ -39,6 +39,7 @@ pub fn load(src: &str) -> Option<Arc<RenderImage>> {
             let (w, h) = default_size(size, (300.0, 150.0));
             crate::svg::rasterize(&markup, w, h)
         }
+        Source::Gradient { raw } => rasterize_gradient(&raw, 300, 150),
     }
 }
 
@@ -51,6 +52,9 @@ pub fn load(src: &str) -> Option<Arc<RenderImage>> {
 pub enum Source {
     Raster(Arc<RenderImage>),
     Vector { markup: String, size: Intrinsic },
+    /// Градиент: своей величины НЕТ вовсе (css-images-3 §4.4) — обе оси
+    /// берутся от области, а растрируется он точно в размер плитки.
+    Gradient { raw: String },
 }
 
 impl Source {
@@ -67,6 +71,11 @@ impl Source {
                 }
             }
             Source::Vector { size, .. } => *size,
+            Source::Gradient { .. } => Intrinsic {
+                w: None,
+                h: None,
+                ratio: None,
+            },
         }
     }
 
@@ -92,6 +101,14 @@ impl Source {
                 let raster = (tile.0.clamp(1.0, LIMIT), tile.1.clamp(1.0, LIMIT));
                 crate::svg::rasterize(&with_viewport(markup, raster), raster.0, raster.1)
             }
+            Source::Gradient { raw } => {
+                const LIMIT: f32 = 2048.0;
+                let (w, h) = (
+                    tile.0.clamp(1.0, LIMIT).round() as u32,
+                    tile.1.clamp(1.0, LIMIT).round() as u32,
+                );
+                rasterize_gradient(raw, w, h)
+            }
         }
     }
 }
@@ -108,7 +125,9 @@ pub fn source(src: &str) -> Option<Source> {
         || src.starts_with("radial-gradient(")
         || src.starts_with("conic-gradient(")
     {
-        gradient_image(src)
+        Some(Source::Gradient {
+            raw: src.to_string(),
+        })
     } else {
         read_bytes(src).as_deref().and_then(decode)
     };
@@ -160,8 +179,7 @@ fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
 /// равно растягиваются под свои места, поэтому мелкого растра достаточно.
 /// Линейный и конический считаются честно; радиальный отдаёт осевой ход
 /// цвета — девятке рамки радиальной решётки и не нужно.
-fn gradient_image(src: &str) -> Option<Source> {
-    const N: u32 = 64;
+fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     enum Mode {
         /// Ход цвета вдоль оси под углом.
         Axis { dx: f32, dy: f32 },
@@ -210,10 +228,13 @@ fn gradient_image(src: &str) -> Option<Source> {
         (Mode::Axis { dx: angle.sin(), dy: -angle.cos() }, g.stops.clone())
     };
 
-    let mut bytes = Vec::with_capacity((N * N * 4) as usize);
-    for y in 0..N {
-        for x in 0..N {
-            let (fx, fy) = (x as f32 / (N - 1) as f32 - 0.5, y as f32 / (N - 1) as f32 - 0.5);
+    let mut bytes = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let (fx, fy) = (
+                x as f32 / (w.max(2) - 1) as f32 - 0.5,
+                y as f32 / (h.max(2) - 1) as f32 - 0.5,
+            );
             let t = match mode {
                 Mode::Axis { dx, dy } => (fx * dx + fy * dy + 0.5).clamp(0.0, 1.0),
                 Mode::Sweep { from } => {
@@ -229,8 +250,7 @@ fn gradient_image(src: &str) -> Option<Source> {
             bytes.push((colour.a * 255.0) as u8);
         }
     }
-    let image = gpui::bgra_bytes_to_image(N, N, bytes)?;
-    Some(Source::Raster(image))
+    gpui::bgra_bytes_to_image(w, h, bytes)
 }
 
 /// Угол позиции стопа в долях оборота: `90deg`, `25%`, `0.25turn`, голый `0`.

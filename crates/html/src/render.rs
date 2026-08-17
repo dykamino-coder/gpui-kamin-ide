@@ -216,6 +216,14 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
     // остальным — тот же порядок, что в браузере.
     if let Some(layer) = crate::background::layer(c) {
         out.push(layer);
+    } else if c.gradient_as_tile() {
+        // Градиент с размером/повтором/позицией — той же механикой плитки:
+        // источник понимает записи `linear-gradient(...)`.
+        let mut tiled = c.clone();
+        tiled.bg_image = tiled.gradient_raw.clone();
+        if let Some(layer) = crate::background::layer(&tiled) {
+            out.push(layer);
+        }
     }
 
     // Рамка-картинка рисуется ПОВЕРХ фона и заменяет обычную рамку.
@@ -3280,7 +3288,8 @@ fn image(e: &Element) -> AnyElement {
         // и не применяет вшитый цветовой профиль (css-color-4 §12).
         let own = crate::background::source(local.unwrap_or(src)).and_then(|s| match s {
             crate::background::Source::Raster(image) => Some(image),
-            crate::background::Source::Vector { .. } => None,
+            crate::background::Source::Vector { .. }
+            | crate::background::Source::Gradient { .. } => None,
         });
         let mut image = match (own, local) {
             (Some(ready), _) => gpui::img(ready),

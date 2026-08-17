@@ -991,6 +991,17 @@ impl Default for BgSize {
 }
 
 impl Computed {
+    /// Градиент, которому нужна МЕХАНИКА ПЛИТКИ (размер, повтор, позиция,
+    /// свой край): сплошная заливка её не умеет, рисует слой-картинка.
+    pub(crate) fn gradient_as_tile(&self) -> bool {
+        self.gradient_raw.is_some()
+            && (self.bg_size != crate::computed::BgSize::Auto
+                || self.bg_repeat.is_some()
+                || self.bg_pos.x.is_some()
+                || self.bg_pos.y.is_some()
+                || self.bg_origin.is_some())
+    }
+
     /// Место под логические значения — заводится по первому обращению: у
     /// подавляющего большинства узлов их нет вовсе.
     fn logical(&mut self) -> &mut Logical {
