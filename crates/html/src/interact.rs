@@ -1362,6 +1362,12 @@ impl Element for ClampCut {
             cut = Some(c2);
         }
         let rel = cut.map(|c| (c - top).max(0.0));
+        if std::env::var("HTML_CLAMP_DBG").is_ok() {
+            eprintln!(
+                "CLAMPCUT key={} rows={} blocks={} limit={:?} max_h={:?} rel={:?}",
+                self.key, rows.len(), blocks.len(), self.limit, self.max_h, rel
+            );
+        }
         let prev = clamp_cut(self.key);
         let changed = match (prev, rel) {
             (Some(a), Some(b)) => (a - b).abs() > 0.5,

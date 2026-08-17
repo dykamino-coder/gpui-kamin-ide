@@ -146,13 +146,16 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // из бюджета строк ПРОШЛОГО кадра (interact::ClampCut) — низ N-й
     // считаемой строки, поднятый к верху пересечённого блока. Пока точки
     // нет (первый кадр) — грубый потолок в N своих строк.
-    if c.clamp_auto == Some(true) && c.max_height.is_some() {
+    // Обрезает только ВЛАДЕЛЕЦ line-clamp: свойство не наследуется, но
+    // слитый стиль несёт его вниз для текст-ранов — потомки резали себя
+    // тем же потолком и с чужими ключами бюджета.
+    if e.style.clamp_auto == Some(true) && c.max_height.is_some() {
         if let Some(cut) = crate::interact::clamp_cut(e.node_id) {
             d = d.max_h(px(cut));
         }
         d = d.overflow_hidden();
     }
-    if let Some(n) = c.clamp_lines() {
+    if let Some(n) = e.style.clamp_lines() {
         d = d.line_clamp(n as usize);
         let font = match c.font_size {
             Some(Len::Px(v)) => v,
@@ -164,6 +167,9 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             _ => 1.2 * font,
         };
         let cut = crate::interact::clamp_cut(e.node_id).unwrap_or(n as f32 * line);
+        if std::env::var("HTML_CLAMP_DBG").is_ok() {
+            eprintln!("CLAMP branch node={} n={} cut={}", e.node_id, n, cut);
+        }
         d = d.max_h(px(cut)).overflow_hidden();
     }
     for extra in decorations(c) {
@@ -3319,12 +3325,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             kids.extend(clip_layer(&merged, opts));
             // Бюджет строк обрезки: сторожа контекста живут, пока строится
             // поддерево — пробы детей пишут строки в буфер контейнера.
-            // Гейт на время доводки: бюджет пока не даёт нетто-плюса
-            // (верхние webkit-пары требуют строк смешанных контейнеров).
-            let budget_on = std::env::var("HTML_CLAMP_BUDGET").is_ok();
-            let is_clamp = budget_on
-                && (merged.clamp_lines().is_some()
-                    || (merged.clamp_auto == Some(true) && merged.max_height.is_some()));
+            let is_clamp = e.style.clamp_lines().is_some()
+                || (e.style.clamp_auto == Some(true) && merged.max_height.is_some());
             let _clamp_guard = is_clamp.then(|| crate::interact::ClampGuard::enter(e.node_id));
             let makes_bfc = matches!(
                 merged.overflow_x,
@@ -3358,7 +3360,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     crate::interact::ClampCut::new(
                         e.node_id,
                         crate::interact::clamp_lines_for(e.node_id),
-                        merged.clamp_lines(),
+                        e.style.clamp_lines(),
                         max_h,
                     )
                     .into_any_element(),
