@@ -3746,9 +3746,15 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .unwrap_or(black)
                 };
                 let colors = [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+                let side_style = |i: usize| {
+                    cell.style.border_side_styles[i]
+                        .unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
+                };
+                let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
                 cell.style.border_width = Default::default();
                 cell.style.border_visible = [None; 4];
-                (widths.iter().any(|w| *w > 0.0)).then_some((widths, colors))
+                (widths.iter().any(|w| *w > 0.0) || styles.contains(&1))
+                    .then_some((widths, colors, styles, cell.node_id as u32))
             } else {
                 None
             };
@@ -3869,8 +3875,16 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             } else {
                 (0.0, 0.0)
             };
-            if let Some((widths, colors)) = cell_edge {
-                d = d.child(crate::interact::edge_probe(table_edges.clone(), widths, colors));
+            if let Some((widths, colors, styles, doc_ix)) = cell_edge {
+                d = d.child(crate::interact::edge_probe(
+                    table_edges.clone(),
+                    widths,
+                    colors,
+                    styles,
+                    2,
+                    doc_ix,
+                    [0.0; 4],
+                ));
             }
             if let Some(rects) = &row_rects {
                 d = d.child(crate::interact::cell_rect_probe(rects.clone(), span_rows == 1, shift));
@@ -4063,37 +4077,27 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .children(cells)
                 .into_any_element(),
         );
-    if collapse && bw.iter().any(|w| *w > 0.0) && e.style.border_visible.contains(&Some(true)) {
-        let colour = e
-            .style
-            .border_color
-            .unwrap_or(crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 })
-            .to_hsla();
-        let widths = bw;
-        outer = outer.child(
-            gpui::canvas(
-                |_, _, _| {},
-                move |bounds: gpui::Bounds<gpui::Pixels>, _, window, _| {
-                    // Канвас, растянутый на всю коробку, встаёт ПО МЕСТУ
-                    // рамки (его границы совпадают с рамочными): кольцо
-                    // рисуется по ним без расширения.
-                    let mut quad = gpui::fill(bounds, gpui::transparent_black());
-                    quad.border_color = colour;
-                    quad.border_widths = gpui::Edges {
-                        top: px(widths[0]),
-                        right: px(widths[1]),
-                        bottom: px(widths[2]),
-                        left: px(widths[3]),
-                    };
-                    window.paint_quad(quad);
-                },
-            )
-            .absolute()
-            .top_0()
-            .left_0()
-            .size_full()
-            .into_any_element(),
-        );
+    if collapse && (bw.iter().any(|w| *w > 0.0) || e.style.border_side_styles.contains(&Some(1))) {
+        // Рамка самой таблицы — участник разбора конфликтов: её кромки
+        // уходят в тот же слой (EdgePainter), линии — внутренние края
+        // рамочного места, победившая кромка рисуется наружу.
+        let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+        let side_colour = |i: usize| {
+            e.style.border_colors[i].or(e.style.border_color).unwrap_or(black)
+        };
+        let colors = [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+        let side_style =
+            |i: usize| e.style.border_side_styles[i].unwrap_or(if bw[i] > 0.0 { 9 } else { 0 });
+        let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
+        outer = outer.child(crate::interact::edge_probe(
+            table_edges.clone(),
+            bw,
+            colors,
+            styles,
+            0,
+            e.node_id as u32,
+            bw,
+        ));
     }
     let outer = outer;
     if root_table {

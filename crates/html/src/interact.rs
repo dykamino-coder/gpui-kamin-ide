@@ -889,6 +889,12 @@ pub struct EdgeCell {
     /// Ширины кромок [верх, право, низ, лево] в точках.
     pub widths: [f32; 4],
     pub colors: [crate::value::Color; 4],
+    /// Ранги стилей сторон (см. `Computed::border_side_styles`); 9 = solid.
+    pub styles: [u8; 4],
+    /// Ранг источника: ячейка 2, таблица 0 (CSS 2.1 §17.6.2.1 п.4).
+    pub source: u8,
+    /// Порядок в документе: раньше = выше/левее, при равенстве побеждает.
+    pub doc_ix: u32,
 }
 
 pub type CellEdges = std::rc::Rc<std::cell::RefCell<Vec<EdgeCell>>>;
@@ -907,10 +913,28 @@ pub fn edge_probe(
     edges: CellEdges,
     widths: [f32; 4],
     colors: [crate::value::Color; 4],
+    styles: [u8; 4],
+    source: u8,
+    doc_ix: u32,
+    inset: [f32; 4],
 ) -> AnyElement {
     gpui::canvas(
         move |bounds: Bounds<Pixels>, _, _| {
-            edges.borrow_mut().push(EdgeCell { bounds, widths, colors });
+            // Вжим границ внутрь: линии рамки самой таблицы лежат на
+            // ВНУТРЕННИХ краях её рамочного места.
+            let bounds = Bounds {
+                origin: gpui::point(
+                    bounds.origin.x + gpui::px(inset[3]),
+                    bounds.origin.y + gpui::px(inset[0]),
+                ),
+                size: gpui::size(
+                    bounds.size.width - gpui::px(inset[1] + inset[3]),
+                    bounds.size.height - gpui::px(inset[0] + inset[2]),
+                ),
+            };
+            edges
+                .borrow_mut()
+                .push(EdgeCell { bounds, widths, colors, styles, source, doc_ix });
         },
         |_, _, _, _| {},
     )
@@ -981,39 +1005,110 @@ impl Element for EdgePainter {
         _cx: &mut App,
     ) {
         let cells = std::mem::take(&mut *self.edges.borrow_mut());
-        // Кромка = (ширина, прямоугольник, цвет); собираются все, рисуются
-        // от узких к широким — наложение решает конфликт в пользу широкой.
-        let mut strokes: Vec<(f32, Bounds<Pixels>, crate::value::Color)> = vec![];
+        // Кандидат кромки на ЛИНИИ сетки: совпадающие отрезки соседей — ОДНА
+        // кромка, победитель по CSS 2.1 §17.6.2.1 (hidden гасит всех, затем
+        // шире, ранг стиля, источник ячейка>таблица, порядок в документе).
+        struct Cand {
+            line: f32,
+            a: f32,
+            b: f32,
+            w: f32,
+            style: u8,
+            source: u8,
+            doc_ix: u32,
+            colour: crate::value::Color,
+            /// Наружная сторона крайней линии таблицы (-1/1); 0 — центр.
+            outward: i8,
+        }
+        let mut vert: Vec<Cand> = vec![];
+        let mut horiz: Vec<Cand> = vec![];
         for c in &cells {
-            let b = c.bounds;
-            let (x0, y0) = (f32::from(b.origin.x), f32::from(b.origin.y));
-            let (x1, y1) = (x0 + f32::from(b.size.width), y0 + f32::from(b.size.height));
-            let [wt, wr, wb, wl] = c.widths;
-            // Вертикальный охват боковых кромок продлён на половину
-            // верхней и нижней — углы заполняются без скосов.
-            let (ty0, ty1) = (y0 - wt / 2.0, y1 + wb / 2.0);
-            let (tx0, tx1) = (x0 - wl / 2.0, x1 + wr / 2.0);
-            let mut push = |w: f32, r: [f32; 4], colour: crate::value::Color| {
-                if w > 0.0 && colour.a != 0.0 {
-                    strokes.push((
-                        w,
-                        Bounds {
-                            origin: gpui::point(gpui::px(r[0]), gpui::px(r[1])),
-                            size: gpui::size(gpui::px(r[2] - r[0]), gpui::px(r[3] - r[1])),
-                        },
-                        colour,
-                    ));
+            let bnd = c.bounds;
+            let (x0, y0) = (f32::from(bnd.origin.x), f32::from(bnd.origin.y));
+            let (x1, y1) = (x0 + f32::from(bnd.size.width), y0 + f32::from(bnd.size.height));
+            let is_table = c.source == 0;
+            let mut side =
+                |list: &mut Vec<Cand>, line: f32, a: f32, b: f32, i: usize, out: i8| {
+                    if c.widths[i] > 0.0 || c.styles[i] == 1 {
+                        list.push(Cand {
+                            line,
+                            a,
+                            b,
+                            w: c.widths[i],
+                            style: c.styles[i],
+                            source: c.source,
+                            doc_ix: c.doc_ix,
+                            colour: c.colors[i],
+                            outward: if is_table { out } else { 0 },
+                        });
+                    }
+                };
+            side(&mut horiz, y0, x0, x1, 0, -1);
+            side(&mut vert, x1, y0, y1, 1, 1);
+            side(&mut horiz, y1, x0, x1, 2, 1);
+            side(&mut vert, x0, y0, y1, 3, -1);
+        }
+        let mut draw = |cands: &mut Vec<Cand>, vertical: bool| {
+            cands.sort_by(|p, q| p.line.partial_cmp(&q.line).unwrap_or(std::cmp::Ordering::Equal));
+            let mut i = 0;
+            while i < cands.len() {
+                let mut j = i + 1;
+                while j < cands.len() && (cands[j].line - cands[i].line).abs() < 0.75 {
+                    j += 1;
                 }
-            };
-            push(wt, [tx0, y0 - wt / 2.0, tx1, y0 + wt / 2.0], c.colors[0]);
-            push(wb, [tx0, y1 - wb / 2.0, tx1, y1 + wb / 2.0], c.colors[2]);
-            push(wl, [x0 - wl / 2.0, ty0, x0 + wl / 2.0, ty1], c.colors[3]);
-            push(wr, [x1 - wr / 2.0, ty0, x1 + wr / 2.0, ty1], c.colors[1]);
-        }
-        strokes.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        for (_, rect, colour) in strokes {
-            window.paint_quad(gpui::fill(rect, colour.to_hsla()));
-        }
+                let group = &cands[i..j];
+                let outward = group.iter().find_map(|c| (c.outward != 0).then_some(c.outward));
+                let mut cuts: Vec<f32> = group.iter().flat_map(|c| [c.a, c.b]).collect();
+                cuts.sort_by(|p, q| p.partial_cmp(q).unwrap_or(std::cmp::Ordering::Equal));
+                cuts.dedup_by(|p, q| (*p - *q).abs() < 0.5);
+                for seg in cuts.windows(2) {
+                    let (a, b) = (seg[0], seg[1]);
+                    if b - a < 0.5 {
+                        continue;
+                    }
+                    let mid = (a + b) / 2.0;
+                    let covering: Vec<&Cand> = group
+                        .iter()
+                        .filter(|c| c.a - 0.25 <= mid && mid <= c.b + 0.25)
+                        .collect();
+                    if covering.is_empty() || covering.iter().any(|c| c.style == 1) {
+                        continue;
+                    }
+                    let win = covering
+                        .iter()
+                        .max_by(|p, q| {
+                            let kp = (p.w, p.style, p.source, u32::MAX - p.doc_ix);
+                            let kq = (q.w, q.style, q.source, u32::MAX - q.doc_ix);
+                            kp.partial_cmp(&kq).unwrap_or(std::cmp::Ordering::Equal)
+                        })
+                        .unwrap();
+                    if win.w <= 0.0 || win.colour.a == 0.0 {
+                        continue;
+                    }
+                    let line = win.line;
+                    let (lo, hi) = match outward {
+                        Some(-1) => (line - win.w, line),
+                        Some(1) => (line, line + win.w),
+                        _ => (line - win.w / 2.0, line + win.w / 2.0),
+                    };
+                    let rect = if vertical {
+                        Bounds {
+                            origin: gpui::point(gpui::px(lo), gpui::px(a)),
+                            size: gpui::size(gpui::px(hi - lo), gpui::px(b - a)),
+                        }
+                    } else {
+                        Bounds {
+                            origin: gpui::point(gpui::px(a), gpui::px(lo)),
+                            size: gpui::size(gpui::px(b - a), gpui::px(hi - lo)),
+                        }
+                    };
+                    window.paint_quad(gpui::fill(rect, win.colour.to_hsla()));
+                }
+                i = j;
+            }
+        };
+        draw(&mut vert, true);
+        draw(&mut horiz, false);
     }
 }
 

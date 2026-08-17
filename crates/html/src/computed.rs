@@ -769,6 +769,11 @@ pub struct Computed {
     /// Цвета рамки по сторонам. У GPUI цвет рамки один на элемент, поэтому
     /// разные цвета сторон дорисовываются полосами.
     pub border_colors: [Option<Color>; 4],
+    /// Ранги стилей кромок по сторонам [верх, право, низ, лево] для
+    /// разбора конфликтов сросшихся рамок (CSS 2.1 §17.6.2.1):
+    /// 0 none, 1 hidden, 3 inset, 4 groove, 5 outset, 6 ridge, 7 dotted,
+    /// 8 dashed, 9 solid, 10 double. `None` — стиль не задавался.
+    pub border_side_styles: [Option<u8>; 4],
     pub border_dashed: Option<bool>,
     /// `border-style: dotted` — точечный узор.
     pub border_dotted: Option<bool>,
@@ -3376,6 +3381,12 @@ impl Computed {
     /// толщина не считается, поэтому видимость помним по сторонам.
     fn set_border_style(&mut self, v: &str, side: Option<usize>) {
         let on = border_style(v);
+        if let Some(r) = border_style_rank(v) {
+            match side {
+                None => self.border_side_styles = [Some(r); 4],
+                Some(i) => self.border_side_styles[i] = Some(r),
+            }
+        }
         self.set_visible(side, on);
         if on {
             let w = match side {
@@ -3409,9 +3420,20 @@ impl Computed {
             if token == "none" || token == "hidden" {
                 width = Some(Len::Px(0.0));
                 self.set_visible(side, false);
+                let r = border_style_rank(token);
+                match side {
+                    None => self.border_side_styles = [r; 4],
+                    Some(i) => self.border_side_styles[i] = r,
+                }
             } else if border_style(token) {
                 visible_style = true;
                 self.set_visible(side, true);
+                if let Some(r) = border_style_rank(token) {
+                    match side {
+                        None => self.border_side_styles = [Some(r); 4],
+                        Some(i) => self.border_side_styles[i] = Some(r),
+                    }
+                }
                 self.border_dashed = Some(token == "dashed");
                 self.border_dotted = Some(token == "dotted");
             } else if let Some(l) = line_width(token) {
@@ -3459,6 +3481,23 @@ impl Computed {
 
 /// Рисунок рамки, при котором она ВИДНА. `none` и `hidden` сюда не входят:
 /// они рамку убирают.
+/// Ранг стиля кромки для разбора конфликтов (см. `border_side_styles`).
+fn border_style_rank(v: &str) -> Option<u8> {
+    Some(match v.to_ascii_lowercase().as_str() {
+        "none" => 0,
+        "hidden" => 1,
+        "inset" => 3,
+        "groove" => 4,
+        "outset" => 5,
+        "ridge" => 6,
+        "dotted" => 7,
+        "dashed" => 8,
+        "solid" => 9,
+        "double" => 10,
+        _ => return None,
+    })
+}
+
 fn border_style(v: &str) -> bool {
     // Значения CSS нечувствительны к регистру: `border: 1px SOLID red` — та же
     // рамка. К нижнему регистру приводится только ИМЯ свойства.
