@@ -645,6 +645,14 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
     };
     let box_size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
     let tile = tile_size(found.intrinsic(), box_size, size);
+    // Плитка НЕ бывает осмысленно шире считанных коробок: вырожденное
+    // соотношение (`viewBox` в миллиарды) давало размер за пределами
+    // точности float, и координаты копий разваливались. Видима всё равно
+    // только часть в коробке.
+    let tile = (
+        tile.0.min(box_size.0.max(1.0) * 8.0),
+        tile.1.min(box_size.1.max(1.0) * 8.0),
+    );
     // Нулевая плитка не рисуется вовсе, а вот МЕЛКАЯ — рисуется: браузер
     // мостит и долями точки. Ограничивается не размер плитки, а их ЧИСЛО.
     if tile.0 <= 0.0 || tile.1 <= 0.0 {
