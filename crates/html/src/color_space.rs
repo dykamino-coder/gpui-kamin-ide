@@ -405,6 +405,16 @@ fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
         }
         "xyz" | "xyz-d65" => c,
         "xyz-d50" => mul(D50_TO_D65, c),
+        // Своё пространство из `@color-profile --имя { src: url(…) }`.
+        custom if custom.starts_with("--") => {
+            let profile = PROFILES.with(|p| p.borrow().get(custom).cloned());
+            if std::env::var("HTML_ICC").is_ok() {
+                eprintln!("ICC lookup '{custom}': {}", profile.is_some());
+            }
+            let profile = profile?;
+            let (r, g, b) = icc_to_srgb(&profile, c)?;
+            return Some((r, g, b, a));
+        }
         _ => return None,
     };
     let out = mul(XYZ_TO_LINEAR_SRGB, xyz);
@@ -661,6 +671,73 @@ pub(crate) fn apply_icc(
         out.push(px[3]);
     }
     gpui::bgra_bytes_to_image(w, h, out)
+}
+
+/// Реестр профилей `@color-profile`: имя (`--foo`) — байты ICC.
+///
+/// Живёт одну страницу, как и подмена шрифтов: имена придумывает страница.
+thread_local! {
+    static PROFILES: std::cell::RefCell<std::collections::HashMap<String, Vec<u8>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Разобрать правила `@color-profile` страницы и загрузить их файлы.
+///
+/// Путь в `url(...)` берётся как есть: адреса в странице уже разрешены.
+pub fn load_profiles(css: &str) {
+    PROFILES.with(|p| p.borrow_mut().clear());
+    let lower = css.to_ascii_lowercase();
+    let mut from = 0usize;
+    while let Some(at) = lower[from..].find("@color-profile") {
+        let start = from + at;
+        let Some(open) = css[start..].find('{') else { break };
+        let name = css[start + "@color-profile".len()..start + open].trim().to_string();
+        // Слова `@color-profile` встречаются и в ТЕКСТЕ страницы (заголовок
+        // теста): правилом считается только запись с именем `--…` прямо
+        // перед скобкой.
+        if !name.starts_with("--") || open > 64 {
+            from = start + "@color-profile".len();
+            continue;
+        }
+        let Some(close) = css[start + open..].find('}') else { break };
+        let block = &css[start + open + 1..start + open + close];
+        from = start + open + close;
+        let Some(src) = block.split(';').find_map(|d| {
+            let (k, v) = d.split_once(':')?;
+            k.trim().eq_ignore_ascii_case("src").then(|| v.trim().to_string())
+        }) else {
+            continue;
+        };
+        let Some(path) = crate::computed::parse_url(&src) else { continue };
+        let clean = path.strip_prefix("file:///").unwrap_or(&path);
+        let read = std::fs::read(clean);
+        if std::env::var("HTML_ICC").is_ok() {
+            eprintln!("ICC profile '{name}' <- {clean}: {:?}", read.as_ref().map(|b| b.len()));
+        }
+        if let Ok(bytes) = read
+            && name.starts_with("--")
+        {
+            PROFILES.with(|p| p.borrow_mut().insert(name, bytes));
+        }
+    }
+}
+
+/// Прогнать цвет через профиль: кривые -> матрица -> XYZ D50 -> sRGB.
+fn icc_to_srgb(profile: &[u8], c: [f32; 3]) -> Option<(f32, f32, f32)> {
+    let m = icc_matrix(profile)?;
+    let curves = [
+        icc_curve(profile, b"rTRC")?,
+        icc_curve(profile, b"gTRC")?,
+        icc_curve(profile, b"bTRC")?,
+    ];
+    let lin = [
+        curve_at(&curves[0], c[0]),
+        curve_at(&curves[1], c[1]),
+        curve_at(&curves[2], c[2]),
+    ];
+    let xyz = mul(D50_TO_D65, mul(m, lin));
+    let srgb = mul(XYZ_TO_LINEAR_SRGB, xyz);
+    Some(gamut_map(srgb_gamma(srgb[0]), srgb_gamma(srgb[1]), srgb_gamma(srgb[2])))
 }
 
 /// Найти запись каталога ICC по подписи: (смещение, длина).

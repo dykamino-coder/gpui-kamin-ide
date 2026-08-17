@@ -30,6 +30,7 @@ impl Document {
         // Свои шрифты страницы грузятся ДО разбора: иначе первый же замер
         // ширины пойдёт по подстановке, а перерисовки под новый шрифт нет.
         crate::fonts::load_faces(html);
+        crate::color_space::load_profiles(html);
         crate::lines::forget_measures();
         let (nodes, root) = unwrap_document(resolve_logical(propagate_writing_mode(
             viewport_overflow(crate::dom::parse(html, theme_css)),

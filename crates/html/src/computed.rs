@@ -3472,7 +3472,7 @@ fn split_font(v: &str) -> (&str, &str) {
 /// с учётом кавычек и экранирования: закрывающая скобка внутри строки записи
 /// не закрывает (§4.3.6). И искать `url(` внутри строки нельзя вовсе —
 /// `content: "url(x)"` записью не является.
-fn parse_url(v: &str) -> Option<String> {
+pub(crate) fn parse_url(v: &str) -> Option<String> {
     let mut at = 0usize;
     while at < v.len() {
         let ch = v[at..].chars().next().unwrap_or('\u{0}');
