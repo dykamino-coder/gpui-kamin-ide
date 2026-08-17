@@ -95,8 +95,19 @@ export function useSyncedData(): SyncedDataHandle {
 
   async function forceSyncAndLoad(): Promise<void> {
     setLoading(true)
-    try { await bridge.forceSync() } catch {}
-    await load()
+    setError(null)
+    try {
+      const result = await bridge.forceSync()
+      if (!result?.ok) {
+        setError(result?.error || 'Force sync failed')
+        return
+      }
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
   }
 
   // On mount, just LOAD the tree the server already has — don't force a full

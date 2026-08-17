@@ -1,5 +1,12 @@
 import 'reflect-metadata'
-import { describe, expect, it, vi } from 'vitest'
+import fs from 'fs'
+import { afterAll, describe, expect, it, vi } from 'vitest'
+
+const syncBase = vi.hoisted(() => {
+  const value = `${(process.env.TMPDIR || '/tmp').replace(/\/$/, '')}/bridge-sync-security-${process.pid}-${Date.now()}`
+  process.env.BRIDGE_SYNC_BASE = value
+  return value
+})
 
 vi.mock('../auth/tokens', () => ({
   resolveToken: vi.fn(async (token: string) => token === 'owner-secret'
@@ -8,6 +15,8 @@ vi.mock('../auth/tokens', () => ({
 }))
 
 import { createSyncRoutes, getUserSyncDir, tokenHash } from './routes'
+
+afterAll(() => fs.rmSync(syncBase, { recursive: true, force: true }))
 
 describe('sync route isolation', () => {
   it('rejects decoded path traversal before resolving a filesystem path', async () => {

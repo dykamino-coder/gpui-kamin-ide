@@ -18,6 +18,7 @@
 import {
   cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync,
 } from "node:fs"
+import { spawnSync } from "node:child_process"
 import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -27,6 +28,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const kaminIde = process.env.KAMIN_DEV_REPO ?? root
 const release = join(root, "target", "release")
 const dist = join(root, "dist-installer")
+const payload = join(kaminIde, "payload", "runtime.tar.zst")
 const version = /version\s*=\s*"([^"]+)"/.exec(readFileSync(join(root, "Cargo.toml"), "utf8"))[1]
 
 if (!existsSync(join(release, "kaminide-gpui.exe"))) {
@@ -44,6 +46,20 @@ if (!existsSync(join(release, "kaminide-gpui.exe"))) {
     console.error(`target/release/kaminide-gpui.exe СТАРШЕ Cargo.toml (бамп версии не собран) — прогони cargo build --release`)
     process.exit(1)
   }
+}
+
+if (!existsSync(payload)) {
+  console.error(`нет ${payload} — прогони npm run build:payload`)
+  process.exit(1)
+}
+const payloadCheck = spawnSync(
+  process.execPath,
+  [join(kaminIde, "scripts", "build-runtime-payload.mjs"), "--check"],
+  { cwd: kaminIde, stdio: "inherit" },
+)
+if (payloadCheck.status !== 0) {
+  console.error("runtime payload не соответствует текущим host/builtin sources")
+  process.exit(1)
 }
 
 rmSync(dist, { recursive: true, force: true })
@@ -73,11 +89,6 @@ console.log(`[installer] shell+CEF: ${copied} файлов`)
 
 // runtime/ из payload-архива kamin-ide (staging после сборки удалён — берём
 // сам runtime.tar.zst, это и есть прод-артефакт).
-const payload = join(kaminIde, "payload", "runtime.tar.zst")
-if (!existsSync(payload)) {
-  console.error(`нет ${payload} — прогони npm run build:payload`)
-  process.exit(1)
-}
 const tarBuf = zstdDecompressSync(readFileSync(payload))
 const tarTmp = join(root, "runtime.tar.tmp")
 writeFileSync(tarTmp, tarBuf)

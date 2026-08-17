@@ -26,9 +26,9 @@ services:
     volumes:
       - bridge-data:/app/data
       - claude-auth:/home/bridge/.claude
-      # Per-token synced skills/agents/settings live here (SYNC_BASE =
-      # ~/bridge-sync). Without a named volume it sat in the container layer and
-      # every `compose down`/recreate wiped it — persist it so redeploys keep it.
+      # Legacy sync volume retained for one-time migration into
+      # /app/data/bridge-sync. New snapshots live on bridge-data so every server
+      # deployment gets persistence without requiring an extra mount.
       - bridge-sync:/home/bridge/bridge-sync
       # Live-mount the installer directory so new Setup.exe + nupkg + RELEASES
       # files produced by `npm run make` are picked up on the next container

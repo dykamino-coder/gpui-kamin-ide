@@ -7,7 +7,6 @@ import crypto from 'crypto'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
-import os from 'os'
 import { debugLog, warnLog } from '../logging'
 import type { SyncUserData, SyncProjectData } from '../pty/types'
 import { getAllSessions } from '../pty/session-core'
@@ -15,12 +14,12 @@ import { requestMaintenanceSubmission } from '../pty/session-input-coordinator'
 import { refreshSessionSkills } from '../pty/session-settings'
 import { resolveToken } from '../auth/tokens'
 import { withProjectSyncLock, withUserSyncLock } from './lock'
+import { prepareSyncStorage, resolveSyncBase } from './storage'
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const SYNC_BASE = path.join(os.homedir(), 'bridge-sync')
 const TOKEN_HASH_RE = /^[a-f0-9]{16}$/
 const MAX_SYNC_BODY_BYTES = 10 * 1024 * 1024
 const MAX_SYNC_STRING_BYTES = 1024 * 1024
@@ -44,8 +43,32 @@ async function requireOwnedToken(c: import('hono').Context): Promise<Response | 
   if (!hash || !TOKEN_HASH_RE.test(hash)) return c.json({ error: 'Invalid tokenId' }, 400)
   const auth = c.req.header('Authorization') || ''
   const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : ''
-  if (!bearer || !(await resolveToken(bearer))) return c.json({ error: 'Unauthorized' }, 401)
-  if (tokenHash(bearer) !== hash) return c.json({ error: 'Forbidden' }, 403)
+  if (!bearer) {
+    warnLog('[sync] Rejected unauthenticated request', {
+      tokenId: hash,
+      method: c.req.method,
+      path: c.req.path,
+      reason: 'missing_bearer',
+    })
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  if (!(await resolveToken(bearer))) {
+    warnLog('[sync] Rejected unauthenticated request', {
+      tokenId: hash,
+      method: c.req.method,
+      path: c.req.path,
+      reason: 'unknown_bearer',
+    })
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  if (tokenHash(bearer) !== hash) {
+    warnLog('[sync] Rejected request for a different token owner', {
+      tokenId: hash,
+      method: c.req.method,
+      path: c.req.path,
+    })
+    return c.json({ error: 'Forbidden' }, 403)
+  }
   return null
 }
 
@@ -110,13 +133,13 @@ function projectHash(projectPath: string): string {
 /** Get the user sync directory for a given token hash */
 export function getUserSyncDir(hash: string): string {
   assertTokenHash(hash)
-  return path.join(SYNC_BASE, 'users', hash)
+  return path.join(resolveSyncBase(), 'users', hash)
 }
 
 /** Get the project sync directory for a given token hash + project path */
 export function getProjectSyncDir(hash: string, projectPath: string): string {
   assertTokenHash(hash)
-  return path.join(SYNC_BASE, 'projects', hash, projectHash(projectPath))
+  return path.join(resolveSyncBase(), 'projects', hash, projectHash(projectPath))
 }
 
 /** Write a Record<relativePath, content> into a directory. Async so the sync
@@ -244,6 +267,7 @@ async function readFileMap(baseDir: string): Promise<Record<string, string>> {
 // ---------------------------------------------------------------------------
 
 export function createSyncRoutes(): Hono {
+  const syncBase = prepareSyncStorage()
   const api = new Hono()
 
   // POST /api/sync/:tokenId/user — upload user-level files
@@ -389,7 +413,7 @@ export function createSyncRoutes(): Hono {
 
     const hash = tokenId
     const userDir = getUserSyncDir(hash)
-    const projectsBase = path.join(SYNC_BASE, 'projects', hash)
+    const projectsBase = path.join(syncBase, 'projects', hash)
 
     const status: {
       user: { skills: number; agents: number; commands: number; hasSettings: boolean; hasClaudeMd: boolean } | null
@@ -452,7 +476,7 @@ export function createSyncRoutes(): Hono {
     if (authError) return authError
     const hash = tokenId
     const userDir = getUserSyncDir(hash)
-    const projectsBase = path.join(SYNC_BASE, 'projects', hash)
+    const projectsBase = path.join(syncBase, 'projects', hash)
 
     interface Node {
       name: string
@@ -481,7 +505,7 @@ export function createSyncRoutes(): Hono {
 
     const payload = {
       tokenId: hash,
-      basePath: SYNC_BASE,
+      basePath: syncBase,
       user: {
         path: userDir,
         exists: fs.existsSync(userDir),
@@ -507,7 +531,7 @@ export function createSyncRoutes(): Hono {
 
   // GET /api/sync/:tokenId/file?path=<abs-path-under-sync-base>
   // Returns raw content of a single synced file, with a hard cap so the
-  // response never blows up the client. Refuses anything outside SYNC_BASE.
+  // response never blows up the client. Refuses anything outside syncBase.
   api.get('/api/sync/:tokenId/file', async (c) => {
     const tokenId = c.req.param('tokenId')
     const authError = await requireOwnedToken(c)
@@ -516,15 +540,15 @@ export function createSyncRoutes(): Hono {
     if (!q) return c.json({ error: 'Missing path query' }, 400)
 
     const abs = path.resolve(q)
-    // Sandbox: must be inside SYNC_BASE and tied to this tokenId
+    // Sandbox: must be inside syncBase and tied to this tokenId
     const sandboxA = getUserSyncDir(tokenId) + path.sep
-    const sandboxB = path.resolve(SYNC_BASE, 'projects', tokenId) + path.sep
+    const sandboxB = path.resolve(syncBase, 'projects', tokenId) + path.sep
     if (!(abs.startsWith(sandboxA) || abs.startsWith(sandboxB))) {
       return c.json({ error: 'Path outside sync sandbox' }, 403)
     }
     try {
       const real = fs.realpathSync(abs)
-      const allowedRoots = [getUserSyncDir(tokenId), path.resolve(SYNC_BASE, 'projects', tokenId)]
+      const allowedRoots = [getUserSyncDir(tokenId), path.resolve(syncBase, 'projects', tokenId)]
         .filter(root => fs.existsSync(root))
         .map(root => fs.realpathSync(root))
       const insideRealRoot = allowedRoots.some((root) => {

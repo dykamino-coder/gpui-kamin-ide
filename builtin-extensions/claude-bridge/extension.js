@@ -42678,7 +42678,7 @@ async function syncUserDataOnce(serverUrl, token) {
   const now = Date.now();
   const syncKey = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}`;
   if (now - (lastUserSync.get(syncKey) ?? 0) < SYNC_DEBOUNCE_MS) {
-    return;
+    return { ok: true, skipped: true };
   }
   const hash = tokenHash(token);
   const claudeDir = import_path8.default.join(import_os5.default.homedir(), ".claude");
@@ -42701,13 +42701,17 @@ async function syncUserDataOnce(serverUrl, token) {
     });
     if (!resp.ok) {
       const body = await resp.text();
-      log(`User sync failed: ${resp.status} ${body}`);
-      return;
+      const error = `User sync failed: ${resp.status} ${body}`;
+      log(error);
+      return { ok: false, error };
     }
     lastUserSync.set(syncKey, now);
     log(`User data synced (skills: ${Object.keys(data.skills).length}, agents: ${Object.keys(data.agents).length}, commands: ${Object.keys(data.commands).length}, plugins: ${Object.keys(data.plugins).length}, settings: ${!!data.settings}, claudeMd: ${!!data.claudeMd})`);
+    return { ok: true };
   } catch (err) {
-    log("User sync error:", err instanceof Error ? err.message : String(err));
+    const error = `User sync error: ${err instanceof Error ? err.message : String(err)}`;
+    log(error);
+    return { ok: false, error };
   }
 }
 function syncUserData(serverUrl, token) {
@@ -42725,7 +42729,7 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
   const syncKey = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}\0${projectPath}`;
   const lastSync = lastProjectSync.get(syncKey) ?? 0;
   if (now - lastSync < SYNC_DEBOUNCE_MS) {
-    return;
+    return { ok: true, skipped: true };
   }
   const hash = tokenHash(token);
   const dotClaudeDir = import_path8.default.join(projectPath, ".claude");
@@ -42751,13 +42755,17 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
     });
     if (!resp.ok) {
       const body = await resp.text();
-      log(`Project sync failed: ${resp.status} ${body}`);
-      return;
+      const error = `Project sync failed: ${resp.status} ${body}`;
+      log(error);
+      return { ok: false, error };
     }
     lastProjectSync.set(syncKey, now);
     log(`Project data synced for ${import_path8.default.basename(projectPath)} (skills: ${Object.keys(data.skills).length}, rules: ${Object.keys(data.rules).length}, agents: ${Object.keys(data.agents).length}, commands: ${Object.keys(data.commands).length})`);
+    return { ok: true };
   } catch (err) {
-    log("Project sync error:", err instanceof Error ? err.message : String(err));
+    const error = `Project sync error: ${err instanceof Error ? err.message : String(err)}`;
+    log(error);
+    return { ok: false, error };
   }
 }
 function syncProjectData(serverUrl, token, projectPath) {
@@ -49830,6 +49838,15 @@ function enrichTreeWithTabs(tree, tabManager) {
   return enriched;
 }
 
+// src/main/sync/request-auth.ts
+function withSyncAuthorization(path44, init, token) {
+  if (!path44.startsWith("/api/sync/") || !token) return init;
+  return {
+    ...init,
+    headers: { ...init?.headers ?? {}, Authorization: `Bearer ${token}` }
+  };
+}
+
 // src/core-ipc.ts
 init_toast_window();
 var MIME = {
@@ -49840,7 +49857,7 @@ var MIME = {
   ".webp": "image/webp",
   ".svg": "image/svg+xml"
 };
-function registerCoreIpc(context) {
+function registerCoreIpc(context, configStore) {
   ipcMain.handle("get-version", () => String(context.extension.packageJSON.version ?? ""));
   ipcMain.handle("vscode:is-available", () => false);
   ipcMain.on("vscode:open", () => {
@@ -49958,10 +49975,11 @@ function registerCoreIpc(context) {
   });
   ipcMain.handle("bridge:server-fetch", async (_e, httpBase, path44, init) => {
     try {
+      const authenticatedInit = withSyncAuthorization(path44, init, configStore.get().token);
       const resp = await fetch(`${httpBase}${path44}`, {
-        method: init?.method ?? "GET",
-        headers: init?.headers ?? (init?.body ? { "Content-Type": "application/json" } : void 0),
-        body: init?.body,
+        method: authenticatedInit?.method ?? "GET",
+        headers: authenticatedInit?.headers ?? (authenticatedInit?.body ? { "Content-Type": "application/json" } : void 0),
+        body: authenticatedInit?.body,
         signal: AbortSignal.timeout(8e3)
       });
       const text = await resp.text();
@@ -50040,6 +50058,31 @@ function wireConnectionCallbacks(tabManager, configStore) {
     const label = tab?.sessionTitle || tab?.label || rawTitle || "Session";
     spawnToast({ kind: "finished", tabId, title: "Session finished", message: `Tab \xAB${label}\xBB is ready.` });
   };
+}
+
+// src/main/ipc/sync.ts
+init_host_compat();
+
+// src/main/sync/force-sync.ts
+async function forceSync(ctx) {
+  const cfg = ctx.configStore.get();
+  if (!cfg?.serverUrl || !cfg?.token) {
+    return { ok: false, error: "Server URL or token not configured" };
+  }
+  resetSyncTimers();
+  const user = await syncUserData(cfg.serverUrl, cfg.token);
+  if (!user.ok) return { ok: false, error: user.error ?? "User sync failed" };
+  const projectPaths = [...new Set(ctx.getProjectPaths().filter(Boolean))];
+  for (const projectPath of projectPaths) {
+    const project = await syncProjectData(cfg.serverUrl, cfg.token, projectPath);
+    if (!project.ok) return { ok: false, error: project.error ?? "Project sync failed", projectPath };
+  }
+  return { ok: true, projectPath: projectPaths[0] ?? null };
+}
+
+// src/main/ipc/sync.ts
+function registerSyncIPC(ctx) {
+  ipcMain.handle("sync:force", () => forceSync(ctx));
 }
 
 // src/bridge-host.ts
@@ -50247,7 +50290,14 @@ var BridgeHost = class {
     registerMarketplaceIPC(() => this.sink);
     installConsoleCapture();
     registerLogsIPC(() => this.sink);
-    registerCoreIpc(context);
+    registerSyncIPC({
+      configStore: this.configStore,
+      getProjectPaths: () => {
+        const cwd = getUserCwd();
+        return [...this.tabManager.getDistinctCwds(), ...cwd ? [cwd] : []];
+      }
+    });
+    registerCoreIpc(context, this.configStore);
     const buildPayload = () => this.mcpManager.getExternalToolSchemas().map((s) => ({
       name: s.name,
       description: s.description,

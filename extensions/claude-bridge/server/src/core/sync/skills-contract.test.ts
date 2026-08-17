@@ -7,6 +7,10 @@ const mocked = vi.hoisted(() => ({
   home: `${(process.env.TMPDIR || "/tmp").replace(/\/$/, "")}/bridge-sync-contract-${process.pid}-${Date.now()}`,
 }));
 
+vi.hoisted(() => {
+  process.env.BRIDGE_SYNC_BASE = `${(process.env.TMPDIR || "/tmp").replace(/\/$/, "")}/bridge-sync-contract-${process.pid}-${Date.now()}-data`;
+});
+
 vi.mock("os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("os")>();
   const replacement = { ...actual, homedir: () => mocked.home };
@@ -44,6 +48,7 @@ function tempDir(): string {
 
 beforeEach(() => {
   fs.rmSync(mocked.home, { recursive: true, force: true });
+  fs.rmSync(process.env.BRIDGE_SYNC_BASE!, { recursive: true, force: true });
 });
 
 function write(root: string, relativePath: string, content: string): void {
@@ -56,6 +61,7 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0))
     fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(mocked.home, { recursive: true, force: true });
+  fs.rmSync(process.env.BRIDGE_SYNC_BASE!, { recursive: true, force: true });
 });
 
 describe("skills sync wire contract", () => {
