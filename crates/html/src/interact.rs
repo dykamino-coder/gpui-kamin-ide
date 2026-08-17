@@ -678,6 +678,149 @@ impl IntoElement for Underlay {
     }
 }
 
+/// Отрисовка ребёнка только в ПРЯМОУГОЛЬНИКАХ, снятых пробами прошлого кадра.
+///
+/// Фон ряда таблицы (css-tables-3 §drawing-backgrounds): картинка ряда
+/// рисуется В ЯЧЕЙКАХ, непрерывно от начала ряда, а зазоры остаются чистыми.
+/// Геометрию ячеек знает только раскладка — её снимают пробы в ячейках, а
+/// ряд рисует своего ребёнка по разу на прямоугольник, обрезая маской.
+/// Первый кадр пуст (пробы ещё не писали) — стенд и так ждёт устоявшийся.
+pub type RowRects = std::rc::Rc<std::cell::RefCell<Vec<Bounds<Pixels>>>>;
+
+thread_local! {
+    /// Буферы прямоугольников ПО РЯДАМ, переживающие перестройку дерева:
+    /// каждый кадр стенд строит элементы заново, и Rc из прошлого кадра
+    /// иначе терялся вместе с записями проб.
+    static ROW_RECTS: std::cell::RefCell<std::collections::HashMap<u64, RowRects>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Буфер прямоугольников ряда по устойчивому номеру узла.
+pub fn row_rects_for(node_id: u64) -> RowRects {
+    ROW_RECTS.with(|m| m.borrow_mut().entry(node_id).or_default().clone())
+}
+
+pub struct CellsClipped {
+    style: crate::computed::Computed,
+    rects: RowRects,
+}
+
+impl CellsClipped {
+    pub fn new(rects: RowRects, style: crate::computed::Computed) -> Self {
+        CellsClipped { style, rects }
+    }
+}
+
+impl Element for CellsClipped {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let mut style = gpui::Style::default();
+        // Оверлей вне потока: раскладку таблицы полоса не трогает.
+        style.position = gpui::Position::Absolute;
+        (window.request_layout(style, [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        _cx: &mut App,
+    ) {
+        // Прошлый кадр забирается целиком: пробы ячеек напишут свежие
+        // прямоугольники после нас, в этом же кадре.
+        let rects = std::mem::take(&mut *self.rects.borrow_mut());
+        if std::env::var("HTML_ROWBG").is_ok() {
+            eprintln!("ROWBG paint: rects={}", rects.len());
+        }
+        let Some(first) = rects.first().copied() else {
+            // Пробы ячеек ещё не писали (первый кадр) — без нового кадра
+            // окно не перерисуется, и фон не появится никогда.
+            window.request_animation_frame();
+            return;
+        };
+        // Область ряда — охват всех его ячеек: от неё считается и размер
+        // плитки, и `background-position`.
+        let mut area = first;
+        for r in &rects[1..] {
+            let right = area.origin.x + area.size.width;
+            let bottom = area.origin.y + area.size.height;
+            let x0 = area.origin.x.min(r.origin.x);
+            let y0 = area.origin.y.min(r.origin.y);
+            let x1 = right.max(r.origin.x + r.size.width);
+            let y1 = bottom.max(r.origin.y + r.size.height);
+            area = Bounds {
+                origin: gpui::point(x0, y0),
+                size: gpui::size(x1 - x0, y1 - y0),
+            };
+        }
+        for rect in rects {
+            window.with_content_mask(Some(gpui::ContentMask { bounds: rect }), |window| {
+                // Цвет ряда — под картинкой, в тех же прямоугольниках: на
+                // ячейки его в этом случае не переносят (иначе он закрашивал
+                // бы картинку, рисуясь позже полосы).
+                if let Some(bg) = self.style.background {
+                    window.paint_quad(gpui::fill(rect, bg.to_hsla()));
+                }
+                crate::background::paint_area(&self.style, area, window);
+            });
+        }
+    }
+}
+
+impl IntoElement for CellsClipped {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+/// Проба ячейки: канвас, записывающий свои границы для фона ряда.
+pub fn cell_rect_probe(rects: RowRects) -> AnyElement {
+    gpui::canvas(
+        |_, _, _| {},
+        move |bounds: Bounds<Pixels>, _, _, _| {
+            rects.borrow_mut().push(bounds);
+        },
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+    .into_any_element()
+}
+
 /// Строка вертикального письма: `writing-mode: vertical-rl` и `vertical-lr`.
 ///
 /// Поворота мало: у повёрнутого текста меняются местами ширина и высота, и

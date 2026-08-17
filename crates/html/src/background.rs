@@ -546,13 +546,33 @@ fn origin(pos: BgPos, box_size: (f32, f32), tile: (f32, f32)) -> (f32, f32) {
 
 /// Слой фоновой картинки: канвас, рисующий плитки внутри своих границ.
 pub fn layer(c: &Computed) -> Option<AnyElement> {
-    let src = c.bg_image.clone()?;
+    c.bg_image.as_ref()?;
+    let style = c.clone();
+    Some(
+        gpui::canvas(
+            |_, _, _| {},
+            move |bounds: Bounds<Pixels>, _, window, _| {
+                paint_area(&style, bounds, window);
+            },
+        )
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .into_any_element(),
+    )
+}
+
+/// Нарисовать фоновые плитки стиля в ЗАДАННОЙ области.
+///
+/// Отдельной функцией, а не замыканием слоя: фон РЯДА таблицы рисуется от
+/// области ряда, но обрезается прямоугольниками ячеек — вызывающий ставит
+/// маску сам и зовёт отрисовку с областью ряда.
+pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Window) {
+    let Some(src) = c.bg_image.clone() else { return };
     let size = c.bg_size;
     let pos = c.bg_pos;
     let repeat = c.bg_repeat.unwrap_or(BgRepeat::Repeat);
-    // Отступ слоя от ВНУТРЕННЕГО края рамки: слой лежит внутри коробки и
-    // меряется именно им, а `background-origin` может требовать другого края
-    // (css-backgrounds-3 §3.6). Положительное значение вжимает внутрь.
     let family = c.font_family.clone().unwrap_or_default();
     let font = match c.font_size {
         Some(Len::Px(v)) => v,
@@ -560,6 +580,9 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     };
     let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, &family, font);
     let border = c.borders();
+    // Отступ слоя от ВНУТРЕННЕГО края рамки: слой лежит внутри коробки и
+    // меряется именно им, а `background-origin` может требовать другого края
+    // (css-backgrounds-3 §3.6). Положительное значение вжимает внутрь.
     let inset = match c.bg_origin {
         Some(crate::computed::BgClip::BorderBox) => [
             -px_of(border.top),
@@ -579,91 +602,60 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
         Some(Len::Px(v)) => v,
         _ => 0.0,
     };
-    Some(
-        gpui::canvas(
-            |_, _, _| {},
-            move |bounds: Bounds<Pixels>, _, window, _| {
-                let Some(found) = source(&src) else { return };
-                // Место под фон: свой край по `background-origin`.
-                let bounds = Bounds {
-                    origin: gpui::point(
-                        bounds.origin.x + px(inset[3]),
-                        bounds.origin.y + px(inset[0]),
-                    ),
-                    size: gpui::size(
-                        bounds.size.width - px(inset[1] + inset[3]),
-                        bounds.size.height - px(inset[0] + inset[2]),
-                    ),
+    let Some(found) = source(&src) else { return };
+    // Место под фон: свой край по `background-origin`.
+    let bounds = Bounds {
+        origin: gpui::point(bounds.origin.x + px(inset[3]), bounds.origin.y + px(inset[0])),
+        size: gpui::size(
+            bounds.size.width - px(inset[1] + inset[3]),
+            bounds.size.height - px(inset[0] + inset[2]),
+        ),
+    };
+    let box_size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+    let tile = tile_size(found.intrinsic(), box_size, size);
+    // Нулевая плитка не рисуется вовсе, а вот МЕЛКАЯ — рисуется: браузер
+    // мостит и долями точки. Ограничивается не размер плитки, а их ЧИСЛО.
+    if tile.0 <= 0.0 || tile.1 <= 0.0 {
+        return;
+    }
+    // Плитка мельче половины точки неразличима: копии сливаются в сплошную
+    // заливку, и мы делаем ровно её — одной растянутой копией. Сливаются
+    // только МОСТЯЩИЕСЯ оси (`background-size-near-zero-*`).
+    const MERGE: f32 = 0.5;
+    let merge = |len: f32, box_len: f32, mode: Tiling| {
+        if len < MERGE && mode != Tiling::None {
+            box_len
+        } else {
+            len
+        }
+    };
+    let tile = (
+        merge(tile.0, box_size.0, repeat.axis(true)),
+        merge(tile.1, box_size.1, repeat.axis(false)),
+    );
+    // `round` меняет САМ размер плитки, поэтому считается до смещения.
+    let tile = (
+        rounded(repeat.axis(true), tile.0, box_size.0),
+        rounded(repeat.axis(false), tile.1, box_size.1),
+    );
+    let start = origin(pos, box_size, tile);
+    let xs = tiling(repeat.axis(true), start.0, tile.0, box_size.0);
+    let ys = tiling(repeat.axis(false), start.1, tile.1, box_size.1);
+    let Some(image) = found.raster(tile) else { return };
+    let corners = gpui::Corners::all(px(radius));
+    window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
+        for y in &ys {
+            for x in &xs {
+                let at = gpui::point(bounds.origin.x + px(*x), bounds.origin.y + px(*y));
+                let cell = Bounds {
+                    origin: at,
+                    size: gpui::size(px(tile.0), px(tile.1)),
                 };
-                let box_size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                let tile = tile_size(found.intrinsic(), box_size, size);
-                // Нулевая плитка не рисуется вовсе, а вот МЕЛКАЯ — рисуется:
-                // браузер мостит и долями точки, и коробка заливается
-                // сплошняком (`background-size-near-zero-*`). Ограничивать
-                // надо не размер плитки, а их ЧИСЛО.
-                if tile.0 <= 0.0 || tile.1 <= 0.0 {
-                    return;
-                }
-                // Плитка мельче половины точки неразличима: копии сливаются в
-                // сплошную заливку, и мы делаем ровно её — одной растянутой
-                // копией. Иначе на `background-size: 0.2px` выходило по 500
-                // копий на ось, четверть миллиона отрисовок за кадр, и кадр не
-                // успевал появиться вовсе (`background-size-near-zero-*`).
-                // Сливаются только МОСТЯЩИЕСЯ оси: одна копия так и остаётся
-                // невидимой полоской, и это верно — вырожденная плитка
-                // (`contain` при крайнем соотношении) не рисуется вовсе, как
-                // и в браузере (`tall--contain--*` с пустым эталоном).
-                const MERGE: f32 = 0.5;
-                let merge = |len: f32, box_len: f32, mode: Tiling| {
-                    if len < MERGE && mode != Tiling::None {
-                        box_len
-                    } else {
-                        len
-                    }
-                };
-                let tile = (
-                    merge(tile.0, box_size.0, repeat.axis(true)),
-                    merge(tile.1, box_size.1, repeat.axis(false)),
-                );
-                // `round` меняет САМ размер плитки, поэтому считается до
-                // смещения: доля в `background-position` берётся уже от
-                // подогнанной плитки.
-                let tile = (
-                    rounded(repeat.axis(true), tile.0, box_size.0),
-                    rounded(repeat.axis(false), tile.1, box_size.1),
-                );
-                let start = origin(pos, box_size, tile);
-                // Каждая ось укладывается по своему правилу: сплошняком,
-                // одной плиткой, целым числом с равными зазорами (`space`)
-                // или подогнанной плиткой (`round`).
-                let xs = tiling(repeat.axis(true), start.0, tile.0, box_size.0);
-                let ys = tiling(repeat.axis(false), start.1, tile.1, box_size.1);
-                let Some(image) = found.raster(tile) else { return };
-                let corners = gpui::Corners::all(px(radius));
-                window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
-                    for y in &ys {
-                        for x in &xs {
-                            let at = gpui::point(
-                                bounds.origin.x + px(*x),
-                                bounds.origin.y + px(*y),
-                            );
-                            let cell = Bounds {
-                                origin: at,
-                                size: gpui::size(px(tile.0), px(tile.1)),
-                            };
-                            // Промах атласа рисовать нечем — пропускаем плитку молча.
-                            let _ = window.paint_image(cell, corners, image.clone(), 0, false);
-                        }
-                    }
-                });
-            },
-        )
-        .absolute()
-        .top_0()
-        .left_0()
-        .size_full()
-        .into_any_element(),
-    )
+                // Промах атласа рисовать нечем — пропускаем плитку молча.
+                let _ = window.paint_image(cell, corners, image.clone(), 0, false);
+            }
+        }
+    });
 }
 
 /// Размер плитки после подгонки под целое их число (`background-repeat: round`).

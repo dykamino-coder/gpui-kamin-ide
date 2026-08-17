@@ -3474,7 +3474,27 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             ix += span;
         }
     }
+    let mut row_ix = 0i16;
     for (row, carry) in rows {
+        row_ix += 1;
+        // Фон ряда КАРТИНКОЙ (css-tables-3 §drawing-backgrounds): рисуется в
+        // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
+        // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
+        // ячеек, снятыми пробами прошлого кадра.
+        let row_rects: Option<crate::interact::RowRects> =
+            (row.style.bg_image.is_some() || row.style.gradient_raw.is_some())
+                .then(|| crate::interact::row_rects_for(row.node_id));
+        if let Some(rects) = &row_rects {
+            // Градиент ряда идёт слоем-картинкой: источник понимает записи
+            // `linear-gradient(...)` и растрирует их сам.
+            let mut band_style = row.style.clone();
+            if band_style.bg_image.is_none() {
+                band_style.bg_image = band_style.gradient_raw.clone();
+            }
+            cells.push(
+                crate::interact::CellsClipped::new(rects.clone(), band_style).into_any_element(),
+            );
+        }
         let shift = (carry.0, carry.1);
         // Письмо и направление к строкам и группам строк НЕ применяются: ось
         // ячеек задаёт сама таблица (CSS Writing Modes §3.1). Иначе
@@ -3552,7 +3572,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // строка, и `<tbody style="background">` пропадал молча
             // (`position-relative-table-tbody-left`).
             if let Some(bg) = carry.2 {
-                d = d.bg(bg.to_hsla());
+                // Ряд с картинкой красит и цвет САМ (см. CellsClipped) —
+                // ячейка его не дублирует, иначе цвет ложится поверх картинки.
+                if row_rects.is_none() {
+                    d = d.bg(bg.to_hsla());
+                }
             }
             // Сдвиг строки или её группы: собственного элемента у них нет,
             // поэтому край, заданный на `<tr>`/`<tbody>`, двигает ячейки.
@@ -3586,6 +3610,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             } else {
                 inside
             };
+            let mut d = d;
+            if let Some(rects) = &row_rects {
+                d = d.child(crate::interact::cell_rect_probe(rects.clone()));
+            }
             cells.push(d.children(inside).into_any_element());
         }
     }

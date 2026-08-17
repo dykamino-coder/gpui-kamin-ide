@@ -760,6 +760,9 @@ pub struct Computed {
     pub border_dashed: Option<bool>,
     /// `border-style: dotted` — точечный узор.
     pub border_dotted: Option<bool>,
+    /// Сырая запись градиента фона: источник для слоя-картинки там, где
+    /// градиент рисуется плиткой (фон ряда таблицы).
+    pub gradient_raw: Option<String>,
     /// `border-spacing` таблицы: горизонтальный и вертикальный зазор.
     pub border_spacing: Option<(Option<Len>, Option<Len>)>,
     pub outline: Option<Outline>,
@@ -2202,6 +2205,9 @@ impl Computed {
             "background-image" => {
                 if v.starts_with("linear-gradient(") || v.starts_with("radial-gradient(") {
                     self.gradient = parse_gradient(v);
+                    // Сырая запись нужна фону РЯДА таблицы: он рисуется
+                    // слоем картинки, и градиент туда идёт источником.
+                    self.gradient_raw = Some(v.to_string());
                 } else if let Some(url) = parse_url(v) {
                     self.bg_image = Some(url);
                 }
