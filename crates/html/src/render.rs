@@ -27,6 +27,13 @@ pub struct RenderOpts {
     /// КАЖДЫЙ блок текста выходил на четверть выше браузерного, а разница
     /// копилась вниз по документу.
     pub normal_line_height: f32,
+    /// Соль документа для буферов проб (`Document::key`).
+    ///
+    /// Номера узлов считаются с нуля в каждом документе: когда в одном
+    /// потоке живут два документа сразу (стенд гонит пары параллельно),
+    /// полоса фона одного забирала прямоугольники ячеек другого с тем же
+    /// номером узла. Ноль допустим, пока документ один.
+    pub doc_salt: u64,
 }
 
 impl RenderOpts {
@@ -2422,6 +2429,19 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             if merged.height.is_none() && !has_text(&e.children) {
                 box_ = box_.h(px(line_height_px(&merged, opts)));
             }
+            // `vertical-align` коробки в строке: верх/низ/середина СТРОКИ
+            // (CSS 2.1 §10.8.1) — как у строчной таблицы выше. Без этого
+            // `inline-block` с `vertical-align: top` сидел на базовой линии
+            // и в высокой строке уезжал вниз.
+            let self_align = match e.style.vertical_align {
+                Some(Align::End) => Some(gpui::AlignItems::FlexEnd),
+                Some(Align::Start) => Some(gpui::AlignItems::FlexStart),
+                Some(Align::Center) => Some(gpui::AlignItems::Center),
+                _ => None,
+            };
+            if let Some(a) = self_align {
+                box_.style().align_self = Some(a);
+            }
             Some(
                 box_.children(blocks(&e.children, &merged, opts))
                     .into_any_element(),
@@ -3536,18 +3556,33 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // содержимого (пол min-content), процентная забирает долю остатка.
     let mut col_widths: Vec<(Option<f32>, Option<f32>)> = vec![(None, None); cols as usize];
     let (from_cols, cols_collapsed) = col_element_widths(&e.children);
+    let mut busy: Vec<u16> = vec![0; cols as usize];
     for row in &row_elements {
         let mut ix = 0usize;
+        for slot in busy.iter_mut() {
+            *slot = slot.saturating_sub(1);
+        }
         for c in &row.children {
             let Node::Element(cell) = c else { continue };
             if !is_cell(cell) {
                 continue;
+            }
+            while ix < busy.len() && busy[ix] > 0 {
+                ix += 1;
             }
             let span = cell
                 .attr("colspan")
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(1)
                 .max(1);
+            let rspan: u16 = cell
+                .attr("rowspan")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1)
+                .max(1);
+            for c2 in ix..(ix + span).min(busy.len()) {
+                busy[c2] = rspan;
+            }
             if span == 1 && ix < col_widths.len() {
                 match cell.style.width {
                     Some(Len::Px(v)) => {
@@ -3564,9 +3599,47 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             ix += span;
         }
     }
+    // Фон КОЛОНКИ картинкой — той же полосой, что фон ряда: слой на площадь
+    // колонки, обрезанный прямоугольниками её ячеек. Полосы колонок идут
+    // ПЕРЕД рядами: колонка рисуется ниже ряда (css-tables-3 §layers).
+    let col_els = col_elements(&e.children);
+    let mut col_rects: Vec<Option<crate::interact::RowRects>> = vec![None; cols as usize];
+    {
+        let mut seen: Vec<u64> = vec![];
+        for (i, el) in col_els.iter().enumerate() {
+            let Some(el) = el else { continue };
+            let picture = el.style.bg_image.is_some() || el.style.gradient_raw.is_some();
+            if !(picture || !el.style.shadows.is_empty()) {
+                continue;
+            }
+            let rects = crate::interact::row_rects_for(el.node_id ^ opts.doc_salt);
+            if i < col_rects.len() {
+                col_rects[i] = Some(rects.clone());
+            }
+            if !seen.contains(&el.node_id) {
+                seen.push(el.node_id);
+                let mut band_style = el.style.clone();
+                if band_style.bg_image.is_none() {
+                    band_style.bg_image = band_style.gradient_raw.clone();
+                }
+                cells.push(
+                    crate::interact::CellsClipped::new(rects, band_style).into_any_element(),
+                );
+            }
+        }
+    }
     let mut row_ix = 0i16;
+    // Занятость колонок ячейками с rowspan из ПРЕДЫДУЩИХ рядов: без неё
+    // номер колонки считался по порядку детей ряда и съезжал — рамки,
+    // схлопнутые колонки и пробы фона приписывались не тем колонкам.
+    // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
+    // пропускаются.
+    let mut occupied: Vec<u16> = vec![0; cols as usize];
     for (row, carry) in rows {
         row_ix += 1;
+        for slot in occupied.iter_mut() {
+            *slot = slot.saturating_sub(1);
+        }
         // Фон ряда КАРТИНКОЙ (css-tables-3 §drawing-backgrounds): рисуется в
         // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
         // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
@@ -3574,7 +3647,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         let row_rects: Option<crate::interact::RowRects> = (row.style.bg_image.is_some()
             || row.style.gradient_raw.is_some()
             || !row.style.shadows.is_empty())
-        .then(|| crate::interact::row_rects_for(row.node_id));
+        .then(|| crate::interact::row_rects_for(row.node_id ^ opts.doc_salt));
         if let Some(rects) = &row_rects {
             // Градиент ряда идёт слоем-картинкой: источник понимает записи
             // `linear-gradient(...)` и растрирует их сам.
@@ -3609,6 +3682,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             let Node::Element(cell) = child else { continue };
             if !is_cell(cell) {
                 continue;
+            }
+            while col_ix < occupied.len() && occupied[col_ix] > 0 {
+                col_ix += 1;
             }
             let cm = inline::inherit(&row_style, &cell.style);
             // Объединение ячеек: без него ячейка занимала одну дорожку, и всё
@@ -3725,6 +3801,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if span_rows > 1 {
                 d = d.row_span(span_rows);
             }
+            for c in col_ix..(col_ix + span_cols as usize).min(occupied.len()) {
+                occupied[c] = span_rows;
+            }
             col_ix += span_cols as usize;
             let inside = blocks(&cell.children, &cm, opts);
             let inside: Vec<AnyElement> = if clipped {
@@ -3740,7 +3819,19 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             };
             let mut d = d;
             if let Some(rects) = &row_rects {
-                d = d.child(crate::interact::cell_rect_probe(rects.clone()));
+                d = d.child(crate::interact::cell_rect_probe(rects.clone(), span_rows == 1));
+            }
+            // Проба и для колонок ячейки: объединённая регистрируется в
+            // каждой накрытой колонке — полоса колонки красит её целиком.
+            let cell_cols = (col_ix - span_cols as usize)..col_ix;
+            let mut probed: Vec<u64> = vec![];
+            for i in cell_cols {
+                if let (Some(rects), Some(el)) = (col_rects.get(i).and_then(|r| r.clone()), col_els.get(i).copied().flatten()) {
+                    if !probed.contains(&el.node_id) {
+                        probed.push(el.node_id);
+                        d = d.child(crate::interact::cell_rect_probe(rects, span_cols == 1));
+                    }
+                }
             }
             cells.push(d.children(inside).into_any_element());
         }
@@ -4120,6 +4211,28 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
 /// Ширины колонок из элементов `<col>`/`<colgroup>` (атрибут `span`
 /// повторяет запись): при фиксированной раскладке они СТАРШЕ ячеек первого
 /// ряда (CSS 2.1 §17.5.2.1).
+/// Элементы `<col>` по индексам колонок (повтор на span): фон колонки
+/// рисуется в её ячейках (css-tables-3 §drawing-backgrounds).
+fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
+    let mut out: Vec<Option<&Element>> = vec![];
+    for child in children {
+        let Node::Element(el) = child else { continue };
+        match el.tag.as_str() {
+            "col" => {
+                let span = el
+                    .attr("span")
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(1)
+                    .max(1);
+                out.extend(std::iter::repeat_n(Some(el), span));
+            }
+            "colgroup" => out.extend(col_elements(&el.children)),
+            _ => {}
+        }
+    }
+    out
+}
+
 fn col_element_widths(children: &[Node]) -> (Vec<Option<f32>>, Vec<bool>) {
     let mut widths = vec![];
     let mut collapsed = vec![];

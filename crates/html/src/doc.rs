@@ -32,6 +32,7 @@ impl Document {
         crate::fonts::load_faces(html);
         crate::color_space::load_profiles(html);
         crate::lines::forget_measures();
+        crate::interact::forget_row_rects();
         let (nodes, root) = unwrap_document(mark_canvas_background(resolve_logical(
             propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),
         )));
@@ -65,6 +66,11 @@ impl Document {
         self.root = root;
         self.key = key;
         true
+    }
+
+    /// Хэш содержимого — соль для `RenderOpts::doc_salt`.
+    pub fn salt(&self) -> u64 {
+        self.key
     }
 
     pub fn nodes(&self) -> &[Node] {

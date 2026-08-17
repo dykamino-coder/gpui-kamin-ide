@@ -685,7 +685,11 @@ impl IntoElement for Underlay {
 /// Геометрию ячеек знает только раскладка — её снимают пробы в ячейках, а
 /// ряд рисует своего ребёнка по разу на прямоугольник, обрезая маской.
 /// Первый кадр пуст (пробы ещё не писали) — стенд и так ждёт устоявшийся.
-pub type RowRects = std::rc::Rc<std::cell::RefCell<Vec<Bounds<Pixels>>>>;
+/// Прямоугольник ячейки + флаг «точная»: точная лежит целиком в своём
+/// ряду/колонке (span = 1), объединённая (rowspan/colspan) выходит за них.
+/// Область фона считается ТОЛЬКО по точным — объединённая растягивала бы
+/// градиент колонки на чужие дорожки; маски краски — по всем.
+pub type RowRects = std::rc::Rc<std::cell::RefCell<Vec<(Bounds<Pixels>, bool)>>>;
 
 thread_local! {
     /// Буферы прямоугольников ПО РЯДАМ, переживающие перестройку дерева:
@@ -698,6 +702,16 @@ thread_local! {
 /// Буфер прямоугольников ряда по устойчивому номеру узла.
 pub fn row_rects_for(node_id: u64) -> RowRects {
     ROW_RECTS.with(|m| m.borrow_mut().entry(node_id).or_default().clone())
+}
+
+/// Сброс буферов проб при смене документа.
+///
+/// Номера узлов считаются с нуля в каждом документе: без сброса полоса
+/// нового документа забирала прямоугольники ячеек ПРЕЖНЕГО с тем же
+/// номером, и первый кадр красил фон по чужим местам — а если ничего не
+/// инвалидировало окно, грязный кадр оставался последним.
+pub fn forget_row_rects() {
+    ROW_RECTS.with(|m| m.borrow_mut().clear());
 }
 
 pub struct CellsClipped {
@@ -761,18 +775,26 @@ impl Element for CellsClipped {
         // прямоугольники после нас, в этом же кадре.
         let rects = std::mem::take(&mut *self.rects.borrow_mut());
         if std::env::var("HTML_ROWBG").is_ok() {
-            eprintln!("ROWBG paint: rects={}", rects.len());
+            eprintln!("ROWBG paint: rects={} {:?}", rects.len(), rects);
         }
-        let Some(first) = rects.first().copied() else {
+        if rects.is_empty() {
             // Пробы ячеек ещё не писали (первый кадр) — без нового кадра
             // окно не перерисуется, и фон не появится никогда.
             window.request_animation_frame();
             return;
-        };
-        // Область ряда — охват всех его ячеек: от неё считается и размер
-        // плитки, и `background-position`.
-        let mut area = first;
-        for r in &rects[1..] {
+        }
+        // Область ряда/колонки — охват ТОЧНЫХ ячеек (span = 1): от неё
+        // считается и размер плитки, и `background-position`. Объединённые
+        // лежат и на чужих дорожках — они только маски.
+        let exact: Vec<Bounds<Pixels>> = rects
+            .iter()
+            .filter(|(_, e)| *e)
+            .map(|(b, _)| *b)
+            .collect();
+        let all: Vec<Bounds<Pixels>> = rects.iter().map(|(b, _)| *b).collect();
+        let base = if exact.is_empty() { &all } else { &exact };
+        let mut area = base[0];
+        for r in &base[1..] {
             let right = area.origin.x + area.size.width;
             let bottom = area.origin.y + area.size.height;
             let x0 = area.origin.x.min(r.origin.x);
@@ -835,7 +857,7 @@ impl Element for CellsClipped {
                 window.paint_quad(quad);
             }
         }
-        for rect in rects {
+        for rect in all {
             window.with_content_mask(Some(gpui::ContentMask { bounds: rect }), |window| {
                 // Цвет ряда — под картинкой, в тех же прямоугольниках: на
                 // ячейки его в этом случае не переносят (иначе он закрашивал
@@ -858,11 +880,11 @@ impl IntoElement for CellsClipped {
 }
 
 /// Проба ячейки: канвас, записывающий свои границы для фона ряда.
-pub fn cell_rect_probe(rects: RowRects) -> AnyElement {
+pub fn cell_rect_probe(rects: RowRects, exact: bool) -> AnyElement {
     gpui::canvas(
         |_, _, _| {},
         move |bounds: Bounds<Pixels>, _, _, _| {
-            rects.borrow_mut().push(bounds);
+            rects.borrow_mut().push((bounds, exact));
         },
     )
     .absolute()

@@ -2590,6 +2590,23 @@ impl Computed {
                     y: y.or(Some(Len::Pct(0.5))),
                 };
             }
+            // Пооосевые продольные свойства (css-backgrounds-4 §4.1):
+            // одна ось, вторая не трогается.
+            "background-position-x" | "background-position-y" => {
+                let val = match v {
+                    "left" | "top" => Some(Len::Pct(0.0)),
+                    "center" => Some(Len::Pct(0.5)),
+                    "right" | "bottom" => Some(Len::Pct(1.0)),
+                    other => Len::parse(other),
+                };
+                if val.is_some() {
+                    if key.ends_with("-x") {
+                        self.bg_pos.x = val;
+                    } else {
+                        self.bg_pos.y = val;
+                    }
+                }
+            }
             "background-attachment" => {
                 // `fixed` привязывает фон к окну, а не к элементу; ленты с
                 // таким фоном у нас нет, поэтому разбор есть, действия нет.
