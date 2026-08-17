@@ -3799,6 +3799,21 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     _ => h,
                 };
                 cell.style.min_height = Some(Len::Px(floor));
+            } else {
+                // Высота ячейки НЕ задана: доля ребёнка решается от высоты
+                // ряда, а вклад ряда меряется БЕЗ доли (двухпроходная
+                // раздача css-tables-3 §height-distribution). Однопроходное
+                // приближение: якорь — собственный min-height ребёнка,
+                // прокрутка держит содержимое внутри него.
+                for child in cell.children.iter_mut() {
+                    if let Node::Element(el) = child
+                        && let Some(Len::Pct(k)) = el.style.height
+                        && el.style.overflow_y.is_some_and(|o| o != crate::computed::Overflow::Visible)
+                        && let Some(Len::Px(m)) = el.style.min_height
+                    {
+                        el.style.height = Some(Len::Px(m * k));
+                    }
+                }
             }
             // Потолок высоты к ячейке не применяется вовсе (браузеры
             // игнорируют max-height на ячейках): содержимое выше — растит.
