@@ -2039,6 +2039,9 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
     if inherited.vertical == Some(true) {
         let mut horizontal = inherited.clone();
         horizontal.vertical = None;
+        // Пометка для `text-combine-upright`: кускам внутри повёрнутого
+        // абзаца нужен контр-поворот (см. atom-ветку ниже).
+        horizontal.rotated_line = Some(true);
         // Поворот — приём отрисовки ТЕКСТА. Замещаемое содержимое (картинка,
         // элемент формы) вертикальное письмо не поворачивает никогда: абзац
         // из одной картинки обязан выглядеть так же, как в горизонтальном
@@ -2172,6 +2175,37 @@ fn paragraph_pieces(
                 .children(blocks(&e.children, &merged, opts))
                 .into_any_element();
             return Some(inline::Piece::Overlay(inner));
+        }
+        // `text-combine-upright` в повёрнутом абзаце: подходящий кусок
+        // (цифры не длиннее N или любой при `all`) — атом-квадрат кегля с
+        // контр-поворотом и ужатием (css-writing-modes-3 §9.1).
+        if inherited.rotated_line == Some(true)
+            && e.style.display.is_none()
+            && let Some(n) = inline::inherit(inherited, &e.style).combine_upright
+        {
+            let mut plain = String::new();
+            gather_text(&e.children, &mut plain);
+            let text = plain.trim().to_string();
+            let fits = !text.is_empty()
+                && (n == 0
+                    || (text.chars().all(|c| c.is_ascii_digit())
+                        && text.chars().count() <= n as usize))
+                // Тень текста рисует внешняя группа и с контр-поворотом
+                // разъезжается — такой кусок остаётся на старом пути
+                // (text-combine-upright-shadow был зелёным без атома).
+                && inline::inherit(inherited, &e.style).text_shadow.is_none();
+            if fits {
+                let mut merged = inline::inherit(inherited, &e.style);
+                merged.combine_upright = None;
+                let em = match merged.font_size {
+                    Some(Len::Px(v)) => v,
+                    _ => opts.base_size(),
+                };
+                let inner = paragraph(&e.children, &merged, opts);
+                return Some(inline::Piece::Atom(
+                    crate::interact::CombinedUpright::new(inner, em).into_any_element(),
+                ));
+            }
         }
         atom_element(e, inherited, opts).map(inline::Piece::Atom)
     };

@@ -897,6 +897,12 @@ pub struct Computed {
     /// `writing-mode: sideways-*`: глифы повёрнуты, а у `sideways-lr` строка
     /// идёт СНИЗУ вверх — содержимое прижимается к нижнему краю.
     pub sideways: Option<bool>,
+    /// `text-combine-upright`: сколько знаков сжимается в один кегль
+    /// (0 — `all`, 2..=4 — `digits N`). Наследуется.
+    pub combine_upright: Option<u8>,
+    /// Служебное: абзац собран для ПОВЁРНУТОЙ отрисовки вертикального
+    /// письма — местам с `text-combine-upright` нужен контр-поворот.
+    pub rotated_line: Option<bool>,
     /// Ограничение ОРТОГОНАЛЬНОГО потока: определённый размер ближайшего
     /// предка-контейнера прокрутки по оси потока (CSS Writing Modes §7.3).
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
@@ -3232,6 +3238,17 @@ impl Computed {
                 self.vertical = Some(vertical);
                 self.vertical_rl = Some(vertical && v.ends_with("rl"));
                 self.sideways = Some(v.starts_with("sideways"));
+            }
+            "text-combine-upright" => {
+                let mut it = v.split_whitespace();
+                self.combine_upright = match it.next() {
+                    Some("none") | None => None,
+                    Some("all") => Some(0),
+                    Some("digits") => {
+                        Some(it.next().and_then(|n| n.parse().ok()).unwrap_or(2))
+                    }
+                    _ => None,
+                };
             }
 
             // --- Переносы и обрезка -------------------------------------------

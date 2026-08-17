@@ -1452,6 +1452,123 @@ pub fn cell_rect_probe(rects: RowRects, exact: bool, shift: (f32, f32)) -> AnyEl
 /// горизонтальная и наезжает на соседей. Поэтому это свой элемент: он
 /// измеряет текст сам, отдаёт раскладке перевёрнутый размер, а на отрисовке
 /// разворачивает содержимое на четверть оборота по часовой стрелке.
+/// `text-combine-upright`: составной знак в вертикальной строке.
+///
+/// Абзац вертикального письма рисуется ПОВОРОТОМ на четверть по часовой;
+/// сжатый кусок обязан остаться стоячим — он контр-поворачивается вокруг
+/// СВОЕГО ЦЕНТРА (квадрат кегля переходит в себя) и ужимается по строчной
+/// оси в один кегль (css-writing-modes-3 §9.1).
+pub struct CombinedUpright {
+    child: Option<AnyElement>,
+    /// Кегль — сторона квадрата, который кусок занимает в строке.
+    em: f32,
+    natural: gpui::Size<Pixels>,
+}
+
+impl CombinedUpright {
+    pub fn new(child: AnyElement, em: f32) -> Self {
+        CombinedUpright {
+            child: Some(child),
+            em,
+            natural: gpui::Size::default(),
+        }
+    }
+}
+
+impl Element for CombinedUpright {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let space = gpui::size(
+            gpui::AvailableSpace::MaxContent,
+            gpui::AvailableSpace::MaxContent,
+        );
+        self.natural = self
+            .child
+            .as_mut()
+            .unwrap()
+            .layout_as_root(space, window, cx);
+        let mut style = gpui::Style::default();
+        let side = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
+            gpui::AbsoluteLength::Pixels(px(self.em)),
+        ));
+        style.size.width = side.clone();
+        style.size.height = side;
+        (window.request_layout(style, [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _state: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let child = self.child.as_mut().unwrap();
+        child.prepaint_at(bounds.origin, window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let scale_factor = window.scale_factor();
+        let dev = |v: Pixels| v.scale(scale_factor);
+        let cx_ = bounds.origin.x + bounds.size.width / 2.0;
+        let cy_ = bounds.origin.y + bounds.size.height / 2.0;
+        // Ужатие по строчной оси содержимого: длиннее кегля — в кегль.
+        let sx = if self.natural.width > px(self.em) && self.natural.width > px(0.0) {
+            self.em / f32::from(self.natural.width)
+        } else {
+            1.0
+        };
+        // Сначала ужатие от угла куска (кусок 2-4 кегля превращается в
+        // квадрат кегля), затем контр-поворот вокруг центра квадрата —
+        // квадрат переходит в себя. Порядок звеньев подобран ЗАМЕРОМ:
+        // скейл после поворота мял уже повёрнутые оси (плашка 160×40).
+        let matrix = gpui::TransformationMatrix::unit()
+            .translate(gpui::point(dev(bounds.origin.x), dev(bounds.origin.y)))
+            .scale(gpui::size(sx, 1.0))
+            .translate(gpui::point(dev(bounds.origin.x) * -1.0, dev(bounds.origin.y) * -1.0))
+            .translate(gpui::point(dev(cx_), dev(cy_)))
+            .rotate(gpui::Radians(-std::f32::consts::FRAC_PI_2))
+            .translate(gpui::point(dev(cx_) * -1.0, dev(cy_) * -1.0));
+        let child = self.child.as_mut().unwrap();
+        window.with_transformation(matrix, |window| child.paint(window, cx));
+    }
+}
+
+impl IntoElement for CombinedUpright {
+    type Element = Self;
+
+    fn into_element(self) -> Self {
+        self
+    }
+}
+
 pub struct VerticalText {
     child: Option<AnyElement>,
     /// Естественный размер содержимого до поворота.
