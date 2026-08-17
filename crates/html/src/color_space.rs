@@ -345,7 +345,12 @@ fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
     ];
     let lin = |v: [f32; 3]| [srgb_linear(v[0]), srgb_linear(v[1]), srgb_linear(v[2])];
     let xyz = match space.as_str() {
-        "srgb" => return Some((c[0], c[1], c[2], a)),
+        "srgb" => {
+            // Каналы за пределами [0,1] законны в записи — втягиваются тем
+            // же сжатием цветности, что и остальные пространства.
+            let (r, g, b) = gamut_map(c[0], c[1], c[2]);
+            return Some((r, g, b, a));
+        }
         "srgb-linear" => mul(LINEAR_SRGB_TO_XYZ, c),
         "display-p3" => mul(P3_TO_XYZ, lin(c)),
         // Линейный вариант: те же основные цвета, но без кривой.
@@ -632,10 +637,12 @@ mod tests {
             (1.0, 0.0, 0.0),
             "oklch красный",
         );
-        close(
-            parse("color(display-p3 0 1 0)").unwrap(),
-            (0.0, 1.0, 0.0),
-            "p3 зелёный шире sRGB",
+        // Цвет шире охвата втягивается СЖАТИЕМ ЦВЕТНОСТИ (§13.1.5), а не
+        // срезом: зелёный остаётся насыщенным зелёным, но уже не (0,1,0).
+        let p3 = parse("color(display-p3 0 1 0)").unwrap();
+        assert!(
+            p3.1 > 0.9 && p3.0 < 0.3 && p3.2 < 0.5,
+            "p3 зелёный после втягивания: {p3:?}"
         );
         close(
             parse("color(srgb 0.2 0.4 0.6)").unwrap(),
