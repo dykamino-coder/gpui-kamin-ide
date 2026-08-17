@@ -3831,14 +3831,25 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
         if stray.is_empty() {
             return;
         }
-        // Голый текст заворачивается в анонимную ячейку своего ряда.
-        let cells: Vec<Node> = std::mem::take(stray)
-            .into_iter()
-            .map(|n| match n {
-                Node::Element(e) if is_cell(&e) => Node::Element(e),
-                other => Node::Element(anon_element("td", vec![other])),
-            })
-            .collect();
+        // ПОСЛЕДОВАТЕЛЬНЫЕ не-ячейки сливаются в ОДНУ анонимную ячейку
+        // (css-tables-3 §consecutive-boxes): два inline-block с текстом между
+        // ними — одна ячейка с общей строкой, а не ячейка на каждого.
+        let mut cells: Vec<Node> = vec![];
+        let mut run: Vec<Node> = vec![];
+        for n in std::mem::take(stray) {
+            match n {
+                Node::Element(e) if is_cell(&e) => {
+                    if !run.is_empty() {
+                        cells.push(Node::Element(anon_element("td", std::mem::take(&mut run))));
+                    }
+                    cells.push(Node::Element(e));
+                }
+                other => run.push(other),
+            }
+        }
+        if !run.is_empty() {
+            cells.push(Node::Element(anon_element("td", run)));
+        }
         out.push(Node::Element(anon_element("tr", cells)));
     }
     for child in children {
