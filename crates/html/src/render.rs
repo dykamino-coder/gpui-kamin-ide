@@ -3393,11 +3393,17 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // зазора не имеет.
         _ => (0.0, 0.0),
     };
+    // Дети таблицы ЧИНЯТСЯ перед сбором (css-tables-3 §3, fixup):
+    // `display: contents` растворяется — его дети идут в таблицу со слитым
+    // стилем, — а бесхозные ячейки и текст заворачиваются в анонимный ряд.
+    // Без этого содержимое просто пропадало: сборщик рядов видел только
+    // настоящие `<tr>` и группы.
+    let fixed = fixup_table_children(&e.children);
     let mut rows: Vec<(&Element, RowCarry)> = vec![];
     // ПРОБОВАЛИ И ОТКАТИЛИ: переносить `<thead>` в начало, а `<tfoot>` в
     // конец (HTML §14.3.9). Замерено: writing-modes +1, css-position −4 —
     // порядок сбора сдвигал ряды там, где группы и так стояли по порядку.
-    collect_rows(&e.children, (0.0, 0.0, None), &mut rows);
+    collect_rows(&fixed, (0.0, 0.0, None), &mut rows);
     // Ширина таблицы — сумма ОБЪЕДИНЕНИЙ, а не число ячеек: строка из двух
     // ячеек с `colspan=2` даёт четыре колонки, и без этого содержимое
     // выталкивалось в неявные ряды.
@@ -3730,6 +3736,91 @@ fn collect_rows<'a>(nodes: &'a [Node], carry: RowCarry, out: &mut Vec<(&'a Eleme
 }
 
 /// Ячейка ли это — по тегу или по стилю.
+/// Безымянный элемент починки таблицы: пустой стиль, только тег и дети.
+fn anon_element(tag: &str, children: Vec<Node>) -> Element {
+    Element {
+        node_id: 0,
+        anim: None,
+        tag: tag.into(),
+        style: Computed::default(),
+        hover: None,
+        first_letter: None,
+        first_line: None,
+        children,
+        attrs: vec![],
+        inline: false,
+    }
+}
+
+/// Починка детей таблицы (css-tables-3 §3): `display: contents` растворить,
+/// бесхозные ячейки и непустой текст завернуть в анонимный ряд.
+fn fixup_table_children(children: &[Node]) -> Vec<Node> {
+    let mut out: Vec<Node> = vec![];
+    let mut stray: Vec<Node> = vec![];
+    fn flush(stray: &mut Vec<Node>, out: &mut Vec<Node>) {
+        if stray.is_empty() {
+            return;
+        }
+        // Голый текст заворачивается в анонимную ячейку своего ряда.
+        let cells: Vec<Node> = std::mem::take(stray)
+            .into_iter()
+            .map(|n| match n {
+                Node::Element(e) if is_cell(&e) => Node::Element(e),
+                other => Node::Element(anon_element("td", vec![other])),
+            })
+            .collect();
+        out.push(Node::Element(anon_element("tr", cells)));
+    }
+    for child in children {
+        match child {
+            Node::Element(el) if el.style.display == Some(Display::Contents) => {
+                // Дети идут в таблицу со СЛИТЫМ стилем: наследуемое от
+                // растворённого элемента (цвет, шрифт) обязано дойти.
+                for grand in fixup_table_children(&el.children) {
+                    match grand {
+                        Node::Element(mut ge) => {
+                            ge.style = inline::inherit(&el.style, &ge.style);
+                            let row = ge.tag == "tr"
+                                || matches!(
+                                    ge.style.display,
+                                    Some(Display::TableRow) | Some(Display::TableRowGroup)
+                                )
+                                || matches!(ge.tag.as_str(), "thead" | "tbody" | "tfoot");
+                            if row {
+                                flush(&mut stray, &mut out);
+                                out.push(Node::Element(ge));
+                            } else if is_cell(&ge) {
+                                stray.push(Node::Element(ge));
+                            } else {
+                                stray.push(Node::Element(ge));
+                            }
+                        }
+                        text => stray.push(text),
+                    }
+                }
+            }
+            Node::Element(el) => {
+                let row = el.tag == "tr"
+                    || matches!(
+                        el.style.display,
+                        Some(Display::TableRow) | Some(Display::TableRowGroup)
+                    )
+                    || matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot" | "caption");
+                if row {
+                    flush(&mut stray, &mut out);
+                    out.push(child.clone());
+                } else {
+                    stray.push(child.clone());
+                }
+            }
+            Node::Text(t) if !t.trim().is_empty() => stray.push(child.clone()),
+            _ => {}
+        }
+    }
+    flush(&mut stray, &mut out);
+    out
+}
+
 fn is_cell(e: &Element) -> bool {
     e.tag == "td" || e.tag == "th" || e.style.display == Some(Display::TableCell)
 }
