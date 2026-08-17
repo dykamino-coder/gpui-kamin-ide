@@ -987,6 +987,11 @@ fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Ve
         if !in_flow(&ch.style) {
             continue;
         }
+        // ПРОБОВАЛИ И ОТКАТИЛИ прижим vrl-корня к правому краю: align_self
+        // End (нужен flex-хост — он гасил отрисовку фона корня), margin-left
+        // auto (та же гибель пейнта). Корень с фоном-картинкой пока стоит
+        // слева (background-size-document-root-vrl-*). Разбираться с тем,
+        // почему flex-хост/авто-поле убивают canvas-слой фона.
         if ch.style.height.is_some() || ch.style.max_height.is_some() {
             continue;
         }
@@ -2584,6 +2589,12 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
     }
     match e.tag.as_str() {
         "img" => Some(image(e)),
+        "iframe" => {
+            if let Some(el) = iframe(e, opts) {
+                return Some(el);
+            }
+            None
+        }
         "svg" => crate::svg::element(e).or_else(|| Some(image(e))),
         // Свой бокс (фон, рамка, отступы) означает, что кусок не может быть
         // прогоном текста: прогон не умеет рисовать вокруг себя рамку.
@@ -3298,6 +3309,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     }
     match e.tag.as_str() {
         "img" => image(e),
+        "iframe" if iframe(e, opts).is_some() => iframe(e, opts).unwrap(),
         // Рисунок не разобрался — показываем запасной текст, а не пустоту.
         "svg" => crate::svg::element(e).unwrap_or_else(|| {
             styled_div_with(e, &merged)
@@ -3549,6 +3561,87 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
 
 /// Картинка: `src` с `data:`-URI или путь. Внешние URL не грузим — документ
 /// рисуется в чате, где сеть запрещена по тем же причинам, что и в вебвью.
+/// Приклеить базовую папку к относительным `url(...)` вложенного документа.
+fn resolve_embedded_urls(html: &str, dir: &std::path::Path) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find("url(") {
+        out.push_str(&rest[..at + 4]);
+        rest = &rest[at + 4..];
+        let Some(end) = rest.find(')') else { break };
+        let raw = &rest[..end];
+        let inner = raw.trim().trim_matches('"').trim_matches('\'');
+        if inner.starts_with("data:") || inner.contains("://") || inner.starts_with('/') {
+            out.push_str(raw);
+        } else {
+            let abs = format!("file:///{}", dir.join(inner).display()).replace('\\', "/");
+            out.push('"');
+            out.push_str(&abs);
+            out.push('"');
+        }
+        out.push(')');
+        rest = &rest[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+thread_local! {
+    /// Глубина вложенных документов — от циклических iframe.
+    static IFRAME_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// `<iframe>`: вложенный документ со своими стилями и областью просмотра
+/// размером с коробку. Содержимое читается с диска (стенд переписывает
+/// `src` в `file:///...`); без файла остаётся запасной текст тега.
+fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
+    let src = e.attr("src")?;
+    let path = src
+        .strip_prefix("file:///")
+        .or_else(|| src.strip_prefix("file://"))?;
+    if IFRAME_DEPTH.with(|d| d.get()) >= 3 {
+        return None;
+    }
+    let html = std::fs::read_to_string(path).ok()?;
+    // Относительные адреса ВНУТРИ вложенного документа считаются от его
+    // папки: движок путей не разрешает, поэтому база приклеивается текстом.
+    let html = match std::path::Path::new(path).parent() {
+        Some(dir) => resolve_embedded_urls(&html, dir),
+        None => html,
+    };
+    let attr_len = |k: &str| e.attr(k).and_then(|v| v.parse::<f32>().ok());
+    // Размер: CSS сильнее атрибутов; умолчание — 300×150 (CSS 2.2 §замещаемые).
+    let w = match e.style.width {
+        Some(Len::Px(v)) => v,
+        _ => attr_len("width").unwrap_or(300.0),
+    };
+    let h = match e.style.height {
+        Some(Len::Px(v)) => v,
+        _ => attr_len("height").unwrap_or(150.0),
+    };
+    let (nodes, salt) = crate::doc::parse_embedded(&html, crate::BROWSER_CSS);
+    // Верхний уровень вложенного документа проходит те же ортогональные
+    // поправки, что и дети контейнера.
+    let nodes = orthogonal_vertical_children(nodes, &Computed::default());
+
+    let mut sub = opts.clone();
+    sub.viewport = (w, h);
+    sub.doc_salt = salt;
+    IFRAME_DEPTH.with(|d| d.set(d.get() + 1));
+    let kids = blocks(&nodes, &sub.root_style(), &sub);
+    IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
+    Some(
+        styled_div(e)
+            .w(px(w))
+            .h(px(h))
+            .overflow_hidden()
+            .relative()
+            .flex_shrink_0()
+            .children(kids)
+            .into_any_element(),
+    )
+}
+
 fn image(e: &Element) -> AnyElement {
     let src = e.attr("src").unwrap_or_default();
     // Размеры коробки ставит общий разбор стиля (`apply`): он же добавляет к

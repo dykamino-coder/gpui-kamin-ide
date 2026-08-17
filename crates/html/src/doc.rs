@@ -126,7 +126,9 @@ fn has_box_style(c: &crate::computed::Computed) -> bool {
         || any_side(&c.padding)
         // Фон обёртки — её собственная краска: снятая обёртка уносила
         // `html { background: … }` с собой, и корневой фон пропадал
-        // (страница выходила белой при пустом теле).
+        // (страница выходила белой при пустом теле). Фоновая КАРТИНКА — та же
+        // краска: область её раскладки — сама коробка корня
+        // (background-size-document-root-vrl-*).
         || c.background.is_some()
         || c.gradient.is_some()
         || c.bg_image.is_some()
@@ -243,8 +245,15 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         html.style.rtl,
         html.style.sideways,
     );
+    // Главное вертикальное письмо: строчная ось корня занимает всё окно
+    // (§8.2). Замерено: ставить это и при taken == own (письмо на самом
+    // `<html>`) — wm 124 → 123 при нулевой пользе, пока vrl-корень не прижат
+    // вправо; вернуть вместе с прижимом.
     if taken == own {
         return nodes;
+    }
+    if taken.0 == Some(true) && html.style.height.is_none() && html.style.min_height.is_none() {
+        html.style.min_height = Some(crate::value::Len::Vh(1.0));
     }
     for child in html.children.iter_mut() {
         let Node::Element(e) = child else { continue };
@@ -262,18 +271,6 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         html.style.rtl,
         html.style.sideways,
     ) = taken;
-    // Главное вертикальное письмо управляет ОБЛАСТЬЮ ПРОСМОТРА: строчная ось
-    // корня вертикальна и занимает всё окно (§8.2 principal flow). Без этого
-    // корень сжимался по содержимому, и прижим к нижнему краю (sideways-lr)
-    // было не от чего считать.
-    if taken.0 == Some(true)
-        && taken.3 == Some(true)
-        && taken.1 != Some(true)
-        && html.style.height.is_none()
-        && html.style.min_height.is_none()
-    {
-        html.style.min_height = Some(crate::value::Len::Vh(1.0));
-    }
     nodes
 }
 
@@ -313,6 +310,18 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
     }
     walk(&mut nodes, (None, None, None));
     nodes
+}
+
+/// Разбор ВЛОЖЕННОГО документа (`<iframe>`): тот же конвейер, что у
+/// `Document::new`, но БЕЗ сброса буферов замеров и проб — они принадлежат
+/// внешнему документу, и сброс посреди его отрисовки крал его состояние.
+pub fn parse_embedded(html: &str, theme_css: &str) -> (Vec<Node>, u64) {
+    crate::fonts::load_faces(html);
+    crate::color_space::load_profiles(html);
+    let (nodes, _root) = unwrap_document(mark_canvas_background(resolve_logical(
+        propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),
+    )));
+    (nodes, hash_of(html, theme_css))
 }
 
 /// Снять обёртки `<html>`/`<body>`, которые парсер добавляет всегда.

@@ -317,14 +317,15 @@ fn resolve_links(html: &str, path: &str) -> String {
         };
         let tag = &tail[..=end];
         let lower = tag.to_ascii_lowercase();
-        if lower.starts_with("<img") || lower.starts_with("<link") {
-            let attr = if lower.starts_with("<img") {
-                "src"
-            } else {
+        if lower.starts_with("<img") || lower.starts_with("<link") || lower.starts_with("<iframe")
+        {
+            let attr = if lower.starts_with("<link") {
                 "href"
+            } else {
+                "src"
             };
             match attr_value(tag, attr).and_then(|v| resolve(&v).map(|p| (v, p))) {
-                Some((href, file)) if lower.starts_with("<img") => {
+                Some((href, file)) if lower.starts_with("<img") || lower.starts_with("<iframe") => {
                     // Разделитель пути в адресе — прямая косая даже на
                     // Windows: с обратной загрузчик картинок молча ничего не
                     // показывал, и эталоны из одних картинок выходили пустой
