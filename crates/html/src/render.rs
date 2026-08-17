@@ -3852,6 +3852,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             group_of.insert(*id, (g, i == 0, i + 1 == trs.len()));
         }
     }
+    // ПРОБОВАЛИ И ОТКАТИЛИ: подавать ряды в обратном порядке для vertical-rl
+    // (ряды-колонки от правого края). Без обратных охватов rowspan (сетка
+    // умеет спан только вперёд) -001 пары ушли 1.02 → 1.31; -003 выиграла
+    // 1.18 → 0.82 — нетто минус. Возвращаться с ЯВНОЙ расстановкой клеток.
     let mut row_ix = 0i16;
     // Занятость колонок ячейками с rowspan из ПРЕДЫДУЩИХ рядов: без неё
     // номер колонки считался по порядку детей ряда и съезжал — рамки,
@@ -3986,24 +3990,15 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
                 cell.style.width = None;
             }
-            // Единицы шрифта на ячейке разрешаются ЗДЕСЬ, с письмом,
-            // унаследованным от ряда: `height: 5ch` при vertical-rl +
-            // text-orientation: upright — пять кеглей, а не пять нулей
-            // (css-values-3 §font-relative-lengths, ch-units-vrl-*). Ниже
-            // высота сверяется с точками и без разрешения пропадала.
-            {
-                let base = match inherited.font_size {
-                    Some(Len::Px(v)) => v,
-                    _ => opts.base_size(),
-                };
-                let keep = (cell.style.vertical, cell.style.upright);
-                cell.style.vertical =
-                    cell.style.vertical.or(row.style.vertical).or(inherited.vertical);
-                cell.style.upright =
-                    cell.style.upright.or(row.style.upright).or(inherited.upright);
-                cell.style.resolve_em(base);
-                (cell.style.vertical, cell.style.upright) = keep;
-            }
+            // Письмо к ВНУТРЕННИМ коробкам таблицы не применяется
+            // (css-writing-modes-3 §applies — только к таблице целиком):
+            // собственное значение поучаствовало в единицах выше, раскладку
+            // ведёт письмо таблицы (table-progression-*: «these rules must
+            // have no effect»).
+            cell.style.vertical = None;
+            cell.style.vertical_rl = None;
+            cell.style.sideways = None;
+            cell.style.upright = None;
             // Высота ячейки — МИНИМУМ (css-tables §3.6): содержимое выше
             // растит ячейку, а не режется. `height: 20px` с блоком в 300
             // прятал всё под обрезкой.
@@ -4076,11 +4071,18 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 Some(Align::End) => d.justify_end(),
                 _ => d.justify_center(),
             };
-            if span_cols > 1 {
-                d = d.col_span(span_cols);
+            // Вертикальное письмо таблицы: ряды идут ПОПЕРЁК — охваты
+            // меняются осями вместе с сеткой (css-writing-modes-3 §8).
+            let (grid_cols, grid_rows) = if e.style.vertical == Some(true) {
+                (span_rows as u16, span_cols as u16)
+            } else {
+                (span_cols, span_rows as u16)
+            };
+            if grid_cols > 1 {
+                d = d.col_span(grid_cols);
             }
-            if span_rows > 1 {
-                d = d.row_span(span_rows);
+            if grid_rows > 1 {
+                d = d.row_span(grid_rows);
             }
             for c in col_ix..(col_ix + span_cols as usize).min(occupied.len()) {
                 occupied[c] = span_rows;
@@ -4416,7 +4418,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         _ => None,
     };
     let grid_box = if e.style.vertical == Some(true) {
-        div().grid().grid_template_rows(tracks)
+        // Ряд таблицы — КОЛОНКА сетки: заполнение идёт сверху вниз, ряд за
+        // рядом поперёк (css-writing-modes-3 §8, table-progression-*).
+        let mut g = div().grid().grid_template_rows(tracks);
+        g.style().grid_auto_flow = Some(gpui::GridAutoFlow::Column);
+        g
     } else {
         let mut g = div().grid().grid_template_cols(tracks);
         if let Some(rt) = row_tracks {
