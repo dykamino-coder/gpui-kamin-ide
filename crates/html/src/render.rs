@@ -3535,6 +3535,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // колонку, а не свою коробку (CSS 2.1 §17.5.2.2) — колонка не уже
     // содержимого (пол min-content), процентная забирает долю остатка.
     let mut col_widths: Vec<(Option<f32>, Option<f32>)> = vec![(None, None); cols as usize];
+    let (from_cols, cols_collapsed) = col_element_widths(&e.children);
     for row in &row_elements {
         let mut ix = 0usize;
         for c in &row.children {
@@ -3630,8 +3631,15 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // таблицы ячейка не получает, и вся она схлопывается в ноль
             // (замерено: `flexbox_rowspan-overflow` рисовал пустую страницу).
             // Коробка ячейки при этом обрезать содержимое не перестаёт.
+            // Объединённая ячейка ЧЕРЕЗ схлопнутую колонку обрезается по
+            // урезанной ширине (css-tables-3 §visibility-collapse-cell-
+            // rendering): содержимое не расталкивает оставшиеся колонки.
+            let spans_collapsed = span_cols > 1
+                && (col_ix..col_ix + span_cols as usize)
+                    .any(|i| cols_collapsed.get(i).copied().unwrap_or(false));
             let clipped = cell.style.overflow_x == Some(crate::computed::Overflow::Hidden)
-                || cell.style.overflow_y == Some(crate::computed::Overflow::Hidden);
+                || cell.style.overflow_y == Some(crate::computed::Overflow::Hidden)
+                || spans_collapsed;
             let mut cell = cell.clone();
             // Сросшиеся рамки (border-collapse): между ячейками ОДНА кромка,
             // а не две. Ячейка несёт верх и лево; правую и нижнюю рисуют
@@ -3650,6 +3658,14 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if clipped {
                 cell.style.overflow_x = None;
                 cell.style.overflow_y = None;
+            }
+            // Ячейка схлопнутой колонки не рисуется: колонка выброшена
+            // (css-tables-3 §visibility-collapse-cell-rendering), её дорожка
+            // нулевая, а краска ячейки торчала бы поверх соседей.
+            if (col_ix..col_ix + span_cols as usize)
+                .all(|i| cols_collapsed.get(i).copied().unwrap_or(false))
+            {
+                cell.style.hidden = Some(true);
             }
             // Ширину ячейки несёт КОЛОНКА (см. col_widths): на коробке она
             // резала бы ячейку уже содержимого (`width: 0` прятал текст).
@@ -3774,8 +3790,13 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             out
         })
         .unwrap_or_default();
-    // `<col>`-ширины старше ячеек первого ряда (§17.5.2.1).
-    let from_cols = col_element_widths(&e.children);
+    // `<col>`-ширины старше ячеек первого ряда (§17.5.2.1) и действуют и в
+    // авто-раскладке: колонка с шириной держит её (как ширина ячейки).
+    for (i, w) in from_cols.iter().enumerate() {
+        if let (Some(w), Some(slot)) = (w, col_widths.get_mut(i)) {
+            slot.0 = Some(slot.0.map_or(*w, |old| old.max(*w)));
+        }
+    }
     let first_row_widths: Vec<Option<f32>> = (0..cols as usize)
         .map(|i| {
             from_cols
@@ -3785,11 +3806,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .or_else(|| first_row_widths.get(i).copied().flatten())
         })
         .collect();
-    let tracks = track_list(
+    let tracks = track_list_collapsed(
         cols,
         e.style.table_fixed == Some(true),
         &first_row_widths,
         &col_widths,
+        &cols_collapsed,
     );
     // Таблица ЗАДАННОЙ высоты раздаёт лишнее место рядам БЕЗ своей высоты
     // (CSS 2.1 §17.5.3): ряд с высотой (своей или ячеек) держит её, остальные
@@ -3883,6 +3905,22 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
 /// переносов, сохранённых пробелов и вложенных коробок; снят по замеру:
 /// css-text +1, flexbox +1, css-grid +1, поломок нет.
 /// `min-content` снизу не даёт колонке сжаться в ноль на узкой панели.
+fn track_list_collapsed(
+    cols: u16,
+    fixed: bool,
+    first_row: &[Option<f32>],
+    col_widths: &[(Option<f32>, Option<f32>)],
+    collapsed: &[bool],
+) -> Vec<gpui::GridTrack> {
+    let mut tracks = track_list(cols, fixed, first_row, col_widths);
+    for (i, t) in tracks.iter_mut().enumerate() {
+        if collapsed.get(i).copied().unwrap_or(false) {
+            *t = gpui::GridTrack::Pixels(px(0.0));
+        }
+    }
+    tracks
+}
+
 fn track_list(
     cols: u16,
     fixed: bool,
@@ -4082,8 +4120,9 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
 /// Ширины колонок из элементов `<col>`/`<colgroup>` (атрибут `span`
 /// повторяет запись): при фиксированной раскладке они СТАРШЕ ячеек первого
 /// ряда (CSS 2.1 §17.5.2.1).
-fn col_element_widths(children: &[Node]) -> Vec<Option<f32>> {
-    let mut out = vec![];
+fn col_element_widths(children: &[Node]) -> (Vec<Option<f32>>, Vec<bool>) {
+    let mut widths = vec![];
+    let mut collapsed = vec![];
     for child in children {
         let Node::Element(el) = child else { continue };
         match el.tag.as_str() {
@@ -4092,18 +4131,27 @@ fn col_element_widths(children: &[Node]) -> Vec<Option<f32>> {
                     Some(Len::Px(v)) => Some(v),
                     _ => None,
                 };
+                // `visibility: collapse` на колонке — колонка ВЫБРОШЕНА:
+                // нулевая дорожка, ячейки не рисуются (css-tables-3
+                // §visibility-collapse-cell-rendering).
+                let c = el.style.collapsed == Some(true);
                 let span = el
                     .attr("span")
                     .and_then(|v| v.parse::<usize>().ok())
                     .unwrap_or(1)
                     .max(1);
-                out.extend(std::iter::repeat_n(w, span));
+                widths.extend(std::iter::repeat_n(w, span));
+                collapsed.extend(std::iter::repeat_n(c, span));
             }
-            "colgroup" => out.extend(col_element_widths(&el.children)),
+            "colgroup" => {
+                let (w, c) = col_element_widths(&el.children);
+                widths.extend(w);
+                collapsed.extend(c);
+            }
             _ => {}
         }
     }
-    out
+    (widths, collapsed)
 }
 
 fn is_cell(e: &Element) -> bool {
