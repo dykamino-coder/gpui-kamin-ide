@@ -932,6 +932,12 @@ fn orthogonal_children(children: Vec<Node>, container: &Computed) -> Vec<Node> {
         if ch.inline || ch.style.vertical != Some(false) {
             continue;
         }
+        // Внепоточные не зажимаются: абсолютный элемент меряется от своего
+        // содержащего блока, а не от потока (available-size-003: зажатый
+        // абсолютный маркер вылезал красным).
+        if !in_flow(&ch.style) {
+            continue;
+        }
         if let Some(il) = inline_size {
             for side in [
                 &mut ch.style.margin.top,
@@ -976,6 +982,9 @@ fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Ve
     for node in out.iter_mut() {
         let Node::Element(ch) = node else { continue };
         if ch.inline || ch.style.vertical != Some(true) {
+            continue;
+        }
+        if !in_flow(&ch.style) {
             continue;
         }
         if ch.style.height.is_some() || ch.style.max_height.is_some() {
@@ -2043,7 +2052,17 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // есть перенос считается по той оси, по которой идёт строка.
         let limit = inherited.ortho_limit.unwrap_or(opts.viewport.1);
         let inner = div().w(px(limit)).child(inner).into_any_element();
-        return crate::interact::VerticalText::new(inner).into_any_element();
+        // Высота заявляется только под ортогональным зажимом (max-height от
+        // §7.3) и только при ПОЛНОМ зажиме — иначе коробка без высоты
+        // схлопывалась в ноль (даже фон пропадал), а заявка без зажима
+        // делала её бесконечной (замерено: wm 118 → 104).
+        let vt = crate::interact::VerticalText::new(inner);
+        let vt = if let Some(Len::Px(cap)) = inherited.max_height {
+            vt.claiming_height(px(cap))
+        } else {
+            vt
+        };
+        return vt.into_any_element();
     }
     // Первая строка со своим стилем: где она кончается, известно только после
     // переноса, поэтому абзац собирается замером (см. `float::FirstLine`).

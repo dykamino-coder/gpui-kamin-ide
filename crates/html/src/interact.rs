@@ -1456,6 +1456,8 @@ pub struct VerticalText {
     child: Option<AnyElement>,
     /// Естественный размер содержимого до поворота.
     natural: gpui::Size<Pixels>,
+    /// Потолок заявляемой высоты (см. `claiming_height`).
+    claim_cap: Option<Pixels>,
 }
 
 impl VerticalText {
@@ -1463,7 +1465,16 @@ impl VerticalText {
         VerticalText {
             child: Some(child),
             natural: gpui::Size::default(),
+            claim_cap: None,
         }
+    }
+
+    /// Заявить и высоту — потолком родителя, только при ПОЛНОМ зажиме
+    /// (строка длиннее потолка): короче потолка коробка прижимается к
+    /// содержимому сама, а заявка ломала поток соседей.
+    pub fn claiming_height(mut self, cap: Pixels) -> Self {
+        self.claim_cap = Some(cap);
+        self
     }
 }
 
@@ -1513,6 +1524,13 @@ impl Element for VerticalText {
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(self.natural.height),
         ));
+        if let Some(cap) = self.claim_cap
+            && self.natural.width >= cap
+        {
+            style.size.height = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
+                gpui::AbsoluteLength::Pixels(cap),
+            ));
+        }
         (window.request_layout(style, [], cx), ())
     }
 
