@@ -3123,6 +3123,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         {
             table(e, &merged, opts)
         }
+        // Ряд, группа рядов или ячейка ВНЕ таблицы получают анонимную
+        // таблицу-обёртку (css-tables-3 §3.1): иначе ячейки складывались
+        // столбиком обычных блоков.
+        _ if matches!(
+            e.style.display,
+            Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell)
+        ) =>
+        {
+            let wrapper = anon_element("table", vec![Node::Element(e.clone())]);
+            table(&wrapper, &merged, opts)
+        }
         "table" => table(e, &merged, opts),
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
