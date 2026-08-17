@@ -3658,6 +3658,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 };
                 cell.style.min_height = Some(Len::Px(floor));
             }
+            // Потолок высоты к ячейке не применяется вовсе (браузеры
+            // игнорируют max-height на ячейках): содержимое выше — растит.
+            if matches!(cell.style.max_height, Some(Len::Px(_))) {
+                cell.style.max_height = None;
+            }
             let cell = &cell;
             let mut d = styled_div(cell);
             // Заливка строки И ГРУППЫ строк: своей коробки у них в общей сетке
