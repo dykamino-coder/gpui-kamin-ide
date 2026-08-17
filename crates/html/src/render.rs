@@ -3986,6 +3986,24 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
                 cell.style.width = None;
             }
+            // Единицы шрифта на ячейке разрешаются ЗДЕСЬ, с письмом,
+            // унаследованным от ряда: `height: 5ch` при vertical-rl +
+            // text-orientation: upright — пять кеглей, а не пять нулей
+            // (css-values-3 §font-relative-lengths, ch-units-vrl-*). Ниже
+            // высота сверяется с точками и без разрешения пропадала.
+            {
+                let base = match inherited.font_size {
+                    Some(Len::Px(v)) => v,
+                    _ => opts.base_size(),
+                };
+                let keep = (cell.style.vertical, cell.style.upright);
+                cell.style.vertical =
+                    cell.style.vertical.or(row.style.vertical).or(inherited.vertical);
+                cell.style.upright =
+                    cell.style.upright.or(row.style.upright).or(inherited.upright);
+                cell.style.resolve_em(base);
+                (cell.style.vertical, cell.style.upright) = keep;
+            }
             // Высота ячейки — МИНИМУМ (css-tables §3.6): содержимое выше
             // растит ячейку, а не режется. `height: 20px` с блоком в 300
             // прятал всё под обрезкой.
