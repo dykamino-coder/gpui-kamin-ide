@@ -635,9 +635,9 @@ impl Style {
                 let mut min = bounds.origin;
                 let mut max = bounds.bottom_right();
 
-                if self
-                    .border_color
-                    .is_some_and(|color| !color.is_transparent())
+                // KaminIDE patch: край обрезки — padding-box ВСЕГДА
+                // (css-overflow-3 §3, overflow clip edge): рамка вычитается и
+                // прозрачная — прозрачность цвета не двигает край.
                 {
                     min.x += self.border_widths.left.to_pixels(rem_size);
                     max.x -= self.border_widths.right.to_pixels(rem_size);
