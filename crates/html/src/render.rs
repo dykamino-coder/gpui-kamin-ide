@@ -142,19 +142,18 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             d = apply_hover(d, h);
         }
     }
-    // `line-clamp: auto`: точка среза задана max-height — контейнер
-    // просто режет по нему (счёт строк не нужен).
+    // Обрезка контейнера (css-overflow-3/4): точная точка среза приходит
+    // из бюджета строк ПРОШЛОГО кадра (interact::ClampCut) — низ N-й
+    // считаемой строки, поднятый к верху пересечённого блока. Пока точки
+    // нет (первый кадр) — грубый потолок в N своих строк.
     if c.clamp_auto == Some(true) && c.max_height.is_some() {
+        if let Some(cut) = crate::interact::clamp_cut(e.node_id) {
+            d = d.max_h(px(cut));
+        }
         d = d.overflow_hidden();
     }
     if let Some(n) = c.clamp_lines() {
         d = d.line_clamp(n as usize);
-        // Обрезка КОНТЕЙНЕРА: строки после точки среза прячутся
-        // (css-overflow-4 §4.3). Потолок высоты в N строк ставится только
-        // ЧИСТО ТЕКСТОВОМУ контейнеру: считаются строки СВОЕГО
-        // форматирования, а вложенные блоки до точки среза видимы целиком
-        // (css-overflow-3 §webkit-line-clamp: строки вложенных IFC
-        // пропускаются) — потолок резал их вместе со счётом.
         let font = match c.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
@@ -164,7 +163,8 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             Some(Len::Em(k)) => k * font,
             _ => 1.2 * font,
         };
-        d = d.max_h(px(n as f32 * line)).overflow_hidden();
+        let cut = crate::interact::clamp_cut(e.node_id).unwrap_or(n as f32 * line);
+        d = d.max_h(px(cut)).overflow_hidden();
     }
     for extra in decorations(c) {
         d = d.child(extra);
@@ -3299,7 +3299,64 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             };
             let mut kids: Vec<AnyElement> = Vec::new();
             kids.extend(clip_layer(&merged, opts));
+            // Бюджет строк обрезки: сторожа контекста живут, пока строится
+            // поддерево — пробы детей пишут строки в буфер контейнера.
+            // Гейт на время доводки: бюджет пока не даёт нетто-плюса
+            // (верхние webkit-пары требуют строк смешанных контейнеров).
+            let budget_on = std::env::var("HTML_CLAMP_BUDGET").is_ok();
+            let is_clamp = budget_on
+                && (merged.clamp_lines().is_some()
+                    || (merged.clamp_auto == Some(true) && merged.max_height.is_some()));
+            let _clamp_guard = is_clamp.then(|| crate::interact::ClampGuard::enter(e.node_id));
+            let makes_bfc = matches!(
+                merged.overflow_x,
+                Some(crate::computed::Overflow::Hidden) | Some(crate::computed::Overflow::Scroll)
+            ) || matches!(
+                merged.overflow_y,
+                Some(crate::computed::Overflow::Hidden) | Some(crate::computed::Overflow::Scroll)
+            ) || merged.float.is_some();
+            let _bfc_guard = (!is_clamp
+                && makes_bfc
+                && crate::interact::clamp_context().is_some())
+            .then(crate::interact::ClampGuard::enter_bfc);
+            if let Some((key, skip)) = crate::interact::clamp_context() {
+                // Текстовый лист даёт строки; коробка с краской — блок,
+                // который прячется целиком, если срез попал внутрь.
+                let leaf_text = has_text(&e.children)
+                    && !e.children.iter().any(|ch| match ch {
+                        Node::Element(el) => !el.inline,
+                        _ => false,
+                    });
+                if leaf_text {
+                    kids.push(crate::interact::clamp_probe(
+                        crate::interact::clamp_lines_for(key),
+                        line_height_px(&merged, opts),
+                        skip,
+                    ));
+                } else if !is_clamp && has_box_style_probe(&e.style) {
+                    kids.push(crate::interact::clamp_probe(
+                        crate::interact::clamp_lines_for(key),
+                        0.0,
+                        skip,
+                    ));
+                }
+            }
             kids.extend(blocks(&children, &merged, opts));
+            if is_clamp {
+                let max_h = match merged.max_height {
+                    Some(Len::Px(v)) => Some(v),
+                    _ => None,
+                };
+                kids.push(
+                    crate::interact::ClampCut::new(
+                        e.node_id,
+                        crate::interact::clamp_lines_for(e.node_id),
+                        merged.clamp_lines(),
+                        max_h,
+                    )
+                    .into_any_element(),
+                );
+            }
             d.children(kids).into_any_element()
         }
     }
@@ -4500,6 +4557,15 @@ fn collect_rows<'a>(nodes: &'a [Node], carry: RowCarry, out: &mut Vec<(&'a Eleme
 
 /// Ячейка ли это — по тегу или по стилю.
 /// Безымянный элемент починки таблицы: пустой стиль, только тег и дети.
+/// Красится ли коробка (фон или рамка) — такой блок в бюджете строк
+/// прячется целиком, если точка среза попала внутрь него.
+fn has_box_style_probe(c: &Computed) -> bool {
+    c.background.is_some()
+        || c.bg_image.is_some()
+        || c.gradient_raw.is_some()
+        || c.border_visible.contains(&Some(true))
+}
+
 fn anon_element(tag: &str, children: Vec<Node>) -> Element {
     Element {
         node_id: 0,

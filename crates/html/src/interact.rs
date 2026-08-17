@@ -713,6 +713,7 @@ pub fn row_rects_for(node_id: u64) -> RowRects {
 pub fn forget_row_rects() {
     ROW_RECTS.with(|m| m.borrow_mut().clear());
     CELL_EDGES.with(|m| m.borrow_mut().clear());
+    forget_clamp_buffers();
 }
 
 pub struct CellsClipped {
@@ -1132,6 +1133,259 @@ impl Element for EdgePainter {
 }
 
 impl IntoElement for EdgePainter {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+/// Бюджет строк обрезки (`line-clamp`, css-overflow-3/4): точка среза —
+/// низ N-й СЧИТАЕМОЙ строки. Строки потомков в собственном контексте
+/// форматирования (BFC: overflow, флоат, корень потока) видимы, но НЕ
+/// считаются; блок, пересекающий точку среза, прячется целиком — срез
+/// поднимается к его верху. Точка меряется пробами построенного кадра и
+/// применяется потолком высоты на СЛЕДУЮЩЕМ (перестройка каждый кадр).
+pub struct ClampEntry {
+    pub bounds: Bounds<Pixels>,
+    /// Высота строки в точках; 0 — блок без собственного текста.
+    pub line: f32,
+    /// Строки не считаются (элемент внутри вложенного BFC).
+    pub skip_count: bool,
+}
+
+pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
+
+thread_local! {
+    static CLAMP_LINES: std::cell::RefCell<std::collections::HashMap<u64, ClampLines>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Вычисленные точки среза (высота от верха контейнера) прошлого кадра.
+    static CLAMP_CUTS: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Стек активных clamp-контейнеров при ПОСТРОЕНИИ дерева:
+    /// (ключ, граница BFC уже пройдена).
+    static CLAMP_STACK: std::cell::RefCell<Vec<(u64, bool)>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
+pub fn clamp_lines_for(key: u64) -> ClampLines {
+    CLAMP_LINES.with(|m| m.borrow_mut().entry(key).or_default().clone())
+}
+
+pub fn clamp_cut(key: u64) -> Option<f32> {
+    CLAMP_CUTS.with(|m| m.borrow().get(&key).copied())
+}
+
+pub fn forget_clamp_buffers() {
+    CLAMP_LINES.with(|m| m.borrow_mut().clear());
+    CLAMP_CUTS.with(|m| m.borrow_mut().clear());
+    CLAMP_STACK.with(|st| st.borrow_mut().clear());
+}
+
+/// Сторож стека clamp-контекста на время построения поддерева.
+pub struct ClampGuard(bool);
+
+impl ClampGuard {
+    /// Вход в сам clamp-контейнер.
+    pub fn enter(key: u64) -> Self {
+        CLAMP_STACK.with(|st| st.borrow_mut().push((key, false)));
+        ClampGuard(true)
+    }
+
+    /// Вход в элемент с собственным контекстом форматирования: строки
+    /// глубже не считаются.
+    pub fn enter_bfc() -> Self {
+        let pushed = CLAMP_STACK.with(|st| {
+            let mut st = st.borrow_mut();
+            match st.last().copied() {
+                Some((key, false)) => {
+                    st.push((key, true));
+                    true
+                }
+                _ => false,
+            }
+        });
+        ClampGuard(pushed)
+    }
+}
+
+impl Drop for ClampGuard {
+    fn drop(&mut self) {
+        if self.0 {
+            CLAMP_STACK.with(|st| {
+                st.borrow_mut().pop();
+            });
+        }
+    }
+}
+
+/// Текущий clamp-контекст построения: (ключ, внутри вложенного BFC).
+pub fn clamp_context() -> Option<(u64, bool)> {
+    CLAMP_STACK.with(|st| st.borrow().last().copied())
+}
+
+/// Проба строк: канвас в элементе с текстом (или блоке), пишет границы и
+/// высоту строки в prepaint своего кадра.
+pub fn clamp_probe(lines: ClampLines, line: f32, skip_count: bool) -> AnyElement {
+    gpui::canvas(
+        move |bounds: Bounds<Pixels>, _, _| {
+            lines.borrow_mut().push(ClampEntry { bounds, line, skip_count });
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+    .into_any_element()
+}
+
+/// Вычислитель точки среза: абсолютный элемент В КОНЦЕ clamp-контейнера,
+/// его границы — весь контейнер. Считает низ N-й считаемой строки,
+/// поднимает срез к верху пересечённого блока и просит новый кадр, когда
+/// точка изменилась.
+pub struct ClampCut {
+    key: u64,
+    lines: ClampLines,
+    /// Число считаемых строк; None — `line-clamp: auto` (срез только по
+    /// потолку высоты, но пересечённый блок всё равно прячется целиком).
+    limit: Option<u32>,
+    /// Потолок высоты контейнера в точках (max-height), если задан.
+    max_h: Option<f32>,
+}
+
+impl ClampCut {
+    pub fn new(key: u64, lines: ClampLines, limit: Option<u32>, max_h: Option<f32>) -> Self {
+        ClampCut { key, lines, limit, max_h }
+    }
+}
+
+impl Element for ClampCut {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let mut style = gpui::Style::default();
+        style.position = gpui::Position::Absolute;
+        style.size.width = gpui::relative(1.0).into();
+        style.size.height = gpui::relative(1.0).into();
+        (window.request_layout(style, [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        _cx: &mut App,
+    ) {
+        let entries = std::mem::take(&mut *self.lines.borrow_mut());
+        let top = f32::from(bounds.origin.y);
+        // Строки: у текстового вклада их bounds.height / line штук.
+        let mut rows: Vec<(f32, f32, bool)> = vec![]; // (верх, низ, считается)
+        let mut blocks: Vec<(f32, f32)> = vec![];
+        for e in &entries {
+            let y0 = f32::from(e.bounds.origin.y);
+            let h = f32::from(e.bounds.size.height);
+            if e.line > 0.0 && h > 0.0 {
+                let n = (h / e.line).round().max(1.0) as usize;
+                let step = h / n as f32;
+                for i in 0..n {
+                    rows.push((y0 + i as f32 * step, y0 + (i + 1) as f32 * step, !e.skip_count));
+                }
+            } else if h > 0.0 {
+                blocks.push((y0, y0 + h));
+            }
+        }
+        rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut cut: Option<f32> = self.max_h.map(|m| top + m);
+        if let Some(limit) = self.limit {
+            let mut seen = 0u32;
+            for (_, bottom, countable) in &rows {
+                if *countable {
+                    seen += 1;
+                    if seen == limit {
+                        let candidate = *bottom;
+                        cut = Some(cut.map_or(candidate, |c| c.min(candidate)));
+                        break;
+                    }
+                }
+            }
+            if seen < limit && self.max_h.is_none() {
+                // Строк меньше предела — среза нет.
+                cut = None;
+            }
+        }
+        // Блок, пересекающий срез, прячется целиком: срез к его верху.
+        if let Some(c) = cut {
+            let mut c2 = c;
+            for (y0, y1) in &blocks {
+                if *y0 < c2 && c2 < *y1 {
+                    c2 = *y0;
+                }
+            }
+            // И строка, пересечённая потолком, тоже не показывается
+            // половинкой: срез к её верху.
+            for (y0, y1, _) in &rows {
+                if *y0 < c2 && c2 < *y1 - 0.5 {
+                    c2 = *y0;
+                }
+            }
+            cut = Some(c2);
+        }
+        let rel = cut.map(|c| (c - top).max(0.0));
+        let prev = clamp_cut(self.key);
+        let changed = match (prev, rel) {
+            (Some(a), Some(b)) => (a - b).abs() > 0.5,
+            (None, None) => false,
+            _ => true,
+        };
+        if changed {
+            CLAMP_CUTS.with(|m| {
+                let mut m = m.borrow_mut();
+                match rel {
+                    Some(v) => {
+                        m.insert(self.key, v);
+                    }
+                    None => {
+                        m.remove(&self.key);
+                    }
+                }
+            });
+            window.request_animation_frame();
+        }
+    }
+}
+
+impl IntoElement for ClampCut {
     type Element = Self;
 
     fn into_element(self) -> Self::Element {
