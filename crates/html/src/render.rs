@@ -3963,7 +3963,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     widths,
                     colors,
                     styles,
-                    2,
+                    4,
                     doc_ix,
                     [0.0; 4],
                 ));
@@ -3981,6 +3981,48 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         probed.push(el.node_id);
                         d = d.child(crate::interact::cell_rect_probe(rects, span_cols == 1, shift));
                     }
+                }
+            }
+            // Кромки РЯДА (border на <tr>) — участник разбора сросшихся
+            // конфликтов (CSS 2.1 §17.6.2.1: ячейка > ряд > группа >
+            // колонка > таблица); в раздельной модели рамки ряда не
+            // действуют вовсе (§17.6.1) — сюда попадает только collapse.
+            if collapse_cells {
+                let b = row.style.borders();
+                let rw = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
+                let hidden_row = row.style.border_side_styles.contains(&Some(1));
+                if rw.iter().any(|w| *w > 0.0) || hidden_row {
+                    let start_col = col_ix - span_cols as usize;
+                    let last_col = col_ix >= cols as usize;
+                    let widths = [
+                        rw[0],
+                        if last_col { rw[1] } else { 0.0 },
+                        rw[2],
+                        if start_col == 0 { rw[3] } else { 0.0 },
+                    ];
+                    let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+                    let side_colour = |k: usize| {
+                        row.style.border_colors[k]
+                            .or(row.style.border_color)
+                            .unwrap_or(black)
+                    };
+                    let colors =
+                        [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+                    let side_style = |k: usize| {
+                        row.style.border_side_styles[k]
+                            .unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
+                    };
+                    let styles =
+                        [side_style(0), side_style(1), side_style(2), side_style(3)];
+                    d = d.child(crate::interact::edge_probe(
+                        table_edges.clone(),
+                        widths,
+                        colors,
+                        styles,
+                        3,
+                        row.node_id as u32,
+                        [0.0; 4],
+                    ));
                 }
             }
             // Кромки ГРУППЫ РЯДОВ: верх у первого ряда группы, низ у
@@ -4021,7 +4063,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         widths,
                         colors,
                         styles,
-                        1,
+                        2,
                         g.node_id as u32,
                         [0.0; 4],
                     ));
