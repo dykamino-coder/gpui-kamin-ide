@@ -2084,7 +2084,11 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // ложился боком).
         let mut plain = String::new();
         gather_text(nodes, &mut plain);
-        if plain.trim().is_empty() {
+        // Неразрывный пробел — ТЕКСТ: он даёт строку и её толщину
+        // (`<td>&nbsp;</td>` в вертикальном ряду, ch-units-vrl-005), а
+        // `trim()` съедал его как юникод-пробел, и абзац уходил
+        // горизонтальным путём шириной в один пробел.
+        if plain.trim().is_empty() && !plain.contains('\u{a0}') {
             return paragraph(nodes, &horizontal, opts);
         }
         let inner = paragraph(nodes, &horizontal, opts);
