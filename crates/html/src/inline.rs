@@ -397,10 +397,12 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             Some(crate::value::Len::Em(k)) => k * font,
             _ => 1.2 * font,
         };
-        let fix = |l: &mut Option<crate::value::Len>| {
-            if let Some(crate::value::Len::Lh(k)) = *l {
-                *l = Some(crate::value::Len::Px(k * line));
+        let fix = |l: &mut Option<crate::value::Len>| match *l {
+            Some(crate::value::Len::Lh(k)) => *l = Some(crate::value::Len::Px(k * line)),
+            Some(crate::value::Len::LhPx(k, add)) => {
+                *l = Some(crate::value::Len::Px(k * line + add))
             }
+            _ => {}
         };
         fix(&mut c.width);
         fix(&mut c.height);

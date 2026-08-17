@@ -835,6 +835,9 @@ pub struct Computed {
     /// `display: -webkit-box` и `-webkit-box-orient: vertical`
     /// (css-overflow-3 §webkit-line-clamp) — поэтому своё поле и гейт.
     pub webkit_line_clamp: Option<u32>,
+    /// `line-clamp: auto` — обрезка по max-height контейнера
+    /// (css-overflow-4 §line-clamp), без счёта строк.
+    pub clamp_auto: Option<bool>,
     pub webkit_box: Option<bool>,
     pub webkit_box_vertical: Option<bool>,
     /// `text-fit` — подбор кегля под ширину коробки.
@@ -1287,6 +1290,7 @@ impl Computed {
             ellipsis: self.ellipsis,
             line_clamp: self.line_clamp,
             webkit_line_clamp: self.webkit_line_clamp,
+            clamp_auto: self.clamp_auto,
             webkit_box: self.webkit_box,
             webkit_box_vertical: self.webkit_box_vertical,
             text_fit: self.text_fit,
@@ -2532,6 +2536,9 @@ impl Computed {
                     _ => None,
                 }
             }
+            "line-clamp" if v.trim().eq_ignore_ascii_case("auto") => {
+                self.clamp_auto = Some(true)
+            }
             "line-clamp" => self.line_clamp = v.parse().ok(),
             "-webkit-line-clamp" => self.webkit_line_clamp = v.parse().ok(),
             "-webkit-box-orient" => {
@@ -3220,6 +3227,7 @@ impl Computed {
                             Len::Ic(k) => Some(k * crate::metrics::ic_px("", 16.0)),
                             Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
                             Len::Lh(k) => Some(k * 1.2 * 16.0),
+                            Len::LhPx(k, add) => Some(k * 1.2 * 16.0 + add),
                             Len::Vw(_) | Len::Vh(_) => None,
                             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
                         });

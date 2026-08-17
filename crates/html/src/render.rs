@@ -142,6 +142,11 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             d = apply_hover(d, h);
         }
     }
+    // `line-clamp: auto`: точка среза задана max-height — контейнер
+    // просто режет по нему (счёт строк не нужен).
+    if c.clamp_auto == Some(true) && c.max_height.is_some() {
+        d = d.overflow_hidden();
+    }
     if let Some(n) = c.clamp_lines() {
         d = d.line_clamp(n as usize);
         // Обрезка КОНТЕЙНЕРА: строки после точки среза прячутся

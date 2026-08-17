@@ -31,6 +31,10 @@ pub enum Len {
     /// только сборщику дерева, поэтому единица доживает до него как есть.
     Vh(f32),
     Vw(f32),
+    /// `calc(4lh + 10px)`: кратное высоты строки плюс довесок в точках.
+    /// Высота строки известна только при слиянии стилей — смесь доживает
+    /// до него как есть (как одиночный `lh`).
+    LhPx(f32, f32),
     /// `5ch` — ширина нуля, `2ex` — высота строчной. Зависят от ГЛИФОВ
     /// выбранного шрифта, а не от кегля (у Ahem нуль в целый кегль, у
     /// текстового — около половины), поэтому доживают до наследования вместе
@@ -585,6 +589,7 @@ mod tests {
 /// длина в сравнении с браузером не видна, а неверная видна.
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 struct Sum {
+    lh: f32,
     px: f32,
     pct: f32,
     em: f32,
@@ -612,9 +617,11 @@ impl Sum {
             Len::Ch(v) => s.ch = v,
             Len::Ic(v) => s.ic = v,
             Len::Ex(v) => s.ex = v,
-            // Высоту строки сумма не переносит: единица разрешается при
-            // слиянии стилей, в выражениях она за базовую строку.
-            Len::Lh(v) => s.px = v * 1.2 * 16.0,
+            Len::Lh(v) => s.lh = v,
+            Len::LhPx(l, p) => {
+                s.lh = l;
+                s.px = p;
+            }
             Len::Vh(v) => s.vh = v,
             Len::Vw(v) => s.vw = v,
             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => return None,
@@ -624,6 +631,7 @@ impl Sum {
 
     fn scaled(self, k: f32) -> Self {
         Sum {
+            lh: self.lh * k,
             px: self.px * k,
             pct: self.pct * k,
             em: self.em * k,
@@ -637,6 +645,7 @@ impl Sum {
 
     fn add(self, other: Self, sign: f32) -> Self {
         Sum {
+            lh: self.lh + sign * other.lh,
             px: self.px + sign * other.px,
             pct: self.pct + sign * other.pct,
             em: self.em + sign * other.em,
@@ -662,9 +671,15 @@ impl Sum {
             (self.vw, Len::Vw as fn(f32) -> Len),
         ];
         let mut alive = rel.iter().filter(|(v, _)| *v != 0.0);
-        match (alive.next(), alive.next()) {
-            (None, _) => Some(Len::Px(self.px)),
-            (Some((v, unit)), None) if self.px == 0.0 => Some(unit(*v)),
+        match (alive.next(), alive.next(), self.lh != 0.0) {
+            (None, _, false) => Some(Len::Px(self.px)),
+            (Some((v, unit)), None, false) if self.px == 0.0 => Some(unit(*v)),
+            // Кратное строки с довеском в точках: разрешится при слиянии.
+            (None, _, true) => Some(if self.px == 0.0 {
+                Len::Lh(self.lh)
+            } else {
+                Len::LhPx(self.lh, self.px)
+            }),
             _ => None,
         }
     }
