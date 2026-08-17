@@ -1462,6 +1462,10 @@ pub struct CombinedUpright {
     child: Option<AnyElement>,
     /// Кегль — сторона квадрата, который кусок занимает в строке.
     em: f32,
+    /// Сжимать ли содержимое в кегль: у `text-combine-upright` — да, у
+    /// стоячего `inline-block` с горизонтальным письмом — нет, он просто
+    /// переполняет свой квадрат.
+    compress: bool,
     natural: gpui::Size<Pixels>,
 }
 
@@ -1470,6 +1474,17 @@ impl CombinedUpright {
         CombinedUpright {
             child: Some(child),
             em,
+            compress: true,
+            natural: gpui::Size::default(),
+        }
+    }
+
+    /// Стоячая коробка без сжатия (см. поле `compress`).
+    pub fn upright_box(child: AnyElement, em: f32) -> Self {
+        CombinedUpright {
+            child: Some(child),
+            em,
+            compress: false,
             natural: gpui::Size::default(),
         }
     }
@@ -1540,7 +1555,10 @@ impl Element for CombinedUpright {
         let cx_ = bounds.origin.x + bounds.size.width / 2.0;
         let cy_ = bounds.origin.y + bounds.size.height / 2.0;
         // Ужатие по строчной оси содержимого: длиннее кегля — в кегль.
-        let sx = if self.natural.width > px(self.em) && self.natural.width > px(0.0) {
+        let sx = if self.compress
+            && self.natural.width > px(self.em)
+            && self.natural.width > px(0.0)
+        {
             self.em / f32::from(self.natural.width)
         } else {
             1.0

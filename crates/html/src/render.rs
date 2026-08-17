@@ -2176,6 +2176,29 @@ fn paragraph_pieces(
                 .into_any_element();
             return Some(inline::Piece::Overlay(inner));
         }
+        // Стоячая коробка в повёрнутом абзаце: `inline-block` с явным
+        // ГОРИЗОНТАЛЬНЫМ письмом контр-поворачивается — его содержимое
+        // обязано стоять прямо (эмуляция tcy в эталонах compression-*).
+        if inherited.rotated_line == Some(true)
+            && e.style.display == Some(Display::InlineBlock)
+            && e.style.vertical == Some(false)
+        {
+            let mut merged = inline::inherit(inherited, &e.style);
+            merged.rotated_line = None;
+            let em = match merged.width {
+                Some(Len::Px(v)) => v,
+                _ => match merged.font_size {
+                    Some(Len::Px(v)) => v,
+                    _ => opts.base_size(),
+                },
+            };
+            let inner = styled_div_with(e, &merged)
+                .children(blocks(&e.children, &merged, opts))
+                .into_any_element();
+            return Some(inline::Piece::Atom(
+                crate::interact::CombinedUpright::upright_box(inner, em).into_any_element(),
+            ));
+        }
         // `text-combine-upright` в повёрнутом абзаце: подходящий кусок
         // (цифры не длиннее N или любой при `all`) — атом-квадрат кегля с
         // контр-поворотом и ужатием (css-writing-modes-3 §9.1).
@@ -2189,11 +2212,7 @@ fn paragraph_pieces(
             let fits = !text.is_empty()
                 && (n == 0
                     || (text.chars().all(|c| c.is_ascii_digit())
-                        && text.chars().count() <= n as usize))
-                // Тень текста рисует внешняя группа и с контр-поворотом
-                // разъезжается — такой кусок остаётся на старом пути
-                // (text-combine-upright-shadow был зелёным без атома).
-                && inline::inherit(inherited, &e.style).text_shadow.is_none();
+                        && text.chars().count() <= n as usize));
             if fits {
                 let mut merged = inline::inherit(inherited, &e.style);
                 merged.combine_upright = None;
