@@ -84,6 +84,8 @@ pub struct Paragraph {
     plaintext: Option<crate::computed::TextAlign>,
     /// `line-clamp`: сколько строк показывать, остальные обрываются.
     clamp: Option<usize>,
+    /// `text-overflow: ellipsis` контейнера с обрезкой.
+    text_overflow: bool,
     /// `text-fit`: подбор кегля под ширину коробки.
     fit: Option<crate::computed::TextFit>,
     /// Шаг позиций табуляции (`tab-size` в точках).
@@ -212,6 +214,7 @@ impl Paragraph {
             shift_spans: Vec::new(),
             lines: Vec::new(),
             clamp: None,
+            text_overflow: false,
             fit: None,
             tab_stop: px(8. * 8.),
             hyphen: SharedString::from("\u{2010}"),
@@ -609,7 +612,18 @@ impl Paragraph {
             self.hyphen_w.set(self.suffix_width(&mark, 0, window));
         }
         let segs = self.measure(window);
-        let lines = self.lay(limit, &segs);
+        let mut lines = self.lay(limit, &segs);
+        // Обрезка строк контейнером с `text-overflow: ellipsis`: не влезшая
+        // строка усекается с многоточием (css-overflow-3 §text-overflow).
+        if self.text_overflow
+            && let Some(limit) = limit
+        {
+            for line in lines.iter_mut() {
+                if line.width > limit + px(0.5) && !line.ellipsis {
+                    self.ellipsize(line, limit, &segs, window);
+                }
+            }
+        }
         let cut = self
             .clamp
             .filter(|n| *n > 0 && lines.len() > *n)
@@ -696,6 +710,45 @@ impl Paragraph {
     pub fn line_clamp(mut self, lines: Option<usize>) -> Self {
         self.clamp = lines;
         self
+    }
+
+    /// `text-overflow: ellipsis` контейнера: строка, не влезшая в колонку
+    /// (nowrap/pre — переносов нет), усекается и получает многоточие.
+    pub fn text_ellipsis(mut self, on: bool) -> Self {
+        self.text_overflow = on;
+        self
+    }
+
+    /// Усечь строку под многоточие: место отбирается целыми кусками по
+    /// точкам переноса — как у `line-clamp` (общая механика).
+    fn ellipsize(&self, line: &mut Line, limit: Pixels, segs: &[Seg], window: &mut Window) {
+        let ell = self.suffix_width(ELLIPSIS, line.range.start, window);
+        let head = line.range.start;
+        let mut end = head + trim_hanging(&self.text[line.range.clone()]);
+        let room = limit - ell;
+        if self.span(segs, head, end) > room {
+            let by_break = self
+                .opportunities()
+                .iter()
+                .map(|s| s.at)
+                .filter(|at| *at > head && *at <= end)
+                .map(|at| head + trim_hanging(&self.text[head..at]))
+                .filter(|at| self.span(segs, head, *at) <= room)
+                .max();
+            // Непереносимое слово режется ПО ЗНАКАМ: обрезка контейнером
+            // не ждёт точки переноса (в отличие от line-clamp).
+            end = by_break.unwrap_or_else(|| {
+                self.text[head..end]
+                    .char_indices()
+                    .map(|(i, _)| head + i)
+                    .filter(|at| *at > head && self.span(segs, head, *at) <= room)
+                    .max()
+                    .unwrap_or(head)
+            });
+        }
+        line.width = self.span(segs, head, end) + ell;
+        line.range = head..end;
+        line.ellipsis = true;
     }
 
     /// Чем показывать перенос слова.
@@ -2193,6 +2246,7 @@ impl Paragraph {
             wrap: self.wrap,
             lines: self.lines.clone(),
             clamp: self.clamp,
+            text_overflow: false,
             fit: self.fit,
             tab_stop: self.tab_stop,
             hyphen: self.hyphen.clone(),

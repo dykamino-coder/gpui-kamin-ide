@@ -2250,6 +2250,12 @@ fn paragraph_pieces(
             .indent(indent)
             .spacers(inline::spacers(&pieces))
             .line_clamp(inherited.clamp_lines().map(|n| n as usize))
+            .text_ellipsis(
+                inherited.ellipsis == Some(true)
+                    && inherited
+                        .overflow_x
+                        .is_some_and(|o| o != crate::computed::Overflow::Visible),
+            )
             .text_fit(inherited.text_fit)
             .hyphen_char(inherited.hyphen_char.clone())
             .tab_stop(gpui::px(match inherited.tab_size_len {

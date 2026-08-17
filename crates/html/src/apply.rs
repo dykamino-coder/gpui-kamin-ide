@@ -1009,7 +1009,14 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
     if let Some(Len::Px(v)) = c.letter_spacing {
         d = d.letter_spacing(px(v));
     }
-    if c.ellipsis == Some(true) {
+    // `text-overflow: ellipsis` действует на БЛОК-КОНТЕЙНЕРЕ с overflow,
+    // отличным от visible (css-overflow-3 §text-overflow) — слитый стиль
+    // растаскивал его на текстовые куски, и «…» дорисовывался даже там,
+    // где текст помещался.
+    if c.ellipsis == Some(true)
+        && c.overflow_x
+            .is_some_and(|o| o != crate::computed::Overflow::Visible)
+    {
         d = d.text_ellipsis();
     }
     d
