@@ -842,6 +842,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 let below = e.style.z_index.is_some_and(|z| z < 0);
                 let spot: crate::interact::SpotCell = Default::default();
                 spot.set(crate::interact::Spot {
+                    rtl: inherited.rtl == Some(true),
                     vertical: inherited.vertical == Some(true),
                     vertical_rl: inherited.vertical_rl == Some(true),
                     ..Default::default()

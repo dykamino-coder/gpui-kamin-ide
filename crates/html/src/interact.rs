@@ -1743,7 +1743,11 @@ pub fn late_push(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
 /// всю ширину), иначе — внутри строки.
 pub fn spot_probe(spot: SpotCell, full: bool) -> AnyElement {
     let mut probe = gpui::div().h_0().flex_shrink_0();
-    if full {
+    if full && spot.get().vertical {
+        // Вертикальное письмо: блочный поток горизонтален (контейнер — ряд),
+        // распорка встаёт колонкой нулевой ширины на месте элемента в потоке.
+        probe = probe.w_0().h_full();
+    } else if full {
         probe = probe.w_full();
     } else {
         // Внутри строки распорка прижимается к её ВЕРХУ: на базовой линии
@@ -1773,14 +1777,38 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     // её край на всю эту ширину.
     let now = spot.get();
     // При вертикальном письме поток строк идёт поперёк: распорка тянется по
-    // высоте, а не по ширине, иначе она уводила бы содержимое вниз.
-    let mut wrap = if now.vertical {
+    // высоте, а не по ширине, иначе она уводила бы содержимое вниз. Ветка
+    // нужна только позиции В СТРОКЕ (next_line): блочный заместитель без неё
+    // стоит в горизонтальном потоке блоков и с вертикальной обёрткой уезжал
+    // за край ячейки.
+    let vertical_flow = now.vertical && now.next_line.is_some();
+    // Блочный заместитель в вертикальном письме: контейнер — ряд, любая
+    // распорка с размером двигала бы соседей. Обёртка нулевая, положение
+    // целиком считает сдвиг заместителя (LatePlace).
+    if now.vertical && now.next_line.is_none() {
+        return gpui::div()
+            .w_0()
+            .h_0()
+            .flex_shrink_0()
+            .child(LatePlace { child: Some(child), spot })
+            .into_any_element();
+    }
+    let mut wrap = if vertical_flow {
         gpui::div().h_full().w_0().flex_shrink_0().flex().flex_col()
     } else {
         gpui::div().w_full().h_0().flex_shrink_0().flex().flex_row()
     };
     wrap = wrap.items_start();
-    wrap = if now.rtl {
+    // Начало строчной оси — правый край: при письме справа налево в
+    // горизонтальном режиме и при vertical-rl (блочный поток идёт от правого
+    // края, css-writing-modes §block-flow). У vertical-lr `direction`
+    // строчную ось держит вертикальной, горизонталь остаётся левой.
+    let anchor_end = if now.vertical {
+        now.vertical_rl
+    } else {
+        now.rtl
+    };
+    wrap = if anchor_end {
         wrap.justify_end()
     } else {
         wrap.justify_start()
@@ -1847,6 +1875,25 @@ impl Element for LatePlace {
             }
             (Some(hole), Some(line)) => {
                 gpui::point(px(0.0), hole.origin.y + px(line) - bounds.origin.y)
+            }
+            // Начало строчной оси при письме справа налево — правый край:
+            // поперёк потока заместителя уже выровняла обёртка (justify_end /
+            // items_end), правится только ось потока строк.
+            // Блочный заместитель в вертикальном письме: начало блочного
+            // потока при vertical-rl — ПРАВЫЙ край, коробка уходит от него
+            // влево (css-writing-modes §block-flow).
+            (Some(hole), None) if now.vertical => {
+                let x = if now.vertical_rl {
+                    hole.origin.x - bounds.size.width
+                } else {
+                    hole.origin.x
+                };
+                gpui::point(x - bounds.origin.x, hole.origin.y - bounds.origin.y)
+            }
+            // Письмо справа налево: поперёк потока заместителя уже выровняла
+            // обёртка (justify_end), правится только ось потока строк.
+            (Some(hole), None) if now.rtl => {
+                gpui::point(px(0.0), hole.origin.y - bounds.origin.y)
             }
             (Some(hole), None) => hole.origin - bounds.origin,
             (None, _) => gpui::point(px(0.0), px(0.0)),
