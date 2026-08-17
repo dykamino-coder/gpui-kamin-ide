@@ -2051,6 +2051,11 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
                 Some(Len::Px(v)) => v,
                 _ => opts.base_size(),
             };
+            // Каждый стоячий глиф продвигает строку РОВНО на кегль (§7.4):
+            // шаг стопки — кегль, а не своя высота строки; полоса переноса
+            // уже одного глифа — в строку ложится ровно один знак (два узких
+            // нуля вставали рядом, и стопка выходила короче).
+            stack.line_height = Some(Len::Px(em));
             // Толщина вертикальной строки — LINE-HEIGHT, как у горизонтальной
             // (стопка глифов стоит в полосе высоты строки, повернутой набок).
             let lane = match stack.line_height {
@@ -2064,7 +2069,7 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
                 .flex_shrink_0()
                 .flex()
                 .justify_center()
-                .child(div().w(px(em)).child(inner))
+                .child(div().w(px(em * 0.9)).child(inner))
                 .into_any_element();
         }
         let mut horizontal = inherited.clone();
