@@ -838,6 +838,8 @@ pub struct Computed {
     /// `line-clamp: auto` — обрезка по max-height контейнера
     /// (css-overflow-4 §line-clamp), без счёта строк.
     pub clamp_auto: Option<bool>,
+    /// `fill` для SVG-фигур (CSS-презентация, SVG 2).
+    pub svg_fill: Option<String>,
     pub webkit_box: Option<bool>,
     pub webkit_box_vertical: Option<bool>,
     /// `text-fit` — подбор кегля под ширину коробки.
@@ -1291,6 +1293,7 @@ impl Computed {
             line_clamp: self.line_clamp,
             webkit_line_clamp: self.webkit_line_clamp,
             clamp_auto: self.clamp_auto,
+            svg_fill: self.svg_fill.clone(),
             webkit_box: self.webkit_box,
             webkit_box_vertical: self.webkit_box_vertical,
             text_fit: self.text_fit,
@@ -1981,6 +1984,9 @@ impl Computed {
             // переноса: раньше `pre` помечался как `nowrap`, и текст склеивался
             // в одну строку.
             "cursor" => self.cursor = Some(v.to_string()),
+            // Заливка SVG-геометрии: свойство презентации доезжает до
+            // разметки при растеризации (SVG 2 §presentation attributes).
+            "fill" => self.svg_fill = Some(v.to_string()),
             "caption-side" => self.caption_bottom = Some(v.eq_ignore_ascii_case("bottom")),
             "visibility" => {
                 self.hidden = Some(v == "hidden" || v == "collapse");

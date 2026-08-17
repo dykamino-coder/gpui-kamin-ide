@@ -44,6 +44,29 @@ fn write_element(e: &Element, out: &mut String) {
         escape_attr(v, out);
         out.push('"');
     }
+    // CSS-геометрия и заливка SVG-фигур (SVG 2): стилевые ширина/высота
+    // и `fill` доезжают до растеризатора презентационными атрибутами,
+    // если разметка своих не задала.
+    let has = |name: &str| e.attrs.iter().any(|(k, _)| k == name);
+    if e.tag != "svg" {
+        if let Some(crate::value::Len::Px(w)) = e.style.width
+            && !has("width")
+        {
+            out.push_str(&format!(" width=\"{w}\""));
+        }
+        if let Some(crate::value::Len::Px(h)) = e.style.height
+            && !has("height")
+        {
+            out.push_str(&format!(" height=\"{h}\""));
+        }
+    }
+    if let Some(fill) = &e.style.svg_fill
+        && !has("fill")
+    {
+        out.push_str(" fill=\"");
+        escape_attr(fill, out);
+        out.push('"');
+    }
     if e.children.is_empty() {
         out.push_str("/>");
         return;
@@ -88,7 +111,15 @@ pub fn size_of(e: &Element) -> (f32, f32) {
         e.attr(name)
             .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
     };
-    if let (Some(w), Some(h)) = (num("width"), num("height")) {
+    // Стилевые размеры СТАРШЕ атрибутов (CSS поверх разметки).
+    let css = |l: Option<crate::value::Len>| match l {
+        Some(crate::value::Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    if let (Some(w), Some(h)) = (
+        css(e.style.width).or_else(|| num("width")),
+        css(e.style.height).or_else(|| num("height")),
+    ) {
         return (w, h);
     }
     if let Some(vb) = e.attr("viewBox") {
@@ -144,13 +175,86 @@ pub fn rasterize(markup: &str, w: f32, h: f32) -> Option<Arc<RenderImage>> {
 /// Готовый элемент с рисунком либо `None`, если разобрать не удалось.
 pub fn element(e: &Element) -> Option<AnyElement> {
     let (w, h) = size_of(e);
-    let image = rasterize(&serialize(e), w, h)?;
-    Some(
-        gpui::img(ImageSource::Render(image))
-            .w(gpui::px(w))
-            .h(gpui::px(h))
-            .into_any_element(),
-    )
+    // `overflow: visible` по оси выпускает фигуры за канву (SVG 2 §overflow):
+    // растр расширяется до содержимого по свободной оси, а коробка остаётся
+    // размером канвы — картинка переполняет её, как в браузере.
+    let px_len = |l: Option<crate::value::Len>| match l {
+        Some(crate::value::Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let child_extent = |horiz: bool| -> f32 {
+        let mut m: f32 = 0.0;
+        for c in &e.children {
+            if let Node::Element(el) = c {
+                let own = if horiz {
+                    px_len(el.style.width)
+                        .or_else(|| el.attr("width").and_then(|v| v.parse().ok()))
+                } else {
+                    px_len(el.style.height)
+                        .or_else(|| el.attr("height").and_then(|v| v.parse().ok()))
+                };
+                let at = if horiz {
+                    el.attr("x").and_then(|v| v.parse().ok()).unwrap_or(0.0)
+                } else {
+                    el.attr("y").and_then(|v| v.parse().ok()).unwrap_or(0.0)
+                };
+                if let Some(v) = own {
+                    m = m.max(at + v);
+                }
+            }
+        }
+        m
+    };
+    let visible_y = e.style.overflow_y == Some(crate::computed::Overflow::Visible);
+    let visible_x = e.style.overflow_x == Some(crate::computed::Overflow::Visible);
+    let rw = if visible_x { w.max(child_extent(true)) } else { w };
+    let rh = if visible_y { h.max(child_extent(false)) } else { h };
+    let image = rasterize(&serialize_sized(e, rw, rh), rw, rh)?;
+    let img = gpui::img(ImageSource::Render(image))
+        .w(gpui::px(rw))
+        .h(gpui::px(rh));
+    if rw > w + 0.5 || rh > h + 0.5 {
+        Some(
+            {
+                use gpui::ParentElement as _;
+                use gpui::Styled as _;
+                gpui::div()
+                    .w(gpui::px(w))
+                    .h(gpui::px(h))
+                    .flex_shrink_0()
+                    .child(img.absolute().top_0().left_0())
+                    .into_any_element()
+            },
+        )
+    } else {
+        Some(img.into_any_element())
+    }
+}
+
+/// Разметка с корневой канвой ЗАДАННОГО размера: собственные width/height
+/// корня заменяются, иначе растеризатор вписал бы рисунок по ним.
+fn serialize_sized(e: &Element, w: f32, h: f32) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("<svg width=\"{w}\" height=\"{h}\""));
+    for (k, v) in &e.attrs {
+        if k == "width" || k == "height" {
+            continue;
+        }
+        out.push(' ');
+        out.push_str(k);
+        out.push_str("=\"");
+        escape_attr(v, &mut out);
+        out.push('"');
+    }
+    out.push('>');
+    for child in &e.children {
+        match child {
+            Node::Text(t) => escape_text(t, &mut out),
+            Node::Element(el) => write_element(el, &mut out),
+        }
+    }
+    out.push_str("</svg>");
+    out
 }
 
 #[cfg(test)]
