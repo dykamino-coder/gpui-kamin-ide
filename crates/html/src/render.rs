@@ -2037,6 +2037,36 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
     // Порядок работ: сперва вертикальная отрисовка до совпадения на пробе,
     // потом включение. Ограничение §7.3 и логические оси уже сделаны.
     if inherited.vertical == Some(true) {
+        // `text-orientation: upright`: глифы СТОЯТ и идут сверху вниз —
+        // никакого поворота. Это обычный горизонтальный абзац шириной в один
+        // кегль (продвижение стоячего глифа = кегль, §7.4) с резкой по
+        // знакам: каждый знак — своя строка, стопка растёт вниз.
+        // У `sideways-*` ориентация текста ИГНОРИРУЕТСЯ (css-writing-modes-4
+        // §text-orientation): глифы всегда лежат, стопка не строится.
+        if inherited.upright == Some(true) && inherited.sideways != Some(true) {
+            let mut stack = inherited.clone();
+            stack.vertical = None;
+            stack.break_word = Some(true);
+            let em = match stack.font_size {
+                Some(Len::Px(v)) => v,
+                _ => opts.base_size(),
+            };
+            // Толщина вертикальной строки — LINE-HEIGHT, как у горизонтальной
+            // (стопка глифов стоит в полосе высоты строки, повернутой набок).
+            let lane = match stack.line_height {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) => k * em,
+                _ => em,
+            };
+            let inner = paragraph(nodes, &stack, opts);
+            return div()
+                .w(px(lane.max(em)))
+                .flex_shrink_0()
+                .flex()
+                .justify_center()
+                .child(div().w(px(em)).child(inner))
+                .into_any_element();
+        }
         let mut horizontal = inherited.clone();
         horizontal.vertical = None;
         // Пометка для `text-combine-upright`: кускам внутри повёрнутого
@@ -4248,6 +4278,25 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // таблицы — оно уже посчитано табличным кодом. Собственное письмо
             // ячейки остаётся: оно законно управляет её СОДЕРЖИМЫМ
             // (ортогональные ячейки, table-cell-align-002).
+            // `ch` на высоте ячейки разрешается с письмом РЯДА: при
+            // vertical + upright продвижение нуля — кегль (css-values-3,
+            // ch-units-vrl-*). Только ch: полный resolve_em здесь двигал
+            // em-высоты и был нетто-минусом (замерено, откат 8b59418-ядра).
+            if let Some(Len::Ch(k)) = cell.style.height {
+                let upright = row.style.upright.or(inherited.upright) == Some(true);
+                let vertical = row.style.vertical.or(inherited.vertical) == Some(true);
+                let base = match inherited.font_size {
+                    Some(Len::Px(v)) => v,
+                    _ => opts.base_size(),
+                };
+                let ch = if vertical && upright {
+                    base
+                } else {
+                    let family = inherited.font_family.clone().unwrap_or_default();
+                    crate::metrics::ch_ex_px(&family, base).0
+                };
+                cell.style.height = Some(Len::Px(k * ch));
+            }
             // Высота ячейки — МИНИМУМ (css-tables §3.6): содержимое выше
             // растит ячейку, а не режется. `height: 20px` с блоком в 300
             // прятал всё под обрезкой.
