@@ -294,6 +294,7 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
                     to: if reverse { from } else { to },
                     stops: vec![(from, 0.0), (to, 1.0)],
                     stops_px: vec![],
+                    stops_raw: vec![],
                 };
                 let layer = div().absolute().bg(crate::apply::fill(&band));
                 bands.push(
@@ -347,6 +348,7 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
                     to,
                     stops: vec![(from, 0.0), (to, 1.0)],
                     stops_px: vec![],
+                    stops_raw: vec![],
                 };
                 let mut layer = div().absolute().bg(crate::apply::fill(&band));
                 // «Первая» полоса по направлению отрисовки, а не по списку:
@@ -3628,6 +3630,16 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
         }
     }
+    // Ширины рамки самой таблицы: крайние ячейки расползаются фоном на её
+    // половину в сросшейся модели.
+    let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, "", 16.0);
+    let table_border = e.style.borders();
+    let bw = [
+        px_of(table_border.top),
+        px_of(table_border.right),
+        px_of(table_border.bottom),
+        px_of(table_border.left),
+    ];
     let mut row_ix = 0i16;
     // Занятость колонок ячейками с rowspan из ПРЕДЫДУЩИХ рядов: без неё
     // номер колонки считался по порядку детей ряда и съезжал — рамки,
@@ -3818,8 +3830,16 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 inside
             };
             let mut d = d;
+            // Полосы фонов рядов и колонок в сросшейся модели начинаются от
+            // СЕРЕДИНЫ рамки таблицы (CSS 2.1 §17.6.2): пробы сдвинуты на
+            // полкромки — сами ячейки остаются в потоке с полной рамкой.
+            let shift = if e.style.border_collapse == Some(true) {
+                (-bw[3] / 2.0, -bw[0] / 2.0)
+            } else {
+                (0.0, 0.0)
+            };
             if let Some(rects) = &row_rects {
-                d = d.child(crate::interact::cell_rect_probe(rects.clone(), span_rows == 1));
+                d = d.child(crate::interact::cell_rect_probe(rects.clone(), span_rows == 1, shift));
             }
             // Проба и для колонок ячейки: объединённая регистрируется в
             // каждой накрытой колонке — полоса колонки красит её целиком.
@@ -3829,7 +3849,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 if let (Some(rects), Some(el)) = (col_rects.get(i).and_then(|r| r.clone()), col_els.get(i).copied().flatten()) {
                     if !probed.contains(&el.node_id) {
                         probed.push(el.node_id);
-                        d = d.child(crate::interact::cell_rect_probe(rects, span_cols == 1));
+                        d = d.child(crate::interact::cell_rect_probe(rects, span_cols == 1, shift));
                     }
                 }
             }
@@ -3948,7 +3968,30 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         }
         g
     };
-    let mut outer = styled_div_with(e, inherited).flex().flex_col();
+    // Сросшиеся рамки: у таблицы нет паддинга, а кромка между её рамкой и
+    // краевыми ячейками одна — ячейки накрывают ВНУТРЕННЮЮ ПОЛОВИНУ рамки
+    // (CSS 2.1 §17.6.2). Рамка при этом рисуется ПОВЕРХ фонов ячеек, как и
+    // все сросшиеся кромки: обычная рамка коробки красится под детьми и
+    // закрашивалась бы их фоном. Поэтому у самой коробки рамка снимается,
+    // её место держит паддинг, сетка выезжает на его половину, а красит
+    // рамку кольцевой квад ПОСЛЕ сетки.
+    let collapse = e.style.border_collapse == Some(true);
+    let host_style;
+    let mut outer = if collapse {
+        let mut c = inherited.clone();
+        c.border_width = Default::default();
+        c.border_visible = [None; 4];
+        c.padding = crate::computed::Sides {
+            top: Some(Len::Px(bw[0])),
+            right: Some(Len::Px(bw[1])),
+            bottom: Some(Len::Px(bw[2])),
+            left: Some(Len::Px(bw[3])),
+        };
+        host_style = c;
+        styled_div_with(e, &host_style).flex().flex_col()
+    } else {
+        styled_div_with(e, inherited).flex().flex_col()
+    };
     // Таблица без заданной ширины СЖИМАЕТСЯ по содержимому, а не растягивается
     // на родителя (CSS 2.1 §17.5.2, shrink-to-fit). Пока она растягивалась,
     // две короткие колонки разъезжались к противоположным краям — видно на
@@ -3960,7 +4003,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // `align-self` не работает, и стол растягивался на всё окно. Гибкая
     // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
     let root_table = matches!(e.tag.as_str(), "html" | "body") && e.style.width.is_none();
-    let outer = outer
+    let mut outer = outer
         .children(caption)
         .child(
             grid_box
@@ -3977,6 +4020,39 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .children(cells)
                 .into_any_element(),
         );
+    if collapse && bw.iter().any(|w| *w > 0.0) && e.style.border_visible.contains(&Some(true)) {
+        let colour = e
+            .style
+            .border_color
+            .unwrap_or(crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 })
+            .to_hsla();
+        let widths = bw;
+        outer = outer.child(
+            gpui::canvas(
+                |_, _, _| {},
+                move |bounds: gpui::Bounds<gpui::Pixels>, _, window, _| {
+                    // Канвас, растянутый на всю коробку, встаёт ПО МЕСТУ
+                    // рамки (его границы совпадают с рамочными): кольцо
+                    // рисуется по ним без расширения.
+                    let mut quad = gpui::fill(bounds, gpui::transparent_black());
+                    quad.border_color = colour;
+                    quad.border_widths = gpui::Edges {
+                        top: px(widths[0]),
+                        right: px(widths[1]),
+                        bottom: px(widths[2]),
+                        left: px(widths[3]),
+                    };
+                    window.paint_quad(quad);
+                },
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .into_any_element(),
+        );
+    }
+    let outer = outer;
     if root_table {
         return div()
             .flex()
@@ -4226,7 +4302,21 @@ fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
                     .max(1);
                 out.extend(std::iter::repeat_n(Some(el), span));
             }
-            "colgroup" => out.extend(col_elements(&el.children)),
+            "colgroup" => {
+                let inner = col_elements(&el.children);
+                if inner.is_empty() {
+                    // Группа без <col> внутри сама несёт свои колонки:
+                    // её span и стиль (фон группы) ложатся на каждую.
+                    let span = el
+                        .attr("span")
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(1)
+                        .max(1);
+                    out.extend(std::iter::repeat_n(Some(el), span));
+                } else {
+                    out.extend(inner);
+                }
+            }
             _ => {}
         }
     }
@@ -4258,8 +4348,23 @@ fn col_element_widths(children: &[Node]) -> (Vec<Option<f32>>, Vec<bool>) {
             }
             "colgroup" => {
                 let (w, c) = col_element_widths(&el.children);
-                widths.extend(w);
-                collapsed.extend(c);
+                if w.is_empty() {
+                    let ww = match el.style.width {
+                        Some(Len::Px(v)) => Some(v),
+                        _ => None,
+                    };
+                    let cc = el.style.collapsed == Some(true);
+                    let span = el
+                        .attr("span")
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .unwrap_or(1)
+                        .max(1);
+                    widths.extend(std::iter::repeat_n(ww, span));
+                    collapsed.extend(std::iter::repeat_n(cc, span));
+                } else {
+                    widths.extend(w);
+                    collapsed.extend(c);
+                }
             }
             _ => {}
         }

@@ -880,12 +880,24 @@ impl IntoElement for CellsClipped {
 }
 
 /// Проба ячейки: канвас, записывающий свои границы для фона ряда.
-pub fn cell_rect_probe(rects: RowRects, exact: bool) -> AnyElement {
+pub fn cell_rect_probe(rects: RowRects, exact: bool, shift: (f32, f32)) -> AnyElement {
     gpui::canvas(
-        |_, _, _| {},
-        move |bounds: Bounds<Pixels>, _, _, _| {
+        // Запись В PREPAINT: подготовка ВСЕХ элементов идёт до отрисовки,
+        // и полоса фона читает прямоугольники СВОЕГО кадра — с записью в
+        // paint она рисовала прошлый кадр и мигала на каждой смене раскладки.
+        move |bounds: Bounds<Pixels>, _, _| {
+            // Сдвиг краски относительно коробки ячейки: в сросшейся модели
+            // фоновая сетка начинается от середины рамки таблицы.
+            let bounds = Bounds {
+                origin: gpui::point(
+                    bounds.origin.x + gpui::px(shift.0),
+                    bounds.origin.y + gpui::px(shift.1),
+                ),
+                size: bounds.size,
+            };
             rects.borrow_mut().push((bounds, exact));
         },
+        |_, _, _, _| {},
     )
     .absolute()
     .top_0()

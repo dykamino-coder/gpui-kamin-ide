@@ -225,7 +225,22 @@ fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     } else {
         let g = crate::computed::parse_gradient(src)?;
         let angle = g.angle_deg.to_radians();
-        (Mode::Axis { dx: angle.sin(), dy: -angle.cos() }, g.stops.clone())
+        let (dx, dy) = (angle.sin(), -angle.cos());
+        // Смешанные позиции (точки + доли): точки переводятся в доли ТУТ —
+        // длина градиентной линии известна только по размеру плитки
+        // (css-images-3 §3.4.1: проекция коробки на ось).
+        let stops = if g.stops_raw.iter().any(|(_, _, p)| p.is_some()) {
+            let axis = (w as f32 * dx).abs() + (h as f32 * dy).abs();
+            let raw: Vec<(crate::value::Color, Option<f32>)> = g
+                .stops_raw
+                .iter()
+                .map(|(c, f, p)| (*c, f.or(p.map(|v| if axis > 0.0 { v / axis } else { 0.0 }))))
+                .collect();
+            place_stops(raw)
+        } else {
+            g.stops.clone()
+        };
+        (Mode::Axis { dx, dy }, stops)
     };
 
     let mut bytes = Vec::with_capacity((w * h * 4) as usize);

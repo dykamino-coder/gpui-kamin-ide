@@ -313,6 +313,11 @@ pub struct Gradient {
     /// без длины оси, поэтому рисуются полосами в точках. Пусто, если хоть у
     /// одного стопа позиция не в точках.
     pub stops_px: Vec<(Color, f32)>,
+    /// Сырые стопы для растра: (цвет, доля, точки). Смешение точек с долями
+    /// разрешается только при отрисовке, когда длина оси известна — иначе
+    /// точечная позиция теряется и стоп встаёт «поровну» (blue 170px в
+    /// 50px-градиенте красил край синим вместо интерполяции).
+    pub stops_raw: Vec<(Color, Option<f32>, Option<f32>)>,
 }
 
 /// `border-image`: картинка вместо рамки (css-backgrounds-3 §6).
@@ -4172,6 +4177,8 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
                 // только при отрисовке. Хранится своим списком.
                 raw.push((colour, None));
                 raw_px.push((colour, Some(v)));
+            } else if !t.trim().is_empty() && Len::parse(t).is_none() && t.trim().parse::<f32>().is_err() {
+                continue;
             } else {
                 raw.push((colour, None));
                 raw_px.push((colour, None));
@@ -4195,6 +4202,11 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     } else {
         vec![]
     };
+    let stops_raw = raw
+        .iter()
+        .zip(raw_px.iter())
+        .map(|((c, f), (_, p))| (*c, *f, *p))
+        .collect();
     Some(Gradient {
         angle_deg: angle,
         radial,
@@ -4203,6 +4215,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         to: stops[last].0,
         stops,
         stops_px,
+        stops_raw,
     })
 }
 fn parse_shadows(v: &str) -> Vec<Shadow> {
