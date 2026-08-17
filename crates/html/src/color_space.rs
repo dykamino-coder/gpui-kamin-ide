@@ -390,12 +390,10 @@ fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
         _ => return None,
     };
     let out = mul(XYZ_TO_LINEAR_SRGB, xyz);
-    Some((
-        srgb_gamma(out[0]),
-        srgb_gamma(out[1]),
-        srgb_gamma(out[2]),
-        a,
-    ))
+    // Втягивание в охват тем же сжатием цветности, что у lab/lch: пары
+    // «lab против color(display-p3 …)» обязаны сходиться в ОДИН цвет sRGB.
+    let (r, g, b) = gamut_map(srgb_gamma(out[0]), srgb_gamma(out[1]), srgb_gamma(out[2]));
+    Some((r, g, b, a))
 }
 
 /// `color-mix(in <пространство>, <цвет> <доля>?, <цвет> <доля>?)` (§12).
