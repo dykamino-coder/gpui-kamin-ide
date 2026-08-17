@@ -3990,15 +3990,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
                 cell.style.width = None;
             }
-            // Письмо к ВНУТРЕННИМ коробкам таблицы не применяется
-            // (css-writing-modes-3 §applies — только к таблице целиком):
-            // собственное значение поучаствовало в единицах выше, раскладку
-            // ведёт письмо таблицы (table-progression-*: «these rules must
-            // have no effect»).
-            cell.style.vertical = None;
-            cell.style.vertical_rl = None;
-            cell.style.sideways = None;
-            cell.style.upright = None;
+            // Письмо к рядам и группам рядов не применяется (css-writing-modes
+            // §applies), а РАЗМЕЩЕНИЕ ячеек в решётке всегда ведёт письмо
+    // таблицы — оно уже посчитано табличным кодом. Собственное письмо
+            // ячейки остаётся: оно законно управляет её СОДЕРЖИМЫМ
+            // (ортогональные ячейки, table-cell-align-002).
             // Высота ячейки — МИНИМУМ (css-tables §3.6): содержимое выше
             // растит ячейку, а не режется. `height: 20px` с блоком в 300
             // прятал всё под обрезкой.
