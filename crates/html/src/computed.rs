@@ -2563,20 +2563,32 @@ impl Computed {
                         other => Len::parse(other),
                     }
                 };
-                let mut it = v.split_whitespace();
-                let first = it.next().unwrap_or("");
-                let second = it.next();
-                // Одно значение задаёт горизонталь, вертикаль тогда по центру.
-                self.bg_pos = BgPos {
-                    x: word(first),
-                    y: second.and_then(word).or(Some(Len::Pct(0.5))),
-                };
-                if second.is_none() && matches!(first, "top" | "bottom") {
-                    self.bg_pos = BgPos {
-                        x: Some(Len::Pct(0.5)),
-                        y: word(first),
-                    };
+                // Ключевые слова НЕСУТ СВОЮ ОСЬ (css-backgrounds-3 §3.6):
+                // `bottom center` и `center bottom` — одно и то же, `bottom`
+                // всегда вертикаль. Длины и `center` ложатся по порядку в
+                // свободные оси.
+                let mut x: Option<Len> = None;
+                let mut y: Option<Len> = None;
+                let mut free: Vec<Option<Len>> = vec![];
+                for t in v.split_whitespace() {
+                    match t {
+                        "left" | "right" => x = word(t),
+                        "top" | "bottom" => y = word(t),
+                        other => free.push(word(other)),
+                    }
                 }
+                let mut free = free.into_iter();
+                if x.is_none() {
+                    x = free.next().flatten();
+                }
+                if y.is_none() {
+                    y = free.next().flatten();
+                }
+                // Одно значение задаёт свою ось, вторая — по центру.
+                self.bg_pos = BgPos {
+                    x: x.or(Some(Len::Pct(0.5))),
+                    y: y.or(Some(Len::Pct(0.5))),
+                };
             }
             "background-attachment" => {
                 // `fixed` привязывает фон к окну, а не к элементу; ленты с

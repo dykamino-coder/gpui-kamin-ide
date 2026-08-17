@@ -54,10 +54,14 @@ pub fn svg_markup_to_image(
     }
     let mut pixmap = Pixmap::new(pw, ph)?;
     let size = tree.size();
-    let scale = (pw as f32 / size.width()).min(ph as f32 / size.height());
+    // Масштаб ПО ОСЯМ РАЗДЕЛЬНО: плитка фона растягивается в обе стороны
+    // независимо (`background-size`), а общий минимум вписывал рисунок с
+    // полями — фон покрывал коробку полосой вместо целиком.
+    let sx = pw as f32 / size.width();
+    let sy = ph as f32 / size.height();
     resvg::render(
         &tree,
-        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        resvg::tiny_skia::Transform::from_scale(sx, sy),
         &mut pixmap.as_mut(),
     );
 

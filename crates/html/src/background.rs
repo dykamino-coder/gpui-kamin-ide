@@ -701,6 +701,12 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
     let start = origin(pos, box_size, tile);
     let xs = tiling(repeat.axis(true), start.0, tile.0, box_size.0);
     let ys = tiling(repeat.axis(false), start.1, tile.1, box_size.1);
+    if std::env::var("HTML_BG").is_ok() {
+        eprintln!(
+            "BG box=({:.0},{:.0}) tile=({:.0},{:.0}) start=({:.0},{:.0}) xs={} ys={}",
+            box_size.0, box_size.1, tile.0, tile.1, start.0, start.1, xs.len(), ys.len()
+        );
+    }
     let Some(image) = found.raster(tile) else { return };
     let corners = gpui::Corners::all(px(radius));
     window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
