@@ -503,6 +503,26 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
 }
 
 /// Разбор списка детей на блоки: инлайн-подряд склеивается в абзац.
+/// Абзац с пробой бюджета строк: если строится внутри clamp-контейнера,
+/// рядом с абзацем едет проба его границ и высоты строки.
+fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    let para = paragraph(taken, inherited, opts);
+    let para = with_text_shadow(para, inherited, taken);
+    if let Some((key, skip)) = crate::interact::clamp_context() {
+        div()
+            .relative()
+            .child(para)
+            .child(crate::interact::clamp_probe(
+                crate::interact::clamp_lines_for(key),
+                line_height_px(inherited, opts),
+                skip,
+            ))
+            .into_any_element()
+    } else {
+        para
+    }
+}
+
 fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
     // `order` в CSS работает ТОЛЬКО внутри гибкого контейнера и сетки; в
     // обычном потоке он не значит ничего. Раньше сортировались дети любого
@@ -691,8 +711,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         }
         if !pending.is_empty() {
             let taken = std::mem::take(&mut pending);
-            let para = paragraph(&taken, inherited, opts);
-            out.push(with_text_shadow(para, inherited, &taken));
+            out.push(paragraph_probed(&taken, inherited, opts));
         }
         if let Node::Element(e) = n {
             // Слой разрешён, только если ни один предок сам не отложен:
@@ -850,8 +869,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         }
     }
     if !pending.is_empty() {
-        let para = paragraph(&pending, inherited, opts);
-        out.push(with_text_shadow(para, inherited, &pending));
+        out.push(paragraph_probed(&pending, inherited, opts));
     }
     // Верхний слой: то, что обязано рисоваться поверх соседей, идёт последним
     // и возвращается на своё место замеренным сдвигом.
@@ -3320,20 +3338,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 && crate::interact::clamp_context().is_some())
             .then(crate::interact::ClampGuard::enter_bfc);
             if let Some((key, skip)) = crate::interact::clamp_context() {
-                // Текстовый лист даёт строки; коробка с краской — блок,
-                // который прячется целиком, если срез попал внутрь.
-                let leaf_text = has_text(&e.children)
-                    && !e.children.iter().any(|ch| match ch {
-                        Node::Element(el) => !el.inline,
-                        _ => false,
-                    });
-                if leaf_text {
-                    kids.push(crate::interact::clamp_probe(
-                        crate::interact::clamp_lines_for(key),
-                        line_height_px(&merged, opts),
-                        skip,
-                    ));
-                } else if !is_clamp && has_box_style_probe(&e.style) {
+                // Строки дают пробы абзацев (paragraph_probed); здесь — только
+                // коробка с краской: блок прячется целиком, если срез внутри.
+                if !is_clamp && has_box_style_probe(&e.style) {
                     kids.push(crate::interact::clamp_probe(
                         crate::interact::clamp_lines_for(key),
                         0.0,
