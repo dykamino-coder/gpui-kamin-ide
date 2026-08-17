@@ -3101,12 +3101,6 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 && merged.vertical != Some(true)
                 && e.style.height.is_none()
                 && e.style.min_height.is_none()
-                // Свой (НЕ канвасный) фон обёртки красит коробку ПО
-                // СОДЕРЖИМОМУ: растяжка на окно красила бы им весь вьюпорт,
-                // хотя канвас принадлежит другому узлу (`body { red }` при
-                // html с фоном, propagation-002).
-                && !(e.style.background.is_some_and(|c| c.a > 0.0)
-                    || e.style.gradient.is_some())
             {
                 d = d.min_h(px(opts.viewport.1));
             }

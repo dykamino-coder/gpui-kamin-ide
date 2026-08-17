@@ -409,6 +409,20 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         fix(&mut c.max_width);
         fix(&mut c.max_height);
     }
+    // Тень без своего цвета — цветом текста (метка: отрицательная альфа).
+    {
+        let text = c.color.unwrap_or(crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
+        for sh in c.shadows.iter_mut().chain(c.inset_shadows.iter_mut()) {
+            if sh.color.a < 0.0 {
+                sh.color = text;
+            }
+        }
+    }
     if own.border_inherit {
         c.border_width = parent.border_width;
         c.border_color = parent.border_color.or(parent.color);

@@ -4181,11 +4181,14 @@ fn parse_shadows(v: &str) -> Vec<Shadow> {
                 y: lens[1],
                 blur: lens.get(2).copied().unwrap_or(0.0),
                 spread: lens.get(3).copied().unwrap_or(0.0),
+                // Тень без цвета берёт currentColor (css-backgrounds-3
+                // §7): цвет текста известен только после слияния стилей,
+                // отрицательная альфа — метка «дорешать там».
                 color: color.unwrap_or(Color {
                     r: 0.,
                     g: 0.,
                     b: 0.,
-                    a: 0.35,
+                    a: -1.0,
                 }),
             })
         })
