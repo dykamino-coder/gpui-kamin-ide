@@ -344,6 +344,22 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         }
         (d, _) => d,
     };
+    // `sideways-lr`: строчная ось идёт СНИЗУ вверх (css-writing-modes-4
+    // §block-flow) — вертикальные результаты перевода осей разворачиваются.
+    // Горизонтальные (из `column`) не трогаются: ось блока у slr обычная,
+    // слева направо.
+    let dir = if c.vertical == Some(true)
+        && c.sideways == Some(true)
+        && c.vertical_rl != Some(true)
+    {
+        dir.map(|d| match d {
+            FlexDir::Col => FlexDir::ColReverse,
+            FlexDir::ColReverse => FlexDir::Col,
+            other => other,
+        })
+    } else {
+        dir
+    };
     // Разворот по `direction: rtl` — только для обычного письма: при
     // вертикальном он уже учтён в переводе осей выше, и второй раз
     // переворачивать нельзя (`flexbox-writing-mode-005`: колонки в
