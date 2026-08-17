@@ -925,6 +925,9 @@ pub struct Computed {
     /// картинка. `None` — от внутреннего края рамки, как по умолчанию в CSS.
     pub bg_origin: Option<BgClip>,
     /// `overflow-clip-margin`: на сколько обрезка отступает НАРУЖУ от коробки.
+    /// Узел, чей фон красит КАНВАС (CSS 2.2 §14.2): корневой html, а без
+    /// его фона — body. Ставится сборкой документа, не каскадом.
+    pub(crate) canvas_bg: bool,
     pub clip_margin: Option<f32>,
     /// Коробка отсчёта края обрезки: 0 content, 1 padding, 2 border;
     /// None — умолчание (padding-box).

@@ -681,6 +681,28 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             };
             // Анимация оборачивает ЛЮБОЙ элемент: таблицу, список, картинку —
             // раньше она доставалась только простому блоку.
+            // Фон КАНВАСА (CSS 2.2 §14.2): фон корневого html — а без него
+            // фон body — красит всю область просмотра, включая место за
+            // полями. Слой absolute от родителя-корня растягивается на всё
+            // окно, с самой коробки краска снимается (иначе двойная альфа).
+            let canvas_paint = e.style.canvas_bg;
+            let canvas_stripped;
+            let e = if canvas_paint {
+                let mut layer = div().absolute().top_0().left_0().right_0().bottom_0();
+                if let Some(g) = &e.style.gradient {
+                    layer = layer.bg(crate::apply::fill(g));
+                } else if let Some(bg) = e.style.background {
+                    layer = layer.bg(bg.to_hsla());
+                }
+                out.push(layer.into_any_element());
+                let mut copy = e.clone();
+                copy.style.background = None;
+                copy.style.gradient = None;
+                canvas_stripped = copy;
+                &canvas_stripped
+            } else {
+                e
+            };
             let built = grouped(
                 transformed(animated(e, inherited, opts), &e.style),
                 &e.style,
@@ -3079,6 +3101,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 && merged.vertical != Some(true)
                 && e.style.height.is_none()
                 && e.style.min_height.is_none()
+                // Свой (НЕ канвасный) фон обёртки красит коробку ПО
+                // СОДЕРЖИМОМУ: растяжка на окно красила бы им весь вьюпорт,
+                // хотя канвас принадлежит другому узлу (`body { red }` при
+                // html с фоном, propagation-002).
+                && !(e.style.background.is_some_and(|c| c.a > 0.0)
+                    || e.style.gradient.is_some())
             {
                 d = d.min_h(px(opts.viewport.1));
             }

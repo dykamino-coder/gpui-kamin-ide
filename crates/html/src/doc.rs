@@ -32,8 +32,8 @@ impl Document {
         crate::fonts::load_faces(html);
         crate::color_space::load_profiles(html);
         crate::lines::forget_measures();
-        let (nodes, root) = unwrap_document(resolve_logical(propagate_writing_mode(
-            viewport_overflow(crate::dom::parse(html, theme_css)),
+        let (nodes, root) = unwrap_document(mark_canvas_background(resolve_logical(
+            propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),
         )));
         Document {
             nodes,
@@ -58,8 +58,8 @@ impl Document {
         if key == self.key {
             return false;
         }
-        let (nodes, root) = unwrap_document(resolve_logical(propagate_writing_mode(
-            viewport_overflow(crate::dom::parse(html, theme_css)),
+        let (nodes, root) = unwrap_document(mark_canvas_background(resolve_logical(
+            propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),
         )));
         self.nodes = nodes;
         self.root = root;
@@ -174,6 +174,39 @@ fn viewport_overflow(mut nodes: Vec<Node>) -> Vec<Node> {
 /// только используемое значение корневой коробки. Поэтому собственное письмо
 /// `html` заранее прикалывается к тем его детям, которые не `body`
 /// (`::before`, `::after`): наследуют они именно его.
+/// Отметить узел, чей фон красит канвас (CSS 2.2 §14.2): корневой `html`,
+/// а без его фона — `body`. `contain: paint` глушит распространение.
+fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
+    fn has_bg(e: &crate::dom::Element) -> bool {
+        // Прозрачный цвет — НЕ краска: `html { background: transparent }`
+        // отдаёт канвас телу, как и отсутствие объявления.
+        e.style.background.is_some_and(|c| c.a > 0.0) || e.style.gradient.is_some()
+    }
+    for n in nodes.iter_mut() {
+        let Node::Element(html) = n else { continue };
+        if html.tag != "html" {
+            if html.tag == "body" && has_bg(html) && html.style.contain_paint != Some(true) {
+                html.style.canvas_bg = true;
+            }
+            continue;
+        }
+        if html.style.contain_paint == Some(true) {
+            continue;
+        }
+        if has_bg(html) {
+            html.style.canvas_bg = true;
+            continue;
+        }
+        for c in html.children.iter_mut() {
+            let Node::Element(body) = c else { continue };
+            if body.tag == "body" && has_bg(body) && body.style.contain_paint != Some(true) {
+                body.style.canvas_bg = true;
+            }
+        }
+    }
+    nodes
+}
+
 fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     let [Node::Element(html)] = nodes.as_mut_slice() else {
         return nodes;
