@@ -4509,6 +4509,98 @@ fn anon_element(tag: &str, children: Vec<Node>) -> Element {
 
 /// Починка детей таблицы (css-tables-3 §3): `display: contents` растворить,
 /// бесхозные ячейки и непустой текст завернуть в анонимный ряд.
+/// Чинит СОДЕРЖИМОЕ ряда (css-tables-3 §fixup): `display: contents`
+/// растворяется с наследованием, последовательные не-ячейки сливаются в
+/// одну анонимную ячейку, а вложенный ряд выталкивается ОТДЕЛЬНЫМ рядом
+/// после текущего.
+fn fixup_row_children(row: &Element) -> Vec<Node> {
+    fn walk(
+        nodes: &[Node],
+        donor: Option<&Computed>,
+        cells: &mut Vec<Node>,
+        run: &mut Vec<Node>,
+        extra: &mut Vec<Node>,
+    ) {
+        for child in nodes {
+            match child {
+                Node::Element(el) if el.style.display == Some(Display::Contents) => {
+                    // Дети растворённого получают его наследуемое (цвет,
+                    // шрифт) — слитый стиль передаётся вниз донором.
+                    let merged: Vec<Node> = el
+                        .children
+                        .iter()
+                        .cloned()
+                        .map(|n| match n {
+                            Node::Element(mut ge) => {
+                                ge.style = inline::inherit(&el.style, &ge.style);
+                                Node::Element(ge)
+                            }
+                            // Голый текст стиля не несёт: наследуемое от
+                            // растворённого доносит строчная обёртка.
+                            Node::Text(t) if !t.trim().is_empty() => {
+                                let mut span = anon_element("span", vec![Node::Text(t)]);
+                                span.style = el.style.clone();
+                                // Сам растворённый display не переносится —
+                                // иначе обёртка растворилась бы следом.
+                                span.style.display = None;
+                                span.inline = true;
+                                Node::Element(span)
+                            }
+                            other => other,
+                        })
+                        .collect();
+                    walk(&merged, donor, cells, run, extra);
+                }
+                Node::Element(el)
+                    if el.tag == "tr"
+                        || matches!(
+                            el.style.display,
+                            Some(Display::TableRow) | Some(Display::TableRowGroup)
+                        ) =>
+                {
+                    extra.extend(fixup_row_children(el));
+                }
+                Node::Element(el) if is_cell(el) => {
+                    if !run.is_empty() {
+                        cells.push(Node::Element(anon_element("td", std::mem::take(run))));
+                    }
+                    cells.push(child.clone());
+                }
+                Node::Text(t) if !t.trim().is_empty() => run.push(child.clone()),
+                Node::Element(_) => run.push(child.clone()),
+                _ => {}
+            }
+        }
+        let _ = donor;
+    }
+    let needs_fix = row.children.iter().any(|c| match c {
+        Node::Element(el) => {
+            el.style.display == Some(Display::Contents)
+                || el.tag == "tr"
+                || matches!(
+                    el.style.display,
+                    Some(Display::TableRow) | Some(Display::TableRowGroup)
+                )
+                || !is_cell(el)
+        }
+        Node::Text(t) => !t.trim().is_empty(),
+        _ => false,
+    });
+    if !needs_fix {
+        return vec![Node::Element(row.clone())];
+    }
+    let (mut cells, mut run, mut extra) = (vec![], vec![], vec![]);
+    walk(&row.children, None, &mut cells, &mut run, &mut extra);
+    if !run.is_empty() {
+        cells.push(Node::Element(anon_element("td", run)));
+    }
+    let mut fixed = row.clone();
+    fixed.children = cells;
+    let mut out = vec![Node::Element(fixed)];
+    out.extend(extra);
+    out
+}
+
 fn fixup_table_children(children: &[Node]) -> Vec<Node> {
     let mut out: Vec<Node> = vec![];
     let mut stray: Vec<Node> = vec![];
@@ -4582,9 +4674,12 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                     let mut copy = el.clone();
                     copy.children = fixup_table_children(&el.children);
                     out.push(Node::Element(copy));
-                } else if row {
+                } else if el.tag == "caption" {
                     flush(&mut stray, &mut out);
                     out.push(child.clone());
+                } else if row {
+                    flush(&mut stray, &mut out);
+                    out.extend(fixup_row_children(el));
                 } else {
                     stray.push(child.clone());
                 }

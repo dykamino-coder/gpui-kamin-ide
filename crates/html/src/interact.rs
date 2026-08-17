@@ -1102,6 +1102,14 @@ impl Element for EdgePainter {
                         Some(_) => (line, line + win.w),
                         None => (line - win.w / 2.0, line + win.w / 2.0),
                     };
+                    // Продление В УГЛЫ только у горизонталей: пересечение
+                    // иначе оставалось пустым квадратом, а продление обеих
+                    // осей рисовало лишние усы на пунктирных рамках.
+                    let (a, b) = if !vertical && win.style >= 9 {
+                        (a - win.w / 2.0, b + win.w / 2.0)
+                    } else {
+                        (a, b)
+                    };
                     let rect = if vertical {
                         Bounds {
                             origin: gpui::point(gpui::px(lo), gpui::px(a)),
