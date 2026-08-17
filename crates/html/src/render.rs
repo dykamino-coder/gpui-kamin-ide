@@ -137,6 +137,19 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     }
     if let Some(n) = c.line_clamp {
         d = d.line_clamp(n as usize);
+        // Обрезка КОНТЕЙНЕРА: строки и in-flow коробки после точки среза
+        // прячутся (css-overflow-4 §4.3). Текстовый ран режет своя раскладка,
+        // а вложенные блоки — потолок высоты в N строк.
+        let font = match c.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let line = match c.line_height {
+            Some(Len::Px(v)) => v,
+            Some(Len::Em(k)) => k * font,
+            _ => 1.2 * font,
+        };
+        d = d.max_h(px(n as f32 * line)).overflow_hidden();
     }
     for extra in decorations(c) {
         d = d.child(extra);
