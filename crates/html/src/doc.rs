@@ -118,6 +118,13 @@ fn has_box_style(c: &crate::computed::Computed) -> bool {
         // сдвиг с собой — страница прижималась к краю окна.
         || any_side(&c.margin)
         || any_side(&c.padding)
+        // Фон обёртки — её собственная краска: снятая обёртка уносила
+        // `html { background: … }` с собой, и корневой фон пропадал
+        // (страница выходила белой при пустом теле).
+        || c.background.is_some()
+        || c.gradient.is_some()
+        || c.bg_image.is_some()
+        || c.background_rcs.is_some()
 }
 
 /// Есть ли у обёртки НЕНУЛЕВОЙ отступ хоть с одной стороны.
