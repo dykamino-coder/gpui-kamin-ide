@@ -187,6 +187,11 @@ pub struct Logical {
     pub padding: LogicalSides,
     pub margin: LogicalSides,
     pub inset: LogicalSides,
+    /// Логические кромки: сырые значения `border-block/inline-start/end` —
+    /// раскладываются по физическим сторонам ПОСЛЕ наследования письма
+    /// (у `vertical-rl` inline-start это ВЕРХ, а разбор писал влево).
+    /// Порядок: [block-start, inline-end, block-end, inline-start].
+    pub border: [Option<String>; 4],
 }
 
 /// Четыре логические стороны коробки.
@@ -1129,6 +1134,29 @@ impl Computed {
                     _ => &mut to.left,
                 };
                 set(slot, val);
+            }
+        }
+        // Логические кромки: раскладываются той же картой сторон — сырое
+        // значение прогоняется через обычный разбор кромки на настоящую
+        // физическую сторону.
+        let (i_start, i_end, b_start, b_end) = if side_vertical {
+            let (bs, be) = if side_rl { (1u8, 3u8) } else { (3, 1) };
+            let (is, ie) = if rtl { (2u8, 0u8) } else { (0, 2) };
+            (is, ie, bs, be)
+        } else if rtl {
+            (1u8, 3u8, 0u8, 2u8)
+        } else {
+            (3u8, 1u8, 0u8, 2u8)
+        };
+        let borders = logical.border.clone();
+        for (raw, side) in [
+            (&borders[0], b_start),
+            (&borders[1], i_end),
+            (&borders[2], b_end),
+            (&borders[3], i_start),
+        ] {
+            if let Some(v) = raw {
+                self.apply_border_shorthand(v, Some(side as usize));
             }
         }
     }
@@ -2292,20 +2320,24 @@ impl Computed {
             "border-left-width" => {
                 self.border_width.left = line_width(v).or(self.border_width.left)
             }
+            // Логические кромки уходят в логический слой: физическая сторона
+            // известна только после наследования письма (css-logical-1 §4.2;
+            // у `vertical-rl` inline-start — ВЕРХ, разбор же писал влево:
+            // logical-props-001).
             "border-inline" => {
-                self.apply_border_shorthand(v, Some(1));
-                self.apply_border_shorthand(v, Some(3));
+                let l = self.logical();
+                l.border[1] = Some(v.to_string());
+                l.border[3] = Some(v.to_string());
             }
             "border-block" => {
-                self.apply_border_shorthand(v, Some(0));
-                self.apply_border_shorthand(v, Some(2));
+                let l = self.logical();
+                l.border[0] = Some(v.to_string());
+                l.border[2] = Some(v.to_string());
             }
-            // Пооосевые логические кромки: горизонтальное письмо, block =
-            // верх/низ, inline = лево/право (css-logical-1 §4.2).
-            "border-block-start" => self.apply_border_shorthand(v, Some(0)),
-            "border-block-end" => self.apply_border_shorthand(v, Some(2)),
-            "border-inline-start" => self.apply_border_shorthand(v, Some(3)),
-            "border-inline-end" => self.apply_border_shorthand(v, Some(1)),
+            "border-block-start" => self.logical().border[0] = Some(v.to_string()),
+            "border-block-end" => self.logical().border[2] = Some(v.to_string()),
+            "border-inline-start" => self.logical().border[3] = Some(v.to_string()),
+            "border-inline-end" => self.logical().border[1] = Some(v.to_string()),
             "border-block-start-color" => self.border_colors[0] = side_color(v, self.color),
             "border-block-end-color" => self.border_colors[2] = side_color(v, self.color),
             "border-inline-start-color" => self.border_colors[3] = side_color(v, self.color),
