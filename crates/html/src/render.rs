@@ -4014,13 +4014,19 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                 }
             }
             Node::Element(el) => {
+                let group = el.style.display == Some(Display::TableRowGroup)
+                    || matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot");
                 let row = el.tag == "tr"
-                    || matches!(
-                        el.style.display,
-                        Some(Display::TableRow) | Some(Display::TableRowGroup)
-                    )
-                    || matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot" | "caption");
-                if row {
+                    || el.style.display == Some(Display::TableRow)
+                    || el.tag == "caption";
+                if group {
+                    // Группа рядов чинится ИЗНУТРИ тоже: contents и бесхозное
+                    // содержимое встречаются и там.
+                    flush(&mut stray, &mut out);
+                    let mut copy = el.clone();
+                    copy.children = fixup_table_children(&el.children);
+                    out.push(Node::Element(copy));
+                } else if row {
                     flush(&mut stray, &mut out);
                     out.push(child.clone());
                 } else {
