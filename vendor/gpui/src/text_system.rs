@@ -925,7 +925,7 @@ pub struct TextRun {
     /// KaminIDE patch: скругление фона прогона (`border-radius`).
     pub background_radius: Pixels,
     /// KaminIDE patch: рамка строчного бокса (цвет, толщина).
-    pub background_border: Option<(Hsla, Pixels)>,
+    pub background_border: Option<(Hsla, [Pixels; 4])>,
     /// The underline style (if any)
     pub underline: Option<UnderlineStyle>,
     /// The strikethrough style (if any)

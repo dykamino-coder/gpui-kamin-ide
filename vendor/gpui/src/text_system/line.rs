@@ -25,7 +25,7 @@ pub struct DecorationRun {
     /// KaminIDE patch: рамка строчного бокса — цвет и толщина. Рисуется по
     /// КУСКАМ строк вместе с фоном: строчная коробка в браузере разрезается
     /// переносом, и рамка каждого куска своя.
-    pub background_border: Option<(Hsla, Pixels)>,
+    pub background_border: Option<(Hsla, [Pixels; 4])>,
 
     /// The underline style for this run
     pub underline: Option<UnderlineStyle>,
@@ -545,7 +545,7 @@ fn paint_line_background(
         // режется переносом так же, как он.
         let mut current_background: Option<(
             Point<Pixels>,
-            (Hsla, Point<Pixels>, Pixels, bool, Option<(Hsla, Pixels)>),
+            (Hsla, Point<Pixels>, Pixels, bool, Option<(Hsla, [Pixels; 4])>),
         )> = None;
         let text_system = cx.text_system().clone();
         let mut glyph_origin = point(
@@ -623,7 +623,7 @@ fn paint_line_background(
 
                 let mut finished_background: Option<(
                     Point<Pixels>,
-                    (Hsla, Point<Pixels>, Pixels, bool, Option<(Hsla, Pixels)>),
+                    (Hsla, Point<Pixels>, Pixels, bool, Option<(Hsla, [Pixels; 4])>),
                 )> = None;
                 if glyph.index >= run_end {
                     let mut style_run = decoration_runs.next();
@@ -731,7 +731,7 @@ fn run_background_quad(
     radius: Pixels,
     pad_left: bool,
     pad_right: bool,
-    border: Option<(Hsla, Pixels)>,
+    border: Option<(Hsla, [Pixels; 4])>,
 ) -> crate::PaintQuad {
     // 1.16 кегля — высота коробки содержимого у типовых интерфейсных
     // шрифтов; она же центрируется в строке, как половинный интерлиньяж.
@@ -753,12 +753,15 @@ fn run_background_quad(
     // прямоугольником, что и фон. На переносе боковые грани не ставятся —
     // коробка продолжается на следующей строке.
     match border {
-        Some((border_color, width)) => crate::PaintQuad {
+        // KaminIDE patch: ширины по сторонам [верх, право, низ, лево] —
+        // строчная коробка бывает с частичной рамкой (`border-left` у
+        // первого куска). На переносе боковые грани не ставятся.
+        Some((border_color, w)) => crate::PaintQuad {
             border_widths: crate::Edges {
-                top: width,
-                right: if pad_right { width } else { px(0.) },
-                bottom: width,
-                left: if pad_left { width } else { px(0.) },
+                top: w[0],
+                right: if pad_right { w[1] } else { px(0.) },
+                bottom: w[2],
+                left: if pad_left { w[3] } else { px(0.) },
             },
             border_color,
             ..quad

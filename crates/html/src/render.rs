@@ -2667,7 +2667,10 @@ fn has_own_box(c: &Computed) -> bool {
     // без неё он теряет и фон, и поля (`flexbox_first-line`: `li` с рамкой в
     // 1px разъезжался на четверть страницы).
     let inline_level = c.display.is_none();
-    if inline_level && crate::inline::uniform_border(c).is_some() {
+    if inline_level
+        && (crate::inline::uniform_border(c).is_some()
+            || crate::inline::sided_border(c).is_some())
+    {
         return false;
     }
     let visible = |col: &Option<crate::value::Color>| col.is_some_and(|x| x.a > 0.0);

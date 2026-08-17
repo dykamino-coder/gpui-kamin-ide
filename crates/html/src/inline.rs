@@ -122,12 +122,13 @@ pub fn collect(
                     ));
                     merged.inline_radius = Some(px_of(e.style.radius.tl));
                 }
-                // Рамка строчной коробки рисуется прогоном — но только
-                // РОВНАЯ: прогон рисует один прямоугольник, а разные грани
-                // (`border-left: 30px`) ему не выразить, такому куску нужна
-                // своя коробка (её заводит `render::has_own_box`).
+                // Рамка строчной коробки рисуется прогоном: и ровная, и
+                // с РАЗНЫМИ гранями (у прогона теперь пооосевые ширины) —
+                // коробка рвала перенос, и span с рамкой уезжал столбиком.
                 if let Some((color, width)) = uniform_border(&e.style) {
-                    merged.inline_border = Some((color, width));
+                    merged.inline_border = Some((color, [width; 4]));
+                } else if let Some(sided) = sided_border(&e.style) {
+                    merged.inline_border = Some(sided);
                 }
                 // Контур строчного куска рисует тот же прогон: коробки у
                 // куска нет, а место контур и не занимает.
@@ -138,7 +139,7 @@ pub fn collect(
                     && width > 0.0
                     && let Some(color) = o.color.or(e.style.color)
                 {
-                    merged.inline_border = Some((color, width));
+                    merged.inline_border = Some((color, [width; 4]));
                 }
                 // Атомарная строчная коробка — ГРАНИЦА переноса, даже когда
                 // своей коробки в раскладке ей не завели (размер не задан, и
@@ -1066,6 +1067,37 @@ fn spacer_style(merged: &Computed, advance: f32) -> Computed {
 /// Только такую умеет нарисовать прогон текста. Разные грани оставляем
 /// коробке в раскладке — там они честные, но текст в ней не переносится
 /// вместе с абзацем.
+/// Рамка с РАЗНЫМИ гранями, выражаемая прогоном: все заданные стороны в
+/// точках и ЕДИНЫЙ цвет (или цвет текста). Возврат — [верх, право, низ,
+/// лево]; незаданные стороны нулевые.
+pub fn sided_border(c: &Computed) -> Option<(Color, [f32; 4])> {
+    let w = c.borders();
+    let px_of = |l: Option<Len>| match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let sides = [px_of(w.top)?, px_of(w.right)?, px_of(w.bottom)?, px_of(w.left)?];
+    if !sides.iter().any(|v| *v > 0.0) {
+        return None;
+    }
+    // Цвет сверяется только по ЗАДАННЫМ сторонам: у частичной рамки
+    // остальных цветов просто нет.
+    let mut color: Option<Color> = None;
+    for i in 0..4 {
+        if sides[i] <= 0.0 {
+            continue;
+        }
+        let side = c.border_colors[i].or(c.border_color).or(c.color)?;
+        match color {
+            None => color = Some(side),
+            Some(prev) if prev == side => {}
+            _ => return None,
+        }
+    }
+    Some((color?, sides))
+}
+
 pub fn uniform_border(c: &Computed) -> Option<(Color, f32)> {
     let w = c.borders();
     let px_of = |l: Option<Len>| match l {
@@ -1641,7 +1673,7 @@ fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
         background_color: style.inline_bg.map(Color::to_hsla),
         background_border: style
             .inline_border
-            .map(|(c, w)| (c.to_hsla(), gpui::px(w))),
+            .map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),
         background_pad: {
             let (x, y) = style.inline_pad.unwrap_or((0.0, 0.0));
             gpui::point(gpui::px(x), gpui::px(y))
