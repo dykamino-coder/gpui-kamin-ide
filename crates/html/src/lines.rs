@@ -726,6 +726,23 @@ impl Paragraph {
         let head = line.range.start;
         let mut end = head + trim_hanging(&self.text[line.range.clone()]);
         let room = limit - ell;
+        if self.wrap.rtl {
+            // Письмо справа налево: строка прижата вправо, контейнер режет
+            // ЛЕВЫЙ край — усечение с ЛОГИЧЕСКОГО НАЧАЛА, многоточие там же.
+            let mut start = head;
+            if self.span(segs, head, end) > room {
+                start = self.text[head..end]
+                    .char_indices()
+                    .map(|(i, _)| head + i)
+                    .filter(|at| *at > head && self.span(segs, *at, end) <= room)
+                    .min()
+                    .unwrap_or(end);
+            }
+            line.width = self.span(segs, start, end) + ell;
+            line.range = start..end;
+            line.ellipsis = true;
+            return;
+        }
         if self.span(segs, head, end) > room {
             let by_break = self
                 .opportunities()
@@ -2349,14 +2366,28 @@ impl Paragraph {
         };
         let (levels, visual) = info.visual_runs(para, range.clone());
         let mut x = at.x;
-        let last = visual.len().saturating_sub(1);
-        for (n, run) in visual.into_iter().enumerate() {
+        for run in visual.into_iter() {
             let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
-            let tail = if n == last { suffix } else { "" };
-            let Some(shaped) = self.shape(&run, runs, rtl, tail, window) else {
+            // Знак обрыва — у обрезанного КРАЯ: обычно это логический
+            // конец строки; при письме справа налево контейнер режет левый
+            // край, то есть логическое НАЧАЛО — знак идёт префиксом
+            // первого прогона.
+            let (tail, at_start) = if self.wrap.rtl {
+                (if run.start == range.start { suffix } else { "" }, true)
+            } else {
+                (if run.end == range.end { suffix } else { "" }, false)
+            };
+            let Some(shaped) = self.shape_with_mark(&run, runs, rtl, tail, at_start, window) else {
                 continue;
             };
             let width = shaped.width;
+            if at_start && !tail.is_empty() {
+                // Знак обрыва СЛЕВА от куска: рисуется на своём месте, а
+                // кусок сдвигается на его ширину.
+                let ell = self.suffix_width(tail, run.start, window);
+                self.paint_suffix(tail, run.start, point(x, at.y), window, cx);
+                x += ell;
+            }
             // Подложка прогона (`background` на `<span>`) рисуется ОТДЕЛЬНЫМ
             // вызовом: `paint` кладёт только глифы. Пока его не звали, фон
             // строчного элемента не появлялся вовсе — проверено пробой, где
@@ -2391,6 +2422,24 @@ impl Paragraph {
             self.letter_spacing,
         );
         let _ = shaped.paint(origin, self.line_height, window, cx);
+    }
+
+    /// Набор с знаком обрыва в начале или в конце куска.
+    fn shape_with_mark(
+        &self,
+        range: &std::ops::Range<usize>,
+        runs: &[TextRun],
+        rtl: bool,
+        suffix: &str,
+        at_start: bool,
+        window: &mut Window,
+    ) -> Option<gpui::ShapedLine> {
+        if !at_start || suffix.is_empty() {
+            return self.shape(range, runs, rtl, suffix, window);
+        }
+        // Префикс: знак дорисовывается отдельным вызовом слева, а сам кусок
+        // набирается без него (вплетение в шейп меняло бы кернинг начала).
+        self.shape(range, runs, rtl, "", window)
     }
 
     /// Набрать кусок текста; правый прогон — со знаком стороны письма.
