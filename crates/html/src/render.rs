@@ -3644,8 +3644,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // (CSS 2.1 §17.5.3): ряд с высотой (своей или ячеек) держит её, остальные
     // делят остаток. Без этого средний ряд решётки 64/auto/64 в таблице 224px
     // схлопывался по содержимому, и вся середина уезжала.
-    let row_tracks: Option<Vec<gpui::GridTrack>> = match e.style.height {
-        Some(Len::Px(_)) if e.style.vertical != Some(true) => Some(
+    // Считается и от min-height: минимум так же растягивает таблицу, и
+    // остаток обязан достаться безвысотным рядам.
+    let table_tall = matches!(e.style.height, Some(Len::Px(_)))
+        || matches!(e.style.min_height, Some(Len::Px(_)));
+    let row_tracks: Option<Vec<gpui::GridTrack>> = match table_tall {
+        true if e.style.vertical != Some(true) => Some(
             row_elements
                 .iter()
                 .map(|row| {
