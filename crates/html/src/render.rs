@@ -3622,6 +3622,20 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             let clipped = cell.style.overflow_x == Some(crate::computed::Overflow::Hidden)
                 || cell.style.overflow_y == Some(crate::computed::Overflow::Hidden);
             let mut cell = cell.clone();
+            // Сросшиеся рамки (border-collapse): между ячейками ОДНА кромка,
+            // а не две. Ячейка несёт верх и лево; правую и нижнюю рисуют
+            // только крайние — сосед справа/снизу принесёт свои
+            // (CSS 2.1 §17.6.2, без разбора конфликтов: побеждает своя).
+            if e.style.border_collapse == Some(true) {
+                let last_col = col_ix + span_cols as usize >= cols as usize;
+                let last_row = row_ix as usize >= row_elements.len();
+                if !last_col {
+                    cell.style.border_width.right = None;
+                }
+                if !last_row {
+                    cell.style.border_width.bottom = None;
+                }
+            }
             if clipped {
                 cell.style.overflow_x = None;
                 cell.style.overflow_y = None;
