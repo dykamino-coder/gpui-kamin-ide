@@ -494,6 +494,11 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.no_select = own.no_select.or(parent.no_select);
     c.pointer_events_none = own.pointer_events_none.or(parent.pointer_events_none);
     c.line_clamp = own.line_clamp.or(parent.line_clamp);
+    c.webkit_line_clamp = own.webkit_line_clamp.or(parent.webkit_line_clamp);
+    // Гейтовые флаги -webkit-box НЕ наследуются: пара display+orient
+    // обязана стоять на самом элементе.
+    c.webkit_box = own.webkit_box;
+    c.webkit_box_vertical = own.webkit_box_vertical.or(parent.webkit_box_vertical);
     // Фон строчного бокса идёт вниз как текстовое свойство: он принадлежит
     // строке, а не коробке, и вложенный `<b>` внутри подсветки обязан его
     // сохранить.

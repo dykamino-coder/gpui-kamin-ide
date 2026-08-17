@@ -831,6 +831,12 @@ pub struct Computed {
     pub break_after_spaces: Option<bool>,
     /// `-webkit-line-clamp`: сколько строк оставить.
     pub line_clamp: Option<u32>,
+    /// `-webkit-line-clamp`: действует ТОЛЬКО в паре с
+    /// `display: -webkit-box` и `-webkit-box-orient: vertical`
+    /// (css-overflow-3 §webkit-line-clamp) — поэтому своё поле и гейт.
+    pub webkit_line_clamp: Option<u32>,
+    pub webkit_box: Option<bool>,
+    pub webkit_box_vertical: Option<bool>,
     /// `text-fit` — подбор кегля под ширину коробки.
     pub text_fit: Option<TextFit>,
     /// `hyphenate-character` — чем показывать перенос слова. Пусто — ничем.
@@ -1280,6 +1286,9 @@ impl Computed {
             text_transform: self.text_transform,
             ellipsis: self.ellipsis,
             line_clamp: self.line_clamp,
+            webkit_line_clamp: self.webkit_line_clamp,
+            webkit_box: self.webkit_box,
+            webkit_box_vertical: self.webkit_box_vertical,
             text_fit: self.text_fit,
             hyphen_char: self.hyphen_char.clone(),
             ..Computed::default()
@@ -1432,6 +1441,9 @@ impl Computed {
         }
         match key {
             "box-sizing" => self.border_box = Some(v == "border-box"),
+            "display" if v.trim().eq_ignore_ascii_case("-webkit-box") || v.trim().eq_ignore_ascii_case("-webkit-inline-box") => {
+                self.webkit_box = Some(true);
+            }
             "display" => {
                 // Запись из ДВУХ слов (CSS Display 3): `inline grid-lanes`,
                 // `block flow` и родня — внешний вид и внутренний.
@@ -2520,7 +2532,11 @@ impl Computed {
                     _ => None,
                 }
             }
-            "-webkit-line-clamp" | "line-clamp" => self.line_clamp = v.parse().ok(),
+            "line-clamp" => self.line_clamp = v.parse().ok(),
+            "-webkit-line-clamp" => self.webkit_line_clamp = v.parse().ok(),
+            "-webkit-box-orient" => {
+                self.webkit_box_vertical = Some(v.eq_ignore_ascii_case("vertical"))
+            }
 
             // --- Прочее ------------------------------------------------------
             "pointer-events" => self.pointer_events_none = Some(v == "none"),
@@ -3393,6 +3409,16 @@ impl Computed {
         // Не рисовать и не подавлять обычную рамку при пустом источнике —
         // забота потребителей.
         self.border_image = Some(image);
+    }
+
+    /// Активный кламп строк: стандартный `line-clamp` всегда, а
+    /// `-webkit-line-clamp` — только в паре с `-webkit-box` по вертикали.
+    pub fn clamp_lines(&self) -> Option<u32> {
+        self.line_clamp.or_else(|| {
+            (self.webkit_box == Some(true) && self.webkit_box_vertical == Some(true))
+                .then_some(self.webkit_line_clamp)
+                .flatten()
+        })
     }
 
     pub fn borders(&self) -> Sides {

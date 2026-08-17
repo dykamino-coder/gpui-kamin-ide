@@ -142,11 +142,14 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             d = apply_hover(d, h);
         }
     }
-    if let Some(n) = c.line_clamp {
+    if let Some(n) = c.clamp_lines() {
         d = d.line_clamp(n as usize);
-        // Обрезка КОНТЕЙНЕРА: строки и in-flow коробки после точки среза
-        // прячутся (css-overflow-4 §4.3). Текстовый ран режет своя раскладка,
-        // а вложенные блоки — потолок высоты в N строк.
+        // Обрезка КОНТЕЙНЕРА: строки после точки среза прячутся
+        // (css-overflow-4 §4.3). Потолок высоты в N строк ставится только
+        // ЧИСТО ТЕКСТОВОМУ контейнеру: считаются строки СВОЕГО
+        // форматирования, а вложенные блоки до точки среза видимы целиком
+        // (css-overflow-3 §webkit-line-clamp: строки вложенных IFC
+        // пропускаются) — потолок резал их вместе со счётом.
         let font = match c.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
@@ -2213,7 +2216,7 @@ fn paragraph_pieces(
             .hanging(inherited.hanging)
             .indent(indent)
             .spacers(inline::spacers(&pieces))
-            .line_clamp(inherited.line_clamp.map(|n| n as usize))
+            .line_clamp(inherited.clamp_lines().map(|n| n as usize))
             .text_fit(inherited.text_fit)
             .hyphen_char(inherited.hyphen_char.clone())
             .tab_stop(gpui::px(match inherited.tab_size_len {
