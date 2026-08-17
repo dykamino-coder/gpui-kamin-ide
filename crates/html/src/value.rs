@@ -251,7 +251,22 @@ impl Color {
         if parts.len() < 3 {
             return None;
         }
-        let h = parts[0].trim_end_matches("deg").parse::<f32>().ok()? / 360.0;
+        // Тон — угол в любых угловых единицах (CSS Color 4 §7.1).
+        let h = {
+            let t = parts[0];
+            if let Some(n) = t.strip_suffix("grad") {
+                n.parse::<f32>().ok()? / 400.0
+            } else if let Some(n) = t.strip_suffix("rad") {
+                n.parse::<f32>().ok()? / std::f32::consts::TAU
+            } else if let Some(n) = t.strip_suffix("turn") {
+                n.parse::<f32>().ok()?
+            } else {
+                t.trim_end_matches("deg").parse::<f32>().ok()? / 360.0
+            }
+        }
+        // Оборот сверх круга заворачивается: `600deg` = 240deg, а зажим в
+        // границы делал из него красный.
+        .rem_euclid(1.0);
         let s_ = parts[1].trim_end_matches('%').parse::<f32>().ok()? / 100.0;
         let l = parts[2].trim_end_matches('%').parse::<f32>().ok()? / 100.0;
         let a = parts.get(3).map_or(Some(1.0), |p| {
