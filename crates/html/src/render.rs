@@ -3893,12 +3893,66 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // каждой накрытой колонке — полоса колонки красит её целиком.
             let cell_cols = (col_ix - span_cols as usize)..col_ix;
             let mut probed: Vec<u64> = vec![];
-            for i in cell_cols {
+            for i in cell_cols.clone() {
                 if let (Some(rects), Some(el)) = (col_rects.get(i).and_then(|r| r.clone()), col_els.get(i).copied().flatten()) {
                     if !probed.contains(&el.node_id) {
                         probed.push(el.node_id);
                         d = d.child(crate::interact::cell_rect_probe(rects, span_cols == 1, shift));
                     }
+                }
+            }
+            // Кромки КОЛОНКИ (рамка <col>/<colgroup>) — участники разбора
+            // сросшихся конфликтов (источник между ячейкой и таблицей):
+            // ячейка колонки несёт её кромку на совпадающем со спаном
+            // колонки краю; верх/низ — только крайние ряды.
+            if e.style.border_collapse == Some(true) {
+                for i in cell_cols {
+                    let Some(el) = col_els.get(i).copied().flatten() else { continue };
+                    let b = el.style.borders();
+                    let cw = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
+                    let hidden = el.style.border_side_styles.contains(&Some(1));
+                    if !(cw.iter().any(|w| *w > 0.0) || hidden) {
+                        continue;
+                    }
+                    let same = |j: i64| -> bool {
+                        j >= 0
+                            && col_els
+                                .get(j as usize)
+                                .copied()
+                                .flatten()
+                                .is_some_and(|o| o.node_id == el.node_id)
+                    };
+                    let left_edge = !same(i as i64 - 1);
+                    let right_edge = !same(i as i64 + 1);
+                    let last_row = row_ix as usize >= row_elements.len();
+                    let widths = [
+                        if row_ix == 1 { cw[0] } else { 0.0 },
+                        if right_edge { cw[1] } else { 0.0 },
+                        if last_row { cw[2] } else { 0.0 },
+                        if left_edge { cw[3] } else { 0.0 },
+                    ];
+                    if !(widths.iter().any(|w| *w > 0.0) || hidden) {
+                        continue;
+                    }
+                    let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+                    let side_colour = |k: usize| {
+                        el.style.border_colors[k].or(el.style.border_color).unwrap_or(black)
+                    };
+                    let colors = [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+                    let side_style = |k: usize| {
+                        el.style.border_side_styles[k]
+                            .unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
+                    };
+                    let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
+                    d = d.child(crate::interact::edge_probe(
+                        table_edges.clone(),
+                        widths,
+                        colors,
+                        styles,
+                        1,
+                        el.node_id as u32,
+                        [0.0; 4],
+                    ));
                 }
             }
             cells.push(d.children(inside).into_any_element());

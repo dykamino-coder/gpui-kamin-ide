@@ -1050,6 +1050,11 @@ impl Element for EdgePainter {
         }
         let mut draw = |cands: &mut Vec<Cand>, vertical: bool| {
             cands.sort_by(|p, q| p.line.partial_cmp(&q.line).unwrap_or(std::cmp::Ordering::Equal));
+            // Крайние линии таблицы: кромка не центрируется, а рисуется
+            // внутрь бокса (наружная половина у браузеров уходит в поля,
+            // эталоны считают рамку частью коробки).
+            let lo_line = cands.first().map(|c| c.line).unwrap_or(0.0);
+            let hi_line = cands.last().map(|c| c.line).unwrap_or(0.0);
             let mut i = 0;
             while i < cands.len() {
                 let mut j = i + 1;
@@ -1086,10 +1091,16 @@ impl Element for EdgePainter {
                         continue;
                     }
                     let line = win.line;
-                    let (lo, hi) = match outward {
+                    let edge_dir = match outward {
+                        Some(d) => Some(d),
+                        None if (line - lo_line).abs() < 0.75 => Some(1),
+                        None if (line - hi_line).abs() < 0.75 => Some(-1),
+                        None => None,
+                    };
+                    let (lo, hi) = match edge_dir {
                         Some(-1) => (line - win.w, line),
-                        Some(1) => (line, line + win.w),
-                        _ => (line - win.w / 2.0, line + win.w / 2.0),
+                        Some(_) => (line, line + win.w),
+                        None => (line - win.w / 2.0, line + win.w / 2.0),
                     };
                     let rect = if vertical {
                         Bounds {
