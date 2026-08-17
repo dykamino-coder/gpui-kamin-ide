@@ -712,6 +712,7 @@ pub fn row_rects_for(node_id: u64) -> RowRects {
 /// инвалидировало окно, грязный кадр оставался последним.
 pub fn forget_row_rects() {
     ROW_RECTS.with(|m| m.borrow_mut().clear());
+    CELL_EDGES.with(|m| m.borrow_mut().clear());
 }
 
 pub struct CellsClipped {
@@ -872,6 +873,151 @@ impl Element for CellsClipped {
 }
 
 impl IntoElement for CellsClipped {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+/// Сросшиеся кромки таблицы: ячейка без собственных рамок отдаёт их
+/// отдельному слою — кромки рисуются НА ЛИНИЯХ сетки поверх фонов
+/// (css-tables-3 §drawing-borders), а конфликт «шире побеждает»
+/// (CSS 2.1 §17.6.2.1) решается порядком: узкие раньше, широкие поверх.
+pub struct EdgeCell {
+    pub bounds: Bounds<Pixels>,
+    /// Ширины кромок [верх, право, низ, лево] в точках.
+    pub widths: [f32; 4],
+    pub colors: [crate::value::Color; 4],
+}
+
+pub type CellEdges = std::rc::Rc<std::cell::RefCell<Vec<EdgeCell>>>;
+
+thread_local! {
+    static CELL_EDGES: std::cell::RefCell<std::collections::HashMap<u64, CellEdges>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+pub fn cell_edges_for(key: u64) -> CellEdges {
+    CELL_EDGES.with(|m| m.borrow_mut().entry(key).or_default().clone())
+}
+
+/// Проба кромок: как проба фона, пишет в PREPAINT границы и рамки ячейки.
+pub fn edge_probe(
+    edges: CellEdges,
+    widths: [f32; 4],
+    colors: [crate::value::Color; 4],
+) -> AnyElement {
+    gpui::canvas(
+        move |bounds: Bounds<Pixels>, _, _| {
+            edges.borrow_mut().push(EdgeCell { bounds, widths, colors });
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+    .into_any_element()
+}
+
+/// Слой сросшихся кромок: рисует рамки всех ячеек таблицы, центрируя
+/// каждую на границе ячейки. Совпадающие кромки соседей ложатся друг на
+/// друга; побеждает нарисованная позже — порядок по ширине даёт правило
+/// «шире побеждает».
+pub struct EdgePainter {
+    edges: CellEdges,
+}
+
+impl EdgePainter {
+    pub fn new(edges: CellEdges) -> Self {
+        EdgePainter { edges }
+    }
+}
+
+impl Element for EdgePainter {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let mut style = gpui::Style::default();
+        style.position = gpui::Position::Absolute;
+        (window.request_layout(style, [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        _cx: &mut App,
+    ) {
+        let cells = std::mem::take(&mut *self.edges.borrow_mut());
+        // Кромка = (ширина, прямоугольник, цвет); собираются все, рисуются
+        // от узких к широким — наложение решает конфликт в пользу широкой.
+        let mut strokes: Vec<(f32, Bounds<Pixels>, crate::value::Color)> = vec![];
+        for c in &cells {
+            let b = c.bounds;
+            let (x0, y0) = (f32::from(b.origin.x), f32::from(b.origin.y));
+            let (x1, y1) = (x0 + f32::from(b.size.width), y0 + f32::from(b.size.height));
+            let [wt, wr, wb, wl] = c.widths;
+            // Вертикальный охват боковых кромок продлён на половину
+            // верхней и нижней — углы заполняются без скосов.
+            let (ty0, ty1) = (y0 - wt / 2.0, y1 + wb / 2.0);
+            let (tx0, tx1) = (x0 - wl / 2.0, x1 + wr / 2.0);
+            let mut push = |w: f32, r: [f32; 4], colour: crate::value::Color| {
+                if w > 0.0 && colour.a != 0.0 {
+                    strokes.push((
+                        w,
+                        Bounds {
+                            origin: gpui::point(gpui::px(r[0]), gpui::px(r[1])),
+                            size: gpui::size(gpui::px(r[2] - r[0]), gpui::px(r[3] - r[1])),
+                        },
+                        colour,
+                    ));
+                }
+            };
+            push(wt, [tx0, y0 - wt / 2.0, tx1, y0 + wt / 2.0], c.colors[0]);
+            push(wb, [tx0, y1 - wb / 2.0, tx1, y1 + wb / 2.0], c.colors[2]);
+            push(wl, [x0 - wl / 2.0, ty0, x0 + wl / 2.0, ty1], c.colors[3]);
+            push(wr, [x1 - wr / 2.0, ty0, x1 + wr / 2.0, ty1], c.colors[1]);
+        }
+        strokes.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        for (_, rect, colour) in strokes {
+            window.paint_quad(gpui::fill(rect, colour.to_hsla()));
+        }
+    }
+}
+
+impl IntoElement for EdgePainter {
     type Element = Self;
 
     fn into_element(self) -> Self::Element {

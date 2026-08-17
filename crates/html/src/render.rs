@@ -3611,7 +3611,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         for (i, el) in col_els.iter().enumerate() {
             let Some(el) = el else { continue };
             let picture = el.style.bg_image.is_some() || el.style.gradient_raw.is_some();
-            if !(picture || !el.style.shadows.is_empty()) {
+            // Колонка/группа с одним ЦВЕТОМ тоже красится полосой: своей
+            // коробки у неё нет, фон рисуют её ячейки.
+            if !(picture || el.style.background.is_some() || !el.style.shadows.is_empty()) {
                 continue;
             }
             let rects = crate::interact::row_rects_for(el.node_id ^ opts.doc_salt);
@@ -3640,6 +3642,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         px_of(table_border.bottom),
         px_of(table_border.left),
     ];
+    let table_edges = crate::interact::cell_edges_for(e.node_id ^ opts.doc_salt);
     let mut row_ix = 0i16;
     // Занятость колонок ячейками с rowspan из ПРЕДЫДУЩИХ рядов: без неё
     // номер колонки считался по порядку детей ряда и съезжал — рамки,
@@ -3729,20 +3732,26 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 || cell.style.overflow_y == Some(crate::computed::Overflow::Hidden)
                 || spans_collapsed;
             let mut cell = cell.clone();
-            // Сросшиеся рамки (border-collapse): между ячейками ОДНА кромка,
-            // а не две. Ячейка несёт верх и лево; правую и нижнюю рисуют
-            // только крайние — сосед справа/снизу принесёт свои
-            // (CSS 2.1 §17.6.2, без разбора конфликтов: побеждает своя).
-            if e.style.border_collapse == Some(true) {
-                let last_col = col_ix + span_cols as usize >= cols as usize;
-                let last_row = row_ix as usize >= row_elements.len();
-                if !last_col {
-                    cell.style.border_width.right = None;
-                }
-                if !last_row {
-                    cell.style.border_width.bottom = None;
-                }
-            }
+            // Сросшиеся рамки (border-collapse): рамки С ЯЧЕЕК СНИМАЮТСЯ
+            // целиком — их рисует отдельный слой кромок на линиях сетки
+            // (см. interact::EdgePainter): кромка соседей ОДНА, рисуется
+            // поверх фонов, и «шире побеждает» решается наложением.
+            let cell_edge = if e.style.border_collapse == Some(true) {
+                let b = cell.style.borders();
+                let widths = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
+                let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+                let side_colour = |i: usize| {
+                    cell.style.border_colors[i]
+                        .or(cell.style.border_color)
+                        .unwrap_or(black)
+                };
+                let colors = [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+                cell.style.border_width = Default::default();
+                cell.style.border_visible = [None; 4];
+                (widths.iter().any(|w| *w > 0.0)).then_some((widths, colors))
+            } else {
+                None
+            };
             if clipped {
                 cell.style.overflow_x = None;
                 cell.style.overflow_y = None;
@@ -3838,6 +3847,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             } else {
                 (0.0, 0.0)
             };
+            if let Some((widths, colors)) = cell_edge {
+                d = d.child(crate::interact::edge_probe(table_edges.clone(), widths, colors));
+            }
             if let Some(rects) = &row_rects {
                 d = d.child(crate::interact::cell_rect_probe(rects.clone(), span_rows == 1, shift));
             }
@@ -3857,6 +3869,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         }
     }
 
+    if e.style.border_collapse == Some(true) {
+        cells.push(crate::interact::EdgePainter::new(table_edges.clone()).into_any_element());
+    }
     // Заголовок таблицы: браузер рисует его над сеткой, а не ячейкой.
     let caption = e.children.iter().find_map(|c| match c {
         Node::Element(cap) if cap.tag == "caption" => {
@@ -3917,6 +3932,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .or_else(|| first_row_widths.get(i).copied().flatten())
         })
         .collect();
+    if std::env::var("HTML_ROWBG").is_ok() {
+        eprintln!("TABLE cols={} col_widths={:?} first_row={:?}", cols, col_widths, first_row_widths);
+    }
     let tracks = track_list_collapsed(
         cols,
         e.style.table_fixed == Some(true),
@@ -3924,6 +3942,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         &col_widths,
         &cols_collapsed,
     );
+    if std::env::var("HTML_ROWBG").is_ok() {
+        eprintln!("TABLE tracks={:?}", tracks);
+    }
     // Таблица ЗАДАННОЙ высоты раздаёт лишнее место рядам БЕЗ своей высоты
     // (CSS 2.1 §17.5.3): ряд с высотой (своей или ячеек) держит её, остальные
     // делят остаток. Без этого средний ряд решётки 64/auto/64 в таблице 224px
