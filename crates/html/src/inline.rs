@@ -108,7 +108,9 @@ pub fn collect(
                 let mut merged = inherit(inherited, &e.style);
                 // Фон строчного бокса рисует прогон текста: коробки у него
                 // нет, а фон обязан рваться на переносах вместе со строкой.
-                if let Some(bg) = e.style.background {
+                // Берётся из СЛИТОГО стиля: отложенный цвет (`currentColor`,
+                // относительная функция) решён только там.
+                if let Some(bg) = merged.background {
                     merged.inline_bg = Some(bg);
                     let px_of = |l: Option<crate::value::Len>| match l {
                         Some(crate::value::Len::Px(v)) => v,

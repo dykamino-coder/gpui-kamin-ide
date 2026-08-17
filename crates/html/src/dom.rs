@@ -355,6 +355,8 @@ struct Ancestor {
     classes: Vec<String>,
     /// Место среди соседей: нужно структурным псевдоклассам.
     spot: Spot,
+    /// Адрес ссылки: нужен `:link`/`:visited`.
+    href: Option<String>,
 }
 
 /// Направление письма, заданное АТРИБУТОМ: `<div dir="rtl">`.
@@ -540,6 +542,7 @@ fn walk(
                 id: id.clone(),
                 classes: classes.clone(),
                 spot,
+                href: attrs.iter().find(|(k, _)| k == "href").map(|(_, v)| v.clone()),
             };
 
             let inline_decls: Decls = attrs
@@ -827,6 +830,17 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor]) -> bool {
         // месту среди соседей, поэтому решается здесь: без него объявления
         // вроде `:root { font: 25px/1 Ahem }` не доезжали НИКУДА, и страница
         // набиралась шрифтом по умолчанию (`text-align-last-015`).
+        // Ссылки: `:visited` — адрес уже в истории. Свою страницу браузер в
+        // историю кладёт по определению, поэтому пустой `href` и якорь на
+        // себя — посещённые; остальное для нас непосещённое.
+        if pseudo == "link" || pseudo == "visited" {
+            let Some(href) = &me.href else { return false };
+            let visited = href.is_empty() || href.starts_with('#');
+            if (pseudo == "visited") != visited {
+                return false;
+            }
+            return matches_ignoring_pseudo(sel, me, path);
+        }
         if pseudo == "root" {
             if me.tag != "html" {
                 return false;

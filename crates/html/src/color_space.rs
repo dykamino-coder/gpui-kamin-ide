@@ -162,6 +162,19 @@ pub fn parse(raw: &str) -> Option<(f32, f32, f32, f32)> {
     if let Some(body) = inner("hwb") {
         return hwb(body);
     }
+    // `contrast-color()` — чёрный или белый, что контрастнее к данному цвету
+    // (css-color-5 §3): сравниваются отношения контраста к обоим.
+    if let Some(body) = inner("contrast-color") {
+        let c = crate::value::Color::parse(body)?;
+        let y = 0.2126 * srgb_linear(c.r) + 0.7152 * srgb_linear(c.g) + 0.0722 * srgb_linear(c.b);
+        let against_white = 1.05 / (y + 0.05);
+        let against_black = (y + 0.05) / 0.05;
+        return Some(if against_black >= against_white {
+            (0.0, 0.0, 0.0, 1.0)
+        } else {
+            (1.0, 1.0, 1.0, 1.0)
+        });
+    }
     if let Some(body) = inner("lab") {
         return lab(body, false);
     }
