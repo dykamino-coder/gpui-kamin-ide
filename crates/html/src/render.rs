@@ -3550,9 +3550,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
         // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
         // ячеек, снятыми пробами прошлого кадра.
-        let row_rects: Option<crate::interact::RowRects> =
-            (row.style.bg_image.is_some() || row.style.gradient_raw.is_some())
-                .then(|| crate::interact::row_rects_for(row.node_id));
+        let row_rects: Option<crate::interact::RowRects> = (row.style.bg_image.is_some()
+            || row.style.gradient_raw.is_some()
+            || !row.style.shadows.is_empty())
+        .then(|| crate::interact::row_rects_for(row.node_id));
         if let Some(rects) = &row_rects {
             // Градиент ряда идёт слоем-картинкой: источник понимает записи
             // `linear-gradient(...)` и растрирует их сам.
@@ -3641,9 +3642,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // строка, и `<tbody style="background">` пропадал молча
             // (`position-relative-table-tbody-left`).
             if let Some(bg) = carry.2 {
-                // Ряд с картинкой красит и цвет САМ (см. CellsClipped) —
-                // ячейка его не дублирует, иначе цвет ложится поверх картинки.
-                if row_rects.is_none() {
+                // Ряд с КАРТИНКОЙ красит и цвет САМ (см. CellsClipped) —
+                // ячейка его не дублирует, иначе цвет ложится поверх
+                // картинки. Ряду только с тенью цвет оставляют ячейки.
+                let picture =
+                    row.style.bg_image.is_some() || row.style.gradient_raw.is_some();
+                if !picture {
                     d = d.bg(bg.to_hsla());
                 }
             }

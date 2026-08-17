@@ -784,6 +784,57 @@ impl Element for CellsClipped {
                 size: gpui::size(x1 - x0, y1 - y0),
             };
         }
+        // Тень РЯДА — вокруг охвата всех его ячеек, без маски: она лежит
+        // снаружи. Резкая (без размытия) рисуется кольцевым квадом — тот же
+        // обход вырождения шейдера, что у обычных коробок.
+        for sh in &self.style.shadows {
+            let colour = if sh.color.a < 0.0 {
+                self.style.color.unwrap_or(crate::value::Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                })
+            } else {
+                sh.color
+            };
+            let shifted = Bounds {
+                origin: gpui::point(area.origin.x + gpui::px(sh.x), area.origin.y + gpui::px(sh.y)),
+                size: area.size,
+            };
+            if sh.blur > 0.0 {
+                window.paint_shadows(
+                    shifted,
+                    gpui::Corners::default(),
+                    &[gpui::BoxShadow {
+                        color: colour.to_hsla(),
+                        offset: gpui::point(gpui::px(0.0), gpui::px(0.0)),
+                        blur_radius: gpui::px(sh.blur),
+                        spread_radius: gpui::px(sh.spread),
+                    }],
+                );
+            } else {
+                let grown = Bounds {
+                    origin: gpui::point(
+                        shifted.origin.x - gpui::px(sh.spread),
+                        shifted.origin.y - gpui::px(sh.spread),
+                    ),
+                    size: gpui::size(
+                        shifted.size.width + gpui::px(sh.spread * 2.0),
+                        shifted.size.height + gpui::px(sh.spread * 2.0),
+                    ),
+                };
+                let mut quad = gpui::fill(grown, gpui::transparent_black());
+                quad.border_color = colour.to_hsla();
+                quad.border_widths = gpui::Edges {
+                    top: gpui::px((sh.spread - sh.y).max(0.0)),
+                    right: gpui::px((sh.spread + sh.x).max(0.0)),
+                    bottom: gpui::px((sh.spread + sh.y).max(0.0)),
+                    left: gpui::px((sh.spread - sh.x).max(0.0)),
+                };
+                window.paint_quad(quad);
+            }
+        }
         for rect in rects {
             window.with_content_mask(Some(gpui::ContentMask { bounds: rect }), |window| {
                 // Цвет ряда — под картинкой, в тех же прямоугольниках: на
