@@ -540,6 +540,9 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             | Some(Display::InlineFlex)
             | Some(Display::Grid)
             | Some(Display::InlineGrid)
+            // Поток лунок — сеточный контекст: схлопывания отступов нет
+            // (css-grid-3), и `order` действует.
+            | Some(Display::GridLanes)
     );
     // Схлопывание вертикальных отступов есть ТОЛЬКО в обычном потоке: в
     // гибком контейнере и сетке CSS его запрещает, а мы схлопывали везде —
@@ -3170,7 +3173,22 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         "hr" => styled_div_with(e, &merged).w_full().into_any_element(),
         // Табличная раскладка включается и стилем: `display: table` на
         // контейнере значит ровно то же, что тег.
-        _ if merged.display == Some(Display::GridLanes) => lanes(e, &merged, opts),
+        _ if merged.display == Some(Display::GridLanes) => {
+            // Корневой поток лунок: html/body ростом с видимую область, как
+            // и обычный корень (общий минимум главного пути в лунковую
+            // ветку не проходил, и body в квирк-режиме не заполнял вьюпорт).
+            if matches!(e.tag.as_str(), "html" | "body")
+                && merged.vertical != Some(true)
+                && e.style.height.is_none()
+                && e.style.min_height.is_none()
+            {
+                let mut rooted = merged.clone();
+                rooted.min_height = Some(Len::Px(opts.viewport.1));
+                lanes(e, &rooted, opts)
+            } else {
+                lanes(e, &merged, opts)
+            }
+        }
         _ if matches!(
             e.style.display,
             Some(Display::Table) | Some(Display::InlineTable)
