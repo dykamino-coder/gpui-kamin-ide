@@ -164,6 +164,54 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
 fn decorations(c: &Computed) -> Vec<AnyElement> {
     let mut out: Vec<AnyElement> = vec![];
 
+    // РЕЗКАЯ тень (без размытия): примитив тени с нулевым размытием
+    // вырождается в шейдере, поэтому она рисуется слоем-квадом, раздутым на
+    // разлёт. Радиус фигуры — по спеке (css-backgrounds-3 §7.1): нулевой
+    // остаётся острым, иначе растёт на разлёт; доля считается от размера
+    // раздутой фигуры (известные ширина и высота).
+    for sh in &c.shadows {
+        if sh.blur > 0.0 || sh.color.a <= 0.0 {
+            continue;
+        }
+        let spread = sh.spread;
+        let radius = match c.radius.tl {
+            Some(Len::Px(v)) if v > 0.0 => v + spread,
+            Some(Len::Pct(k)) => match (c.width, c.height) {
+                (Some(Len::Px(w)), Some(Len::Px(h))) => {
+                    k * (w + 2.0 * spread).min(h + 2.0 * spread)
+                }
+                _ => 0.0,
+            },
+            _ => 0.0,
+        };
+        // Слой живёт СРЕДИ детей и рисовался бы поверх фона коробки, а тень
+        // обязана быть ПОД ней — поэтому центр слоя прозрачный: краску несёт
+        // РАМКА толщиной в разлёт (со сдвигом по смещению тени). Точная
+        // фигура «раздутое минус коробка» этим покрыта при |смещении| не
+        // больше разлёта — обычный случай резкой тени.
+        let widths = [
+            (spread - sh.y).max(0.0),
+            (spread + sh.x).max(0.0),
+            (spread + sh.y).max(0.0),
+            (spread - sh.x).max(0.0),
+        ];
+        out.push(
+            div()
+                .absolute()
+                .top(px(sh.y - spread))
+                .left(px(sh.x - spread))
+                .right(px(-sh.x - spread))
+                .bottom(px(-sh.y - spread))
+                .rounded(px(radius))
+                .border_t(px(widths[0]))
+                .border_r(px(widths[1]))
+                .border_b(px(widths[2]))
+                .border_l(px(widths[3]))
+                .border_color(sh.color.to_hsla())
+                .into_any_element(),
+        );
+    }
+
     // Фоновая картинка идёт первой: она поверх цвета фона и под всем
     // остальным — тот же порядок, что в браузере.
     if let Some(layer) = crate::background::layer(c) {

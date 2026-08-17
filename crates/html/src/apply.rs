@@ -895,6 +895,9 @@ if !c.inset_shadows.is_empty() {
         d = d.shadow(
             c.shadows
                 .iter()
+                // Резкую тень (без размытия) рисует слой-квад в декорациях:
+                // примитив с нулевым размытием вырождается в шейдере.
+                .filter(|s| s.blur > 0.0)
                 .map(|s| gpui::BoxShadow {
                     color: shadow_colour(s).to_hsla(),
                     offset: gpui::point(px(s.x), px(s.y)),
