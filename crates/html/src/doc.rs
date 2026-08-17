@@ -235,8 +235,14 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         body.style.vertical.or(html.style.vertical),
         body.style.vertical_rl.or(html.style.vertical_rl),
         body.style.rtl.or(html.style.rtl),
+        body.style.sideways.or(html.style.sideways),
     );
-    let own = (html.style.vertical, html.style.vertical_rl, html.style.rtl);
+    let own = (
+        html.style.vertical,
+        html.style.vertical_rl,
+        html.style.rtl,
+        html.style.sideways,
+    );
     if taken == own {
         return nodes;
     }
@@ -248,8 +254,26 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         e.style.vertical = e.style.vertical.or(own.0);
         e.style.vertical_rl = e.style.vertical_rl.or(own.1);
         e.style.rtl = e.style.rtl.or(own.2);
+        e.style.sideways = e.style.sideways.or(own.3);
     }
-    (html.style.vertical, html.style.vertical_rl, html.style.rtl) = taken;
+    (
+        html.style.vertical,
+        html.style.vertical_rl,
+        html.style.rtl,
+        html.style.sideways,
+    ) = taken;
+    // Главное вертикальное письмо управляет ОБЛАСТЬЮ ПРОСМОТРА: строчная ось
+    // корня вертикальна и занимает всё окно (§8.2 principal flow). Без этого
+    // корень сжимался по содержимому, и прижим к нижнему краю (sideways-lr)
+    // было не от чего считать.
+    if taken.0 == Some(true)
+        && taken.3 == Some(true)
+        && taken.1 != Some(true)
+        && html.style.height.is_none()
+        && html.style.min_height.is_none()
+    {
+        html.style.min_height = Some(crate::value::Len::Vh(1.0));
+    }
     nodes
 }
 

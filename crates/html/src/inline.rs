@@ -463,6 +463,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // становится только сам `body`, а его дети снова текут вниз.
     c.vertical = own.vertical.or(parent.vertical);
     c.vertical_rl = own.vertical_rl.or(parent.vertical_rl);
+    c.sideways = own.sideways.or(parent.sideways);
     c.ortho_limit = own.ortho_limit.or(parent.ortho_limit);
     c.wrap_anywhere = own.wrap_anywhere.or(parent.wrap_anywhere);
     c.word_space_char = own.word_space_char.or(parent.word_space_char);

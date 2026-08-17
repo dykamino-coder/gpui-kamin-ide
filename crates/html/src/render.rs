@@ -2402,6 +2402,7 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             rtl: inherited.rtl == Some(true),
             vertical: inherited.vertical == Some(true),
             vertical_rl: inherited.vertical_rl == Some(true),
+            ..Default::default()
         });
         let probe = crate::interact::spot_probe(spot.clone(), false);
         let inner = match replaced {
@@ -3329,6 +3330,20 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 } else {
                     d.flex_row()
                 };
+                // `sideways-lr`: строка идёт снизу вверх — начало строчной
+                // оси у НИЖНЕГО края (css-writing-modes-4 §block-flow).
+                // Только ГЛАВНОЕ письмо страницы: у вложенных контейнеров
+                // строчную ось ведёт абзац, и прижим коробки к низу расходился
+                // с ним (abs-pos-border-offset-002).
+                // Прижим — на ТЕЛЕ: у `<html>` бывают свои `::before`/`::after`
+                // с собственным письмом, и прижим корня уводил их вниз
+                // (wm-propagation-body-047).
+                if merged.sideways == Some(true)
+                    && merged.vertical_rl != Some(true)
+                    && e.tag == "body"
+                {
+                    d = d.items_end();
+                }
                 if e.style.width.is_none() {
                     d = d.flex_shrink_0();
                 }
@@ -3435,6 +3450,10 @@ fn image(e: &Element) -> AnyElement {
     // ширину ЕЩЁ РАЗ отсюда нельзя: она затирала эту поправку, и картинка с
     // `padding-left` вылезала за край на величину отступа.
     let d = styled_div(e);
+    // Замещаемый элемент в строке НЕ сжимается: браузер даёт строке
+    // переполниться или перенести коробку целиком (CSS 2.1 §10.3.2, замер
+    // wm-propagation-body-040: картинка 340px ужималась на 6-7%).
+    let d = d.flex_shrink_0();
     if src.starts_with("data:") || src.starts_with("file:") || src.starts_with('/') {
         // Локальный файл отдаётся ПУТЁМ, а не строкой адреса. Строку со схемой
         // `file:` система разбирает как сетевой адрес и уходит его скачивать —
@@ -3485,6 +3504,13 @@ fn image(e: &Element) -> AnyElement {
             Some("fill") => image.object_fit(gpui::ObjectFit::Fill),
             Some("scale-down") => image.object_fit(gpui::ObjectFit::ScaleDown),
             Some("none") => image.object_fit(gpui::ObjectFit::None),
+            // Обе стороны заданы — умолчание CSS: ЗАПОЛНИТЬ коробку, даже с
+            // искажением (`object-fit: fill`). Вписывание оставлено случаю с
+            // одной стороной: там вторая держится на собственном соотношении
+            // рисунка (см. замер выше).
+            _ if e.style.width.is_some() && e.style.height.is_some() => {
+                image.object_fit(gpui::ObjectFit::Fill)
+            }
             _ => image.object_fit(gpui::ObjectFit::Contain),
         };
         return d.child(image).into_any_element();

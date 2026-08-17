@@ -467,6 +467,8 @@ fn walk_children(
     let total = tags.iter().filter(|t| t.is_some()).count();
     let mut seen = 0usize;
     let mut seen_of_type: HashMap<String, usize> = HashMap::new();
+    // Предыдущие соседи-элементы: по ним считаются `.a + .b` и `.a ~ .b`.
+    let mut sibs: Vec<Ancestor> = vec![];
     for (child, tag) in children.iter().zip(&tags) {
         let spot = match tag {
             Some(tag) => {
@@ -483,8 +485,26 @@ fn walk_children(
             None => Spot::default(),
         };
         walk(
-            child, rules, vars, frames, counter, counters, path, spot, preserve, out,
+            child, rules, vars, frames, counter, counters, path, spot, preserve, &sibs, out,
         );
+        if let NodeData::Element { name, attrs, .. } = &child.data {
+            let attrs = attrs.borrow();
+            let find = |key: &str| {
+                attrs
+                    .iter()
+                    .find(|a| a.name.local.as_ref() == key)
+                    .map(|a| a.value.to_string())
+            };
+            sibs.push(Ancestor {
+                tag: name.local.to_string(),
+                id: find("id"),
+                classes: find("class")
+                    .map(|v| v.split_whitespace().map(str::to_string).collect())
+                    .unwrap_or_default(),
+                spot,
+                href: find("href"),
+            });
+        }
     }
 }
 
@@ -499,6 +519,7 @@ fn walk(
     path: &[Ancestor],
     spot: Spot,
     preserve: bool,
+    sibs: &[Ancestor],
     out: &mut Vec<Node>,
 ) {
     match &handle.data {
@@ -552,7 +573,7 @@ fn walk(
                 .unwrap_or_default();
             let mut matched: Vec<&Rule> = rules
                 .iter()
-                .filter(|r| matches(&r.sel, &me, path))
+                .filter(|r| matches(&r.sel, &me, path, sibs))
                 .collect();
             // Свои переменные: родительские, поверх них объявления
             // совпавших правил в порядке каскада, поверх — свои же в
@@ -592,7 +613,7 @@ fn walk(
             let mut hovered: Vec<&Rule> = rules
                 .iter()
                 .filter(|r| r.sel.pseudo.as_deref() == Some("hover"))
-                .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path))
+                .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
                 .collect();
             hovered.sort_by_key(|r| (r.sel.specificity(), r.order));
             // Слой наведения собирается ПОВЕРХ базового стиля, а не с нуля:
@@ -612,7 +633,7 @@ fn walk(
                 let mut found: Vec<&Rule> = rules
                     .iter()
                     .filter(|r| r.sel.pseudo.as_deref() == Some(name))
-                    .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path))
+                    .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
                     .collect();
                 found.sort_by_key(|r| (r.sel.specificity(), r.order));
                 (!found.is_empty()).then(|| {
@@ -675,10 +696,10 @@ fn walk(
             // Псевдоэлементы: коробка появляется, только если у правила есть
             // `content`. Значками, стрелками и разделителями в вёрстке
             // занимаются именно они, и без них разметка теряет часть смысла.
-            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, "after", &attrs) {
+            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, &[], "after", &attrs) {
                 children.push(Node::Element(el));
             }
-            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, "before", &attrs) {
+            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, &[], "before", &attrs) {
                 children.insert(0, Node::Element(el));
             }
 
@@ -746,13 +767,14 @@ fn pseudo_box(
     counters: &HashMap<String, i32>,
     me: &Ancestor,
     path: &[Ancestor],
+    sibs: &[Ancestor],
     which: &str,
     attrs: &[(String, String)],
 ) -> Option<Element> {
     let mut matched: Vec<&Rule> = rules
         .iter()
         .filter(|r| r.sel.pseudo.as_deref() == Some(which))
-        .filter(|r| matches_ignoring_pseudo(&r.sel, me, path))
+        .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
         .collect();
     if matched.is_empty() {
         return None;
@@ -806,7 +828,10 @@ fn pseudo_box(
 }
 
 /// Сопоставление селектора с узлом и его цепочкой предков.
-fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor]) -> bool {
+///
+/// `sibs` — предыдущие соседи-элементы узла в порядке разметки: по ним
+/// решаются соседние комбинаторы `+` и `~`.
+fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) -> bool {
     if let Some(pseudo) = &sel.pseudo {
         // `:not(...)` — отрицание вложенного селектора. Разбирается здесь, а
         // не среди структурных: внутри скобок может стоять тег или класс, а им
@@ -818,10 +843,10 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor]) -> bool {
             let Some(inner) = Selector::parse(inner) else {
                 return false;
             };
-            if matches(&inner, me, path) {
+            if matches(&inner, me, path, sibs) {
                 return false;
             }
-            return matches_ignoring_pseudo(sel, me, path);
+            return matches_ignoring_pseudo(sel, me, path, sibs);
         }
         // Структурный псевдокласс — часть обычного каскада: он зависит только
         // от места узла в дереве. Остальные (`:hover`, `::before`) сюда не
@@ -839,13 +864,13 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor]) -> bool {
             if (pseudo == "visited") != visited {
                 return false;
             }
-            return matches_ignoring_pseudo(sel, me, path);
+            return matches_ignoring_pseudo(sel, me, path, sibs);
         }
         if pseudo == "root" {
             if me.tag != "html" {
                 return false;
             }
-            return matches_ignoring_pseudo(sel, me, path);
+            return matches_ignoring_pseudo(sel, me, path, sibs);
         }
         let Some(ok) = structural(pseudo, me.spot) else {
             return false;
@@ -854,7 +879,7 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor]) -> bool {
             return false;
         }
     }
-    matches_ignoring_pseudo(sel, me, path)
+    matches_ignoring_pseudo(sel, me, path, sibs)
 }
 
 /// Структурные псевдоклассы: место узла среди соседей.
@@ -930,14 +955,34 @@ fn nth_matches(arg: &str, index: usize) -> bool {
 }
 
 /// То же сопоставление, но без отсева по псевдоклассу — для слоя наведения.
-fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor]) -> bool {
+fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) -> bool {
     if !matches_compound(sel, me) {
         return false;
+    }
+    // Соседний комбинатор: `+` — ровно предыдущий сосед-элемент, `~` — любой
+    // раньше. Сосед проверяется ПОЛНЫМ сопоставлением со своими соседями
+    // слева и тем же путём предков (соседи его делят).
+    if let Some(prev) = &sel.prev {
+        let (prev_sel, adjacent) = (&prev.0, prev.1);
+        let hit = |i: usize| matches(prev_sel, &sibs[i], path, &sibs[..i]);
+        let found = if adjacent {
+            !sibs.is_empty() && hit(sibs.len() - 1)
+        } else {
+            (0..sibs.len()).rev().any(hit)
+        };
+        if !found {
+            return false;
+        }
     }
     let Some(anc) = &sel.ancestor else {
         return true;
     };
     let (parent_sel, direct) = (&anc.0, anc.1);
+    // Сосед ПРЕДКА: его соседей здесь уже не восстановить — такое правило
+    // честно не совпадает, чем совпадать наугад.
+    if parent_sel.prev.is_some() {
+        return false;
+    }
     if direct {
         return path.last().is_some_and(|p| {
             matches_compound(parent_sel, p) && matches_chain(parent_sel, path, path.len() - 1)
@@ -954,6 +999,9 @@ fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
         return true;
     };
     let (parent_sel, direct) = (&anc.0, anc.1);
+    if parent_sel.prev.is_some() {
+        return false;
+    }
     if direct {
         return at > 0
             && matches_compound(parent_sel, &path[at - 1])

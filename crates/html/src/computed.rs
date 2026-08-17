@@ -889,6 +889,9 @@ pub struct Computed {
     pub vertical: Option<bool>,
     /// `writing-mode: vertical-rl` — блоки идут справа налево.
     pub vertical_rl: Option<bool>,
+    /// `writing-mode: sideways-*`: глифы повёрнуты, а у `sideways-lr` строка
+    /// идёт СНИЗУ вверх — содержимое прижимается к нижнему краю.
+    pub sideways: Option<bool>,
     /// Ограничение ОРТОГОНАЛЬНОГО потока: определённый размер ближайшего
     /// предка-контейнера прокрутки по оси потока (CSS Writing Modes §7.3).
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
@@ -3196,6 +3199,7 @@ impl Computed {
                 let vertical = v.starts_with("vertical") || v.starts_with("sideways");
                 self.vertical = Some(vertical);
                 self.vertical_rl = Some(vertical && v.ends_with("rl"));
+                self.sideways = Some(v.starts_with("sideways"));
             }
 
             // --- Переносы и обрезка -------------------------------------------

@@ -38,6 +38,9 @@ pub struct Selector {
     pub pseudo: Option<String>,
     /// Предок для `.a .b` и `.a > .b`. Прямой ли — во втором поле.
     pub ancestor: Option<Box<(Selector, bool)>>,
+    /// Предыдущий сосед для `.a + .b` и `.a ~ .b`. Смежный ли — во втором
+    /// поле (`+` — ровно предыдущий, `~` — любой раньше).
+    pub prev: Option<Box<(Selector, bool)>>,
 }
 
 impl Selector {
@@ -52,6 +55,10 @@ impl Selector {
             let a = anc.0.specificity();
             s = (s.0 + a.0, s.1 + a.1, s.2 + a.2);
         }
+        if let Some(prev) = &self.prev {
+            let a = prev.0.specificity();
+            s = (s.0 + a.0, s.1 + a.1, s.2 + a.2);
+        }
         s
     }
 
@@ -64,6 +71,7 @@ impl Selector {
                 classes: vec![],
                 pseudo: None,
                 ancestor: None,
+                prev: None,
             });
         }
         let mut sel = Selector {
@@ -72,6 +80,7 @@ impl Selector {
             classes: vec![],
             pseudo: None,
             ancestor: None,
+            prev: None,
         };
         // Разделитель ищется ВНЕ скобок: в `:not(:first-child)` двоеточие и
         // точка — часть записи псевдокласса, а не начало следующего куска.
@@ -126,48 +135,90 @@ impl Selector {
 
     /// `.card > .title`, `.card .title`, `div.card` — всё сюда.
     pub fn parse(raw: &str) -> Option<Selector> {
-        // Атрибутные селекторы и прочее, чего мы не умеем, отбрасываем целиком:
-        // тихо применить половину правила хуже, чем не применить его совсем.
-        // Двойное двоеточие — та же запись псевдоэлемента, что одинарная:
-        // в разметке пишут , и отбрасывать его значило терять
-        // значки и разделители, для которых сборка уже написана.
-        // Внутри скобок `+` и `~` — не комбинаторы, а часть записи `2n+1` в
-        // `:nth-child()`. Отбраковка по всей строке резала такие правила.
-        let outside_parens = |c: char| {
-            let mut depth = 0i32;
-            raw.chars().any(|ch| {
-                match ch {
-                    '(' => depth += 1,
-                    ')' => depth -= 1,
-                    _ => {}
-                }
-                depth == 0 && ch == c
-            })
-        };
-        if raw.contains('[') || outside_parens('~') || outside_parens('+') {
+        // Атрибутные селекторы отбрасываем целиком: тихо применить половину
+        // правила хуже, чем не применить его совсем.
+        if raw.contains('[') {
             return None;
         }
-        let mut parts: Vec<(String, bool)> = vec![];
-        for chunk in raw.split('>') {
-            let direct = !parts.is_empty();
-            let mut first = true;
-            for word in split_words(chunk) {
-                parts.push((word.to_string(), direct && first));
-                first = false;
+        // Разбивка на составные части и комбинаторы МЕЖДУ ними. Внутри скобок
+        // `+` и `~` — не комбинаторы, а часть записи `2n+1` в `:nth-child()`.
+        // Пробел — комбинатор потомка, если рядом нет знакового.
+        let mut tokens: Vec<Result<String, u8>> = vec![];
+        let mut depth = 0i32;
+        let mut cur = String::new();
+        for ch in raw.chars() {
+            match ch {
+                '(' => {
+                    depth += 1;
+                    cur.push(ch);
+                }
+                ')' => {
+                    depth -= 1;
+                    cur.push(ch);
+                }
+                _ if depth > 0 => cur.push(ch),
+                ' ' | '\t' | '\n' => {
+                    if !cur.is_empty() {
+                        tokens.push(Ok(std::mem::take(&mut cur)));
+                    }
+                    tokens.push(Err(0));
+                }
+                '>' | '+' | '~' => {
+                    if !cur.is_empty() {
+                        tokens.push(Ok(std::mem::take(&mut cur)));
+                    }
+                    tokens.push(Err(match ch {
+                        '>' => 1,
+                        '+' => 2,
+                        _ => 3,
+                    }));
+                }
+                _ => cur.push(ch),
             }
         }
-        let (last, head) = parts.split_last()?;
-        let mut sel = Selector::parse_compound(&last.0)?;
-        // Флаг «предок обязан быть прямым» принадлежит ПОТОМКУ, а не предку:
-        // в `.a > .b` его несёт `.b`. Поэтому при подъёме вверх флаг берётся
-        // от текущего узла, а не от того, которого мы сейчас разбираем.
-        let mut direct = last.1;
-        let mut cursor = &mut sel;
-        for (raw_part, part_direct) in head.iter().rev() {
-            let parent = Selector::parse_compound(raw_part)?;
-            cursor.ancestor = Some(Box::new((parent, direct)));
-            direct = *part_direct;
-            cursor = &mut cursor.ancestor.as_mut()?.0;
+        if !cur.is_empty() {
+            tokens.push(Ok(cur));
+        }
+        let mut compounds: Vec<String> = vec![];
+        let mut combs: Vec<u8> = vec![];
+        let mut pending: Option<u8> = None;
+        for t in tokens {
+            match t {
+                Err(k) => {
+                    // Пробелы вокруг знакового комбинатора — не «потомок»:
+                    // знак сильнее.
+                    pending = Some(pending.unwrap_or(0).max(k));
+                }
+                Ok(c) => {
+                    if let Some(k) = pending.take() {
+                        if compounds.is_empty() {
+                            // Комбинатор до первой части — мусор.
+                            if k > 0 {
+                                return None;
+                            }
+                        } else {
+                            combs.push(k);
+                        }
+                    }
+                    compounds.push(c);
+                }
+            }
+        }
+        if compounds.is_empty() || combs.len() + 1 != compounds.len() {
+            return None;
+        }
+        // Сборка слева направо: у `.a > .b + .c` предметом остаётся `.c`,
+        // его сосед — `.b`, а предок соседа — `.a`.
+        let mut sel = Selector::parse_compound(&compounds[0])?;
+        for (comp, comb) in compounds[1..].iter().zip(&combs) {
+            let mut next = Selector::parse_compound(comp)?;
+            match comb {
+                0 => next.ancestor = Some(Box::new((sel, false))),
+                1 => next.ancestor = Some(Box::new((sel, true))),
+                2 => next.prev = Some(Box::new((sel, true))),
+                _ => next.prev = Some(Box::new((sel, false))),
+            }
+            sel = next;
         }
         Some(sel)
     }
@@ -919,7 +970,20 @@ mod tests {
             Selector::parse("li::before").and_then(|s| s.pseudo),
             Some("before".to_string())
         );
-        assert!(Selector::parse("h1 + p").is_none());
+        // Соседние комбинаторы разбираются: `+` — смежный, `~` — любой раньше.
+        let adj = Selector::parse("h1 + p").expect("смежный сосед");
+        assert_eq!(adj.tag.as_deref(), Some("p"));
+        let prev = adj.prev.expect("сосед");
+        assert_eq!(prev.0.tag.as_deref(), Some("h1"));
+        assert!(prev.1, "`+` — смежный");
+        let anywhere = Selector::parse("img ~ img").expect("общий сосед");
+        assert!(!anywhere.prev.expect("сосед").1, "`~` — любой раньше");
+        // Смешанная цепочка: предмет `.c`, его сосед `.b`, предок соседа `.a`.
+        let mixed = Selector::parse(".a > .b + .c").expect("цепочка");
+        assert_eq!(mixed.classes, vec!["c".to_string()]);
+        let b = mixed.prev.expect("сосед");
+        assert_eq!(b.0.classes, vec!["b".to_string()]);
+        assert_eq!(b.0.ancestor.as_ref().expect("предок").0.classes, vec!["a".to_string()]);
     }
 
     #[test]
