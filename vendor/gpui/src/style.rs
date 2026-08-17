@@ -651,15 +651,19 @@ impl Style {
                 ) {
                     // x and y both visible
                     (true, true) => return None,
+                    // KaminIDE patch: оси были ПЕРЕПУТАНЫ — при «x видима,
+                    // y прячется» маска резала X по коробке и отпускала Y.
+                    // Свободная ось не ограничивается вовсе (широкий запас):
+                    // однокоординатная обрезка режет только свою ось.
                     // x visible, y hidden
                     (true, false) => Bounds::from_corners(
-                        point(min.x, bounds.origin.y),
-                        point(max.x, bounds.bottom_right().y),
+                        point(crate::px(-1_000_000.0), min.y),
+                        point(crate::px(1_000_000.0), max.y),
                     ),
                     // x hidden, y visible
                     (false, true) => Bounds::from_corners(
-                        point(bounds.origin.x, min.y),
-                        point(bounds.bottom_right().x, max.y),
+                        point(min.x, crate::px(-1_000_000.0)),
+                        point(max.x, crate::px(1_000_000.0)),
                     ),
                     // both hidden
                     (false, false) => Bounds::from_corners(min, max),
