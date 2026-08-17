@@ -3987,7 +3987,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         }
     };
     let mut rows: Vec<(&Element, RowCarry)> = vec![];
-    collect_rows(&fixed, (0.0, 0.0, None), &mut rows);
+    collect_rows(&fixed, (0.0, 0.0, None, None), &mut rows);
     // Ширина таблицы — сумма ОБЪЕДИНЕНИЙ, а не число ячеек: строка из двух
     // ячеек с `colspan=2` даёт четыре колонки, и без этого содержимое
     // выталкивалось в неявные ряды.
@@ -4186,6 +4186,16 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // обязан дать ячейке вертикальное содержимое (ch-units-vrl-*).
         // Ряд у нас и так не строит своей коробки — урезать нечего.
         let own = row.style.clone();
+        // Слой ГРУППЫ строк между таблицей и рядом: наследуемое с `<tbody>`
+        // течёт вниз, как у любого предка.
+        let group_layer;
+        let inherited = match carry.3 {
+            Some(g) => {
+                group_layer = inline::inherit(inherited, g);
+                &group_layer
+            }
+            None => inherited,
+        };
         // Направление на строке ОСТАЁТСЯ: замерено, что его обнуление сдвигает
         // ячейки в парах `position-relative-table-*-left` (29 → 25).
         // ПРОБОВАЛИ ТРИЖДЫ И ОТКАТИЛИ: доводить до ячеек наследуемые свойства
@@ -4949,9 +4959,15 @@ fn relative_shift(e: &Element) -> (f32, f32) {
     )
 }
 
-type RowCarry = (f32, f32, Option<crate::value::Color>);
+/// Сдвиг, фон и СТИЛЬ ГРУППЫ строк: письмо/шрифт с `<tbody>` наследуются в
+/// ряды и ячейки, хотя своей коробки у группы нет (ch-units-vrl-006).
+type RowCarry<'a> = (f32, f32, Option<crate::value::Color>, Option<&'a Computed>);
 
-fn collect_rows<'a>(nodes: &'a [Node], carry: RowCarry, out: &mut Vec<(&'a Element, RowCarry)>) {
+fn collect_rows<'a>(
+    nodes: &'a [Node],
+    carry: RowCarry<'a>,
+    out: &mut Vec<(&'a Element, RowCarry<'a>)>,
+) {
     for n in nodes {
         if let Node::Element(e) = n {
             let (dx, dy) = relative_shift(e);
@@ -4959,7 +4975,12 @@ fn collect_rows<'a>(nodes: &'a [Node], carry: RowCarry, out: &mut Vec<(&'a Eleme
             // сетке не остаётся, и заливка пропадала молча
             // (`position-relative-table-tbody-left`: зелёная коробка не
             // рисовалась вовсе, из-под неё светило красное).
-            let shift = (carry.0 + dx, carry.1 + dy, e.style.background.or(carry.2));
+            let shift = (
+                carry.0 + dx,
+                carry.1 + dy,
+                e.style.background.or(carry.2),
+                carry.3,
+            );
             // Роль задаётся тегом ИЛИ стилем: разметка на `div` с
             // `display: table-row` встречается не реже настоящих таблиц.
             if e.tag == "tr" || e.style.display == Some(Display::TableRow) {
@@ -4969,7 +4990,8 @@ fn collect_rows<'a>(nodes: &'a [Node], carry: RowCarry, out: &mut Vec<(&'a Eleme
                 || e.tag == "tfoot"
                 || e.style.display == Some(Display::TableRowGroup)
             {
-                collect_rows(&e.children, shift, out);
+                let deeper = (shift.0, shift.1, shift.2, Some(&e.style));
+                collect_rows(&e.children, deeper, out);
             }
         }
     }
