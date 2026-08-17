@@ -1103,7 +1103,9 @@ impl Computed {
                 _ => &mut self.inset,
             };
             let (i_start, i_end, b_start, b_end) = if side_vertical {
-                let (bs, be) = if side_rl { (3u8, 1u8) } else { (1, 3) };
+                // Начало оси блока: `vertical-rl` — ПРАВЫЙ край (поток блоков
+                // идёт справа налево), `vertical-lr` — левый.
+                let (bs, be) = if side_rl { (1u8, 3u8) } else { (3, 1) };
                 let (is, ie) = if rtl { (2u8, 0u8) } else { (0, 2) };
                 (is, ie, bs, be)
             } else if rtl {
@@ -1710,17 +1712,72 @@ impl Computed {
                     self.padding_inherit = true;
                     return;
                 }
-                self.padding = Sides::shorthand(v)
+                self.padding = Sides::shorthand(v);
+                // Гашение логических слотов — как у полей (порядок каскада).
+                if let Some(l) = self.logical.as_mut() {
+                    l.padding = Default::default();
+                }
             }
-            "padding-top" => self.padding.top = Len::parse(v),
-            "padding-right" => self.padding.right = Len::parse(v),
-            "padding-bottom" => self.padding.bottom = Len::parse(v),
-            "padding-left" => self.padding.left = Len::parse(v),
-            "margin" => self.margin = Sides::shorthand(v),
-            "margin-top" => self.margin.top = Len::parse(v),
-            "margin-right" => self.margin.right = Len::parse(v),
-            "margin-bottom" => self.margin.bottom = Len::parse(v),
-            "margin-left" => self.margin.left = Len::parse(v),
+            "padding-top" => {
+                self.padding.top = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.padding.block_start = None;
+                }
+            }
+            "padding-right" => {
+                self.padding.right = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.padding.inline_end = None;
+                }
+            }
+            "padding-bottom" => {
+                self.padding.bottom = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.padding.block_end = None;
+                }
+            }
+            "padding-left" => {
+                self.padding.left = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.padding.inline_start = None;
+                }
+            }
+            // Физическая запись ГАСИТ логический слот той же стороны: разбор
+            // идёт в порядке каскада, и авторский `margin: 0` обязан бить
+            // более ранний `margin-block` таблицы агента — а разрешение
+            // логических идёт после каскада и иначе перекрывало бы всё.
+            // Соответствие сторон берётся горизонтальное: письмо на разборе
+            // ещё неизвестно, а гасят почти всегда сбросом всех сторон.
+            "margin" => {
+                self.margin = Sides::shorthand(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.margin = Default::default();
+                }
+            }
+            "margin-top" => {
+                self.margin.top = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.margin.block_start = None;
+                }
+            }
+            "margin-right" => {
+                self.margin.right = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.margin.inline_end = None;
+                }
+            }
+            "margin-bottom" => {
+                self.margin.bottom = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.margin.block_end = None;
+                }
+            }
+            "margin-left" => {
+                self.margin.left = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.margin.inline_start = None;
+                }
+            }
 
             "border" => {
                 // `border: inherit` — рамка родителя целиком: слово копирует
@@ -1762,11 +1819,36 @@ impl Computed {
                     _ => self.position,
                 }
             }
-            "top" => self.inset.top = Len::parse(v),
-            "right" => self.inset.right = Len::parse(v),
-            "bottom" => self.inset.bottom = Len::parse(v),
-            "left" => self.inset.left = Len::parse(v),
-            "inset" => self.inset = Sides::shorthand(v),
+            "top" => {
+                self.inset.top = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.inset.block_start = None;
+                }
+            }
+            "right" => {
+                self.inset.right = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.inset.inline_end = None;
+                }
+            }
+            "bottom" => {
+                self.inset.bottom = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.inset.block_end = None;
+                }
+            }
+            "left" => {
+                self.inset.left = Len::parse(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.inset.inline_start = None;
+                }
+            }
+            "inset" => {
+                self.inset = Sides::shorthand(v);
+                if let Some(l) = self.logical.as_mut() {
+                    l.inset = Default::default();
+                }
+            }
             "overflow" => {
                 // Запись из двух слов — оси по отдельности
                 // (css-overflow-3 §3): `overflow: clip visible`.
