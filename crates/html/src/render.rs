@@ -913,6 +913,91 @@ fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
 /// Между двумя блоками остаётся больший из смежных отступов, а не их сумма.
 /// Раскладка их складывает, поэтому у второго и следующих соседей ведущий
 /// отступ уменьшается на уже занятый предыдущим.
+/// Ортогональный поток: горизонтальный блок внутри вертикального контейнера.
+///
+/// Доля полей считается от СТРОЧНОЙ оси контейнера — при вертикальном письме
+/// это его высота (css-writing-modes-3 §7.3, `sizing-orthogonal-percentage-
+/// margin-*`). Авто-ширина такого блока не безгранична: она зажимается
+/// доступным местом — физической шириной контейнера за вычетом боковых полей
+/// (§7.3 auto-sizing). Без зажима строка мерялась по содержимому и вылезала
+/// на сотни точек.
+fn orthogonal_children(children: Vec<Node>, container: &Computed) -> Vec<Node> {
+    let mut out = children;
+    let inline_size = match container.height {
+        Some(Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    for node in out.iter_mut() {
+        let Node::Element(ch) = node else { continue };
+        if ch.inline || ch.style.vertical != Some(false) {
+            continue;
+        }
+        if let Some(il) = inline_size {
+            for side in [
+                &mut ch.style.margin.top,
+                &mut ch.style.margin.right,
+                &mut ch.style.margin.bottom,
+                &mut ch.style.margin.left,
+            ] {
+                if let Some(Len::Pct(k)) = side {
+                    *side = Some(Len::Px(*k * il));
+                }
+            }
+        }
+        if ch.style.width.is_none() && ch.style.max_width.is_none() {
+            let side = |l: Option<Len>| match l {
+                Some(Len::Px(v)) => v,
+                _ => 0.0,
+            };
+            let margins = side(ch.style.margin.left) + side(ch.style.margin.right);
+            ch.style.max_width = Some(match container.width {
+                Some(Len::Px(w)) => Len::Px((w - margins).max(0.0)),
+                _ => Len::Pct(1.0),
+            });
+        }
+    }
+    out
+}
+
+/// Зеркальный ортогональный случай: ВЕРТИКАЛЬНЫЙ блок внутри горизонтального
+/// контейнера. Его строчная ось — высота, и авто-размер по ней зажимается
+/// высотой контейнера за вычетом вертикальных полей (css-writing-modes-3
+/// §7.3). Доля полей здесь обычная — от ширины контейнера, её решает
+/// раскладка сама.
+fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Vec<Node> {
+    let has_vertical = children.iter().any(|n| match n {
+        Node::Element(ch) => !ch.inline && ch.style.vertical == Some(true),
+        _ => false,
+    });
+    if !has_vertical {
+        return children;
+    }
+    let mut out = children;
+    for node in out.iter_mut() {
+        let Node::Element(ch) = node else { continue };
+        if ch.inline || ch.style.vertical != Some(true) {
+            continue;
+        }
+        if ch.style.height.is_some() || ch.style.max_height.is_some() {
+            continue;
+        }
+        let margin = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            Some(Len::Pct(k)) => match container.width {
+                Some(Len::Px(w)) => k * w,
+                _ => 0.0,
+            },
+            _ => 0.0,
+        };
+        let margins = margin(ch.style.margin.top) + margin(ch.style.margin.bottom);
+        ch.style.max_height = Some(match container.height {
+            Some(Len::Px(h)) => Len::Px((h - margins).max(0.0)),
+            _ => Len::Pct(1.0),
+        });
+    }
+    out
+}
+
 fn collapse_flow_margins(children: Vec<Node>, reverse: bool) -> Vec<Node> {
     let mut out = children;
     let mut trailing: Option<f32> = None;
@@ -3385,9 +3470,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // это ГОРИЗОНТАЛЬНЫЕ отступы соседей. В Chrome три полосы с
             // `margin: 0 16px` стоят через 16, а не через 32.
             let children = if merged.vertical == Some(true) {
-                collapse_flow_margins(children, merged.vertical_rl == Some(true))
+                orthogonal_children(
+                    collapse_flow_margins(children, merged.vertical_rl == Some(true)),
+                    &merged,
+                )
             } else {
-                children
+                orthogonal_vertical_children(children, &merged)
             };
             let mut kids: Vec<AnyElement> = Vec::new();
             kids.extend(clip_layer(&merged, opts));
