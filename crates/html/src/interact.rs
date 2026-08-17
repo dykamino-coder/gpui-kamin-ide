@@ -1890,11 +1890,15 @@ impl Element for LatePlace {
                 };
                 gpui::point(x - bounds.origin.x, hole.origin.y - bounds.origin.y)
             }
-            // Письмо справа налево: поперёк потока заместителя уже выровняла
-            // обёртка (justify_end), правится только ось потока строк.
-            (Some(hole), None) if now.rtl => {
-                gpui::point(px(0.0), hole.origin.y - bounds.origin.y)
-            }
+            // Письмо справа налево: заместитель вешается ПРАВЫМ краем на
+            // начало строчной оси (CSS 2.1 §10.3.7: статическая позиция в rtl
+            // отсчитывается от правого края). У блочной распорки во всю
+            // ширину правый край — правый край содержимого, у точечной в
+            // строке — сама точка.
+            (Some(hole), None) if now.rtl => gpui::point(
+                hole.origin.x + hole.size.width - bounds.size.width - bounds.origin.x,
+                hole.origin.y - bounds.origin.y,
+            ),
             (Some(hole), None) => hole.origin - bounds.origin,
             (None, _) => gpui::point(px(0.0), px(0.0)),
         };

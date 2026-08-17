@@ -2357,6 +2357,21 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // позиционирования она меряется своим содержимым и висит от угла
         // пустышки, то есть ровно от статической позиции.
         merged.position = None;
+        // Замещаемый элемент строит своя ветка: голая коробка со стилем
+        // теряла содержимое (сломанная картинка с alt-подписью пропадала,
+        // `abs-pos-vlr-border-001`). Позиция снимается копией — та же
+        // причина, что и у merged ниже.
+        let replaced: Option<AnyElement> = match e.tag.as_str() {
+            "img" | "svg" => {
+                let mut copy = e.clone();
+                copy.style.position = None;
+                Some(match copy.tag.as_str() {
+                    "svg" => crate::svg::element(&copy).unwrap_or_else(|| image(&copy)),
+                    _ => image(&copy),
+                })
+            }
+            _ => None,
+        };
         let inner = styled_div_with(e, &merged).children(blocks(&e.children, &merged, opts));
         // Пустышка прижимается к ВЕРХУ строки: иначе она садится на базовую
         // линию, и содержимое уезжает под неё — абсолютный блок оказывался
@@ -2378,17 +2393,21 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             Some(_) => false,
             None => e.inline,
         };
-        if !inline_level {
-            spot.set(crate::interact::Spot {
-                hole: None,
-                next_line: Some(line_height_px(inherited, opts)),
-                rtl: inherited.rtl == Some(true),
-                vertical: inherited.vertical == Some(true),
-                vertical_rl: inherited.vertical_rl == Some(true),
-            });
-        }
+        // Флаги направления нужны и СТРОЧНОМУ атому: в rtl-строке статическая
+        // позиция — правый край, заместитель вешается правым краем на точку
+        // распорки. Начало новой строки — только у блочного.
+        spot.set(crate::interact::Spot {
+            hole: None,
+            next_line: (!inline_level).then(|| line_height_px(inherited, opts)),
+            rtl: inherited.rtl == Some(true),
+            vertical: inherited.vertical == Some(true),
+            vertical_rl: inherited.vertical_rl == Some(true),
+        });
         let probe = crate::interact::spot_probe(spot.clone(), false);
-        let inner = inner.into_any_element();
+        let inner = match replaced {
+            Some(el) => el,
+            None => inner.into_any_element(),
+        };
         let taken = if below {
             Some(inner)
         } else {
