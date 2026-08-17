@@ -386,6 +386,29 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.color = own.color.or(parent.color);
     // `background-color: inherit` переносит вычисленное значение родителя —
     // вместе с нерешённой относительной функцией (css-color-5 §4.1).
+    // Единица `lh` разрешается ЗДЕСЬ: высота строки известна после каскада.
+    {
+        let font = match c.font_size {
+            Some(crate::value::Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let line = match c.line_height {
+            Some(crate::value::Len::Px(v)) => v,
+            Some(crate::value::Len::Em(k)) => k * font,
+            _ => 1.2 * font,
+        };
+        let fix = |l: &mut Option<crate::value::Len>| {
+            if let Some(crate::value::Len::Lh(k)) = *l {
+                *l = Some(crate::value::Len::Px(k * line));
+            }
+        };
+        fix(&mut c.width);
+        fix(&mut c.height);
+        fix(&mut c.min_width);
+        fix(&mut c.min_height);
+        fix(&mut c.max_width);
+        fix(&mut c.max_height);
+    }
     if own.border_inherit {
         c.border_width = parent.border_width;
         c.border_color = parent.border_color.or(parent.color);

@@ -3092,6 +3092,7 @@ impl Computed {
                             Len::Ch(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
                             Len::Ic(k) => Some(k * crate::metrics::ic_px("", 16.0)),
                             Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
+                            Len::Lh(k) => Some(k * 1.2 * 16.0),
                             Len::Vw(_) | Len::Vh(_) => None,
                             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
                         });

@@ -39,6 +39,9 @@ pub enum Len {
     Ex(f32),
     /// Продвижение знака `水` — единица `ic` (CSS Values §6.1.4).
     Ic(f32),
+    /// `5lh` — доля ВЫСОТЫ СТРОКИ (CSS Values §6.1.2): она известна только
+    /// после каскада, единица доживает до слияния стилей.
+    Lh(f32),
     /// `auto`
     Auto,
 }
@@ -106,6 +109,9 @@ impl Len {
         }
         if let Some(num) = s.strip_suffix("em") {
             return num.trim().parse::<f32>().ok().map(Len::Em);
+        }
+        if let Some(num) = s.strip_suffix("lh") {
+            return num.trim().parse::<f32>().ok().map(Len::Lh);
         }
         for (suffix, factor) in [("px", 1.0), ("pt", 96.0 / 72.0)] {
             if let Some(num) = s.strip_suffix(suffix) {
@@ -606,6 +612,9 @@ impl Sum {
             Len::Ch(v) => s.ch = v,
             Len::Ic(v) => s.ic = v,
             Len::Ex(v) => s.ex = v,
+            // Высоту строки сумма не переносит: единица разрешается при
+            // слиянии стилей, в выражениях она за базовую строку.
+            Len::Lh(v) => s.px = v * 1.2 * 16.0,
             Len::Vh(v) => s.vh = v,
             Len::Vw(v) => s.vw = v,
             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => return None,

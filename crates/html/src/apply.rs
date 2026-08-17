@@ -26,6 +26,8 @@ fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         Len::Ch(k) => px(k * crate::metrics::ch_ex_px("", 16.0).0).into(),
         Len::Ic(k) => px(k * crate::metrics::ic_px("", 16.0)).into(),
         Len::Ex(k) => px(k * crate::metrics::ch_ex_px("", 16.0).1).into(),
+        // Неразрешённый `lh` — от базовой строки в 1.2 кегля.
+        Len::Lh(k) => px(k * 1.2 * 16.0).into(),
         // Единицы окна разрешает сборщик дерева; сюда они доходят только у
         // узлов вне его — доля родителя ближе всего по смыслу.
         Len::Vw(k) | Len::Vh(k) => relative(k),
@@ -740,6 +742,7 @@ fn apply_radius(mut d: Div, c: &Computed) -> Div {
             Len::Ch(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
             Len::Ic(k) => Some(k * crate::metrics::ic_px("", 16.0)),
             Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
+            Len::Lh(k) => Some(k * 1.2 * 16.0),
             Len::Vw(_) | Len::Vh(_) => None,
             // Размер по содержимому числом не выражается.
             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
@@ -929,6 +932,7 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
             Len::Ch(k) => d.line_height(px(k * crate::metrics::ch_ex_px("", 16.0).0)),
             Len::Ic(k) => d.line_height(px(k * crate::metrics::ic_px("", 16.0))),
             Len::Ex(k) => d.line_height(px(k * crate::metrics::ch_ex_px("", 16.0).1)),
+            Len::Lh(k) => d.line_height(relative(k)),
             Len::Vw(k) | Len::Vh(k) => d.line_height(relative(k)),
             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => d,
         };
