@@ -70,6 +70,18 @@ pub fn svg_markup_to_image(
     Some(Arc::new(image))
 }
 
+/// KaminIDE patch: вшитый цветовой профиль PNG (ветка `iCCP`), если есть.
+///
+/// Декодер честно отдаёт профиль, но сам его не применяет — применение
+/// делает вызывающий: тут нет цветовой математики.
+pub fn png_icc_profile(bytes: &[u8]) -> Option<Vec<u8>> {
+    use image::ImageDecoder;
+
+    let cursor = std::io::Cursor::new(bytes);
+    let mut decoder = image::codecs::png::PngDecoder::new(cursor).ok()?;
+    decoder.icc_profile().ok().flatten()
+}
+
 /// KaminIDE patch: растровая картинка из байтов в готовый образ.
 ///
 /// Зачем: фон `background-image: url(...)` в разметке — это ЗАЛИВКА, а не

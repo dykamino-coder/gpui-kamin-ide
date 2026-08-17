@@ -607,6 +607,131 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
     (r + m, g + m, b + m)
 }
 
+
+/// Применить вшитый цветовой профиль ICC к готовому образу.
+///
+/// Понимается матричный профиль RGB (v2): колоранты `rXYZ/gXYZ/bXYZ` и
+/// кривые `rTRC/gTRC/bTRC` (`curv`: линейная, гамма или таблица). Точки
+/// линеаризуются кривыми, матрица ведёт в XYZ D50, дальше та же дорога, что
+/// у `lab()`: D50 -> D65 -> линейный sRGB -> гамма. Не разобрался профиль —
+/// `None`, образ остаётся как есть.
+pub(crate) fn apply_icc(
+    image: &std::sync::Arc<gpui::RenderImage>,
+    profile: &[u8],
+) -> Option<std::sync::Arc<gpui::RenderImage>> {
+    let m = icc_matrix(profile)?;
+    let curves = [
+        icc_curve(profile, b"rTRC")?,
+        icc_curve(profile, b"gTRC")?,
+        icc_curve(profile, b"bTRC")?,
+    ];
+    let size = image.size(0);
+    let (w, h) = (size.width.0 as u32, size.height.0 as u32);
+    let bytes = image.as_bytes(0)?;
+    let mut out = Vec::with_capacity(bytes.len());
+    for px in bytes.chunks_exact(4) {
+        // Порядок BGRA, цвета премультиплицированы; при полной непрозрачности
+        // (обычный случай картинок-эталонов) это просто цвет.
+        let a = px[3] as f32 / 255.0;
+        let un = |v: u8| {
+            if a > 0.0 { (v as f32 / 255.0 / a).min(1.0) } else { 0.0 }
+        };
+        let (b, g, r) = (un(px[0]), un(px[1]), un(px[2]));
+        let lin = [curve_at(&curves[0], r), curve_at(&curves[1], g), curve_at(&curves[2], b)];
+        let xyz50 = mul(m, lin);
+        let xyz = mul(D50_TO_D65, xyz50);
+        let srgb = mul(XYZ_TO_LINEAR_SRGB, xyz);
+        let (r, g, b) = gamut_map(srgb_gamma(srgb[0]), srgb_gamma(srgb[1]), srgb_gamma(srgb[2]));
+        out.push((b * a * 255.0).round() as u8);
+        out.push((g * a * 255.0).round() as u8);
+        out.push((r * a * 255.0).round() as u8);
+        out.push(px[3]);
+    }
+    gpui::bgra_bytes_to_image(w, h, out)
+}
+
+/// Найти запись каталога ICC по подписи: (смещение, длина).
+fn icc_tag(profile: &[u8], sig: &[u8; 4]) -> Option<(usize, usize)> {
+    let be32 = |at: usize| -> Option<u32> {
+        Some(u32::from_be_bytes(profile.get(at..at + 4)?.try_into().ok()?))
+    };
+    let count = be32(128)? as usize;
+    for i in 0..count.min(256) {
+        let at = 132 + i * 12;
+        if profile.get(at..at + 4)? == sig {
+            let off = be32(at + 4)? as usize;
+            let len = be32(at + 8)? as usize;
+            return (profile.len() >= off + len).then_some((off, len));
+        }
+    }
+    None
+}
+
+/// Матрица колорантов профиля: столбцы rXYZ/gXYZ/bXYZ (в PCS D50).
+fn icc_matrix(profile: &[u8]) -> Option<[f32; 9]> {
+    let mut cols = [[0.0f32; 3]; 3];
+    for (i, sig) in [b"rXYZ", b"gXYZ", b"bXYZ"].into_iter().enumerate() {
+        let (off, _) = icc_tag(profile, sig)?;
+        for row in 0..3 {
+            let at = off + 8 + row * 4;
+            let v = i32::from_be_bytes(profile.get(at..at + 4)?.try_into().ok()?);
+            cols[i][row] = v as f32 / 65536.0;
+        }
+    }
+    // Хранение по столбцам -> матрица по строкам.
+    Some([
+        cols[0][0], cols[1][0], cols[2][0],
+        cols[0][1], cols[1][1], cols[2][1],
+        cols[0][2], cols[1][2], cols[2][2],
+    ])
+}
+
+/// Кривая `curv`: пустая — линейная, одно число — гамма, иначе таблица.
+enum IccCurve {
+    Gamma(f32),
+    Table(Vec<f32>),
+}
+
+fn icc_curve(profile: &[u8], sig: &[u8; 4]) -> Option<IccCurve> {
+    let (off, _) = icc_tag(profile, sig)?;
+    if profile.get(off..off + 4)? != b"curv" {
+        return None;
+    }
+    let count = u32::from_be_bytes(profile.get(off + 8..off + 12)?.try_into().ok()?) as usize;
+    match count {
+        0 => Some(IccCurve::Gamma(1.0)),
+        1 => {
+            let v = u16::from_be_bytes(profile.get(off + 12..off + 14)?.try_into().ok()?);
+            Some(IccCurve::Gamma(v as f32 / 256.0))
+        }
+        n => {
+            let mut table = Vec::with_capacity(n.min(65536));
+            for i in 0..n.min(65536) {
+                let at = off + 12 + i * 2;
+                let v = u16::from_be_bytes(profile.get(at..at + 2)?.try_into().ok()?);
+                table.push(v as f32 / 65535.0);
+            }
+            Some(IccCurve::Table(table))
+        }
+    }
+}
+
+/// Значение кривой в точке 0..1 (таблица — с интерполяцией).
+fn curve_at(c: &IccCurve, v: f32) -> f32 {
+    match c {
+        IccCurve::Gamma(g) => v.max(0.0).powf(*g),
+        IccCurve::Table(t) => {
+            if t.len() < 2 {
+                return v;
+            }
+            let x = v.clamp(0.0, 1.0) * (t.len() - 1) as f32;
+            let i = (x as usize).min(t.len() - 2);
+            let k = x - i as f32;
+            t[i] + (t[i + 1] - t[i]) * k
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

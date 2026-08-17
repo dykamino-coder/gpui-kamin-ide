@@ -325,7 +325,15 @@ fn decode(bytes: &[u8]) -> Option<Source> {
         let size = svg_size(&markup);
         return Some(Source::Vector { markup, size });
     }
-    gpui::raster_bytes_to_image(bytes).map(Source::Raster)
+    let image = gpui::raster_bytes_to_image(bytes)?;
+    // Вшитый цветовой профиль (PNG `iCCP`) — часть картинки: её точки заданы
+    // в ЕГО пространстве (css-color-4 §12, tagged images).
+    if let Some(profile) = gpui::png_icc_profile(bytes)
+        && let Some(fixed) = crate::color_space::apply_icc(&image, &profile)
+    {
+        return Some(Source::Raster(fixed));
+    }
+    Some(Source::Raster(image))
 }
 
 /// Своя величина рисунка: `width`/`height` корневого тега, иначе `viewBox`.

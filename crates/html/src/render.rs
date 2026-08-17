@@ -3206,9 +3206,17 @@ fn image(e: &Element) -> AnyElement {
             .strip_prefix("file:///")
             .or_else(|| src.strip_prefix("file://"))
             .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-        let mut image = match local {
-            Some(path) => gpui::img(std::path::PathBuf::from(path)),
-            None => gpui::img(SharedString::from(src.to_string())),
+        // Растровый файл декодируется СРАЗУ, своим декодером: штатный путь
+        // грузит асинхронно (кадр успевал сняться до загрузки — стенд мигал),
+        // и не применяет вшитый цветовой профиль (css-color-4 §12).
+        let own = crate::background::source(local.unwrap_or(src)).and_then(|s| match s {
+            crate::background::Source::Raster(image) => Some(image),
+            crate::background::Source::Vector { .. } => None,
+        });
+        let mut image = match (own, local) {
+            (Some(ready), _) => gpui::img(ready),
+            (None, Some(path)) => gpui::img(std::path::PathBuf::from(path)),
+            (None, None) => gpui::img(SharedString::from(src.to_string())),
         };
         // Картинку арифметикой над своими цветами не поправить — но
         // обесцвечивание у неё своё, встроенное.
