@@ -3487,6 +3487,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Раздельные рамки — умолчание; при `collapse` зазора между ячейками нет.
     let spacing = match (e.style.border_collapse, e.style.border_spacing) {
         (Some(true), _) => (0.0, 0.0),
+        (None, _) if e.attr("rules").is_some() => (0.0, 0.0),
         // Заданный `border-spacing` перекрывает умолчание браузера в 2px.
         (_, Some((x, y))) => (
             match x {
@@ -3510,10 +3511,36 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Без этого содержимое просто пропадало: сборщик рядов видел только
     // настоящие `<tr>` и группы.
     let fixed = fixup_table_children(&e.children);
+    // `<thead>` встаёт первым, `<tfoot>` — последним (CSS 2.2 §17.5.3,
+    // HTML §14.3.9) СТАБИЛЬНОЙ перестановкой ГРУПП: прочий порядок детей
+    // не трогается. Прошлая попытка ломала css-position — она сдвигала
+    // ряды и там, где группы уже стояли по порядку.
+    let fixed = {
+        let first_of = |tag: &str| -> Option<u64> {
+            fixed.iter().find_map(|n| match n {
+                Node::Element(g) if g.tag == tag => Some(g.node_id),
+                _ => None,
+            })
+        };
+        // Заголовочной и подвальной становится только ПЕРВАЯ группа
+        // своего рода; последующие thead/tfoot — обычные группы рядов.
+        let head = first_of("thead");
+        let foot = first_of("tfoot");
+        let key = |n: &Node| match n {
+            Node::Element(g) if Some(g.node_id) == head => 0u8,
+            Node::Element(g) if Some(g.node_id) == foot => 2,
+            _ => 1,
+        };
+        let ordered = fixed.windows(2).all(|w| key(&w[0]) <= key(&w[1]));
+        if ordered {
+            fixed
+        } else {
+            let mut sorted = fixed;
+            sorted.sort_by_key(key);
+            sorted
+        }
+    };
     let mut rows: Vec<(&Element, RowCarry)> = vec![];
-    // ПРОБОВАЛИ И ОТКАТИЛИ: переносить `<thead>` в начало, а `<tfoot>` в
-    // конец (HTML §14.3.9). Замерено: writing-modes +1, css-position −4 —
-    // порядок сбора сдвигал ряды там, где группы и так стояли по порядку.
     collect_rows(&fixed, (0.0, 0.0, None), &mut rows);
     // Ширина таблицы — сумма ОБЪЕДИНЕНИЙ, а не число ячеек: строка из двух
     // ячеек с `colspan=2` даёт четыре колонки, и без этого содержимое
@@ -3643,6 +3670,34 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         px_of(table_border.left),
     ];
     let table_edges = crate::interact::cell_edges_for(e.node_id ^ opts.doc_salt);
+    let collapse_cells = e.style.border_collapse == Some(true)
+        || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
+    // Легаси-атрибут `rules` (HTML rendering §15.3.10): `groups` даёт
+    // группам рядов тонкие кромки по умолчанию.
+    let rules_groups = e
+        .attr("rules")
+        .is_some_and(|v| v.eq_ignore_ascii_case("groups"));
+    // Границы ГРУПП РЯДОВ: первый/последний ряд группы несёт её кромку
+    // (UA-хинт `rules=groups` — тонкая сплошная, если авторState не задал).
+    let mut group_of: std::collections::HashMap<u64, (&Element, bool, bool)> =
+        std::collections::HashMap::new();
+    for child in &e.children {
+        let Node::Element(g) = child else { continue };
+        if !matches!(g.tag.as_str(), "thead" | "tbody" | "tfoot") {
+            continue;
+        }
+        let trs: Vec<u64> = g
+            .children
+            .iter()
+            .filter_map(|c| match c {
+                Node::Element(r) if r.tag == "tr" => Some(r.node_id),
+                _ => None,
+            })
+            .collect();
+        for (i, id) in trs.iter().enumerate() {
+            group_of.insert(*id, (g, i == 0, i + 1 == trs.len()));
+        }
+    }
     let mut row_ix = 0i16;
     // Занятость колонок ячейками с rowspan из ПРЕДЫДУЩИХ рядов: без неё
     // номер колонки считался по порядку детей ряда и съезжал — рамки,
@@ -3736,7 +3791,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // целиком — их рисует отдельный слой кромок на линиях сетки
             // (см. interact::EdgePainter): кромка соседей ОДНА, рисуется
             // поверх фонов, и «шире побеждает» решается наложением.
-            let cell_edge = if e.style.border_collapse == Some(true) {
+            let cell_edge = if collapse_cells {
                 let b = cell.style.borders();
                 let widths = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
                 let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
@@ -3897,7 +3952,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // Полосы фонов рядов и колонок в сросшейся модели начинаются от
             // СЕРЕДИНЫ рамки таблицы (CSS 2.1 §17.6.2): пробы сдвинуты на
             // полкромки — сами ячейки остаются в потоке с полной рамкой.
-            let shift = if e.style.border_collapse == Some(true) {
+            let shift = if collapse_cells {
                 (-bw[3] / 2.0, -bw[0] / 2.0)
             } else {
                 (0.0, 0.0)
@@ -3928,11 +3983,55 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     }
                 }
             }
+            // Кромки ГРУППЫ РЯДОВ: верх у первого ряда группы, низ у
+            // последнего; `rules=groups` даёт тонкую сплошную по умолчанию.
+            if collapse_cells
+                && let Some((g, first, last)) = group_of.get(&row.node_id).copied()
+            {
+                let b = g.style.borders();
+                let default_w = if rules_groups { 1.0 } else { 0.0 };
+                let explicit_top = g.style.border_width.top.is_some()
+                    || g.style.border_visible[0].is_some();
+                let explicit_bottom = g.style.border_width.bottom.is_some()
+                    || g.style.border_visible[2].is_some();
+                let top_w = if explicit_top { px_of(b.top) } else { default_w };
+                let bottom_w = if explicit_bottom { px_of(b.bottom) } else { default_w };
+                // Боковые кромки группы несут крайние ячейки ряда.
+                let start_col = col_ix - span_cols as usize;
+                let last_col = col_ix >= cols as usize;
+                let widths = [
+                    if first { top_w } else { 0.0 },
+                    if last_col { px_of(b.right) } else { 0.0 },
+                    if last { bottom_w } else { 0.0 },
+                    if start_col == 0 { px_of(b.left) } else { 0.0 },
+                ];
+                if widths.iter().any(|w| *w > 0.0) {
+                    let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+                    let side_colour = |k: usize| {
+                        g.style.border_colors[k].or(g.style.border_color).unwrap_or(black)
+                    };
+                    let colors = [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+                    let side_style = |k: usize| {
+                        g.style.border_side_styles[k]
+                            .unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
+                    };
+                    let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
+                    d = d.child(crate::interact::edge_probe(
+                        table_edges.clone(),
+                        widths,
+                        colors,
+                        styles,
+                        1,
+                        g.node_id as u32,
+                        [0.0; 4],
+                    ));
+                }
+            }
             // Кромки КОЛОНКИ (рамка <col>/<colgroup>) — участники разбора
             // сросшихся конфликтов (источник между ячейкой и таблицей):
             // ячейка колонки несёт её кромку на совпадающем со спаном
             // колонки краю; верх/низ — только крайние ряды.
-            if e.style.border_collapse == Some(true) {
+            if collapse_cells {
                 for i in cell_cols {
                     let Some(el) = col_els.get(i).copied().flatten() else { continue };
                     let b = el.style.borders();
@@ -4113,7 +4212,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // закрашивалась бы их фоном. Поэтому у самой коробки рамка снимается,
     // её место держит паддинг, сетка выезжает на его половину, а красит
     // рамку кольцевой квад ПОСЛЕ сетки.
-    let collapse = e.style.border_collapse == Some(true);
+    let collapse = e.style.border_collapse == Some(true)
+        || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
     let host_style;
     let mut outer = if collapse {
         let mut c = inherited.clone();
