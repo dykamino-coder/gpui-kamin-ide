@@ -604,12 +604,35 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // Обрезка с ПОЛЕМ снимается с коробки: раскладка режет ровно по её краю,
     // а поле требует резать дальше наружу. Маску ставит свой слой
     // (`interact::ClipMargin`), его заводит сборщик дерева.
-    let boxed = c.clip_margin.is_none();
-    if boxed && (c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll)) {
+    if c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll) {
         d = d.overflow_x_hidden();
     }
-    if boxed && (c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll)) {
+    if c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll) {
         d = d.overflow_y_hidden();
+    }
+    // Поле обрезки: край отодвигается от коробки отсчёта (css-overflow-3 §5).
+    // Сдвиг несёт РОДНАЯ маска (патч GPUI): рамка и фон самой коробки
+    // рисуются вне маски, режется только содержимое — обёртка снаружи резала
+    // и рамку.
+    if let Some(m) = c.clip_margin {
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let border = c.borders();
+        let b = [side(border.top), side(border.right), side(border.bottom), side(border.left)];
+        let pd = [
+            side(c.padding.top),
+            side(c.padding.right),
+            side(c.padding.bottom),
+            side(c.padding.left),
+        ];
+        let arr = match c.clip_margin_box {
+            Some(2) => [b[0] + m, b[1] + m, b[2] + m, b[3] + m],
+            Some(0) => [m - pd[0], m - pd[1], m - pd[2], m - pd[3]],
+            _ => [m; 4],
+        };
+        d.style().overflow_clip_offset = Some(arr);
     }
     // Края двигают только позиционированный элемент. У обычного (`static`)
     // браузер их игнорирует, а мы сдвигали — блок с `top` в потоке уезжал.

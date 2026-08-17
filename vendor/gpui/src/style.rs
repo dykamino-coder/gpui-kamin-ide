@@ -154,6 +154,10 @@ pub struct Style {
     /// How children overflowing their container should affect layout
     #[refineable]
     pub overflow: Point<Overflow>,
+    /// KaminIDE patch: сдвиг края обрезки от padding-box наружу по сторонам
+    /// (`overflow-clip-margin`, css-overflow-3 §5): верх/право/низ/лево в
+    /// логических точках. Отрицательный — внутрь (отсчёт от content-box).
+    pub overflow_clip_offset: Option<[f32; 4]>,
     /// How much space (in points) should be reserved for the scrollbars of `Overflow::Scroll` and `Overflow::Auto` nodes.
     pub scrollbar_width: AbsoluteLength,
     /// Whether both x and y axis should be scrollable at the same time.
@@ -644,6 +648,14 @@ impl Style {
                     min.y += self.border_widths.top.to_pixels(rem_size);
                     max.y -= self.border_widths.bottom.to_pixels(rem_size);
                 }
+                // KaminIDE patch: край обрезки отодвигается наружу на
+                // заданное поле (внутрь — при отсчёте от content-box).
+                if let Some([top, right, bottom, left]) = self.overflow_clip_offset {
+                    min.x -= crate::px(left);
+                    max.x += crate::px(right);
+                    min.y -= crate::px(top);
+                    max.y += crate::px(bottom);
+                }
 
                 let bounds = match (
                     self.overflow.x == Overflow::Visible,
@@ -823,6 +835,7 @@ impl Default for Style {
                 x: Overflow::Visible,
                 y: Overflow::Visible,
             },
+            overflow_clip_offset: None,
             allow_concurrent_scroll: false,
             restrict_scroll_to_axis: false,
             scrollbar_width: AbsoluteLength::default(),

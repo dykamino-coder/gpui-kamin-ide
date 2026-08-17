@@ -682,7 +682,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Анимация оборачивает ЛЮБОЙ элемент: таблицу, список, картинку —
             // раньше она доставалась только простому блоку.
             let built = grouped(
-                clip_margin(transformed(animated(e, inherited, opts), &e.style), &e.style),
+                transformed(animated(e, inherited, opts), &e.style),
                 &e.style,
             );
             let built = vertical_hug(built, e, inherited);
@@ -2619,20 +2619,6 @@ fn sticky_wrap(
     gpui::deferred(wrapper)
         .with_priority(c.z_index.unwrap_or(0).max(0) as usize)
         .into_any_element()
-}
-
-/// Обрезка с полем: маска шире коробки на `overflow-clip-margin`.
-fn clip_margin(el: AnyElement, c: &Computed) -> AnyElement {
-    let Some(margin) = c.clip_margin else {
-        return el;
-    };
-    // Поле имеет смысл только там, где обрезка вообще есть.
-    if c.overflow_x == Some(crate::computed::Overflow::Visible)
-        && c.overflow_y == Some(crate::computed::Overflow::Visible)
-    {
-        return el;
-    }
-    crate::interact::ClipMargin::new(el, margin).into_any_element()
 }
 
 /// Отрисовать поддерево в отдельный буфер, когда эффекту нужна готовая

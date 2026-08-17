@@ -926,6 +926,9 @@ pub struct Computed {
     pub bg_origin: Option<BgClip>,
     /// `overflow-clip-margin`: на сколько обрезка отступает НАРУЖУ от коробки.
     pub clip_margin: Option<f32>,
+    /// Коробка отсчёта края обрезки: 0 content, 1 padding, 2 border;
+    /// None — умолчание (padding-box).
+    pub clip_margin_box: Option<u8>,
     /// `clip-path: polygon(…)`: вершины в долях или точках коробки.
     pub clip_polygon: Option<Vec<(Len, Len)>>,
     /// `mix-blend-mode`: как слой смешивается с тем, что под ним.
@@ -1727,13 +1730,29 @@ impl Computed {
             // отодвигается наружу (css-overflow-3 §5). Запись допускает и
             // указание коробки отсчёта — её мы не различаем, край один.
             "overflow-clip-margin" => {
-                self.clip_margin = v
-                    .split_whitespace()
-                    .find_map(Len::parse)
-                    .and_then(|l| match l {
-                        Len::Px(px) if px > 0.0 => Some(px),
-                        _ => None,
-                    })
+                // `<visual-box> || <length>`: коробка отсчёта и поле, в любом
+                // порядке, любая часть может отсутствовать (умолчание —
+                // padding-box, поле 0).
+                let mut margin = None;
+                let mut bx = None;
+                for w in v.split_whitespace() {
+                    match w {
+                        "border-box" => bx = Some(2u8),
+                        "padding-box" => bx = Some(1),
+                        "content-box" => bx = Some(0),
+                        t => {
+                            if let Some(Len::Px(px)) = Len::parse(t)
+                                && px >= 0.0
+                            {
+                                margin = Some(px);
+                            }
+                        }
+                    }
+                }
+                if margin.is_some() || bx.is_some() {
+                    self.clip_margin = Some(margin.unwrap_or(0.0));
+                    self.clip_margin_box = bx;
+                }
             }
 
             // Сокращение несёт всё сразу: `background: #fff url(a.png) no-repeat`
