@@ -522,6 +522,7 @@ fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> 
                 crate::interact::clamp_lines_for(key),
                 line_height_px(inherited, opts),
                 skip,
+                false,
             ))
             .into_any_element()
     } else {
@@ -3347,6 +3348,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         crate::interact::clamp_lines_for(key),
                         0.0,
                         skip,
+                        e.style.height.is_some() || e.style.min_height.is_some(),
                     ));
                 }
             }
