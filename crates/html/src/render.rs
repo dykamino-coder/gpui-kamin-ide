@@ -914,10 +914,6 @@ fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
 /// Раскладка их складывает, поэтому у второго и следующих соседей ведущий
 /// отступ уменьшается на уже занятый предыдущим.
 fn collapse_flow_margins(children: Vec<Node>, reverse: bool) -> Vec<Node> {
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
     let mut out = children;
     let mut trailing: Option<f32> = None;
     for node in out.iter_mut() {
@@ -928,15 +924,19 @@ fn collapse_flow_margins(children: Vec<Node>, reverse: bool) -> Vec<Node> {
         } else {
             (child.style.margin.left, child.style.margin.right)
         };
+        // Доли кегля разрешаются здесь же: голый разбор точек считал `1em`
+        // нулём и ЗАПИСЫВАЛ ноль — поле абзаца вдоль вертикального потока
+        // пропадало вовсе (wm-propagation-body-*).
+        let lead_px = margin_px(lead, &child.style).unwrap_or(0.0);
         if let Some(prev) = trailing {
-            let kept = (px_of(lead) - prev).max(0.0);
+            let kept = (lead_px - prev).max(0.0);
             if reverse {
                 child.style.margin.right = Some(Len::Px(kept));
             } else {
                 child.style.margin.left = Some(Len::Px(kept));
             }
         }
-        trailing = Some(px_of(tail));
+        trailing = Some(margin_px(tail, &child.style).unwrap_or(0.0));
     }
     out
 }
