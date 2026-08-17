@@ -864,12 +864,26 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
             d.style().mouse_cursor = Some(st);
         }
     }
-    if !c.inset_shadows.is_empty() {
+        // Тень без своего цвета — цветом текста ЭТОГО элемента (метка:
+    // отрицательная альфа; css-backgrounds-3 §7, currentColor).
+    let shadow_colour = |sh: &crate::computed::Shadow| {
+        if sh.color.a < 0.0 {
+            c.color.unwrap_or(crate::value::Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            })
+        } else {
+            sh.color
+        }
+    };
+if !c.inset_shadows.is_empty() {
         d.style().inset_box_shadow = Some(
             c.inset_shadows
                 .iter()
                 .map(|s| gpui::BoxShadow {
-                    color: s.color.to_hsla(),
+                    color: shadow_colour(s).to_hsla(),
                     offset: gpui::point(px(s.x), px(s.y)),
                     blur_radius: px(s.blur),
                     spread_radius: px(s.spread),
@@ -882,7 +896,7 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
             c.shadows
                 .iter()
                 .map(|s| gpui::BoxShadow {
-                    color: s.color.to_hsla(),
+                    color: shadow_colour(s).to_hsla(),
                     offset: gpui::point(px(s.x), px(s.y)),
                     blur_radius: px(s.blur),
                     spread_radius: px(s.spread),

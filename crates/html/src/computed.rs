@@ -660,6 +660,8 @@ pub struct Computed {
     /// слиянии стилей.
     pub(crate) border_inherit: bool,
     pub(crate) padding_inherit: bool,
+    /// `box-shadow: inherit`.
+    pub(crate) shadow_inherit: bool,
     /// Относительный цвет фона (css-color-5): функция с `from currentColor`
     /// не решается при разборе — она наследуется КАК ФУНКЦИЯ и считается от
     /// цвета каждого элемента заново.
@@ -1835,6 +1837,10 @@ impl Computed {
                 }
             }
             "box-shadow" => {
+                if v == "inherit" {
+                    self.shadow_inherit = true;
+                    return;
+                }
                 // `inset` в записи означает тень ВНУТРИ фигуры: раньше такая
                 // запись просто не рисовалась.
                 let (inset, outer): (Vec<&str>, Vec<&str>) = crate::css::split_args(v)
