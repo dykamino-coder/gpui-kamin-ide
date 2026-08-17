@@ -3534,6 +3534,17 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             {
                 cell.style.width = None;
             }
+            // Высота ячейки — МИНИМУМ (css-tables §3.6): содержимое выше
+            // растит ячейку, а не режется. `height: 20px` с блоком в 300
+            // прятал всё под обрезкой.
+            if let Some(Len::Px(h)) = cell.style.height {
+                cell.style.height = None;
+                let floor = match cell.style.min_height {
+                    Some(Len::Px(v)) => v.max(h),
+                    _ => h,
+                };
+                cell.style.min_height = Some(Len::Px(floor));
+            }
             let cell = &cell;
             let mut d = styled_div(cell);
             // Заливка строки И ГРУППЫ строк: своей коробки у них в общей сетке
