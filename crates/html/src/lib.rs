@@ -45,25 +45,28 @@ pub mod value;
 /// точек, отступы абзацев и заголовков в долях кегля, отбивка списка в 40
 /// точек. Передаётся вторым доводом в [`Document::new`] — он идёт после
 /// таблицы движка и до `<style>` самого документа.
+// Отступы потоковых тегов — ЛОГИЧЕСКИЕ (margin-block/margin-inline), как в
+// настоящей таблице UA (whatwg rendering §15.3.3): при вертикальном письме
+// они поворачиваются на горизонтальную ось (wm-propagation-body-*).
 pub const BROWSER_CSS: &str = r#"
     body { margin: 8px }
-    p { margin: 1em 0 }
+    p { margin-block: 1em; margin-inline: 0 }
     h1, h2, h3, h4, h5, h6 { font-weight: bold }
-    h1 { font-size: 2em; margin: 0.67em 0 }
-    h2 { font-size: 1.5em; margin: 0.83em 0 }
-    h3 { font-size: 1.17em; margin: 1em 0 }
-    h4 { font-size: 1em; margin: 1.33em 0 }
-    h5 { font-size: 0.83em; margin: 1.67em 0 }
-    h6 { font-size: 0.67em; margin: 2.33em 0 }
-    ul, ol { margin: 1em 0; padding-left: 40px }
+    h1 { font-size: 2em; margin-block: 0.67em; margin-inline: 0 }
+    h2 { font-size: 1.5em; margin-block: 0.83em; margin-inline: 0 }
+    h3 { font-size: 1.17em; margin-block: 1em; margin-inline: 0 }
+    h4 { font-size: 1em; margin-block: 1.33em; margin-inline: 0 }
+    h5 { font-size: 0.83em; margin-block: 1.67em; margin-inline: 0 }
+    h6 { font-size: 0.67em; margin-block: 2.33em; margin-inline: 0 }
+    ul, ol { margin-block: 1em; margin-inline: 0; padding-left: 40px }
     li { margin: 0 }
-    dl { margin: 1em 0 }
+    dl { margin-block: 1em; margin-inline: 0 }
     dd { margin-left: 40px }
     dt { font-weight: normal; margin: 0 }
-    blockquote { margin: 1em 40px; padding-left: 0; border-left: none }
-    figure { margin: 1em 40px }
+    blockquote { margin-block: 1em; margin-inline: 40px; padding-left: 0; border-left: none }
+    figure { margin-block: 1em; margin-inline: 40px }
     figcaption { font-size: 1em; margin: 0 }
-    pre { margin: 1em 0; padding: 0; font-size: 1em; white-space: pre }
+    pre { margin-block: 1em; margin-inline: 0; padding: 0; font-size: 1em; white-space: pre }
     code, kbd, samp { font-size: 1em }
     small { font-size: 0.83em }
     hr { height: 0; margin: 0.5em 0; background: none; border: 1px inset gray }

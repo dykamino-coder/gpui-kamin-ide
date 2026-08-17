@@ -1053,8 +1053,14 @@ impl Computed {
         // (получает `gap-002-rl`): размер там задан логическим свойством, и
         // после перестановки он ложится поперёк уже повёрнутой раскладки.
         let vertical = false;
-        let rl = false;
         let rtl = self.rtl == Some(true);
+        // Стороны (поля/отступы/края) переставляются ПО-НАСТОЯЩЕМУ: блочный
+        // поток вертикального письма собирается транспонированным рядом
+        // (`flex_row(_reverse)`), а не поворотом — `margin-block` абзаца в
+        // vertical-rl обязан лечь горизонтально (wm-propagation-body-*).
+        // Размеры остаются без перестановки (замерено дважды, см. выше).
+        let side_vertical = self.vertical == Some(true);
+        let side_rl = self.vertical_rl == Some(true);
         // Логическое значение ПЕРЕКРЫВАЕТ физическое, а не только заполняет
         // пустое. Так вело себя прежнее разложение при разборе (оно писало
         // прямо в физическое поле), и порядок объявлений в правиле от этого
@@ -1096,8 +1102,8 @@ impl Computed {
                 1 => &mut self.margin,
                 _ => &mut self.inset,
             };
-            let (i_start, i_end, b_start, b_end) = if vertical {
-                let (bs, be) = if rl { (3u8, 1u8) } else { (1, 3) };
+            let (i_start, i_end, b_start, b_end) = if side_vertical {
+                let (bs, be) = if side_rl { (3u8, 1u8) } else { (1, 3) };
                 let (is, ie) = if rtl { (2u8, 0u8) } else { (0, 2) };
                 (is, ie, bs, be)
             } else if rtl {
