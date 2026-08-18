@@ -1590,12 +1590,23 @@ impl IntoElement for CombinedUpright {
     }
 }
 
+thread_local! {
+    /// Двухкадровый замер повёрнутого блока: ключ абзаца → фактическая
+    /// высота содержимого при РЕШЁННОЙ длине строки (см. `prepaint`).
+    /// Первый кадр заявляет ширину по свободному замеру, второй — по факту;
+    /// стенд и так ждёт устоявшийся кадр (как пробы ячеек).
+    static VT_MEASURED: std::cell::RefCell<std::collections::HashMap<u64, Pixels>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
 pub struct VerticalText {
     child: Option<AnyElement>,
     /// Естественный размер содержимого до поворота.
     natural: gpui::Size<Pixels>,
     /// Потолок заявляемой высоты (см. `claiming_height`).
     claim_cap: Option<Pixels>,
+    /// Ключ двухкадрового замера (текст абзаца + соль документа).
+    key: Option<u64>,
 }
 
 impl VerticalText {
@@ -1604,7 +1615,15 @@ impl VerticalText {
             child: Some(child),
             natural: gpui::Size::default(),
             claim_cap: None,
+            key: None,
         }
+    }
+
+    /// Включить двухкадровый замер: заявка ширины уточняется фактом
+    /// прошлого кадра (перенос строк меняет число колонок).
+    pub fn keyed(mut self, key: u64) -> Self {
+        self.key = Some(key);
+        self
     }
 
     /// Заявить и высоту — потолком родителя, только при ПОЛНОМ зажиме
@@ -1662,8 +1681,18 @@ impl Element for VerticalText {
         if std::env::var("VT_DBG").is_ok() {
             eprintln!("VT2 natural={:?} cap={:?}", self.natural, self.claim_cap);
         }
+        // Факт прошлого кадра сильнее свободного замера: перенос строк при
+        // решённой длине меняет число колонок, а свободный замер его не
+        // видит (text-combine-upright-line-breaking-rules-001).
+        let claim = self
+            .key
+            .and_then(|k| VT_MEASURED.with(|c| c.borrow().get(&k).copied()))
+            .unwrap_or(self.natural.height);
+        if std::env::var("VT_DBG").is_ok() {
+            eprintln!("VT3 key={:?} claim={:?}", self.key, claim);
+        }
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
-            gpui::AbsoluteLength::Pixels(self.natural.height),
+            gpui::AbsoluteLength::Pixels(claim),
         ));
         if let Some(cap) = self.claim_cap
             && self.natural.width >= cap
@@ -1701,7 +1730,20 @@ impl Element for VerticalText {
                 gpui::AvailableSpace::Definite(along),
                 gpui::AvailableSpace::Definite(bounds.size.width),
             );
-            child.layout_as_root(space, window, cx);
+            let sized = child.layout_as_root(space, window, cx);
+            // Факт для следующего кадра: высота содержимого при решённой
+            // длине строки — она и есть настоящая ширина повёрнутого блока.
+            if let Some(k) = self.key
+                && sized.height > gpui::px(0.)
+            {
+                VT_MEASURED.with(|c| {
+                    let mut map = c.borrow_mut();
+                    if map.len() >= 256 {
+                        map.clear();
+                    }
+                    map.insert(k, sized.height);
+                });
+            }
         }
         child.prepaint_at(bounds.origin, window, cx);
     }

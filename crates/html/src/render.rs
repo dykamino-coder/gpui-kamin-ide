@@ -2311,7 +2311,8 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // §7.3) и только при ПОЛНОМ зажиме — иначе коробка без высоты
         // схлопывалась в ноль (даже фон пропадал), а заявка без зажима
         // делала её бесконечной (замерено: wm 118 → 104).
-        let vt = crate::interact::VerticalText::new(inner);
+        let vt = crate::interact::VerticalText::new(inner)
+            .keyed(text_id(&plain) ^ opts.doc_salt ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9));
         let vt = if let Some(Len::Px(cap)) = inherited.max_height {
             vt.claiming_height(px(cap))
         } else {
