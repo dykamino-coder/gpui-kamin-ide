@@ -3541,6 +3541,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 }
                 merged.ortho_limit = Some(h);
             }
+        } else if e.style.vertical == Some(true)
+            && let Some(h) = px_of(e.style.max_height)
+        {
+            // Потолок без высоты тоже режет доступное место ортогонального
+            // потока — у САМОГО вертикального блока: `max-height` ему ставит
+            // ортогональная механика (h контейнера минус поля) или автор, и
+            // строка переносится по нему, а не по потолку выше
+            // (sizing-orthogonal-percentage-margin-001: 100, не 200;
+            // table-cell-002-ref: div vertical-rl c max-height 100 обязан
+            // сложиться в квадрат из двух колонок).
+            merged.ortho_limit = Some(h);
         }
     }
     // Псевдоэлементы принадлежат ЭТОМУ узлу: они едут в стиль его детей на
@@ -4500,7 +4511,18 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             while col_ix < occupied.len() && occupied[col_ix] > 0 {
                 col_ix += 1;
             }
-            let cm = inline::inherit(&row_style, &cell.style);
+            let mut cm = inline::inherit(&row_style, &cell.style);
+            // Потолок вертикальной ячейки режет доступное место её
+            // ортогонального потока — как у блока (см. ortho_limit в
+            // element): стопка глифов переносится на следующую колонку по
+            // нему (table-cell-002: td vertical-rl с max-height 100 —
+            // зелёный квадрат из двух колонок).
+            if cell.style.vertical == Some(true)
+                && cm.ortho_limit.is_none()
+                && let Some(Len::Px(h)) = cell.style.height.or(cell.style.max_height)
+            {
+                cm.ortho_limit = Some(h);
+            }
             // Объединение ячеек: без него ячейка занимала одну дорожку, и всё
             // правее неё съезжало на колонку влево.
             let span_cols: u16 = cell
