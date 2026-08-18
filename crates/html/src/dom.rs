@@ -357,6 +357,8 @@ struct Ancestor {
     spot: Spot,
     /// Адрес ссылки: нужен `:link`/`:visited`.
     href: Option<String>,
+    /// Атрибут `dir` самого узла (true = rtl): нужен `:dir()`.
+    dir: Option<bool>,
 }
 
 /// Направление письма, заданное АТРИБУТОМ: `<div dir="rtl">`.
@@ -503,6 +505,11 @@ fn walk_children(
                     .unwrap_or_default(),
                 spot,
                 href: find("href"),
+                dir: find("dir").and_then(|v| match v.to_ascii_lowercase().as_str() {
+                    "rtl" => Some(true),
+                    "ltr" => Some(false),
+                    _ => None,
+                }),
             });
         }
     }
@@ -564,6 +571,14 @@ fn walk(
                 classes: classes.clone(),
                 spot,
                 href: attrs.iter().find(|(k, _)| k == "href").map(|(_, v)| v.clone()),
+                dir: attrs
+                    .iter()
+                    .find(|(k, _)| k == "dir")
+                    .and_then(|(_, v)| match v.to_ascii_lowercase().as_str() {
+                        "rtl" => Some(true),
+                        "ltr" => Some(false),
+                        _ => None,
+                    }),
             };
 
             let inline_decls: Decls = attrs
@@ -862,6 +877,19 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) 
             let Some(href) = &me.href else { return false };
             let visited = href.is_empty() || href.starts_with('#');
             if (pseudo == "visited") != visited {
+                return false;
+            }
+            return matches_ignoring_pseudo(sel, me, path, sibs);
+        }
+        // `:dir(rtl|ltr)` — направление узла: свой атрибут `dir`, иначе
+        // ближайшего предка с ним; по умолчанию письмо слева направо
+        // (селекторы-4 §direction-pseudo).
+        if let Some(want) = pseudo.strip_prefix("dir(").and_then(|r| r.strip_suffix(')')) {
+            let rtl = me
+                .dir
+                .or_else(|| path.iter().rev().find_map(|a| a.dir))
+                .unwrap_or(false);
+            if want.trim().eq_ignore_ascii_case("rtl") != rtl {
                 return false;
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
