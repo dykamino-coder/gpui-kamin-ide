@@ -776,7 +776,7 @@ impl Element for CellsClipped {
         // Прошлый кадр забирается целиком: пробы ячеек напишут свежие
         // прямоугольники после нас, в этом же кадре.
         let rects = std::mem::take(&mut *self.rects.borrow_mut());
-        if std::env::var("HTML_ROWBG").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok()); *ON } {
             eprintln!("ROWBG paint: rects={} {:?}", rects.len(), rects);
         }
         if rects.is_empty() {
@@ -1378,7 +1378,7 @@ impl Element for ClampCut {
             cut = Some(c2);
         }
         let rel = cut.map(|c| (c - top).max(0.0));
-        if std::env::var("HTML_CLAMP_DBG").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_CLAMP_DBG").is_ok()); *ON } {
             eprintln!(
                 "CLAMPCUT key={} rows={} blocks={} limit={:?} max_h={:?} rel={:?}",
                 self.key, rows.len(), blocks.len(), self.limit, self.max_h, rel
@@ -1518,7 +1518,7 @@ impl Element for CombinedUpright {
             .as_mut()
             .unwrap()
             .layout_as_root(space, window, cx);
-        if std::env::var("VT_DBG").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok()); *ON } {
             eprintln!("VT natural={:?}", self.natural);
         }
         let mut style = gpui::Style::default();
@@ -1597,6 +1597,37 @@ thread_local! {
     /// стенд и так ждёт устоявшийся кадр (как пробы ячеек).
     static VT_MEASURED: std::cell::RefCell<std::collections::HashMap<u64, Pixels>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Счётчик ВХОЖДЕНИЙ базового ключа за кадр: два вертикальных абзаца с
+    /// одинаковым текстом и числом узлов (повторяющиеся ячейки) делили один
+    /// ключ, и замер одного применялся к другому. Порядок обхода кадра
+    /// детерминирован — порядковый номер вхождения стабилен между кадрами.
+    static VT_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u64>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Санитария начала кадра (`render`/`render_block`): счётчик вхождений
+/// VT-ключей обнуляется, а НЕЗАКРЫТЫЕ слои позиционированных выбрасываются —
+/// пойманная паника прошлого кадра оставляла слой навсегда, и `late_close`
+/// следующей страницы отдавал чужие элементы.
+/// Забыть двухкадровые замеры вертикальных абзацев — при смене документа:
+/// ключи солятся документом, но мусор копился бы бесконечно.
+pub fn forget_vt_measures() {
+    VT_MEASURED.with(|c| c.borrow_mut().clear());
+}
+
+pub fn frame_sanitize() {
+    VT_SEQ.with(|c| c.borrow_mut().clear());
+    LATE.with(|s| s.borrow_mut().clear());
+}
+
+/// Ключ с порядковым номером вхождения базового ключа в этом кадре.
+pub fn vt_seq_key(base: u64) -> u64 {
+    VT_SEQ.with(|c| {
+        let mut m = c.borrow_mut();
+        let n = m.entry(base).or_insert(0);
+        *n += 1;
+        base ^ n.wrapping_mul(0x517C_C1B7_2722_0A95)
+    })
 }
 
 pub struct VerticalText {
@@ -1691,7 +1722,7 @@ impl Element for VerticalText {
         // строк, его меньше не сделать. А высота — длина строки, и её решает
         // родитель: заявленная здесь, она делала коробку сколь угодно длинной,
         // ограничение до текста не доходило, и он не переносился никогда.
-        if std::env::var("VT_DBG").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok()); *ON } {
             eprintln!("VT2 natural={:?} cap={:?}", self.natural, self.claim_cap);
         }
         // Факт прошлого кадра сильнее свободного замера: перенос строк при
@@ -1701,7 +1732,7 @@ impl Element for VerticalText {
             .key
             .and_then(|k| VT_MEASURED.with(|c| c.borrow().get(&k).copied()))
             .unwrap_or(self.natural.height);
-        if std::env::var("VT_DBG").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok()); *ON } {
             eprintln!("VT3 key={:?} claim={:?}", self.key, claim);
         }
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(

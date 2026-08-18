@@ -84,6 +84,28 @@ pub fn spacing_px(len: Option<crate::value::Len>, family: &str, size_px: f32) ->
     }
 }
 
+/// Длина в точках при НЕИЗВЕСТНОМ контексте (узел вне наследования, фон,
+/// скругление): кегль — запасной, метрики — по семейству (пустое — шрифт-
+/// подмена). Доля родителя, единицы окна и размеры по содержимому здесь не
+/// решаются — их значение знает только вызывающий.
+///
+/// Единая точка: прежде этот match был дословно повторён в пяти местах
+/// (apply/background/computed), и правка запасных значений расходилась.
+pub fn fallback_len_px(l: crate::value::Len, family: &str, font_px: f32) -> Option<f32> {
+    use crate::value::Len;
+    Some(match l {
+        Len::Px(v) => v,
+        Len::Em(k) => k * font_px,
+        Len::EmPx(k, add) => k * font_px + add,
+        Len::Ch(k) => k * ch_ex_px(family, font_px).0,
+        Len::Ic(k) => k * ic_px(family, font_px),
+        Len::Ex(k) => k * ch_ex_px(family, font_px).1,
+        Len::Lh(k) => k * 1.2 * font_px,
+        Len::LhPx(k, add) => k * 1.2 * font_px + add,
+        _ => return None,
+    })
+}
+
 /// Высота строки при `line-height: normal` — доля кегля по метрикам шрифта.
 pub fn normal_line(family: &str) -> f32 {
     fractions(family).2

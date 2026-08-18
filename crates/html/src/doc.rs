@@ -33,6 +33,7 @@ impl Document {
         crate::color_space::load_profiles(html);
         crate::lines::forget_measures();
         crate::interact::forget_row_rects();
+        crate::interact::forget_vt_measures();
         let (nodes, root) = unwrap_document(mark_canvas_background(resolve_logical(
             propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),
         )));
@@ -359,7 +360,7 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             e.style.vertical = own.0;
             e.style.vertical_rl = own.1;
             e.style.rtl = own.2;
-            if std::env::var("LOG_DBG").is_ok()
+            if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("LOG_DBG").is_ok()); *ON }
                 && e.style.logical.as_ref().is_some_and(|l| l.border.iter().any(|b| b.is_some()))
             {
                 eprintln!(
@@ -387,7 +388,7 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
 /// `Document::new`, но БЕЗ сброса буферов замеров и проб — они принадлежат
 /// внешнему документу, и сброс посреди его отрисовки крал его состояние.
 pub fn parse_embedded(html: &str, theme_css: &str) -> (Vec<Node>, u64) {
-    crate::fonts::load_faces(html);
+    crate::fonts::load_faces_additive(html);
     crate::color_space::load_profiles(html);
     let (nodes, _root) = unwrap_document(mark_canvas_background(resolve_logical(
         propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),

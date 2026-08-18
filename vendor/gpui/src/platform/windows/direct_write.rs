@@ -589,7 +589,13 @@ impl DirectWriteState {
                 let mut u8_at = 0usize;
                 let mut u16_at = 0u32;
                 for run in font_runs {
-                    let len16 = text[u8_at..(u8_at + run.len)].encode_utf16().count() as u32;
+                    // KaminIDE patch: контракт «len на границе знака» ничем
+                    // не гарантирован — кривой прогон не должен ронять кадр.
+                    let len16 = text
+                        .get(u8_at..(u8_at + run.len))
+                        .unwrap_or("")
+                        .encode_utf16()
+                        .count() as u32;
                     if self.fonts[run.font_id.0].vert_advance {
                         vert_ranges.push((u16_at, len16));
                     }
@@ -634,7 +640,9 @@ impl DirectWriteState {
                     f32::INFINITY,
                     f32::INFINITY,
                 )?;
-                let current_text = &text[utf8_offset..(utf8_offset + first_run.len)];
+                let current_text = text
+                    .get(utf8_offset..(utf8_offset + first_run.len))
+                    .unwrap_or("");
                 utf8_offset += first_run.len;
                 let current_text_utf16_length = current_text.encode_utf16().count() as u32;
                 let text_range = DWRITE_TEXT_RANGE {
@@ -667,7 +675,9 @@ impl DirectWriteState {
                     continue;
                 }
                 let font_info = &self.fonts[run.font_id.0];
-                let current_text = &text[utf8_offset..(utf8_offset + run.len)];
+                let current_text = text
+                    .get(utf8_offset..(utf8_offset + run.len))
+                    .unwrap_or("");
                 utf8_offset += run.len;
                 let current_text_utf16_length = current_text.encode_utf16().count() as u32;
 
@@ -697,12 +707,26 @@ impl DirectWriteState {
             // и высокий кусок вылезал за строку.
             let mut metrics = vec![DWRITE_LINE_METRICS::default(); 4];
             let mut line_count = 0u32;
-            text_layout.GetLineMetrics(Some(&mut metrics), &mut line_count as _)?;
+            // KaminIDE patch: буфер на 4 строки — при большем числе строк
+            // вызов возвращал ошибку, и строка МОЛЧА пропадала (log_err у
+            // вызывающего); второй заход берёт фактическое число.
+            if text_layout
+                .GetLineMetrics(Some(&mut metrics), &mut line_count as _)
+                .is_err()
+                && line_count as usize > metrics.len()
+            {
+                metrics = vec![DWRITE_LINE_METRICS::default(); line_count as usize];
+                text_layout.GetLineMetrics(Some(&mut metrics), &mut line_count as _)?;
+            }
             let ascent = px(metrics[0].baseline);
             let descent = px(metrics[0].height - metrics[0].baseline);
 
             let mut runs = Vec::new();
-            let renderer_context = RendererContext {
+            // KaminIDE patch: контекст ОБЯЗАН быть &mut с рождения — колбэк
+            // отрисовщика мутирует его через указатель, а указатель,
+            // производный от &T, мутировать нельзя (UB по правилам
+            // алиасинга: оптимизатор вправе счесть width нулём).
+            let mut renderer_context = RendererContext {
                 text_system: self,
                 index_converter: StringIndexConverter::new(text),
                 runs: &mut runs,
@@ -710,12 +734,12 @@ impl DirectWriteState {
                 vert_ranges,
             };
             let drawn = text_layout.Draw(
-                Some(&renderer_context as *const _ as _),
+                Some(&mut renderer_context as *mut RendererContext as *const _),
                 &text_renderer.0,
                 0.0,
                 0.0,
             );
-            if std::env::var("VERT_DBG").is_ok()
+            if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("VERT_DBG").is_ok()); *ON }
                 && let Err(e) = &drawn
             {
                 eprintln!("VERT_DBG draw err={e:?} text={text:?}");
@@ -1536,6 +1560,11 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
         glyphrundescription: *const DWRITE_GLYPH_RUN_DESCRIPTION,
         _clientdrawingeffect: windows::core::Ref<windows::core::IUnknown>,
     ) -> windows::core::Result<()> {
+        // KaminIDE patch: MSDN допускает NULL в glyphRunDescription (и сам
+        // прогон) — разыменование без проверки было бы AV на чужом шрифте.
+        if glyphrun.is_null() || glyphrundescription.is_null() {
+            return Ok(());
+        }
         let glyphrun = unsafe { &*glyphrun };
         let glyph_count = glyphrun.glyphCount as usize;
         if glyph_count == 0 || glyphrun.fontFace.is_none() {
@@ -1545,10 +1574,15 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
         let context = unsafe {
             &mut *(clientdrawingcontext as *const RendererContext as *mut RendererContext)
         };
-        let font_face = glyphrun.fontFace.as_ref().unwrap();
-        // This `cast()` action here should never fail since we are running on Win10+, and
-        // `IDWriteFontFace3` requires Win10
-        let font_face = &font_face.cast::<IDWriteFontFace3>().unwrap();
+        let Some(font_face) = glyphrun.fontFace.as_ref() else {
+            return Ok(());
+        };
+        // KaminIDE patch: cast не «не может упасть» — на удалённом или
+        // экзотическом шрифте лучше молча пропустить прогон, чем упасть.
+        let Ok(font_face) = font_face.cast::<IDWriteFontFace3>() else {
+            return Ok(());
+        };
+        let font_face = &font_face;
         let Some((font_identifier, font_struct, color_font)) =
             get_font_identifier_and_font_struct(font_face, &self.locale)
         else {
@@ -1576,7 +1610,7 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
             .vert_ranges
             .iter()
             .any(|&(start, len)| desc.textPosition >= start && desc.textPosition < start + len);
-        if std::env::var("VERT_DBG").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("VERT_DBG").is_ok()); *ON } {
             eprintln!(
                 "VERT_DBG pos={} vert={} ranges={:?} adv={:?}",
                 desc.textPosition,

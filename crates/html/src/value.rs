@@ -211,6 +211,11 @@ impl Color {
 
     fn parse_hex(hex: &str) -> Option<Self> {
         let h = hex.trim();
+        // Срезы ниже — байтовые: не-ASCII знак (`#aфa`) резал бы UTF-8
+        // посреди кода и РОНЯЛ процесс на произвольной странице.
+        if !h.is_ascii() {
+            return None;
+        }
         let byte = |i: usize| {
             u8::from_str_radix(&h[i..i + 2], 16)
                 .ok()

@@ -1172,7 +1172,7 @@ impl Paragraph {
         // что узел из идеографических пробелов не доезжает до раскладки
         // ВООБЩЕ (отбрасывался разбором). Когда след ведёт «строка пропала»,
         // смотреть надо сюда, а не в саму раскладку.
-        if std::env::var("HTML_LINES").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_LINES").is_ok()); *ON } {
             eprintln!(
                 "LINES fonts={:?} {:?} -> {:?}",
                 self.runs
@@ -1866,7 +1866,7 @@ impl Element for Paragraph {
                     probe.apply_fit(w, window);
                 }
                 let lines = probe.split(limit, window);
-                if std::env::var("HTML_MEASURE").is_ok() {
+                if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_MEASURE").is_ok()); *ON } {
                     eprintln!(
                         "MEASURE {:?} known={:?}x{:?} avail={:?}x{:?} limit={:?} lines={:?}",
                         probe.text,
@@ -2154,6 +2154,16 @@ impl Element for Paragraph {
                 Align::Right => free,
                 _ => px(0.),
             } + lead;
+            if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok()); *ON } {
+                eprintln!(
+                    "TCA para {:?} align={:?} bw={:?} lw={:?} free={:?}",
+                    &self.text[..self.text.len().min(6)],
+                    align,
+                    bounds.size.width,
+                    line.width,
+                    free
+                );
+            }
             let at = point(bounds.origin.x + dx, y);
             // Висящие пробелы конца строки при письме справа налево уходят по
             // правилу L1 на ЛЕВЫЙ край и отодвигали бы текст от края коробки.

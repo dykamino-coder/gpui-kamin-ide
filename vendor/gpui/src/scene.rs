@@ -86,7 +86,7 @@ impl Scene {
     }
 
     pub fn clear(&mut self) {
-        if std::env::var("ORD_DBG").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("ORD_DBG").is_ok()); *ON } {
             eprintln!("ORD FRAME");
         }
         self.paint_operations.clear();
@@ -108,7 +108,7 @@ impl Scene {
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
         let order = self.primitive_bounds.insert(bounds);
-        if std::env::var("ORD_DBG").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("ORD_DBG").is_ok()); *ON } {
             eprintln!(
                 "ORD layer o={} x=({}, {}) y=({}, {})",
                 order, bounds.origin.x.0, bounds.size.width.0, bounds.origin.y.0, bounds.size.height.0
@@ -196,7 +196,7 @@ impl Scene {
             }
             Primitive::Quad(quad) => {
                 quad.order = order;
-                if std::env::var("ORD_DBG").is_ok() {
+                if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("ORD_DBG").is_ok()); *ON } {
                     eprintln!(
                         "ORD quad o={} x={:?} y={:?} grad={}",
                         order,
@@ -218,7 +218,7 @@ impl Scene {
             }
             Primitive::MonochromeSprite(sprite) => {
                 sprite.order = order;
-                if std::env::var("ORD_DBG").is_ok() {
+                if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("ORD_DBG").is_ok()); *ON } {
                     eprintln!(
                         "ORD mono o={} x={:?} y={:?}",
                         order,

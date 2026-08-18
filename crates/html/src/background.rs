@@ -586,13 +586,14 @@ fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
     match l? {
         Len::Px(v) => Some(v),
         Len::Pct(v) => Some(base * v),
-        Len::Em(k) => Some(k * 16.0),
-        Len::EmPx(k, add) => Some(k * 16.0 + add),
-        Len::Ch(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
-        Len::Ic(k) => Some(k * crate::metrics::ic_px("", 16.0)),
-        Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
-        Len::Lh(k) => Some(k * 1.2 * 16.0),
-        Len::LhPx(k, add) => Some(k * 1.2 * 16.0 + add),
+        // Шрифтовые единицы — от запасного кегля, единой точкой.
+        l @ (Len::Em(_)
+        | Len::EmPx(..)
+        | Len::Ch(_)
+        | Len::Ic(_)
+        | Len::Ex(_)
+        | Len::Lh(_)
+        | Len::LhPx(..)) => crate::metrics::fallback_len_px(l, "", 16.0),
         Len::Vw(_) | Len::Vh(_) => None,
         Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
     }

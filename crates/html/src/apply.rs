@@ -18,18 +18,17 @@ fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
     match l {
         Len::Px(v) => px(v).into(),
         Len::Pct(v) => relative(v),
-        // Сюда `em` доходит только у узлов вне наследования (элементы форм,
-        // корень) — считаем от базового кегля, как браузер от `:root`.
-        Len::Em(k) => px(k * 16.0).into(),
-        Len::EmPx(k, add) => px(k * 16.0 + add).into(),
-        // Тем же путём доходят `ch` и `ex`: семейство шрифта здесь неизвестно,
-        // поэтому работает запасное значение спецификации.
-        Len::Ch(k) => px(k * crate::metrics::ch_ex_px("", 16.0).0).into(),
-        Len::Ic(k) => px(k * crate::metrics::ic_px("", 16.0)).into(),
-        Len::Ex(k) => px(k * crate::metrics::ch_ex_px("", 16.0).1).into(),
-        // Неразрешённый `lh` — от базовой строки в 1.2 кегля.
-        Len::Lh(k) => px(k * 1.2 * 16.0).into(),
-        Len::LhPx(k, add) => px(k * 1.2 * 16.0 + add).into(),
+        // Сюда шрифтовые единицы доходят только у узлов вне наследования
+        // (элементы форм, корень) — запасные значения даёт единая точка.
+        l @ (Len::Em(_)
+        | Len::EmPx(..)
+        | Len::Ch(_)
+        | Len::Ic(_)
+        | Len::Ex(_)
+        | Len::Lh(_)
+        | Len::LhPx(..)) => {
+            px(crate::metrics::fallback_len_px(l, "", 16.0).unwrap_or(0.0)).into()
+        }
         // Единицы окна разрешает сборщик дерева; сюда они доходят только у
         // узлов вне его — доля родителя ближе всего по смыслу.
         Len::Vw(k) | Len::Vh(k) => relative(k),
@@ -778,17 +777,8 @@ fn apply_radius(mut d: Div, c: &Computed) -> Div {
             Len::Px(v) => Some(v),
             Len::Pct(p) if base.is_nan() => Some(9999.0 * p.min(1.0)),
             Len::Pct(p) => Some(base * p),
-            // Неразрешённый `em` — от базового кегля (см. `len_to_gpui`).
-            Len::Em(k) => Some(k * 16.0),
-            Len::EmPx(k, add) => Some(k * 16.0 + add),
-            Len::Ch(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
-            Len::Ic(k) => Some(k * crate::metrics::ic_px("", 16.0)),
-            Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
-            Len::Lh(k) => Some(k * 1.2 * 16.0),
-            Len::LhPx(k, add) => Some(k * 1.2 * 16.0 + add),
-            Len::Vw(_) | Len::Vh(_) => None,
-            // Размер по содержимому числом не выражается.
-            Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
+            // Шрифтовые единицы — от запасного кегля, единой точкой.
+            l => crate::metrics::fallback_len_px(l, "", 16.0),
         }
     };
     for (val, corner) in [(r.tl, 0u8), (r.tr, 1), (r.br, 2), (r.bl, 3)] {
@@ -1001,10 +991,9 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
             Len::Px(v) => d.line_height(px(v)),
             Len::Pct(mult) => d.line_height(relative(mult)),
             Len::Em(k) => d.line_height(px(k * 16.0)),
-            Len::EmPx(k, add) => d.line_height(px(k * 16.0 + add)),
-            Len::Ch(k) => d.line_height(px(k * crate::metrics::ch_ex_px("", 16.0).0)),
-            Len::Ic(k) => d.line_height(px(k * crate::metrics::ic_px("", 16.0))),
-            Len::Ex(k) => d.line_height(px(k * crate::metrics::ch_ex_px("", 16.0).1)),
+            l @ (Len::EmPx(..) | Len::Ch(_) | Len::Ic(_) | Len::Ex(_)) => d.line_height(px(
+                crate::metrics::fallback_len_px(l, "", 16.0).unwrap_or(16.0),
+            )),
             Len::Lh(k) | Len::LhPx(k, _) => d.line_height(relative(k)),
             Len::Vw(k) | Len::Vh(k) => d.line_height(relative(k)),
             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => d,

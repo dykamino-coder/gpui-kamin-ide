@@ -437,7 +437,12 @@ fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
         let (color, share) = match raw.rfind('%') {
             Some(at) => {
                 let head = raw[..at].trim_end();
-                let cut = head.rfind(char::is_whitespace).map(|i| i + 1).unwrap_or(0);
+                // `+1` резал бы многобайтный пробел (NBSP/U+3000) посреди
+                // кода — шаг вперёд строго на ДЛИНУ найденного знака.
+                let cut = head
+                    .rfind(char::is_whitespace)
+                    .map(|i| i + head[i..].chars().next().map_or(1, char::len_utf8))
+                    .unwrap_or(0);
                 let pct: f32 = head[cut..].parse().ok()?;
                 (raw[..cut].trim(), Some(pct / 100.0))
             }
@@ -686,6 +691,8 @@ thread_local! {
 /// Путь в `url(...)` берётся как есть: адреса в странице уже разрешены.
 pub fn load_profiles(css: &str) {
     PROFILES.with(|p| p.borrow_mut().clear());
+    // Комментарии срезаются ДО поиска — как у `@font-face` (fonts::faces).
+    let css = &crate::css::strip_comments(css);
     let lower = css.to_ascii_lowercase();
     let mut from = 0usize;
     while let Some(at) = lower[from..].find("@color-profile") {

@@ -50,6 +50,17 @@ pub fn load_faces(css: &str) {
     // Имена семейств придумывает страница, и на соседней странице то же имя
     // значит другой файл — поэтому таблица подмены живёт РОВНО одну страницу.
     ALIASES.with(|a| a.borrow_mut().clear());
+    load_faces_into(css);
+}
+
+/// Дозагрузка БЕЗ сброса подмен: вложенный документ (`<iframe>`) разбирается
+/// посреди отрисовки внешнего — сброс крал бы шрифты хозяина, и весь текст
+/// после рамки падал в подстановочный шрифт.
+pub fn load_faces_additive(css: &str) {
+    load_faces_into(css);
+}
+
+fn load_faces_into(css: &str) {
     for block in faces(css) {
         let (Some(family), Some(src)) = (declaration(&block, "font-family"), source(&block)) else {
             continue;
@@ -65,7 +76,7 @@ pub fn load_faces(css: &str) {
                 loaded
             }
         };
-        if std::env::var_os("FONT_DBG").is_some() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("FONT_DBG").is_ok()); *ON } {
             eprintln!("FONT_DBG face family={family:?} src={src:?} real={real:?}");
         }
         if let Some(real) = real {
@@ -84,6 +95,9 @@ fn is_quote(c: char) -> bool {
 /// Тела всех правил `@font-face` в таблице.
 fn faces(css: &str) -> Vec<String> {
     let mut out = Vec::new();
+    // Комментарии срезаются ДО поиска: `/* @font-face {...} */` разбирался
+    // как живое правило и грузил чужой файл.
+    let css = &crate::css::strip_comments(css);
     let lower = css.to_ascii_lowercase();
     let mut from = 0usize;
     while let Some(at) = lower[from..].find("@font-face") {

@@ -167,7 +167,7 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             _ => 1.2 * font,
         };
         let cut = crate::interact::clamp_cut(e.node_id).unwrap_or(n as f32 * line);
-        if std::env::var("HTML_CLAMP_DBG").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_CLAMP_DBG").is_ok()); *ON } {
             eprintln!("CLAMP branch node={} n={} cut={}", e.node_id, n, cut);
         }
         d = d.max_h(px(cut)).overflow_hidden();
@@ -492,6 +492,10 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
 /// не от размера документа.
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let root = opts.root_style();
+    crate::interact::frame_sanitize();
+    // Пойманная паника кадра внутри рамки оставляла счётчик глубины
+    // навсегда — три такие паники, и рамки исчезали до перезапуска.
+    IFRAME_DEPTH.with(|d| d.set(0));
     blocks(nodes, &root, opts)
 }
 
@@ -502,6 +506,8 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
 /// держится дерево файлов и чат.
 pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
     let node = nodes.get(index)?;
+    crate::interact::frame_sanitize();
+    IFRAME_DEPTH.with(|d| d.set(0));
     let root = opts.root_style();
     blocks(std::slice::from_ref(node), &root, opts)
         .into_iter()
@@ -2330,8 +2336,9 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // §7.3) и только при ПОЛНОМ зажиме — иначе коробка без высоты
         // схлопывалась в ноль (даже фон пропадал), а заявка без зажима
         // делала её бесконечной (замерено: wm 118 → 104).
-        let vt = crate::interact::VerticalText::new(inner)
-            .keyed(text_id(&plain) ^ opts.doc_salt ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9));
+        let vt = crate::interact::VerticalText::new(inner).keyed(crate::interact::vt_seq_key(
+            text_id(&plain) ^ opts.doc_salt ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9),
+        ));
         // Настоящий предел от родителя (ортогональная ячейка): строка,
         // которая уже влезает, заявляет высоту честно — без неё гибкая
         // ячейка мерила коробку нулём и justify уводил глиф из виду.
@@ -2675,7 +2682,7 @@ fn paragraph_pieces(
                 Some(Len::Em(k)) => gpui::px(k * biggest),
                 _ => gpui::px(biggest * normal_fraction(inherited, opts)),
             };
-            if std::env::var("PLAIN_DBG").is_ok() && inherited.preserve_newlines == Some(true) {
+            if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("PLAIN_DBG").is_ok()); *ON } && inherited.preserve_newlines == Some(true) {
                 eprintln!("PLAIN pre text={:?}", text);
             }
             let id = gpui::ElementId::Integer(text_id(&text));
@@ -2767,8 +2774,14 @@ fn paragraph_pieces(
         .into_any_element();
     }
     let mut render_text = |t: String, style: &Computed| -> AnyElement {
-        if std::env::var("RT_DBG").is_ok() {
-            eprintln!("RT t={:?} rot={:?} lh={:?} fs={:?}", &t[..t.len().min(9)], style.rotated_line, style.line_height, style.font_size);
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok()); *ON } {
+            eprintln!(
+                "RT t={:?} rot={:?} lh={:?} fs={:?}",
+                t.chars().take(3).collect::<String>(),
+                style.rotated_line,
+                style.line_height,
+                style.font_size
+            );
         }
         // Стоячие знаки в вертикальном письме (`text-orientation: mixed`,
         // CJK): набор идёт вертикальными формами шрифта — возможность `vert`
@@ -2794,7 +2807,7 @@ fn paragraph_pieces(
         let d = apply(div(), &style.text_only())
             .max_w_full()
             .child(SharedString::from(t.clone()));
-        if std::env::var("RT_DBG").is_ok() {
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok()); *ON } {
             let tag = t.chars().take(3).collect::<String>();
             return d
                 .relative()
@@ -3736,9 +3749,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     if let Some(el) = crate::forms::element(e, &merged, opts) {
         return el;
     }
+    // Рамка строится ОДИН раз до match: прежний `is_some() => unwrap()`
+    // читал файл с диска и разбирал вложенный документ дважды за кадр.
+    // Неразобранная рамка по-прежнему падает в общий рукав.
+    let mut built_iframe = if e.tag == "iframe" {
+        iframe(e, opts)
+    } else {
+        None
+    };
     match e.tag.as_str() {
         "img" => image(e),
-        "iframe" if iframe(e, opts).is_some() => iframe(e, opts).unwrap(),
+        "iframe" if built_iframe.is_some() => built_iframe.take().unwrap(),
         // Рисунок не разобрался — показываем запасной текст, а не пустоту.
         "svg" => crate::svg::element(e).unwrap_or_else(|| {
             styled_div_with(e, &merged)
@@ -4447,6 +4468,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let (from_cols, cols_collapsed) =
         col_element_widths(&e.children, table_font, &table_family);
     let mut busy: Vec<u16> = vec![0; cols as usize];
+    // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
+    // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
+    // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
+    let table_is_vertical =
+        e.style.vertical == Some(true) || inherited.vertical == Some(true);
     for row in &row_elements {
         let mut ix = 0usize;
         for slot in busy.iter_mut() {
@@ -4531,6 +4557,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             ix += span;
         }
+    }
+    if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok()); *ON } {
+        eprintln!("TCA cols={col_widths:?}");
     }
     // Фон КОЛОНКИ картинкой — той же полосой, что фон ряда: слой на площадь
     // колонки, обрезанный прямоугольниками её ячеек. Полосы колонок идут
@@ -4761,6 +4790,26 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
                 cell.style.width = None;
             }
+            // Кегльная ширина уходит с коробки, как Px и доля: колонка
+            // разрешает её сама (Em-ветка col_widths), а на коробке она
+            // падала в запасной кегль 16px — ячейка `width: 2em` при шрифте
+            // 50px сжималась до 32 точек, и прижим строк оставался без места
+            // (table-cell-valign-003-ref). Ортогональную ячейку не трогаем:
+            // её width — логический inline-size, он ниже перекладывается в
+            // высоту.
+            if !(cell.style.vertical == Some(true)
+                && e.style.vertical != Some(true)
+                && cell.style.width_from_inline)
+                // У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
+                // задаёт высота (table-cell-align-001/002).
+                && !table_is_vertical
+                && matches!(
+                    cell.style.width,
+                    Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_))
+                )
+            {
+                cell.style.width = None;
+            }
             // Письмо к рядам и группам рядов не применяется (css-writing-modes
             // §applies), а РАЗМЕЩЕНИЕ ячеек в решётке всегда ведёт письмо
     // таблицы — оно уже посчитано табличным кодом. Собственное письмо
@@ -4798,6 +4847,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if cell.style.vertical == Some(true)
                 && e.style.vertical != Some(true)
                 && cell.style.height.is_none()
+                && cell.style.width_from_inline
                 && cell.style.width.is_some()
             {
                 cell.style.height = cell.style.width.take();
@@ -5288,7 +5338,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .or_else(|| first_row_widths.get(i).copied().flatten())
         })
         .collect();
-    if std::env::var("HTML_ROWBG").is_ok() {
+    if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok()); *ON } {
         eprintln!("TABLE cols={} col_widths={:?} first_row={:?}", cols, col_widths, first_row_widths);
     }
     let tracks = track_list_collapsed(
@@ -5298,7 +5348,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         &col_widths,
         &cols_collapsed,
     );
-    if std::env::var("HTML_ROWBG").is_ok() {
+    if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok()); *ON } {
         eprintln!("TABLE tracks={:?}", tracks);
     }
     // Таблица ЗАДАННОЙ высоты раздаёт лишнее место рядам БЕЗ своей высоты

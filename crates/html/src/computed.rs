@@ -932,6 +932,11 @@ pub struct Computed {
     pub upright: Option<bool>,
     /// Логические стороны и размеры до перевода в физические.
     pub logical: Option<Box<Logical>>,
+    /// Ширина пришла из ЛОГИЧЕСКОГО `inline-size` при вертикальном письме:
+    /// физически это высота (оси не переставляются, см. `resolve_logical`) —
+    /// потребители обязаны отличать её от настоящего `width`
+    /// (table-cell-align-005 против table-progression-htb-001).
+    pub width_from_inline: bool,
     /// `hyphens`: разрешён ли перенос по мягкому переносу.
     pub hyphenate: Option<bool>,
     /// `user-select: none` — текст не выделяется.
@@ -1099,6 +1104,9 @@ impl Computed {
             set(&mut self.max_height, logical.max_inline);
             set(&mut self.max_width, logical.max_block);
         } else {
+            if self.vertical == Some(true) && logical.inline_size.is_some() {
+                self.width_from_inline = true;
+            }
             set(&mut self.width, logical.inline_size);
             set(&mut self.height, logical.block_size);
             set(&mut self.min_width, logical.min_inline);
@@ -3378,13 +3386,15 @@ impl Computed {
                         .and_then(|l| match l {
                             Len::Px(v) => Some(v),
                             Len::Pct(p) => Some(p),
-                            Len::Em(k) => Some(k * 16.0),
-                            Len::EmPx(k, add) => Some(k * 16.0 + add),
-                            Len::Ch(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
-                            Len::Ic(k) => Some(k * crate::metrics::ic_px("", 16.0)),
-                            Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
-                            Len::Lh(k) => Some(k * 1.2 * 16.0),
-                            Len::LhPx(k, add) => Some(k * 1.2 * 16.0 + add),
+                            l @ (Len::Em(_)
+                            | Len::EmPx(..)
+                            | Len::Ch(_)
+                            | Len::Ic(_)
+                            | Len::Ex(_)
+                            | Len::Lh(_)
+                            | Len::LhPx(..)) => {
+                                crate::metrics::fallback_len_px(l, "", 16.0)
+                            }
                             Len::Vw(_) | Len::Vh(_) => None,
                             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
                         });
