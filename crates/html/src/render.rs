@@ -3539,33 +3539,27 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             Some(Len::Em(k)) => Some(k * em_base),
             _ => None,
         };
-        let scrolls = !matches!(
-            e.style.overflow_y,
-            None | Some(crate::computed::Overflow::Visible)
-        );
-        if let Some(mut h) = px_of(e.style.height) {
-            if let Some(max) = px_of(e.style.max_height) {
-                h = h.min(max);
+        let h = px_of(e.style.height);
+        let min_h = px_of(e.style.min_height);
+        let max_h = px_of(e.style.max_height);
+        if h.is_some() || min_h.is_some() || max_h.is_some() {
+            // Клэмп как у CSS-высоты: max режет, min ПЕРЕБИВАЕТ max; без
+            // своей высоты базой служит НАЧАЛЬНЫЙ содержащий блок, и он же —
+            // общий потолок («larger than ICB» не расширяет место).
+            let mut avail = h.unwrap_or(opts.viewport.1);
+            if let Some(m) = max_h {
+                avail = avail.min(m);
             }
-            merged.ortho_limit = Some(h);
-        } else if scrolls {
-            if let Some(mut h) = px_of(e.style.min_height) {
-                if let Some(max) = px_of(e.style.max_height) {
-                    h = h.min(max);
-                }
-                merged.ortho_limit = Some(h);
+            if let Some(m) = min_h {
+                avail = avail.max(m);
             }
-        } else if e.style.vertical == Some(true)
-            && let Some(h) = px_of(e.style.max_height)
-        {
-            // Потолок без высоты тоже режет доступное место ортогонального
-            // потока — у САМОГО вертикального блока: `max-height` ему ставит
-            // ортогональная механика (h контейнера минус поля) или автор, и
-            // строка переносится по нему, а не по потолку выше
-            // (sizing-orthogonal-percentage-margin-001: 100, не 200;
-            // table-cell-002-ref: div vertical-rl c max-height 100 обязан
-            // сложиться в квадрат из двух колонок).
-            merged.ortho_limit = Some(h);
+            avail = avail.min(opts.viewport.1);
+            // У блока без вертикали предел ставится детям всегда; у самого
+            // вертикального — только если родитель не дал своего
+            // (table-cell-002: max-height ячейки).
+            if e.style.vertical != Some(true) || merged.ortho_limit.is_none() {
+                merged.ortho_limit = Some(avail);
+            }
         }
     }
     // Псевдоэлементы принадлежат ЭТОМУ узлу: они едут в стиль его детей на
