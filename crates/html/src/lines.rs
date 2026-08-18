@@ -2355,7 +2355,16 @@ impl Paragraph {
         } else {
             unicode_bidi::Level::ltr()
         };
-        let info = unicode_bidi::BidiInfo::new(&self.text, Some(base));
+        // `unicode-bidi: plaintext`: базу КАЖДОГО абзаца (между жёсткими
+        // разрывами) выбирает первый сильный знак (UAX9 P2/P3) — разбор без
+        // навязанного уровня делает ровно это. Выключка уже решается так же
+        // построчно (см. own_align выше).
+        let forced = if self.plaintext.is_some() {
+            None
+        } else {
+            Some(base)
+        };
+        let info = unicode_bidi::BidiInfo::new(&self.text, forced);
         let Some(para) = info
             .paragraphs
             .iter()

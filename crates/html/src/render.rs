@@ -657,7 +657,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Пробельный узел между инлайн-соседями — часть строки, а не
             // разрыв: `<button>A</button> <button>B</button>` в разметке с
             // переносами давал два абзаца, и кнопки вставали столбиком.
-            Node::Text(t) => !blank_text(t) || (!pending.is_empty() && t.contains(' ')),
+            // Под `white-space: pre*` пробельный узел — содержимое: узел из
+            // одного перевода строки это ПУСТАЯ СТРОКА перед `</pre>`
+            // (block-plaintext-006), отбрасывание съедало её высоту.
+            Node::Text(t) => {
+                inherited.preserve_newlines == Some(true)
+                    || !blank_text(t)
+                    || (!pending.is_empty() && t.contains(' '))
+            }
             // Элемент с ЗАДАННЫМИ краями строчным не бывает: края он считает
             // от позиционированного предка, а не от строки. Куском абзаца он
             // получал содержащим блоком сам абзац — и `inset: 0` растягивал
@@ -2504,6 +2511,9 @@ fn paragraph_pieces(
                 Some(Len::Em(k)) => gpui::px(k * biggest),
                 _ => gpui::px(biggest * normal_fraction(inherited, opts)),
             };
+            if std::env::var("PLAIN_DBG").is_ok() && inherited.preserve_newlines == Some(true) {
+                eprintln!("PLAIN pre text={:?}", text);
+            }
             let id = gpui::ElementId::Integer(text_id(&text));
             let family = inherited.font_family.clone().unwrap_or_default();
             let para = crate::lines::Paragraph::new(
