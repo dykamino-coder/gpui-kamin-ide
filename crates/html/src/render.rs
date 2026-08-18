@@ -3951,6 +3951,44 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // схлопывала рисунок в ничто.
         if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
             image = image.w(px(w)).h(px(h));
+        } else if !matches!(e.style.width, Some(Len::Px(_)))
+            && !matches!(e.style.height, Some(Len::Px(_)))
+        {
+            // Авто-размер замещаемого зажимается max-габаритами С СОХРАНЕНИЕМ
+            // соотношения (CSS 2.1 §10.4): картинка 200x100 при max 100x100
+            // выходит 100x50 (replaced-content-image-004). Считается только
+            // от ГОТОВОГО рисунка — до загрузки соотношения нет.
+            let max_w = match e.style.max_width {
+                Some(Len::Px(v)) => Some(v),
+                _ => None,
+            };
+            let max_h = match e.style.max_height {
+                Some(Len::Px(v)) => Some(v),
+                _ => None,
+            };
+            if (max_w.is_some() || max_h.is_some())
+                && let Some(ready) = crate::background::source(local.unwrap_or(src))
+            {
+                let side = ready.intrinsic();
+                if let (Some(w0), Some(h0)) = (side.w, side.h)
+                    && w0 > 0.0
+                    && h0 > 0.0
+                {
+                    let mut scale = 1.0f32;
+                    if let Some(m) = max_w {
+                        scale = scale.min(m / w0);
+                    }
+                    if let Some(m) = max_h {
+                        scale = scale.min(m / h0);
+                    }
+                    if scale < 1.0 {
+                        image = image
+                            .w(px(w0 * scale))
+                            .h(px(h0 * scale))
+                            .object_fit(gpui::ObjectFit::Fill);
+                    }
+                }
+            }
         }
         // CSS-умолчание для замещаемого содержимого — заполнить коробку, но
         // держится оно на СОБСТВЕННОМ соотношении сторон картинки: заданная
