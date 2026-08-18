@@ -4424,7 +4424,26 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 } else {
                     row_ix
                 };
-                d = d.col_start(gc.max(1)).row_start(col_ix as i16 + 1);
+                // Строчная ось вертикальной таблицы: `dir=rtl` разворачивает
+                // её (ячейки снизу вверх), `text-orientation: upright`
+                // ФОРСИРУЕТ ltr (§5.1 — upright задаёт направление ltr), а у
+                // `sideways-lr` базовое направление само снизу вверх —
+                // разворот инвертируется.
+                let rtl_line =
+                    e.style.rtl == Some(true) && e.style.upright != Some(true);
+                let base_up = e.style.sideways == Some(true)
+                    && e.style.vertical_rl != Some(true);
+                let gr = if rtl_line != base_up {
+                    cols as i16 - col_ix as i16 - span_cols as i16 + 1
+                } else {
+                    col_ix as i16 + 1
+                };
+                d = d.col_start(gc.max(1)).row_start(gr.max(1));
+            } else if e.style.rtl == Some(true) {
+                // `dir=rtl` на таблице: колонки идут от ПРАВОГО края
+                // (CSS 2.2 §17.2) — та же явная расстановка, зеркалом.
+                let gc = cols as i16 - col_ix as i16 - span_cols as i16 + 1;
+                d = d.col_start(gc.max(1)).row_start(row_ix);
             }
             for c in col_ix..(col_ix + span_cols as usize).min(occupied.len()) {
                 occupied[c] = span_rows;
