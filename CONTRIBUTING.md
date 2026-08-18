@@ -154,7 +154,7 @@ release PR выбирает две новые уникальные patch-вер�
 | Компонент | Источник истины | Производные файлы |
 |---|---|---|
 | KaminIDE | `Cargo.toml` → `[workspace.package].version` | `Cargo.lock` |
-| Bridge server | `extensions/claude-bridge/server/package.json` | `src/core/config/index.ts`, `package-lock.json` |
+| Bridge server | `extensions/claude-bridge/server/package.json` | `package-lock.json`; runtime читает manifest напрямую |
 
 Индивидуальные `crates/*/Cargo.toml` используют `version.workspace = true` и
 вручную не повышаются. Корневой `package.json`, builtin extension, dashboard,
@@ -167,8 +167,6 @@ Server manifest и lockfile обновляются одной командой:
 npm --prefix extensions/claude-bridge/server \
   version 6.3.118 --no-git-tag-version
 ```
-
-Затем та же версия вручную ставится в `server/src/core/config/index.ts`.
 После изменения Cargo version запускается `cargo check --workspace`, чтобы
 перегенерировать workspace entries в `Cargo.lock`.
 
