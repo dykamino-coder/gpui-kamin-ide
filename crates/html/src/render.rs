@@ -2382,7 +2382,28 @@ fn paragraph_pieces(
                 ));
             }
         }
-        atom_element(e, inherited, opts).map(inline::Piece::Atom)
+        atom_element(e, inherited, opts).map(|el| {
+            // `vertical-align` НА САМОМ куске (`img { vertical-align: top }`):
+            // ряд строит базовую линию, а кускам с top/middle/bottom нужен
+            // собственный прижим (wm-propagation-body-033-ref: полоса-картинка
+            // в строке с квадратом прижата к верху, у нас висела на базовой).
+            use crate::computed::Align;
+            let self_align = match e.style.vertical_align {
+                Some(Align::Start) => Some(gpui::AlignItems::FlexStart),
+                Some(Align::End) => Some(gpui::AlignItems::FlexEnd),
+                Some(Align::Center) => Some(gpui::AlignItems::Center),
+                _ => None,
+            };
+            let el = match self_align {
+                Some(a) => {
+                    let mut w = div().flex_shrink_0();
+                    w.style().align_self = Some(a);
+                    w.child(el).into_any_element()
+                }
+                None => el,
+            };
+            inline::Piece::Atom(el)
+        })
     };
     let mut pieces = inline::collect(nodes, inherited, &mut atom);
     if pieces.is_empty() {
