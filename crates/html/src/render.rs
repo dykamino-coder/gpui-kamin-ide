@@ -4476,9 +4476,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 let table_vertical =
                     e.style.vertical == Some(true) || inherited.vertical == Some(true);
                 let orthogonal = cell.style.vertical == Some(true) && !table_vertical;
-                let source = if table_vertical {
-                    cell.style.height
-                } else if orthogonal && cell.style.width.is_none() {
+                let source = if table_vertical || orthogonal {
+                    // У ортогональной ячейки width несёт ЛОГИЧЕСКИЙ
+                    // inline-size — физически это ВЫСОТА, не колонка
+                    // (table-cell-align-005/006); колонку задаёт block-size,
+                    // осевший в height.
                     cell.style.height
                 } else {
                     cell.style.width
@@ -4778,6 +4780,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     crate::metrics::ch_ex_px(&family, base).0
                 };
                 cell.style.height = Some(Len::Px(k * ch));
+            }
+            // Ортогональная ячейка (своё письмо вертикально, таблица
+            // горизонтальна) живёт в НЕповёрнутой сетке: логический
+            // inline-size осел в width (resolve_logical оси не переставляет —
+            // подгонка под поворотную модель), но коробку ячейки никто не
+            // вращает — её строчная ось физически ВЕРТИКАЛЬНА, и размер
+            // обязан лечь высотой (table-cell-align-005/006).
+            if cell.style.vertical == Some(true)
+                && e.style.vertical != Some(true)
+                && cell.style.height.is_none()
+                && cell.style.width.is_some()
+            {
+                cell.style.height = cell.style.width.take();
+            }
+            // `em` на высоте ячейки — тем же точечным резолвом, что и `ch`:
+            // без него логическая высота `inline-size: 2em` не проходила
+            // Px-ветку ниже и min-height ряда не ставился.
+            if let Some(Len::Em(k)) = cell.style.height {
+                let base = match cell.style.font_size.or(inherited.font_size) {
+                    Some(Len::Px(v)) => v,
+                    _ => opts.base_size(),
+                };
+                cell.style.height = Some(Len::Px(k * base));
             }
             // Ортогональная ячейка (вертикальный контент от ряда) не уже
             // ТОЛЩИНЫ своей вертикальной строки — вклад стека в дорожку
