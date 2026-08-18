@@ -190,7 +190,12 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
     fn has_bg(e: &crate::dom::Element) -> bool {
         // Прозрачный цвет — НЕ краска: `html { background: transparent }`
         // отдаёт канвас телу, как и отсутствие объявления.
-        e.style.background.is_some_and(|c| c.a > 0.0) || e.style.gradient.is_some()
+        e.style.background.is_some_and(|c| c.a > 0.0)
+            || e.style.gradient.is_some()
+            // Фон-картинка — та же краска канваса (CSS 2.2 §14.2): без
+            // пометки она рисовалась коробкой корня и начиналась с его
+            // сдвинутого схлопкой верха (background-size-document-root-vrl).
+            || e.style.bg_image.is_some()
     }
     for n in nodes.iter_mut() {
         let Node::Element(html) = n else { continue };

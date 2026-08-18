@@ -803,10 +803,56 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 } else if let Some(bg) = e.style.background {
                     layer = layer.bg(bg.to_hsla());
                 }
-                out.push(layer.into_any_element());
+                // Фон-КАРТИНКА канваса красит всю область просмотра тем же
+                // слоем (CSS 2.2 §14.2: painting area корневого фона —
+                // канвас): на коробке корня она начиналась с его сдвинутого
+                // схлопкой верха, и над краской проступала полоса
+                // (background-size-document-root-vrl-*).
+                let mut layer = layer.into_any_element();
+                if e.style.bg_image.is_some()
+                    && let Some(tiles) = crate::background::layer(&e.style)
+                {
+                    // Область ПОЗИЦИОНИРОВАНИЯ краски — PADDING-BOX корня:
+                    // ширина + горизонтальные отступы; полоса прижата по
+                    // письму с учётом поля и рамки с той стороны
+                    // (background-size-document-root-vrl-004/006/008: рамка и
+                    // margin-right корня сдвигают плитку внутрь).
+                    let side = |l: Option<Len>| match l {
+                        Some(Len::Px(v)) => v,
+                        _ => 0.0,
+                    };
+                    let b = e.style.borders();
+                    let mut band = div().absolute().top_0().bottom_0();
+                    band = match e.style.width {
+                        Some(Len::Px(w)) => {
+                            let pad_w =
+                                w + side(e.style.padding.left) + side(e.style.padding.right);
+                            let band = band.w(px(pad_w));
+                            if e.style.vertical_rl == Some(true) {
+                                band.right(px(
+                                    side(e.style.margin.right) + side(b.right),
+                                ))
+                            } else {
+                                band.left(px(side(e.style.margin.left) + side(b.left)))
+                            }
+                        }
+                        _ => band.left_0().right_0(),
+                    };
+                    layer = div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .child(layer)
+                        .child(band.child(tiles))
+                        .into_any_element();
+                }
+                out.push(layer);
                 let mut copy = e.clone();
                 copy.style.background = None;
                 copy.style.gradient = None;
+                copy.style.bg_image = None;
                 canvas_stripped = copy;
                 &canvas_stripped
             } else {
@@ -2445,6 +2491,17 @@ fn paragraph_pieces(
                     w.child(el).into_any_element()
                 }
                 None => el,
+            };
+            // Отрицательный `z-index` строчного замещаемого: краска уходит
+            // ПОД содержимое до него (CSS 2.1 §9.9 шаг 3) — как у блочного
+            // (background-size-document-root-vrl-*: красный маркер обязан
+            // лечь под зелёный фон iframe).
+            let el = if e.style.z_index.is_some_and(|z| z < 0)
+                && e.style.position == Some(crate::computed::Position::Relative)
+            {
+                crate::interact::Underlay::new(el).into_any_element()
+            } else {
+                el
             };
             inline::Piece::Atom(el)
         })
