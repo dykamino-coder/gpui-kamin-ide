@@ -4396,11 +4396,30 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // Умолчание браузера для ячейки — `vertical-align: middle`: без
             // него полоса высотой 10px в строке 22px стояла на 6 точек выше.
             let mut d = d.flex().flex_col();
-            d = match cm.vertical_align {
-                Some(Align::Start) => d.justify_start(),
-                Some(Align::End) => d.justify_end(),
-                _ => d.justify_center(),
-            };
+            if cm.vertical == Some(true) && e.style.vertical != Some(true) {
+                // ОРТОГОНАЛЬНАЯ ячейка (вертикальный контент в горизонтальной
+                // таблице): строчная ось вертикальна — `text-align` правит
+                // ВЕРТИКАЛЬНОЕ положение строки (line-left = верх), а
+                // `vertical-align` уходит на поперечную ось
+                // (table-cell-align-005/006).
+                use crate::computed::TextAlign;
+                d = match cm.text_align {
+                    Some(TextAlign::Right) => d.justify_end(),
+                    Some(TextAlign::Center) => d.justify_center(),
+                    _ => d.justify_start(),
+                };
+                d = match cm.vertical_align {
+                    Some(Align::Start) => d.items_start(),
+                    Some(Align::End) => d.items_end(),
+                    _ => d.items_center(),
+                };
+            } else {
+                d = match cm.vertical_align {
+                    Some(Align::Start) => d.justify_start(),
+                    Some(Align::End) => d.justify_end(),
+                    _ => d.justify_center(),
+                };
+            }
             // Вертикальное письмо таблицы: ряды идут ПОПЕРЁК — охваты
             // меняются осями вместе с сеткой (css-writing-modes-3 §8).
             let (grid_cols, grid_rows) = if e.style.vertical == Some(true) {
