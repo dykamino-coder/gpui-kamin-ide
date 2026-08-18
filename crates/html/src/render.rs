@@ -2744,9 +2744,24 @@ fn paragraph_pieces(
         }
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
-        apply(div(), &style.text_only())
-            .child(SharedString::from(t))
-            .into_any_element()
+        let d = apply(div(), &style.text_only()).child(SharedString::from(t.clone()));
+        if std::env::var("RT_DBG").is_ok() {
+            let tag = t.chars().take(3).collect::<String>();
+            return d
+                .relative()
+                .child(
+                    gpui::canvas(
+                        |_, _, _| {},
+                        move |b: gpui::Bounds<gpui::Pixels>, _, _, _| {
+                            eprintln!("RTB {:?} bounds={:?}", tag, b);
+                        },
+                    )
+                    .absolute()
+                    .size_full(),
+                )
+                .into_any_element();
+        }
+        d.into_any_element()
     };
     // Начальное значение `text-align` — `start`, а он при письме справа налево
     // означает ПРАВЫЙ край. Без этого ряд из слов оставался слева, и строка
