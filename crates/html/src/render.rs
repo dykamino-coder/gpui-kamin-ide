@@ -1033,15 +1033,93 @@ fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Ve
 }
 
 fn collapse_flow_margins(children: Vec<Node>, reverse: bool) -> Vec<Node> {
+    // Поле контейнера схлопывается С КРАЙНИМ flow-ребёнком через пустую
+    // границу (CSS 2.1 §8.3.1): у `<body>` без рамки и паддинга хвостовое
+    // поле — max(своё, block-end последнего ребёнка), рекурсивно. Без этого
+    // `html::after` за body отъезжал на сумму полей (wm-propagation-body-042:
+    // 16 у последнего `<p>` + 8 у body складывались вместо max).
+    // Поглощение: поле крайнего ребёнка ОБНУЛЯЕТСЯ и уезжает на контейнер
+    // (иначе оно распирало бы его коробку изнутри и зазор снаружи удваивался).
+    fn absorb_margin(e: &mut Element, tail_side: bool, reverse: bool) -> f32 {
+        let own = if tail_side == reverse {
+            margin_px(e.style.margin.left, &e.style)
+        } else {
+            margin_px(e.style.margin.right, &e.style)
+        }
+        .unwrap_or(0.0);
+        // Контейнер с ГОРИЗОНТАЛЬНЫМ письмом в вертикальном потоке —
+        // ортогональный: его внутренний поток идёт по другой оси, и полей
+        // на этой границе не отдаёт (available-size-020..023).
+        if e.style.vertical == Some(false) {
+            return own;
+        }
+        let b = e.style.borders();
+        let (border, pad) = if tail_side == reverse {
+            (b.left, e.style.padding.left)
+        } else {
+            (b.right, e.style.padding.right)
+        };
+        let sealed = margin_px(border, &e.style).unwrap_or(0.0) > 0.0
+            || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
+        if sealed {
+            return own;
+        }
+        let edge_child = {
+            let mut it = e.children.iter_mut().filter_map(|n| match n {
+                Node::Element(c)
+                    if !matches!(
+                        c.style.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    ) && c.style.display.is_none()
+                        // Схлопка живёт в ОДНОМ потоке: ребёнок со своим
+                        // письмом заводит другой и границу запечатывает.
+                        && c.style.vertical.is_none()
+                        && c.style.vertical_rl.is_none() =>
+                {
+                    Some(c)
+                }
+                _ => None,
+            });
+            if tail_side { it.last() } else { it.next() }
+        };
+        match edge_child {
+            Some(c) => {
+                let inner = absorb_margin(c, tail_side, reverse);
+                // Поглощать есть что только при ненулевом внутреннем поле;
+                // иначе стили НЕ переписываются: заморозка `Em` в точки
+                // до разрешения кегля портила поле (`font-size: 5em` у
+                // text-combine-upright-value-*).
+                if inner <= 0.0 {
+                    return own;
+                }
+                if tail_side == reverse {
+                    c.style.margin.left = Some(Len::Px(0.0));
+                } else {
+                    c.style.margin.right = Some(Len::Px(0.0));
+                }
+                let total = own.max(inner);
+                if tail_side == reverse {
+                    e.style.margin.left = Some(Len::Px(total));
+                } else {
+                    e.style.margin.right = Some(Len::Px(total));
+                }
+                total
+            }
+            None => own,
+        }
+    }
     let mut out = children;
     let mut trailing: Option<f32> = None;
     for node in out.iter_mut() {
         let Node::Element(child) = node else { continue };
-        // В обратном потоке ведущая сторона — правая.
-        let (lead, tail) = if reverse {
-            (child.style.margin.right, child.style.margin.left)
+        // В обратном потоке ведущая сторона — правая. Ведущий край НЕ
+        // поглощается: замерено — available-size-022/023 0.00 -> 2.66 при
+        // нуле выигрышей; хватает хвостового (042/049/054).
+        let lead = if reverse {
+            child.style.margin.right
         } else {
-            (child.style.margin.left, child.style.margin.right)
+            child.style.margin.left
         };
         // Доли кегля разрешаются здесь же: голый разбор точек считал `1em`
         // нулём и ЗАПИСЫВАЛ ноль — поле абзаца вдоль вертикального потока
@@ -1055,7 +1133,7 @@ fn collapse_flow_margins(children: Vec<Node>, reverse: bool) -> Vec<Node> {
                 child.style.margin.left = Some(Len::Px(kept));
             }
         }
-        trailing = Some(margin_px(tail, &child.style).unwrap_or(0.0));
+        trailing = Some(absorb_margin(child, true, reverse));
     }
     out
 }
