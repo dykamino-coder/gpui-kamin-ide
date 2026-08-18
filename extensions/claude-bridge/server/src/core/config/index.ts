@@ -2,6 +2,7 @@
 // Configuration — priority: CLI args > env vars > opencode.json > defaults
 // ============================================================================
 
+import { readFileSync } from "node:fs"
 import type { Config } from "../types"
 import { args } from "../utils/args"
 import { readBridgeSettings } from "./opencode"
@@ -30,7 +31,20 @@ export const config: Config = {
     || process.env.VERBOSE === "true" || process.env.VERBOSE === "1",
 }
 
-export const VERSION = "6.3.128"
+const packageManifest = JSON.parse(
+  readFileSync(new URL("../../../package.json", import.meta.url), "utf-8"),
+) as { version?: unknown }
+
+if (
+  typeof packageManifest.version !== "string" ||
+  packageManifest.version.length === 0
+) {
+  throw new Error("Bridge package.json must contain a non-empty version")
+}
+
+// package.json is the release source of truth; keeping a second literal here
+// allowed the dashboard and health endpoints to report an older server build.
+export const VERSION = packageManifest.version
 export const SERVICE_NAME = "open-claude-bridge"
 
 // The model a fresh session launches with when the client picks nothing.
