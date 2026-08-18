@@ -4123,7 +4123,19 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 busy[c2] = rspan;
             }
             if span == 1 && ix < col_widths.len() {
-                match cell.style.width {
+                // Ортогональная ячейка (вертикальное письмо в обычной
+                // таблице): её блочная ось горизонтальна, и `block-size`
+                // (лёгший в height — размеры при вертикали не
+                // переставляются, см. resolve_logical) задаёт КОЛОНКУ.
+                let orthogonal = cell.style.vertical == Some(true)
+                    && e.style.vertical != Some(true)
+                    && inherited.vertical != Some(true);
+                let source = if orthogonal && cell.style.width.is_none() {
+                    cell.style.height
+                } else {
+                    cell.style.width
+                };
+                match source {
                     Some(Len::Px(v)) => {
                         let slot = &mut col_widths[ix].0;
                         *slot = Some(slot.map_or(v, |old| old.max(v)));
@@ -4131,6 +4143,30 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     Some(Len::Pct(k)) => {
                         let slot = &mut col_widths[ix].1;
                         *slot = Some(slot.map_or(k, |old| old.max(k)));
+                    }
+                    // Шрифтовые единицы решаются кеглем САМОЙ ячейки
+                    // (наследование row -> table): `td { width: 2em }` при
+                    // `table { font: 50px }` — колонка 100px, не пропуск.
+                    Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
+                        let size = match cell
+                            .style
+                            .font_size
+                            .or(row.style.font_size)
+                            .or(inherited.font_size)
+                        {
+                            Some(Len::Px(v)) => v,
+                            _ => table_font,
+                        };
+                        let family = cell
+                            .style
+                            .font_family
+                            .clone()
+                            .unwrap_or_else(|| table_family.clone());
+                        let v = crate::metrics::spacing_px(Some(l), &family, size);
+                        if v > 0.0 {
+                            let slot = &mut col_widths[ix].0;
+                            *slot = Some(slot.map_or(v, |old| old.max(v)));
+                        }
                     }
                     _ => {}
                 }
