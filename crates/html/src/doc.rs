@@ -252,6 +252,15 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     // До раннего выхода — только sideways-lr (нужен низ, wm-prop-047-ref);
     // обычные вертикальные корни с письмом на самом html так теряли
     // скроллер-структуру (available-size-022/023 замерено).
+    // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2): якорь самим
+    // стилем; корню с фоном-картинкой не ставится — гасил canvas-слой
+    // (замерено на background-size-document-root-vrl-*).
+    if taken.1 == Some(true)
+        && html.style.align_self.is_none()
+        && html.style.bg_image.is_none()
+    {
+        html.style.align_self = Some(crate::computed::Align::End);
+    }
     let side_lr = taken.3 == Some(true) && taken.1 != Some(true);
     if taken.0 == Some(true)
         && side_lr

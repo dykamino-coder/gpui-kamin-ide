@@ -987,11 +987,17 @@ fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Ve
         if !in_flow(&ch.style) {
             continue;
         }
-        // ПРОБОВАЛИ И ОТКАТИЛИ прижим vrl-корня к правому краю: align_self
-        // End (нужен flex-хост — он гасил отрисовку фона корня), margin-left
-        // auto (та же гибель пейнта). Корень с фоном-картинкой пока стоит
-        // слева (background-size-document-root-vrl-*). Разбираться с тем,
-        // почему flex-хост/авто-поле убивают canvas-слой фона.
+        // Корень с vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
+        // flow). Прижим самим стилем корня (align-self) — контейнеры-колонки
+        // его уважают; для корня с ФОНОМ-КАРТИНКОЙ якорь ранее гасил
+        // canvas-слой — тем страницам якорь не ставится (замерено).
+        if matches!(ch.tag.as_str(), "html" | "body")
+            && ch.style.vertical_rl == Some(true)
+            && ch.style.align_self.is_none()
+            && ch.style.bg_image.is_none()
+        {
+            ch.style.align_self = Some(crate::computed::Align::End);
+        }
         if ch.style.height.is_some() || ch.style.max_height.is_some() {
             continue;
         }
