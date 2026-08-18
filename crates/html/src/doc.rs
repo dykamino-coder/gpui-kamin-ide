@@ -117,8 +117,10 @@ fn has_box_style(c: &crate::computed::Computed) -> bool {
         || c.overflow_x.is_some()
         || c.overflow_y.is_some()
         // Вертикальное письмо задаёт ОСЬ ПОТОКА детей: без коробки её задать
-        // некому, а дети об этом знают только через родителя.
-        || c.vertical.is_some()
+        // некому, а дети об этом знают только через родителя. ЯВНОЕ
+        // `horizontal-tb` — ось как у всех, коробки не требует: обёртка с
+        // ним ломала схлопку полей p с body (wm-propagation-body-044).
+        || c.vertical == Some(true)
         // Поля и внутренние отступы обёртки сдвигают ВСЁ содержимое: браузер
         // держит на `body` умолчание в 8 точек, и снятая обёртка уносила этот
         // сдвиг с собой — страница прижималась к краю окна.
@@ -227,6 +229,25 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     if html.style.contain_paint == Some(true) {
         return nodes;
     }
+    // `html::before`/`::after` — СОСЕДИ body в потоке страницы: растяжка
+    // body на весь вьюпорт (min_h в render) выталкивала их за нижний край,
+    // и текст псевдо пропадал (wm-propagation-body-044). Свой нулевой
+    // минимум гасит только навязанный, заданного не трогает.
+    let has_root_pseudo = html
+        .children
+        .iter()
+        .any(|n| matches!(n, Node::Element(p) if p.tag == "::after" || p.tag == "::before"));
+    if has_root_pseudo {
+        for n in html.children.iter_mut() {
+            if let Node::Element(b) = n
+                && b.tag == "body"
+                && b.style.height.is_none()
+                && b.style.min_height.is_none()
+            {
+                b.style.min_height = Some(crate::value::Len::Px(0.0));
+            }
+        }
+    }
     let Some(body) = html.children.iter().find_map(|n| match n {
         Node::Element(e) if e.tag == "body" => Some(e),
         _ => None,
@@ -271,6 +292,20 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     }
     if taken == own {
         return nodes;
+    }
+    // Вычисленные значения не меняются ни у кого (§8.2): распространяется
+    // только used корневой коробки. Псевдо-дети html (`::before`/`::after`)
+    // наследуют СОБСТВЕННОЕ письмо html — оно прикалывается им заранее
+    // (wm-propagation-body-044: html vlr + body htb, текст псевдо вертикален).
+    for child in html.children.iter_mut() {
+        let Node::Element(e) = child else { continue };
+        if !(e.tag == "::after" || e.tag == "::before") {
+            continue;
+        }
+        e.style.vertical = e.style.vertical.or(own.0);
+        e.style.vertical_rl = e.style.vertical_rl.or(own.1);
+        e.style.rtl = e.style.rtl.or(own.2);
+        e.style.sideways = e.style.sideways.or(own.3);
     }
     if taken.0 == Some(true) && html.style.height.is_none() && html.style.min_height.is_none() {
         html.style.min_height = Some(crate::value::Len::Vh(1.0));
@@ -395,6 +430,30 @@ fn hash_of(html: &str, theme: &str) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn html_after_survives_unwrap() {
+        let doc = Document::new(
+            "<style>html::after { content: \"AFTER\"; display: block; }</style>             <body><div>x</div></body>",
+            "",
+        );
+        let tags: Vec<String> = doc
+            .nodes()
+            .iter()
+            .map(|n| match n {
+                Node::Element(e) => e.tag.clone(),
+                Node::Text(t) => format!("txt[{t}]"),
+            })
+            .collect();
+        eprintln!("TOP: {tags:?}");
+        fn has_after(nodes: &[Node]) -> bool {
+            nodes.iter().any(|n| match n {
+                Node::Element(e) => e.tag.contains("after") || has_after(&e.children),
+                _ => false,
+            })
+        }
+        assert!(has_after(doc.nodes()), "html::after потерян: {tags:?}");
+    }
 
     #[test]
     fn same_markup_is_not_reparsed() {
