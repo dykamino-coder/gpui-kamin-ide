@@ -21,6 +21,7 @@ fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         // Сюда `em` доходит только у узлов вне наследования (элементы форм,
         // корень) — считаем от базового кегля, как браузер от `:root`.
         Len::Em(k) => px(k * 16.0).into(),
+        Len::EmPx(k, add) => px(k * 16.0 + add).into(),
         // Тем же путём доходят `ch` и `ex`: семейство шрифта здесь неизвестно,
         // поэтому работает запасное значение спецификации.
         Len::Ch(k) => px(k * crate::metrics::ch_ex_px("", 16.0).0).into(),
@@ -779,6 +780,7 @@ fn apply_radius(mut d: Div, c: &Computed) -> Div {
             Len::Pct(p) => Some(base * p),
             // Неразрешённый `em` — от базового кегля (см. `len_to_gpui`).
             Len::Em(k) => Some(k * 16.0),
+            Len::EmPx(k, add) => Some(k * 16.0 + add),
             Len::Ch(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
             Len::Ic(k) => Some(k * crate::metrics::ic_px("", 16.0)),
             Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
@@ -995,6 +997,7 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
             Len::Px(v) => d.line_height(px(v)),
             Len::Pct(mult) => d.line_height(relative(mult)),
             Len::Em(k) => d.line_height(px(k * 16.0)),
+            Len::EmPx(k, add) => d.line_height(px(k * 16.0 + add)),
             Len::Ch(k) => d.line_height(px(k * crate::metrics::ch_ex_px("", 16.0).0)),
             Len::Ic(k) => d.line_height(px(k * crate::metrics::ic_px("", 16.0))),
             Len::Ex(k) => d.line_height(px(k * crate::metrics::ch_ex_px("", 16.0).1)),

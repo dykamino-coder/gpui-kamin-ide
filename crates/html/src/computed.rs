@@ -1266,6 +1266,7 @@ impl Computed {
         let ic = crate::metrics::ic_px(&family, base);
         let to_px = move |l: &mut Option<Len>| match *l {
             Some(Len::Em(k)) => *l = Some(Len::Px(k * base)),
+            Some(Len::EmPx(k, add)) => *l = Some(Len::Px(k * base + add)),
             Some(Len::Ch(k)) => *l = Some(Len::Px(k * ch)),
             Some(Len::Ex(k)) => *l = Some(Len::Px(k * ex)),
             Some(Len::Ic(k)) => *l = Some(Len::Px(k * ic)),
@@ -3378,6 +3379,7 @@ impl Computed {
                             Len::Px(v) => Some(v),
                             Len::Pct(p) => Some(p),
                             Len::Em(k) => Some(k * 16.0),
+                            Len::EmPx(k, add) => Some(k * 16.0 + add),
                             Len::Ch(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
                             Len::Ic(k) => Some(k * crate::metrics::ic_px("", 16.0)),
                             Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),

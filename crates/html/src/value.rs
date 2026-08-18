@@ -31,6 +31,9 @@ pub enum Len {
     /// только сборщику дерева, поэтому единица доживает до него как есть.
     Vh(f32),
     Vw(f32),
+    /// `calc(1em + 8px)`: доля кегля плюс довесок в точках — решается на
+    /// том же шаге, что `em` (text-shadow-orientation-upright-001: поле).
+    EmPx(f32, f32),
     /// `calc(4lh + 10px)`: кратное высоты строки плюс довесок в точках.
     /// Высота строки известна только при слиянии стилей — смесь доживает
     /// до него как есть (как одиночный `lh`).
@@ -622,6 +625,10 @@ impl Sum {
                 s.lh = l;
                 s.px = p;
             }
+            Len::EmPx(e, p) => {
+                s.em = e;
+                s.px = p;
+            }
             Len::Vh(v) => s.vh = v,
             Len::Vw(v) => s.vw = v,
             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => return None,
@@ -674,6 +681,11 @@ impl Sum {
         match (alive.next(), alive.next(), self.lh != 0.0) {
             (None, _, false) => Some(Len::Px(self.px)),
             (Some((v, unit)), None, false) if self.px == 0.0 => Some(unit(*v)),
+            // Кегльная доля с довеском в точках: разрешится вместе с `em`
+            // (text-shadow-orientation-upright-001: `calc(1em + 8px)`).
+            (Some((v, unit)), None, false) if matches!(unit(*v), Len::Em(_)) => {
+                Some(Len::EmPx(*v, self.px))
+            }
             // Кратное строки с довеском в точках: разрешится при слиянии.
             (None, _, true) => Some(if self.px == 0.0 {
                 Len::Lh(self.lh)

@@ -587,6 +587,7 @@ fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
         Len::Px(v) => Some(v),
         Len::Pct(v) => Some(base * v),
         Len::Em(k) => Some(k * 16.0),
+        Len::EmPx(k, add) => Some(k * 16.0 + add),
         Len::Ch(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).0),
         Len::Ic(k) => Some(k * crate::metrics::ic_px("", 16.0)),
         Len::Ex(k) => Some(k * crate::metrics::ch_ex_px("", 16.0).1),
