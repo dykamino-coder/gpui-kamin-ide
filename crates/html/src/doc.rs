@@ -308,6 +308,16 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             e.style.vertical = own.0;
             e.style.vertical_rl = own.1;
             e.style.rtl = own.2;
+            if std::env::var("LOG_DBG").is_ok()
+                && e.style.logical.as_ref().is_some_and(|l| l.border.iter().any(|b| b.is_some()))
+            {
+                eprintln!(
+                    "LOG tag={} cls={:?} v={:?} rl={:?} rtl={:?} sw={:?} border={:?}",
+                    e.tag, e.attr("class"), e.style.vertical, e.style.vertical_rl,
+                    e.style.rtl, e.style.sideways,
+                    e.style.logical.as_ref().map(|l| l.border.clone())
+                );
+            }
             e.style.resolve_logical();
             // Унаследованное обратно снимается: наследованием занимается
             // сборщик дерева, и оставленное здесь значение завело бы узлу

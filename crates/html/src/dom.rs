@@ -1023,6 +1023,18 @@ fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
     {
         return false;
     }
+    // Структурный псевдокласс НЕ-предметного компаунда
+    // (`td:nth-child(2) div`): место предка среди братьев известно из
+    // `spot` — без проверки любой `td` подходил под любой номер, и
+    // последнее правило перекрашивало все колонки
+    // (logical-physical-mapping-001). Нестуктурные (`:hover`) здесь
+    // по-прежнему пропускаются.
+    if let Some(p) = &sel.pseudo
+        && let Some(ok) = structural(p, node.spot)
+        && !ok
+    {
+        return false;
+    }
     sel.classes.iter().all(|c| node.classes.contains(c))
 }
 

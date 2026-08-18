@@ -1075,6 +1075,7 @@ impl Computed {
         // Размеры остаются без перестановки (замерено дважды, см. выше).
         let side_vertical = self.vertical == Some(true);
         let side_rl = self.vertical_rl == Some(true);
+        let side_sw_lr = self.sideways == Some(true) && !side_rl;
         // Логическое значение ПЕРЕКРЫВАЕТ физическое, а не только заполняет
         // пустое. Так вело себя прежнее разложение при разборе (оно писало
         // прямо в физическое поле), и порядок объявлений в правиле от этого
@@ -1120,7 +1121,10 @@ impl Computed {
                 // Начало оси блока: `vertical-rl` — ПРАВЫЙ край (поток блоков
                 // идёт справа налево), `vertical-lr` — левый.
                 let (bs, be) = if side_rl { (1u8, 3u8) } else { (3, 1) };
-                let (is, ie) = if rtl { (2u8, 0u8) } else { (0, 2) };
+                // `sideways-lr`: строка идёт СНИЗУ ВВЕРХ (css-writing-modes-4
+                // §3) — начало строчной оси у нижнего края, а не верхнего.
+                let flip = side_sw_lr != rtl;
+                let (is, ie) = if flip { (2u8, 0u8) } else { (0, 2) };
                 (is, ie, bs, be)
             } else if rtl {
                 (1u8, 3u8, 0u8, 2u8)
@@ -1147,7 +1151,8 @@ impl Computed {
         // физическую сторону.
         let (i_start, i_end, b_start, b_end) = if side_vertical {
             let (bs, be) = if side_rl { (1u8, 3u8) } else { (3, 1) };
-            let (is, ie) = if rtl { (2u8, 0u8) } else { (0, 2) };
+            let flip = side_sw_lr != rtl;
+            let (is, ie) = if flip { (2u8, 0u8) } else { (0, 2) };
             (is, ie, bs, be)
         } else if rtl {
             (1u8, 3u8, 0u8, 2u8)
