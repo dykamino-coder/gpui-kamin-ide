@@ -879,16 +879,23 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
             // flow): свой анкор-ряд вокруг ОДНОГО узла — соседей не трогает.
             // Корню с фоном-картинкой не ставится (гасил canvas-слой).
-            if matches!(e.tag.as_str(), "html" | "body")
-                && e.style.vertical_rl == Some(true)
-                && e.style.bg_image.is_none()
-            {
-                done = div()
-                    .w_full()
-                    .flex()
-                    .justify_end()
-                    .child(done)
-                    .into_any_element();
+            if matches!(e.tag.as_str(), "html" | "body") && e.style.vertical_rl == Some(true) {
+                if e.style.bg_image.is_none() {
+                    done = div()
+                        .w_full()
+                        .flex()
+                        .justify_end()
+                        .child(done)
+                        .into_any_element();
+                } else if let Some(Len::Px(w)) = e.style.width {
+                    // Корню с фоном-картинкой флекс-обёртка гасила слой
+                    // краски — прижим вправо считается сдвигом по известной
+                    // ширине (background-size-document-root-vrl-*).
+                    let shift = (opts.viewport.0 - w).max(0.0);
+                    if shift > 0.0 {
+                        done = div().ml(px(shift)).child(done).into_any_element();
+                    }
+                }
             }
             // Релятивный элемент с отрицательным `z-index`: место в потоке —
             // своё, краска — под содержимым до него (CSS 2.1 §9.9, шаг 3).
@@ -1046,7 +1053,7 @@ fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Ve
         if matches!(ch.tag.as_str(), "html" | "body")
             && ch.style.vertical_rl == Some(true)
             && ch.style.align_self.is_none()
-            && ch.style.bg_image.is_none()
+            && std::env::var("ANCH_BG").map_or(ch.style.bg_image.is_none(), |_| true)
         {
             ch.style.align_self = Some(crate::computed::Align::End);
         }

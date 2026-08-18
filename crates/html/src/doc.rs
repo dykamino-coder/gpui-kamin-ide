@@ -278,9 +278,20 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     // (замерено на background-size-document-root-vrl-*).
     if taken.1 == Some(true)
         && html.style.align_self.is_none()
-        && html.style.bg_image.is_none()
+        && std::env::var("ANCH_BG").map_or(html.style.bg_image.is_none(), |_| true)
     {
         html.style.align_self = Some(crate::computed::Align::End);
+    }
+    // Вертикальный корень с ФОНОМ-КАРТИНКОЙ: без минимума высоты его
+    // коробка при пустом теле нулевая, и краске негде лечь
+    // (background-size-document-root-vrl-*). Обычным вертикальным корням
+    // минимум не ставится — терялась скроллер-структура (av-size-022/023).
+    if taken.0 == Some(true)
+        && html.style.bg_image.is_some()
+        && html.style.height.is_none()
+        && html.style.min_height.is_none()
+    {
+        html.style.min_height = Some(crate::value::Len::Vh(1.0));
     }
     let side_lr = taken.3 == Some(true) && taken.1 != Some(true);
     if taken.0 == Some(true)
