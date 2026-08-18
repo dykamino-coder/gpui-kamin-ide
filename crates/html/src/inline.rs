@@ -1377,6 +1377,49 @@ pub fn transform_case(text: &str, style: &Computed) -> String {
 /// его спуск — между двумя картинками 60×60 появлялась полоса в полкегля
 /// (`line-breaking-030`). В сохранённых пробелах (`white-space: pre*`) кусок
 /// значим и остаётся.
+/// Открывающий знак, после которого перенос запрещён (UAX #14, класс OP;
+/// CJK-набор). Такой знак клеится к СЛЕДУЮЩЕМУ содержимому.
+fn opening_punct(c: char) -> bool {
+    matches!(
+        c,
+        '「' | '『' | '（' | '〔' | '【' | '〈' | '《' | '〖' | '〘' | '〚' | '｛' | '［'
+            | '｟' | '｢'
+    )
+}
+
+/// Отрезать от текст-куска перед атомом хвост из открывающих знаков.
+///
+/// Перенос после открывающей скобки запрещён (UAX #14): когда за текстом
+/// идёт строчный атом (`text-combine-upright`, картинка), скобка обязана
+/// уйти на строку ВМЕСТЕ с ним. Внутри одного текст-куска это делает
+/// перенос строк, но границу куска он не видит — скобка застревала
+/// последней строкой текста, а атом падал на следующую
+/// (text-combine-upright-line-breaking-rules-001).
+fn split_glued_tail(pieces: Vec<Piece>) -> Vec<Piece> {
+    let mut out: Vec<Piece> = Vec::with_capacity(pieces.len());
+    let mut it = pieces.into_iter().peekable();
+    while let Some(p) = it.next() {
+        match p {
+            Piece::Text { text, style }
+                if matches!(it.peek(), Some(Piece::Atom(_)))
+                    && text.chars().next_back().is_some_and(opening_punct) =>
+            {
+                let head_len = text.trim_end_matches(opening_punct).len();
+                let tail = text[head_len..].to_string();
+                if head_len > 0 {
+                    out.push(Piece::Text {
+                        text: text[..head_len].to_string(),
+                        style: style.clone(),
+                    });
+                }
+                out.push(Piece::Text { text: tail, style });
+            }
+            p => out.push(p),
+        }
+    }
+    out
+}
+
 fn drop_hanging_tail(mut pieces: Vec<Piece>) -> Vec<Piece> {
     while let Some(Piece::Text { text, style }) = pieces.last() {
         // Схлопываемый пробел по CSS — только `space`, `tab`, `CR`, `LF`.
@@ -1742,7 +1785,7 @@ pub fn as_wrapped_row(
         Some(TextAlign::Left) => row.justify_start(),
         _ => row,
     };
-    for p in drop_hanging_tail(pieces) {
+    for p in split_glued_tail(drop_hanging_tail(pieces)) {
         row = match p {
             Piece::Atom(el) => row.child(el),
             Piece::Overlay(el) => row.child(overlay_in_row(el)),
