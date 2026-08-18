@@ -2061,6 +2061,9 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
             let lane = match stack.line_height {
                 Some(Len::Px(v)) => v,
                 Some(Len::Em(k)) => k * em,
+                // До этой точки `ch` мог не разрешиться: стоячий ноль
+                // продвигается на кегль (§7.4) — считаем сами.
+                Some(Len::Ch(k)) => k * em,
                 _ => em,
             };
             let inner = paragraph(nodes, &stack, opts);
@@ -2069,7 +2072,7 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
                 .flex_shrink_0()
                 .flex()
                 .justify_center()
-                .child(div().w(px(em * 0.9)).child(inner))
+                .child(div().w(px(em * 0.9)).flex_shrink_0().child(inner))
                 .into_any_element();
         }
         let mut horizontal = inherited.clone();
