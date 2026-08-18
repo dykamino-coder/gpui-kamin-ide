@@ -2466,6 +2466,19 @@ fn paragraph_pieces(
                     Some(Len::Px(v)) => v,
                     _ => opts.base_size(),
                 };
+                // Сжатие ШРИФТОВОЙ фичей раньше масштаба (css-writing-modes-3
+                // §9.1.3): 2 знака — half-width, 3 — third, 4 — quarter.
+                // Шрифт без фичи набор игнорирует — тогда работает прежний
+                // масштаб (text-combine-upright-compression-004: qwid).
+                let feature = match text.chars().count() {
+                    2 => Some("hwid"),
+                    3 => Some("twid"),
+                    4 => Some("qwid"),
+                    _ => None,
+                };
+                if let Some(f) = feature {
+                    merged.font_features.push((f.to_string(), 1));
+                }
                 let inner = paragraph(&e.children, &merged, opts);
                 return Some(inline::Piece::Atom(
                     crate::interact::CombinedUpright::new(inner, em).into_any_element(),

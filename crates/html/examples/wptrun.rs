@@ -284,6 +284,32 @@ fn flat(buf: &[u8]) -> bool {
     buf.chunks_exact(4).all(|px| px == first)
 }
 
+/// Перебазировать `url(...)` содержимого css-файла на его папку: после
+/// инлайна в документ относительные адреса считались бы от папки ТЕСТА.
+fn rebase_css_urls(css: &str, base: &std::path::Path) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(at) = find_url(rest) {
+        out.push_str(&rest[..at + 4]);
+        rest = &rest[at + 4..];
+        let Some(end) = rest.find(')') else { break };
+        let raw = rest[..end].trim();
+        let bare = raw.trim_matches(|c| c == '\'' || c == '"');
+        if bare.starts_with("data:") || bare.contains("://") || bare.starts_with('/') {
+            out.push_str(raw);
+        } else {
+            let abs = base.join(bare).display().to_string().replace('\\', "/");
+            out.push('"');
+            out.push_str(&abs);
+            out.push('"');
+        }
+        out.push(')');
+        rest = &rest[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn resolve_links(html: &str, path: &str) -> String {
     let dir = std::path::Path::new(path)
         .parent()
@@ -335,6 +361,14 @@ fn resolve_links(html: &str, path: &str) -> String {
                 }
                 Some((_, file)) if lower.contains("stylesheet") => {
                     let css = std::fs::read_to_string(&file).unwrap_or_default();
+                    // Адреса внутри ПОДКЛЮЧЁННОГО файла считаются от ЕГО
+                    // папки: после вставки в документ база сместилась бы на
+                    // папку теста, и `url(WidthTest-Regular.otf)` из
+                    // support/width-test.css терял шрифт (compression-004).
+                    let css = match file.parent() {
+                        Some(base) => rebase_css_urls(&css, base),
+                        None => css,
+                    };
                     out.push_str("<style>");
                     out.push_str(&css);
                     out.push_str("</style>");
