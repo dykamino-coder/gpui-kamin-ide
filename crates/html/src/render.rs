@@ -2744,7 +2744,9 @@ fn paragraph_pieces(
         }
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
-        let d = apply(div(), &style.text_only()).child(SharedString::from(t.clone()));
+        let d = apply(div(), &style.text_only())
+            .max_w_full()
+            .child(SharedString::from(t.clone()));
         if std::env::var("RT_DBG").is_ok() {
             let tag = t.chars().take(3).collect::<String>();
             return d
