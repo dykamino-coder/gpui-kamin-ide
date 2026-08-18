@@ -2739,6 +2739,9 @@ fn paragraph_pieces(
         .into_any_element();
     }
     let mut render_text = |t: String, style: &Computed| -> AnyElement {
+        if std::env::var("RT_DBG").is_ok() {
+            eprintln!("RT t={:?} rot={:?} lh={:?} fs={:?}", &t[..t.len().min(9)], style.rotated_line, style.line_height, style.font_size);
+        }
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
         apply(div(), &style.text_only())
