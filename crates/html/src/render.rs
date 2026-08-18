@@ -4333,7 +4333,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // ТОЛЩИНЫ своей вертикальной строки — вклад стека в дорожку
             // сжимался до колонки в один глиф (ch-units-vrl-001: 19 вместо
             // line-height 100).
-            if row.style.vertical.or(inherited.vertical) == Some(true)
+            if cell
+                .style
+                .vertical
+                .or(row.style.vertical)
+                .or(inherited.vertical)
+                == Some(true)
                 && cell.style.min_width.is_none()
                 && cell.style.width.is_none()
             {
