@@ -82,6 +82,10 @@ pub struct Paragraph {
     /// преформате такой абзац — это строка, поэтому и `start`/`end` у каждой
     /// строки свои (HTML ставит это правило на `dir="auto"`).
     plaintext: Option<crate::computed::TextAlign>,
+    /// Строки в ОБРАТНОМ порядке (снизу вверх): у `vertical-lr` колонки идут
+    /// слева направо, а поворот по часовой кладёт ПЕРВУЮ строку правой —
+    /// подача снизу вверх возвращает ей левую колонку.
+    lines_reversed: bool,
     /// `line-clamp`: сколько строк показывать, остальные обрываются.
     clamp: Option<usize>,
     /// `text-overflow: ellipsis` контейнера с обрезкой.
@@ -197,6 +201,7 @@ impl Paragraph {
             align,
             align_last: None,
             plaintext: None,
+            lines_reversed: false,
             letter_spacing: px(0.),
             word_spacing: px(0.),
             vertical: false,
@@ -265,6 +270,12 @@ impl Paragraph {
     /// стороне КАЖДОЙ строки.
     pub fn plaintext(mut self, align: Option<crate::computed::TextAlign>) -> Self {
         self.plaintext = align;
+        self
+    }
+
+    /// Рисовать строки снизу вверх (см. поле `lines_reversed`).
+    pub fn reversed_lines(mut self, on: bool) -> Self {
+        self.lines_reversed = on;
         self
     }
 
@@ -2008,9 +2019,13 @@ impl Element for Paragraph {
             *self = inner;
             return;
         }
-        let mut y = bounds.origin.y;
         let segs = self.measure(window);
         let count = self.lines.len();
+        let mut y = if self.lines_reversed && count > 0 {
+            bounds.origin.y + self.line_height * (count as f32 - 1.0)
+        } else {
+            bounds.origin.y
+        };
         let selection = id
             .map(|global| {
                 window.with_element_state::<Selection, _>(global, |state, _| {
@@ -2123,7 +2138,11 @@ impl Element for Paragraph {
                         cx,
                     );
                 }
-                y += self.line_height;
+                y += if self.lines_reversed {
+                    -self.line_height
+                } else {
+                    self.line_height
+                };
                 continue;
             }
             let dx = match align {
@@ -2149,7 +2168,11 @@ impl Element for Paragraph {
                 String::new()
             };
             self.paint_line(&visible, &runs, at, &mark, window, cx);
-            y += self.line_height;
+            y += if self.lines_reversed {
+                -self.line_height
+            } else {
+                self.line_height
+            };
         }
         for (_, el) in self.overlays.iter_mut() {
             el.paint(window, cx);
@@ -2240,6 +2263,7 @@ impl Paragraph {
         // Замыкания живут дольше кадра, поэтому берут СВОЙ снимок раскладки.
         let probe = Paragraph {
             plaintext: self.plaintext,
+            lines_reversed: self.lines_reversed,
             text: self.text.clone(),
             spans: self.spans.clone(),
             word_spans: self.word_spans.clone(),

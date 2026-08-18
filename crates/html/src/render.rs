@@ -2225,6 +2225,12 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // Пометка для `text-combine-upright`: кускам внутри повёрнутого
         // абзаца нужен контр-поворот (см. atom-ветку ниже).
         horizontal.rotated_line = Some(true);
+        // `vertical-lr`: колонки идут слева направо — строки подаются снизу
+        // вверх, чтобы после поворота первая оказалась левой (у vertical-rl
+        // порядок родной: первая строка правой колонкой).
+        if inherited.vertical_rl != Some(true) {
+            horizontal.lines_reversed = Some(true);
+        }
         // Поворот — приём отрисовки ТЕКСТА. Замещаемое содержимое (картинка,
         // элемент формы) вертикальное письмо не поворачивает никогда: абзац
         // из одной картинки обязан выглядеть так же, как в горизонтальном
@@ -2580,6 +2586,7 @@ fn paragraph_pieces(
             // действует только на его знаки, а не на абзац целиком.
             // `unicode-bidi: plaintext` (в том числе `dir="auto"`): сторона
             // письма и логическая выключка решаются построчно.
+            .reversed_lines(inherited.lines_reversed == Some(true))
             .plaintext(
                 inherited
                     .bidi_plaintext
@@ -3521,8 +3528,15 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // наложенным на неё `max-height`; в самом конце — окно (его подставляет
     // потребитель в `paragraph`).
     {
+        // `height: 5em` доживает сюда неразрешённым — доля считается от
+        // кегля самого блока (outline-inline-vlr-006: предел колонки 5em).
+        let em_base = match merged.font_size {
+            Some(Len::Px(v)) => v,
+            _ => opts.base_size(),
+        };
         let px_of = |l: Option<Len>| match l {
             Some(Len::Px(v)) => Some(v),
+            Some(Len::Em(k)) => Some(k * em_base),
             _ => None,
         };
         let scrolls = !matches!(

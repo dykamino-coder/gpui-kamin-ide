@@ -908,6 +908,9 @@ pub struct Computed {
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
     /// момент раскладки ребёнка предков уже не видно.
     pub ortho_limit: Option<f32>,
+    /// Повёрнутый абзац `vertical-lr`: строки-колонки идут слева направо —
+    /// подача строк снизу вверх (см. `Paragraph::reversed_lines`).
+    pub lines_reversed: Option<bool>,
     /// `overflow-wrap: anywhere` — в отличие от `break-word`, меняет размер
     /// по минимальному содержимому.
     pub wrap_anywhere: Option<bool>,
