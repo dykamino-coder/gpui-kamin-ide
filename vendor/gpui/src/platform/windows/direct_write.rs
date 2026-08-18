@@ -29,6 +29,12 @@ struct FontInfo {
     features: IDWriteTypography,
     fallbacks: Option<IDWriteFontFallback>,
     is_system_font: bool,
+    /// KaminIDE patch: возможность `vert` запрошена — глифы стоячего
+    /// вертикального письма. Продвижение такого прогона берётся из
+    /// ВЕРТИКАЛЬНЫХ метрик глифа (vmtx подставленного глифа), как того
+    /// требует css-writing-modes-3 §7.3: «In vertical typographic mode,
+    /// fonts are used with their vertical metrics».
+    vert_advance: bool,
 }
 
 pub(crate) struct DirectWriteTextSystem(RwLock<DirectWriteState>);
@@ -440,6 +446,10 @@ impl DirectWriteState {
                 features: direct_write_features,
                 fallbacks,
                 is_system_font,
+                vert_advance: font_features
+                    .tag_value_list()
+                    .iter()
+                    .any(|(tag, value)| tag == "vert" && *value > 0),
             };
             let font_id = FontId(self.fonts.len());
             self.fonts.push(font_info);
@@ -572,6 +582,22 @@ impl DirectWriteState {
             let text_renderer = self.components.text_renderer.clone();
             let text_wide = text.encode_utf16().collect_vec();
 
+            // KaminIDE patch: участки, чьи прогоны просят `vert`, — их
+            // продвижение возьмётся из вертикальных метрик в отрисовщике.
+            let mut vert_ranges: Vec<(u32, u32)> = Vec::new();
+            {
+                let mut u8_at = 0usize;
+                let mut u16_at = 0u32;
+                for run in font_runs {
+                    let len16 = text[u8_at..(u8_at + run.len)].encode_utf16().count() as u32;
+                    if self.fonts[run.font_id.0].vert_advance {
+                        vert_ranges.push((u16_at, len16));
+                    }
+                    u8_at += run.len;
+                    u16_at += len16;
+                }
+            }
+
             let mut utf8_offset = 0usize;
             let mut utf16_offset = 0u32;
             let text_layout = {
@@ -621,6 +647,19 @@ impl DirectWriteState {
                 layout
             };
 
+            // KaminIDE patch: стоячее вертикальное письмо. Возможность `vert`
+            // через SetTypography DirectWrite в горизонтальной строке НЕ
+            // применяет (вертикальными формами он управляет сам, по
+            // направлению чтения) — поэтому строка со стоячими глифами
+            // раскладывается вертикальным направлением: подстановка `vert` и
+            // вертикальные продвижения (vmtx) приходят от самого DirectWrite.
+            // Включается только когда стоячие глифы просят ВСЕ прогоны —
+            // куски смешанной ориентации остаются горизонтальными.
+            if !vert_ranges.is_empty() && vert_ranges.len() == font_runs.len() {
+                text_layout.SetReadingDirection(DWRITE_READING_DIRECTION_TOP_TO_BOTTOM)?;
+                text_layout.SetFlowDirection(DWRITE_FLOW_DIRECTION_RIGHT_TO_LEFT)?;
+            }
+
             let mut first_run = true;
             for run in font_runs {
                 if first_run {
@@ -668,13 +707,20 @@ impl DirectWriteState {
                 index_converter: StringIndexConverter::new(text),
                 runs: &mut runs,
                 width: 0.0,
+                vert_ranges,
             };
-            text_layout.Draw(
+            let drawn = text_layout.Draw(
                 Some(&renderer_context as *const _ as _),
                 &text_renderer.0,
                 0.0,
                 0.0,
-            )?;
+            );
+            if std::env::var("VERT_DBG").is_ok()
+                && let Err(e) = &drawn
+            {
+                eprintln!("VERT_DBG draw err={e:?} text={text:?}");
+            }
+            drawn?;
             let width = px(renderer_context.width);
 
             Ok(LineLayout {
@@ -1342,7 +1388,10 @@ struct GlyphLayerTextureParams {
     _pad: [f32; 3],
 }
 
-struct TextRendererWrapper(pub IDWriteTextRenderer);
+// KaminIDE patch: обработчик версии 1 — вертикальная раскладка строки
+// (стоячее письмо, `vert`) зовёт ТОЛЬКО его; со старым интерфейсом Draw
+// падает с DWRITE_E_TEXTRENDERERINCOMPATIBLE.
+struct TextRendererWrapper(pub IDWriteTextRenderer1);
 
 impl TextRendererWrapper {
     pub fn new(locale_str: &str) -> Self {
@@ -1351,7 +1400,7 @@ impl TextRendererWrapper {
     }
 }
 
-#[implement(IDWriteTextRenderer)]
+#[implement(IDWriteTextRenderer1)]
 struct TextRenderer {
     locale: String,
 }
@@ -1369,6 +1418,9 @@ struct RendererContext<'t, 'a, 'b> {
     index_converter: StringIndexConverter<'a>,
     runs: &'b mut Vec<ShapedRun>,
     width: f32,
+    /// KaminIDE patch: utf16-участки, где продвижение глифа берётся из
+    /// вертикальных метрик (`vert`, стоячее вертикальное письмо).
+    vert_ranges: Vec<(u32, u32)>,
 }
 
 /// KaminIDE patch: знак «умолчательно игнорируемый» по Юникоду — служебный,
@@ -1516,6 +1568,46 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
         let glyph_ids = unsafe { std::slice::from_raw_parts(glyphrun.glyphIndices, glyph_count) };
         let glyph_advances =
             unsafe { std::slice::from_raw_parts(glyphrun.glyphAdvances, glyph_count) };
+        // KaminIDE patch: стоячее вертикальное письмо (`vert`) продвигается
+        // вертикальной метрикой глифа — advanceHeight подставленного глифа
+        // (css-writing-modes-3 §7.3). Горизонтальный advance у вертикальных
+        // форм бывает совсем другим (тестовый шрифт WPT: 1em против 0.25em).
+        let vert = context
+            .vert_ranges
+            .iter()
+            .any(|&(start, len)| desc.textPosition >= start && desc.textPosition < start + len);
+        if std::env::var("VERT_DBG").is_ok() {
+            eprintln!(
+                "VERT_DBG pos={} vert={} ranges={:?} adv={:?}",
+                desc.textPosition,
+                vert,
+                context.vert_ranges,
+                &glyph_advances[..glyph_count.min(4)]
+            );
+        }
+        let vert_advances: Option<Vec<f32>> = if vert {
+            let mut m: DWRITE_FONT_METRICS1 = unsafe { std::mem::zeroed() };
+            unsafe { font_face.GetMetrics(&mut m) };
+            let upem = (m.Base.designUnitsPerEm as f32).max(1.0);
+            let scale = glyphrun.fontEmSize / upem;
+            let mut gm = vec![DWRITE_GLYPH_METRICS::default(); glyph_count];
+            unsafe {
+                font_face.GetDesignGlyphMetrics(
+                    glyphrun.glyphIndices,
+                    glyph_count as u32,
+                    gm.as_mut_ptr(),
+                    false,
+                )
+            }
+            .ok()
+            .map(|_| {
+                gm.iter()
+                    .map(|g| g.advanceHeight as f32 * scale)
+                    .collect()
+            })
+        } else {
+            None
+        };
         let glyph_offsets =
             unsafe { std::slice::from_raw_parts(glyphrun.glyphOffsets, glyph_count) };
         let cluster_map =
@@ -1559,7 +1651,9 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
                     index: context.index_converter.utf8_ix,
                     is_emoji,
                 });
-                context.width += glyph_advances[this_glyph_idx];
+                context.width += vert_advances
+                    .as_ref()
+                    .map_or(glyph_advances[this_glyph_idx], |v| v[this_glyph_idx]);
             }
             glyph_idx += cluster_glyph_count;
         }
@@ -1614,6 +1708,96 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
             E_NOTIMPL,
             "DrawInlineObject unimplemented",
         ))
+    }
+}
+
+// KaminIDE patch: версия 1 — те же действия, угол ориентации глифа не
+// используется: поворот колонки делает сама отрисовка HTML (VerticalText),
+// одинаково для теста и эталона.
+#[allow(non_snake_case)]
+impl IDWriteTextRenderer1_Impl for TextRenderer_Impl {
+    fn DrawGlyphRun(
+        &self,
+        clientdrawingcontext: *const ::core::ffi::c_void,
+        baselineoriginx: f32,
+        baselineoriginy: f32,
+        _orientationangle: DWRITE_GLYPH_ORIENTATION_ANGLE,
+        measuringmode: DWRITE_MEASURING_MODE,
+        glyphrun: *const DWRITE_GLYPH_RUN,
+        glyphrundescription: *const DWRITE_GLYPH_RUN_DESCRIPTION,
+        clientdrawingeffect: windows::core::Ref<windows::core::IUnknown>,
+    ) -> windows::core::Result<()> {
+        IDWriteTextRenderer_Impl::DrawGlyphRun(
+            self,
+            clientdrawingcontext,
+            baselineoriginx,
+            baselineoriginy,
+            measuringmode,
+            glyphrun,
+            glyphrundescription,
+            clientdrawingeffect,
+        )
+    }
+
+    fn DrawUnderline(
+        &self,
+        clientdrawingcontext: *const ::core::ffi::c_void,
+        baselineoriginx: f32,
+        baselineoriginy: f32,
+        _orientationangle: DWRITE_GLYPH_ORIENTATION_ANGLE,
+        underline: *const DWRITE_UNDERLINE,
+        clientdrawingeffect: windows::core::Ref<windows::core::IUnknown>,
+    ) -> windows::core::Result<()> {
+        IDWriteTextRenderer_Impl::DrawUnderline(
+            self,
+            clientdrawingcontext,
+            baselineoriginx,
+            baselineoriginy,
+            underline,
+            clientdrawingeffect,
+        )
+    }
+
+    fn DrawStrikethrough(
+        &self,
+        clientdrawingcontext: *const ::core::ffi::c_void,
+        baselineoriginx: f32,
+        baselineoriginy: f32,
+        _orientationangle: DWRITE_GLYPH_ORIENTATION_ANGLE,
+        strikethrough: *const DWRITE_STRIKETHROUGH,
+        clientdrawingeffect: windows::core::Ref<windows::core::IUnknown>,
+    ) -> windows::core::Result<()> {
+        IDWriteTextRenderer_Impl::DrawStrikethrough(
+            self,
+            clientdrawingcontext,
+            baselineoriginx,
+            baselineoriginy,
+            strikethrough,
+            clientdrawingeffect,
+        )
+    }
+
+    fn DrawInlineObject(
+        &self,
+        clientdrawingcontext: *const ::core::ffi::c_void,
+        originx: f32,
+        originy: f32,
+        _orientationangle: DWRITE_GLYPH_ORIENTATION_ANGLE,
+        inlineobject: windows::core::Ref<IDWriteInlineObject>,
+        issideways: BOOL,
+        isrighttoleft: BOOL,
+        clientdrawingeffect: windows::core::Ref<windows::core::IUnknown>,
+    ) -> windows::core::Result<()> {
+        IDWriteTextRenderer_Impl::DrawInlineObject(
+            self,
+            clientdrawingcontext,
+            originx,
+            originy,
+            inlineobject,
+            issideways,
+            isrighttoleft,
+            clientdrawingeffect,
+        )
     }
 }
 

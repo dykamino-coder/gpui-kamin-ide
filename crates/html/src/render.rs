@@ -2198,6 +2198,25 @@ pub fn paragraph_public(nodes: &[Node], inherited: &Computed, opts: &RenderOpts)
     paragraph(nodes, inherited, opts)
 }
 
+/// Знак стоит прямо в вертикальном письме с `text-orientation: mixed`
+/// (UTR#50, vo=U, упрощённо): иероглифика, кана, CJK-знаки препинания и
+/// полноширинные формы. Остальное — лежит боком.
+fn upright_in_mixed(c: char) -> bool {
+    matches!(c as u32,
+        0x3000..=0x303F   // CJK-знаки и пунктуация (「」、。 …)
+        | 0x3040..=0x30FF // хирагана и катакана
+        | 0x31F0..=0x31FF // фонетические расширения каны
+        | 0x3200..=0x33FF // обведённые и совместимые CJK
+        | 0x3400..=0x4DBF // иероглифика, расширение A
+        | 0x4E00..=0x9FFF // иероглифика единая
+        | 0xAC00..=0xD7AF // хангыль
+        | 0xF900..=0xFAFF // совместимая иероглифика
+        | 0xFE30..=0xFE4F // вертикальные формы совместимости
+        | 0xFF01..=0xFF60 // полноширинные формы
+        | 0x20000..=0x2FFFD // иероглифика, плоскость 2
+    )
+}
+
 fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Вертикальное письмо: строка идёт сверху вниз. Поворачивается только
     // текст — коробки блоков уже выстроены по горизонтальной оси потока.
@@ -2743,6 +2762,25 @@ fn paragraph_pieces(
         if std::env::var("RT_DBG").is_ok() {
             eprintln!("RT t={:?} rot={:?} lh={:?} fs={:?}", &t[..t.len().min(9)], style.rotated_line, style.line_height, style.font_size);
         }
+        // Стоячие знаки в вертикальном письме (`text-orientation: mixed`,
+        // CJK): набор идёт вертикальными формами шрифта — возможность `vert`
+        // подставляет глиф, а продвижение берётся из его вертикальных метрик
+        // (css-writing-modes-3 §7.3, реализация в DirectWrite-слое). Пока
+        // только для кусков, стоячих ЦЕЛИКОМ: смешанный кусок потребовал бы
+        // резки на прогоны по ориентации.
+        let vert_style;
+        let style = if style.rotated_line == Some(true)
+            && style.sideways != Some(true)
+            && t.chars().any(upright_in_mixed)
+            && t.chars().all(|c| c.is_whitespace() || upright_in_mixed(c))
+        {
+            let mut s = style.clone();
+            s.font_features.push(("vert".into(), 1));
+            vert_style = s;
+            &vert_style
+        } else {
+            style
+        };
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
         let d = apply(div(), &style.text_only())
