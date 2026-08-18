@@ -246,9 +246,20 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         html.style.sideways,
     );
     // Главное вертикальное письмо: строчная ось корня занимает всё окно
-    // (§8.2). Замерено: ставить это и при taken == own (письмо на самом
-    // `<html>`) — wm 124 → 123 при нулевой пользе, пока vrl-корень не прижат
-    // вправо; вернуть вместе с прижимом.
+    // (§8.2) — И при письме, заданном на самом `<html>` (taken == own):
+    // эталон wm-propagation-047 ставит sideways-lr на корень, и без 100vh
+    // прижимать содержимое к низу не от чего.
+    // До раннего выхода — только sideways-lr (нужен низ, wm-prop-047-ref);
+    // обычные вертикальные корни с письмом на самом html так теряли
+    // скроллер-структуру (available-size-022/023 замерено).
+    let side_lr = taken.3 == Some(true) && taken.1 != Some(true);
+    if taken.0 == Some(true)
+        && side_lr
+        && html.style.height.is_none()
+        && html.style.min_height.is_none()
+    {
+        html.style.min_height = Some(crate::value::Len::Vh(1.0));
+    }
     if taken == own {
         return nodes;
     }
