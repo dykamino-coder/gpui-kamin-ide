@@ -4232,14 +4232,19 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 busy[c2] = rspan;
             }
             if span == 1 && ix < col_widths.len() {
-                // Ортогональная ячейка (вертикальное письмо в обычной
-                // таблице): её блочная ось горизонтальна, и `block-size`
-                // (лёгший в height — размеры при вертикали не
-                // переставляются, см. resolve_logical) задаёт КОЛОНКУ.
-                let orthogonal = cell.style.vertical == Some(true)
-                    && e.style.vertical != Some(true)
-                    && inherited.vertical != Some(true);
-                let source = if orthogonal && cell.style.width.is_none() {
+                // Дорожку задаёт размер ячейки вдоль ИНЛАЙН-ОСИ ТАБЛИЦЫ.
+                // Вертикальная таблица: ось вертикальна — дорожка из ВЫСОТЫ
+                // ячейки (width остаётся её коробке, table-cell-align-002).
+                // Горизонтальная: из ширины; у ортогональной ячейки
+                // (вертикальное письмо в htb-таблице) `block-size` лёг в
+                // height (размеры при вертикали не переставляются, см.
+                // resolve_logical) — он и задаёт колонку.
+                let table_vertical =
+                    e.style.vertical == Some(true) || inherited.vertical == Some(true);
+                let orthogonal = cell.style.vertical == Some(true) && !table_vertical;
+                let source = if table_vertical {
+                    cell.style.height
+                } else if orthogonal && cell.style.width.is_none() {
                     cell.style.height
                 } else {
                     cell.style.width
