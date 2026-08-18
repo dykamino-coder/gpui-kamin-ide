@@ -1271,7 +1271,15 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
     PolychromeSprite sprite = poly_sprites[input.sprite_id];
     // KaminIDE patch: координаты самого спрайта.
     float2 local_position = untransform(input.position.xy, sprite.transformation);
-    float4 sample = t_sprite.Sample(s_sprite, input.tile_position);
+    // KaminIDE patch: кламп UV на полтексела внутрь тайла — линейная выборка
+    // на краю тянула соседей по атласу, и растянутая картинка получала кайму
+    // (clamp-to-edge для тайла общего атласа).
+    float2 atlas_size;
+    t_sprite.GetDimensions(atlas_size.x, atlas_size.y);
+    float2 tile_min = (float2(sprite.tile.bounds.origin) + 0.5) / atlas_size;
+    float2 tile_max = (float2(sprite.tile.bounds.origin) + float2(sprite.tile.bounds.size) - 0.5) / atlas_size;
+    float2 uv = clamp(input.tile_position, tile_min, tile_max);
+    float4 sample = t_sprite.Sample(s_sprite, uv);
     float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
 
     float4 color = sample;

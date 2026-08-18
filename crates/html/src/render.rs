@@ -869,6 +869,20 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             }
             let _ = hoist_margins;
             let mut done = content_sized(layered(built, &e.style, layer_ok), &e.style);
+            // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
+            // flow): свой анкор-ряд вокруг ОДНОГО узла — соседей не трогает.
+            // Корню с фоном-картинкой не ставится (гасил canvas-слой).
+            if matches!(e.tag.as_str(), "html" | "body")
+                && e.style.vertical_rl == Some(true)
+                && e.style.bg_image.is_none()
+            {
+                done = div()
+                    .w_full()
+                    .flex()
+                    .justify_end()
+                    .child(done)
+                    .into_any_element();
+            }
             // Релятивный элемент с отрицательным `z-index`: место в потоке —
             // своё, краска — под содержимым до него (CSS 2.1 §9.9, шаг 3).
             if e.style.z_index.is_some_and(|z| z < 0)
@@ -2049,7 +2063,16 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // знакам: каждый знак — своя строка, стопка растёт вниз.
         // У `sideways-*` ориентация текста ИГНОРИРУЕТСЯ (css-writing-modes-4
         // §text-orientation): глифы всегда лежат, стопка не строится.
-        if inherited.upright == Some(true) && inherited.sideways != Some(true) {
+        // `text-orientation` наследуется и действует на ТЕКСТ (§4.1): когда
+        // все куски абзаца несут `upright` сами (`html::after { upright }`),
+        // стопка обязана строиться так же, как при флаге на контейнере.
+        let kids_upright = !nodes.is_empty()
+            && nodes.iter().all(|n| match n {
+                Node::Element(e) => e.style.upright == Some(true),
+                Node::Text(t) => t.trim().is_empty(),
+            });
+        let upright = inherited.upright == Some(true) || kids_upright;
+        if upright && inherited.sideways != Some(true) {
             let mut stack = inherited.clone();
             stack.vertical = None;
             stack.break_word = Some(true);

@@ -275,16 +275,6 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     if taken.0 == Some(true) && html.style.height.is_none() && html.style.min_height.is_none() {
         html.style.min_height = Some(crate::value::Len::Vh(1.0));
     }
-    for child in html.children.iter_mut() {
-        let Node::Element(e) = child else { continue };
-        if e.tag == "body" {
-            continue;
-        }
-        e.style.vertical = e.style.vertical.or(own.0);
-        e.style.vertical_rl = e.style.vertical_rl.or(own.1);
-        e.style.rtl = e.style.rtl.or(own.2);
-        e.style.sideways = e.style.sideways.or(own.3);
-    }
     (
         html.style.vertical,
         html.style.vertical_rl,
