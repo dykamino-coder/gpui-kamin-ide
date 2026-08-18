@@ -4030,7 +4030,13 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // колонку, а не свою коробку (CSS 2.1 §17.5.2.2) — колонка не уже
     // содержимого (пол min-content), процентная забирает долю остатка.
     let mut col_widths: Vec<(Option<f32>, Option<f32>)> = vec![(None, None); cols as usize];
-    let (from_cols, cols_collapsed) = col_element_widths(&e.children);
+    let table_font = match inherited.font_size {
+        Some(Len::Px(v)) => v,
+        _ => opts.base_size(),
+    };
+    let table_family = inherited.font_family.clone().unwrap_or_default();
+    let (from_cols, cols_collapsed) =
+        col_element_widths(&e.children, table_font, &table_family);
     let mut busy: Vec<u16> = vec![0; cols as usize];
     for row in &row_elements {
         let mut ix = 0usize;
@@ -4302,6 +4308,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // ch-units-vrl-*). Только ch: полный resolve_em здесь двигал
             // em-высоты и был нетто-минусом (замерено, откат 8b59418-ядра).
             if let Some(Len::Ch(k)) = cell.style.height {
+                // Флаги РЯДА, не свои: свой upright ячейки давал кегль там,
+                // где эталон меряет лежачим нулём (ch-units-vrl-007/008 —
+                // расхождение путей резолва div-эмуляции, вернуться при
+                // унификации resolve_em).
                 let upright = row.style.upright.or(inherited.upright) == Some(true);
                 let vertical = row.style.vertical.or(inherited.vertical) == Some(true);
                 let base = match inherited.font_size {
@@ -5247,7 +5257,11 @@ fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
     out
 }
 
-fn col_element_widths(children: &[Node]) -> (Vec<Option<f32>>, Vec<bool>) {
+fn col_element_widths(
+    children: &[Node],
+    base_font: f32,
+    family: &str,
+) -> (Vec<Option<f32>>, Vec<bool>) {
     let mut widths = vec![];
     let mut collapsed = vec![];
     for child in children {
@@ -5256,6 +5270,25 @@ fn col_element_widths(children: &[Node]) -> (Vec<Option<f32>>, Vec<bool>) {
             "col" => {
                 let w = match el.style.width {
                     Some(Len::Px(v)) => Some(v),
+                    // `ch` на колонке считается с ЕЁ письмом: стоячий ноль
+                    // продвигается на кегль (ch-units-vrl-003/004). Кегль
+                    // колонки — свой или умолчание: шрифт таблицы сюда не
+                    // наследуется, а тесты задают его одинаковым.
+                    // Только СТОЯЧИЕ (upright): там продвижение — кегль и
+                    // сходится с эталоном. Лежачий `ch` (sideways) оставлен
+                    // авто-колонке: явный глиф-замер уводил ширину
+                    // (ch-units-vrl-007/008 были зелёными на авто).
+                    Some(Len::Ch(k))
+                        if el.style.upright == Some(true)
+                            && el.style.vertical == Some(true) =>
+                    {
+                        let base = match el.style.font_size {
+                            Some(Len::Px(v)) => v,
+                            _ => base_font,
+                        };
+                        let _ = family;
+                        Some(k * base)
+                    }
                     _ => None,
                 };
                 // `visibility: collapse` на колонке — колонка ВЫБРОШЕНА:
@@ -5271,7 +5304,7 @@ fn col_element_widths(children: &[Node]) -> (Vec<Option<f32>>, Vec<bool>) {
                 collapsed.extend(std::iter::repeat_n(c, span));
             }
             "colgroup" => {
-                let (w, c) = col_element_widths(&el.children);
+                let (w, c) = col_element_widths(&el.children, base_font, family);
                 if w.is_empty() {
                     let ww = match el.style.width {
                         Some(Len::Px(v)) => Some(v),
