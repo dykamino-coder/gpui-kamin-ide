@@ -38,6 +38,7 @@ import { registerShimWindow } from "@kaminide/host-compat"
 import { setHookEmitConfigStore } from "./main/hooks/emit-bridge-event"
 import { ConnectionManager } from "./main/ws/connection-manager"
 import { registerCoreIpc, wireConnectionCallbacks } from "./core-ipc"
+import { registerSyncIPC } from "./main/ipc/sync"
 
 interface InboundMessage {
   kind: "invoke" | "send"
@@ -328,7 +329,14 @@ export class BridgeHost {
     registerMarketplaceIPC(() => this.sink)
     installConsoleCapture()
     registerLogsIPC(() => this.sink)
-    registerCoreIpc(context)
+    registerSyncIPC({
+      configStore: this.configStore,
+      getProjectPaths: () => {
+        const cwd = getUserCwd()
+        return [...this.tabManager.getDistinctCwds(), ...(cwd ? [cwd] : [])]
+      },
+    })
+    registerCoreIpc(context, this.configStore)
 
     // Feed external MCP tool schemas into every session at create/auth, and
     // re-register on all authenticated connections when the server set changes.

@@ -201,8 +201,9 @@ node scripts/build_setup_rust.mjs
 `scripts/build_rust_installer.mjs`, NSIS-секция сборщика): его стаб ловился
 эвристиками антивирусов как дроппер — Kaspersky ругался на 1.0.47.
 
-Результат имеет имя `KaminIDE_<version>_x64-setup.exe`. Build guard проверяет,
-что release binary новее `Cargo.toml`, и не позволяет упаковать старый exe под
+Результат имеет имя `KaminIDE_<version>_x64-setup.exe`. Build guards проверяют,
+что release binary новее `Cargo.toml`, а `runtime.tar.zst` соответствует
+текущим host/builtin sources, и не позволяют упаковать старые компоненты под
 новой версией.
 
 Минимальный smoke test:

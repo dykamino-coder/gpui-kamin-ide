@@ -16,8 +16,14 @@ import { buildPluginSnapshots } from './plugin-snapshot'
 const SYNC_DEBOUNCE_MS = 60_000  // Don't re-sync if synced < 60s ago
 const lastUserSync = new Map<string, number>()
 const lastProjectSync = new Map<string, number>()
-const userSyncInFlight = new Map<string, Promise<void>>()
-const projectSyncInFlight = new Map<string, Promise<void>>()
+const userSyncInFlight = new Map<string, Promise<SyncResult>>()
+const projectSyncInFlight = new Map<string, Promise<SyncResult>>()
+
+export interface SyncResult {
+  ok: boolean
+  skipped?: boolean
+  error?: string
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -133,11 +139,11 @@ function log(msg: string, ...args: unknown[]) {
  * Upload user-level files (~/.claude/skills, agents, settings.json, CLAUDE.md) to bridge.
  * Debounced: skips if synced less than 60s ago.
  */
-async function syncUserDataOnce(serverUrl: string, token: string): Promise<void> {
+async function syncUserDataOnce(serverUrl: string, token: string): Promise<SyncResult> {
   const now = Date.now()
   const syncKey = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}`
   if (now - (lastUserSync.get(syncKey) ?? 0) < SYNC_DEBOUNCE_MS) {
-    return // debounced
+    return { ok: true, skipped: true }
   }
 
   const hash = tokenHash(token)
@@ -165,18 +171,22 @@ async function syncUserDataOnce(serverUrl: string, token: string): Promise<void>
 
     if (!resp.ok) {
       const body = await resp.text()
-      log(`User sync failed: ${resp.status} ${body}`)
-      return
+      const error = `User sync failed: ${resp.status} ${body}`
+      log(error)
+      return { ok: false, error }
     }
 
     lastUserSync.set(syncKey, now)
     log(`User data synced (skills: ${Object.keys(data.skills).length}, agents: ${Object.keys(data.agents).length}, commands: ${Object.keys(data.commands).length}, plugins: ${Object.keys(data.plugins).length}, settings: ${!!data.settings}, claudeMd: ${!!data.claudeMd})`)
+    return { ok: true }
   } catch (err) {
-    log('User sync error:', err instanceof Error ? err.message : String(err))
+    const error = `User sync error: ${err instanceof Error ? err.message : String(err)}`
+    log(error)
+    return { ok: false, error }
   }
 }
 
-export function syncUserData(serverUrl: string, token: string): Promise<void> {
+export function syncUserData(serverUrl: string, token: string): Promise<SyncResult> {
   const key = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}`
   const existing = userSyncInFlight.get(key)
   if (existing) return existing
@@ -191,12 +201,12 @@ export function syncUserData(serverUrl: string, token: string): Promise<void> {
  * Upload project-level files (.claude/ dir + CLAUDE.md + .claude.json) to bridge.
  * Debounced per project path: skips if synced less than 60s ago.
  */
-async function syncProjectDataOnce(serverUrl: string, token: string, projectPath: string): Promise<void> {
+async function syncProjectDataOnce(serverUrl: string, token: string, projectPath: string): Promise<SyncResult> {
   const now = Date.now()
   const syncKey = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}\0${projectPath}`
   const lastSync = lastProjectSync.get(syncKey) ?? 0
   if (now - lastSync < SYNC_DEBOUNCE_MS) {
-    return // debounced
+    return { ok: true, skipped: true }
   }
 
   const hash = tokenHash(token)
@@ -226,18 +236,22 @@ async function syncProjectDataOnce(serverUrl: string, token: string, projectPath
 
     if (!resp.ok) {
       const body = await resp.text()
-      log(`Project sync failed: ${resp.status} ${body}`)
-      return
+      const error = `Project sync failed: ${resp.status} ${body}`
+      log(error)
+      return { ok: false, error }
     }
 
     lastProjectSync.set(syncKey, now)
     log(`Project data synced for ${path.basename(projectPath)} (skills: ${Object.keys(data.skills).length}, rules: ${Object.keys(data.rules).length}, agents: ${Object.keys(data.agents).length}, commands: ${Object.keys(data.commands).length})`)
+    return { ok: true }
   } catch (err) {
-    log('Project sync error:', err instanceof Error ? err.message : String(err))
+    const error = `Project sync error: ${err instanceof Error ? err.message : String(err)}`
+    log(error)
+    return { ok: false, error }
   }
 }
 
-export function syncProjectData(serverUrl: string, token: string, projectPath: string): Promise<void> {
+export function syncProjectData(serverUrl: string, token: string, projectPath: string): Promise<SyncResult> {
   const key = `${toHttpUrl(serverUrl)}\0${tokenHash(token)}\0${projectPath}`
   const existing = projectSyncInFlight.get(key)
   if (existing) return existing

@@ -14,6 +14,7 @@ import type { TabManager } from "./main/tab-manager"
 import type { ConfigStore } from "./main/config/store"
 import { ConnectionManager } from "./main/ws/connection-manager"
 import { enrichTreeWithTabs } from "./main/tree-enrichment"
+import { withSyncAuthorization, type ServerFetchInit } from "./main/sync/request-auth"
 import { spawnToast, closeToastsMatching } from "./main/notifications/toast-window"
 import { getDisplayedTab } from "./displayed-tab"
 
@@ -22,7 +23,7 @@ const MIME: Record<string, string> = {
   ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
 }
 
-export function registerCoreIpc(context: vscode.ExtensionContext): void {
+export function registerCoreIpc(context: vscode.ExtensionContext, configStore: Pick<ConfigStore, "get">): void {
   ipcMain.handle("get-version", () => String(context.extension.packageJSON.version ?? ""))
   ipcMain.handle("vscode:is-available", () => false)
   ipcMain.on("vscode:open", () => {})
@@ -167,13 +168,14 @@ export function registerCoreIpc(context: vscode.ExtensionContext): void {
     _e: IpcMainInvokeEvent,
     httpBase: string,
     path: string,
-    init?: { method?: string; body?: string; headers?: Record<string, string> },
+    init?: ServerFetchInit,
   ) => {
     try {
+      const authenticatedInit = withSyncAuthorization(path, init, configStore.get().token)
       const resp = await fetch(`${httpBase}${path}`, {
-        method: init?.method ?? "GET",
-        headers: init?.headers ?? (init?.body ? { "Content-Type": "application/json" } : undefined),
-        body: init?.body,
+        method: authenticatedInit?.method ?? "GET",
+        headers: authenticatedInit?.headers ?? (authenticatedInit?.body ? { "Content-Type": "application/json" } : undefined),
+        body: authenticatedInit?.body,
         signal: AbortSignal.timeout(8000),
       })
       const text = await resp.text()

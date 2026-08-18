@@ -69,6 +69,7 @@ const RUNTIME_DEPS = ["@homebridge/node-pty-prebuilt-multiarch", "ws", "chokidar
 // builds drop this via env for speed; production keeps 19.
 const ZSTD_LEVEL = Number(process.env.KAMIN_PAYLOAD_ZSTD_LEVEL) || 19
 const FORCE = process.env.KAMIN_PAYLOAD_FORCE === "1"
+const CHECK = process.argv.includes("--check")
 
 function fail(message) {
   console.error(`[payload] ${message}`)
@@ -217,11 +218,22 @@ async function main() {
   if (!existsSync(hostBundle)) fail("dist-host/kamin-host.mjs missing — run `npm run build:host:tauri` first")
   if (!existsSync(builtinSrc)) fail("builtin-extensions/ missing")
 
+  const want = payloadHash()
+  if (CHECK) {
+    if (!existsSync(outPath) || !existsSync(outHashPath)) {
+      fail("runtime payload missing — run `npm run build:payload`")
+    }
+    if (readFileSync(outHashPath, "utf8") !== want) {
+      fail("runtime payload is stale — run `npm run build:payload`")
+    }
+    console.log(`[payload] verified current (${mb(statSync(outPath).size)})`)
+    return
+  }
+
   ensureRuntimeDeps()
 
   // Skip the expensive tar+zstd when the inputs are unchanged — the existing
   // archive is byte-identical, so cargo also skips re-embedding it.
-  const want = payloadHash()
   if (!FORCE && existsSync(outPath) && existsSync(outHashPath) && readFileSync(outHashPath, "utf8") === want) {
     console.log(`[payload] unchanged — skip pack (${mb(statSync(outPath).size)})`)
     return
