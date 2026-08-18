@@ -898,6 +898,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     rtl: inherited.rtl == Some(true),
                     vertical: inherited.vertical == Some(true),
                     vertical_rl: inherited.vertical_rl == Some(true),
+                    own_vertical: e.style.vertical == Some(true),
                     ..Default::default()
                 });
                 let probe = crate::interact::spot_probe(spot.clone(), true);

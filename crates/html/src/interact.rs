@@ -1853,6 +1853,11 @@ pub struct Spot {
     pub vertical: bool,
     /// Вертикальное письмо справа налево: следующая строка левее текущей.
     pub vertical_rl: bool,
+    /// СОБСТВЕННОЕ письмо элемента вертикально (поток вокруг — нет):
+    /// статическая позиция такого абсолюта смещена на его ширину —
+    /// блок vrl вешается своим блок-началом, правым краем
+    /// (abs-pos-border-offset-003, ref: left 55 = контент-лево + width).
+    pub own_vertical: bool,
 }
 
 pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;
@@ -2050,6 +2055,10 @@ impl Element for LatePlace {
             // строке — сама точка.
             (Some(hole), None) if now.rtl => gpui::point(
                 hole.origin.x + hole.size.width - bounds.size.width - bounds.origin.x,
+                hole.origin.y - bounds.origin.y,
+            ),
+            (Some(hole), None) if now.own_vertical && !now.vertical => gpui::point(
+                hole.origin.x + bounds.size.width - bounds.origin.x,
                 hole.origin.y - bounds.origin.y,
             ),
             (Some(hole), None) => hole.origin - bounds.origin,
