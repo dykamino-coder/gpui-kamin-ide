@@ -4329,6 +4329,41 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 };
                 cell.style.height = Some(Len::Px(k * ch));
             }
+            // Ортогональная ячейка (вертикальный контент от ряда) не уже
+            // ТОЛЩИНЫ своей вертикальной строки — вклад стека в дорожку
+            // сжимался до колонки в один глиф (ch-units-vrl-001: 19 вместо
+            // line-height 100).
+            if row.style.vertical.or(inherited.vertical) == Some(true)
+                && cell.style.min_width.is_none()
+                && cell.style.width.is_none()
+            {
+                let upright =
+                    row.style.upright.or(inherited.upright) == Some(true);
+                let base = match inherited.font_size {
+                    Some(Len::Px(v)) => v,
+                    _ => opts.base_size(),
+                };
+                let lh_raw = cell
+                    .style
+                    .line_height
+                    .or(row.style.line_height)
+                    .or(inherited.line_height);
+                let lh = match lh_raw {
+                    Some(Len::Px(v)) => Some(v),
+                    Some(Len::Em(k)) => Some(k * base),
+                    Some(Len::Ch(k)) => Some(if upright {
+                        k * base
+                    } else {
+                        let family =
+                            inherited.font_family.clone().unwrap_or_default();
+                        k * crate::metrics::ch_ex_px(&family, base).0
+                    }),
+                    _ => None,
+                };
+                if let Some(w) = lh {
+                    cell.style.min_width = Some(Len::Px(w));
+                }
+            }
             // Высота ячейки — МИНИМУМ (css-tables §3.6): содержимое выше
             // растит ячейку, а не режется. `height: 20px` с блоком в 300
             // прятал всё под обрезкой.
