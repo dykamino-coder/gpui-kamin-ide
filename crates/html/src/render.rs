@@ -4066,6 +4066,14 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // схлопывала рисунок в ничто.
         if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
             image = image.w(px(w)).h(px(h));
+        } else if !matches!(e.style.width, None | Some(Len::Auto))
+            && !matches!(e.style.height, None | Some(Len::Auto))
+        {
+            // Обе стороны заданы, но не в точках (`width:100%; height:100%`):
+            // размер решает КОРОБКА — рисунок растягивается на неё
+            // (sizing-percentages-replaced-orthogonal-001: лайм обязан
+            // накрыть контейнер, а не остаться своим пикселем).
+            image = image.size_full();
         } else if !matches!(e.style.width, Some(Len::Px(_)))
             && !matches!(e.style.height, Some(Len::Px(_)))
         {
