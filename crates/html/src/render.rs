@@ -2332,6 +2332,14 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // делала её бесконечной (замерено: wm 118 → 104).
         let vt = crate::interact::VerticalText::new(inner)
             .keyed(text_id(&plain) ^ opts.doc_salt ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9));
+        // Настоящий предел от родителя (ортогональная ячейка): строка,
+        // которая уже влезает, заявляет высоту честно — без неё гибкая
+        // ячейка мерила коробку нулём и justify уводил глиф из виду.
+        let vt = if let Some(l) = inherited.ortho_limit {
+            vt.fit_within(px(l))
+        } else {
+            vt
+        };
         let vt = if let Some(Len::Px(cap)) = inherited.max_height {
             vt.claiming_height(px(cap))
         } else {
@@ -4804,6 +4812,15 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 };
                 cell.style.height = Some(Len::Px(k * base));
             }
+            // Предел ортогонального потока пересчитывается ПОСЛЕ переклада
+            // inline-size в высоту: блок выше (у `let mut cm`) высоты ещё
+            // не видел (table-cell-align-005/006).
+            if cell.style.vertical == Some(true)
+                && cm.ortho_limit.is_none()
+                && let Some(Len::Px(h)) = cell.style.height
+            {
+                cm.ortho_limit = Some(h);
+            }
             // Ортогональная ячейка (вертикальный контент от ряда) не уже
             // ТОЛЩИНЫ своей вертикальной строки — вклад стека в дорожку
             // сжимался до колонки в один глиф (ch-units-vrl-001: 19 вместо
@@ -4918,9 +4935,14 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // `vertical-align` уходит на поперечную ось
                 // (table-cell-align-005/006).
                 use crate::computed::TextAlign;
+                // `start`/`end` — края СТРОКИ: вертикальная строка идёт
+                // сверху вниз, `dir=rtl` разворачивает её снизу вверх.
+                let rtl = cm.rtl == Some(true);
                 d = match cm.text_align {
                     Some(TextAlign::Right) => d.justify_end(),
                     Some(TextAlign::Center) => d.justify_center(),
+                    Some(TextAlign::End) if !rtl => d.justify_end(),
+                    Some(TextAlign::Start) if rtl => d.justify_end(),
                     _ => d.justify_start(),
                 };
                 d = match cm.vertical_align {

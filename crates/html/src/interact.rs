@@ -1607,6 +1607,10 @@ pub struct VerticalText {
     claim_cap: Option<Pixels>,
     /// Ключ двухкадрового замера (текст абзаца + соль документа).
     key: Option<u64>,
+    /// Предел строки от родителя: если строка УЖЕ помещается, высота
+    /// заявляется честно — иначе гибкая ячейка считает коробку нулевой и
+    /// `justify-content` уводит рисунок из виду (table-cell-align-005).
+    fit_limit: Option<Pixels>,
 }
 
 impl VerticalText {
@@ -1614,6 +1618,7 @@ impl VerticalText {
         VerticalText {
             child: Some(child),
             natural: gpui::Size::default(),
+            fit_limit: None,
             claim_cap: None,
             key: None,
         }
@@ -1631,6 +1636,14 @@ impl VerticalText {
     /// содержимому сама, а заявка ломала поток соседей.
     pub fn claiming_height(mut self, cap: Pixels) -> Self {
         self.claim_cap = Some(cap);
+        self
+    }
+
+    /// Заявить высоту коробки, когда строка не длиннее предела: переносу
+    /// такая заявка не мешает (переносить нечего), а замер становится
+    /// честным для гибких родителей.
+    pub fn fit_within(mut self, limit: Pixels) -> Self {
+        self.fit_limit = Some(limit);
         self
     }
 }
@@ -1699,6 +1712,12 @@ impl Element for VerticalText {
         {
             style.size.height = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
                 gpui::AbsoluteLength::Pixels(cap),
+            ));
+        } else if let Some(limit) = self.fit_limit
+            && self.natural.width <= limit
+        {
+            style.size.height = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
+                gpui::AbsoluteLength::Pixels(self.natural.width),
             ));
         }
         (window.request_layout(style, [], cx), ())
