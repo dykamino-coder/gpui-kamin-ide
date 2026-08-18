@@ -86,6 +86,9 @@ impl Scene {
     }
 
     pub fn clear(&mut self) {
+        if std::env::var("ORD_DBG").is_ok() {
+            eprintln!("ORD FRAME");
+        }
         self.paint_operations.clear();
         self.groups.clear();
         self.primitive_bounds.clear();
@@ -105,6 +108,12 @@ impl Scene {
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
         let order = self.primitive_bounds.insert(bounds);
+        if std::env::var("ORD_DBG").is_ok() {
+            eprintln!(
+                "ORD layer o={} x=({}, {}) y=({}, {})",
+                order, bounds.origin.x.0, bounds.size.width.0, bounds.origin.y.0, bounds.size.height.0
+            );
+        }
         self.layer_stack.push(order);
         self.paint_operations
             .push(PaintOperation::StartLayer(bounds));
@@ -130,9 +139,46 @@ impl Scene {
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
         let mut primitive = primitive.into();
-        let clipped_bounds = primitive
-            .bounds()
-            .intersect(&primitive.content_mask().bounds);
+        // KaminIDE patch: порядок и обрезка считаются по МЕСТУ НА ЭКРАНЕ.
+        // У спрайта с трансформацией (повёрнутый текст) границы хранятся
+        // ДО-трансформными — дерево границ видело глиф в чужой клетке, и фон
+        // соседа получал порядок ПОВЕРХ глифа (table-cell-align-005: с
+        // третьей ортогональной ячейки текст пропадал под градиентом).
+        let placed_bounds = match &primitive {
+            Primitive::MonochromeSprite(s) if s.transformation != TransformationMatrix::unit() => {
+                let b = s.bounds;
+                let corners = [
+                    (b.origin.x.0, b.origin.y.0),
+                    (b.origin.x.0 + b.size.width.0, b.origin.y.0),
+                    (b.origin.x.0, b.origin.y.0 + b.size.height.0),
+                    (
+                        b.origin.x.0 + b.size.width.0,
+                        b.origin.y.0 + b.size.height.0,
+                    ),
+                ];
+                let m = &s.transformation;
+                let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                for (x, y) in corners {
+                    let tx =
+                        m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y;
+                    let ty =
+                        m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y;
+                    x0 = x0.min(tx);
+                    y0 = y0.min(ty);
+                    x1 = x1.max(tx);
+                    y1 = y1.max(ty);
+                }
+                Bounds {
+                    origin: point(ScaledPixels(x0), ScaledPixels(y0)),
+                    size: crate::Size {
+                        width: ScaledPixels(x1 - x0),
+                        height: ScaledPixels(y1 - y0),
+                    },
+                }
+            }
+            _ => *primitive.bounds(),
+        };
+        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
 
         if clipped_bounds.is_empty() {
             return;
@@ -150,6 +196,15 @@ impl Scene {
             }
             Primitive::Quad(quad) => {
                 quad.order = order;
+                if std::env::var("ORD_DBG").is_ok() {
+                    eprintln!(
+                        "ORD quad o={} x={:?} y={:?} grad={}",
+                        order,
+                        (quad.bounds.origin.x.0, quad.bounds.size.width.0),
+                        (quad.bounds.origin.y.0, quad.bounds.size.height.0),
+                        quad.background.tag != gpui::BackgroundTag::Solid
+                    );
+                }
                 self.quads.push(quad.clone());
             }
             Primitive::Path(path) => {
@@ -163,6 +218,14 @@ impl Scene {
             }
             Primitive::MonochromeSprite(sprite) => {
                 sprite.order = order;
+                if std::env::var("ORD_DBG").is_ok() {
+                    eprintln!(
+                        "ORD mono o={} x={:?} y={:?}",
+                        order,
+                        (sprite.bounds.origin.x.0, sprite.bounds.size.width.0),
+                        (sprite.bounds.origin.y.0, sprite.bounds.size.height.0)
+                    );
+                }
                 self.monochrome_sprites.push(sprite.clone());
             }
             Primitive::PolychromeSprite(sprite) => {

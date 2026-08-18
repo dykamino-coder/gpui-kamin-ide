@@ -2982,9 +2982,41 @@ impl Window {
         let content_mask = self.content_mask();
         let clipped_bounds = bounds.intersect(&content_mask.bounds);
         if !clipped_bounds.is_empty() {
-            self.next_frame
-                .scene
-                .push_layer(clipped_bounds.scale(scale_factor));
+            // KaminIDE patch: порядок слоя считается по МЕСТУ НА ЭКРАНЕ.
+            // Внутри повёрнутого текста границы слоя до-трансформные — дерево
+            // границ видело его в чужой клетке, и фон соседа получал порядок
+            // ПОВЕРХ глифов (table-cell-align-005).
+            let mut scaled = clipped_bounds.scale(scale_factor);
+            let m = self.current_transformation();
+            if m != TransformationMatrix::unit() {
+                let b = scaled;
+                let corners = [
+                    (b.origin.x.0, b.origin.y.0),
+                    (b.origin.x.0 + b.size.width.0, b.origin.y.0),
+                    (b.origin.x.0, b.origin.y.0 + b.size.height.0),
+                    (
+                        b.origin.x.0 + b.size.width.0,
+                        b.origin.y.0 + b.size.height.0,
+                    ),
+                ];
+                let (mut x0, mut y0, mut x1, mut y1) =
+                    (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                for (x, y) in corners {
+                    let tx =
+                        m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y;
+                    let ty =
+                        m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y;
+                    x0 = x0.min(tx);
+                    y0 = y0.min(ty);
+                    x1 = x1.max(tx);
+                    y1 = y1.max(ty);
+                }
+                scaled = Bounds {
+                    origin: point(ScaledPixels(x0), ScaledPixels(y0)),
+                    size: size(ScaledPixels(x1 - x0), ScaledPixels(y1 - y0)),
+                };
+            }
+            self.next_frame.scene.push_layer(scaled);
         }
 
         let result = f(self);

@@ -1790,7 +1790,14 @@ impl Element for VerticalText {
             .rotate(gpui::Radians(std::f32::consts::FRAC_PI_2))
             .translate(gpui::point(dev(-bounds.origin.x), dev(-bounds.origin.y)));
         let child = self.child.as_mut().unwrap();
-        window.with_transformation(matrix, |window| child.paint(window, cx));
+        // Свой слой с ПОСЛЕ-поворотными границами: порядок отрисовки сцена
+        // считает по границам примитивов, а у повёрнутого текста они
+        // ДО-трансформные — лежат вне своей коробки, перекрытие с фоном не
+        // видно, и градиент соседа красился ПОВЕРХ глифа
+        // (table-cell-align-005: с третьей ячейки текст пропадал под фоном).
+        window.paint_layer(bounds, |window| {
+            window.with_transformation(matrix, |window| child.paint(window, cx));
+        });
     }
 }
 
