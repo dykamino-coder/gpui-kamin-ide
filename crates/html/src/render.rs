@@ -942,7 +942,7 @@ fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
 /// доступным местом — физической шириной контейнера за вычетом боковых полей
 /// (§7.3 auto-sizing). Без зажима строка мерялась по содержимому и вылезала
 /// на сотни точек.
-fn orthogonal_children(children: Vec<Node>, container: &Computed) -> Vec<Node> {
+fn orthogonal_children(children: Vec<Node>, container: &Computed, icb_w: f32) -> Vec<Node> {
     let mut out = children;
     let inline_size = match container.height {
         Some(Len::Px(v)) => Some(v),
@@ -971,16 +971,47 @@ fn orthogonal_children(children: Vec<Node>, container: &Computed) -> Vec<Node> {
                 }
             }
         }
+        // Доступное место ортогонального потока (css-writing-modes-3
+        // §7.3.1): фиксированный размер контейнера, а без него — НАЧАЛЬНЫЙ
+        // содержащий блок. Процентная ширина htb-ребёнка в вертикальном
+        // контейнере без размера считалась от сжатого по содержимому
+        // родителя (two-levels-of-orthogonal-flows-percentage: 50% от
+        // трёх букв вместо половины окна).
+        if let Some(Len::Pct(k)) = ch.style.width {
+            let base = match container.width {
+                Some(Len::Px(w)) => w,
+                _ => icb_w,
+            };
+            ch.style.width = Some(Len::Px(k * base));
+        }
         if ch.style.width.is_none() && ch.style.max_width.is_none() {
             let side = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
                 _ => 0.0,
             };
             let margins = side(ch.style.margin.left) + side(ch.style.margin.right);
-            ch.style.max_width = Some(match container.width {
-                Some(Len::Px(w)) => Len::Px((w - margins).max(0.0)),
-                _ => Len::Pct(1.0),
-            });
+            match container.width {
+                // Заданный размер контейнера — доступное место потока
+                // целиком: авто-размер блочного ортогонального ребёнка
+                // РАСТЯГИВАЕТСЯ на него (stretch-fit, css-sizing-3 §5), а не
+                // жмётся к содержимому (two-levels-of-orthogonal-flows-fixed:
+                // жёлтый ребёнок обязан накрыть красный контейнер 10em).
+                Some(Len::Px(w)) => {
+                    // Ширина здесь — то, что коробке отдаст раскладка, а
+                    // рендер к ЗАДАННОЙ ширине добавит отступы и рамку (как
+                    // общий разбор): их доля вычитается заранее, иначе
+                    // ребёнок вылезал из контейнера на их толщину.
+                    let b = ch.style.borders();
+                    let extra = side(ch.style.padding.left)
+                        + side(ch.style.padding.right)
+                        + side(b.left)
+                        + side(b.right);
+                    ch.style.width = Some(Len::Px((w - margins - extra).max(0.0)));
+                }
+                _ => {
+                    ch.style.max_width = Some(Len::Pct(1.0));
+                }
+            }
         }
     }
     out
@@ -3738,6 +3769,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 orthogonal_children(
                     collapse_flow_margins(children, merged.vertical_rl == Some(true)),
                     &merged,
+                    opts.viewport.0,
                 )
             } else {
                 orthogonal_vertical_children(children, &merged)
