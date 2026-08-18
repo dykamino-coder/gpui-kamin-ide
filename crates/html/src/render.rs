@@ -4414,6 +4414,18 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if grid_rows > 1 {
                 d = d.row_span(grid_rows);
             }
+            // Явные координаты вместо авто-потока: у `vertical-rl` ряды идут
+            // от ПРАВОГО края, а авто-поток умеет только вперёд — реверс
+            // рядов ломал охваты (замерено: -001 1.02 → 1.31, откачено).
+            if e.style.vertical == Some(true) {
+                let n_rows = row_elements.len() as i16;
+                let gc = if e.style.vertical_rl == Some(true) {
+                    n_rows - row_ix - (span_rows as i16) + 2
+                } else {
+                    row_ix
+                };
+                d = d.col_start(gc.max(1)).row_start(col_ix as i16 + 1);
+            }
             for c in col_ix..(col_ix + span_cols as usize).min(occupied.len()) {
                 occupied[c] = span_rows;
             }
