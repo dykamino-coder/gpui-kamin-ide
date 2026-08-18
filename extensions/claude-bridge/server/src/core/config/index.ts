@@ -30,7 +30,7 @@ export const config: Config = {
     || process.env.VERBOSE === "true" || process.env.VERBOSE === "1",
 }
 
-export const VERSION = "6.3.126"
+export const VERSION = "6.3.127"
 export const SERVICE_NAME = "open-claude-bridge"
 
 // The model a fresh session launches with when the client picks nothing.
