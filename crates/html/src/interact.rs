@@ -1518,6 +1518,9 @@ impl Element for CombinedUpright {
             .as_mut()
             .unwrap()
             .layout_as_root(space, window, cx);
+        if std::env::var("VT_DBG").is_ok() {
+            eprintln!("VT natural={:?}", self.natural);
+        }
         let mut style = gpui::Style::default();
         let side = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(px(self.em)),
@@ -1656,6 +1659,9 @@ impl Element for VerticalText {
         // строк, его меньше не сделать. А высота — длина строки, и её решает
         // родитель: заявленная здесь, она делала коробку сколь угодно длинной,
         // ограничение до текста не доходило, и он не переносился никогда.
+        if std::env::var("VT_DBG").is_ok() {
+            eprintln!("VT2 natural={:?} cap={:?}", self.natural, self.claim_cap);
+        }
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(self.natural.height),
         ));
