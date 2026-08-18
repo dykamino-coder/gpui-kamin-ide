@@ -468,6 +468,10 @@ impl Element for Img {
                         .style
                         .object_fit
                         .get_bounds(bounds, data.size(layout_state.frame_index));
+                    // KaminIDE patch: временная трасса под IMG_DBG.
+                    if std::env::var("IMG_DBG").is_ok() {
+                        eprintln!("IMG bounds={:?} natural={:?}", bounds, data.size(layout_state.frame_index));
+                    }
                     let corner_radii = style
                         .corner_radii
                         .to_pixels(window.rem_size())

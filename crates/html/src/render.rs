@@ -2683,14 +2683,15 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         return Some(built);
     }
     match e.tag.as_str() {
-        "img" => Some(image(e)),
+        "img" => Some(image_with(e, Some(atom_base_font(inherited, opts)))),
         "iframe" => {
             if let Some(el) = iframe(e, opts) {
                 return Some(el);
             }
             None
         }
-        "svg" => crate::svg::element(e).or_else(|| Some(image(e))),
+        "svg" => crate::svg::element(e)
+            .or_else(|| Some(image_with(e, Some(atom_base_font(inherited, opts))))),
         // Свой бокс (фон, рамка, отступы) означает, что кусок не может быть
         // прогоном текста: прогон не умеет рисовать вокруг себя рамку.
         _ if has_own_box(&e.style) => {
@@ -3737,13 +3738,38 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     )
 }
 
+/// Кегль для разрешения долей на атоме: свой размер шрифта уже разрешён в
+/// слитом стиле, иначе — базовый.
+fn atom_base_font(inherited: &Computed, opts: &RenderOpts) -> f32 {
+    match inherited.font_size {
+        Some(Len::Px(v)) => v,
+        _ => opts.base_size(),
+    }
+}
+
 fn image(e: &Element) -> AnyElement {
+    image_with(e, None)
+}
+
+/// То же, но с базовым кеглем для разрешения долей: атом строится от СЫРОГО
+/// стиля, и `padding-right: 1em` без разрешения терялся вовсе
+/// (wm-propagation-body-040: сосед вставал на 16 точек левее эталона).
+fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     let src = e.attr("src").unwrap_or_default();
     // Размеры коробки ставит общий разбор стиля (`apply`): он же добавляет к
     // заданной ширине отступы и рамку, потому что раскладка под нами считает
     // размер по внешнему краю, а CSS по умолчанию — по содержимому. Ставить
     // ширину ЕЩЁ РАЗ отсюда нельзя: она затирала эту поправку, и картинка с
     // `padding-left` вылезала за край на величину отступа.
+    let resolved;
+    let e = if let Some(base) = base_font {
+        let mut copy = e.clone();
+        copy.style.resolve_em(base);
+        resolved = copy;
+        &resolved
+    } else {
+        e
+    };
     let d = styled_div(e);
     // Замещаемый элемент в строке НЕ сжимается: браузер даёт строке
     // переполниться или перенести коробку целиком (CSS 2.1 §10.3.2, замер
