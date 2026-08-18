@@ -423,6 +423,50 @@ impl Paragraph {
             run.font.family.hash(&mut h);
             run.font.weight.0.to_bits().hash(&mut h);
             (run.font.style as u8).hash(&mut h);
+            // Возможности OpenType меняют и подстановку, и продвижение
+            // (`vert`, `hwid`) — без них кэш отдавал чужой набор.
+            for (tag, value) in run.font.features.tag_value_list() {
+                tag.hash(&mut h);
+                value.hash(&mut h);
+            }
+        }
+        h.finish()
+    }
+
+    /// Ключ РАЗРЕЗА: замер плюс всё, от чего зависит перенос и ширины строк.
+    fn split_key(&self, limit: Option<Pixels>) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.measure_key().hash(&mut h);
+        limit.map(|l| f32::from(l).to_bits()).hash(&mut h);
+        let w = &self.wrap;
+        [
+            w.nowrap,
+            w.break_spaces,
+            w.break_all,
+            w.anywhere,
+            w.keep_all,
+            w.break_word,
+            w.wrap_anywhere,
+            w.rtl,
+            w.balance,
+            w.keep_spaces,
+        ]
+        .hash(&mut h);
+        self.indent.px.to_bits().hash(&mut h);
+        self.indent.pct.to_bits().hash(&mut h);
+        self.indent.each_line.hash(&mut h);
+        self.indent.hanging.hash(&mut h);
+        let hg = &self.hanging;
+        [hg.first, hg.last, hg.force_end, hg.allow_end].hash(&mut h);
+        self.clamp.hash(&mut h);
+        self.text_overflow.hash(&mut h);
+        self.hyphen.hash(&mut h);
+        self.spacers.hash(&mut h);
+        for (r, v) in self.word_spans.iter().chain(&self.letter_spans) {
+            r.start.hash(&mut h);
+            r.end.hash(&mut h);
+            f32::from(*v).to_bits().hash(&mut h);
         }
         h.finish()
     }
@@ -612,9 +656,14 @@ impl Paragraph {
     /// Порядок важен: сперва обрыв, потом выравнивание длин. Выровнять надо
     /// то, что ОСТАЛОСЬ видимым, и с учётом места, отнятого многоточием
     /// (`text-wrap-balance-line-clamp-003`).
+    /// Разрез с памятью: раскладка гоняет его по 3-5 раз на абзац за кадр
+    /// (min/max/definite у гибкого родителя + подготовка), а разрез — самое
+    /// дорогое место резчика. Ключ обязан покрывать ВСЁ, что читает
+    /// `split_uncached`, иначе устаревшие переносы сдвинут пиксели.
     fn split(&self, limit: Option<Pixels>, window: &mut Window) -> Vec<Line> {
-        // Знак переноса рисуется на месте разрыва и в ширину строки ВХОДИТ,
-        // поэтому его размер нужен уже раскладке.
+        // Ширина знака переноса взводится ДО обращения в память: при
+        // попадании она нужна отрисовке, а считалась только внутри разреза —
+        // свежий экземпляр абзаца оставался с нулём.
         if self.hyphen_w.get() == px(0.)
             && !self.hyphen.is_empty()
             && self.text.contains('\u{00ad}')
@@ -622,6 +671,26 @@ impl Paragraph {
             let mark = self.hyphen.clone();
             self.hyphen_w.set(self.suffix_width(&mark, 0, window));
         }
+        // Подбор кегля мутирует абзац между вызовами — ключ это видит
+        // (font_size в ключе замера).
+        let key = self.split_key(limit);
+        if let Some(hit) = SPLITS.with(|c| c.borrow().get(&key).cloned()) {
+            return (*hit).clone();
+        }
+        let lines = self.split_uncached(limit, window);
+        SPLITS.with(|c| {
+            let mut m = c.borrow_mut();
+            // Прямолинейный сброс при переполнении: страница с тысячами
+            // абзацев дороже промахов одного сброса.
+            if m.len() >= 2048 {
+                m.clear();
+            }
+            m.insert(key, std::rc::Rc::new(lines.clone()));
+        });
+        lines
+    }
+
+    fn split_uncached(&self, limit: Option<Pixels>, window: &mut Window) -> Vec<Line> {
         let segs = self.measure(window);
         let mut lines = self.lay(limit, &segs);
         // Обрезка строк контейнером с `text-overflow: ellipsis`: не влезшая
@@ -1599,6 +1668,14 @@ fn no_break_after(ch: char) -> bool {
 /// старые положения знаков стали бы чужими.
 pub fn forget_measures() {
     MEASURED.with(|c| c.borrow_mut().clear());
+    SPLITS.with(|c| c.borrow_mut().clear());
+}
+
+thread_local! {
+    /// Память разрезов: ключ разреза → готовые строки.
+    static SPLITS: std::cell::RefCell<
+        std::collections::HashMap<u64, std::rc::Rc<Vec<Line>>>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// Сколько замеров абзацев помнить между кадрами.
