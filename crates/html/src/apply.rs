@@ -964,7 +964,11 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
     // Возможности шрифта: капитель, старостильные цифры, ширина начертания —
     // всё это таблицы OpenType, и GPUI умеет их включать.
     if let Some(family) = &c.font_family {
-        d = d.font_family(family.clone());
+        // Имя из разметки — придуманное (`@font-face`): в набор обязано уйти
+        // имя, под которым файл знает система шрифтов. Без подмены весь
+        // текст, идущий гpui-раскладкой (не резчиком), набирался подменным
+        // системным шрифтом.
+        d = d.font_family(crate::fonts::alias(family).unwrap_or_else(|| family.clone()));
     }
     if let Some(pct) = c.font_stretch {
         d.style()

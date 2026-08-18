@@ -1174,7 +1174,11 @@ impl Paragraph {
         // смотреть надо сюда, а не в саму раскладку.
         if std::env::var("HTML_LINES").is_ok() {
             eprintln!(
-                "LINES {:?} -> {:?}",
+                "LINES fonts={:?} {:?} -> {:?}",
+                self.runs
+                    .iter()
+                    .map(|r| r.font.family.to_string())
+                    .collect::<Vec<_>>(),
                 self.text,
                 out.iter()
                     .map(|l| (l.range.clone(), f32::from(l.width)))

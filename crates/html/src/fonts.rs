@@ -65,6 +65,9 @@ pub fn load_faces(css: &str) {
                 loaded
             }
         };
+        if std::env::var_os("FONT_DBG").is_some() {
+            eprintln!("FONT_DBG face family={family:?} src={src:?} real={real:?}");
+        }
         if let Some(real) = real {
             ALIASES.with(|a| {
                 a.borrow_mut()
