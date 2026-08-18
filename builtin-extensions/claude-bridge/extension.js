@@ -5,20 +5,11 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __esm = (fn, res, err) => function __init() {
-  if (err) throw err[0];
-  try {
-    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-  } catch (e) {
-    throw err = [e], e;
-  }
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
 var __commonJS = (cb, mod) => function __require() {
-  try {
-    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-  } catch (e) {
-    throw mod = 0, e;
-  }
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -42,7 +33,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/shim/host-compat.ts
+// extensions/claude-bridge/extension/src/shim/host-compat.ts
 var host_compat_exports = {};
 __export(host_compat_exports, {
   BrowserWindow: () => BrowserWindow,
@@ -58,7 +49,7 @@ function registerShimWindow(win) {
 }
 var import_node_events, os, path, vscode, _windows, BrowserWindow, IpcMainShim, ipcMain, shell, app, safeStorage, dialog;
 var init_host_compat = __esm({
-  "src/shim/host-compat.ts"() {
+  "extensions/claude-bridge/extension/src/shim/host-compat.ts"() {
     "use strict";
     import_node_events = require("node:events");
     os = __toESM(require("node:os"), 1);
@@ -160,9 +151,9 @@ var init_host_compat = __esm({
   }
 });
 
-// node_modules/ws/lib/constants.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/constants.js
 var require_constants = __commonJS({
-  "node_modules/ws/lib/constants.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/constants.js"(exports2, module2) {
     "use strict";
     var BINARY_TYPES = ["nodebuffer", "arraybuffer", "fragments"];
     var hasBlob = typeof Blob !== "undefined";
@@ -173,19 +164,19 @@ var require_constants = __commonJS({
       EMPTY_BUFFER: Buffer.alloc(0),
       GUID: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
       hasBlob,
-      kForOnEventAttribute: /* @__PURE__ */ Symbol("kIsForOnEventAttribute"),
-      kListener: /* @__PURE__ */ Symbol("kListener"),
-      kStatusCode: /* @__PURE__ */ Symbol("status-code"),
-      kWebSocket: /* @__PURE__ */ Symbol("websocket"),
+      kForOnEventAttribute: Symbol("kIsForOnEventAttribute"),
+      kListener: Symbol("kListener"),
+      kStatusCode: Symbol("status-code"),
+      kWebSocket: Symbol("websocket"),
       NOOP: () => {
       }
     };
   }
 });
 
-// node_modules/ws/lib/buffer-util.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/buffer-util.js
 var require_buffer_util = __commonJS({
-  "node_modules/ws/lib/buffer-util.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/buffer-util.js"(exports2, module2) {
     "use strict";
     var { EMPTY_BUFFER } = require_constants();
     var FastBuffer = Buffer[Symbol.species];
@@ -258,12 +249,12 @@ var require_buffer_util = __commonJS({
   }
 });
 
-// node_modules/ws/lib/limiter.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/limiter.js
 var require_limiter = __commonJS({
-  "node_modules/ws/lib/limiter.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/limiter.js"(exports2, module2) {
     "use strict";
-    var kDone = /* @__PURE__ */ Symbol("kDone");
-    var kRun = /* @__PURE__ */ Symbol("kRun");
+    var kDone = Symbol("kDone");
+    var kRun = Symbol("kRun");
     var Limiter = class {
       /**
        * Creates a new `Limiter`.
@@ -308,9 +299,9 @@ var require_limiter = __commonJS({
   }
 });
 
-// node_modules/ws/lib/permessage-deflate.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/permessage-deflate.js
 var require_permessage_deflate = __commonJS({
-  "node_modules/ws/lib/permessage-deflate.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/permessage-deflate.js"(exports2, module2) {
     "use strict";
     var zlib = require("zlib");
     var bufferUtil = require_buffer_util();
@@ -318,11 +309,11 @@ var require_permessage_deflate = __commonJS({
     var { kStatusCode } = require_constants();
     var FastBuffer = Buffer[Symbol.species];
     var TRAILER = Buffer.from([0, 0, 255, 255]);
-    var kPerMessageDeflate = /* @__PURE__ */ Symbol("permessage-deflate");
-    var kTotalLength = /* @__PURE__ */ Symbol("total-length");
-    var kCallback = /* @__PURE__ */ Symbol("callback");
-    var kBuffers = /* @__PURE__ */ Symbol("buffers");
-    var kError = /* @__PURE__ */ Symbol("error");
+    var kPerMessageDeflate = Symbol("permessage-deflate");
+    var kTotalLength = Symbol("total-length");
+    var kCallback = Symbol("callback");
+    var kBuffers = Symbol("buffers");
+    var kError = Symbol("error");
     var zlibLimiter;
     var PerMessageDeflate2 = class {
       /**
@@ -691,9 +682,9 @@ var require_permessage_deflate = __commonJS({
   }
 });
 
-// node_modules/ws/lib/validation.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/validation.js
 var require_validation = __commonJS({
-  "node_modules/ws/lib/validation.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/validation.js"(exports2, module2) {
     "use strict";
     var { isUtf8 } = require("buffer");
     var { hasBlob } = require_constants();
@@ -892,9 +883,9 @@ var require_validation = __commonJS({
   }
 });
 
-// node_modules/ws/lib/receiver.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/receiver.js
 var require_receiver = __commonJS({
-  "node_modules/ws/lib/receiver.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/receiver.js"(exports2, module2) {
     "use strict";
     var { Writable } = require("stream");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -1524,9 +1515,9 @@ var require_receiver = __commonJS({
   }
 });
 
-// node_modules/ws/lib/sender.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/sender.js
 var require_sender = __commonJS({
-  "node_modules/ws/lib/sender.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/sender.js"(exports2, module2) {
     "use strict";
     var { Duplex } = require("stream");
     var { randomFillSync } = require("crypto");
@@ -1537,7 +1528,7 @@ var require_sender = __commonJS({
     var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants();
     var { isBlob, isValidStatusCode } = require_validation();
     var { mask: applyMask, toBuffer } = require_buffer_util();
-    var kByteLength = /* @__PURE__ */ Symbol("kByteLength");
+    var kByteLength = Symbol("kByteLength");
     var maskBuffer = Buffer.alloc(4);
     var RANDOM_POOL_SIZE = 8 * 1024;
     var randomPool;
@@ -2017,19 +2008,19 @@ var require_sender = __commonJS({
   }
 });
 
-// node_modules/ws/lib/event-target.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/event-target.js
 var require_event_target = __commonJS({
-  "node_modules/ws/lib/event-target.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/event-target.js"(exports2, module2) {
     "use strict";
     var { kForOnEventAttribute, kListener } = require_constants();
-    var kCode = /* @__PURE__ */ Symbol("kCode");
-    var kData = /* @__PURE__ */ Symbol("kData");
-    var kError = /* @__PURE__ */ Symbol("kError");
-    var kMessage = /* @__PURE__ */ Symbol("kMessage");
-    var kReason = /* @__PURE__ */ Symbol("kReason");
-    var kTarget = /* @__PURE__ */ Symbol("kTarget");
-    var kType = /* @__PURE__ */ Symbol("kType");
-    var kWasClean = /* @__PURE__ */ Symbol("kWasClean");
+    var kCode = Symbol("kCode");
+    var kData = Symbol("kData");
+    var kError = Symbol("kError");
+    var kMessage = Symbol("kMessage");
+    var kReason = Symbol("kReason");
+    var kTarget = Symbol("kTarget");
+    var kType = Symbol("kType");
+    var kWasClean = Symbol("kWasClean");
     var Event = class {
       /**
        * Create a new `Event`.
@@ -2246,9 +2237,9 @@ var require_event_target = __commonJS({
   }
 });
 
-// node_modules/ws/lib/extension.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/extension.js
 var require_extension = __commonJS({
-  "node_modules/ws/lib/extension.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/extension.js"(exports2, module2) {
     "use strict";
     var { tokenChars } = require_validation();
     function push(dest, name, elem) {
@@ -2399,9 +2390,9 @@ var require_extension = __commonJS({
   }
 });
 
-// node_modules/ws/lib/websocket.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/websocket.js
 var require_websocket = __commonJS({
-  "node_modules/ws/lib/websocket.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/websocket.js"(exports2, module2) {
     "use strict";
     var EventEmitter2 = require("events");
     var https = require("https");
@@ -2431,7 +2422,7 @@ var require_websocket = __commonJS({
     } = require_event_target();
     var { format, parse } = require_extension();
     var { toBuffer } = require_buffer_util();
-    var kAborted = /* @__PURE__ */ Symbol("kAborted");
+    var kAborted = Symbol("kAborted");
     var protocolVersions = [8, 13];
     var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
     var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
@@ -3295,9 +3286,9 @@ var require_websocket = __commonJS({
   }
 });
 
-// node_modules/ws/lib/stream.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/stream.js
 var require_stream = __commonJS({
-  "node_modules/ws/lib/stream.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/stream.js"(exports2, module2) {
     "use strict";
     var WebSocket2 = require_websocket();
     var { Duplex } = require("stream");
@@ -3393,9 +3384,9 @@ var require_stream = __commonJS({
   }
 });
 
-// node_modules/ws/lib/subprotocol.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/subprotocol.js
 var require_subprotocol = __commonJS({
-  "node_modules/ws/lib/subprotocol.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/subprotocol.js"(exports2, module2) {
     "use strict";
     var { tokenChars } = require_validation();
     function parse(header) {
@@ -3438,9 +3429,9 @@ var require_subprotocol = __commonJS({
   }
 });
 
-// node_modules/ws/lib/websocket-server.js
+// extensions/claude-bridge/extension/node_modules/ws/lib/websocket-server.js
 var require_websocket_server = __commonJS({
-  "node_modules/ws/lib/websocket-server.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/ws/lib/websocket-server.js"(exports2, module2) {
     "use strict";
     var EventEmitter2 = require("events");
     var http = require("http");
@@ -3839,17 +3830,17 @@ var require_websocket_server = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/identity.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS({
-  "node_modules/yaml/dist/nodes/identity.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/identity.js"(exports2) {
     "use strict";
-    var ALIAS = /* @__PURE__ */ Symbol.for("yaml.alias");
-    var DOC = /* @__PURE__ */ Symbol.for("yaml.document");
-    var MAP = /* @__PURE__ */ Symbol.for("yaml.map");
-    var PAIR = /* @__PURE__ */ Symbol.for("yaml.pair");
-    var SCALAR = /* @__PURE__ */ Symbol.for("yaml.scalar");
-    var SEQ = /* @__PURE__ */ Symbol.for("yaml.seq");
-    var NODE_TYPE = /* @__PURE__ */ Symbol.for("yaml.node.type");
+    var ALIAS = Symbol.for("yaml.alias");
+    var DOC = Symbol.for("yaml.document");
+    var MAP = Symbol.for("yaml.map");
+    var PAIR = Symbol.for("yaml.pair");
+    var SCALAR = Symbol.for("yaml.scalar");
+    var SEQ = Symbol.for("yaml.seq");
+    var NODE_TYPE = Symbol.for("yaml.node.type");
     var isAlias = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === ALIAS;
     var isDocument = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === DOC;
     var isMap = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
@@ -3896,14 +3887,14 @@ var require_identity = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/visit.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/visit.js
 var require_visit = __commonJS({
-  "node_modules/yaml/dist/visit.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/visit.js"(exports2) {
     "use strict";
     var identity = require_identity();
-    var BREAK = /* @__PURE__ */ Symbol("break visit");
-    var SKIP = /* @__PURE__ */ Symbol("skip children");
-    var REMOVE = /* @__PURE__ */ Symbol("remove node");
+    var BREAK = Symbol("break visit");
+    var SKIP = Symbol("skip children");
+    var REMOVE = Symbol("remove node");
     function visit(node, visitor) {
       const visitor_ = initVisitor(visitor);
       if (identity.isDocument(node)) {
@@ -4054,9 +4045,9 @@ var require_visit = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/directives.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/doc/directives.js
 var require_directives = __commonJS({
-  "node_modules/yaml/dist/doc/directives.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/doc/directives.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var visit = require_visit();
@@ -4225,9 +4216,9 @@ var require_directives = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/anchors.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/doc/anchors.js
 var require_anchors = __commonJS({
-  "node_modules/yaml/dist/doc/anchors.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/doc/anchors.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var visit = require_visit();
@@ -4295,9 +4286,9 @@ var require_anchors = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/applyReviver.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/doc/applyReviver.js
 var require_applyReviver = __commonJS({
-  "node_modules/yaml/dist/doc/applyReviver.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/doc/applyReviver.js"(exports2) {
     "use strict";
     function applyReviver(reviver, obj, key, val) {
       if (val && typeof val === "object") {
@@ -4345,9 +4336,9 @@ var require_applyReviver = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/toJS.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/toJS.js
 var require_toJS = __commonJS({
-  "node_modules/yaml/dist/nodes/toJS.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/toJS.js"(exports2) {
     "use strict";
     var identity = require_identity();
     function toJS(value, arg, ctx) {
@@ -4375,9 +4366,9 @@ var require_toJS = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Node.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/Node.js
 var require_Node = __commonJS({
-  "node_modules/yaml/dist/nodes/Node.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/Node.js"(exports2) {
     "use strict";
     var applyReviver = require_applyReviver();
     var identity = require_identity();
@@ -4416,9 +4407,9 @@ var require_Node = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Alias.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/Alias.js
 var require_Alias = __commonJS({
-  "node_modules/yaml/dist/nodes/Alias.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/Alias.js"(exports2) {
     "use strict";
     var anchors = require_anchors();
     var visit = require_visit();
@@ -4532,9 +4523,9 @@ var require_Alias = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Scalar.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/Scalar.js
 var require_Scalar = __commonJS({
-  "node_modules/yaml/dist/nodes/Scalar.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/Scalar.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Node = require_Node();
@@ -4562,9 +4553,9 @@ var require_Scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/createNode.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/doc/createNode.js
 var require_createNode = __commonJS({
-  "node_modules/yaml/dist/doc/createNode.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/doc/createNode.js"(exports2) {
     "use strict";
     var Alias = require_Alias();
     var identity = require_identity();
@@ -4637,9 +4628,9 @@ var require_createNode = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Collection.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/Collection.js
 var require_Collection = __commonJS({
-  "node_modules/yaml/dist/nodes/Collection.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/Collection.js"(exports2) {
     "use strict";
     var createNode = require_createNode();
     var identity = require_identity();
@@ -4780,9 +4771,9 @@ var require_Collection = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyComment.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyComment.js
 var require_stringifyComment = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyComment.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyComment.js"(exports2) {
     "use strict";
     var stringifyComment = (str) => str.replace(/^(?!$)(?: $)?/gm, "#");
     function indentComment(comment, indent) {
@@ -4797,9 +4788,9 @@ var require_stringifyComment = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/foldFlowLines.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/foldFlowLines.js
 var require_foldFlowLines = __commonJS({
-  "node_modules/yaml/dist/stringify/foldFlowLines.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/foldFlowLines.js"(exports2) {
     "use strict";
     var FOLD_FLOW = "flow";
     var FOLD_BLOCK = "block";
@@ -4933,9 +4924,9 @@ ${indent}${text.slice(fold + 1, end2)}`;
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyString.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyString.js
 var require_stringifyString = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyString.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyString.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var foldFlowLines = require_foldFlowLines();
@@ -5216,9 +5207,9 @@ ${indent}`);
   }
 });
 
-// node_modules/yaml/dist/stringify/stringify.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringify.js
 var require_stringify = __commonJS({
-  "node_modules/yaml/dist/stringify/stringify.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringify.js"(exports2) {
     "use strict";
     var anchors = require_anchors();
     var identity = require_identity();
@@ -5340,9 +5331,9 @@ ${ctx.indent}${str}`;
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyPair.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyPair.js
 var require_stringifyPair = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyPair.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyPair.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -5473,9 +5464,9 @@ ${ctx.indent}`;
   }
 });
 
-// node_modules/yaml/dist/log.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/log.js
 var require_log = __commonJS({
-  "node_modules/yaml/dist/log.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/log.js"(exports2) {
     "use strict";
     var node_process = require("process");
     function debug(logLevel, ...messages) {
@@ -5495,9 +5486,9 @@ var require_log = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/merge.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/merge.js
 var require_merge = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/merge.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/merge.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -5555,9 +5546,9 @@ var require_merge = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/addPairToJSMap.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/addPairToJSMap.js
 var require_addPairToJSMap = __commonJS({
-  "node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports2) {
     "use strict";
     var log2 = require_log();
     var merge = require_merge();
@@ -5619,9 +5610,9 @@ var require_addPairToJSMap = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/Pair.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/Pair.js
 var require_Pair = __commonJS({
-  "node_modules/yaml/dist/nodes/Pair.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/Pair.js"(exports2) {
     "use strict";
     var createNode = require_createNode();
     var stringifyPair = require_stringifyPair();
@@ -5659,9 +5650,9 @@ var require_Pair = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyCollection.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyCollection.js
 var require_stringifyCollection = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyCollection.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyCollection.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var stringify = require_stringify();
@@ -5810,9 +5801,9 @@ ${indent}${end}`;
   }
 });
 
-// node_modules/yaml/dist/nodes/YAMLMap.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/YAMLMap.js
 var require_YAMLMap = __commonJS({
-  "node_modules/yaml/dist/nodes/YAMLMap.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/YAMLMap.js"(exports2) {
     "use strict";
     var stringifyCollection = require_stringifyCollection();
     var addPairToJSMap = require_addPairToJSMap();
@@ -5954,9 +5945,9 @@ var require_YAMLMap = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/map.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/common/map.js
 var require_map = __commonJS({
-  "node_modules/yaml/dist/schema/common/map.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/common/map.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var YAMLMap = require_YAMLMap();
@@ -5976,9 +5967,9 @@ var require_map = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/nodes/YAMLSeq.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/YAMLSeq.js
 var require_YAMLSeq = __commonJS({
-  "node_modules/yaml/dist/nodes/YAMLSeq.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/nodes/YAMLSeq.js"(exports2) {
     "use strict";
     var createNode = require_createNode();
     var stringifyCollection = require_stringifyCollection();
@@ -6092,9 +6083,9 @@ var require_YAMLSeq = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/seq.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/common/seq.js
 var require_seq = __commonJS({
-  "node_modules/yaml/dist/schema/common/seq.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/common/seq.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var YAMLSeq = require_YAMLSeq();
@@ -6114,9 +6105,9 @@ var require_seq = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/string.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/common/string.js
 var require_string = __commonJS({
-  "node_modules/yaml/dist/schema/common/string.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/common/string.js"(exports2) {
     "use strict";
     var stringifyString = require_stringifyString();
     var string = {
@@ -6133,9 +6124,9 @@ var require_string = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/common/null.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/common/null.js
 var require_null = __commonJS({
-  "node_modules/yaml/dist/schema/common/null.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/common/null.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var nullTag = {
@@ -6151,9 +6142,9 @@ var require_null = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/bool.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/core/bool.js
 var require_bool = __commonJS({
-  "node_modules/yaml/dist/schema/core/bool.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/core/bool.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var boolTag = {
@@ -6175,9 +6166,9 @@ var require_bool = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyNumber.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyNumber.js
 var require_stringifyNumber = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyNumber.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyNumber.js"(exports2) {
     "use strict";
     function stringifyNumber({ format, minFractionDigits, tag, value }) {
       if (typeof value === "bigint")
@@ -6202,9 +6193,9 @@ var require_stringifyNumber = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/float.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/core/float.js
 var require_float = __commonJS({
-  "node_modules/yaml/dist/schema/core/float.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/core/float.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var stringifyNumber = require_stringifyNumber();
@@ -6248,9 +6239,9 @@ var require_float = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/int.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/core/int.js
 var require_int = __commonJS({
-  "node_modules/yaml/dist/schema/core/int.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/core/int.js"(exports2) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -6293,9 +6284,9 @@ var require_int = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/core/schema.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/core/schema.js
 var require_schema = __commonJS({
-  "node_modules/yaml/dist/schema/core/schema.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/core/schema.js"(exports2) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -6321,9 +6312,9 @@ var require_schema = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/json/schema.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/json/schema.js
 var require_schema2 = __commonJS({
-  "node_modules/yaml/dist/schema/json/schema.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/json/schema.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var map = require_map();
@@ -6388,9 +6379,9 @@ var require_schema2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/binary.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/binary.js
 var require_binary = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/binary.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/binary.js"(exports2) {
     "use strict";
     var node_buffer = require("buffer");
     var Scalar = require_Scalar();
@@ -6454,9 +6445,9 @@ var require_binary = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/pairs.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/pairs.js
 var require_pairs = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/pairs.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/pairs.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -6532,9 +6523,9 @@ ${cn.comment}` : item.comment;
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/omap.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/omap.js
 var require_omap = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/omap.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/omap.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var toJS = require_toJS();
@@ -6610,9 +6601,9 @@ var require_omap = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/bool.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/bool.js
 var require_bool2 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/bool.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/bool.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     function boolStringify({ value, source }, ctx) {
@@ -6642,9 +6633,9 @@ var require_bool2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/float.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/float.js
 var require_float2 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/float.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/float.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var stringifyNumber = require_stringifyNumber();
@@ -6691,9 +6682,9 @@ var require_float2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/int.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/int.js
 var require_int2 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/int.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/int.js"(exports2) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -6770,9 +6761,9 @@ var require_int2 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/set.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/set.js
 var require_set = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/set.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/set.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -6859,9 +6850,9 @@ var require_set = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
 var require_timestamp = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/timestamp.js"(exports2) {
     "use strict";
     var stringifyNumber = require_stringifyNumber();
     function parseSexagesimal(str, asBigInt) {
@@ -6947,9 +6938,9 @@ var require_timestamp = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/yaml-1.1/schema.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/schema.js
 var require_schema3 = __commonJS({
-  "node_modules/yaml/dist/schema/yaml-1.1/schema.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/yaml-1.1/schema.js"(exports2) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -6991,9 +6982,9 @@ var require_schema3 = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/tags.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/tags.js
 var require_tags = __commonJS({
-  "node_modules/yaml/dist/schema/tags.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/tags.js"(exports2) {
     "use strict";
     var map = require_map();
     var _null = require_null();
@@ -7085,9 +7076,9 @@ var require_tags = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/schema/Schema.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/schema/Schema.js
 var require_Schema = __commonJS({
-  "node_modules/yaml/dist/schema/Schema.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/schema/Schema.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var map = require_map();
@@ -7117,9 +7108,9 @@ var require_Schema = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/stringify/stringifyDocument.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyDocument.js
 var require_stringifyDocument = __commonJS({
-  "node_modules/yaml/dist/stringify/stringifyDocument.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/stringify/stringifyDocument.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var stringify = require_stringify();
@@ -7197,9 +7188,9 @@ var require_stringifyDocument = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/doc/Document.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/doc/Document.js
 var require_Document = __commonJS({
-  "node_modules/yaml/dist/doc/Document.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/doc/Document.js"(exports2) {
     "use strict";
     var Alias = require_Alias();
     var Collection = require_Collection();
@@ -7506,9 +7497,9 @@ var require_Document = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/errors.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/errors.js
 var require_errors = __commonJS({
-  "node_modules/yaml/dist/errors.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/errors.js"(exports2) {
     "use strict";
     var YAMLError = class extends Error {
       constructor(name, pos, code, message) {
@@ -7571,9 +7562,9 @@ ${pointer}
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-props.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-props.js
 var require_resolve_props = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-props.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-props.js"(exports2) {
     "use strict";
     function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
       let spaceBefore = false;
@@ -7705,9 +7696,9 @@ var require_resolve_props = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-contains-newline.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/util-contains-newline.js
 var require_util_contains_newline = __commonJS({
-  "node_modules/yaml/dist/compose/util-contains-newline.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/util-contains-newline.js"(exports2) {
     "use strict";
     function containsNewline(key) {
       if (!key)
@@ -7747,9 +7738,9 @@ var require_util_contains_newline = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-flow-indent-check.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/util-flow-indent-check.js
 var require_util_flow_indent_check = __commonJS({
-  "node_modules/yaml/dist/compose/util-flow-indent-check.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/util-flow-indent-check.js"(exports2) {
     "use strict";
     var utilContainsNewline = require_util_contains_newline();
     function flowIndentCheck(indent, fc, onError) {
@@ -7765,9 +7756,9 @@ var require_util_flow_indent_check = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-map-includes.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/util-map-includes.js
 var require_util_map_includes = __commonJS({
-  "node_modules/yaml/dist/compose/util-map-includes.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/util-map-includes.js"(exports2) {
     "use strict";
     var identity = require_identity();
     function mapIncludes(ctx, items, search) {
@@ -7781,9 +7772,9 @@ var require_util_map_includes = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-block-map.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-block-map.js
 var require_resolve_block_map = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-block-map.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-block-map.js"(exports2) {
     "use strict";
     var Pair = require_Pair();
     var YAMLMap = require_YAMLMap();
@@ -7889,9 +7880,9 @@ var require_resolve_block_map = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-block-seq.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-block-seq.js
 var require_resolve_block_seq = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-block-seq.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-block-seq.js"(exports2) {
     "use strict";
     var YAMLSeq = require_YAMLSeq();
     var resolveProps = require_resolve_props();
@@ -7940,9 +7931,9 @@ var require_resolve_block_seq = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-end.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-end.js
 var require_resolve_end = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-end.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-end.js"(exports2) {
     "use strict";
     function resolveEnd(end, offset, reqSpace, onError) {
       let comment = "";
@@ -7983,9 +7974,9 @@ var require_resolve_end = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-flow-collection.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-flow-collection.js
 var require_resolve_flow_collection = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-flow-collection.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-flow-collection.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Pair = require_Pair();
@@ -8177,9 +8168,9 @@ var require_resolve_flow_collection = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-collection.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/compose-collection.js
 var require_compose_collection = __commonJS({
-  "node_modules/yaml/dist/compose/compose-collection.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/compose-collection.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -8242,9 +8233,9 @@ var require_compose_collection = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-block-scalar.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-block-scalar.js
 var require_resolve_block_scalar = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-block-scalar.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
@@ -8425,9 +8416,9 @@ var require_resolve_block_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/resolve-flow-scalar.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-flow-scalar.js
 var require_resolve_flow_scalar = __commonJS({
-  "node_modules/yaml/dist/compose/resolve-flow-scalar.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/resolve-flow-scalar.js"(exports2) {
     "use strict";
     var Scalar = require_Scalar();
     var resolveEnd = require_resolve_end();
@@ -8645,9 +8636,9 @@ var require_resolve_flow_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-scalar.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/compose-scalar.js
 var require_compose_scalar = __commonJS({
-  "node_modules/yaml/dist/compose/compose-scalar.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/compose-scalar.js"(exports2) {
     "use strict";
     var identity = require_identity();
     var Scalar = require_Scalar();
@@ -8726,9 +8717,9 @@ var require_compose_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/util-empty-scalar-position.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/util-empty-scalar-position.js
 var require_util_empty_scalar_position = __commonJS({
-  "node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports2) {
     "use strict";
     function emptyScalarPosition(offset, before, pos) {
       if (before) {
@@ -8756,9 +8747,9 @@ var require_util_empty_scalar_position = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-node.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/compose-node.js
 var require_compose_node = __commonJS({
-  "node_modules/yaml/dist/compose/compose-node.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/compose-node.js"(exports2) {
     "use strict";
     var Alias = require_Alias();
     var identity = require_identity();
@@ -8862,9 +8853,9 @@ var require_compose_node = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/compose-doc.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/compose-doc.js
 var require_compose_doc = __commonJS({
-  "node_modules/yaml/dist/compose/compose-doc.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/compose-doc.js"(exports2) {
     "use strict";
     var Document = require_Document();
     var composeNode = require_compose_node();
@@ -8905,9 +8896,9 @@ var require_compose_doc = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/compose/composer.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/compose/composer.js
 var require_composer = __commonJS({
-  "node_modules/yaml/dist/compose/composer.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/compose/composer.js"(exports2) {
     "use strict";
     var node_process = require("process");
     var directives = require_directives();
@@ -9113,9 +9104,9 @@ ${end.comment}` : end.comment;
   }
 });
 
-// node_modules/yaml/dist/parse/cst-scalar.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/parse/cst-scalar.js
 var require_cst_scalar = __commonJS({
-  "node_modules/yaml/dist/parse/cst-scalar.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/parse/cst-scalar.js"(exports2) {
     "use strict";
     var resolveBlockScalar = require_resolve_block_scalar();
     var resolveFlowScalar = require_resolve_flow_scalar();
@@ -9298,9 +9289,9 @@ var require_cst_scalar = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/cst-stringify.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/parse/cst-stringify.js
 var require_cst_stringify = __commonJS({
-  "node_modules/yaml/dist/parse/cst-stringify.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/parse/cst-stringify.js"(exports2) {
     "use strict";
     var stringify = (cst) => "type" in cst ? stringifyToken(cst) : stringifyItem(cst);
     function stringifyToken(token) {
@@ -9359,13 +9350,13 @@ var require_cst_stringify = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/cst-visit.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/parse/cst-visit.js
 var require_cst_visit = __commonJS({
-  "node_modules/yaml/dist/parse/cst-visit.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/parse/cst-visit.js"(exports2) {
     "use strict";
-    var BREAK = /* @__PURE__ */ Symbol("break visit");
-    var SKIP = /* @__PURE__ */ Symbol("skip children");
-    var REMOVE = /* @__PURE__ */ Symbol("remove item");
+    var BREAK = Symbol("break visit");
+    var SKIP = Symbol("skip children");
+    var REMOVE = Symbol("remove item");
     function visit(cst, visitor) {
       if ("type" in cst && cst.type === "document")
         cst = { start: cst.start, value: cst.value };
@@ -9421,9 +9412,9 @@ var require_cst_visit = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/cst.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/parse/cst.js
 var require_cst = __commonJS({
-  "node_modules/yaml/dist/parse/cst.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/parse/cst.js"(exports2) {
     "use strict";
     var cstScalar = require_cst_scalar();
     var cstStringify = require_cst_stringify();
@@ -9523,9 +9514,9 @@ var require_cst = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/lexer.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/parse/lexer.js
 var require_lexer = __commonJS({
-  "node_modules/yaml/dist/parse/lexer.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/parse/lexer.js"(exports2) {
     "use strict";
     var cst = require_cst();
     function isEmpty(ch) {
@@ -10112,9 +10103,9 @@ var require_lexer = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/line-counter.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/parse/line-counter.js
 var require_line_counter = __commonJS({
-  "node_modules/yaml/dist/parse/line-counter.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/parse/line-counter.js"(exports2) {
     "use strict";
     var LineCounter = class {
       constructor() {
@@ -10143,9 +10134,9 @@ var require_line_counter = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/parse/parser.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/parse/parser.js
 var require_parser = __commonJS({
-  "node_modules/yaml/dist/parse/parser.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/parse/parser.js"(exports2) {
     "use strict";
     var node_process = require("process");
     var cst = require_cst();
@@ -11017,9 +11008,9 @@ var require_parser = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/public-api.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/public-api.js
 var require_public_api = __commonJS({
-  "node_modules/yaml/dist/public-api.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/public-api.js"(exports2) {
     "use strict";
     var composer = require_composer();
     var Document = require_Document();
@@ -11114,9 +11105,9 @@ var require_public_api = __commonJS({
   }
 });
 
-// node_modules/yaml/dist/index.js
+// extensions/claude-bridge/extension/node_modules/yaml/dist/index.js
 var require_dist = __commonJS({
-  "node_modules/yaml/dist/index.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/yaml/dist/index.js"(exports2) {
     "use strict";
     var composer = require_composer();
     var Document = require_Document();
@@ -11166,7 +11157,7 @@ var require_dist = __commonJS({
   }
 });
 
-// src/main/plugin-helpers.ts
+// extensions/claude-bridge/extension/src/main/plugin-helpers.ts
 async function loadEnabledPluginsMap() {
   const out = /* @__PURE__ */ new Map();
   const settingsPath = import_path2.default.join(import_os.default.homedir(), ".claude", "settings.json");
@@ -11537,7 +11528,7 @@ async function loadInstalledPluginsMap() {
 }
 var import_fs2, import_path2, import_os, import_yaml, FM_CACHE_CAP, fmCache;
 var init_plugin_helpers = __esm({
-  "src/main/plugin-helpers.ts"() {
+  "extensions/claude-bridge/extension/src/main/plugin-helpers.ts"() {
     "use strict";
     import_fs2 = __toESM(require("fs"), 1);
     import_path2 = __toESM(require("path"), 1);
@@ -11548,10 +11539,10 @@ var init_plugin_helpers = __esm({
   }
 });
 
-// src/main/utils/circular-buffer.ts
+// extensions/claude-bridge/extension/src/main/utils/circular-buffer.ts
 var CircularBuffer;
 var init_circular_buffer = __esm({
-  "src/main/utils/circular-buffer.ts"() {
+  "extensions/claude-bridge/extension/src/main/utils/circular-buffer.ts"() {
     "use strict";
     CircularBuffer = class {
       constructor(capacity) {
@@ -11561,7 +11552,6 @@ var init_circular_buffer = __esm({
         }
         this.buffer = new Array(capacity);
       }
-      capacity;
       buffer;
       head = 0;
       size = 0;
@@ -11616,7 +11606,7 @@ var init_circular_buffer = __esm({
   }
 });
 
-// src/main/plugin-monitors.ts
+// extensions/claude-bridge/extension/src/main/plugin-monitors.ts
 var plugin_monitors_exports = {};
 __export(plugin_monitors_exports, {
   buildMonitorTriggerHooks: () => buildMonitorTriggerHooks,
@@ -12008,7 +11998,7 @@ function getMonitorLog(id) {
 }
 var import_fs3, import_os2, import_path3, import_child_process, RING_CAP, MAX_PENDING_LINE_CHARS, MAX_NOTIFICATION_LINES, MAX_NOTIFICATION_CHARS, NOTIFICATION_DEBOUNCE_MS, NOTIFICATION_MIN_INTERVAL_MS, monitors, tabOwners, tabContexts, tabLoadTokens, mainWindow, TRIGGER_COMMAND;
 var init_plugin_monitors = __esm({
-  "src/main/plugin-monitors.ts"() {
+  "extensions/claude-bridge/extension/src/main/plugin-monitors.ts"() {
     "use strict";
     import_fs3 = __toESM(require("fs"), 1);
     import_os2 = __toESM(require("os"), 1);
@@ -12031,7 +12021,7 @@ var init_plugin_monitors = __esm({
   }
 });
 
-// src/main/hooks/executor.ts
+// extensions/claude-bridge/extension/src/main/hooks/executor.ts
 var executor_exports = {};
 __export(executor_exports, {
   executeHook: () => executeHook
@@ -12183,7 +12173,7 @@ spawn error: ${err.message}`,
 }
 var import_node_child_process, import_node_os2, import_node_fs2, import_node_path2, DEFAULT_TIMEOUT_MS;
 var init_executor = __esm({
-  "src/main/hooks/executor.ts"() {
+  "extensions/claude-bridge/extension/src/main/hooks/executor.ts"() {
     "use strict";
     import_node_child_process = require("node:child_process");
     import_node_os2 = __toESM(require("node:os"), 1);
@@ -12194,9 +12184,9 @@ var init_executor = __esm({
   }
 });
 
-// node_modules/fast-glob/out/utils/array.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/array.js
 var require_array = __commonJS({
-  "node_modules/fast-glob/out/utils/array.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/array.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.splitWhen = exports2.flatten = void 0;
@@ -12221,9 +12211,9 @@ var require_array = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/utils/errno.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/errno.js
 var require_errno = __commonJS({
-  "node_modules/fast-glob/out/utils/errno.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/errno.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.isEnoentCodeError = void 0;
@@ -12234,9 +12224,9 @@ var require_errno = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/utils/fs.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/fs.js
 var require_fs = __commonJS({
-  "node_modules/fast-glob/out/utils/fs.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/fs.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createDirentFromStats = void 0;
@@ -12259,9 +12249,9 @@ var require_fs = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/utils/path.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/path.js
 var require_path = __commonJS({
-  "node_modules/fast-glob/out/utils/path.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/path.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.convertPosixPathToPattern = exports2.convertWindowsPathToPattern = exports2.convertPathToPattern = exports2.escapePosixPath = exports2.escapeWindowsPath = exports2.escape = exports2.removeLeadingDotSegment = exports2.makeAbsolute = exports2.unixify = void 0;
@@ -12312,9 +12302,9 @@ var require_path = __commonJS({
   }
 });
 
-// node_modules/is-extglob/index.js
+// extensions/claude-bridge/extension/node_modules/is-extglob/index.js
 var require_is_extglob = __commonJS({
-  "node_modules/is-extglob/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/is-extglob/index.js"(exports2, module2) {
     module2.exports = function isExtglob(str) {
       if (typeof str !== "string" || str === "") {
         return false;
@@ -12329,9 +12319,9 @@ var require_is_extglob = __commonJS({
   }
 });
 
-// node_modules/is-glob/index.js
+// extensions/claude-bridge/extension/node_modules/is-glob/index.js
 var require_is_glob = __commonJS({
-  "node_modules/is-glob/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/is-glob/index.js"(exports2, module2) {
     var isExtglob = require_is_extglob();
     var chars = { "{": "}", "(": ")", "[": "]" };
     var strictCheck = function(str) {
@@ -12460,9 +12450,9 @@ var require_is_glob = __commonJS({
   }
 });
 
-// node_modules/glob-parent/index.js
+// extensions/claude-bridge/extension/node_modules/glob-parent/index.js
 var require_glob_parent = __commonJS({
-  "node_modules/glob-parent/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/glob-parent/index.js"(exports2, module2) {
     "use strict";
     var isGlob = require_is_glob();
     var pathPosixDirname = require("path").posix.dirname;
@@ -12489,9 +12479,9 @@ var require_glob_parent = __commonJS({
   }
 });
 
-// node_modules/braces/lib/utils.js
+// extensions/claude-bridge/extension/node_modules/braces/lib/utils.js
 var require_utils = __commonJS({
-  "node_modules/braces/lib/utils.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/braces/lib/utils.js"(exports2) {
     "use strict";
     exports2.isInteger = (num) => {
       if (typeof num === "number") {
@@ -12571,9 +12561,9 @@ var require_utils = __commonJS({
   }
 });
 
-// node_modules/braces/lib/stringify.js
+// extensions/claude-bridge/extension/node_modules/braces/lib/stringify.js
 var require_stringify2 = __commonJS({
-  "node_modules/braces/lib/stringify.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/braces/lib/stringify.js"(exports2, module2) {
     "use strict";
     var utils = require_utils();
     module2.exports = (ast, options = {}) => {
@@ -12602,9 +12592,9 @@ var require_stringify2 = __commonJS({
   }
 });
 
-// node_modules/is-number/index.js
+// extensions/claude-bridge/extension/node_modules/is-number/index.js
 var require_is_number = __commonJS({
-  "node_modules/is-number/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/is-number/index.js"(exports2, module2) {
     "use strict";
     module2.exports = function(num) {
       if (typeof num === "number") {
@@ -12618,9 +12608,9 @@ var require_is_number = __commonJS({
   }
 });
 
-// node_modules/to-regex-range/index.js
+// extensions/claude-bridge/extension/node_modules/to-regex-range/index.js
 var require_to_regex_range = __commonJS({
-  "node_modules/to-regex-range/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/to-regex-range/index.js"(exports2, module2) {
     "use strict";
     var isNumber = require_is_number();
     var toRegexRange = (min, max, options) => {
@@ -12829,9 +12819,9 @@ var require_to_regex_range = __commonJS({
   }
 });
 
-// node_modules/fill-range/index.js
+// extensions/claude-bridge/extension/node_modules/fill-range/index.js
 var require_fill_range = __commonJS({
-  "node_modules/fill-range/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/fill-range/index.js"(exports2, module2) {
     "use strict";
     var util = require("util");
     var toRegexRange = require_to_regex_range();
@@ -13023,9 +13013,9 @@ var require_fill_range = __commonJS({
   }
 });
 
-// node_modules/braces/lib/compile.js
+// extensions/claude-bridge/extension/node_modules/braces/lib/compile.js
 var require_compile = __commonJS({
-  "node_modules/braces/lib/compile.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/braces/lib/compile.js"(exports2, module2) {
     "use strict";
     var fill = require_fill_range();
     var utils = require_utils();
@@ -13075,9 +13065,9 @@ var require_compile = __commonJS({
   }
 });
 
-// node_modules/braces/lib/expand.js
+// extensions/claude-bridge/extension/node_modules/braces/lib/expand.js
 var require_expand = __commonJS({
-  "node_modules/braces/lib/expand.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/braces/lib/expand.js"(exports2, module2) {
     "use strict";
     var fill = require_fill_range();
     var stringify = require_stringify2();
@@ -13169,9 +13159,9 @@ var require_expand = __commonJS({
   }
 });
 
-// node_modules/braces/lib/constants.js
+// extensions/claude-bridge/extension/node_modules/braces/lib/constants.js
 var require_constants2 = __commonJS({
-  "node_modules/braces/lib/constants.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/braces/lib/constants.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       MAX_LENGTH: 1e4,
@@ -13270,9 +13260,9 @@ var require_constants2 = __commonJS({
   }
 });
 
-// node_modules/braces/lib/parse.js
+// extensions/claude-bridge/extension/node_modules/braces/lib/parse.js
 var require_parse = __commonJS({
-  "node_modules/braces/lib/parse.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/braces/lib/parse.js"(exports2, module2) {
     "use strict";
     var stringify = require_stringify2();
     var {
@@ -13508,9 +13498,9 @@ var require_parse = __commonJS({
   }
 });
 
-// node_modules/braces/index.js
+// extensions/claude-bridge/extension/node_modules/braces/index.js
 var require_braces = __commonJS({
-  "node_modules/braces/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/braces/index.js"(exports2, module2) {
     "use strict";
     var stringify = require_stringify2();
     var compile = require_compile();
@@ -13571,9 +13561,9 @@ var require_braces = __commonJS({
   }
 });
 
-// node_modules/picomatch/lib/constants.js
+// extensions/claude-bridge/extension/node_modules/picomatch/lib/constants.js
 var require_constants3 = __commonJS({
-  "node_modules/picomatch/lib/constants.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/picomatch/lib/constants.js"(exports2, module2) {
     "use strict";
     var path44 = require("path");
     var WIN_SLASH = "\\\\/";
@@ -13772,9 +13762,9 @@ var require_constants3 = __commonJS({
   }
 });
 
-// node_modules/picomatch/lib/utils.js
+// extensions/claude-bridge/extension/node_modules/picomatch/lib/utils.js
 var require_utils2 = __commonJS({
-  "node_modules/picomatch/lib/utils.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/picomatch/lib/utils.js"(exports2) {
     "use strict";
     var path44 = require("path");
     var win32 = process.platform === "win32";
@@ -13833,9 +13823,9 @@ var require_utils2 = __commonJS({
   }
 });
 
-// node_modules/picomatch/lib/scan.js
+// extensions/claude-bridge/extension/node_modules/picomatch/lib/scan.js
 var require_scan = __commonJS({
-  "node_modules/picomatch/lib/scan.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/picomatch/lib/scan.js"(exports2, module2) {
     "use strict";
     var utils = require_utils2();
     var {
@@ -14163,9 +14153,9 @@ var require_scan = __commonJS({
   }
 });
 
-// node_modules/picomatch/lib/parse.js
+// extensions/claude-bridge/extension/node_modules/picomatch/lib/parse.js
 var require_parse2 = __commonJS({
-  "node_modules/picomatch/lib/parse.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/picomatch/lib/parse.js"(exports2, module2) {
     "use strict";
     var constants = require_constants3();
     var utils = require_utils2();
@@ -15165,9 +15155,9 @@ var require_parse2 = __commonJS({
   }
 });
 
-// node_modules/picomatch/lib/picomatch.js
+// extensions/claude-bridge/extension/node_modules/picomatch/lib/picomatch.js
 var require_picomatch = __commonJS({
-  "node_modules/picomatch/lib/picomatch.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/picomatch/lib/picomatch.js"(exports2, module2) {
     "use strict";
     var path44 = require("path");
     var scan = require_scan();
@@ -15306,17 +15296,17 @@ var require_picomatch = __commonJS({
   }
 });
 
-// node_modules/picomatch/index.js
+// extensions/claude-bridge/extension/node_modules/picomatch/index.js
 var require_picomatch2 = __commonJS({
-  "node_modules/picomatch/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/picomatch/index.js"(exports2, module2) {
     "use strict";
     module2.exports = require_picomatch();
   }
 });
 
-// node_modules/micromatch/index.js
+// extensions/claude-bridge/extension/node_modules/micromatch/index.js
 var require_micromatch = __commonJS({
-  "node_modules/micromatch/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/micromatch/index.js"(exports2, module2) {
     "use strict";
     var util = require("util");
     var braces = require_braces();
@@ -15475,9 +15465,9 @@ var require_micromatch = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/utils/pattern.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/pattern.js
 var require_pattern = __commonJS({
-  "node_modules/fast-glob/out/utils/pattern.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/pattern.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.isAbsolute = exports2.partitionAbsoluteAndRelative = exports2.removeDuplicateSlashes = exports2.matchAny = exports2.convertPatternsToRe = exports2.makeRe = exports2.getPatternParts = exports2.expandBraceExpansion = exports2.expandPatternsWithBraceExpansion = exports2.isAffectDepthOfReadingPattern = exports2.endsWithSlashGlobStar = exports2.hasGlobStar = exports2.getBaseDirectory = exports2.isPatternRelatedToParentDirectory = exports2.getPatternsOutsideCurrentDirectory = exports2.getPatternsInsideCurrentDirectory = exports2.getPositivePatterns = exports2.getNegativePatterns = exports2.isPositivePattern = exports2.isNegativePattern = exports2.convertToNegativePattern = exports2.convertToPositivePattern = exports2.isDynamicPattern = exports2.isStaticPattern = void 0;
@@ -15640,9 +15630,9 @@ var require_pattern = __commonJS({
   }
 });
 
-// node_modules/merge2/index.js
+// extensions/claude-bridge/extension/node_modules/merge2/index.js
 var require_merge2 = __commonJS({
-  "node_modules/merge2/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/merge2/index.js"(exports2, module2) {
     "use strict";
     var Stream = require("stream");
     var PassThrough = Stream.PassThrough;
@@ -15759,9 +15749,9 @@ var require_merge2 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/utils/stream.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/stream.js
 var require_stream2 = __commonJS({
-  "node_modules/fast-glob/out/utils/stream.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/stream.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.merge = void 0;
@@ -15782,9 +15772,9 @@ var require_stream2 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/utils/string.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/string.js
 var require_string2 = __commonJS({
-  "node_modules/fast-glob/out/utils/string.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/string.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.isEmpty = exports2.isString = void 0;
@@ -15799,9 +15789,9 @@ var require_string2 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/utils/index.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/index.js
 var require_utils3 = __commonJS({
-  "node_modules/fast-glob/out/utils/index.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/utils/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.string = exports2.stream = exports2.pattern = exports2.path = exports2.fs = exports2.errno = exports2.array = void 0;
@@ -15822,9 +15812,9 @@ var require_utils3 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/managers/tasks.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/managers/tasks.js
 var require_tasks = __commonJS({
-  "node_modules/fast-glob/out/managers/tasks.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/managers/tasks.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.convertPatternGroupToTask = exports2.convertPatternGroupsToTasks = exports2.groupPatternsByBaseDirectory = exports2.getNegativePatternsAsPositive = exports2.getPositivePatterns = exports2.convertPatternsToTasks = exports2.generate = void 0;
@@ -15918,9 +15908,9 @@ var require_tasks = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.stat/out/providers/async.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.stat/out/providers/async.js
 var require_async = __commonJS({
-  "node_modules/@nodelib/fs.stat/out/providers/async.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.stat/out/providers/async.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
@@ -15960,9 +15950,9 @@ var require_async = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.stat/out/providers/sync.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.stat/out/providers/sync.js
 var require_sync = __commonJS({
-  "node_modules/@nodelib/fs.stat/out/providers/sync.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.stat/out/providers/sync.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
@@ -15988,9 +15978,9 @@ var require_sync = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.stat/out/adapters/fs.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.stat/out/adapters/fs.js
 var require_fs2 = __commonJS({
-  "node_modules/@nodelib/fs.stat/out/adapters/fs.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.stat/out/adapters/fs.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createFileSystemAdapter = exports2.FILE_SYSTEM_ADAPTER = void 0;
@@ -16011,9 +16001,9 @@ var require_fs2 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.stat/out/settings.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.stat/out/settings.js
 var require_settings = __commonJS({
-  "node_modules/@nodelib/fs.stat/out/settings.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.stat/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var fs40 = require_fs2();
@@ -16033,9 +16023,9 @@ var require_settings = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.stat/out/index.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.stat/out/index.js
 var require_out = __commonJS({
-  "node_modules/@nodelib/fs.stat/out/index.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.stat/out/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.statSync = exports2.stat = exports2.Settings = void 0;
@@ -16065,9 +16055,9 @@ var require_out = __commonJS({
   }
 });
 
-// node_modules/queue-microtask/index.js
+// extensions/claude-bridge/extension/node_modules/queue-microtask/index.js
 var require_queue_microtask = __commonJS({
-  "node_modules/queue-microtask/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/queue-microtask/index.js"(exports2, module2) {
     var promise;
     module2.exports = typeof queueMicrotask === "function" ? queueMicrotask.bind(typeof window !== "undefined" ? window : global) : (cb) => (promise || (promise = Promise.resolve())).then(cb).catch((err) => setTimeout(() => {
       throw err;
@@ -16075,9 +16065,9 @@ var require_queue_microtask = __commonJS({
   }
 });
 
-// node_modules/run-parallel/index.js
+// extensions/claude-bridge/extension/node_modules/run-parallel/index.js
 var require_run_parallel = __commonJS({
-  "node_modules/run-parallel/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/run-parallel/index.js"(exports2, module2) {
     module2.exports = runParallel;
     var queueMicrotask2 = require_queue_microtask();
     function runParallel(tasks, cb) {
@@ -16125,9 +16115,9 @@ var require_run_parallel = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.scandir/out/constants.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/constants.js
 var require_constants4 = __commonJS({
-  "node_modules/@nodelib/fs.scandir/out/constants.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/constants.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.IS_SUPPORT_READDIR_WITH_FILE_TYPES = void 0;
@@ -16145,9 +16135,9 @@ var require_constants4 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.scandir/out/utils/fs.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/utils/fs.js
 var require_fs3 = __commonJS({
-  "node_modules/@nodelib/fs.scandir/out/utils/fs.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/utils/fs.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createDirentFromStats = void 0;
@@ -16170,9 +16160,9 @@ var require_fs3 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.scandir/out/utils/index.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/utils/index.js
 var require_utils4 = __commonJS({
-  "node_modules/@nodelib/fs.scandir/out/utils/index.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/utils/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.fs = void 0;
@@ -16181,9 +16171,9 @@ var require_utils4 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.scandir/out/providers/common.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/providers/common.js
 var require_common = __commonJS({
-  "node_modules/@nodelib/fs.scandir/out/providers/common.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/providers/common.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.joinPathSegments = void 0;
@@ -16197,9 +16187,9 @@ var require_common = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.scandir/out/providers/async.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/providers/async.js
 var require_async2 = __commonJS({
-  "node_modules/@nodelib/fs.scandir/out/providers/async.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/providers/async.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.readdir = exports2.readdirWithFileTypes = exports2.read = void 0;
@@ -16307,9 +16297,9 @@ var require_async2 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.scandir/out/providers/sync.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/providers/sync.js
 var require_sync2 = __commonJS({
-  "node_modules/@nodelib/fs.scandir/out/providers/sync.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/providers/sync.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.readdir = exports2.readdirWithFileTypes = exports2.read = void 0;
@@ -16366,9 +16356,9 @@ var require_sync2 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.scandir/out/adapters/fs.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/adapters/fs.js
 var require_fs4 = __commonJS({
-  "node_modules/@nodelib/fs.scandir/out/adapters/fs.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/adapters/fs.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createFileSystemAdapter = exports2.FILE_SYSTEM_ADAPTER = void 0;
@@ -16391,9 +16381,9 @@ var require_fs4 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.scandir/out/settings.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/settings.js
 var require_settings2 = __commonJS({
-  "node_modules/@nodelib/fs.scandir/out/settings.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var path44 = require("path");
@@ -16421,9 +16411,9 @@ var require_settings2 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.scandir/out/index.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/index.js
 var require_out2 = __commonJS({
-  "node_modules/@nodelib/fs.scandir/out/index.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.scandir/out/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.Settings = exports2.scandirSync = exports2.scandir = void 0;
@@ -16453,9 +16443,9 @@ var require_out2 = __commonJS({
   }
 });
 
-// node_modules/reusify/reusify.js
+// extensions/claude-bridge/extension/node_modules/reusify/reusify.js
 var require_reusify = __commonJS({
-  "node_modules/reusify/reusify.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/reusify/reusify.js"(exports2, module2) {
     "use strict";
     function reusify(Constructor) {
       var head = new Constructor();
@@ -16484,9 +16474,9 @@ var require_reusify = __commonJS({
   }
 });
 
-// node_modules/fastq/queue.js
+// extensions/claude-bridge/extension/node_modules/fastq/queue.js
 var require_queue = __commonJS({
-  "node_modules/fastq/queue.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/fastq/queue.js"(exports2, module2) {
     "use strict";
     var reusify = require_reusify();
     function fastqueue(context, worker, _concurrency) {
@@ -16768,9 +16758,9 @@ var require_queue = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.walk/out/readers/common.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/readers/common.js
 var require_common2 = __commonJS({
-  "node_modules/@nodelib/fs.walk/out/readers/common.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/readers/common.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.joinPathSegments = exports2.replacePathSegmentSeparator = exports2.isAppliedFilter = exports2.isFatalError = void 0;
@@ -16802,9 +16792,9 @@ var require_common2 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.walk/out/readers/reader.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/readers/reader.js
 var require_reader = __commonJS({
-  "node_modules/@nodelib/fs.walk/out/readers/reader.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/readers/reader.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var common = require_common2();
@@ -16819,9 +16809,9 @@ var require_reader = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.walk/out/readers/async.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/readers/async.js
 var require_async3 = __commonJS({
-  "node_modules/@nodelib/fs.walk/out/readers/async.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/readers/async.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var events_1 = require("events");
@@ -16922,9 +16912,9 @@ var require_async3 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.walk/out/providers/async.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/providers/async.js
 var require_async4 = __commonJS({
-  "node_modules/@nodelib/fs.walk/out/providers/async.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/providers/async.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var async_1 = require_async3();
@@ -16958,9 +16948,9 @@ var require_async4 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.walk/out/providers/stream.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/providers/stream.js
 var require_stream3 = __commonJS({
-  "node_modules/@nodelib/fs.walk/out/providers/stream.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/providers/stream.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var stream_1 = require("stream");
@@ -16999,9 +16989,9 @@ var require_stream3 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.walk/out/readers/sync.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/readers/sync.js
 var require_sync3 = __commonJS({
-  "node_modules/@nodelib/fs.walk/out/readers/sync.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/readers/sync.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var fsScandir = require_out2();
@@ -17063,9 +17053,9 @@ var require_sync3 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.walk/out/providers/sync.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/providers/sync.js
 var require_sync4 = __commonJS({
-  "node_modules/@nodelib/fs.walk/out/providers/sync.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/providers/sync.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var sync_1 = require_sync3();
@@ -17083,9 +17073,9 @@ var require_sync4 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.walk/out/settings.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/settings.js
 var require_settings3 = __commonJS({
-  "node_modules/@nodelib/fs.walk/out/settings.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var path44 = require("path");
@@ -17115,9 +17105,9 @@ var require_settings3 = __commonJS({
   }
 });
 
-// node_modules/@nodelib/fs.walk/out/index.js
+// extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/index.js
 var require_out3 = __commonJS({
-  "node_modules/@nodelib/fs.walk/out/index.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@nodelib/fs.walk/out/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.Settings = exports2.walkStream = exports2.walkSync = exports2.walk = void 0;
@@ -17155,9 +17145,9 @@ var require_out3 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/readers/reader.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/readers/reader.js
 var require_reader2 = __commonJS({
-  "node_modules/fast-glob/out/readers/reader.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/readers/reader.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var path44 = require("path");
@@ -17194,9 +17184,9 @@ var require_reader2 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/readers/stream.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/readers/stream.js
 var require_stream4 = __commonJS({
-  "node_modules/fast-glob/out/readers/stream.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/readers/stream.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var stream_1 = require("stream");
@@ -17251,9 +17241,9 @@ var require_stream4 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/readers/async.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/readers/async.js
 var require_async5 = __commonJS({
-  "node_modules/fast-glob/out/readers/async.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/readers/async.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var fsWalk = require_out3();
@@ -17290,9 +17280,9 @@ var require_async5 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/providers/matchers/matcher.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/matchers/matcher.js
 var require_matcher = __commonJS({
-  "node_modules/fast-glob/out/providers/matchers/matcher.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/matchers/matcher.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var utils = require_utils3();
@@ -17341,9 +17331,9 @@ var require_matcher = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/providers/matchers/partial.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/matchers/partial.js
 var require_partial = __commonJS({
-  "node_modules/fast-glob/out/providers/matchers/partial.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/matchers/partial.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var matcher_1 = require_matcher();
@@ -17378,9 +17368,9 @@ var require_partial = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/providers/filters/deep.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/filters/deep.js
 var require_deep = __commonJS({
-  "node_modules/fast-glob/out/providers/filters/deep.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/filters/deep.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var utils = require_utils3();
@@ -17443,9 +17433,9 @@ var require_deep = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/providers/filters/entry.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/filters/entry.js
 var require_entry = __commonJS({
-  "node_modules/fast-glob/out/providers/filters/entry.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/filters/entry.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var utils = require_utils3();
@@ -17531,9 +17521,9 @@ var require_entry = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/providers/filters/error.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/filters/error.js
 var require_error = __commonJS({
-  "node_modules/fast-glob/out/providers/filters/error.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/filters/error.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var utils = require_utils3();
@@ -17552,9 +17542,9 @@ var require_error = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/providers/transformers/entry.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/transformers/entry.js
 var require_entry2 = __commonJS({
-  "node_modules/fast-glob/out/providers/transformers/entry.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/transformers/entry.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var utils = require_utils3();
@@ -17584,9 +17574,9 @@ var require_entry2 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/providers/provider.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/provider.js
 var require_provider = __commonJS({
-  "node_modules/fast-glob/out/providers/provider.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/provider.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var path44 = require("path");
@@ -17638,9 +17628,9 @@ var require_provider = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/providers/async.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/async.js
 var require_async6 = __commonJS({
-  "node_modules/fast-glob/out/providers/async.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/async.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var async_1 = require_async5();
@@ -17667,9 +17657,9 @@ var require_async6 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/providers/stream.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/stream.js
 var require_stream5 = __commonJS({
-  "node_modules/fast-glob/out/providers/stream.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/stream.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var stream_1 = require("stream");
@@ -17701,9 +17691,9 @@ var require_stream5 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/readers/sync.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/readers/sync.js
 var require_sync5 = __commonJS({
-  "node_modules/fast-glob/out/readers/sync.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/readers/sync.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var fsStat = require_out();
@@ -17749,9 +17739,9 @@ var require_sync5 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/providers/sync.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/sync.js
 var require_sync6 = __commonJS({
-  "node_modules/fast-glob/out/providers/sync.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/providers/sync.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     var sync_1 = require_sync5();
@@ -17778,9 +17768,9 @@ var require_sync6 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/settings.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/settings.js
 var require_settings4 = __commonJS({
-  "node_modules/fast-glob/out/settings.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.DEFAULT_FILE_SYSTEM_ADAPTER = void 0;
@@ -17838,9 +17828,9 @@ var require_settings4 = __commonJS({
   }
 });
 
-// node_modules/fast-glob/out/index.js
+// extensions/claude-bridge/extension/node_modules/fast-glob/out/index.js
 var require_out4 = __commonJS({
-  "node_modules/fast-glob/out/index.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/fast-glob/out/index.js"(exports2, module2) {
     "use strict";
     var taskManager = require_tasks();
     var async_1 = require_async6();
@@ -17939,7 +17929,7 @@ var require_out4 = __commonJS({
   }
 });
 
-// src/main/mcp/tools/notebook.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/notebook.ts
 async function readNotebookCapped(path44) {
   const st = await import_promises2.default.stat(path44);
   if (st.size > MAX_NOTEBOOK_BYTES) {
@@ -18096,14 +18086,14 @@ async function notebookEdit(input) {
 }
 var import_promises2, MAX_NOTEBOOK_BYTES;
 var init_notebook = __esm({
-  "src/main/mcp/tools/notebook.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/notebook.ts"() {
     "use strict";
     import_promises2 = __toESM(require("node:fs/promises"), 1);
     MAX_NOTEBOOK_BYTES = 50 * 1024 * 1024;
   }
 });
 
-// src/main/utils/file-read-cache.ts
+// extensions/claude-bridge/extension/src/main/utils/file-read-cache.ts
 function evictOldest() {
   const oldest = cache.keys().next().value;
   if (oldest === void 0) return;
@@ -18146,7 +18136,7 @@ function invalidateFileCache(filePath) {
 }
 var import_promises3, CACHE_CAP, CACHE_BYTES_BUDGET, MAX_CACHEABLE_FILE_BYTES, cache, cacheBytes;
 var init_file_read_cache = __esm({
-  "src/main/utils/file-read-cache.ts"() {
+  "extensions/claude-bridge/extension/src/main/utils/file-read-cache.ts"() {
     "use strict";
     import_promises3 = __toESM(require("node:fs/promises"), 1);
     CACHE_CAP = 1024;
@@ -18157,7 +18147,7 @@ var init_file_read_cache = __esm({
   }
 });
 
-// src/main/mcp/tools/fs-shared.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/fs-shared.ts
 function textResult2(text) {
   return { content: [{ type: "text", text }] };
 }
@@ -18178,7 +18168,7 @@ function isBlockedDevicePath(filePath) {
 }
 var MAX_READ_BYTES, WARN_READ_BYTES, MAX_GREP_BYTES, STAT_CONCURRENCY, IMAGE_EXTENSIONS, BLOCKED_DEVICE_PATHS;
 var init_fs_shared = __esm({
-  "src/main/mcp/tools/fs-shared.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/fs-shared.ts"() {
     "use strict";
     MAX_READ_BYTES = 50 * 1024 * 1024;
     WARN_READ_BYTES = 256 * 1024;
@@ -18202,7 +18192,7 @@ var init_fs_shared = __esm({
   }
 });
 
-// src/main/mcp/tools/grep-tool.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/grep-tool.ts
 async function ripgrepStream(args, target, signal, onLines) {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new Error("aborted"));
@@ -18490,7 +18480,7 @@ ${matchingLines.join("\n")}`);
 }
 var import_promises4, import_node_path3, import_node_child_process2;
 var init_grep_tool = __esm({
-  "src/main/mcp/tools/grep-tool.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
     import_promises4 = __toESM(require("node:fs/promises"), 1);
     import_node_path3 = __toESM(require("node:path"), 1);
@@ -18499,7 +18489,7 @@ var init_grep_tool = __esm({
   }
 });
 
-// src/main/mcp/tools/file-system.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/file-system.ts
 function normalizeQuotes(str) {
   return str.replaceAll(LEFT_SINGLE_CURLY_QUOTE, "'").replaceAll(RIGHT_SINGLE_CURLY_QUOTE, "'").replaceAll(LEFT_DOUBLE_CURLY_QUOTE, '"').replaceAll(RIGHT_DOUBLE_CURLY_QUOTE, '"');
 }
@@ -18750,7 +18740,7 @@ async function globSearch(input) {
 }
 var import_promises5, import_node_path4, import_fast_glob, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_GLOB_RESULTS;
 var init_file_system = __esm({
-  "src/main/mcp/tools/file-system.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/file-system.ts"() {
     "use strict";
     import_promises5 = __toESM(require("node:fs/promises"), 1);
     import_node_path4 = __toESM(require("node:path"), 1);
@@ -18767,7 +18757,7 @@ var init_file_system = __esm({
   }
 });
 
-// src/main/mcp/tools/shell-snapshot.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/shell-snapshot.ts
 function buildSnapshotScript() {
   return [
     "# open-claude-bridge shell snapshot (auto-generated)",
@@ -18833,7 +18823,7 @@ function shouldUseLoginShell(snapshotFile) {
 }
 var import_fs4, import_os3, import_path4, import_child_process2, snapshotPath, snapshotAttempted, snapshotAvailable, snapshotPromise;
 var init_shell_snapshot = __esm({
-  "src/main/mcp/tools/shell-snapshot.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/shell-snapshot.ts"() {
     "use strict";
     import_fs4 = __toESM(require("fs"), 1);
     import_os3 = __toESM(require("os"), 1);
@@ -18846,7 +18836,7 @@ var init_shell_snapshot = __esm({
   }
 });
 
-// src/main/mcp/tools/shell.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/shell.ts
 async function shellEnv() {
   const binDirs = await listEnabledPluginBinDirs();
   return {
@@ -19168,7 +19158,7 @@ ${stderr}`);
 }
 var import_node_child_process3, import_node_fs3, import_node_path5, MAX_OUTPUT_BYTES, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
 var init_shell = __esm({
-  "src/main/mcp/tools/shell.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/shell.ts"() {
     "use strict";
     import_node_child_process3 = require("node:child_process");
     import_node_fs3 = __toESM(require("node:fs"), 1);
@@ -19190,9 +19180,9 @@ var init_shell = __esm({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/Event.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Event.js
 var require_Event = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/Event.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Event.js"(exports2, module2) {
     "use strict";
     module2.exports = Event;
     Event.CAPTURING_PHASE = 1;
@@ -19247,9 +19237,9 @@ var require_Event = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/UIEvent.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/UIEvent.js
 var require_UIEvent = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/UIEvent.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/UIEvent.js"(exports2, module2) {
     "use strict";
     var Event = require_Event();
     module2.exports = UIEvent;
@@ -19269,9 +19259,9 @@ var require_UIEvent = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/MouseEvent.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/MouseEvent.js
 var require_MouseEvent = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/MouseEvent.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/MouseEvent.js"(exports2, module2) {
     "use strict";
     var UIEvent = require_UIEvent();
     module2.exports = MouseEvent;
@@ -19330,9 +19320,9 @@ var require_MouseEvent = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/DOMException.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/DOMException.js
 var require_DOMException = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/DOMException.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/DOMException.js"(exports2, module2) {
     "use strict";
     module2.exports = DOMException;
     var INDEX_SIZE_ERR = 1;
@@ -19467,16 +19457,16 @@ var require_DOMException = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/config.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/config.js
 var require_config = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/config.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/config.js"(exports2) {
     exports2.isApiWritable = !globalThis.__domino_frozen__;
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/utils.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/utils.js
 var require_utils5 = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/utils.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/utils.js"(exports2) {
     "use strict";
     var DOMException = require_DOMException();
     var ERR = DOMException;
@@ -19589,9 +19579,9 @@ var require_utils5 = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/EventTarget.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/EventTarget.js
 var require_EventTarget = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/EventTarget.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/EventTarget.js"(exports2, module2) {
     "use strict";
     var Event = require_Event();
     var MouseEvent = require_MouseEvent();
@@ -19835,9 +19825,9 @@ var require_EventTarget = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/LinkedList.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/LinkedList.js
 var require_LinkedList = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/LinkedList.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/LinkedList.js"(exports2, module2) {
     "use strict";
     var utils = require_utils5();
     var LinkedList = module2.exports = {
@@ -19885,9 +19875,9 @@ var require_LinkedList = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/NodeUtils.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeUtils.js
 var require_NodeUtils = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/NodeUtils.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeUtils.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       // NOTE: The `serializeOne()` function used to live on the `Node.prototype`
@@ -20085,9 +20075,9 @@ var require_NodeUtils = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/Node.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Node.js
 var require_Node2 = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/Node.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Node.js"(exports2, module2) {
     "use strict";
     module2.exports = Node;
     var EventTarget = require_EventTarget();
@@ -20685,9 +20675,9 @@ var require_Node2 = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/NodeList.es6.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeList.es6.js
 var require_NodeList_es6 = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/NodeList.es6.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeList.es6.js"(exports2, module2) {
     "use strict";
     module2.exports = class NodeList extends Array {
       constructor(a) {
@@ -20705,9 +20695,9 @@ var require_NodeList_es6 = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/NodeList.es5.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeList.es5.js
 var require_NodeList_es5 = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/NodeList.es5.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeList.es5.js"(exports2, module2) {
     "use strict";
     function item(i) {
       return this[i] || null;
@@ -20721,9 +20711,9 @@ var require_NodeList_es5 = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/NodeList.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeList.js
 var require_NodeList = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/NodeList.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeList.js"(exports2, module2) {
     "use strict";
     var NodeList;
     try {
@@ -20735,9 +20725,9 @@ var require_NodeList = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/ContainerNode.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/ContainerNode.js
 var require_ContainerNode = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/ContainerNode.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/ContainerNode.js"(exports2, module2) {
     "use strict";
     module2.exports = ContainerNode;
     var Node = require_Node2();
@@ -20806,9 +20796,9 @@ var require_ContainerNode = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/xmlnames.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/xmlnames.js
 var require_xmlnames = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/xmlnames.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/xmlnames.js"(exports2) {
     "use strict";
     exports2.isValidName = isValidName;
     exports2.isValidQName = isValidQName;
@@ -20850,9 +20840,9 @@ var require_xmlnames = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/attributes.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/attributes.js
 var require_attributes = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/attributes.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/attributes.js"(exports2) {
     "use strict";
     var utils = require_utils5();
     exports2.property = function(attr) {
@@ -20982,9 +20972,9 @@ var require_attributes = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/FilteredElementList.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/FilteredElementList.js
 var require_FilteredElementList = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/FilteredElementList.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/FilteredElementList.js"(exports2, module2) {
     "use strict";
     module2.exports = FilteredElementList;
     var Node = require_Node2();
@@ -21054,9 +21044,9 @@ var require_FilteredElementList = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/DOMTokenList.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/DOMTokenList.js
 var require_DOMTokenList = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/DOMTokenList.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/DOMTokenList.js"(exports2, module2) {
     "use strict";
     var utils = require_utils5();
     module2.exports = DOMTokenList;
@@ -21220,9 +21210,9 @@ var require_DOMTokenList = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/select.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/select.js
 var require_select = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/select.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/select.js"(exports2, module2) {
     "use strict";
     var window9 = Object.create(null, {
       location: { get: function() {
@@ -21304,7 +21294,7 @@ var require_select = __commonJS({
         );
       });
     };
-    var indexOf = (function() {
+    var indexOf = function() {
       if (Array.prototype.indexOf) {
         return Array.prototype.indexOf;
       }
@@ -21315,7 +21305,7 @@ var require_select = __commonJS({
         }
         return -1;
       };
-    })();
+    }();
     var makeInside = function(start, end) {
       var regex = rules.inside.source.replace(/</g, start).replace(/>/g, end);
       return new RegExp(regex);
@@ -21359,7 +21349,7 @@ var require_select = __commonJS({
       };
     };
     var selectors = {
-      "*": (function() {
+      "*": function() {
         if (false) {
           return function(el) {
             if (el.nodeType === 1) return true;
@@ -21368,7 +21358,7 @@ var require_select = __commonJS({
         return function() {
           return true;
         };
-      })(),
+      }(),
       "type": function(type) {
         type = type.toLowerCase();
         return function(el) {
@@ -21954,9 +21944,9 @@ var require_select = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/ChildNode.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/ChildNode.js
 var require_ChildNode = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/ChildNode.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/ChildNode.js"(exports2, module2) {
     "use strict";
     var Node = require_Node2();
     var LinkedList = require_LinkedList();
@@ -22055,9 +22045,9 @@ var require_ChildNode = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/NonDocumentTypeChildNode.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NonDocumentTypeChildNode.js
 var require_NonDocumentTypeChildNode = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/NonDocumentTypeChildNode.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NonDocumentTypeChildNode.js"(exports2, module2) {
     "use strict";
     var Node = require_Node2();
     var NonDocumentTypeChildNode = {
@@ -22082,9 +22072,9 @@ var require_NonDocumentTypeChildNode = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/NamedNodeMap.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NamedNodeMap.js
 var require_NamedNodeMap = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/NamedNodeMap.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NamedNodeMap.js"(exports2, module2) {
     "use strict";
     module2.exports = NamedNodeMap;
     var utils = require_utils5();
@@ -22122,9 +22112,9 @@ var require_NamedNodeMap = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/Element.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Element.js
 var require_Element = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/Element.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Element.js"(exports2, module2) {
     "use strict";
     module2.exports = Element;
     var xml = require_xmlnames();
@@ -23158,9 +23148,9 @@ var require_Element = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/Leaf.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Leaf.js
 var require_Leaf = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/Leaf.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Leaf.js"(exports2, module2) {
     "use strict";
     module2.exports = Leaf;
     var Node = require_Node2();
@@ -23199,9 +23189,9 @@ var require_Leaf = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/CharacterData.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/CharacterData.js
 var require_CharacterData = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/CharacterData.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/CharacterData.js"(exports2, module2) {
     "use strict";
     module2.exports = CharacterData;
     var Leaf = require_Leaf();
@@ -23310,9 +23300,9 @@ var require_CharacterData = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/Text.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Text.js
 var require_Text = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/Text.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Text.js"(exports2, module2) {
     "use strict";
     module2.exports = Text;
     var utils = require_utils5();
@@ -23386,9 +23376,9 @@ var require_Text = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/Comment.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Comment.js
 var require_Comment = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/Comment.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Comment.js"(exports2, module2) {
     "use strict";
     module2.exports = Comment;
     var Node = require_Node2();
@@ -23433,9 +23423,9 @@ var require_Comment = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/DocumentFragment.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/DocumentFragment.js
 var require_DocumentFragment = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/DocumentFragment.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/DocumentFragment.js"(exports2, module2) {
     "use strict";
     module2.exports = DocumentFragment;
     var Node = require_Node2();
@@ -23498,9 +23488,9 @@ var require_DocumentFragment = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/ProcessingInstruction.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/ProcessingInstruction.js
 var require_ProcessingInstruction = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/ProcessingInstruction.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/ProcessingInstruction.js"(exports2, module2) {
     "use strict";
     module2.exports = ProcessingInstruction;
     var Node = require_Node2();
@@ -23550,9 +23540,9 @@ var require_ProcessingInstruction = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/NodeFilter.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeFilter.js
 var require_NodeFilter = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/NodeFilter.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeFilter.js"(exports2, module2) {
     "use strict";
     var NodeFilter = {
       // Constants for acceptNode()
@@ -23583,9 +23573,9 @@ var require_NodeFilter = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/NodeTraversal.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeTraversal.js
 var require_NodeTraversal = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/NodeTraversal.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeTraversal.js"(exports2, module2) {
     "use strict";
     var NodeTraversal = module2.exports = {
       nextSkippingChildren,
@@ -23650,9 +23640,9 @@ var require_NodeTraversal = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/TreeWalker.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/TreeWalker.js
 var require_TreeWalker = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/TreeWalker.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/TreeWalker.js"(exports2, module2) {
     "use strict";
     module2.exports = TreeWalker;
     var Node = require_Node2();
@@ -23931,9 +23921,9 @@ var require_TreeWalker = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/NodeIterator.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeIterator.js
 var require_NodeIterator = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/NodeIterator.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NodeIterator.js"(exports2, module2) {
     "use strict";
     module2.exports = NodeIterator;
     var NodeFilter = require_NodeFilter();
@@ -24103,9 +24093,9 @@ var require_NodeIterator = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/URL.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/URL.js
 var require_URL = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/URL.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/URL.js"(exports2, module2) {
     "use strict";
     module2.exports = URL2;
     function URL2(url) {
@@ -24269,9 +24259,9 @@ var require_URL = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/CustomEvent.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/CustomEvent.js
 var require_CustomEvent = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/CustomEvent.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/CustomEvent.js"(exports2, module2) {
     "use strict";
     module2.exports = CustomEvent;
     var Event = require_Event();
@@ -24284,9 +24274,9 @@ var require_CustomEvent = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/events.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/events.js
 var require_events = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/events.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/events.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       Event: require_Event(),
@@ -24297,9 +24287,9 @@ var require_events = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/style_parser.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/style_parser.js
 var require_style_parser = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/style_parser.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/style_parser.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.hyphenate = exports2.parse = void 0;
@@ -24367,9 +24357,9 @@ var require_style_parser = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/CSSStyleDeclaration.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/CSSStyleDeclaration.js
 var require_CSSStyleDeclaration = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/CSSStyleDeclaration.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/CSSStyleDeclaration.js"(exports2, module2) {
     "use strict";
     var { parse } = require_style_parser();
     module2.exports = function(elt) {
@@ -24551,9 +24541,9 @@ var require_CSSStyleDeclaration = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/URLUtils.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/URLUtils.js
 var require_URLUtils = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/URLUtils.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/URLUtils.js"(exports2, module2) {
     "use strict";
     var URL2 = require_URL();
     module2.exports = URLUtils;
@@ -24798,9 +24788,9 @@ var require_URLUtils = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/defineElement.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/defineElement.js
 var require_defineElement = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/defineElement.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/defineElement.js"(exports2, module2) {
     "use strict";
     var attributes = require_attributes();
     var isApiWritable = require_config().isApiWritable;
@@ -24862,9 +24852,9 @@ var require_defineElement = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/htmlelts.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/htmlelts.js
 var require_htmlelts = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/htmlelts.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/htmlelts.js"(exports2) {
     "use strict";
     var Node = require_Node2();
     var Element = require_Element();
@@ -26417,9 +26407,9 @@ var require_htmlelts = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/svg.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/svg.js
 var require_svg = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/svg.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/svg.js"(exports2) {
     "use strict";
     var Element = require_Element();
     var defineElement = require_defineElement();
@@ -26546,9 +26536,9 @@ var require_svg = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/MutationConstants.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/MutationConstants.js
 var require_MutationConstants = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/MutationConstants.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/MutationConstants.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       VALUE: 1,
@@ -26567,9 +26557,9 @@ var require_MutationConstants = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/Document.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Document.js
 var require_Document2 = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/Document.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Document.js"(exports2, module2) {
     "use strict";
     module2.exports = Document;
     var Node = require_Node2();
@@ -27311,9 +27301,9 @@ var require_Document2 = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/DocumentType.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/DocumentType.js
 var require_DocumentType = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/DocumentType.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/DocumentType.js"(exports2, module2) {
     "use strict";
     module2.exports = DocumentType;
     var Node = require_Node2();
@@ -27350,9 +27340,9 @@ var require_DocumentType = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/HTMLParser.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/HTMLParser.js
 var require_HTMLParser = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/HTMLParser.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/HTMLParser.js"(exports2, module2) {
     "use strict";
     module2.exports = HTMLParser;
     var Document = require_Document2();
@@ -35512,9 +35502,9 @@ var require_HTMLParser = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/DOMImplementation.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/DOMImplementation.js
 var require_DOMImplementation = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/DOMImplementation.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/DOMImplementation.js"(exports2, module2) {
     "use strict";
     module2.exports = DOMImplementation;
     var Document = require_Document2();
@@ -35591,9 +35581,9 @@ var require_DOMImplementation = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/Location.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Location.js
 var require_Location = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/Location.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Location.js"(exports2, module2) {
     "use strict";
     var URL2 = require_URL();
     var URLUtils = require_URLUtils();
@@ -35631,9 +35621,9 @@ var require_Location = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/NavigatorID.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NavigatorID.js
 var require_NavigatorID = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/NavigatorID.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/NavigatorID.js"(exports2, module2) {
     "use strict";
     var NavigatorID = Object.create(null, {
       appCodeName: { value: "Mozilla" },
@@ -35653,9 +35643,9 @@ var require_NavigatorID = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/WindowTimers.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/WindowTimers.js
 var require_WindowTimers = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/WindowTimers.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/WindowTimers.js"(exports2, module2) {
     "use strict";
     var WindowTimers = {
       setTimeout,
@@ -35667,9 +35657,9 @@ var require_WindowTimers = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/impl.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/impl.js
 var require_impl = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/impl.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/impl.js"(exports2, module2) {
     "use strict";
     var utils = require_utils5();
     exports2 = module2.exports = {
@@ -35698,9 +35688,9 @@ var require_impl = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/Window.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Window.js
 var require_Window = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/Window.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/Window.js"(exports2, module2) {
     "use strict";
     var DOMImplementation = require_DOMImplementation();
     var EventTarget = require_EventTarget();
@@ -35766,9 +35756,9 @@ var require_Window = __commonJS({
   }
 });
 
-// node_modules/@mixmark-io/domino/lib/index.js
+// extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/index.js
 var require_lib = __commonJS({
-  "node_modules/@mixmark-io/domino/lib/index.js"(exports2) {
+  "extensions/claude-bridge/extension/node_modules/@mixmark-io/domino/lib/index.js"(exports2) {
     "use strict";
     var DOMImplementation = require_DOMImplementation();
     var HTMLParser = require_HTMLParser();
@@ -35849,9 +35839,9 @@ var require_lib = __commonJS({
   }
 });
 
-// node_modules/turndown/lib/turndown.cjs.js
+// extensions/claude-bridge/extension/node_modules/turndown/lib/turndown.cjs.js
 var require_turndown_cjs = __commonJS({
-  "node_modules/turndown/lib/turndown.cjs.js"(exports2, module2) {
+  "extensions/claude-bridge/extension/node_modules/turndown/lib/turndown.cjs.js"(exports2, module2) {
     "use strict";
     function extend(destination) {
       for (var i = 1; i < arguments.length; i++) {
@@ -36494,7 +36484,7 @@ var require_turndown_cjs = __commonJS({
   }
 });
 
-// src/main/mcp/tools/web.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/web.ts
 function textResult4(text) {
   return { content: [{ type: "text", text }] };
 }
@@ -36718,7 +36708,7 @@ ${content}`
 }
 var import_turndown, import_promises6, import_node_net, MAX_CONTENT_BYTES, MAX_RAW_HTML_BYTES, MAX_REDIRECTS;
 var init_web = __esm({
-  "src/main/mcp/tools/web.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/web.ts"() {
     "use strict";
     import_turndown = __toESM(require_turndown_cjs(), 1);
     import_promises6 = require("node:dns/promises");
@@ -36729,7 +36719,7 @@ var init_web = __esm({
   }
 });
 
-// src/main/mcp/tools/git.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/git.ts
 function textResult5(text) {
   return { content: [{ type: "text", text }] };
 }
@@ -36825,7 +36815,7 @@ Based on: HEAD`
 }
 var import_node_child_process4, import_node_path6, import_node_fs4, import_node_crypto;
 var init_git = __esm({
-  "src/main/mcp/tools/git.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/git.ts"() {
     "use strict";
     import_node_child_process4 = require("node:child_process");
     import_node_path6 = __toESM(require("node:path"), 1);
@@ -36834,7 +36824,7 @@ var init_git = __esm({
   }
 });
 
-// src/main/mcp/tools/agent-tools.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/agent-tools.ts
 async function agentSpawn(input) {
   const description = input.description || "unnamed agent";
   const prompt = input.prompt || "";
@@ -36930,12 +36920,12 @@ async function taskStop(input) {
   };
 }
 var init_agent_tools = __esm({
-  "src/main/mcp/tools/agent-tools.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/agent-tools.ts"() {
     "use strict";
   }
 });
 
-// src/main/mcp/tools/ui-tools.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/ui-tools.ts
 function setupUiTools(win, _getActiveTabId, ptySender) {
   mainWindow2 = win;
   activeTabId = null;
@@ -37053,7 +37043,7 @@ async function skillLoad(input) {
 }
 var import_crypto, pendingQuestions, mainWindow2, activeTabId, sendToPty, DEFERRED_RESULT_TEXT;
 var init_ui_tools = __esm({
-  "src/main/mcp/tools/ui-tools.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/ui-tools.ts"() {
     "use strict";
     init_host_compat();
     import_crypto = require("crypto");
@@ -37065,7 +37055,7 @@ var init_ui_tools = __esm({
   }
 });
 
-// src/session-activation.ts
+// extensions/claude-bridge/extension/src/session-activation.ts
 function setSessionActivateHandler(fn) {
   handler = fn;
 }
@@ -37074,13 +37064,13 @@ function activateSessionForTab(tabId) {
 }
 var handler;
 var init_session_activation = __esm({
-  "src/session-activation.ts"() {
+  "extensions/claude-bridge/extension/src/session-activation.ts"() {
     "use strict";
     handler = null;
   }
 });
 
-// src/main/notifications/toast-window.ts
+// extensions/claude-bridge/extension/src/main/notifications/toast-window.ts
 function setToastRouteHandler(handler2) {
   routeHandler = handler2;
 }
@@ -37101,7 +37091,7 @@ function closeToastsMatching(_predicate) {
 }
 var vscode2, routeHandler, notificationsEnabled;
 var init_toast_window = __esm({
-  "src/main/notifications/toast-window.ts"() {
+  "extensions/claude-bridge/extension/src/main/notifications/toast-window.ts"() {
     "use strict";
     vscode2 = __toESM(require("vscode"), 1);
     init_session_activation();
@@ -37110,7 +37100,7 @@ var init_toast_window = __esm({
   }
 });
 
-// src/main/mcp/tools/notifications.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/notifications.ts
 async function pushNotification(input, context) {
   const message = typeof input.message === "string" ? input.message : "";
   if (!message) {
@@ -37157,14 +37147,14 @@ async function todoList(_input, context) {
 }
 var todoStore;
 var init_notifications = __esm({
-  "src/main/mcp/tools/notifications.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/notifications.ts"() {
     "use strict";
     init_toast_window();
     todoStore = /* @__PURE__ */ new Map();
   }
 });
 
-// src/main/mcp/tools/widget.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/widget.ts
 async function showWidget(input) {
   const html = typeof input.html === "string" ? input.html : "";
   if (!html.trim()) {
@@ -37173,12 +37163,12 @@ async function showWidget(input) {
   return { content: [{ type: "text", text: "Widget rendered inline in the chat." }] };
 }
 var init_widget = __esm({
-  "src/main/mcp/tools/widget.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/widget.ts"() {
     "use strict";
   }
 });
 
-// src/main/mcp/tools/search-tools.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/search-tools.ts
 async function toolSearch(input) {
   const query = (input.query || "").toLowerCase();
   const maxResults = input.max_results || 5;
@@ -37212,13 +37202,13 @@ ${matches.join("\n")}`
   };
 }
 var init_search_tools = __esm({
-  "src/main/mcp/tools/search-tools.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/search-tools.ts"() {
     "use strict";
     init_tool_registry();
   }
 });
 
-// src/main/plugin-lsp.ts
+// extensions/claude-bridge/extension/src/main/plugin-lsp.ts
 function setPluginLspProjectResolver(resolver) {
   resolveProject = resolver;
 }
@@ -37301,7 +37291,7 @@ function matchLspLanguage(extensionToLanguage, file) {
 }
 var import_node_child_process5, import_node_fs5, import_node_os3, import_node_path7, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
 var init_plugin_lsp = __esm({
-  "src/main/plugin-lsp.ts"() {
+  "extensions/claude-bridge/extension/src/main/plugin-lsp.ts"() {
     "use strict";
     import_node_child_process5 = require("node:child_process");
     import_node_fs5 = __toESM(require("node:fs"), 1);
@@ -37363,8 +37353,6 @@ var init_plugin_lsp = __esm({
         this.config = config;
         this.projectRoot = projectRoot;
       }
-      config;
-      projectRoot;
       child = null;
       nextId = 1;
       pending = /* @__PURE__ */ new Map();
@@ -37717,7 +37705,7 @@ var init_plugin_lsp = __esm({
   }
 });
 
-// src/main/mcp/tools/lsp.ts
+// extensions/claude-bridge/extension/src/main/mcp/tools/lsp.ts
 function errorResult6(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
@@ -37856,7 +37844,7 @@ async function lspReferences(input, context) {
 }
 var import_path5, vscode3, parseLine, parseChar, NO_SERVER, LSP_TIMEOUT_MS;
 var init_lsp = __esm({
-  "src/main/mcp/tools/lsp.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tools/lsp.ts"() {
     "use strict";
     import_path5 = __toESM(require("path"), 1);
     vscode3 = __toESM(require("vscode"), 1);
@@ -37868,13 +37856,13 @@ var init_lsp = __esm({
   }
 });
 
-// src/main/mcp/tool-registry.ts
+// extensions/claude-bridge/extension/src/main/mcp/tool-registry.ts
 function getRegisteredTools() {
   return Array.from(toolRegistry.keys());
 }
 var toolRegistry;
 var init_tool_registry = __esm({
-  "src/main/mcp/tool-registry.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/tool-registry.ts"() {
     "use strict";
     init_file_system();
     init_shell();
@@ -37944,7 +37932,7 @@ var init_tool_registry = __esm({
   }
 });
 
-// src/main/mcp/executor.ts
+// extensions/claude-bridge/extension/src/main/mcp/executor.ts
 var executor_exports2 = {};
 __export(executor_exports2, {
   executeTool: () => executeTool,
@@ -38005,7 +37993,7 @@ ${stack}` : ""}`
 }
 var externalManager;
 var init_executor2 = __esm({
-  "src/main/mcp/executor.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/executor.ts"() {
     "use strict";
     init_tool_registry();
     externalManager = null;
@@ -39325,7 +39313,7 @@ var require_range = __commonJS({
 var require_comparator = __commonJS({
   "node_modules/semver/classes/comparator.js"(exports2, module2) {
     "use strict";
-    var ANY = /* @__PURE__ */ Symbol("SemVer ANY");
+    var ANY = Symbol("SemVer ANY");
     var Comparator = class _Comparator {
       static get ANY() {
         return ANY;
@@ -40006,7 +39994,7 @@ var require_semver2 = __commonJS({
   }
 });
 
-// src/main/hooks/emit-bridge-event.ts
+// extensions/claude-bridge/extension/src/main/hooks/emit-bridge-event.ts
 var emit_bridge_event_exports = {};
 __export(emit_bridge_event_exports, {
   emitBridgeHookEvent: () => emitBridgeHookEvent,
@@ -40032,13 +40020,13 @@ function emitBridgeHookEvent(event, payload = {}) {
 }
 var configStoreRef;
 var init_emit_bridge_event = __esm({
-  "src/main/hooks/emit-bridge-event.ts"() {
+  "extensions/claude-bridge/extension/src/main/hooks/emit-bridge-event.ts"() {
     "use strict";
     configStoreRef = null;
   }
 });
 
-// src/main/mcp/oauth-flow.ts
+// extensions/claude-bridge/extension/src/main/mcp/oauth-flow.ts
 var oauth_flow_exports = {};
 __export(oauth_flow_exports, {
   authorize: () => authorize,
@@ -40293,14 +40281,14 @@ h1{margin:0 0 8px;font-size:18px}p{margin:0;color:#a6adc8;font-size:14px}</style
 }
 var import_http, import_crypto8;
 var init_oauth_flow = __esm({
-  "src/main/mcp/oauth-flow.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/oauth-flow.ts"() {
     "use strict";
     import_http = require("http");
     import_crypto8 = require("crypto");
   }
 });
 
-// src/main/mcp/claude-code-import.ts
+// extensions/claude-bridge/extension/src/main/mcp/claude-code-import.ts
 var claude_code_import_exports = {};
 __export(claude_code_import_exports, {
   findClaudeCodeEntryByServerUrl: () => findClaudeCodeEntryByServerUrl
@@ -40335,7 +40323,7 @@ function findClaudeCodeEntryByServerUrl(serverUrl) {
 }
 var import_fs16, import_path17, import_os13;
 var init_claude_code_import = __esm({
-  "src/main/mcp/claude-code-import.ts"() {
+  "extensions/claude-bridge/extension/src/main/mcp/claude-code-import.ts"() {
     "use strict";
     import_fs16 = __toESM(require("fs"), 1);
     import_path17 = __toESM(require("path"), 1);
@@ -40343,7 +40331,7 @@ var init_claude_code_import = __esm({
   }
 });
 
-// src/index.ts
+// extensions/claude-bridge/extension/src/index.ts
 var index_exports = {};
 __export(index_exports, {
   activate: () => activate,
@@ -40355,11 +40343,11 @@ var kaminide2 = __toESM(require("kaminide"), 1);
 var import_fs34 = __toESM(require("fs"), 1);
 var import_path34 = __toESM(require("path"), 1);
 
-// src/bridge-host.ts
+// extensions/claude-bridge/extension/src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
 var import_node_path8 = __toESM(require("node:path"), 1);
 
-// src/resync-tracker.ts
+// extensions/claude-bridge/extension/src/resync-tracker.ts
 var ResyncTracker = class {
   visible = /* @__PURE__ */ new Map();
   stale = /* @__PURE__ */ new Set();
@@ -40400,16 +40388,16 @@ var ResyncTracker = class {
   }
 };
 
-// src/bridge-host.ts
+// extensions/claude-bridge/extension/src/bridge-host.ts
 init_host_compat();
 
-// src/main/tab-manager.ts
+// extensions/claude-bridge/extension/src/main/tab-manager.ts
 var import_path9 = __toESM(require("path"), 1);
 var import_fs8 = __toESM(require("fs"), 1);
 var import_os6 = __toESM(require("os"), 1);
 var import_crypto4 = require("crypto");
 
-// node_modules/ws/wrapper.mjs
+// extensions/claude-bridge/extension/node_modules/ws/wrapper.mjs
 var import_stream = __toESM(require_stream(), 1);
 var import_extension = __toESM(require_extension(), 1);
 var import_permessage_deflate = __toESM(require_permessage_deflate(), 1);
@@ -40420,10 +40408,10 @@ var import_websocket = __toESM(require_websocket(), 1);
 var import_websocket_server = __toESM(require_websocket_server(), 1);
 var wrapper_default = import_websocket.default;
 
-// src/main/ws/connection-manager.ts
+// extensions/claude-bridge/extension/src/main/ws/connection-manager.ts
 var vscode4 = __toESM(require("vscode"), 1);
 
-// src/main/mcp/permission-manager.ts
+// extensions/claude-bridge/extension/src/main/mcp/permission-manager.ts
 var import_node_fs = __toESM(require("node:fs"), 1);
 var import_node_path = __toESM(require("node:path"), 1);
 var import_node_os = __toESM(require("node:os"), 1);
@@ -40578,7 +40566,7 @@ var PermissionManager = class {
   }
 };
 
-// src/main/ws/jsonl-batcher.ts
+// extensions/claude-bridge/extension/src/main/ws/jsonl-batcher.ts
 var BATCH_MS = 50;
 var MAX_ENTRIES_PER_IPC = 150;
 var JsonlBatcher = class {
@@ -40586,8 +40574,6 @@ var JsonlBatcher = class {
     this.window = window9;
     this.tabId = tabId;
   }
-  window;
-  tabId;
   // Background (warm-pool) tab: its transcript is cached extension-side but NOT
   // forwarded live — a boot-time warm pool replaying several sessions at once
   // saturated the host→shell pipe with multi-MB frames for tens of seconds and
@@ -40739,7 +40725,7 @@ var JsonlBatcher = class {
   }
 };
 
-// src/main/ws/transcript-mirror.ts
+// extensions/claude-bridge/extension/src/main/ws/transcript-mirror.ts
 var import_fs = require("fs");
 var import_promises = __toESM(require("fs/promises"), 1);
 var import_path = __toESM(require("path"), 1);
@@ -40982,11 +40968,11 @@ var TranscriptMirror = class {
   }
 };
 
-// src/main/ws/connection-manager.ts
+// extensions/claude-bridge/extension/src/main/ws/connection-manager.ts
 var import_fs5 = __toESM(require("fs"), 1);
 var import_path6 = __toESM(require("path"), 1);
 
-// src/main/ws/session-idle-tracker.ts
+// extensions/claude-bridge/extension/src/main/ws/session-idle-tracker.ts
 var DEBOUNCE_MS = 500;
 var RECENT_WORK_WINDOW_MS = 6e4;
 var SETTLE_MS = 4e3;
@@ -40996,7 +40982,6 @@ var SessionIdleTracker = class {
   constructor(onIdle) {
     this.onIdle = onIdle;
   }
-  onIdle;
   debounceTimer = null;
   lastWorkingAt = 0;
   wasWorking = false;
@@ -41049,7 +41034,7 @@ var SessionIdleTracker = class {
   }
 };
 
-// src/main/ws/handle-server-message.ts
+// extensions/claude-bridge/extension/src/main/ws/handle-server-message.ts
 var JSONL_CACHE_MAX = 2e4;
 var JSONL_CACHE_SLACK = 1e3;
 function trimJsonlCache(cached) {
@@ -41299,7 +41284,7 @@ function handleServerMessage(msg, ctx) {
   }
 }
 
-// src/main/ws/mcp-call-pipeline.ts
+// extensions/claude-bridge/extension/src/main/ws/mcp-call-pipeline.ts
 function checkToolPermission(ctx, requestId, toolName, input) {
   if (toolName.startsWith("__bridge_mcp_")) return true;
   const mode = ctx.permissionMode();
@@ -41393,7 +41378,7 @@ async function handleMcpCall(ctx, msg) {
   }
 }
 
-// src/main/ws/connection-manager.ts
+// extensions/claude-bridge/extension/src/main/ws/connection-manager.ts
 var MIRROR_PAINT_RECORDS = 2e3;
 var REPLAY_TAIL_MAX = 4500;
 var CLIENT_STREAM_PROTOCOL = 1;
@@ -42288,13 +42273,13 @@ var ConnectionManager = class _ConnectionManager {
   }
 };
 
-// src/main/sync/sync-client.ts
+// extensions/claude-bridge/extension/src/main/sync/sync-client.ts
 var import_fs7 = __toESM(require("fs"), 1);
 var import_path8 = __toESM(require("path"), 1);
 var import_os5 = __toESM(require("os"), 1);
 var import_crypto3 = __toESM(require("crypto"), 1);
 
-// src/main/sync/plugin-snapshot.ts
+// extensions/claude-bridge/extension/src/main/sync/plugin-snapshot.ts
 var import_fs6 = __toESM(require("fs"), 1);
 var import_crypto2 = __toESM(require("crypto"), 1);
 var import_os4 = __toESM(require("os"), 1);
@@ -42596,7 +42581,7 @@ async function buildPluginSnapshots() {
   return result;
 }
 
-// src/main/sync/sync-client.ts
+// extensions/claude-bridge/extension/src/main/sync/sync-client.ts
 var SYNC_DEBOUNCE_MS = 6e4;
 var lastUserSync = /* @__PURE__ */ new Map();
 var lastProjectSync = /* @__PURE__ */ new Map();
@@ -42783,7 +42768,7 @@ function resetSyncTimers() {
   lastProjectSync.clear();
 }
 
-// src/main/tab-manager.ts
+// extensions/claude-bridge/extension/src/main/tab-manager.ts
 var _tabLogPath = import_path9.default.join(import_os6.default.tmpdir(), "ocb-tab-debug.log");
 function tabLog(msg) {
   try {
@@ -43196,7 +43181,7 @@ var TabManager = class {
   }
 };
 
-// src/main/config/store.ts
+// extensions/claude-bridge/extension/src/main/config/store.ts
 var import_fs9 = __toESM(require("fs"), 1);
 var import_path10 = __toESM(require("path"), 1);
 var import_crypto5 = __toESM(require("crypto"), 1);
@@ -43362,14 +43347,14 @@ var ConfigStore = class {
   }
 };
 
-// src/main/ipc/sessions.ts
+// extensions/claude-bridge/extension/src/main/ipc/sessions.ts
 init_host_compat();
 var import_fs10 = __toESM(require("fs"), 1);
 var import_path11 = __toESM(require("path"), 1);
 init_ui_tools();
 init_session_activation();
 
-// src/displayed-tab.ts
+// extensions/claude-bridge/extension/src/displayed-tab.ts
 var displayed = null;
 var listeners = /* @__PURE__ */ new Set();
 function reportDisplayedTab(tabId) {
@@ -43398,7 +43383,7 @@ function clearDisplayedTab() {
   for (const fn of listeners) fn("");
 }
 
-// src/main/ipc/sessions.ts
+// extensions/claude-bridge/extension/src/main/ipc/sessions.ts
 function registerSessionsIPC(ctx) {
   const tm = () => ctx.getTabManager();
   ipcMain.handle("tab:create", (_event, config) => {
@@ -43657,7 +43642,7 @@ function registerSessionsIPC(ctx) {
   });
 }
 
-// src/main/ipc/config.ts
+// extensions/claude-bridge/extension/src/main/ipc/config.ts
 init_host_compat();
 var import_os7 = __toESM(require("os"), 1);
 init_toast_window();
@@ -43736,10 +43721,10 @@ function registerConfigIPC(ctx) {
   });
 }
 
-// src/main/ipc/tabs.ts
+// extensions/claude-bridge/extension/src/main/ipc/tabs.ts
 init_host_compat();
 
-// src/main/tabs-state-store.ts
+// extensions/claude-bridge/extension/src/main/tabs-state-store.ts
 var import_fs11 = __toESM(require("fs"), 1);
 var import_path12 = __toESM(require("path"), 1);
 var import_os8 = __toESM(require("os"), 1);
@@ -43782,7 +43767,7 @@ function loadTabsState(token) {
   }
 }
 
-// src/main/ipc/tabs.ts
+// extensions/claude-bridge/extension/src/main/ipc/tabs.ts
 function registerTabsIPC(ctx) {
   ipcMain.handle("tabs:save-state", (_event, tabs) => {
     const token = ctx.configStore.get().token;
@@ -43797,7 +43782,7 @@ function registerTabsIPC(ctx) {
   });
 }
 
-// src/main/ipc/skills-agents.ts
+// extensions/claude-bridge/extension/src/main/ipc/skills-agents.ts
 init_host_compat();
 var import_path13 = __toESM(require("path"), 1);
 var import_fs12 = __toESM(require("fs"), 1);
@@ -44348,13 +44333,13 @@ function registerSkillsAgentsIPC(ctx) {
   });
 }
 
-// src/main/ipc/hooks.ts
+// extensions/claude-bridge/extension/src/main/ipc/hooks.ts
 init_host_compat();
 var import_fs15 = __toESM(require("fs"), 1);
 var import_os12 = __toESM(require("os"), 1);
 var import_path16 = __toESM(require("path"), 1);
 
-// src/main/ipc/plugins/handlers-install.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/handlers-install.ts
 init_host_compat();
 var import_path15 = __toESM(require("path"), 1);
 var import_fs14 = __toESM(require("fs"), 1);
@@ -44363,12 +44348,12 @@ init_plugin_helpers();
 var import_semver = __toESM(require_semver2(), 1);
 var import_crypto7 = __toESM(require("crypto"), 1);
 
-// src/main/ipc/plugins/shared.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/shared.ts
 var import_path14 = __toESM(require("path"), 1);
 var import_fs13 = __toESM(require("fs"), 1);
 var import_os10 = __toESM(require("os"), 1);
 
-// src/main/marketplace/url-auth.ts
+// extensions/claude-bridge/extension/src/main/marketplace/url-auth.ts
 function applyAuthToUrl(url, auth) {
   let parsed;
   try {
@@ -44391,7 +44376,7 @@ function redactUrl(url) {
   }
 }
 
-// src/main/lib/git-async.ts
+// extensions/claude-bridge/extension/src/main/lib/git-async.ts
 var import_child_process3 = require("child_process");
 function runGit(args, opts = {}) {
   const spawnOpts = {
@@ -44452,7 +44437,7 @@ function runGit(args, opts = {}) {
   });
 }
 
-// src/main/ipc/plugins/shared.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/shared.ts
 function propagateMarketplaceAuth(pluginUrl, marketplaceName) {
   try {
     const plug = new URL(pluginUrl);
@@ -44525,7 +44510,7 @@ async function resolvePluginSource(p, marketplaceName, baseDir) {
   return import_fs13.default.existsSync(baseDir) ? { dir: baseDir } : { dir: null, error: "Unsupported source shape" };
 }
 
-// src/main/ipc/plugins/handlers-install.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/handlers-install.ts
 var SETTINGS_FILE = import_path15.default.join(import_os11.default.homedir(), ".claude", "settings.json");
 var INSTALLED_FILE = import_path15.default.join(import_os11.default.homedir(), ".claude", "plugins", "installed_plugins.json");
 function writeJsonAtomic(filePath, value) {
@@ -45071,7 +45056,7 @@ function registerInstallHandlers(reloadMcp) {
   });
 }
 
-// src/main/ipc/hooks.ts
+// extensions/claude-bridge/extension/src/main/ipc/hooks.ts
 init_plugin_helpers();
 var USER_SETTINGS = import_path16.default.join(import_os12.default.homedir(), ".claude", "settings.json");
 function readSettings() {
@@ -45392,10 +45377,10 @@ function registerHooksIPC(ctx) {
   });
 }
 
-// src/main/ipc/logs.ts
+// extensions/claude-bridge/extension/src/main/ipc/logs.ts
 init_host_compat();
 
-// src/main/error-log.ts
+// extensions/claude-bridge/extension/src/main/error-log.ts
 init_circular_buffer();
 var MAX_LOG = 500;
 var entries = new CircularBuffer(MAX_LOG);
@@ -45461,7 +45446,7 @@ function stringifyArgs(args) {
   return { message: parts.join(" "), stack };
 }
 
-// src/main/ipc/logs.ts
+// extensions/claude-bridge/extension/src/main/ipc/logs.ts
 function registerLogsIPC(getMainWindow) {
   ipcMain.handle("logs:list", () => getLogs());
   ipcMain.handle("logs:clear", () => {
@@ -45471,7 +45456,7 @@ function registerLogsIPC(getMainWindow) {
   setLogsWindow(getMainWindow());
 }
 
-// src/main/ipc/mcp.ts
+// extensions/claude-bridge/extension/src/main/ipc/mcp.ts
 init_host_compat();
 function registerMcpIPC(ctx) {
   const mgr = () => ctx.getMcpServerManager();
@@ -45625,13 +45610,13 @@ function registerMcpIPC(ctx) {
   });
 }
 
-// src/main/ipc/plugins/handlers-content.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/handlers-content.ts
 init_host_compat();
 var import_path19 = __toESM(require("path"), 1);
 var import_fs18 = __toESM(require("fs"), 1);
 var import_os15 = __toESM(require("os"), 1);
 
-// src/main/ipc/plugins/content-scan.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/content-scan.ts
 var import_path18 = __toESM(require("path"), 1);
 var import_fs17 = __toESM(require("fs"), 1);
 var import_os14 = __toESM(require("os"), 1);
@@ -45992,7 +45977,7 @@ function listPluginContents(pluginDir) {
   return out;
 }
 
-// src/main/ipc/plugins/handlers-content.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/handlers-content.ts
 function registerContentHandlers() {
   ipcMain.handle("plugins:get-contents", (_event, pluginDir) => {
     if (typeof pluginDir !== "string" || !pluginDir) return null;
@@ -46100,7 +46085,7 @@ function registerContentHandlers() {
   });
 }
 
-// src/main/ipc/plugins/handlers-options.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/handlers-options.ts
 init_host_compat();
 var import_path20 = __toESM(require("path"), 1);
 var import_fs19 = __toESM(require("fs"), 1);
@@ -46267,7 +46252,7 @@ function registerOptionsHandlers(reloadRuntime) {
   });
 }
 
-// src/main/ipc/plugins/handlers-browse.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/handlers-browse.ts
 init_host_compat();
 var import_path21 = __toESM(require("path"), 1);
 var import_fs20 = __toESM(require("fs"), 1);
@@ -46553,13 +46538,13 @@ function registerBrowseHandlers() {
   });
 }
 
-// src/main/ipc/plugins/handlers-source.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/handlers-source.ts
 init_host_compat();
 var import_path23 = __toESM(require("path"), 1);
 var import_fs22 = __toESM(require("fs"), 1);
 var import_os19 = __toESM(require("os"), 1);
 
-// src/main/plugins/sub-clone.ts
+// extensions/claude-bridge/extension/src/main/plugins/sub-clone.ts
 var import_fs21 = __toESM(require("fs"), 1);
 var import_path22 = __toESM(require("path"), 1);
 var import_os18 = __toESM(require("os"), 1);
@@ -46668,7 +46653,7 @@ function syncPluginCacheFromSubClone(pluginName, marketplace, baseDir) {
   return { ok: true, version };
 }
 
-// src/main/ipc/plugins/handlers-source.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins/handlers-source.ts
 init_plugin_helpers();
 function registerSourceHandlers(reloadMcp) {
   ipcMain.handle("plugins:get-source-path", async (_event, pluginName, marketplace) => {
@@ -46844,7 +46829,7 @@ function registerSourceHandlers(reloadMcp) {
   });
 }
 
-// src/main/ipc/plugins.ts
+// extensions/claude-bridge/extension/src/main/ipc/plugins.ts
 function registerPluginsIPC(ctx = {}) {
   async function reloadRuntime() {
     invalidateSkillsCache();
@@ -46861,10 +46846,10 @@ function registerPluginsIPC(ctx = {}) {
   registerSourceHandlers(reloadRuntime);
 }
 
-// src/main/ipc/marketplaces.ts
+// extensions/claude-bridge/extension/src/main/ipc/marketplaces.ts
 init_host_compat();
 
-// src/main/marketplace/known-store.ts
+// extensions/claude-bridge/extension/src/main/marketplace/known-store.ts
 var import_fs23 = __toESM(require("fs"), 1);
 var import_os20 = __toESM(require("os"), 1);
 var import_path24 = __toESM(require("path"), 1);
@@ -46886,7 +46871,7 @@ function writeKnownMarketplaces(data) {
   import_fs23.default.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
 }
 
-// src/main/marketplace/list.ts
+// extensions/claude-bridge/extension/src/main/marketplace/list.ts
 function listMarketplaces() {
   const data = readKnownMarketplaces();
   return Object.entries(data).map(([name, info]) => ({
@@ -46900,12 +46885,12 @@ function listMarketplaces() {
   }));
 }
 
-// src/main/marketplace/clone.ts
+// extensions/claude-bridge/extension/src/main/marketplace/clone.ts
 var import_fs25 = __toESM(require("fs"), 1);
 var import_os21 = __toESM(require("os"), 1);
 var import_path26 = __toESM(require("path"), 1);
 
-// src/main/validators.ts
+// extensions/claude-bridge/extension/src/main/validators.ts
 var import_path25 = __toESM(require("path"), 1);
 var VALID_NAME = /^[A-Za-z0-9._-]{1,64}$/;
 var VALID_GIT_URL = /^(https?:\/\/|git@|ssh:\/\/|git:\/\/)[A-Za-z0-9._\-\/:@+%~]{4,512}(\.git)?$/;
@@ -46919,7 +46904,7 @@ function assertAbsolutePath(p, field) {
   if (typeof p !== "string" || !import_path25.default.isAbsolute(p)) throw new Error(`Invalid ${field}: ${p}`);
 }
 
-// src/main/fs-helpers.ts
+// extensions/claude-bridge/extension/src/main/fs-helpers.ts
 var import_fs24 = __toESM(require("fs"), 1);
 function silentRm(target) {
   try {
@@ -46928,7 +46913,7 @@ function silentRm(target) {
   }
 }
 
-// src/main/marketplace/clone.ts
+// extensions/claude-bridge/extension/src/main/marketplace/clone.ts
 async function cloneMarketplace({ name, rawInput, auth }) {
   assertValidName(name, "marketplace name");
   if (typeof rawInput !== "string") throw new Error("Invalid repository input");
@@ -47010,7 +46995,7 @@ ${stdout}`
   };
 }
 
-// src/main/marketplace/refresh.ts
+// extensions/claude-bridge/extension/src/main/marketplace/refresh.ts
 var import_fs26 = __toESM(require("fs"), 1);
 async function refreshMarketplaceOnce(name) {
   if (!import_fs26.default.existsSync(knownMarketplacesPath())) return { ok: false, error: "known_marketplaces.json not found" };
@@ -47088,7 +47073,7 @@ async function refreshAllMarketplaces(window9) {
   }
 }
 
-// src/main/marketplace/auth.ts
+// extensions/claude-bridge/extension/src/main/marketplace/auth.ts
 var import_fs27 = __toESM(require("fs"), 1);
 var import_path27 = __toESM(require("path"), 1);
 async function setMarketplaceAuth(name, auth) {
@@ -47141,7 +47126,7 @@ async function setMarketplaceAuth(name, auth) {
   return { ok: true };
 }
 
-// src/main/marketplace/remove.ts
+// extensions/claude-bridge/extension/src/main/marketplace/remove.ts
 var import_fs28 = __toESM(require("fs"), 1);
 var import_os22 = __toESM(require("os"), 1);
 var import_path28 = __toESM(require("path"), 1);
@@ -47176,7 +47161,7 @@ function removeMarketplace(name) {
   }
 }
 
-// src/main/marketplace/autoupdate.ts
+// extensions/claude-bridge/extension/src/main/marketplace/autoupdate.ts
 var import_fs29 = __toESM(require("fs"), 1);
 function setMarketplaceAutoUpdate(name, autoUpdate) {
   if (!import_fs29.default.existsSync(knownMarketplacesPath())) return { ok: false, error: "no known_marketplaces.json" };
@@ -47192,7 +47177,7 @@ function setMarketplaceAutoUpdate(name, autoUpdate) {
   }
 }
 
-// src/main/ipc/marketplaces.ts
+// extensions/claude-bridge/extension/src/main/ipc/marketplaces.ts
 function registerMarketplaceIPC(getMainWindow) {
   ipcMain.handle("plugins:list-marketplaces", () => {
     try {
@@ -47227,7 +47212,7 @@ function registerMarketplaceIPC(getMainWindow) {
   }, 8e3);
 }
 
-// src/main/ipc/monitors.ts
+// extensions/claude-bridge/extension/src/main/ipc/monitors.ts
 init_host_compat();
 init_plugin_monitors();
 init_plugin_lsp();
@@ -47241,18 +47226,18 @@ function registerMonitorsIPC() {
   });
 }
 
-// src/bridge-host.ts
+// extensions/claude-bridge/extension/src/bridge-host.ts
 init_plugin_monitors();
 init_plugin_lsp();
 init_ui_tools();
 init_toast_window();
 
-// src/main/mcp/manager.ts
+// extensions/claude-bridge/extension/src/main/mcp/manager.ts
 var import_crypto12 = require("crypto");
 var import_path32 = __toESM(require("path"), 1);
 var import_os26 = __toESM(require("os"), 1);
 
-// src/main/mcp/state-persistence.ts
+// extensions/claude-bridge/extension/src/main/mcp/state-persistence.ts
 var import_path29 = __toESM(require("path"), 1);
 var import_fs30 = __toESM(require("fs"), 1);
 var import_os23 = __toESM(require("os"), 1);
@@ -47333,7 +47318,7 @@ function saveToolSchemaCache(cache2) {
   }
 }
 
-// src/main/mcp/oauth-store.ts
+// extensions/claude-bridge/extension/src/main/mcp/oauth-store.ts
 var import_fs31 = __toESM(require("fs"), 1);
 var import_path30 = __toESM(require("path"), 1);
 var import_os24 = __toESM(require("os"), 1);
@@ -47468,7 +47453,7 @@ function migrateLegacyStore(resolver) {
   return moved;
 }
 
-// src/main/mcp/oauth-bridge.ts
+// extensions/claude-bridge/extension/src/main/mcp/oauth-bridge.ts
 init_oauth_flow();
 function buildTokenCtx(state) {
   if (!state?.config.url) return null;
@@ -47563,7 +47548,7 @@ async function doRefreshTokens(state) {
   }
 }
 
-// src/main/mcp/discovery.ts
+// extensions/claude-bridge/extension/src/main/mcp/discovery.ts
 var import_crypto10 = require("crypto");
 var import_path31 = __toESM(require("path"), 1);
 var import_fs32 = __toESM(require("fs"), 1);
@@ -47841,7 +47826,7 @@ async function discoverFromClaudeJsonAsync(claudeDir) {
   return collected;
 }
 
-// src/main/mcp/pagination.ts
+// extensions/claude-bridge/extension/src/main/mcp/pagination.ts
 var DEFAULT_MCP_LIST_MAX_PAGES = 100;
 var DEFAULT_MCP_LIST_MAX_ITEMS = 1e4;
 async function collectMcpList(request, method, itemKey, options = {}) {
@@ -47879,7 +47864,7 @@ async function collectMcpList(request, method, itemKey, options = {}) {
   throw new Error(`${method} exceeded the ${maxPages}-page pagination limit`);
 }
 
-// src/main/mcp/transports/ws.ts
+// extensions/claude-bridge/extension/src/main/mcp/transports/ws.ts
 async function connectWs(ctx, id) {
   const state = ctx.servers.get(id);
   const url = state.config.url;
@@ -48007,7 +47992,7 @@ function wsJsonRpc(ctx, id, body) {
   return promise;
 }
 
-// src/main/mcp/transports/sse-legacy.ts
+// extensions/claude-bridge/extension/src/main/mcp/transports/sse-legacy.ts
 async function connectSseLegacy(ctx, id) {
   const state = ctx.servers.get(id);
   const url = state.config.url;
@@ -48140,7 +48125,7 @@ async function sseSendNotification(ctx, id, body) {
   });
 }
 
-// src/main/mcp/transports/http.ts
+// extensions/claude-bridge/extension/src/main/mcp/transports/http.ts
 async function connectHttp(ctx, id) {
   const state = ctx.servers.get(id);
   const url = state.config.url;
@@ -48333,7 +48318,7 @@ function suggestFetchHint(cause, host) {
   return null;
 }
 
-// src/main/mcp/transports/stdio.ts
+// extensions/claude-bridge/extension/src/main/mcp/transports/stdio.ts
 var import_child_process4 = require("child_process");
 async function connectStdio(ctx, id) {
   const state = ctx.servers.get(id);
@@ -48579,7 +48564,7 @@ async function stdioJsonRpc(ctx, id, method, params) {
   return msg.result;
 }
 
-// src/main/mcp/connection-lifecycle.ts
+// extensions/claude-bridge/extension/src/main/mcp/connection-lifecycle.ts
 function teardownServer(state) {
   if (!state) return;
   if (state.process) {
@@ -48628,7 +48613,7 @@ async function dispatchRpcRequest(ctx, id, method, params) {
   return stdioJsonRpc(ctx, id, method, params);
 }
 
-// src/main/mcp/server-message-handlers.ts
+// extensions/claude-bridge/extension/src/main/mcp/server-message-handlers.ts
 var import_crypto11 = require("crypto");
 function handleServerMessage2(ctx, serverId, msg, sendResponse) {
   const state = ctx.servers.get(serverId);
@@ -48792,7 +48777,7 @@ function handleServerNotification(ctx, serverId, msg) {
   }
 }
 
-// src/main/mcp/test-log.ts
+// extensions/claude-bridge/extension/src/main/mcp/test-log.ts
 var TEST_LOG_CAP = 300;
 function appendLog(window9, state, id, level, msg) {
   if (!state) return;
@@ -48816,7 +48801,7 @@ function clearTestLog(window9, state, id) {
   }
 }
 
-// src/main/mcp/manager.ts
+// extensions/claude-bridge/extension/src/main/mcp/manager.ts
 var MAX_RECONNECT_ATTEMPTS = 10;
 function mcpConnectionFingerprint(c) {
   return JSON.stringify([
@@ -49782,19 +49767,19 @@ var McpServerManager = class _McpServerManager {
   }
 };
 
-// src/bridge-host.ts
+// extensions/claude-bridge/extension/src/bridge-host.ts
 init_executor2();
 init_host_compat();
 init_emit_bridge_event();
 
-// src/core-ipc.ts
+// extensions/claude-bridge/extension/src/core-ipc.ts
 var vscode5 = __toESM(require("vscode"), 1);
 var import_fs33 = __toESM(require("fs"), 1);
 var import_path33 = __toESM(require("path"), 1);
 var import_os27 = __toESM(require("os"), 1);
 init_host_compat();
 
-// src/main/tree-enrichment.ts
+// extensions/claude-bridge/extension/src/main/tree-enrichment.ts
 function enrichTreeWithTabs(tree, tabManager) {
   const sessionMap = tabManager.getSessionTabMap();
   const mappedTabIds = /* @__PURE__ */ new Set();
@@ -49838,7 +49823,7 @@ function enrichTreeWithTabs(tree, tabManager) {
   return enriched;
 }
 
-// src/main/sync/request-auth.ts
+// extensions/claude-bridge/extension/src/main/sync/request-auth.ts
 function withSyncAuthorization(path44, init, token) {
   if (!path44.startsWith("/api/sync/") || !token) return init;
   return {
@@ -49847,7 +49832,7 @@ function withSyncAuthorization(path44, init, token) {
   };
 }
 
-// src/core-ipc.ts
+// extensions/claude-bridge/extension/src/core-ipc.ts
 init_toast_window();
 var MIME = {
   ".png": "image/png",
@@ -50060,10 +50045,10 @@ function wireConnectionCallbacks(tabManager, configStore) {
   };
 }
 
-// src/main/ipc/sync.ts
+// extensions/claude-bridge/extension/src/main/ipc/sync.ts
 init_host_compat();
 
-// src/main/sync/force-sync.ts
+// extensions/claude-bridge/extension/src/main/sync/force-sync.ts
 async function forceSync(ctx) {
   const cfg = ctx.configStore.get();
   if (!cfg?.serverUrl || !cfg?.token) {
@@ -50080,12 +50065,12 @@ async function forceSync(ctx) {
   return { ok: true, projectPath: projectPaths[0] ?? null };
 }
 
-// src/main/ipc/sync.ts
+// extensions/claude-bridge/extension/src/main/ipc/sync.ts
 function registerSyncIPC(ctx) {
   ipcMain.handle("sync:force", () => forceSync(ctx));
 }
 
-// src/bridge-host.ts
+// extensions/claude-bridge/extension/src/bridge-host.ts
 var HEAVY_SESSION_CHANNELS = /* @__PURE__ */ new Set([
   "jsonl-entries",
   "jsonl-subagent-entries",
@@ -50439,7 +50424,7 @@ var BridgeHost = class {
   }
 };
 
-// src/editor-context.ts
+// extensions/claude-bridge/extension/src/editor-context.ts
 var vscode7 = __toESM(require("vscode"), 1);
 init_host_compat();
 var EDITOR_SELECTION_DEBOUNCE_MS = 120;
@@ -50478,7 +50463,7 @@ function installEditorContext(host) {
   } };
 }
 
-// src/mcp-status-bar.ts
+// extensions/claude-bridge/extension/src/mcp-status-bar.ts
 var vscode8 = __toESM(require("vscode"), 1);
 var MCP_STATUS_POLL_MS = 2500;
 var OPEN_MCP_COMMAND = "claude-bridge.openMcpSettings";
@@ -50536,7 +50521,7 @@ function installMcpStatusBar(mgr) {
   } };
 }
 
-// src/sessions-bridge.ts
+// extensions/claude-bridge/extension/src/sessions-bridge.ts
 var kaminide = __toESM(require("kaminide"), 1);
 init_host_compat();
 init_session_activation();
@@ -50549,8 +50534,6 @@ var SessionsBridge = class {
     this.host = host;
     this.openChat = openChat;
   }
-  host;
-  openChat;
   kaminToTab = /* @__PURE__ */ new Map();
   tabToKamin = /* @__PURE__ */ new Map();
   // Последние опубликованные значения — дедуп широковещательных апдейтов.
@@ -50789,7 +50772,7 @@ var SessionsBridge = class {
   }
 };
 
-// src/index.ts
+// extensions/claude-bridge/extension/src/index.ts
 init_host_compat();
 var CHAT_VIEW_ID = "claudeBridgeChat";
 var TOOLS_VIEW_IDS = ["claudeBridgePlanView", "claudeBridgeTodosView", "claudeBridgeAgentsView", "claudeBridgeConsoleView", "claudeBridgeToolsUsageView"];
