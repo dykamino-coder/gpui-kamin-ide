@@ -6677,10 +6677,20 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             } else {
                 item.style.height = Some(Len::Px(h));
             }
-        } else if free && reach_entry.is_none() && matches!(along, None | Some(Align::Stretch)) {
+        } else if free
+            && reach_entry.is_none()
+            && (matches!(along, Some(Align::Stretch))
+                || (along.is_none()
+                    && px_of_size(if row_dir { merged.width } else { merged.height }).is_some()))
+        {
             // Рост до низа — только у ХВОСТОВОГО элемента лунки (без
-            // следующего). ПРОБОВАЛИ И ОТКАТИЛИ снятие роста целиком (замер
-            // по target/la.txt): column-align-items-001/003/007 и
+            // следующего). ЯВНЫЙ stretch растит всегда; `normal` (пусто)
+            // вдоль оси укладки растит лишь при ОПРЕДЕЛЁННОМ размере
+            // контейнера — у авто-контейнера низ задаёт сам контент, и рост
+            // раздувал элементы (grid-lanes-justify-content-001), а явному
+            // stretch авто-контейнер не помеха (column-align-items-001).
+            // ПРОБОВАЛИ И ОТКАТИЛИ снятие роста целиком (замер по
+            // target/la.txt): column-align-items-001/003/007 и
             // row-justify-items 0.0 -> 1.2..15, вверх ноль.
             item.style.flex_grow = Some(1.0);
         }
