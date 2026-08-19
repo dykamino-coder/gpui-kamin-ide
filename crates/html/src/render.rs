@@ -6332,28 +6332,22 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     if track_rev {
         tracks.reverse();
     }
+    // Процентный размер — от контейнера: элемент `width:100%` занимает ВЕСЬ
+    // ряд, и следующий уходит в другой
+    // (grid-lanes-align-content-refinalize-row-geometry-001). Ветка выбирается
+    // по САМОМУ значению, а не по «нулю» итога: margin-box с отрицательным
+    // полем меньше нуля, и подмена нулём теряла клэмп-пад следующего
+    // (column-negative-margin-001: пятый накрывал третьего).
     let extent = |item: &Element| -> f32 {
         if row_dir {
-            let w = item_width(item);
-            if w > 0.0 {
-                return w;
-            }
-            // Процентная ширина — от контейнера: элемент `width:100%`
-            // занимает ВЕСЬ ряд, и следующий уходит в другой
-            // (grid-lanes-align-content-refinalize-row-geometry-001: оба
-            // элемента складывались в первый ряд с нулевой шириной).
             match (item.style.width, px_of_size(merged.width)) {
                 (Some(Len::Pct(k)), Some(cw)) => cw * k,
-                _ => 0.0,
+                _ => item_width(item),
             }
         } else {
-            let h = item_height(item, merged, opts);
-            if h > 0.0 {
-                return h;
-            }
             match (item.style.height, px_of_size(merged.height)) {
                 (Some(Len::Pct(k)), Some(ch)) => ch * k,
-                _ => 0.0,
+                _ => item_height(item, merged, opts),
             }
         }
     };
@@ -6585,10 +6579,26 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     inline: false,
                 }))
             })();
-            if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok()); *ON } {
-                eprintln!("LA abspos idx={idx} wrapped={}", wrapped.is_some());
+            let ins = item.style.inset;
+            let has_insets =
+                ins.top.is_some() || ins.bottom.is_some() || ins.left.is_some() || ins.right.is_some();
+            match wrapped {
+                Some(w) => extras.push(w),
+                // Заданные края — от контейнера; без краёв и линий элемент
+                // стоит на СТАТИЧЕСКОЙ позиции: в потоке первой лунки, после
+                // уже уложенного (row-grid-lanes-out-of-flow-003).
+                None if has_insets => extras.push(child.clone()),
+                None => {
+                    let top = used[0].iter().map(|(_, e)| *e).fold(0.0f32, f32::max);
+                    slots[0].push(SlotNode {
+                        top,
+                        height: 0.0,
+                        node: child.clone(),
+                        along: None,
+                        real: false,
+                    });
+                }
             }
-            extras.push(wrapped.unwrap_or_else(|| child.clone()));
             continue;
         }
         // Заданные линии сильнее раздачи: элемент встаёт именно между ними и
