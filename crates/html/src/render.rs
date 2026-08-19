@@ -6737,6 +6737,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             && reach_entry.is_none()
             && (matches!(along, Some(Align::Stretch))
                 || (along.is_none()
+                    && !merged.lanes_inline
                     && px_of_size(if row_dir { merged.width } else { merged.height }).is_some()))
         {
             // Рост до низа — только у ХВОСТОВОГО элемента лунки (без
@@ -6949,6 +6950,21 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // управляют только across- и along-ветки ниже.
     row.style().justify_content = None;
     row.style().align_content = None;
+    // Строчный контейнер лунок обнимает свои дорожки, а не строку
+    // (grid-lanes-align-content-001: блоки на всю страницу вместо ширины
+    // четырёх дорожек).
+    if merged.lanes_inline && !row_dir && merged.width.is_none() {
+        let total: f32 = tracks
+            .iter()
+            .map(|t| match t {
+                TrackSize::Single(Track::Px(w)) => *w,
+                _ => f32::NAN,
+            })
+            .sum();
+        if total.is_finite() && total > 0.0 {
+            row = row.w(gpui::px(total + cross_gap * (tracks.len().saturating_sub(1)) as f32));
+        }
+    }
     // `align-items` в лунках — про САМ элемент внутри лунки, а не про лунки в
     // ряду. Пока значение доходило до ряда, `align-items: center` сдвигал
     // целые лунки вниз на половину остатка; сами лунки обязаны быть равной

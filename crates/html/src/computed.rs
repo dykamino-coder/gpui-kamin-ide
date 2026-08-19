@@ -766,6 +766,9 @@ pub struct Computed {
     /// место, а не под всё уже уложенное: дыры, оставленные многолуночными
     /// соседями, заполняются следующими элементами.
     pub lanes_dense: bool,
+    /// `display: inline grid-lanes` — контейнер лунок строчного уровня:
+    /// ширина по дорожкам, не на всю строку.
+    pub lanes_inline: bool,
     pub justify_self: Option<Align>,
 
     pub grid_rows: Option<Vec<TrackSize>>,
@@ -1547,7 +1550,9 @@ impl Computed {
                     // Строчный вариант ведёт себя в потоке иначе, но лунки
                     // внутри те же: без него контейнер падал в умолчание, и
                     // вся укладка шла столбиком (`*-subgrid-grid-gap-*`).
-                    "grid-lanes" | "masonry" | "inline-grid-lanes" | "inline-masonry" => {
+                    "grid-lanes" | "masonry" => Some(Display::GridLanes),
+                    "inline-grid-lanes" | "inline-masonry" => {
+                        self.lanes_inline = true;
                         Some(Display::GridLanes)
                     }
                     "none" => Some(Display::None),
@@ -1578,6 +1583,9 @@ impl Computed {
                     // вид «лунки» — его иначе не выразить вовсе. Полный разбор
                     // двух слов ЗАМЕРЕН и откачен (см. комментарий выше).
                     two if two.split_whitespace().any(|w| w == "grid-lanes" || w == "masonry") => {
+                        if two.split_whitespace().any(|w| w == "inline") {
+                            self.lanes_inline = true;
+                        }
                         Some(Display::GridLanes)
                     }
                     _ => self.display,
