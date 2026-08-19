@@ -6304,12 +6304,17 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     } else {
         merged.grid_cols.unwrap_or(1).max(1) as usize
     };
-    // Реверсы направления (css-grid-3): `fill-reverse` выбирает при равной
-    // высоте ПРАВУЮ лунку, `track-reverse` перечисляет сами дорожки задом
-    // наперёд — их список просто зеркалится, вместе с ним встают и элементы.
+    // Реверсы направления (css-grid-3, сверено с ref column-align-items-008):
+    // `track-reverse` нумерует ДОРОЖКИ от конца — логическая дорожка l стоит в
+    // визуальной колонке count-1-l: список ширин зеркалится, авто-выбор при
+    // равенстве берёт визуально ПРАВУЮ, заданные линии считаются от конца.
+    // `fill-reverse` разворачивает ЗАПОЛНЕНИЕ: те же слоты, но лунка зеркалится
+    // (дети в обратном порядке, прижаты к низу), а элемент с выравниванием
+    // прижат к ДАЛЬНЕМУ краю своего слота.
     let fill_reverse = merged.lanes_fill_reverse;
+    let track_rev = merged.lanes_track_reverse;
     let mut tracks = tracks;
-    if merged.lanes_track_reverse {
+    if track_rev {
         tracks.reverse();
     }
     let extent = |item: &Element| -> f32 {
@@ -6387,6 +6392,9 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         floor
     };
     let mut reach: Vec<(usize, f32)> = vec![];
+    // Конец слота элемента: верх СЛЕДУЮЩЕГО по разметке соседа его лунок минус
+    // зазор. Нужен и растяжке (reach), и обратному заполнению (`fill-reverse`).
+    let mut slot_end: Vec<(usize, f32)> = vec![];
     {
         let mut probe: Vec<Vec<(f32, f32)>> = vec![vec![]; count];
         let mut placed: Vec<(usize, usize, usize, f32, f32)> = vec![];
@@ -6400,9 +6408,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             let (fixed, span) = lane_span(item, count, row_dir);
             let span = span.clamp(1, count);
+            // Дорожки от конца: заданная линия l — это визуальная count-l-span.
+            let fixed = if track_rev { fixed.map(|f| count.saturating_sub(f + span)) } else { fixed };
             let height = extent(item);
             let at = fixed
-                .unwrap_or_else(|| shortest_lane_free(&probe, count, span, height, &free_top, fill_reverse))
+                .unwrap_or_else(|| shortest_lane_free(&probe, count, span, height, &free_top, track_rev))
                 .min(count - span);
             let top = free_top(&probe, at, span, height);
             placed.push((idx, at, span, top, height));
@@ -6417,14 +6427,21 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             eprintln!("LA placed={placed:?} reach0={reach:?}");
         }
         // Верх следующего элемента той же лунки — по ПОРЯДКУ РАЗМЕТКИ.
+        let next_top = |idx: usize| -> Option<f32> {
+            let (_, at, span, ..) = *placed.iter().find(|p| p.0 == idx)?;
+            placed
+                .iter()
+                .find(|(j, a, sp, ..)| *j > idx && *a < at + span && at < *a + *sp)
+                .map(|p| p.3)
+        };
+        slot_end = placed
+            .iter()
+            .filter_map(|(idx, ..)| next_top(*idx).map(|t| (*idx, t - along_gap)))
+            .collect();
         reach = reach
             .into_iter()
             .filter_map(|(idx, top)| {
-                let (_, at, span, ..) = *placed.iter().find(|p| p.0 == idx)?;
-                let next = placed
-                    .iter()
-                    .find(|(j, a, sp, ..)| *j > idx && *a < at + span && at < *a + *sp)?;
-                let height = next.3 - along_gap - top;
+                let height = next_top(idx)? - along_gap - top;
                 (height > 0.0).then_some((idx, height))
             })
             .collect();
@@ -6450,17 +6467,39 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // может ЗАНЯТЬ НЕСКОЛЬКО лунок.
         let (fixed, span) = lane_span(item, count, row_dir);
         let span = span.clamp(1, count);
+        let fixed = if track_rev { fixed.map(|f| count.saturating_sub(f + span)) } else { fixed };
         let mut height = extent(item);
         let at = fixed
-            .unwrap_or_else(|| shortest_lane_free(&used, count, span, height, &free_top, fill_reverse))
+            .unwrap_or_else(|| shortest_lane_free(&used, count, span, height, &free_top, track_rev))
             .min(count - span);
         // Верх элемента — низ самой заполненной из перекрытых лунок; при
         // плотной укладке — верхняя свободная отметка, не выше своей лунки.
-        let top = free_top(&used, at, span, height).max(filled[at]);
+        let mut top = free_top(&used, at, span, height).max(filled[at]);
         // Выравнивание элемента ВДОЛЬ лунки: `stretch` растит его на остаток,
         // остальные значения оставляют ему свой размер.
         let free = along_free(item);
         let along = along_align(item);
+        // Выравнивание НЕ-хвостового элемента в его слоте (от floor до верха
+        // следующего): `center` — середина, `end` — дальний край. При обратном
+        // заполнении ось зеркальна: дальним краем становится `start` (ref
+        // column-align-items-008: первый элемент [20,60] от низа, а не [0,40]).
+        if let Some((_, end)) = slot_end.iter().find(|(j, _)| *j == idx) {
+            let far = match along {
+                Some(Align::Start) => fill_reverse,
+                Some(Align::End) => !fill_reverse,
+                _ => false,
+            };
+            let shifted = if far {
+                end - height
+            } else if along == Some(Align::Center) {
+                top + (end - top - height) / 2.0
+            } else {
+                top
+            };
+            if shifted > top {
+                top = shifted;
+            }
+        }
         // Наличие записи в reach само по себе значит: предел элемента — верх
         // следующего в лунке, и рост до низа контейнера ему ЗАПРЕЩЁН, даже
         // когда расти некуда (рост равен контентной высоте —
@@ -6563,6 +6602,15 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         bucket.pop();
         bucket.push(lane_align_box(item, along, row_dir));
     }
+    // `fill-reverse` зеркалит лунку: дети в обратном порядке, прижаты к концу.
+    // Пады оказываются ПОД своими элементами, коробка хвостового — сверху и
+    // тянет элемент к дальнему краю (ref column-align-items-008: 6 и 7 у
+    // потолка, 1 — [20,60] от низа).
+    if fill_reverse {
+        for bucket in buckets.iter_mut() {
+            bucket.reverse();
+        }
+    }
     // `auto-fit` схлопывает ПУСТЫЕ дорожки: место, которое им причиталось,
     // делят между собой непустые (`column-auto-repeat-auto-012`: две дорожки
     // по 150 вместо трёх по 100).
@@ -6627,6 +6675,9 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         } else {
             lane.flex_col().min_w_0().gap_y(gpui::px(along_gap))
         };
+        if fill_reverse {
+            lane.style().justify_content = Some(gpui::JustifyContent::End);
+        }
         match tracks.get(i) {
             Some(TrackSize::Single(Track::Px(w))) if row_dir => {
                 lane = lane.h(gpui::px(*w)).flex_shrink_0()
@@ -6749,10 +6800,20 @@ fn shortest_lane_free(
     reverse: bool,
 ) -> usize {
     // При равной высоте побеждает ПЕРВАЯ лунка в порядке обхода: обычно левая,
-    // при `fill-reverse` — правая (css-grid-3, `grid-lanes-direction`).
+    // при `track-reverse` — правая (дорожки перечислены от конца). `min_by`
+    // при равенстве отдаёт ПОСЛЕДНИЙ минимум — tie-break уезжал в другую
+    // сторону (`column-align-items-008`: шестой вставал правее эталона).
     let pick = |it: &mut dyn Iterator<Item = usize>| {
-        it.min_by(|a, b| top_of(used, *a, span, height).total_cmp(&top_of(used, *b, span, height)))
-            .unwrap_or(0)
+        let mut best = 0usize;
+        let mut best_top = f32::INFINITY;
+        for i in it {
+            let t = top_of(used, i, span, height);
+            if t < best_top - 0.01 {
+                best = i;
+                best_top = t;
+            }
+        }
+        best
     };
     if reverse {
         pick(&mut (0..=count.saturating_sub(span)).rev())
