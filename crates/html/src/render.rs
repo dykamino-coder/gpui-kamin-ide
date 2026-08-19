@@ -6413,6 +6413,9 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 probe[lane].push((top, top + height));
             }
         }
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok()); *ON } {
+            eprintln!("LA placed={placed:?} reach0={reach:?}");
+        }
         // Верх следующего элемента той же лунки — по ПОРЯДКУ РАЗМЕТКИ.
         reach = reach
             .into_iter()
@@ -6425,6 +6428,9 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 (height > 0.0).then_some((idx, height))
             })
             .collect();
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok()); *ON } {
+            eprintln!("LA reach={reach:?}");
+        }
     }
     let mut filled = vec![0f32; count];
     let mut buckets: Vec<Vec<Node>> = vec![vec![]; count];
@@ -6455,11 +6461,12 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // остальные значения оставляют ему свой размер.
         let free = along_free(item);
         let along = along_align(item);
-        let grown = reach
-            .iter()
-            .find(|(j, _)| *j == idx)
-            .map(|(_, h)| *h)
-            .filter(|h| *h > height);
+        // Наличие записи в reach само по себе значит: предел элемента — верх
+        // следующего в лунке, и рост до низа контейнера ему ЗАПРЕЩЁН, даже
+        // когда расти некуда (рост равен контентной высоте —
+        // column-align-items-004: пятый заливал низ вместо полосы в 16).
+        let reach_entry = reach.iter().find(|(j, _)| *j == idx).map(|(_, h)| *h);
+        let grown = reach_entry.filter(|h| *h > height);
         if let Some(h) = grown {
             height = h;
         }
@@ -6494,11 +6501,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             } else {
                 item.style.height = Some(Len::Px(h));
             }
-        } else if free && matches!(along, None | Some(Align::Stretch)) {
-            // ПРОБОВАЛИ И ОТКАТИЛИ (замер по target/la.txt): убрать рост до
-            // низа — column-align-items-001/003/007 и row-justify-items
-            // 0.0 -> 1.2..15, вверх ноль. Хвостовой рост нужен зелёным;
-            // разлив пятого элемента в -004 лечить не здесь.
+        } else if free && reach_entry.is_none() && matches!(along, None | Some(Align::Stretch)) {
+            // Рост до низа — только у ХВОСТОВОГО элемента лунки (без
+            // следующего). ПРОБОВАЛИ И ОТКАТИЛИ снятие роста целиком (замер
+            // по target/la.txt): column-align-items-001/003/007 и
+            // row-justify-items 0.0 -> 1.2..15, вверх ноль.
             item.style.flex_grow = Some(1.0);
         }
         // Размер по числу занятых лунок: коробка выходит за свою лунку в
