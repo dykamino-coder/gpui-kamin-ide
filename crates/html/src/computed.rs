@@ -1724,6 +1724,7 @@ impl Computed {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_min,
                     track_pct: auto_fill_pct(v),
+                    intrinsic: auto_fill_intrinsic(v),
                 });
             }
             // То же по РЯДАМ: у раскладки лунками дорожки задают ряды, когда
@@ -1734,6 +1735,7 @@ impl Computed {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_row,
                     track_pct: auto_fill_pct(v),
+                    intrinsic: auto_fill_intrinsic(v),
                 });
             }
             "grid-template-columns" => {
@@ -4253,6 +4255,10 @@ pub struct AutoRepeat {
     /// раскладка: на разборе ширины контейнера ещё нет
     /// (`column-auto-repeat-002`).
     pub track_pct: Option<f32>,
+    /// Дорожка ПО СОДЕРЖИМОМУ (`max-content`/`min-content`/`fit-content`):
+    /// число повторов задают сами элементы — по дорожке на каждого
+    /// (row-auto-repeat-max-content-001).
+    pub intrinsic: bool,
 }
 
 /// Размер повторяемой дорожки в `repeat(auto-fill | auto-fit, …)`.
@@ -4279,6 +4285,23 @@ fn auto_fill_min(v: &str) -> Option<f32> {
     let rest = v.split("repeat(").nth(1)?;
     let inner = &rest[..rest.rfind(')')?];
     px_of(inner.split(',').nth(1)?)
+}
+
+/// Дорожка повтора задана ПО СОДЕРЖИМОМУ: `repeat(auto-fill, max-content)`
+/// и родня. Точечного размера у неё нет — повторы считают сами элементы.
+fn auto_fill_intrinsic(v: &str) -> bool {
+    let Some(rest) = v.split("repeat(").nth(1) else { return false };
+    let inner = match rest.rfind(')') {
+        Some(i) => &rest[..i],
+        None => rest,
+    };
+    // `auto`-дорожку меряет прежний счёт по самому большому элементу
+    // (column-auto-repeat-auto-001) — сюда только content-ключи.
+    ["max-content", "min-content", "fit-content"]
+        .iter()
+        .any(|k| inner.contains(k))
+        && auto_fill_min(v).is_none()
+        && auto_fill_pct(v).is_none()
 }
 
 /// Доля контейнера в `repeat(auto-fill | auto-fit, N%)`.

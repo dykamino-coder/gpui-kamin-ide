@@ -6261,6 +6261,25 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // (`column-auto-repeat-001`: коробка на две дорожки). Дорожка `auto`
     // меряется по САМОМУ БОЛЬШОМУ элементу: своей ширины у неё нет, а число
     // повторов всё равно считается по месту (`column-auto-repeat-auto-012`).
+    // Дорожка повтора ПО СОДЕРЖИМОМУ: своей меры у неё нет — по дорожке на
+    // каждый элемент, размер лунке даёт её содержимое
+    // (row-auto-repeat-max-content-001: шесть рядов высотой в строку).
+    if tracks.is_empty() && repeat.is_some_and(|r| r.intrinsic) {
+        let n = e
+            .children
+            .iter()
+            .filter(|n| match n {
+                Node::Element(item) => !matches!(
+                    item.style.position,
+                    Some(crate::computed::Position::Absolute)
+                        | Some(crate::computed::Position::Fixed)
+                ),
+                _ => false,
+            })
+            .count()
+            .max(1);
+        tracks = vec![TrackSize::Single(Track::Auto); n];
+    }
     if tracks.is_empty()
         && let (Some(repeat), Some(room)) = (repeat, room)
     {
