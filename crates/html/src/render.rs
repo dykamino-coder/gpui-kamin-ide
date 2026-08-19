@@ -3140,6 +3140,21 @@ fn content_sized(el: AnyElement, c: &Computed) -> AnyElement {
     // облегать глифы). Значит дорожка местами шире содержимого, и сперва надо
     // разобраться с НЕЙ, а не с выравниванием в ней.
     wrap.style().justify_items = Some(gpui::AlignItems::FlexStart);
+    // Выравнивание элемента поперёк РОДИТЕЛЯ переезжает на обёртку: во
+    // флексе родителя стоит она, и без переноса `justify-items: center` в
+    // лунках глох на min-content-элементах
+    // (column-fill-reverse-justify-items-001). В вертикальном письме
+    // align-self несёт ось самого движка — перенос ломал ортогональные
+    // потоки (three-levels-of-orthogonal-flows).
+    if let Some(a) = c.align_self.filter(|_| c.vertical != Some(true)) {
+        wrap.style().align_self = Some(match a {
+            Align::Center => gpui::AlignItems::Center,
+            Align::Start => gpui::AlignItems::FlexStart,
+            Align::End => gpui::AlignItems::FlexEnd,
+            Align::Baseline => gpui::AlignItems::Baseline,
+            Align::Stretch => gpui::AlignItems::Stretch,
+        });
+    }
     if let Some(col) = col {
         wrap = wrap.grid_template_cols(vec![col]);
     }
