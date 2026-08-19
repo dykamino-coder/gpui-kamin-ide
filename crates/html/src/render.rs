@@ -6284,8 +6284,13 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                         // `width: 25%` в трёхстах шестидесяти — дорожка 90
                         // (`column-auto-repeat-auto-002`). Точечный замер её
                         // не видел, и дорожки не разворачивались вовсе.
+                        // Процент БЛОЧНОЙ оси (height в рядах) считается от
+                        // ДОРОЖКИ, а auto-дорожка размера не имеет — процент
+                        // не резолвится, элемент остаётся контентным
+                        // (row-auto-repeat-auto-002: ряды по строке, не 25%
+                        // контейнера). Инлайн-ось (width в колонках) меряется
+                        // от контейнера как раньше (column-auto-repeat-auto-002).
                         let pct = match (row_dir, item.style.height, item.style.width) {
-                            (true, Some(Len::Pct(k)), _) => Some(k * room),
                             (false, _, Some(Len::Pct(k))) => Some(k * room),
                             _ => None,
                         };
