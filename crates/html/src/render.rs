@@ -6319,19 +6319,18 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     } else {
         merged.grid_cols.unwrap_or(1).max(1) as usize
     };
-    // Реверсы направления (css-grid-3, сверено с ref column-align-items-008):
-    // `track-reverse` нумерует ДОРОЖКИ от конца — логическая дорожка l стоит в
-    // визуальной колонке count-1-l: список ширин зеркалится, авто-выбор при
-    // равенстве берёт визуально ПРАВУЮ, заданные линии считаются от конца.
+    // Реверсы направления (css-grid-3): `track-reverse` меняет только порядок
+    // АВТО-перебора дорожек — при равной высоте побеждает ПОСЛЕДНЯЯ; ширины и
+    // заданные линии НЕ зеркалятся (сверено с двумя ref: column-align-items-008
+    // — авто-элементы уходят вправо; row-track-reverse-dense-...-multi-span-001
+    // — `grid-row: 1` остаётся визуально ПЕРВЫМ; попытка зеркалить fixed и
+    // ширины ЗАМЕРЕНА: la 99 против 102 без неё).
     // `fill-reverse` разворачивает ЗАПОЛНЕНИЕ: те же слоты, но лунка зеркалится
     // (дети в обратном порядке, прижаты к низу), а элемент с выравниванием
     // прижат к ДАЛЬНЕМУ краю своего слота.
     let fill_reverse = merged.lanes_fill_reverse;
     let track_rev = merged.lanes_track_reverse;
     let mut tracks = tracks;
-    if track_rev {
-        tracks.reverse();
-    }
     // Процентный размер — от контейнера: элемент `width:100%` занимает ВЕСЬ
     // ряд, и следующий уходит в другой
     // (grid-lanes-align-content-refinalize-row-geometry-001). Ветка выбирается
@@ -6475,8 +6474,6 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             let (fixed, span) = lane_span(item, count, row_dir);
             let span = span.clamp(1, count);
-            // Дорожки от конца: заданная линия l — это визуальная count-l-span.
-            let fixed = if track_rev { fixed.map(|f| count.saturating_sub(f + span)) } else { fixed };
             let height = extent(item);
             let at = fixed
                 .unwrap_or_else(|| shortest_lane_free(&probe, count, span, height, &free_top, track_rev))
@@ -6664,7 +6661,6 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // может ЗАНЯТЬ НЕСКОЛЬКО лунок.
         let (fixed, span) = lane_span(item, count, row_dir);
         let span = span.clamp(1, count);
-        let fixed = if track_rev { fixed.map(|f| count.saturating_sub(f + span)) } else { fixed };
         let mut height = extent(item);
         let at = fixed
             .unwrap_or_else(|| shortest_lane_free(&used, count, span, height, &free_top, track_rev))
