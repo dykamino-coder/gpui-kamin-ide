@@ -6460,12 +6460,90 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         let Node::Element(item) = child else {
             continue;
         };
-        // Позиционированный элемент лунок не занимает: он вне потока.
+        // Позиционированный элемент лунок не занимает: он вне потока. Но с
+        // заданными линиями его containing block — СВОИ ДОРОЖКИ (css-grid-3,
+        // row-grid-lanes-alignment-positioned-items-*): absolute-обёртка по
+        // геометрии дорожек, self-оси выравнивают содержимое внутри неё.
         if matches!(
             item.style.position,
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
         ) {
-            extras.push(child.clone());
+            let wrapped = (|| -> Option<Node> {
+                // Свои инсеты сильнее дорожек — обёртка их не перекрывает.
+                let ins = item.style.inset;
+                if ins.top.is_some() || ins.bottom.is_some() || ins.left.is_some() || ins.right.is_some()
+                {
+                    return None;
+                }
+                let (fixed, span) = lane_span(item, count, row_dir);
+                let a = fixed?;
+                let span = span.clamp(1, count);
+                let a = if track_rev { count.saturating_sub(a + span) } else { a }
+                    .min(count - span);
+                let px_of = |t: Option<&TrackSize>| match t {
+                    Some(TrackSize::Single(Track::Px(w))) => Some(*w),
+                    _ => None,
+                };
+                let mut off = 0.0f32;
+                for i in 0..a {
+                    off += px_of(tracks.get(i))? + cross_gap;
+                }
+                let mut size = cross_gap * (span as f32 - 1.0);
+                for i in a..a + span {
+                    size += px_of(tracks.get(i))?;
+                }
+                use crate::computed::{FlexDir, Justify, Position};
+                let mut style = Computed::default();
+                style.position = Some(Position::Absolute);
+                style.display = Some(Display::Flex);
+                style.flex_dir = Some(FlexDir::Row);
+                if row_dir {
+                    style.inset.top = Some(Len::Px(off));
+                    style.height = Some(Len::Px(size));
+                    style.inset.left = Some(Len::Px(0.0));
+                    style.inset.right = Some(Len::Px(0.0));
+                } else {
+                    style.inset.left = Some(Len::Px(off));
+                    style.width = Some(Len::Px(size));
+                    style.inset.top = Some(Len::Px(0.0));
+                    style.inset.bottom = Some(Len::Px(0.0));
+                }
+                // Инлайн-ось — justify-self (rtl зеркалит), блочная — align-self;
+                // без своих значений — *-items контейнера.
+                let flip = merged.rtl == Some(true);
+                style.justify_content = Some(
+                    match item.style.justify_self.or(merged.justify_items) {
+                        Some(Align::End) => {
+                            if flip { Justify::Start } else { Justify::End }
+                        }
+                        Some(Align::Center) => Justify::Center,
+                        _ => {
+                            if flip { Justify::End } else { Justify::Start }
+                        }
+                    },
+                );
+                style.align_items = Some(
+                    match item.style.align_self.or(merged.align_items) {
+                        Some(a @ (Align::End | Align::Center | Align::Stretch)) => a,
+                        _ => Align::Start,
+                    },
+                );
+                let mut freed = item.clone();
+                freed.style.position = None;
+                Some(Node::Element(Element {
+                    node_id: 0,
+                    anim: None,
+                    tag: "div".into(),
+                    style,
+                    hover: None,
+                    first_letter: None,
+                    first_line: None,
+                    children: vec![Node::Element(freed)],
+                    attrs: vec![],
+                    inline: false,
+                }))
+            })();
+            extras.push(wrapped.unwrap_or_else(|| child.clone()));
             continue;
         }
         // Заданные линии сильнее раздачи: элемент встаёт именно между ними и
@@ -6571,10 +6649,18 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         }
         // Ось укладки проработана здесь (сдвиг в слоте / коробка хвостового) —
         // до флекса лунки она дойти не должна: там та же ось уже ПОПЕРЕЧНАЯ.
+        // А ПОПЕРЕЧНОЕ выравнивание (justify-* в колонках, align-* в рядах) —
+        // это cross-ось флекса лунки, то есть taffy align_self: в колонках
+        // туда переносится CSS justify-self/-items (в taffy justify_self во
+        // флексе мёртв — column-grid-lanes-justify-self-002/003).
         if row_dir {
             item.style.justify_self = None;
+            if item.style.align_self.is_none() {
+                item.style.align_self = merged.align_items;
+            }
         } else {
-            item.style.align_self = None;
+            item.style.align_self = item.style.justify_self.or(merged.justify_items);
+            item.style.justify_self = None;
         }
         slots[at].push(SlotNode {
             top,
