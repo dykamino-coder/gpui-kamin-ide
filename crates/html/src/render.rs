@@ -6416,13 +6416,22 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok()); *ON } {
             eprintln!("LA placed={placed:?} reach0={reach:?}");
         }
-        // Верх следующего элемента той же лунки — по ПОРЯДКУ РАЗМЕТКИ.
+        // Верх следующего элемента той же лунки — ПО КООРДИНАТЕ, не по порядку
+        // разметки: плотная укладка ставит элемент в дыру ПЕРЕД уже уложенными
+        // соседями, и его нижний сосед размечен раньше него
+        // (column-dense-packing-align-self-001: третий не видел второго).
         let next_top = |idx: usize| -> Option<f32> {
-            let (_, at, span, ..) = *placed.iter().find(|p| p.0 == idx)?;
+            let (_, at, span, top, _) = *placed.iter().find(|p| p.0 == idx)?;
             placed
                 .iter()
-                .find(|(j, a, sp, ..)| *j > idx && *a < at + span && at < *a + *sp)
+                .filter(|(j, a, sp, t, _)| {
+                    *j != idx
+                        && *a < at + span
+                        && at < *a + *sp
+                        && (*t > top + 0.01 || (*j > idx && *t > top - 0.01))
+                })
                 .map(|p| p.3)
+                .min_by(f32::total_cmp)
         };
         slot_end = placed
             .iter()
