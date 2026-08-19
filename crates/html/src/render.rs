@@ -6876,9 +6876,14 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // не толще зазора не ставится вовсе (её роль играет сама щель) —
     // column-align-items-004: четвёртый элемент сидел на 10 ниже.
     let mut buckets: Vec<Vec<Node>> = Vec::with_capacity(count);
+    // Протяжённость содержимого лунки вдоль оси — для `safe` content-раздачи.
+    let mut lane_extents: Vec<f32> = Vec::with_capacity(count);
     for lane in slots {
         let mut lane = lane;
         lane.sort_by(|a, b| a.top.total_cmp(&b.top));
+        lane_extents.push(
+            lane.iter().map(|s| s.top + s.height).fold(0.0f32, f32::max),
+        );
         let last_real = lane.iter().rposition(|s| s.real);
         let mut nodes: Vec<Node> = Vec::with_capacity(lane.len() * 2);
         let mut cursor = 0.0f32;
@@ -7023,12 +7028,21 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // тянет группы к верху). Без заданной раздачи зеркальная лунка
         // прижата к концу.
         let along_content = if row_dir { merged.justify_content } else { merged.align_content };
+        // `safe` у content-раздачи: при переполнении лунки содержимым раздача
+        // отставляется в start (css-align 5.3; у зеркальной лунки start —
+        // её End-дефолт: row-fill-reverse-justify-content-safe-001).
+        let along_safe = if row_dir { merged.justify_content_safe } else { merged.align_content_safe };
+        let along_size = px_of_size(if row_dir { merged.width } else { merged.height });
+        let overflowed = matches!(
+            (lane_extents.get(i), along_size),
+            (Some(c), Some(a)) if *c > a + 0.01
+        );
         match content(along_content) {
-            Some(j) => lane.style().justify_content = Some(j),
-            None if fill_reverse => {
+            Some(j) if !(along_safe && overflowed) => lane.style().justify_content = Some(j),
+            _ if fill_reverse => {
                 lane.style().justify_content = Some(gpui::JustifyContent::End);
             }
-            None => {}
+            _ => {}
         }
         match tracks.get(i) {
             Some(TrackSize::Single(Track::Px(w))) if row_dir => {

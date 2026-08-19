@@ -753,6 +753,8 @@ pub struct Computed {
     pub justify_items_safe: bool,
     pub align_self_safe: bool,
     pub align_items_safe: bool,
+    pub justify_content_safe: bool,
+    pub align_content_safe: bool,
     /// `grid-lanes-direction: row` — лунки идут РЯДАМИ, элементы укладываются
     /// вдоль строки, а не вдоль колонки.
     pub lanes_row: Option<bool>,
@@ -1692,7 +1694,10 @@ impl Computed {
             // `space-evenly` и `space-around` различаются шириной крайних
             // промежутков — сведение их в одно значение расходилось с
             // браузером на 27 точек (поймано сравнением).
-            "justify-content" => self.justify_content = parse_justify(v),
+            "justify-content" => {
+                self.justify_content = parse_justify(v);
+                self.justify_content_safe = is_safe(v);
+            }
             "gap" => {
                 let parts: Vec<Option<Len>> = v.split_whitespace().map(Len::parse).collect();
                 self.gap = match parts.len() {
@@ -2247,7 +2252,10 @@ impl Computed {
                     self.apply_one(prop, token);
                 }
             }
-            "align-content" => self.align_content = parse_justify(v),
+            "align-content" => {
+                self.align_content = parse_justify(v);
+                self.align_content_safe = is_safe(v);
+            }
             "justify-items" => {
                 self.justify_items = parse_align(v);
                 self.justify_items_safe = is_safe(v);
