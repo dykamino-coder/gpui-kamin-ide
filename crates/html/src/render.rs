@@ -6334,6 +6334,23 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         });
         if step > 0.0 {
             let n = (((room + cross_gap) / (step + cross_gap)).floor() as usize).max(1);
+            // Явные линии тянут повторы ДАЛЬШЕ места: `grid-row: 9 / span 2`
+            // требует десяти рядов, лишние пустые схлопнет auto-fit
+            // (row-auto-repeat-auto-017).
+            let need = e
+                .children
+                .iter()
+                .filter_map(|nd| match nd {
+                    Node::Element(item) => {
+                        let (fixed, span) = lane_span(item, usize::MAX, row_dir);
+                        Some(fixed.unwrap_or(0).saturating_add(span))
+                    }
+                    _ => None,
+                })
+                .filter(|v| *v < 1000)
+                .max()
+                .unwrap_or(0);
+            let n = n.max(need);
             tracks = match repeat.track {
                 Some(px) => vec![TrackSize::Single(Track::Px(px)); n],
                 // Дорожка ПО СОДЕРЖИМОМУ: повторы считаются от самого
