@@ -6751,7 +6751,12 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             item.style.flex_grow = Some(1.0);
         }
         // Размер по числу занятых лунок: коробка выходит за свою лунку в
-        // соседние, а их место держат распорки.
+        // соседние, а их место держат распорки. СВОЙ поперечный размер
+        // перезаписывать нельзя — элемент выравнивается ВНУТРИ области
+        // span-дорожек (row-align-items-end-align-self-start-001: розовый
+        // 80px раздувался на две дорожки и end не работал) — тогда область
+        // строится обёрткой при укладке в слот.
+        let mut span_area: Option<f32> = None;
         if span > 1 {
             let width: f32 = (at..at + span)
                 .filter_map(|i| match tracks.get(i) {
@@ -6760,11 +6765,16 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 })
                 .sum();
             if width > 0.0 {
-                let size = Some(Len::Px(width + cross_gap * (span as f32 - 1.0)));
-                if row_dir {
-                    item.style.height = size;
+                let area = width + cross_gap * (span as f32 - 1.0);
+                let own = if row_dir { item.style.height } else { item.style.width };
+                if own.is_none() {
+                    if row_dir {
+                        item.style.height = Some(Len::Px(area));
+                    } else {
+                        item.style.width = Some(Len::Px(area));
+                    }
                 } else {
-                    item.style.width = size;
+                    span_area = Some(area);
                 }
             }
         }
@@ -6820,10 +6830,41 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             item.style.align_self = cross;
             item.style.justify_self = None;
         }
+        // Область span-дорожек: обёртка поперечного размера области, элемент
+        // выравнивается внутри своим (перенесённым) align_self.
+        let node = match span_area {
+            Some(area) => {
+                let mut style = Computed::default();
+                style.display = Some(Display::Flex);
+                style.flex_dir = Some(if row_dir {
+                    crate::computed::FlexDir::Row
+                } else {
+                    crate::computed::FlexDir::Col
+                });
+                if row_dir {
+                    style.height = Some(Len::Px(area));
+                } else {
+                    style.width = Some(Len::Px(area));
+                }
+                Node::Element(Element {
+                    node_id: 0,
+                    anim: None,
+                    tag: "div".into(),
+                    style,
+                    hover: None,
+                    first_letter: None,
+                    first_line: None,
+                    children: vec![Node::Element(item)],
+                    attrs: vec![],
+                    inline: false,
+                })
+            }
+            None => Node::Element(item),
+        };
         slots[at].push(SlotNode {
             top,
             height,
-            node: Node::Element(item),
+            node,
             along,
             real: true,
         });
