@@ -6347,15 +6347,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     let dense = merged.lanes_dense;
     // Куда встаёт элемент по оси лунки. Плотная укладка (`grid-lanes-pack:
     // dense`) ищет САМОЕ ВЕРХНЕЕ свободное место, куда он влезает во всех
-    // своих лунках, — то есть заполняет дыры от многолуночных соседей.
-    // Обычная укладка ставит его под всем, что уже уложено.
-    //
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО: сборка лунок в два приёма (сперва места, потом
-    // коробки) ради полной плотной упаковки. Плотным тестам +18, но семейству
-    // `column-align-items-*`/`row-justify-items-*` −15: их вид зависит от
-    // ПОРЯДКА узлов в лунке, а не только от координат. Поэтому дырами
-    // заполняется лишь то, что не нарушает порядок: элемент может подняться до
-    // верхней свободной отметки, но не выше последнего соседа своей лунки.
+    // своих лунках, — то есть заполняет дыры от многолуночных соседей, В ТОМ
+    // ЧИСЛЕ раньше уже уложенных соседей своей лунки: сборка бакетов сортирует
+    // слоты по координате, порядок пушей значения не имеет
+    // (row-dense-packing-justify-self-multi-span-001: пятый — в дыру второго
+    // ряда). Обычная укладка ставит его под всем, что уже уложено.
     let mut used: Vec<Vec<(f32, f32)>> = vec![vec![]; count];
     let free_top = |used: &[Vec<(f32, f32)>], at: usize, span: usize, height: f32| -> f32 {
         // Занятые отрезки хранятся БЕЗ зазора, поэтому к нижней границе он
@@ -6368,13 +6364,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         if !dense {
             return floor;
         }
-        // Ниже последнего элемента СВОЕЙ лунки не поднимаемся: порядок узлов
-        // в ней задаёт и вид, и выравнивание.
-        let own = used[at]
-            .iter()
-            .map(|(_, end)| *end + along_gap)
-            .fold(0.0f32, f32::max);
-        let mut y = own;
+        let mut y = 0.0f32;
         for _ in 0..=used.iter().map(Vec::len).sum::<usize>() {
             let mut moved = false;
             for lane in at..at + span {
@@ -6449,8 +6439,23 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             eprintln!("LA reach={reach:?}");
         }
     }
-    let mut filled = vec![0f32; count];
-    let mut buckets: Vec<Vec<Node>> = vec![vec![]; count];
+    // Слот лунки: координата и коробка. Бакеты собираются ПОСЛЕ раскладки
+    // сортировкой по координате — плотная укладка ставит элемент в дыру
+    // РАНЬШЕ уже уложенных соседей, и порядок пушей перестаёт быть порядком
+    // отрисовки. `along` — выравнивание вдоль оси укладки (из стиля его потом
+    // не достать: проработанная ось гасится на клоне, иначе CSS `align-self`
+    // утекает в flex как ПОПЕРЕЧНЫЙ и рушит растяжку по ширине —
+    // `column-align-self-003`: первый сжимался в столбик).
+    struct SlotNode {
+        top: f32,
+        height: f32,
+        node: Node,
+        along: Option<Align>,
+        real: bool,
+    }
+    let mut slots: Vec<Vec<SlotNode>> = (0..count).map(|_| vec![]).collect();
+    // Позиционированные — вне потока: в конец первой лунки, без падов.
+    let mut extras: Vec<Node> = vec![];
     for (idx, child) in e.children.iter().enumerate() {
         let Node::Element(item) = child else {
             continue;
@@ -6460,7 +6465,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             item.style.position,
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
         ) {
-            buckets[0].push(child.clone());
+            extras.push(child.clone());
             continue;
         }
         // Заданные линии сильнее раздачи: элемент встаёт именно между ними и
@@ -6473,8 +6478,8 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             .unwrap_or_else(|| shortest_lane_free(&used, count, span, height, &free_top, track_rev))
             .min(count - span);
         // Верх элемента — низ самой заполненной из перекрытых лунок; при
-        // плотной укладке — верхняя свободная отметка, не выше своей лунки.
-        let mut top = free_top(&used, at, span, height).max(filled[at]);
+        // плотной укладке — верхняя свободная отметка (дыры заполняются).
+        let mut top = free_top(&used, at, span, height);
         // Выравнивание элемента ВДОЛЬ лунки: `stretch` растит его на остаток,
         // остальные значения оставляют ему свой размер.
         let free = along_free(item);
@@ -6509,29 +6514,18 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         if let Some(h) = grown {
             height = h;
         }
-        // Распорка — ЛИШНИЙ ребёнок гибкой лунки с собственным `gap`: каждая
-        // добавляет одну щель, и позиции уезжали вниз на зазор за каждую
-        // (column-align-items-004: четвёртый элемент сидел на 10 ниже).
-        // Компенсация — размер распорки уменьшается на зазор; распорка не
-        // толще зазора не ставится вовсе (её роль играет сама щель).
-        let pad_spacer = |buckets: &mut Vec<Vec<Node>>, lane: usize, size: f32| {
-            if size > along_gap + 0.01 {
-                buckets[lane].push(spacer(size - along_gap, row_dir));
-            }
-        };
         for lane in at..at + span {
             if lane != at {
-                let pad = top - filled[lane];
-                if pad > 0.0 {
-                    pad_spacer(&mut buckets, lane, pad);
-                }
                 // Место, занятое чужим элементом: своей коробки тут нет, но
                 // следующий элемент лунки обязан начаться ПОД ним.
-                buckets[lane].push(spacer(height, row_dir));
-            } else if top > filled[at] {
-                pad_spacer(&mut buckets, at, top - filled[at]);
+                slots[lane].push(SlotNode {
+                    top,
+                    height,
+                    node: spacer(height, row_dir),
+                    along: None,
+                    real: false,
+                });
             }
-            filled[lane] = top + height + along_gap;
             used[lane].push((top, top + height));
         }
         // Элемент без заданной высоты ТЯНЕТСЯ вдоль лунки до низа контейнера
@@ -6575,46 +6569,80 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 }
             }
         }
-        // Тянется ТОЛЬКО последний элемент лунки: свободное место копится в
-        // хвосте. Снимать рост надо со ВСЕХ прежних, а не с последнего узла:
-        // последним там может стоять распорка от чужого многолуночного
-        // элемента, и тогда рост оставался у настоящего элемента под ней
-        // (`column-align-items-003`).
-        for prev in buckets[at].iter_mut() {
-            if let Node::Element(prev) = prev {
-                prev.style.flex_grow = None;
+        // Ось укладки проработана здесь (сдвиг в слоте / коробка хвостового) —
+        // до флекса лунки она дойти не должна: там та же ось уже ПОПЕРЕЧНАЯ.
+        if row_dir {
+            item.style.justify_self = None;
+        } else {
+            item.style.align_self = None;
+        }
+        slots[at].push(SlotNode {
+            top,
+            height,
+            node: Node::Element(item),
+            along,
+            real: true,
+        });
+    }
+    // Сборка бакетов из слотов: сортировка по координате (плотная укладка
+    // ставит элемент раньше уже уложенных), пады из разниц координат.
+    // Распорка — ЛИШНИЙ ребёнок гибкой лунки с собственным `gap`: каждая
+    // добавляет одну щель, поэтому её размер уменьшается на зазор, а распорка
+    // не толще зазора не ставится вовсе (её роль играет сама щель) —
+    // column-align-items-004: четвёртый элемент сидел на 10 ниже.
+    let mut buckets: Vec<Vec<Node>> = Vec::with_capacity(count);
+    for lane in slots {
+        let mut lane = lane;
+        lane.sort_by(|a, b| a.top.total_cmp(&b.top));
+        let last_real = lane.iter().rposition(|s| s.real);
+        let mut nodes: Vec<Node> = Vec::with_capacity(lane.len() * 2);
+        let mut cursor = 0.0f32;
+        let last_idx = lane.len().saturating_sub(1);
+        for (j, mut s) in lane.into_iter().enumerate() {
+            let pad = s.top - cursor;
+            if pad > along_gap + 0.01 {
+                nodes.push(spacer(pad - along_gap, row_dir));
             }
+            cursor = s.top + s.height + along_gap;
+            // Тянется ТОЛЬКО последний элемент лунки: свободное место копится
+            // в хвосте, у остальных рост снимается (`column-align-items-003`).
+            let tail = last_real == Some(j);
+            if s.real && !tail {
+                if let Node::Element(el) = &mut s.node {
+                    el.style.flex_grow = None;
+                }
+            }
+            // Свободное место лунки достаётся ПОСЛЕДНЕМУ её элементу: по CSS
+            // его область тянется до конца контейнера, и `align-items`
+            // выравнивает его внутри неё. Растяжка уже учтена ростом;
+            // остальные значения требуют коробки на весь остаток
+            // (`column-align-items-001`). Распорка чужого элемента ПОСЛЕ
+            // хвостового съедает остаток — тогда коробки нет.
+            if tail && j == last_idx {
+                if let (Some(along @ (Align::Center | Align::End | Align::Start)), Node::Element(el)) =
+                    (s.along, &s.node)
+                {
+                    nodes.push(lane_align_box(el.clone(), along, row_dir));
+                    continue;
+                }
+            }
+            nodes.push(s.node);
         }
-        buckets[at].push(Node::Element(item));
-    }
-    // Свободное место лунки достаётся ПОСЛЕДНЕМУ её элементу: по CSS его
-    // область тянется до конца контейнера, и `align-items` выравнивает его
-    // внутри неё. Растяжка уже учтена ростом; остальные значения требуют
-    // коробки на весь остаток (`column-align-items-001`).
-    for bucket in buckets.iter_mut() {
-        let Some(Node::Element(last)) = bucket.last() else {
-            continue;
-        };
-        let Some(along @ (Align::Center | Align::End | Align::Start)) = along_align(last) else {
-            continue;
-        };
-        let item = last.clone();
-        bucket.pop();
-        bucket.push(lane_align_box(item, along, row_dir));
-    }
-    // `fill-reverse` зеркалит лунку: дети в обратном порядке, прижаты к концу.
-    // Пады оказываются ПОД своими элементами, коробка хвостового — сверху и
-    // тянет элемент к дальнему краю (ref column-align-items-008: 6 и 7 у
-    // потолка, 1 — [20,60] от низа).
-    if fill_reverse {
-        for bucket in buckets.iter_mut() {
-            bucket.reverse();
+        // `fill-reverse` зеркалит лунку: дети в обратном порядке, прижаты к
+        // концу. Пады оказываются ПОД своими элементами, коробка хвостового —
+        // сверху и тянет элемент к дальнему краю (ref column-align-items-008:
+        // 6 и 7 у потолка, 1 — [20,60] от низа).
+        if fill_reverse {
+            nodes.reverse();
         }
+        buckets.push(nodes);
+    }
+    if let Some(first) = buckets.first_mut() {
+        first.append(&mut extras);
     }
     // `auto-fit` схлопывает ПУСТЫЕ дорожки: место, которое им причиталось,
     // делят между собой непустые (`column-auto-repeat-auto-012`: две дорожки
     // по 150 вместо трёх по 100).
-    let mut buckets = buckets;
     if repeat.is_some_and(|r| r.fit) && buckets.iter().any(|b| b.is_empty()) {
         let keep: Vec<bool> = buckets.iter().map(|b| !b.is_empty()).collect();
         if keep.iter().any(|k| *k) {
