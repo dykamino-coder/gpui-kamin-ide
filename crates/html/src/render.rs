@@ -6811,6 +6811,12 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     } else {
         row.flex_row().gap_x(gpui::px(cross_gap))
     };
+    // Сырые content-свойства утекали из styled_div на флекс контейнера и
+    // двигали ЛУНКИ по чужой оси (row-fill-reverse-justify-content-001:
+    // center/end роняли ряды вниз на половину/весь остаток). Раздачей здесь
+    // управляют только across- и along-ветки ниже.
+    row.style().justify_content = None;
+    row.style().align_content = None;
     // `align-items` в лунках — про САМ элемент внутри лунки, а не про лунки в
     // ряду. Пока значение доходило до ряда, `align-items: center` сдвигал
     // целые лунки вниз на половину остатка; сами лунки обязаны быть равной
