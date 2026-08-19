@@ -6319,9 +6319,27 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     }
     let extent = |item: &Element| -> f32 {
         if row_dir {
-            item_width(item)
+            let w = item_width(item);
+            if w > 0.0 {
+                return w;
+            }
+            // Процентная ширина — от контейнера: элемент `width:100%`
+            // занимает ВЕСЬ ряд, и следующий уходит в другой
+            // (grid-lanes-align-content-refinalize-row-geometry-001: оба
+            // элемента складывались в первый ряд с нулевой шириной).
+            match (item.style.width, px_of_size(merged.width)) {
+                (Some(Len::Pct(k)), Some(cw)) => cw * k,
+                _ => 0.0,
+            }
         } else {
-            item_height(item, merged, opts)
+            let h = item_height(item, merged, opts);
+            if h > 0.0 {
+                return h;
+            }
+            match (item.style.height, px_of_size(merged.height)) {
+                (Some(Len::Pct(k)), Some(ch)) => ch * k,
+                _ => 0.0,
+            }
         }
     };
     let along_free = |item: &Element| -> bool {
@@ -6835,8 +6853,18 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         } else {
             lane.flex_col().min_w_0().gap_y(gpui::px(along_gap))
         };
-        if fill_reverse {
-            lane.style().justify_content = Some(gpui::JustifyContent::End);
+        // Раздача СОДЕРЖИМОГО лунки вдоль оси укладки — это `align-content`
+        // в колонках и `justify-content` в рядах; стороны ФИЗИЧЕСКИЕ и при
+        // обратном заполнении (column-fill-reverse-align-content-001: start
+        // тянет группы к верху). Без заданной раздачи зеркальная лунка
+        // прижата к концу.
+        let along_content = if row_dir { merged.justify_content } else { merged.align_content };
+        match content(along_content) {
+            Some(j) => lane.style().justify_content = Some(j),
+            None if fill_reverse => {
+                lane.style().justify_content = Some(gpui::JustifyContent::End);
+            }
+            None => {}
         }
         match tracks.get(i) {
             Some(TrackSize::Single(Track::Px(w))) if row_dir => {
