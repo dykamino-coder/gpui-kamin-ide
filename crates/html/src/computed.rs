@@ -755,6 +755,8 @@ pub struct Computed {
     pub align_items_safe: bool,
     pub justify_content_safe: bool,
     pub align_content_safe: bool,
+    /// Порог «равных» лунок (`flow-tolerance`): None = `normal`/не задано (= 1em).
+    pub lanes_tolerance: Option<Len>,
     /// `grid-lanes-direction: row` — лунки идут РЯДАМИ, элементы укладываются
     /// вдоль строки, а не вдоль колонки.
     pub lanes_row: Option<bool>,
@@ -2266,6 +2268,17 @@ impl Computed {
             // track-reverse`. Сверка со строкой ЦЕЛИКОМ путала ось на каждом
             // таком тесте.
             "grid-lanes-pack" => self.lanes_dense = v.contains("dense"),
+            // Порог «равенства» лунок при авто-выборе (css-grid-3): лунки с
+            // разницей заполнения меньше порога считаются равными и берутся в
+            // ПОРЯДКЕ ДОКУМЕНТА. `normal` (дефолт!) = 1em, `infinite` —
+            // строгий порядок укладки безотносительно высот.
+            "flow-tolerance" | "item-tolerance" => {
+                self.lanes_tolerance = match v.trim() {
+                    "normal" => None,
+                    "infinite" => Some(Len::Px(f32::INFINITY)),
+                    t => Len::parse(t),
+                };
+            }
             // Первая часть — ось лунок, дальше — реверсы: `fill-reverse`
             // заполняет лунки с другого конца, `track-reverse` перечисляет
             // сами лунки в обратном порядке (css-grid-3).

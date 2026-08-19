@@ -6384,6 +6384,24 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // прижат к ДАЛЬНЕМУ краю своего слота.
     let fill_reverse = merged.lanes_fill_reverse;
     let track_rev = merged.lanes_track_reverse;
+    // Порог «равных» лунок (`flow-tolerance`, css-grid-3): в его пределах от
+    // самой короткой заполнение идёт ПОРЯДКОМ ДОКУМЕНТА. Дефолт normal = 1em;
+    // `infinite` — строгий документный порядок. ~500 WPT-пар семьи полагаются
+    // на дефолт — до этого наш выбор был фактически flow-tolerance: 0.
+    // Дефолт normal = 1em (css-grid-3; initial-flow-tolerance: 11.33→0.00).
+    // ЗАМЕРЕНО: гейт «только при явном свойстве» даёт 525 против 527 по всей
+    // семье — дефолт 1em и спековее, и нетто-лучше. ЦЕНА: 16 пар align-items/
+    // justify-items 007-016 упали (их Chrome-ref размещает строго в минимум
+    // при разницах < 1em) — расхождение tied-семантики вскрывать отдельным
+    // разбором (дамп 010 бок о бок с initial-flow-tolerance).
+    let tolerance = match merged.lanes_tolerance {
+        Some(Len::Px(v)) => v,
+        Some(Len::Pct(k)) => room.unwrap_or(0.0) * k,
+        _ => match merged.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        },
+    };
     let mut tracks = tracks;
     // Процентный размер — от контейнера: элемент `width:100%` занимает ВЕСЬ
     // ряд, и следующий уходит в другой
@@ -6517,6 +6535,8 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     let mut slot_end: Vec<(usize, f32)> = vec![];
     {
         let mut probe: Vec<Vec<(f32, f32)>> = vec![vec![]; count];
+        // Курсор авто-размещения: «равные» лунки берутся вперёд по кругу.
+        let mut cursor = 0usize;
         let mut placed: Vec<(usize, usize, usize, f32, f32)> = vec![];
         for (idx, child) in e.children.iter().enumerate() {
             let Node::Element(item) = child else { continue };
@@ -6529,9 +6549,21 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             let (fixed, span) = lane_span(item, count, row_dir);
             let span = span.clamp(1, count);
             let height = extent(item);
-            let at = fixed
-                .unwrap_or_else(|| shortest_lane_free(&probe, count, span, height, &free_top, track_rev))
-                .min(count - span);
+            let at = match fixed {
+                Some(f) => f,
+                None => {
+                    let (at, pos) = shortest_lane_free(
+                        &probe, count, span, height, &free_top, track_rev, tolerance, cursor,
+                    );
+                    // Плотная укладка курсор не двигает: каждый элемент ищет
+                    // дыру с начала (аналог dense в css-grid-1 §8.5).
+                    if !dense {
+                        cursor = pos + 1;
+                    }
+                    at
+                }
+            }
+            .min(count - span);
             let top = free_top(&probe, at, span, height);
             placed.push((idx, at, span, top, height));
             if along_free(item) && matches!(along_align(item), None | Some(Align::Stretch)) {
@@ -6596,6 +6628,8 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     let mut slots: Vec<Vec<SlotNode>> = (0..count).map(|_| vec![]).collect();
     // Позиционированные — вне потока: в конец первой лунки, без падов.
     let mut extras: Vec<Node> = vec![];
+    // Курсор авто-размещения основного прохода (зеркало probe).
+    let mut cursor = 0usize;
     for (idx, child) in e.children.iter().enumerate() {
         let Node::Element(item) = child else {
             continue;
@@ -6716,9 +6750,19 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         let (fixed, span) = lane_span(item, count, row_dir);
         let span = span.clamp(1, count);
         let mut height = extent(item);
-        let at = fixed
-            .unwrap_or_else(|| shortest_lane_free(&used, count, span, height, &free_top, track_rev))
-            .min(count - span);
+        let at = match fixed {
+            Some(f) => f,
+            None => {
+                let (at, pos) = shortest_lane_free(
+                    &used, count, span, height, &free_top, track_rev, tolerance, cursor,
+                );
+                if !dense {
+                    cursor = pos + 1;
+                }
+                at
+            }
+        }
+        .min(count - span);
         // Верх элемента — низ самой заполненной из перекрытых лунок; при
         // плотной укладке — верхняя свободная отметка (дыры заполняются).
         let mut top = free_top(&used, at, span, height);
@@ -7256,22 +7300,34 @@ fn shortest_lane_free(
     height: f32,
     top_of: &dyn Fn(&[Vec<(f32, f32)>], usize, usize, f32) -> f32,
     reverse: bool,
-) -> usize {
-    // При равной высоте побеждает ПЕРВАЯ лунка в порядке обхода: обычно левая,
+    tolerance: f32,
+    cursor: usize,
+) -> (usize, usize) {
+    // Побеждает лунка в пределах ПОРОГА от самой короткой, ПЕРВАЯ в порядке
+    // обхода (css-grid-3 `flow-tolerance`: близкие лунки «равны», заполнение
+    // идёт порядком документа; дефолт normal = 1em). Обычно первая — левая,
     // при `track-reverse` — правая (дорожки перечислены от конца). `min_by`
     // при равенстве отдаёт ПОСЛЕДНИЙ минимум — tie-break уезжал в другую
     // сторону (`column-align-items-008`: шестой вставал правее эталона).
-    let pick = |it: &mut dyn Iterator<Item = usize>| {
-        let mut best = 0usize;
+    // Из «равных» берётся первая линия НЕ РАНЬШЕ КУРСОРА авто-размещения
+    // (движение вперёд, css-grid-3 §4.4); нет таких — первая равная вообще.
+    let pick = |it: &mut dyn Iterator<Item = usize>| -> (usize, usize) {
+        let order: Vec<usize> = it.collect();
         let mut best_top = f32::INFINITY;
-        for i in it {
+        for &i in &order {
             let t = top_of(used, i, span, height);
-            if t < best_top - 0.01 {
-                best = i;
+            if t < best_top {
                 best_top = t;
             }
         }
-        best
+        let tied = |i: usize| top_of(used, i, span, height) <= best_top + tolerance + 0.01;
+        let pos = order
+            .iter()
+            .enumerate()
+            .position(|(p, i)| p >= cursor && tied(*i))
+            .or_else(|| order.iter().position(|i| tied(*i)))
+            .unwrap_or(0);
+        (order.get(pos).copied().unwrap_or(0), pos)
     };
     if reverse {
         pick(&mut (0..=count.saturating_sub(span)).rev())

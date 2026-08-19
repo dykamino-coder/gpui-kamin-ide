@@ -618,6 +618,8 @@ fn main() {
                     }
                 })
                 .unwrap_or(0);
+            // Свой файл отчёта на шард: параллельные прогоны не бьются за один путь.
+            let report_path = std::env::var("WPT_REPORT").unwrap_or_else(|_| "target/wpt-report.txt".into());
             let mut report = String::new();
             // Показать страницу и дождаться ЕЁ кадра.
             //
@@ -958,7 +960,7 @@ fn main() {
                 report.push_str(&format!("{test}|{reference}|{verdict}\n"));
                 // Отчёт пишется после каждой пары: падение на одном файле не
                 // должно стирать результат всего прогона.
-                let _ = std::fs::write("target/wpt-report.txt", &report);
+                let _ = std::fs::write(report_path.as_str(), &report);
                 // Порог — вдвое больше, чем нужно на три страницы с полным
                 // опросом кадра. Всё, что дольше, тормозит не из-за ожидания.
                 let spent = started.elapsed().as_millis();
@@ -979,7 +981,7 @@ fn main() {
                 timing_lines += 1;
                 let _ = std::fs::write("target/wpt-timing.txt", &timing);
             }
-            let _ = std::fs::write("target/wpt-report.txt", report);
+            let _ = std::fs::write(report_path.as_str(), report);
             slow.sort_by(|a, b| b.0.cmp(&a.0));
             let mut lines = String::new();
             for (ms, test) in &slow {
