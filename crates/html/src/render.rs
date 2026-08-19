@@ -6517,8 +6517,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         reach = reach
             .into_iter()
             .filter_map(|(idx, top)| {
-                let height = next_top(idx)? - along_gap - top;
-                (height > 0.0).then_some((idx, height))
+                // Предел не выбрасывается и нулевым: сама ЗАПИСЬ запрещает
+                // рост (row-justify-items-004: пятый span-3 с нулевым
+                // пределом от шестого растягивался на весь остаток).
+                let height = (next_top(idx)? - along_gap - top).max(0.0);
+                Some((idx, height))
             })
             .collect();
         if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok()); *ON } {
