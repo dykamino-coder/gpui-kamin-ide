@@ -6662,13 +6662,50 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // это cross-ось флекса лунки, то есть taffy align_self: в колонках
         // туда переносится CSS justify-self/-items (в taffy justify_self во
         // флексе мёртв — column-grid-lanes-justify-self-002/003).
+        // Модификатор `safe` при элементе БОЛЬШЕ дорожки глушит center/end в
+        // start (css-align §5.3, `column-overflow-alignment-001`); без него
+        // элемент честно вылезает.
+        let zone: f32 = (at..at + span)
+            .filter_map(|i| match tracks.get(i) {
+                Some(TrackSize::Single(Track::Px(w))) => Some(*w),
+                _ => None,
+            })
+            .sum::<f32>()
+            + cross_gap * (span as f32 - 1.0);
+        let cross_safe = |own: Option<Align>, own_safe: bool, items_safe: bool| {
+            if own.is_some() { own_safe } else { items_safe }
+        };
         if row_dir {
             item.style.justify_self = None;
-            if item.style.align_self.is_none() {
-                item.style.align_self = merged.align_items;
+            let safe = cross_safe(
+                item.style.align_self,
+                item.style.align_self_safe,
+                merged.align_items_safe,
+            );
+            let mut cross = item.style.align_self.or(merged.align_items);
+            if safe
+                && matches!(cross, Some(Align::End | Align::Center))
+                && zone > 0.0
+                && item_height(&item, merged, opts) > zone + 0.01
+            {
+                cross = Some(Align::Start);
             }
+            item.style.align_self = cross;
         } else {
-            item.style.align_self = item.style.justify_self.or(merged.justify_items);
+            let safe = cross_safe(
+                item.style.justify_self,
+                item.style.justify_self_safe,
+                merged.justify_items_safe,
+            );
+            let mut cross = item.style.justify_self.or(merged.justify_items);
+            if safe
+                && matches!(cross, Some(Align::End | Align::Center))
+                && zone > 0.0
+                && item_width(&item) > zone + 0.01
+            {
+                cross = Some(Align::Start);
+            }
+            item.style.align_self = cross;
             item.style.justify_self = None;
         }
         slots[at].push(SlotNode {

@@ -746,6 +746,13 @@ pub struct Computed {
     pub align_content: Option<Justify>,
     /// `justify-items`/`justify-self` — поперечная ось В СЕТКЕ.
     pub justify_items: Option<Align>,
+    /// Модификатор `safe` у выравниваний (css-align §5.3): при переполнении
+    /// области выравнивание падает в `start`, чтобы содержимое не обрезалось.
+    /// Без него позиция сохраняется и элемент вылезает (unsafe/дефолт).
+    pub justify_self_safe: bool,
+    pub justify_items_safe: bool,
+    pub align_self_safe: bool,
+    pub align_items_safe: bool,
     /// `grid-lanes-direction: row` — лунки идут РЯДАМИ, элементы укладываются
     /// вдоль строки, а не вдоль колонки.
     pub lanes_row: Option<bool>,
@@ -1665,11 +1672,13 @@ impl Computed {
             "align-self" => {
                 if let Ok(a) = align_keyword(v) {
                     self.align_self = a;
+                    self.align_self_safe = is_safe(v);
                 }
             }
             "align-items" => {
                 if let Ok(a) = align_keyword(v) {
                     self.align_items = a;
+                    self.align_items_safe = is_safe(v);
                 }
             }
             // `space-evenly` и `space-around` различаются шириной крайних
@@ -2231,7 +2240,10 @@ impl Computed {
                 }
             }
             "align-content" => self.align_content = parse_justify(v),
-            "justify-items" => self.justify_items = parse_align(v),
+            "justify-items" => {
+                self.justify_items = parse_align(v);
+                self.justify_items_safe = is_safe(v);
+            }
             // Значение бывает составным: `row fill-reverse`, `column
             // track-reverse`. Сверка со строкой ЦЕЛИКОМ путала ось на каждом
             // таком тесте.
@@ -2244,7 +2256,10 @@ impl Computed {
                 self.lanes_fill_reverse = v.split_whitespace().any(|w| w == "fill-reverse");
                 self.lanes_track_reverse = v.split_whitespace().any(|w| w == "track-reverse");
             }
-            "justify-self" => self.justify_self = parse_align(v),
+            "justify-self" => {
+                self.justify_self = parse_align(v);
+                self.justify_self_safe = is_safe(v);
+            }
             // `place-*` — сокращения «поперёк / вдоль»; одно значение задаёт обе оси.
             "place-items" | "place-content" | "place-self" => {
                 let (a, b) = match v.split_once(char::is_whitespace) {
@@ -3765,6 +3780,11 @@ fn side_color(v: &str, current: Option<Color>) -> Option<Color> {
 
 fn parse_align(v: &str) -> Option<Align> {
     align_keyword(v).unwrap_or(None)
+}
+
+/// Несёт ли значение выравнивания модификатор `safe` (css-align §5.3).
+fn is_safe(v: &str) -> bool {
+    v.split_whitespace().next() == Some("safe")
 }
 
 /// Значение выравнивания по css-align-3.
