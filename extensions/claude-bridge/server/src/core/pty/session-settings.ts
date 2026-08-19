@@ -170,17 +170,12 @@ export function writeSessionSettings(
   fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify(settings, null, 2))
 
   // ─── 3. Local settings → .claude/settings.local.json ───
-  // fallbackModel (CLI 2.1.166+): an ordered chain the CLI tries when the
-  // primary is unavailable (overloaded / not-found), so a 529 on Opus doesn't
-  // dead-end the session. It does NOT merge across scopes — this file (highest
-  // precedence) supplies the whole chain. Exclude whatever the session's own
-  // model resolves to so the chain never repeats the primary.
-  const primaryBase = (sessionModel || DEFAULT_SESSION_MODEL).replace(/\[1m\]$/, '')
-  const fallbackModel = ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']
-    .filter((m) => m !== primaryBase)
+  // fallbackModel НЕ задаётся сознательно: без настроенной цепочки CLI при
+  // недоступности модели честно роняет запрос вместо ТИХОГО перехода на более
+  // слабую модель (решение пользователя: качество ответа важнее живучести;
+  // раньше цепочка opus→sonnet→haiku подменяла модель незаметно).
   const localSettings = {
     model: sessionModel || DEFAULT_SESSION_MODEL,
-    fallbackModel,
     skipDangerousModePermissionPrompt: true,
     env: {
       CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '92',

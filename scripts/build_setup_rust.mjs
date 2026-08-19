@@ -31,6 +31,9 @@ execFileSync("node", [join(root, "scripts", "build_installer.mjs")], { stdio: "i
 
 // 2. Собрать стаб.
 console.log("[setup] building kaminide-setup crate …")
+// KAMIN_SETUP_STUB=1 — стаб уже собран и лежит в target/release (сборкой в
+// отдельном CARGO_TARGET_DIR, когда target/ занят другим cargo-процессом).
+if (process.env.KAMIN_SETUP_STUB !== "1")
 execFileSync("cargo", ["build", "--release", "--offline", "-p", "kaminide-setup"], {
   stdio: "inherit",
   cwd: root,
