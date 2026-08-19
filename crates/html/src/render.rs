@@ -6495,6 +6495,10 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 item.style.height = Some(Len::Px(h));
             }
         } else if free && matches!(along, None | Some(Align::Stretch)) {
+            // ПРОБОВАЛИ И ОТКАТИЛИ (замер по target/la.txt): убрать рост до
+            // низа — column-align-items-001/003/007 и row-justify-items
+            // 0.0 -> 1.2..15, вверх ноль. Хвостовой рост нужен зелёным;
+            // разлив пятого элемента в -004 лечить не здесь.
             item.style.flex_grow = Some(1.0);
         }
         // Размер по числу занятых лунок: коробка выходит за свою лунку в
