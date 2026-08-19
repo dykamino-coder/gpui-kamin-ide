@@ -6946,8 +6946,18 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             // Дети лунки НЕ сжимаются: содержимое шире лунки переполняет её,
             // как блочный поток (row-fill-reverse-justify-content-safe-001:
             // два по 40px в лунке 60px сжимались до 27 вместо вылета).
+            // Узел с ОТРИЦАТЕЛЬНЫМ полем вдоль оси — исключение: запрет
+            // сжатия ломал его поток и съедал клэмп-пад соседа
+            // (column-negative-margin-001: пятый снова накрывал третьего).
             if let Node::Element(el) = &mut s.node {
-                if el.style.flex_shrink.is_none() {
+                let neg = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v < 0.0);
+                let m = el.style.margin;
+                let neg_along = if row_dir {
+                    neg(m.left) || neg(m.right)
+                } else {
+                    neg(m.top) || neg(m.bottom)
+                };
+                if el.style.flex_shrink.is_none() && !neg_along {
                     el.style.flex_shrink = Some(0.0);
                 }
             }
@@ -7015,7 +7025,21 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             })
             .sum();
         if total.is_finite() && total > 0.0 {
-            row = row.w(gpui::px(total + cross_gap * (tracks.len().saturating_sub(1)) as f32));
+            // gpui-размер — BORDER-BOX: свои паддинги и рамки контейнер несёт
+            // сверх дорожек (grid-lanes-subgrid-001b: с голой суммой контейнер
+            // ужимался на паддинг, и вся сетка съезжала).
+            let side = |l: Option<Len>| match l {
+                Some(Len::Px(v)) => v,
+                _ => 0.0,
+            };
+            let b = merged.borders();
+            let extra = side(merged.padding.left)
+                + side(merged.padding.right)
+                + side(b.left)
+                + side(b.right);
+            row = row.w(gpui::px(
+                total + cross_gap * (tracks.len().saturating_sub(1)) as f32 + extra,
+            ));
         }
     }
     // `align-items` в лунках — про САМ элемент внутри лунки, а не про лунки в
