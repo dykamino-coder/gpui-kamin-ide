@@ -6391,6 +6391,10 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         if !dense {
             return floor;
         }
+        // Безразмерный элемент (авто вдоль оси) ничего не «пересекает» и
+        // падал в занятую первую лунку — у содержимого ширина всегда есть
+        // (row-dense-packing-justify-self-002: третий вставал в ряд 1).
+        let height = height.max(0.01);
         let mut y = 0.0f32;
         for _ in 0..=used.iter().map(Vec::len).sum::<usize>() {
             let mut moved = false;
