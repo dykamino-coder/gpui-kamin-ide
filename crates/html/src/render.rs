@@ -6347,7 +6347,53 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         } else {
             match (item.style.height, px_of_size(merged.height)) {
                 (Some(Len::Pct(k)), Some(ch)) => ch * k,
-                _ => item_height(item, merged, opts),
+                _ => {
+                    let mut h = item_height(item, merged, opts);
+                    // Многострочный текст: одна строка в probe раздаёт floors
+                    // не так, как браузер, и элементы падают в чужие лунки
+                    // (column-justify-items-end-justify-self-start-001).
+                    // Перенос считается ПОСЛОВНО жадно по ширине знака (ch) —
+                    // посимвольная оценка ЗАМЕРЕНА И ОТКАЧЕНА (94→93: она
+                    // врёт против пословного переноса браузера).
+                    if item.style.height.is_none() && h > 0.0 {
+                        if let Some(TrackSize::Single(Track::Px(w))) = tracks.first() {
+                            let st = crate::inline::inherit(merged, &item.style);
+                            let size = match st.font_size {
+                                Some(Len::Px(v)) => v,
+                                _ => 16.0,
+                            };
+                            let family = st.font_family.clone().unwrap_or_else(|| {
+                                if st.monospace == Some(true) {
+                                    crate::metrics::mono_family().to_string()
+                                } else {
+                                    String::new()
+                                }
+                            });
+                            let ch = crate::metrics::ch_ex_px(&family, size).0;
+                            if ch > 0.0 && *w > ch {
+                                let per_line = (*w / ch).floor().max(1.0) as usize;
+                                let mut lines = 0usize;
+                                let mut used_now = 0usize;
+                                for word in words(&item.children) {
+                                    let need = word.min(per_line);
+                                    if used_now == 0 {
+                                        lines += 1;
+                                        used_now = need;
+                                    } else if used_now + 1 + need <= per_line {
+                                        used_now += 1 + need;
+                                    } else {
+                                        lines += 1;
+                                        used_now = need;
+                                    }
+                                }
+                                if lines > 1 {
+                                    h += (lines as f32 - 1.0) * line_height_px(&st, opts);
+                                }
+                            }
+                        }
+                    }
+                    h
+                }
             }
         }
     };
@@ -7117,6 +7163,18 @@ fn item_height(e: &Element, inherited: &Computed, opts: &RenderOpts) -> f32 {
 
 
 /// Есть ли в поддереве непустой текст — по нему считается высота строки.
+/// Длины слов текста поддерева (в знаках) — для пословной оценки переноса.
+fn words(nodes: &[Node]) -> Vec<usize> {
+    let mut out = vec![];
+    for n in nodes {
+        match n {
+            Node::Text(t) => out.extend(t.split_whitespace().map(|w| w.chars().count())),
+            Node::Element(e) => out.extend(words(&e.children)),
+        }
+    }
+    out
+}
+
 fn has_text(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(t) => !blank_text(t),
