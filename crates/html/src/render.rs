@@ -6830,6 +6830,15 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             item.style.align_self = cross;
             item.style.justify_self = None;
         }
+        // Слот, ОГРАНИЧЕННЫЙ соседом (есть конец слота), уже выровнен
+        // сдвигом top — коробка хвостового на весь остаток ему не положена
+        // (column-fill-reverse-dense-packing-align-items-multi-span-001:
+        // пятый с соседом сверху уезжал коробкой к верху всей лунки).
+        let along = if slot_end.iter().any(|(j, _)| *j == idx) {
+            None
+        } else {
+            along
+        };
         // Область span-дорожек: обёртка поперечного размера области, элемент
         // выравнивается внутри своим (перенесённым) align_self.
         let node = match span_area {
