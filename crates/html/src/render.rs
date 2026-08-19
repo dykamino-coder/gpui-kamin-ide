@@ -6897,6 +6897,14 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     el.style.flex_grow = None;
                 }
             }
+            // Дети лунки НЕ сжимаются: содержимое шире лунки переполняет её,
+            // как блочный поток (row-fill-reverse-justify-content-safe-001:
+            // два по 40px в лунке 60px сжимались до 27 вместо вылета).
+            if let Node::Element(el) = &mut s.node {
+                if el.style.flex_shrink.is_none() {
+                    el.style.flex_shrink = Some(0.0);
+                }
+            }
             // Свободное место лунки достаётся ПОСЛЕДНЕМУ её элементу: по CSS
             // его область тянется до конца контейнера, и `align-items`
             // выравнивает его внутри неё. Растяжка уже учтена ростом;
