@@ -6533,6 +6533,12 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     size += px_of(tracks.get(i))?;
                 }
                 use crate::computed::{FlexDir, Justify, Position};
+                // ★ ЗАМЕРЕНО И ОТКАЧЕНО: прибавка паддинга контейнера к
+                // инсетам обёртки (гипотеза «инсет от padding box, дорожки от
+                // content box») — positioned-items 001 0.23→1.71, 002
+                // 0.36→4.08, la 94→92. Инсет тут уже попадает в content box;
+                // остаток 003/004 (~1.1-3.5) — не паддинг, вскрывать
+                // поэлементным пиксельным диффом.
                 let mut style = Computed::default();
                 style.position = Some(Position::Absolute);
                 style.display = Some(Display::Flex);
