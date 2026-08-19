@@ -6585,6 +6585,9 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     inline: false,
                 }))
             })();
+            if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok()); *ON } {
+                eprintln!("LA abspos idx={idx} wrapped={}", wrapped.is_some());
+            }
             extras.push(wrapped.unwrap_or_else(|| child.clone()));
             continue;
         }
@@ -6802,9 +6805,6 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         }
         buckets.push(nodes);
     }
-    if let Some(first) = buckets.first_mut() {
-        first.append(&mut extras);
-    }
     // `auto-fit` схлопывает ПУСТЫЕ дорожки: место, которое им причиталось,
     // делят между собой непустые (`column-auto-repeat-auto-012`: две дорожки
     // по 150 вместо трёх по 100).
@@ -6867,6 +6867,9 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     if let Some(j) = content(across) {
         row.style().justify_content = Some(j);
     }
+    // Позиционированные дети живут на САМОМ контейнере (он их содержащий
+    // блок), а не в лунке: внутри лунки absolute не рисовался вовсе
+    // (grid-lanes/abspos/*: красные абспосы пропадали с картинки).
     for (i, items) in buckets.into_iter().enumerate() {
         let mut lane = div().flex();
         lane = if row_dir {
@@ -6910,6 +6913,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             _ => lane = lane.flex_1(),
         }
         row = row.child(lane.children(blocks(&items, merged, opts)));
+    }
+    if !extras.is_empty() {
+        let mut ctx = merged.clone();
+        ctx.display = Some(Display::Block);
+        row = row.children(blocks(&extras, &ctx, opts));
     }
     row.into_any_element()
 }
