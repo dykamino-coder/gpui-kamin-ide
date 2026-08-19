@@ -6261,25 +6261,6 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // (`column-auto-repeat-001`: коробка на две дорожки). Дорожка `auto`
     // меряется по САМОМУ БОЛЬШОМУ элементу: своей ширины у неё нет, а число
     // повторов всё равно считается по месту (`column-auto-repeat-auto-012`).
-    // Дорожка повтора ПО СОДЕРЖИМОМУ: своей меры у неё нет — по дорожке на
-    // каждый элемент, размер лунке даёт её содержимое
-    // (row-auto-repeat-max-content-001: шесть рядов высотой в строку).
-    if tracks.is_empty() && repeat.is_some_and(|r| r.intrinsic) {
-        let n = e
-            .children
-            .iter()
-            .filter(|n| match n {
-                Node::Element(item) => !matches!(
-                    item.style.position,
-                    Some(crate::computed::Position::Absolute)
-                        | Some(crate::computed::Position::Fixed)
-                ),
-                _ => false,
-            })
-            .count()
-            .max(1);
-        tracks = vec![TrackSize::Single(Track::Auto); n];
-    }
     if tracks.is_empty()
         && let (Some(repeat), Some(room)) = (repeat, room)
     {
@@ -6309,6 +6290,30 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                             _ => None,
                         };
                         let size = pct.unwrap_or(size);
+                        // Дорожка по содержимому меряет ТЕКСТ: у безразмерного
+                        // элемента точечной ширины нет, и повторы не
+                        // разворачивались вовсе (column-auto-repeat-
+                        // max-content-001: Ahem-строка 120px задаёт дорожку).
+                        let size = if size > 0.0 || row_dir {
+                            size
+                        } else {
+                            let st = crate::inline::inherit(merged, &item.style);
+                            let fs = match st.font_size {
+                                Some(Len::Px(v)) => v,
+                                _ => 16.0,
+                            };
+                            let family = st.font_family.clone().unwrap_or_else(|| {
+                                if st.monospace == Some(true) {
+                                    crate::metrics::mono_family().to_string()
+                                } else {
+                                    String::new()
+                                }
+                            });
+                            let ch = crate::metrics::ch_ex_px(&family, fs).0;
+                            let ws = words(&item.children);
+                            let total = ws.iter().sum::<usize>() + ws.len().saturating_sub(1);
+                            total as f32 * ch
+                        };
                         // Вклад элемента НА НЕСКОЛЬКО дорожек делится между
                         // ними (css-grid-2 §11.5.1): `width: 200px` при
                         // `span 2` — это две дорожки по сто, а не одна в
@@ -6326,6 +6331,14 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             let n = (((room + cross_gap) / (step + cross_gap)).floor() as usize).max(1);
             tracks = match repeat.track {
                 Some(px) => vec![TrackSize::Single(Track::Px(px)); n],
+                // Дорожка ПО СОДЕРЖИМОМУ: повторы считаются от самого
+                // большого элемента (тот же step), а размер каждой лунке даёт
+                // её содержимое — Fr делил бы ВЕСЬ контейнер поровну
+                // (column-auto-repeat-max-content-001: две дорожки по 120, не
+                // по 150).
+                None if repeat.intrinsic => {
+                    vec![TrackSize::Single(Track::MaxContent); n]
+                }
                 // Дорожка по содержимому делит место поровну: свой размер ей
                 // назначать нельзя, иначе `auto-fit` не сможет отдать место
                 // схлопнутых дорожек соседям.
