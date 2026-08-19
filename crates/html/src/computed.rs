@@ -4229,10 +4229,16 @@ fn auto_fill_min(v: &str) -> Option<f32> {
         _ => None,
     };
     if let Some(rest) = v.split("minmax(").nth(1)
-        && let Some(first) = rest.split(',').next()
-        && let Some(px) = px_of(first)
+        && let Some(inner) = rest.find(')').map(|i| &rest[..i])
     {
-        return Some(px);
+        let mut args = inner.splitn(2, ',');
+        let lo = args.next().unwrap_or("");
+        let hi = args.next().unwrap_or("");
+        // Число повторов считается по МАКСИМАЛЬНОЙ функции дорожки, если
+        // она определённая, иначе по минимальной (css-grid-1 §7.2.3.2):
+        // `minmax(min-content, 100px)` повторяется сотнями точек, а
+        // `minmax(100px, 1fr)` — сотней из минимума.
+        return px_of(hi).or_else(|| px_of(lo));
     }
     let rest = v.split("repeat(").nth(1)?;
     let inner = &rest[..rest.rfind(')')?];
@@ -4249,10 +4255,13 @@ fn auto_fill_pct(v: &str) -> Option<f32> {
         _ => None,
     };
     if let Some(rest) = v.split("minmax(").nth(1)
-        && let Some(first) = rest.split(',').next()
-        && let Some(k) = pct_of(first)
+        && let Some(inner) = rest.find(')').map(|i| &rest[..i])
     {
-        return Some(k);
+        let mut args = inner.splitn(2, ',');
+        let lo = args.next().unwrap_or("");
+        let hi = args.next().unwrap_or("");
+        // Как и в точках: максимум сильнее минимума (css-grid-1 §7.2.3.2).
+        return pct_of(hi).or_else(|| pct_of(lo));
     }
     let rest = v.split("repeat(").nth(1)?;
     let inner = &rest[..rest.rfind(')')?];
