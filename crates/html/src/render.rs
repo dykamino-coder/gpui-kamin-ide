@@ -6556,9 +6556,12 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                         &probe, count, span, height, &free_top, track_rev, tolerance, cursor,
                     );
                     // Плотная укладка курсор не двигает: каждый элемент ищет
-                    // дыру с начала (аналог dense в css-grid-1 §8.5).
+                    // дыру с начала (аналог dense в css-grid-1 §8.5). Курсор —
+                    // линия ЗА элементом: span-3 через все лунки даёт wrap, и
+                    // следующий tied берётся с начала (column-align-items-010:
+                    // четвёртый в первую лунку, не во вторую).
                     if !dense {
-                        cursor = pos + 1;
+                        cursor = pos + span;
                     }
                     at
                 }
@@ -6757,7 +6760,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     &used, count, span, height, &free_top, track_rev, tolerance, cursor,
                 );
                 if !dense {
-                    cursor = pos + 1;
+                    cursor = pos + span;
                 }
                 at
             }
