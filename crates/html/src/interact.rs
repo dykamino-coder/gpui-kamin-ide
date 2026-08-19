@@ -773,8 +773,9 @@ impl Element for CellsClipped {
         window: &mut Window,
         _cx: &mut App,
     ) {
-        // Прошлый кадр забирается целиком: пробы ячеек напишут свежие
-        // прямоугольники после нас, в этом же кадре.
+        // Пробы ячеек пишут в PREPAINT, а вся подготовка кадра идёт до
+        // отрисовки — здесь забираются прямоугольники ЭТОГО ЖЕ кадра.
+        // Пустота возможна только на самом первом кадре документа.
         let rects = std::mem::take(&mut *self.rects.borrow_mut());
         if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok()); *ON } {
             eprintln!("ROWBG paint: rects={} {:?}", rects.len(), rects);
