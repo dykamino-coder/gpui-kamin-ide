@@ -1,8 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import fs from 'node:fs'
 import path from 'node:path'
 import { getOrCreateSnapshot, wrapCommandWithSnapshot, shouldUseLoginShell } from './shell-snapshot'
 import { listEnabledPluginBinDirs } from '../../plugin-helpers'
+import { findBashExecutable, findPowerShellExecutable } from '../../utils/command-runtime'
 
 async function shellEnv(): Promise<NodeJS.ProcessEnv> {
   const binDirs = await listEnabledPluginBinDirs()
@@ -12,23 +12,6 @@ async function shellEnv(): Promise<NodeJS.ProcessEnv> {
     GIT_EDITOR: 'true',
     CLAUDECODE: '1',
   }
-}
-
-function whichAsync(cmd: string, timeoutMs = 5000): Promise<string | null> {
-  return new Promise((resolve) => {
-    const finder = process.platform === 'win32' ? 'where' : 'which'
-    const child = spawn(finder, [cmd], { stdio: ['ignore', 'pipe', 'ignore'] })
-    const chunks: Buffer[] = []
-    const timer = setTimeout(() => { child.kill() }, timeoutMs)
-    child.stdout.on('data', (c: Buffer) => chunks.push(c))
-    child.on('error', () => { clearTimeout(timer); resolve(null) })
-    child.on('close', (code) => {
-      clearTimeout(timer)
-      if (code !== 0) return resolve(null)
-      const first = Buffer.concat(chunks).toString('utf8').trim().split(/\r?\n/)[0]
-      resolve(first || null)
-    })
-  })
 }
 
 export type McpResult = { content: Array<{ type: string; text: string }> }
@@ -91,10 +74,11 @@ function evictOldBackgroundOutput(): void {
 }
 
 /**
- * Find bash executable — matches CLI's hd1() function exactly:
+ * Find bash executable — matches CLI's Windows policy:
  * 1. Check CLAUDE_CODE_GIT_BASH_PATH env var
  * 2. Find git in PATH → derive bash.exe location
- * 3. Error if not found (CLI exits, we return error)
+ * 3. Check standard system/user Git for Windows locations
+ * 4. Error if not found (never launch System32 bash.exe / WSL by accident)
  *
  * CLI ALWAYS uses bash on Windows. No PowerShell, no cmd.
  */
@@ -106,40 +90,7 @@ async function findBashAsync(): Promise<string> {
   if (bashLookupInFlight) return bashLookupInFlight
 
   bashLookupInFlight = (async () => {
-    if (process.platform !== 'win32') {
-      cachedBash = process.env.SHELL || '/bin/bash'
-      return cachedBash
-    }
-
-    if (process.env.CLAUDE_CODE_GIT_BASH_PATH) {
-      if (fs.existsSync(process.env.CLAUDE_CODE_GIT_BASH_PATH)) {
-        cachedBash = process.env.CLAUDE_CODE_GIT_BASH_PATH
-        return cachedBash
-      }
-    }
-
-    const gitPath = await whichAsync('git')
-    if (gitPath) {
-      const bashPath = path.resolve(gitPath, '..', '..', 'bin', 'bash.exe')
-      if (fs.existsSync(bashPath)) {
-        cachedBash = bashPath
-        return cachedBash
-      }
-    }
-
-    const candidates = [
-      'C:\\Program Files\\Git\\bin\\bash.exe',
-      'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
-      'C:\\Windows\\System32\\bash.exe',
-    ]
-    for (const p of candidates) {
-      if (fs.existsSync(p)) {
-        cachedBash = p
-        return cachedBash
-      }
-    }
-
-    cachedBash = 'bash'
+    cachedBash = await findBashExecutable()
     return cachedBash
   })()
   return bashLookupInFlight
@@ -158,7 +109,12 @@ export async function powerShellExecute(input: Record<string, unknown>): Promise
   // and BASH_MAX_TIMEOUT_MS so we don't get cut off by either layer.
   const timeout = typeof input.timeout === 'number' ? Math.min(input.timeout, 1_800_000) : 1_500_000
 
-  const pwshPath = await resolvePowerShell()
+  let pwshPath: string
+  try {
+    pwshPath = await resolvePowerShell()
+  } catch (err) {
+    return errorResult(err instanceof Error ? err.message : String(err))
+  }
   return runForegroundCommand(command, pwshPath, timeout, ['-c'], await shellEnv())
 }
 
@@ -174,7 +130,12 @@ export async function bashExecute(input: Record<string, unknown>): Promise<McpRe
   const runInBackground = input.run_in_background === true
   const description = (input.description as string) || ''
 
-  const shell = await findBashAsync()
+  let shell: string
+  try {
+    shell = await findBashAsync()
+  } catch (err) {
+    return errorResult(err instanceof Error ? err.message : String(err))
+  }
 
   // Shell snapshot — captured lazily on first call. Gives subsequent bash
   // invocations access to user aliases, functions, PATH tweaks from
@@ -330,8 +291,7 @@ async function resolvePowerShell(): Promise<string> {
   if (cachedPwsh) return cachedPwsh
   if (pwshLookupInFlight) return pwshLookupInFlight
   pwshLookupInFlight = (async () => {
-    const pwsh = await whichAsync('pwsh', 3000)
-    cachedPwsh = pwsh ?? 'powershell.exe'
+    cachedPwsh = await findPowerShellExecutable()
     return cachedPwsh
   })()
   return pwshLookupInFlight

@@ -8,6 +8,13 @@ import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
 import { loadInstalledPluginsMap, loadPluginOptions, substituteUserConfig } from '../plugin-helpers'
+import {
+  powerShellSingleQuote,
+  resolveHookShell,
+  shellSingleQuote,
+  toPosixShellPath,
+  type ResolvedShell,
+} from '../utils/command-runtime'
 
 export interface HookExecuteRequest {
   type: 'hook:execute'
@@ -41,33 +48,99 @@ export interface HookExecuteResponse {
 // Match Claude Code's DEFAULT_HTTP_HOOK_TIMEOUT_MS = 10 minutes.
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
 
-/** Pick the best interpreter for the requested shell. On Windows we fall
- *  back to `bash.exe` from Git for Windows when shell='bash' (Claude Code
- *  itself does the same). */
-function resolveShell(shell?: string): { bin: string; flag: string } {
-  const isWin = process.platform === 'win32'
-  switch (shell) {
-    case 'powershell':
-      return { bin: isWin ? 'pwsh.exe' : 'pwsh', flag: '-Command' }
-    case 'sh':
-      return { bin: 'sh', flag: '-c' }
-    case 'zsh':
-      return { bin: 'zsh', flag: '-c' }
-    case 'bash':
-    default:
-      return { bin: isWin ? 'bash.exe' : 'bash', flag: '-c' }
+function portableBasename(value: string): string {
+  return value.split(/[\\/]/).filter(Boolean).at(-1) ?? value
+}
+
+/** Server payloads contain transcript paths from the Linux container. Local
+ * hooks execute on the client, where the same JSONL is mirrored under the
+ * Kamin cache directory. Do not expose a path that cannot exist on Windows. */
+export function localizeHookPayload(
+  payload: Record<string, unknown>,
+  cacheDir: string | undefined = process.env.KAMIN_CACHE_DIR,
+): Record<string, unknown> {
+  const localized = { ...payload }
+  if (!cacheDir) return localized
+  for (const key of ['transcript_path', 'agent_transcript_path'] as const) {
+    const remotePath = localized[key]
+    if (typeof remotePath === 'string' && remotePath.length > 0) {
+      localized[key] = path.join(cacheDir, 'transcripts', portableBasename(remotePath))
+    }
+  }
+  return localized
+}
+
+function nativeNodeCommand(command: string): string {
+  return /(^|[\\/])node(?:\.exe)?$/i.test(command) ? process.execPath : command
+}
+
+function shellNodeShim(shell: ResolvedShell): string {
+  if (shell.kind === 'powershell') {
+    const executable = powerShellSingleQuote(process.execPath)
+    return `function node { & ${executable} @args }; function node.exe { & ${executable} @args }; `
+  }
+  const executable = toPosixShellPath(process.execPath)
+  return `node() { ${shellSingleQuote(executable)} "$@"; }; node.exe() { node "$@"; }; `
+}
+
+function shellPluginEnvValue(value: string, shell: ResolvedShell): string {
+  return shell.kind === 'bash' || shell.kind === 'sh' || shell.kind === 'zsh'
+    ? toPosixShellPath(value)
+    : value
+}
+
+function powerShellEnvPlaceholders(command: string): string {
+  return command
+    .replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, '${env:CLAUDE_PLUGIN_ROOT}')
+    .replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, '${env:CLAUDE_PLUGIN_DATA}')
+    .replace(/\$\{CLAUDE_PROJECT_DIR\}/g, '${env:CLAUDE_PROJECT_DIR}')
+}
+
+async function killProcessTree(proc: import('node:child_process').ChildProcess): Promise<void> {
+  if (!proc.pid) return
+  if (process.platform === 'win32') {
+    await new Promise<void>((resolve) => {
+      const killer = spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      })
+      killer.on('error', () => resolve())
+      killer.on('close', () => resolve())
+    })
+    return
+  }
+  try { process.kill(-proc.pid, 'SIGKILL') } catch {
+    try { proc.kill('SIGKILL') } catch { /* best effort */ }
   }
 }
 
 export async function executeHook(req: HookExecuteRequest): Promise<HookExecuteResponse['result']> {
   const start = Date.now()
-  const { bin, flag } = resolveShell(req.shell)
   const timeoutMs = req.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const cwd = req.cwd && req.cwd.length > 0 ? req.cwd : os.homedir()
+  const execForm = req.args !== undefined
+
+  let shell: ResolvedShell | undefined
+  if (!execForm) {
+    try {
+      shell = await resolveHookShell(req.shell)
+    } catch (err) {
+      return {
+        stdout: '', stderr: err instanceof Error ? err.message : String(err),
+        exitCode: 127, outcome: 'error', durationMs: Date.now() - start,
+      }
+    }
+  }
 
   let command = req.command
   let args = req.args
   const pluginEnv: Record<string, string> = {}
+  if (execForm) {
+    command = command.replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd)
+    args = args?.map(arg => arg.replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd))
+  } else if (shell?.kind === 'powershell') {
+    command = powerShellEnvPlaceholders(command)
+  }
   if (req.pluginId) {
     const installed = await loadInstalledPluginsMap()
     const pluginRoot = installed.get(req.pluginId)?.installPath
@@ -80,7 +153,7 @@ export async function executeHook(req: HookExecuteRequest): Promise<HookExecuteR
     const options = loadPluginOptions(req.pluginId)
     const dataDir = path.join(os.homedir(), '.claude', 'plugins', 'data', req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, '-'))
     try { fs.mkdirSync(dataDir, { recursive: true }) } catch { /* best effort */ }
-    if (!args && /\$\{user_config\.[^}]+\}/.test(command)) {
+    if (!execForm && /\$\{user_config\.[^}]+\}/.test(command)) {
       return {
         stdout: '',
         stderr: 'Shell-form plugin hook commands cannot reference ${user_config.*}; use exec-form args or CLAUDE_PLUGIN_OPTION_<KEY>',
@@ -89,44 +162,58 @@ export async function executeHook(req: HookExecuteRequest): Promise<HookExecuteR
         durationMs: Date.now() - start,
       }
     }
-    // Exec-form keeps configurable values in argv slots. Shell-form receives
-    // them only through CLAUDE_PLUGIN_OPTION_* below.
-    if (args) command = substituteUserConfig(command, options)
-    command = command
-      .replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot)
-      .replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir)
-      .replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd)
-    args = args?.map(arg => substituteUserConfig(arg, options)
-      .replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot)
-      .replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir)
-      .replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd))
+    // Exec-form keeps configurable values in argv slots and receives native
+    // host paths. Shell-form keeps Claude's documented env placeholders so
+    // quoting remains the plugin author's responsibility instead of ours.
+    if (execForm) {
+      command = substituteUserConfig(command, options)
+        .replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot)
+        .replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir)
+        .replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd)
+      args = args?.map(arg => substituteUserConfig(arg, options)
+        .replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot)
+        .replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir)
+        .replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd))
+    }
     for (const [key, value] of Object.entries(options)) {
       pluginEnv[`CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`] = String(value)
     }
-    pluginEnv.CLAUDE_PLUGIN_ROOT = pluginRoot
-    pluginEnv.CLAUDE_PLUGIN_DATA = dataDir
-    pluginEnv.CLAUDE_PROJECT_DIR = cwd
+    pluginEnv.CLAUDE_PLUGIN_ROOT = shell ? shellPluginEnvValue(pluginRoot, shell) : pluginRoot
+    pluginEnv.CLAUDE_PLUGIN_DATA = shell ? shellPluginEnvValue(dataDir, shell) : dataDir
     const pluginBin = path.join(pluginRoot, 'bin')
     if (fs.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${path.delimiter}${process.env.PATH ?? ''}`
   }
+  pluginEnv.CLAUDE_PROJECT_DIR = shell ? shellPluginEnvValue(cwd, shell) : cwd
+  if (execForm) command = nativeNodeCommand(command)
+  else command = shellNodeShim(shell!) + command
+
+  const payload = localizeHookPayload(req.payload, req.env?.KAMIN_CACHE_DIR ?? process.env.KAMIN_CACHE_DIR)
   return new Promise((resolve) => {
-    let proc
+    let proc: import('node:child_process').ChildProcess
+    let settled = false
+    const finish = (result: HookExecuteResponse['result']): void => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
     try {
-      proc = args
-        ? spawn(command, args, {
+      proc = execForm
+        ? spawn(command, args ?? [], {
           cwd,
           env: { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' },
           windowsHide: true,
           stdio: ['pipe', 'pipe', 'pipe'],
+          detached: process.platform !== 'win32',
         })
-        : spawn(bin, [flag, command], {
-        cwd,
-        env: { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' },
-        windowsHide: true,
-        stdio: ['pipe', 'pipe', 'pipe'],
+        : spawn(shell!.bin, [...shell!.args, command], {
+          cwd,
+          env: { ...process.env, ...(req.env ?? {}), ...pluginEnv, CLAUDE_BRIDGE_HOOK: '1' },
+          windowsHide: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          detached: process.platform !== 'win32',
         })
     } catch (err) {
-      resolve({
+      finish({
         stdout: '', stderr: `spawn failed: ${err instanceof Error ? err.message : String(err)}`,
         exitCode: 127, outcome: 'error', durationMs: Date.now() - start,
       })
@@ -140,8 +227,8 @@ export async function executeHook(req: HookExecuteRequest): Promise<HookExecuteR
     proc.stderr?.on('data', d => { if (stderr.length < maxOutput) stderr += d.toString().slice(0, maxOutput - stderr.length) })
 
     const killer = setTimeout(() => {
-      try { proc.kill('SIGKILL') } catch { /* ignore */ }
-      resolve({
+      void killProcessTree(proc)
+      finish({
         stdout, stderr: stderr + `\n[hook killed after ${timeoutMs}ms]`,
         exitCode: 124, outcome: 'timeout', durationMs: Date.now() - start,
       })
@@ -150,11 +237,13 @@ export async function executeHook(req: HookExecuteRequest): Promise<HookExecuteR
     proc.on('exit', (code) => {
       clearTimeout(killer)
       let jsonOutput: Record<string, unknown> | undefined
-      try {
-        const trimmed = stdout.trim()
-        if (trimmed.startsWith('{')) jsonOutput = JSON.parse(trimmed)
-      } catch { /* not JSON, keep raw stdout */ }
-      resolve({
+      if (code === 0) {
+        try {
+          const trimmed = stdout.trim()
+          if (trimmed.startsWith('{')) jsonOutput = JSON.parse(trimmed)
+        } catch { /* not JSON, keep raw stdout */ }
+      }
+      finish({
         stdout, stderr,
         exitCode: code ?? 0,
         outcome: code === 0 ? 'success' : 'error',
@@ -165,7 +254,7 @@ export async function executeHook(req: HookExecuteRequest): Promise<HookExecuteR
 
     proc.on('error', (err) => {
       clearTimeout(killer)
-      resolve({
+      finish({
         stdout, stderr: stderr + `\nspawn error: ${err.message}`,
         exitCode: 127, outcome: 'error', durationMs: Date.now() - start,
       })
@@ -173,7 +262,7 @@ export async function executeHook(req: HookExecuteRequest): Promise<HookExecuteR
 
     proc.stdin?.on('error', () => { /* ignore EPIPE when the hook exits without reading stdin */ })
     try {
-      proc.stdin?.write(JSON.stringify(req.payload))
+      proc.stdin?.write(JSON.stringify(payload))
       proc.stdin?.end()
     } catch { /* ignore EPIPE */ }
   })

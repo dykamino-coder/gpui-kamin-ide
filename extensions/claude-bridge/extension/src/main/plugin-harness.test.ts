@@ -111,6 +111,18 @@ describe('plugin harness discovery', () => {
     })
   })
 
+  it('maps native tool matchers to the bridge user-tools server', () => {
+    const rewritten = rewritePluginMcpMatchers('sample', {
+      PreToolUse: [{
+        matcher: 'Bash|Read|mcp__user-tools__Write|NotBash',
+        hooks: [{ type: 'command', command: 'guard' }],
+      }],
+    })
+    expect((rewritten.PreToolUse?.[0] as any).matcher).toBe(
+      'mcp__user-tools__Bash|mcp__user-tools__Read|mcp__user-tools__Write|NotBash',
+    )
+  })
+
   it('rejects new cross-marketplace name collisions without changing the official namespace', () => {
     expect(() => assertUniqueEnabledPluginNames(['sample@alpha', 'sample@zeta']))
       .toThrow('Plugin namespace "sample" conflict: sample@alpha and sample@zeta cannot be enabled together')

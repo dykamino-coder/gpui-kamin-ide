@@ -1,8 +1,10 @@
 // Take user's HookSettings → produce CLI-bound HookSettings where every
-// command-type hook with effectiveHost ∈ {'local','http'} is replaced by
-// an `http`-type hook pointing at our /api/hooks/<session>/<event>/<id>
-// proxy endpoint. Server-side command hooks are kept as-is (CLI runs
-// them inside the container). Prompt/agent/http hooks always pass
+// local command hook is replaced by an exec-form Node relay pointing at our
+// /api/hooks/<session>/<event>/<id> endpoint. The relay reproduces the local
+// command's stdout, stderr, and exit code inside the Linux CLI process. This
+// lets Claude Code apply its native, event-specific command-hook semantics
+// (including exit 2) instead of trying to translate them through HTTP hooks.
+// Server-side command hooks are kept as-is. Prompt/agent/http hooks pass
 // through unchanged — CLI handles them natively.
 
 import { config } from '../config'
@@ -13,6 +15,25 @@ import type {
   HookSource,
 } from './types'
 import { registerSessionHooks } from './registry'
+
+export function buildHookCommandRelay(url: string, hookProxyToken: string): string {
+  return [
+    'let d="";',
+    'process.stdin.setEncoding("utf8");',
+    'process.stdin.on("data",c=>d+=c);',
+    'process.stdin.on("end",async()=>{try{',
+    `const r=await fetch(${JSON.stringify(url)},{method:"POST",headers:{"Content-Type":"application/json","Authorization":${JSON.stringify(`Bearer ${hookProxyToken}`)},"X-Bridge-Hook-Relay":"command"},body:d});`,
+    'const t=await r.text();',
+    'if(!r.ok){if(t)process.stderr.write(t);process.exitCode=1;return}',
+    'let j;try{j=JSON.parse(t)}catch{process.stderr.write("Invalid hook relay response");process.exitCode=1;return}',
+    'const o=j&&j.result;',
+    'if(!o||typeof o!=="object"){process.stderr.write("Missing hook relay result");process.exitCode=1;return}',
+    'if(typeof o.stdout==="string")process.stdout.write(o.stdout);',
+    'if(typeof o.stderr==="string")process.stderr.write(o.stderr);',
+    'const x=Number(o.exitCode);process.exitCode=Number.isInteger(x)?x:1;',
+    '}catch(e){process.stderr.write(String(e));process.exitCode=1}});',
+  ].join('')
+}
 
 /**
  * Rewrite the user's hooks for a session and return the JSON shape that
@@ -30,16 +51,6 @@ export function rewriteHooksForCli(
   const out: HookSettings = {}
   const proxyOrigin = `http://127.0.0.1:${config.port}`
 
-  const asyncProxyCommand = (url: string): string => {
-    const script = [
-      'let d="";',
-      'process.stdin.setEncoding("utf8");',
-      'process.stdin.on("data",c=>d+=c);',
-      `process.stdin.on("end",async()=>{try{const r=await fetch(${JSON.stringify(url)},{method:"POST",headers:{"Content-Type":"application/json","Authorization":${JSON.stringify(`Bearer ${hookProxyToken}`)}},body:d});const t=await r.text();if(t)process.stdout.write(t);const x=Number(r.headers.get("x-bridge-hook-exit-code"));process.exit(Number.isFinite(x)?x:(r.ok?0:1))}catch(e){process.stderr.write(String(e));process.exit(1)}});`,
-    ].join('')
-    return `node -e "eval(Buffer.from('${Buffer.from(script).toString('base64')}','base64').toString('utf8'))"`
-  }
-
   for (const [event, matchers] of Object.entries(hooks)) {
     if (!Array.isArray(matchers)) continue
     const newMatchers = matchers.map(m => {
@@ -56,36 +67,23 @@ export function rewriteHooksForCli(
 
         const proxyUrl = `${proxyOrigin}/api/hooks/${sessionId}/${encodeURIComponent(event)}/${reg.id}`
 
-        // Async is command-only in Claude Code. Keep it a command and run a
-        // tiny container-side Node relay in the background; the real command
-        // still executes on the client host through the authenticated proxy.
-        if (h.async || h.asyncRewake) {
-          return {
-            type: 'command',
-            command: asyncProxyCommand(proxyUrl),
-            timeout: h.timeout,
-            if: h.if,
-            statusMessage: h.statusMessage,
-            once: h.once,
-            async: true,
-            asyncRewake: h.asyncRewake,
-          }
-        }
-
-        // Synchronous local → rewrite as http hook pointing at our proxy.
-        // CLI will POST the hook input JSON; the proxy looks up the original
-        // command, dispatches per host, returns CLI-compatible response.
-        return {
-          type: 'http',
-          url: proxyUrl,
-          headers: {
-            Authorization: `Bearer ${hookProxyToken}`,
-          },
+        // Keep command-hook semantics on both sides of the bridge. Exec-form
+        // avoids quoting/token expansion in the container and works for sync,
+        // async, and asyncRewake without event-specific HTTP translations.
+        const relay: HookHandler = {
+          type: 'command',
+          command: 'node',
+          args: ['-e', buildHookCommandRelay(proxyUrl, hookProxyToken)],
           timeout: h.timeout,
           if: h.if,
           statusMessage: h.statusMessage,
           once: h.once,
         }
+        if (h.async || h.asyncRewake) {
+          relay.async = true
+          relay.asyncRewake = h.asyncRewake
+        }
+        return relay
       })
       return { matcher: m.matcher, hooks: newHandlers }
     })

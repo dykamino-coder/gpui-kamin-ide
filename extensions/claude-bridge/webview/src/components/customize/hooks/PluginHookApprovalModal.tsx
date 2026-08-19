@@ -25,6 +25,15 @@ function looksDangerous(handler: any): boolean {
   return DANGEROUS_PATTERNS.some(p => p.test(text))
 }
 
+function showRestartNotice(pluginId: string): void {
+  showToast({
+    type: 'info',
+    title: `${pluginId}: restart required`,
+    message: 'Hook approvals are synced. Close and reopen existing chats to apply the new hook set.',
+    duration: 12_000,
+  })
+}
+
 /** Modal that pops when a freshly installed plugin declares hooks. User
  *  must explicitly approve each (or all) before they can fire. Approved
  *  set is stored as sha256 hashes per plugin — re-install of the same
@@ -68,6 +77,7 @@ export function PluginHookApprovalModal(): JSX.Element | null {
     try {
       const result = await bridge.hooksSetPluginApproval(pending.pluginId, Array.from(selected))
       if (!result?.ok) throw new Error(result?.error || 'Approval could not be saved')
+      if (result.restartRequired) showRestartNotice(pending.pluginId)
       setQueue(current => current.slice(1))
     } catch (err) {
       showToast({ type: 'error', title: pending.pluginId, message: err instanceof Error ? err.message : String(err) })
@@ -82,6 +92,7 @@ export function PluginHookApprovalModal(): JSX.Element | null {
     try {
       const result = await bridge.hooksSetPluginApproval(pending.pluginId, [])
       if (!result?.ok) throw new Error(result?.error || 'Rejection could not be saved')
+      if (result.restartRequired) showRestartNotice(pending.pluginId)
       setQueue(current => current.slice(1))
     } catch (err) {
       showToast({ type: 'error', title: pending.pluginId, message: err instanceof Error ? err.message : String(err) })
