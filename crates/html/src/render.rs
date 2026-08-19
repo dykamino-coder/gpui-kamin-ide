@@ -6470,17 +6470,27 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         if let Some(h) = grown {
             height = h;
         }
+        // Распорка — ЛИШНИЙ ребёнок гибкой лунки с собственным `gap`: каждая
+        // добавляет одну щель, и позиции уезжали вниз на зазор за каждую
+        // (column-align-items-004: четвёртый элемент сидел на 10 ниже).
+        // Компенсация — размер распорки уменьшается на зазор; распорка не
+        // толще зазора не ставится вовсе (её роль играет сама щель).
+        let pad_spacer = |buckets: &mut Vec<Vec<Node>>, lane: usize, size: f32| {
+            if size > along_gap + 0.01 {
+                buckets[lane].push(spacer(size - along_gap, row_dir));
+            }
+        };
         for lane in at..at + span {
             if lane != at {
                 let pad = top - filled[lane];
                 if pad > 0.0 {
-                    buckets[lane].push(spacer(pad, row_dir));
+                    pad_spacer(&mut buckets, lane, pad);
                 }
                 // Место, занятое чужим элементом: своей коробки тут нет, но
                 // следующий элемент лунки обязан начаться ПОД ним.
                 buckets[lane].push(spacer(height, row_dir));
             } else if top > filled[at] {
-                buckets[at].push(spacer(top - filled[at], row_dir));
+                pad_spacer(&mut buckets, at, top - filled[at]);
             }
             filled[lane] = top + height + along_gap;
             used[lane].push((top, top + height));
