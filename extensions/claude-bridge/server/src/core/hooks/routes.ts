@@ -1,15 +1,15 @@
-// HTTP endpoint that CLI POSTs to when a rewritten hook fires.
+// Endpoint that the container-side command relay POSTs to when a rewritten
+// local hook fires.
 // URL shape: POST /api/hooks/:sessionId/:event/:hookId
 // Auth: Bearer token (same as MCP token for the session).
 //
-// CLI's `http` hook flow:
-//   1. CLI sends POST with JSON body = hook input payload
+// Command relay flow:
+//   1. CLI runs an exec-form Node command which forwards its stdin JSON
 //   2. We look up the hook in the registry and dispatch (local/server/http)
-//   3. We return JSON shape that CLI's hook-output protocol expects:
-//        { continue: true|false, stopReason?, suppressOutput?,
-//          systemMessage?, decision?, hookSpecificOutput? }
-//      For now we just pass through stdout-as-text (CLI tolerates plain text);
-//      structured override comes from hook's own JSON-stdout if any.
+//   3. We return the exact stdout/stderr/exitCode envelope. The relay writes
+//      those streams and exits identically, so Claude Code remains the single
+//      authority for event-specific command-hook semantics.
+// Legacy HTTP sessions are still translated below until they are restarted.
 
 import { Hono } from 'hono'
 import { dispatchHook } from './dispatcher'
@@ -86,6 +86,7 @@ export function createHooksRoutes(): Hono {
     } catch {
       return c.json({ error: 'Invalid JSON' }, 400)
     }
+    const commandRelay = c.req.header('X-Bridge-Hook-Relay') === 'command'
 
     // Deterministic session status: the FIRING of these CLI lifecycle events is
     // the authoritative signal (vs scraping OSC spinner glyphs). Emit before any
@@ -97,6 +98,14 @@ export function createHooksRoutes(): Hono {
       // its shell spawn). A user's real hook for the same event still dispatches.
       const reg = listSession(sessionId).find(h => h.id === hookId)
       if (reg?.source.kind === 'bridge') {
+        if (commandRelay) {
+          return c.json({
+            result: {
+              stdout: '', stderr: '', exitCode: 0,
+              outcome: 'success', durationMs: 0,
+            },
+          }, 200)
+        }
         return c.json({ continue: true, suppressOutput: true }, 200)
       }
     }
@@ -107,21 +116,26 @@ export function createHooksRoutes(): Hono {
     const result = await dispatchHook(sessionId, hookId, payload, session.ws ?? null, session.tokenId)
     c.header('X-Bridge-Hook-Exit-Code', String(result.exitCode))
 
-    // Map our HookExecutionResult to a CLI-compatible response. CLI accepts:
+    if (commandRelay) {
+      return c.json({ result }, 200)
+    }
+
+    // Legacy HTTP-hook compatibility for sessions created before this fix.
+    // CLI accepts:
     //   - non-2xx HTTP                                 → treated as hook error
     //   - 2xx with JSON body matching HookOutput shape → parsed & applied
     //   - 2xx with plain text                          → printed as systemMessage
-    if (result.jsonOutput) {
-      // Hook returned a structured JSON — pass through unchanged.
-      return c.json(result.jsonOutput, 200)
-    }
     if (result.exitCode === 2) {
-      // CLI convention: exit 2 = block. Mirror as decision: block.
+      // Exit 2 must win over stdout JSON, matching native command hooks.
       return c.json({
         continue: false,
         stopReason: result.stderr || result.stdout || 'Hook blocked',
         decision: 'block',
       }, 200)
+    }
+    if (result.jsonOutput) {
+      // Hook returned structured JSON on exit 0 — pass through unchanged.
+      return c.json(result.jsonOutput, 200)
     }
     if (result.outcome === 'success') {
       // Plain text stdout — surface as systemMessage if non-empty.

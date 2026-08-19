@@ -431,7 +431,7 @@ export interface KaminBridgeApi {
   hooksTest(draft: { event: string; matcher?: string; handler: Record<string, unknown>; mockPayload?: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; result?: { stdout: string; stderr: string; exitCode: number; outcome: string; durationMs: number }; effectiveHost?: string }>
   hooksGetPluginApproval(pluginId: string): Promise<{ approved: boolean; hashes: string[] }>
   hooksListPendingPluginApprovals(): Promise<Array<{ pluginId: string; hooks: Array<{ event: string; matcher?: string; handler: Record<string, unknown>; hash: string }>; approvedHashes: string[] }>>
-  hooksSetPluginApproval(pluginId: string, hashes: string[]): Promise<{ ok: boolean; error?: string }>
+  hooksSetPluginApproval(pluginId: string, hashes: string[]): Promise<{ ok: boolean; error?: string; restartRequired?: boolean }>
   onPluginHooksAwaitingApproval(cb: (data: { pluginId: string; hooks: Array<{ event: string; matcher?: string; handler: Record<string, unknown>; hash: string }>; approvedHashes?: string[] }) => void): () => void
   openExternal(url: string): Promise<void>
 

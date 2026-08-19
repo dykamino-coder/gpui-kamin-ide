@@ -111,7 +111,9 @@ async function dispatchLocal(
         command: (reg.handler as { command: string }).command,
         args: (reg.handler as { args?: string[] }).args,
         pluginId: reg.source.kind === 'plugin' ? reg.source.pluginId : undefined,
-        shell: (reg.handler as { shell?: string }).shell ?? 'bash',
+        // Preserve "unspecified": the Windows client may fall back from Git
+        // Bash to PowerShell. An explicit shell remains strict.
+        shell: (reg.handler as { shell?: string }).shell,
         cwd: payload.cwd,
         env: { CLAUDE_BRIDGE_HOOK: '1' },
         payload,
@@ -187,10 +189,12 @@ async function dispatchServer(
     proc.on('exit', (code) => {
       clearTimeout(killer)
       let jsonOutput: Record<string, unknown> | undefined
-      try {
-        const trimmed = stdout.trim()
-        if (trimmed.startsWith('{')) jsonOutput = JSON.parse(trimmed)
-      } catch { /* not JSON */ }
+      if (code === 0) {
+        try {
+          const trimmed = stdout.trim()
+          if (trimmed.startsWith('{')) jsonOutput = JSON.parse(trimmed)
+        } catch { /* not JSON */ }
+      }
       resolve({
         stdout, stderr,
         exitCode: code ?? 0,
