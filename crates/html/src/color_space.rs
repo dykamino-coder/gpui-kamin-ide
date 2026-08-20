@@ -600,7 +600,7 @@ pub(crate) fn resolve_relative(
 }
 
 /// sRGB → HSL: тон в градусах, насыщенность и светлота в долях.
-fn rgb_to_hsl(c: crate::value::Color) -> (f32, f32, f32) {
+pub(crate) fn rgb_to_hsl(c: crate::value::Color) -> (f32, f32, f32) {
     let (max, min) = (c.r.max(c.g).max(c.b), c.r.min(c.g).min(c.b));
     let l = (max + min) / 2.0;
     if (max - min).abs() < 1e-6 {
@@ -619,7 +619,7 @@ fn rgb_to_hsl(c: crate::value::Color) -> (f32, f32, f32) {
 }
 
 /// HSL → sRGB.
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
+pub(crate) fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let hp = h.rem_euclid(360.0) / 60.0;
     let x = c * (1.0 - (hp % 2.0 - 1.0).abs());

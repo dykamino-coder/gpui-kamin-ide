@@ -4485,7 +4485,26 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     }
     let mut idx = 0usize;
     let circle = radial && parts[0].contains("circle");
-    let angle = match parts[0].trim() {
+    // Способ ИНТЕРПОЛЯЦИИ (css-images-4 §3.4.1.1): `to right in hsl longer
+    // hue` — суффикс отделяется от направления, иначе матч направления
+    // промахивался и первый аргумент уходил в стопы.
+    let (head, interp) = match parts[0].find(" in ") {
+        Some(at) => (parts[0][..at].trim(), Some(parts[0][at + 4..].trim())),
+        None if parts[0].trim_start().starts_with("in ") => {
+            ("", Some(parts[0].trim_start()[3..].trim()))
+        }
+        None => (parts[0].trim(), None),
+    };
+    // (в hsl, метод longer?) — интерполяция нужна ЛЮБОМУ `in hsl`:
+    // shorter (дефолт) идёт короткой дугой тона, longer — длинной; эталоны
+    // пишут ref через `in hsl` без метода (gradient-longer-hue-hsl-002-ref).
+    let hsl_interp: Option<bool> = interp
+        .filter(|i| i.split_whitespace().next() == Some("hsl"))
+        .map(|i| i.contains("longer"));
+    if interp.is_some() && head.is_empty() {
+        idx = 1;
+    }
+    let angle = match head {
         a if a.ends_with("deg") => {
             idx = 1;
             a.trim_end_matches("deg").trim().parse().unwrap_or(180.0)
@@ -4564,11 +4583,45 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     }
     // Стопы без позиции распределяются равномерно — так же, как в CSS.
     let last = raw.len() - 1;
-    let stops: Vec<(Color, f32)> = raw
+    let mut stops: Vec<(Color, f32)> = raw
         .iter()
         .enumerate()
         .map(|(i, (c, pos))| (*c, pos.unwrap_or(i as f32 / last as f32)))
         .collect();
+    // `in hsl longer hue`: тон идёт ДЛИННОЙ дугой (css-images-4 §3.4.1.1).
+    // Растр интерполирует линейно в sRGB, поэтому дуга выкладывается
+    // СИНТЕТИЧЕСКИМИ промежуточными стопами (gradient-longer-hue-hsl-001).
+    if let (Some(longer), true) = (hsl_interp.filter(|_| std::env::var("HSL_ARC").is_ok()), stops.len() >= 2) {
+        let mut dense: Vec<(Color, f32)> = vec![];
+        for w in stops.windows(2) {
+            let ((c1, p1), (c2, p2)) = (w[0], w[1]);
+            dense.push((c1, p1));
+            let (h1, s1, l1) = crate::color_space::rgb_to_hsl(c1);
+            let (h2, s2, l2) = crate::color_space::rgb_to_hsl(c2);
+            // shorter: дуга в (-180,180]; longer — противоположная ей.
+            let mut d = (h2 - h1).rem_euclid(360.0);
+            if d > 180.0 {
+                d -= 360.0;
+            }
+            if longer {
+                if d > 0.0 {
+                    d -= 360.0;
+                } else if d <= 0.0 {
+                    d += 360.0;
+                }
+            }
+            const K: usize = 48;
+            for i in 1..K {
+                let t = i as f32 / K as f32;
+                let h = (h1 + d * t).rem_euclid(360.0);
+                let (r, g, b) = crate::color_space::hsl_to_rgb(h, s1 + (s2 - s1) * t, l1 + (l2 - l1) * t);
+                let a = c1.a + (c2.a - c1.a) * t;
+                dense.push((Color { r, g, b, a }, p1 + (p2 - p1) * t));
+            }
+        }
+        dense.push(*stops.last().unwrap());
+        stops = dense;
+    }
     // Точечные стопы пригодны к отрисовке, только когда позиции есть у ВСЕХ:
     // смешение точек с долями требует длины оси уже при разборе.
     let stops_px: Vec<(Color, f32)> = if !any_pct && raw_px.iter().all(|(_, p)| p.is_some()) {
