@@ -3201,7 +3201,15 @@ fn content_sized(el: AnyElement, c: &Computed) -> AnyElement {
     // дорожку), ломает `white-space-intrinsic-size-024/025` (обводка обязана
     // облегать глифы). Значит дорожка местами шире содержимого, и сперва надо
     // разобраться с НЕЙ, а не с выравниванием в ней.
-    wrap.style().justify_items = Some(gpui::AlignItems::FlexStart);
+    // Авто-поля прижимают КОРОБКУ в свободном месте (CSS 2.1 §10.3.3):
+    // `margin-left: auto` при точечном max-content — прижим вправо
+    // (align-baseline-ref: правый столбец текста уезжал влево).
+    let auto = |l: Option<Len>| matches!(l, Some(Len::Auto));
+    wrap.style().justify_items = Some(match (auto(c.margin.left), auto(c.margin.right)) {
+        (true, false) => gpui::AlignItems::FlexEnd,
+        (true, true) => gpui::AlignItems::Center,
+        _ => gpui::AlignItems::FlexStart,
+    });
     // Выравнивание элемента поперёк РОДИТЕЛЯ переезжает на обёртку: во
     // флексе родителя стоит она, и без переноса `justify-items: center` в
     // лунках глох на min-content-элементах
