@@ -6397,13 +6397,25 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 // (column-auto-repeat-max-content-001: две дорожки по 120, не
                 // по 150).
                 None if repeat.intrinsic => {
-                    // `fit-content(N)` — по содержимому, но не шире потолка:
-                    // step уже равен max-content самого большого элемента.
-                    match repeat.fit_px {
-                        Some(cap) => {
-                            vec![TrackSize::Single(Track::Px(step.min(cap))); n]
+                    // КОЛОНКИ по содержимому = точечный step (вклады ДО
+                    // размещения, все auto-элементы в любую;
+                    // column-max-content-001 0.63→0.00 и span-суммы работают).
+                    // РЯДЫ остаются по СВОЕМУ содержимому: точечный step
+                    // ЗАМЕРЕН в минус (row-mc-001 0.63→3.33 — ряды у ref
+                    // разной высоты). `fit-content(N)` — потолок.
+                    if !row_dir {
+                        let w = match repeat.fit_px {
+                            Some(cap) => step.min(cap),
+                            None => step,
+                        };
+                        vec![TrackSize::Single(Track::Px(w)); n]
+                    } else {
+                        match repeat.fit_px {
+                            Some(cap) => {
+                                vec![TrackSize::Single(Track::Px(step.min(cap))); n]
+                            }
+                            None => vec![TrackSize::Single(Track::MaxContent); n],
                         }
-                        None => vec![TrackSize::Single(Track::MaxContent); n],
                     }
                 }
                 // Дорожка по содержимому делит место поровну: свой размер ей
