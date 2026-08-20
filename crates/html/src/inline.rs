@@ -446,6 +446,14 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         }
     }
     c.font_size = own.font_size.or(parent.font_size);
+    // Кегль НОЛЬ вешает набор намертво (DirectWrite-цикл: `font: 0 Ahem` из
+    // vars-font-shorthand-001 замораживал страницу навсегда) — клэмп к
+    // микроскопическому: визуально то же «ничего», формулы живы.
+    if let Some(Len::Px(v)) = c.font_size {
+        if v <= 0.0 {
+            c.font_size = Some(Len::Px(0.01));
+        }
+    }
     c.font_weight = own.font_weight.or(parent.font_weight);
     c.italic = own.italic.or(parent.italic);
     c.underline = own.underline.or(parent.underline);
