@@ -3784,14 +3784,24 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     w: (if side < 0 { off_l } else { off_r }) + mw + sm,
                 },
             }
-        } else if raw.contains("url(") && !raw.contains("-gradient(") {
-            // Форма из АЛЬФЫ картинки (css-shapes §3.2.1): изображение
-            // ложится в content-box, экстент строки — самый дальний от
-            // начала стороны пиксель с альфой выше порога.
+        } else if raw.contains("url(") || raw.contains("-gradient(") {
+            // Форма из АЛЬФЫ картинки или градиента (css-shapes §3.2.1):
+            // изображение ложится в content-box, экстент строки — самый
+            // дальний от начала стороны пиксель с альфой выше порога.
             let (cbx, cby) = (ml + bl + pl, mt + bt + pt);
             let thr = f.style.shape_threshold.unwrap_or(0.0);
-            let profile = crate::computed::parse_url(&raw)
-                .and_then(|u| crate::background::load(&u))
+            let profile = (if raw.contains("-gradient(") {
+                // Градиент растрируется точно в content-box.
+                let g = raw
+                    .find("-gradient(")
+                    .and_then(|at| raw[..at].rfind(|c: char| c.is_whitespace()).map(|s| s + 1).or(Some(0)))
+                    .map(|s| raw[s..].trim().to_string())
+                    .unwrap_or_else(|| raw.clone());
+                crate::background::source(g.trim_end_matches(|c| c != ')'))
+                    .and_then(|src| src.raster((cw.max(1.0), chh.max(1.0))))
+            } else {
+                crate::computed::parse_url(&raw).and_then(|u| crate::background::load(&u))
+            })
                 .and_then(|img| {
                     let bytes = img.as_bytes(0)?;
                     let sz = img.size(0);
