@@ -6970,11 +6970,46 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 // (спека: свой размер в сабгридной оси игнорируется) —
                 // subgrid-stretch-001 19.8→20.4, нетто 0: реверт, только
                 // дорожки.
+                // Собственные края субгрида (margin+border+padding) ВЫЧИТАЮТСЯ
+                // из первой и последней дорожки куска (css-grid-2 §subgrids):
+                // дорожка 100px у субгрида с margin/padding/border по 10 —
+                // это внутренние 100−(10+10+10)=70 с каждой стороны краёв.
+                let side = |m: Option<Len>, b: Option<Len>, p: Option<Len>| -> f32 {
+                    let px = |l: Option<Len>| match l {
+                        Some(Len::Px(v)) => v,
+                        _ => 0.0,
+                    };
+                    px(m) + px(b) + px(p)
+                };
+                let bs = item.style.borders();
+                let (lead, trail) = if row_dir {
+                    (
+                        side(item.style.margin.top, bs.top, item.style.padding.top),
+                        side(item.style.margin.bottom, bs.bottom, item.style.padding.bottom),
+                    )
+                } else {
+                    (
+                        side(item.style.margin.left, bs.left, item.style.padding.left),
+                        side(item.style.margin.right, bs.right, item.style.padding.right),
+                    )
+                };
+                let mut slice = slice;
+                if let Some(TrackSize::Single(Track::Px(w))) = slice.first_mut() {
+                    *w = (*w - lead).max(0.0);
+                }
+                if let Some(TrackSize::Single(Track::Px(w))) = slice.last_mut() {
+                    *w = (*w - trail).max(0.0);
+                }
+                // В сабгридной оси SELF-выравнивание НЕ действует: субгрид
+                // держит ВСЮ дорожку (все четыре js/je/jc/jb варианта
+                // subgrid-alignment-in-subgridded-axis-001 обязаны совпасть).
                 if row_dir {
                     item.style.grid_rows = Some(slice);
+                    item.style.align_self = None;
                 } else {
                     item.style.grid_tracks = Some(slice);
                     item.style.grid_cols = Some(span as u16);
+                    item.style.justify_self = None;
                 }
             }
         }

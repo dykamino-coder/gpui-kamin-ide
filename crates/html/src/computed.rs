@@ -1562,6 +1562,12 @@ impl Computed {
                         self.lanes_inline = true;
                         Some(Display::GridLanes)
                     }
+                    // Двухсловная строчная сетка: прежний откат (393→381) был
+                    // БЕЗ обтяжки InlineGrid — теперь строчная сетка обнимает
+                    // Px-дорожки, и разбор снимается с полки (эталоны
+                    // subgrid-alignment-* пишут `display: inline grid`).
+                    "inline grid" => Some(Display::InlineGrid),
+                    "inline flex" => Some(Display::InlineFlex),
                     "none" => Some(Display::None),
                     "block" => Some(Display::Block),
                     "inline-block" => Some(Display::InlineBlock),

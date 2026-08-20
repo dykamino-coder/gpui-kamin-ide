@@ -231,6 +231,34 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
         }
         _ => {}
     }
+    // Строчная сетка ОБНИМАЕТ свои Px-дорожки (shrink-to-fit): блочная
+    // ширина на всю строку ломала все пары с `display: inline grid` в
+    // разметке эталонов (subgrid-alignment-in-subgridded-axis: серый фон до
+    // края страницы вместо 100px). gpui-размер — border-box: паддинги и
+    // рамки сверху.
+    if c.display == Some(Display::InlineGrid) && c.width.is_none() {
+        if let Some(tracks) = &c.grid_tracks {
+            let all_px: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
+                crate::computed::TrackSize::Single(crate::computed::Track::Px(w)) => {
+                    Some(acc + w)
+                }
+                _ => None,
+            });
+            if let Some(mut total) = all_px.filter(|t| *t > 0.0) {
+                let px_of = |l: Option<Len>| match l {
+                    Some(Len::Px(v)) => v,
+                    _ => 0.0,
+                };
+                let b = c.borders();
+                total += px_of(c.column_gap) * (tracks.len().saturating_sub(1)) as f32
+                    + px_of(c.padding.left)
+                    + px_of(c.padding.right)
+                    + px_of(b.left)
+                    + px_of(b.right);
+                d = d.w(px(total));
+            }
+        }
+    }
     if let Some(rows) = &c.grid_rows {
         let tracks: Vec<gpui::GridTrack> = rows.iter().map(track).collect();
         d = if flip {
