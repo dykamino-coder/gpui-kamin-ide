@@ -3450,6 +3450,8 @@ impl Computed {
                         .split(',')
                         .filter_map(|n| {
                             n.trim()
+                                .trim_end_matches("grad")
+                                .trim_end_matches("turn")
                                 .trim_end_matches("deg")
                                 .trim_end_matches("rad")
                                 .trim_end_matches("px")
@@ -3458,30 +3460,46 @@ impl Computed {
                                 .ok()
                         })
                         .collect();
+                    // Угол i-го аргумента с ЕГО единицей: grad — 400 на
+                    // оборот, turn — целый оборот; rad проверяется после
+                    // grad («grad» кончается на «rad»).
+                    let angle_at = |i: usize| -> f32 {
+                        let t = arg.split(',').nth(i).unwrap_or("").trim();
+                        let v = nums.get(i).copied().unwrap_or(0.0);
+                        if t.ends_with("grad") {
+                            v * std::f32::consts::PI / 200.0
+                        } else if t.ends_with("turn") {
+                            v * std::f32::consts::TAU
+                        } else if t.ends_with("rad") {
+                            v
+                        } else {
+                            v.to_radians()
+                        }
+                    };
+                    // Доля i-го аргумента: процент — сотая (scale(50%) = 0.5).
+                    let frac_at = |i: usize, def: f32| -> f32 {
+                        let t = arg.split(',').nth(i).unwrap_or("").trim();
+                        match nums.get(i) {
+                            None => def,
+                            Some(v) if t.ends_with('%') => v / 100.0,
+                            Some(v) => *v,
+                        }
+                    };
                     if nums.is_empty() && !arg.is_empty() && name != "none" {
                         invalid = true;
                     }
                     let first = nums.first().copied().unwrap_or(0.0);
-                    // Угол в градусах — умолчание CSS; радианы помечены явно.
-                    let angle = if arg.contains("rad") {
-                        first
-                    } else {
-                        first.to_radians()
-                    };
+                    let angle = angle_at(0);
                     match name {
                         "rotate" | "rotateZ" => t.rotate_rad += angle,
                         "scale" => {
-                            t.scale.0 *= first;
-                            t.scale.1 *= nums.get(1).copied().unwrap_or(first);
+                            let sx = frac_at(0, 1.0);
+                            t.scale.0 *= sx;
+                            t.scale.1 *= frac_at(1, sx);
                         }
                         "skew" => {
                             t.skew_rad.0 += angle;
-                            let second = nums.get(1).copied().unwrap_or(0.0);
-                            t.skew_rad.1 += if arg.contains("rad") {
-                                second
-                            } else {
-                                second.to_radians()
-                            };
+                            t.skew_rad.1 += angle_at(1);
                         }
                         // matrix(a b c d e f): разложение на компоненты
                         // (перенос, поворот, масштаб, скос) — QR-подобное,
@@ -3504,8 +3522,8 @@ impl Computed {
                         }
                         "skewX" => t.skew_rad.0 += angle,
                         "skewY" => t.skew_rad.1 += angle,
-                        "scaleX" => t.scale.0 *= first,
-                        "scaleY" => t.scale.1 *= first,
+                        "scaleX" => t.scale.0 *= frac_at(0, 1.0),
+                        "scaleY" => t.scale.1 *= frac_at(0, 1.0),
                         // Поворот вокруг оси экрана БЕЗ перспективы — это
                         // прямая проекция на плоскость, то есть сжатие поперёк
                         // оси ровно на косинус угла (css-transforms-2 §11):
@@ -3656,12 +3674,22 @@ impl Computed {
                         _ => None,
                     }
                 };
-                let mut px_it = v.split_whitespace();
-                let (a, b) = (px_it.next().unwrap_or(""), px_it.next().unwrap_or("center"));
-                self.transform_origin_px = (px_axis(a), px_axis(b));
-                let mut it = v.split_whitespace();
-                let first = it.next().unwrap_or("center");
-                let second = it.next().unwrap_or("center");
+                // Ключевые слова несут СВОЮ ось (css-transforms-1 §5.2):
+                // одиночное `top` значит `center top`, `top left` = `left top`.
+                let mut xs: Option<&str> = None;
+                let mut ys: Option<&str> = None;
+                let mut free: Vec<&str> = vec![];
+                for t in v.split_whitespace() {
+                    match t {
+                        "left" | "right" => xs = Some(t),
+                        "top" | "bottom" => ys = Some(t),
+                        other => free.push(other),
+                    }
+                }
+                let mut free = free.into_iter();
+                let first = xs.or_else(|| free.next()).unwrap_or("center");
+                let second = ys.or_else(|| free.next()).unwrap_or("center");
+                self.transform_origin_px = (px_axis(first), px_axis(second));
                 self.transform_origin = Some((axis(first, 0.5), axis(second, 0.5)));
             }
             // Трёхмерной сцены нет: без объёмных преобразований перспектива
