@@ -45,6 +45,10 @@ pub(crate) struct PaintGroup {
     /// Прямоугольной маской многоугольник не выразить, а буфер группы даёт
     /// готовую картинку, которую можно погасить по любой форме.
     pub(crate) polygon: Vec<Point<ScaledPixels>>,
+    /// Маска-изображение (`mask-image`): альфа гасит буфер при композите.
+    pub(crate) mask: Option<std::sync::Arc<crate::RenderImage>>,
+    /// Плитка маски: угол коробки + размер плитки; повторяется по обеим осям.
+    pub(crate) mask_bounds: Bounds<ScaledPixels>,
 }
 
 #[derive(Default)]

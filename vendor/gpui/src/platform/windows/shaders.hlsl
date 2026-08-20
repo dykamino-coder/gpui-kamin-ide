@@ -1313,13 +1313,16 @@ struct BlurQuad {
     float pad;            // при blur_pass == 3 — прозрачность группы
     uint blend_mode;      // режим смешивания группы с кадром (0 — обычный)
     uint poly_count;      // вершин обрезающего многоугольника (0 — не обрезать)
-    float2 pad2;
+    float2 pad2;          // x > 0.5 — есть маска-изображение (t3)
     float4 poly[4];       // вершины парами: (x0, y0, x1, y1)
+    float4 mask_rect;     // плитка маски: угол x, y + размер w, h (device px)
 };
 
 StructuredBuffer<BlurQuad> blur_quads: register(t1);
 // KaminIDE patch: копия кадра — цвет назначения для формул смешивания.
 Texture2D<float4> t_backdrop: register(t2);
+// KaminIDE patch: маска-изображение группы (`mask-image`) — альфа гасит буфер.
+Texture2D<float4> t_maskimg: register(t3);
 
 // KaminIDE patch: расстояние со знаком до многоугольника (`clip-path`).
 //
@@ -1460,6 +1463,13 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         float mask = saturate(0.5 - distance) * q.pad;
         if (q.poly_count >= 3u) {
             mask *= saturate(0.5 - poly_sdf(q.poly, q.poly_count, input.position.xy));
+        }
+        // Маска-изображение: плитка лежит от угла коробки своим размером и
+        // повторяется по обеим осям (`mask-repeat: repeat` — начальное
+        // значение css-masking); гасится вся картинка, альфа её умножена.
+        if (q.pad2.x > 0.5) {
+            float2 muv = frac((input.position.xy - q.mask_rect.xy) / q.mask_rect.zw);
+            mask *= t_maskimg.Sample(s_sprite, muv).a;
         }
         src *= mask;
         if (q.blend_mode == 0u) {

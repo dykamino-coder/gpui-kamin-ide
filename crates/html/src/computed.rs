@@ -734,6 +734,9 @@ pub struct Computed {
     pub collapsed: Option<bool>,
     /// Опорная коробка clip-path: 0 border, 1 margin, 2 padding, 3 content.
     pub clip_ref: Option<u8>,
+    /// Маска-изображение (`mask-image: url(...)|<gradient>`): источник
+    /// строкой до растра при сборке группы.
+    pub mask_image: Option<String>,
     pub letter_spacing: Option<Len>,
     pub ellipsis: Option<bool>,
     /// `list-style: none` — навигация, свёрстанная на списках, иначе идёт с
@@ -3414,6 +3417,16 @@ impl Computed {
             "isolation" => self.isolate = Some(v == "isolate"),
             "user-select" | "-webkit-user-select" => self.no_select = Some(matches!(v, "none")),
             "clip-path" | "mask" | "mask-image" => {
+                // Маска-ИЗОБРАЖЕНИЕ (url/градиент): источник хранится строкой,
+                // растрируется при сборке группы, альфа умножается в композите
+                // буфера (css-masking §7.1; mask-image-1a).
+                if key != "clip-path" {
+                    if v.contains("-gradient(") {
+                        self.mask_image = Some(v.trim().to_string());
+                    } else if let Some(url) = parse_url(v) {
+                        self.mask_image = Some(url);
+                    }
+                }
                 // Круг и эллипс — это скруглённый прямоугольник с радиусом в
                 // половину стороны; `inset(… round R)` — он же с заданным
                 // радиусом. Многоугольник прямоугольной маской не выразить —

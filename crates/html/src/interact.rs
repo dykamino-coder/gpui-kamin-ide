@@ -381,6 +381,11 @@ pub struct Grouped {
     /// Сдвиг опорной коробки формы от bounds наружу: верх/право/низ/лево
     /// (margin-box положительные, content-box отрицательные).
     pub poly_expand: [f32; 4],
+    /// Маска-изображение (`mask-image`): источник строкой — путь растра или
+    /// запись градиента. Резолвится при отрисовке: рисунку и градиенту нужен
+    /// размер коробки (mask-size auto без своего размера = область,
+    /// css-masking §7.4), а он известен только здесь.
+    pub mask: Option<String>,
 }
 
 impl Grouped {
@@ -392,6 +397,7 @@ impl Grouped {
             blend: 0,
             polygon: Vec::new(),
             poly_expand: [0.0; 4],
+            mask: None,
         }
     }
 }
@@ -480,6 +486,33 @@ impl Element for Grouped {
                 )
             })
             .collect();
+        // Плитка маски: у растра — его точки как CSS-точки (density 1), у
+        // рисунка без размера и градиента — сама коробка (mask-size auto,
+        // css-masking §7.4). Битый источник — маски нет, элемент виден
+        // целиком (bad-mask-image-svg-*).
+        let mask = self.mask.as_deref().and_then(|src| {
+            let source = crate::background::source(src)?;
+            let (img, tile) = match &source {
+                crate::background::Source::Raster(img) => {
+                    let s = img.size(0);
+                    (
+                        img.clone(),
+                        gpui::size(px(s.width.0 as f32), px(s.height.0 as f32)),
+                    )
+                }
+                _ => {
+                    let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                    (source.raster((w, h))?, bounds.size)
+                }
+            };
+            Some((
+                img,
+                Bounds {
+                    origin: bounds.origin,
+                    size: tile,
+                },
+            ))
+        });
         let child = self.child.as_mut().unwrap();
         window.paint_group(
             area,
@@ -488,6 +521,7 @@ impl Element for Grouped {
             self.opacity,
             self.blend,
             &polygon,
+            mask,
             |window| child.paint(window, cx),
         );
     }

@@ -3435,12 +3435,18 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     let blur = c.filter.map_or(0.0, |f| f.blur);
     let blend = c.blend.unwrap_or(0);
     let polygon = c.clip_polygon.as_deref().unwrap_or(&[]);
-    if blur <= 0.0 && blend == 0 && polygon.is_empty() && c.isolate != Some(true) {
+    // Маска-изображение (css-masking §7.1): источник уходит строкой, его
+    // альфа гасит готовый буфер группы при композите; резолв — при
+    // отрисовке, когда известен размер коробки.
+    let mask = c.mask_image.clone();
+    if blur <= 0.0 && blend == 0 && polygon.is_empty() && c.isolate != Some(true) && mask.is_none()
+    {
         return el;
     }
     let mut wrapper = crate::interact::Grouped::new(el);
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
+    wrapper.mask = mask;
     // Точки уходят КАК ЕСТЬ (Len): проценты и пиксели резолвятся при
     // отрисовке от опорной коробки формы (css-masking §1.3.1.1): margin-box
     // расширяет bounds на поля, content-box сужает на рамку+паддинг

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     mem::ManuallyDrop,
     sync::{Arc, OnceLock},
 };
@@ -78,6 +79,12 @@ struct BlurScratch {
     group_blend: Vec<u32>,
     /// Обрезающий многоугольник каждой группы: вершины парами и их число.
     group_poly: Vec<([[f32; 4]; 4], u32)>,
+    /// Маска-изображение каждой группы: SRV плитки + её прямоугольник
+    /// (угол и размер в device px); None — группа без маски.
+    group_mask: Vec<Option<([Option<ID3D11ShaderResourceView>; 1], [f32; 4])>>,
+    /// Текстуры масок по картинке-источнику: заливать пиксели каждый кадр
+    /// незачем, картинка неизменна (`ImageId` уникален на содержимое).
+    mask_cache: HashMap<ImageId, [Option<ID3D11ShaderResourceView>; 1]>,
 }
 
 struct BlurTexture {
@@ -103,9 +110,12 @@ struct BlurQuad {
     blend_mode: u32,
     /// Число вершин обрезающего многоугольника (0 — не обрезать).
     poly_count: u32,
+    /// x > 0.5 — у группы есть маска-изображение (t3).
     pad2: [f32; 2],
     /// Вершины парами: (x0, y0, x1, y1).
     poly: [[f32; 4]; 4],
+    /// Плитка маски: угол x, y и размер w, h в device px; повторяется.
+    mask_rect: [f32; 4],
 }
 
 fn create_blur_texture(
@@ -153,6 +163,44 @@ fn create_blur_texture(
         rtv,
         srv: [srv],
     })
+}
+
+/// KaminIDE patch: статичная текстура из готовых пикселей (маска-изображение).
+///
+/// Байты картинки — BGRA с уже умноженной прозрачностью, ровно формат
+/// бэкбуфера; заливаются один раз при создании (`D3D11_SUBRESOURCE_DATA`).
+fn create_mask_texture(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+    bytes: &[u8],
+) -> Result<[Option<ID3D11ShaderResourceView>; 1]> {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: RENDER_TARGET_FORMAT,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_IMMUTABLE,
+        BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+        CPUAccessFlags: 0,
+        MiscFlags: 0,
+    };
+    let data = D3D11_SUBRESOURCE_DATA {
+        pSysMem: bytes.as_ptr() as *const _,
+        SysMemPitch: width * 4,
+        SysMemSlicePitch: 0,
+    };
+    let mut texture: Option<ID3D11Texture2D> = None;
+    unsafe { device.CreateTexture2D(&desc, Some(&data), Some(&mut texture))? };
+    let texture = texture.unwrap();
+    let mut srv = None;
+    unsafe { device.CreateShaderResourceView(&texture, None, Some(&mut srv))? };
+    Ok([srv])
 }
 
 /// KaminIDE patch: один даунсемпл-проход каскада blur (квад на весь dest,
@@ -206,6 +254,7 @@ fn blur_down_pass(
         poly_count: 0,
         pad2: [0.0; 2],
         poly: [[0.0; 4]; 4],
+        mask_rect: [0.0; 4],
     };
     pipeline.update_buffer(device, dc, &[quad])?;
     unsafe {
@@ -609,6 +658,7 @@ impl DirectXRenderer {
             self.blur.group_slots.clear();
             self.blur.group_blend.clear();
             self.blur.group_poly.clear();
+            self.blur.group_mask.clear();
             return Ok(());
         }
         let device = self.devices.device.clone();
@@ -633,6 +683,12 @@ impl DirectXRenderer {
         self.blur.group_slots.clear();
         self.blur.group_blend.clear();
         self.blur.group_poly.clear();
+        self.blur.group_mask.clear();
+        // Кэш текстур масок не растёт без предела: смена страницы рождает
+        // новые `ImageId`, старые записи никому не нужны.
+        if self.blur.mask_cache.len() > 64 {
+            self.blur.mask_cache.clear();
+        }
 
         for (i, group) in scene.groups.iter().enumerate() {
             let raw_rtv = self.blur.groups[i * 2].rtv.clone();
@@ -662,6 +718,32 @@ impl DirectXRenderer {
             self.blur
                 .group_poly
                 .push((poly, group.polygon.len().min(8) as u32));
+            let mask = group.mask.as_ref().and_then(|img| {
+                let srv = match self.blur.mask_cache.get(&img.id) {
+                    Some(srv) => srv.clone(),
+                    None => {
+                        let size = img.size(0);
+                        let (mw, mh) = (size.width.0.max(1) as u32, size.height.0.max(1) as u32);
+                        let bytes = img.as_bytes(0)?;
+                        if bytes.len() < (mw * mh * 4) as usize {
+                            return None;
+                        }
+                        let srv = create_mask_texture(&device, mw, mh, bytes).log_err()?;
+                        self.blur.mask_cache.insert(img.id, srv.clone());
+                        srv
+                    }
+                };
+                Some((
+                    srv,
+                    [
+                        group.mask_bounds.origin.x.0,
+                        group.mask_bounds.origin.y.0,
+                        group.mask_bounds.size.width.0.max(1.0),
+                        group.mask_bounds.size.height.0.max(1.0),
+                    ],
+                ))
+            });
+            self.blur.group_mask.push(mask);
         }
 
         // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
@@ -730,6 +812,7 @@ impl DirectXRenderer {
             poly_count: 0,
             pad2: [0.0; 2],
             poly: [[0.0; 4]; 4],
+        mask_rect: [0.0; 4],
         };
         self.pipelines
             .blur_pipeline
@@ -1286,6 +1369,7 @@ impl DirectXRenderer {
             poly_count: 0,
             pad2: [0.0; 2],
             poly: [[0.0; 4]; 4],
+        mask_rect: [0.0; 4],
         };
         self.pipelines
             .blur_pipeline
@@ -1330,6 +1414,19 @@ impl DirectXRenderer {
             .get(s.group as usize - 1)
             .copied()
             .unwrap_or(([[0.0; 4]; 4], 0));
+        let mask = self
+            .blur
+            .group_mask
+            .get(s.group as usize - 1)
+            .cloned()
+            .flatten();
+        let (has_mask, mask_rect) = match &mask {
+            Some((srv, rect)) => {
+                unsafe { dc.PSSetShaderResources(3, Some(srv)) };
+                (1.0, *rect)
+            }
+            None => (0.0, [0.0; 4]),
+        };
         let (vw, vh) = (self.resources.width as f32, self.resources.height as f32);
 
         // Смешивание считается в шейдере, а ему нужен цвет назначения:
@@ -1388,8 +1485,9 @@ impl DirectXRenderer {
             pad: s.opacity,
             blend_mode,
             poly_count,
-            pad2: [0.0; 2],
+            pad2: [has_mask, 0.0],
             poly,
+            mask_rect,
         };
         self.pipelines
             .blur_pipeline
