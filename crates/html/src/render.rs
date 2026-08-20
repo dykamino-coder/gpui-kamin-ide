@@ -565,9 +565,27 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         collapsed
             .into_iter()
             // `visibility: collapse` на элементе гибкого контейнера убирает
-            // его из строки целиком: перенос считается так, будто элемента
-            // нет. Прятать его на месте — значит переносить строки не там.
-            .filter(|n| !matches!(n, Node::Element(e) if e.style.collapsed == Some(true)))
+            // его из строки, НО оставляет РАСПОРКУ (strut, css-flexbox §4.4):
+            // поперечный размер и базовая линия ряда меряются как при нём
+            // (flexbox-collapsed-item-baseline-001). Распорка — тот же
+            // элемент с нулевой ГЛАВНОЙ осью и невидимой краской.
+            .map(|n| match n {
+                Node::Element(mut e) if e.style.collapsed == Some(true) => {
+                    match inherited.flex_dir {
+                        Some(FlexDir::Col) | Some(FlexDir::ColReverse) => {
+                            e.style.height = Some(Len::Px(0.0));
+                            e.style.max_height = Some(Len::Px(0.0));
+                        }
+                        _ => {
+                            e.style.width = Some(Len::Px(0.0));
+                            e.style.max_width = Some(Len::Px(0.0));
+                        }
+                    }
+                    e.style.hidden = Some(true);
+                    Node::Element(e)
+                }
+                other => other,
+            })
             // ПРОБЕЛЬНЫЙ текст между детьми ряда/сетки не рождает анонимный
             // элемент (css-flexbox §4): переводы строк разметки давали
             // лишние 2-3px между коробками
