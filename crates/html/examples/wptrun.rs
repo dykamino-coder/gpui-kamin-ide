@@ -413,7 +413,31 @@ fn resolve_links(html: &str, path: &str) -> String {
         // нашёл бы браузер (`uri-005`).
         let bare = kamin_html::css::unescape(bare);
         let decoded = percent_decode(&bare);
-        match resolve(&decoded).or_else(|| resolve(&bare)) {
+        // Адрес с фрагментом (`file.svg#mask`): файл существует без хвоста —
+        // резолвим базу, хвост приклеиваем обратно
+        // (mask-image-url-remote-mask).
+        let frag_split = |s: &str| -> (String, Option<String>) {
+            match s.split_once('#') {
+                Some((b, f)) if !b.is_empty() => (b.to_string(), Some(f.to_string())),
+                _ => (s.to_string(), None),
+            }
+        };
+        let (dec_base, dec_frag) = frag_split(&decoded);
+        let (bare_base, bare_frag) = frag_split(&bare);
+        let resolved = resolve(&decoded)
+            .map(|f| (f, None))
+            .or_else(|| resolve(&bare).map(|f| (f, None)))
+            .or_else(|| {
+                dec_frag
+                    .as_ref()
+                    .and_then(|fr| resolve(&dec_base).map(|f| (f, Some(fr.clone()))))
+            })
+            .or_else(|| {
+                bare_frag
+                    .as_ref()
+                    .and_then(|fr| resolve(&bare_base).map(|f| (f, Some(fr.clone()))))
+            });
+        match resolved {
             // Кавычки ставятся ТОЛЬКО когда без них нельзя: адрес попадает и
             // в атрибут `style="…"`, а двойная кавычка внутри него обрывает
             // сам атрибут — правило теряется целиком вместе с картинкой
@@ -421,11 +445,15 @@ fn resolve_links(html: &str, path: &str) -> String {
             // месту). В имени файла из набора встречается апостроф
             // (`'green block.png` из `uri-004`), поэтому запасные кавычки —
             // двойные: в пути Windows их не бывает.
-            Some(file) => {
+            Some((file, frag)) => {
                 // Разделитель — ПРЯМАЯ косая: обратная в записи адреса
                 // означает экранирование, и путь Windows терял её вместе со
                 // следующим знаком (`C:\Users` превращалось в `C:Users`).
-                let path = file.display().to_string().replace('\\', "/");
+                let mut path = file.display().to_string().replace('\\', "/");
+                if let Some(fr) = frag {
+                    path.push('#');
+                    path.push_str(&fr);
+                }
                 let plain = !path.contains([' ', '\'', '"', '(', ')', ',', '\t']);
                 if plain {
                     with_urls.push_str(&path);

@@ -454,6 +454,27 @@ fn mask_layer_source(layer: &str) -> Option<String> {
 }
 
 
+/// Содержимое `<mask id>`/`<clipPath id>` из ВНЕШНЕГО файла рисунка
+/// (`mask-image: url(file.svg#id)`): грубый текстовый вырез — дерево
+/// документа рисунка нам нигде больше не нужно.
+fn svg_fragment(path: &str, id: &str) -> Option<String> {
+    let markup = std::fs::read_to_string(path).ok()?;
+    for tag in ["mask", "clipPath"] {
+        let mut rest = markup.as_str();
+        while let Some(at) = rest.find(&format!("<{tag}")) {
+            let head_end = rest[at..].find('>')? + at;
+            let head = &rest[at..head_end];
+            let close = format!("</{tag}>");
+            let body_end = rest[head_end..].find(&close)? + head_end;
+            if head.contains(&format!("id=\"{id}\"")) || head.contains(&format!("id='{id}'")) {
+                return Some(rest[head_end + 1..body_end].to_string());
+            }
+            rest = &rest[body_end + close.len()..];
+        }
+    }
+    None
+}
+
 /// Растр определения `<mask>`/`<clipPath>` из документа под коробку.
 ///
 /// Содержимое сериализовано при сборе (`render::mask_def`); маска берёт
@@ -631,6 +652,7 @@ impl Element for Grouped {
                     || l.starts_with("clipsnap:")
                     || l.starts_with("pathdef:")
                     || l.starts_with("shapedef:")
+                    || (l.contains('#') && l.contains(".svg"))
             });
             if layers.len() > 1 || referenced {
                 let sf = window.scale_factor();
@@ -653,6 +675,20 @@ impl Element for Grouped {
                         } else if let Some(id) = l.strip_prefix("clipsnap:") {
                             (
                                 rasterize_mask_def(id, bw, bh, true)?,
+                                [0.0, 0.0, bw * sf, bh * sf],
+                                true,
+                            )
+                        } else if let Some((file, frag)) =
+                            l.rsplit_once('#').filter(|(f, _)| f.ends_with(".svg"))
+                        {
+                            // Маска из внешнего рисунка (`url(file.svg#id)`).
+                            let markup = svg_fragment(file, frag)?
+                                .replace("clip-rule", "fill-rule");
+                            let markup = format!(
+                                r#"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}">{markup}</svg>"#
+                            );
+                            (
+                                crate::svg::rasterize(&markup, bw, bh)?,
                                 [0.0, 0.0, bw * sf, bh * sf],
                                 true,
                             )
