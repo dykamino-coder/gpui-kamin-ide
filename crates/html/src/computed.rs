@@ -3853,11 +3853,11 @@ fn align_keyword(v: &str) -> Result<Option<Align>, ()> {
         "start" | "flex-start" | "self-start" | "left" => Some(Align::Start),
         "end" | "flex-end" | "self-end" | "right" => Some(Align::End),
         "stretch" => Some(Align::Stretch),
-        // `first baseline` — обычное выравнивание по базовой линии; `last`
-        // раскладке под нами неизвестно, и подмена первой сдвинула бы элемент
-        // не туда, поэтому поле очищается.
-        "baseline" | "first" => Some(Align::Baseline),
-        "last" => None,
+        // `first baseline` — обычное выравнивание по базовой линии. `last`
+        // честно раскладке неизвестен, но для ОДНОСТРОЧНЫХ участников первая
+        // и последняя базовые совпадают — суррогат первой ближе очистки
+        // (flex-order-last-baseline; прежний None ронял участника в stretch).
+        "baseline" | "first" | "last" => Some(Align::Baseline),
         // `normal` у растяжимого элемента даёт растяжение, а у замещаемого —
         // прижим к началу. Выбирает это сама раскладка, когда поле пусто.
         "normal" | "auto" => None,
