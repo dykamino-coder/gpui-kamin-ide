@@ -31,7 +31,7 @@ pub struct FlowChild {
 
 pub struct FlowRow {
     children: Vec<FlowChild>,
-    bands: Vec<ExBand>,
+    shapes: std::sync::Arc<(Vec<FloatShape>, Vec<FloatShape>)>,
     /// Направление письма: rtl кладёт коробки от правого края.
     rtl: bool,
     /// Позиции детей, вычисленные замером (в точках от угла коробки).
@@ -39,25 +39,23 @@ pub struct FlowRow {
 }
 
 impl FlowRow {
-    pub fn new(children: Vec<FlowChild>, bands: Vec<ExBand>, rtl: bool) -> Self {
+    pub fn new(
+        children: Vec<FlowChild>,
+        shapes: std::sync::Arc<(Vec<FloatShape>, Vec<FloatShape>)>,
+        rtl: bool,
+    ) -> Self {
         FlowRow {
             children,
-            bands,
+            shapes,
             rtl,
             slots: std::cell::RefCell::new(Vec::new()),
         }
     }
 
-    /// Вырез на полосе [y, y+h): максимум по пересекаемым полосам.
+    /// Вырез на полосе [y, y+h): точный экстент форм с обеих сторон.
     fn cut(&self, y: f32, h: f32) -> (f32, f32) {
-        let mut l = 0.0f32;
-        let mut r = 0.0f32;
-        for b in &self.bands {
-            if b.y1 > y && b.y0 < y + h {
-                l = l.max(b.left);
-                r = r.max(b.right);
-            }
-        }
+        let l = self.shapes.0.iter().map(|f| f.cut(y, y + h)).fold(0.0f32, f32::max);
+        let r = self.shapes.1.iter().map(|f| f.cut(y, y + h)).fold(0.0f32, f32::max);
         (l, r)
     }
 
@@ -113,7 +111,7 @@ impl Element for FlowRow {
         _cx: &mut App,
     ) -> (LayoutId, ()) {
         let sizes: Vec<(f32, f32)> = self.children.iter().map(|c| (c.w, c.h)).collect();
-        let bands = self.bands.clone();
+        let shapes = self.shapes.clone();
         let rtl = self.rtl;
         let id = window.request_measured_layout(
             gpui::Style::default(),
@@ -136,7 +134,7 @@ impl Element for FlowRow {
                             h,
                         })
                         .collect(),
-                    bands: bands.clone(),
+                    shapes: shapes.clone(),
                     rtl,
                     slots: std::cell::RefCell::new(Vec::new()),
                 };
@@ -153,26 +151,14 @@ impl Element for FlowRow {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _state: &mut (),
-        _window: &mut Window,
-        _cx: &mut App,
-    ) {
-        let (_, slots) = self.layout(f32::from(bounds.size.width));
-        *self.slots.borrow_mut() = slots;
-    }
-
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
-        let slots = self.slots.borrow().clone();
-        for (c, (sx, sy)) in self.children.iter_mut().zip(slots) {
-            let origin = point(bounds.origin.x + px(sx), bounds.origin.y + px(sy));
+        // Раскладка и подготовка детей — здесь: замер поддеревьев в фазе
+        // отрисовки запрещён самим окном.
+        let (_, slots) = self.layout(f32::from(bounds.size.width));
+        for (c, (sx, sy)) in self.children.iter_mut().zip(slots.iter()) {
+            let origin = point(bounds.origin.x + px(*sx), bounds.origin.y + px(*sy));
             c.el.layout_as_root(
                 size(
                     gpui::AvailableSpace::Definite(px(c.w)),
@@ -182,6 +168,21 @@ impl Element for FlowRow {
                 cx,
             );
             c.el.prepaint_at(origin, window, cx);
+        }
+        *self.slots.borrow_mut() = slots;
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        for c in self.children.iter_mut() {
             c.el.paint(window, cx);
         }
     }

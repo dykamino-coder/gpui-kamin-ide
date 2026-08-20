@@ -3816,13 +3816,78 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
             off_r += mw;
         }
     }
-    let mut flowed = inherited.clone();
-    flowed.flow_shapes = Some(std::sync::Arc::new((left, right)));
+    let shapes = std::sync::Arc::new((left, right));
     let mut host = div().relative().w_full();
     for f in floats {
         host = host.child(f);
     }
+    // Картина из инлайн-блоков с известными размерами — построчный поток
+    // атомов (FlowRow): flex-переносом вырезы по строкам не выразить, а
+    // абзац таких детей не набирает.
+    let mut atoms: Vec<crate::flow::FlowChild> = Vec::new();
+    let mut atoms_ok = true;
+    for n in &rest {
+        match n {
+            Node::Text(t) => {
+                if !t.trim().is_empty() {
+                    atoms_ok = false;
+                    break;
+                }
+            }
+            Node::Element(c) => {
+                let inline_box = matches!(
+                    c.style.display,
+                    Some(Display::InlineBlock) | Some(Display::InlineFlex)
+                );
+                let b = c.style.borders();
+                let dims = (|| {
+                    Some((
+                        px_of2(&c.style.width)?
+                            + px_of2(&c.style.padding.left)?
+                            + px_of2(&c.style.padding.right)?
+                            + px_of2(&b.left)?
+                            + px_of2(&b.right)?,
+                        px_of2(&c.style.height)?
+                            + px_of2(&c.style.padding.top)?
+                            + px_of2(&c.style.padding.bottom)?
+                            + px_of2(&b.top)?
+                            + px_of2(&b.bottom)?,
+                    ))
+                })();
+                match (inline_box, dims) {
+                    (true, Some((w, h))) if w > 0.0 && h > 0.0 => {
+                        let merged = inline::inherit(inherited, &c.style);
+                        let built = styled_div_with(c, &merged)
+                            .children(blocks(&c.children, &merged, opts))
+                            .into_any_element();
+                        atoms.push(crate::flow::FlowChild { el: built, w, h });
+                    }
+                    _ => {
+                        atoms_ok = false;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if atoms_ok && !atoms.is_empty() {
+        let rtl = inherited.rtl == Some(true);
+        return host
+            .child(crate::flow::FlowRow::new(atoms, shapes, rtl))
+            .into_any_element();
+    }
+    let mut flowed = inherited.clone();
+    flowed.flow_shapes = Some(shapes);
     host.children(blocks(&rest, &flowed, opts)).into_any_element()
+}
+
+/// Точки стороны коробки: только явный `px` (None непроходной).
+fn px_of2(l: &Option<Len>) -> Option<f32> {
+    match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(*v),
+        _ => None,
+    }
 }
 
 /// Отрисовать поддерево в отдельный буфер, когда эффекту нужна готовая
