@@ -1053,6 +1053,15 @@ pub struct Computed {
     pub clip_rect: Option<[Option<f32>; 4]>,
     /// `clip-path: inset(t r b l ...)`: срезы краёв видимой области.
     pub clip_inset: Option<[Len; 4]>,
+    /// `shape-outside`: сырая запись формы обтекания плавающего блока.
+    pub shape_outside: Option<String>,
+    /// `shape-margin`: поле вокруг формы обтекания; доля — от ширины
+    /// содержащего блока.
+    pub shape_margin: Option<Len>,
+    /// Вырезы обтекания для абзацев ПОД этим элементом: формы слева и
+    /// справа от верха первого абзаца (заполняет сборка shape-flow).
+    pub flow_shapes:
+        Option<std::sync::Arc<(Vec<crate::flow::FloatShape>, Vec<crate::flow::FloatShape>)>>,
     /// `mask-position`: смещение плитки; доля — от свободного места
     /// (коробка минус плитка), как у `background-position`.
     pub mask_pos: Option<(Len, Len)>,
@@ -3498,6 +3507,13 @@ impl Computed {
                 }
             }
             "isolation" => self.isolate = Some(v == "isolate"),
+            "shape-outside" => {
+                let t = v.trim();
+                if t != "none" {
+                    self.shape_outside = Some(t.to_string());
+                }
+            }
+            "shape-margin" => self.shape_margin = Len::parse(v.trim()),
             // Устаревшее `clip` (CSS 2.1): rect с запятыми или пробелами;
             // `auto` в позиции — соответствующий край коробки.
             "clip" => {

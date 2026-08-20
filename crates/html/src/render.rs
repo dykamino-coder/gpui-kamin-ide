@@ -740,7 +740,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     } else {
         collapsed
     };
-    let collapsed = by_layer(wrap_floats(collapsed));
+    let collapsed = by_layer(wrap_floats(collapsed, inherited.width));
     // Блок мы изображаем гибкой колонкой, а её дети по умолчанию сжимаются —
     // в обычном потоке этого нет: ребёнок выше родителя обязан вылезти, а не
     // ужаться. Поэтому в потоке сжатие детям выключается, если разметка не
@@ -1567,7 +1567,7 @@ fn layered(el: AnyElement, c: &Computed, allowed: bool) -> AnyElement {
 /// пишут — «картинка слева, текст справа» — выражается рядом из двух колонок
 /// точно. Отличие от браузера одно: текст не заворачивается ПОД плавающий
 /// блок, когда тот кончился. `clear` закрывает ряд и начинает новый.
-fn wrap_floats(nodes: Vec<Node>) -> Vec<Node> {
+fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
     let floated = nodes.iter().any(|n| match n {
         Node::Element(e) => e.style.float.is_some_and(|f| f != 0),
         Node::Text(_) => false,
@@ -1685,6 +1685,67 @@ fn wrap_floats(nodes: Vec<Node>) -> Vec<Node> {
                 out.push(Node::Element(lone));
             }
             out.extend(rest);
+            i = j;
+            continue;
+        }
+        // Обтекание ФОРМОЙ (`shape-outside`): ряд-колонка его не выразит —
+        // строки должны сужаться каждая по-своему. Плавающие блоки с
+        // ИЗВЕСТНЫМИ размерами уходят синтетическим узлом shape-flow:
+        // сборка положит их absolute и передаст вырезы абзацу.
+        let px_of = |l: &Option<Len>| match l {
+            None => Some(0.0),
+            Some(Len::Px(v)) => Some(*v),
+            _ => None,
+        };
+        let sized = |e: &Element| -> Option<(f32, f32)> {
+            let b = e.style.borders();
+            Some((
+                px_of(&e.style.width)?
+                    + px_of(&e.style.padding.left)?
+                    + px_of(&e.style.padding.right)?
+                    + px_of(&b.left)?
+                    + px_of(&b.right)?
+                    + px_of(&e.style.margin.left)?
+                    + px_of(&e.style.margin.right)?,
+                px_of(&e.style.height)?
+                    + px_of(&e.style.padding.top)?
+                    + px_of(&e.style.padding.bottom)?
+                    + px_of(&b.top)?
+                    + px_of(&b.bottom)?
+                    + px_of(&e.style.margin.top)?
+                    + px_of(&e.style.margin.bottom)?,
+            ))
+        };
+        if floaters.iter().any(|f| f.style.shape_outside.is_some())
+            && floaters.iter().all(|f| sized(f).is_some())
+        {
+            let mut host = Element {
+                node_id: 0,
+                anim: None,
+                tag: "shape-flow".into(),
+                style: Computed {
+                    // Ширина содержащего блока — для долей формы и поля.
+                    width: cb_width,
+                    ..Computed::default()
+                },
+                hover: None,
+                first_letter: None,
+                first_line: None,
+                children: Vec::new(),
+                // Подготовка выше сняла float с самих блоков — сторона и
+                // число уезжают атрибутами.
+                attrs: vec![
+                    (
+                        "side".into(),
+                        if side < 0 { "left".into() } else { "right".into() },
+                    ),
+                    ("count".into(), floaters.len().to_string()),
+                ],
+                inline: false,
+            };
+            host.children = floaters.into_iter().map(Node::Element).collect();
+            host.children.extend(rest);
+            out.push(Node::Element(host));
             i = j;
             continue;
         }
@@ -2941,6 +3002,12 @@ fn paragraph_pieces(
             .hanging(inherited.hanging)
             .indent(indent)
             .spacers(inline::spacers(&pieces))
+            .flow_shapes(
+                inherited
+                    .flow_shapes
+                    .clone()
+                    .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new()))),
+            )
             .line_clamp(inherited.clamp_lines().map(|n| n as usize))
             .text_ellipsis(
                 inherited.ellipsis == Some(true)
@@ -3588,6 +3655,176 @@ fn sticky_wrap(
         .into_any_element()
 }
 
+
+/// Обтекание плавающих блоков ФОРМОЙ (`shape-outside`, css-shapes-1 §2).
+///
+/// Плавающие дети встают absolute у своей стороны, остальным строится
+/// обычный поток, но абзацам передаются ВЫРЕЗЫ — формы в координатах от
+/// верха потока; каждая строка абзаца сужается по своей высоте. Формула
+/// формы считается от выбранной опорной коробки (по умолчанию margin-box),
+/// затем переводится в координаты margin-box (позиция флоата).
+fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    let px_of = |l: &Option<Len>| match l {
+        None => 0.0,
+        Some(Len::Px(v)) => *v,
+        _ => 0.0,
+    };
+    let mut left: Vec<crate::flow::FloatShape> = Vec::new();
+    let mut right: Vec<crate::flow::FloatShape> = Vec::new();
+    // Стек подряд стоящих флоатов одной стороны: каждый следующий кладётся
+    // дальше от края на ширину предыдущих.
+    let (mut off_l, mut off_r) = (0.0f32, 0.0f32);
+    let mut floats: Vec<AnyElement> = Vec::new();
+    let mut rest: Vec<Node> = Vec::new();
+    let host_side: i32 = if e.attr("side") == Some("right") { 1 } else { -1 };
+    let count: usize = e
+        .attr("count")
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    for (idx, n) in e.children.iter().enumerate() {
+        let Node::Element(f) = n else {
+            rest.push(n.clone());
+            continue;
+        };
+        if idx >= count {
+            rest.push(n.clone());
+            continue;
+        }
+        let side = host_side;
+        let b = f.style.borders();
+        let (ml, mr) = (px_of(&f.style.margin.left), px_of(&f.style.margin.right));
+        let (mt, mb) = (px_of(&f.style.margin.top), px_of(&f.style.margin.bottom));
+        let (bl, br_) = (px_of(&b.left), px_of(&b.right));
+        let (bt, bb) = (px_of(&b.top), px_of(&b.bottom));
+        let (pl, pr) = (px_of(&f.style.padding.left), px_of(&f.style.padding.right));
+        let (pt, pb) = (px_of(&f.style.padding.top), px_of(&f.style.padding.bottom));
+        let (cw, chh) = (px_of(&f.style.width), px_of(&f.style.height));
+        let (mw, mh) = (
+            ml + bl + pl + cw + pr + br_ + mr,
+            mt + bt + pt + chh + pb + bb + mb,
+        );
+        let raw = f.style.shape_outside.clone().unwrap_or_default();
+        // Опорная коробка формы: margin-box по умолчанию (css-shapes §3).
+        let (bx, by, bw, bh) = if raw.contains("border-box") {
+            (ml, mt, mw - ml - mr, mh - mt - mb)
+        } else if raw.contains("padding-box") {
+            (ml + bl, mt + bt, mw - ml - mr - bl - br_, mh - mt - mb - bt - bb)
+        } else if raw.contains("content-box") {
+            (ml + bl + pl, mt + bt + pt, cw, chh)
+        } else {
+            (0.0, 0.0, mw, mh)
+        };
+        // Доля поля формы — от ширины содержащего блока; она известна,
+        // когда контейнер задан точками (тестовый случай).
+        let cb_w = px_of(&e.style.width);
+        let sm = match f.style.shape_margin {
+            Some(Len::Px(v)) => v,
+            Some(Len::Pct(p)) => p * cb_w,
+            _ => 0.0,
+        };
+        let shape = if let Some(at) = raw.find("circle(").or_else(|| raw.find("ellipse(")) {
+            let inner = &raw[at..];
+            let inner = match inner.find(')') {
+                Some(end) => &inner[..=end],
+                None => inner,
+            };
+            match crate::background::shape_params(inner, bw, bh, 1.0) {
+                Some((cx, cy, rx, ry)) => {
+                    // Координаты — от опорной коробки; переводим к margin-box.
+                    let (cx, cy) = (cx + bx, cy + by);
+                    let cx = if side < 0 { cx } else { mw - cx };
+                    crate::flow::FloatShape::Ellipse {
+                        top: 0.0,
+                        cx: cx + if side < 0 { off_l } else { off_r },
+                        cy,
+                        rx: rx + sm,
+                        ry: ry + sm,
+                    }
+                }
+                None => crate::flow::FloatShape::Band {
+                    top: 0.0,
+                    h: mh,
+                    w: (if side < 0 { off_l } else { off_r }) + mw + sm,
+                },
+            }
+        } else if let Some(at) = raw.find("inset(") {
+            // Вырезка: прямоугольник со срезами краёв опорной коробки.
+            let inner = raw[at + 6..].split(')').next().unwrap_or("");
+            let vals: Vec<f32> = inner
+                .split("round")
+                .next()
+                .unwrap_or("")
+                .split_whitespace()
+                .filter_map(|t| match Len::parse(t)? {
+                    Len::Px(v) => Some(v),
+                    Len::Pct(p) => Some(p * bh),
+                    _ => None,
+                })
+                .collect();
+            let pick = |i: usize| -> f32 {
+                match vals.len() {
+                    1 => vals[0],
+                    2 => vals[i % 2],
+                    3 => vals[i.min(2)],
+                    4 => vals[i],
+                    _ => 0.0,
+                }
+            };
+            let (t, rr, bb2, ll) = (pick(0), pick(1), pick(2), pick(3));
+            // Экстент со стороны текста: до дальнего края вырезки.
+            let w_cut = if side < 0 {
+                bx + bw - rr
+            } else {
+                mw - (bx + ll)
+            };
+            crate::flow::FloatShape::Band {
+                top: by + t,
+                h: (bh - t - bb2).max(0.0),
+                w: (if side < 0 { off_l } else { off_r }) + w_cut + sm,
+            }
+        } else {
+            // Коробка словом либо непонятная запись: прямоугольник опорной
+            // коробки со стороны текста.
+            let w_cut = if side < 0 { bx + bw } else { mw - bx };
+            crate::flow::FloatShape::Band {
+                top: by,
+                h: bh,
+                w: (if side < 0 { off_l } else { off_r }) + w_cut + sm,
+            }
+        };
+        if side < 0 {
+            left.push(shape);
+        } else {
+            right.push(shape);
+        }
+        // Сам флоат — absolute у своей стороны.
+        let merged = inline::inherit(inherited, &f.style);
+        let mut copy = f.clone();
+        copy.style.float = None;
+        let built = styled_div_with(&copy, &merged)
+            .children(blocks(&copy.children, &merged, opts))
+            .into_any_element();
+        let holder = if side < 0 {
+            div().absolute().left(px(off_l + ml)).top(px(mt))
+        } else {
+            div().absolute().right(px(off_r + mr)).top(px(mt))
+        };
+        floats.push(holder.child(built).into_any_element());
+        if side < 0 {
+            off_l += mw;
+        } else {
+            off_r += mw;
+        }
+    }
+    let mut flowed = inherited.clone();
+    flowed.flow_shapes = Some(std::sync::Arc::new((left, right)));
+    let mut host = div().relative().w_full();
+    for f in floats {
+        host = host.child(f);
+    }
+    host.children(blocks(&rest, &flowed, opts)).into_any_element()
+}
+
 /// Отрисовать поддерево в отдельный буфер, когда эффекту нужна готовая
 /// картинка целиком.
 ///
@@ -4133,6 +4370,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .into_any_element()
         }),
         "hr" => styled_div_with(e, &merged).w_full().into_any_element(),
+        // Синтетический узел обтекания формой (см. wrap_floats).
+        "shape-flow" => shape_flow(e, &merged, opts),
         // Табличная раскладка включается и стилем: `display: table` на
         // контейнере значит ровно то же, что тег.
         _ if merged.display == Some(Display::GridLanes) => {

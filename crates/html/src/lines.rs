@@ -125,6 +125,9 @@ pub struct Paragraph {
     /// Места знаков-распорок (`inline::SPACER`) — байтовые смещения по
     /// возрастанию. Точки переноса считаются по тексту без них.
     spacers: Vec<usize>,
+    /// Вырезы обтекания (`shape-outside`): формы слева и справа, в
+    /// координатах от верха абзаца. Сужают СВОИ строки по их высоте.
+    flow: std::sync::Arc<(Vec<crate::flow::FloatShape>, Vec<crate::flow::FloatShape>)>,
     /// Опознание абзаца для памяти выделения. Без него абзац не выделяется:
     /// состояние между кадрами хранит раскладка по этому ключу.
     id: Option<ElementId>,
@@ -210,6 +213,7 @@ impl Paragraph {
             hanging: crate::computed::Hanging::default(),
             indent: Indent::default(),
             spacers: Vec::new(),
+            flow: std::sync::Arc::new((Vec::new(), Vec::new())),
             id: None,
             highlight: Hsla::default(),
             wrap,
@@ -326,6 +330,27 @@ impl Paragraph {
     pub fn spacers(mut self, spacers: Vec<usize>) -> Self {
         self.spacers = spacers;
         self
+    }
+
+    /// Вырезы обтекания (`shape-outside`).
+    pub fn flow_shapes(
+        mut self,
+        flow: std::sync::Arc<(Vec<crate::flow::FloatShape>, Vec<crate::flow::FloatShape>)>,
+    ) -> Self {
+        self.flow = flow;
+        self
+    }
+
+    /// Вырез строки номер `line_no`: (слева, справа).
+    fn flow_cut(&self, line_no: usize) -> (f32, f32) {
+        if self.flow.0.is_empty() && self.flow.1.is_empty() {
+            return (0.0, 0.0);
+        }
+        let lh = f32::from(self.line_height);
+        let (y0, y1) = (line_no as f32 * lh, (line_no as f32 + 1.0) * lh);
+        let l = self.flow.0.iter().map(|f| f.cut(y0, y1)).fold(0.0f32, f32::max);
+        let r = self.flow.1.iter().map(|f| f.cut(y0, y1)).fold(0.0f32, f32::max);
+        (l, r)
     }
 
     /// Отступ первой строки (`text-indent`).
@@ -454,6 +479,9 @@ impl Paragraph {
         ]
         .hash(&mut h);
         self.indent.px.to_bits().hash(&mut h);
+        for f in self.flow.0.iter().chain(self.flow.1.iter()) {
+            f.hash_bits().hash(&mut h);
+        }
         self.indent.pct.to_bits().hash(&mut h);
         self.indent.each_line.hash(&mut h);
         self.indent.hanging.hash(&mut h);
@@ -1114,7 +1142,11 @@ impl Paragraph {
             // Отступ отбирает место у СВОЕЙ строки: на неё остаётся уже
             // меньшая ширина, а отрицательный отступ, наоборот, добавляет.
             let ind = self.indent_of(head_of_part, first_part, limit);
-            let limit = limit.map(|w| w - ind);
+            // Вырез обтекания сужает СВОЮ строку: левый входит в отступ
+            // строки, правый просто отбирает ширину (css-shapes-1 §2).
+            let (fl, fr) = self.flow_cut(out.len());
+            let ind = ind + px(fl);
+            let limit = limit.map(|w| w - ind - px(fr));
             // Хвостовые пробелы висят за краем: в ширину строки они не входят.
             // Хвостовые пробелы висят за краем СТРОКИ — то есть когда край
             // вообще есть. При замере по максимальному содержимому предела
@@ -1234,7 +1266,8 @@ impl Paragraph {
                 width: self.span(&segs, head, tail) - self.tail_spacing(tail),
                 ellipsis: false,
                 hyphen: false,
-                indent: self.indent_of(head_of_part, first_part, limit),
+                indent: self.indent_of(head_of_part, first_part, limit)
+                    + px(self.flow_cut(out.len()).0),
             });
         }
         // Печать разреза строк: `HTML_LINES=1`. Себя окупила — ею нашлось,
@@ -1887,6 +1920,7 @@ impl Element for Paragraph {
         let indent = self.indent;
         let hanging = self.hanging;
         let spacers = self.spacers.clone();
+        let flow = self.flow.clone();
         let id = window.request_measured_layout_with_baseline(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -1908,6 +1942,7 @@ impl Element for Paragraph {
                 probe.tab_stop = tab_stop;
                 probe.indent = indent;
                 probe.hanging = hanging;
+                probe.flow = flow.clone();
                 probe.spacers = spacers.clone();
                 // Предел переноса берётся ПО ОСИ СТРОКИ: по горизонтали это
                 // ширина коробки, по вертикали — её высота. Уже решённая
@@ -2358,6 +2393,7 @@ impl Paragraph {
         let probe = Paragraph {
             plaintext: self.plaintext,
             lines_reversed: self.lines_reversed,
+            flow: self.flow.clone(),
             text: self.text.clone(),
             spans: self.spans.clone(),
             word_spans: self.word_spans.clone(),
