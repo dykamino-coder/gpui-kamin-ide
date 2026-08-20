@@ -4883,6 +4883,113 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     // принадлежат ей, поток живёт внутри.
                     return d.child(el).into_any_element();
                 }
+                // Блочные дети с ИЗВЕСТНЫМИ высотами — честная укладка по
+                // колонкам с балансом и монолитами (css-break, фаза 1;
+                // план target/scout-multicol.md / scout-fragmentation.md).
+                // Коробка ребёнка и его вертикальные поля отдельно:
+                // поля схлопываются между соседями и на границах колонок.
+                let full_h = |c: &Element| -> Option<(f32, f32, f32)> {
+                    let px_or = |l: &Option<Len>, strict: bool| match l {
+                        None => Some(0.0),
+                        Some(Len::Px(v)) => Some(*v),
+                        Some(_) if !strict => Some(0.0),
+                        _ => None,
+                    };
+                    // Флоаты в поддереве ломают известность высоты.
+                    fn has_float(n: &Element, depth: u8) -> bool {
+                        if depth == 0 {
+                            return false;
+                        }
+                        n.children.iter().any(|k| match k {
+                            Node::Element(e) => {
+                                e.style.float.unwrap_or(0) != 0 || has_float(e, depth - 1)
+                            }
+                            _ => false,
+                        })
+                    }
+                    if has_float(c, 3) {
+                        return None;
+                    }
+                    let b = c.style.borders();
+                    Some((
+                        px_or(&c.style.height, true)?
+                            + px_or(&c.style.padding.top, false)?
+                            + px_or(&c.style.padding.bottom, false)?
+                            + px_or(&b.top, false)?
+                            + px_or(&b.bottom, false)?,
+                        px_or(&c.style.margin.top, false)?,
+                        px_or(&c.style.margin.bottom, false)?,
+                    ))
+                };
+                let stackable: Option<Vec<(Element, (f32, f32, f32))>> = e
+                    .children
+                    .iter()
+                    .filter(|n| !is_blank(n))
+                    .map(|n| match n {
+                        Node::Element(c)
+                            if !c.inline
+                                && c.style.position.is_none()
+                                && c.style.float.unwrap_or(0) == 0 =>
+                        {
+                            full_h(c).map(|h| ((*c).clone(), h))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if let Some(kids) = stackable.filter(|k| !k.is_empty()) {
+                    let fixed = if e.style.column_fill_auto == Some(true) {
+                        match e.style.height {
+                            Some(Len::Px(h)) => Some(h),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    let rule = if e.style.column_rule_visible == Some(true) {
+                        Some((
+                            e.style.column_rule_width.unwrap_or(3.0),
+                            e.style
+                                .column_rule_color
+                                .or(merged.color)
+                                .unwrap_or(crate::value::Color {
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 0.0,
+                                    a: 1.0,
+                                })
+                                .to_hsla(),
+                        ))
+                    } else {
+                        None
+                    };
+                    let children: Vec<crate::flow::StackChild> = kids
+                        .into_iter()
+                        .map(|(c, (h, mt, mb))| {
+                            let mut copy = c;
+                            // Поля кладёт укладка колонок, не коробка.
+                            copy.style.margin.top = None;
+                            copy.style.margin.bottom = None;
+                            let inner = inline::inherit(&merged, &copy.style);
+                            crate::flow::StackChild {
+                                el: styled_div_with(&copy, &inner)
+                                    .children(blocks(&copy.children, &inner, opts))
+                                    .into_any_element(),
+                                h,
+                                mt,
+                                mb,
+                            }
+                        })
+                        .collect();
+                    return d
+                        .child(crate::flow::ColumnStack::new(
+                            children,
+                            cols as usize,
+                            used_gap,
+                            fixed,
+                            rule,
+                        ))
+                        .into_any_element();
+                }
                 let count = e.children.iter().filter(|n| !is_blank(n)).count().max(1);
                 let rows = count.div_ceil(cols as usize).max(1) as u16;
                 let gap = used_gap;

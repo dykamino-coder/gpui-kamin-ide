@@ -390,3 +390,232 @@ fn ellipse_cut(cy_abs: f32, rx: f32, ry: f32, cx: f32, y0: f32, y1: f32) -> f32 
     }
     cx + rx * k.sqrt()
 }
+
+/// Ребёнок колонок: элемент, высота коробки и вертикальные поля
+/// (схлопываются между соседями по правилам потока).
+pub struct StackChild {
+    pub el: AnyElement,
+    pub h: f32,
+    pub mt: f32,
+    pub mb: f32,
+}
+
+/// Колонки многоколоночного потока для БЛОЧНЫХ детей с известными
+/// высотами (css-multicol §7.4 + css-break): жадная укладка сверху вниз,
+/// балансировка «оценка + добавка на минимальный недолаз» (как в blink
+/// ResolveColumnAutoBlockSize), монолиты уходят в следующую колонку
+/// целиком. Разрез ДЕТЕЙ (строк/рамок) — следующая фаза.
+pub struct ColumnStack {
+    children: Vec<StackChild>,
+    count: usize,
+    gap: f32,
+    /// `column-fill: auto` + заданная высота: заполнение без баланса.
+    fixed_height: Option<f32>,
+    /// Линейка между колонками: ширина и цвет.
+    rule: Option<(f32, gpui::Hsla)>,
+    slots: std::cell::RefCell<Vec<(f32, f32)>>,
+    col_w: std::cell::Cell<f32>,
+    target: std::cell::Cell<f32>,
+}
+
+impl ColumnStack {
+    pub fn new(
+        children: Vec<StackChild>,
+        count: usize,
+        gap: f32,
+        fixed_height: Option<f32>,
+        rule: Option<(f32, gpui::Hsla)>,
+    ) -> Self {
+        ColumnStack {
+            children,
+            count: count.max(1),
+            gap,
+            fixed_height,
+            rule,
+            slots: std::cell::RefCell::new(Vec::new()),
+            col_w: std::cell::Cell::new(0.0),
+            target: std::cell::Cell::new(0.0),
+        }
+    }
+
+    /// Жадная укладка при данной высоте колонки: сколько колонок вышло и
+    /// минимальный недолаз. Вертикальные поля соседей СХЛОПЫВАЮТСЯ
+    /// (CSS 2.1 §8.3.1) и обнуляются на границе колонки (css-break §5).
+    fn fill(kids: &[(f32, f32, f32)], target: f32) -> (usize, f32, Vec<(usize, f32)>) {
+        let mut col = 0usize;
+        let mut y = 0.0f32;
+        let mut prev_mb = 0.0f32;
+        let mut first = true;
+        let mut shortage = f32::MAX;
+        let mut slots = Vec::with_capacity(kids.len());
+        for &(h, mt, mb) in kids {
+            let lead = if first { mt } else { prev_mb.max(mt) };
+            if !first && y + lead + h > target + 0.01 {
+                shortage = shortage.min(y + lead + h - target);
+                col += 1;
+                y = 0.0;
+                // Поле на границе колонки съедается.
+                slots.push((col, y));
+                y += h + 0.0;
+                prev_mb = mb;
+                first = false;
+                continue;
+            }
+            slots.push((col, y + lead));
+            y += lead + h;
+            prev_mb = mb;
+            first = false;
+        }
+        (col + 1, shortage, slots)
+    }
+
+    /// Высота колонок: заданная (fill:auto) либо баланс.
+    fn balance(&self, kids: &[(f32, f32, f32)]) -> (f32, Vec<(usize, f32)>) {
+        if let Some(h) = self.fixed_height {
+            let (_, _, slots) = Self::fill(kids, h);
+            return (h, slots);
+        }
+        let total: f32 = kids.iter().map(|&(h, ..)| h).sum();
+        let tallest = kids.iter().fold(0.0f32, |m, &(h, ..)| m.max(h));
+        let mut target = (total / self.count as f32).max(tallest).max(1.0);
+        for _ in 0..6 {
+            let (cols, shortage, slots) = Self::fill(kids, target);
+            if cols <= self.count {
+                return (target, slots);
+            }
+            // Как blink: расти ровно на минимально необходимое.
+            target += if shortage.is_finite() { shortage } else { 1.0 };
+        }
+        let (_, _, slots) = Self::fill(kids, target);
+        (target, slots)
+    }
+}
+
+impl Element for ColumnStack {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        _cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let heights: Vec<(f32, f32, f32)> =
+            self.children.iter().map(|c| (c.h, c.mt, c.mb)).collect();
+        let count = self.count;
+        let fixed = self.fixed_height;
+        let gap = self.gap;
+        let id = window.request_measured_layout(
+            gpui::Style::default(),
+            move |known, available, _window, _cx| {
+                let w = known
+                    .width
+                    .map(f32::from)
+                    .or(match available.width {
+                        gpui::AvailableSpace::Definite(v) => Some(f32::from(v)),
+                        _ => None,
+                    })
+                    .unwrap_or(0.0);
+                let probe = ColumnStack {
+                    children: Vec::new(),
+                    count,
+                    gap,
+                    fixed_height: fixed,
+                    rule: None,
+                    slots: std::cell::RefCell::new(Vec::new()),
+                    col_w: std::cell::Cell::new(0.0),
+                    target: std::cell::Cell::new(0.0),
+                };
+                let (target, _) = probe.balance(&heights);
+                size(px(w), px(target))
+            },
+        );
+        (id, ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _state: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let w = f32::from(bounds.size.width);
+        let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
+        let heights: Vec<(f32, f32, f32)> =
+            self.children.iter().map(|c| (c.h, c.mt, c.mb)).collect();
+        let (target, cols) = self.balance(&heights);
+        self.col_w.set(col_w);
+        self.target.set(target);
+        let slots: Vec<(f32, f32)> = cols
+            .iter()
+            .map(|&(col, y)| (col as f32 * (col_w + self.gap), y))
+            .collect();
+        for (c, (sx, sy)) in self.children.iter_mut().zip(slots.iter()) {
+            let origin = point(bounds.origin.x + px(*sx), bounds.origin.y + px(*sy));
+            c.el.layout_as_root(
+                size(
+                    gpui::AvailableSpace::Definite(px(col_w)),
+                    gpui::AvailableSpace::Definite(px(c.h)),
+                ),
+                window,
+                cx,
+            );
+            c.el.prepaint_at(origin, window, cx);
+        }
+        *self.slots.borrow_mut() = slots;
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        // Линейки — по центрам промежутков, высотой в колонку.
+        if let Some((rw, color)) = self.rule {
+            let col_w = self.col_w.get();
+            let target = self.target.get();
+            for i in 1..self.count {
+                let cx_ = i as f32 * (col_w + self.gap) - self.gap * 0.5;
+                window.paint_quad(gpui::fill(
+                    Bounds {
+                        origin: point(
+                            bounds.origin.x + px(cx_ - rw * 0.5),
+                            bounds.origin.y,
+                        ),
+                        size: size(px(rw), px(target)),
+                    },
+                    color,
+                ));
+            }
+        }
+        for c in self.children.iter_mut() {
+            c.el.paint(window, cx);
+        }
+    }
+}
+
+impl IntoElement for ColumnStack {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
