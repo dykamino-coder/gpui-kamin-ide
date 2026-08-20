@@ -820,10 +820,12 @@ fn colour_at(stops: &[(crate::value::Color, f32)], t: f32) -> crate::value::Colo
 /// Растр или рисунок — по содержимому файла, а не по расширению: у `data:`-URI
 /// расширения нет вовсе.
 fn decode(bytes: &[u8]) -> Option<Source> {
-    let head = &bytes[..bytes.len().min(512)];
     // Ищем корневой тег, а не начало файла: перед ним стоят и объявление XML,
     // и комментарий с лицензией — с них начинается добрая половина рисунков
-    // набора (`background-size/vector/support/*`).
+    // набора (`background-size/vector/support/*`). Окно широкое: комментарий
+    // в `colors-16x8-parDefault.svg` длиннее 512 байт, и рисунок не
+    // распознавался вовсе.
+    let head = &bytes[..bytes.len().min(4096)];
     let looks_svg = std::str::from_utf8(head)
         .ok()
         .map(|t| t.contains("<svg"))

@@ -4930,6 +4930,22 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     };
     match e.tag.as_str() {
         "img" => image(e),
+        // Замещаемые с картинкой-источником рисуются как <img>: embed через
+        // src, object через data, video через poster (css-images §5:
+        // object-fit/-position действуют на всех замещаемых).
+        "embed" if e.attr("src").is_some() => image(e),
+        "object" if e.attr("data").is_some() => {
+            let mut copy = e.clone();
+            let url = e.attr("data").unwrap_or_default().to_string();
+            copy.attrs.push(("src".to_string(), url));
+            image(&copy)
+        }
+        "video" if e.attr("poster").is_some() => {
+            let mut copy = e.clone();
+            let url = e.attr("poster").unwrap_or_default().to_string();
+            copy.attrs.push(("src".to_string(), url));
+            image(&copy)
+        }
         "iframe" if built_iframe.is_some() => built_iframe.take().unwrap(),
         // Рисунок не разобрался — показываем запасной текст, а не пустоту.
         "svg" => crate::svg::element(e).unwrap_or_else(|| {
@@ -5509,6 +5525,49 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             | crate::background::Source::Gradient { .. }
             | crate::background::Source::Shape { .. } => None,
         });
+        // `object-position` (и точные режимы `object-fit`) — фоновой трубой:
+        // concrete object size = размер плитки, позиционирование = origin,
+        // клип по content box (css-images-3 §5.1/5.2). Путь включается только
+        // при заданной позиции и точной коробке — прочее живёт старым путём.
+        if let (Some(pos), Some(Len::Px(w)), Some(Len::Px(h))) =
+            (e.style.object_position, e.style.width, e.style.height)
+        {
+            use crate::computed::BgSize;
+            let mut bgc = crate::computed::Computed::default();
+            bgc.bg_image = Some(local.unwrap_or(src).to_string());
+            bgc.bg_repeat = Some(crate::computed::BgRepeat::NoRepeat);
+            bgc.bg_pos = pos;
+            bgc.bg_size = match e.style.object_fit.as_deref() {
+                Some("contain") => BgSize::Contain,
+                Some("cover") => BgSize::Cover,
+                Some("none") => BgSize::Auto,
+                Some("scale-down") => {
+                    // Меньшее из `none` и `contain`: влезает — своим
+                    // размером, нет — вписать.
+                    let fits = crate::background::source(local.unwrap_or(src))
+                        .map(|s| s.intrinsic())
+                        .is_some_and(|i| {
+                            i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
+                        });
+                    if fits { BgSize::Auto } else { BgSize::Contain }
+                }
+                _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),
+            };
+            if let Some(layer) = crate::background::layer(&bgc) {
+                // Внутренняя коробка = content box: поля и рамка остаются
+                // на хосте, слой не должен их накрывать.
+                return d
+                    .child(
+                        div()
+                            .w(px(w))
+                            .h(px(h))
+                            .relative()
+                            .overflow_hidden()
+                            .child(layer),
+                    )
+                    .into_any_element();
+            }
+        }
         let mut image = match (own, local) {
             (Some(ready), _) => gpui::img(ready),
             (None, Some(path)) => gpui::img(std::path::PathBuf::from(path)),
@@ -7971,6 +8030,19 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         }
         floor
     };
+    // `order` переставляет элементы ДО размещения (css-grid-3 / css-flexbox
+    // §5.4): оба прохода идут по одному переупорядоченному списку индексов.
+    let order_ix: Vec<usize> = {
+        let mut ix: Vec<usize> = (0..e.children.len()).collect();
+        let key = |n: &Node| match n {
+            Node::Element(el) => el.style.order.unwrap_or(0),
+            _ => 0,
+        };
+        if e.children.iter().any(|n| key(n) != 0) {
+            ix.sort_by_key(|i| key(&e.children[*i]));
+        }
+        ix
+    };
     let mut reach: Vec<(usize, f32)> = vec![];
     // Конец слота элемента: верх СЛЕДУЮЩЕГО по разметке соседа его лунок минус
     // зазор. Нужен и растяжке (reach), и обратному заполнению (`fill-reverse`).
@@ -7980,7 +8052,8 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // Курсор авто-размещения: «равные» лунки берутся вперёд по кругу.
         let mut cursor = 0usize;
         let mut placed: Vec<(usize, usize, usize, f32, f32)> = vec![];
-        for (idx, child) in e.children.iter().enumerate() {
+        for &idx in &order_ix {
+            let child = &e.children[idx];
             let Node::Element(item) = child else { continue };
             if matches!(
                 item.style.position,
@@ -8075,7 +8148,8 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     let mut extras: Vec<Node> = vec![];
     // Курсор авто-размещения основного прохода (зеркало probe).
     let mut cursor = 0usize;
-    for (idx, child) in e.children.iter().enumerate() {
+    for &idx in &order_ix {
+        let child = &e.children[idx];
         let Node::Element(item) = child else {
             continue;
         };
@@ -8437,6 +8511,10 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         } else {
             along
         };
+        // `order` уже отработал ПРИ РАЗМЕЩЕНИИ (порядок обхода детей);
+        // в бакете лунки сортировать больше нечего — рядом лежат распорки
+        // с order=0, и элемент прыгал бы через свою распорку.
+        item.style.order = None;
         // Область span-дорожек: обёртка поперечного размера области, элемент
         // выравнивается внутри своим (перенесённым) align_self.
         let node = match span_area {

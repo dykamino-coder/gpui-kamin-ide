@@ -399,6 +399,42 @@ pub struct BgPos {
     pub y: Option<Len>,
 }
 
+/// Разбор позиции пары слов/длин: ключевые слова НЕСУТ СВОЮ ОСЬ
+/// (css-backgrounds-3 §3.6): `bottom center` и `center bottom` — одно и то
+/// же. Длины и `center` ложатся по порядку в свободные оси; одно значение
+/// задаёт свою ось, вторая — по центру.
+pub fn parse_pos_words(v: &str) -> BgPos {
+    let word = |t: &str| -> Option<Len> {
+        match t {
+            "left" | "top" => Some(Len::Pct(0.0)),
+            "center" => Some(Len::Pct(0.5)),
+            "right" | "bottom" => Some(Len::Pct(1.0)),
+            other => Len::parse(other),
+        }
+    };
+    let mut x: Option<Len> = None;
+    let mut y: Option<Len> = None;
+    let mut free: Vec<Option<Len>> = vec![];
+    for t in v.split_whitespace() {
+        match t {
+            "left" | "right" => x = word(t),
+            "top" | "bottom" => y = word(t),
+            other => free.push(word(other)),
+        }
+    }
+    let mut free = free.into_iter();
+    if x.is_none() {
+        x = free.next().flatten();
+    }
+    if y.is_none() {
+        y = free.next().flatten();
+    }
+    BgPos {
+        x: x.or(Some(Len::Pct(0.5))),
+        y: y.or(Some(Len::Pct(0.5))),
+    }
+}
+
 /// `background-repeat`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BgRepeat {
@@ -1110,6 +1146,8 @@ pub struct Computed {
     pub bg_image: Option<String>,
     pub bg_size: BgSize,
     pub bg_pos: BgPos,
+    /// `object-position` замещаемого содержимого (css-images-3 §5.2).
+    pub object_position: Option<BgPos>,
     pub bg_repeat: Option<BgRepeat>,
     /// `content` псевдоэлемента: строка, `attr(имя)` либо `counter(имя)`.
     pub content: Option<String>,
@@ -2994,40 +3032,12 @@ impl Computed {
                 }
             }
             "background-position" => {
-                let word = |t: &str| -> Option<Len> {
-                    match t {
-                        "left" | "top" => Some(Len::Pct(0.0)),
-                        "center" => Some(Len::Pct(0.5)),
-                        "right" | "bottom" => Some(Len::Pct(1.0)),
-                        other => Len::parse(other),
-                    }
-                };
-                // Ключевые слова НЕСУТ СВОЮ ОСЬ (css-backgrounds-3 §3.6):
-                // `bottom center` и `center bottom` — одно и то же, `bottom`
-                // всегда вертикаль. Длины и `center` ложатся по порядку в
-                // свободные оси.
-                let mut x: Option<Len> = None;
-                let mut y: Option<Len> = None;
-                let mut free: Vec<Option<Len>> = vec![];
-                for t in v.split_whitespace() {
-                    match t {
-                        "left" | "right" => x = word(t),
-                        "top" | "bottom" => y = word(t),
-                        other => free.push(word(other)),
-                    }
-                }
-                let mut free = free.into_iter();
-                if x.is_none() {
-                    x = free.next().flatten();
-                }
-                if y.is_none() {
-                    y = free.next().flatten();
-                }
-                // Одно значение задаёт свою ось, вторая — по центру.
-                self.bg_pos = BgPos {
-                    x: x.or(Some(Len::Pct(0.5))),
-                    y: y.or(Some(Len::Pct(0.5))),
-                };
+                self.bg_pos = parse_pos_words(v);
+            }
+            // `object-position` — та же грамматика, но для замещаемого
+            // содержимого (css-images-3 §5.2).
+            "object-position" => {
+                self.object_position = Some(parse_pos_words(v));
             }
             // Пооосевые продольные свойства (css-backgrounds-4 §4.1):
             // одна ось, вторая не трогается.
