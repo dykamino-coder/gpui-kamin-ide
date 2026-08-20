@@ -1652,13 +1652,30 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
         if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("FL_DBG").is_ok()); *ON } {
             eprintln!("FL floaters={} i={} j={} total={}", floaters.len(), i, j, nodes.len());
         }
-        // Соседи до ближайшего `clear` — они и обтекают.
+        // Соседи до ближайшего `clear` — они и обтекают. Внепоточный
+        // (absolute/fixed) сосед НЕ обтекает: в колонке ряда он получил бы
+        // её своим содержащим блоком, и `right: 96px` считался от узкой
+        // колонки, а не от контейнера (эталоны css-shapes с рядом
+        // absolute-коробок выходили пустыми).
         let mut rest: Vec<Node> = vec![];
+        let mut out_of_flow: Vec<Node> = vec![];
         while j < nodes.len() {
             if let Node::Element(next) = &nodes[j]
                 && (next.style.clear == Some(true) || next.style.float.is_some_and(|f| f != 0))
             {
                 break;
+            }
+            if let Node::Element(next) = &nodes[j]
+                && matches!(
+                    next.style.position,
+                    Some(crate::computed::Position::Absolute)
+                        | Some(crate::computed::Position::Fixed)
+                )
+                && !at_static_position(&next.style)
+            {
+                out_of_flow.push(nodes[j].clone());
+                j += 1;
+                continue;
             }
             rest.push(nodes[j].clone());
             j += 1;
@@ -1685,6 +1702,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
                 out.push(Node::Element(lone));
             }
             out.extend(rest);
+            out.extend(out_of_flow);
             i = j;
             continue;
         }
@@ -1746,6 +1764,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
             host.children = floaters.into_iter().map(Node::Element).collect();
             host.children.extend(rest);
             out.push(Node::Element(host));
+            out.extend(out_of_flow);
             i = j;
             continue;
         }
@@ -1796,6 +1815,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
             attrs: vec![],
             inline: false,
         }));
+        out.extend(out_of_flow);
         i = j;
     }
     out
