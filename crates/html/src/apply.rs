@@ -583,7 +583,9 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // подменяется `contain-intrinsic-size` (или нулём). Подмена касается
     // размера ПО СОДЕРЖИМОМУ: высота auto считается от содержимого — её и
     // задаём; ширина блока в потоке и так не от содержимого, её не трогаем.
-    if c.contain_size == Some(true) && c.height.is_none() {
+    // Явное `height: auto` — та же высота от содержимого: подмена нужна и
+    // ему (`contain-size-replaced-003*` пишут auto буквально).
+    if c.contain_size == Some(true) && matches!(c.height, None | Some(Len::Auto)) {
         d = d.h(px(c.contain_intrinsic.1.unwrap_or(0.0)));
     }
     d = apply_sides(d, &c.padding, SideKind::Padding);

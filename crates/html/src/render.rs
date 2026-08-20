@@ -652,6 +652,27 @@ fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> 
 }
 
 fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
+    // `content-visibility: hidden`: содержимое пропускается целиком
+    // (css-contain-2 §4) — коробка остаётся, детей нет.
+    let stripped: Vec<Node>;
+    let nodes = if nodes.iter().any(
+        |n| matches!(n, Node::Element(e) if e.style.skip_content == Some(true) && !e.children.is_empty()),
+    ) {
+        stripped = nodes
+            .iter()
+            .map(|n| match n {
+                Node::Element(e) if e.style.skip_content == Some(true) => {
+                    let mut copy = e.clone();
+                    copy.children.clear();
+                    Node::Element(copy)
+                }
+                other => other.clone(),
+            })
+            .collect();
+        &stripped
+    } else {
+        nodes
+    };
     // `order` в CSS работает ТОЛЬКО внутри гибкого контейнера и сетки; в
     // обычном потоке он не значит ничего. Раньше сортировались дети любого
     // родителя — блоки меняли порядок там, где браузер их не трогает.
@@ -2380,7 +2401,8 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
             e.style.position,
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
         ) || e.style.float.is_some()
-            || e.style.contain_paint == Some(true);
+            || e.style.contain_paint == Some(true)
+            || e.style.contain_layout == Some(true);
         // Отсечка по ЗНАЧЕНИЮ, а не по «свойство написано»: `padding: 0` и
         // `border: 0` схлопыванию не мешают (CSS 2.1 §8.3.1).
         let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
@@ -4676,6 +4698,29 @@ fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
     };
     out.width = len(prev.1.width, next.1.width).or(out.width);
     out.height = len(prev.1.height, next.1.height).or(out.height);
+    // Фильтры интерполируются покомпонентно; `none` = нейтральный
+    // (filter-effects-1 §Interpolation, css-filters-animation-*).
+    if prev.1.filter.is_some() || next.1.filter.is_some() {
+        let a = prev.1.filter.unwrap_or_else(crate::computed::Filter::neutral);
+        let b = next.1.filter.unwrap_or_else(crate::computed::Filter::neutral);
+        out.filter = Some(crate::computed::Filter {
+            grayscale: lerp(a.grayscale, b.grayscale),
+            brightness: lerp(a.brightness, b.brightness),
+            saturate: lerp(a.saturate, b.saturate),
+            invert: lerp(a.invert, b.invert),
+            sepia: lerp(a.sepia, b.sepia),
+            opacity: lerp(a.opacity, b.opacity),
+            hue_rotate: lerp(a.hue_rotate, b.hue_rotate),
+            contrast: lerp(a.contrast, b.contrast),
+            blur: lerp(a.blur, b.blur),
+        });
+    }
+    if prev.1.backdrop_blur.is_some() || next.1.backdrop_blur.is_some() {
+        out.backdrop_blur = Some(lerp(
+            prev.1.backdrop_blur.unwrap_or(0.0),
+            next.1.backdrop_blur.unwrap_or(0.0),
+        ));
+    }
     if let (Some(a), Some(b)) = (prev.1.translate, next.1.translate) {
         out.translate = Some((
             len(Some(a.0), Some(b.0)).unwrap_or(a.0),
@@ -4695,6 +4740,45 @@ fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement 
     //
     // Внешний отступ переезжает НА обёртку: оставшись внутри, он переставал
     // раздвигать соседей — блоки слипались против браузера.
+    // Остановленная анимация — не анимация: кадр `(-delay)/duration`
+    // запекается прямо в стиль элемента, и дальше работает весь обычный
+    // конвейер (фильтр по цветам, групповой blur). Живая обёртка здесь
+    // делала reftest недетерминированным по построению.
+    if spec.paused {
+        let t = if spec.seconds > 0.0 {
+            ((-spec.delay) / spec.seconds).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let c = frame_at(&frames, t);
+        let mut inner = e.clone();
+        let st = &mut inner.style;
+        if c.opacity.is_some() {
+            st.opacity = c.opacity;
+        }
+        if c.background.is_some() {
+            st.background = c.background;
+        }
+        if c.color.is_some() {
+            st.color = c.color;
+        }
+        if c.width.is_some() {
+            st.width = c.width;
+        }
+        if c.height.is_some() {
+            st.height = c.height;
+        }
+        if c.translate.is_some() {
+            st.translate = c.translate;
+        }
+        if c.filter.is_some() {
+            st.filter = c.filter;
+        }
+        if c.backdrop_blur.is_some() {
+            st.backdrop_blur = c.backdrop_blur;
+        }
+        return element(&inner, inherited, opts);
+    }
     let mut inner = e.clone();
     inner.style.margin = crate::computed::Sides::default();
     let el = element(&inner, inherited, opts);

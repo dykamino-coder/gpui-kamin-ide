@@ -1188,8 +1188,23 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
         rounded(repeat.axis(false), tile.1, box_size.1),
     );
     let start = origin(pos, box_size, tile);
-    let xs = tiling(repeat.axis(true), start.0, tile.0, box_size.0);
-    let ys = tiling(repeat.axis(false), start.1, tile.1, box_size.1);
+    let mut xs = tiling(repeat.axis(true), start.0, tile.0, box_size.0);
+    let mut ys = tiling(repeat.axis(false), start.1, tile.1, box_size.1);
+    // Общий потолок числа квадов: потолок НА ОСЬ пропускал произведение
+    // (плитка 1x1 на вьюпорт = ~480 тысяч квадов — кадр не заканчивался,
+    // hidpi-invert-filter-background висел). Плитки ПРОРЕЖИВАЮТСЯ с
+    // укрупнением квада: покрытие коробки сохраняется (для одноцветной
+    // 1x1 — точно, узор теряет лишь плотность повтора).
+    const MAX_QUADS: usize = 4096;
+    let mut tile = tile;
+    if xs.len() * ys.len() > MAX_QUADS {
+        let k = ((xs.len() * ys.len()) as f32 / MAX_QUADS as f32)
+            .sqrt()
+            .ceil() as usize;
+        xs = xs.into_iter().step_by(k).collect();
+        ys = ys.into_iter().step_by(k).collect();
+        tile = (tile.0 * k as f32, tile.1 * k as f32);
+    }
     if std::env::var("HTML_BG").is_ok() {
         eprintln!(
             "BG box=({:.0},{:.0}) tile=({:.0},{:.0}) start=({:.0},{:.0}) xs={} ys={}",

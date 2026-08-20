@@ -11,6 +11,9 @@ use std::collections::HashMap;
 /// до момента применения, чтобы неизвестные свойства не стоили ничего.
 pub type Decls = HashMap<String, String>;
 
+/// Разделитель повторных объявлений одного свойства внутри значения.
+pub const DECL_SEP: char = char::from_u32(1).unwrap();
+
 /// Одно правило: с чем сопоставлять и что применять.
 #[derive(Clone, Debug)]
 pub struct Rule {
@@ -302,7 +305,26 @@ pub fn parse_decls(raw: &str) -> Decls {
         // важность целиком — объявление конкурировало на общих основаниях.
         let val = &unescape_value(val);
         if !key.is_empty() && !val.is_empty() {
-            out.insert(key, val.to_string());
+            // Повтор того же свойства НЕ затирает прежнее на разборе:
+            // действительность значения известна только применению
+            // (CSS 2.1 §4.1.7 — недействительное объявление игнорируется,
+            // а не гасит предыдущее). Части склеиваются служебным
+            // разделителем и применяются по порядку. Пользовательские
+            // свойства действительны всегда — последнее побеждает.
+            if key.starts_with("--") {
+                out.insert(key, val.to_string());
+            } else {
+                match out.entry(key) {
+                    std::collections::hash_map::Entry::Occupied(mut e) => {
+                        let s = e.get_mut();
+                        s.push(DECL_SEP);
+                        s.push_str(val);
+                    }
+                    std::collections::hash_map::Entry::Vacant(e) => {
+                        e.insert(val.to_string());
+                    }
+                }
+            }
         }
     }
     out

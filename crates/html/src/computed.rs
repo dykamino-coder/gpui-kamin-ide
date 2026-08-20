@@ -494,6 +494,8 @@ pub struct Filter {
     pub opacity: f32,
     /// Поворот тона в градусах.
     pub hue_rotate: f32,
+    /// Множитель контраста.
+    pub contrast: f32,
     /// Радиус размытия поддерева в точках: `filter: blur(N)`.
     ///
     /// Цветовые функции считаются по цвету каждого примитива, а размытию
@@ -513,6 +515,7 @@ impl Filter {
             sepia: 0.0,
             opacity: 1.0,
             hue_rotate: 0.0,
+            contrast: 1.0,
             blur: 0.0,
         }
     }
@@ -552,6 +555,14 @@ impl Filter {
             g += (1.0 - g - g) * k;
             b += (1.0 - b - b) * k;
         }
+        if self.contrast != 1.0 {
+            // Аффинный контраст: растяжение вокруг середины (filter-effects-1
+            // §contrast: c*k + 0.5 - 0.5k).
+            let k = self.contrast;
+            r = (r - 0.5) * k + 0.5;
+            g = (g - 0.5) * k + 0.5;
+            b = (b - 0.5) * k + 0.5;
+        }
         if self.hue_rotate != 0.0 {
             // Матрица поворота тона из спецификации фильтров.
             let a = self.hue_rotate.to_radians();
@@ -589,6 +600,11 @@ pub struct AnimSpec {
     pub infinite: bool,
     /// `alternate` — обратный ход через раз.
     pub alternate: bool,
+    /// `animation-delay`: отрицательная — старт с середины.
+    pub delay: f32,
+    /// `animation-play-state: paused` — живой анимации нет, рисуется один
+    /// кадр на месте `(-delay)/duration` (reftest'ы иначе недетерминированы).
+    pub paused: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1024,8 +1040,14 @@ pub struct Computed {
     /// `contain: size` — коробка меряется ПУСТОЙ (css-contain-1 §3):
     /// размер задают явные свойства и `contain-intrinsic-size`.
     pub contain_size: Option<bool>,
+    /// `contain: layout|content` — независимый контекст форматирования.
+    pub contain_layout: Option<bool>,
+    /// `contain: style` — счётчики и кавычки не выходят из поддерева.
+    pub contain_style: Option<bool>,
     /// `contain-intrinsic-size`: подменная своя величина (css-sizing-5 §5).
     pub contain_intrinsic: (Option<f32>, Option<f32>),
+    /// `content-visibility: hidden` — детей не собирать вовсе.
+    pub skip_content: Option<bool>,
     /// `clip-path`/`mask`: обрезка по кругу или скруглённому прямоугольнику.
     /// Хранится долей радиуса от меньшей стороны либо радиусом в точках.
     pub clip_round: Option<f32>,
@@ -1531,7 +1553,9 @@ impl Computed {
 
     pub fn apply_decls(&mut self, d: &Decls) {
         for (k, v) in d {
-            self.apply_one(k, v);
+            for part in v.split(crate::css::DECL_SEP) {
+                self.apply_one(k, part);
+            }
         }
     }
 
@@ -1562,11 +1586,16 @@ impl Computed {
         keys.sort_by_key(|k| (k.matches('-').count(), k.as_str()));
         for k in &keys {
             let Some(v) = d.get(*k) else { continue };
-            if k.starts_with("--") || is_important(v) != important {
+            if k.starts_with("--") {
                 continue;
             }
-            let resolved = resolve_vars(strip_important(v), vars);
-            self.apply_one(k, &resolved);
+            for part in v.split(crate::css::DECL_SEP) {
+                if is_important(part) != important {
+                    continue;
+                }
+                let resolved = resolve_vars(strip_important(part), vars);
+                self.apply_one(k, &resolved);
+            }
         }
     }
 
@@ -2646,6 +2675,38 @@ impl Computed {
                     // Сырая запись нужна фону РЯДА таблицы: он рисуется
                     // слоем картинки, и градиент туда идёт источником.
                     self.gradient_raw = Some(v.to_string());
+                } else if let Some(rest) = v.strip_prefix("filter(") {
+                    // `filter(<image>, <filter-list>)` (filter-effects-1 §12):
+                    // фильтр применяется К КАРТИНКЕ, не к элементу — цвета
+                    // градиента пересчитываются на месте.
+                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
+                    let parts = crate::css::split_args(inner);
+                    if let Some(img) = parts.first().map(|p| p.trim())
+                        && (img.starts_with("linear-gradient(")
+                            || img.starts_with("radial-gradient("))
+                        && let Some(mut g) = parse_gradient(img)
+                    {
+                        let mut tmp = Self::default();
+                        tmp.apply_one("filter", &parts[1..].join(" "));
+                        if let Some(f) = tmp.filter {
+                            g.from = f.apply(g.from);
+                            g.to = f.apply(g.to);
+                            for stop in g.stops.iter_mut() {
+                                stop.0 = f.apply(stop.0);
+                            }
+                        }
+                        self.gradient = Some(g);
+                    } else if let Some(img) = parts.first().map(|p| p.trim())
+                        && img.starts_with("conic-gradient(")
+                    {
+                        // Конический идёт растровой плиткой — фильтр к нему
+                        // пока не доносим; сама картинка лучше, чем ничего.
+                        self.bg_image = Some(img.to_string());
+                    }
+                } else if v.starts_with("conic-gradient(") {
+                    // Конический GPU-путь не умеет — сразу растровой плиткой
+                    // (css-images-4 §2.3; растеризатор уже есть).
+                    self.bg_image = Some(v.to_string());
                 } else if let Some(url) = parse_url(v) {
                     self.bg_image = Some(url);
                 }
@@ -3103,24 +3164,46 @@ impl Computed {
             }
             "column-rule-color" => self.column_rule_color = Color::parse(v.trim()),
             "column-rule" => {
-                // Сокращение: ширина, стиль, цвет в любом порядке.
+                // Сокращение: ширина, стиль, цвет в любом порядке. Незнакомый
+                // токен делает недействительным ВСЁ объявление (CSS 2.1
+                // §4.1.7: `column-rule: normal red 1em` игнорируется целиком,
+                // прежнее значение остаётся).
+                let mut vis = None;
+                let mut w = None;
+                let mut col = None;
+                let mut ok = true;
                 for token in v.split_whitespace() {
                     match token {
-                        "none" | "hidden" => self.column_rule_visible = Some(false),
+                        "none" | "hidden" => vis = Some(false),
                         "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge"
-                        | "inset" | "outset" => self.column_rule_visible = Some(true),
-                        "thin" => self.column_rule_width = Some(Len::Px(1.0)),
-                        "medium" => self.column_rule_width = Some(Len::Px(3.0)),
-                        "thick" => self.column_rule_width = Some(Len::Px(5.0)),
+                        | "inset" | "outset" => vis = Some(true),
+                        "thin" => w = Some(Len::Px(1.0)),
+                        "medium" => w = Some(Len::Px(3.0)),
+                        "thick" => w = Some(Len::Px(5.0)),
                         t => {
                             if let Some(l) = Len::parse(t) {
-                                if !matches!(l, Len::Px(w) if w < 0.0) {
-                                    self.column_rule_width = Some(l);
+                                if matches!(l, Len::Px(v) if v < 0.0) {
+                                    ok = false;
+                                } else {
+                                    w = Some(l);
                                 }
                             } else if let Some(c) = Color::parse(t) {
-                                self.column_rule_color = Some(c);
+                                col = Some(c);
+                            } else {
+                                ok = false;
                             }
                         }
+                    }
+                }
+                if ok {
+                    if vis.is_some() {
+                        self.column_rule_visible = vis;
+                    }
+                    if w.is_some() {
+                        self.column_rule_width = w;
+                    }
+                    if col.is_some() {
+                        self.column_rule_color = col;
                     }
                 }
             }
@@ -3157,21 +3240,41 @@ impl Computed {
             | "animation-name"
             | "animation-duration"
             | "animation-iteration-count"
-            | "animation-direction" => {
+            | "animation-direction"
+            | "animation-delay"
+            | "animation-play-state" => {
                 let mut a = self.animation.clone().unwrap_or(AnimSpec {
                     name: String::new(),
                     seconds: 0.0,
                     infinite: false,
                     alternate: false,
+                    delay: 0.0,
+                    paused: false,
                 });
+                // В сокращении второе время — задержка (css-animations §5).
+                let mut times = 0usize;
+                let mut set_time = |a: &mut AnimSpec, sec: f32, times: &mut usize| match key {
+                    "animation-delay" => a.delay = sec,
+                    "animation-duration" => a.seconds = sec,
+                    _ => {
+                        if *times == 0 {
+                            a.seconds = sec;
+                        } else {
+                            a.delay = sec;
+                        }
+                        *times += 1;
+                    }
+                };
                 for token in v.split_whitespace() {
                     if let Some(sec) = token.strip_suffix("ms").and_then(|n| n.parse::<f32>().ok())
                     {
-                        a.seconds = sec / 1000.0;
+                        set_time(&mut a, sec / 1000.0, &mut times);
                     } else if let Some(sec) =
                         token.strip_suffix('s').and_then(|n| n.parse::<f32>().ok())
                     {
-                        a.seconds = sec;
+                        set_time(&mut a, sec, &mut times);
+                    } else if token == "paused" {
+                        a.paused = true;
                     } else if token == "infinite" {
                         a.infinite = true;
                     } else if token == "alternate" {
@@ -3197,7 +3300,9 @@ impl Computed {
                         a.name = token.to_string();
                     }
                 }
-                self.animation = (!a.name.is_empty()).then_some(a);
+                // Свойства без имени (`animation-play-state` до сокращения)
+                // копят состояние: имя может прийти следующей декларацией.
+                self.animation = Some(a);
             }
             "transition" | "transition-duration" => {
                 // Из записи перехода нужна только длительность: какие свойства
@@ -3259,6 +3364,7 @@ impl Computed {
                             f.hue_rotate = arg.trim_end_matches("deg").parse().unwrap_or(0.0)
                         }
                         "blur" => f.blur = arg.trim_end_matches("px").trim().parse().unwrap_or(0.0),
+                        "contrast" => f.contrast = amount(),
                         // `drop-shadow` и цветовые матрицы — не наш случай.
                         _ => {}
                     }
@@ -3553,12 +3659,45 @@ impl Computed {
                 }
             },
             "contain" => {
-                // `paint` и `strict` обрезают содержимое по коробке — это
-                // ровно то, что делает скрытое переполнение.
-                self.contain_paint = Some(v.contains("paint") || v.contains("strict"));
-                // `size` считает коробку ПУСТОЙ: её размер задают явные
-                // свойства и `contain-intrinsic-size`, содержимое не растит.
-                self.contain_size = Some(v.contains("size") || v.contains("strict"));
+                // Разбор по словам: подстрочный поиск ловил «size» в
+                // «inline-size» и не видел paint внутри `content`
+                // (css-contain-1 §3.1: strict = size layout paint style,
+                // content = layout paint style).
+                let mut bits = (false, false, false, false);
+                for w in v.split_whitespace() {
+                    match w {
+                        // `paint` и `strict` обрезают содержимое по коробке —
+                        // это ровно то, что делает скрытое переполнение;
+                        // `size` считает коробку ПУСТОЙ: её размер задают
+                        // явные свойства и `contain-intrinsic-size`.
+                        "size" => bits.0 = true,
+                        "layout" => bits.1 = true,
+                        "paint" => bits.2 = true,
+                        "style" => bits.3 = true,
+                        "strict" => bits = (true, true, true, true),
+                        "content" => {
+                            bits.1 = true;
+                            bits.2 = true;
+                            bits.3 = true;
+                        }
+                        _ => {}
+                    }
+                }
+                self.contain_size = Some(bits.0);
+                self.contain_layout = Some(bits.1);
+                self.contain_paint = Some(bits.2);
+                self.contain_style = Some(bits.3);
+            }
+            "content-visibility" => {
+                // `hidden` = size+layout+paint containment, содержимое
+                // пропускается целиком (css-contain-2 §4). `auto` для
+                // reftest без прокрутки всегда «релевантен» = visible.
+                if v.trim() == "hidden" {
+                    self.contain_size = Some(true);
+                    self.contain_paint = Some(true);
+                    self.contain_layout = Some(true);
+                    self.skip_content = Some(true);
+                }
             }
             "contain-intrinsic-size" => {
                 // Одно или два значения; `auto <длина>` — длина как запас.

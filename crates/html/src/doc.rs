@@ -157,18 +157,36 @@ fn any_side(s: &crate::computed::Sides) -> bool {
 /// форматирования, отступ первого абзаца переставал схлопываться с полем тела,
 /// и вся страница уезжала вниз на этот отступ.
 fn viewport_overflow(mut nodes: Vec<Node>) -> Vec<Node> {
-    fn strip(nodes: &mut [Node]) {
+    fn strip(nodes: &mut [Node], root_contained: bool) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
             if matches!(e.tag.as_str(), "html" | "body") {
-                e.style.overflow_x = None;
-                e.style.overflow_y = None;
-                strip(&mut e.children);
+                // Любое ограничение РВЁТ цепочку распространения: своё — у
+                // элемента, корневое — у тела тоже (значение тела уезжает
+                // во вьюпорт ЧЕРЕЗ корень; css-contain-1 §3.1,
+                // contain-{body,html}-overflow-001..004).
+                let own = any_containment(e);
+                if !own && !root_contained {
+                    e.style.overflow_x = None;
+                    e.style.overflow_y = None;
+                }
+                strip(&mut e.children, root_contained || (e.tag == "html" && own));
             }
         }
     }
-    strip(&mut nodes);
+    strip(&mut nodes, false);
     nodes
+}
+
+/// Есть ли на элементе хоть одно ограничение (`contain`, включая
+/// `content-visibility: hidden`): оно выключает распространение свойств
+/// элемента в область просмотра.
+fn any_containment(e: &crate::dom::Element) -> bool {
+    e.style.contain_paint == Some(true)
+        || e.style.contain_size == Some(true)
+        || e.style.contain_layout == Some(true)
+        || e.style.contain_style == Some(true)
+        || e.style.skip_content == Some(true)
 }
 
 /// Главное письмо страницы задаёт `<body>`, а не корень.
@@ -232,7 +250,7 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     }
     // Ограничение на корне гасит распространение: корень с ним — сам себе
     // область, и наружу его письмо не выходит.
-    if html.style.contain_paint == Some(true) {
+    if any_containment(html) {
         return nodes;
     }
     // `html::before`/`::after` — СОСЕДИ body в потоке страницы: растяжка
@@ -260,12 +278,23 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     }) else {
         return nodes;
     };
-    let taken = (
-        body.style.vertical.or(html.style.vertical),
-        body.style.vertical_rl.or(html.style.vertical_rl),
-        body.style.rtl.or(html.style.rtl),
-        body.style.sideways.or(html.style.sideways),
-    );
+    // Ограничение на теле оставляет письмо ему: наверх идёт только
+    // собственное письмо корня (contain-body-{w-m,t-o}-001..004).
+    let taken = if any_containment(body) {
+        (
+            html.style.vertical,
+            html.style.vertical_rl,
+            html.style.rtl,
+            html.style.sideways,
+        )
+    } else {
+        (
+            body.style.vertical.or(html.style.vertical),
+            body.style.vertical_rl.or(html.style.vertical_rl),
+            body.style.rtl.or(html.style.rtl),
+            body.style.sideways.or(html.style.sideways),
+        )
+    };
     let own = (
         html.style.vertical,
         html.style.vertical_rl,
