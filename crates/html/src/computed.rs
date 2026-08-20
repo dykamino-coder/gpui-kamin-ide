@@ -3237,6 +3237,25 @@ impl Computed {
                                 second.to_radians()
                             };
                         }
+                        // matrix(a b c d e f): разложение на компоненты
+                        // (перенос, поворот, масштаб, скос) — QR-подобное,
+                        // как в css-transforms §16 (декомпозиция).
+                        "matrix" if nums.len() == 6 => {
+                            let (a, b, c, d, e2, f2) =
+                                (nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]);
+                            t.translate.0 += e2;
+                            t.translate.1 += f2;
+                            let sx = (a * a + b * b).sqrt();
+                            if sx > 1e-6 {
+                                t.rotate_rad += b.atan2(a);
+                                let det = a * d - b * c;
+                                let sy = det / sx;
+                                t.scale.0 *= sx;
+                                t.scale.1 *= sy;
+                                let shear = (a * c + b * d) / det.max(1e-6);
+                                t.skew_rad.0 += shear.atan();
+                            }
+                        }
                         "skewX" => t.skew_rad.0 += angle,
                         "skewY" => t.skew_rad.1 += angle,
                         "scaleX" => t.scale.0 *= first,
