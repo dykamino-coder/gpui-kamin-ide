@@ -324,9 +324,15 @@ pub fn element(e: &Element) -> Option<AnyElement> {
         (h + clip_margin).min(child_extent(false).max(h))
     };
     let image = rasterize(&serialize_sized(e, rw, rh), rw, rh)?;
-    let img = gpui::img(ImageSource::Render(image))
+    let mut img = gpui::img(ImageSource::Render(image))
         .w(gpui::px(rw))
         .h(gpui::px(rh));
+    // CSS-фон самого <svg> (`svg { background: green }`): канва растра
+    // прозрачна, фон красится коробкой картинки (svg-scale-001 и родня).
+    if let Some(bg) = e.style.background {
+        use gpui::Styled as _;
+        img = img.bg(bg.to_hsla());
+    }
     if rw > w + 0.5 || rh > h + 0.5 {
         Some(
             {

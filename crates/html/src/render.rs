@@ -1898,6 +1898,24 @@ fn column_flow(
         Some(Len::Px(v)) => v,
         _ => size,
     };
+    // Линейка колонок: видима при заданном стиле; цвет — currentColor.
+    let rule_owned: Option<(f32, crate::value::Color)> =
+        if e.style.column_rule_visible == Some(true) {
+            Some((
+                e.style.column_rule_width.unwrap_or(3.0),
+                e.style
+                    .column_rule_color
+                    .or(inherited.color)
+                    .unwrap_or(crate::value::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    }),
+            ))
+        } else {
+            None
+        };
     let nodes = e.children.clone();
     let inherited_owned = inherited.clone();
     let opts_owned = opts.clone();
@@ -1918,13 +1936,33 @@ fn column_flow(
             parts.push(rest);
             let inner =
                 (f32::from(width) - gap * (count.saturating_sub(1)) as f32) / count.max(1) as f32;
-            let mut row = div().flex().flex_row().gap_x(px(gap)).w(width);
-            for part in parts {
+            // Линейка между колонками (`column-rule`, css-multicol §5):
+            // рисуется по центру промежутка; тогда промежуток строится
+            // держателем, а не gap-свойством ряда.
+            let rule = rule_owned.filter(|(w, _)| *w > 0.0 && *w <= gap + 0.01);
+            let mut row = div().flex().flex_row().w(width);
+            if rule.is_none() {
+                row = row.gap_x(px(gap));
+            }
+            let n = parts.len();
+            for (i, part) in parts.into_iter().enumerate() {
                 row = row.child(div().w(px(inner)).flex().flex_col().children(blocks(
                     &part,
                     &inherited_owned,
                     &opts_owned,
                 )));
+                if let Some((rw, color)) = rule
+                    && i + 1 < n
+                {
+                    row = row.child(
+                        div()
+                            .w(px(gap))
+                            .flex_shrink_0()
+                            .flex()
+                            .justify_center()
+                            .child(div().w(px(rw)).bg(color.to_hsla())),
+                    );
+                }
             }
             row.into_any_element()
         });
@@ -4815,17 +4853,29 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // целых колонок этой ширины влезает в коробку, столько их и будет
             // (css-multicol-1 §7.3). Ширина коробки нужна заданная: без неё
             // считать не от чего, и остаётся прежняя дорожечная раскладка.
-            let by_width = match (e.style.column_count, e.style.column_width, e.style.width) {
-                (None, Some(Len::Px(w)), Some(Len::Px(box_w))) if w > 0.0 => {
-                    let gap = match e.style.column_gap {
-                        Some(Len::Px(v)) => v,
-                        _ => 0.0,
-                    };
-                    Some((((box_w + gap) / (w + gap)).floor().max(1.0)) as u16)
+            // Умолчание `column-gap: normal` — один кегль (css-align §8.3).
+            let used_gap = match e.style.column_gap {
+                Some(Len::Px(v)) => v,
+                _ => match e.style.font_size {
+                    Some(Len::Px(size)) => size,
+                    _ => opts.base_size(),
+                },
+            };
+            let count_from_width = match (e.style.column_width, e.style.width) {
+                (Some(Len::Px(w)), Some(Len::Px(box_w))) if w > 0.0 => {
+                    Some((((box_w + used_gap) / (w + used_gap)).floor().max(1.0)) as u16)
                 }
                 _ => None,
             };
-            if let Some(cols) = e.style.column_count.or(by_width).filter(|n| *n > 1) {
+            // Used column-count (css-multicol §3.4, как ResolveUsedColumnCount
+            // в blink): заданы оба — МЕНЬШЕЕ из числа и «сколько влезает»;
+            // только ширина — сколько влезает.
+            let used_count = match (e.style.column_count, count_from_width) {
+                (Some(c), Some(fw)) => Some(c.min(fw)),
+                (Some(c), None) => Some(c),
+                (None, fw) => fw,
+            };
+            if let Some(cols) = used_count.filter(|n| *n > 1) {
                 // Сплошной текст режется на колонки по строкам, а не по детям:
                 // один длинный абзац иначе оставался в первой колонке целиком.
                 if let Some(el) = column_flow(e, &merged, opts, cols as usize) {
@@ -4835,14 +4885,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 }
                 let count = e.children.iter().filter(|n| !is_blank(n)).count().max(1);
                 let rows = count.div_ceil(cols as usize).max(1) as u16;
-                // Умолчание `column-gap: normal` — один кегль текста.
-                let gap = match e.style.column_gap {
-                    Some(Len::Px(v)) => v,
-                    _ => match e.style.font_size {
-                        Some(Len::Px(size)) => size,
-                        _ => opts.base_size(),
-                    },
-                };
+                let gap = used_gap;
                 d = d
                     .grid()
                     .grid_template_cols((0..cols).map(|_| gpui::GridTrack::Fraction(1.0)).collect())

@@ -1053,6 +1053,14 @@ pub struct Computed {
     pub clip_rect: Option<[Option<f32>; 4]>,
     /// `clip-path: inset(t r b l ...)`: срезы краёв видимой области.
     pub clip_inset: Option<[Len; 4]>,
+    /// `column-fill: auto` — колонки заполняются по очереди, без баланса.
+    pub column_fill_auto: Option<bool>,
+    /// `column-span: all` — блок растянут на все колонки.
+    pub column_span: Option<bool>,
+    /// `column-rule-*`: линейка между колонками.
+    pub column_rule_width: Option<f32>,
+    pub column_rule_visible: Option<bool>,
+    pub column_rule_color: Option<Color>,
     /// `shape-outside`: сырая запись формы обтекания плавающего блока.
     pub shape_outside: Option<String>,
     /// `shape-margin`: поле вокруг формы обтекания; доля — от ширины
@@ -3053,8 +3061,69 @@ impl Computed {
             "accent-color" => self.accent_color = Color::parse(v),
 
             // --- Многоколоночный поток ----------------------------------------
-            "column-count" => self.column_count = v.parse().ok(),
-            "column-width" => self.column_width = Len::parse(v),
+            // Невалидное значение НЕ затирает прежнее (каскад CSS
+            // отбрасывает объявление целиком): `column-count: -1` после
+            // `column-count: 2` оставляет двойку. Ноль и минус невалидны.
+            "column-count" => {
+                if v.trim() == "auto" {
+                    self.column_count = None;
+                } else if let Ok(n) = v.trim().parse::<u16>()
+                    && n > 0
+                {
+                    self.column_count = Some(n);
+                }
+            }
+            "column-width" => {
+                if v.trim() == "auto" {
+                    self.column_width = None;
+                } else if let Some(l) = Len::parse(v.trim()) {
+                    // Отрицательная и нулевая ширина колонки невалидны.
+                    if !matches!(l, Len::Px(w) if w <= 0.0) {
+                        self.column_width = Some(l);
+                    }
+                }
+            }
+            // `column-fill`: балансировать ли колонки (дефолт balance).
+            "column-fill" => self.column_fill_auto = Some(v.trim() == "auto"),
+            // `column-span: all` — растяжка на все колонки.
+            "column-span" => self.column_span = Some(v.trim() == "all"),
+            "column-rule-width" => {
+                self.column_rule_width = match v.trim() {
+                    "thin" => Some(1.0),
+                    "medium" => Some(3.0),
+                    "thick" => Some(5.0),
+                    t => match Len::parse(t) {
+                        Some(Len::Px(w)) if w >= 0.0 => Some(w),
+                        _ => self.column_rule_width,
+                    },
+                }
+            }
+            "column-rule-style" => {
+                self.column_rule_visible = Some(!matches!(v.trim(), "none" | "hidden"));
+            }
+            "column-rule-color" => self.column_rule_color = Color::parse(v.trim()),
+            "column-rule" => {
+                // Сокращение: ширина, стиль, цвет в любом порядке.
+                for token in v.split_whitespace() {
+                    match token {
+                        "none" | "hidden" => self.column_rule_visible = Some(false),
+                        "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge"
+                        | "inset" | "outset" => self.column_rule_visible = Some(true),
+                        "thin" => self.column_rule_width = Some(1.0),
+                        "medium" => self.column_rule_width = Some(3.0),
+                        "thick" => self.column_rule_width = Some(5.0),
+                        t => {
+                            if let Some(Len::Px(w)) = Len::parse(t) {
+                                if w >= 0.0 {
+                                    self.column_rule_width = Some(w);
+                                }
+                            } else if let Some(c) = Color::parse(t) {
+                                self.column_rule_color = Some(c);
+                            }
+                        }
+                    }
+                }
+            }
             "columns" => {
                 // `columns: <ширина> <число>` в любом порядке.
                 for token in v.split_whitespace() {
