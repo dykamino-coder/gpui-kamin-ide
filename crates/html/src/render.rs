@@ -6953,11 +6953,27 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // Элемент без заданной высоты ТЯНЕТСЯ вдоль лунки до низа контейнера
         // (`align-items: stretch` по оси укладки).
         let mut item = item.clone();
-        // ПРОБОВАЛИ И ОТКАТИЛИ ДВАЖДЫ: дорожки ребёнку-сабгриду. Свои дорожки
-        // по числу перекрытых линий — subgrid-gap +10, auto-fill/baseline −17.
-        // Настоящая передача Px-куска дорожек родителя — gap-семейству −4.
-        // Оба прохода нетто-вредны; честный subgrid требует передачи ИМЕННО
-        // разрешённых ширин (после укладки), а их на этом этапе ещё нет.
+        // Попытка №3 (после Px-ификации дорожек contrib/step-правками):
+        // сабгрид-ребёнок получает ТОЧНЫЙ Px-кусок родительских дорожек — те
+        // самые «разрешённые ширины», которых не было в откатах №1 (свои
+        // дорожки по линиям: −17 baseline) и №2 (сырой кусок: −4 gap).
+        if item.style.subgrid {
+            let slice: Vec<TrackSize> = (at..at + span)
+                .filter_map(|i| tracks.get(i).cloned())
+                .collect();
+            if slice.len() == span
+                && slice
+                    .iter()
+                    .all(|t| matches!(t, TrackSize::Single(Track::Px(_))))
+            {
+                if row_dir {
+                    item.style.grid_rows = Some(slice);
+                } else {
+                    item.style.grid_tracks = Some(slice);
+                    item.style.grid_cols = Some(span as u16);
+                }
+            }
+        }
         if let Some(h) = grown {
             // Размер вдоль лунки известен — рост не нужен, иначе элемент
             // съест и остаток лунки.
