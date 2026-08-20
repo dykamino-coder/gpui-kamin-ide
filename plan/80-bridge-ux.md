@@ -1,4 +1,8 @@
-# 80 — Claude Bridge UX (работает как есть; шелл обязан не сломать)
+# 80 — Claude Bridge UX: инвентарь паритета
+
+Этот файл фиксирует контракт совместимости, а не утверждает отсутствие
+дефектов. Текущие runtime-инциденты и порядок исправлений ведутся в
+`extensions/claude-bridge/RUNTIME_RELIABILITY.md`.
 
 Источник: `extensions/claude-bridge/**` → `builtin-extensions/claude-bridge/` (extension.js + chat.html/tools.html/customize.html). Расширение — чистый VSCode-API + вебвью; Tauri-неосведомлённое. Весь серверный WS — в Node-хосте расширения. **GPUI ничего в нём не меняет** — но обязан обеспечить всё, что оно потребляет (вебвью-хостинг из 70, vscode.* из 60). Ниже — инвентарь для проверки «ничего не отвалилось».
 
