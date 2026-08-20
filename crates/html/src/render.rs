@@ -3821,6 +3821,10 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         let merged = inline::inherit(inherited, &f.style);
         let mut copy = f.clone();
         copy.style.float = None;
+        // Поля кладёт держатель (позиция absolute от края) — на самой
+        // коробке они сдвигали бы её обратно (float: right с margin-left
+        // вылезал за правый край контейнера).
+        copy.style.margin = crate::computed::Sides::default();
         let built = styled_div_with(&copy, &merged)
             .children(blocks(&copy.children, &merged, opts))
             .into_any_element();
