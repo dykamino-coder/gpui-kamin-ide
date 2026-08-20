@@ -3828,7 +3828,14 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         let built = styled_div_with(&copy, &merged)
             .children(blocks(&copy.children, &merged, opts))
             .into_any_element();
-        let holder = if side < 0 {
+        let holder = if inherited.vertical_rl == Some(true) {
+            // Вертикальное письмо: блок-старт — ПРАВЫЙ край, колонки
+            // флоатов идут влево; инлайн-старт — верх.
+            div()
+                .absolute()
+                .right(px(if side < 0 { off_l } else { off_r } + mr))
+                .top(px(mt))
+        } else if side < 0 {
             div().absolute().left(px(off_l + ml)).top(px(mt))
         } else {
             div().absolute().right(px(off_r + mr)).top(px(mt))
@@ -3896,6 +3903,46 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     }
     if atoms_ok && !atoms.is_empty() {
         let rtl = inherited.rtl == Some(true);
+        // Вертикальное письмо (vertical-rl): раскладка идёт в
+        // транспонированном мире — формы переводятся туда же (инлайн-ось =
+        // физическая вертикаль, блок-старт = правый край).
+        if inherited.vertical_rl == Some(true) {
+            let transpose = |v: &Vec<crate::flow::FloatShape>| -> Vec<crate::flow::FloatShape> {
+                v.iter()
+                    .map(|f| match *f {
+                        crate::flow::FloatShape::Band { top, h, w } => {
+                            // Полоса блок-прогресса: top/h — вдоль X справа.
+                            crate::flow::FloatShape::Band { top, h, w }
+                        }
+                        crate::flow::FloatShape::Circle { top, cx, cy, r } => {
+                            crate::flow::FloatShape::Ellipse {
+                                top,
+                                cx: cy,
+                                cy: cx,
+                                rx: r,
+                                ry: r,
+                            }
+                        }
+                        crate::flow::FloatShape::Ellipse { top, cx, cy, rx, ry } => {
+                            crate::flow::FloatShape::Ellipse {
+                                top,
+                                cx: cy,
+                                cy: cx,
+                                rx: ry,
+                                ry: rx,
+                            }
+                        }
+                    })
+                    .collect()
+            };
+            let t_shapes = std::sync::Arc::new((
+                transpose(&shapes.0).into_iter().chain(transpose(&shapes.1)).collect(),
+                Vec::new(),
+            ));
+            return host
+                .child(crate::flow::FlowRow::new(atoms, t_shapes, false).vertical_rl())
+                .into_any_element();
+        }
         return host
             .child(crate::flow::FlowRow::new(atoms, shapes, rtl))
             .into_any_element();

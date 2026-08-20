@@ -34,6 +34,10 @@ pub struct FlowRow {
     shapes: std::sync::Arc<(Vec<FloatShape>, Vec<FloatShape>)>,
     /// Направление письма: rtl кладёт коробки от правого края.
     rtl: bool,
+    /// `writing-mode: vertical-rl`: строки — колонки справа налево, поток в
+    /// колонке — сверху вниз. Раскладка идёт в ТРАНСПОНИРОВАННОМ мире
+    /// (инлайн-ось строкой), физика восстанавливается при укладке.
+    vertical_rl: bool,
     /// Позиции детей, вычисленные замером (в точках от угла коробки).
     slots: std::cell::RefCell<Vec<(f32, f32)>>,
 }
@@ -48,8 +52,20 @@ impl FlowRow {
             children,
             shapes,
             rtl,
+            vertical_rl: false,
             slots: std::cell::RefCell::new(Vec::new()),
         }
+    }
+
+    pub fn vertical_rl(mut self) -> Self {
+        self.vertical_rl = true;
+        self
+    }
+
+    /// Размер ребёнка в осях раскладки: в вертикальном письме инлайн-ось —
+    /// физическая высота.
+    fn tdims(&self, c: &FlowChild) -> (f32, f32) {
+        if self.vertical_rl { (c.h, c.w) } else { (c.w, c.h) }
     }
 
     /// Вырез на полосе [y, y+h): точный экстент форм с обеих сторон.
@@ -67,25 +83,26 @@ impl FlowRow {
         let mut line_h = 0.0f32;
         let mut cut = self.cut(0.0, 1.0);
         for c in &self.children {
+            let (cw, ch) = self.tdims(c);
             let avail = (limit - cut.0 - cut.1).max(0.0);
             // Не влезает — новая строка; коробка шире строки стоит одна.
-            if x + c.w > avail + 0.01 && x > 0.0 {
+            if x + cw > avail + 0.01 && x > 0.0 {
                 y += line_h;
                 x = 0.0;
                 line_h = 0.0;
-                cut = self.cut(y, c.h.max(1.0));
+                cut = self.cut(y, ch.max(1.0));
             } else if x == 0.0 {
-                cut = self.cut(y, c.h.max(1.0));
+                cut = self.cut(y, ch.max(1.0));
             }
             // Вырез мог смениться выше по строке — пересчитать после переноса.
             let (sx, sy) = if self.rtl {
-                (limit - cut.1 - x - c.w, y)
+                (limit - cut.1 - x - cw, y)
             } else {
                 (cut.0 + x, y)
             };
             slots.push((sx, sy));
-            x += c.w;
-            line_h = line_h.max(c.h);
+            x += cw;
+            line_h = line_h.max(ch);
         }
         (y + line_h, slots)
     }
@@ -113,17 +130,23 @@ impl Element for FlowRow {
         let sizes: Vec<(f32, f32)> = self.children.iter().map(|c| (c.w, c.h)).collect();
         let shapes = self.shapes.clone();
         let rtl = self.rtl;
+        let vertical_rl = self.vertical_rl;
         let id = window.request_measured_layout(
             gpui::Style::default(),
             move |known, available, _window, _cx| {
-                let limit = known
-                    .width
-                    .map(f32::from)
-                    .or(match available.width {
-                        gpui::AvailableSpace::Definite(w) => Some(f32::from(w)),
+                // Предел инлайн-оси: в вертикальном письме это ВЫСОТА.
+                let pick = |k: Option<gpui::Pixels>, a: gpui::AvailableSpace| {
+                    k.map(f32::from).or(match a {
+                        gpui::AvailableSpace::Definite(v) => Some(f32::from(v)),
                         _ => None,
                     })
-                    .unwrap_or(0.0);
+                };
+                let limit = if vertical_rl {
+                    pick(known.height, available.height)
+                } else {
+                    pick(known.width, available.width)
+                }
+                .unwrap_or(0.0);
                 // Тот же обход, что и в layout(): без детей-элементов.
                 let probe = FlowRow {
                     children: sizes
@@ -136,10 +159,16 @@ impl Element for FlowRow {
                         .collect(),
                     shapes: shapes.clone(),
                     rtl,
+                    vertical_rl,
                     slots: std::cell::RefCell::new(Vec::new()),
                 };
                 let (h, _) = probe.layout(limit);
-                size(px(limit), px(h))
+                if vertical_rl {
+                    // Блок-прогресс — ширина (колонки), инлайн — высота.
+                    size(px(h), px(limit))
+                } else {
+                    size(px(limit), px(h))
+                }
             },
         );
         (id, ())
@@ -156,7 +185,27 @@ impl Element for FlowRow {
     ) {
         // Раскладка и подготовка детей — здесь: замер поддеревьев в фазе
         // отрисовки запрещён самим окном.
-        let (_, slots) = self.layout(f32::from(bounds.size.width));
+        let limit = if self.vertical_rl {
+            f32::from(bounds.size.height)
+        } else {
+            f32::from(bounds.size.width)
+        };
+        let bw = f32::from(bounds.size.width);
+        let vertical_rl = self.vertical_rl;
+        let (_, slots) = self.layout(limit);
+        let slots: Vec<(f32, f32)> = self
+            .children
+            .iter()
+            .zip(slots)
+            .map(|(c, (sx, sy))| {
+                if vertical_rl {
+                    // t-мир → физика: колонка sy идёт от ПРАВОГО края.
+                    (bw - sy - c.w, sx)
+                } else {
+                    (sx, sy)
+                }
+            })
+            .collect();
         for (c, (sx, sy)) in self.children.iter_mut().zip(slots.iter()) {
             let origin = point(bounds.origin.x + px(*sx), bounds.origin.y + px(*sy));
             c.el.layout_as_root(
