@@ -3562,6 +3562,7 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     };
     wrapper.mask_origin_off = box_off(c.mask_origin);
     wrapper.clip_rect = clip_rect;
+    wrapper.mask_composite = c.mask_composite.clone().unwrap_or_default();
     wrapper.mask_clip_off = c
         .mask_clip
         .filter(|k| *k != 255)

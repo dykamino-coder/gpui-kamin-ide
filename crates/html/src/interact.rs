@@ -404,6 +404,8 @@ pub struct Grouped {
     pub mask_clip_off: Option<[f32; 4]>,
     /// `clip: rect(t r b l)`: координаты видимой области от углов коробки.
     pub clip_rect: Option<[Option<f32>; 4]>,
+    /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
+    pub mask_composite: Vec<u8>,
 }
 
 impl Grouped {
@@ -424,9 +426,28 @@ impl Grouped {
             mask_origin_off: [0.0; 4],
             mask_clip_off: None,
             clip_rect: None,
+            mask_composite: Vec::new(),
             mask_pos: None,
         }
     }
+}
+
+
+/// Голый источник слоя маски: содержимое `url(...)` либо запись градиента.
+fn mask_layer_source(layer: &str) -> Option<String> {
+    let t = layer.trim();
+    if t.contains("-gradient(") {
+        return Some(t.to_string());
+    }
+    let at = t.find("url(")?;
+    let rest = &t[at + 4..];
+    let end = rest.find(')')?;
+    Some(
+        rest[..end]
+            .trim()
+            .trim_matches(|c| c == '"' || c == '\'')
+            .to_string(),
+    )
 }
 
 impl Element for Grouped {
@@ -542,6 +563,17 @@ impl Element for Grouped {
         // Битый источник — маски нет, элемент виден целиком
         // (bad-mask-image-svg-*).
         let mask = self.mask.as_deref().and_then(|src| {
+            // Слои: `url(a), url(b)` — полотно, собранное по mask-composite;
+            // одиночный слой идёт плиткой прямо в композит.
+            let layers: Vec<String> = if src.starts_with("shape:") {
+                vec![src.to_string()]
+            } else {
+                crate::css::split_args(src)
+                    .iter()
+                    .filter_map(|l| mask_layer_source(l))
+                    .collect()
+            };
+            let src: &str = layers.first().map(String::as_str)?;
             let source = crate::background::source(src)?;
             // Коробка укладки (`mask-origin`): плитка и её свободное место
             // считаются от неё, а не от border-box.
@@ -555,6 +587,41 @@ impl Element for Grouped {
                 crate::value::Len::Pct(p) => p * side,
                 _ => auto,
             };
+            // Несколько слоёв: полотно, собранное по `mask-composite`
+            // (css-masking §7.12). Плитка слоя — его интринзик (auto),
+            // укладка от угла коробки; уложенное полотно уходит одной
+            // плиткой без мощения.
+            if layers.len() > 1 {
+                let sf = window.scale_factor();
+                let (cw, ch) = (
+                    (bw * sf).round().max(1.0) as u32,
+                    (bh * sf).round().max(1.0) as u32,
+                );
+                let built: Vec<crate::background::MaskLayer> = layers
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, l)| {
+                        let source = crate::background::source(l)?;
+                        let intr = source.intrinsic();
+                        let (tw, th) = (intr.w.unwrap_or(bw), intr.h.unwrap_or(bh));
+                        Some(crate::background::MaskLayer {
+                            image: source.raster((tw, th))?,
+                            tile: [0.0, 0.0, tw * sf, th * sf],
+                            no_repeat: self.mask_no_repeat,
+                            op: self.mask_composite.get(i).copied().unwrap_or(0),
+                        })
+                    })
+                    .collect();
+                let img = crate::background::compose_mask_layers(&built, cw, ch)?;
+                return Some((
+                    img,
+                    Bounds {
+                        origin: gpui::point(bounds.origin.x + px(ol), bounds.origin.y + px(ot)),
+                        size: gpui::size(px(bw), px(bh)),
+                    },
+                    3 | ((self.mask_luminance as u32) << 2),
+                ));
+            }
             let (img, tw, th) = match &source {
                 crate::background::Source::Raster(img) => {
                     let s = img.size(0);

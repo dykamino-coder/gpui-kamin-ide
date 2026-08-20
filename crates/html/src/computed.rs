@@ -1046,6 +1046,8 @@ pub struct Computed {
     pub mask_origin: Option<u8>,
     /// `mask-clip`: коробка окраски маски; вне её элемент скрыт. 255 — no-clip.
     pub mask_clip: Option<u8>,
+    /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
+    pub mask_composite: Option<Vec<u8>>,
     /// `clip: rect(t r b l)` (CSS 2.1 §11.1.2, только absolute): координаты
     /// видимой области от углов border-box; None в позиции — auto (край).
     pub clip_rect: Option<[Option<f32>; 4]>,
@@ -3546,6 +3548,18 @@ impl Computed {
                 }
             },
             "mask-mode" => self.mask_luminance = Some(v.trim() == "luminance"),
+            "mask-composite" | "-webkit-mask-composite" => {
+                self.mask_composite = Some(
+                    v.split(',')
+                        .map(|t| match t.trim() {
+                            "subtract" => 1,
+                            "intersect" => 2,
+                            "exclude" => 3,
+                            _ => 0,
+                        })
+                        .collect(),
+                );
+            }
             "mask-origin" | "-webkit-mask-origin" => {
                 self.mask_origin = match v.trim() {
                     "padding-box" => Some(2),
@@ -3612,8 +3626,10 @@ impl Computed {
                 if key != "clip-path" {
                     if v.contains("-gradient(") {
                         self.mask_image = Some(v.trim().to_string());
-                    } else if let Some(url) = parse_url(v) {
-                        self.mask_image = Some(url);
+                    } else if v.contains("url(") {
+                        // Слоёв может быть несколько (`url(a), url(b)`) —
+                        // строка хранится ЦЕЛИКОМ, разбор при отрисовке.
+                        self.mask_image = Some(v.trim().to_string());
                     }
                     // Сокращение `mask` несёт и укладку (css-masking §7.9).
                     if v.contains("no-repeat") {
