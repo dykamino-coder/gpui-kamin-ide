@@ -133,7 +133,13 @@ impl ObjectFit {
                 }
             }
             ObjectFit::None => Bounds {
-                origin: bounds.origin,
+                // KaminIDE patch: CSS `object-fit: none` кладёт рисунок по
+                // `object-position`, чей дефолт 50% 50% — ЦЕНТР коробки, а не
+                // левый верх (object-fit-none-png-*).
+                origin: point(
+                    bounds.origin.x + (bounds.size.width - image_size.width) / 2.0,
+                    bounds.origin.y + (bounds.size.height - image_size.height) / 2.0,
+                ),
                 size: image_size,
             },
         }
