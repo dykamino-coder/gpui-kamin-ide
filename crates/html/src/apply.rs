@@ -483,7 +483,16 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     if let Some(a) = c.align_content {
         d.style().align_content = Some(to_content(a));
     }
-    if let Some(a) = c.justify_items {
+    // `baseline` на ИНЛАЙН-оси НАСТОЯЩЕЙ сетки не действует: элементы не
+    // разделяют колоночный baseline-контекст (css-align §9.1; тест-ассерт
+    // grid-self-baseline-horiz-001: «only align-self should apply») —
+    // применение как items двигало содержимое вправо. У ЛУНОК инлайн-ось
+    // живёт своим каналом (column-grid-lanes-item-baseline-002 полагается).
+    let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    if let Some(a) = c
+        .justify_items
+        .filter(|a| *a != Align::Baseline || !real_grid)
+    {
         d.style().justify_items = Some(to_items(a));
     }
     if let Some(a) = c.justify_self {
