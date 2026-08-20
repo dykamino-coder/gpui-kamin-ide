@@ -3450,7 +3450,11 @@ fn has_own_box(c: &Computed) -> bool {
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
     ) || (c.display == Some(Display::GridLanes) && c.lanes_inline))
-        && (c.width.is_some() || c.height.is_some());
+        && (c.width.is_some()
+            || c.height.is_some()
+            // Проба контейнерного атома БЕЗ размеров — под флагом, чтобы
+            // мерить обе стороны (см. заметку ниже про baseline).
+            || std::env::var("ATOM_BOX").is_ok());
     // ПРОБОВАНО: контейнерный строчный атом БЕЗ размеров (inline-flex/grid/
     // лунки) — щели разметки уходят (репро bcd 43→28лог), но flexbox
     // 363→359: атом-коробка не отдаёт строке БАЗОВУЮ ЛИНИЮ содержимого

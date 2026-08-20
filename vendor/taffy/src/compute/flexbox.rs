@@ -1418,6 +1418,31 @@ fn calculate_children_base_lines(
     // where that axis is also the inline axis
     // TODO: this may need revisiting if/when we support vertical writing modes
     if !constants.is_row {
+        // KaminIDE patch: колонке бейзлайн детей нужен не для выравнивания,
+        // а для СВОЕГО первого бейзлайна (§8.5): без замера он оставался
+        // нулём — верхом коробки, и строчный контейнер-атом (inline-block
+        // без размеров) вставал в строку не базовой линией содержимого.
+        if let Some(line) = flex_lines.first_mut() {
+            if let Some(child) = line.items.first_mut() {
+                let measured = tree.perform_child_layout(
+                    child.node,
+                    Size {
+                        width: child.hypothetical_inner_size.width.into(),
+                        height: child.target_size.height.into(),
+                    },
+                    constants.node_inner_size,
+                    Size {
+                        width: available_space.width.maybe_set(node_size.width),
+                        height: constants.container_size.height.into(),
+                    },
+                    SizingMode::ContentSize,
+                    Line::FALSE,
+                );
+                child.baseline = measured.first_baselines.y.unwrap_or(measured.size.height)
+                    + child.margin.top;
+
+            }
+        }
         return;
     }
 
