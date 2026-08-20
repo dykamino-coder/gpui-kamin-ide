@@ -2941,7 +2941,9 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
     // разрешены (`width: 3ch` считался бы по базовому кеглю, а не по своему),
     // да и наследуемое до поля иначе не доходит.
     if let Some(el) = crate::forms::element(e, &inline::inherit(inherited, &e.style), opts) {
-        return Some(el);
+        // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
+        // эталон сдвигал (transform-input-001..019).
+        return Some(transformed(el, &e.style));
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама
@@ -3851,7 +3853,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::forms::element(e, &merged, opts) {
-        return el;
+        return transformed(el, &merged);
     }
     // Рамка строится ОДИН раз до match: прежний `is_some() => unwrap()`
     // читал файл с диска и разбирал вложенный документ дважды за кадр.
