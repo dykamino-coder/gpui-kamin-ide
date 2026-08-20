@@ -568,6 +568,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // его из строки целиком: перенос считается так, будто элемента
             // нет. Прятать его на месте — значит переносить строки не там.
             .filter(|n| !matches!(n, Node::Element(e) if e.style.collapsed == Some(true)))
+            // ПРОБЕЛЬНЫЙ текст между детьми ряда/сетки не рождает анонимный
+            // элемент (css-flexbox §4): переводы строк разметки давали
+            // лишние 2-3px между коробками
+            // (flexbox-baseline-align-self-baseline-horiz-001: тест дышит
+            // щелями, эталон написан слитно).
+            .filter(|n| !matches!(n, Node::Text(_)) || !is_blank(n))
             .map(|n| match n {
                 Node::Element(mut e) => {
                     e.style.float = None;
