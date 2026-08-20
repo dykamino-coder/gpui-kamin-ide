@@ -791,6 +791,9 @@ pub struct Computed {
     pub mask_image: Option<String>,
     pub letter_spacing: Option<Len>,
     pub ellipsis: Option<bool>,
+    /// Маркер обрезки `text-overflow: <string>` (css-overflow-4 §5);
+    /// None при ellipsis — многоточие по умолчанию.
+    pub overflow_marker: Option<String>,
     /// `list-style: none` — навигация, свёрстанная на списках, иначе идёт с
     /// точками.
     pub no_marker: Option<bool>,
@@ -1486,6 +1489,7 @@ impl Computed {
             font_features: self.font_features.clone(),
             text_transform: self.text_transform,
             ellipsis: self.ellipsis,
+            overflow_marker: self.overflow_marker.clone(),
             line_clamp: self.line_clamp,
             webkit_line_clamp: self.webkit_line_clamp,
             clamp_auto: self.clamp_auto,
@@ -2346,7 +2350,55 @@ impl Computed {
                 self.collapsed = Some(v == "collapse");
             }
             "letter-spacing" => self.letter_spacing = Len::parse_spacing(v),
-            "text-overflow" => self.ellipsis = Some(v == "ellipsis"),
+            "text-overflow" => {
+                // css-overflow-4 §5: clip | ellipsis | <строка>, до двух
+                // сторон. Наша обрезка — конец строки: берётся последнее
+                // не-clip значение.
+                let mut on = false;
+                let mut marker = None;
+                // Резка по пробелам ВНЕ кавычек: маркер-строка может
+                // нести пробел; метка '\u{0}' отличает строку от ключевого слова.
+                let mut tokens: Vec<String> = vec![];
+                let mut cur = String::new();
+                let mut quote: Option<char> = None;
+                for ch in v.chars() {
+                    match quote {
+                        Some(q) if ch == q => quote = None,
+                        Some(_) => cur.push(ch),
+                        None if ch == '"' || ch == '\'' => {
+                            quote = Some(ch);
+                            if cur.is_empty() {
+                                cur.push('\u{0}');
+                            }
+                        }
+                        None if ch.is_whitespace() => {
+                            if !cur.is_empty() {
+                                tokens.push(std::mem::take(&mut cur));
+                            }
+                        }
+                        None => cur.push(ch),
+                    }
+                }
+                if !cur.is_empty() {
+                    tokens.push(cur);
+                }
+                for t in tokens {
+                    if let Some(text) = t.strip_prefix('\u{0}') {
+                        on = true;
+                        marker = Some(text.to_string());
+                    } else if t == "ellipsis" {
+                        on = true;
+                        marker = None;
+                    }
+                }
+                // Строковый маркер обрезку пока НЕ включает: с ним
+                // ellipsize срезал строку в ноль на шрифтовых суффиксах
+                // (string-007/008 пустели, 5 пар в минус — замерено).
+                // Каркас маркера остаётся до починки замера суффикса.
+                let _ = on;
+                self.ellipsis = Some(v.split_whitespace().any(|t| t == "ellipsis"));
+                self.overflow_marker = marker;
+            }
             "list-style" | "list-style-type" => {
                 self.no_marker = Some(v.contains("none"));
                 // Вид маркера задаёт документ, а не приложение: у списка

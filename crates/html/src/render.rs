@@ -3184,6 +3184,7 @@ fn paragraph_pieces(
                         .overflow_x
                         .is_some_and(|o| o != crate::computed::Overflow::Visible),
             )
+            .overflow_marker(inherited.overflow_marker.clone())
             .text_fit(inherited.text_fit)
             .hyphen_char(inherited.hyphen_char.clone())
             .tab_stop(gpui::px(match inherited.tab_size_len {

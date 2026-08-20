@@ -90,6 +90,8 @@ pub struct Paragraph {
     clamp: Option<usize>,
     /// `text-overflow: ellipsis` контейнера с обрезкой.
     text_overflow: bool,
+    /// Маркер обрезки вместо многоточия (`text-overflow: <string>`).
+    overflow_marker: Option<String>,
     /// `text-fit`: подбор кегля под ширину коробки.
     fit: Option<crate::computed::TextFit>,
     /// Шаг позиций табуляции (`tab-size` в точках).
@@ -224,6 +226,7 @@ impl Paragraph {
             lines: Vec::new(),
             clamp: None,
             text_overflow: false,
+            overflow_marker: None,
             fit: None,
             tab_stop: px(8. * 8.),
             hyphen: SharedString::from("\u{2010}"),
@@ -493,6 +496,7 @@ impl Paragraph {
         [hg.first, hg.last, hg.force_end, hg.allow_end].hash(&mut h);
         self.clamp.hash(&mut h);
         self.text_overflow.hash(&mut h);
+        self.overflow_marker.hash(&mut h);
         self.hyphen.hash(&mut h);
         self.spacers.hash(&mut h);
         for (r, v) in self.word_spans.iter().chain(&self.letter_spans) {
@@ -788,7 +792,7 @@ impl Paragraph {
             return lines;
         };
         let segs = self.measure(window);
-        let ell = self.suffix_width(ELLIPSIS, last.range.start, window);
+        let ell = self.suffix_width(self.marker_str(), last.range.start, window);
         let head = last.range.start;
         let mut end = head + trim_hanging(&self.text[last.range.clone()]);
         // Место под многоточие отбирается ЦЕЛЫМИ кусками: строка обрывается по
@@ -831,10 +835,16 @@ impl Paragraph {
         self
     }
 
+    /// Маркер обрезки: строка из `text-overflow: <string>`.
+    pub fn overflow_marker(mut self, mark: Option<String>) -> Self {
+        self.overflow_marker = mark;
+        self
+    }
+
     /// Усечь строку под многоточие: место отбирается целыми кусками по
     /// точкам переноса — как у `line-clamp` (общая механика).
     fn ellipsize(&self, line: &mut Line, limit: Pixels, segs: &[Seg], window: &mut Window) {
-        let ell = self.suffix_width(ELLIPSIS, line.range.start, window);
+        let ell = self.suffix_width(self.marker_str(), line.range.start, window);
         let head = line.range.start;
         let mut end = head + trim_hanging(&self.text[line.range.clone()]);
         let room = limit - ell;
@@ -1015,6 +1025,11 @@ impl Paragraph {
     }
 
     /// Ширина многоточия в наборе того куска, где оборвана строка.
+    /// Маркер обрезки: свой из `text-overflow: <string>` либо многоточие.
+    fn marker_str(&self) -> &str {
+        self.overflow_marker.as_deref().unwrap_or(ELLIPSIS)
+    }
+
     fn suffix_width(&self, mark: &str, at: usize, window: &mut Window) -> Pixels {
         let mut runs = slice_runs(&self.runs, &(at..at + 1));
         let Some(run) = runs.first_mut() else {
@@ -2262,7 +2277,7 @@ impl Element for Paragraph {
                 if line.ellipsis {
                     let text = self.span(&segs, line.range.start, range.end);
                     self.paint_suffix(
-                        ELLIPSIS,
+                        self.marker_str(),
                         line.range.start,
                         point(bounds.origin.x + dx + text, y),
                         window,
@@ -2302,7 +2317,7 @@ impl Element for Paragraph {
             };
             // Знак обрыва и знак переноса набираются вместе со строкой.
             let mark = if line.ellipsis {
-                ELLIPSIS.to_string()
+                self.marker_str().to_string()
             } else if line.hyphen {
                 self.hyphen.to_string()
             } else {
@@ -2430,6 +2445,7 @@ impl Paragraph {
             lines: self.lines.clone(),
             clamp: self.clamp,
             text_overflow: false,
+            overflow_marker: None,
             fit: self.fit,
             tab_stop: self.tab_stop,
             hyphen: self.hyphen.clone(),
