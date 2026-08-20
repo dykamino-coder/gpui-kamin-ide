@@ -7397,6 +7397,14 @@ fn lane_span(e: &Element, count: usize, row_dir: bool) -> (Option<usize>, usize)
         }
         Some((Placement::Line(a), Placement::Span(k))) => (Some(line(a)), k as usize),
         Some((Placement::Line(a), Placement::Auto)) => (Some(line(a)), 1),
+        // `span 3 / 4` — конец задан ЛИНИЕЙ, начало отсчитывается от неё
+        // назад (intrinsic-sizing-cols: шестой span3/4 сидит в 0..2, а не в
+        // авто-выборе).
+        Some((Placement::Span(k), Placement::Line(b))) => {
+            // line(b) — индекс дорожки, начинающейся на линии b; конец на b
+            // значит последняя занятая дорожка line(b)−1, начало — line(b)−k.
+            (Some(line(b).saturating_sub(k as usize)), k as usize)
+        }
         Some((Placement::Span(k), _)) => (None, k as usize),
         _ => (None, 1),
     }
