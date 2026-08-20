@@ -955,6 +955,23 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     ..Default::default()
                 });
                 let probe = crate::interact::spot_probe(spot.clone(), true);
+                // Поля сдвигают абсолютный элемент ОТ статической позиции
+                // (CSS 2.1 §10.3.7: auto-края = static + margin). Раскладка
+                // под нами поля у absolute без краёв не считает — сдвиг
+                // даёт absolute-обёртка (clip-path-rectangle-ref и родня:
+                // эталонный зелёный стоял без своих margin: 50px).
+                let ml = margin_px(e.style.margin.left, &e.style).unwrap_or(0.0);
+                let mt = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);
+                let built = if ml != 0.0 || mt != 0.0 {
+                    div()
+                        .absolute()
+                        .left(px(ml))
+                        .top(px(mt))
+                        .child(built)
+                        .into_any_element()
+                } else {
+                    built
+                };
                 let taken = if below {
                     Some(built)
                 } else {
@@ -3437,8 +3454,9 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     let polygon = c.clip_polygon.as_deref().unwrap_or(&[]);
     // Маска-изображение (css-masking §7.1): источник уходит строкой, его
     // альфа гасит готовый буфер группы при композите; резолв — при
-    // отрисовке, когда известен размер коробки.
-    let mask = c.mask_image.clone();
+    // отрисовке, когда известен размер коробки. Базовая форма `clip-path`
+    // (circle/ellipse) идёт тем же путём — растровой альфа-маской.
+    let mask = c.mask_image.clone().or_else(|| c.clip_shape.clone());
     if blur <= 0.0 && blend == 0 && polygon.is_empty() && c.isolate != Some(true) && mask.is_none()
     {
         return el;
@@ -3447,6 +3465,9 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
     wrapper.mask = mask;
+    wrapper.mask_size = c.mask_size;
+    wrapper.mask_no_repeat = c.mask_no_repeat == Some(true);
+    wrapper.mask_pos = c.mask_pos;
     // Точки уходят КАК ЕСТЬ (Len): проценты и пиксели резолвятся при
     // отрисовке от опорной коробки формы (css-masking §1.3.1.1): margin-box
     // расширяет bounds на поля, content-box сужает на рамку+паддинг
@@ -4259,7 +4280,8 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         let own = crate::background::source(local.unwrap_or(src)).and_then(|s| match s {
             crate::background::Source::Raster(image) => Some(image),
             crate::background::Source::Vector { .. }
-            | crate::background::Source::Gradient { .. } => None,
+            | crate::background::Source::Gradient { .. }
+            | crate::background::Source::Shape { .. } => None,
         });
         let mut image = match (own, local) {
             (Some(ready), _) => gpui::img(ready),
