@@ -350,6 +350,10 @@ impl Paragraph {
         let (y0, y1) = (line_no as f32 * lh, (line_no as f32 + 1.0) * lh);
         let l = self.flow.0.iter().map(|f| f.cut(y0, y1)).fold(0.0f32, f32::max);
         let r = self.flow.1.iter().map(|f| f.cut(y0, y1)).fold(0.0f32, f32::max);
+        // След вырезов строк: FLOW_DBG=1.
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("FLOW_DBG").is_ok()); *ON } {
+            eprintln!("FLOWCUT #{line_no} y={y0}..{y1} l={l} r={r} {:?}", self.flow);
+        }
         (l, r)
     }
 
@@ -2206,8 +2210,13 @@ impl Element for Paragraph {
                 own_align
             };
             // Отступ первой строки занимает место В колонке: остаток на
-            // выключку считается уже без него.
-            let free = bounds.size.width - line.width - line.indent;
+            // выключку считается уже без него. Правый вырез обтекания
+            // (`shape-outside`) — тоже: прижатая вправо строка упирается в
+            // форму, а не в край коробки (circle-024: text-align right).
+            let free = bounds.size.width
+                - line.width
+                - line.indent
+                - px(self.flow_cut(i).1);
             let free = if free < px(0.) { px(0.) } else { free };
             // Свисающий открывающий знак уходит ЗА край: строка сдвигается
             // влево на его ширину. Считается до выбора пути отрисовки —
