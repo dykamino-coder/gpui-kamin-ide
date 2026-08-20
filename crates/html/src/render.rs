@@ -1470,6 +1470,9 @@ fn wrap_floats(nodes: Vec<Node>) -> Vec<Node> {
             floaters.push(floater);
             j += 1;
         }
+        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("FL_DBG").is_ok()); *ON } {
+            eprintln!("FL floaters={} i={} j={} total={}", floaters.len(), i, j, nodes.len());
+        }
         // Соседи до ближайшего `clear` — они и обтекают.
         let mut rest: Vec<Node> = vec![];
         while j < nodes.len() {
@@ -1691,6 +1694,14 @@ fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElem
             .children(blocks(nodes, &merged, opts))
             .into_any_element()
     };
+    // Разрез обтекания понимает РОВНО пару «плавающий блок + колонка
+    // текста». Ряд из НЕСКОЛЬКИХ плавающих (четыре float:left подряд) обязан
+    // остаться обычным флекс-рядом: прежде сюда попадали первые два, а
+    // остальные ВЫБРАСЫВАЛИСЬ (flex-flow-001-ref: из «1 2 3 4» рисовались
+    // «1 2» — 23 красных flexbox-ref'а с float).
+    if row.children.iter().filter(|n| !is_blank(n)).count() != 2 {
+        return plain_row(&row.children);
+    }
     // Плавающий блок в этой паре всегда первый, текстовая колонка — вторая.
     // Раньше здесь стоял `match`, у которого ОБЕ ветви давали `(0, 1)`:
     // условие вычислялось и ни на что не влияло.
