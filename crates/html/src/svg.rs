@@ -37,11 +37,83 @@ pub fn serialize(e: &Element) -> String {
 pub(crate) fn write_element(e: &Element, out: &mut String) {
     out.push('<');
     out.push_str(&e.tag);
+    // `transform-origin` растеризатор не знает — точка отсчёта
+    // вкатывается в сам transform парой translate. Одно значение — x,
+    // второй осью служит середина fill-box (css-transforms §4);
+    // доли — от fill-box (атрибуты width/height фигуры).
+    let attr_of = |name: &str| e.attrs.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
+    let num_attr = |name: &str| attr_of(name).and_then(|v| v.trim().parse::<f32>().ok());
+    let origin = attr_of("transform-origin").and_then(|raw| {
+        let (fx, fy, fw, fh) = (
+            num_attr("x").unwrap_or(0.0),
+            num_attr("y").unwrap_or(0.0),
+            num_attr("width").unwrap_or(0.0),
+            num_attr("height").unwrap_or(0.0),
+        );
+        let side = |t: &str, base: f32, off: f32| -> Option<f32> {
+            let t = t.trim();
+            Some(match t {
+                "left" | "top" => off,
+                "center" => off + base * 0.5,
+                "right" | "bottom" => off + base,
+                _ if t.ends_with('%') => {
+                    off + t.trim_end_matches('%').parse::<f32>().ok()? / 100.0 * base
+                }
+                _ => {
+                    // Абсолютные единицы (css-values §6.2): 1in = 96px.
+                    let (num, k) = if let Some(n) = t.strip_suffix("px") {
+                        (n, 1.0)
+                    } else if let Some(n) = t.strip_suffix("cm") {
+                        (n, 96.0 / 2.54)
+                    } else if let Some(n) = t.strip_suffix("mm") {
+                        (n, 96.0 / 25.4)
+                    } else if let Some(n) = t.strip_suffix("in") {
+                        (n, 96.0)
+                    } else if let Some(n) = t.strip_suffix("pt") {
+                        (n, 96.0 / 72.0)
+                    } else if let Some(n) = t.strip_suffix("pc") {
+                        (n, 16.0)
+                    } else if let Some(n) = t.strip_suffix('q').or_else(|| t.strip_suffix('Q')) {
+                        (n, 96.0 / 101.6)
+                    } else {
+                        (t, 1.0)
+                    };
+                    num.trim().parse::<f32>().ok()? * k
+                }
+            })
+        };
+        let toks: Vec<&str> = raw.split_whitespace().collect();
+        let (ox, oy) = match toks.as_slice() {
+            [a] => (side(a, fw, fx)?, fy + fh * 0.5),
+            [a, b] => (side(a, fw, fx)?, side(b, fh, fy)?),
+            _ => return None,
+        };
+        Some((ox, oy))
+    });
+    let transform = attr_of("transform");
+    let combined = match (origin, transform) {
+        (Some((ox, oy)), Some(t)) => Some(format!(
+            "translate({ox} {oy}) {t} translate({} {})",
+            -ox, -oy
+        )),
+        _ => None,
+    };
     for (k, v) in &e.attrs {
+        if combined.is_some() && (k == "transform" || k == "transform-origin") {
+            continue;
+        }
+        if k == "transform-origin" {
+            continue;
+        }
         out.push(' ');
         out.push_str(k);
         out.push_str("=\"");
         escape_attr(v, out);
+        out.push('"');
+    }
+    if let Some(t) = &combined {
+        out.push_str(" transform=\"");
+        escape_attr(t, out);
         out.push('"');
     }
     // CSS-геометрия и заливка SVG-фигур (SVG 2): стилевые ширина/высота
