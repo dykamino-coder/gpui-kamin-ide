@@ -4043,7 +4043,13 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         }
     }
     let shapes = std::sync::Arc::new((left, right));
-    let mut host = div().relative().w_full();
+    // В вертикальном письме ширина контейнера — блок-прогресс контента
+    // (число колонок): полная ширина растягивала бы его на страницу.
+    let mut host = if inherited.vertical_rl == Some(true) {
+        div().relative()
+    } else {
+        div().relative().w_full()
+    };
     for f in floats {
         host = host.child(f);
     }
