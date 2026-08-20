@@ -6376,7 +6376,14 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 // (column-auto-repeat-max-content-001: две дорожки по 120, не
                 // по 150).
                 None if repeat.intrinsic => {
-                    vec![TrackSize::Single(Track::MaxContent); n]
+                    // `fit-content(N)` — по содержимому, но не шире потолка:
+                    // step уже равен max-content самого большого элемента.
+                    match repeat.fit_px {
+                        Some(cap) => {
+                            vec![TrackSize::Single(Track::Px(step.min(cap))); n]
+                        }
+                        None => vec![TrackSize::Single(Track::MaxContent); n],
+                    }
                 }
                 // Дорожка по содержимому делит место поровну: свой размер ей
                 // назначать нельзя, иначе `auto-fit` не сможет отдать место

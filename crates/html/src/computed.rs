@@ -1730,6 +1730,7 @@ impl Computed {
                     track: self.grid_auto_fill_min,
                     track_pct: auto_fill_pct(v),
                     intrinsic: auto_fill_intrinsic(v),
+                    fit_px: auto_fill_fit_px(v),
                 });
             }
             // То же по РЯДАМ: у раскладки лунками дорожки задают ряды, когда
@@ -1741,6 +1742,7 @@ impl Computed {
                     track: self.grid_auto_fill_row,
                     track_pct: auto_fill_pct(v),
                     intrinsic: auto_fill_intrinsic(v),
+                    fit_px: auto_fill_fit_px(v),
                 });
             }
             "grid-template-columns" => {
@@ -4276,6 +4278,8 @@ pub struct AutoRepeat {
     /// число повторов задают сами элементы — по дорожке на каждого
     /// (row-auto-repeat-max-content-001).
     pub intrinsic: bool,
+    /// Потолок `fit-content(N)`: дорожка по содержимому, но не шире N.
+    pub fit_px: Option<f32>,
 }
 
 /// Размер повторяемой дорожки в `repeat(auto-fill | auto-fit, …)`.
@@ -4302,6 +4306,16 @@ fn auto_fill_min(v: &str) -> Option<f32> {
     let rest = v.split("repeat(").nth(1)?;
     let inner = &rest[..rest.rfind(')')?];
     px_of(inner.split(',').nth(1)?)
+}
+
+/// Потолок `fit-content(N)` в авто-повторе: дорожка не шире N.
+pub(crate) fn auto_fill_fit_px(v: &str) -> Option<f32> {
+    let rest = v.split("fit-content(").nth(1)?;
+    let inner = &rest[..rest.find(')')?];
+    match Len::parse(inner.trim()) {
+        Some(Len::Px(px)) => Some(px),
+        _ => None,
+    }
 }
 
 /// Дорожка повтора задана ПО СОДЕРЖИМОМУ: `repeat(auto-fill, max-content)`
