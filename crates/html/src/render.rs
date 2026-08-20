@@ -3282,6 +3282,11 @@ fn has_own_box(c: &Computed) -> bool {
             | Some(Display::InlineTable)
     ) || (c.display == Some(Display::GridLanes) && c.lanes_inline))
         && (c.width.is_some() || c.height.is_some());
+    // ПРОБОВАНО: контейнерный строчный атом БЕЗ размеров (inline-flex/grid/
+    // лунки) — щели разметки уходят (репро bcd 43→28лог), но flexbox
+    // 363→359: атом-коробка не отдаёт строке БАЗОВУЮ ЛИНИЮ содержимого
+    // (baseline-horiz-001 0.67→0.92). Возвращать вместе с пробросом
+    // baseline атома (request_measured_layout_with_baseline уже есть).
     // Позиционированный кусок — тем же порядком: его коробку двигают края, а
     // краёв у прогона нет.
     // ПРОБОВАЛИ И ОТКАТИЛИ: считать коробкой и `position: relative`, чтобы
