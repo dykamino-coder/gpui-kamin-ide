@@ -90,12 +90,36 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         };
         Some((ox, oy))
     });
-    let transform = attr_of("transform");
+    // Стилевой transform на SVG-ребёнке СИЛЬНЕЕ презентационного атрибута
+    // (css-transforms §specificity) — сериализуется атрибутом для
+    // растеризатора.
+    let style_t = e.style.transform.as_ref().map(|t| {
+        let mut out = String::new();
+        if t.translate != (0.0, 0.0) {
+            out.push_str(&format!("translate({} {}) ", t.translate.0, t.translate.1));
+        }
+        if t.rotate_rad != 0.0 {
+            out.push_str(&format!("rotate({}) ", t.rotate_rad.to_degrees()));
+        }
+        if t.skew_rad.0 != 0.0 {
+            out.push_str(&format!("skewX({}) ", t.skew_rad.0.to_degrees()));
+        }
+        if t.skew_rad.1 != 0.0 {
+            out.push_str(&format!("skewY({}) ", t.skew_rad.1.to_degrees()));
+        }
+        if t.scale != (1.0, 1.0) {
+            out.push_str(&format!("scale({} {}) ", t.scale.0, t.scale.1));
+        }
+        out.trim_end().to_string()
+    });
+    let attr_t = attr_of("transform").map(str::to_string);
+    let transform = style_t.filter(|t| !t.is_empty()).or(attr_t);
     let combined = match (origin, transform) {
         (Some((ox, oy)), Some(t)) => Some(format!(
             "translate({ox} {oy}) {t} translate({} {})",
             -ox, -oy
         )),
+        (None, Some(t)) if e.style.transform.is_some() => Some(t),
         _ => None,
     };
     for (k, v) in &e.attrs {

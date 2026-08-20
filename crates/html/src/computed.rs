@@ -3191,6 +3191,10 @@ impl Computed {
             // --- Преобразования -----------------------------------------------
             "transform" => {
                 let mut t = self.transform.unwrap_or_default();
+                // Невалидный аргумент отбрасывает ВСЁ объявление (CSS-каскад),
+                // а не превращается в ноль (`scale(invalid)` схлопывал фигуру,
+                // хотя обязан быть проигнорирован — svg-document-styles-005).
+                let mut invalid = false;
                 for call in v.split(')') {
                     let Some((name, arg)) = call.split_once('(') else {
                         continue;
@@ -3208,6 +3212,9 @@ impl Computed {
                                 .ok()
                         })
                         .collect();
+                    if nums.is_empty() && !arg.is_empty() && name != "none" {
+                        invalid = true;
+                    }
                     let first = nums.first().copied().unwrap_or(0.0);
                     // Угол в градусах — умолчание CSS; радианы помечены явно.
                     let angle = if arg.contains("rad") {
@@ -3327,7 +3334,9 @@ impl Computed {
                         _ => {}
                     }
                 }
-                self.transform = Some(t);
+                if !invalid {
+                    self.transform = Some(t);
+                }
             }
             "rotate" => {
                 let mut t = self.transform.unwrap_or_default();
