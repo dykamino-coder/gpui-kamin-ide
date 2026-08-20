@@ -6966,6 +6966,10 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     .iter()
                     .all(|t| matches!(t, TrackSize::Single(Track::Px(_))))
             {
+                // ПРОБОВАНО: замораживать и РАЗМЕР элемента суммой куска
+                // (спека: свой размер в сабгридной оси игнорируется) —
+                // subgrid-stretch-001 19.8→20.4, нетто 0: реверт, только
+                // дорожки.
                 if row_dir {
                     item.style.grid_rows = Some(slice);
                 } else {
