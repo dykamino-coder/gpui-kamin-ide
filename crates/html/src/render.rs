@@ -6368,6 +6368,82 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             };
         }
     }
+    // Дорожки-КОЛОНКИ по содержимому меряются ДО размещения, и вклад в КАЖДУЮ
+    // вносят ВСЕ авто-размещаемые элементы — встать могут в любую (css-grid-3
+    // track sizing; intrinsic-sizing-cols-002-auto: четыре auto-колонки
+    // шириной с самый широкий элемент). Заданные линии — только своим.
+    // Ряды НЕ трогаем: item_height врёт на ортогональном письме и субгриде
+    // (row-subgrid-orthogonal 0→11, grid-gap-007 0.15→36 — ЗАМЕРЕНО).
+    if !row_dir
+        && tracks.iter().any(|t| {
+            matches!(
+                t,
+                TrackSize::Single(Track::Auto | Track::MaxContent | Track::MinContent)
+            )
+        })
+    {
+        let n = tracks.len();
+        let cross_of = |item: &Element| -> f32 {
+            let w = item_width(item);
+            if w > 0.0 {
+                return w;
+            }
+            let st = crate::inline::inherit(merged, &item.style);
+            let fs = match st.font_size {
+                Some(Len::Px(v)) => v,
+                _ => 16.0,
+            };
+            let family = st.font_family.clone().unwrap_or_else(|| {
+                if st.monospace == Some(true) {
+                    crate::metrics::mono_family().to_string()
+                } else {
+                    String::new()
+                }
+            });
+            let ch = crate::metrics::ch_ex_px(&family, fs).0;
+            // `width: 2ch` — точечная мера в знаках (intrinsic-sizing-cols-*:
+            // первый элемент задаёт ширину ВСЕМ auto-колонкам).
+            if let Some(Len::Ch(k)) = item.style.width {
+                return k * ch;
+            }
+            let ws = words(&item.children);
+            let total = ws.iter().sum::<usize>() + ws.len().saturating_sub(1);
+            total as f32 * ch
+        };
+        let mut contrib = vec![0.0f32; n];
+        let mut auto_max = 0.0f32;
+        for nd in &e.children {
+            let Node::Element(item) = nd else { continue };
+            if matches!(
+                item.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            ) {
+                continue;
+            }
+            let (fixed, span) = lane_span(item, n, row_dir);
+            let span = span.clamp(1, n);
+            let share = cross_of(item) / span as f32;
+            match fixed {
+                Some(at) => {
+                    for i in at..(at + span).min(n) {
+                        contrib[i] = contrib[i].max(share);
+                    }
+                }
+                None => auto_max = auto_max.max(share),
+            }
+        }
+        for (i, t) in tracks.iter_mut().enumerate() {
+            if matches!(
+                t,
+                TrackSize::Single(Track::Auto | Track::MaxContent | Track::MinContent)
+            ) {
+                let w = contrib[i].max(auto_max);
+                if w > 0.0 {
+                    *t = TrackSize::Single(Track::Px(w));
+                }
+            }
+        }
+    }
     let count = if !tracks.is_empty() {
         tracks.len()
     } else {
@@ -7085,7 +7161,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // Строчный контейнер лунок обнимает свои дорожки, а не строку
     // (grid-lanes-align-content-001: блоки на всю страницу вместо ширины
     // четырёх дорожек).
-    if merged.lanes_inline && !row_dir && merged.width.is_none() {
+    // `width: min-content/max-content` — та же обтяжка по дорожкам: точечная
+    // мера контейнера и есть их сумма (intrinsic-sizing-cols-*).
+    let hug_width = merged.width.is_none()
+        || matches!(merged.width, Some(Len::MinContent | Len::MaxContent));
+    if merged.lanes_inline && !row_dir && hug_width {
         let total: f32 = tracks
             .iter()
             .map(|t| match t {
