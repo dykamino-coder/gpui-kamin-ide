@@ -2146,10 +2146,13 @@ impl Element for Paragraph {
                         .find('\n')
                         .map(|i| start + i)
                         .unwrap_or(self.text.len());
-                    // Абзац без сильных знаков идёт СЛЕВА НАПРАВО (UAX9 P3),
-                    // а не по `direction` элемента.
-                    let rtl = first_strong_rtl(&self.text[start..end]).unwrap_or(false);
-                    align_of_value(logical.physical(rtl))
+                    // База направления — `direction` ЭЛЕМЕНТА (css-writing-modes
+                    // §2: bidi paragraph level из свойства, не из содержимого);
+                    // авто-детект по первому сильному знаку (UAX9 P3) — только
+                    // когда направления нет вовсе (text-align-end-001: `end` при
+                    // rtl обязан уйти влево и с латинским текстом).
+                    let _ = (start, end);
+                    align_of_value(logical.physical(self.wrap.rtl))
                 }
                 None => self.align,
             };
@@ -2908,6 +2911,9 @@ pub fn align_of(a: Option<crate::computed::TextAlign>) -> Align {
 /// Выключка абзаца с разворотом логических краёв по стороне письма.
 pub fn align_for(c: &crate::computed::Computed) -> Align {
     let rtl = c.rtl == Some(true);
+    if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("TA_DBG").is_ok()); *ON } {
+        eprintln!("TA align_for rtl={rtl} ta={:?}", c.text_align);
+    }
     let value = c
         .text_align
         .unwrap_or(crate::computed::TextAlign::Start)

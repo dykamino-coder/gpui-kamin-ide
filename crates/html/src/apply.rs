@@ -1018,10 +1018,14 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
         Some(TextAlign::Right) => d = d.text_right(),
         Some(TextAlign::Left) => d = d.text_left(),
         Some(TextAlign::Justify) => d = d.text_align(gpui::TextAlign::Justify),
-        // Логические края разворачивает наследование; сюда они доходят только
-        // у узлов вне него — там письмо слева направо, как в корне документа.
-        Some(TextAlign::Start) => d = d.text_left(),
-        Some(TextAlign::End) => d = d.text_right(),
+        // Логические края — по НАПРАВЛЕНИЮ ПИСЬМА: `end` при rtl — левый
+        // край (text-align-end-001: текст уходил вправо).
+        Some(TextAlign::Start) => {
+            d = if c.rtl == Some(true) { d.text_right() } else { d.text_left() }
+        }
+        Some(TextAlign::End) => {
+            d = if c.rtl == Some(true) { d.text_left() } else { d.text_right() }
+        }
         None => {}
     }
     if c.monospace == Some(true) {

@@ -639,8 +639,27 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         collapsed
             .into_iter()
             .map(|n| match n {
-                Node::Element(mut e) if e.style.flex_shrink.is_none() => {
-                    e.style.flex_shrink = Some(0.0);
+                Node::Element(mut e) => {
+                    if e.style.flex_shrink.is_none() {
+                        e.style.flex_shrink = Some(0.0);
+                    }
+                    // rtl: переполняющий блок с ЗАДАННОЙ шириной прижат к
+                    // правому краю и вылезает влево (csswg-drafts#5572);
+                    // только горизонтальное письмо — в вертикали cross-ось
+                    // иная (abs-pos-border-offset-001/002).
+                    if inherited.rtl == Some(true)
+                        && inherited.vertical_rl.is_none()
+                        && e.style.width.is_some()
+                        && e.style.align_self.is_none()
+                        && !e.inline
+                        && !matches!(
+                            e.style.position,
+                            Some(crate::computed::Position::Absolute)
+                                | Some(crate::computed::Position::Fixed)
+                        )
+                    {
+                        e.style.align_self = Some(Align::End);
+                    }
                     Node::Element(e)
                 }
                 other => other,
@@ -3952,11 +3971,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // Схлопывание вертикальных отступов при этом делает сама
                 // раскладка — включая протекание через пустой блок.
                 d = d.flex().flex_col();
-                // Письмо справа налево: начало строчной оси — правый край,
-                // переполняющий БЛОК вылезает влево (csswg-drafts#5572).
-                if merged.rtl == Some(true) {
-                    d = d.items_end();
-                }
+                // rtl-прижим переполняющих блоков — ТОЧЕЧНЫЙ align_self End
+                // детям с заданной шириной (в blocks): items_end на контейнере
+                // снимал stretch у всех, и абзац в rtl ужимался до текста —
+                // text-align внутри пустел (text-align-end-001: bw=124.8
+                // вместо 300). ЗАМЕРЕНО: +18 css-text при −2..3 wm и −4 mix
+                // (spot-механика abs-pos-border-offset полагалась на
+                // items_end — новый след) — нетто +10.
             }
             // Ряд по умолчанию — но не тогда, когда письмо справа налево:
             // там ряд обязан идти в обратную сторону, и общая ветка его
