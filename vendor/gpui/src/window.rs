@@ -3579,6 +3579,7 @@ impl Window {
         blend: u32,
         polygon: &[Point<Pixels>],
         mask: Option<(std::sync::Arc<crate::RenderImage>, Bounds<Pixels>, u32)>,
+        mask_clip: Option<[f32; 4]>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         use crate::{PaintGroup, PaintSurface};
@@ -3621,6 +3622,7 @@ impl Window {
             mask,
             mask_bounds,
             mask_once,
+            mask_clip,
         });
         self.next_frame.scene.insert_primitive(PaintSurface {
             order: 0,

@@ -372,12 +372,26 @@ fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
         return markup.to_string();
     };
     let mut head = markup[open + 4..close].to_string();
-    for name in ["width", "height"] {
+    let mut own = [None::<String>, None::<String>];
+    for (i, name) in ["width", "height"].iter().enumerate() {
         while let Some(at) = head.find(&format!("{name}=")) {
             let rest = &head[at + name.len() + 1..];
             let Some(quote) = rest.chars().next() else { break };
             let Some(end) = rest[1..].find(quote) else { break };
+            own[i] = Some(rest[1..1 + end].to_string());
             head.replace_range(at..at + name.len() + 2 + end + 1, "");
+        }
+    }
+    // Без viewBox содержимое НЕ растёт под новый вьюпорт: рисунок 50x50 в
+    // плитке 100x100 занимал четверть, а маска-плитка выходила с прозрачными
+    // полосами (mask-repeat-1, mask-size-cover). Свои размеры рута становятся
+    // рамкой просмотра — содержимое масштабируется, как в браузере.
+    if !head.contains("viewBox") {
+        if let (Some(w), Some(h)) = (&own[0], &own[1]) {
+            let plain = |v: &str| v.trim().trim_end_matches("px").parse::<f32>().ok();
+            if let (Some(w), Some(h)) = (plain(w), plain(h)) {
+                head.push_str(&format!(" viewBox=\"0 0 {w} {h}\""));
+            }
         }
     }
     format!(

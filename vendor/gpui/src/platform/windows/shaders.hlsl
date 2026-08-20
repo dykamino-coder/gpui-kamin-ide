@@ -1316,6 +1316,7 @@ struct BlurQuad {
     float2 pad2;          // x > 0.5 — есть маска-изображение (t3)
     float4 poly[4];       // вершины парами: (x0, y0, x1, y1)
     float4 mask_rect;     // плитка маски: угол x, y + размер w, h (device px)
+    float4 mask_clip;     // коробка окраски маски; нулевой размер — нет клипа
 };
 
 StructuredBuffer<BlurQuad> blur_quads: register(t1);
@@ -1475,6 +1476,14 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
             float inside = 1.0;
             if ((norep & 1u) && (mt.x < 0.0 || mt.x >= 1.0)) { inside = 0.0; }
             if ((norep & 2u) && (mt.y < 0.0 || mt.y >= 1.0)) { inside = 0.0; }
+            // Коробка окраски (`mask-clip`): вне её маска пуста.
+            if (q.mask_clip.z > 0.0 && (
+                input.position.x < q.mask_clip.x ||
+                input.position.x >= q.mask_clip.x + q.mask_clip.z ||
+                input.position.y < q.mask_clip.y ||
+                input.position.y >= q.mask_clip.y + q.mask_clip.w)) {
+                inside = 0.0;
+            }
             float4 mc = t_maskimg.Sample(s_sprite, frac(mt));
             // Светимость (`mask-mode: luminance`, бит 2): цвет уже умножен
             // на альфа, поэтому взвешенная сумма сразу равна lum * a.

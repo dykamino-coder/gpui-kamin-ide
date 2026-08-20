@@ -3529,6 +3529,27 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.mask_no_repeat = c.mask_no_repeat.unwrap_or((false, false));
     wrapper.mask_luminance = c.mask_luminance == Some(true);
     wrapper.mask_pos = c.mask_pos;
+    wrapper.mask_pos_far = c.mask_pos_far;
+    // Коробки маски (css-masking §7.10-7.11): сдвиги краёв от border-box
+    // внутрь — рамка (padding-box) либо рамка+отступ (content-box).
+    let box_off = |kind: Option<u8>| -> [f32; 4] {
+        let b = c.borders();
+        match kind {
+            Some(2) => [side(b.top), side(b.right), side(b.bottom), side(b.left)],
+            Some(3) => [
+                side(b.top) + side(c.padding.top),
+                side(b.right) + side(c.padding.right),
+                side(b.bottom) + side(c.padding.bottom),
+                side(b.left) + side(c.padding.left),
+            ],
+            _ => [0.0; 4],
+        }
+    };
+    wrapper.mask_origin_off = box_off(c.mask_origin);
+    wrapper.mask_clip_off = c
+        .mask_clip
+        .filter(|k| *k != 255)
+        .map(|k| box_off(Some(k)));
     // Точки уходят КАК ЕСТЬ (Len): проценты и пиксели резолвятся при
     // отрисовке от опорной коробки формы (css-masking §1.3.1.1): margin-box
     // расширяет bounds на поля, content-box сужает на рамку+паддинг

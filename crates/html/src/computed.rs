@@ -1042,9 +1042,15 @@ pub struct Computed {
     pub mask_fit: Option<u8>,
     /// `mask-mode: luminance` — маскирует светимость, а не альфа.
     pub mask_luminance: Option<bool>,
+    /// `mask-origin`: коробка укладки плитки (0 border, 2 padding, 3 content).
+    pub mask_origin: Option<u8>,
+    /// `mask-clip`: коробка окраски маски; вне её элемент скрыт. 255 — no-clip.
+    pub mask_clip: Option<u8>,
     /// `mask-position`: смещение плитки; доля — от свободного места
     /// (коробка минус плитка), как у `background-position`.
     pub mask_pos: Option<(Len, Len)>,
+    /// Смещение отсчитано от ПРАВОГО/НИЖНЕГО края (`right 30px bottom 25px`).
+    pub mask_pos_far: (bool, bool),
     /// Эллиптические радиусы углов (`border-radius: H / V`), tl/tr/br/bl:
     /// растеризатор круглит только окружностью — такой угол уходит
     /// альфа-маской буфера группы (`shape:rrect(...)`).
@@ -3492,6 +3498,8 @@ impl Computed {
                 // css-backgrounds §3.9): считается от интринзика при отрисовке.
                 "contain" => self.mask_fit = Some(1),
                 "cover" => self.mask_fit = Some(2),
+                // `auto` (и `auto auto`) — начальное значение: интринзик.
+                "auto" | "auto auto" => self.mask_size = None,
                 _ => {
                     let mut it = v.split_whitespace();
                     if let Some(x) = it.next().and_then(Len::parse) {
@@ -3501,6 +3509,21 @@ impl Computed {
                 }
             },
             "mask-mode" => self.mask_luminance = Some(v.trim() == "luminance"),
+            "mask-origin" | "-webkit-mask-origin" => {
+                self.mask_origin = match v.trim() {
+                    "padding-box" => Some(2),
+                    "content-box" => Some(3),
+                    _ => Some(0),
+                }
+            }
+            "mask-clip" | "-webkit-mask-clip" => {
+                self.mask_clip = match v.trim() {
+                    "padding-box" => Some(2),
+                    "content-box" => Some(3),
+                    "no-clip" => Some(255),
+                    _ => Some(0),
+                }
+            }
             "mask-repeat" | "-webkit-mask-repeat" => {
                 // Пооосно (css-backgrounds §3.4): `repeat-x` = repeat по x,
                 // одна плитка по y; два слова — оси по порядку.
@@ -3525,13 +3548,9 @@ impl Computed {
                 // bottom 60%` (css-backgrounds-3 §3.6); от правого/нижнего
                 // края доля зеркалится.
                 if toks.len() == 4 {
-                    let pair = |edge: &str, off: &str| -> Option<Len> {
+                    let pair = |edge: &str, off: &str| -> Option<(Len, bool)> {
                         let l = Len::parse(off)?;
-                        match (edge, l) {
-                            ("left" | "top", l) => Some(l),
-                            ("right" | "bottom", Len::Pct(p)) => Some(Len::Pct(1.0 - p)),
-                            _ => None,
-                        }
+                        Some((l, matches!(edge, "right" | "bottom")))
                     };
                     let horiz = matches!(toks[0], "left" | "right");
                     let (xe, xo, ye, yo) = if horiz {
@@ -3539,8 +3558,9 @@ impl Computed {
                     } else {
                         (toks[2], toks[3], toks[0], toks[1])
                     };
-                    if let (Some(x), Some(y)) = (pair(xe, xo), pair(ye, yo)) {
+                    if let (Some((x, fx)), Some((y, fy))) = (pair(xe, xo), pair(ye, yo)) {
                         self.mask_pos = Some((x, y));
+                        self.mask_pos_far = (fx, fy);
                     }
                 } else if let Some(x) = toks.first().and_then(|t| word(t)) {
                     let y = toks.get(1).and_then(|t| word(t)).unwrap_or(Len::Pct(0.5));

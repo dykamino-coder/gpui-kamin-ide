@@ -51,6 +51,8 @@ pub(crate) struct PaintGroup {
     pub(crate) mask_bounds: Bounds<ScaledPixels>,
     /// Пооосный запрет мощения маски: бит 0 — по x, бит 1 — по y.
     pub(crate) mask_once: u32,
+    /// Коробка окраски маски (`mask-clip`) в device px; вне её маска пуста.
+    pub(crate) mask_clip: Option<[f32; 4]>,
 }
 
 #[derive(Default)]

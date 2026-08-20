@@ -396,6 +396,12 @@ pub struct Grouped {
     pub mask_luminance: bool,
     /// `mask-position`: смещение плитки; доля — от свободного места.
     pub mask_pos: Option<(crate::value::Len, crate::value::Len)>,
+    /// Смещение от правого/нижнего края (`right 30px bottom 25px`).
+    pub mask_pos_far: (bool, bool),
+    /// Края коробки укладки (`mask-origin`) от border-box внутрь: t/r/b/l.
+    pub mask_origin_off: [f32; 4],
+    /// Края коробки окраски (`mask-clip`); None — border-box/no-clip.
+    pub mask_clip_off: Option<[f32; 4]>,
 }
 
 impl Grouped {
@@ -412,6 +418,9 @@ impl Grouped {
             mask_fit: 0,
             mask_no_repeat: (false, false),
             mask_luminance: false,
+            mask_pos_far: (false, false),
+            mask_origin_off: [0.0; 4],
+            mask_clip_off: None,
             mask_pos: None,
         }
     }
@@ -531,7 +540,13 @@ impl Element for Grouped {
         // (bad-mask-image-svg-*).
         let mask = self.mask.as_deref().and_then(|src| {
             let source = crate::background::source(src)?;
-            let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            // Коробка укладки (`mask-origin`): плитка и её свободное место
+            // считаются от неё, а не от border-box.
+            let [ot, or_, ob, ol] = self.mask_origin_off;
+            let (bw, bh) = (
+                f32::from(bounds.size.width) - ol - or_,
+                f32::from(bounds.size.height) - ot - ob,
+            );
             let len = |l: crate::value::Len, side: f32, auto: f32| match l {
                 crate::value::Len::Px(v) => v,
                 crate::value::Len::Pct(p) => p * side,
@@ -570,7 +585,11 @@ impl Element for Grouped {
                     };
                     let (tw, th) = match (fit, self.mask_size) {
                         (Some(t), _) => t,
-                        (None, Some((x, y))) => (len(x, bw, bw), len(y, bh, bh)),
+                        // `auto` в паре (`auto 50px`) — интринзик своей оси.
+                        (None, Some((x, y))) => (
+                            len(x, bw, intr.w.unwrap_or(bw)),
+                            len(y, bh, intr.h.unwrap_or(bh)),
+                        ),
                         // auto: у рисунка со своим размером плитка — он
                         // (mask-repeat-1: свг 50x50 мостится по коробке),
                         // без интринзика — коробка.
@@ -623,7 +642,16 @@ impl Element for Grouped {
                                 sf,
                             )?
                         }
-                        _ => source.raster((tw * sf, th * sf))?,
+                        // Рисунок со СВОИМ размером растрируется в нём:
+                        // без viewBox при большем вьюпорте содержимое НЕ
+                        // растёт, и плитка выходила с прозрачными полосами
+                        // (mask-repeat-1: щели; mask-size-cover: четверть).
+                        // На плитку его натянет сэмплер композита. Без
+                        // своего размера — точно в плитку (CSS-точки,
+                        // чёткость даёт плотность растеризатора).
+                        // Плитка в CSS-точках; рисунок масштабирует
+                        // with_viewport (viewBox из своих размеров).
+                        _ => source.raster((tw, th))?,
                     };
                     (img, tw, th)
                 }
@@ -639,28 +667,47 @@ impl Element for Grouped {
                 );
             }
             let (ox, oy) = match self.mask_pos {
-                Some((x, y)) => (
-                    match x {
-                        crate::value::Len::Pct(p) => p * (bw - tw),
-                        l => len(l, bw, 0.0),
-                    },
-                    match y {
-                        crate::value::Len::Pct(p) => p * (bh - th),
-                        l => len(l, bh, 0.0),
-                    },
-                ),
+                Some((x, y)) => {
+                    // Доля — от свободного места; `right/bottom` зеркалит
+                    // отсчёт (css-backgrounds §3.6, mask-position-1a).
+                    let one = |l: crate::value::Len, free: f32, far: bool| {
+                        let v = match l {
+                            crate::value::Len::Pct(p) => p * free,
+                            l => len(l, free, 0.0),
+                        };
+                        if far { free - v } else { v }
+                    };
+                    (
+                        one(x, bw - tw, self.mask_pos_far.0),
+                        one(y, bh - th, self.mask_pos_far.1),
+                    )
+                }
                 None => (0.0, 0.0),
             };
             Some((
                 img,
                 Bounds {
-                    origin: gpui::point(bounds.origin.x + px(ox), bounds.origin.y + px(oy)),
+                    origin: gpui::point(
+                        bounds.origin.x + px(ol + ox),
+                        bounds.origin.y + px(ot + oy),
+                    ),
                     size: gpui::size(px(tw.max(1.0)), px(th.max(1.0))),
                 },
                 ((self.mask_no_repeat.0 as u32)
                     | ((self.mask_no_repeat.1 as u32) << 1)
                     | ((self.mask_luminance as u32) << 2)),
             ))
+        });
+        // Коробка окраски (`mask-clip`): вне её маска не красится — элемент
+        // там скрыт (mask-size-contain-clip-padding).
+        let mask_clip = self.mask_clip_off.map(|[ct, cr, cb, cl]| {
+            let sf = window.scale_factor();
+            [
+                (f32::from(bounds.origin.x) + cl) * sf,
+                (f32::from(bounds.origin.y) + ct) * sf,
+                (f32::from(bounds.size.width) - cl - cr).max(0.0) * sf,
+                (f32::from(bounds.size.height) - ct - cb).max(0.0) * sf,
+            ]
         });
         let child = self.child.as_mut().unwrap();
         window.paint_group(
@@ -671,6 +718,7 @@ impl Element for Grouped {
             self.blend,
             &polygon,
             mask,
+            mask_clip,
             |window| child.paint(window, cx),
         );
     }

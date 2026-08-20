@@ -81,7 +81,7 @@ struct BlurScratch {
     group_poly: Vec<([[f32; 4]; 4], u32)>,
     /// Маска-изображение каждой группы: SRV плитки, её прямоугольник
     /// (угол и размер в device px) и флаг «одна плитка» (no-repeat).
-    group_mask: Vec<Option<([Option<ID3D11ShaderResourceView>; 1], [f32; 4], f32)>>,
+    group_mask: Vec<Option<([Option<ID3D11ShaderResourceView>; 1], [f32; 4], f32, [f32; 4])>>,
     /// Текстуры масок по картинке-источнику: заливать пиксели каждый кадр
     /// незачем, картинка неизменна (`ImageId` уникален на содержимое).
     mask_cache: HashMap<ImageId, [Option<ID3D11ShaderResourceView>; 1]>,
@@ -116,6 +116,8 @@ struct BlurQuad {
     poly: [[f32; 4]; 4],
     /// Плитка маски: угол x, y и размер w, h в device px; повторяется.
     mask_rect: [f32; 4],
+    /// Коробка окраски маски: вне её маска пуста; нулевой размер — нет клипа.
+    mask_clip: [f32; 4],
 }
 
 fn create_blur_texture(
@@ -255,6 +257,7 @@ fn blur_down_pass(
         pad2: [0.0; 2],
         poly: [[0.0; 4]; 4],
         mask_rect: [0.0; 4],
+        mask_clip: [0.0; 4],
     };
     pipeline.update_buffer(device, dc, &[quad])?;
     unsafe {
@@ -742,6 +745,8 @@ impl DirectXRenderer {
                         group.mask_bounds.size.height.0.max(1.0),
                     ],
                     group.mask_once as f32,
+                    // Коробка окраски: пустая (нулевой размер) = нет клипа.
+                    group.mask_clip.unwrap_or([0.0; 4]),
                 ))
             });
             self.blur.group_mask.push(mask);
@@ -814,6 +819,7 @@ impl DirectXRenderer {
             pad2: [0.0; 2],
             poly: [[0.0; 4]; 4],
         mask_rect: [0.0; 4],
+        mask_clip: [0.0; 4],
         };
         self.pipelines
             .blur_pipeline
@@ -1371,6 +1377,7 @@ impl DirectXRenderer {
             pad2: [0.0; 2],
             poly: [[0.0; 4]; 4],
         mask_rect: [0.0; 4],
+        mask_clip: [0.0; 4],
         };
         self.pipelines
             .blur_pipeline
@@ -1421,12 +1428,12 @@ impl DirectXRenderer {
             .get(s.group as usize - 1)
             .cloned()
             .flatten();
-        let (has_mask, mask_rect, mask_once) = match &mask {
-            Some((srv, rect, once)) => {
+        let (has_mask, mask_rect, mask_once, mask_clip) = match &mask {
+            Some((srv, rect, once, clip)) => {
                 unsafe { dc.PSSetShaderResources(3, Some(srv)) };
-                (1.0, *rect, *once)
+                (1.0, *rect, *once, *clip)
             }
-            None => (0.0, [0.0; 4], 0.0),
+            None => (0.0, [0.0; 4], 0.0, [0.0; 4]),
         };
         let (vw, vh) = (self.resources.width as f32, self.resources.height as f32);
 
@@ -1489,6 +1496,7 @@ impl DirectXRenderer {
             pad2: [has_mask, mask_once],
             poly,
             mask_rect,
+            mask_clip,
         };
         self.pipelines
             .blur_pipeline
