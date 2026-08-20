@@ -34,7 +34,7 @@ pub fn serialize(e: &Element) -> String {
     out
 }
 
-fn write_element(e: &Element, out: &mut String) {
+pub(crate) fn write_element(e: &Element, out: &mut String) {
     out.push('<');
     out.push_str(&e.tag);
     for (k, v) in &e.attrs {

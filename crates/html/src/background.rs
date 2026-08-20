@@ -126,6 +126,132 @@ impl Source {
 }
 
 
+
+/// Перевести `shape()` (css-shapes-2 §2.4) в контур SVG `d`.
+///
+/// Команды идут через точку с запятой (запятые заменил разбор свойств —
+/// по запятым верхнего уровня режутся слои маски). Доли резолвятся здесь:
+/// x — от ширины коробки, y — от высоты.
+pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
+    let mut d = String::new();
+    let val = |t: &str, side: f32| -> Option<f32> {
+        // Края коробки словами (hline to right; §2.4.3).
+        match t {
+            "left" | "top" | "x-start" | "y-start" => return Some(0.0),
+            "right" | "bottom" | "x-end" | "y-end" => return Some(side),
+            "center" => return Some(side * 0.5),
+            _ => {}
+        }
+        match crate::value::Len::parse(t)? {
+            crate::value::Len::Px(v) => Some(v),
+            crate::value::Len::Pct(p) => Some(p * side),
+            // Шрифтовые единицы — от запасного кегля (16px).
+            l => crate::metrics::fallback_len_px(l, "", 16.0),
+        }
+    };
+    // Пара координат из токенов: позиционные слова идут в любом порядке
+    // (`from center left` — left это X), горизонтальное слово всегда ось X.
+    let pair = |a: &str, b: &str| -> Option<(f32, f32)> {
+        let horiz = |t: &str| matches!(t, "left" | "right" | "x-start" | "x-end");
+        let vert = |t: &str| matches!(t, "top" | "bottom" | "y-start" | "y-end");
+        let (a, b) = if vert(a) || horiz(b) { (b, a) } else { (a, b) };
+        Some((val(a, bw)?, val(b, bh)?))
+    };
+    for cmd in args.split(';') {
+        let toks: Vec<&str> = cmd.split_whitespace().collect();
+        if toks.is_empty() {
+            continue;
+        }
+        match toks[0] {
+            "from" | "move" => {
+                let base = if toks[0] == "from" { 1 } else { 2 };
+                let rel = toks.get(1) == Some(&"by");
+                let (x, y) = pair(toks.get(base)?, toks.get(base + 1)?)?;
+                d.push_str(&format!("{}{} {} ", if rel { 'm' } else { 'M' }, x, y));
+            }
+            "line" => {
+                let rel = toks.get(1) == Some(&"by");
+                let (x, y) = pair(toks.get(2)?, toks.get(3)?)?;
+                d.push_str(&format!("{}{} {} ", if rel { 'l' } else { 'L' }, x, y));
+            }
+            "hline" => {
+                let rel = toks.get(1) == Some(&"by");
+                let x = val(toks.get(2)?, bw)?;
+                d.push_str(&format!("{}{} ", if rel { 'h' } else { 'H' }, x));
+            }
+            "vline" => {
+                let rel = toks.get(1) == Some(&"by");
+                let y = val(toks.get(2)?, bh)?;
+                d.push_str(&format!("{}{} ", if rel { 'v' } else { 'V' }, y));
+            }
+            "curve" => {
+                // curve to X Y with C1x C1y [/ C2x C2y]
+                let rel = toks.get(1) == Some(&"by");
+                let (x, y) = pair(toks.get(2)?, toks.get(3)?)?;
+                let with_at = toks.iter().position(|t| *t == "with")?;
+                let c1 = pair(toks.get(with_at + 1)?, toks.get(with_at + 2)?)?;
+                let slash = toks.iter().position(|t| *t == "/");
+                if let Some(sl) = slash {
+                    let c2 = pair(toks.get(sl + 1)?, toks.get(sl + 2)?)?;
+                    d.push_str(&format!(
+                        "{}{} {} {} {} {} {} ",
+                        if rel { 'c' } else { 'C' },
+                        c1.0, c1.1, c2.0, c2.1, x, y
+                    ));
+                } else {
+                    d.push_str(&format!(
+                        "{}{} {} {} {} ",
+                        if rel { 'q' } else { 'Q' },
+                        c1.0, c1.1, x, y
+                    ));
+                }
+            }
+            "smooth" => {
+                // smooth to X Y [with Cx Cy]: с точкой — кубик S, без — T.
+                let rel = toks.get(1) == Some(&"by");
+                let (x, y) = pair(toks.get(2)?, toks.get(3)?)?;
+                if let Some(with_at) = toks.iter().position(|t| *t == "with") {
+                    let c = pair(toks.get(with_at + 1)?, toks.get(with_at + 2)?)?;
+                    d.push_str(&format!(
+                        "{}{} {} {} {} ",
+                        if rel { 's' } else { 'S' },
+                        c.0, c.1, x, y
+                    ));
+                } else {
+                    d.push_str(&format!("{}{} {} ", if rel { 't' } else { 'T' }, x, y));
+                }
+            }
+            "arc" => {
+                // arc to X Y of RX [RY] [cw|ccw] [large|small] [rotate A]
+                let rel = toks.get(1) == Some(&"by");
+                let (x, y) = pair(toks.get(2)?, toks.get(3)?)?;
+                let of_at = toks.iter().position(|t| *t == "of")?;
+                let rx = val(toks.get(of_at + 1)?, bw)?;
+                let ry = toks
+                    .get(of_at + 2)
+                    .and_then(|t| val(t, bh))
+                    .unwrap_or(rx);
+                let sweep = if toks.contains(&"cw") { 1 } else { 0 };
+                let large = if toks.contains(&"large") { 1 } else { 0 };
+                let rot = toks
+                    .iter()
+                    .position(|t| *t == "rotate")
+                    .and_then(|i| toks.get(i + 1))
+                    .and_then(|t| t.trim_end_matches("deg").parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                d.push_str(&format!(
+                    "{}{} {} {} {} {} {} {} ",
+                    if rel { 'a' } else { 'A' },
+                    rx, ry, rot, large, sweep, x, y
+                ));
+            }
+            "close" => d.push_str("Z "),
+            _ => return None,
+        }
+    }
+    (!d.is_empty()).then(|| d.trim_end().to_string())
+}
+
 /// Слой готового полотна маски: растр плитки и её укладка в device px.
 pub struct MaskLayer {
     pub image: Arc<RenderImage>,
@@ -135,6 +261,8 @@ pub struct MaskLayer {
     pub no_repeat: (bool, bool),
     /// Оператор с накопленным низом: 0 add, 1 subtract, 2 intersect, 3 exclude.
     pub op: u8,
+    /// Светимость вместо альфы (`mask-mode: luminance`, SVG `<mask>`).
+    pub luminance: bool,
 }
 
 /// Сложить слои маски в одно полотно (css-masking §7.12, `mask-composite`).
@@ -169,7 +297,17 @@ pub fn compose_mask_layers(layers: &[MaskLayer], w: u32, h: u32) -> Option<Arc<R
                     v = v.rem_euclid(1.0);
                     let px_ = ((u * iw as f32) as usize).min(iw - 1);
                     let py = ((v * ih as f32) as usize).min(ih - 1);
-                    bytes[(py * iw + px_) * 4 + 3] as f32 / 255.0
+                    let at4 = (py * iw + px_) * 4;
+                    if layer.luminance {
+                        // Цвет премультиплицирован — взвешенная сумма
+                        // сразу равна lum * a (порядок BGRA).
+                        (bytes[at4] as f32 * 0.0722
+                            + bytes[at4 + 1] as f32 * 0.7152
+                            + bytes[at4 + 2] as f32 * 0.2126)
+                            / 255.0
+                    } else {
+                        bytes[at4 + 3] as f32 / 255.0
+                    }
                 };
                 let at = y * w as usize + x;
                 let d = acc[at];

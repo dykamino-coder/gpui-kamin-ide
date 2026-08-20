@@ -3655,6 +3655,55 @@ impl Computed {
                 } else {
                     self.clip_ref
                 };
+                // `clip-path: shape(...)` (css-shapes-2): команды хранятся
+                // с `;` вместо запятых (по ним режутся слои), доли резолвит
+                // отрисовка по размеру коробки.
+                if key == "clip-path"
+                    && let Some(rest) = v.trim().strip_prefix("shape(")
+                {
+                    // После скобки может стоять опорная коробка
+                    // (`shape(...) content-box`) — режем по ПОСЛЕДНЕЙ скобке.
+                    let rest = match rest.rfind(')') {
+                        Some(i) => &rest[..i],
+                        None => rest,
+                    }
+                    .trim();
+                    let (rule, body) = match rest.split_once(' ') {
+                        Some((r @ ("nonzero" | "evenodd"), b)) => (r, b),
+                        _ => ("nonzero", rest),
+                    };
+                    self.clip_shape =
+                        Some(format!("shapedef:{rule}:{}", body.replace(',', ";")));
+                }
+                // `clip-path: path(правило, 'd')` — контур SVG: форма
+                // растрируется маской покрытия; запятые в d заменяются
+                // пробелами (грамматика SVG им равнозначна), потому что по
+                // запятым верхнего уровня режутся СЛОИ маски.
+                if key == "clip-path"
+                    && let Some(rest) = v.trim().strip_prefix("path(")
+                {
+                    let rest = match rest.rfind(')') {
+                        Some(i) => &rest[..i],
+                        None => rest,
+                    }
+                    .trim();
+                    let (rule, d) = match rest.split_once(',') {
+                        Some((r, d)) if matches!(r.trim(), "nonzero" | "evenodd") => {
+                            (r.trim(), d.trim())
+                        }
+                        _ => ("nonzero", rest),
+                    };
+                    let d = d.trim_matches(|c| c == '"' || c == '\'').replace(',', " ");
+                    self.clip_shape = Some(format!("pathdef:{rule}:{d}"));
+                }
+                // `clip-path: url(#id)` — ссылка на <clipPath>: форма
+                // растрируется маской покрытия при отрисовке.
+                if key == "clip-path"
+                    && let Some(url) = parse_url(v)
+                    && let Some(id) = url.strip_prefix('#')
+                {
+                    self.clip_shape = Some(format!("clipref:{id}"));
+                }
                 if let Some(rest) = v.strip_prefix("polygon(") {
                     let rest = match rest.rfind(')') {
                         Some(i) => &rest[..i],

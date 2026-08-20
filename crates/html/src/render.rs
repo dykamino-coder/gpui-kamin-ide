@@ -496,7 +496,127 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // Пойманная паника кадра внутри рамки оставляла счётчик глубины
     // навсегда — три такие паники, и рамки исчезали до перезапуска.
     IFRAME_DEPTH.with(|d| d.set(0));
+    collect_mask_defs(nodes);
     blocks(nodes, &root, opts)
+}
+
+thread_local! {
+    /// Определения `<mask id>` / `<clipPath id>` документа: id — разметка
+    /// содержимого. Ссылки `url(#id)` из `mask-image`/`clip-path` резолвятся
+    /// при отрисовке (см. `interact::Grouped`).
+    static MASK_DEFS: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Чей документ собран: адрес среза узлов. Виртуализация рисует ПО
+    /// БЛОКАМ (`render_block`) — сбор на каждый блок каждого кадра был бы
+    /// расточительным, а документ между кадрами один и тот же.
+    static MASK_DEFS_FOR: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Содержимое определения маски по имени (`#id` без решётки).
+pub(crate) fn mask_def(id: &str) -> Option<String> {
+    MASK_DEFS.with(|m| m.borrow().get(id).cloned())
+}
+
+thread_local! {
+    /// Снимки определений на момент СБОРКИ дерева: отрисовка идёт позже, а
+    /// документов в кадре может быть два (тест и эталон стенда) — реестр
+    /// определений к моменту отрисовки уже перезаписан другим документом.
+    /// Снимки копятся под уникальными ключами и не чистятся.
+    static MASK_SNAPS: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    static MASK_SNAP_N: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Снять снимок определения; ключ живёт до конца кадра и дольше.
+fn snapshot_mask_def(id: &str) -> Option<String> {
+    let markup = mask_def(id)?;
+    let key = MASK_SNAP_N.with(|c| {
+        let n = c.get() + 1;
+        c.set(n);
+        format!("k{n}")
+    });
+    MASK_SNAPS.with(|m| {
+        let mut map = m.borrow_mut();
+        // Кадры идут бесконечно — тысяча снимков означает утечку, чистим.
+        if map.len() > 1000 {
+            map.clear();
+        }
+        map.insert(key.clone(), markup);
+    });
+    Some(key)
+}
+
+/// Разметка по ключу снимка (для отрисовки).
+pub(crate) fn mask_snapshot(key: &str) -> Option<String> {
+    MASK_SNAPS.with(|m| m.borrow().get(key).cloned())
+}
+
+/// Заменить ссылки `url(#id)` / `clipref:id` в строке маски снимками
+/// определений: к отрисовке реестр может смениться другим документом.
+fn resolve_mask_refs(raw: &str) -> String {
+    if std::env::var("MASKDEF_DBG").is_ok() {
+        eprintln!("RESOLVE {raw}");
+    }
+    if let Some(id) = raw.strip_prefix("clipref:") {
+        return match snapshot_mask_def(id) {
+            Some(key) => format!("clipsnap:{key}"),
+            None => raw.to_string(),
+        };
+    }
+    let mut out = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some(at) = rest.find("url(#") {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at + 5..];
+        let Some(end) = tail.find(')') else {
+            out.push_str(&rest[at..]);
+            return out;
+        };
+        let id = tail[..end].trim().trim_matches(|c| c == '"' || c == '\'');
+        match snapshot_mask_def(id) {
+            Some(key) => out.push_str(&format!("url(svgsnap:{key})")),
+            None => out.push_str(&rest[at..at + 5 + end + 1]),
+        }
+        rest = &tail[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Собрать определения масок ДО отрисовки: ссылка может стоять раньше
+/// определения по тексту.
+fn collect_mask_defs(nodes: &[Node]) {
+    let key = nodes.as_ptr() as usize;
+    if MASK_DEFS_FOR.with(|c| c.get()) == key {
+        return;
+    }
+    MASK_DEFS_FOR.with(|c| c.set(key));
+    fn walk(nodes: &[Node], out: &mut std::collections::HashMap<String, String>) {
+        for n in nodes {
+            let Node::Element(e) = n else { continue };
+            let tag = e.tag.to_ascii_lowercase();
+            if (tag == "mask" || tag == "clippath")
+                && let Some(id) = e.attr("id")
+            {
+                let mut markup = String::new();
+                for c in &e.children {
+                    if let Node::Element(el) = c {
+                        crate::svg::write_element(el, &mut markup);
+                    }
+                }
+                out.insert(id.to_string(), markup);
+            }
+            walk(&e.children, out);
+        }
+    }
+    MASK_DEFS.with(|m| {
+        let mut map = m.borrow_mut();
+        map.clear();
+        walk(nodes, &mut map);
+        if std::env::var("MASKDEF_DBG").is_ok() {
+            eprintln!("MASKDEFS: {:?}", map.keys().collect::<Vec<_>>());
+        }
+    });
 }
 
 /// Один блок верхнего уровня — единица виртуализации.
@@ -508,6 +628,7 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     let node = nodes.get(index)?;
     crate::interact::frame_sanitize();
     IFRAME_DEPTH.with(|d| d.set(0));
+    collect_mask_defs(nodes);
     let root = opts.root_style();
     blocks(std::slice::from_ref(node), &root, opts)
         .into_iter()
@@ -3515,7 +3636,8 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         .mask_image
         .clone()
         .or_else(|| c.clip_shape.clone())
-        .or(rrect);
+        .or(rrect)
+        .map(|m| resolve_mask_refs(&m));
     // `clip: rect()` действует только на абсолютный элемент (CSS 2.1).
     // ПАРК: буфер группы создаёт stacking context, которого у `clip` нет —
     // z-переплетение детей с внешними соседями рвётся

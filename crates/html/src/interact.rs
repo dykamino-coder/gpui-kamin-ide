@@ -439,6 +439,9 @@ fn mask_layer_source(layer: &str) -> Option<String> {
     if t.contains("-gradient(") {
         return Some(t.to_string());
     }
+    if t.starts_with("clipsnap:") || t.starts_with("pathdef:") || t.starts_with("shapedef:") {
+        return Some(t.to_string());
+    }
     let at = t.find("url(")?;
     let rest = &t[at + 4..];
     let end = rest.find(')')?;
@@ -447,6 +450,39 @@ fn mask_layer_source(layer: &str) -> Option<String> {
             .trim()
             .trim_matches(|c| c == '"' || c == '\'')
             .to_string(),
+    )
+}
+
+
+/// Растр определения `<mask>`/`<clipPath>` из документа под коробку.
+///
+/// Содержимое сериализовано при сборе (`render::mask_def`); маска берёт
+/// светимость своих красок, обрезка — покрытие (заливка принудительно
+/// белая), поэтому обе идут люминанс-растром.
+fn rasterize_mask_def(
+    key: &str,
+    w: f32,
+    h: f32,
+    force_white: bool,
+) -> Option<std::sync::Arc<gpui::RenderImage>> {
+    let markup = crate::render::mask_snapshot(key);
+    if std::env::var("MASKDEF_DBG").is_ok() {
+        eprintln!("RASTER key={key} found={}", markup.is_some());
+    }
+    let markup = markup?;
+    // Внутри <clipPath> правило намотки несёт `clip-rule`; растеризатор
+    // рисует контур как обычный и читает только `fill-rule`
+    // (clip-path-shape-002: у эталона пропадала дырка evenodd).
+    let markup = markup.replace("clip-rule", "fill-rule");
+    let body = if force_white {
+        format!(r##"<g fill="#ffffff">{markup}</g>"##)
+    } else {
+        markup
+    };
+    crate::svg::rasterize(
+        &format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}">{body}</svg>"#),
+        w,
+        h,
     )
 }
 
@@ -574,7 +610,6 @@ impl Element for Grouped {
                     .collect()
             };
             let src: &str = layers.first().map(String::as_str)?;
-            let source = crate::background::source(src)?;
             // Коробка укладки (`mask-origin`): плитка и её свободное место
             // считаются от неё, а не от border-box.
             let [ot, or_, ob, ol] = self.mask_origin_off;
@@ -587,11 +622,17 @@ impl Element for Grouped {
                 crate::value::Len::Pct(p) => p * side,
                 _ => auto,
             };
-            // Несколько слоёв: полотно, собранное по `mask-composite`
-            // (css-masking §7.12). Плитка слоя — его интринзик (auto),
-            // укладка от угла коробки; уложенное полотно уходит одной
-            // плиткой без мощения.
-            if layers.len() > 1 {
+            // Несколько слоёв или снимок определения из документа:
+            // полотно, собранное по `mask-composite` (css-masking §7.12).
+            // Плитка слоя — его интринзик (auto), укладка от угла коробки;
+            // уложенное полотно уходит одной плиткой без мощения.
+            let referenced = layers.iter().any(|l| {
+                l.starts_with("svgsnap:")
+                    || l.starts_with("clipsnap:")
+                    || l.starts_with("pathdef:")
+                    || l.starts_with("shapedef:")
+            });
+            if layers.len() > 1 || referenced {
                 let sf = window.scale_factor();
                 let (cw, ch) = (
                     (bw * sf).round().max(1.0) as u32,
@@ -601,14 +642,70 @@ impl Element for Grouped {
                     .iter()
                     .enumerate()
                     .filter_map(|(i, l)| {
-                        let source = crate::background::source(l)?;
-                        let intr = source.intrinsic();
-                        let (tw, th) = (intr.w.unwrap_or(bw), intr.h.unwrap_or(bh));
+                        // Ссылка на определение в документе: растр под
+                        // коробку, светимость вместо альфы.
+                        let (image, tile, lum) = if let Some(id) = l.strip_prefix("svgsnap:") {
+                            (
+                                rasterize_mask_def(id, bw, bh, false)?,
+                                [0.0, 0.0, bw * sf, bh * sf],
+                                true,
+                            )
+                        } else if let Some(id) = l.strip_prefix("clipsnap:") {
+                            (
+                                rasterize_mask_def(id, bw, bh, true)?,
+                                [0.0, 0.0, bw * sf, bh * sf],
+                                true,
+                            )
+                        } else if let Some(rest) = l.strip_prefix("shapedef:") {
+                            // Команды `shape()` переводятся в контур `d`
+                            // с резолвом долей по ОПОРНОЙ коробке формы
+                            // (`shape(...) content-box`, css-masking
+                            // §1.3.1.1): её края несёт poly_expand, контур
+                            // сдвигается на них внутрь.
+                            let (rule, body) = rest.split_once(':')?;
+                            let [et, _er, _eb, el] = self.poly_expand;
+                            let (fw2, fh2) = (
+                                (bw + el + self.poly_expand[1]).max(1.0),
+                                (bh + et + self.poly_expand[2]).max(1.0),
+                            );
+                            let d = crate::background::shape_to_path(body, fw2, fh2)?;
+                            let (dx, dy) = (-el, -et);
+                            let markup = format!(
+                                r##"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}"><g transform="translate({dx} {dy})"><path fill="#ffffff" fill-rule="{rule}" d="{d}"/></g></svg>"##
+                            );
+                            (
+                                crate::svg::rasterize(&markup, bw, bh)?,
+                                [0.0, 0.0, bw * sf, bh * sf],
+                                true,
+                            )
+                        } else if let Some(rest) = l.strip_prefix("pathdef:") {
+                            // Контур `path()`: белая заливка с правилом
+                            // намотки, светимость = покрытие.
+                            let (rule, d) = rest.split_once(':')?;
+                            let markup = format!(
+                                r##"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}"><path fill="#ffffff" fill-rule="{rule}" d="{d}"/></svg>"##
+                            );
+                            (
+                                crate::svg::rasterize(&markup, bw, bh)?,
+                                [0.0, 0.0, bw * sf, bh * sf],
+                                true,
+                            )
+                        } else {
+                            let source = crate::background::source(l)?;
+                            let intr = source.intrinsic();
+                            let (tw, th) = (intr.w.unwrap_or(bw), intr.h.unwrap_or(bh));
+                            (
+                                source.raster((tw, th))?,
+                                [0.0, 0.0, tw * sf, th * sf],
+                                false,
+                            )
+                        };
                         Some(crate::background::MaskLayer {
-                            image: source.raster((tw, th))?,
-                            tile: [0.0, 0.0, tw * sf, th * sf],
+                            image,
+                            tile,
                             no_repeat: self.mask_no_repeat,
                             op: self.mask_composite.get(i).copied().unwrap_or(0),
+                            luminance: lum || self.mask_luminance,
                         })
                     })
                     .collect();
@@ -619,9 +716,11 @@ impl Element for Grouped {
                         origin: gpui::point(bounds.origin.x + px(ol), bounds.origin.y + px(ot)),
                         size: gpui::size(px(bw), px(bh)),
                     },
-                    3 | ((self.mask_luminance as u32) << 2),
+                    // Светимость уже учтена при сборке полотна.
+                    3,
                 ));
             }
+            let source = crate::background::source(src)?;
             let (img, tw, th) = match &source {
                 crate::background::Source::Raster(img) => {
                     let s = img.size(0);
