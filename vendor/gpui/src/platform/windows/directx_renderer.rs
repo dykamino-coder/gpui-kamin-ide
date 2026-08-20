@@ -81,7 +81,11 @@ struct BlurScratch {
     group_poly: Vec<([[f32; 4]; 4], u32)>,
     /// Маска-изображение каждой группы: SRV плитки, её прямоугольник
     /// (угол и размер в device px) и флаг «одна плитка» (no-repeat).
-    group_mask: Vec<Option<([Option<ID3D11ShaderResourceView>; 1], [f32; 4], f32, [f32; 4])>>,
+    group_mask: Vec<Option<([Option<ID3D11ShaderResourceView>; 1], [f32; 4], f32)>>,
+    /// Коробка окраски маски / `clip: rect` каждой группы (device px);
+    /// нулевой размер — без клипа. Живёт отдельно от текстуры: старый
+    /// `clip` режет и группу БЕЗ маски-изображения.
+    group_clip: Vec<[f32; 4]>,
     /// Текстуры масок по картинке-источнику: заливать пиксели каждый кадр
     /// незачем, картинка неизменна (`ImageId` уникален на содержимое).
     mask_cache: HashMap<ImageId, [Option<ID3D11ShaderResourceView>; 1]>,
@@ -662,6 +666,7 @@ impl DirectXRenderer {
             self.blur.group_blend.clear();
             self.blur.group_poly.clear();
             self.blur.group_mask.clear();
+            self.blur.group_clip.clear();
             return Ok(());
         }
         let device = self.devices.device.clone();
@@ -687,6 +692,7 @@ impl DirectXRenderer {
         self.blur.group_blend.clear();
         self.blur.group_poly.clear();
         self.blur.group_mask.clear();
+        self.blur.group_clip.clear();
         // Кэш текстур масок не растёт без предела: смена страницы рождает
         // новые `ImageId`, старые записи никому не нужны.
         if self.blur.mask_cache.len() > 64 {
@@ -745,11 +751,12 @@ impl DirectXRenderer {
                         group.mask_bounds.size.height.0.max(1.0),
                     ],
                     group.mask_once as f32,
-                    // Коробка окраски: пустая (нулевой размер) = нет клипа.
-                    group.mask_clip.unwrap_or([0.0; 4]),
                 ))
             });
             self.blur.group_mask.push(mask);
+            self.blur
+                .group_clip
+                .push(group.mask_clip.unwrap_or([0.0; 4]));
         }
 
         // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
@@ -1428,13 +1435,19 @@ impl DirectXRenderer {
             .get(s.group as usize - 1)
             .cloned()
             .flatten();
-        let (has_mask, mask_rect, mask_once, mask_clip) = match &mask {
-            Some((srv, rect, once, clip)) => {
+        let (has_mask, mask_rect, mask_once) = match &mask {
+            Some((srv, rect, once)) => {
                 unsafe { dc.PSSetShaderResources(3, Some(srv)) };
-                (1.0, *rect, *once, *clip)
+                (1.0, *rect, *once)
             }
-            None => (0.0, [0.0; 4], 0.0, [0.0; 4]),
+            None => (0.0, [0.0; 4], 0.0),
         };
+        let mask_clip = self
+            .blur
+            .group_clip
+            .get(s.group as usize - 1)
+            .copied()
+            .unwrap_or([0.0; 4]);
         let (vw, vh) = (self.resources.width as f32, self.resources.height as f32);
 
         // Смешивание считается в шейдере, а ему нужен цвет назначения:

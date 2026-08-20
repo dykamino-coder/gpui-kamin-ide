@@ -1470,20 +1470,21 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         // значение css-masking); запрет мощения пооосный (pad2.y: бит 0 —
         // x, бит 1 — y) — за краем первой плитки маска пуста. Гасится вся
         // картинка, альфа её умножена.
+        // Коробка окраски (`mask-clip`) и старый `clip: rect` режут группу
+        // и БЕЗ маски-изображения: вне коробки картинка пуста.
+        if (q.mask_clip.z > 0.0 && (
+            input.position.x < q.mask_clip.x ||
+            input.position.x >= q.mask_clip.x + q.mask_clip.z ||
+            input.position.y < q.mask_clip.y ||
+            input.position.y >= q.mask_clip.y + q.mask_clip.w)) {
+            mask = 0.0;
+        }
         if (q.pad2.x > 0.5) {
             float2 mt = (input.position.xy - q.mask_rect.xy) / q.mask_rect.zw;
             uint norep = uint(q.pad2.y + 0.5);
             float inside = 1.0;
             if ((norep & 1u) && (mt.x < 0.0 || mt.x >= 1.0)) { inside = 0.0; }
             if ((norep & 2u) && (mt.y < 0.0 || mt.y >= 1.0)) { inside = 0.0; }
-            // Коробка окраски (`mask-clip`): вне её маска пуста.
-            if (q.mask_clip.z > 0.0 && (
-                input.position.x < q.mask_clip.x ||
-                input.position.x >= q.mask_clip.x + q.mask_clip.z ||
-                input.position.y < q.mask_clip.y ||
-                input.position.y >= q.mask_clip.y + q.mask_clip.w)) {
-                inside = 0.0;
-            }
             float4 mc = t_maskimg.Sample(s_sprite, frac(mt));
             // Светимость (`mask-mode: luminance`, бит 2): цвет уже умножен
             // на альфа, поэтому взвешенная сумма сразу равна lum * a.

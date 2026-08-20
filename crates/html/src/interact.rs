@@ -402,6 +402,8 @@ pub struct Grouped {
     pub mask_origin_off: [f32; 4],
     /// Края коробки окраски (`mask-clip`); None — border-box/no-clip.
     pub mask_clip_off: Option<[f32; 4]>,
+    /// `clip: rect(t r b l)`: координаты видимой области от углов коробки.
+    pub clip_rect: Option<[Option<f32>; 4]>,
 }
 
 impl Grouped {
@@ -421,6 +423,7 @@ impl Grouped {
             mask_pos_far: (false, false),
             mask_origin_off: [0.0; 4],
             mask_clip_off: None,
+            clip_rect: None,
             mask_pos: None,
         }
     }
@@ -700,15 +703,42 @@ impl Element for Grouped {
         });
         // Коробка окраски (`mask-clip`): вне её маска не красится — элемент
         // там скрыт (mask-size-contain-clip-padding).
-        let mask_clip = self.mask_clip_off.map(|[ct, cr, cb, cl]| {
-            let sf = window.scale_factor();
-            [
-                (f32::from(bounds.origin.x) + cl) * sf,
-                (f32::from(bounds.origin.y) + ct) * sf,
-                (f32::from(bounds.size.width) - cl - cr).max(0.0) * sf,
-                (f32::from(bounds.size.height) - ct - cb).max(0.0) * sf,
-            ]
-        });
+        let mask_clip = self
+            .mask_clip_off
+            .map(|[ct, cr, cb, cl]| {
+                [
+                    cl,
+                    ct,
+                    (f32::from(bounds.size.width) - cl - cr).max(0.0),
+                    (f32::from(bounds.size.height) - ct - cb).max(0.0),
+                ]
+            })
+            .or_else(|| {
+                // `clip: rect(t r b l)` — координаты краёв видимой области
+                // от углов коробки; auto — её край (clip-rect-auto-*).
+                self.clip_rect.map(|[t, r, b, l]| {
+                    let (bw, bh) =
+                        (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                    let (t, l) = (t.unwrap_or(0.0), l.unwrap_or(0.0));
+                    let (r, b) = (r.unwrap_or(bw), b.unwrap_or(bh));
+                    if r <= l || b <= t {
+                        // Вырожденная область — элемент скрыт ЦЕЛИКОМ:
+                        // коробка клипа уводится за экран
+                        // (clip-negative-values-001: right < left).
+                        return [-1.0e7, -1.0e7, 1.0, 1.0];
+                    }
+                    [l, t, r - l, b - t]
+                })
+            })
+            .map(|[x, y, w, h]| {
+                let sf = window.scale_factor();
+                [
+                    (f32::from(bounds.origin.x) + x) * sf,
+                    (f32::from(bounds.origin.y) + y) * sf,
+                    w * sf,
+                    h * sf,
+                ]
+            });
         let child = self.child.as_mut().unwrap();
         window.paint_group(
             area,

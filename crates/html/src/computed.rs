@@ -1046,6 +1046,9 @@ pub struct Computed {
     pub mask_origin: Option<u8>,
     /// `mask-clip`: коробка окраски маски; вне её элемент скрыт. 255 — no-clip.
     pub mask_clip: Option<u8>,
+    /// `clip: rect(t r b l)` (CSS 2.1 §11.1.2, только absolute): координаты
+    /// видимой области от углов border-box; None в позиции — auto (край).
+    pub clip_rect: Option<[Option<f32>; 4]>,
     /// `mask-position`: смещение плитки; доля — от свободного места
     /// (коробка минус плитка), как у `background-position`.
     pub mask_pos: Option<(Len, Len)>,
@@ -3491,6 +3494,40 @@ impl Computed {
                 }
             }
             "isolation" => self.isolate = Some(v == "isolate"),
+            // Устаревшее `clip` (CSS 2.1): rect с запятыми или пробелами;
+            // `auto` в позиции — соответствующий край коробки.
+            "clip" => {
+                if let Some(rest) = v.trim().strip_prefix("rect(") {
+                    let rest = rest.trim_end_matches(')');
+                    // Разделители — ЛИБО три запятые, ЛИБО одни пробелы:
+                    // смешанная запись невалидна, свойство игнорируется
+                    // (clip-rect-comma-002..004).
+                    let commas = rest.matches(',').count();
+                    if commas != 0 && commas != 3 {
+                        return;
+                    }
+                    let parts: Vec<&str> = rest
+                        .split([',', ' '])
+                        .map(str::trim)
+                        .filter(|t| !t.is_empty())
+                        .collect();
+                    if parts.len() == 4 {
+                        let side = |t: &str| match t {
+                            "auto" => None,
+                            _ => match Len::parse(t) {
+                                Some(Len::Px(v)) => Some(v),
+                                _ => None,
+                            },
+                        };
+                        self.clip_rect = Some([
+                            side(parts[0]),
+                            side(parts[1]),
+                            side(parts[2]),
+                            side(parts[3]),
+                        ]);
+                    }
+                }
+            }
             // Плитка маски (css-masking §7.6–7.8). `cover`/`contain` пока не
             // разобраны — им нужен интринзик картинки при вычислении.
             "mask-size" | "-webkit-mask-size" => match v.trim() {

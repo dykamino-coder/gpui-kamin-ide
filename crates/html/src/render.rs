@@ -3516,7 +3516,22 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         .clone()
         .or_else(|| c.clip_shape.clone())
         .or(rrect);
-    if blur <= 0.0 && blend == 0 && polygon.is_empty() && c.isolate != Some(true) && mask.is_none()
+    // `clip: rect()` действует только на абсолютный элемент (CSS 2.1).
+    // ПАРК: буфер группы создаёт stacking context, которого у `clip` нет —
+    // z-переплетение детей с внешними соседями рвётся
+    // (clip-no-stacking-context, 1 пара).
+    let clip_rect = c.clip_rect.filter(|_| {
+        matches!(
+            c.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        )
+    });
+    if blur <= 0.0
+        && blend == 0
+        && polygon.is_empty()
+        && c.isolate != Some(true)
+        && mask.is_none()
+        && clip_rect.is_none()
     {
         return el;
     }
@@ -3546,6 +3561,7 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         }
     };
     wrapper.mask_origin_off = box_off(c.mask_origin);
+    wrapper.clip_rect = clip_rect;
     wrapper.mask_clip_off = c
         .mask_clip
         .filter(|k| *k != 255)
