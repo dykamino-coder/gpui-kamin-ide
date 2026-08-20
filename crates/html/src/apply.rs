@@ -879,7 +879,12 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
         .border_image
         .as_ref()
         .is_some_and(|bi| !bi.src.is_empty());
+    // При РАЗНЫХ цветах сторон квад не красится вовсе: его рамка рисуется
+    // поверх детей, и красная полоса накрывала цветную
+    // (clip-path-polygon-007: `border: red` + `border-left: lime`).
+    let mixed = sides.len() > 1 && uniform.is_none();
     if !border_image_on
+        && !mixed
         && let Some(bc) = uniform.copied().copied().or(c.border_color)
     {
         d = d.border_color(bc.to_hsla());

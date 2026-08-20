@@ -554,9 +554,6 @@ pub(crate) fn mask_snapshot(key: &str) -> Option<String> {
 /// Заменить ссылки `url(#id)` / `clipref:id` в строке маски снимками
 /// определений: к отрисовке реестр может смениться другим документом.
 fn resolve_mask_refs(raw: &str) -> String {
-    if std::env::var("MASKDEF_DBG").is_ok() {
-        eprintln!("RESOLVE {raw}");
-    }
     if let Some(id) = raw.strip_prefix("clipref:") {
         return match snapshot_mask_def(id) {
             Some(key) => format!("clipsnap:{key}"),
@@ -613,9 +610,6 @@ fn collect_mask_defs(nodes: &[Node]) {
         let mut map = m.borrow_mut();
         map.clear();
         walk(nodes, &mut map);
-        if std::env::var("MASKDEF_DBG").is_ok() {
-            eprintln!("MASKDEFS: {:?}", map.keys().collect::<Vec<_>>());
-        }
     });
 }
 

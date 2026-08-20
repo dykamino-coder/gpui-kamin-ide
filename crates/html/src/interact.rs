@@ -486,11 +486,7 @@ fn rasterize_mask_def(
     h: f32,
     force_white: bool,
 ) -> Option<std::sync::Arc<gpui::RenderImage>> {
-    let markup = crate::render::mask_snapshot(key);
-    if std::env::var("MASKDEF_DBG").is_ok() {
-        eprintln!("RASTER key={key} found={}", markup.is_some());
-    }
-    let markup = markup?;
+    let markup = crate::render::mask_snapshot(key)?;
     // Внутри <clipPath> правило намотки несёт `clip-rule`; растеризатор
     // рисует контур как обычный и читает только `fill-rule`
     // (clip-path-shape-002: у эталона пропадала дырка evenodd).
