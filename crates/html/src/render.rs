@@ -729,6 +729,10 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineTable) => !ordered_context,
+                // ПРОБОВАНО: строчный контейнер лунок атомом строки
+                // (ac-001 9.45→7.9 — сетки в ряд), но grid-семья 573→558:
+                // абзацный атом для лунок хуже блочного пути. Возвращать
+                // вместе с настоящей строчной коробкой атома.
                 Some(_) => false,
                 // Дети гибкого контейнера и сетки блокируются по CSS: каждый
                 // сам себе элемент раскладки. Без оговорки `<span>` без
@@ -2905,6 +2909,9 @@ fn with_text_shadow(el: AnyElement, style: &Computed, nodes: &[Node]) -> AnyElem
 fn inline_level(e: &Element) -> bool {
     match e.style.display {
         Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid) => true,
+        // Строчный контейнер лунок — атом в строке, как inline-grid
+        // (grid-lanes-align-content-001: четыре сетки стоят В РЯД).
+        Some(Display::GridLanes) => e.style.lanes_inline,
         Some(_) => false,
         None => e.inline,
     }
@@ -2964,6 +2971,7 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable) => true,
+            Some(Display::GridLanes) => e.style.lanes_inline,
             Some(_) => false,
             None => e.inline,
         };
@@ -3248,13 +3256,14 @@ fn has_own_box(c: &Computed) -> bool {
     // Вертикальные поля признаком НЕ служат: строку они не двигают (замерено
     // на `flexbox_inline`, где `margin-top: -20em` обязан пройти впустую), и
     // по ним коробка заводилась бы только затем, чтобы уехать за экран.
-    let atomic = matches!(
+    let atomic = (matches!(
         c.display,
         Some(Display::InlineBlock)
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
-    ) && (c.width.is_some() || c.height.is_some());
+    ) || (c.display == Some(Display::GridLanes) && c.lanes_inline))
+        && (c.width.is_some() || c.height.is_some());
     // Позиционированный кусок — тем же порядком: его коробку двигают края, а
     // краёв у прогона нет.
     // ПРОБОВАЛИ И ОТКАТИЛИ: считать коробкой и `position: relative`, чтобы
