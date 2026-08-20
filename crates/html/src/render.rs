@@ -1734,8 +1734,13 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
                     + px_of(&e.style.margin.bottom)?,
             ))
         };
+        let img_float = |f: &Element| {
+            f.style.shape_outside.as_deref().is_some_and(|r| r.contains("url("))
+                && (f.tag == "img"
+                    || f.children.iter().any(|n| matches!(n, Node::Element(c) if c.tag == "img")))
+        };
         if floaters.iter().any(|f| f.style.shape_outside.is_some())
-            && floaters.iter().all(|f| sized(f).is_some())
+            && floaters.iter().all(|f| sized(f).is_some() || img_float(f))
         {
             let mut host = Element {
                 node_id: 0,
@@ -3718,7 +3723,19 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         let (bt, bb) = (px_of(&b.top), px_of(&b.bottom));
         let (pl, pr) = (px_of(&f.style.padding.left), px_of(&f.style.padding.right));
         let (pt, pb) = (px_of(&f.style.padding.top), px_of(&f.style.padding.bottom));
-        let (cw, chh) = (px_of(&f.style.width), px_of(&f.style.height));
+        let (mut cw, mut chh) = (px_of(&f.style.width), px_of(&f.style.height));
+        // Флоат без своих размеров с картинкой-формой: размер — интринзик
+        // картинки (частый паттерн shape-image-тестов).
+        if cw <= 0.0 && chh <= 0.0
+            && let Some(raw0) = f.style.shape_outside.as_deref()
+            && raw0.contains("url(")
+            && let Some(u) = crate::computed::parse_url(raw0)
+            && let Some(img) = crate::background::load(&u)
+        {
+            let sz = img.size(0);
+            cw = sz.width.0 as f32;
+            chh = sz.height.0 as f32;
+        }
         let (mw, mh) = (
             ml + bl + pl + cw + pr + br_ + mr,
             mt + bt + pt + chh + pb + bb + mb,
@@ -3989,9 +4006,13 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // коробке они сдвигали бы её обратно (float: right с margin-left
         // вылезал за правый край контейнера).
         copy.style.margin = crate::computed::Sides::default();
-        let built = styled_div_with(&copy, &merged)
-            .children(blocks(&copy.children, &merged, opts))
-            .into_any_element();
+        let built = if copy.tag == "img" {
+            image(&copy)
+        } else {
+            styled_div_with(&copy, &merged)
+                .children(blocks(&copy.children, &merged, opts))
+                .into_any_element()
+        };
         let holder = if inherited.vertical_rl == Some(true) {
             // Вертикальное письмо: блок-старт — ПРАВЫЙ край, колонки
             // флоатов идут влево; инлайн-старт — верх.
