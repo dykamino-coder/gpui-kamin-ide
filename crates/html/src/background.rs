@@ -445,16 +445,38 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
             // слово — всегда ось X (`at center right`, `at top left`).
             let horiz = |t: &str| matches!(t, "left" | "right");
             let vert = |t: &str| matches!(t, "top" | "bottom");
-            let (tx, ty) = match toks.as_slice() {
-                [a, b] if vert(a) || horiz(b) => (*b, *a),
-                [a, b] => (*a, *b),
-                [a] => (*a, "center"),
-                _ => ("center", "center"),
-            };
-            (
-                axis(tx, fw).unwrap_or(fw * 0.5),
-                axis(ty, fh).unwrap_or(fh * 0.5),
-            )
+            // Четырёхзначная запись — пары «край смещение»: `at left 40px
+            // top 40px`; от правого/нижнего края смещение зеркалится.
+            if toks.len() == 4 {
+                let pair = |edge: &str, off: &str, side: f32| -> Option<f32> {
+                    let v = axis(off, side)?;
+                    Some(match edge {
+                        "right" | "bottom" => side - v,
+                        _ => v,
+                    })
+                };
+                let horiz_first = horiz(toks[0]);
+                let (xe, xo, ye, yo) = if horiz_first {
+                    (toks[0], toks[1], toks[2], toks[3])
+                } else {
+                    (toks[2], toks[3], toks[0], toks[1])
+                };
+                (
+                    pair(xe, xo, fw).unwrap_or(fw * 0.5),
+                    pair(ye, yo, fh).unwrap_or(fh * 0.5),
+                )
+            } else {
+                let (tx, ty) = match toks.as_slice() {
+                    [a, b] if vert(a) || horiz(b) => (*b, *a),
+                    [a, b] => (*a, *b),
+                    [a] => (*a, "center"),
+                    _ => ("center", "center"),
+                };
+                (
+                    axis(tx, fw).unwrap_or(fw * 0.5),
+                    axis(ty, fh).unwrap_or(fh * 0.5),
+                )
+            }
         }
         None => (fw * 0.5, fh * 0.5),
     };
