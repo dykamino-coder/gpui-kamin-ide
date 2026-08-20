@@ -7076,8 +7076,13 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         let last_idx = lane.len().saturating_sub(1);
         for (j, mut s) in lane.into_iter().enumerate() {
             let pad = s.top - cursor;
-            if pad > along_gap + 0.01 {
-                nodes.push(spacer(pad - along_gap, row_dir));
+            // Щель РОВНО в зазор выражается НУЛЕВЫМ спейсером (двойной
+            // флекс-гэп): прежний гейт `pad > gap` её выбрасывал, и реверсные
+            // ряды съезжали на зазор (row-fill-reverse-definite-size-001:
+            // группа на 10px правее эталона). Щель меньше полузазора
+            // остаётся самим гэпом — точнее флексом не выразить.
+            if pad > along_gap * 0.5 + 0.01 {
+                nodes.push(spacer((pad - along_gap).max(0.0), row_dir));
             }
             cursor = s.top + s.height + along_gap;
             // Тянется ТОЛЬКО последний элемент лунки: свободное место копится
