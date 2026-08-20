@@ -229,6 +229,7 @@ export interface WsMsgSessionExit {
 export interface WsMsgSessionError {
   type: 'session:error'
   error: string
+  fatal: true
 }
 
 export interface WsMsgMcpCall {

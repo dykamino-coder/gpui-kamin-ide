@@ -10,6 +10,17 @@ export interface ConnectionConfig {
 
 export interface ConnectionState {
   status: 'disconnected' | 'connecting' | 'connected' | 'error'
+  /** Opaque ConnectionManager instance id. A new extension-host/manager may
+   *  restart revision numbering, so authority changes reset ordering. */
+  authority: string
+  /** Supervisor-issued extension-host generation. It survives child crashes and
+   *  cannot move backwards because of a wall-clock adjustment. */
+  authorityGeneration: number
+  /** Monotonic manager sequence inside one extension-host generation. */
+  authoritySequence: number
+  /** Monotonic per-tab revision. Renderer snapshots and live events use it to
+   *  reject an older connection state that arrives after a newer one. */
+  revision: number
   sessionId?: string
   error?: string
   /** Epoch ms of the scheduled reconnect. The UI counts down to it, which a
@@ -30,6 +41,13 @@ export interface TabInfo {
   folderName: string      // basename(cwd) for grouping
   createdAt: string       // ISO timestamp
   status: ConnectionState['status']
+  /** Revision of the atomic connection slice copied into this tab snapshot. */
+  connectionAuthority: string
+  connectionAuthorityGeneration: number
+  connectionAuthoritySequence: number
+  connectionRevision: number
+  /** Latest connection/session failure surfaced in the status tooltip. */
+  error?: string
   /** Mirrored from the tab's ConnectionState so the header can count down to a
    *  pending reconnect (see ConnectionStatusBadge). */
   nextRetryAt?: number
