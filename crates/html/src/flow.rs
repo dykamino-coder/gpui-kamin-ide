@@ -75,6 +75,23 @@ impl FlowRow {
         (l, r)
     }
 
+    /// Нижний край всех форм: ниже него вырезов нет.
+    fn shapes_bottom(&self) -> f32 {
+        self.shapes
+            .0
+            .iter()
+            .chain(self.shapes.1.iter())
+            .map(|f| match *f {
+                FloatShape::Band { top, h, .. } => top + h,
+                FloatShape::Circle { top, cy, r, .. } => top + cy + r,
+                FloatShape::Ellipse { top, cy, ry, .. } => top + cy + ry,
+                FloatShape::Poly { top, ref pts } => {
+                    top + pts.iter().map(|p| p.1).fold(0.0f32, f32::max)
+                }
+            })
+            .fold(0.0f32, f32::max)
+    }
+
     /// Разложить детей в ширину `limit`; вернуть высоту и позиции.
     fn layout(&self, limit: f32) -> (f32, Vec<(f32, f32)>) {
         let mut slots = Vec::with_capacity(self.children.len());
@@ -93,6 +110,19 @@ impl FlowRow {
                 cut = self.cut(y, ch.max(1.0));
             } else if x == 0.0 {
                 cut = self.cut(y, ch.max(1.0));
+            }
+            // Коробка не помещается даже в начале строки — строка съезжает
+            // ниже, пока вырез не отпустит (float-retry-push): плавающий
+            // блок толкает СЛИШКОМ ШИРОКОЕ содержимое под себя.
+            if x == 0.0 && cw > (limit - cut.0 - cut.1).max(0.0) + 0.01 {
+                let bottom = self.shapes_bottom();
+                while y < bottom {
+                    y += 1.0;
+                    cut = self.cut(y, ch.max(1.0));
+                    if cw <= (limit - cut.0 - cut.1).max(0.0) + 0.01 {
+                        break;
+                    }
+                }
             }
             // Вырез мог смениться выше по строке — пересчитать после переноса.
             let (sx, sy) = if self.rtl {
@@ -250,13 +280,16 @@ impl IntoElement for FlowRow {
 ///
 /// `cut(y0, y1)` — насколько занята строка-полоса [y0, y1): максимальный
 /// горизонтальный экстент формы на этой полосе, в точках от края.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FloatShape {
     /// Прямоугольник: занято `w` на высоте [top, top+h).
     Band { top: f32, h: f32, w: f32 },
     /// Круг с центром (cx, cy) от верха полосы флоата.
     Circle { top: f32, cx: f32, cy: f32, r: f32 },
     Ellipse { top: f32, cx: f32, cy: f32, rx: f32, ry: f32 },
+    /// Многоугольник: вершины в точках от начала стороны; экстент полосы —
+    /// максимум X рёбер в её диапазоне.
+    Poly { top: f32, pts: std::sync::Arc<Vec<(f32, f32)>> },
 }
 
 impl FloatShape {
@@ -275,6 +308,31 @@ impl FloatShape {
             FloatShape::Ellipse { top, cx, cy, rx, ry } => {
                 ellipse_cut(top + cy, rx, ry, cx, y0, y1)
             }
+            FloatShape::Poly { top, ref pts } => {
+                let (y0, y1) = (y0 - top, y1 - top);
+                let mut m = 0.0f32;
+                let n = pts.len();
+                for i in 0..n {
+                    let (x1, py1) = pts[i];
+                    let (x2, py2) = pts[(i + 1) % n];
+                    // Вершина в полосе — как есть.
+                    if (y0..y1).contains(&py1) {
+                        m = m.max(x1);
+                    }
+                    // Ребро пересекает границы полосы — X в точках среза.
+                    let (lo, hi) = if py1 <= py2 { (py1, py2) } else { (py2, py1) };
+                    if hi <= y0 || lo >= y1 || (hi - lo) < 1e-6 {
+                        continue;
+                    }
+                    for yb in [y0.max(lo), y1.min(hi)] {
+                        let t = (yb - py1) / (py2 - py1);
+                        if (0.0..=1.0).contains(&t) {
+                            m = m.max(x1 + (x2 - x1) * t);
+                        }
+                    }
+                }
+                m
+            }
         }
     }
 
@@ -285,6 +343,11 @@ impl FloatShape {
             FloatShape::Band { top, h, w } => 1 ^ q(top).rotate_left(8) ^ q(h).rotate_left(24) ^ q(w).rotate_left(40),
             FloatShape::Circle { top, cx, cy, r } => 2 ^ q(top).rotate_left(6) ^ q(cx).rotate_left(18) ^ q(cy).rotate_left(30) ^ q(r).rotate_left(44),
             FloatShape::Ellipse { top, cx, cy, rx, ry } => 3 ^ q(top).rotate_left(5) ^ q(cx).rotate_left(15) ^ q(cy).rotate_left(27) ^ q(rx).rotate_left(39) ^ q(ry).rotate_left(51),
+            FloatShape::Poly { top, ref pts } => pts
+                .iter()
+                .fold(4u64 ^ q(top), |acc, &(x, y)| {
+                    acc.rotate_left(7) ^ q(x) ^ q(y).rotate_left(3)
+                }),
         }
     }
 }

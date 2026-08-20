@@ -3767,6 +3767,114 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     w: (if side < 0 { off_l } else { off_r }) + mw + sm,
                 },
             }
+        } else if let Some(at) = raw.find("polygon(") {
+            // Многоугольник: вершины в точках/долях опорной коробки;
+            // сторона текста зеркалит X.
+            let inner = raw[at + 8..].split(')').next().unwrap_or("");
+            let pts: Vec<(f32, f32)> = inner
+                .split(',')
+                .filter_map(|pair| {
+                    let mut it = pair.split_whitespace();
+                    let x = match Len::parse(it.next()?)? {
+                        Len::Px(v) => v,
+                        Len::Pct(p) => p * bw,
+                        _ => return None,
+                    };
+                    let y = match Len::parse(it.next()?)? {
+                        Len::Px(v) => v,
+                        Len::Pct(p) => p * bh,
+                        _ => return None,
+                    };
+                    Some(if side < 0 {
+                        (x + bx + off_l, y + by)
+                    } else {
+                        (mw - (x + bx) + off_r, y + by)
+                    })
+                })
+                .collect();
+            // ПАРК: правое зеркало полигона пока врёт (polygon-012/014/015/
+            // 032 «красное видно») — правая сторона идёт полосой коробки.
+            if pts.len() >= 3 && side < 0 {
+                crate::flow::FloatShape::Poly {
+                    top: 0.0,
+                    pts: std::sync::Arc::new(pts.iter().map(|&(x, y)| (x + sm, y)).collect()),
+                }
+            } else {
+                crate::flow::FloatShape::Band {
+                    top: by,
+                    h: bh,
+                    w: (if side < 0 { off_l } else { off_r }) + mw + sm,
+                }
+            }
+        } else if let Some(at) = raw.find("xywh(") {
+            // Прямоугольник x y w h (css-shapes-2): экстент до его дальнего
+            // края со стороны текста.
+            let inner = raw[at + 5..].split(')').next().unwrap_or("");
+            let vals: Vec<f32> = inner
+                .split("round")
+                .next()
+                .unwrap_or("")
+                .split_whitespace()
+                .filter_map(|t| match Len::parse(t)? {
+                    Len::Px(v) => Some(v),
+                    Len::Pct(p) => Some(p * bw),
+                    _ => None,
+                })
+                .collect();
+            if vals.len() == 4 {
+                let (x, y, w, h) = (vals[0], vals[1], vals[2], vals[3]);
+                let w_cut = if side < 0 {
+                    bx + x + w
+                } else {
+                    mw - (bx + x)
+                };
+                crate::flow::FloatShape::Band {
+                    top: by + y,
+                    h,
+                    w: (if side < 0 { off_l } else { off_r }) + w_cut + sm,
+                }
+            } else {
+                crate::flow::FloatShape::Band {
+                    top: by,
+                    h: bh,
+                    w: (if side < 0 { off_l } else { off_r }) + mw + sm,
+                }
+            }
+        } else if let Some(at) = raw.find("rect(") {
+            // rect(t r b l): края области от опорной коробки.
+            let inner = raw[at + 5..].split(')').next().unwrap_or("");
+            let vals: Vec<f32> = inner
+                .split("round")
+                .next()
+                .unwrap_or("")
+                .split_whitespace()
+                .filter_map(|t| match t {
+                    "auto" => Some(f32::NAN),
+                    _ => match Len::parse(t)? {
+                        Len::Px(v) => Some(v),
+                        Len::Pct(p) => Some(p * bh),
+                        _ => None,
+                    },
+                })
+                .collect();
+            if vals.len() == 4 {
+                let t = if vals[0].is_nan() { 0.0 } else { vals[0] };
+                let r_ = if vals[1].is_nan() { bw } else { vals[1] };
+                let b = if vals[2].is_nan() { bh } else { vals[2] };
+                let l = if vals[3].is_nan() { 0.0 } else { vals[3] };
+                let w_cut = if side < 0 { bx + r_ } else { mw - (bx + l) };
+                crate::flow::FloatShape::Band {
+                    top: by + t,
+                    h: (b - t).max(0.0),
+                    w: (if side < 0 { off_l } else { off_r }) + w_cut + sm,
+                }
+            } else {
+                crate::flow::FloatShape::Band {
+                    top: by,
+                    h: bh,
+                    w: (if side < 0 { off_l } else { off_r }) + mw + sm,
+                }
+            }
         } else if let Some(at) = raw.find("inset(") {
             // Вырезка: прямоугольник со срезами краёв опорной коробки.
             let inner = raw[at + 6..].split(')').next().unwrap_or("");
@@ -3885,6 +3993,15 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                             + px_of2(&b.bottom)?,
                     ))
                 })();
+                // Пустая коробка без размеров — разделитель разметки
+                // (незакрытый div в хвосте) — просто пропускается.
+                let empty = !inline_box
+                    && c.children.iter().all(|n| matches!(n, Node::Text(t) if t.trim().is_empty()))
+                    && dims == Some((0.0, 0.0))
+                    && c.style.background.is_none();
+                if empty {
+                    continue;
+                }
                 match (inline_box, dims) {
                     (true, Some((w, h))) if w > 0.0 && h > 0.0 => {
                         let merged = inline::inherit(inherited, &c.style);
@@ -3909,7 +4026,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         if inherited.vertical_rl == Some(true) {
             let transpose = |v: &Vec<crate::flow::FloatShape>| -> Vec<crate::flow::FloatShape> {
                 v.iter()
-                    .map(|f| match *f {
+                    .map(|f| match f.clone() {
                         crate::flow::FloatShape::Band { top, h, w } => {
                             // Полоса блок-прогресса: top/h — вдоль X справа.
                             crate::flow::FloatShape::Band { top, h, w }
@@ -3930,6 +4047,14 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                                 cy: cx,
                                 rx: ry,
                                 ry: rx,
+                            }
+                        }
+                        crate::flow::FloatShape::Poly { top, pts } => {
+                            crate::flow::FloatShape::Poly {
+                                top,
+                                pts: std::sync::Arc::new(
+                                    pts.iter().map(|&(x, y)| (y, x)).collect(),
+                                ),
                             }
                         }
                     })
