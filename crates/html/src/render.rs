@@ -3652,6 +3652,7 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         && c.isolate != Some(true)
         && mask.is_none()
         && clip_rect.is_none()
+        && c.clip_inset.is_none()
     {
         return el;
     }
@@ -3682,6 +3683,19 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     };
     wrapper.mask_origin_off = box_off(c.mask_origin);
     wrapper.clip_rect = clip_rect;
+    wrapper.clip_inset = c.clip_inset;
+    // `clip`/`mask-clip` живут в системе координат элемента ДО трансформа, а
+    // трансформ рисуется ВНУТРИ буфера группы — коробка клипа обязана ехать
+    // вместе (clip-transform-order: сдвинутый рисунок резался по старому
+    // месту). Честно поддержан только сдвиг; поворот с клипом — парк.
+    if let Some(t) = &c.transform {
+        wrapper.clip_shift = (
+            t.translate.0,
+            t.translate.1,
+            t.translate_pct.0,
+            t.translate_pct.1,
+        );
+    }
     wrapper.mask_composite = c.mask_composite.clone().unwrap_or_default();
     wrapper.mask_clip_off = c
         .mask_clip

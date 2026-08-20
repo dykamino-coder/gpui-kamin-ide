@@ -404,6 +404,10 @@ pub struct Grouped {
     pub mask_clip_off: Option<[f32; 4]>,
     /// `clip: rect(t r b l)`: координаты видимой области от углов коробки.
     pub clip_rect: Option<[Option<f32>; 4]>,
+    /// Сдвиг коробки клипа трансформом элемента: px и доли своего размера.
+    pub clip_shift: (f32, f32, f32, f32),
+    /// `clip-path: inset(t r b l)`: срезы краёв; доли — от своих сторон.
+    pub clip_inset: Option<[crate::value::Len; 4]>,
     /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
     pub mask_composite: Vec<u8>,
 }
@@ -426,6 +430,8 @@ impl Grouped {
             mask_origin_off: [0.0; 4],
             mask_clip_off: None,
             clip_rect: None,
+            clip_shift: (0.0, 0.0, 0.0, 0.0),
+            clip_inset: None,
             mask_composite: Vec::new(),
             mask_pos: None,
         }
@@ -912,6 +918,21 @@ impl Element for Grouped {
                 ]
             })
             .or_else(|| {
+                // `clip-path: inset(...)` — срезы краёв (css-shapes-1).
+                self.clip_inset.map(|[t, r, b, l]| {
+                    let (bw, bh) =
+                        (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                    let side = |v: crate::value::Len, s: f32| match v {
+                        crate::value::Len::Px(p) => p,
+                        crate::value::Len::Pct(p) => p * s,
+                        _ => 0.0,
+                    };
+                    let (t, b) = (side(t, bh), side(b, bh));
+                    let (l, r) = (side(l, bw), side(r, bw));
+                    [l, t, (bw - l - r).max(0.0), (bh - t - b).max(0.0)]
+                })
+            })
+            .or_else(|| {
                 // `clip: rect(t r b l)` — координаты краёв видимой области
                 // от углов коробки; auto — её край (clip-rect-auto-*).
                 self.clip_rect.map(|[t, r, b, l]| {
@@ -930,9 +951,13 @@ impl Element for Grouped {
             })
             .map(|[x, y, w, h]| {
                 let sf = window.scale_factor();
+                let (dx, dy) = (
+                    self.clip_shift.0 + f32::from(bounds.size.width) * self.clip_shift.2,
+                    self.clip_shift.1 + f32::from(bounds.size.height) * self.clip_shift.3,
+                );
                 [
-                    (f32::from(bounds.origin.x) + x) * sf,
-                    (f32::from(bounds.origin.y) + y) * sf,
+                    (f32::from(bounds.origin.x) + x + dx) * sf,
+                    (f32::from(bounds.origin.y) + y + dy) * sf,
                     w * sf,
                     h * sf,
                 ]

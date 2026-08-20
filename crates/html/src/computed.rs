@@ -1051,6 +1051,8 @@ pub struct Computed {
     /// `clip: rect(t r b l)` (CSS 2.1 §11.1.2, только absolute): координаты
     /// видимой области от углов border-box; None в позиции — auto (край).
     pub clip_rect: Option<[Option<f32>; 4]>,
+    /// `clip-path: inset(t r b l ...)`: срезы краёв видимой области.
+    pub clip_inset: Option<[Len; 4]>,
     /// `mask-position`: смещение плитки; доля — от свободного места
     /// (коробка минус плитка), как у `background-position`.
     pub mask_pos: Option<(Len, Len)>,
@@ -3737,6 +3739,30 @@ impl Computed {
                         self.clip_shape = Some(format!("shape:{}", v.trim()));
                     }
                 } else if let Some(rest) = v.strip_prefix("inset(") {
+                    // Стороны вырезки (css-shapes-1 §3.1.1.1): 1-4 значения
+                    // TRBL до слова round; доли резолвит отрисовка.
+                    let sides_part = rest
+                        .trim_end_matches(')')
+                        .split("round")
+                        .next()
+                        .unwrap_or("")
+                        .trim();
+                    let vals: Vec<Len> = sides_part
+                        .split_whitespace()
+                        .filter_map(Len::parse)
+                        .collect();
+                    let pick = |i: usize| -> Len {
+                        match vals.len() {
+                            1 => vals[0],
+                            2 => vals[i % 2],
+                            3 => vals[i.min(2)].to_owned(),
+                            4 => vals[i],
+                            _ => Len::Px(0.0),
+                        }
+                    };
+                    if !vals.is_empty() {
+                        self.clip_inset = Some([pick(0), pick(1), pick(2), pick(3)]);
+                    }
                     let inner = rest.trim_end_matches(')');
                     let radius = inner
                         .split("round")
