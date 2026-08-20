@@ -88,6 +88,7 @@ impl FlowRow {
                 FloatShape::Poly { top, ref pts } => {
                     top + pts.iter().map(|p| p.1).fold(0.0f32, f32::max)
                 }
+                FloatShape::Profile { top, ref ext } => top + ext.len() as f32,
             })
             .fold(0.0f32, f32::max)
     }
@@ -290,6 +291,9 @@ pub enum FloatShape {
     /// Многоугольник: вершины в точках от начала стороны; экстент полосы —
     /// максимум X рёбер в её диапазоне.
     Poly { top: f32, pts: std::sync::Arc<Vec<(f32, f32)>> },
+    /// Профиль из картинки (`shape-outside: url(...)`): экстент на каждую
+    /// точку высоты, от начала стороны.
+    Profile { top: f32, ext: std::sync::Arc<Vec<f32>> },
 }
 
 impl FloatShape {
@@ -307,6 +311,14 @@ impl FloatShape {
             }
             FloatShape::Ellipse { top, cx, cy, rx, ry } => {
                 ellipse_cut(top + cy, rx, ry, cx, y0, y1)
+            }
+            FloatShape::Profile { top, ref ext } => {
+                let a = (y0 - top).max(0.0) as usize;
+                let b = ((y1 - top).ceil()).max(0.0) as usize;
+                return ext
+                    .get(a..b.min(ext.len()))
+                    .map(|s| s.iter().fold(0.0f32, |m, &v| m.max(v)))
+                    .unwrap_or(0.0);
             }
             FloatShape::Poly { top, ref pts } => {
                 let (y0, y1) = (y0 - top, y1 - top);
@@ -343,6 +355,9 @@ impl FloatShape {
             FloatShape::Band { top, h, w } => 1 ^ q(top).rotate_left(8) ^ q(h).rotate_left(24) ^ q(w).rotate_left(40),
             FloatShape::Circle { top, cx, cy, r } => 2 ^ q(top).rotate_left(6) ^ q(cx).rotate_left(18) ^ q(cy).rotate_left(30) ^ q(r).rotate_left(44),
             FloatShape::Ellipse { top, cx, cy, rx, ry } => 3 ^ q(top).rotate_left(5) ^ q(cx).rotate_left(15) ^ q(cy).rotate_left(27) ^ q(rx).rotate_left(39) ^ q(ry).rotate_left(51),
+            FloatShape::Profile { top, ref ext } => ext
+                .iter()
+                .fold(5u64 ^ q(top), |acc, &v| acc.rotate_left(9) ^ q(v)),
             FloatShape::Poly { top, ref pts } => pts
                 .iter()
                 .fold(4u64 ^ q(top), |acc, &(x, y)| {

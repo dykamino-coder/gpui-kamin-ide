@@ -1058,6 +1058,8 @@ pub struct Computed {
     /// `shape-margin`: поле вокруг формы обтекания; доля — от ширины
     /// содержащего блока.
     pub shape_margin: Option<Len>,
+    /// `shape-image-threshold`: порог альфы для формы из картинки.
+    pub shape_threshold: Option<f32>,
     /// Вырезы обтекания для абзацев ПОД этим элементом: формы слева и
     /// справа от верха первого абзаца (заполняет сборка shape-flow).
     pub flow_shapes:
@@ -3514,6 +3516,9 @@ impl Computed {
                 }
             }
             "shape-margin" => self.shape_margin = Len::parse(v.trim()),
+            "shape-image-threshold" => {
+                self.shape_threshold = v.trim().parse::<f32>().ok().map(|t| t.clamp(0.0, 1.0));
+            }
             // Устаревшее `clip` (CSS 2.1): rect с запятыми или пробелами;
             // `auto` в позиции — соответствующий край коробки.
             "clip" => {

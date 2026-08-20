@@ -3767,6 +3767,62 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     w: (if side < 0 { off_l } else { off_r }) + mw + sm,
                 },
             }
+        } else if raw.contains("url(") && !raw.contains("-gradient(") {
+            // Форма из АЛЬФЫ картинки (css-shapes §3.2.1): изображение
+            // ложится в content-box, экстент строки — самый дальний от
+            // начала стороны пиксель с альфой выше порога.
+            let (cbx, cby) = (ml + bl + pl, mt + bt + pt);
+            let thr = f.style.shape_threshold.unwrap_or(0.0);
+            let profile = crate::computed::parse_url(&raw)
+                .and_then(|u| crate::background::load(&u))
+                .and_then(|img| {
+                    let bytes = img.as_bytes(0)?;
+                    let sz = img.size(0);
+                    let (iw, ih) = (sz.width.0.max(1) as usize, sz.height.0.max(1) as usize);
+                    if bytes.len() < iw * ih * 4 {
+                        return None;
+                    }
+                    let rows = chh.max(1.0) as usize;
+                    let mut ext = vec![0.0f32; rows];
+                    for (yt, slot) in ext.iter_mut().enumerate() {
+                        let ys = (yt * ih / rows).min(ih - 1);
+                        // Самый дальний непрозрачный пиксель строки.
+                        for xs in (0..iw).rev() {
+                            let a = bytes[(ys * iw + xs) * 4 + 3] as f32 / 255.0;
+                            if a > thr {
+                                let xt = (xs as f32 + 1.0) * cw / iw as f32;
+                                *slot = if side < 0 {
+                                    cbx + xt
+                                } else {
+                                    mw - (cbx + (xs as f32) * cw / iw as f32)
+                                };
+                                break;
+                            }
+                        }
+                    }
+                    Some(ext)
+                });
+            match profile {
+                Some(ext) => crate::flow::FloatShape::Profile {
+                    top: cby,
+                    ext: std::sync::Arc::new(
+                        ext.into_iter()
+                            .map(|v| {
+                                if v > 0.0 {
+                                    (if side < 0 { off_l } else { off_r }) + v + sm
+                                } else {
+                                    0.0
+                                }
+                            })
+                            .collect(),
+                    ),
+                },
+                None => crate::flow::FloatShape::Band {
+                    top: by,
+                    h: bh,
+                    w: (if side < 0 { off_l } else { off_r }) + mw + sm,
+                },
+            }
         } else if let Some(at) = raw.find("polygon(") {
             // Многоугольник: вершины в точках/долях опорной коробки;
             // сторона текста зеркалит X.
@@ -4055,6 +4111,14 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                                 pts: std::sync::Arc::new(
                                     pts.iter().map(|&(x, y)| (y, x)).collect(),
                                 ),
+                            }
+                        }
+                        // Профиль не транспонируется профилем — полосой.
+                        crate::flow::FloatShape::Profile { top, ext } => {
+                            crate::flow::FloatShape::Band {
+                                top,
+                                h: ext.len() as f32,
+                                w: ext.iter().fold(0.0f32, |m, &v| m.max(v)),
                             }
                         }
                     })
