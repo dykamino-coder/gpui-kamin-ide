@@ -732,6 +732,8 @@ pub struct Computed {
     /// `visibility: collapse` — не «невидимый», а ВЫБРОШЕННЫЙ из строки
     /// гибкого контейнера: перенос и размеры считаются без него.
     pub collapsed: Option<bool>,
+    /// Опорная коробка clip-path: 0 border, 1 margin, 2 padding, 3 content.
+    pub clip_ref: Option<u8>,
     pub letter_spacing: Option<Len>,
     pub ellipsis: Option<bool>,
     /// `list-style: none` — навигация, свёрстанная на списках, иначе идёт с
@@ -3417,9 +3419,26 @@ impl Computed {
                 // радиусом. Многоугольник прямоугольной маской не выразить —
                 // его гасит по форме сборка буфера группы.
                 let v = v.trim();
+                // Опорная коробка формы (css-masking §1.3.1.1): слово до или
+                // после функции; точки полигона отсчитываются от неё
+                // (clip-path-polygon-008: margin-box).
+                self.clip_ref = if v.contains("margin-box") {
+                    Some(1)
+                } else if v.contains("padding-box") {
+                    Some(2)
+                } else if v.contains("content-box") {
+                    Some(3)
+                } else if v.contains("border-box") {
+                    Some(0)
+                } else {
+                    self.clip_ref
+                };
                 if let Some(rest) = v.strip_prefix("polygon(") {
+                    let rest = match rest.rfind(')') {
+                        Some(i) => &rest[..i],
+                        None => rest,
+                    };
                     let points: Vec<(Len, Len)> = rest
-                        .trim_end_matches(')')
                         .split(',')
                         .filter_map(|pair| {
                             let mut it = pair.split_whitespace();

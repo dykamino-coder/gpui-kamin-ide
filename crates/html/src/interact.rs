@@ -377,7 +377,10 @@ pub struct Grouped {
     /// Режим смешивания с кадром (`mix-blend-mode`), 0 — обычный.
     pub blend: u32,
     /// Обрезка многоугольником: вершины в долях коробки (`clip-path`).
-    pub polygon: Vec<(f32, f32)>,
+    pub polygon: Vec<(crate::value::Len, crate::value::Len)>,
+    /// Сдвиг опорной коробки формы от bounds наружу: верх/право/низ/лево
+    /// (margin-box положительные, content-box отрицательные).
+    pub poly_expand: [f32; 4],
 }
 
 impl Grouped {
@@ -388,6 +391,7 @@ impl Grouped {
             opacity: 1.0,
             blend: 0,
             polygon: Vec::new(),
+            poly_expand: [0.0; 4],
         }
     }
 }
@@ -448,14 +452,31 @@ impl Element for Grouped {
                 bounds.size.height + margin * 2.0,
             ),
         };
-        // Вершины заданы долями коробки — точки известны только здесь.
+        // Вершины считаются от ОПОРНОЙ коробки формы (bounds ± края:
+        // margin-box шире, content-box уже); проценты — доли её сторон,
+        // точки — как есть (clip-path-polygon-008).
+        let [et, er, eb, el] = self.poly_expand;
+        let base = Bounds {
+            origin: gpui::point(bounds.origin.x - px(el), bounds.origin.y - px(et)),
+            size: gpui::size(
+                bounds.size.width + px(el + er),
+                bounds.size.height + px(et + eb),
+            ),
+        };
+        let coord = |l: crate::value::Len, side: Pixels| -> Pixels {
+            match l {
+                crate::value::Len::Pct(p) => side * p,
+                crate::value::Len::Px(v) => px(v),
+                _ => px(0.0),
+            }
+        };
         let polygon: Vec<gpui::Point<Pixels>> = self
             .polygon
             .iter()
             .map(|(fx, fy)| {
                 gpui::point(
-                    bounds.origin.x + bounds.size.width * *fx,
-                    bounds.origin.y + bounds.size.height * *fy,
+                    base.origin.x + coord(*fx, base.size.width),
+                    base.origin.y + coord(*fy, base.size.height),
                 )
             })
             .collect();

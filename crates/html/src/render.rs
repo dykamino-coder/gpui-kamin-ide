@@ -3439,19 +3439,32 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     let mut wrapper = crate::interact::Grouped::new(el);
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
-    // Доли коробки: проценты — как есть, точки перевести нечем до отрисовки,
-    // поэтому берутся долей от стороны в сто точек — так их и пишут в CSS.
-    wrapper.polygon = polygon
-        .iter()
-        .map(|(x, y)| {
-            let frac = |l: Len| match l {
-                Len::Pct(p) => p,
-                Len::Px(v) => v / 100.0,
-                _ => 0.0,
-            };
-            (frac(*x), frac(*y))
-        })
-        .collect();
+    // Точки уходят КАК ЕСТЬ (Len): проценты и пиксели резолвятся при
+    // отрисовке от опорной коробки формы (css-masking §1.3.1.1): margin-box
+    // расширяет bounds на поля, content-box сужает на рамку+паддинг
+    // (clip-path-polygon-008: полигон в margin-box; masking 82→84).
+    wrapper.polygon = polygon.to_vec();
+    let side = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let b = c.borders();
+    wrapper.poly_expand = match c.clip_ref {
+        Some(1) => [
+            side(c.margin.top),
+            side(c.margin.right),
+            side(c.margin.bottom),
+            side(c.margin.left),
+        ],
+        Some(2) => [-side(b.top), -side(b.right), -side(b.bottom), -side(b.left)],
+        Some(3) => [
+            -(side(b.top) + side(c.padding.top)),
+            -(side(b.right) + side(c.padding.right)),
+            -(side(b.bottom) + side(c.padding.bottom)),
+            -(side(b.left) + side(c.padding.left)),
+        ],
+        _ => [0.0; 4],
+    };
     wrapper.into_any_element()
 }
 
