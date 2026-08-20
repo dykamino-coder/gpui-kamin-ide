@@ -1858,7 +1858,8 @@ fn column_flow(
     e: &Element,
     inherited: &Computed,
     opts: &RenderOpts,
-    count: usize,
+    count: Option<usize>,
+    col_w: Option<f32>,
 ) -> Option<AnyElement> {
     let all_inline = e.children.iter().all(|n| match n {
         Node::Text(_) => true,
@@ -1876,14 +1877,67 @@ fn column_flow(
             return None;
         }
         let inside = inline::inherit(inherited, &only.style);
-        return column_flow(only, &inside, opts, count);
+        return column_flow(only, &inside, opts, count, col_w);
     }
-    let mut plain = String::new();
-    gather_text(&e.children, &mut plain);
-    let plain = normalize_for_shadow(&plain).trim().to_string();
-    if plain.is_empty() {
+    // `<br>` — жёсткий разрыв: в собранном тексте он помечается U+2028,
+    // замер режет по нему принудительно. В сырых узлах <br> текста не несёт,
+    // поэтому маркер в счёт сырых байт не входит.
+    fn gather_cols(nodes: &[Node], out: &mut String) {
+        for n in nodes {
+            match n {
+                Node::Text(t) => out.push_str(t),
+                Node::Element(e) if e.tag == "br" => out.push('\u{2028}'),
+                Node::Element(e) => gather_cols(&e.children, out),
+            }
+        }
+    }
+    let mut raw_plain = String::new();
+    gather_cols(&e.children, &mut raw_plain);
+    // Разрезы приходят в байтах НОРМАЛИЗОВАННОЙ строки (по ней меряет
+    // line_wrapper), а split_nodes режет сырые узлы по сырым байтам —
+    // без обратного маппинга разрез уезжает на длину схлопнутых пробелов.
+    // Пробелы вокруг жёсткого разрыва схлопываются в него (css-text §4.1.2).
+    let (normalized, norm_to_raw): (String, Vec<(usize, usize)>) = {
+        let mut out = String::new();
+        let mut map = Vec::new();
+        let mut nodes_off = 0usize;
+        let mut prev_space = false;
+        for ch in raw_plain.chars() {
+            let is_space = matches!(ch, ' ' | '\t' | '\n' | '\r');
+            if ch == '\u{2028}' {
+                if prev_space && out.ends_with(' ') {
+                    out.pop();
+                    map.pop();
+                }
+                map.push((out.len(), nodes_off));
+                out.push('\n');
+                prev_space = true;
+                continue;
+            }
+            if is_space {
+                if !prev_space {
+                    map.push((out.len(), nodes_off));
+                    out.push(' ');
+                }
+            } else {
+                map.push((out.len(), nodes_off));
+                out.push(ch);
+            }
+            prev_space = is_space;
+            nodes_off += ch.len_utf8();
+        }
+        (out, map)
+    };
+    let plain = normalized.trim().to_string();
+    if plain.trim_matches('\n').is_empty() {
         return None;
     }
+    let lead = normalized.len() - normalized.trim_start().len();
+    let raw_len = raw_plain
+        .chars()
+        .filter(|c| *c != '\u{2028}')
+        .map(|c| c.len_utf8())
+        .sum::<usize>();
     let size = match inherited.font_size {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) => k * opts.base_size(),
@@ -1899,10 +1953,15 @@ fn column_flow(
         _ => size,
     };
     // Линейка колонок: видима при заданном стиле; цвет — currentColor.
+    let rule_px = |w: &Option<Len>, size: f32| match w {
+        Some(Len::Px(v)) => *v,
+        Some(Len::Em(k)) => k * size,
+        _ => 3.0,
+    };
     let rule_owned: Option<(f32, crate::value::Color)> =
         if e.style.column_rule_visible == Some(true) {
             Some((
-                e.style.column_rule_width.unwrap_or(3.0),
+                rule_px(&e.style.column_rule_width, size),
                 e.style
                     .column_rule_color
                     .or(inherited.color)
@@ -1920,49 +1979,73 @@ fn column_flow(
     let inherited_owned = inherited.clone();
     let opts_owned = opts.clone();
     let depth = defer_depth();
-    let build: std::rc::Rc<dyn Fn(&[usize], gpui::Pixels) -> AnyElement> =
-        std::rc::Rc::new(move |cuts: &[usize], width: gpui::Pixels| {
+    let build: std::rc::Rc<dyn Fn(&[usize], usize, gpui::Pixels) -> AnyElement> =
+        std::rc::Rc::new(move |cuts: &[usize], used: usize, width: gpui::Pixels| {
             let _depth = DepthScope::enter(depth);
             // Куски текста по местам разрезов: каждый — своя колонка.
             let mut parts: Vec<Vec<Node>> = vec![];
             let mut rest = nodes.clone();
             let mut base = 0usize;
             for cut in cuts {
-                let (head, tail) = split_nodes(&rest, cut.saturating_sub(base));
+                let full = cut + lead;
+                let raw_cut = match norm_to_raw.binary_search_by_key(&full, |p| p.0) {
+                    Ok(i) => norm_to_raw[i].1,
+                    Err(i) => norm_to_raw.get(i).map(|p| p.1).unwrap_or(raw_len),
+                };
+                let (head, tail) = split_nodes(&rest, raw_cut.saturating_sub(base));
                 parts.push(head);
-                base = *cut;
+                base = raw_cut;
                 rest = tail;
             }
             parts.push(rest);
-            let inner =
-                (f32::from(width) - gap * (count.saturating_sub(1)) as f32) / count.max(1) as f32;
-            // Линейка между колонками (`column-rule`, css-multicol §5):
-            // рисуется по центру промежутка; тогда промежуток строится
-            // держателем, а не gap-свойством ряда.
-            let rule = rule_owned.filter(|(w, _)| *w > 0.0 && *w <= gap + 0.01);
-            let mut row = div().flex().flex_row().w(width);
-            if rule.is_none() {
-                row = row.gap_x(px(gap));
+            // Разрез по жёсткому разрыву оставляет сам <br> в начале хвоста
+            // (нулевая длина ставит его после разреза) — новая колонка
+            // начиналась бы с пустой строки.
+            for part in parts.iter_mut().skip(1) {
+                while let Some(first) = part.first() {
+                    match first {
+                        Node::Element(e) if e.tag == "br" => {
+                            part.remove(0);
+                        }
+                        Node::Text(t) if t.trim().is_empty() => {
+                            part.remove(0);
+                        }
+                        _ => break,
+                    }
+                }
             }
-            let n = parts.len();
-            for (i, part) in parts.into_iter().enumerate() {
+            // Ширина колонки и линейки — от used count: контента может быть
+            // меньше, чем колонок (rule-001: две колонки, две строки).
+            let n_cols = used.max(cuts.len() + 1);
+            let inner =
+                (f32::from(width) - gap * (n_cols - 1) as f32) / n_cols as f32;
+            // Линейка между колонками (`column-rule`, css-multicol §4):
+            // абсолютный держатель по центру промежутка на всю высоту ряда —
+            // линейка шире промежутка накрывает соседние колонки (rule-001),
+            // а при недозаполненных колонках всё равно тянется на всю их
+            // высоту (rule-004). Рисуется ДО колонок: под контентом.
+            let rule = rule_owned.filter(|(w, _)| *w > 0.0);
+            let mut row = div().flex().flex_row().w(width).gap_x(px(gap)).relative();
+            if let Some((rw, color)) = rule {
+                for i in 0..n_cols.saturating_sub(1) {
+                    let center = inner * (i as f32 + 1.0) + gap * i as f32 + gap / 2.0;
+                    row = row.child(
+                        div()
+                            .absolute()
+                            .left(px(center - rw / 2.0))
+                            .top_0()
+                            .bottom_0()
+                            .w(px(rw))
+                            .bg(color.to_hsla()),
+                    );
+                }
+            }
+            for part in parts.into_iter() {
                 row = row.child(div().w(px(inner)).flex().flex_col().children(blocks(
                     &part,
                     &inherited_owned,
                     &opts_owned,
                 )));
-                if let Some((rw, color)) = rule
-                    && i + 1 < n
-                {
-                    row = row.child(
-                        div()
-                            .w(px(gap))
-                            .flex_shrink_0()
-                            .flex()
-                            .justify_center()
-                            .child(div().w(px(rw)).bg(color.to_hsla())),
-                    );
-                }
             }
             row.into_any_element()
         });
@@ -1971,6 +2054,7 @@ fn column_flow(
             build,
             SharedString::from(plain),
             count,
+            col_w,
             gap,
             measure_font(inherited, opts),
             size,
@@ -4875,14 +4959,78 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 (Some(c), None) => Some(c),
                 (None, fw) => fw,
             };
-            if let Some(cols) = used_count.filter(|n| *n > 1) {
+            let width_driven = e.style.column_count.is_none()
+                && count_from_width.is_none()
+                && matches!(e.style.column_width, Some(Len::Px(w)) if w > 0.0);
+            if let Some(cols) = used_count.filter(|n| *n > 1).or(width_driven.then_some(0)) {
                 // Сплошной текст режется на колонки по строкам, а не по детям:
                 // один длинный абзац иначе оставался в первой колонке целиком.
-                if let Some(el) = column_flow(e, &merged, opts, cols as usize) {
+                // `columns: auto <w>` без ширины коробки решается в замере —
+                // туда уходит и число, и ширина колонки (§3.4).
+                let col_w_px = match e.style.column_width {
+                    Some(Len::Px(w)) if w > 0.0 => Some(w),
+                    _ => None,
+                };
+                let want = (cols > 0).then_some(cols as usize);
+                // Спаннер среди инлайнового потока: режем детей на сегменты,
+                // каждый сегмент — свой поток колонок, спаннер — блок между
+                // ними (css-multicol §6).
+                let is_span = |n: &Node| {
+                    matches!(n, Node::Element(c)
+                        if c.style.column_span == Some(true) && !c.inline)
+                };
+                if e.children.iter().any(&is_span) {
+                    for chunk in e.children.split_inclusive(&is_span) {
+                        let (body, span) = match chunk.split_last() {
+                            Some((last, head)) if is_span(last) => (head, Some(last)),
+                            _ => (chunk, None),
+                        };
+                        if body.iter().any(|n| !is_blank(n)) {
+                            let mut seg = e.clone();
+                            seg.children = body.to_vec();
+                            seg.style.column_span = None;
+                            if let Some(el) = column_flow(&seg, &merged, opts, want, col_w_px) {
+                                d = d.child(el);
+                            } else {
+                                // Блочный сегмент: рекурсия в общий рендер —
+                                // он сам выберет укладку колонок; коробка
+                                // (фон/рамки/поля) остаётся на хосте.
+                                let mut sub = seg.clone();
+                                sub.style.background = None;
+                                sub.style.margin = Default::default();
+                                sub.style.padding = Default::default();
+                                sub.style.border_width = Default::default();
+                                sub.style.width = None;
+                                sub.style.height = None;
+                                d = d.child(div().children(blocks(
+                                    &[Node::Element(sub)],
+                                    &merged,
+                                    opts,
+                                )));
+                            }
+                        }
+                        if let Some(Node::Element(sp)) = span {
+                            let inner = inline::inherit(&merged, &sp.style);
+                            d = d.child(
+                                styled_div_with(sp, &inner)
+                                    .children(blocks(&sp.children, &inner, opts)),
+                            );
+                        }
+                    }
+                    return d.into_any_element();
+                }
+                if let Some(el) = column_flow(e, &merged, opts, want, col_w_px) {
                     // Коробка элемента остаётся своей: отступы и фон
                     // принадлежат ей, поток живёт внутри.
                     return d.child(el).into_any_element();
                 }
+                if cols == 0 {
+                    // Число колонок при `columns: auto <w>` решается только в
+                    // замере текстового потока; блочный фоллбек — дорожками.
+                    if let Some(w) = col_w_px {
+                        d = d.grid().grid_cols_min(px(w));
+                    }
+                } else {
                 // Блочные дети с ИЗВЕСТНЫМИ высотами — честная укладка по
                 // колонкам с балансом и монолитами (css-break, фаза 1;
                 // план target/scout-multicol.md / scout-fragmentation.md).
@@ -4947,7 +5095,16 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     };
                     let rule = if e.style.column_rule_visible == Some(true) {
                         Some((
-                            e.style.column_rule_width.unwrap_or(3.0),
+                            match e.style.column_rule_width {
+                                Some(Len::Px(v)) => v,
+                                Some(Len::Em(k)) => {
+                                    k * match e.style.font_size {
+                                        Some(Len::Px(fs)) => fs,
+                                        _ => opts.base_size(),
+                                    }
+                                }
+                                _ => 3.0,
+                            },
                             e.style
                                 .column_rule_color
                                 .or(merged.color)
@@ -4999,6 +5156,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     .grid_template_rows((0..rows).map(|_| gpui::GridTrack::Auto).collect())
                     .gap_x(px(gap));
                 d.style().grid_auto_flow = Some(gpui::GridAutoFlow::Column);
+                }
             } else if let Some(Len::Px(w)) = e.style.column_width {
                 // Ширина колонки без их числа — это «сколько влезет»: ровно
                 // то, что умеет короткая форма дорожек в GPUI.

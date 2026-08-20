@@ -1058,7 +1058,7 @@ pub struct Computed {
     /// `column-span: all` — блок растянут на все колонки.
     pub column_span: Option<bool>,
     /// `column-rule-*`: линейка между колонками.
-    pub column_rule_width: Option<f32>,
+    pub column_rule_width: Option<Len>,
     pub column_rule_visible: Option<bool>,
     pub column_rule_color: Option<Color>,
     /// `shape-outside`: сырая запись формы обтекания плавающего блока.
@@ -3089,11 +3089,11 @@ impl Computed {
             "column-span" => self.column_span = Some(v.trim() == "all"),
             "column-rule-width" => {
                 self.column_rule_width = match v.trim() {
-                    "thin" => Some(1.0),
-                    "medium" => Some(3.0),
-                    "thick" => Some(5.0),
+                    "thin" => Some(Len::Px(1.0)),
+                    "medium" => Some(Len::Px(3.0)),
+                    "thick" => Some(Len::Px(5.0)),
                     t => match Len::parse(t) {
-                        Some(Len::Px(w)) if w >= 0.0 => Some(w),
+                        Some(l) if !matches!(l, Len::Px(w) if w < 0.0) => Some(l),
                         _ => self.column_rule_width,
                     },
                 }
@@ -3109,13 +3109,13 @@ impl Computed {
                         "none" | "hidden" => self.column_rule_visible = Some(false),
                         "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge"
                         | "inset" | "outset" => self.column_rule_visible = Some(true),
-                        "thin" => self.column_rule_width = Some(1.0),
-                        "medium" => self.column_rule_width = Some(3.0),
-                        "thick" => self.column_rule_width = Some(5.0),
+                        "thin" => self.column_rule_width = Some(Len::Px(1.0)),
+                        "medium" => self.column_rule_width = Some(Len::Px(3.0)),
+                        "thick" => self.column_rule_width = Some(Len::Px(5.0)),
                         t => {
-                            if let Some(Len::Px(w)) = Len::parse(t) {
-                                if w >= 0.0 {
-                                    self.column_rule_width = Some(w);
+                            if let Some(l) = Len::parse(t) {
+                                if !matches!(l, Len::Px(w) if w < 0.0) {
+                                    self.column_rule_width = Some(l);
                                 }
                             } else if let Some(c) = Color::parse(t) {
                                 self.column_rule_color = Some(c);
@@ -3125,11 +3125,20 @@ impl Computed {
                 }
             }
             "columns" => {
-                // `columns: <ширина> <число>` в любом порядке.
+                // `columns: <ширина> <число>` в любом порядке; `auto` оставляет
+                // сторону нерешённой (не затирать уже разобранную ширину).
                 for token in v.split_whitespace() {
+                    if token == "auto" {
+                        continue;
+                    }
                     match token.parse::<u16>() {
-                        Ok(n) => self.column_count = Some(n),
-                        Err(_) => self.column_width = Len::parse(token),
+                        Ok(n) if n > 0 => self.column_count = Some(n),
+                        Ok(_) => {}
+                        Err(_) => {
+                            if let Some(l) = Len::parse(token) {
+                                self.column_width = Some(l);
+                            }
+                        }
                     }
                 }
             }

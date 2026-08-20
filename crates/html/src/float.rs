@@ -381,23 +381,25 @@ impl IntoElement for FirstLine {
 /// следующую. Где кончается строка, знает перенос, а он зависит от ширины
 /// колонки: значит, снова замер.
 pub struct ColumnFlow {
-    build: Rc<dyn Fn(&[usize], Pixels) -> AnyElement>,
+    build: Rc<dyn Fn(&[usize], usize, Pixels) -> AnyElement>,
     text: SharedString,
-    count: usize,
+    count: Option<usize>,
+    col_w: Option<f32>,
     gap: f32,
     font: Font,
     font_size: f32,
     line_height: f32,
-    cuts: Rc<std::cell::RefCell<(Vec<usize>, Pixels)>>,
+    cuts: Rc<std::cell::RefCell<(Vec<usize>, Pixels, usize)>>,
     child: Option<AnyElement>,
 }
 
 impl ColumnFlow {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        build: Rc<dyn Fn(&[usize], Pixels) -> AnyElement>,
+        build: Rc<dyn Fn(&[usize], usize, Pixels) -> AnyElement>,
         text: SharedString,
-        count: usize,
+        count: Option<usize>,
+        col_w: Option<f32>,
         gap: f32,
         font: Font,
         font_size: f32,
@@ -407,11 +409,12 @@ impl ColumnFlow {
             build,
             text,
             count,
+            col_w,
             gap,
             font,
             font_size,
             line_height,
-            cuts: Rc::new(std::cell::RefCell::new((Vec::new(), px(0.)))),
+            cuts: Rc::new(std::cell::RefCell::new((Vec::new(), px(0.), 1))),
             child: None,
         }
     }
@@ -421,31 +424,55 @@ impl ColumnFlow {
 #[allow(clippy::too_many_arguments)]
 fn measure_columns(
     text: &str,
-    count: usize,
+    count: Option<usize>,
+    col_w: Option<f32>,
     gap: f32,
     font: &Font,
     font_size: f32,
     line_height: f32,
     width: Pixels,
     window: &mut Window,
-) -> (Vec<usize>, Pixels) {
-    let inner = (f32::from(width) - gap * (count.saturating_sub(1)) as f32) / count as f32;
+) -> (Vec<usize>, usize, Pixels) {
+    // Used column-count по фактической ширине (css-multicol §3.4,
+    // ResolveUsedColumnCount): `columns: auto <w>` до замера не решается.
+    let avail = f32::from(width);
+    let from_width = col_w
+        .filter(|w| *w > 0.0)
+        .map(|w| (((avail + gap) / (w + gap)).floor().max(1.0)) as usize);
+    let count = match (count, from_width) {
+        (Some(c), Some(fw)) => c.min(fw),
+        (Some(c), None) => c,
+        (None, Some(fw)) => fw,
+        (None, None) => 1,
+    };
+    let inner = (avail - gap * (count.saturating_sub(1)) as f32) / count as f32;
     if inner <= font_size {
-        return (Vec::new(), px(line_height));
+        return (Vec::new(), count, px(line_height));
     }
     let mut wrapper = window
         .text_system()
         .line_wrapper(font.clone(), px(font_size));
-    let boundaries: Vec<usize> = wrapper
-        .wrap_line(&[LineFragment::text(text)], px(inner))
-        .map(|b| b.ix)
-        .collect();
+    // Жёсткие разрывы приходят как символ новой строки: каждый сегмент
+    // переносится отдельно, начало сегмента — принудительная граница.
+    let mut boundaries: Vec<usize> = Vec::new();
+    let mut off = 0usize;
+    for (i, seg) in text.split('\n').enumerate() {
+        if i > 0 {
+            boundaries.push(off);
+        }
+        boundaries.extend(
+            wrapper
+                .wrap_line(&[LineFragment::text(seg)], px(inner))
+                .map(|b| b.ix + off),
+        );
+        off += seg.len() + 1;
+    }
     let lines = boundaries.len() + 1;
     let per_col = lines.div_ceil(count).max(1);
     let cuts: Vec<usize> = (1..count)
         .filter_map(|i| boundaries.get(i * per_col - 1).copied())
         .collect();
-    (cuts, px(per_col as f32 * line_height))
+    (cuts, count, px(per_col as f32 * line_height))
 }
 
 impl Element for ColumnFlow {
@@ -469,6 +496,7 @@ impl Element for ColumnFlow {
     ) -> (LayoutId, ()) {
         let text = self.text.clone();
         let count = self.count;
+        let col_w = self.col_w;
         let gap = self.gap;
         let font = self.font.clone();
         let font_size = self.font_size;
@@ -481,9 +509,10 @@ impl Element for ColumnFlow {
                     AvailableSpace::Definite(w) => w,
                     _ => window.viewport_size().width,
                 });
-                let (at, height) = measure_columns(
+                let (at, used, height) = measure_columns(
                     &text,
                     count,
+                    col_w,
                     gap,
                     &font,
                     font_size,
@@ -491,7 +520,7 @@ impl Element for ColumnFlow {
                     width,
                     window,
                 );
-                *cuts.borrow_mut() = (at, width);
+                *cuts.borrow_mut() = (at, width, used);
                 size(width, height)
             },
         );
@@ -509,9 +538,10 @@ impl Element for ColumnFlow {
     ) {
         let stale = self.cuts.borrow().1 != bounds.size.width;
         if stale && bounds.size.width > px(0.) {
-            let (at, _) = measure_columns(
+            let (at, used, _) = measure_columns(
                 &self.text,
                 self.count,
+                self.col_w,
                 self.gap,
                 &self.font,
                 self.font_size,
@@ -519,10 +549,13 @@ impl Element for ColumnFlow {
                 bounds.size.width,
                 window,
             );
-            *self.cuts.borrow_mut() = (at, bounds.size.width);
+            *self.cuts.borrow_mut() = (at, bounds.size.width, used);
         }
-        let cuts = self.cuts.borrow().0.clone();
-        let mut child = (self.build)(&cuts, bounds.size.width);
+        let (cuts, used) = {
+            let b = self.cuts.borrow();
+            (b.0.clone(), b.2)
+        };
+        let mut child = (self.build)(&cuts, used, bounds.size.width);
         child.layout_as_root(
             size(
                 AvailableSpace::Definite(bounds.size.width),

@@ -169,8 +169,18 @@ impl LineWrapper {
                     }
                 };
 
+                // KaminIDE patch: prev_c коммитится ДО ветки переноса — иначе
+                // на строке-границе символ после переноса видит фантомный
+                // пробел и рождает ложный кандидат (слово ровно в ширину
+                // колонки рвалось как «x»+«xxxx»).
+                prev_c = new_prev_c;
                 width += item_width;
-                if width > wrap_width && ix > last_wrap_ix {
+                // KaminIDE patch: пробел за краем строки висит (css-text §3:
+                // trailing spaces hang) и сам перенос не вызывает — иначе он
+                // переезжает в начало следующей строки и крадёт её ширину.
+                let hanging_space =
+                    matches!(candidate, WrapBoundaryCandidate::Char { character: ' ' });
+                if width > wrap_width && ix > last_wrap_ix && !hanging_space {
                     if let (None, Some(first_non_whitespace_ix)) = (indent, first_non_whitespace_ix)
                     {
                         indent = Some(
@@ -193,8 +203,6 @@ impl LineWrapper {
 
                     return Some(Boundary::new(last_wrap_ix, indent.unwrap_or(0)));
                 }
-
-                prev_c = new_prev_c;
             }
 
             None
