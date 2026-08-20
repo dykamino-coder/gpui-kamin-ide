@@ -440,10 +440,21 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
     };
     let (cx, cy) = match pos {
         Some(p) => {
-            let mut it = p.split_whitespace();
-            let x = it.next().and_then(|t| axis(t, fw)).unwrap_or(fw * 0.5);
-            let y = it.next().and_then(|t| axis(t, fh)).unwrap_or(fh * 0.5);
-            (x, y)
+            let toks: Vec<&str> = p.split_whitespace().collect();
+            // Позиционные слова в паре идут в любом порядке: горизонтальное
+            // слово — всегда ось X (`at center right`, `at top left`).
+            let horiz = |t: &str| matches!(t, "left" | "right");
+            let vert = |t: &str| matches!(t, "top" | "bottom");
+            let (tx, ty) = match toks.as_slice() {
+                [a, b] if vert(a) || horiz(b) => (*b, *a),
+                [a, b] => (*a, *b),
+                [a] => (*a, "center"),
+                _ => ("center", "center"),
+            };
+            (
+                axis(tx, fw).unwrap_or(fw * 0.5),
+                axis(ty, fh).unwrap_or(fh * 0.5),
+            )
         }
         None => (fw * 0.5, fh * 0.5),
     };
