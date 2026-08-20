@@ -1466,10 +1466,22 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         }
         // Маска-изображение: плитка лежит от угла коробки своим размером и
         // повторяется по обеим осям (`mask-repeat: repeat` — начальное
-        // значение css-masking); гасится вся картинка, альфа её умножена.
+        // значение css-masking); запрет мощения пооосный (pad2.y: бит 0 —
+        // x, бит 1 — y) — за краем первой плитки маска пуста. Гасится вся
+        // картинка, альфа её умножена.
         if (q.pad2.x > 0.5) {
-            float2 muv = frac((input.position.xy - q.mask_rect.xy) / q.mask_rect.zw);
-            mask *= t_maskimg.Sample(s_sprite, muv).a;
+            float2 mt = (input.position.xy - q.mask_rect.xy) / q.mask_rect.zw;
+            uint norep = uint(q.pad2.y + 0.5);
+            float inside = 1.0;
+            if ((norep & 1u) && (mt.x < 0.0 || mt.x >= 1.0)) { inside = 0.0; }
+            if ((norep & 2u) && (mt.y < 0.0 || mt.y >= 1.0)) { inside = 0.0; }
+            float4 mc = t_maskimg.Sample(s_sprite, frac(mt));
+            // Светимость (`mask-mode: luminance`, бит 2): цвет уже умножен
+            // на альфа, поэтому взвешенная сумма сразу равна lum * a.
+            float mval = (norep & 4u)
+                ? dot(mc.rgb, float3(0.2126, 0.7152, 0.0722))
+                : mc.a;
+            mask *= inside * mval;
         }
         src *= mask;
         if (q.blend_mode == 0u) {

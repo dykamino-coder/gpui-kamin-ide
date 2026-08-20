@@ -2528,9 +2528,17 @@ fn paragraph_pieces(
         if plain_flow && at_static_position(&e.style) && inline_level(e) {
             let mut merged = inline::inherit(inherited, &e.style);
             merged.position = None;
-            let inner = styled_div_with(e, &merged)
-                .children(blocks(&e.children, &merged, opts))
-                .into_any_element();
+            // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
+            // путь блоков давал пустую коробку (clip-path-ellipse-2-ref).
+            let inner = if e.tag == "svg" {
+                let mut copy = e.clone();
+                copy.style.position = None;
+                crate::svg::element(&copy).unwrap_or_else(|| image(&copy))
+            } else {
+                styled_div_with(e, &merged)
+                    .children(blocks(&e.children, &merged, opts))
+                    .into_any_element()
+            };
             return Some(inline::Piece::Overlay(inner));
         }
         // Стоячая коробка в повёрнутом абзаце: `inline-block` с явным
@@ -3064,6 +3072,25 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // `position-sticky-contained-by-display-table`).
         let stretched = (e.style.inset.left.is_some() && e.style.inset.right.is_some())
             || (e.style.inset.top.is_some() && e.style.inset.bottom.is_some());
+        // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
+        // путь блоков давал пустую коробку (clip-path-ellipse-2-ref: рисунок
+        // absolute с left/top не рисовался вовсе).
+        if e.tag == "svg" {
+            let mut copy = e.clone();
+            copy.style.position = None;
+            let built = crate::svg::element(&copy).unwrap_or_else(|| image(&copy));
+            let holder = styled_div_with(e, &merged).child(built);
+            return Some(if stretched {
+                holder.into_any_element()
+            } else {
+                div()
+                    .w_0()
+                    .h_0()
+                    .flex_shrink_0()
+                    .child(holder)
+                    .into_any_element()
+            });
+        }
         let inner = styled_div_with(e, &merged).children(blocks(&e.children, &merged, opts));
         if stretched {
             return Some(inner.into_any_element());
@@ -3455,8 +3482,40 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     // Маска-изображение (css-masking §7.1): источник уходит строкой, его
     // альфа гасит готовый буфер группы при композите; резолв — при
     // отрисовке, когда известен размер коробки. Базовая форма `clip-path`
-    // (circle/ellipse) идёт тем же путём — растровой альфа-маской.
-    let mask = c.mask_image.clone().or_else(|| c.clip_shape.clone());
+    // (circle/ellipse) идёт тем же путём — растровой альфа-маской, как и
+    // эллиптический `border-radius: H / V` (углы rx≠ry растеризатор круглить
+    // не умеет; круглые пары дополняются из обычного радиуса).
+    let side = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let round = [
+        side(c.radius.tl),
+        side(c.radius.tr),
+        side(c.radius.br),
+        side(c.radius.bl),
+    ];
+    // Большой НЕОДНОРОДНЫЙ круглый радиус — тоже маской: растеризатор жмёт
+    // каждый угол к половине меньшей стороны, а спека — одним множителем от
+    // суммы СМЕЖНЫХ радиусов (§5.5): `border-radius: 100px 100px 0 0` на
+    // 200x100 — законный полукруг, растеризатор рисовал стадион
+    // (clip-path-semicircle-ref). Однородные радиусы совпадают с растеризатором.
+    let rrect = if c.radius_masked() {
+        let ell = c.radius_ell.unwrap_or([None; 4]);
+        let r = |i: usize| ell[i].unwrap_or((round[i], round[i]));
+        let (tl, tr, br, bl) = (r(0), r(1), r(2), r(3));
+        Some(format!(
+            "shape:rrect({} {} {} {} {} {} {} {})",
+            tl.0, tl.1, tr.0, tr.1, br.0, br.1, bl.0, bl.1
+        ))
+    } else {
+        None
+    };
+    let mask = c
+        .mask_image
+        .clone()
+        .or_else(|| c.clip_shape.clone())
+        .or(rrect);
     if blur <= 0.0 && blend == 0 && polygon.is_empty() && c.isolate != Some(true) && mask.is_none()
     {
         return el;
@@ -3466,7 +3525,9 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.blend = u32::from(blend);
     wrapper.mask = mask;
     wrapper.mask_size = c.mask_size;
-    wrapper.mask_no_repeat = c.mask_no_repeat == Some(true);
+    wrapper.mask_fit = c.mask_fit.unwrap_or(0);
+    wrapper.mask_no_repeat = c.mask_no_repeat.unwrap_or((false, false));
+    wrapper.mask_luminance = c.mask_luminance == Some(true);
     wrapper.mask_pos = c.mask_pos;
     // Точки уходят КАК ЕСТЬ (Len): проценты и пиксели резолвятся при
     // отрисовке от опорной коробки формы (css-masking §1.3.1.1): margin-box

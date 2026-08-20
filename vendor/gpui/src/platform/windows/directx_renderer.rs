@@ -79,9 +79,9 @@ struct BlurScratch {
     group_blend: Vec<u32>,
     /// Обрезающий многоугольник каждой группы: вершины парами и их число.
     group_poly: Vec<([[f32; 4]; 4], u32)>,
-    /// Маска-изображение каждой группы: SRV плитки + её прямоугольник
-    /// (угол и размер в device px); None — группа без маски.
-    group_mask: Vec<Option<([Option<ID3D11ShaderResourceView>; 1], [f32; 4])>>,
+    /// Маска-изображение каждой группы: SRV плитки, её прямоугольник
+    /// (угол и размер в device px) и флаг «одна плитка» (no-repeat).
+    group_mask: Vec<Option<([Option<ID3D11ShaderResourceView>; 1], [f32; 4], f32)>>,
     /// Текстуры масок по картинке-источнику: заливать пиксели каждый кадр
     /// незачем, картинка неизменна (`ImageId` уникален на содержимое).
     mask_cache: HashMap<ImageId, [Option<ID3D11ShaderResourceView>; 1]>,
@@ -741,6 +741,7 @@ impl DirectXRenderer {
                         group.mask_bounds.size.width.0.max(1.0),
                         group.mask_bounds.size.height.0.max(1.0),
                     ],
+                    group.mask_once as f32,
                 ))
             });
             self.blur.group_mask.push(mask);
@@ -1420,12 +1421,12 @@ impl DirectXRenderer {
             .get(s.group as usize - 1)
             .cloned()
             .flatten();
-        let (has_mask, mask_rect) = match &mask {
-            Some((srv, rect)) => {
+        let (has_mask, mask_rect, mask_once) = match &mask {
+            Some((srv, rect, once)) => {
                 unsafe { dc.PSSetShaderResources(3, Some(srv)) };
-                (1.0, *rect)
+                (1.0, *rect, *once)
             }
-            None => (0.0, [0.0; 4]),
+            None => (0.0, [0.0; 4], 0.0),
         };
         let (vw, vh) = (self.resources.width as f32, self.resources.height as f32);
 
@@ -1485,7 +1486,7 @@ impl DirectXRenderer {
             pad: s.opacity,
             blend_mode,
             poly_count,
-            pad2: [has_mask, 0.0],
+            pad2: [has_mask, mask_once],
             poly,
             mask_rect,
         };

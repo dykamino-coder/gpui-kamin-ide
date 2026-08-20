@@ -386,6 +386,16 @@ pub struct Grouped {
     /// размер коробки (mask-size auto без своего размера = область,
     /// css-masking §7.4), а он известен только здесь.
     pub mask: Option<String>,
+    /// `mask-size`: размер плитки; None — auto (интринзик картинки).
+    pub mask_size: Option<(crate::value::Len, crate::value::Len)>,
+    /// `mask-size: contain|cover` (1|2) — вписывание по интринзику.
+    pub mask_fit: u8,
+    /// `mask-repeat`: пооосный запрет мощения (no-x, no-y).
+    pub mask_no_repeat: (bool, bool),
+    /// `mask-mode: luminance` — гасит светимостью, а не альфой.
+    pub mask_luminance: bool,
+    /// `mask-position`: смещение плитки; доля — от свободного места.
+    pub mask_pos: Option<(crate::value::Len, crate::value::Len)>,
 }
 
 impl Grouped {
@@ -398,6 +408,11 @@ impl Grouped {
             polygon: Vec::new(),
             poly_expand: [0.0; 4],
             mask: None,
+            mask_size: None,
+            mask_fit: 0,
+            mask_no_repeat: (false, false),
+            mask_luminance: false,
+            mask_pos: None,
         }
     }
 }
@@ -451,11 +466,33 @@ impl Element for Grouped {
         // Вчетверо шире радиуса: маска композита обязана лежать там, где
         // размытая картинка уже сошла на нет, иначе край режется прямоугольником.
         let margin = px(self.blur * 4.0);
+        // Форма клипа НЕ ограничена коробкой (css-masking §1.2: обрезается
+        // только краска ФОРМОЙ): `circle(closest-corner at ...)` выходит за
+        // края, и содержимое в её пределах обязано остаться видимым
+        // (clip-path-circle-closest-corner). Область композита расширяется
+        // до объединения коробки с рамкой формы.
+        let shape_ext = self.mask.as_deref().and_then(|src| {
+            let raw = src.strip_prefix("shape:")?;
+            if raw.starts_with("rrect(") {
+                return None;
+            }
+            let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            let (cx, cy, rx, ry) = crate::background::shape_params(raw, bw, bh, 1.0)?;
+            let l = (rx - cx).max(0.0);
+            let t = (ry - cy).max(0.0);
+            let r = (cx + rx - bw).max(0.0);
+            let b = (cy + ry - bh).max(0.0);
+            (l + t + r + b > 0.0).then_some((l, t, r, b))
+        });
+        let (sl, st, sr, sb) = shape_ext.unwrap_or((0.0, 0.0, 0.0, 0.0));
         let area = Bounds {
-            origin: gpui::point(bounds.origin.x - margin, bounds.origin.y - margin),
+            origin: gpui::point(
+                bounds.origin.x - margin - px(sl),
+                bounds.origin.y - margin - px(st),
+            ),
             size: gpui::size(
-                bounds.size.width + margin * 2.0,
-                bounds.size.height + margin * 2.0,
+                bounds.size.width + margin * 2.0 + px(sl + sr),
+                bounds.size.height + margin * 2.0 + px(st + sb),
             ),
         };
         // Вершины считаются от ОПОРНОЙ коробки формы (bounds ± края:
@@ -488,29 +525,141 @@ impl Element for Grouped {
             .collect();
         // Плитка маски: у растра — его точки как CSS-точки (density 1), у
         // рисунка без размера и градиента — сама коробка (mask-size auto,
-        // css-masking §7.4). Битый источник — маски нет, элемент виден
-        // целиком (bad-mask-image-svg-*).
+        // css-masking §7.4); `mask-size` подменяет размер, `mask-position`
+        // смещает (доля — от свободного места, как у background-position).
+        // Битый источник — маски нет, элемент виден целиком
+        // (bad-mask-image-svg-*).
         let mask = self.mask.as_deref().and_then(|src| {
             let source = crate::background::source(src)?;
-            let (img, tile) = match &source {
+            let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            let len = |l: crate::value::Len, side: f32, auto: f32| match l {
+                crate::value::Len::Px(v) => v,
+                crate::value::Len::Pct(p) => p * side,
+                _ => auto,
+            };
+            let (img, tw, th) = match &source {
                 crate::background::Source::Raster(img) => {
                     let s = img.size(0);
-                    (
-                        img.clone(),
-                        gpui::size(px(s.width.0 as f32), px(s.height.0 as f32)),
-                    )
+                    let (iw, ih) = (s.width.0 as f32, s.height.0 as f32);
+                    // contain/cover: один множитель от пропорции интринзика.
+                    let k = match self.mask_fit {
+                        1 => Some((bw / iw.max(1.0)).min(bh / ih.max(1.0))),
+                        2 => Some((bw / iw.max(1.0)).max(bh / ih.max(1.0))),
+                        _ => None,
+                    };
+                    match (k, self.mask_size) {
+                        (Some(k), _) => (img.clone(), iw * k, ih * k),
+                        (None, Some((x, y))) => (img.clone(), len(x, bw, iw), len(y, bh, ih)),
+                        (None, None) => (img.clone(), iw, ih),
+                    }
                 }
                 _ => {
-                    let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                    (source.raster((w, h))?, bounds.size)
+                    // У рисунка может быть свой размер — contain/cover
+                    // считаются от него; без интринзика плитка = коробка.
+                    let intr = source.intrinsic();
+                    let fit = match (self.mask_fit, intr.w, intr.h) {
+                        (1, Some(iw), Some(ih)) => {
+                            let k = (bw / iw.max(1.0)).min(bh / ih.max(1.0));
+                            Some((iw * k, ih * k))
+                        }
+                        (2, Some(iw), Some(ih)) => {
+                            let k = (bw / iw.max(1.0)).max(bh / ih.max(1.0));
+                            Some((iw * k, ih * k))
+                        }
+                        _ => None,
+                    };
+                    let (tw, th) = match (fit, self.mask_size) {
+                        (Some(t), _) => t,
+                        (None, Some((x, y))) => (len(x, bw, bw), len(y, bh, bh)),
+                        // auto: у рисунка со своим размером плитка — он
+                        // (mask-repeat-1: свг 50x50 мостится по коробке),
+                        // без интринзика — коробка.
+                        (None, None) => (
+                            intr.w.unwrap_or(bw),
+                            intr.h.unwrap_or(bh),
+                        ),
+                    };
+                    // Растр — в физических точках окна: маска в CSS-точках
+                    // растягивалась при композите и мылила край формы
+                    // (clip-path-circle-010 и родня: 0.71 вместо нуля).
+                    let sf = window.scale_factor();
+                    let img = match &source {
+                        crate::background::Source::Shape { raw }
+                            if !raw.trim_start().starts_with("rrect(") =>
+                        {
+                            // Форма может выйти за коробку — растр кроет
+                            // расширенную область, центр смещён на вынос.
+                            let (cx, cy, rx, ry) =
+                                crate::background::shape_params(raw, bw, bh, 1.0)?;
+                            let (aw, ah) = (bw + sl + sr, bh + st + sb);
+                            let img = crate::background::rasterize_ellipse_px(
+                                (cx + sl) * sf,
+                                (cy + st) * sf,
+                                rx * sf,
+                                ry * sf,
+                                (aw * sf).round().max(1.0) as u32,
+                                (ah * sf).round().max(1.0) as u32,
+                            )?;
+                            return Some((
+                                img,
+                                Bounds {
+                                    origin: gpui::point(
+                                        bounds.origin.x - px(sl),
+                                        bounds.origin.y - px(st),
+                                    ),
+                                    size: gpui::size(px(aw), px(ah)),
+                                },
+                                // Одна плитка: за пределами области пусто.
+                                3,
+                            ));
+                        }
+                        crate::background::Source::Shape { raw } => {
+                            // Точечные величины формы записаны в CSS-точках —
+                            // растеризатору нужен их масштаб.
+                            crate::background::rasterize_shape(
+                                raw,
+                                (tw * sf).round().max(1.0) as u32,
+                                (th * sf).round().max(1.0) as u32,
+                                sf,
+                            )?
+                        }
+                        _ => source.raster((tw * sf, th * sf))?,
+                    };
+                    (img, tw, th)
                 }
+            };
+            if std::env::var("MASK_DBG").is_ok() {
+                eprintln!(
+                    "MASK bounds=({:?},{:?} {:?}x{:?}) tile={tw}x{th} sf={}",
+                    bounds.origin.x,
+                    bounds.origin.y,
+                    bounds.size.width,
+                    bounds.size.height,
+                    window.scale_factor()
+                );
+            }
+            let (ox, oy) = match self.mask_pos {
+                Some((x, y)) => (
+                    match x {
+                        crate::value::Len::Pct(p) => p * (bw - tw),
+                        l => len(l, bw, 0.0),
+                    },
+                    match y {
+                        crate::value::Len::Pct(p) => p * (bh - th),
+                        l => len(l, bh, 0.0),
+                    },
+                ),
+                None => (0.0, 0.0),
             };
             Some((
                 img,
                 Bounds {
-                    origin: bounds.origin,
-                    size: tile,
+                    origin: gpui::point(bounds.origin.x + px(ox), bounds.origin.y + px(oy)),
+                    size: gpui::size(px(tw.max(1.0)), px(th.max(1.0))),
                 },
+                ((self.mask_no_repeat.0 as u32)
+                    | ((self.mask_no_repeat.1 as u32) << 1)
+                    | ((self.mask_luminance as u32) << 2)),
             ))
         });
         let child = self.child.as_mut().unwrap();

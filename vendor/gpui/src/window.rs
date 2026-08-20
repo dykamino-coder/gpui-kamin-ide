@@ -3578,7 +3578,7 @@ impl Window {
         opacity: f32,
         blend: u32,
         polygon: &[Point<Pixels>],
-        mask: Option<(std::sync::Arc<crate::RenderImage>, Bounds<Pixels>)>,
+        mask: Option<(std::sync::Arc<crate::RenderImage>, Bounds<Pixels>, u32)>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         use crate::{PaintGroup, PaintSurface};
@@ -3608,9 +3608,9 @@ impl Window {
             self.next_frame.scene.groups.append(&mut nested);
         }
         let index = self.next_frame.scene.groups.len() as u32;
-        let (mask, mask_bounds) = match mask {
-            Some((img, b)) => (Some(img), b.scale(scale_factor)),
-            None => (None, Bounds::default()),
+        let (mask, mask_bounds, mask_once) = match mask {
+            Some((img, b, once)) => (Some(img), b.scale(scale_factor), once),
+            None => (None, Bounds::default(), 0),
         };
         self.next_frame.scene.groups.push(PaintGroup {
             scene: inner,
@@ -3620,6 +3620,7 @@ impl Window {
             polygon: polygon.iter().map(|p| p.scale(scale_factor)).collect(),
             mask,
             mask_bounds,
+            mask_once,
         });
         self.next_frame.scene.insert_primitive(PaintSurface {
             order: 0,

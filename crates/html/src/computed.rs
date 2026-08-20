@@ -1029,6 +1029,26 @@ pub struct Computed {
     /// `clip-path`/`mask`: обрезка по кругу или скруглённому прямоугольнику.
     /// Хранится долей радиуса от меньшей стороны либо радиусом в точках.
     pub clip_round: Option<f32>,
+    /// `clip-path: circle(...)|ellipse(...)` с параметрами: сырые аргументы
+    /// формы (`shape:circle(...)`). Радиусы и центр зависят от размера
+    /// коробки — он известен только отрисовке, поэтому форма растрируется
+    /// маской буфера группы (см. `background::source`).
+    pub clip_shape: Option<String>,
+    /// `mask-size`: размер плитки маски; None — auto (интринзик картинки).
+    pub mask_size: Option<(Len, Len)>,
+    /// `mask-repeat`: пооосный запрет мощения (no-x, no-y).
+    pub mask_no_repeat: Option<(bool, bool)>,
+    /// `mask-size: contain|cover` (1|2): вписывание по интринзику.
+    pub mask_fit: Option<u8>,
+    /// `mask-mode: luminance` — маскирует светимость, а не альфа.
+    pub mask_luminance: Option<bool>,
+    /// `mask-position`: смещение плитки; доля — от свободного места
+    /// (коробка минус плитка), как у `background-position`.
+    pub mask_pos: Option<(Len, Len)>,
+    /// Эллиптические радиусы углов (`border-radius: H / V`), tl/tr/br/bl:
+    /// растеризатор круглит только окружностью — такой угол уходит
+    /// альфа-маской буфера группы (`shape:rrect(...)`).
+    pub radius_ell: Option<[Option<(f32, f32)>; 4]>,
     /// `filter`: цветовые преобразования, применённые к собственным цветам.
     pub filter: Option<Filter>,
 
@@ -1897,11 +1917,61 @@ impl Computed {
                     self.border_color = Color::parse(v);
                 }
             }
-            "border-radius" => self.radius = radius_shorthand(v),
-            "border-top-left-radius" => self.radius.tl = Len::parse(v),
-            "border-top-right-radius" => self.radius.tr = Len::parse(v),
-            "border-bottom-right-radius" => self.radius.br = Len::parse(v),
-            "border-bottom-left-radius" => self.radius.bl = Len::parse(v),
+            "border-radius" => {
+                // Эллиптические радиусы: `H / V` (css-backgrounds-3 §5.1) —
+                // углы с rx≠ry не выразить круглым скруглением растеризатора,
+                // форма уходит альфа-маской буфера группы.
+                if let Some((hs, vs)) = v.split_once('/') {
+                    let h = radius_shorthand(hs.trim());
+                    let vv = radius_shorthand(vs.trim());
+                    self.radius = h;
+                    let p = |a: Option<Len>, b: Option<Len>| match (a, b) {
+                        (Some(Len::Px(x)), Some(Len::Px(y))) if (x - y).abs() > 0.01 => {
+                            Some((x, y))
+                        }
+                        _ => None,
+                    };
+                    let ell = [
+                        p(h.tl, vv.tl),
+                        p(h.tr, vv.tr),
+                        p(h.br, vv.br),
+                        p(h.bl, vv.bl),
+                    ];
+                    if ell.iter().any(|c| c.is_some()) {
+                        self.radius_ell = Some(ell);
+                    }
+                } else {
+                    self.radius = radius_shorthand(v);
+                }
+            }
+            "border-top-left-radius"
+            | "border-top-right-radius"
+            | "border-bottom-right-radius"
+            | "border-bottom-left-radius" => {
+                // Двухзначный лонгхенд — эллиптический угол `rx ry`.
+                let mut it = v.split_whitespace();
+                let x = it.next().and_then(Len::parse);
+                let y = it.next().and_then(Len::parse);
+                let slot = match key {
+                    "border-top-left-radius" => 0,
+                    "border-top-right-radius" => 1,
+                    "border-bottom-right-radius" => 2,
+                    _ => 3,
+                };
+                match slot {
+                    0 => self.radius.tl = x,
+                    1 => self.radius.tr = x,
+                    2 => self.radius.br = x,
+                    _ => self.radius.bl = x,
+                }
+                if let (Some(Len::Px(rx)), Some(Len::Px(ry))) = (x, y)
+                    && (rx - ry).abs() > 0.01
+                {
+                    let mut ell = self.radius_ell.unwrap_or([None; 4]);
+                    ell[slot] = Some((rx, ry));
+                    self.radius_ell = Some(ell);
+                }
+            }
 
             "position" => {
                 self.position = match v {
@@ -3415,6 +3485,68 @@ impl Computed {
                 }
             }
             "isolation" => self.isolate = Some(v == "isolate"),
+            // Плитка маски (css-masking §7.6–7.8). `cover`/`contain` пока не
+            // разобраны — им нужен интринзик картинки при вычислении.
+            "mask-size" | "-webkit-mask-size" => match v.trim() {
+                // Вписывание с сохранением пропорции (css-masking §7.8 ->
+                // css-backgrounds §3.9): считается от интринзика при отрисовке.
+                "contain" => self.mask_fit = Some(1),
+                "cover" => self.mask_fit = Some(2),
+                _ => {
+                    let mut it = v.split_whitespace();
+                    if let Some(x) = it.next().and_then(Len::parse) {
+                        let y = it.next().and_then(Len::parse).unwrap_or(x);
+                        self.mask_size = Some((x, y));
+                    }
+                }
+            },
+            "mask-mode" => self.mask_luminance = Some(v.trim() == "luminance"),
+            "mask-repeat" | "-webkit-mask-repeat" => {
+                // Пооосно (css-backgrounds §3.4): `repeat-x` = repeat по x,
+                // одна плитка по y; два слова — оси по порядку.
+                let t: Vec<&str> = v.split_whitespace().collect();
+                self.mask_no_repeat = Some(match t.as_slice() {
+                    ["repeat-x"] => (false, true),
+                    ["repeat-y"] => (true, false),
+                    [a] => (*a == "no-repeat", *a == "no-repeat"),
+                    [a, b] => (*a == "no-repeat", *b == "no-repeat"),
+                    _ => (false, false),
+                });
+            }
+            "mask-position" | "-webkit-mask-position" => {
+                let word = |t: &str| match t {
+                    "left" | "top" => Some(Len::Pct(0.0)),
+                    "center" => Some(Len::Pct(0.5)),
+                    "right" | "bottom" => Some(Len::Pct(1.0)),
+                    _ => Len::parse(t),
+                };
+                let toks: Vec<&str> = v.split_whitespace().collect();
+                // Четырёхзначная запись — пары «край смещение»: `left 40%
+                // bottom 60%` (css-backgrounds-3 §3.6); от правого/нижнего
+                // края доля зеркалится.
+                if toks.len() == 4 {
+                    let pair = |edge: &str, off: &str| -> Option<Len> {
+                        let l = Len::parse(off)?;
+                        match (edge, l) {
+                            ("left" | "top", l) => Some(l),
+                            ("right" | "bottom", Len::Pct(p)) => Some(Len::Pct(1.0 - p)),
+                            _ => None,
+                        }
+                    };
+                    let horiz = matches!(toks[0], "left" | "right");
+                    let (xe, xo, ye, yo) = if horiz {
+                        (toks[0], toks[1], toks[2], toks[3])
+                    } else {
+                        (toks[2], toks[3], toks[0], toks[1])
+                    };
+                    if let (Some(x), Some(y)) = (pair(xe, xo), pair(ye, yo)) {
+                        self.mask_pos = Some((x, y));
+                    }
+                } else if let Some(x) = toks.first().and_then(|t| word(t)) {
+                    let y = toks.get(1).and_then(|t| word(t)).unwrap_or(Len::Pct(0.5));
+                    self.mask_pos = Some((x, y));
+                }
+            }
             "user-select" | "-webkit-user-select" => self.no_select = Some(matches!(v, "none")),
             "clip-path" | "mask" | "mask-image" => {
                 // Маска-ИЗОБРАЖЕНИЕ (url/градиент): источник хранится строкой,
@@ -3425,6 +3557,10 @@ impl Computed {
                         self.mask_image = Some(v.trim().to_string());
                     } else if let Some(url) = parse_url(v) {
                         self.mask_image = Some(url);
+                    }
+                    // Сокращение `mask` несёт и укладку (css-masking §7.9).
+                    if v.contains("no-repeat") {
+                        self.mask_no_repeat = Some((true, true));
                     }
                 }
                 // Круг и эллипс — это скруглённый прямоугольник с радиусом в
@@ -3465,7 +3601,19 @@ impl Computed {
                         self.clip_polygon = Some(points);
                     }
                 } else if v.starts_with("circle(") || v.starts_with("ellipse(") {
-                    self.clip_round = Some(0.5);
+                    // Форма с параметрами (радиусы, `at`, ключевые стороны)
+                    // растрируется маской: радиус и центр считаются от
+                    // размеров коробки при отрисовке. Скруглённая коробка
+                    // остаётся запасным путём для формы без аргументов.
+                    let args = v
+                        .split_once('(')
+                        .map(|(_, r)| r.trim_end_matches(')').trim())
+                        .unwrap_or("");
+                    if args.is_empty() {
+                        self.clip_round = Some(0.5);
+                    } else {
+                        self.clip_shape = Some(format!("shape:{}", v.trim()));
+                    }
                 } else if let Some(rest) = v.strip_prefix("inset(") {
                     let inner = rest.trim_end_matches(')');
                     let radius = inner
@@ -3683,6 +3831,32 @@ impl Computed {
                 .then_some(self.webkit_line_clamp)
                 .flatten()
         })
+    }
+
+    /// Уходит ли скругление углов альфа-маской буфера группы.
+    ///
+    /// Растеризатор круглит только окружностью и жмёт каждый угол к половине
+    /// меньшей стороны; эллиптические углы (`H / V`) и большой НЕОДНОРОДНЫЙ
+    /// радиус (спека жмёт одним множителем от суммы смежных, §5.5) рисуются
+    /// точной растровой маской, а обычное скругление при этом снимается.
+    pub fn radius_masked(&self) -> bool {
+        if self.radius_ell.is_some() {
+            return true;
+        }
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let round = [
+            side(self.radius.tl),
+            side(self.radius.tr),
+            side(self.radius.br),
+            side(self.radius.bl),
+        ];
+        let (w, h) = (side(self.width), side(self.height));
+        let max_r = round.iter().cloned().fold(0.0f32, f32::max);
+        let uniform = round.iter().all(|r| (r - round[0]).abs() < 0.01);
+        w > 0.0 && h > 0.0 && !uniform && max_r > w.min(h) * 0.5 + 0.01
     }
 
     pub fn borders(&self) -> Sides {

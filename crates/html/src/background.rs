@@ -40,6 +40,7 @@ pub fn load(src: &str) -> Option<Arc<RenderImage>> {
             crate::svg::rasterize(&markup, w, h)
         }
         Source::Gradient { raw } => rasterize_gradient(&raw, 300, 150),
+        Source::Shape { raw } => rasterize_shape(&raw, 300, 150, 1.0),
     }
 }
 
@@ -55,6 +56,9 @@ pub enum Source {
     /// Градиент: своей величины НЕТ вовсе (css-images-3 §4.4) — обе оси
     /// берутся от области, а растрируется он точно в размер плитки.
     Gradient { raw: String },
+    /// Базовая форма `clip-path` (`circle`/`ellipse`): альфа-маска буфера
+    /// группы. Радиусы и центр считаются от размера плитки (= коробки).
+    Shape { raw: String },
 }
 
 impl Source {
@@ -71,7 +75,7 @@ impl Source {
                 }
             }
             Source::Vector { size, .. } => *size,
-            Source::Gradient { .. } => Intrinsic {
+            Source::Gradient { .. } | Source::Shape { .. } => Intrinsic {
                 w: None,
                 h: None,
                 ratio: None,
@@ -109,8 +113,216 @@ impl Source {
                 );
                 rasterize_gradient(raw, w, h)
             }
+            Source::Shape { raw } => {
+                const LIMIT: f32 = 2048.0;
+                let (w, h) = (
+                    tile.0.clamp(1.0, LIMIT).round() as u32,
+                    tile.1.clamp(1.0, LIMIT).round() as u32,
+                );
+                rasterize_shape(raw, w, h, 1.0)
+            }
         }
     }
+}
+
+/// Альфа-маска базовой формы `clip-path` (css-shapes-1 §3.1).
+///
+/// `circle(R at X Y)` / `ellipse(RX RY at X Y)`: радиусы — точки, проценты
+/// (у круга — от диагонали/√2, у эллипса — от своей оси) или ключевые
+/// стороны; центр по умолчанию — середина. Край сглажен по локальному
+/// градиенту неявной функции — та же гладкость, что у скругления коробки.
+/// Скруглённый прямоугольник с ЭЛЛИПТИЧЕСКИМИ углами: `rrect(tlx tly trx
+/// try brx bry blx bly)` в CSS-точках. Растеризатор круглит только
+/// окружностью — эллиптический `border-radius: H / V` уходит альфа-маской.
+fn rasterize_rrect(args: &str, w: u32, h: u32, scale: f32) -> Option<Arc<RenderImage>> {
+    let vals: Vec<f32> = args
+        .split_whitespace()
+        .filter_map(|t| t.parse::<f32>().ok())
+        .map(|v| v * scale)
+        .collect();
+    if vals.len() != 8 {
+        return None;
+    }
+    let (fw, fh) = (w as f32, h as f32);
+    // Переполнение радиусов (css-backgrounds-3 §5.5): все радиусы жмутся
+    // ОДНИМ множителем f = min(сторона / сумма смежных радиусов) — а не
+    // каждый к половине стороны: у полукруга (`100px 100px 0 0` на 200x100)
+    // соседний радиус нулевой, и жать нечего.
+    let sum = |a: f32, b: f32| (a + b).max(1e-6);
+    let f = (fw / sum(vals[0], vals[2]))
+        .min(fw / sum(vals[6], vals[4]))
+        .min(fh / sum(vals[1], vals[7]))
+        .min(fh / sum(vals[3], vals[5]))
+        .min(1.0);
+    let corners = [
+        (vals[0] * f, vals[1] * f), // tl
+        (vals[2] * f, vals[3] * f), // tr
+        (vals[4] * f, vals[5] * f), // br
+        (vals[6] * f, vals[7] * f), // bl
+    ];
+    let mut bytes = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let (px_, py) = (x as f32 + 0.5, y as f32 + 0.5);
+            // Угол пикселя и центр его эллипса; вне угловых прямоугольников
+            // расстояние — до ближайшей стороны (знак: внутри отрицателен).
+            let (rx, ry, cx, cy) = if px_ < corners[0].0 && py < corners[0].1 {
+                (corners[0].0, corners[0].1, corners[0].0, corners[0].1)
+            } else if px_ > fw - corners[1].0 && py < corners[1].1 {
+                (corners[1].0, corners[1].1, fw - corners[1].0, corners[1].1)
+            } else if px_ > fw - corners[2].0 && py > fh - corners[2].1 {
+                (corners[2].0, corners[2].1, fw - corners[2].0, fh - corners[2].1)
+            } else if px_ < corners[3].0 && py > fh - corners[3].1 {
+                (corners[3].0, corners[3].1, corners[3].0, fh - corners[3].1)
+            } else {
+                (0.0, 0.0, 0.0, 0.0)
+            };
+            let dist = if rx > 0.0 && ry > 0.0 {
+                let dx = (px_ - cx) / rx;
+                let dy = (py - cy) / ry;
+                let d = (dx * dx + dy * dy).sqrt();
+                let grad =
+                    ((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry)).sqrt() / d.max(1e-6);
+                (d - 1.0) / grad.max(1e-6)
+            } else {
+                (-px_).max(px_ - fw).max(-py).max(py - fh)
+            };
+            let a = (0.5 - dist).clamp(0.0, 1.0);
+            let v = (a * 255.0) as u8;
+            bytes.extend_from_slice(&[v, v, v, v]);
+        }
+    }
+    gpui::bgra_bytes_to_image(w, h, bytes)
+}
+
+/// `scale` — физических точек растра на CSS-точку: точечные величины формы
+/// записаны в CSS-точках, а растр может быть плотнее (hidpi).
+pub fn rasterize_shape(raw: &str, w: u32, h: u32, scale: f32) -> Option<Arc<RenderImage>> {
+    if raw.trim_start().starts_with("rrect(") {
+        let rest = raw.split_once('(')?.1;
+        return rasterize_rrect(rest.trim_end_matches(')'), w, h, scale);
+    }
+    let (cx, cy, rx, ry) = shape_params(raw, w as f32, h as f32, scale)?;
+    rasterize_ellipse_px(cx, cy, rx, ry, w, h)
+}
+
+/// Параметры формы `circle(...)` / `ellipse(...)`: центр и радиусы в
+/// точках растра; `scale` переводит точечные величины записи (CSS) в них.
+pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32, f32, f32)> {
+    let (kind, rest) = raw.split_once('(')?;
+    let circle = kind.trim().eq_ignore_ascii_case("circle");
+    let rest = rest.trim_end_matches(')');
+    let (rads, pos) = match rest.split_once(" at ") {
+        Some((r, p)) => (r.trim(), Some(p.trim())),
+        None => (rest.trim(), None),
+    };
+    // Центр: `at X Y`; доля — от стороны коробки; одиночное слово — сторона.
+    let axis = |token: &str, side: f32| -> Option<f32> {
+        let t = token.trim();
+        match t {
+            "center" => Some(side * 0.5),
+            "left" | "top" => Some(0.0),
+            "right" | "bottom" => Some(side),
+            _ => match crate::value::Len::parse(t)? {
+                crate::value::Len::Px(v) => Some(v * scale),
+                crate::value::Len::Pct(p) => Some(p * side),
+                _ => None,
+            },
+        }
+    };
+    let (cx, cy) = match pos {
+        Some(p) => {
+            let mut it = p.split_whitespace();
+            let x = it.next().and_then(|t| axis(t, fw)).unwrap_or(fw * 0.5);
+            let y = it.next().and_then(|t| axis(t, fh)).unwrap_or(fh * 0.5);
+            (x, y)
+        }
+        None => (fw * 0.5, fh * 0.5),
+    };
+    // Радиус: точки, доля или ключевая сторона (css-shapes-1 §3.1.1.3):
+    // closest/farthest — расстояние от центра до ближайшей/дальней стороны
+    // ПО ОСИ (у эллипса — своей), у круга corner — до угла.
+    let side_r = |keyword: &str, c: f32, side: f32| -> f32 {
+        match keyword {
+            "closest-side" => (c.min(side - c)).max(0.0),
+            "farthest-side" => c.max(side - c),
+            _ => 0.0,
+        }
+    };
+    let corner_r = |far: bool| -> f32 {
+        let dx = if far { cx.max(fw - cx) } else { cx.min(fw - cx) };
+        let dy = if far { cy.max(fh - cy) } else { cy.min(fh - cy) };
+        (dx * dx + dy * dy).sqrt()
+    };
+    let radius = |token: &str, c: f32, side: f32, pct_base: f32| -> Option<f32> {
+        match token {
+            "closest-side" => Some(side_r("closest-side", c, side)),
+            "farthest-side" => Some(side_r("farthest-side", c, side)),
+            "closest-corner" => Some(corner_r(false)),
+            "farthest-corner" => Some(corner_r(true)),
+            _ => match crate::value::Len::parse(token)? {
+                crate::value::Len::Px(v) => Some(v * scale),
+                crate::value::Len::Pct(p) => Some(p * pct_base),
+                _ => None,
+            },
+        }
+    };
+    let diag = ((fw * fw + fh * fh) / 2.0).sqrt();
+    let (rx, ry) = if circle {
+        let token = rads.split_whitespace().next().unwrap_or("closest-side");
+        let r = radius(token, cx, fw, diag)
+            .unwrap_or_else(|| side_r("closest-side", cx, fw).min(side_r("closest-side", cy, fh)));
+        // Ключевые стороны у круга — по ОБЕИМ осям сразу.
+        let r = match token {
+            "closest-side" => (cx.min(fw - cx)).min(cy.min(fh - cy)).max(0.0),
+            "farthest-side" => (cx.max(fw - cx)).max(cy.max(fh - cy)),
+            _ => r,
+        };
+        (r, r)
+    } else {
+        let mut it = rads.split_whitespace();
+        let tx = it.next().unwrap_or("closest-side");
+        let ty = it.next().unwrap_or("closest-side");
+        // Угловые ключи у эллипса — ЕВКЛИДОВО расстояние до угла, как у
+        // круга (clip-path-ellipse-2-ref задаёт rx=√(175²+175²)).
+        (
+            radius(tx, cx, fw, fw).unwrap_or_else(|| side_r("closest-side", cx, fw)),
+            radius(ty, cy, fh, fh).unwrap_or_else(|| side_r("closest-side", cy, fh)),
+        )
+    };
+    Some((cx, cy, rx, ry))
+}
+
+/// Альфа-растр эллипса по готовым параметрам в точках растра.
+pub fn rasterize_ellipse_px(
+    cx: f32,
+    cy: f32,
+    rx: f32,
+    ry: f32,
+    w: u32,
+    h: u32,
+) -> Option<Arc<RenderImage>> {
+    if rx <= 0.0 || ry <= 0.0 {
+        // Нулевой радиус — всё скрыто: прозрачная маска.
+        return gpui::bgra_bytes_to_image(w, h, vec![0u8; (w * h * 4) as usize]);
+    }
+    let mut bytes = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let dx = (x as f32 + 0.5 - cx) / rx;
+            let dy = (y as f32 + 0.5 - cy) / ry;
+            let d = (dx * dx + dy * dy).sqrt();
+            // Расстояние до края в ТОЧКАХ: неявная функция d-1, её градиент
+            // по точкам даёт локальный масштаб — без него сглаживание на
+            // вытянутом эллипсе было бы шире с одной стороны.
+            let grad = ((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry)).sqrt() / d.max(1e-6);
+            let px_dist = (d - 1.0) / grad.max(1e-6);
+            let a = (0.5 - px_dist).clamp(0.0, 1.0);
+            let v = (a * 255.0) as u8;
+            bytes.extend_from_slice(&[v, v, v, v]);
+        }
+    }
+    gpui::bgra_bytes_to_image(w, h, bytes)
 }
 
 /// Разобрать ссылку в источник картинки; результат запоминается.
@@ -121,7 +333,11 @@ pub fn source(src: &str) -> Option<Source> {
     {
         return hit.clone();
     }
-    let found = if src.starts_with("linear-gradient(")
+    let found = if let Some(shape) = src.strip_prefix("shape:") {
+        Some(Source::Shape {
+            raw: shape.to_string(),
+        })
+    } else if src.starts_with("linear-gradient(")
         || src.starts_with("radial-gradient(")
         || src.starts_with("conic-gradient(")
     {

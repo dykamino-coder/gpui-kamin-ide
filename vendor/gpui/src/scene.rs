@@ -49,6 +49,8 @@ pub(crate) struct PaintGroup {
     pub(crate) mask: Option<std::sync::Arc<crate::RenderImage>>,
     /// Плитка маски: угол коробки + размер плитки; повторяется по обеим осям.
     pub(crate) mask_bounds: Bounds<ScaledPixels>,
+    /// Пооосный запрет мощения маски: бит 0 — по x, бит 1 — по y.
+    pub(crate) mask_once: u32,
 }
 
 #[derive(Default)]

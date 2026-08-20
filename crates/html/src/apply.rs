@@ -811,6 +811,12 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
 /// него берём заведомо большое значение — растеризатор обрежет его половиной
 /// меньшей стороны, что и даёт круг.
 fn apply_radius(mut d: Div, c: &Computed) -> Div {
+    // Эллиптические углы и большой неоднородный радиус режет альфа-маска
+    // буфера группы; круглое скругление сверху обрезало бы форму вторым
+    // лезвием (см. `Computed::radius_masked`).
+    if c.radius_masked() {
+        return d;
+    }
     let r = &c.radius;
     let base = match (c.width, c.height) {
         (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
