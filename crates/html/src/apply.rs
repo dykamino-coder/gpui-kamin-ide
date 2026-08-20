@@ -627,6 +627,15 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     if c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll) {
         d = d.overflow_y_hidden();
     }
+    // `clip` режет краску, но НЕ создаёт скролл-контейнер: авто-минимум
+    // flex/grid-элемента остаётся по содержимому — у gpui/taffy для этого
+    // отдельный вариант (CSSWG #7714; min-size-auto-overflow-clip).
+    if c.overflow_x == Some(Overflow::Clip) {
+        d.style().overflow.x = Some(gpui::Overflow::Clip);
+    }
+    if c.overflow_y == Some(Overflow::Clip) {
+        d.style().overflow.y = Some(gpui::Overflow::Clip);
+    }
     // Поле обрезки: край отодвигается от коробки отсчёта (css-overflow-3 §5).
     // Сдвиг несёт РОДНАЯ маска (патч GPUI): рамка и фон самой коробки
     // рисуются вне маски, режется только содержимое — обёртка снаружи резала

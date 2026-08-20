@@ -284,6 +284,9 @@ pub enum Overflow {
     Visible,
     Hidden,
     Scroll,
+    /// Обрезка БЕЗ скролл-контейнера: авто-минимум flex/grid-элемента
+    /// остаётся по содержимому (CSSWG #7714; min-size-auto-overflow-clip).
+    Clip,
 }
 
 /// Тень: GPUI умеет несколько внешних теней, поэтому храним список.
@@ -4049,7 +4052,8 @@ pub const GENERIC_SANS: &str = "Segoe UI";
 
 fn parse_overflow(v: &str) -> Option<Overflow> {
     match v {
-        "hidden" | "clip" => Some(Overflow::Hidden),
+        "hidden" => Some(Overflow::Hidden),
+        "clip" => Some(Overflow::Clip),
         "scroll" | "auto" => Some(Overflow::Scroll),
         "visible" => Some(Overflow::Visible),
         _ => None,
