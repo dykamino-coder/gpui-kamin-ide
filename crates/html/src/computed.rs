@@ -210,6 +210,8 @@ pub struct Outline {
     pub width: Option<Len>,
     pub color: Option<Color>,
     pub offset: Option<Len>,
+    /// none/hidden гасят, dotted/dashed рисуются как solid (приближение).
+    pub style: Option<u8>,
 }
 
 /// `text-fit` (css-text-5): кегль подбирается так, чтобы строка заполняла
@@ -735,6 +737,12 @@ pub struct Computed {
     /// `background-color: inherit`: фон не наследуемый, слово переносит
     /// вычисленное значение родителя (включая нерешённую функцию).
     pub(crate) background_inherit: bool,
+    /// Явное `inherit` на ненаследуемых размерах и краях: значение берётся
+    /// от родителя при слиянии (`inline::inherit`), как у padding/border.
+    pub(crate) width_inherit: bool,
+    pub(crate) height_inherit: bool,
+    /// top/right/bottom/left.
+    pub(crate) inset_inherit: [bool; 4],
     pub gradient: Option<Gradient>,
     pub shadows: Vec<Shadow>,
     /// Внутренние тени (`box-shadow: inset`) — отдельным списком: рисуются
@@ -1859,6 +1867,12 @@ impl Computed {
                             }
                         }
                         [a, b, c] => {
+                            // Безразмерная основа кроме нуля делает ВСЁ
+                            // объявление невалидным (`flex: 0 0 4` не
+                            // применяется вовсе, flexbox_flex-*-unitless-basis).
+                            if number(c).is_some_and(|n| n != 0.0) {
+                                return;
+                            }
                             self.flex_grow = number(a);
                             self.flex_shrink = number(b);
                             self.flex_basis = Len::parse(c);
@@ -1977,8 +1991,14 @@ impl Computed {
             // (CSS 2.1 §10): `max-height: -1px` доезжал до раскладки и
             // схлопывал коробку в ноль. У `min-*` отрицательное поднимает
             // сама раскладка, но объявление всё равно отбрасывается.
-            "width" => assign_size(&mut self.width, v),
-            "height" => assign_size(&mut self.height, v),
+            "width" => {
+                self.width_inherit = v == "inherit";
+                assign_size(&mut self.width, v);
+            }
+            "height" => {
+                self.height_inherit = v == "inherit";
+                assign_size(&mut self.height, v);
+            }
             "min-width" => assign_size(&mut self.min_width, v),
             "min-height" => assign_size(&mut self.min_height, v),
             "max-width" => assign_size(&mut self.max_width, v),
@@ -2147,24 +2167,28 @@ impl Computed {
                 }
             }
             "top" => {
+                self.inset_inherit[0] = v == "inherit";
                 self.inset.top = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.inset.block_start = None;
                 }
             }
             "right" => {
+                self.inset_inherit[1] = v == "inherit";
                 self.inset.right = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.inset.inline_end = None;
                 }
             }
             "bottom" => {
+                self.inset_inherit[2] = v == "inherit";
                 self.inset.bottom = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.inset.block_end = None;
                 }
             }
             "left" => {
+                self.inset_inherit[3] = v == "inherit";
                 self.inset.left = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.inset.inline_start = None;
@@ -2795,11 +2819,12 @@ impl Computed {
                     width: Some(Len::Px(3.0)),
                     color: None,
                     offset: None,
+                    style: None,
                 });
                 for token in v.split_whitespace() {
-                    if token == "none" {
-                        o.width = Some(Len::Px(0.0));
-                    } else if let Some(l) = Len::parse(token) {
+                    if let Some(st) = outline_style_of(token) {
+                        o.style = Some(st);
+                    } else if let Some(l) = outline_width_of(token) {
                         o.width = Some(l);
                     } else if let Some(c) = Color::parse(token) {
                         o.color = Some(c);
@@ -2807,11 +2832,12 @@ impl Computed {
                 }
                 self.outline = Some(o);
             }
-            "outline-width" | "outline-color" | "outline-offset" => {
+            "outline-width" | "outline-color" | "outline-offset" | "outline-style" => {
                 let mut o = self.outline.unwrap_or_default();
                 match key {
-                    "outline-width" => o.width = Len::parse(v),
+                    "outline-width" => o.width = outline_width_of(v).or(o.width),
                     "outline-color" => o.color = Color::parse(v),
+                    "outline-style" => o.style = outline_style_of(v),
                     _ => o.offset = Len::parse(v),
                 }
                 self.outline = Some(o);
@@ -5521,6 +5547,26 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         stops_raw,
     })
 }
+/// Стиль обводки: 0 = не рисуется (none/hidden), 1 = рисуется.
+fn outline_style_of(v: &str) -> Option<u8> {
+    match v {
+        "none" | "hidden" => Some(0),
+        "solid" | "dotted" | "dashed" | "double" | "groove" | "ridge" | "inset" | "outset"
+        | "auto" => Some(1),
+        _ => None,
+    }
+}
+
+/// Ширина обводки: ключевые слова и любые шрифтовые/абсолютные длины.
+fn outline_width_of(v: &str) -> Option<Len> {
+    match v {
+        "thin" => Some(Len::Px(1.0)),
+        "medium" => Some(Len::Px(3.0)),
+        "thick" => Some(Len::Px(5.0)),
+        _ => Len::parse(v).filter(|l| !matches!(l, Len::Pct(_))),
+    }
+}
+
 /// Присвоить размер коробки: отрицательная длина делает объявление
 /// НЕВАЛИДНЫМ, и слот не трогается вовсе (§10) — повторное свойство
 /// `width: 0; width: -1px` обязано оставить нуль от первой записи, а

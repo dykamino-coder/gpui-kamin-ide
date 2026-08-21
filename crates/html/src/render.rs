@@ -414,17 +414,23 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
 
     // `outline`: рамка ВНЕ коробки и без влияния на раскладку — отдельный
     // абсолютный слой с отрицательным отступом ровно на её толщину.
-    if let Some(o) = c.outline {
-        let w = match o.width {
+    if let Some(o) = c.outline.clone() {
+        // Шрифтовые единицы ширины и сдвига решаются своим кеглем.
+        let em = match c.font_size {
             Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let px_of = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            Some(Len::Em(k)) => k * em,
             _ => 0.0,
         };
+        let w = px_of(o.width);
+        // `outline-style: none` гасит обводку независимо от ширины.
+        let visible = o.style != Some(0);
         // Обводка без своего цвета берёт цвет текста — так решает CSS.
-        if let (true, Some(colour)) = (w > 0.0, o.color.or(c.color)) {
-            let off = match o.offset {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+        if let (true, true, Some(colour)) = (visible, w > 0.0, o.color.or(c.color)) {
+            let off = px_of(o.offset);
             let corner = match c.radius.tl {
                 Some(Len::Px(v)) => v + off + w,
                 _ => 0.0,

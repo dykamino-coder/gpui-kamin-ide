@@ -439,6 +439,23 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     if own.padding_inherit {
         c.padding = parent.padding;
     }
+    if own.width_inherit {
+        c.width = parent.width;
+    }
+    if own.height_inherit {
+        c.height = parent.height;
+    }
+    for (i, on) in own.inset_inherit.iter().enumerate() {
+        if !on {
+            continue;
+        }
+        match i {
+            0 => c.inset.top = parent.inset.top,
+            1 => c.inset.right = parent.inset.right,
+            2 => c.inset.bottom = parent.inset.bottom,
+            _ => c.inset.left = parent.inset.left,
+        }
+    }
     if own.background_inherit {
         c.background = parent.background;
         c.background_rcs = own.background_rcs.clone().or(parent.background_rcs.clone());

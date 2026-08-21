@@ -557,7 +557,13 @@ impl Media {
             }
             let alt = alt.strip_prefix("only ").unwrap_or(alt);
             alt.split(" and ").all(|part| {
-                let part = part.trim().trim_start_matches('(').trim_end_matches(')');
+                // Ровно ОДНА пара скобок вокруг фичи: жадная обрезка всех
+                // хвостовых скобок съедала закрывающую скобку `calc(...)`.
+                let part = part.trim();
+                let part = match part.strip_prefix('(').and_then(|p| p.strip_suffix(')')) {
+                    Some(inner) => inner,
+                    None => part,
+                };
                 let Some((name, value)) = part.split_once(':') else {
                     return match part.trim() {
                         "screen" => !self.print,
@@ -567,11 +573,28 @@ impl Media {
                     };
                 };
                 let value = value.trim();
-                let number = value
-                    .trim_end_matches("px")
-                    .trim()
-                    .parse::<f32>()
-                    .unwrap_or(f32::NAN);
+                // Длина фичи — полноценная: `em` (от базовых 16px без
+                // контекста) и `calc()` из абсолютных слагаемых; голое
+                // отрезание `px` превращало их в NaN, и сравнение всегда
+                // лгало (calc-in-media-queries-001).
+                let number = match crate::value::Len::parse(value) {
+                    Some(crate::value::Len::Px(v)) => v,
+                    Some(crate::value::Len::Em(k)) => k * 16.0,
+                    Some(crate::value::Len::Calc(id)) => {
+                        let sum = crate::value::calc_get(id);
+                        let rest = crate::value::Sum {
+                            px: 0.0,
+                            em: 0.0,
+                            ..sum
+                        };
+                        if rest == crate::value::Sum::default() {
+                            sum.px + sum.em * 16.0
+                        } else {
+                            f32::NAN
+                        }
+                    }
+                    _ => f32::NAN,
+                };
                 match name.trim() {
                     "min-width" => self.width >= number,
                     "max-width" => self.width <= number,
