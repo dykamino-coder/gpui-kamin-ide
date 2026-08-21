@@ -1341,10 +1341,27 @@ pub(crate) fn strip_comments(css: &str) -> String {
     out
 }
 
+/// Список селекторов через запятую вне скобок - для `of S` и `:has()`.
+pub(crate) fn split_selector_list(raw: &str) -> Vec<&str> {
+    split_top_level(raw, ',')
+}
+
 /// Специфичность одного псевдокласса: +1 к классам, а `of S` у
 /// `:nth-child`/`:nth-last-child` добавляет покомпонентный вес самого
-/// специфичного селектора списка (селекторы-4 §specificity).
+/// специфичного селектора списка (селекторы-4 §specificity). `:has()` -
+/// max по списку аргументов БЕЗ собственного веса псевдокласса.
 fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
+    if let Some(arg) = pseudo.strip_prefix("has(").and_then(|r| r.strip_suffix(')')) {
+        return split_top_level(arg, ',')
+            .into_iter()
+            .filter_map(|one| {
+                let one = one.trim();
+                let rest = one.strip_prefix(['>', '+', '~']).unwrap_or(one);
+                Selector::parse(rest).map(|s| s.specificity())
+            })
+            .max()
+            .unwrap_or_default();
+    }
     let mut s = (0u32, 1u32, 0u32);
     if let Some((name, arg)) = pseudo.split_once('(')
         && matches!(name, "nth-child" | "nth-last-child")

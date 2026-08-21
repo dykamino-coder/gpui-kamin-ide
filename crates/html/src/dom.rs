@@ -186,6 +186,19 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     for css in &sheets {
         frames.extend(parse_keyframes(css));
     }
+    // `:has()`: аргументы собираются со всех селекторов, правила с
+    // вложенным `:has` выкидываются (спека: cannot be nested), отметки
+    // считаются отдельным проходом до обхода.
+    let mut has_args_raw: Vec<String> = vec![];
+    rules.retain(|r| collect_has_args(&r.sel, &mut has_args_raw));
+    let has_args: Vec<HasArg> = has_args_raw
+        .iter()
+        .filter_map(|a| parse_has_arg(a))
+        .collect();
+    HAS_MARKS.with(|m| m.borrow_mut().clear());
+    if !has_args.is_empty() {
+        mark_has(&dom.document, &has_args, &mut vec![]);
+    }
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.
@@ -475,6 +488,32 @@ struct Ancestor {
     href: Option<String>,
     /// Атрибут `dir` самого узла (true = rtl): нужен `:dir()`.
     dir: Option<bool>,
+    /// Отметки `:has()`: хеши аргументов, для которых узел — якорь с
+    /// совпадением. Считаются отдельным проходом до обхода (см. `mark_has`).
+    has_marks: Vec<u64>,
+}
+
+/// Отметки `:has()` текущего документа: адрес узла - хеши аргументов.
+///
+/// Поток разбирает документ целиком, поэтому склад потоко-локальный:
+/// заполняется перед обходом, чистится по его окончании. Протаскивать его
+/// параметром через всю цепочку обхода - шесть сигнатур ради одной ветки.
+thread_local! {
+    static HAS_MARKS: std::cell::RefCell<HashMap<usize, Vec<u64>>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// Хеш одного аргумента `:has(...)` - ключ отметки.
+fn has_id(arg: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    arg.hash(&mut h);
+    h.finish()
+}
+
+fn has_marks_of(handle: &Handle) -> Vec<u64> {
+    let key = std::rc::Rc::as_ptr(handle) as usize;
+    HAS_MARKS.with(|m| m.borrow().get(&key).cloned().unwrap_or_default())
 }
 
 /// Направление письма, заданное АТРИБУТОМ: `<div dir="rtl">`.
@@ -700,24 +739,116 @@ fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
             "ltr" => Some(false),
             _ => None,
         }),
+        has_marks: has_marks_of(child),
     })
 }
 
-/// Обойти детей узла, посчитав каждому его место среди соседей.
-#[allow(clippy::too_many_arguments)]
-fn walk_children(
-    handle: &Handle,
-    rules: &[Rule],
-    vars: &Decls,
-    frames: &HashMap<String, Keyframes>,
-    counter: &mut u64,
-    counters: &mut HashMap<String, i32>,
-    path: &[Ancestor],
-    preserve: bool,
-    out: &mut Vec<Node>,
-) {
-    let children = handle.children.borrow();
-    // Сначала перепись: сколько всего элементов и сколько с каждым тегом.
+/// Разобранный аргумент `:has()`: части списка, каждая с ведущим
+/// комбинатором, уже пришитым якорем-стражем к самому левому компаунду.
+struct HasArg {
+    id: u64,
+    /// (свой ли уровень: `+`/`~` - братья, иначе поддерево; селектор).
+    parts: Vec<(bool, Selector)>,
+}
+
+/// Имя атрибута-стража: NUL из html5ever не приходит, коллизий нет.
+const HAS_SENTINEL: &str = "\u{0}scope";
+
+/// Пришить якорь-стража к самому левому компаунду цепочки.
+fn attach_anchor(sel: &mut Selector, lead: char) {
+    if let Some(p) = sel.prev.as_mut() {
+        return attach_anchor(&mut p.0, lead);
+    }
+    if let Some(a) = sel.ancestor.as_mut() {
+        return attach_anchor(&mut a.0, lead);
+    }
+    let sentinel = Selector {
+        tag: None,
+        id: None,
+        classes: vec![],
+        attrs: vec![crate::css::AttrSel {
+            name: HAS_SENTINEL.to_string(),
+            op: None,
+            ci: false,
+        }],
+        pseudo: None,
+        also: vec![],
+        ancestor: None,
+        prev: None,
+    };
+    match lead {
+        '>' => sel.ancestor = Some(Box::new((sentinel, true))),
+        '+' => sel.prev = Some(Box::new((sentinel, true))),
+        '~' => sel.prev = Some(Box::new((sentinel, false))),
+        _ => sel.ancestor = Some(Box::new((sentinel, false))),
+    }
+}
+
+/// Разобрать аргумент `:has(...)`. Список НЕпрощающий (селекторы-4):
+/// битая часть делает недействительным весь аргумент - `None`.
+fn parse_has_arg(arg: &str) -> Option<HasArg> {
+    let mut parts = vec![];
+    for one in crate::css::split_selector_list(arg) {
+        let one = one.trim();
+        let (lead, rest) = match one.chars().next()? {
+            c @ ('>' | '+' | '~') => (c, &one[1..]),
+            _ => (' ', one),
+        };
+        let mut sel = Selector::parse(rest)?;
+        attach_anchor(&mut sel, lead);
+        parts.push((matches!(lead, '+' | '~'), sel));
+    }
+    (!parts.is_empty()).then(|| HasArg {
+        id: has_id(arg),
+        parts,
+    })
+}
+
+/// Собрать строки-аргументы всех `:has()` селектора, включая вложенные в
+/// `:not()` и `of S`. Возвращает false, если встретился НЕдопустимый -
+/// вложенный `:has` (правило целиком недействительно, спека: cannot be
+/// nested).
+fn collect_has_args(sel: &Selector, out: &mut Vec<String>) -> bool {
+    for p in sel.pseudo.iter().chain(sel.also.iter()) {
+        if let Some(rest) = p.strip_prefix("has(").and_then(|r| r.strip_suffix(')')) {
+            if rest.contains("has(") {
+                return false;
+            }
+            if !out.iter().any(|a| a == rest) {
+                out.push(rest.to_string());
+            }
+        } else if let Some(inner) = p.strip_prefix("not(").and_then(|r| r.strip_suffix(')')) {
+            if let Some(s) = Selector::parse(inner)
+                && !collect_has_args(&s, out)
+            {
+                return false;
+            }
+        } else if let Some((_, arg)) = p.split_once('(')
+            && let Some(arg) = arg.strip_suffix(')')
+            && let Some((_, list)) = crate::css::nth_of_parts(arg)
+        {
+            for s in &list {
+                if !collect_has_args(s, out) {
+                    return false;
+                }
+            }
+        }
+    }
+    if let Some(a) = &sel.ancestor
+        && !collect_has_args(&a.0, out)
+    {
+        return false;
+    }
+    if let Some(pr) = &sel.prev
+        && !collect_has_args(&pr.0, out)
+    {
+        return false;
+    }
+    true
+}
+
+/// Перепись детей уровня: места и паспорта всех элементов.
+fn census_of(children: &[Handle]) -> (Vec<Spot>, Vec<Ancestor>) {
     let tags: Vec<Option<String>> = children
         .iter()
         .map(|c| match &c.data {
@@ -728,9 +859,6 @@ fn walk_children(
     let total = tags.iter().filter(|t| t.is_some()).count();
     let mut seen = 0usize;
     let mut seen_of_type: HashMap<String, usize> = HashMap::new();
-    // Перепись братьев ЦЕЛИКОМ до обхода: `:nth-last-child(… of S)` смотрит
-    // и на последующих, поэтому паспорта всех детей-элементов собираются
-    // заранее, а каждый узел получает свою позицию в общем списке.
     let mut spots: Vec<Spot> = Vec::with_capacity(children.len());
     let mut all: Vec<Ancestor> = Vec::with_capacity(total);
     for (child, tag) in children.iter().zip(&tags) {
@@ -753,6 +881,110 @@ fn walk_children(
             all.push(a);
         }
     }
+    (spots, all)
+}
+
+/// Паспорт якоря с пришитым атрибутом-стражем.
+fn with_sentinel(a: &Ancestor) -> Ancestor {
+    let mut out = a.clone();
+    out.attrs.push((HAS_SENTINEL.to_string(), String::new()));
+    out
+}
+
+/// Есть ли в СТРОГОМ поддереве узла предмет селектора с якорем в `path`.
+fn has_in_subtree(handle: &Handle, sel: &Selector, path: &mut Vec<Ancestor>) -> bool {
+    let children = handle.children.borrow();
+    let (spots, all) = census_of(&children);
+    let mut pos = 0usize;
+    for (child, spot) in children.iter().zip(&spots) {
+        if spot.index == 0 {
+            continue;
+        }
+        let sibs = Sibs {
+            all: &all,
+            pos,
+            is_elem: true,
+        };
+        if matches(sel, &all[pos], path, sibs) {
+            return true;
+        }
+        path.push(all[pos].clone());
+        let hit = has_in_subtree(child, sel, path);
+        path.pop();
+        if hit {
+            return true;
+        }
+        pos += 1;
+    }
+    false
+}
+
+/// Проход-разметчик `:has()`: на каждый элемент и каждый аргумент решает,
+/// найдётся ли предмет - в поддереве либо среди последующих братьев - и
+/// складывает отметку. Вложенный `:has` запрещён, поэтому матчи внутри
+/// аргумента в отметки не заглядывают и циклов нет.
+fn mark_has(handle: &Handle, args: &[HasArg], path: &mut Vec<Ancestor>) {
+    let children = handle.children.borrow();
+    let (spots, all) = census_of(&children);
+    let mut pos = 0usize;
+    for (child, spot) in children.iter().zip(&spots) {
+        if spot.index == 0 {
+            continue;
+        }
+        let mut marks: Vec<u64> = vec![];
+        for arg in args {
+            let hit = arg.parts.iter().any(|(sibling, sel)| {
+                if *sibling {
+                    let mut peers = all.clone();
+                    peers[pos] = with_sentinel(&all[pos]);
+                    (pos + 1..peers.len()).any(|i| {
+                        let sibs = Sibs {
+                            all: &peers,
+                            pos: i,
+                            is_elem: true,
+                        };
+                        matches(sel, &peers[i], path, sibs)
+                    })
+                } else {
+                    path.push(with_sentinel(&all[pos]));
+                    let hit = has_in_subtree(child, sel, path);
+                    path.pop();
+                    hit
+                }
+            });
+            if hit {
+                marks.push(arg.id);
+            }
+        }
+        if !marks.is_empty() {
+            let key = std::rc::Rc::as_ptr(child) as usize;
+            HAS_MARKS.with(|m| m.borrow_mut().insert(key, marks));
+        }
+        path.push(all[pos].clone());
+        mark_has(child, args, path);
+        path.pop();
+        pos += 1;
+    }
+}
+
+/// Обойти детей узла, посчитав каждому его место среди соседей.
+#[allow(clippy::too_many_arguments)]
+fn walk_children(
+    handle: &Handle,
+    rules: &[Rule],
+    vars: &Decls,
+    frames: &HashMap<String, Keyframes>,
+    counter: &mut u64,
+    counters: &mut HashMap<String, i32>,
+    path: &[Ancestor],
+    preserve: bool,
+    out: &mut Vec<Node>,
+) {
+    let children = handle.children.borrow();
+    // Перепись братьев ЦЕЛИКОМ до обхода: `:nth-last-child(… of S)` смотрит
+    // и на последующих, поэтому паспорта всех детей-элементов собираются
+    // заранее, а каждый узел получает свою позицию в общем списке.
+    let (spots, all) = census_of(&children);
     let mut pos = 0usize;
     for (child, spot) in children.iter().zip(&spots) {
         let is_elem = spot.index != 0;
@@ -833,6 +1065,7 @@ fn walk(
                         "ltr" => Some(false),
                         _ => None,
                     }),
+                has_marks: has_marks_of(handle),
             };
 
             let inline_decls: Decls = attrs
@@ -1168,6 +1401,12 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
         }
+        if let Some(arg) = pseudo.strip_prefix("has(").and_then(|r| r.strip_suffix(')')) {
+            if !me.has_marks.contains(&has_id(arg)) {
+                return false;
+            }
+            return matches_ignoring_pseudo(sel, me, path, sibs);
+        }
         if let Some(ok) = nth_of_holds(pseudo, me, path, sibs) {
             if !ok {
                 return false;
@@ -1272,6 +1511,9 @@ fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> b
     }
     if let Some(want) = pseudo.strip_prefix("lang(").and_then(|r| r.strip_suffix(')')) {
         return lang_matches(want, me, path);
+    }
+    if let Some(arg) = pseudo.strip_prefix("has(").and_then(|r| r.strip_suffix(')')) {
+        return me.has_marks.contains(&has_id(arg));
     }
     if let Some(ok) = nth_of_holds(pseudo, me, path, sibs) {
         return ok;
@@ -1445,6 +1687,15 @@ fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
     {
         return false;
     }
+    // `:has()` НЕ-предметного компаунда (`div:has(.x) p`): отметка лежит
+    // на самом узле - раньше псевдокласс здесь пропускался, и правило
+    // красило все `div p` подряд.
+    if let Some(p) = &sel.pseudo
+        && let Some(arg) = p.strip_prefix("has(").and_then(|r| r.strip_suffix(')'))
+        && !node.has_marks.contains(&has_id(arg))
+    {
+        return false;
+    }
     // Структурный псевдокласс НЕ-предметного компаунда
     // (`td:nth-child(2) div`): место предка среди братьев известно из
     // `spot` — без проверки любой `td` подходил под любой номер, и
@@ -1503,6 +1754,31 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    #[test]
+    fn has_relational_pseudo() {
+        let red = crate::value::Color::parse("red");
+        let green = crate::value::Color::parse("green");
+        // Предметная позиция: якорь с потомком-предметом.
+        let colors = child_colors(
+            "<style>div { color: red } div:has(span) { color: green }</style>             <div id=\"box\"><div><span></span></div><div><b></b></div></div>",
+        );
+        assert_eq!(colors, vec![green, red]);
+        // Ведущий `>`: только прямой ребёнок; `+`: следующий брат.
+        let colors = child_colors(
+            "<style>p { color: red } p:has(> em) { color: green }             p:has(+ p) { background: yellow }</style>             <div id=\"box\"><p><i><em>x</em></i></p><p><em>y</em></p></div>",
+        );
+        assert_eq!(colors, vec![red, green]);
+        // Непредметная позиция: `div:has(.x) b` красит b только в div с .x.
+        let colors = child_colors(
+            "<style>b { color: red } div:has(.x) b { color: green }</style>             <div><div id=\"box\"><i class=\"x\"></i><b></b></div></div>",
+        );
+        assert_eq!(colors, vec![None, green]);
+        let colors = child_colors(
+            "<style>b { color: red } div:has(.x) b { color: green }</style>             <div><div id=\"box\"><i></i><b></b></div></div>",
+        );
+        assert_eq!(colors, vec![None, red]);
     }
 
     #[test]
