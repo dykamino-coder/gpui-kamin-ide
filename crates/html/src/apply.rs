@@ -1103,7 +1103,12 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
         && c.overflow_x
             .is_some_and(|o| o != crate::computed::Overflow::Visible)
     {
-        d = d.text_ellipsis();
+        // Строковый маркер `text-overflow: "…текст…"` рисуется вместо
+        // многоточия (css-overflow-4): gpui умеет любой текст усечения.
+        d = match &c.overflow_marker {
+            Some(m) => d.text_overflow(gpui::TextOverflow::Truncate(m.clone().into())),
+            None => d.text_ellipsis(),
+        };
     }
     d
 }
