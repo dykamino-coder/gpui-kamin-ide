@@ -2531,7 +2531,17 @@ fn first_in_flow<'a>(
             Node::Text(t) if blank_text(t) => continue,
             Node::Text(_) => return None,
             Node::Element(ch) if ch.inline => {
-                if ch.children.is_empty() {
+                // Замещаемый атом (img и родня) — строчная КОРОБКА, а не
+                // пустой спан: он рождает line box и рвёт примыкание.
+                // Пропуск ронял отступ параграфа перед голым <img> в
+                // эталонах (130 пар «эталон рисует img»).
+                if ch.children.is_empty()
+                    && !matches!(
+                        ch.tag.as_str(),
+                        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
+                            | "input" | "br"
+                    )
+                {
                     continue;
                 }
                 return None;
