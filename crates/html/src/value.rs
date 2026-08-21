@@ -125,7 +125,18 @@ impl Len {
         if let Some(num) = s.strip_suffix("lh") {
             return num.trim().parse::<f32>().ok().map(Len::Lh);
         }
-        for (suffix, factor) in [("px", 1.0), ("pt", 96.0 / 72.0)] {
+        // Абсолютные единицы (css-values-4 §6.2): 1in = 96px = 2.54cm =
+        // 25.4mm = 101.6q = 6pc. Порядок важен: «pc» раньше «c»-хвостов нет,
+        // но «in»/«cm»/«mm» не пересекаются с уже разобранными.
+        for (suffix, factor) in [
+            ("px", 1.0),
+            ("pt", 96.0 / 72.0),
+            ("in", 96.0),
+            ("cm", 96.0 / 2.54),
+            ("mm", 96.0 / 25.4),
+            ("pc", 16.0),
+            ("q", 96.0 / 101.6),
+        ] {
             if let Some(num) = s.strip_suffix(suffix) {
                 return num.trim().parse::<f32>().ok().map(|v| Len::Px(v * factor));
             }

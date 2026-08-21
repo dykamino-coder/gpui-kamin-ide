@@ -129,6 +129,9 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
 
 /// То же, но с известными условиями окружения для `@media`.
 pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
+    // Правила `@page` — от последнего РАЗОБРАННОГО документа: почистить,
+    // чтобы прошлый лист не красил страницу нового.
+    let _ = crate::css::take_page_decls();
     let dom = html5ever::parse_document(RcDom::default(), Default::default())
         .from_utf8()
         .read_from(&mut html.as_bytes())

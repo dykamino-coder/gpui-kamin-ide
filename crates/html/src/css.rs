@@ -341,6 +341,50 @@ pub struct Media {
     pub width: f32,
     pub height: f32,
     pub dark: bool,
+    /// Печатный носитель: `@media print` истинен, `screen` — ложен.
+    pub print: bool,
+}
+
+/// Носитель по умолчанию — печать? Ставит стенд для `*-print`-тестов;
+/// приложение всегда экран.
+pub static PRINT_MEDIA: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Объявления `@page` документа в порядке появления (css-page-3). Вложенные
+/// марджин-боксы (`@top-left` и родня) пока отрезаются. Копится при разборе
+/// листов, забирается сборщиком документа (`take_page_decls`).
+pub static PAGE_DECLS: std::sync::Mutex<Vec<(String, String)>> =
+    std::sync::Mutex::new(Vec::new());
+
+pub fn take_page_decls() -> Vec<(String, String)> {
+    std::mem::take(&mut PAGE_DECLS.lock().unwrap())
+}
+
+/// Снимок без очистки: рендер зовётся на каждом кадре, а правила должны
+/// пережить все кадры документа (очистка — на разборе следующего).
+pub fn page_decls_snapshot() -> Vec<(String, String)> {
+    PAGE_DECLS.lock().unwrap().clone()
+}
+
+/// Срезать вложенные at-блоки из тела `@page`: остаются только объявления.
+fn strip_nested_blocks(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut depth = 0usize;
+    for ch in body.chars() {
+        match ch {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => out.push(ch),
+            _ => {}
+        }
+        if depth == 1 && ch == '{' {
+            // начало вложенного блока: выкинуть его @-голову из хвоста out
+            if let Some(at) = out.rfind('@') {
+                out.truncate(at);
+            }
+        }
+    }
+    out
 }
 
 impl Default for Media {
@@ -349,6 +393,7 @@ impl Default for Media {
             width: 1280.0,
             height: 800.0,
             dark: true,
+                    print: PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed),
         }
     }
 }
@@ -374,8 +419,12 @@ impl Media {
             alt.split(" and ").all(|part| {
                 let part = part.trim().trim_start_matches('(').trim_end_matches(')');
                 let Some((name, value)) = part.split_once(':') else {
-                    // `screen`, `all` — верны; `print` — нет.
-                    return matches!(part.trim(), "screen" | "all" | "");
+                    return match part.trim() {
+                        "screen" => !self.print,
+                        "print" => self.print,
+                        "all" | "" => true,
+                        _ => false,
+                    };
                 };
                 let value = value.trim();
                 let number = value
@@ -431,6 +480,22 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
             let name = head.to_ascii_lowercase();
             let inner = if name.starts_with("@media") {
                 media.matches(&name)
+            } else if name.starts_with("@page") {
+                // Пока применяется только БЕЗЫМЯННОЕ универсальное правило:
+                // именные и :first/:left ушли бы в общий пул и красили
+                // страницы, к которым не относятся (page-name-*).
+                if !name[5..].trim().is_empty() {
+                    continue;
+                }
+                let flat = strip_nested_blocks(body);
+                let decls = parse_decls(&flat);
+                if !decls.is_empty() {
+                    let mut pool = PAGE_DECLS.lock().unwrap();
+                    for (k, v) in decls {
+                        pool.push((k, v));
+                    }
+                }
+                false
             } else if name.starts_with("@supports") {
                 // Условию нужен ОРИГИНАЛ: лоуеркейс головы ломал значения
                 // (`(font-family: "Foo")`); имя правила — ASCII, срез безопасен.

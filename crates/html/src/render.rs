@@ -3860,6 +3860,10 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     // предыдущие (CSS 2.1 §9.5.1 правило 3; shape-outside-border-box-001:
     // два флоата по 175px в контейнере 200px обязаны встать столбиком).
     let (mut row_top, mut row_h) = (0.0f32, 0.0f32);
+    // Нижний край всех флоатов: хост-BFC обязан их охватить высотой
+    // (CSS2 §10.6.7; в shape_flow флоаты абсолютные и высоту хоста сами
+    // не растят — единственный путь без охвата, scout-flowroot).
+    let mut floats_bottom = 0.0f32;
     let mut floats: Vec<AnyElement> = Vec::new();
     let mut rest: Vec<Node> = Vec::new();
     let host_side: i32 = if e.attr("side") == Some("right") { 1 } else { -1 };
@@ -4190,6 +4194,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         if row_top > 0.0 {
             shape.shift_top(row_top);
         }
+        floats_bottom = floats_bottom.max(row_top + mh);
         if side < 0 {
             left.push(shape);
         } else {
@@ -4240,6 +4245,8 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     // (число колонок): полная ширина растягивала бы его на страницу.
     let mut host = if inherited.vertical_rl == Some(true) {
         div().relative()
+    } else if floats_bottom > 0.0 {
+        div().relative().w_full().min_h(px(floats_bottom))
     } else {
         div().relative().w_full()
     };
@@ -5398,7 +5405,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             ) || matches!(
                 merged.overflow_y,
                 Some(crate::computed::Overflow::Hidden) | Some(crate::computed::Overflow::Scroll)
-            ) || merged.float.is_some();
+            ) || merged.float.is_some()
+                || merged.flow_root == Some(true);
             let _bfc_guard = (!is_clamp
                 && makes_bfc
                 && crate::interact::clamp_context().is_some())

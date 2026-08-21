@@ -1081,6 +1081,8 @@ pub struct Computed {
     pub contain_size: Option<bool>,
     /// `contain: layout|content` — независимый контекст форматирования.
     pub contain_layout: Option<bool>,
+    /// `display: flow-root` — свой контекст форматирования (коробка Block).
+    pub flow_root: Option<bool>,
     /// `contain: style` — счётчики и кавычки не выходят из поддерева.
     pub contain_style: Option<bool>,
     /// `contain-intrinsic-size`: подменная своя величина (css-sizing-5 §5).
@@ -1738,7 +1740,12 @@ impl Computed {
                     "table-row-group" | "table-header-group" | "table-footer-group" => {
                         Some(Display::TableRowGroup)
                     }
-                    "flow-root" => Some(Display::Block),
+                    "flow-root" => {
+                        // Коробка блочная, но признак не теряется: это
+                        // свой контекст форматирования (css-display-3).
+                        self.flow_root = Some(true);
+                        Some(Display::Block)
+                    }
                     "table-row" => Some(Display::TableRow),
                     "table-cell" => Some(Display::TableCell),
                     // Заголовок таблицы — обычный блок. Колонки коробок не

@@ -37,11 +37,22 @@ impl Render for Page {
         // показал 1041 → 1006 по css-text. Метрики системной подстановки
         // (кана в 0.82 кегля) совпадают с эталонами чаще, чем `MS Gothic`.
         text.font_size = px(16.).into();
+        // Печатная пара: страница WPT по умолчанию 5in x 3in = 480x288
+        // точек; `@page` может задать size/margin/фон/рамку. Область
+        // просмотра документа = page area (css-page-3 §page-model).
+        // Коробка страницы — ЗА ФЛАГОМ: первый заход уронил прогон
+        // (кроп по листу давал 197 HUNG) — доводится отдельно.
+        let page = (kamin_html::css::PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed)
+            && std::env::var("WPT_PAGE").is_ok())
+        .then(|| page_box(kamin_html::css::page_decls_snapshot()));
         let opts = RenderOpts {
-            viewport: (
-                f32::from(window.viewport_size().width),
-                f32::from(window.viewport_size().height),
-            ),
+            viewport: page
+                .as_ref()
+                .map(|p| (p.area.0, p.area.1))
+                .unwrap_or((
+                    f32::from(window.viewport_size().width),
+                    f32::from(window.viewport_size().height),
+                )),
             text,
             normal_line_height: 1.31,
             doc_salt: self.doc.salt(),
@@ -58,12 +69,195 @@ impl Render for Page {
         if std::env::var("HTML_VIEWPORT").is_ok() {
             eprintln!("BUILT {} детей", children.len());
         }
+        *PAGE_CROP.lock().unwrap() = page.as_ref().map(|p| p.size);
+        if let Some(p) = page {
+            // Лист страницы в левом-верхнем углу канваса: фон и рамка
+            // страницы, содержимое — со сдвигом на поля.
+            let mut sheet = div()
+                .absolute()
+                .left(px(0.))
+                .top(px(0.))
+                .w(px(p.size.0))
+                .h(px(p.size.1))
+                .bg(p.bg.map(|c| c.to_hsla()).unwrap_or(gpui::white()));
+            if p.border.0 > 0.0 {
+                sheet = sheet
+                    .border(px(p.border.0))
+                    .border_color(p.border.1.to_hsla());
+            }
+            let content = div()
+                .absolute()
+                .left(px(p.margin[3] + p.border.0))
+                .top(px(p.margin[0] + p.border.0))
+                .w(px(p.area.0))
+                .h(px(p.area.1))
+                .children(children);
+            return div()
+                .w(px(f32::from(window.viewport_size().width)))
+                .h(px(f32::from(window.viewport_size().height)))
+                .bg(rgb(0xffffff))
+                .text_size(px(16.))
+                .child(sheet)
+                .child(content)
+                .into_any_element();
+        }
         div()
             .w(px(opts.viewport.0))
             .h(px(opts.viewport.1))
             .bg(rgb(0xffffff))
             .text_size(px(16.))
             .children(children)
+            .into_any_element()
+    }
+}
+
+/// Размер листа ТЕКУЩЕГО отрисованного документа: печатная пара
+/// сравнивается по области листа, а не по всему окну (фон эталона
+/// распространён на канвас, тест ограничен листом — page-box-001).
+static PAGE_CROP: std::sync::Mutex<Option<(f32, f32)>> = std::sync::Mutex::new(None);
+
+/// Обрезать снимок окна до логического прямоугольника (учёт плотности).
+fn crop_shot(shot: (u32, u32, Vec<u8>), win: (f32, f32), area: (f32, f32)) -> (u32, u32, Vec<u8>) {
+    let (w, h, bytes) = shot;
+    let sx = w as f32 / win.0.max(1.0);
+    let sy = h as f32 / win.1.max(1.0);
+    let cw = ((area.0 * sx).round() as u32).clamp(1, w);
+    let ch = ((area.1 * sy).round() as u32).clamp(1, h);
+    let mut out = Vec::with_capacity((cw * ch * 4) as usize);
+    for y in 0..ch {
+        let start = ((y * w) * 4) as usize;
+        out.extend_from_slice(&bytes[start..start + (cw * 4) as usize]);
+    }
+    (cw, ch, out)
+}
+
+/// Вычисленная коробка страницы печатной пары.
+struct PageBox {
+    /// Полный размер листа.
+    size: (f32, f32),
+    /// Поля: верх/право/низ/лево.
+    margin: [f32; 4],
+    /// Область содержимого (page area).
+    area: (f32, f32),
+    bg: Option<kamin_html::value::Color>,
+    border: (f32, kamin_html::value::Color),
+}
+
+fn page_box(decls: Vec<(String, String)>) -> PageBox {
+    use kamin_html::value::{Color, Len};
+    let (mut w, mut h) = (480.0f32, 288.0f32);
+    let mut margin = [0.0f32; 4];
+    let mut bg: Option<Color> = None;
+    let mut border = (
+        0.0f32,
+        Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+    );
+    // Длина: точки как есть; vw/vh — от ДЕФОЛТНОЙ страницы (по тестам
+    // page-size-016/017); проценты полей — от ОБЪЯВЛЕННОГО размера
+    // страницы по своей оси (page-margin-005: 10% от 300px = 30px),
+    // поэтому размер считается первым проходом.
+    let px_abs = |t: &str| -> Option<f32> {
+        match Len::parse(t)? {
+            Len::Px(v) => Some(v),
+            Len::Vw(k) => Some(k * 480.0),
+            Len::Vh(k) => Some(k * 288.0),
+            _ => None,
+        }
+    };
+    for (k, v) in &decls {
+        match k.as_str() {
+            "size" => {
+                let toks: Vec<&str> = v.split_whitespace().collect();
+                let nums: Vec<f32> = toks.iter().filter_map(|t| px_abs(t)).collect();
+                match nums.len() {
+                    2 => {
+                        w = nums[0];
+                        h = nums[1];
+                    }
+                    1 => {
+                        w = nums[0];
+                        h = nums[0];
+                    }
+                    _ => {}
+                }
+            }
+            "width" => {
+                if let Some(v) = px_abs(v) {
+                    w = v;
+                }
+            }
+            "height" => {
+                if let Some(v) = px_abs(v) {
+                    h = v;
+                }
+            }
+            _ => {}
+        }
+    }
+    let (pw, ph) = (w, h);
+    let px_of = move |t: &str, axis_h: bool| -> Option<f32> {
+        match Len::parse(t)? {
+            Len::Px(v) => Some(v),
+            Len::Vw(k) => Some(k * 480.0),
+            Len::Vh(k) => Some(k * 288.0),
+            Len::Pct(k) => Some(k * if axis_h { ph } else { pw }),
+            _ => None,
+        }
+    };
+    for (k, v) in &decls {
+        match k.as_str() {
+            "margin" => {
+                let vals: Vec<&str> = v.split_whitespace().collect();
+                let side = |i: usize| vals.get(i).copied().unwrap_or("0");
+                let (a, b, c, d) = match vals.len() {
+                    1 => (side(0), side(0), side(0), side(0)),
+                    2 => (side(0), side(1), side(0), side(1)),
+                    3 => (side(0), side(1), side(2), side(1)),
+                    _ => (side(0), side(1), side(2), side(3)),
+                };
+                for (slot, (t, vert)) in margin.iter_mut().zip([
+                    (a, true),
+                    (b, false),
+                    (c, true),
+                    (d, false),
+                ]) {
+                    if let Some(px) = px_of(t, vert) {
+                        *slot = px;
+                    }
+                }
+            }
+            "margin-top" => margin[0] = px_of(v, true).unwrap_or(margin[0]),
+            "margin-right" => margin[1] = px_of(v, false).unwrap_or(margin[1]),
+            "margin-bottom" => margin[2] = px_of(v, true).unwrap_or(margin[2]),
+            "margin-left" => margin[3] = px_of(v, false).unwrap_or(margin[3]),
+            "background" | "background-color" => {
+                let first = v.split_whitespace().next().unwrap_or("");
+                if let Some(c) = Color::parse(first) {
+                    bg = Some(c);
+                }
+            }
+            "border" => {
+                for t in v.split_whitespace() {
+                    if let Some(px) = px_of(t, false) {
+                        border.0 = px;
+                    } else if let Some(c) = Color::parse(t) {
+                        border.1 = c;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let area = (
+        (w - margin[1] - margin[3] - border.0 * 2.0).max(0.0),
+        (h - margin[0] - margin[2] - border.0 * 2.0).max(0.0),
+    );
+    PageBox {
+        size: (w, h),
+        margin,
+        area,
+        bg,
+        border,
     }
 }
 
@@ -803,6 +997,7 @@ fn main() {
                 // принимается по устаревшему снимку. В числах это скачок вида
                 // 17.45 % → 0.00 % между двумя одинаковыми прогонами.
                 let mut blank = None;
+                let mut page_sizes: Vec<Option<(f32, f32)>> = Vec::new();
                 for path in [test, reference] {
                     // Разделитель показывается перед КАЖДОЙ стороной, а не один
                     // раз на пару. Иначе эталон снимается, пока на экране ещё
@@ -810,6 +1005,12 @@ fn main() {
                     // значит принимается за кадр эталона — и пара получает
                     // ложный ноль расхождения.
                     blank = show(SEPARATOR.into(), None, true).await.map(|s| s.2);
+                    // Печатные пары смотрят печатным носителем: `@media print`
+                    // истинен, `screen` — ложен (background-image-only-for-print).
+                    kamin_html::css::PRINT_MEDIA.store(
+                        path.contains("-print.") || path.contains("-print-ref"),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                     let html =
                         resolve_links(&std::fs::read_to_string(path).unwrap_or_default(), path);
                     let mut shot = show(html.clone(), blank.clone(), false).await;
@@ -836,6 +1037,22 @@ fn main() {
                         shot = show(html.clone(), blank.clone(), false).await;
                     }
                     shots.push(shot);
+                    page_sizes.push(PAGE_CROP.lock().unwrap().take());
+                }
+                // Печатная пара: сравнение по области листа (максимум двух
+                // сторон), остальное окно — не страница.
+                if std::env::var("CROP_DBG").is_ok() {
+                    eprintln!("CROP sizes={page_sizes:?}");
+                }
+                if let (Some(Some(a)), Some(Some(b))) =
+                    (page_sizes.first(), page_sizes.get(1))
+                {
+                    let area = (a.0.max(b.0), a.1.max(b.1));
+                    for shot in shots.iter_mut() {
+                        if let Some(s) = shot.take() {
+                            *shot = Some(crop_shot(s, (w, h), area));
+                        }
+                    }
                 }
                 // Тест сам сказал, чего быть не должно: «no red». Проверяем
                 // это ДО сравнения с эталоном — оно слепо к случаю, когда обе
