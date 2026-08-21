@@ -174,6 +174,30 @@ impl Counters {
         }
     }
 
+    /// Переживёт ли будущая запись выход из своего создателя.
+    ///
+    /// Зеркало `leave_scope`: если под ней окажется запись предка или
+    /// «дяди», её снимут на выходе — значит последующие братья её не
+    /// увидят, и область обратного счёта обрывается поддеревом создателя.
+    /// ВАЖНО: правило обязано меняться вместе с `leave_scope`.
+    pub fn escapes_creator(&mut self, name: &str) -> bool {
+        let cur = self.path.clone();
+        let Some(st) = self.stack.get_mut(name) else {
+            return true;
+        };
+        remove_stale(st, &cur);
+        // Запись своего уровня будет вытеснена новой — смотреть надо под неё.
+        let mut i = st.len();
+        if i > 0 && parent(&st[i - 1].owner) == parent(&cur) {
+            i -= 1;
+        }
+        let Some(prev) = i.checked_sub(1).map(|k| &st[k]) else {
+            return true;
+        };
+        let pp = parent(&prev.owner);
+        !(covers(&prev.owner, &cur) || (covers(pp, &cur) && pp != parent(&cur)))
+    }
+
     /// `counter(имя)`: значение ВНУТРЕННЕГО счётчика; чтение счётчик не
     /// создаёт — пустой стек читается нулём.
     pub fn value_of(&mut self, name: &str) -> i32 {

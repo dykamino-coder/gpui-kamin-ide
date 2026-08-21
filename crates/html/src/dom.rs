@@ -78,7 +78,7 @@ const INLINE_TAGS: &[&str] = &[
 /// `head`/`title`/`meta`/`link` сюда не входят: их прячет таблица агента
 /// `display: none`, и авторское `head { display: block }` её перебивает
 /// (CSS2/generated-content content-067 и родня).
-const DROP_TAGS: &[&str] = &["script", "style", "noscript"];
+pub(crate) const DROP_TAGS: &[&str] = &["script", "style", "noscript"];
 
 /// Стиль по умолчанию для тега — то, что браузер берёт из своей таблицы.
 /// Без него `<b>` не жирный, а `<h1>` неотличим от абзаца.
@@ -478,7 +478,7 @@ fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
 
 /// Цепочка предков для сопоставления `.card .title`: тег + классы + id.
 #[derive(Clone)]
-struct Ancestor {
+pub(crate) struct Ancestor {
     tag: String,
     id: Option<String>,
     classes: Vec<String>,
@@ -661,9 +661,9 @@ fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, 
 
 /// Место элемента среди соседей — по нему считаются структурные псевдоклассы.
 #[derive(Clone, Copy, Default)]
-struct Spot {
+pub(crate) struct Spot {
     /// Номер среди соседей-элементов, с единицы.
-    index: usize,
+    pub(crate) index: usize,
     /// Сколько всего соседей-элементов.
     total: usize,
     /// То же, но среди соседей с ТЕМ ЖЕ тегом (`:nth-of-type`).
@@ -677,16 +677,16 @@ struct Spot {
 /// `:nth-last-child(… of S)` считает совпавших среди ПОСЛЕДУЮЩИХ
 /// (селекторы-4 §child-index) — поэтому список полный.
 #[derive(Clone, Copy)]
-struct Sibs<'a> {
-    all: &'a [Ancestor],
+pub(crate) struct Sibs<'a> {
+    pub(crate) all: &'a [Ancestor],
     /// Сколько элементов стоит ДО узла; сам узел-элемент = `all[pos]`.
-    pos: usize,
+    pub(crate) pos: usize,
     /// Узел — элемент и присутствует в `all[pos]`.
-    is_elem: bool,
+    pub(crate) is_elem: bool,
 }
 
 impl<'a> Sibs<'a> {
-    const EMPTY: Sibs<'static> = Sibs {
+    pub(crate) const EMPTY: Sibs<'static> = Sibs {
         all: &[],
         pos: 0,
         is_elem: false,
@@ -703,7 +703,7 @@ impl<'a> Sibs<'a> {
     }
 
     /// Те же братья глазами элемента с номером `i` в общем списке.
-    fn at(&self, i: usize) -> Sibs<'a> {
+    pub(crate) fn at(&self, i: usize) -> Sibs<'a> {
         Sibs {
             all: self.all,
             pos: i,
@@ -713,7 +713,7 @@ impl<'a> Sibs<'a> {
 }
 
 /// Паспорт элемента для сопоставления селекторов.
-fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
+pub(crate) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
     let NodeData::Element { name, attrs, .. } = &child.data else {
         return None;
     };
@@ -850,7 +850,7 @@ fn collect_has_args(sel: &Selector, out: &mut Vec<String>) -> bool {
 }
 
 /// Перепись детей уровня: места и паспорта всех элементов.
-fn census_of(children: &[Handle]) -> (Vec<Spot>, Vec<Ancestor>) {
+pub(crate) fn census_of(children: &[Handle]) -> (Vec<Spot>, Vec<Ancestor>) {
     let tags: Vec<Option<String>> = children
         .iter()
         .map(|c| match &c.data {
@@ -988,7 +988,7 @@ fn walk_children(
     // заранее, а каждый узел получает свою позицию в общем списке.
     let (spots, all) = census_of(&children);
     let mut pos = 0usize;
-    for (child, spot) in children.iter().zip(&spots) {
+    for (idx, (child, spot)) in children.iter().zip(&spots).enumerate() {
         let is_elem = spot.index != 0;
         let sibs = Sibs {
             all: &all,
@@ -996,7 +996,8 @@ fn walk_children(
             is_elem,
         };
         walk(
-            child, rules, vars, frames, counter, counters, path, *spot, preserve, sibs, out,
+            child, rules, vars, frames, counter, counters, path, *spot, preserve, sibs, &children,
+            &spots, idx, out,
         );
         pos += usize::from(is_elem);
     }
@@ -1014,6 +1015,9 @@ fn walk(
     spot: Spot,
     preserve: bool,
     sibs: Sibs,
+    level: &[Handle],
+    spots: &[Spot],
+    level_pos: usize,
     out: &mut Vec<Node>,
 ) {
     match &handle.data {
@@ -1165,6 +1169,16 @@ fn walk(
             if box_level {
                 counters.enter();
             }
+            // Обратный счётчик без числа: начальное значение — итог
+            // предварительного обхода области (css-lists-3
+            // §instantiating-counters). Считается ЗДЕСЬ, до применения
+            // директив: запись создаётся уже готовым числом.
+            let reversed_start = |nm: &str, counters: &mut crate::counters::Counters| {
+                let escapes = counters.escapes_creator(nm);
+                crate::counters_scan::reversed_initial(
+                    rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos, escapes,
+                )
+            };
             let mut own_resets: Vec<String> = vec![];
             let mut is_list_item = false;
             apply_counter_decls(
@@ -1174,6 +1188,7 @@ fn walk(
                 &tag,
                 &attrs,
                 &mut is_list_item,
+                &reversed_start,
             );
             // Номер пункта снимается СРАЗУ после своих директив — до
             // псевдоэлементов и детей, которые счётчик двигают дальше.
@@ -1279,6 +1294,7 @@ fn apply_counter_decls(
     tag: &str,
     attrs: &[(String, String)],
     item_flag: &mut bool,
+    reversed_start: &dyn Fn(&str, &mut crate::counters::Counters) -> i32,
 ) {
     let num_attr = |key: &str| -> Option<i32> {
         attrs
@@ -1299,9 +1315,12 @@ fn apply_counter_decls(
         let start = match (tag, num_attr("start")) {
             ("ol", Some(v)) if reversed_list => v + 1,
             ("ol", Some(v)) => v - 1,
+            // У обратного списка без `start` отсчёт начинается с числа его
+            // пунктов.
+            ("ol", None) if reversed_list => reversed_start("list-item", counters),
             _ => 0,
         };
-        counters.reset_flagged("list-item", start, reversed_list && num_attr("start").is_some());
+        counters.reset_flagged("list-item", start, reversed_list);
         if !resets.iter().any(|r| r == "list-item") {
             resets.push("list-item".to_string());
         }
@@ -1351,6 +1370,7 @@ fn apply_counter_decls(
                     it.next();
                     v
                 }
+                None if reversed => reversed_start(name, counters),
                 None => match kind {
                     0 | 2 => 0,
                     _ => 1,
@@ -1409,7 +1429,9 @@ fn pseudo_box(
     // уровень пути, свои директивы и своя область видимости.
     counters.enter_pseudo(which == "before");
     let mut own_resets: Vec<String> = vec![];
-    apply_counter_decls(&style, counters, &mut own_resets, "", &[], &mut false);
+    // У псевдоэлемента-создателя предварительного обхода нет: своей области
+    // в дереве коробок он не открывает, и таких пар в наборе не встречается.
+    apply_counter_decls(&style, counters, &mut own_resets, "", &[], &mut false, &|_, _| 0);
     // Составляющие склеиваются по порядку (css-content-3 §2): строки как
     // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
     let mut text = String::new();
@@ -1465,7 +1487,7 @@ fn pseudo_box(
 ///
 /// `sibs` — предыдущие соседи-элементы узла в порядке разметки: по ним
 /// решаются соседние комбинаторы `+` и `~`.
-fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
+pub(crate) fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
     if let Some(pseudo) = &sel.pseudo {
         // `:not(...)` — отрицание вложенного селектора. Разбирается здесь, а
         // не среди структурных: внутри скобок может стоять тег или класс, а им
@@ -1737,7 +1759,7 @@ fn nth_matches(arg: &str, index: usize) -> bool {
 }
 
 /// То же сопоставление, но без отсева по псевдоклассу — для слоя наведения.
-fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
+pub(crate) fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
     if !matches_compound(sel, me) {
         return false;
     }
