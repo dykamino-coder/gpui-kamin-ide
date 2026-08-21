@@ -1099,6 +1099,8 @@ pub struct Computed {
     pub inline_display: Option<bool>,
     /// `display: run-in` — вбегание решает `dom::fold_run_ins`.
     pub run_in: Option<bool>,
+    /// `display: table-caption` — метка для таблицы.
+    pub is_caption: Option<bool>,
     /// `contain: style` — счётчики и кавычки не выходят из поддерева.
     pub contain_style: Option<bool>,
     /// `contain-intrinsic-size`: подменная своя величина (css-sizing-5 §5).
@@ -1769,7 +1771,12 @@ impl Computed {
                     "table-cell" => Some(Display::TableCell),
                     // Заголовок таблицы — обычный блок. Колонки коробок не
                     // порождают вовсе: они только задают ширину столбцам.
-                    "table-caption" => Some(Display::Block),
+                    "table-caption" => {
+                        // Заголовок — блочная коробка с МЕТКОЙ: таблица ищет
+                        // его по ней, а не только по тегу caption.
+                        self.is_caption = Some(true);
+                        Some(Display::Block)
+                    }
                     "table-column" | "table-column-group" => Some(Display::None),
                     // Запись из ДВУХ слов: из неё берётся только внутренний
                     // вид «лунки» — его иначе не выразить вовсе. Полный разбор

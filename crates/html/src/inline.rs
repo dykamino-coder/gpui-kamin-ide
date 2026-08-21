@@ -517,6 +517,10 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // а в разметке его ставят именно на контейнер.
     c.letter_spacing = own.letter_spacing.or(parent.letter_spacing);
     c.word_spacing = own.word_spacing.or(parent.word_spacing);
+    // Сторона подписи таблицы наследуется (CSS 2.1: caption-side inherited) —
+    // читается потом С САМОГО заголовка (caption-side-applies-to-012..015:
+    // значение на ряде до заголовка не доходит).
+    c.caption_bottom = own.caption_bottom.or(parent.caption_bottom);
     c.text_transform = own.text_transform.or(parent.text_transform);
     c.text_indent = own.text_indent.or(parent.text_indent);
     c.text_indent_each_line = own.text_indent_each_line.or(parent.text_indent_each_line);

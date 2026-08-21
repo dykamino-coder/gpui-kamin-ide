@@ -6801,10 +6801,16 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let mut caption_bottom = false;
     for c in &e.children {
         if let Node::Element(cap) = c
-            && cap.tag == "caption"
+            && (cap.tag == "caption" || cap.style.is_caption == Some(true))
         {
             let cm = inline::inherit(inherited, &cap.style);
-            caption_bottom = cap.style.caption_bottom == Some(true);
+            // Сторона — с самого заголовка, при пустоте — от таблицы
+            // (наследование caption-side).
+            caption_bottom = cap
+                .style
+                .caption_bottom
+                .or(e.style.caption_bottom)
+                == Some(true);
             caption = Some(
                 styled_div(cap)
                     .flex()
@@ -7378,6 +7384,7 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                 let row = el.tag == "tr"
                     || el.style.display == Some(Display::TableRow)
                     || el.tag == "caption";
+                let is_cap = el.tag == "caption" || el.style.is_caption == Some(true);
                 if group {
                     // Группа рядов чинится ИЗНУТРИ тоже: contents и бесхозное
                     // содержимое встречаются и там.
@@ -7385,7 +7392,7 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                     let mut copy = el.clone();
                     copy.children = fixup_table_children(&el.children);
                     out.push(Node::Element(copy));
-                } else if el.tag == "caption" {
+                } else if is_cap {
                     flush(&mut stray, &mut out);
                     out.push(child.clone());
                 } else if row {
