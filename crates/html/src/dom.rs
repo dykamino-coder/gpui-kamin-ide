@@ -540,16 +540,28 @@ fn apply_presentational_colors(style: &mut Computed, tag: &str, attrs: &[(String
 }
 
 fn finish_inline_display(style: &mut Computed, tag: &str) {
-    if style.inline_display != Some(true) {
-        return;
-    }
+    use crate::computed::Display;
     let out_of_flow = style.float.is_some()
         || matches!(
             style.position,
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
         );
+    // Блокификация СТРОЧНЫХ вариантов под float/abspos (§9.7): каждый
+    // получает свой блочный аналог, а не только `inline`.
     if out_of_flow {
-        style.display = Some(crate::computed::Display::Block);
+        match style.display {
+            Some(Display::InlineFlex) => style.display = Some(Display::Flex),
+            Some(Display::InlineGrid) => style.display = Some(Display::Grid),
+            Some(Display::InlineTable) => style.display = Some(Display::Table),
+            Some(Display::InlineBlock) => style.display = Some(Display::Block),
+            _ => {}
+        }
+    }
+    if style.inline_display != Some(true) {
+        return;
+    }
+    if out_of_flow {
+        style.display = Some(Display::Block);
         return;
     }
     let replaced = matches!(
