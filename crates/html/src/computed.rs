@@ -169,6 +169,11 @@ pub enum TextTransform {
 pub struct Logical {
     pub inline_size: Option<Len>,
     pub block_size: Option<Len>,
+    /// `contain-intrinsic-inline-size` / `-block-size`: подменная величина
+    /// по логическим осям — раскладывается по физическим после наследования
+    /// письма, как и остальные логические свойства.
+    pub ci_inline: Option<f32>,
+    pub ci_block: Option<f32>,
     pub min_inline: Option<Len>,
     pub min_block: Option<Len>,
     pub max_inline: Option<Len>,
@@ -1269,7 +1274,14 @@ impl Computed {
         };
         // Размеры: строчная ось горизонтальна при обычном письме и
         // вертикальна при вертикальном.
+        let set_ci = |slot: &mut Option<f32>, val: Option<f32>| {
+            if val.is_some() {
+                *slot = val;
+            }
+        };
         if vertical {
+            set_ci(&mut self.contain_intrinsic.1, logical.ci_inline);
+            set_ci(&mut self.contain_intrinsic.0, logical.ci_block);
             set(&mut self.height, logical.inline_size);
             set(&mut self.width, logical.block_size);
             set(&mut self.min_height, logical.min_inline);
@@ -1277,6 +1289,8 @@ impl Computed {
             set(&mut self.max_height, logical.max_inline);
             set(&mut self.max_width, logical.max_block);
         } else {
+            set_ci(&mut self.contain_intrinsic.0, logical.ci_inline);
+            set_ci(&mut self.contain_intrinsic.1, logical.ci_block);
             if self.vertical == Some(true) && logical.inline_size.is_some() {
                 self.width_from_inline = true;
             }
@@ -4165,14 +4179,19 @@ impl Computed {
                     self.contain_intrinsic.0 = Some(w);
                 }
             }
-            "contain-intrinsic-height" | "contain-intrinsic-block-size" => {
+            "contain-intrinsic-height" => {
                 if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim()) {
                     self.contain_intrinsic.1 = Some(h);
                 }
             }
+            "contain-intrinsic-block-size" => {
+                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                    self.logical().ci_block = Some(h);
+                }
+            }
             "contain-intrinsic-inline-size" => {
                 if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim()) {
-                    self.contain_intrinsic.0 = Some(w);
+                    self.logical().ci_inline = Some(w);
                 }
             }
             "mix-blend-mode" => {
