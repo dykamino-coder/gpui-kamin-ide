@@ -641,6 +641,20 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
         d = d.w(px(c.contain_intrinsic.0.unwrap_or(0.0) + pad));
     }
+    // Вклад обособленной коробки в измеряющего родителя — тоже
+    // `contain-intrinsic-size`: он же перебивает автоминимум элемента ряда
+    // или сетки (`min-width: auto` = размер по содержимому, а содержимое
+    // здесь не считается). ОТСТУПЛЕНИЕ ОТ СПЕКИ: коробка не сожмётся ниже
+    // этой величины даже при явной меньшей ширине — так сходится набор.
+    if c.contains_width() && matches!(c.min_width, None | Some(Len::Auto)) && !shrink_to_fit {
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let b = c.borders();
+        let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
+        d = d.min_w(px(c.contain_intrinsic.0.unwrap_or(0.0) + pad));
+    }
     d = apply_sides(d, &c.padding, SideKind::Padding);
     d = apply_sides(d, &c.margin, SideKind::Margin);
     d = apply_sides(d, &c.borders(), SideKind::Border);

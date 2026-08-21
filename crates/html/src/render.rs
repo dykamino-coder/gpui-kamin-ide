@@ -790,6 +790,21 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     if e.style.flex_shrink.is_none() {
                         e.style.flex_shrink = Some(1.0);
                     }
+                    // Элемент ряда под обособлением строчной оси: главный
+                    // размер берётся из `contain-intrinsic-size`, а не от
+                    // содержимого. В колонке главная ось блочная — её уже
+                    // держит подмена высоты.
+                    let row = !matches!(
+                        inherited.flex_dir,
+                        Some(FlexDir::Col) | Some(FlexDir::ColReverse)
+                    );
+                    if row
+                        && e.style.contains_width()
+                        && matches!(e.style.width, None | Some(Len::Auto))
+                    {
+                        e.style.width =
+                            Some(Len::Px(e.style.contain_intrinsic.0.unwrap_or(0.0)));
+                    }
                     Node::Element(e)
                 }
                 other => other,
