@@ -4405,6 +4405,8 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         && mask.is_none()
         && clip_rect.is_none()
         && c.clip_inset.is_none()
+        && c.clip_edges.is_none()
+        && c.clip_xywh.is_none()
     {
         return el;
     }
@@ -4436,6 +4438,8 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.mask_origin_off = box_off(c.mask_origin);
     wrapper.clip_rect = clip_rect;
     wrapper.clip_inset = c.clip_inset;
+    wrapper.clip_edges = c.clip_edges;
+    wrapper.clip_xywh = c.clip_xywh;
     // `clip`/`mask-clip` живут в системе координат элемента ДО трансформа, а
     // трансформ рисуется ВНУТРИ буфера группы — коробка клипа обязана ехать
     // вместе (clip-transform-order: сдвинутый рисунок резался по старому

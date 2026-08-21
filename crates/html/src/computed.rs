@@ -1132,6 +1132,11 @@ pub struct Computed {
     pub clip_rect: Option<[Option<f32>; 4]>,
     /// `clip-path: inset(t r b l ...)`: срезы краёв видимой области.
     pub clip_inset: Option<[Len; 4]>,
+    /// `clip-path: rect(t r b l)` — координаты КРАЁВ от верхнего-левого
+    /// угла; None = auto (край коробки).
+    pub clip_edges: Option<[Option<Len>; 4]>,
+    /// `clip-path: xywh(x y w h)` — прямоугольник от угла.
+    pub clip_xywh: Option<[Len; 4]>,
     /// `column-fill: auto` — колонки заполняются по очереди, без баланса.
     pub column_fill_auto: Option<bool>,
     /// `column-span: all` — блок растянут на все колонки.
@@ -4328,6 +4333,47 @@ impl Computed {
                         self.clip_round = Some(0.5);
                     } else {
                         self.clip_shape = Some(format!("shape:{}", v.trim()));
+                    }
+                } else if let Some(rest) = v.strip_prefix("rect(") {
+                    // Края видимой области (css-shapes-1 §basic-shape):
+                    // top/right/bottom/left от верхнего-левого угла, auto —
+                    // край опорной коробки; хвост `round R` — скругление.
+                    let inner = rest.trim_end_matches(')');
+                    let sides_part = inner.split("round").next().unwrap_or("").trim();
+                    let vals: Vec<Option<Len>> = sides_part
+                        .split_whitespace()
+                        .map(|t| if t == "auto" { None } else { Len::parse(t) })
+                        .collect();
+                    if vals.len() == 4 {
+                        self.clip_edges = Some([vals[0], vals[1], vals[2], vals[3]]);
+                        self.clip_round = inner
+                            .split("round")
+                            .nth(1)
+                            .and_then(|r| Len::parse(r.trim()))
+                            .and_then(|l| match l {
+                                Len::Px(v) => Some(v),
+                                _ => None,
+                            })
+                            .or(self.clip_round);
+                    }
+                } else if let Some(rest) = v.strip_prefix("xywh(") {
+                    let inner = rest.trim_end_matches(')');
+                    let sides_part = inner.split("round").next().unwrap_or("").trim();
+                    let vals: Vec<Len> = sides_part
+                        .split_whitespace()
+                        .filter_map(Len::parse)
+                        .collect();
+                    if vals.len() == 4 {
+                        self.clip_xywh = Some([vals[0], vals[1], vals[2], vals[3]]);
+                        self.clip_round = inner
+                            .split("round")
+                            .nth(1)
+                            .and_then(|r| Len::parse(r.trim()))
+                            .and_then(|l| match l {
+                                Len::Px(v) => Some(v),
+                                _ => None,
+                            })
+                            .or(self.clip_round);
                     }
                 } else if let Some(rest) = v.strip_prefix("inset(") {
                     // Стороны вырезки (css-shapes-1 §3.1.1.1): 1-4 значения

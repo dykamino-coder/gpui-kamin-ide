@@ -408,6 +408,8 @@ pub struct Grouped {
     pub clip_shift: (f32, f32, f32, f32),
     /// `clip-path: inset(t r b l)`: срезы краёв; доли — от своих сторон.
     pub clip_inset: Option<[crate::value::Len; 4]>,
+    pub clip_edges: Option<[Option<crate::value::Len>; 4]>,
+    pub clip_xywh: Option<[crate::value::Len; 4]>,
     /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
     pub mask_composite: Vec<u8>,
 }
@@ -432,6 +434,8 @@ impl Grouped {
             clip_rect: None,
             clip_shift: (0.0, 0.0, 0.0, 0.0),
             clip_inset: None,
+            clip_edges: None,
+            clip_xywh: None,
             mask_composite: Vec::new(),
             mask_pos: None,
         }
@@ -930,6 +934,34 @@ impl Element for Grouped {
                     let (t, b) = (side(t, bh), side(b, bh));
                     let (l, r) = (side(l, bw), side(r, bw));
                     [l, t, (bw - l - r).max(0.0), (bh - t - b).max(0.0)]
+                })
+            })
+            .or_else(|| {
+                // `clip-path: rect(...)` — края от верхнего-левого угла.
+                self.clip_edges.map(|[t, r, b, l]| {
+                    let (bw, bh) =
+                        (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                    let side = |v: Option<crate::value::Len>, s: f32, def: f32| match v {
+                        Some(crate::value::Len::Px(p)) => p,
+                        Some(crate::value::Len::Pct(p)) => p * s,
+                        _ => def,
+                    };
+                    let (t, b) = (side(t, bh, 0.0), side(b, bh, bh));
+                    let (l, r) = (side(l, bw, 0.0), side(r, bw, bw));
+                    [l, t, (r - l).max(0.0), (b - t).max(0.0)]
+                })
+            })
+            .or_else(|| {
+                // `clip-path: xywh(x y w h)` — прямоугольник от угла.
+                self.clip_xywh.map(|[x, y, w, h]| {
+                    let (bw, bh) =
+                        (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                    let side = |v: crate::value::Len, s: f32| match v {
+                        crate::value::Len::Px(p) => p,
+                        crate::value::Len::Pct(p) => p * s,
+                        _ => 0.0,
+                    };
+                    [side(x, bw), side(y, bh), side(w, bw).max(0.0), side(h, bh).max(0.0)]
                 })
             })
             .or_else(|| {
