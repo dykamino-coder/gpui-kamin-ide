@@ -512,7 +512,10 @@ impl DirectWriteState {
                         target_font.fallbacks.as_ref(),
                         true,
                     )
-                    .unwrap()
+                    // KaminIDE patch: пустое/битое имя семейства роняло
+                    // рендер целиком (`font: 0 x` в WPT); первый
+                    // зарегистрированный шрифт всегда существует.
+                    .unwrap_or(FontId(0))
                 })
             }
         }

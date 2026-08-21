@@ -1333,6 +1333,13 @@ impl Computed {
         let fix = |l: &mut Option<Len>| match *l {
             Some(Len::Vw(k)) => *l = Some(Len::Px(k * viewport.0)),
             Some(Len::Vh(k)) => *l = Some(Len::Px(k * viewport.1)),
+            Some(Len::Calc(i)) => {
+                let mut s = crate::value::calc_get(i);
+                s.px += s.vw * viewport.0 + s.vh * viewport.1;
+                s.vw = 0.0;
+                s.vh = 0.0;
+                *l = s.collapse();
+            }
             _ => {}
         };
         let sides = |s: &mut Sides| {
@@ -1340,6 +1347,13 @@ impl Computed {
                 match *one {
                     Some(Len::Vw(k)) => *one = Some(Len::Px(k * viewport.0)),
                     Some(Len::Vh(k)) => *one = Some(Len::Px(k * viewport.1)),
+                    Some(Len::Calc(i)) => {
+                        let mut s = crate::value::calc_get(i);
+                        s.px += s.vw * viewport.0 + s.vh * viewport.1;
+                        s.vw = 0.0;
+                        s.vh = 0.0;
+                        *one = s.collapse();
+                    }
                     _ => {}
                 }
             }
@@ -1415,6 +1429,17 @@ impl Computed {
             Some(Len::Ch(k)) => *l = Some(Len::Px(k * ch)),
             Some(Len::Ex(k)) => *l = Some(Len::Px(k * ex)),
             Some(Len::Ic(k)) => *l = Some(Len::Px(k * ic)),
+            // Смешанный calc: шрифтовые слагаемые складываются здесь — база
+            // и метрики известны; остаток сворачивается заново.
+            Some(Len::Calc(i)) => {
+                let mut s = crate::value::calc_get(i);
+                s.px += s.em * base + s.ch * ch + s.ex * ex + s.ic * ic;
+                s.em = 0.0;
+                s.ch = 0.0;
+                s.ex = 0.0;
+                s.ic = 0.0;
+                *l = s.collapse();
+            }
             _ => {}
         };
         let fix = to_px;
@@ -2391,12 +2416,7 @@ impl Computed {
                         marker = None;
                     }
                 }
-                // Строковый маркер обрезку пока НЕ включает: с ним
-                // ellipsize срезал строку в ноль на шрифтовых суффиксах
-                // (string-007/008 пустели, 5 пар в минус — замерено).
-                // Каркас маркера остаётся до починки замера суффикса.
-                let _ = on;
-                self.ellipsis = Some(v.split_whitespace().any(|t| t == "ellipsis"));
+                self.ellipsis = Some(on);
                 self.overflow_marker = marker;
             }
             "list-style" | "list-style-type" => {
@@ -2818,12 +2838,17 @@ impl Computed {
                             if let Some((size, lh)) = t.split_once('/') {
                                 self.apply_one("font-size", size);
                                 self.apply_one("line-height", lh);
-                            } else if Len::parse(t).is_some()
-                                && !t.chars().all(|c| c.is_ascii_digit())
+                            } else if t == "0"
+                                || (Len::parse(t).is_some()
+                                    && !t.chars().all(|c| c.is_ascii_digit()))
                             {
+                                // `font: 0 Ahem` — ноль это ДЛИНА (кегль 0),
+                                // а не вес: вес 0 зацикливал подбор шрифта
+                                // (vars-font-shorthand-001 висел).
                                 self.apply_one("font-size", t);
                             } else {
-                                self.font_weight = t.parse().ok();
+                                self.font_weight =
+                                    t.parse().ok().filter(|w| (1..=1000).contains(w));
                             }
                         }
                         _ => {}
@@ -4136,7 +4161,7 @@ impl Computed {
                             | Len::LhPx(..)) => {
                                 crate::metrics::fallback_len_px(l, "", 16.0)
                             }
-                            Len::Vw(_) | Len::Vh(_) => None,
+                            Len::Vw(_) | Len::Vh(_) | Len::Calc(_) => None,
                             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
                         });
                     self.clip_round = Some(radius.unwrap_or(0.0));

@@ -1059,6 +1059,10 @@ fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
     match l? {
         Len::Px(v) => Some(v),
         Len::Pct(v) => Some(base * v),
+        Len::Calc(i) => {
+            let s = crate::value::calc_get(i);
+            Some(s.px + base * s.pct)
+        }
         // Шрифтовые единицы — от запасного кегля, единой точкой.
         l @ (Len::Em(_)
         | Len::EmPx(..)

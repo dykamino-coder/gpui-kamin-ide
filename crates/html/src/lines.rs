@@ -92,6 +92,10 @@ pub struct Paragraph {
     text_overflow: bool,
     /// Маркер обрезки вместо многоточия (`text-overflow: <string>`).
     overflow_marker: Option<String>,
+    /// Шрифт маркера: стиль БЛОКА-контейнера, не прогона у среза
+    /// (css-overflow-4 §5) — иначе «123» набиралось Ahem-квадратами
+    /// шрифта обрезанного куска.
+    marker_font: Option<gpui::Font>,
     /// `text-fit`: подбор кегля под ширину коробки.
     fit: Option<crate::computed::TextFit>,
     /// Шаг позиций табуляции (`tab-size` в точках).
@@ -227,6 +231,7 @@ impl Paragraph {
             clamp: None,
             text_overflow: false,
             overflow_marker: None,
+            marker_font: None,
             fit: None,
             tab_stop: px(8. * 8.),
             hyphen: SharedString::from("\u{2010}"),
@@ -835,9 +840,10 @@ impl Paragraph {
         self
     }
 
-    /// Маркер обрезки: строка из `text-overflow: <string>`.
-    pub fn overflow_marker(mut self, mark: Option<String>) -> Self {
+    /// Маркер обрезки: строка из `text-overflow: <string>` и шрифт блока.
+    pub fn overflow_marker(mut self, mark: Option<String>, font: Option<gpui::Font>) -> Self {
         self.overflow_marker = mark;
+        self.marker_font = font;
         self
     }
 
@@ -1036,6 +1042,7 @@ impl Paragraph {
             return px(0.);
         };
         run.len = mark.len();
+        self.style_marker_run(mark, run);
         let piece = vec![run.clone()];
         window
             .text_system()
@@ -2446,6 +2453,7 @@ impl Paragraph {
             clamp: self.clamp,
             text_overflow: false,
             overflow_marker: None,
+            marker_font: None,
             fit: self.fit,
             tab_stop: self.tab_stop,
             hyphen: self.hyphen.clone(),
@@ -2604,6 +2612,7 @@ impl Paragraph {
             return;
         };
         run.len = mark.len();
+        self.style_marker_run(mark, run);
         let piece = vec![run.clone()];
         let shaped = window.text_system().shape_line_spaced(
             SharedString::from(mark.to_string()),
@@ -2613,6 +2622,16 @@ impl Paragraph {
             self.letter_spacing,
         );
         let _ = shaped.paint(origin, self.line_height, window, cx);
+    }
+
+    /// Строковый маркер несёт шрифт контейнера; многоточие и знак переноса
+    /// остаются в шрифте прогона у среза.
+    fn style_marker_run(&self, mark: &str, run: &mut TextRun) {
+        if let (Some(m), Some(f)) = (self.overflow_marker.as_deref(), self.marker_font.as_ref())
+            && mark == m
+        {
+            run.font = f.clone();
+        }
     }
 
     /// Набор с знаком обрыва в начале или в конце куска.

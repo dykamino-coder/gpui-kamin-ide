@@ -27,6 +27,11 @@ pub enum Len {
     /// после каскада: раньше `em` считался от постоянных 16 точек, и на
     /// вложенных размерах шрифта отступы расходились с браузером.
     Em(f32),
+    /// Смешанный `calc()`: слагаемые разных природ, сворачивается по мере
+    /// появления баз (css-values-4 §10.9). Хранится ИНДЕКСОМ в арене:
+    /// сумма внутри варианта раздувала `Len` с 12 до 40 байт, и рекурсивный
+    /// рендер вложенного документа переполнял стек (vh-support-transform-*).
+    Calc(u32),
     /// `1.5vh`, `50vw` — доля высоты и ширины окна. Размер окна известен
     /// только сборщику дерева, поэтому единица доживает до него как есть.
     Vh(f32),
@@ -596,16 +601,40 @@ mod tests {
 /// либо `em`. Поэтому `calc(100% - 24px)` честно отбрасывается — приблизительная
 /// длина в сравнении с браузером не видна, а неверная видна.
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
-struct Sum {
-    lh: f32,
-    px: f32,
-    pct: f32,
-    em: f32,
-    ch: f32,
-    ex: f32,
-    ic: f32,
-    vh: f32,
-    vw: f32,
+pub struct Sum {
+    pub lh: f32,
+    pub px: f32,
+    pub pct: f32,
+    pub em: f32,
+    pub ch: f32,
+    pub ex: f32,
+    pub ic: f32,
+    pub vh: f32,
+    pub vw: f32,
+}
+
+/// Арена смешанных сумм `calc()`: `Len` несёт индекс, не тело. Арена
+/// append-only и копеечная (смеси редки); чистится вместе с документом
+/// (`calc_reset` на входе разбора) — старые индексы умирают с его деревом.
+static CALC_POOL: std::sync::Mutex<Vec<Sum>> = std::sync::Mutex::new(Vec::new());
+
+pub fn calc_store(s: Sum) -> u32 {
+    let mut pool = CALC_POOL.lock().unwrap();
+    pool.push(s);
+    (pool.len() - 1) as u32
+}
+
+pub fn calc_get(i: u32) -> Sum {
+    CALC_POOL
+        .lock()
+        .unwrap()
+        .get(i as usize)
+        .copied()
+        .unwrap_or_default()
+}
+
+pub fn calc_reset() {
+    CALC_POOL.lock().unwrap().clear();
 }
 
 /// Операнд выражения: голое число участвует только в умножении и делении.
@@ -636,6 +665,7 @@ impl Sum {
             }
             Len::Vh(v) => s.vh = v,
             Len::Vw(v) => s.vw = v,
+            Len::Calc(i) => s = calc_get(i),
             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => return None,
         }
         Some(s)
@@ -672,7 +702,7 @@ impl Sum {
     /// Свёртка в длину: сокращение слагаемых учтено, поэтому
     /// `calc(100% + 6em + 50%*4 - 12em/2)` даёт чистые 300 % — `em` в нём
     /// взаимно уничтожаются.
-    fn collapse(self) -> Option<Len> {
+    pub fn collapse(self) -> Option<Len> {
         let rel = [
             (self.pct, Len::Pct as fn(f32) -> Len),
             (self.em, Len::Em as fn(f32) -> Len),
@@ -697,6 +727,18 @@ impl Sum {
             } else {
                 Len::LhPx(self.lh, self.px)
             }),
+            // Смесь природ живёт дальше НЕсвёрнутой: шрифтовые единицы
+            // сложит каскад (`resolve_em`), окно — сборщик дерева, а
+            // проценты с точками — раскладка (css-values-4 §10.9:
+            // «резолвится всё, что уже резолвится»).
+            // Смесь природ живёт дальше НЕсвёрнутой: шрифтовые единицы
+            // сложит каскад (`resolve_em`), окно — сборщик дерева, а
+            // проценты с точками — раскладка (css-values-4 §10.9).
+            // Процентная смесь по-прежнему отбрасывается: раскладке её
+            // отдать нечем (gpui знает «px ИЛИ доля»), а замена на одну из
+            // половин ЗАМЕРЕНА в минус (gap-003-ltr 0.00 -> 4.12 на
+            // width: calc(50% - 10px)) — честный путь ждёт таффи-calc.
+            _ if self.pct == 0.0 => Some(Len::Calc(calc_store(self))),
             _ => None,
         }
     }
@@ -835,9 +877,15 @@ mod calc_tests {
     }
 
     #[test]
-    fn mixed_calc_is_dropped_rather_than_guessed() {
-        // Долю и точки сложить нечем: приблизительная длина хуже отсутствия.
+    fn mixed_calc_with_percent_is_still_dropped() {
+        // Долю и точки сложить пока нечем (замерено на gap-003);
+        // шрифтовая смесь живёт.
         assert_eq!(Len::parse("calc(100% - 24px)"), None);
+        let Some(Len::Calc(idx)) = Len::parse("calc(120px + 3.1ch)") else {
+            panic!("шрифтовая смесь обязана дожить как Calc");
+        };
+        let s = calc_get(idx);
+        assert_eq!((s.px, s.ch), (120.0, 3.1));
     }
 
     #[test]

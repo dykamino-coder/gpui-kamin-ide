@@ -3184,15 +3184,27 @@ fn paragraph_pieces(
                         .overflow_x
                         .is_some_and(|o| o != crate::computed::Overflow::Visible),
             )
-            .overflow_marker(inherited.overflow_marker.clone())
+            .overflow_marker(
+                inherited.overflow_marker.clone(),
+                Some(measure_font(inherited, opts)),
+            )
             .text_fit(inherited.text_fit)
             .hyphen_char(inherited.hyphen_char.clone())
             .tab_stop(gpui::px(match inherited.tab_size_len {
                 // Длина задаёт шаг НАПРЯМУЮ, ширина знака к ней не примешана.
                 Some(Len::Px(v)) if v > 0.0 => v,
                 _ => {
+                    // Число — кратное ПОЛНОЙ ширины пробела: с letter-spacing
+                    // и word-spacing (css-text-3 §tab-size,
+                    // tab-size-spacing-001 — вскрылось честным calc(8ch+...)).
+                    let spacing = |l: Option<Len>| match l {
+                        Some(Len::Px(v)) => v,
+                        _ => 0.0,
+                    };
                     inherited.tab_size.unwrap_or(8).max(1) as f32
-                        * crate::metrics::ch_ex_px(&family, biggest).0
+                        * (crate::metrics::ch_ex_px(&family, biggest).0
+                            + spacing(inherited.letter_spacing)
+                            + spacing(inherited.word_spacing))
                 }
             }))
             .overlays(inline::overlays(pieces))
@@ -3958,8 +3970,17 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     let mut ext = vec![0.0f32; rows];
                     for (yt, slot) in ext.iter_mut().enumerate() {
                         let ys = (yt * ih / rows).min(ih - 1);
-                        // Самый дальний непрозрачный пиксель строки.
-                        for xs in (0..iw).rev() {
+                        // Самый дальний ОТ НАЧАЛА СТОРОНЫ непрозрачный
+                        // пиксель строки: левому флоату — самый правый,
+                        // правому — самый ЛЕВЫЙ (скан задом наперёд давал
+                        // правому минимальный экстент вместо максимального:
+                        // shape-image-012..023).
+                        let scan: Box<dyn Iterator<Item = usize>> = if side < 0 {
+                            Box::new((0..iw).rev())
+                        } else {
+                            Box::new(0..iw)
+                        };
+                        for xs in scan {
                             let a = bytes[(ys * iw + xs) * 4 + 3] as f32 / 255.0;
                             if a > thr {
                                 let xt = (xs as f32 + 1.0) * cw / iw as f32;

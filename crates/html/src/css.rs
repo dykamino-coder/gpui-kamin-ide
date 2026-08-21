@@ -363,6 +363,14 @@ impl Media {
         let query = query.trim().trim_start_matches("@media").trim();
         // Запятая — это «или».
         query.split(',').any(|alt| {
+            // `not`/`only` живут на уровне ЗАПРОСА (mediaqueries-4 §2.1):
+            // `not unknown` — истина (отрицание нераспознанного типа),
+            // `only screen` — то же, что `screen`.
+            let alt = alt.trim();
+            if let Some(rest) = alt.strip_prefix("not ") {
+                return !self.matches(&format!("@media {rest}"));
+            }
+            let alt = alt.strip_prefix("only ").unwrap_or(alt);
             alt.split(" and ").all(|part| {
                 let part = part.trim().trim_start_matches('(').trim_end_matches(')');
                 let Some((name, value)) = part.split_once(':') else {
@@ -424,7 +432,9 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
             let inner = if name.starts_with("@media") {
                 media.matches(&name)
             } else if name.starts_with("@supports") {
-                supports(name.trim_start_matches("@supports"))
+                // Условию нужен ОРИГИНАЛ: лоуеркейс головы ломал значения
+                // (`(font-family: "Foo")`); имя правила — ASCII, срез безопасен.
+                supports(&head[9..])
             } else {
                 // Слой — прозрачная обёртка: внутри обычные правила, и вся
                 // разница в приоритете, которого у нас пока нет. Отбрасывая
@@ -474,19 +484,183 @@ pub fn split_args(raw: &str) -> Vec<&str> {
         .collect()
 }
 
-/// Выполнено ли условие `@supports`.
+/// Выполнено ли условие `@supports` (css-conditional-3 §4).
 ///
-/// Своё покрытие свойств мы в разборе не знаем, поэтому простое условие
-/// считаем выполненным — им в разметке включают современный вариант. А вот
-/// ОТРИЦАНИЕ обязано быть разобрано: `@supports not (display: grid)` — это
-/// запасная ветка для движка БЕЗ поддержки, и, считая её выполненной, мы
-/// применяли ровно то, что применять не должны, да ещё вместе с основной.
+/// Трёхзначная логика: неизвестная конструкция (`general-enclosed`) — не
+/// ложь и не истина, а «неизвестно»; на верхнем уровне неизвестное и
+/// невалидное равнозначны лжи. Поддержка декларации проверяется ОРАКУЛОМ:
+/// разобранное объявление применяется к чистому стилю — изменился, значит
+/// свойство и значение наши (той же механикой живёт реестр покрытия).
 fn supports(condition: &str) -> bool {
-    let c = condition.trim();
-    match c.strip_prefix("not ") {
-        Some(rest) => !supports(rest),
-        None => true,
+    matches!(supports_condition(condition.trim()), Some(SupTri::True))
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum SupTri {
+    True,
+    False,
+    Unknown,
+}
+
+fn sup_not(t: SupTri) -> SupTri {
+    match t {
+        SupTri::True => SupTri::False,
+        SupTri::False => SupTri::True,
+        SupTri::Unknown => SupTri::Unknown,
     }
+}
+
+/// `not <терм>` | `<терм> (and <терм>)*` | `<терм> (or <терм>)*` — уровни
+/// не смешиваются: `a and b or c` недействительно целиком.
+fn supports_condition(s: &str) -> Option<SupTri> {
+    let s = s.trim();
+    // `not` — слово: слитное `not(` лексится функцией и уходит в терм.
+    if let Some(rest) = s.strip_prefix("not")
+        && rest.starts_with(char::is_whitespace)
+    {
+        let rest = rest.trim_start();
+        let (term, tail) = supports_take_term(rest)?;
+        if !tail.trim().is_empty() {
+            return None;
+        }
+        return Some(sup_not(supports_eval_term(term)));
+    }
+    let (term, mut rest) = supports_take_term(s)?;
+    let mut acc = supports_eval_term(term);
+    let mut op: Option<&str> = None;
+    loop {
+        let r = rest.trim_start();
+        if r.is_empty() {
+            return Some(acc);
+        }
+        let word = if let Some(w) = r.strip_prefix("and") {
+            if !w.starts_with(char::is_whitespace) {
+                return None;
+            }
+            rest = w;
+            "and"
+        } else if let Some(w) = r.strip_prefix("or") {
+            if !w.starts_with(char::is_whitespace) {
+                return None;
+            }
+            rest = w;
+            "or"
+        } else {
+            return None;
+        };
+        if let Some(prev) = op {
+            if prev != word {
+                return None;
+            }
+        } else {
+            op = Some(word);
+        }
+        let (term, tail) = supports_take_term(rest.trim_start())?;
+        let v = supports_eval_term(term);
+        acc = match (word, acc, v) {
+            ("and", SupTri::True, SupTri::True) => SupTri::True,
+            ("and", SupTri::False, _) | ("and", _, SupTri::False) => SupTri::False,
+            ("and", ..) => SupTri::Unknown,
+            ("or", SupTri::True, _) | ("or", _, SupTri::True) => SupTri::True,
+            ("or", SupTri::False, SupTri::False) => SupTri::False,
+            _ => SupTri::Unknown,
+        };
+        rest = tail;
+    }
+}
+
+/// Один терм: скобочная группа либо функция `имя(...)`; возврат — тело
+/// терма (со скобками функции внутри среза) и хвост после него.
+fn supports_take_term(s: &str) -> Option<(&str, &str)> {
+    let bytes = s.as_bytes();
+    // Функция: идентификатор вплотную к скобке.
+    let mut name_end = 0;
+    while name_end < bytes.len()
+        && (bytes[name_end].is_ascii_alphanumeric() || bytes[name_end] == b'-')
+    {
+        name_end += 1;
+    }
+    let open = if name_end < bytes.len() && bytes[name_end] == b'(' {
+        name_end
+    } else if bytes.first() == Some(&b'(') {
+        0
+    } else {
+        return None;
+    };
+    let mut depth = 0usize;
+    for (i, &b) in bytes.iter().enumerate().skip(open) {
+        match b {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((&s[..i + 1], &s[i + 1..]));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn supports_eval_term(term: &str) -> SupTri {
+    let term = term.trim();
+    // Функция `имя(...)`.
+    if !term.starts_with('(') {
+        let Some(open) = term.find('(') else {
+            return SupTri::Unknown;
+        };
+        let name = term[..open].to_ascii_lowercase();
+        let args = &term[open + 1..term.len().saturating_sub(1)];
+        return match name.as_str() {
+            "selector" => {
+                // Неизвестные вендорные псевдо — не поддержаны.
+                if args.contains("::-webkit-") || args.contains(":-webkit-") {
+                    SupTri::False
+                } else if Selector::parse(args).is_some() {
+                    SupTri::True
+                } else {
+                    SupTri::False
+                }
+            }
+            "font-format" => {
+                let f = args.trim().to_ascii_lowercase();
+                if matches!(
+                    f.as_str(),
+                    "woff" | "woff2" | "truetype" | "opentype"
+                ) {
+                    SupTri::True
+                } else {
+                    SupTri::False
+                }
+            }
+            "font-tech" | "at-rule" => SupTri::False,
+            // `not(...)`/`or(...)` и прочие неизвестные функции —
+            // general-enclosed: «неизвестно».
+            _ => SupTri::Unknown,
+        };
+    }
+    let inner = &term[1..term.len() - 1];
+    // Скобки вокруг условия.
+    if let Some(t) = supports_condition(inner) {
+        return t;
+    }
+    // Декларация: непустой разбор + дельта на чистом стиле.
+    if split_top_level(inner, ':').len() >= 2 {
+        let decls = parse_decls(inner);
+        if decls.is_empty() {
+            // Синтаксис объявления сломан (`!bogus`) — general-enclosed.
+            return SupTri::Unknown;
+        }
+        let mut c = crate::computed::Computed::default();
+        c.apply_decls(&decls);
+        return if format!("{c:?}") != format!("{:?}", crate::computed::Computed::default()) {
+            SupTri::True
+        } else {
+            SupTri::False
+        };
+    }
+    SupTri::Unknown
 }
 
 /// Имя без экранирования (CSS Syntax §4.3.7).

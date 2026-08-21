@@ -32,6 +32,17 @@ fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         // Единицы окна разрешает сборщик дерева; сюда они доходят только у
         // узлов вне его — доля родителя ближе всего по смыслу.
         Len::Vw(k) | Len::Vh(k) => relative(k),
+        // Смешанный остаток calc (обычно px+%): честно ляжет только в
+        // taffy-calc (фаза 2); пока — процентная часть, при её отсутствии
+        // точечная (ближе, чем прежний сброс всего объявления).
+        Len::Calc(i) => {
+            let s = crate::value::calc_get(i);
+            if s.pct != 0.0 {
+                relative(s.pct)
+            } else {
+                px(s.px).into()
+            }
+        }
         // `auto` в размере значит «пусть решает раскладка» — это отсутствие
         // ограничения, а не значение; вызывающий такие поля не применяет.
         // Размер по содержимому — то же самое: его ставит обёртка-сетка
@@ -1055,7 +1066,7 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
             )),
             Len::Lh(k) | Len::LhPx(k, _) => d.line_height(relative(k)),
             Len::Vw(k) | Len::Vh(k) => d.line_height(relative(k)),
-            Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => d,
+            Len::Calc(_) | Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => d,
         };
     }
     if c.nowrap == Some(true) {
