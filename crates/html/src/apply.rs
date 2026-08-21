@@ -596,8 +596,35 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // задаём; ширина блока в потоке и так не от содержимого, её не трогаем.
     // Явное `height: auto` — та же высота от содержимого: подмена нужна и
     // ему (`contain-size-replaced-003*` пишут auto буквально).
-    if c.contain_size == Some(true) && matches!(c.height, None | Some(Len::Auto)) {
-        d = d.h(px(c.contain_intrinsic.1.unwrap_or(0.0)));
+    // `contain-intrinsic-size` — ВНУТРЕННИЙ размер (css-sizing-4): отступы
+    // и рамка прибавляются к нему независимо от `box-sizing`. Раньше
+    // ставилась голая величина, и taffy подпирал её суммой отступов —
+    // выходило max(ci, pad) вместо ci + pad (`cis-007`, `cis-008`).
+    if c.contains_height() && matches!(c.height, None | Some(Len::Auto)) {
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let b = c.borders();
+        let pad = side(c.padding.top) + side(c.padding.bottom) + side(b.top) + side(b.bottom);
+        d = d.h(px(c.contain_intrinsic.1.unwrap_or(0.0) + pad));
+    }
+    // По строчной оси то же самое, но только когда ширина ЯВНО названа
+    // размером по содержимому: обычная блочная ширина и так берётся от
+    // родителя, а не от содержимого.
+    if c.contains_width()
+        && matches!(
+            c.width,
+            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+        )
+    {
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let b = c.borders();
+        let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
+        d = d.w(px(c.contain_intrinsic.0.unwrap_or(0.0) + pad));
     }
     d = apply_sides(d, &c.padding, SideKind::Padding);
     d = apply_sides(d, &c.margin, SideKind::Margin);

@@ -1103,6 +1103,10 @@ pub struct Computed {
     /// `contain: size` — коробка меряется ПУСТОЙ (css-contain-1 §3):
     /// размер задают явные свойства и `contain-intrinsic-size`.
     pub contain_size: Option<bool>,
+    /// `contain: inline-size` — обособлена только СТРОЧНАЯ ось
+    /// (css-contain-2 §inline-size): содержимое не влияет на неё, но
+    /// блочную ось по-прежнему задаёт.
+    pub contain_inline_size: Option<bool>,
     /// `contain: layout|content` — независимый контекст форматирования.
     pub contain_layout: Option<bool>,
     /// `display: flow-root` — свой контекст форматирования (коробка Block).
@@ -4087,6 +4091,7 @@ impl Computed {
                 // (css-contain-1 §3.1: strict = size layout paint style,
                 // content = layout paint style).
                 let mut bits = (false, false, false, false);
+                let mut inline_only = false;
                 for w in v.split_whitespace() {
                     match w {
                         // `paint` и `strict` обрезают содержимое по коробке —
@@ -4094,6 +4099,7 @@ impl Computed {
                         // `size` считает коробку ПУСТОЙ: её размер задают
                         // явные свойства и `contain-intrinsic-size`.
                         "size" => bits.0 = true,
+                        "inline-size" => inline_only = true,
                         "layout" => bits.1 = true,
                         "paint" => bits.2 = true,
                         "style" => bits.3 = true,
@@ -4107,6 +4113,7 @@ impl Computed {
                     }
                 }
                 self.contain_size = Some(bits.0);
+                self.contain_inline_size = Some(inline_only);
                 self.contain_layout = Some(bits.1);
                 self.contain_paint = Some(bits.2);
                 self.contain_style = Some(bits.3);
@@ -4735,6 +4742,36 @@ impl Computed {
         let max_r = round.iter().cloned().fold(0.0f32, f32::max);
         let uniform = round.iter().all(|r| (r - round[0]).abs() < 0.01);
         w > 0.0 && h > 0.0 && !uniform && max_r > w.min(h) * 0.5 + 0.01
+    }
+
+    /// Обособлена ли СТРОЧНАЯ ось: `contain: size` держит обе, `inline-size`
+    /// только её (css-contain-2 §containment-types).
+    pub fn contains_inline_size(&self) -> bool {
+        self.contain_size == Some(true) || self.contain_inline_size == Some(true)
+    }
+
+    /// Обособлена ли БЛОЧНАЯ ось.
+    pub fn contains_block_size(&self) -> bool {
+        self.contain_size == Some(true)
+    }
+
+    /// То же по ФИЗИЧЕСКИМ осям: при вертикальном письме строчная ось идёт
+    /// сверху вниз, и обособление меняется местами.
+    pub fn contains_width(&self) -> bool {
+        if self.vertical == Some(true) {
+            self.contains_block_size()
+        } else {
+            self.contains_inline_size()
+        }
+    }
+
+    /// Обособлена ли высота (физическая ось).
+    pub fn contains_height(&self) -> bool {
+        if self.vertical == Some(true) {
+            self.contains_inline_size()
+        } else {
+            self.contains_block_size()
+        }
     }
 
     pub fn borders(&self) -> Sides {

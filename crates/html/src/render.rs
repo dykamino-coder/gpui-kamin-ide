@@ -3629,6 +3629,14 @@ fn content_sized_wraps(c: &Computed) -> bool {
             Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
         )
     };
+    // Обособленная ось содержимого не видит: размер по нему заменяется
+    // `contain-intrinsic-size` (css-contain-2 §size-containment), и мерить
+    // дорожкой сетки больше нечего.
+    let contained = (keyword(c.width) && c.contains_width())
+        || (keyword(c.height) && c.contains_height());
+    if contained {
+        return false;
+    }
     (keyword(c.width) || keyword(c.height))
         && !matches!(
             c.position,
@@ -3645,7 +3653,10 @@ fn content_sized(el: AnyElement, c: &Computed) -> AnyElement {
         Some(Len::FitContent) => Some(gpui::GridTrack::Auto),
         _ => None,
     };
-    let (col, row) = (track(c.width), track(c.height));
+    let (col, row) = (
+        (!c.contains_width()).then(|| track(c.width)).flatten(),
+        (!c.contains_height()).then(|| track(c.height)).flatten(),
+    );
     if col.is_none() && row.is_none() {
         return el;
     }
