@@ -2555,6 +2555,22 @@ fn first_in_flow<'a>(
                 return None;
             }
             Node::Element(ch) => {
+                // Строчный КОНТЕЙНЕР (`inline-block` и родня) рождает
+                // строчную коробку и РВЁТ примыкание (CSS 2.1 §8.3.1), в
+                // отличие от плавающего и абсолютного, которых в потоке нет
+                // вовсе. Пока он просто пропускался, отступ предыдущего
+                // блока «протекал» наружу мимо него, и строка вставала на
+                // отступ выше (`box-sizing-010`: квадраты разъезжались на
+                // кегль).
+                if matches!(
+                    ch.style.display,
+                    Some(Display::InlineBlock)
+                        | Some(Display::InlineFlex)
+                        | Some(Display::InlineGrid)
+                        | Some(Display::InlineTable)
+                ) {
+                    return None;
+                }
                 if !in_flow(&ch.style) {
                     continue;
                 }
