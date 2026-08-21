@@ -979,7 +979,10 @@ fn pseudo_box(
         return Some(Element {
             node_id: 0,
             anim: None,
-            inline: true,
+            inline: !matches!(
+                style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            ),
             tag: format!("::{which}"),
             style,
             hover: None,
@@ -1005,7 +1008,10 @@ fn pseudo_box(
         // содержимое, а не движение.
         node_id: 0,
         anim: None,
-        inline: true,
+        inline: !matches!(
+            style.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        ),
         tag: format!("::{which}"),
         style,
         hover: None,
