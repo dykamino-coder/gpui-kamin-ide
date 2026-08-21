@@ -567,6 +567,158 @@ sessions remain active: no false `Extension crashed` toast appears, interactive
 operations either cancel or recover, and a deliberately thrown extension error
 is still surfaced.
 
+### BR-20 — Restore complete Claude plan usage windows
+
+**Status:** ready. **Dependency:** none. **Acceptance:** automated + isolated
+authenticated Linux container/browser runtime gate; production rollout is not
+part of the implementation PR.
+
+The Account card does not call a documented Anthropic quota API and does not
+derive plan utilization from local tokens. `usage-capture.ts` starts a separate
+interactive `claude --dangerously-skip-permissions /usage`, concatenates PTY
+redraw output and parses human TUI text with regular expressions written for an
+older `Sonnet only` layout. On the exact observed Claude Code 2.1.236 output:
+
+- `Current session` parses successfully;
+- the promo line between the all-model reset and the next section prevents the
+  all-model weekly expression from matching;
+- `Current week (Fable)` cannot populate the hard-coded `weekSonnet` field;
+- partial success suppresses `_raw` diagnostics and the UI silently omits both
+  missing rows.
+
+The screenshots at 23% and 26% were captured about one hour apart with the same
+reset time, so that delta is not evidence of a calculation defect. A future
+comparison must capture native `/usage` and dashboard values within ten seconds
+after refresh for the same account and reset window.
+
+The fix must establish a capability-based plan-usage contract:
+
+- represent limits as typed dynamic windows, not fixed `weekSonnet` fields;
+- always support the five-hour and seven-day all-model windows when Claude
+  reports them, and show an optional model-specific Fable window when the
+  active CLI exposes it;
+- record `observedAt`, source, Claude Code version, reset timestamp, freshness
+  or stale state and partial/unavailable reason for every capture;
+- prefer the documented Claude Code statusline `rate_limits.five_hour` and
+  `rate_limits.seven_day` structured contract for the common windows. It does
+  not expose a documented Fable field, so model-specific usage remains an
+  optional capability and must fail closed instead of being guessed;
+- do not integrate an undocumented private OAuth endpoint as a stable API and
+  do not calculate subscription percentages from JSONL token totals;
+- if a TUI compatibility reader remains for optional windows, derive the final
+  terminal state rather than matching the first occurrence in concatenated
+  redraw frames, tolerate promo text, missing/reordered/new sections and
+  arbitrary model labels, and retain bounded diagnostics on every partial parse;
+- never replace a complete last-known snapshot with an unlabelled partial
+  result. The UI shows unavailable/stale state rather than silently deleting a
+  previously supported row.
+
+Unit fixtures cover current promo + Fable output, the previous Sonnet layout,
+no-promo and extra-section variants, ANSI redraw with changing percentages,
+partial/error output, cache/force-refresh races and unknown future model labels.
+The isolated runtime gate records native `/usage`, the dashboard JSON and the
+Account card within ten seconds and compares percentages plus reset timestamps;
+it also proves graceful rendering when an optional window is absent. Secrets
+and raw OAuth credentials are never stored in evidence.
+
+### BR-21 — Define and reconcile dashboard analytics semantics
+
+**Status:** investigation umbrella; the concrete aggregation defects below are
+ready to split into bounded change PRs after the metric contract is approved.
+**Dependency:** none. **Acceptance:** deterministic DuckDB/JSONL fixtures for
+every child PR + isolated dashboard runtime gate; production data is read-only
+validation only.
+
+The lower Usage chart and Stats cards are local analytics built from
+`~/.claude/projects/**/*.jsonl` through `jsonl-sweeper.ts` and DuckDB. They are
+not the source of the Account quota percentages. Source audit found several
+independent correctness defects:
+
+1. Subagent JSONL rows store `parent_session_id`, but subagents deliberately do
+   not receive their own `session_tokens` row. Every dashboard query joins only
+   `e.session_id = st.session_id`; `parent_session_id` is unused. Agent Teams
+   messages, model usage and tokens are therefore excluded completely, although
+   they should be attributed to the parent without increasing top-level Session
+   cardinality.
+2. Claude Code emits several assistant JSONL rows with the same `message_id`
+   for one turn. `getUserTimeSeries()` deduplicates them, while overview model
+   totals, assistant-message count, hourly/heatmap tokens, user cost and other
+   totals sum raw rows. Cards and graph can therefore disagree and the affected
+   values are multiplied by content-block count.
+3. `Session tokens` is a sum of last-context snapshots, but its query ignores
+   the selected `7d` or `30d` cutoff while the neighbouring counters and model
+   rows apply it.
+4. The top Sessions card reads `s.userMessages`, but live
+   `session:updated` events patch only `inputCount`/MCP fields. A newly created
+   session has no `userMessages` field in the client row, so `User msg` remains
+   at its initial snapshot until a full dashboard reconnect.
+5. Stats requests start the sweeper without awaiting it, cache the previous DB
+   snapshot for 30 seconds, and the open Usage chart/Stats cards do not poll or
+   subscribe to data revisions. A completed catch-up sweep does not refresh the
+   page that requested it.
+6. The server implements compact `agg=hm&tz=...` overview payloads and exact
+   local-day `dailySessions`, but the web client never requests or consumes
+   them. It continues to fetch the legacy per-session hourly payload that the
+   compact mode was introduced to replace.
+7. So-called per-token cards use mutable, non-unique `user_name` as identity.
+   Token rename splits history and duplicate display names merge independent
+   tokens. Token UUID must be the key and name must remain presentation data.
+8. Day/month chart buckets are aggregated in UTC before the browser labels
+   them as local; events around local midnight cannot be reassigned correctly
+   after aggregation. Streak/grid date arithmetic also assumes every local day
+   is exactly 86,400,000 ms and breaks across DST.
+9. Model grouping uses exact raw IDs while the UI normalizes only the displayed
+   label. Multiple IDs may render with the same label but remain separate in
+   shares and `Favorite model`.
+10. Cost estimation recognizes only hard-coded Haiku/Opus/Sonnet families and
+    silently prices an unknown or Fable model as Sonnet. The dashboard must use
+    an explicit versioned price catalog and mark an unknown price unavailable;
+    an invented fallback is not valid analytics.
+11. The legacy `/api/dashboard/stats` per-user map copies global model totals
+    into every user and fills placeholder request/start/error values. Even if
+    the current page no longer consumes it, it remains a public-looking route
+    that can produce false data and must be removed, isolated as legacy or
+    brought under the same canonical metric contract.
+
+Current field meanings must be preserved or deliberately renamed while the
+contract is written:
+
+| Surface | Current meaning |
+| --- | --- |
+| Active Sessions / Users | resident server PTY sessions and distinct names among them; detached sessions remain resident during grace |
+| Top `MCP Calls` | initiated relay attempts in resident PTYs, including failed/timeout calls; resets with the PTY |
+| Usage chart | deduplicated `input + cache_creation + output`; cache reads excluded |
+| `Session tokens` | sum of the last effective input/context snapshot per session, not cumulative throughput |
+| Model `in` / share | raw `input + cache_read + cache_creation`, then `(in + out)` share |
+| Heatmap / Peak hour | intensity and peak based on human user-message rows |
+| Favorite model | raw model ID with greatest effective input + output volume |
+
+Before implementation the product contract must decide rolling versus local
+calendar ranges, whether model preference is based on calls/new tokens/context
+or cost, how subagent internal prompts are labelled, and whether the `All`
+heatmap intentionally shows only 26 weeks while its counters cover all history.
+The implementation is then split at least into:
+
+1. one reusable assistant-turn relation deduplicated by
+   `(session_id, message_id)` with a documented UUID fallback, plus parent-based
+   subagent attribution and token-UUID identity;
+2. consistent range/model/timezone filters and compact payload consumption;
+3. versioned freshness/invalidation and live top-card counters;
+4. versioned model aliases and price provenance with explicit unknown handling;
+5. labels/tooltips that distinguish context snapshot, new-token flow,
+   cumulative API throughput, attempts and authoritative plan quota.
+
+Fixtures include duplicate streaming rows, top-level + multiple subagents,
+compact boundaries, token rename and duplicate display names, `all/30d/7d`,
+UTC−/UTC+ midnight, DST, model aliases and partial JSONL append. Required
+invariants include no duplicate turn usage, subagent usage attributed exactly
+once without adding a top-level Session, range consistency across neighbouring
+metrics, `All` equal to the sum of token-UUID slices, and a visible data revision
+after catch-up ingestion. A cost fixture covers known, Fable and unknown model
+IDs and forbids silent family fallback. Production audit records
+raw-versus-distinct assistant counts and subagent rows before/after the current
+join without mutating data.
+
 ## Current draft PR integration order
 
 Все перечисленные PR остаются draft. `mergeable` относительно сегодняшнего
@@ -596,19 +748,22 @@ protection в GitHub сейчас отсутствуют. Maintainer agent сл�
 1. BR-18 secret-safe SessionEnd teardown relay.
 2. BR-19 expected shell-disconnect cancellation без ложного crash toast.
 3. BR-17 persistent server logs как независимый operational PR.
-4. BR-04 recovery после extension-host respawn.
-5. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
-6. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
+4. BR-20 plan-usage compatibility как независимый server/dashboard PR.
+5. BR-21 metric contract, затем его bounded aggregation PRs; analytics fixes не
+   смешиваются с BR-20 и не пытаются вычислять quota из JSONL.
+6. BR-04 recovery после extension-host respawn.
+7. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
+8. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
    как fix PR только если симптом сохранился; отдельная задача для reconnect не
    заводится.
-7. BR-16 upward history anchoring идёт отдельным UI PR и не блокирует connection
+9. BR-16 upward history anchoring идёт отдельным UI PR и не блокирует connection
    recovery chain.
-8. BR-11 inventory native blockers, затем минимальный BR-07.
-9. BR-08 без удаления существующего maintenance contract.
-10. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
+10. BR-11 inventory native blockers, затем минимальный BR-07.
+11. BR-08 без удаления существующего maintenance contract.
+12. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
    migration на всех deployments.
-11. BR-15 Agent Teams selection eval.
-12. BR-02 и только затем решение по BR-03.
+13. BR-15 Agent Teams selection eval.
+14. BR-02 и только затем решение по BR-03.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.
