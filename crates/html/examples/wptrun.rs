@@ -524,9 +524,9 @@ fn flat(buf: &[u8]) -> bool {
 fn rebase_css_urls(css: &str, base: &std::path::Path) -> String {
     let mut out = String::with_capacity(css.len());
     let mut rest = css;
-    while let Some(at) = find_url(rest) {
-        out.push_str(&rest[..at + 4]);
-        rest = &rest[at + 4..];
+    while let Some((at, head)) = find_url(rest) {
+        out.push_str(&rest[..at + head]);
+        rest = &rest[at + head..];
         let Some(end) = rest.find(')') else { break };
         let raw = rest[..end].trim();
         let bare = raw.trim_matches(|c| c == '\'' || c == '"');
@@ -644,12 +644,23 @@ fn resolve_links(html: &str, path: &str) -> String {
     let mut with_urls = String::with_capacity(out.len());
     let mut tail = out.as_str();
     // Имя записи регистронезависимо (§3.3): `URL(` и `Url(` — та же запись.
-    while let Some(at) = find_url(tail) {
-        with_urls.push_str(&tail[..at + 4]);
-        let rest = &tail[at + 4..];
-        let Some(close) = rest.find(')') else {
-            with_urls.push_str(rest);
-            return with_urls;
+    while let Some((at, head)) = find_url(tail) {
+        with_urls.push_str(&tail[..at + head]);
+        let rest = &tail[at + head..];
+        // Незакрытая запись живёт до конца СВОЕГО стиля — его закрывает
+        // EOF таблицы (§4.2), а не конец документа (`uri-017`). Скобка,
+        // найденная уже за `</style`, — из чужой разметки, не наша.
+        let (close, after_len, closed) = match rest.find(')') {
+            Some(close) if !rest[..close].to_ascii_lowercase().contains("</style") => {
+                (close, close + 1, true)
+            }
+            _ => {
+                let end = rest
+                    .to_ascii_lowercase()
+                    .find("</style")
+                    .unwrap_or(rest.len());
+                (end, end, false)
+            }
         };
         let raw = rest[..close].trim();
         let bare = raw.trim_matches(|c| c == '\'' || c == '"');
@@ -713,17 +724,86 @@ fn resolve_links(html: &str, path: &str) -> String {
             }
             None => with_urls.push_str(raw),
         }
-        with_urls.push(')');
-        tail = &rest[close + 1..];
+        if closed {
+            with_urls.push(')');
+        }
+        tail = &rest[after_len..];
     }
     with_urls.push_str(tail);
+    if std::env::var("WPT_HTML_DUMP").is_ok() {
+        use std::io::Write as _;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open("target/dbg-page.html")
+        {
+            let _ = writeln!(f, "<!-- ==== page ==== -->");
+            let _ = f.write_all(with_urls.as_bytes());
+        }
+    }
     with_urls
 }
 
-/// Ближайшая запись `url(` без учёта регистра.
-fn find_url(text: &str) -> Option<usize> {
+/// Ближайшая запись `url(` без учёта регистра, включая экранированные формы
+/// имени (`U\\r\\4c (` — то же `url(`, §4.1.3): даёт начало и длину головы
+/// вместе с открывающей скобкой.
+fn find_url(text: &str) -> Option<(usize, usize)> {
     let bytes = text.as_bytes();
-    (0..bytes.len().saturating_sub(3)).find(|&i| bytes[i..i + 4].eq_ignore_ascii_case(b"url("))
+    (0..bytes.len()).find_map(|i| {
+        if !(bytes[i] == b'\\' || bytes[i].eq_ignore_ascii_case(&b'u')) {
+            return None;
+        }
+        url_head(&text[i..]).map(|len| (i, len))
+    })
+}
+
+/// Длина головы `url(` (до скобки включительно), если запись начинается здесь.
+///
+/// Имя записи может нести экранирование: hex-код с необязательным
+/// пробелом-терминатором либо один буквальный знак. Пробел-терминатор — часть
+/// эскейпа, отдельных пробелов между именем и скобкой не бывает.
+fn url_head(text: &str) -> Option<usize> {
+    let mut at = 0usize;
+    let mut name = String::new();
+    while at < text.len() && name.len() < 3 {
+        let ch = text[at..].chars().next()?;
+        match ch {
+            '\\' => {
+                let tail = &text[at + 1..];
+                let mut digits = 0usize;
+                let mut end = 0usize;
+                for (i, c) in tail.char_indices() {
+                    if digits < 6 && c.is_ascii_hexdigit() {
+                        digits += 1;
+                        end = i + c.len_utf8();
+                        continue;
+                    }
+                    if digits > 0 && c.is_whitespace() {
+                        end = i + c.len_utf8();
+                    }
+                    break;
+                }
+                if digits > 0 {
+                    let code = u32::from_str_radix(tail[..end].trim(), 16).ok()?;
+                    name.push(char::from_u32(code)?);
+                    at += 1 + end;
+                } else {
+                    let c = tail.chars().next()?;
+                    name.push(c);
+                    at += 1 + c.len_utf8();
+                }
+            }
+            c if c.is_ascii_alphabetic() => {
+                name.push(c);
+                at += c.len_utf8();
+            }
+            _ => return None,
+        }
+    }
+    if !name.eq_ignore_ascii_case("url") {
+        return None;
+    }
+    (text.as_bytes().get(at) == Some(&b'(')).then_some(at + 1)
 }
 
 /// Адрес с раскодированными процентами.

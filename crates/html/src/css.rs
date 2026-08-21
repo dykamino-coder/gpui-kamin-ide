@@ -98,12 +98,16 @@ impl Selector {
     pub fn specificity(&self) -> (u32, u32, u32) {
         let mut s = (
             self.id.is_some() as u32,
-            self.classes.len() as u32
-                + self.attrs.len() as u32
-                + self.pseudo.is_some() as u32
-                + self.also.len() as u32,
+            self.classes.len() as u32 + self.attrs.len() as u32,
             self.tag.is_some() as u32,
         );
+        // Псевдокласс — +1 к классам, а `of S` добавляет ещё специфичность
+        // самого специфичного селектора списка (селекторы-4 §specificity):
+        // `:nth-child(even of .foo, #bar)` весит как псевдо + id.
+        for p in self.pseudo.iter().chain(self.also.iter()) {
+            let m = pseudo_specificity(p);
+            s = (s.0 + m.0, s.1 + m.1, s.2 + m.2);
+        }
         if let Some(anc) = &self.ancestor {
             let a = anc.0.specificity();
             s = (s.0 + a.0, s.1 + a.1, s.2 + a.2);
@@ -117,7 +121,7 @@ impl Selector {
 
     fn parse_compound(raw: &str) -> Option<Selector> {
         let s = raw.trim();
-        if s.is_empty() || s == "*" {
+        if s.is_empty() || s == "*" || s == "*|*" {
             return Some(Selector {
                 tag: None,
                 id: None,
@@ -167,7 +171,16 @@ impl Selector {
         let mut rest = s;
         let head_end = delim(rest);
         if head_end > 0 {
-            sel.tag = Some(unescape(rest[..head_end].trim()).to_ascii_lowercase());
+            let name = unescape(rest[..head_end].trim()).to_ascii_lowercase();
+            // Пространство имён нам чуждо: `*|div` — тот же div, `*|*` —
+            // универсал (селекторы-4 §type-nmsp).
+            let name = match name.rsplit_once('|') {
+                Some((_, t)) => t.to_string(),
+                None => name,
+            };
+            if !name.is_empty() && name != "*" {
+                sel.tag = Some(name);
+            }
         }
         rest = &rest[head_end..];
         while !rest.is_empty() {
@@ -440,6 +453,12 @@ pub fn parse_decls(raw: &str) -> Decls {
         {
             continue;
         }
+        // Объявление, в чьём значении лежит НЕгодный url-токен, отбрасывается
+        // целиком (CSS Syntax §4.3.6): «доехавшая» часть вроде `red` из
+        // `background: red url( { test )` красить не должна (`uri-012`).
+        if has_bad_url(val) {
+            continue;
+        }
         // Пометка важности ОСТАЁТСЯ в значении: снимет её тот, кто раскладывает
         // каскад (`Computed::resolve_with_vars`), а срезав её здесь, мы теряли
         // важность целиком — объявление конкурировало на общих основаниях.
@@ -685,12 +704,16 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
         if decls.is_empty() {
             continue;
         }
+        // Список селекторов режется ВНЕ скобок: запятая внутри
+        // `:nth-child(2n of #a, #b)` — часть of-списка, а не граница
+        // селектора, иначе `#b` становился самостоятельным правилом.
+        let parts = split_top_level(head, ',');
         // Пустая часть списка селекторов делает недействительным ВЕСЬ
         // список (CSS 2.1 §4.1.7): `body,,div {}` не применяется ни к кому.
-        if head.split(',').any(|one| one.trim().is_empty()) {
+        if parts.iter().any(|one| one.trim().is_empty()) {
             continue;
         }
-        for one in head.split(',') {
+        for one in parts {
             if let Some(sel) = Selector::parse(one) {
                 out.push(Rule {
                     sel,
@@ -1096,6 +1119,71 @@ fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
     None
 }
 
+/// Есть ли в значении незакавыченная запись `url(…)` с негодным содержимым.
+fn has_bad_url(value: &str) -> bool {
+    let mut at = 0usize;
+    while at < value.len() {
+        let ch = value[at..].chars().next().unwrap_or('\0');
+        match ch {
+            '\\' => {
+                at += ch.len_utf8();
+                at += value[at..].chars().next().map_or(0, char::len_utf8);
+                continue;
+            }
+            '"' | '\'' => {
+                at += ch.len_utf8();
+                at += skip_string(&value[at..], ch);
+                continue;
+            }
+            _ if at_url(&value[at..]) => {
+                if url_is_bad(&value[at..]) {
+                    return true;
+                }
+                at += skip_url(&value[at..]);
+                continue;
+            }
+            _ => at += ch.len_utf8(),
+        }
+    }
+    false
+}
+
+/// Годен ли url-токен, начавшийся здесь (§4.3.6).
+///
+/// Незакавыченное содержимое портят кавычка, открывающая скобка, знак
+/// управления и непробельный знак после пробела в середине; закавыченная
+/// форма — функция со строкой, к токену не относится. Обрыв на конце файла
+/// токен НЕ портит.
+fn url_is_bad(text: &str) -> bool {
+    let mut at = 4; // `url(`
+    let bytes = text.as_bytes();
+    while at < bytes.len() && bytes[at].is_ascii_whitespace() {
+        at += 1;
+    }
+    if matches!(bytes.get(at), Some(b'"') | Some(b'\'')) {
+        return false;
+    }
+    let mut ws_seen = false;
+    while at < text.len() {
+        let ch = text[at..].chars().next().unwrap_or('\0');
+        match ch {
+            ')' => return false,
+            '\\' => {
+                at += ch.len_utf8();
+                at += text[at..].chars().next().map_or(0, char::len_utf8);
+                continue;
+            }
+            c if c.is_ascii_whitespace() => ws_seen = true,
+            '"' | '\'' | '(' => return true,
+            c if (c as u32) < 0x20 || c as u32 == 0x7f => return true,
+            _ if ws_seen => return true,
+            _ => {}
+        }
+        at += ch.len_utf8();
+    }
+    false
+}
+
 /// Начинается ли здесь запись `url(`.
 pub(crate) fn at_url(text: &str) -> bool {
     // Сравнение по БАЙТАМ: срез по четвёртому байту может разрезать
@@ -1251,6 +1339,73 @@ pub(crate) fn strip_comments(css: &str) -> String {
         at += ch.len_utf8();
     }
     out
+}
+
+/// Специфичность одного псевдокласса: +1 к классам, а `of S` у
+/// `:nth-child`/`:nth-last-child` добавляет покомпонентный вес самого
+/// специфичного селектора списка (селекторы-4 §specificity).
+fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
+    let mut s = (0u32, 1u32, 0u32);
+    if let Some((name, arg)) = pseudo.split_once('(')
+        && matches!(name, "nth-child" | "nth-last-child")
+        && let Some(arg) = arg.strip_suffix(')')
+        && let Some((_, list)) = nth_of_parts(arg)
+    {
+        let m = list
+            .iter()
+            .map(Selector::specificity)
+            .max()
+            .unwrap_or_default();
+        s = (s.0 + m.0, s.1 + m.1, s.2 + m.2);
+    }
+    s
+}
+
+/// Разбор аргумента `:nth-child(An+B of S)`: An+B-часть и список S.
+///
+/// `of` ищется вне скобок, регистронезависимо, с границей идентификатора с
+/// обеих сторон (перед ним пробел, после — не буква-цифра-дефис: `of.foo`
+/// годится). Нет `of` — не of-форма; битая или пустая часть S делает весь
+/// псевдокласс несопоставимым (вернётся пустой список — звать не с чем).
+pub(crate) fn nth_of_parts(arg: &str) -> Option<(String, Vec<Selector>)> {
+    let bytes = arg.as_bytes();
+    let mut depth = 0i32;
+    let mut i = 0usize;
+    let mut split = None;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 2;
+                continue;
+            }
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth -= 1,
+            c if depth == 0
+                && c.eq_ignore_ascii_case(&b'o')
+                && bytes.get(i + 1).is_some_and(|f| f.eq_ignore_ascii_case(&b'f'))
+                && i > 0
+                && bytes[i - 1].is_ascii_whitespace()
+                && bytes
+                    .get(i + 2)
+                    .is_none_or(|c| !c.is_ascii_alphanumeric() && *c != b'-') =>
+            {
+                split = Some(i);
+                break;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    let at = split?;
+    let anb = arg[..at].trim().to_string();
+    let mut list = vec![];
+    for one in split_top_level(&arg[at + 2..], ',') {
+        let Some(sel) = Selector::parse(one) else {
+            return Some((anb, vec![]));
+        };
+        list.push(sel);
+    }
+    Some((anb, list))
 }
 
 /// Разрезание по разделителю, не заходя внутрь скобок: `rgba(0, 0, 0, .5)`

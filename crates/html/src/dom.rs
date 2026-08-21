@@ -154,21 +154,23 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
             ..r
         });
     }
-    let mut doc_css = String::new();
-    collect_style_tags(&dom.document, &mut doc_css);
-    let base = rules.len();
-    for (i, r) in parse_stylesheet_media(&doc_css, media)
-        .into_iter()
-        .enumerate()
-    {
-        rules.push(Rule {
-            order: base + i,
-            // Таблица ДОКУМЕНТА: её происхождение старше нашего умолчания и
-            // темы приложения, поэтому она перебивает их независимо от
-            // специфичности (CSS Cascade §6.4.4).
-            origin: 1,
-            ..r
-        });
+    // Каждый `<style>` — ОТДЕЛЬНАЯ таблица: конец каждой закрывает свои
+    // незакрытые конструкции (CSS 2.1 §4.2, `uri-017`). В склейке незакрытая
+    // запись первой таблицы съедала правила второй.
+    let mut sheets: Vec<String> = vec![];
+    collect_style_tags(&dom.document, &mut sheets);
+    for css in &sheets {
+        let base = rules.len();
+        for (i, r) in parse_stylesheet_media(css, media).into_iter().enumerate() {
+            rules.push(Rule {
+                order: base + i,
+                // Таблица ДОКУМЕНТА: её происхождение старше нашего умолчания и
+                // темы приложения, поэтому она перебивает их независимо от
+                // специфичности (CSS Cascade §6.4.4).
+                origin: 1,
+                ..r
+            });
+        }
     }
 
     // Переменные темы: `:root { --x: … }` и `--x` в инлайн-стиле корня.
@@ -181,7 +183,9 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // Наборы кадров собираются из тех же источников, что и правила.
     let mut frames = parse_keyframes(&user_agent_css());
     frames.extend(parse_keyframes(extra_css));
-    frames.extend(parse_keyframes(&doc_css));
+    for css in &sheets {
+        frames.extend(parse_keyframes(css));
+    }
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.
@@ -428,11 +432,13 @@ fn own_containing_block(c: &Computed) -> bool {
 /// Кастомные свойства из правил. Селектор не важен: в документе переменные
 /// почти всегда объявлены на корне, а разбирать их область видимости — это
 
-/// Содержимое всех `<style>` документа — html5ever кладёт его текстом внутрь.
-fn collect_style_tags(handle: &Handle, out: &mut String) {
+/// Содержимое `<style>`-тегов документа, каждый — отдельной таблицей;
+/// html5ever кладёт его текстом внутрь.
+fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
     if let NodeData::Element { name, .. } = &handle.data
         && name.local.as_ref() == "style"
     {
+        let mut sheet = String::new();
         for child in handle.children.borrow().iter() {
             if let NodeData::Text { contents } = &child.data {
                 // Обёртка `<![CDATA[ … ]]>` встречается в эталонах XHTML: там
@@ -444,10 +450,11 @@ fn collect_style_tags(handle: &Handle, out: &mut String) {
                     .strip_prefix("<![CDATA[")
                     .and_then(|rest| rest.strip_suffix("]]>"))
                     .unwrap_or(&text);
-                out.push_str(body);
-                out.push('\n');
+                sheet.push_str(body);
+                sheet.push('\n');
             }
         }
+        out.push(sheet);
     }
     for child in handle.children.borrow().iter() {
         collect_style_tags(child, out);
@@ -623,6 +630,79 @@ struct Spot {
     of_type_total: usize,
 }
 
+/// Братья узла: ВСЕ дети-элементы родителя и позиция узла среди них.
+///
+/// Соседним комбинаторам `+`/`~` хватает предыдущих, но
+/// `:nth-last-child(… of S)` считает совпавших среди ПОСЛЕДУЮЩИХ
+/// (селекторы-4 §child-index) — поэтому список полный.
+#[derive(Clone, Copy)]
+struct Sibs<'a> {
+    all: &'a [Ancestor],
+    /// Сколько элементов стоит ДО узла; сам узел-элемент = `all[pos]`.
+    pos: usize,
+    /// Узел — элемент и присутствует в `all[pos]`.
+    is_elem: bool,
+}
+
+impl<'a> Sibs<'a> {
+    const EMPTY: Sibs<'static> = Sibs {
+        all: &[],
+        pos: 0,
+        is_elem: false,
+    };
+
+    /// Предыдущие соседи-элементы — для `+` и `~`.
+    fn prev(&self) -> &'a [Ancestor] {
+        &self.all[..self.pos]
+    }
+
+    /// Последующие соседи-элементы.
+    fn next(&self) -> &'a [Ancestor] {
+        &self.all[self.pos + usize::from(self.is_elem)..]
+    }
+
+    /// Те же братья глазами элемента с номером `i` в общем списке.
+    fn at(&self, i: usize) -> Sibs<'a> {
+        Sibs {
+            all: self.all,
+            pos: i,
+            is_elem: true,
+        }
+    }
+}
+
+/// Паспорт элемента для сопоставления селекторов.
+fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
+    let NodeData::Element { name, attrs, .. } = &child.data else {
+        return None;
+    };
+    let attrs = attrs.borrow();
+    let find = |key: &str| {
+        attrs
+            .iter()
+            .find(|a| a.name.local.as_ref() == key)
+            .map(|a| a.value.to_string())
+    };
+    Some(Ancestor {
+        tag: name.local.to_string(),
+        id: find("id"),
+        classes: find("class")
+            .map(|v| v.split_whitespace().map(str::to_string).collect())
+            .unwrap_or_default(),
+        attrs: attrs
+            .iter()
+            .map(|a| (a.name.local.to_string(), a.value.to_string()))
+            .collect(),
+        spot,
+        href: find("href"),
+        dir: find("dir").and_then(|v| match v.to_ascii_lowercase().as_str() {
+            "rtl" => Some(true),
+            "ltr" => Some(false),
+            _ => None,
+        }),
+    })
+}
+
 /// Обойти детей узла, посчитав каждому его место среди соседей.
 #[allow(clippy::too_many_arguments)]
 fn walk_children(
@@ -648,8 +728,11 @@ fn walk_children(
     let total = tags.iter().filter(|t| t.is_some()).count();
     let mut seen = 0usize;
     let mut seen_of_type: HashMap<String, usize> = HashMap::new();
-    // Предыдущие соседи-элементы: по ним считаются `.a + .b` и `.a ~ .b`.
-    let mut sibs: Vec<Ancestor> = vec![];
+    // Перепись братьев ЦЕЛИКОМ до обхода: `:nth-last-child(… of S)` смотрит
+    // и на последующих, поэтому паспорта всех детей-элементов собираются
+    // заранее, а каждый узел получает свою позицию в общем списке.
+    let mut spots: Vec<Spot> = Vec::with_capacity(children.len());
+    let mut all: Vec<Ancestor> = Vec::with_capacity(total);
     for (child, tag) in children.iter().zip(&tags) {
         let spot = match tag {
             Some(tag) => {
@@ -665,36 +748,23 @@ fn walk_children(
             }
             None => Spot::default(),
         };
-        walk(
-            child, rules, vars, frames, counter, counters, path, spot, preserve, &sibs, out,
-        );
-        if let NodeData::Element { name, attrs, .. } = &child.data {
-            let attrs = attrs.borrow();
-            let find = |key: &str| {
-                attrs
-                    .iter()
-                    .find(|a| a.name.local.as_ref() == key)
-                    .map(|a| a.value.to_string())
-            };
-            sibs.push(Ancestor {
-                tag: name.local.to_string(),
-                id: find("id"),
-                classes: find("class")
-                    .map(|v| v.split_whitespace().map(str::to_string).collect())
-                    .unwrap_or_default(),
-                attrs: attrs
-                    .iter()
-                    .map(|a| (a.name.local.to_string(), a.value.to_string()))
-                    .collect(),
-                spot,
-                href: find("href"),
-                dir: find("dir").and_then(|v| match v.to_ascii_lowercase().as_str() {
-                    "rtl" => Some(true),
-                    "ltr" => Some(false),
-                    _ => None,
-                }),
-            });
+        spots.push(spot);
+        if let Some(a) = ancestor_of(child, spot) {
+            all.push(a);
         }
+    }
+    let mut pos = 0usize;
+    for (child, spot) in children.iter().zip(&spots) {
+        let is_elem = spot.index != 0;
+        let sibs = Sibs {
+            all: &all,
+            pos,
+            is_elem,
+        };
+        walk(
+            child, rules, vars, frames, counter, counters, path, *spot, preserve, sibs, out,
+        );
+        pos += usize::from(is_elem);
     }
 }
 
@@ -709,7 +779,7 @@ fn walk(
     path: &[Ancestor],
     spot: Spot,
     preserve: bool,
-    sibs: &[Ancestor],
+    sibs: Sibs,
     out: &mut Vec<Node>,
 ) {
     match &handle.data {
@@ -897,10 +967,10 @@ fn walk(
             // Псевдоэлементы: коробка появляется, только если у правила есть
             // `content`. Значками, стрелками и разделителями в вёрстке
             // занимаются именно они, и без них разметка теряет часть смысла.
-            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, &[], "after", &attrs) {
+            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, Sibs::EMPTY, "after", &attrs) {
                 children.push(Node::Element(el));
             }
-            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, &[], "before", &attrs) {
+            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, Sibs::EMPTY, "before", &attrs) {
                 children.insert(0, Node::Element(el));
             }
 
@@ -968,7 +1038,7 @@ fn pseudo_box(
     counters: &HashMap<String, i32>,
     me: &Ancestor,
     path: &[Ancestor],
-    sibs: &[Ancestor],
+    sibs: Sibs,
     which: &str,
     attrs: &[(String, String)],
 ) -> Option<Element> {
@@ -1038,7 +1108,7 @@ fn pseudo_box(
 ///
 /// `sibs` — предыдущие соседи-элементы узла в порядке разметки: по ним
 /// решаются соседние комбинаторы `+` и `~`.
-fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) -> bool {
+fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
     if let Some(pseudo) = &sel.pseudo {
         // `:not(...)` — отрицание вложенного селектора. Разбирается здесь, а
         // не среди структурных: внутри скобок может стоять тег или класс, а им
@@ -1098,6 +1168,12 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) 
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
         }
+        if let Some(ok) = nth_of_holds(pseudo, me, path, sibs) {
+            if !ok {
+                return false;
+            }
+            return matches_ignoring_pseudo(sel, me, path, sibs);
+        }
         let Some(ok) = structural(pseudo, me.spot) else {
             return false;
         };
@@ -1106,6 +1182,46 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) 
         }
     }
     matches_ignoring_pseudo(sel, me, path, sibs)
+}
+
+/// Псевдокласс — of-форма `:nth-child(… of S)`?
+fn nth_of_form(pseudo: &str) -> bool {
+    let Some((name, arg)) = pseudo.split_once('(') else {
+        return false;
+    };
+    matches!(name, "nth-child" | "nth-last-child")
+        && arg
+            .strip_suffix(')')
+            .is_some_and(|a| crate::css::nth_of_parts(a).is_some())
+}
+
+/// `:nth-child(An+B of S)` / `:nth-last-child(An+B of S)` (селекторы-4):
+/// узел обязан сам совпасть с S, а номер считается только среди совпавших
+/// братьев — с начала либо с конца. `None` — псевдокласс не of-формы.
+fn nth_of_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> Option<bool> {
+    let (name, arg) = pseudo.split_once('(')?;
+    let backwards = match name {
+        "nth-child" => false,
+        "nth-last-child" => true,
+        _ => return None,
+    };
+    let arg = arg.strip_suffix(')')?;
+    let (anb, list) = crate::css::nth_of_parts(arg)?;
+    let hit = |a: &Ancestor, s: Sibs| list.iter().any(|sel| matches(sel, a, path, s));
+    if !sibs.is_elem || list.is_empty() || !hit(me, sibs) {
+        return Some(false);
+    }
+    let (peers, base) = if backwards {
+        (sibs.next(), sibs.pos + 1)
+    } else {
+        (sibs.prev(), 0)
+    };
+    let idx = 1 + peers
+        .iter()
+        .enumerate()
+        .filter(|(i, a)| hit(a, sibs.at(base + i)))
+        .count();
+    Some(nth_matches(&anb, idx))
 }
 
 /// `:lang(x)` — язык узла: свой атрибут `lang`, иначе ближайшего предка.
@@ -1135,7 +1251,7 @@ fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool {
 /// псевдоклассов компаунда (основной решает `matches`, слои — отбор
 /// по имени). Неизвестный или слойный (`:hover`) здесь считается
 /// НЕвыполненным: базовый каскад такое правило не применяет.
-fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) -> bool {
+fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
     if let Some(inner) = pseudo.strip_prefix("not(").and_then(|r| r.strip_suffix(')')) {
         return Selector::parse(inner).is_some_and(|inner| !matches(&inner, me, path, sibs));
     }
@@ -1156,6 +1272,9 @@ fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor
     }
     if let Some(want) = pseudo.strip_prefix("lang(").and_then(|r| r.strip_suffix(')')) {
         return lang_matches(want, me, path);
+    }
+    if let Some(ok) = nth_of_holds(pseudo, me, path, sibs) {
+        return ok;
     }
     structural(pseudo, me.spot).unwrap_or(false)
 }
@@ -1203,7 +1322,12 @@ fn nth_matches(arg: &str, index: usize) -> bool {
                 Err(_) => return false,
             },
             Some((head, tail)) => {
-                let a = match head.trim() {
+                // Пробел между множителем и `n` запрещён (css-syntax
+                // §the-anb-type): `1 n` — не An+B.
+                if head.ends_with(char::is_whitespace) {
+                    return false;
+                }
+                let a = match head {
                     "" | "+" => 1,
                     "-" => -1,
                     other => match other.parse::<i64>() {
@@ -1211,12 +1335,26 @@ fn nth_matches(arg: &str, index: usize) -> bool {
                         Err(_) => return false,
                     },
                 };
-                let tail = tail.replace(' ', "");
+                // Сдвиг после `n` обязан нести явный знак: `2n 1` — не An+B,
+                // пробелы допустимы только вокруг самого знака.
+                let tail = tail.trim();
                 let b = if tail.is_empty() {
                     0
                 } else {
-                    match tail.parse::<i64>() {
-                        Ok(v) => v,
+                    let (sign, num) = match tail.strip_prefix('+') {
+                        Some(rest) => (1i64, rest),
+                        None => match tail.strip_prefix('-') {
+                            Some(rest) => (-1, rest),
+                            None => return false,
+                        },
+                    };
+                    let num = num.trim_start();
+                    // Второй знак у сдвига (`2n--1`) — не число.
+                    if !num.bytes().all(|c| c.is_ascii_digit()) {
+                        return false;
+                    }
+                    match num.parse::<i64>() {
+                        Ok(v) => sign * v,
                         Err(_) => return false,
                     }
                 };
@@ -1233,7 +1371,7 @@ fn nth_matches(arg: &str, index: usize) -> bool {
 }
 
 /// То же сопоставление, но без отсева по псевдоклассу — для слоя наведения.
-fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) -> bool {
+fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
     if !matches_compound(sel, me) {
         return false;
     }
@@ -1247,11 +1385,12 @@ fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor], sib
     // слева и тем же путём предков (соседи его делят).
     if let Some(prev) = &sel.prev {
         let (prev_sel, adjacent) = (&prev.0, prev.1);
-        let hit = |i: usize| matches(prev_sel, &sibs[i], path, &sibs[..i]);
+        let prev = sibs.prev();
+        let hit = |i: usize| matches(prev_sel, &prev[i], path, sibs.at(i));
         let found = if adjacent {
-            !sibs.is_empty() && hit(sibs.len() - 1)
+            !prev.is_empty() && hit(prev.len() - 1)
         } else {
-            (0..sibs.len()).rev().any(hit)
+            (0..prev.len()).rev().any(hit)
         };
         if !found {
             return false;
@@ -1311,8 +1450,10 @@ fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
     // `spot` — без проверки любой `td` подходил под любой номер, и
     // последнее правило перекрашивало все колонки
     // (logical-physical-mapping-001). Нестуктурные (`:hover`) здесь
-    // по-прежнему пропускаются.
+    // по-прежнему пропускаются, of-форма — тоже: её решает предметный
+    // путь по списку братьев, а по одному `spot` она не считается.
     if let Some(p) = &sel.pseudo
+        && !nth_of_form(p)
         && let Some(ok) = structural(p, node.spot)
         && !ok
     {
@@ -1362,6 +1503,23 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    #[test]
+    fn nth_child_of_selector_list() {
+        let red = crate::value::Color::parse("red");
+        let green = crate::value::Color::parse("green");
+        // Индекс считается среди совпавших с S братьев, а не среди всех:
+        // второй `.a` — это :nth-child(2 of .a), хотя среди детей он третий.
+        let colors = child_colors(
+            "<style>p { color: red } p:nth-child(2 of .a) { color: green }</style>             <div id=\"box\"><p class=\"a\"></p><p></p><p class=\"a\"></p></div>",
+        );
+        assert_eq!(colors, vec![red, red, green]);
+        // nth-last-child(of S): совпавшие считаются с конца.
+        let colors = child_colors(
+            "<style>p { color: red } p:nth-last-child(2 of .a) { color: green }</style>             <div id=\"box\"><p class=\"a\"></p><p></p><p class=\"a\"></p></div>",
+        );
+        assert_eq!(colors, vec![green, red, red]);
     }
 
     #[test]

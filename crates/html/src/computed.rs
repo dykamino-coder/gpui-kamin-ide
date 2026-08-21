@@ -5026,10 +5026,15 @@ pub(crate) fn parse_url(v: &str) -> Option<String> {
             }
             _ if crate::css::at_url(&v[at..]) => {
                 let end = at + crate::css::skip_url(&v[at..]);
-                let inner = v[at + 4..end.saturating_sub(1).max(at + 4)].trim();
+                // Обрыв на конце файла закрывает запись сам (§4.2): скобки
+                // может не быть, и тогда резать последний знак нельзя, а
+                // кавычка остаётся только открывающая (`uri-017`).
+                let inner_end = if v[..end].ends_with(')') { end - 1 } else { end };
+                let inner = v[at + 4..inner_end.max(at + 4)].trim();
                 let inner = match inner.chars().next() {
-                    Some(q @ ('"' | '\'')) if inner.ends_with(q) && inner.len() > 1 => {
-                        &inner[1..inner.len() - 1]
+                    Some(q @ ('"' | '\'')) if inner.len() > 1 => {
+                        let body = &inner[1..];
+                        body.strip_suffix(q).unwrap_or(body)
                     }
                     _ => inner,
                 };
