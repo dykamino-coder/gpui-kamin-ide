@@ -297,6 +297,17 @@ pub enum FloatShape {
 }
 
 impl FloatShape {
+    /// Сдвинуть форму вниз: флоат перенесён на следующую полосу.
+    pub fn shift_top(&mut self, dy: f32) {
+        match self {
+            FloatShape::Band { top, .. }
+            | FloatShape::Circle { top, .. }
+            | FloatShape::Ellipse { top, .. }
+            | FloatShape::Poly { top, .. }
+            | FloatShape::Profile { top, .. } => *top += dy,
+        }
+    }
+
     pub fn cut(&self, y0: f32, y1: f32) -> f32 {
         match *self {
             FloatShape::Band { top, h, w } => {
@@ -321,14 +332,18 @@ impl FloatShape {
                     .unwrap_or(0.0);
             }
             FloatShape::Poly { top, ref pts } => {
-                let (y0, y1) = (y0 - top, y1 - top);
+                // Верхняя кромка полосы ОТКРЫТА (как строки растра у
+                // blink RasterShape): вершина/срез ровно на y0 принадлежит
+                // предыдущей полосе — вогнутая «лесенка» иначе залипала
+                // на ступени (shape-outside-polygon-007..011).
+                let (y0, y1) = (y0 - top + 1e-3, y1 - top);
                 let mut m = 0.0f32;
                 let n = pts.len();
                 for i in 0..n {
                     let (x1, py1) = pts[i];
                     let (x2, py2) = pts[(i + 1) % n];
                     // Вершина в полосе — как есть.
-                    if (y0..y1).contains(&py1) {
+                    if py1 > y0 && py1 < y1 {
                         m = m.max(x1);
                     }
                     // Ребро пересекает границы полосы — X в точках среза.

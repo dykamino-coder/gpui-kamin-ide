@@ -342,6 +342,10 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                     c.font_weight = style.font_weight.or(base.font_weight);
                     c.italic = style.italic.or(base.italic);
                     c.font_family = style.font_family.clone().or(base.font_family.clone());
+                    // Коробочная часть первой строки: интерлиньяж и подложка
+                    // (css-pseudo-4 §4.1; first-line-line-height-001/002).
+                    c.background = style.background.or(base.background);
+                    c.line_height = style.line_height.or(base.line_height);
                     c
                 };
                 let len = text.len();

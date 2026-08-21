@@ -3856,6 +3856,10 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     // Стек подряд стоящих флоатов одной стороны: каждый следующий кладётся
     // дальше от края на ширину предыдущих.
     let (mut off_l, mut off_r) = (0.0f32, 0.0f32);
+    // Полоса флоатов: не влезающий в ширину контейнера падает под
+    // предыдущие (CSS 2.1 §9.5.1 правило 3; shape-outside-border-box-001:
+    // два флоата по 175px в контейнере 200px обязаны встать столбиком).
+    let (mut row_top, mut row_h) = (0.0f32, 0.0f32);
     let mut floats: Vec<AnyElement> = Vec::new();
     let mut rest: Vec<Node> = Vec::new();
     let host_side: i32 = if e.attr("side") == Some("right") { 1 } else { -1 };
@@ -3911,6 +3915,19 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // Доля поля формы — от ширины содержащего блока; она известна,
         // когда контейнер задан точками (тестовый случай).
         let cb_w = px_of(&e.style.width);
+        if inherited.vertical_rl != Some(true) {
+            let off_side = if side < 0 { off_l } else { off_r };
+            if off_side > 0.0 && cb_w > 0.0 && off_side + mw > cb_w + 0.01 {
+                row_top += row_h;
+                row_h = 0.0;
+                if side < 0 {
+                    off_l = 0.0;
+                } else {
+                    off_r = 0.0;
+                }
+            }
+            row_h = row_h.max(mh);
+        }
         let sm = match f.style.shape_margin {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(p)) => p * cb_w,
@@ -4169,6 +4186,10 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 w: (if side < 0 { off_l } else { off_r }) + w_cut + sm,
             }
         };
+        let mut shape = shape;
+        if row_top > 0.0 {
+            shape.shift_top(row_top);
+        }
         if side < 0 {
             left.push(shape);
         } else {
@@ -4191,15 +4212,21 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         };
         let holder = if inherited.vertical_rl == Some(true) {
             // Вертикальное письмо: блок-старт — ПРАВЫЙ край, колонки
-            // флоатов идут влево; инлайн-старт — верх.
-            div()
+            // флоатов идут влево; инлайн-старт — верх, а у float:right
+            // (line-right) — НИЗ (css-writing-modes §7,
+            // shape-outside-circle-049 и родня).
+            let col = div()
                 .absolute()
-                .right(px(if side < 0 { off_l } else { off_r } + mr))
-                .top(px(mt))
+                .right(px(if side < 0 { off_l } else { off_r } + mr));
+            if side < 0 {
+                col.top(px(mt))
+            } else {
+                col.bottom(px(mt))
+            }
         } else if side < 0 {
-            div().absolute().left(px(off_l + ml)).top(px(mt))
+            div().absolute().left(px(off_l + ml)).top(px(mt + row_top))
         } else {
-            div().absolute().right(px(off_r + mr)).top(px(mt))
+            div().absolute().right(px(off_r + mr)).top(px(mt + row_top))
         };
         floats.push(holder.child(built).into_any_element());
         if side < 0 {
