@@ -2009,31 +2009,59 @@ impl Computed {
                     self.padding_inherit = true;
                     return;
                 }
-                self.padding = Sides::shorthand(v);
+                let parsed = Sides::shorthand(v);
+                let neg = |l: &Option<Len>| {
+                    matches!(l, Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if *n < 0.0)
+                };
+                if neg(&parsed.top) || neg(&parsed.right) || neg(&parsed.bottom) || neg(&parsed.left)
+                {
+                    return;
+                }
+                self.padding = parsed;
                 // Гашение логических слотов — как у полей (порядок каскада).
                 if let Some(l) = self.logical.as_mut() {
                     l.padding = Default::default();
                 }
             }
             "padding-top" => {
+                // Отрицательный внутренний отступ невалиден (§8.4) — слот
+                // не трогается (ref-no-vert-space-between и родня).
+                if matches!(Len::parse(v), Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if n < 0.0) {
+                    return;
+                }
                 self.padding.top = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.padding.block_start = None;
                 }
             }
             "padding-right" => {
+                // Отрицательный внутренний отступ невалиден (§8.4) — слот
+                // не трогается (ref-no-vert-space-between и родня).
+                if matches!(Len::parse(v), Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if n < 0.0) {
+                    return;
+                }
                 self.padding.right = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.padding.inline_end = None;
                 }
             }
             "padding-bottom" => {
+                // Отрицательный внутренний отступ невалиден (§8.4) — слот
+                // не трогается (ref-no-vert-space-between и родня).
+                if matches!(Len::parse(v), Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if n < 0.0) {
+                    return;
+                }
                 self.padding.bottom = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.padding.block_end = None;
                 }
             }
             "padding-left" => {
+                // Отрицательный внутренний отступ невалиден (§8.4) — слот
+                // не трогается (ref-no-vert-space-between и родня).
+                if matches!(Len::parse(v), Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if n < 0.0) {
+                    return;
+                }
                 self.padding.left = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.padding.inline_start = None;
