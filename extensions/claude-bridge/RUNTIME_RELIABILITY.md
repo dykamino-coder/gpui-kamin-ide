@@ -111,12 +111,13 @@ retention. Полная переработка допускается тольк
 ### BR-01 — Durable incident diagnostics
 
 **Status:** ready. **Dependency:** none. **Acceptance:** automated merge gate +
-post-merge production observation; Windows crash reproduction не блокирует
-merge диагностического PR.
+Windows compile/privacy/runtime gate; воспроизведение редкого crash через
+10–15 часов остаётся post-merge production observation и не блокирует merge.
 
 Изменение:
 
-- bounded rotation вместо безусловной потери предыдущего `host.log`;
+- bounded rotation долговечного sanitized `incident.log`; raw `host.log`
+  ограничен текущим запуском и не переносится в backup generations;
 - timestamp, app/build version, process/view id и termination status в crash
   records;
 - sanitized tab-scoped connection transitions и причина reconnect/error;
@@ -172,15 +173,16 @@ runtime merge gate.
 
 - не терять connection event, пришедший до tab snapshot;
 - не затирать более новое состояние поздним `listTabs`/`tab:list-changed`;
-- не переводить authenticated session в UI `connecting` после временного
-  `session:error`;
+- трактовать существующий `session:error` как terminal lifecycle/protocol
+  failure: server отправляет причину, закрывает WS, а client проходит штатный
+  reconnect/re-auth без ложного `connected` timer. Будущий non-fatal сигнал
+  должен иметь отдельный message type, например `session:notice`;
 - при webview mount/reload выдавать один versioned authoritative snapshot.
 
-Tests: event-before-tab, stale snapshot, transient error, cold app restart при
-живой server session и несколько tabs. Старый пятисекундный error timer не
-меняет новое connection generation; authenticated state и `sessionId`
-сохраняются, composer остаётся enabled, а stale `listTabs` не откатывает
-revision.
+Tests: event-before-tab, stale snapshot, terminal error + reconnect, cold app
+restart при живой server session и несколько tabs. Старый пятисекундный error
+timer отсутствует; stale manager generation и `listTabs` не откатывают более
+новую authority/revision, а fatal error не оставляет false-green composer.
 
 ### BR-06 — Webview update stalls until pointer activity
 
@@ -389,25 +391,177 @@ scroll-up через несколько 400-row boundaries и фиксирует
 до/после каждого prepend; выбранный anchor не должен сдвигаться больше чем на
 2 px, а scroll вниз и live streaming остаются плавными.
 
-## Recommended PR order
+### BR-17 — Persist privacy-safe Bridge server logs
 
-1. BR-10 informed hook approval UI.
-2. BR-05 authoritative connection state.
-3. BR-09 Agent Teams soft reporting contract.
-4. BR-01 diagnostics.
-5. BR-04 recovery после extension-host respawn.
-6. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
-7. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
+**Status:** ready как отдельный operational PR. **Dependency:** none.
+**Acceptance:** automated filesystem tests + isolated Linux Docker/Podman
+runtime gate; Windows UI acceptance не требуется.
+
+Server logger пишет относительно `process.cwd()` в `logs/`; в production image
+с `WORKDIR /app` это `/app/logs`. Текущий compose не монтирует этот путь, поэтому
+логи остаются в writable layer контейнера и исчезают при его recreation.
+
+Change PR должен:
+
+- добавить отдельный persistent volume для `/app/logs` и проверить права записи
+  непривилегированного runtime user;
+- задать документированные rotation и retention bounds, чтобы volume не рос
+  бесконечно;
+- сохранять безопасные lifecycle/correlation metadata, достаточные для
+  различения explicit end, detach grace, idle/max-lifetime reap, duplicate
+  resume и PTY exit; существующий default `info` не должен требовать постоянного
+  включения всего raw debug output;
+- не писать Bearer tokens, prompt bodies, tool inputs, file contents и другие
+  произвольные payloads. Нельзя просто сделать persistent весь raw stdout/stderr;
+- добавить runbook для просмотра, копирования, backup и удаления логов без
+  остановки активных PTY, где это возможно.
+
+Runtime gate запускается только в disposable CI/local/staging compose project с
+отдельным именем, volume и непродуктивным port. Он создаёт диагностическую
+запись, пересоздаёт только свой test container и доказывает, что запись
+сохранилась; затем проверяет rotation/retention, отсутствие секретов в
+allowlisted lifecycle record и восстановление записи после повторного старта.
+Агенту запрещено выполнять `stop`, `restart`, `down`, `rm`, `volume rm`, recreate
+или deploy для существующего production contour. Production rollout и
+последующая read-only проверка выполняются отдельно maintainer'ом только после
+merge и явного решения о выкладке. Mount legacy `bridge-sync` и его migration
+эта задача не меняет.
+
+#### Evidence required before implementation
+
+Для исходного инцидента с `SessionEnd ... Unknown session`, `Session exited with
+code 129` и последующим reconnect не хватает server-side причины удаления
+сессии. Client JSONL и KaminIDE logs подтверждают наблюдаемый результат, но не
+различают reaper, истёкший detach grace, explicit/admin end, duplicate resume и
+server/container restart.
+
+Для текущего инцидента maintainer может сохранить с Linux host следующие
+артефакты до следующей плановой выкладки. Этот read-only сбор не требует и не
+разрешает restart/recreate контейнера. Команды не печатают настройки или Bearer
+token:
+
+```bash
+podman inspect claude-bridge \
+  --format '{{.Id}} {{.Image}} {{.Config.Image}} {{.State.StartedAt}} {{.RestartCount}}'
+podman exec claude-bridge printenv CLAUDE_PROXY_LOG_LEVEL
+podman exec claude-bridge sh -lc \
+  'TZ=UTC find /app/logs -maxdepth 2 -type f -printf "%TY-%Tm-%TdT%TH:%TM:%TSZ %s %p\n" | sort'
+podman cp claude-bridge:/app/logs ./bridge-server-logs
+podman logs --since '2026-08-21T09:10:00Z' \
+  --until '2026-08-21T09:40:00Z' claude-bridge \
+  > bridge-container-2026-08-21T0910Z.log 2>&1
+```
+
+Для другого инцидента UTC window заменяется на 10–15 минут до и после его
+точного времени. Logger использует ISO UTC timestamps. Если runtime использует
+Docker, те же команды выполняются с `docker` вместо `podman`.
+
+Перед передачей проверяются как минимум:
+
+- `/app/logs/sessions/*.log` и `/app/logs/errors/YYYY-MM-DD.log`;
+- container stdout/stderr за тот же UTC window;
+- точные local time + timezone, Claude conversation ID и отдельный Bridge
+  runtime session ID;
+- container ID, image digest/tag, server version, start time/restart count и
+  фактический `CLAUDE_PROXY_LOG_LEVEL` без вывода остальных environment values;
+- был ли перед событием disconnect/reconnect, tab switch, explicit session end,
+  dashboard kill, deploy или container restart.
+
+В передаваемом архиве удаляются Bearer tokens, Authorization headers, prompt/tool
+payloads и содержимое файлов. Сырые логи не вставляются целиком в PR или chat;
+достаточны redacted excerpts с сохранёнными timestamp, event name, runtime
+session ID, reason, age/idle durations и exit code/signal.
+
+При текущем compose default `CLAUDE_PROXY_LOG_LEVEL=info`, тогда как
+`Reaping session`, `Detach grace expired`, `Destroying session` и `PTY exited`
+пишутся через `debugLog`. Поэтому отсутствие этих строк в старых logs не
+доказывает отсутствие события и ретроспективно восстановить причину может быть
+невозможно. BR-17 должен сделать перечисленные безопасные lifecycle fields
+доступными на default level; постоянно включать и сохранять весь raw debug log
+не является решением.
+
+Сам mount начнёт использоваться production service только при следующем
+обычном deployment этого service, потому что volume declaration применяется при
+создании контейнера. Это ожидаемый rollout effect, а не действие implementation
+или review agent; отдельно «грохать все контейнеры» задача не требует.
+
+### BR-18 — Keep SessionEnd relay available and secret-safe during teardown
+
+**Status:** ready для relay lifecycle fix; причина запуска teardown остаётся
+investigation и использует evidence из BR-17. **Dependency:** none для fix,
+BR-17 для классификации исходного termination trigger. **Acceptance:** automated
++ authenticated Windows runtime merge gate.
+
+Source audit подтверждает самостоятельный teardown defect:
+
+- `destroySession()` вызывает `cancelSessionLocalExecs()` и
+  `clearHookSession()` до `pty.kill()`;
+- Claude CLI запускает `SessionEnd` уже во время выхода, но relay lookup к этому
+  моменту не находит session и отвечает `Unknown session`;
+- default `node-pty` termination через `SIGHUP` отображается как exit code 129.
+  Это доказывает forced teardown, но само по себе не определяет его caller;
+- текущая user-visible hook command содержит relay `Authorization` value. Такой
+  credential нельзя показывать в Console/JSONL или хранить в generated hook
+  declaration.
+
+Change PR должен оставить только ограниченное teardown окно: exiting session
+больше не принимает обычные MCP/local exec requests, но её ранее
+аутентифицированный `SessionEnd` relay остаётся доступен до первого успешного
+вызова, PTY exit или короткого timeout. Cleanup idempotent, token ownership не
+ослабляется, повторный вызов и reused session ID не получают старую
+регистрацию. Relay credential передаётся через secret-safe runtime channel, а не
+интерполируется в отображаемую command/settings; tests доказывают отсутствие
+Bearer/token в declaration, logs и JSONL.
+
+Automated tests покрывают explicit end, detach-grace teardown, no-hook exit,
+timeout, duplicate callback, чужой token и cleanup после PTY exit. Windows gate
+запускает новый chat с approved `SessionEnd` hook, выполняет штатное завершение
+и disconnect с истечением grace: hook вызывается не более одного раза, Console
+не показывает `Unknown session` или credential, а новые requests после начала
+teardown отклоняются. Почему исходная длинная session вошла в teardown,
+определяется отдельно по BR-17 logs и не угадывается этим fix.
+
+## Current draft PR integration order
+
+Все перечисленные PR остаются draft. `mergeable` относительно сегодняшнего
+`main` не гарантирует корректность после предыдущего merge; checks и branch
+protection в GitHub сейчас отсутствуют. Maintainer agent сливает строго по
+одному и не закрывает PR без merge:
+
+1. PR #12 — canonical docs/testing/backlog. Сначала включить текущие BR-17,
+   BR-18 и dependency template changes.
+2. PR #13 — BR-10 hook approval UI; выполнить его Windows gate.
+3. Обновить PR #14 от `origin/main`, пересобрать committed Bridge artifacts и
+   повторить automated + Windows gates. Это обязательно после #13, потому что
+   оба PR меняют `builtin-extensions/claude-bridge/chat.html`. Затем слить #14.
+4. Обновить и проверить PR #15 на свежем `origin/main`, выполнить authenticated
+   Agent Teams gate и слить #15.
+5. Обновить PR #16 после #14/#15, пересобрать artifacts и повторить все checks,
+   включая Windows Rust/runtime gate. #16 пересекается с #14 по connection
+   state, shared types, `useInit`, host parent и generated artifacts; затем
+   слить #16.
+
+После каждого merge maintainer делает `fetch`, проверяет новый `origin/main` и
+только затем обновляет следующий PR. Generated files не разрешаются через
+`ours`/`theirs`: они пересобираются из объединённых sources.
+
+## Recommended next task order
+
+1. BR-18 secret-safe SessionEnd teardown relay.
+2. BR-17 persistent server logs как независимый operational PR.
+3. BR-04 recovery после extension-host respawn.
+4. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
+5. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
    как fix PR только если симптом сохранился; отдельная задача для reconnect не
    заводится.
-8. BR-16 upward history anchoring идёт отдельным UI PR и не блокирует connection
+6. BR-16 upward history anchoring идёт отдельным UI PR и не блокирует connection
    recovery chain.
-9. BR-11 inventory native blockers, затем минимальный BR-07.
-10. BR-08 без удаления существующего maintenance contract.
-11. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения
-    legacy migration на всех deployments.
-12. BR-15 Agent Teams selection eval.
-13. BR-02 и только затем решение по BR-03.
+7. BR-11 inventory native blockers, затем минимальный BR-07.
+8. BR-08 без удаления существующего maintenance contract.
+9. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
+   migration на всех deployments.
+10. BR-15 Agent Teams selection eval.
+11. BR-02 и только затем решение по BR-03.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.
