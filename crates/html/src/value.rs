@@ -163,7 +163,7 @@ impl Len {
 }
 
 /// Цвет в формате GPUI (`Rgba` → `Hsla` конвертируется на месте применения).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
 pub struct Color {
     pub r: f32,
     pub g: f32,

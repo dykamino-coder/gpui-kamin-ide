@@ -309,7 +309,7 @@ pub struct Shadow {
 /// полосами — по слою на пару соседних стопов, и картинка совпадает с
 /// браузером. Для наклонного градиента с тремя и более стопами полосами не
 /// обойтись, там доезжают крайние цвета.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Gradient {
     pub angle_deg: f32,
     /// Радиальный: угол не участвует, цвет идёт от центра к краям.
@@ -2922,6 +2922,88 @@ impl Computed {
                     // Конический GPU-путь не умеет — сразу растровой плиткой
                     // (css-images-4 §2.3; растеризатор уже есть).
                     self.bg_image = Some(v.to_string());
+                } else if let Some(rest) = v.strip_prefix("image(") {
+                    // `image(<url>? , <color>?)` (css-images-4 §2.4): цвет —
+                    // запасной слой; сплошная заливка выражается градиентом
+                    // из одного цвета.
+                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
+                    let mut url = None;
+                    let mut color = None;
+                    for part in crate::css::split_args(inner) {
+                        let part = part.trim();
+                        if let Some(u) = parse_url(part) {
+                            url = Some(u);
+                        } else if let Some(c) = Color::parse(part.trim_matches(is_quote)) {
+                            color = Some(c);
+                        }
+                    }
+                    match (url, color) {
+                        (Some(u), _) => self.bg_image = Some(u),
+                        (None, Some(c)) => self.gradient = Some(solid_gradient(c)),
+                        _ => {}
+                    }
+                } else if let Some(rest) = v.strip_prefix("image-set(")
+                    .or_else(|| v.strip_prefix("-webkit-image-set("))
+                {
+                    // Первый кандидат с неотрицательным разрешением и без
+                    // неподдержанного type() (css-images-4 §2.5).
+                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
+                    for cand in crate::css::split_args(inner) {
+                        let cand = cand.trim();
+                        let bad_type = cand
+                            .split("type(")
+                            .nth(1)
+                            .is_some_and(|t| !t.contains("image/"));
+                        let neg_res = cand
+                            .split_whitespace()
+                            .any(|t| t.starts_with('-') && (t.ends_with('x') || t.ends_with("dppx")));
+                        if bad_type || neg_res {
+                            continue;
+                        }
+                        let src = cand.split_whitespace().next().unwrap_or("");
+                        if let Some(u) = parse_url(src) {
+                            self.bg_image = Some(u);
+                            break;
+                        }
+                        let trimmed = src.trim_matches(is_quote);
+                        if !trimmed.is_empty() && trimmed != src {
+                            self.bg_image = Some(trimmed.to_string());
+                            break;
+                        }
+                    }
+                } else if let Some(rest) = v.strip_prefix("cross-fade(") {
+                    // `cross-fade(p% A, B)`: смесь ЦВЕТОВ выражается сплошной
+                    // заливкой; с картинками берётся первая (приближение).
+                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
+                    let parts = crate::css::split_args(inner);
+                    let mut p = 0.5f32;
+                    let mut colors: Vec<Color> = vec![];
+                    let mut url = None;
+                    for part in &parts {
+                        for tok in part.split_whitespace() {
+                            if let Some(pc) = tok.strip_suffix('%') {
+                                if let Ok(v) = pc.parse::<f32>() {
+                                    p = (v / 100.0).clamp(0.0, 1.0);
+                                }
+                            } else if let Some(c) = Color::parse(tok) {
+                                colors.push(c);
+                            } else if let Some(u) = parse_url(tok) {
+                                url.get_or_insert(u);
+                            }
+                        }
+                    }
+                    if colors.len() >= 2 {
+                        let (a, b) = (colors[0], colors[1]);
+                        let mix = Color {
+                            r: a.r * p + b.r * (1.0 - p),
+                            g: a.g * p + b.g * (1.0 - p),
+                            b: a.b * p + b.b * (1.0 - p),
+                            a: a.a * p + b.a * (1.0 - p),
+                        };
+                        self.gradient = Some(solid_gradient(mix));
+                    } else if let Some(u) = url {
+                        self.bg_image = Some(u);
+                    }
                 } else if let Some(url) = parse_url(v) {
                     self.bg_image = Some(url);
                 }
@@ -5648,6 +5730,16 @@ fn outline_width_of(v: &str) -> Option<Len> {
 /// НЕВАЛИДНЫМ, и слот не трогается вовсе (§10) — повторное свойство
 /// `width: 0; width: -1px` обязано оставить нуль от первой записи, а
 /// сброс в None делал ширину авто и красил красное (width-001 и родня).
+/// Сплошная заливка как градиент из одного цвета (image()/cross-fade()).
+fn solid_gradient(c: Color) -> Gradient {
+    Gradient {
+        angle_deg: 180.0,
+        from: c,
+        to: c,
+        ..Default::default()
+    }
+}
+
 fn assign_size(slot: &mut Option<Len>, v: &str) {
     let parsed = Len::parse(v);
     if matches!(
