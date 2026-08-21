@@ -145,18 +145,6 @@ pub enum AutoFlow {
     ColDense,
 }
 
-/// Вид маркера списка (`list-style-type`).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Marker {
-    Disc,
-    Circle,
-    Square,
-    Decimal,
-    LowerAlpha,
-    UpperAlpha,
-    LowerRoman,
-    UpperRoman,
-}
 
 /// `text-transform`: регистр меняется при отрисовке текста, не в шрифте.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -820,7 +808,10 @@ pub struct Computed {
     /// точками.
     pub no_marker: Option<bool>,
     /// Вид маркера, если документ его задал.
-    pub marker: Option<Marker>,
+    pub list_style_type: Option<String>,
+    /// `list-style-position: inside` — маркер идёт первым куском содержимого
+    /// пункта, а не отдельной колонкой снаружи (css-lists-3 §4).
+    pub list_style_inside: Option<bool>,
     /// Строковый маркер: `list-style-type: "→ "` (css-lists-3 §3).
     pub marker_text: Option<String>,
     pub object_fit: Option<String>,
@@ -2531,7 +2522,23 @@ impl Computed {
                 self.ellipsis = Some(on);
                 self.overflow_marker = marker;
             }
+            "list-style-position" => {
+                self.list_style_inside = Some(v.trim() == "inside");
+            }
             "list-style" | "list-style-type" => {
+                // Сокращение задаёт ВСЕ составляющие: не названное в нём
+                // размещение возвращается к начальному `outside`
+                // (css-lists-3 §4). Долгая форма чужого значения не трогает.
+                if key == "list-style" {
+                    self.list_style_inside = Some(false);
+                    for token in v.split_whitespace() {
+                        match token {
+                            "inside" => self.list_style_inside = Some(true),
+                            "outside" => self.list_style_inside = Some(false),
+                            _ => {}
+                        }
+                    }
+                }
                 self.no_marker = Some(v.contains("none"));
                 // Строковый маркер: значение в кавычках берётся дословно,
                 // счётчик не участвует (list-style-type-string-*).
@@ -2543,20 +2550,28 @@ impl Computed {
                     self.no_marker = Some(false);
                     return;
                 }
-                // Вид маркера задаёт документ, а не приложение: у списка
-                // возможностей и у нумерованного перечня он разный.
+                // Вид маркера — ИМЯ стиля счётчика (css-lists-3 §3): любое,
+                // а не восемь избранных. Ключевые слова размещения и `url()`
+                // именем не являются.
                 for token in v.split_whitespace() {
-                    self.marker = match token {
-                        "disc" => Some(Marker::Disc),
-                        "circle" => Some(Marker::Circle),
-                        "square" => Some(Marker::Square),
-                        "decimal" => Some(Marker::Decimal),
-                        "lower-alpha" | "lower-latin" => Some(Marker::LowerAlpha),
-                        "upper-alpha" | "upper-latin" => Some(Marker::UpperAlpha),
-                        "lower-roman" => Some(Marker::LowerRoman),
-                        "upper-roman" => Some(Marker::UpperRoman),
-                        _ => self.marker,
-                    };
+                    // Размещение, картинка и глобальные ключевые слова именем
+                    // стиля не являются: последние решает каскад, а до него
+                    // они означали бы «стиль по имени initial».
+                    if matches!(
+                        token,
+                        "inside"
+                            | "outside"
+                            | "none"
+                            | "inherit"
+                            | "initial"
+                            | "unset"
+                            | "revert"
+                            | "revert-layer"
+                    ) || token.starts_with("url(")
+                    {
+                        continue;
+                    }
+                    self.list_style_type = Some(token.to_string());
                 }
             }
             "object-fit" => self.object_fit = Some(v.to_string()),

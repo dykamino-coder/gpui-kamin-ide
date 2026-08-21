@@ -5890,39 +5890,63 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             .marker_text
             .clone()
             .or_else(|| e.style.marker_text.clone());
-        let kind = li.style.marker.or(e.style.marker);
+        let kind = li
+            .style
+            .list_style_type
+            .clone()
+            .or_else(|| e.style.list_style_type.clone());
         let marker = if let Some(t) = text_marker {
             t
         } else {
-            let name = match kind {
-                Some(crate::computed::Marker::Circle) => "circle",
-                Some(crate::computed::Marker::Square) => "square",
-                Some(crate::computed::Marker::Disc) => "disc",
-                Some(crate::computed::Marker::Decimal) => "decimal",
-                Some(crate::computed::Marker::LowerAlpha) => "lower-alpha",
-                Some(crate::computed::Marker::UpperAlpha) => "upper-alpha",
-                Some(crate::computed::Marker::LowerRoman) => "lower-roman",
-                Some(crate::computed::Marker::UpperRoman) => "upper-roman",
-                None if ordered => "decimal",
-                None => "disc",
-            };
-            crate::counter_style::marker_repr(idx, name).trim_end().to_string()
+            // Умолчание тега: у нумерованного перечня десятичный счёт, у
+            // списка возможностей — точка.
+            let name = kind.unwrap_or_else(|| {
+                if ordered { "decimal" } else { "disc" }.to_string()
+            });
+            crate::counter_style::marker_repr(idx, &name)
         };
         // `list-style: none` — на списках верстают навигацию и наборы чипов,
         // и точки там лишние.
         let no_marker = e.style.no_marker == Some(true) || li.style.no_marker == Some(true);
         let merged = inline::inherit(inherited, &li.style);
+        // `inside`: маркер — ПЕРВЫЙ инлайновый кусок содержимого пункта
+        // (css-lists-3 §4), поэтому он просто дописывается текстом в начало.
+        // Своей колонки при этом нет, и текст пункта начинается там же, где
+        // у обычного абзаца.
+        let inside = merged.list_style_inside == Some(true);
+        if inside {
+            let mut kids: Vec<Node> = Vec::with_capacity(li.children.len() + 1);
+            if !no_marker {
+                kids.push(Node::Text(marker));
+            }
+            kids.extend(li.children.iter().cloned());
+            rows.push(
+                styled_div_with(li, &merged)
+                    .flex()
+                    .flex_col()
+                    .children(blocks(&kids, &merged, opts))
+                    .into_any_element(),
+            );
+            continue;
+        }
         rows.push(
-            div()
+            styled_div_with(li, &merged)
                 .flex()
                 .flex_row()
                 .gap_x(px(6.))
                 .items_start()
                 .children((!no_marker).then(|| {
-                    div()
+                    // Знаки маркера набираются шрифтом и цветом ПУНКТА:
+                    // отдельной коробке текстовые свойства не достаются сами,
+                    // и маркер выходил чужой гарнитурой и кеглем. Выключка
+                    // текста на него НЕ переносится: маркер стоит у своего
+                    // края колонки, куда бы ни равнялся текст пункта
+                    // (`list-style-position-018`).
+                    crate::apply::apply_text(div(), &merged)
+                        .text_left()
                         .flex_shrink_0()
                         .min_w(px(14.))
-                        .child(SharedString::from(marker))
+                        .child(SharedString::from(marker.trim_end().to_string()))
                 }))
                 .child(
                     div()

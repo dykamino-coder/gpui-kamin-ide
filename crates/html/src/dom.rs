@@ -1289,13 +1289,19 @@ fn apply_counter_decls(
     // Списочный контейнер заводит счётчик `list-item` для своих пунктов:
     // у нумерованного отсчёт начинается с `start` (css-lists-3 §ua-stylesheet
     // задаёт это правилом `ol[start] { counter-reset: list-item calc(attr(start) - 1) }`).
-    if matches!(tag, "ol" | "ul" | "menu" | "dir") {
-        let start = if tag == "ol" {
-            num_attr("start").map_or(0, |v| v - 1)
-        } else {
-            0
+    // Правило таблицы агента `ol, ul, menu, dir { counter-reset: list-item }`
+    // живёт в общем каскаде: авторский `counter-reset` на том же узле его
+    // ЗАМЕНЯЕТ целиком, а не дополняет.
+    let reversed_list = tag == "ol" && attrs.iter().any(|(k, _)| k == "reversed");
+    if matches!(tag, "ol" | "ul" | "menu" | "dir") && style.counter_reset.is_none() {
+        // У обратного списка отсчёт идёт вниз и начинается на единицу ВЫШЕ
+        // названного, у обычного — на единицу ниже (§ua-stylesheet).
+        let start = match (tag, num_attr("start")) {
+            ("ol", Some(v)) if reversed_list => v + 1,
+            ("ol", Some(v)) => v - 1,
+            _ => 0,
         };
-        counters.reset("list-item", start);
+        counters.reset_flagged("list-item", start, reversed_list && num_attr("start").is_some());
         if !resets.iter().any(|r| r == "list-item") {
             resets.push("list-item".to_string());
         }
@@ -1316,15 +1322,30 @@ fn apply_counter_decls(
         (&style.counter_set, 2),
     ] {
         if kind == 2 && is_item && !explicit_item {
-            counters.update("list-item", 1, false);
+            // Пункт обратного списка считает ВНИЗ (css-lists-3
+            // §list-item-counter).
+            let step = if counters.is_reversed("list-item") { -1 } else { 1 };
+            counters.update("list-item", step, false);
         }
         let Some(text) = decl else { continue };
+        // `reversed( имя )` — одна запись, а не три слова.
+        let text = squeeze_parens(text);
         let mut it = text.split_whitespace().peekable();
         while let Some(name) = it.next() {
             // `none` — ключевое слово «ничего не делать», а не имя счётчика.
             if name.eq_ignore_ascii_case("none") {
                 continue;
             }
+            // Обратный счётчик: имя в скобках, значение по умолчанию узнаётся
+            // предварительным обходом области (пока — ноль).
+            let (name, reversed) = match name
+                .strip_prefix("reversed(")
+                .and_then(|r| r.strip_suffix(')'))
+            {
+                Some(inner) if kind == 0 && !inner.is_empty() => (inner, true),
+                Some(_) => continue,
+                None => (name, false),
+            };
             let value = match it.peek().and_then(|n| n.parse::<i32>().ok()) {
                 Some(v) => {
                     it.next();
@@ -1337,7 +1358,7 @@ fn apply_counter_decls(
             };
             match kind {
                 0 => {
-                    counters.reset(name, value);
+                    counters.reset_flagged(name, value, reversed);
                     if !resets.iter().any(|r| r == name) {
                         resets.push(name.to_string());
                     }
@@ -2263,4 +2284,26 @@ fn first_strong(nodes: &[Node]) -> Option<bool> {
         }
     }
     None
+}
+
+/// Сжать пробелы внутри скобок: `reversed( x )` — одна запись значения,
+/// а разбор идёт по словам.
+fn squeeze_parens(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut depth = 0i32;
+    for ch in text.chars() {
+        match ch {
+            '(' => {
+                depth += 1;
+                out.push(ch);
+            }
+            ')' => {
+                depth -= 1;
+                out.push(ch);
+            }
+            c if c.is_whitespace() && depth > 0 => {}
+            c => out.push(c),
+        }
+    }
+    out
 }

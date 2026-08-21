@@ -535,7 +535,11 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.break_after_spaces = own.break_after_spaces.or(parent.break_after_spaces);
     c.hyphenate = own.hyphenate.or(parent.hyphenate);
     c.tab_size = own.tab_size.or(parent.tab_size);
-    c.marker = own.marker.or(parent.marker);
+    c.list_style_type = own
+        .list_style_type
+        .clone()
+        .or_else(|| parent.list_style_type.clone());
+    c.list_style_inside = own.list_style_inside.or(parent.list_style_inside);
     c.vertical_align = own.vertical_align.or(parent.vertical_align);
     c.font_stretch = own.font_stretch.or(parent.font_stretch);
     c.no_select = own.no_select.or(parent.no_select);

@@ -25,6 +25,9 @@ const PSEUDO_AFTER: u32 = u32::MAX;
 struct Entry {
     owner: Vec<u32>,
     value: i32,
+    /// Счётчик создан как `reversed(имя)`: пункты списка считают ВНИЗ
+    /// (css-lists-3 §list-item-counter).
+    reversed: bool,
 }
 
 /// Счётчики документа и адрес текущего узла в дереве коробок.
@@ -93,6 +96,11 @@ impl Counters {
     /// СВОЕГО уровня (сам узел или предыдущий брат) и вкладывается внутрь
     /// записи предка.
     pub fn reset(&mut self, name: &str, value: i32) {
+        self.reset_flagged(name, value, false);
+    }
+
+    /// То же, но с пометкой обратного счёта.
+    pub fn reset_flagged(&mut self, name: &str, value: i32, reversed: bool) {
         let cur = self.path.clone();
         let st = self.stack.entry(name.to_string()).or_default();
         remove_stale(st, &cur);
@@ -101,7 +109,21 @@ impl Counters {
         {
             st.pop();
         }
-        st.push(Entry { owner: cur, value });
+        st.push(Entry {
+            owner: cur,
+            value,
+            reversed,
+        });
+    }
+
+    /// Считает ли внутренний счётчик этого имени вниз.
+    pub fn is_reversed(&mut self, name: &str) -> bool {
+        let cur = self.path.clone();
+        let Some(st) = self.stack.get_mut(name) else {
+            return false;
+        };
+        remove_stale(st, &cur);
+        st.last().is_some_and(|e| e.reversed)
     }
 
     /// `counter-increment` и `counter-set` (Blink `UpdateCounterValue`):
@@ -121,6 +143,7 @@ impl Counters {
             None => st.push(Entry {
                 owner: cur,
                 value: delta,
+                reversed: false,
             }),
         }
     }
