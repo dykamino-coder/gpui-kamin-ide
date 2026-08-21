@@ -1071,6 +1071,12 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) 
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
         }
+        if let Some(want) = pseudo.strip_prefix("lang(").and_then(|r| r.strip_suffix(')')) {
+            if !lang_matches(want, me, path) {
+                return false;
+            }
+            return matches_ignoring_pseudo(sel, me, path, sibs);
+        }
         let Some(ok) = structural(pseudo, me.spot) else {
             return false;
         };
@@ -1079,6 +1085,29 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) 
         }
     }
     matches_ignoring_pseudo(sel, me, path, sibs)
+}
+
+/// `:lang(x)` — язык узла: свой атрибут `lang`, иначе ближайшего предка.
+/// Совпадение — точное или по префиксу до дефиса, ASCII-регистронезависимо
+/// (селекторы-4 §lang-pseudo; `fi` не совпадает с `fil`).
+fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool {
+    let lang_of = |a: &Ancestor| {
+        a.attrs
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("lang") || k.eq_ignore_ascii_case("xml:lang"))
+            .map(|(_, v)| v.clone())
+    };
+    let Some(lang) = lang_of(me).or_else(|| path.iter().rev().find_map(lang_of)) else {
+        return false;
+    };
+    let want = want.trim().trim_matches(|c| c == '"' || c == char::from(39));
+    if want.is_empty() || want == "*" {
+        return !lang.is_empty();
+    }
+    lang.eq_ignore_ascii_case(want)
+        || (lang.len() > want.len()
+            && lang.as_bytes()[want.len()] == b'-'
+            && lang[..want.len()].eq_ignore_ascii_case(want))
 }
 
 /// Выполняется ли ОДИН псевдокласс на узле — для дополнительных
@@ -1103,6 +1132,9 @@ fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor
     }
     if pseudo == "root" {
         return me.tag == "html";
+    }
+    if let Some(want) = pseudo.strip_prefix("lang(").and_then(|r| r.strip_suffix(')')) {
+        return lang_matches(want, me, path);
     }
     structural(pseudo, me.spot).unwrap_or(false)
 }
