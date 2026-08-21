@@ -1267,6 +1267,26 @@ fn degenerate_viewbox(markup: &str) -> bool {
     nums.len() == 4 && (nums[2] <= 0.0 || nums[3] <= 0.0)
 }
 
+/// Фон КАНВЫ рисунка: `style="background: …"` на корневом `<svg>`.
+///
+/// Это CSS-свойство замещаемого корня, а не SVG-контент — растеризатор его
+/// не рисует, и рисунок из одного фона выходил прозрачным (box-sizing-007).
+pub(crate) fn svg_root_background(markup: &str) -> Option<crate::value::Color> {
+    let head = match markup.find("<svg") {
+        Some(at) => &markup[at..markup[at..].find('>').map(|e| at + e).unwrap_or(markup.len())],
+        None => return None,
+    };
+    let at = head.find("style=")?;
+    let rest = head[at + 6..].trim_start();
+    let quote = rest.chars().next()?;
+    let style = rest[1..].split(quote).next()?;
+    let decls = crate::css::parse_decls(style);
+    let v = decls
+        .get("background")
+        .or_else(|| decls.get("background-color"))?;
+    crate::value::Color::parse(v.split_whitespace().next()?)
+}
+
 fn svg_size(markup: &str) -> Intrinsic {
     let head = match markup.find("<svg") {
         Some(at) => &markup[at..markup[at..].find('>').map(|e| at + e).unwrap_or(markup.len())],

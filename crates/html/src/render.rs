@@ -5615,8 +5615,98 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // Размер ставится САМОЙ картинке, а не через «во весь родитель»: в
         // ряду обтекания родитель своего размера не имеет, и доля от него
         // схлопывала рисунок в ничто.
+        // Векторный источник штатный загрузчик не рисует вовсе — растрируем
+        // сами в конечный размер; фон канвы (`style="background:…"` корня) —
+        // CSS-слой, не SVG-контент, растеризатор его тоже не рисует.
+        let vector: Option<String> =
+            crate::background::source(local.unwrap_or(src)).and_then(|s| match s {
+                crate::background::Source::Vector { markup, .. } => Some(markup),
+                _ => None,
+            });
+        let vectorize = |old: gpui::Img, w: f32, h: f32| -> gpui::Img {
+            let Some(m) = &vector else { return old };
+            let mut out = match crate::svg::rasterize(m, w, h) {
+                Some(r) => gpui::img(r),
+                None => old,
+            };
+            if let Some(c) = crate::background::svg_root_background(m) {
+                out = out.bg(gpui::Rgba {
+                    r: c.r,
+                    g: c.g,
+                    b: c.b,
+                    a: c.a,
+                });
+            }
+            out
+        };
+        // Контентная поправка: при `box-sizing: border-box` названный размер
+        // или предел включает паддинг и рамку — рисунку остаётся остальное.
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let (sub_w, sub_h) = if e.style.border_box == Some(true) {
+            let b = e.style.borders();
+            (
+                side(e.style.padding.left)
+                    + side(e.style.padding.right)
+                    + side(b.left)
+                    + side(b.right),
+                side(e.style.padding.top)
+                    + side(e.style.padding.bottom)
+                    + side(b.top)
+                    + side(b.bottom),
+            )
+        } else {
+            (0.0, 0.0)
+        };
+        let clamp = |l: Option<Len>, sub: f32| match l {
+            Some(Len::Px(v)) => Some((v - sub).max(0.0)),
+            _ => None,
+        };
+        let max_w = clamp(e.style.max_width, sub_w);
+        let max_h = clamp(e.style.max_height, sub_h);
+        let ratio_of = || {
+            crate::background::source(local.unwrap_or(src))
+                .map(|s| s.intrinsic())
+                .and_then(|i| {
+                    i.ratio.or(match (i.w, i.h) {
+                        (Some(w), Some(h)) if h > 0.0 => Some(w / h),
+                        _ => None,
+                    })
+                })
+        };
         if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
-            image = image.w(px(w)).h(px(h));
+            image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0))
+                .w(px(w))
+                .h(px(h));
+        } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) = (e.style.width, e.style.height) {
+            // Заданная ширина + auto-высота: высота из соотношения (§10.6.2),
+            // без соотношения — своя, резерв 150.
+            let cw = (w - sub_w).max(0.0);
+            let ch = match ratio_of() {
+                Some(r) if r > 0.0 => cw / r,
+                _ => crate::background::source(local.unwrap_or(src))
+                    .and_then(|s| s.intrinsic().h)
+                    .unwrap_or(150.0),
+            };
+            image = vectorize(image, cw.max(1.0), ch.max(1.0))
+                .w(px(cw))
+                .h(px(ch))
+                .object_fit(gpui::ObjectFit::Fill);
+        } else if let (None | Some(Len::Auto), Some(Len::Px(h))) = (e.style.width, e.style.height) {
+            // Зеркально: заданная высота + auto-ширина (§10.3.2).
+            let ch = (h - sub_h).max(0.0);
+            let cw = match ratio_of() {
+                Some(r) if r > 0.0 => ch * r,
+                _ => crate::background::source(local.unwrap_or(src))
+                    .and_then(|s| s.intrinsic().w)
+                    .unwrap_or(300.0),
+            };
+            image = vectorize(image, cw.max(1.0), ch.max(1.0))
+                .w(px(cw))
+                .h(px(ch))
+                .object_fit(gpui::ObjectFit::Fill);
         } else if !matches!(e.style.width, None | Some(Len::Auto))
             && !matches!(e.style.height, None | Some(Len::Auto))
         {
@@ -5626,51 +5716,60 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             // запись `width:50%; height:15px` раньше падала в size_full и
             // ТЕРЯЛА пиксельную сторону (inline-replaced-width-011..015).
             image = match (e.style.width, e.style.height) {
-                (Some(Len::Pct(kw)), Some(Len::Px(h))) => {
-                    image.w(gpui::relative(kw)).h(px(h))
-                }
-                (Some(Len::Px(w)), Some(Len::Pct(kh))) => {
-                    image.w(px(w)).h(gpui::relative(kh))
-                }
+                (Some(Len::Pct(kw)), Some(Len::Px(h))) => image.w(gpui::relative(kw)).h(px(h)),
+                (Some(Len::Px(w)), Some(Len::Pct(kh))) => image.w(px(w)).h(gpui::relative(kh)),
                 _ => image.size_full(),
             };
         } else if !matches!(e.style.width, Some(Len::Px(_)))
             && !matches!(e.style.height, Some(Len::Px(_)))
         {
-            // Авто-размер замещаемого зажимается max-габаритами С СОХРАНЕНИЕМ
-            // соотношения (CSS 2.1 §10.4): картинка 200x100 при max 100x100
-            // выходит 100x50 (replaced-content-image-004). Считается только
-            // от ГОТОВОГО рисунка — до загрузки соотношения нет.
-            // При `box-sizing: border-box` заданный предел включает паддинг
-            // и рамку — рисунку остаётся КОНТЕНТНАЯ часть (box-sizing-007+).
-            let side = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
-            let (sub_w, sub_h) = if e.style.border_box == Some(true) {
-                let b = e.style.borders();
-                (
-                    side(e.style.padding.left)
-                        + side(e.style.padding.right)
-                        + side(b.left)
-                        + side(b.right),
-                    side(e.style.padding.top)
-                        + side(e.style.padding.bottom)
-                        + side(b.top)
-                        + side(b.bottom),
-                )
-            } else {
-                (0.0, 0.0)
-            };
-            let max_w = match e.style.max_width {
-                Some(Len::Px(v)) => Some((v - sub_w).max(0.0)),
-                _ => None,
-            };
-            let max_h = match e.style.max_height {
-                Some(Len::Px(v)) => Some((v - sub_h).max(0.0)),
-                _ => None,
-            };
-            if (max_w.is_some() || max_h.is_some())
+            let both_auto = matches!(e.style.width, None | Some(Len::Auto))
+                && matches!(e.style.height, None | Some(Len::Auto));
+            if both_auto && let Some(ready) = crate::background::source(local.unwrap_or(src)) {
+                // Авто-размер замещаемого считается ЗДЕСЬ, а не отдаётся
+                // загрузчику картинок: тот работает асинхронно, и в первом
+                // кадре коробка выходила нулевой высоты (box-sizing-007 —
+                // страница вовсе без квадратов). Недостающая сторона
+                // достраивается соотношением, резерв — 300×150
+                // (CSS 2.1 §10.3.2/§10.6.2, css-images-3 §default-sizing).
+                let side = ready.intrinsic();
+                let (w0, h0) = match (side.w, side.h, side.ratio) {
+                    (Some(w), Some(h), _) => (w, h),
+                    (Some(w), None, Some(r)) => (w, w / r),
+                    (None, Some(h), Some(r)) => (h * r, h),
+                    (Some(w), None, None) => (w, 150.0),
+                    (None, Some(h), None) => (300.0, h),
+                    (None, None, Some(r)) => {
+                        let w = (150.0 * r).min(300.0);
+                        (w, w / r)
+                    }
+                    (None, None, None) => (300.0, 150.0),
+                };
+                if w0 > 0.0 && h0 > 0.0 {
+                    // §10.4: пределы держат соотношение — сперва потолки,
+                    // затем полы.
+                    let min_w = clamp(e.style.min_width, sub_w);
+                    let min_h = clamp(e.style.min_height, sub_h);
+                    let mut scale = 1.0f32;
+                    if let Some(m) = max_w {
+                        scale = scale.min(m / w0);
+                    }
+                    if let Some(m) = max_h {
+                        scale = scale.min(m / h0);
+                    }
+                    if let Some(m) = min_w {
+                        scale = scale.max(m / w0);
+                    }
+                    if let Some(m) = min_h {
+                        scale = scale.max(m / h0);
+                    }
+                    let (rw, rh) = (w0 * scale, h0 * scale);
+                    image = vectorize(image, rw, rh)
+                        .w(px(rw))
+                        .h(px(rh))
+                        .object_fit(gpui::ObjectFit::Fill);
+                }
+            } else if (max_w.is_some() || max_h.is_some())
                 && let Some(ready) = crate::background::source(local.unwrap_or(src))
             {
                 let side = ready.intrinsic();
@@ -5686,7 +5785,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                         scale = scale.min(m / h0);
                     }
                     if scale < 1.0 {
-                        image = image
+                        image = vectorize(image, w0 * scale, h0 * scale)
                             .w(px(w0 * scale))
                             .h(px(h0 * scale))
                             .object_fit(gpui::ObjectFit::Fill);
