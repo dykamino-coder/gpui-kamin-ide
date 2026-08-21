@@ -1161,6 +1161,11 @@ fn walk(
                 let reset = std::ptr::eq(decl, &style.counter_reset);
                 let mut it = text.split_whitespace();
                 while let Some(name) = it.next() {
+                    // `none` — ключевое слово «ничего не делать», а не имя
+                    // счётчика (css-lists §increment-set).
+                    if name.eq_ignore_ascii_case("none") {
+                        continue;
+                    }
                     let value: i32 = it
                         .clone()
                         .next()
@@ -1178,7 +1183,9 @@ fn walk(
                     if reset {
                         *slot = value;
                     } else {
-                        *slot += value;
+                        // Выход за границы i32 зажимается, а не заворачивается
+                        // (css-lists §increment-set).
+                        *slot = slot.saturating_add(value);
                     }
                 }
             }
@@ -1186,6 +1193,14 @@ fn walk(
             let mut path2 = path.to_vec();
             path2.push(me.clone());
             let mut children = vec![];
+            // Псевдоэлементы: коробка появляется, только если у правила есть
+            // `content`. Значками, стрелками и разделителями в вёрстке
+            // занимаются именно они, и без них разметка теряет часть смысла.
+            // `::before` строится ДО детей, `::after` — после: счётчики они
+            // видят в том же порядке, что и браузер (css-lists §counters).
+            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, Sibs::EMPTY, "before", &attrs) {
+                children.push(Node::Element(el));
+            }
             walk_children(
                 handle,
                 rules,
@@ -1197,14 +1212,8 @@ fn walk(
                 style.preserve_newlines.unwrap_or(preserve),
                 &mut children,
             );
-            // Псевдоэлементы: коробка появляется, только если у правила есть
-            // `content`. Значками, стрелками и разделителями в вёрстке
-            // занимаются именно они, и без них разметка теряет часть смысла.
             if let Some(el) = pseudo_box(rules, vars, counters, &me, path, Sibs::EMPTY, "after", &attrs) {
                 children.push(Node::Element(el));
-            }
-            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, Sibs::EMPTY, "before", &attrs) {
-                children.insert(0, Node::Element(el));
             }
 
             *counter += 1;
@@ -1284,37 +1293,32 @@ fn pseudo_box(
         return None;
     }
     let style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
-    let raw = style.content.clone()?;
-    // `counter(имя)` — значение счётчика на этом узле.
-    if let Some(name) = raw
-        .strip_prefix("counter(")
-        .and_then(|r| r.strip_suffix(')'))
-    {
-        let value = counters.get(name.trim()).copied().unwrap_or(0);
-        return Some(Element {
-            node_id: 0,
-            anim: None,
-            inline: !matches!(
-                style.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
-            ),
-            tag: format!("::{which}"),
-            style,
-            hover: None,
-            first_letter: None,
-            first_line: None,
-            children: vec![Node::Text(value.to_string())],
-            attrs: vec![],
-        });
+    let list = style.content.clone()?;
+    // Составляющие склеиваются по порядку (css-content-3 §2): строки как
+    // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
+    let mut text = String::new();
+    for item in &list {
+        match item {
+            crate::computed::ContentItem::Str(sv) => text.push_str(sv),
+            crate::computed::ContentItem::Counter(name, style_name) => {
+                let value = counters.get(name.as_str()).copied().unwrap_or(0);
+                text.push_str(&crate::counter_style::repr(value, style_name));
+            }
+            crate::computed::ContentItem::Counters(name, sep, style_name) => {
+                // Плоский склад держит по одному счётчику на имя, поэтому
+                // вложенных уровней пока ровно один; разделитель остаётся
+                // за будущим стеком областей.
+                let _ = sep;
+                let value = counters.get(name.as_str()).copied().unwrap_or(0);
+                text.push_str(&crate::counter_style::repr(value, style_name));
+            }
+            crate::computed::ContentItem::Attr(name) => {
+                if let Some((_, v)) = attrs.iter().find(|(k, _)| k == name) {
+                    text.push_str(v);
+                }
+            }
+        }
     }
-    let text = match raw.strip_prefix("attr(").and_then(|r| r.strip_suffix(')')) {
-        Some(name) => attrs
-            .iter()
-            .find(|(k, _)| k == name.trim())
-            .map(|(_, v)| v.clone())
-            .unwrap_or_default(),
-        None => raw,
-    };
     if style.display == Some(Display::None) {
         return None;
     }

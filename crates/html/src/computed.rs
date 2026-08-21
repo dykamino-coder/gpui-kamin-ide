@@ -646,6 +646,19 @@ pub struct AnimSpec {
     pub paused: bool,
 }
 
+/// Одна составляющая `content` (css-content-3 §2 `<content-list>`).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ContentItem {
+    /// Литеральная строка.
+    Str(String),
+    /// `counter(имя, стиль)`.
+    Counter(String, String),
+    /// `counters(имя, разделитель, стиль)`.
+    Counters(String, String, String),
+    /// `attr(имя)`.
+    Attr(String),
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
     pub display: Option<Display>,
@@ -1177,8 +1190,9 @@ pub struct Computed {
     /// `object-position` замещаемого содержимого (css-images-3 §5.2).
     pub object_position: Option<BgPos>,
     pub bg_repeat: Option<BgRepeat>,
-    /// `content` псевдоэлемента: строка, `attr(имя)` либо `counter(имя)`.
-    pub content: Option<String>,
+    /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
+    /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
+    pub content: Option<Vec<ContentItem>>,
     /// `counter-reset` — обнулить счётчик с этого узла.
     pub counter_reset: Option<String>,
     /// `counter-increment` — увеличить счётчик на этом узле.
@@ -3344,19 +3358,22 @@ impl Computed {
             "counter-reset" => self.counter_reset = Some(v.to_string()),
             "counter-increment" => self.counter_increment = Some(v.to_string()),
             "content" => {
-                self.content = match v {
+                match v {
                     // ПУСТАЯ строка — не то же самое, что `none`: коробка
                     // псевдоэлемента создаётся, просто в ней нет знаков. На
                     // этом стоит целый приём эталонов WPT — `::after` с
                     // `content: ""` и `inset: 0` накрывает красное зелёным
                     // (`overflow-wrap-anywhere-001` и родня).
-                    "none" | "normal" => None,
-                    other => Some(
-                        other
-                            .trim_matches(|c| c == '"' || c == '\'')
-                            .replace("\\A", "\n")
-                            .to_string(),
-                    ),
+                    "none" | "normal" => self.content = None,
+                    // Негодная запись НЕ применяется вовсе, прежнее значение
+                    // остаётся (CSS 2.1 §4.1.8): иначе мусор вроде
+                    // `counter(a,b,c)` печатался литералом и `counters-002`
+                    // показывал слово FAIL.
+                    other => {
+                        if let Some(list) = parse_content(other) {
+                            self.content = Some(list);
+                        }
+                    }
                 }
             }
             "font-feature-settings" => {
@@ -5000,6 +5017,97 @@ fn split_font(v: &str) -> (&str, &str) {
         }
     }
     (v, "")
+}
+
+/// Разбор значения `content` в список составляющих (css-content-3 §2).
+///
+/// `None` — запись негодна целиком: неизвестная функция, лишний или
+/// недостающий аргумент, незакрытая кавычка. Такое объявление применять
+/// нельзя, иначе его остатки печатаются литеральным текстом.
+pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
+    let bytes = raw.as_bytes();
+    let mut at = 0usize;
+    let mut out = vec![];
+    while at < bytes.len() {
+        let ch = raw[at..].chars().next()?;
+        if ch.is_whitespace() {
+            at += ch.len_utf8();
+            continue;
+        }
+        if ch == '"' || ch == '\'' {
+            let body = at + ch.len_utf8();
+            let len = crate::css::skip_string(&raw[body..], ch);
+            // Незакрытая строка обрывается переводом строки — значение негодно.
+            if !raw[body..body + len].ends_with(ch) {
+                return None;
+            }
+            out.push(ContentItem::Str(unescape_content(
+                &raw[body..body + len - ch.len_utf8()],
+            )));
+            at = body + len;
+            continue;
+        }
+        // Дальше только функция: `counter(`, `counters(`, `attr(`.
+        let rest = &raw[at..];
+        let open = rest.find('(')?;
+        let name = rest[..open].trim().to_ascii_lowercase();
+        let close = at + open + 1 + find_close(&rest[open + 1..])?;
+        let args = crate::css::split_args(&raw[at + open + 1..close]);
+        let arg = |i: usize| -> Option<String> {
+            let a = args.get(i)?.trim();
+            let unq = a
+                .strip_prefix('"')
+                .and_then(|r| r.strip_suffix('"'))
+                .or_else(|| a.strip_prefix('\'').and_then(|r| r.strip_suffix('\'')));
+            Some(unq.map_or_else(|| a.to_string(), unescape_content))
+        };
+        match name.as_str() {
+            "counter" if args.len() == 1 || args.len() == 2 => out.push(ContentItem::Counter(
+                arg(0)?,
+                arg(1).unwrap_or_else(|| "decimal".to_string()),
+            )),
+            "counters" if args.len() == 2 || args.len() == 3 => out.push(ContentItem::Counters(
+                arg(0)?,
+                arg(1)?,
+                arg(2).unwrap_or_else(|| "decimal".to_string()),
+            )),
+            "attr" if args.len() == 1 => out.push(ContentItem::Attr(arg(0)?)),
+            _ => return None,
+        }
+        at = close + 1;
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Индекс парной закрывающей скобки от места ПОСЛЕ открывающей.
+fn find_close(after_open: &str) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut at = 0usize;
+    while at < after_open.len() {
+        let ch = after_open[at..].chars().next()?;
+        match ch {
+            '"' | '\'' => {
+                at += ch.len_utf8();
+                at += crate::css::skip_string(&after_open[at..], ch);
+                continue;
+            }
+            '(' => depth += 1,
+            ')' if depth == 0 => return Some(at),
+            ')' => depth -= 1,
+            _ => {}
+        }
+        at += ch.len_utf8();
+    }
+    None
+}
+
+/// Экранирование внутри строки содержимого: `\A` — перевод строки, прочие
+/// коды — свои знаки, `\"` — сама кавычка.
+fn unescape_content(text: &str) -> String {
+    if !text.contains('\\') {
+        return text.to_string();
+    }
+    crate::css::unescape(text)
 }
 
 /// `url(...)` из значения фона; кавычки внутри необязательны.
