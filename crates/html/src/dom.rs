@@ -71,15 +71,18 @@ const INLINE_TAGS: &[&str] = &[
     "button", "label", "input", "select", "textarea", "output", "meter", "progress",
 ];
 
-/// Теги, содержимое которых не рисуется.
-const DROP_TAGS: &[&str] = &[
-    "script", "style", "head", "title", "meta", "link", "noscript",
-];
+/// Теги, содержимое которых не рисуется НИКОГДА (код и стили).
+///
+/// `head`/`title`/`meta`/`link` сюда не входят: их прячет таблица агента
+/// `display: none`, и авторское `head { display: block }` её перебивает
+/// (CSS2/generated-content content-067 и родня).
+const DROP_TAGS: &[&str] = &["script", "style", "noscript"];
 
 /// Стиль по умолчанию для тега — то, что браузер берёт из своей таблицы.
 /// Без него `<b>` не жирный, а `<h1>` неотличим от абзаца.
 fn user_agent_css() -> &'static str {
     r#"
+head, title, meta, link { display: none }
     h1 { font-size: 24px; font-weight: 700; margin: 12px 0 6px }
     h2 { font-size: 20px; font-weight: 700; margin: 10px 0 5px }
     h3 { font-size: 17px; font-weight: 600; margin: 9px 0 4px }
