@@ -2455,11 +2455,19 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
         if closed {
             continue;
         }
-        // Снизу плавающий ребёнок ЗАКРЫВАЕТ подъём: он заякорен в потоке
-        // после последнего блока, и утёкший наружу отступ поднимал бы его
-        // (box-shadow-overlapping-002: float уезжал на отступ параграфа).
+        // Снизу плавающий ИЛИ АБСОЛЮТНЫЙ ребёнок ЗАКРЫВАЕТ подъём: float
+        // заякорен в потоке после последнего блока (box-shadow-overlapping-002),
+        // а статическая позиция абсолютного считается от места в потоке —
+        // утёкший отступ поднимал их обоих (z-index-015: квадрат вставал
+        // на отступ параграфа выше эталона).
         let child_bottom = first_in_flow(e.children.iter().enumerate().rev().take_while(
-            |(_, c)| !matches!(c, Node::Element(ch) if ch.style.float.is_some()),
+            |(_, c)| !matches!(c, Node::Element(ch)
+                if ch.style.float.is_some()
+                    || matches!(
+                        ch.style.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    )),
         ))
         .and_then(|(i, ch)| margin_px(ch.style.margin.bottom, &ch.style).map(|v| (i, v)));
         if let Some((i, v)) = child_bottom {

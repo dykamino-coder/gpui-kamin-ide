@@ -2396,7 +2396,15 @@ impl Computed {
                             && !is_generic(&lower)
                             && !matches!(lower.as_str(), "inherit" | "initial")
                     })
-                    .map(str::to_string)
+                    // Неквотированное имя из нескольких слов НОРМАЛИЗУЕТСЯ:
+                    // последовательность пробельных знаков (включая переводы
+                    // строк) — это один пробел (`Courier   New` == `Courier
+                    // New`, CSS2 §15.3; font-family-013 и родня). Экранирование
+                    // раскрывается как в любом идентификаторе.
+                    .map(|f| {
+                        let un = crate::css::unescape(f);
+                        un.split_whitespace().collect::<Vec<_>>().join(" ")
+                    })
                     .or_else(|| generic.map(str::to_string));
             }
             "text-decoration" | "text-decoration-line" => {
@@ -2730,7 +2738,14 @@ impl Computed {
                     self.grid_area_name = Some((*name).to_string());
                 }
             }
-            "z-index" => self.z_index = v.parse().ok(),
+            "z-index" => {
+                // Целое за пределами i32 КЛАМПИТСЯ, а не падает в auto
+                // (z-index-001: -2147483649 обязан остаться меньше -100).
+                self.z_index = v
+                    .parse::<i64>()
+                    .ok()
+                    .map(|n| n.clamp(i32::MIN as i64, i32::MAX as i64) as i32);
+            }
 
             // --- Рамки и обводка --------------------------------------------
             // Толщина словом (`thin`/`medium`/`thick`) — законное значение;
