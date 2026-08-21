@@ -3590,7 +3590,9 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             // `<span style="border-left:30px solid green">  </span>` выходил
             // нулевой высоты и не рисовался вовсе
             // (`line-edge-white-space-collapse-001`).
-            if merged.height.is_none() && !has_text(&e.children) {
+            // Обособленная блочная ось высоту уже задала (пусть нулевую) —
+            // подставлять кегль строки поверх неё нельзя.
+            if merged.height.is_none() && !has_text(&e.children) && !merged.contains_height() {
                 box_ = box_.h(px(line_height_px(&merged, opts)));
             }
             // `vertical-align` коробки в строке: верх/низ/середина СТРОКИ
@@ -3794,6 +3796,9 @@ fn has_own_box(c: &Computed) -> bool {
     ) || (c.display == Some(Display::GridLanes) && c.lanes_inline))
         && (c.width.is_some()
             || c.height.is_some()
+            // Обособленный по размеру контейнер размер ИМЕЕТ, пусть и
+            // нулевой: его задаёт `contain-intrinsic-size`, а не содержимое.
+            || c.contain_size == Some(true)
             // Проба контейнерного атома БЕЗ размеров — под флагом, чтобы
             // мерить обе стороны (см. заметку ниже про baseline).
             || std::env::var("ATOM_BOX").is_ok());
@@ -5566,6 +5571,52 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     // переполниться или перенести коробку целиком (CSS 2.1 §10.3.2, замер
     // wm-propagation-body-040: картинка 340px ужималась на 6-7%).
     let d = d.flex_shrink_0();
+    // Обособление размера меряет замещаемый элемент КАК ПУСТОЙ (css-contain-2
+    // §size containment): своих размеров у картинки нет вовсе — ни сторон, ни
+    // соотношения, — их задаёт `contain-intrinsic-size`. Врезка ранняя: ниже
+    // по ветке `intrinsic()` вернул бы настоящие 100×100, и всё посчиталось бы
+    // по ним.
+    if e.style.contains_width() || e.style.contains_height() {
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let b = e.style.borders();
+        let pad_x = side(e.style.padding.left)
+            + side(e.style.padding.right)
+            + side(b.left)
+            + side(b.right);
+        let pad_y = side(e.style.padding.top)
+            + side(e.style.padding.bottom)
+            + side(b.top)
+            + side(b.bottom);
+        let used = |explicit: Option<Len>, ci: Option<f32>| match explicit {
+            Some(Len::Px(v)) => v,
+            _ => ci.unwrap_or(0.0),
+        };
+        let cw = used(e.style.width, e.style.contain_intrinsic.0);
+        let ch = used(e.style.height, e.style.contain_intrinsic.1);
+        let mut d = d;
+        if e.style.contains_width() && matches!(e.style.width, None | Some(Len::Auto)) {
+            d = d.w(px(cw + pad_x));
+        }
+        if e.style.contains_height() && matches!(e.style.height, None | Some(Len::Auto)) {
+            d = d.h(px(ch + pad_y));
+        }
+        let mut image = match crate::background::source(src) {
+            Some(crate::background::Source::Vector { markup, .. })
+                if cw > 0.0 && ch > 0.0 =>
+            {
+                match crate::svg::rasterize(&markup, cw, ch) {
+                    Some(r) => gpui::img(r),
+                    None => gpui::img(SharedString::from(src.to_string())),
+                }
+            }
+            _ => gpui::img(SharedString::from(src.to_string())),
+        };
+        image = image.w(px(cw)).h(px(ch)).object_fit(gpui::ObjectFit::Fill);
+        return d.child(image).into_any_element();
+    }
     if src.starts_with("data:") || src.starts_with("file:") || src.starts_with('/') {
         // Локальный файл отдаётся ПУТЁМ, а не строкой адреса. Строку со схемой
         // `file:` система разбирает как сетевой адрес и уходит его скачивать —

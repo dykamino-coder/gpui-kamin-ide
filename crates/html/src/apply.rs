@@ -612,11 +612,26 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // По строчной оси то же самое, но только когда ширина ЯВНО названа
     // размером по содержимому: обычная блочная ширина и так берётся от
     // родителя, а не от содержимого.
+    // Ширина от содержимого бывает не только по ключевому слову: строчный
+    // контейнер, плавающий и позиционированный ужимаются по нему сами
+    // (shrink-to-fit). Под обособлением содержимого у них нет — ширина
+    // становится `contain-intrinsic-size`.
+    let shrink_to_fit = matches!(
+        c.display,
+        Some(Display::InlineBlock)
+            | Some(Display::InlineFlex)
+            | Some(Display::InlineGrid)
+            | Some(Display::InlineTable)
+    ) || c.float.is_some()
+        || matches!(
+            c.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        );
     if c.contains_width()
-        && matches!(
+        && (matches!(
             c.width,
             Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
-        )
+        ) || (shrink_to_fit && matches!(c.width, None | Some(Len::Auto))))
     {
         let side = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,

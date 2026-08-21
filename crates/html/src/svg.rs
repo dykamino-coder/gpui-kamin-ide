@@ -308,6 +308,15 @@ fn escape_text(v: &str, out: &mut String) {
 
 /// Размер рисунка в логических пикселях: из атрибутов, иначе из `viewBox`.
 pub fn size_of(e: &Element) -> (f32, f32) {
+    // Обособление размера: рисунок меряется как пустой, величину задаёт
+    // `contain-intrinsic-size` (css-contain-2 §size containment) — ни
+    // атрибуты, ни `viewBox` не смотрим.
+    if e.style.contains_width() || e.style.contains_height() {
+        return (
+            e.style.contain_intrinsic.0.unwrap_or(0.0),
+            e.style.contain_intrinsic.1.unwrap_or(0.0),
+        );
+    }
     let num = |name: &str| -> Option<f32> {
         e.attr(name)
             .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
