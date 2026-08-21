@@ -57,6 +57,10 @@ Snapshot был получен до более позднего продолже
 - `host.log` открывается с `flags: "w"` и теряет дорестартовую историю;
 - строки `crash.log` не имеют timestamp, а собранный incident bundle не содержал
   отдельного memory watchdog report.
+- при прокрутке длинной session вверх Chat заметно меняет позицию viewport и
+  scrollbar thumb в момент подгрузки предыдущего окна; вниз тот же эффект не
+  наблюдается. Source audit подтверждает нарушенный anchor contract, описанный
+  в BR-16, но Windows CEF runtime ещё должен измерить величину displacement.
 
 Agent Teams и hook approval имеют отдельные подтверждённые границы:
 
@@ -343,6 +347,48 @@ reports без дублей. Только после стабильного eval
 system instruction или orchestration layer; недетерминированное обещание «всегда
 правильно оценить объём» не входит в BR-09.
 
+### BR-16 — Stabilize upward history scroll anchoring
+
+**Status:** ready. **Dependency:** none. **Acceptance:** automated + Windows CEF
+runtime merge gate.
+
+Текущий scroll-up path нарушает собственный anchor contract в двух проверяемых
+местах:
+
+- `useChatScrollPin` вызывает `captureAnchor()` до `onNearTop`, поэтому stale
+  anchor остаётся даже когда новый render window/page не запущен из-за lock,
+  `reachedStart`, `SCROLL_UP_MAX` или отсутствующего `_pos`;
+- `restoreAnchor()` не хранит исходный `scrollHeight` и проверяет
+  `scrollHeight <= scrollHeight - scrollTop`. При любом `scrollTop > 0` условие
+  ложно даже без роста документа, поэтому первая посторонняя DOM mutation может
+  быть ошибочно принята за завершившийся prepend.
+
+Дополнительно один trigger монтирует до 400 строк с
+`content-visibility:auto` и временным `contain-intrinsic-size: auto 80px` на
+wrapper и внутренней card. Реальная высота длинных messages/tool results
+уточняется при приближении к viewport, меняя `scrollHeight`. Одновременно
+оставлен browser `overflow-anchor:auto` и выполняется ручная запись
+`scrollTop`, то есть единственного владельца коррекции позиции сейчас нет.
+
+Fix PR должен:
+
+- arm anchor только после подтверждения, что конкретный prepend/render-window
+  growth действительно начат, и связать его с request/generation;
+- выбрать один способ anchoring. Предпочтительный spike — stable keyed visible
+  entry + pixel offset: после commit найти тот же DOM node и компенсировать
+  изменение его `getBoundingClientRect().top`; browser anchoring для этого
+  scroller явно отключить;
+- игнорировать unrelated streaming/widget mutations и stale page responses;
+- сохранить downward scroll, bottom pin, tab scroll memory и resident-store
+  bounds без увеличения memory envelope.
+
+Automated tests моделируют variable-height rows, unrelated mutation до ответа,
+несколько wheel events во время одного load, no-op около начала transcript и
+два последовательных prepend. Windows gate на длинной session повторяет
+scroll-up через несколько 400-row boundaries и фиксирует viewport displacement
+до/после каждого prepend; выбранный anchor не должен сдвигаться больше чем на
+2 px, а scroll вниз и live streaming остаются плавными.
+
 ## Recommended PR order
 
 1. BR-10 informed hook approval UI.
@@ -354,7 +400,9 @@ system instruction или orchestration layer; недетерминирован�
 7. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
    как fix PR только если симптом сохранился; отдельная задача для reconnect не
    заводится.
-8. BR-11 inventory native blockers, затем минимальный BR-07.
+8. BR-16 upward history anchoring идёт отдельным UI PR и не блокирует connection
+   recovery chain.
+9. BR-11 inventory native blockers, затем минимальный BR-07.
 10. BR-08 без удаления существующего maintenance contract.
 11. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения
     legacy migration на всех deployments.
