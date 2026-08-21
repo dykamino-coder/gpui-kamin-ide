@@ -20,6 +20,7 @@ pub mod border_image;
 pub mod color_space;
 pub mod computed;
 pub mod counter_style;
+pub mod counters;
 pub mod coverage;
 pub mod css;
 pub mod doc;

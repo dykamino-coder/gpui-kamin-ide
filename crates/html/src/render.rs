@@ -2562,13 +2562,20 @@ fn first_in_flow<'a>(
                 // блока «протекал» наружу мимо него, и строка вставала на
                 // отступ выше (`box-sizing-010`: квадраты разъезжались на
                 // кегль).
-                if matches!(
-                    ch.style.display,
-                    Some(Display::InlineBlock)
-                        | Some(Display::InlineFlex)
-                        | Some(Display::InlineGrid)
-                        | Some(Display::InlineTable)
-                ) {
+                // Разбор держит `display: inline` как `InlineBlock` с
+                // пометкой `inline_display`, поэтому одного взгляда на
+                // display мало: обычный строчный элемент своей коробки не
+                // имеет и примыкание НЕ рвёт (пустой `<span>` между блоками
+                // прозрачен).
+                if ch.style.inline_display != Some(true)
+                    && matches!(
+                        ch.style.display,
+                        Some(Display::InlineBlock)
+                            | Some(Display::InlineFlex)
+                            | Some(Display::InlineGrid)
+                            | Some(Display::InlineTable)
+                    )
+                {
                     return None;
                 }
                 if !in_flow(&ch.style) {

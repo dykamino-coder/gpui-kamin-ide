@@ -202,7 +202,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.
-    let mut counters: HashMap<String, i32> = HashMap::new();
+    let mut counters = crate::counters::Counters::default();
     walk_children(
         &dom.document,
         &rules,
@@ -975,7 +975,7 @@ fn walk_children(
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
-    counters: &mut HashMap<String, i32>,
+    counters: &mut crate::counters::Counters,
     path: &[Ancestor],
     preserve: bool,
     out: &mut Vec<Node>,
@@ -1007,7 +1007,7 @@ fn walk(
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
-    counters: &mut HashMap<String, i32>,
+    counters: &mut crate::counters::Counters,
     path: &[Ancestor],
     spot: Spot,
     preserve: bool,
@@ -1155,40 +1155,16 @@ fn walk(
                 return;
             }
 
-            // Счётчики: сброс и увеличение действуют на узле, до его детей.
-            for decl in [&style.counter_reset, &style.counter_increment] {
-                let Some(text) = decl else { continue };
-                let reset = std::ptr::eq(decl, &style.counter_reset);
-                let mut it = text.split_whitespace();
-                while let Some(name) = it.next() {
-                    // `none` — ключевое слово «ничего не делать», а не имя
-                    // счётчика (css-lists §increment-set).
-                    if name.eq_ignore_ascii_case("none") {
-                        continue;
-                    }
-                    let value: i32 = it
-                        .clone()
-                        .next()
-                        .and_then(|n| n.parse().ok())
-                        .unwrap_or(if reset { 0 } else { 1 });
-                    if it
-                        .clone()
-                        .next()
-                        .and_then(|n| n.parse::<i32>().ok())
-                        .is_some()
-                    {
-                        it.next();
-                    }
-                    let slot = counters.entry(name.to_string()).or_insert(0);
-                    if reset {
-                        *slot = value;
-                    } else {
-                        // Выход за границы i32 зажимается, а не заворачивается
-                        // (css-lists §increment-set).
-                        *slot = slot.saturating_add(value);
-                    }
-                }
+            // Счётчики: свои директивы узел применяет ДО детей и до своих
+            // псевдоэлементов (css-lists §5: сброс, увеличение, установка).
+            // Адрес узла — в дереве КОРОБОК: `display: contents` своего
+            // уровня не даёт, поэтому его дети остаются братьями соседей.
+            let box_level = style.display != Some(Display::Contents);
+            if box_level {
+                counters.enter();
             }
+            let mut own_resets: Vec<String> = vec![];
+            apply_counter_decls(&style, counters, &mut own_resets);
 
             let mut path2 = path.to_vec();
             path2.push(me.clone());
@@ -1214,6 +1190,14 @@ fn walk(
             );
             if let Some(el) = pseudo_box(rules, vars, counters, &me, path, Sibs::EMPTY, "after", &attrs) {
                 children.push(Node::Element(el));
+            }
+            // Выход из области: счётчик, созданный этим узлом, дальше по
+            // документу уступает место счётчику предка.
+            for name in &own_resets {
+                counters.leave_scope(name);
+            }
+            if box_level {
+                counters.leave();
             }
 
             *counter += 1;
@@ -1269,6 +1253,52 @@ fn walk(
     }
 }
 
+/// Применить `counter-reset`/`counter-increment`/`counter-set` узла.
+///
+/// Порядок именно такой (css-lists-3 §5): сперва создаются счётчики, затем
+/// накапливаются увеличения, затем присваиваются значения. Имена, которые
+/// узел СБРОСИЛ, возвращаются: на выходе из него область надо закрыть.
+fn apply_counter_decls(
+    style: &Computed,
+    counters: &mut crate::counters::Counters,
+    resets: &mut Vec<String>,
+) {
+    for (decl, kind) in [
+        (&style.counter_reset, 0u8),
+        (&style.counter_increment, 1),
+        (&style.counter_set, 2),
+    ] {
+        let Some(text) = decl else { continue };
+        let mut it = text.split_whitespace().peekable();
+        while let Some(name) = it.next() {
+            // `none` — ключевое слово «ничего не делать», а не имя счётчика.
+            if name.eq_ignore_ascii_case("none") {
+                continue;
+            }
+            let value = match it.peek().and_then(|n| n.parse::<i32>().ok()) {
+                Some(v) => {
+                    it.next();
+                    v
+                }
+                None => match kind {
+                    0 | 2 => 0,
+                    _ => 1,
+                },
+            };
+            match kind {
+                0 => {
+                    counters.reset(name, value);
+                    if !resets.iter().any(|r| r == name) {
+                        resets.push(name.to_string());
+                    }
+                }
+                1 => counters.update(name, value, false),
+                _ => counters.update(name, value, true),
+            }
+        }
+    }
+}
+
 /// Коробка псевдоэлемента `::before`/`::after`, если правила её создают.
 ///
 /// В CSS это настоящий потомок с собственным стилем; так его и собираем —
@@ -1277,7 +1307,7 @@ fn walk(
 fn pseudo_box(
     rules: &[Rule],
     vars: &Decls,
-    counters: &HashMap<String, i32>,
+    counters: &mut crate::counters::Counters,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
@@ -1293,7 +1323,17 @@ fn pseudo_box(
         return None;
     }
     let style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
+    // Нет содержимого или коробки — нет и псевдоэлемента: его директивы
+    // счётчиков тогда не действуют вовсе (у него нет объекта раскладки).
     let list = style.content.clone()?;
+    if style.display == Some(Display::None) {
+        return None;
+    }
+    // Псевдоэлемент — настоящий брат содержимого хозяина: у него свой
+    // уровень пути, свои директивы и своя область видимости.
+    counters.enter_pseudo(which == "before");
+    let mut own_resets: Vec<String> = vec![];
+    apply_counter_decls(&style, counters, &mut own_resets);
     // Составляющие склеиваются по порядку (css-content-3 §2): строки как
     // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
     let mut text = String::new();
@@ -1301,16 +1341,18 @@ fn pseudo_box(
         match item {
             crate::computed::ContentItem::Str(sv) => text.push_str(sv),
             crate::computed::ContentItem::Counter(name, style_name) => {
-                let value = counters.get(name.as_str()).copied().unwrap_or(0);
+                let value = counters.value_of(name);
                 text.push_str(&crate::counter_style::repr(value, style_name));
             }
             crate::computed::ContentItem::Counters(name, sep, style_name) => {
-                // Плоский склад держит по одному счётчику на имя, поэтому
-                // вложенных уровней пока ровно один; разделитель остаётся
-                // за будущим стеком областей.
-                let _ = sep;
-                let value = counters.get(name.as_str()).copied().unwrap_or(0);
-                text.push_str(&crate::counter_style::repr(value, style_name));
+                // Вся цепочка области — от внешнего счётчика к внутреннему,
+                // склеенная разделителем (css-lists-3 §counters).
+                let chain: Vec<String> = counters
+                    .chain_of(name)
+                    .into_iter()
+                    .map(|v| crate::counter_style::repr(v, style_name))
+                    .collect();
+                text.push_str(&chain.join(sep));
             }
             crate::computed::ContentItem::Attr(name) => {
                 if let Some((_, v)) = attrs.iter().find(|(k, _)| k == name) {
@@ -1319,9 +1361,10 @@ fn pseudo_box(
             }
         }
     }
-    if style.display == Some(Display::None) {
-        return None;
+    for name in &own_resets {
+        counters.leave_scope(name);
     }
+    counters.leave();
     Some(Element {
         // Псевдоэлемент своей анимации не несёт: правило `::before` задаёт
         // содержимое, а не движение.

@@ -61,6 +61,37 @@ fn lower_greek(n: usize) -> String {
     out.iter().rev().collect()
 }
 
+/// Аддитивная система (css-counter-styles-3 §additive): значение
+/// набирается из наибольших подходящих знаков подряд.
+fn additive(mut n: usize, table: &[(usize, char)]) -> String {
+    let mut out = String::new();
+    for (weight, sign) in table {
+        while n >= *weight {
+            out.push(*sign);
+            n -= weight;
+        }
+    }
+    out
+}
+
+/// Армянская запись, 1..9999 (css-counter-styles-3 §armenian).
+const ARMENIAN: &[(usize, char)] = &[
+    (9000, 'Ք'), (8000, 'Փ'), (7000, 'Ւ'), (6000, 'Ց'), (5000, 'Ր'), (4000, 'Տ'), (3000, 'Վ'),
+    (2000, 'Ս'), (1000, 'Ռ'), (900, 'Ջ'), (800, 'Պ'), (700, 'Չ'), (600, 'Ո'), (500, 'Շ'),
+    (400, 'Ն'), (300, 'Յ'), (200, 'Մ'), (100, 'Ճ'), (90, 'Ղ'), (80, 'Ձ'), (70, 'Հ'), (60, 'Կ'),
+    (50, 'Ծ'), (40, 'Խ'), (30, 'Լ'), (20, 'Ի'), (10, 'Ժ'), (9, 'Թ'), (8, 'Ը'), (7, 'Է'),
+    (6, 'Զ'), (5, 'Ե'), (4, 'Դ'), (3, 'Գ'), (2, 'Բ'), (1, 'Ա'),
+];
+
+/// Грузинская запись, 1..19999 (css-counter-styles-3 §georgian).
+const GEORGIAN: &[(usize, char)] = &[
+    (10000, 'ჵ'), (9000, 'ჰ'), (8000, 'ჯ'), (7000, 'ჴ'), (6000, 'ხ'), (5000, 'ჭ'), (4000, 'წ'),
+    (3000, 'ძ'), (2000, 'ც'), (1000, 'ჩ'), (900, 'შ'), (800, 'ყ'), (700, 'ღ'), (600, 'ქ'),
+    (500, 'ფ'), (400, 'ჳ'), (300, 'ტ'), (200, 'ს'), (100, 'რ'), (90, 'ჟ'), (80, 'პ'), (70, 'ო'),
+    (60, 'ჲ'), (50, 'ნ'), (40, 'მ'), (30, 'ლ'), (20, 'კ'), (10, 'ი'), (9, 'თ'), (8, 'ჱ'),
+    (7, 'ზ'), (6, 'ვ'), (5, 'ე'), (4, 'დ'), (3, 'გ'), (2, 'ბ'), (1, 'ა'),
+];
+
 /// Значение счётчика знаками названного стиля.
 ///
 /// Незнакомый стиль — десятичный (css-counter-styles §counter-style-name:
@@ -92,6 +123,14 @@ pub fn repr(value: i32, style: &str) -> String {
             positive.map_or_else(|| value.to_string(), |n| alphabetic(n, b'A'))
         }
         "lower-greek" => positive.map_or_else(|| value.to_string(), lower_greek),
+        // Диапазон стиля — часть его определения: вне его берётся
+        // десятичный резерв (css-counter-styles-3 §counter-style-range).
+        "armenian" | "upper-armenian" => positive
+            .filter(|n| *n <= 9999)
+            .map_or_else(|| value.to_string(), |n| additive(n, ARMENIAN)),
+        "georgian" => positive
+            .filter(|n| *n <= 19999)
+            .map_or_else(|| value.to_string(), |n| additive(n, GEORGIAN)),
         _ => value.to_string(),
     }
 }
@@ -113,6 +152,12 @@ mod tests {
         // Вне диапазона стиля — десятичный резерв.
         assert_eq!(repr(0, "lower-roman"), "0");
         assert_eq!(repr(-3, "upper-alpha"), "-3");
+        assert_eq!(repr(1, "armenian"), "Ա");
+        assert_eq!(repr(9999, "armenian"), "ՔՋՂԹ");
+        assert_eq!(repr(10000, "armenian"), "10000", "вне диапазона — десятичный");
+        assert_eq!(repr(1, "georgian"), "ა");
+        assert_eq!(repr(19999, "georgian"), "ჵჰშჟთ");
+        assert_eq!(repr(20000, "georgian"), "20000");
         // Незнакомое имя ведёт себя как decimal.
         assert_eq!(repr(5, "cjk-ideographic"), "5");
         assert_eq!(repr(5, "none"), "");

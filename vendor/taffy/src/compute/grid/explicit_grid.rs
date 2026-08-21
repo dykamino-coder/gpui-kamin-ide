@@ -168,10 +168,21 @@ pub(crate) fn compute_explicit_grid_size_in_axis(
                 //   - Then we return the minimum number of repetitions required to overflow the size.
                 //
                 // In all cases we add the additional repetition that was already accounted for in the special-case computation above
-                match auto_fit_strategy {
-                    AutoRepeatStrategy::MaxRepetitionsThatDoNotOverflow => (floor(num_repetition_that_fit) as u16) + 1,
-                    AutoRepeatStrategy::MinRepetitionsThatDoOverflow => (ceil(num_repetition_that_fit) as u16) + 1,
+                // KaminIDE patch: шаг репетиции может выйти НУЛЕВЫМ
+                // (`repeat(auto-fit, minmax(0, 1fr))` при нулевом зазоре) —
+                // тогда «наибольшее число повторений без переполнения»
+                // бесконечно, деление даёт inf, а `inf as u16` = 65535, и
+                // прибавление единицы роняло раскладку целиком
+                // (`contain-inline-size-grid-auto-fit` уносил всю шарду).
+                // Бесконечная репетиция смысла не имеет: берём одну.
+                if !num_repetition_that_fit.is_finite() {
+                    return (1, non_auto_repeating_track_count + repetition_track_count);
                 }
+                let fitting = match auto_fit_strategy {
+                    AutoRepeatStrategy::MaxRepetitionsThatDoNotOverflow => floor(num_repetition_that_fit),
+                    AutoRepeatStrategy::MinRepetitionsThatDoOverflow => ceil(num_repetition_that_fit),
+                };
+                (fitting.clamp(0.0, u16::MAX as f32 - 1.0) as u16) + 1
             }
         }
     };

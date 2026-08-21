@@ -1197,6 +1197,8 @@ pub struct Computed {
     pub counter_reset: Option<String>,
     /// `counter-increment` — увеличить счётчик на этом узле.
     pub counter_increment: Option<String>,
+    /// `counter-set` — присвоить счётчику значение (css-lists-3 §5).
+    pub counter_set: Option<String>,
     /// Возможности шрифта (`font-feature-settings`, `font-variant`).
     pub font_features: Vec<(String, u32)>,
     /// `caret-color` поля ввода.
@@ -3357,6 +3359,7 @@ impl Computed {
             // --- Псевдоэлементы и шрифт ---------------------------------------
             "counter-reset" => self.counter_reset = Some(v.to_string()),
             "counter-increment" => self.counter_increment = Some(v.to_string()),
+            "counter-set" => self.counter_set = Some(v.to_string()),
             "content" => {
                 match v {
                     // ПУСТАЯ строка — не то же самое, что `none`: коробка
