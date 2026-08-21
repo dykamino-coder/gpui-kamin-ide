@@ -1158,8 +1158,13 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             }
             // Релятивный элемент с отрицательным `z-index`: место в потоке —
             // своё, краска — под содержимым до него (CSS 2.1 §9.9, шаг 3).
-            if e.style.z_index.is_some_and(|z| z < 0)
-                && e.style.position == Some(crate::computed::Position::Relative)
+            // Элемент СЕТКИ или ряда с `z-index` ведёт себя как
+            // позиционированный (css-grid-1 §4.4, css-flexbox-1 §4.3) —
+            // подложка положена и ему без `position: relative`.
+            let acts_positioned = e.style.position
+                == Some(crate::computed::Position::Relative)
+                || (ordered_context && e.style.position.is_none());
+            if e.style.z_index.is_some_and(|z| z < 0) && acts_positioned
             {
                 done = crate::interact::Underlay::new(done).into_any_element();
             }
@@ -5583,12 +5588,33 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             // соотношения (CSS 2.1 §10.4): картинка 200x100 при max 100x100
             // выходит 100x50 (replaced-content-image-004). Считается только
             // от ГОТОВОГО рисунка — до загрузки соотношения нет.
+            // При `box-sizing: border-box` заданный предел включает паддинг
+            // и рамку — рисунку остаётся КОНТЕНТНАЯ часть (box-sizing-007+).
+            let side = |l: Option<Len>| match l {
+                Some(Len::Px(v)) => v,
+                _ => 0.0,
+            };
+            let (sub_w, sub_h) = if e.style.border_box == Some(true) {
+                let b = e.style.borders();
+                (
+                    side(e.style.padding.left)
+                        + side(e.style.padding.right)
+                        + side(b.left)
+                        + side(b.right),
+                    side(e.style.padding.top)
+                        + side(e.style.padding.bottom)
+                        + side(b.top)
+                        + side(b.bottom),
+                )
+            } else {
+                (0.0, 0.0)
+            };
             let max_w = match e.style.max_width {
-                Some(Len::Px(v)) => Some(v),
+                Some(Len::Px(v)) => Some((v - sub_w).max(0.0)),
                 _ => None,
             };
             let max_h = match e.style.max_height {
-                Some(Len::Px(v)) => Some(v),
+                Some(Len::Px(v)) => Some((v - sub_h).max(0.0)),
                 _ => None,
             };
             if (max_w.is_some() || max_h.is_some())
