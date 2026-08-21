@@ -1164,7 +1164,7 @@ fn walk(
                 counters.enter();
             }
             let mut own_resets: Vec<String> = vec![];
-            apply_counter_decls(&style, counters, &mut own_resets);
+            apply_counter_decls(&style, counters, &mut own_resets, &tag, &attrs);
 
             let mut path2 = path.to_vec();
             path2.push(me.clone());
@@ -1262,12 +1262,46 @@ fn apply_counter_decls(
     style: &Computed,
     counters: &mut crate::counters::Counters,
     resets: &mut Vec<String>,
+    tag: &str,
+    attrs: &[(String, String)],
 ) {
+    let num_attr = |key: &str| -> Option<i32> {
+        attrs
+            .iter()
+            .find(|(k, _)| k == key)
+            .and_then(|(_, v)| v.trim().parse().ok())
+    };
+    // Списочный контейнер заводит счётчик `list-item` для своих пунктов:
+    // у нумерованного отсчёт начинается с `start` (css-lists-3 §ua-stylesheet
+    // задаёт это правилом `ol[start] { counter-reset: list-item calc(attr(start) - 1) }`).
+    if matches!(tag, "ol" | "ul" | "menu" | "dir") {
+        let start = if tag == "ol" {
+            num_attr("start").map_or(0, |v| v - 1)
+        } else {
+            0
+        };
+        counters.reset("list-item", start);
+        if !resets.iter().any(|r| r == "list-item") {
+            resets.push("list-item".to_string());
+        }
+    }
+    // Пункт списка увеличивает `list-item` сам, если этого не сказано явно
+    // (css-lists-3 §list-item-counter). Порядок строгий: явное увеличение,
+    // затем неявное, затем присваивание — иначе `<li value>` считался бы
+    // от уже сдвинутого значения.
+    let is_item = tag == "li" || style.display == Some(Display::ListItem);
+    let explicit_item = style
+        .counter_increment
+        .as_deref()
+        .is_some_and(|t| t.split_whitespace().any(|w| w == "list-item"));
     for (decl, kind) in [
         (&style.counter_reset, 0u8),
         (&style.counter_increment, 1),
         (&style.counter_set, 2),
     ] {
+        if kind == 2 && is_item && !explicit_item {
+            counters.update("list-item", 1, false);
+        }
         let Some(text) = decl else { continue };
         let mut it = text.split_whitespace().peekable();
         while let Some(name) = it.next() {
@@ -1296,6 +1330,11 @@ fn apply_counter_decls(
                 _ => counters.update(name, value, true),
             }
         }
+    }
+    // `<li value>` задаёт номер пункта прямо (css-lists-3 §ua-stylesheet:
+    // `li[value] { counter-set: list-item attr(value) }`).
+    if is_item && let Some(v) = num_attr("value") {
+        counters.update("list-item", v, true);
     }
 }
 
@@ -1333,7 +1372,7 @@ fn pseudo_box(
     // уровень пути, свои директивы и своя область видимости.
     counters.enter_pseudo(which == "before");
     let mut own_resets: Vec<String> = vec![];
-    apply_counter_decls(&style, counters, &mut own_resets);
+    apply_counter_decls(&style, counters, &mut own_resets, "", &[]);
     // Составляющие склеиваются по порядку (css-content-3 §2): строки как
     // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
     let mut text = String::new();
@@ -1801,6 +1840,42 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Тексты псевдоэлементов документа в порядке обхода.
+    fn pseudo_texts(html: &str) -> Vec<String> {
+        fn walk(nodes: &[Node], out: &mut Vec<String>) {
+            for n in nodes {
+                if let Node::Element(e) = n {
+                    if e.tag.starts_with("::") {
+                        let text = e.children.iter().find_map(|c| match c {
+                            Node::Text(t) => Some(t.clone()),
+                            _ => None,
+                        });
+                        out.push(text.unwrap_or_default());
+                    }
+                    walk(&e.children, out);
+                }
+            }
+        }
+        let mut out = vec![];
+        walk(&parse(html, ""), &mut out);
+        out
+    }
+
+    #[test]
+    fn list_item_counter_is_implicit() {
+        // Пункт списка двигает `list-item` сам; `start` задаёт начало,
+        // `value` — номер конкретного пункта (css-lists-3 §ua-stylesheet).
+        let texts = pseudo_texts(
+            "<style>li::after { content: counter(list-item) }</style>             <ol start=\"5\"><li></li><li value=\"9\"></li><li></li></ol>",
+        );
+        assert_eq!(texts, vec!["5", "9", "10"]);
+        // Явное упоминание `list-item` отменяет неявное увеличение.
+        let texts = pseudo_texts(
+            "<style>li { counter-increment: list-item 3 } li::after { content: counter(list-item) }</style>             <ol><li></li><li></li></ol>",
+        );
+        assert_eq!(texts, vec!["3", "6"]);
     }
 
     #[test]
