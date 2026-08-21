@@ -5559,9 +5559,21 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     // (в hsl, метод longer?) — интерполяция нужна ЛЮБОМУ `in hsl`:
     // shorter (дефолт) идёт короткой дугой тона, longer — длинной; эталоны
     // пишут ref через `in hsl` без метода (gradient-longer-hue-hsl-002-ref).
-    let hsl_interp: Option<bool> = interp
-        .filter(|i| i.split_whitespace().next() == Some("hsl"))
-        .map(|i| i.contains("longer"));
+    // Метод дуги тона (css-color-4 §hue-interpolation): shorter (дефолт),
+    // longer, increasing, decreasing.
+    let hsl_interp: Option<u8> = interp
+        .filter(|i| matches!(i.split_whitespace().next(), Some("hsl") | Some("hwb")))
+        .map(|i| {
+            if i.contains("longer") {
+                1
+            } else if i.contains("increasing") {
+                2
+            } else if i.contains("decreasing") {
+                3
+            } else {
+                0
+            }
+        });
     if interp.is_some() && head.is_empty() {
         idx = 1;
     }
@@ -5652,7 +5664,13 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     // `in hsl longer hue`: тон идёт ДЛИННОЙ дугой (css-images-4 §3.4.1.1).
     // Растр интерполирует линейно в sRGB, поэтому дуга выкладывается
     // СИНТЕТИЧЕСКИМИ промежуточными стопами (gradient-longer-hue-hsl-001).
-    if let (Some(longer), true) = (hsl_interp.filter(|_| std::env::var("HSL_ARC").is_ok()), stops.len() >= 2) {
+    // ЗАМЕРЕНО В МИНУС без флага (−13/+2: дуга даёт 0.6–0.8% против
+    // эталонов — точность растеризации полос; single-stop 18.25) —
+    // остаётся за HSL_ARC до точной математики.
+    if let (Some(method), true) = (
+        hsl_interp.filter(|_| std::env::var("HSL_ARC").is_ok()),
+        stops.len() >= 2,
+    ) {
         let mut dense: Vec<(Color, f32)> = vec![];
         for w in stops.windows(2) {
             let ((c1, p1), (c2, p2)) = (w[0], w[1]);
@@ -5661,14 +5679,31 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
             let (h2, s2, l2) = crate::color_space::rgb_to_hsl(c2);
             // shorter: дуга в (-180,180]; longer — противоположная ей.
             let mut d = (h2 - h1).rem_euclid(360.0);
-            if d > 180.0 {
-                d -= 360.0;
-            }
-            if longer {
-                if d > 0.0 {
-                    d -= 360.0;
-                } else if d <= 0.0 {
-                    d += 360.0;
+            match method {
+                // shorter: дуга в (-180, 180].
+                0 => {
+                    if d > 180.0 {
+                        d -= 360.0;
+                    }
+                }
+                // longer: противоположная короткой.
+                1 => {
+                    if d > 180.0 {
+                        d -= 360.0;
+                    }
+                    if d > 0.0 {
+                        d -= 360.0;
+                    } else {
+                        d += 360.0;
+                    }
+                }
+                // increasing: тон только растёт (0..360).
+                2 => {}
+                // decreasing: тон только убывает.
+                _ => {
+                    if d > 0.0 {
+                        d -= 360.0;
+                    }
                 }
             }
             const K: usize = 48;
