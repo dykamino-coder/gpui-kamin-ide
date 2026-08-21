@@ -1469,7 +1469,12 @@ fn calculate_children_base_lines(
             let baseline = measured_size_and_baselines.first_baselines.y;
             let height = measured_size_and_baselines.size.height;
 
-            child.baseline = baseline.unwrap_or(height) + child.margin.top;
+            // KaminIDE patch: у ребёнка без собственной базовой линии ею
+            // служит НИЖНИЙ КРАЙ MARGIN-бокса (CSS 2.1 §10.8, Blink
+            // logical_box_fragment kMarginBox), а не нижний край рамки:
+            // строчный атом с паддингом-низом и отрицательным полем съезжал
+            // вверх относительно соседей (box-sizing-007..025).
+            child.baseline = baseline.unwrap_or(height + child.margin.bottom) + child.margin.top;
         }
     }
 }
