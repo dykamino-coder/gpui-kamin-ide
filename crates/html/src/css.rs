@@ -37,8 +37,13 @@ pub struct Selector {
     pub tag: Option<String>,
     pub id: Option<String>,
     pub classes: Vec<String>,
+    /// Атрибутные условия: `[href]`, `[type="text"]`, `[lang|=en]`.
+    pub attrs: Vec<AttrSel>,
     /// Псевдокласс `:hover` и т.п. — применяется отдельным слоем.
     pub pseudo: Option<String>,
+    /// Остальные псевдоклассы компаунда: `li:first-child:last-child` несёт
+    /// в `pseudo` последний, прочие копятся здесь и обязаны выполниться все.
+    pub also: Vec<String>,
     /// Предок для `.a .b` и `.a > .b`. Прямой ли — во втором поле.
     pub ancestor: Option<Box<(Selector, bool)>>,
     /// Предыдущий сосед для `.a + .b` и `.a ~ .b`. Смежный ли — во втором
@@ -46,12 +51,57 @@ pub struct Selector {
     pub prev: Option<Box<(Selector, bool)>>,
 }
 
+/// Атрибутный селектор одного условия.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AttrSel {
+    pub name: String,
+    /// Операция и значение: `=` 0, `~=` 1, `|=` 2, `^=` 3, `$=` 4, `*=` 5.
+    /// Отсутствует — проверяется само наличие атрибута.
+    pub op: Option<(u8, String)>,
+    /// Регистронезависимое сравнение значений (` i` перед `]`).
+    pub ci: bool,
+}
+
+impl AttrSel {
+    /// Совпадает ли значение атрибута (None = атрибута нет).
+    pub fn matches(&self, value: Option<&str>) -> bool {
+        let Some(value) = value else { return false };
+        let Some((op, want)) = &self.op else {
+            return true;
+        };
+        let (v, w);
+        let (value, want): (&str, &str) = if self.ci {
+            v = value.to_ascii_lowercase();
+            w = want.to_ascii_lowercase();
+            (&v, &w)
+        } else {
+            (value, want)
+        };
+        match op {
+            0 => value == want,
+            1 => !want.is_empty() && value.split_whitespace().any(|t| t == want),
+            2 => {
+                value == want
+                    || (value.len() > want.len()
+                        && value.starts_with(want)
+                        && value.as_bytes()[want.len()] == b'-')
+            }
+            3 => !want.is_empty() && value.starts_with(want),
+            4 => !want.is_empty() && value.ends_with(want),
+            _ => !want.is_empty() && value.contains(want),
+        }
+    }
+}
+
 impl Selector {
     /// Специфичность как в CSS: (id, класс+псевдо, тег). Сравнивается лексикографически.
     pub fn specificity(&self) -> (u32, u32, u32) {
         let mut s = (
             self.id.is_some() as u32,
-            self.classes.len() as u32 + self.pseudo.is_some() as u32,
+            self.classes.len() as u32
+                + self.attrs.len() as u32
+                + self.pseudo.is_some() as u32
+                + self.also.len() as u32,
             self.tag.is_some() as u32,
         );
         if let Some(anc) = &self.ancestor {
@@ -72,7 +122,9 @@ impl Selector {
                 tag: None,
                 id: None,
                 classes: vec![],
+                attrs: vec![],
                 pseudo: None,
+                also: vec![],
                 ancestor: None,
                 prev: None,
             });
@@ -81,7 +133,9 @@ impl Selector {
             tag: None,
             id: None,
             classes: vec![],
+            attrs: vec![],
             pseudo: None,
+            also: vec![],
             ancestor: None,
             prev: None,
         };
@@ -102,7 +156,7 @@ impl Selector {
                         '\\' => escaped = true,
                         '(' => depth += 1,
                         ')' => depth -= 1,
-                        '.' | '#' | ':' if depth == 0 => return true,
+                        '.' | '#' | ':' | '[' if depth == 0 => return true,
                         _ => {}
                     }
                     false
@@ -121,12 +175,43 @@ impl Selector {
             let body = &rest[1..];
             let end = delim(body);
             let name = &body[..end];
+            if kind == '[' {
+                // Атрибутное условие тянется до закрывающей скобки, кавычки
+                // внутри — со своим содержимым.
+                let mut end = 0usize;
+                let mut quote: Option<char> = None;
+                for (i, ch) in body.char_indices() {
+                    match (quote, ch) {
+                        (Some(q), c) if c == q => quote = None,
+                        (Some(_), _) => {}
+                        (None, '"') | (None, '\'') => quote = Some(ch),
+                        (None, ']') => {
+                            end = i;
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+                if end == 0 && !body.starts_with(']') {
+                    return None;
+                }
+                sel.attrs.push(parse_attr_sel(&body[..end])?);
+                rest = &body[end + 1..];
+                continue;
+            }
             match kind {
                 '.' => sel.classes.push(unescape(name)),
                 '#' => sel.id = Some(unescape(name)),
                 // `:hover` и `::before` дают одно и то же имя: различать их
                 // незачем — псевдоэлементы отбираются по имени.
                 ':' => {
+                    // Пустышка от второго двоеточия `::after` — не
+                    // псевдокласс, копить её нельзя.
+                    if let Some(prev) = sel.pseudo.take()
+                        && !prev.is_empty()
+                    {
+                        sel.also.push(prev);
+                    }
                     sel.pseudo = Some(unescape(name.trim_start_matches(':')).to_ascii_lowercase())
                 }
                 _ => return None,
@@ -138,11 +223,6 @@ impl Selector {
 
     /// `.card > .title`, `.card .title`, `div.card` — всё сюда.
     pub fn parse(raw: &str) -> Option<Selector> {
-        // Атрибутные селекторы отбрасываем целиком: тихо применить половину
-        // правила хуже, чем не применить его совсем.
-        if raw.contains('[') {
-            return None;
-        }
         // Разбивка на составные части и комбинаторы МЕЖДУ ними. Внутри скобок
         // `+` и `~` — не комбинаторы, а часть записи `2n+1` в `:nth-child()`.
         // Пробел — комбинатор потомка, если рядом нет знакового.
@@ -151,11 +231,11 @@ impl Selector {
         let mut cur = String::new();
         for ch in raw.chars() {
             match ch {
-                '(' => {
+                '(' | '[' => {
                     depth += 1;
                     cur.push(ch);
                 }
-                ')' => {
+                ')' | ']' => {
                     depth -= 1;
                     cur.push(ch);
                 }
@@ -232,6 +312,59 @@ impl Selector {
         }
         Some(sel)
     }
+}
+
+/// Разбор внутренности атрибутного условия: `name`, `name=value`,
+/// `name~="v" i` и родня. Кавычки значения снимаются, ` i` в хвосте —
+/// регистронезависимость.
+fn parse_attr_sel(raw: &str) -> Option<AttrSel> {
+    let raw = raw.trim();
+    let op_at = raw.char_indices().find(|(i, c)| {
+        *c == '=' || matches!(c, '~' | '|' | '^' | '$' | '*') && raw[i + 1..].starts_with('=')
+    });
+    let Some((i, op_ch)) = op_at else {
+        if raw.is_empty() {
+            return None;
+        }
+        return Some(AttrSel {
+            name: unescape(raw).to_ascii_lowercase(),
+            op: None,
+            ci: false,
+        });
+    };
+    let name = raw[..i].trim();
+    if name.is_empty() {
+        return None;
+    }
+    let (op, val_start) = match op_ch {
+        '=' => (0u8, i + 1),
+        '~' => (1, i + 2),
+        '|' => (2, i + 2),
+        '^' => (3, i + 2),
+        '$' => (4, i + 2),
+        _ => (5, i + 2),
+    };
+    let mut value = raw[val_start..].trim();
+    let mut ci = false;
+    if let Some(stripped) = value
+        .strip_suffix('i')
+        .or_else(|| value.strip_suffix('I'))
+        .map(str::trim_end)
+        && (stripped.ends_with('"') || stripped.ends_with('\'') || stripped.ends_with(char::is_whitespace))
+    {
+        ci = true;
+        value = stripped.trim_end();
+    }
+    let value = value
+        .strip_prefix('"')
+        .and_then(|v| v.strip_suffix('"'))
+        .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
+        .unwrap_or(value);
+    Some(AttrSel {
+        name: unescape(name).to_ascii_lowercase(),
+        op: Some((op, unescape(value))),
+        ci,
+    })
 }
 
 /// Где в значении стоит восклицательный знак — вне строк, скобок и
@@ -1214,7 +1347,18 @@ mod tests {
 
     #[test]
     fn unsupported_selectors_are_dropped_whole() {
-        assert!(Selector::parse("a[href]").is_none());
+        // Атрибутные селекторы теперь разбираются.
+        let attr = Selector::parse("a[href]").expect("наличие атрибута");
+        assert_eq!(attr.attrs.len(), 1);
+        assert!(attr.attrs[0].matches(Some("x")));
+        assert!(!attr.attrs[0].matches(None));
+        let eq = Selector::parse("input[type=\"text\" i]").expect("значение");
+        assert!(eq.attrs[0].ci);
+        assert!(eq.attrs[0].matches(Some("TEXT")));
+        assert!(!eq.attrs[0].matches(Some("password")));
+        let lang = Selector::parse("[lang|=en]").expect("дефисное");
+        assert!(lang.attrs[0].matches(Some("en-US")));
+        assert!(!lang.attrs[0].matches(Some("ent")));
         // Псевдоэлемент разбирается: коробку из него строит `dom.rs`.
         assert_eq!(
             Selector::parse("li::before").and_then(|s| s.pseudo),

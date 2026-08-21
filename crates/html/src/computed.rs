@@ -155,6 +155,7 @@ pub enum Marker {
     LowerAlpha,
     UpperAlpha,
     LowerRoman,
+    UpperRoman,
 }
 
 /// `text-transform`: регистр меняется при отрисовке текста, не в шрифте.
@@ -799,6 +800,8 @@ pub struct Computed {
     pub no_marker: Option<bool>,
     /// Вид маркера, если документ его задал.
     pub marker: Option<Marker>,
+    /// Строковый маркер: `list-style-type: "→ "` (css-lists-3 §3).
+    pub marker_text: Option<String>,
     pub object_fit: Option<String>,
 
     /// `aspect-ratio` — отношение ширины к высоте.
@@ -1086,6 +1089,8 @@ pub struct Computed {
     /// `display: inline` дословно (не inline-block): §9.7/§10.2 дорешиваются
     /// после каскада — см. `dom::finish_inline_display`.
     pub inline_display: Option<bool>,
+    /// `display: run-in` — вбегание решает `dom::fold_run_ins`.
+    pub run_in: Option<bool>,
     /// `contain: style` — счётчики и кавычки не выходят из поддерева.
     pub contain_style: Option<bool>,
     /// `contain-intrinsic-size`: подменная своя величина (css-sizing-5 §5).
@@ -1750,6 +1755,13 @@ impl Computed {
                     "table-row-group" | "table-header-group" | "table-footer-group" => {
                         Some(Display::TableRowGroup)
                     }
+                    // run-in решается ПОСЛЕ построения дерева: вбегает
+                    // первым строчным в следующий блок или остаётся блоком
+                    // (dom::fold_run_ins).
+                    "run-in" => {
+                        self.run_in = Some(true);
+                        Some(Display::Block)
+                    }
                     "flow-root" => {
                         // Коробка блочная, но признак не теряется: это
                         // свой контекст форматирования (css-display-3).
@@ -1965,12 +1977,12 @@ impl Computed {
             // (CSS 2.1 §10): `max-height: -1px` доезжал до раскладки и
             // схлопывал коробку в ноль. У `min-*` отрицательное поднимает
             // сама раскладка, но объявление всё равно отбрасывается.
-            "width" => self.width = Len::parse(v).filter(non_negative),
-            "height" => self.height = Len::parse(v).filter(non_negative),
-            "min-width" => self.min_width = Len::parse(v).filter(non_negative),
-            "min-height" => self.min_height = Len::parse(v).filter(non_negative),
-            "max-width" => self.max_width = Len::parse(v).filter(non_negative),
-            "max-height" => self.max_height = Len::parse(v).filter(non_negative),
+            "width" => assign_size(&mut self.width, v),
+            "height" => assign_size(&mut self.height, v),
+            "min-width" => assign_size(&mut self.min_width, v),
+            "min-height" => assign_size(&mut self.min_height, v),
+            "max-width" => assign_size(&mut self.max_width, v),
+            "max-height" => assign_size(&mut self.max_height, v),
 
             "padding" => {
                 if v == "inherit" {
@@ -2445,6 +2457,16 @@ impl Computed {
             }
             "list-style" | "list-style-type" => {
                 self.no_marker = Some(v.contains("none"));
+                // Строковый маркер: значение в кавычках берётся дословно,
+                // счётчик не участвует (list-style-type-string-*).
+                let t = v.trim();
+                if (t.starts_with('"') && t.ends_with('"') && t.len() >= 2)
+                    || (t.starts_with(char::from(39)) && t.ends_with(char::from(39)) && t.len() >= 2)
+                {
+                    self.marker_text = Some(t[1..t.len() - 1].to_string());
+                    self.no_marker = Some(false);
+                    return;
+                }
                 // Вид маркера задаёт документ, а не приложение: у списка
                 // возможностей и у нумерованного перечня он разный.
                 for token in v.split_whitespace() {
@@ -2456,6 +2478,7 @@ impl Computed {
                         "lower-alpha" | "lower-latin" => Some(Marker::LowerAlpha),
                         "upper-alpha" | "upper-latin" => Some(Marker::UpperAlpha),
                         "lower-roman" => Some(Marker::LowerRoman),
+                        "upper-roman" => Some(Marker::UpperRoman),
                         _ => self.marker,
                     };
                 }
@@ -5498,9 +5521,19 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         stops_raw,
     })
 }
-/// Валидна ли длина как размер коробки: отрицательные запрещены (§10).
-fn non_negative(l: &Len) -> bool {
-    !matches!(l, Len::Px(v) | Len::Pct(v) | Len::Em(v) if *v < 0.0)
+/// Присвоить размер коробки: отрицательная длина делает объявление
+/// НЕВАЛИДНЫМ, и слот не трогается вовсе (§10) — повторное свойство
+/// `width: 0; width: -1px` обязано оставить нуль от первой записи, а
+/// сброс в None делал ширину авто и красил красное (width-001 и родня).
+fn assign_size(slot: &mut Option<Len>, v: &str) {
+    let parsed = Len::parse(v);
+    if matches!(
+        parsed,
+        Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if n < 0.0
+    ) {
+        return;
+    }
+    *slot = parsed;
 }
 
 fn parse_shadows(v: &str) -> Vec<Shadow> {

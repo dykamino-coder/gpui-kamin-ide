@@ -5652,8 +5652,13 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             continue;
         }
         // Вид маркера задаёт документ; без указания — умолчание тега.
+        // Строковый маркер берётся дословно и без суффикса-точки.
+        let text_marker = li.style.marker_text.clone().or_else(|| e.style.marker_text.clone());
         let kind = li.style.marker.or(e.style.marker);
-        let marker = match kind {
+        let marker = if let Some(t) = text_marker {
+            t
+        } else {
+            match kind {
             Some(crate::computed::Marker::Circle) => "◦".to_string(),
             Some(crate::computed::Marker::Square) => "▪".to_string(),
             Some(crate::computed::Marker::Disc) => "•".to_string(),
@@ -5665,8 +5670,12 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 format!("{}.", (b'A' + ((idx - 1) % 26) as u8) as char)
             }
             Some(crate::computed::Marker::LowerRoman) => format!("{}.", roman(idx)),
+            Some(crate::computed::Marker::UpperRoman) => {
+                format!("{}.", roman(idx).to_uppercase())
+            }
             None if ordered => format!("{idx}."),
             None => "•".to_string(),
+            }
         };
         idx += 1;
         // `list-style: none` — на списках верстают навигацию и наборы чипов,

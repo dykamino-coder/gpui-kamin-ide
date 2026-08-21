@@ -196,7 +196,81 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     );
     hoist_grid_abspos(&mut out);
     content_box_static_position(&mut out);
+    fold_run_ins(&mut out);
     out
+}
+
+/// Вбегание `display: run-in` (CSS 2.1 §9.2.3): элемент без блочного
+/// содержимого, за которым (сквозь пробельный текст) идёт обычная блочная
+/// коробка, становится её ПЕРВЫМ СТРОЧНЫМ ребёнком; во всех остальных
+/// случаях он ведёт себя как блок (это уже так — разбор дал Block).
+fn fold_run_ins(nodes: &mut Vec<Node>) {
+    let is_blank = |n: &Node| matches!(n, Node::Text(t) if t.trim().is_empty());
+    let mut i = 0;
+    while i < nodes.len() {
+        // Сначала вглубь: вложенные run-in решаются в своём контейнере.
+        if let Node::Element(e) = &mut nodes[i] {
+            fold_run_ins(&mut e.children);
+        }
+        let runs_in = match &nodes[i] {
+            Node::Element(e) => {
+                e.style.run_in == Some(true)
+                    && e.style.float.is_none()
+                    && !matches!(
+                        e.style.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    )
+                    // Собственный блочный ребёнок запрещает вбегание.
+                    && !e.children.iter().any(
+                        |c| matches!(c, Node::Element(ch) if !ch.inline && ch.style.display != Some(Display::None)),
+                    )
+            }
+            _ => false,
+        };
+        if !runs_in {
+            i += 1;
+            continue;
+        }
+        // Следующая непустая коробка: подходит только обычный блок — не
+        // run-in, не строчный, не плавающий, не позиционированный.
+        let Some(j) = (i + 1..nodes.len()).find(|&j| !is_blank(&nodes[j])) else {
+            i += 1;
+            continue;
+        };
+        let target_ok = matches!(&nodes[j], Node::Element(t)
+            if !t.inline
+                && t.style.run_in != Some(true)
+                && t.style.float.is_none()
+                && !matches!(
+                    t.style.position,
+                    Some(crate::computed::Position::Absolute)
+                        | Some(crate::computed::Position::Fixed)
+                )
+                && !matches!(
+                    t.style.display,
+                    Some(Display::None)
+                        | Some(Display::InlineBlock)
+                        | Some(Display::InlineFlex)
+                        | Some(Display::InlineGrid)
+                        | Some(Display::InlineTable)
+                        | Some(Display::Table)
+                        | Some(Display::TableRow)
+                        | Some(Display::TableRowGroup)
+                        | Some(Display::TableCell)
+                ));
+        if !target_ok {
+            i += 1;
+            continue;
+        }
+        let Node::Element(mut run) = nodes.remove(i) else { unreachable!() };
+        run.inline = true;
+        run.style.display = None;
+        run.style.run_in = None;
+        let Node::Element(target) = &mut nodes[j - 1] else { unreachable!() };
+        target.children.insert(0, Node::Element(run));
+        // На месте i теперь стоит бывший j-1 — им и продолжаем.
+    }
 }
 
 /// Абсолютный ребёнок СЕТКИ или ГИБКОГО контейнера без заданных краёв стоит
@@ -356,6 +430,8 @@ struct Ancestor {
     tag: String,
     id: Option<String>,
     classes: Vec<String>,
+    /// Все атрибуты узла: нужны атрибутным селекторам.
+    attrs: Vec<(String, String)>,
     /// Место среди соседей: нужно структурным псевдоклассам.
     spot: Spot,
     /// Адрес ссылки: нужен `:link`/`:visited`.
@@ -564,6 +640,10 @@ fn walk_children(
                 classes: find("class")
                     .map(|v| v.split_whitespace().map(str::to_string).collect())
                     .unwrap_or_default(),
+                attrs: attrs
+                    .iter()
+                    .map(|a| (a.name.local.to_string(), a.value.to_string()))
+                    .collect(),
                 spot,
                 href: find("href"),
                 dir: find("dir").and_then(|v| match v.to_ascii_lowercase().as_str() {
@@ -630,6 +710,7 @@ fn walk(
                 tag: tag.clone(),
                 id: id.clone(),
                 classes: classes.clone(),
+                attrs: attrs.clone(),
                 spot,
                 href: attrs.iter().find(|(k, _)| k == "href").map(|(_, v)| v.clone()),
                 dir: attrs
@@ -973,6 +1054,32 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) 
     matches_ignoring_pseudo(sel, me, path, sibs)
 }
 
+/// Выполняется ли ОДИН псевдокласс на узле — для дополнительных
+/// псевдоклассов компаунда (основной решает `matches`, слои — отбор
+/// по имени). Неизвестный или слойный (`:hover`) здесь считается
+/// НЕвыполненным: базовый каскад такое правило не применяет.
+fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) -> bool {
+    if let Some(inner) = pseudo.strip_prefix("not(").and_then(|r| r.strip_suffix(')')) {
+        return Selector::parse(inner).is_some_and(|inner| !matches(&inner, me, path, sibs));
+    }
+    if pseudo == "link" || pseudo == "visited" {
+        let Some(href) = &me.href else { return false };
+        let visited = href.is_empty() || href.starts_with('#');
+        return (pseudo == "visited") == visited;
+    }
+    if let Some(want) = pseudo.strip_prefix("dir(").and_then(|r| r.strip_suffix(')')) {
+        let rtl = me
+            .dir
+            .or_else(|| path.iter().rev().find_map(|a| a.dir))
+            .unwrap_or(false);
+        return want.trim().eq_ignore_ascii_case("rtl") == rtl;
+    }
+    if pseudo == "root" {
+        return me.tag == "html";
+    }
+    structural(pseudo, me.spot).unwrap_or(false)
+}
+
 /// Структурные псевдоклассы: место узла среди соседей.
 ///
 /// `None` — псевдокласс не структурный, решение принимает вызывающий.
@@ -1050,6 +1157,11 @@ fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor], sib
     if !matches_compound(sel, me) {
         return false;
     }
+    // Дополнительные псевдоклассы компаунда (`li:first-child:last-child`)
+    // обязаны выполниться ВСЕ; раньше выживал только последний.
+    if !sel.also.iter().all(|p| pseudo_holds(p, me, path, sibs)) {
+        return false;
+    }
     // Соседний комбинатор: `+` — ровно предыдущий сосед-элемент, `~` — любой
     // раньше. Сосед проверяется ПОЛНЫМ сопоставлением со своими соседями
     // слева и тем же путём предков (соседи его делят).
@@ -1124,6 +1236,16 @@ fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
         && let Some(ok) = structural(p, node.spot)
         && !ok
     {
+        return false;
+    }
+    if !sel.attrs.iter().all(|a| {
+        a.matches(
+            node.attrs
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(&a.name))
+                .map(|(_, v)| v.as_str()),
+        )
+    }) {
         return false;
     }
     sel.classes.iter().all(|c| node.classes.contains(c))
