@@ -8289,6 +8289,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         real: bool,
     }
     let mut slots: Vec<Vec<SlotNode>> = (0..count).map(|_| vec![]).collect();
+    let used_sizes = lane_used_sizes(&tracks);
     // Позиционированные — вне потока: в конец первой лунки, без падов.
     let mut extras: Vec<Node> = vec![];
     // Курсор авто-размещения основного прохода (зеркало probe).
@@ -8576,10 +8577,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         let mut span_area: Option<f32> = None;
         if span > 1 {
             let width: f32 = (at..at + span)
-                .filter_map(|i| match tracks.get(i) {
-                    Some(TrackSize::Single(Track::Px(w))) => Some(*w),
-                    _ => None,
-                })
+                .filter_map(|i| used_sizes.get(i).copied().flatten())
                 .sum();
             if width > 0.0 {
                 let area = width + cross_gap * (span as f32 - 1.0);
@@ -8605,10 +8603,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // start (css-align §5.3, `column-overflow-alignment-001`); без него
         // элемент честно вылезает.
         let zone: f32 = (at..at + span)
-            .filter_map(|i| match tracks.get(i) {
-                Some(TrackSize::Single(Track::Px(w))) => Some(*w),
-                _ => None,
-            })
+            .filter_map(|i| used_sizes.get(i).copied().flatten())
             .sum::<f32>()
             + cross_gap * (span as f32 - 1.0);
         let cross_safe = |own: Option<Align>, own_safe: bool, items_safe: bool| {
@@ -8795,6 +8790,8 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             buckets.retain(|b| !b.is_empty());
         }
     }
+    // После auto-fit-схлопывания список дорожек другой — размеры заново.
+    let used_sizes = lane_used_sizes(&tracks);
     let mut row = styled_div_with(e, merged).flex();
     row = if row_dir {
         row.flex_col().gap_y(gpui::px(cross_gap))
@@ -8907,27 +8904,27 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             _ => {}
         }
-        match tracks.get(i) {
-            Some(TrackSize::Single(Track::Px(w))) if row_dir => {
-                lane = lane.h(gpui::px(*w)).flex_shrink_0()
-            }
-            Some(TrackSize::Single(Track::Pct(k))) if row_dir => {
-                lane = lane.h(gpui::relative(*k)).flex_shrink_0()
-            }
-            Some(TrackSize::Single(Track::Px(w))) => lane = lane.w(gpui::px(*w)).flex_shrink_0(),
-            Some(TrackSize::Single(Track::Pct(k))) => {
-                lane = lane.w(gpui::relative(*k)).flex_shrink_0()
-            }
-            // Дорожка по содержимому шире содержимого не бывает: ширину ей
-            // задаёт самый широкий элемент лунки, а не равная доля.
-            Some(TrackSize::Single(Track::Auto | Track::MinContent | Track::MaxContent)) => {
-                lane = lane.flex_shrink_0()
-            }
-            Some(TrackSize::Single(Track::Fr(f))) => {
-                lane.style().flex_grow = Some(*f);
-                lane = lane.flex_basis(px(0.));
-            }
-            _ => lane = lane.flex_1(),
+        match (used_sizes.get(i).copied().flatten(), tracks.get(i)) {
+            (Some(w), _) if row_dir => lane = lane.h(gpui::px(w)).flex_shrink_0(),
+            (Some(w), _) => lane = lane.w(gpui::px(w)).flex_shrink_0(),
+            (None, t) => match t {
+                Some(TrackSize::Single(Track::Pct(k))) if row_dir => {
+                    lane = lane.h(gpui::relative(*k)).flex_shrink_0()
+                }
+                Some(TrackSize::Single(Track::Pct(k))) => {
+                    lane = lane.w(gpui::relative(*k)).flex_shrink_0()
+                }
+                // Дорожка по содержимому шире содержимого не бывает: ширину
+                // ей задаёт самый широкий элемент лунки, а не равная доля.
+                Some(TrackSize::Single(Track::Auto | Track::MinContent | Track::MaxContent)) => {
+                    lane = lane.flex_shrink_0()
+                }
+                Some(TrackSize::Single(Track::Fr(f))) => {
+                    lane.style().flex_grow = Some(*f);
+                    lane = lane.flex_basis(px(0.));
+                }
+                _ => lane = lane.flex_1(),
+            },
         }
         row = row.child(lane.children(blocks(&items, merged, opts)));
     }
@@ -8940,6 +8937,21 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
 }
 
 /// Между какими лунками стоит элемент: начало (если задано) и сколько занимает.
+/// Used-размеры дорожек лунок (css-grid-3 §track-sizing, каркас):
+/// пока в точки превращаются только заданные `Px`; интрин/minmax/fr
+/// остаются None и живут прежними ветками. Единая точка последующей
+/// Px-ификации всех дорожек (план target/scout-lanes-spec.md).
+fn lane_used_sizes(tracks: &[crate::computed::TrackSize]) -> Vec<Option<f32>> {
+    use crate::computed::{Track, TrackSize};
+    tracks
+        .iter()
+        .map(|t| match t {
+            TrackSize::Single(Track::Px(w)) => Some(*w),
+            _ => None,
+        })
+        .collect()
+}
+
 fn lane_span(e: &Element, count: usize, row_dir: bool) -> (Option<usize>, usize) {
     use crate::computed::Placement;
     let line = |n: i16| -> usize {

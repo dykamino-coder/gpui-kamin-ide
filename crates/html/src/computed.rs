@@ -1618,26 +1618,10 @@ impl Computed {
         if c.border_color_is_current {
             c.border_color = c.color;
         }
-        // Фильтр — последнее, что происходит с элементом: он преобразует уже
-        // готовые цвета, а не участвует в каскаде.
-        if let Some(f) = c.filter {
-            c.background = c.background.map(|col| f.apply(col));
-            c.color = c.color.map(|col| f.apply(col));
-            c.border_color = c.border_color.map(|col| f.apply(col));
-            for side in c.border_colors.iter_mut() {
-                *side = side.map(|col| f.apply(col));
-            }
-            if let Some(g) = c.gradient.as_mut() {
-                g.from = f.apply(g.from);
-                g.to = f.apply(g.to);
-                for stop in g.stops.iter_mut() {
-                    stop.0 = f.apply(stop.0);
-                }
-            }
-            for sh in c.shadows.iter_mut() {
-                sh.color = f.apply(sh.color);
-            }
-        }
+        // Окраска фильтром здесь НЕ делается: результат оседал в
+        // долгоживущем стиле узла, и покадровая окраска в `inline::inherit`
+        // применяла фильтр ВТОРОЙ раз (grayscale темнил вдвое). Единственная
+        // точка окраски — слияние при отрисовке.
         c
     }
 

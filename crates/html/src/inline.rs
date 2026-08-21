@@ -565,18 +565,36 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     if c.filter.is_none() {
         c.filter = parent.filter;
     }
-    if let Some(f) = c.filter.filter(|_| own.filter.is_none()) {
-        c.background = c.background.map(|col| f.apply(col));
-        c.color = c.color.map(|col| f.apply(col));
-        c.border_color = c.border_color.map(|col| f.apply(col));
-        for side in c.border_colors.iter_mut() {
-            *side = side.map(|col| f.apply(col));
+    // ЕДИНСТВЕННАЯ точка окраски фильтром (каскад цвета не трогает).
+    // Красится только ВОЗНИКШЕЕ на этом узле: унаследованный цвет уже
+    // покрашен предком — повторная окраска давала f^N по поколениям.
+    if let Some(f) = c.filter {
+        if own.background.is_some() {
+            c.background = c.background.map(|col| f.apply(col));
         }
-        if let Some(g) = c.gradient.as_mut() {
+        if own.color.is_some() || own.filter.is_some() && parent.color.is_none() {
+            c.color = c.color.map(|col| f.apply(col));
+        }
+        if own.border_color.is_some() || own.border_color_is_current {
+            c.border_color = c.border_color.map(|col| f.apply(col));
+        }
+        for (side, own_side) in c.border_colors.iter_mut().zip(own.border_colors.iter()) {
+            if own_side.is_some() {
+                *side = side.map(|col| f.apply(col));
+            }
+        }
+        if own.gradient.is_some()
+            && let Some(g) = c.gradient.as_mut()
+        {
             g.from = f.apply(g.from);
             g.to = f.apply(g.to);
             for stop in g.stops.iter_mut() {
                 stop.0 = f.apply(stop.0);
+            }
+        }
+        if !own.shadows.is_empty() {
+            for sh in c.shadows.iter_mut() {
+                sh.color = f.apply(sh.color);
             }
         }
     }
