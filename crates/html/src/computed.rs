@@ -5358,14 +5358,8 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
         if t == "max-content" {
             return Some(Track::MaxContent);
         }
-        // `fit-content(N)` — дорожка не шире N и не шире содержимого.
-        if let Some(inner) = t
-            .strip_prefix("fit-content(")
-            .and_then(|r| r.strip_suffix(')'))
-            && let Some(Len::Px(px)) = Len::parse(inner.trim())
-        {
-            return Some(Track::Px(px));
-        }
+
+
         if let Some(fr) = t.strip_suffix("fr") {
             return fr.trim().parse().ok().map(Track::Fr);
         }
@@ -5382,6 +5376,16 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
         if let Some(inner) = t.strip_prefix("minmax(").and_then(|s| s.strip_suffix(')')) {
             let (lo, hi) = inner.split_once(',')?;
             return Some(TrackSize::MinMax(single(lo)?, single(hi)?));
+        }
+        // `fit-content(N)` — дорожка по содержимому, но НЕ ШИРЕ N: раньше
+        // сводилась к `Px(N)`, и потолок работал полом
+        // (column-intrinsic-maximums).
+        if let Some(inner) = t
+            .strip_prefix("fit-content(")
+            .and_then(|r| r.strip_suffix(')'))
+            && let Some(Len::Px(px)) = Len::parse(inner.trim())
+        {
+            return Some(TrackSize::MinMax(Track::Auto, Track::Px(px)));
         }
         single(t).map(TrackSize::Single)
     }

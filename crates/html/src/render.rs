@@ -7914,14 +7914,14 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // шириной с самый широкий элемент). Заданные линии — только своим.
     // Ряды НЕ трогаем: item_height врёт на ортогональном письме и субгриде
     // (row-subgrid-orthogonal 0→11, grid-gap-007 0.15→36 — ЗАМЕРЕНО).
-    if !row_dir
-        && tracks.iter().any(|t| {
-            matches!(
-                t,
-                TrackSize::Single(Track::Auto | Track::MaxContent | Track::MinContent)
-            )
-        })
-    {
+    let intrinsic_track = |t: &TrackSize| {
+        matches!(
+            t,
+            TrackSize::Single(Track::Auto | Track::MaxContent | Track::MinContent)
+                | TrackSize::MinMax(..)
+        )
+    };
+    if !row_dir && tracks.iter().any(intrinsic_track) {
         let n = tracks.len();
         let cross_of = |item: &Element| -> f32 {
             let w = item_width(item);
@@ -7950,8 +7950,35 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             let total = ws.iter().sum::<usize>() + ws.len().saturating_sub(1);
             total as f32 * ch
         };
+        let fixed_px = |t: &TrackSize| match t {
+            TrackSize::Single(Track::Px(w)) => Some(*w),
+            _ => None,
+        };
         let mut contrib = vec![0.0f32; n];
-        let mut auto_max = 0.0f32;
+        let mut auto_shares: Vec<(usize, f32)> = vec![];
+        // Раздача вклада спаннера: фикс-дорожки охвата вычитаются ПЕРВЫМИ,
+        // остаток поровну между интрин-дорожками (css-grid-2 §11.5.1;
+        // пример спеки css-grid-3 §track-sizing: 220px рядом со 100px-дорожкой
+        // даёт «120 во вторую», а не по 110).
+        let spread = |contrib: &mut Vec<f32>, tracks: &[TrackSize], at: usize, span: usize, size: f32| {
+            let range = at..(at + span).min(tracks.len());
+            let fixed_sum: f32 = range.clone().filter_map(|i| fixed_px(&tracks[i])).sum();
+            // Fr-дорожка при неопределённом контейнере тоже интрин-получатель
+            // (§11.8: доля без свободного места ведёт себя как max-content).
+            let intr: Vec<usize> = range
+                .filter(|i| {
+                    intrinsic_track(&tracks[*i])
+                        || matches!(tracks[*i], TrackSize::Single(Track::Fr(_)))
+                })
+                .collect();
+            if intr.is_empty() {
+                return;
+            }
+            let share = ((size - fixed_sum) / intr.len() as f32).max(0.0);
+            for i in intr {
+                contrib[i] = contrib[i].max(share);
+            }
+        };
         for nd in &e.children {
             let Node::Element(item) = nd else { continue };
             if matches!(
@@ -7962,24 +7989,71 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             let (fixed, span) = lane_span(item, n, row_dir);
             let span = span.clamp(1, n);
-            let share = cross_of(item) / span as f32;
+            let size = cross_of(item);
             match fixed {
-                Some(at) => {
-                    for i in at..(at + span).min(n) {
-                        contrib[i] = contrib[i].max(share);
-                    }
-                }
-                None => auto_max = auto_max.max(share),
+                Some(at) => spread(&mut contrib, &tracks, at, span, size),
+                // Авто-размещаемый вкладывается В КАЖДУЮ возможную стартовую
+                // позицию (css-grid-3 §track-sizing).
+                None => auto_shares.push((span, size)),
+            }
+        }
+        for (span, size) in auto_shares {
+            for at in 0..=n.saturating_sub(span) {
+                spread(&mut contrib, &tracks, at, span, size);
             }
         }
         for (i, t) in tracks.iter_mut().enumerate() {
-            if matches!(
-                t,
-                TrackSize::Single(Track::Auto | Track::MaxContent | Track::MinContent)
-            ) {
-                let w = contrib[i].max(auto_max);
-                if w > 0.0 {
-                    *t = TrackSize::Single(Track::Px(w));
+            match t {
+                TrackSize::Single(Track::Auto | Track::MaxContent | Track::MinContent) => {
+                    if contrib[i] > 0.0 {
+                        *t = TrackSize::Single(Track::Px(contrib[i]));
+                    }
+                }
+                // minmax: база из min-функции, потолок из max; потолок ниже
+                // базы поднимается до неё (css-grid-2 §11.4). Интрин-вклад
+                // зажимается в [min..max].
+                TrackSize::MinMax(min, max) => {
+                    let lo = match min {
+                        Track::Px(v) => *v,
+                        _ => 0.0,
+                    };
+                    let hi = match max {
+                        Track::Px(v) => *v,
+                        // Интрин-потолок не ограничивает.
+                        _ => f32::INFINITY,
+                    };
+                    let w = match min {
+                        // Интрин-минимум зажимается потолком: у
+                        // `minmax(auto, 0)` дорожка нулевая (…-item-minmax-
+                        // img-002), правило «потолок ниже базы поднимается»
+                        // работает только для ЧИСЛОВОЙ базы.
+                        Track::Auto | Track::MinContent | Track::MaxContent => {
+                            contrib[i].min(hi)
+                        }
+                        _ => lo.max(contrib[i].min(hi.max(lo))),
+                    };
+                    *t = TrackSize::Single(Track::Px(w.max(0.0)));
+                }
+                _ => {}
+            }
+        }
+        // fr при НЕОПРЕДЕЛЁННОМ контейнере (css-grid-2 §11.8): свободного
+        // места нет, и доля ведёт себя как max-content — единый коэффициент
+        // = max(вклад/долю), дорожка = f * коэффициент.
+        if room.is_none() {
+            let ratio = tracks
+                .iter()
+                .enumerate()
+                .filter_map(|(i, t)| match t {
+                    TrackSize::Single(Track::Fr(f)) if *f > 0.0 => Some(contrib[i] / f),
+                    _ => None,
+                })
+                .fold(0.0f32, f32::max);
+            if ratio > 0.0 {
+                for t in tracks.iter_mut() {
+                    if let TrackSize::Single(Track::Fr(f)) = t {
+                        *t = TrackSize::Single(Track::Px(*f * ratio));
+                    }
                 }
             }
         }
