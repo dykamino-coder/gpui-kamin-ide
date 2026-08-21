@@ -289,31 +289,28 @@ impl PlatformTextSystem for DirectWriteTextSystem {
 impl DirectWriteState {
     fn add_fonts(&mut self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()> {
         for font_data in fonts {
-            match font_data {
-                Cow::Borrowed(data) => unsafe {
-                    let font_file = self
-                        .components
-                        .in_memory_loader
-                        .CreateInMemoryFontFileReference(
-                            &self.components.factory,
-                            data.as_ptr() as _,
-                            data.len() as _,
-                            None,
-                        )?;
-                    self.components.builder.AddFontFile(&font_file)?;
-                },
-                Cow::Owned(data) => unsafe {
-                    let font_file = self
-                        .components
-                        .in_memory_loader
-                        .CreateInMemoryFontFileReference(
-                            &self.components.factory,
-                            data.as_ptr() as _,
-                            data.len() as _,
-                            None,
-                        )?;
-                    self.components.builder.AddFontFile(&font_file)?;
-                },
+            // KaminIDE patch: `CreateInMemoryFontFileReference` с
+            // `ownerObject: None` НЕ копирует данные — память обязана жить,
+            // пока жива фабрика. Владеющий буфер здесь дропался в конце
+            // итерации, DirectWrite оставался с висячим указателем, и
+            // добавленный шрифт молча выпадал из коллекции (страничные
+            // `@font-face` не работали вовсе). Шрифты добавляются считанные
+            // разы за процесс — утечка осознанная.
+            let data: &'static [u8] = match font_data {
+                Cow::Borrowed(data) => data,
+                Cow::Owned(data) => Box::leak(data.into_boxed_slice()),
+            };
+            unsafe {
+                let font_file = self
+                    .components
+                    .in_memory_loader
+                    .CreateInMemoryFontFileReference(
+                        &self.components.factory,
+                        data.as_ptr() as _,
+                        data.len() as _,
+                        None,
+                    )?;
+                self.components.builder.AddFontFile(&font_file)?;
             }
         }
         let set = unsafe { self.components.builder.CreateFontSet()? };

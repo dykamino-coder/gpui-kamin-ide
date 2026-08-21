@@ -116,6 +116,47 @@ impl Render for Page {
 /// распространён на канвас, тест ограничен листом — page-box-001).
 static PAGE_CROP: std::sync::Mutex<Option<(f32, f32)>> = std::sync::Mutex::new(None);
 
+/// Прочитать подключённую таблицу стилей БАЙТАМИ, как это делает браузер
+/// с wpt-сервером.
+///
+/// `read_to_string` молча съедал любой не-UTF-8 файл (`unwrap_or_default`
+/// давал пустую таблицу — семь at-charset-тестов краснели одинаковыми 3.53).
+/// Рядом с файлом может лежать `<имя>.headers` с HTTP-заголовками: не
+/// `text/css` — таблица не подключается вовсе; `charset=` из заголовка
+/// слабее метки порядка байтов, но сильнее `@charset` в самом файле.
+fn read_stylesheet(file: &std::path::Path) -> String {
+    let Ok(bytes) = std::fs::read(file) else {
+        return String::new();
+    };
+    let headers = std::fs::read_to_string(format!("{}.headers", file.display())).ok();
+    let content_type = headers.as_deref().and_then(|h| {
+        h.lines()
+            .find(|l| l.to_ascii_lowercase().starts_with("content-type:"))
+            .map(|l| l[13..].trim().to_string())
+    });
+    if let Some(ct) = &content_type
+        && !ct.to_ascii_lowercase().starts_with("text/css")
+    {
+        return String::new();
+    }
+    let at_charset = || {
+        let head = bytes.get(..bytes.len().min(64))?;
+        let text = head.strip_prefix(b"@charset \x22")?;
+        let end = text.iter().position(|b| *b == b'\x22')?;
+        encoding_rs::Encoding::for_label(&text[..end])
+    };
+    let enc = kamin_html::encoding::from_bom(&bytes)
+        .or_else(|| {
+            content_type
+                .as_deref()
+                .and_then(kamin_html::encoding::from_content_type)
+        })
+        .or_else(at_charset)
+        .map(kamin_html::encoding::fix_utf16)
+        .unwrap_or(encoding_rs::UTF_8);
+    enc.decode(&bytes).0.into_owned()
+}
+
 /// Обрезать снимок окна до логического прямоугольника (учёт плотности).
 fn crop_shot(shot: (u32, u32, Vec<u8>), win: (f32, f32), area: (f32, f32)) -> (u32, u32, Vec<u8>) {
     let (w, h, bytes) = shot;
@@ -569,7 +610,7 @@ fn resolve_links(html: &str, path: &str) -> String {
                     out.push_str(&tag.replace(&href, &uri));
                 }
                 Some((_, file)) if lower.contains("stylesheet") => {
-                    let css = std::fs::read_to_string(&file).unwrap_or_default();
+                    let css = read_stylesheet(&file);
                     // Адреса внутри ПОДКЛЮЧЁННОГО файла считаются от ЕГО
                     // папки: после вставки в документ база сместилась бы на
                     // папку теста, и `url(WidthTest-Regular.otf)` из
@@ -810,13 +851,19 @@ fn main() {
         // семейства запоминается под тем, которым шрифт зовут в разметке.
         let fonts = cx.text_system().clone();
         kamin_html::fonts::install_loader(move |bytes| {
+            // Имя — из name-таблицы файла: разность общего списка имён
+            // пуста, когда система уже знает такое семейство, и алиас
+            // терялся (FontWithFancyFeatures — весь кластер OpenType-фич).
+            let named = kamin_html::fonts::sfnt_family(&bytes);
             let before: std::collections::HashSet<String> =
                 fonts.all_font_names().into_iter().collect();
             fonts.add_fonts(vec![bytes.into()]).ok()?;
-            fonts
-                .all_font_names()
-                .into_iter()
-                .find(|name| !before.contains(name))
+            named.or_else(|| {
+                fonts
+                    .all_font_names()
+                    .into_iter()
+                    .find(|name| !before.contains(name))
+            })
         });
         let empty = Rc::new(Document::new("", BROWSER_CSS));
         let window = cx

@@ -161,6 +161,13 @@ impl Selector {
                 }
                 _ if depth > 0 => cur.push(ch),
                 ' ' | '\t' | '\n' => {
+                    // Пробел сразу после hex-экранирования — ограничитель
+                    // кода, а не комбинатор: `.css\\0032 p` — это ОДИН
+                    // класс `css2p`, unescape ограничитель поглотит.
+                    if ends_with_open_escape(&cur) {
+                        cur.push(' ');
+                        continue;
+                    }
                     if !cur.is_empty() {
                         tokens.push(Ok(std::mem::take(&mut cur)));
                     }
@@ -522,6 +529,11 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
         if decls.is_empty() {
             continue;
         }
+        // Пустая часть списка селекторов делает недействительным ВЕСЬ
+        // список (CSS 2.1 §4.1.7): `body,,div {}` не применяется ни к кому.
+        if head.split(',').any(|one| one.trim().is_empty()) {
+            continue;
+        }
         for one in head.split(',') {
             if let Some(sel) = Selector::parse(one) {
                 out.push(Rule {
@@ -735,6 +747,18 @@ fn supports_eval_term(term: &str) -> SupTri {
 /// разделитель составного селектора. Пока этого не было, `p\\.class`
 /// разбирался как тег `p` с классом `class` и совпадал с `p class="class"`,
 /// хотя обязан искать тег с точкой в имени, то есть не совпадать ни с чем.
+/// Кончается ли накопленный кусок НЕЗАВЕРШЁННЫМ hex-экранированием:
+/// обратная косая, за ней от одной до шести шестнадцатеричных цифр.
+fn ends_with_open_escape(cur: &str) -> bool {
+    let hex_len = cur.chars().rev().take_while(|c| c.is_ascii_hexdigit()).count();
+    if hex_len == 0 || hex_len > 6 {
+        return false;
+    }
+    let mut rest = cur.chars().rev().skip(hex_len);
+    // Косая перед цифрами, и она сама не экранирована.
+    rest.next() == Some('\\') && rest.next() != Some('\\')
+}
+
 pub fn unescape(name: &str) -> String {
     if !name.contains('\\') {
         return name.to_string();

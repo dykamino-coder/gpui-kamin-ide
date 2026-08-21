@@ -170,7 +170,15 @@ pub fn collect(
                 // невидимый знак-распорка. Соединитель слов (U+FEFF) выбран
                 // не случайно: точкой переноса он не является, а нулевой
                 // пробел ею был бы — строка рвалась бы по краю `<span>`.
-                let (lead, trail) = inline_sides(e, &merged);
+                // Физические стороны НЕ переставляются направлением
+                // (CSS 2.1 §9.10): распорка левых полей выпускается в
+                // логическом НАЧАЛЕ при ltr и в логическом КОНЦЕ при rtl —
+                // иначе перестановка UAX#9 уводила `margin-left` вправо
+                // (bidi-box-model-013 и вся семья).
+                let (mut lead, mut trail) = inline_sides(e, &merged);
+                if merged.rtl == Some(true) {
+                    std::mem::swap(&mut lead, &mut trail);
+                }
                 if lead != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),

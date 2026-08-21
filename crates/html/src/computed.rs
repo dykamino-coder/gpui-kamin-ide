@@ -1083,6 +1083,9 @@ pub struct Computed {
     pub contain_layout: Option<bool>,
     /// `display: flow-root` — свой контекст форматирования (коробка Block).
     pub flow_root: Option<bool>,
+    /// `display: inline` дословно (не inline-block): §9.7/§10.2 дорешиваются
+    /// после каскада — см. `dom::finish_inline_display`.
+    pub inline_display: Option<bool>,
     /// `contain: style` — счётчики и кавычки не выходят из поддерева.
     pub contain_style: Option<bool>,
     /// `contain-intrinsic-size`: подменная своя величина (css-sizing-5 §5).
@@ -1686,6 +1689,7 @@ impl Computed {
                 self.webkit_box = Some(true);
             }
             "display" => {
+                self.inline_display = None;
                 // Запись из ДВУХ слов (CSS Display 3): `inline grid-lanes`,
                 // `block flow` и родня — внешний вид и внутренний.
                 //
@@ -1726,7 +1730,13 @@ impl Computed {
                     "none" => Some(Display::None),
                     "block" => Some(Display::Block),
                     "inline-block" => Some(Display::InlineBlock),
-                    "inline" => Some(Display::InlineBlock),
+                    "inline" => {
+                        // Метка «настоящий строчный»: блокификация под
+                        // float/abspos (§9.7) и запрет width/height на
+                        // незамещаемом (§10.2) решаются после каскада.
+                        self.inline_display = Some(true);
+                        Some(Display::InlineBlock)
+                    }
                     "inline-grid" => Some(Display::InlineGrid),
                     // Элемент исчезает, дети встают на его место.
                     "contents" => Some(Display::Contents),
@@ -1951,12 +1961,16 @@ impl Computed {
                 }
             }
 
-            "width" => self.width = Len::parse(v),
-            "height" => self.height = Len::parse(v),
-            "min-width" => self.min_width = Len::parse(v),
-            "min-height" => self.min_height = Len::parse(v),
-            "max-width" => self.max_width = Len::parse(v),
-            "max-height" => self.max_height = Len::parse(v),
+            // Отрицательная длина делает объявление размера невалидным
+            // (CSS 2.1 §10): `max-height: -1px` доезжал до раскладки и
+            // схлопывал коробку в ноль. У `min-*` отрицательное поднимает
+            // сама раскладка, но объявление всё равно отбрасывается.
+            "width" => self.width = Len::parse(v).filter(non_negative),
+            "height" => self.height = Len::parse(v).filter(non_negative),
+            "min-width" => self.min_width = Len::parse(v).filter(non_negative),
+            "min-height" => self.min_height = Len::parse(v).filter(non_negative),
+            "max-width" => self.max_width = Len::parse(v).filter(non_negative),
+            "max-height" => self.max_height = Len::parse(v).filter(non_negative),
 
             "padding" => {
                 if v == "inherit" {
@@ -2224,12 +2238,15 @@ impl Computed {
                 let bottom = layers.last().copied().unwrap_or(v);
                 if top.starts_with("linear-gradient(") || top.starts_with("radial-gradient(") {
                     self.gradient = parse_gradient(top);
-                    // Цвет ищется в НИЖНЕМ слое: он один его и допускает.
-                    if layers.len() > 1 {
-                        for token in split_outside_parens(bottom) {
-                            if let Some(c) = Color::parse(&token) {
-                                self.background = Some(c);
-                            }
+                    // Цвет ищется в НИЖНЕМ слое (он один его допускает);
+                    // при единственном слое нижний == верхний, и цвет стоит
+                    // там же, рядом с градиентом: `background: linear-… green`.
+                    for token in split_outside_parens(bottom) {
+                        if token.contains('(') {
+                            continue;
+                        }
+                        if let Some(c) = Color::parse(&token) {
+                            self.background = Some(c);
                         }
                     }
                     return;
@@ -3104,9 +3121,17 @@ impl Computed {
                     "cover" => BgSize::Cover,
                     "contain" => BgSize::Contain,
                     _ => {
+                        // Отрицательная длина делает декларацию невалидной
+                        // целиком (css-backgrounds-3 §3.9) — размер не трогать.
+                        let neg = |l: &Option<Len>| {
+                            matches!(l, Some(Len::Px(v) | Len::Pct(v)) if *v < 0.0)
+                        };
                         let mut it = v.split_whitespace();
                         let w = it.next().and_then(Len::parse);
                         let h = it.next().and_then(Len::parse);
+                        if neg(&w) || neg(&h) {
+                            return;
+                        }
                         if w.is_none() && h.is_none() {
                             BgSize::Auto
                         } else {
@@ -3164,35 +3189,121 @@ impl Computed {
                     ),
                 }
             }
-            "font-feature-settings"
-            | "font-variant"
-            | "font-variant-caps"
-            | "font-variant-numeric" => {
-                // `font-variant: small-caps` — это возможность шрифта `smcp`;
-                // остальные записываются четырёхбуквенным тегом напрямую.
+            "font-feature-settings" => {
+                // Низкоуровневые теги через запятую: `"tnum" 1, "liga" off`.
                 for token in v.split(',') {
-                    let token = token.trim();
-                    match token {
-                        "small-caps" => self.font_features.push(("smcp".into(), 1)),
-                        "all-small-caps" => self.font_features.push(("c2sc".into(), 1)),
-                        "oldstyle-nums" => self.font_features.push(("onum".into(), 1)),
-                        "lining-nums" => self.font_features.push(("lnum".into(), 1)),
-                        "tabular-nums" => self.font_features.push(("tnum".into(), 1)),
-                        "proportional-nums" => self.font_features.push(("pnum".into(), 1)),
-                        "slashed-zero" => self.font_features.push(("zero".into(), 1)),
-                        "normal" | "none" => {}
+                    let mut parts = token.split_whitespace();
+                    let tag = parts.next().unwrap_or("").trim_matches('"');
+                    if tag.len() == 4 {
+                        let on = match parts.next() {
+                            Some("off") | Some("0") => 0,
+                            Some("on") | None => 1,
+                            Some(n) => n.parse().unwrap_or(1),
+                        };
+                        self.font_features.push((tag.to_string(), on));
+                    }
+                }
+            }
+            "font-variant"
+            | "font-variant-caps"
+            | "font-variant-numeric"
+            | "font-variant-ligatures"
+            | "font-variant-east-asian"
+            | "font-variant-position"
+            | "font-variant-alternates" => {
+                // Значения разделяются ПРОБЕЛОМ (css-fonts-4 §6); каждое
+                // свойство сперва чистит СВОЮ подгруппу тегов — повтор и
+                // `normal` переопределяют, а не копятся при наследовании.
+                const CAPS: &[&str] = &["smcp", "c2sc", "pcap", "c2pc", "unic", "titl"];
+                const NUMERIC: &[&str] =
+                    &["lnum", "onum", "pnum", "tnum", "frac", "afrc", "ordn", "zero"];
+                const LIGA: &[&str] = &["liga", "clig", "dlig", "hlig", "calt"];
+                const EAST: &[&str] =
+                    &["jp78", "jp83", "jp90", "jp04", "smpl", "trad", "fwid", "pwid", "ruby"];
+                const POS: &[&str] = &["subs", "sups"];
+                const ALT: &[&str] = &["hist", "salt", "swsh", "ornm", "nalt"];
+                let alt_tag = |t: &str| {
+                    (t.len() == 4 && (t.starts_with("ss") || t.starts_with("cv")))
+                        && t[2..].bytes().all(|b| b.is_ascii_digit())
+                };
+                let groups: &[&[&str]] = match key {
+                    "font-variant-caps" => &[CAPS],
+                    "font-variant-numeric" => &[NUMERIC],
+                    "font-variant-ligatures" => &[LIGA],
+                    "font-variant-east-asian" => &[EAST],
+                    "font-variant-position" => &[POS],
+                    "font-variant-alternates" => &[ALT],
+                    _ => &[CAPS, NUMERIC, LIGA, EAST, POS, ALT],
+                };
+                self.font_features.retain(|(t, _)| {
+                    !groups.iter().any(|g| g.contains(&t.as_str()))
+                        && !(matches!(key, "font-variant" | "font-variant-alternates")
+                            && alt_tag(t))
+                });
+                for token in v.split_whitespace() {
+                    let push: &[(&str, u32)] = match token {
+                        "small-caps" => &[("smcp", 1)],
+                        "all-small-caps" => &[("smcp", 1), ("c2sc", 1)],
+                        "petite-caps" => &[("pcap", 1)],
+                        "all-petite-caps" => &[("pcap", 1), ("c2pc", 1)],
+                        "unicase" => &[("unic", 1)],
+                        "titling-caps" => &[("titl", 1)],
+                        "lining-nums" => &[("lnum", 1)],
+                        "oldstyle-nums" => &[("onum", 1)],
+                        "proportional-nums" => &[("pnum", 1)],
+                        "tabular-nums" => &[("tnum", 1)],
+                        "diagonal-fractions" => &[("frac", 1)],
+                        "stacked-fractions" => &[("afrc", 1)],
+                        "ordinal" => &[("ordn", 1)],
+                        "slashed-zero" => &[("zero", 1)],
+                        "common-ligatures" => &[("liga", 1), ("clig", 1)],
+                        "no-common-ligatures" => &[("liga", 0), ("clig", 0)],
+                        "discretionary-ligatures" => &[("dlig", 1)],
+                        "no-discretionary-ligatures" => &[("dlig", 0)],
+                        "historical-ligatures" => &[("hlig", 1)],
+                        "no-historical-ligatures" => &[("hlig", 0)],
+                        "contextual" => &[("calt", 1)],
+                        "no-contextual" => &[("calt", 0)],
+                        "jis78" => &[("jp78", 1)],
+                        "jis83" => &[("jp83", 1)],
+                        "jis90" => &[("jp90", 1)],
+                        "jis04" => &[("jp04", 1)],
+                        "simplified" => &[("smpl", 1)],
+                        "traditional" => &[("trad", 1)],
+                        "full-width" => &[("fwid", 1)],
+                        "proportional-width" => &[("pwid", 1)],
+                        "ruby" => &[("ruby", 1)],
+                        "sub" => &[("subs", 1)],
+                        "super" => &[("sups", 1)],
+                        "historical-forms" => &[("hist", 1)],
+                        // `none` выключает лигатуры по умолчанию.
+                        "none" => &[("liga", 0), ("clig", 0), ("calt", 0)],
+                        "normal" => &[],
                         raw => {
-                            let mut parts = raw.split_whitespace();
-                            let tag = parts.next().unwrap_or("").trim_matches('"');
-                            if tag.len() == 4 {
-                                let on = match parts.next() {
-                                    Some("off") | Some("0") => 0,
-                                    Some(n) => n.parse().unwrap_or(1),
-                                    None => 1,
-                                };
-                                self.font_features.push((tag.to_string(), on));
+                            // Функциональные альтернаты: номер -> ssNN/cvNN.
+                            let func = |name: &str, pre: &str| {
+                                raw.strip_prefix(name)
+                                    .and_then(|r| r.strip_suffix(')'))
+                                    .and_then(|n| n.trim().parse::<u32>().ok())
+                                    .filter(|n| (1..=99).contains(n))
+                                    .map(|n| format!("{pre}{n:02}"))
+                            };
+                            if let Some(t) = func("styleset(", "ss")
+                                .or_else(|| func("character-variant(", "cv"))
+                            {
+                                self.font_features.push((t, 1));
+                            } else if raw.starts_with("swash(") {
+                                self.font_features.push(("swsh".into(), 1));
+                            } else if raw.starts_with("ornaments(") {
+                                self.font_features.push(("ornm".into(), 1));
+                            } else if raw.starts_with("annotation(") {
+                                self.font_features.push(("nalt".into(), 1));
                             }
+                            &[]
                         }
+                    };
+                    for (t, on) in push {
+                        self.font_features.push(((*t).into(), *on));
                     }
                 }
             }
@@ -5387,40 +5498,78 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         stops_raw,
     })
 }
+/// Валидна ли длина как размер коробки: отрицательные запрещены (§10).
+fn non_negative(l: &Len) -> bool {
+    !matches!(l, Len::Px(v) | Len::Pct(v) | Len::Em(v) if *v < 0.0)
+}
+
 fn parse_shadows(v: &str) -> Vec<Shadow> {
-    crate::css::split_args(v)
-        .iter()
-        .filter(|s| !s.contains("inset"))
-        .filter_map(|s| {
-            let mut lens = vec![];
-            let mut color = None;
-            for token in tokenize_shadow(s) {
-                if let Some(Len::Px(px)) = Len::parse(&token) {
-                    lens.push(px);
-                } else if let Some(c) = Color::parse(&token) {
-                    color = Some(c);
+    let mut out = vec![];
+    for s in crate::css::split_args(v) {
+        // Внутренние тени не рисуются — но синтаксис их проверяется: одна
+        // невалидная тень роняет ВСЮ декларацию (css-backgrounds-3 §7.2).
+        let inner = s.contains("inset");
+        let mut lens = vec![];
+        let mut color = None;
+        for token in tokenize_shadow(&s) {
+            match Len::parse(&token) {
+                Some(Len::Px(px)) => lens.push(Some(px)),
+                // calc() из абсолютных единиц уже свёрнут в px; примесь
+                // процентов невалидна для тени.
+                Some(Len::Calc(id)) => {
+                    let sum = crate::value::calc_get(id);
+                    if sum.pct != 0.0 {
+                        return vec![];
+                    }
+                    // Шрифтовые/оконные слагаемые здесь не резолвятся —
+                    // тень пропускается, но декларация остаётся валидной.
+                    let bare = crate::value::Sum {
+                        px: 0.0,
+                        pct: 0.0,
+                        ..sum
+                    };
+                    lens.push((bare == crate::value::Sum::default()).then_some(sum.px));
+                }
+                Some(Len::Pct(_)) => return vec![],
+                // em/vh и прочее — валидно, но контекста тут нет.
+                Some(_) => lens.push(None),
+                None => {
+                    if let Some(c) = Color::parse(&token) {
+                        color = Some(c);
+                    } else if token == "currentcolor" {
+                        // Явный `currentColor` = как отсутствие цвета:
+                        // метка a = -1 дорешается при слиянии стилей.
+                    } else if token != "inset" {
+                        return vec![];
+                    }
                 }
             }
-            if lens.len() < 2 {
-                return None;
-            }
-            Some(Shadow {
-                x: lens[0],
-                y: lens[1],
-                blur: lens.get(2).copied().unwrap_or(0.0),
-                spread: lens.get(3).copied().unwrap_or(0.0),
-                // Тень без цвета берёт currentColor (css-backgrounds-3
-                // §7): цвет текста известен только после слияния стилей,
-                // отрицательная альфа — метка «дорешать там».
-                color: color.unwrap_or(Color {
-                    r: 0.,
-                    g: 0.,
-                    b: 0.,
-                    a: -1.0,
-                }),
-            })
-        })
-        .collect()
+        }
+        // Длин бывает от двух до четырёх (§7.2).
+        if lens.len() < 2 || lens.len() > 4 {
+            return vec![];
+        }
+        if inner || lens.iter().any(Option::is_none) {
+            continue;
+        }
+        let lens: Vec<f32> = lens.into_iter().flatten().collect();
+        out.push(Shadow {
+            x: lens[0],
+            y: lens[1],
+            blur: lens.get(2).copied().unwrap_or(0.0),
+            spread: lens.get(3).copied().unwrap_or(0.0),
+            // Тень без цвета берёт currentColor (css-backgrounds-3
+            // §7): цвет текста известен только после слияния стилей,
+            // отрицательная альфа — метка «дорешать там».
+            color: color.unwrap_or(Color {
+                r: 0.,
+                g: 0.,
+                b: 0.,
+                a: -1.0,
+            }),
+        });
+    }
+    out
 }
 
 /// Разбиение тени на токены: `rgba(0, 0, 0, .4)` — один токен, а не четыре.

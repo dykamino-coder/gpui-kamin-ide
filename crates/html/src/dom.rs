@@ -402,6 +402,64 @@ fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String)]) 
 /// без него картинка в разметке без CSS выходит по своему пикселю, а не по
 /// заявленному размеру. Атрибут проигрывает любому правилу CSS, поэтому
 /// применяется, только если размера ещё нет.
+/// Дорешать `display: inline` после каскада (CSS 2.1).
+///
+/// §9.7: плавающий или абсолютный элемент блокифицируется. §10.2: на
+/// незамещаемом строчном width/height/min/max не применяются — раньше
+/// `div { display: inline; width: 1in }` рисовался коробкой (наш строчный
+/// уровень выражается через inline-block, который размеры принимает).
+/// Презентационные цвета разметки: `bgcolor` и `text` — хинты ниже
+/// авторского CSS (каскад уже слит, поэтому «ниже» выражается как
+/// «только если стиль цвета не задал»).
+fn apply_presentational_colors(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
+    let color_of = |name: &str| {
+        attrs
+            .iter()
+            .find(|(k, _)| k == name)
+            .and_then(|(_, v)| crate::value::Color::parse(v.trim()))
+    };
+    if matches!(tag, "body" | "table" | "tr" | "td" | "th")
+        && style.background.is_none()
+        && style.gradient.is_none()
+        && let Some(c) = color_of("bgcolor")
+    {
+        style.background = Some(c);
+    }
+    if tag == "body"
+        && style.color.is_none()
+        && let Some(c) = color_of("text")
+    {
+        style.color = Some(c);
+    }
+}
+
+fn finish_inline_display(style: &mut Computed, tag: &str) {
+    if style.inline_display != Some(true) {
+        return;
+    }
+    let out_of_flow = style.float.is_some()
+        || matches!(
+            style.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        );
+    if out_of_flow {
+        style.display = Some(crate::computed::Display::Block);
+        return;
+    }
+    let replaced = matches!(
+        tag,
+        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input"
+    );
+    if !replaced {
+        style.width = None;
+        style.height = None;
+        style.min_width = None;
+        style.min_height = None;
+        style.max_width = None;
+        style.max_height = None;
+    }
+}
+
 fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
     if !matches!(
         tag,
@@ -620,6 +678,8 @@ fn walk(
             let vars = &own_vars;
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
             apply_presentational_size(&mut style, &tag, &attrs);
+            apply_presentational_colors(&mut style, &tag, &attrs);
+            finish_inline_display(&mut style, &tag);
             // Язык — свойство узла, а не CSS: по нему выбираются образцы
             // слогораздела (`hyphens: auto`).
             if let Some((_, v)) = attrs.iter().find(|(k, _)| k == "lang") {

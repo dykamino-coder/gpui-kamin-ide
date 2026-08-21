@@ -2402,7 +2402,12 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
         ) || e.style.float.is_some()
             || e.style.contain_paint == Some(true)
-            || e.style.contain_layout == Some(true);
+            || e.style.contain_layout == Some(true)
+            || e.style.contain_size == Some(true)
+            || e.style.flow_root == Some(true)
+            || matches!(e.style.display, Some(Display::TableCell))
+            || e.style.column_count.is_some()
+            || e.style.column_width.is_some();
         // Отсечка по ЗНАЧЕНИЮ, а не по «свойство написано»: `padding: 0` и
         // `border: 0` схлопыванию не мешают (CSS 2.1 §8.3.1).
         let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
@@ -2412,31 +2417,20 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
         }
         // Именно ПЕРВЫЙ блок в потоке: отступ второго и последующих
         // схлопывается с соседом, а не выносится наружу.
-        let child_top = e
-            .children
-            .iter()
-            .find(|c| match c {
-                Node::Element(ch) => !ch.inline,
-                Node::Text(t) => !blank_text(t),
-            })
-            .and_then(|c| match c {
-                Node::Element(ch) if in_flow(&ch.style) => {
-                    margin_px(ch.style.margin.top, &ch.style).filter(|v| *v > 0.0)
-                }
-                _ => None,
-            });
-        if let Some(v) = child_top {
+        // Первый IN-FLOW блок: плавающие и абсолютные пропускаются (они вне
+        // потока и примыкание не рвут, §8.3.1), непробельный текст и блок вне
+        // условий останавливают поиск.
+        let child_top = first_in_flow(e.children.iter().enumerate())
+            .and_then(|(i, ch)| margin_px(ch.style.margin.top, &ch.style).map(|v| (i, v)));
+        if let Some((i, v)) = child_top {
             let own = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);
-            e.style.margin.top = Some(Len::Px(own.max(v)));
-            for c in e.children.iter_mut() {
-                if let Node::Element(ch) = c
-                    && !ch.inline
-                    && in_flow(&ch.style)
-                    && margin_px(ch.style.margin.top, &ch.style).is_some_and(|t| t > 0.0)
-                {
-                    ch.style.margin.top = Some(Len::Px(0.0));
-                    break;
-                }
+            // Больший из положительных плюс меньший из отрицательных:
+            // отрицательный детский отступ тоже всплывает — идиома
+            // `margin-top: -1px` первым ребёнком обязана поднять родителя
+            // (border-*-width-thin и родня).
+            e.style.margin.top = Some(Len::Px(collapsed(own, v)));
+            if let Node::Element(ch) = &mut e.children[i] {
+                ch.style.margin.top = Some(Len::Px(0.0));
             }
         }
         // То же СНИЗУ: отступ последнего ребёнка протекает наружу, если
@@ -2452,32 +2446,18 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
         if closed {
             continue;
         }
-        let child_bottom = e
-            .children
-            .iter()
-            .rev()
-            .find(|c| match c {
-                Node::Element(ch) => !ch.inline,
-                Node::Text(t) => !blank_text(t),
-            })
-            .and_then(|c| match c {
-                Node::Element(ch) if in_flow(&ch.style) => {
-                    margin_px(ch.style.margin.bottom, &ch.style).filter(|v| *v > 0.0)
-                }
-                _ => None,
-            });
-        if let Some(v) = child_bottom {
+        // Снизу плавающий ребёнок ЗАКРЫВАЕТ подъём: он заякорен в потоке
+        // после последнего блока, и утёкший наружу отступ поднимал бы его
+        // (box-shadow-overlapping-002: float уезжал на отступ параграфа).
+        let child_bottom = first_in_flow(e.children.iter().enumerate().rev().take_while(
+            |(_, c)| !matches!(c, Node::Element(ch) if ch.style.float.is_some()),
+        ))
+        .and_then(|(i, ch)| margin_px(ch.style.margin.bottom, &ch.style).map(|v| (i, v)));
+        if let Some((i, v)) = child_bottom {
             let own = margin_px(e.style.margin.bottom, &e.style).unwrap_or(0.0);
-            e.style.margin.bottom = Some(Len::Px(own.max(v)));
-            for c in e.children.iter_mut().rev() {
-                if let Node::Element(ch) = c
-                    && !ch.inline
-                    && in_flow(&ch.style)
-                    && margin_px(ch.style.margin.bottom, &ch.style).is_some_and(|t| t > 0.0)
-                {
-                    ch.style.margin.bottom = Some(Len::Px(0.0));
-                    break;
-                }
+            e.style.margin.bottom = Some(Len::Px(collapsed(own, v)));
+            if let Node::Element(ch) = &mut e.children[i] {
+                ch.style.margin.bottom = Some(Len::Px(0.0));
             }
         }
     }
@@ -2518,13 +2498,44 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
             // поставила, поэтому верхнему достаётся разница. Прежняя формула
             // `(top - bottom).max(0)` считала только положительный случай:
             // при `margin-bottom: -10px` соседи расходились на 30 вместо 10.
-            let pos = bottom.max(0.0).max(top.max(0.0));
-            let neg = bottom.min(0.0).min(top.min(0.0));
-            e.style.margin.top = Some(Len::Px(pos + neg - bottom));
+            e.style.margin.top = Some(Len::Px(collapsed(top, bottom) - bottom));
         }
         prev_bottom = Some(margin_px(e.style.margin.bottom, &e.style).unwrap_or(0.0));
     }
     out
+}
+
+/// Слитый отступ CSS 2.1 §8.3.1: больший из положительных плюс меньший
+/// (самый отрицательный) из отрицательных.
+fn collapsed(a: f32, b: f32) -> f32 {
+    a.max(0.0).max(b.max(0.0)) + a.min(0.0).min(b.min(0.0))
+}
+
+/// Первый (по направлению итератора) IN-FLOW блочный ребёнок: плавающие,
+/// абсолютные и пустые строчные пропускаются, непробельный текст и строчный
+/// элемент с содержимым (строчная коробка!) обрывают поиск.
+fn first_in_flow<'a>(
+    it: impl Iterator<Item = (usize, &'a Node)>,
+) -> Option<(usize, &'a crate::dom::Element)> {
+    for (i, c) in it {
+        match c {
+            Node::Text(t) if blank_text(t) => continue,
+            Node::Text(_) => return None,
+            Node::Element(ch) if ch.inline => {
+                if ch.children.is_empty() {
+                    continue;
+                }
+                return None;
+            }
+            Node::Element(ch) => {
+                if !in_flow(&ch.style) {
+                    continue;
+                }
+                return Some((i, ch));
+            }
+        }
+    }
+    None
 }
 
 /// Схлопываются ли отступы этого элемента с соседями и родителем.
@@ -5743,8 +5754,24 @@ fn gather_text(nodes: &[Node], out: &mut String) {
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
 fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    // Презентационный `cellspacing="N"`: хинт стоит НИЖЕ авторского
+    // `border-spacing`, но выше умолчания браузера. Каскад в вычисленном
+    // стиле уже слит, поэтому хинт применяется, только когда значение
+    // равно умолчанию тега `<table>` (2px) — авторская двойка при живом
+    // атрибуте встречается на порядки реже, чем сами атрибуты.
+    let cell_spacing_attr = e
+        .attr("cellspacing")
+        .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok());
+    let ua_default = matches!(
+        e.style.border_spacing,
+        Some((Some(Len::Px(2.0)), Some(Len::Px(2.0))))
+    );
+    let border_spacing = match (cell_spacing_attr, ua_default, e.style.border_spacing) {
+        (Some(v), true, _) | (Some(v), _, None) => Some((Some(Len::Px(v)), Some(Len::Px(v)))),
+        _ => e.style.border_spacing,
+    };
     // Раздельные рамки — умолчание; при `collapse` зазора между ячейками нет.
-    let spacing = match (e.style.border_collapse, e.style.border_spacing) {
+    let spacing = match (e.style.border_collapse, border_spacing) {
         (Some(true), _) => (0.0, 0.0),
         (None, _) if e.attr("rules").is_some() => (0.0, 0.0),
         // Заданный `border-spacing` перекрывает умолчание браузера в 2px.
@@ -6157,6 +6184,25 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if clipped {
                 cell.style.overflow_x = None;
                 cell.style.overflow_y = None;
+            }
+            // Презентационный `cellpadding="N"` таблицы: хинт ниже авторского
+            // padding, но выше умолчания браузера `td { padding: 1px }` —
+            // применяется, только когда у ячейки ровно оно.
+            if let Some(pad) = e
+                .attr("cellpadding")
+                .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
+            {
+                let ua = |l: Option<Len>| matches!(l, Some(Len::Px(1.0)));
+                let pd = &cell.style.padding;
+                if ua(pd.top) && ua(pd.right) && ua(pd.bottom) && ua(pd.left) {
+                    let v = Some(Len::Px(pad));
+                    cell.style.padding = crate::computed::Sides {
+                        top: v,
+                        right: v,
+                        bottom: v,
+                        left: v,
+                    };
+                }
             }
             // Ячейка схлопнутой колонки не рисуется: колонка выброшена
             // (css-tables-3 §visibility-collapse-cell-rendering), её дорожка
@@ -6697,7 +6743,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .unwrap_or(1)
                         .max(1);
                     match cell.style.width {
-                        Some(Len::Px(v)) if span == 1 => out.push(Some(v)),
+                        Some(Len::Px(v)) if span == 1 => {
+                            // Колонка = width + горизонтальные паддинги и
+                            // рамки ячейки (§17.5.2.1, content-box); в
+                            // сросшейся модели рамка входит ПОЛОВИНОЙ.
+                            let side = |l: Option<Len>| match l {
+                                Some(Len::Px(p)) => p,
+                                _ => 0.0,
+                            };
+                            let extra = if cell.style.border_box == Some(true) {
+                                0.0
+                            } else {
+                                let b = cell.style.borders();
+                                let border = side(b.left) + side(b.right);
+                                side(cell.style.padding.left)
+                                    + side(cell.style.padding.right)
+                                    + if e.style.border_collapse == Some(true) {
+                                        border / 2.0
+                                    } else {
+                                        border
+                                    }
+                            };
+                            out.push(Some(v + extra));
+                        }
                         _ => out.extend(std::iter::repeat_n(None, span)),
                     }
                 }
