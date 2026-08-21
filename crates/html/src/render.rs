@@ -1158,13 +1158,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             }
             // Релятивный элемент с отрицательным `z-index`: место в потоке —
             // своё, краска — под содержимым до него (CSS 2.1 §9.9, шаг 3).
-            // Элемент СЕТКИ или ряда с `z-index` ведёт себя как
-            // позиционированный (css-grid-1 §4.4, css-flexbox-1 §4.3) —
-            // подложка положена и ему без `position: relative`.
-            let acts_positioned = e.style.position
-                == Some(crate::computed::Position::Relative)
-                || (ordered_context && e.style.position.is_none());
-            if e.style.z_index.is_some_and(|z| z < 0) && acts_positioned
+            // Расширение на элементы сетки без `position` ЗАМЕРЕНО В МИНУС
+            // (display-inline-grid 0.08 -> 8.20, inline-z-axis-002/004) —
+            // подложка в строчной сетке рвёт свою же краску.
+            if e.style.z_index.is_some_and(|z| z < 0)
+                && e.style.position == Some(crate::computed::Position::Relative)
             {
                 done = crate::interact::Underlay::new(done).into_any_element();
             }
@@ -7943,7 +7941,37 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     let count = if !tracks.is_empty() {
         tracks.len()
     } else {
-        merged.grid_cols.unwrap_or(1).max(1) as usize
+        // Неявные дорожки от ЯВНОГО размещения (css-grid-3: сетка лунок
+        // растёт как обычная, §8.5): наибольшая занятая линия по оси лунок
+        // задаёт число дорожек. Раньше без шаблона всё сваливалось в одну
+        // лунку (row-explicit-placement-001 и родня); и фолбэк читал
+        // счётчик КОЛОНОК даже при укладке рядами — чужую ось.
+        let mut implicit = 0usize;
+        for nd in &e.children {
+            let Node::Element(item) = nd else { continue };
+            let across = if row_dir {
+                item.style.grid_row
+            } else {
+                item.style.grid_col
+            };
+            let Some((a, b)) = across else { continue };
+            if let crate::computed::Placement::Line(n) = a
+                && n > 0
+            {
+                implicit = implicit.max(n as usize);
+            }
+            if let crate::computed::Placement::Line(n) = b
+                && n > 1
+            {
+                implicit = implicit.max(n as usize - 1);
+            }
+        }
+        let fallback = if row_dir {
+            1
+        } else {
+            merged.grid_cols.unwrap_or(1).max(1) as usize
+        };
+        implicit.max(fallback)
     };
     // Реверсы направления (css-grid-3): `track-reverse` меняет только порядок
     // АВТО-перебора дорожек — при равной высоте побеждает ПОСЛЕДНЯЯ; ширины и
