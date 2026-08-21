@@ -24,6 +24,8 @@ pub enum Node {
 
 #[derive(Clone, Debug)]
 pub struct Element {
+    /// Номер пункта списка из счётчика `list-item`; `None` — не пункт.
+    pub list_item: Option<i32>,
     /// Устойчивый номер узла в документе.
     ///
     /// Нужен анимации: GPUI хранит её состояние по идентификатору элемента, а
@@ -1164,7 +1166,18 @@ fn walk(
                 counters.enter();
             }
             let mut own_resets: Vec<String> = vec![];
-            apply_counter_decls(&style, counters, &mut own_resets, &tag, &attrs);
+            let mut is_list_item = false;
+            apply_counter_decls(
+                &style,
+                counters,
+                &mut own_resets,
+                &tag,
+                &attrs,
+                &mut is_list_item,
+            );
+            // Номер пункта снимается СРАЗУ после своих директив — до
+            // псевдоэлементов и детей, которые счётчик двигают дальше.
+            let list_item = is_list_item.then(|| counters.value_of("list-item"));
 
             let mut path2 = path.to_vec();
             path2.push(me.clone());
@@ -1235,6 +1248,7 @@ fn walk(
                 }
             }
             out.push(Node::Element(Element {
+                list_item,
                 node_id: *counter,
                 anim,
                 inline: INLINE_TAGS.contains(&tag.as_str()),
@@ -1264,6 +1278,7 @@ fn apply_counter_decls(
     resets: &mut Vec<String>,
     tag: &str,
     attrs: &[(String, String)],
+    item_flag: &mut bool,
 ) {
     let num_attr = |key: &str| -> Option<i32> {
         attrs
@@ -1290,6 +1305,7 @@ fn apply_counter_decls(
     // затем неявное, затем присваивание — иначе `<li value>` считался бы
     // от уже сдвинутого значения.
     let is_item = tag == "li" || style.display == Some(Display::ListItem);
+    *item_flag = is_item;
     let explicit_item = style
         .counter_increment
         .as_deref()
@@ -1372,7 +1388,7 @@ fn pseudo_box(
     // уровень пути, свои директивы и своя область видимости.
     counters.enter_pseudo(which == "before");
     let mut own_resets: Vec<String> = vec![];
-    apply_counter_decls(&style, counters, &mut own_resets, "", &[]);
+    apply_counter_decls(&style, counters, &mut own_resets, "", &[], &mut false);
     // Составляющие склеиваются по порядку (css-content-3 §2): строки как
     // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
     let mut text = String::new();
@@ -1405,6 +1421,7 @@ fn pseudo_box(
     }
     counters.leave();
     Some(Element {
+        list_item: None,
         // Псевдоэлемент своей анимации не несёт: правило `::before` задаёт
         // содержимое, а не движение.
         node_id: 0,

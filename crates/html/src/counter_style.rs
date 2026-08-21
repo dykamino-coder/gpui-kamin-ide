@@ -135,6 +135,25 @@ pub fn repr(value: i32, style: &str) -> String {
     }
 }
 
+/// Суффикс маркера списка (css-counter-styles-3 §7 `suffix`): у точечных
+/// стилей — пробел, у остальных — точка с пробелом.
+pub fn suffix(style: &str) -> &'static str {
+    match style {
+        "disc" | "circle" | "square" | "disclosure-open" | "disclosure-closed" | "none" => " ",
+        _ => ". ",
+    }
+}
+
+/// Готовая строка маркера: представление и суффикс. У `counter()` суффикса
+/// нет по спеке, поэтому он живёт отдельной функцией, а не в `repr`.
+pub fn marker_repr(value: i32, style: &str) -> String {
+    if style == "none" {
+        return String::new();
+    }
+    let body = repr(value, style);
+    format!("{body}{}", suffix(style))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

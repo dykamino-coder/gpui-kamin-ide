@@ -1773,6 +1773,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
             && floaters.iter().all(|f| sized(f).is_some() || img_float(f))
         {
             let mut host = Element {
+                list_item: None,
                 node_id: 0,
                 anim: None,
                 tag: "shape-flow".into(),
@@ -1804,6 +1805,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
             continue;
         }
         let mut column = Element {
+            list_item: None,
             node_id: 0,
             anim: None,
             tag: "div".into(),
@@ -1829,6 +1831,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
             row_children.extend(floaters.into_iter().rev().map(Node::Element));
         }
         out.push(Node::Element(Element {
+            list_item: None,
             node_id: 0,
             anim: None,
             // Метка для сборщика дерева: у ряда обтекания текст ещё режется
@@ -2163,6 +2166,7 @@ fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElem
         let mut side = column_style.clone();
         side.display = Some(Display::Block);
         let column_el = Element {
+            list_item: None,
             node_id: 0,
             anim: None,
             tag: "div".into(),
@@ -5870,39 +5874,40 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
 fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let ordered = e.tag == "ol";
     let mut rows = vec![];
-    let mut idx = 1usize;
     for child in &e.children {
         let Node::Element(li) = child else { continue };
         if li.tag != "li" {
             continue;
         }
+        // Номер пункта считает ОБЩИЙ счётчик `list-item` (css-lists-3
+        // §list-item-counter): он один знает и `<ol start>`, и `<li value>`,
+        // и вложенные списки. Своей нумерации у отрисовки больше нет.
+        let idx = li.list_item.unwrap_or(0);
         // Вид маркера задаёт документ; без указания — умолчание тега.
         // Строковый маркер берётся дословно и без суффикса-точки.
-        let text_marker = li.style.marker_text.clone().or_else(|| e.style.marker_text.clone());
+        let text_marker = li
+            .style
+            .marker_text
+            .clone()
+            .or_else(|| e.style.marker_text.clone());
         let kind = li.style.marker.or(e.style.marker);
         let marker = if let Some(t) = text_marker {
             t
         } else {
-            match kind {
-            Some(crate::computed::Marker::Circle) => "◦".to_string(),
-            Some(crate::computed::Marker::Square) => "▪".to_string(),
-            Some(crate::computed::Marker::Disc) => "•".to_string(),
-            Some(crate::computed::Marker::Decimal) => format!("{idx}."),
-            Some(crate::computed::Marker::LowerAlpha) => {
-                format!("{}.", (b'a' + ((idx - 1) % 26) as u8) as char)
-            }
-            Some(crate::computed::Marker::UpperAlpha) => {
-                format!("{}.", (b'A' + ((idx - 1) % 26) as u8) as char)
-            }
-            Some(crate::computed::Marker::LowerRoman) => format!("{}.", roman(idx)),
-            Some(crate::computed::Marker::UpperRoman) => {
-                format!("{}.", roman(idx).to_uppercase())
-            }
-            None if ordered => format!("{idx}."),
-            None => "•".to_string(),
-            }
+            let name = match kind {
+                Some(crate::computed::Marker::Circle) => "circle",
+                Some(crate::computed::Marker::Square) => "square",
+                Some(crate::computed::Marker::Disc) => "disc",
+                Some(crate::computed::Marker::Decimal) => "decimal",
+                Some(crate::computed::Marker::LowerAlpha) => "lower-alpha",
+                Some(crate::computed::Marker::UpperAlpha) => "upper-alpha",
+                Some(crate::computed::Marker::LowerRoman) => "lower-roman",
+                Some(crate::computed::Marker::UpperRoman) => "upper-roman",
+                None if ordered => "decimal",
+                None => "disc",
+            };
+            crate::counter_style::marker_repr(idx, name).trim_end().to_string()
         };
-        idx += 1;
         // `list-style: none` — на списках верстают навигацию и наборы чипов,
         // и точки там лишние.
         let no_marker = e.style.no_marker == Some(true) || li.style.no_marker == Some(true);
@@ -7351,6 +7356,7 @@ fn has_box_style_probe(c: &Computed) -> bool {
 
 fn anon_element(tag: &str, children: Vec<Node>) -> Element {
     Element {
+        list_item: None,
         node_id: 0,
         anim: None,
         tag: tag.into(),
@@ -8606,6 +8612,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 let mut freed = item.clone();
                 freed.style.position = None;
                 Some(Node::Element(Element {
+                    list_item: None,
                     node_id: 0,
                     anim: None,
                     tag: "div".into(),
@@ -8902,6 +8909,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     style.width = Some(Len::Px(area));
                 }
                 Node::Element(Element {
+                    list_item: None,
                     node_id: 0,
                     anim: None,
                     tag: "div".into(),
@@ -9237,6 +9245,7 @@ fn lane_align_box(item: Element, along: Align, row_dir: bool) -> Node {
         _ => crate::computed::Justify::Start,
     });
     Node::Element(Element {
+        list_item: None,
         node_id: 0,
         anim: None,
         tag: "div".into(),
@@ -9259,6 +9268,7 @@ fn spacer(size: f32, row_dir: bool) -> Node {
     }
     style.display = Some(Display::Block);
     Node::Element(Element {
+        list_item: None,
         node_id: 0,
         anim: None,
         tag: "div".into(),
