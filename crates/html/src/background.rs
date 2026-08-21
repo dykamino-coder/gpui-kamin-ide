@@ -485,8 +485,8 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
     // ПО ОСИ (у эллипса — своей), у круга corner — до угла.
     let side_r = |keyword: &str, c: f32, side: f32| -> f32 {
         match keyword {
-            "closest-side" => (c.min(side - c)).max(0.0),
-            "farthest-side" => c.max(side - c),
+            "closest-side" => c.abs().min((side - c).abs()),
+            "farthest-side" => c.max((side - c).abs()),
             _ => 0.0,
         }
     };
@@ -515,8 +515,11 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
             .unwrap_or_else(|| side_r("closest-side", cx, fw).min(side_r("closest-side", cy, fh)));
         // Ключевые стороны у круга — по ОБЕИМ осям сразу.
         let r = match token {
-            "closest-side" => (cx.min(fw - cx)).min(cy.min(fh - cy)).max(0.0),
-            "farthest-side" => (cx.max(fw - cx)).max(cy.max(fh - cy)),
+            "closest-side" => cx
+                .abs()
+                .min((fw - cx).abs())
+                .min(cy.abs().min((fh - cy).abs())),
+            "farthest-side" => cx.max((fw - cx).abs()).max(cy.max((fh - cy).abs())),
             _ => r,
         };
         (r, r)
@@ -595,6 +598,391 @@ pub fn source(src: &str) -> Option<Source> {
         map.insert(src.to_string(), found.clone());
     }
     found
+}
+
+// --- Общий путь формы обтекания (css-shapes-1 §3, §shape-margin) ---------
+//
+// Форма растрируется альфа-маской в холст margin-box (1 пиксель = 1 точка,
+// как blink RasterShape), маска сводится к интервалам строк «первый..
+// последний непрозрачный», интервалы раздуваются диском shape-margin
+// (дилатация Минковского по blink ComputeShapeMarginIntervals) и
+// превращаются в экстенты от начала стороны текста. Клип к margin-box
+// двойной: холст режет форму, зажим на шаге экстента режет поле
+// («a shape can only ever reduce a float area»).
+
+/// Геометрия флоата в системе его margin-box, всё в CSS-точках.
+pub struct ShapeBox {
+    pub mw: f32,
+    pub mh: f32,
+    /// Опорная коробка формы.
+    pub rx: f32,
+    pub ry: f32,
+    pub rw: f32,
+    pub rh: f32,
+    /// Content-box (для картинки/градиента).
+    pub cx: f32,
+    pub cy: f32,
+    pub cw: f32,
+    pub ch: f32,
+    /// Радиусы опорной коробки (tl,tr,br,bl), эллиптические.
+    pub radius: [(f32, f32); 4],
+    pub threshold: f32,
+}
+
+/// Экстенты обтекания по строкам margin-box; None — форма нераспознана
+/// (вызывающий откатывается к прямоугольнику коробки). Пустая форма —
+/// нули: «empty float area», НЕ фоллбек.
+pub fn shape_profile(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Option<Vec<f32>> {
+    let rows = b.mh.ceil().max(1.0) as usize;
+    let cols = b.mw.ceil().max(1.0) as usize;
+    let mask = shape_mask(raw, b, cols, rows)?;
+    let mut iv = mask_intervals(&mask, cols, rows, b.threshold);
+    Some(
+        iv.into_iter()
+            .map(|slot| match slot {
+                None => 0.0,
+                Some((x1, x2)) => {
+                    if side < 0 {
+                        (x2 as f32).clamp(0.0, b.mw)
+                    } else {
+                        b.mw - (x1 as f32).clamp(0.0, b.mw)
+                    }
+                }
+            })
+            .collect(),
+    )
+}
+
+/// Альфа-маска формы в холсте margin-box.
+fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> Option<Vec<u8>> {
+    let raw = raw.trim();
+    // Скруглённый прямоугольник: inset/rect/xywh (+round) и слово-коробка
+    // с её радиусами.
+    if let Some(rect) = rrect_of(raw, b) {
+        return Some(rrect_mask(rect.0, rect.1, cols, rows));
+    }
+    // Полигон / путь / shape(): готовым SVG-растеризатором — fill-rule и
+    // антиалиас даром (как blink ExtractPathData).
+    if let Some(d) = svg_path_of(raw, b) {
+        let markup = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cols}" height="{rows}" viewBox="0 0 {cols} {rows}"><path d="{}" fill="#000000" fill-rule="{}"/></svg>"##,
+            d.0, d.1
+        );
+        let img = crate::svg::rasterize(&markup, cols as f32, rows as f32)?;
+        let bytes = img.as_bytes(0)?;
+        let sz = img.size(0);
+        let (iw, ih) = (sz.width.0.max(1) as usize, sz.height.0.max(1) as usize);
+        let mut out = vec![0u8; cols * rows];
+        for y in 0..rows {
+            let sy = (y * ih / rows).min(ih - 1);
+            for x in 0..cols {
+                let sx = (x * iw / cols).min(iw - 1);
+                out[y * cols + x] = bytes[(sy * iw + sx) * 4 + 3];
+            }
+        }
+        return Some(out);
+    }
+    // Картинка или градиент: альфа в content-box.
+    if raw.contains("url(") || raw.contains("-gradient(") {
+        let src = if raw.contains("-gradient(") {
+            let at = raw.find("-gradient(")?;
+            let start = raw[..at]
+                .rfind(|c: char| c.is_whitespace())
+                .map(|s| s + 1)
+                .unwrap_or(0);
+            crate::background::source(raw[start..].trim().trim_end_matches(|c| c != ')'))
+                .and_then(|s| s.raster((b.cw.max(1.0), b.ch.max(1.0))))
+        } else {
+            crate::computed::parse_url(raw).and_then(|u| load(&u))
+        }?;
+        let bytes = src.as_bytes(0)?;
+        let sz = src.size(0);
+        let (iw, ih) = (sz.width.0.max(1) as usize, sz.height.0.max(1) as usize);
+        let mut out = vec![0u8; cols * rows];
+        for y in 0..rows {
+            let fy = y as f32 - b.cy;
+            if fy < 0.0 || fy >= b.ch {
+                continue;
+            }
+            let sy = ((fy / b.ch.max(1.0)) * ih as f32) as usize;
+            let sy = sy.min(ih - 1);
+            for x in 0..cols {
+                let fx = x as f32 - b.cx;
+                if fx < 0.0 || fx >= b.cw {
+                    continue;
+                }
+                let sx = ((fx / b.cw.max(1.0)) * iw as f32) as usize;
+                out[y * cols + x] = bytes[(sy * iw + sx.min(iw - 1)) * 4 + 3];
+            }
+        }
+        return Some(out);
+    }
+    None
+}
+
+/// inset/rect/xywh/слово-коробка → прямоугольник (x,y,w,h) + радиусы.
+fn rrect_of(raw: &str, b: &ShapeBox) -> Option<((f32, f32, f32, f32), [(f32, f32); 4])> {
+    let len_px = |t: &str, base: f32| -> f32 {
+        match crate::value::Len::parse(t) {
+            Some(crate::value::Len::Px(v)) => v,
+            Some(crate::value::Len::Pct(k)) => k * base,
+            _ => 0.0,
+        }
+    };
+    let parse_round = |tail: &str| -> [(f32, f32); 4] {
+        // `round r1 r2 r3 r4 / v1 v2 v3 v4` — как border-radius.
+        let (hs, vs) = match tail.split_once('/') {
+            Some((a, c)) => (a, c),
+            None => (tail, tail),
+        };
+        let four = |src: &str, base: f32| -> [f32; 4] {
+            let v: Vec<f32> = src.split_whitespace().map(|t| len_px(t, base)).collect();
+            match v.len() {
+                0 => [0.0; 4],
+                1 => [v[0]; 4],
+                2 => [v[0], v[1], v[0], v[1]],
+                3 => [v[0], v[1], v[2], v[1]],
+                _ => [v[0], v[1], v[2], v[3]],
+            }
+        };
+        let h = four(hs, b.rw);
+        let v = four(vs, b.rh);
+        [(h[0], v[0]), (h[1], v[1]), (h[2], v[2]), (h[3], v[3])]
+    };
+    if let Some(at) = raw.find("inset(") {
+        let inner = raw[at + 6..].rsplit_once(')').map(|(a, _)| a).unwrap_or(&raw[at + 6..]);
+        {
+        let (sides_s, round_s) = match inner.split_once("round") {
+            Some((a, r)) => (a, Some(r)),
+            None => (inner, None),
+        };
+        let v: Vec<&str> = sides_s.split_whitespace().collect();
+        let side = |i: usize| v.get(i).copied().unwrap_or("0");
+        let (t, r, bo, l) = match v.len() {
+            1 => (side(0), side(0), side(0), side(0)),
+            2 => (side(0), side(1), side(0), side(1)),
+            3 => (side(0), side(1), side(2), side(1)),
+            _ => (side(0), side(1), side(2), side(3)),
+        };
+        let (t, r2, bo, l) = (
+            len_px(t, b.rh),
+            len_px(r, b.rw),
+            len_px(bo, b.rh),
+            len_px(l, b.rw),
+        );
+        let rect = (
+            b.rx + l,
+            b.ry + t,
+            (b.rw - l - r2).max(0.0),
+            (b.rh - t - bo).max(0.0),
+        );
+        let radii = round_s.map(parse_round).unwrap_or([(0.0, 0.0); 4]);
+        return Some((rect, radii));
+        }
+    }
+    // Слово-коробка (или пустая/непонятная запись формы НЕ здесь — сюда
+    // приходят только распознанные): margin/border/padding/content-box без
+    // функции — прямоугольник опорной коробки с её радиусами.
+    let word_only = raw
+        .split_whitespace()
+        .all(|w| w.ends_with("-box"));
+    if word_only && !raw.is_empty() {
+        return Some(((b.rx, b.ry, b.rw, b.rh), b.radius));
+    }
+    None
+}
+
+/// Контур для SVG-растеризатора: polygon / path / shape.
+fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static str)> {
+    let raw = raw.trim();
+    // Функция может идти ПОСЛЕ слова-коробки: `padding-box polygon(...)`.
+    if let Some(at) = raw.find("polygon(") {
+        let inner = raw[at + 8..].rsplit_once(')').map(|(a, _)| a).unwrap_or(&raw[at + 8..]);
+        let inner = inner;
+        {
+        let mut rule = "nonzero";
+        let mut pts_src = inner;
+        if let Some(rest) = inner.trim_start().strip_prefix("evenodd") {
+            rule = "evenodd";
+            pts_src = rest.trim_start().trim_start_matches(',');
+        } else if let Some(rest) = inner.trim_start().strip_prefix("nonzero") {
+            pts_src = rest.trim_start().trim_start_matches(',');
+        }
+        let len_px = |t: &str, base: f32| -> f32 {
+            match crate::value::Len::parse(t) {
+                Some(crate::value::Len::Px(v)) => v,
+                Some(crate::value::Len::Pct(k)) => k * base,
+                _ => 0.0,
+            }
+        };
+        let mut d = String::new();
+        for (i, pair) in pts_src.split(',').enumerate() {
+            let mut it = pair.split_whitespace();
+            let x = b.rx + len_px(it.next()?, b.rw);
+            let y = b.ry + len_px(it.next()?, b.rh);
+            d.push_str(if i == 0 { "M" } else { "L" });
+            d.push_str(&format!("{x} {y} "));
+        }
+        if d.is_empty() {
+            return None;
+        }
+        d.push('Z');
+        return Some((d, if rule == "evenodd" { "evenodd" } else { "nonzero" }));
+        }
+    }
+    if let Some(at) = raw.find("path(") {
+        let inner = raw[at + 5..].rsplit_once(')').map(|(a, _)| a).unwrap_or(&raw[at + 5..]);
+        {
+        let d = inner
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
+        if d.is_empty() {
+            return None;
+        }
+        return Some((d, "nonzero"));
+        }
+    }
+    if let Some(at) = raw.find("shape(") {
+        let inner = raw[at + 6..].rsplit_once(')').map(|(a, _)| a).unwrap_or(&raw[at + 6..]);
+        {
+        let d = shape_to_path(&inner.replace(',', ";"), b.rw, b.rh)?;
+        return Some((d, "nonzero"));
+        }
+    }
+    None
+}
+
+/// Скруглённый прямоугольник в маску: SDF по угловым эллипсам (та же
+/// математика, что `rasterize_rrect`, но с началом и размером).
+fn rrect_mask(rect: (f32, f32, f32, f32), radii: [(f32, f32); 4], cols: usize, rows: usize) -> Vec<u8> {
+    let (x0, y0, w, h) = rect;
+    let (x1, y1) = (x0 + w, y0 + h);
+    // Переполнение радиусов: один множитель от худшей пары смежных
+    // (css-backgrounds-3 §5.5).
+    let mut k = 1.0f32;
+    let sum = |a: f32, c: f32, side: f32| if a + c > side && a + c > 0.0 { side / (a + c) } else { 1.0 };
+    k = k.min(sum(radii[0].0, radii[1].0, w));
+    k = k.min(sum(radii[3].0, radii[2].0, w));
+    k = k.min(sum(radii[0].1, radii[3].1, h));
+    k = k.min(sum(radii[1].1, radii[2].1, h));
+    let r: Vec<(f32, f32)> = radii.iter().map(|(a, c)| (a * k, c * k)).collect();
+    let mut out = vec![0u8; cols * rows];
+    for y in 0..rows {
+        let fy = y as f32 + 0.5;
+        if fy < y0 || fy > y1 {
+            continue;
+        }
+        for x in 0..cols {
+            let fx = x as f32 + 0.5;
+            if fx < x0 || fx > x1 {
+                continue;
+            }
+            // Углы: попадание в угловую четверть проверяется эллипсом.
+            let inside = corner_ok(fx, fy, x0, y0, x1, y1, &r);
+            if inside {
+                out[y * cols + x] = 255;
+            }
+        }
+    }
+    out
+}
+
+fn corner_ok(fx: f32, fy: f32, x0: f32, y0: f32, x1: f32, y1: f32, r: &[(f32, f32)]) -> bool {
+    let check = |cx: f32, cy: f32, rx: f32, ry: f32| -> bool {
+        if rx <= 0.0 || ry <= 0.0 {
+            return true;
+        }
+        let (dx, dy) = ((fx - cx) / rx, (fy - cy) / ry);
+        dx * dx + dy * dy <= 1.0
+    };
+    // tl
+    if fx < x0 + r[0].0 && fy < y0 + r[0].1 && !check(x0 + r[0].0, y0 + r[0].1, r[0].0, r[0].1) {
+        return false;
+    }
+    // tr
+    if fx > x1 - r[1].0 && fy < y0 + r[1].1 && !check(x1 - r[1].0, y0 + r[1].1, r[1].0, r[1].1) {
+        return false;
+    }
+    // br
+    if fx > x1 - r[2].0 && fy > y1 - r[2].1 && !check(x1 - r[2].0, y1 - r[2].1, r[2].0, r[2].1) {
+        return false;
+    }
+    // bl
+    if fx < x0 + r[3].0 && fy > y1 - r[3].1 && !check(x0 + r[3].0, y1 - r[3].1, r[3].0, r[3].1) {
+        return false;
+    }
+    true
+}
+
+/// Интервалы строк: от первого до последнего пикселя с альфой ВЫШЕ порога
+/// (строго; дыры внутри строки заполняются — как blink).
+fn mask_intervals(mask: &[u8], cols: usize, rows: usize, thr: f32) -> Vec<Option<(i32, i32)>> {
+    let t = (thr.clamp(0.0, 1.0) * 255.0) as u8;
+    (0..rows)
+        .map(|y| {
+            let row = &mask[y * cols..(y + 1) * cols];
+            let first = row.iter().position(|a| *a > t)?;
+            let last = row.iter().rposition(|a| *a > t)?;
+            Some((first as i32, last as i32 + 1))
+        })
+        .collect()
+}
+
+/// Дилатация Минковского диском `sm` (blink ComputeShapeMarginIntervals):
+/// каждый интервал раздаётся соседним строкам с сужением по дуге; ранний
+/// выход, когда сосед и так шире. Вертикаль жёстко в [0, rows).
+fn dilate(iv: &mut [Option<(i32, i32)>], sm: f32, cols: usize, rows: usize) {
+    if sm <= 0.0 {
+        return;
+    }
+    let cap = ((cols.max(rows) as f32) * std::f32::consts::SQRT_2) as i32;
+    let r = (sm.ceil() as i32).clamp(0, cap.max(1));
+    let dx: Vec<i32> = (0..=r).map(|k| (((r * r - k * k) as f32).sqrt()) as i32).collect();
+    let src: Vec<Option<(i32, i32)>> = iv.to_vec();
+    let top = src.iter().position(|s| s.is_some());
+    let bot = src.iter().rposition(|s| s.is_some());
+    let (top, bot) = match (top, bot) {
+        (Some(a), Some(b)) => (a as i32, b as i32),
+        _ => return,
+    };
+    let unite = |slot: &mut Option<(i32, i32)>, x1: i32, x2: i32| match slot {
+        None => *slot = Some((x1, x2)),
+        Some((a, b)) => {
+            *a = (*a).min(x1);
+            *b = (*b).max(x2);
+        }
+    };
+    for y in 0..rows as i32 {
+        let Some((x1, x2)) = src[y as usize] else { continue };
+        let contains = |m: i32| -> bool {
+            matches!(src[m as usize], Some((a, b)) if a <= x1 && b >= x2)
+        };
+        // вверх
+        let y0 = (y - r).max(0);
+        let mut my = y - 1;
+        while my >= y0 {
+            if my > top && contains(my) {
+                break;
+            }
+            let d = dx[(y - my) as usize];
+            unite(&mut iv[my as usize], x1 - d, x2 + d);
+            my -= 1;
+        }
+        unite(&mut iv[y as usize], x1 - dx[0], x2 + dx[0]);
+        // вниз
+        let y1 = (y + r).min(rows as i32 - 1);
+        let mut my = y + 1;
+        while my <= y1 {
+            if my < bot && contains(my) {
+                break;
+            }
+            let d = dx[(my - y) as usize];
+            unite(&mut iv[my as usize], x1 - d, x2 + d);
+            my += 1;
+        }
+    }
 }
 
 /// Задать рисунку область просмотра размером с плитку.
