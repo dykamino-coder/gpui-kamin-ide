@@ -52,6 +52,7 @@ export interface ExtendedConnectionState {
    *  a delay that was already stale when it was written. */
   nextRetryAt?: number
   retryAttempt?: number
+  closeCode?: number
 }
 
 // Reconnect backoff constants
@@ -374,6 +375,7 @@ export class ConnectionManager {
         this.setState({
           status: 'disconnected',
           error: reasonStr ? `Connection closed: ${code} ${reasonStr}` : undefined,
+          closeCode: code,
         })
         this.scheduleReconnect()
       } else {
@@ -1094,6 +1096,9 @@ export class ConnectionManager {
         : state.status as ConnectionState['status'],
       sessionId: state.sessionId,
       error: state.error,
+      nextRetryAt: state.nextRetryAt,
+      retryAttempt: state.retryAttempt,
+      closeCode: state.closeCode,
     }
     this.window.webContents.send('connection-state-changed', this.tabId, rendererState)
     ConnectionManager.onStatus?.(this.tabId, rendererState.status)

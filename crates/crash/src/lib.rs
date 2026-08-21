@@ -11,8 +11,15 @@
 //! в уже открытый файл. Ни аллокаций через свой аллокатор, ни блокировок —
 //! память в этот момент уже могла быть испорчена.
 
+#[cfg(any(windows, test))]
+mod log_files;
+#[cfg(any(windows, test))]
+mod renderer_fields;
+
 #[cfg(windows)]
 use std::io::Write as _;
+#[cfg(windows)]
+use renderer_fields::{safe_status, view_ref};
 
 /// Что делать после того, как отчёт записан.
 #[derive(Clone, Copy)]
@@ -39,6 +46,11 @@ pub fn install(role: &'static str, after: AfterReport) {
         SEM_FAILCRITICALERRORS, SEM_NOGPFAULTERRORBOX, SetErrorMode, SetUnhandledExceptionFilter,
     };
 
+    if role == "main" {
+        // Один новый current-файл на запуск + три прошлых incident trail.
+        // CEF-дети общий файл не вращают: они стартуют параллельно.
+        log_files::rotate(&crash_log_path(), 3);
+    }
     if let Ok(mut r) = ROLE.lock() {
         *r = Some(role);
     }
@@ -83,7 +95,14 @@ fn crash_log_path() -> std::path::PathBuf {
 #[cfg(windows)]
 fn write_line(line: &str) {
     let pid = std::process::id();
-    let text = format!("[pid {pid}] {line}\n");
+    let ts_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let text = format!(
+        "[ts_ms {ts_ms}] [version {}] [pid {pid}] {line}\n",
+        env!("CARGO_PKG_VERSION")
+    );
     let _ = std::io::stderr().write_all(text.as_bytes());
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -152,7 +171,12 @@ unsafe fn module_of(address: usize) -> String {
         if len == 0 {
             return String::from("(неизвестный модуль)");
         }
-        String::from_utf16_lossy(&buf[..len])
+        let path = String::from_utf16_lossy(&buf[..len]);
+        std::path::Path::new(path.as_str())
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("(неизвестный модуль)")
+            .to_owned()
     }
 }
 
@@ -176,3 +200,19 @@ pub fn note(line: &str) {
 
 #[cfg(not(windows))]
 pub fn note(_line: &str) {}
+
+/// Структурированная смерть CEF renderer без свободного текста Chromium.
+/// `error_string` намеренно не принимаем: URL/путь/страница могут содержать
+/// пользовательские данные. View-id превращается в класс + стабильный hash.
+#[cfg(windows)]
+pub fn note_renderer_termination(view_id: &str, status: &str, error_code: i32) {
+    write_line(&format!(
+        "[renderer-terminated] view={} status={} error_code={} samples=incident.log",
+        view_ref(view_id),
+        safe_status(status),
+        error_code
+    ));
+}
+
+#[cfg(not(windows))]
+pub fn note_renderer_termination(_view_id: &str, _status: &str, _error_code: i32) {}

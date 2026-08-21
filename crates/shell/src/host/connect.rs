@@ -41,6 +41,7 @@ pub fn start(tx: Sender<ShellEvent>) {
     kamin_sidecar::start(
         HostConfig {
             mode,
+            app_version: env!("CARGO_PKG_VERSION"),
             data_dir,
             cache_dir,
             // «Open with KaminIDE» на холодном старте: host сам создаст/

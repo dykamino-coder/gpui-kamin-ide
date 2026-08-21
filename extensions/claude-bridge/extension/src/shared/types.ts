@@ -20,6 +20,8 @@ export interface ConnectionState {
   /** Which attempt the pending retry will be. Retries never stop, so this is
    *  what shows the loop is alive. */
   retryAttempt?: number
+  /** Allowlisted diagnostic only; the server-provided close reason is excluded. */
+  closeCode?: number
 }
 
 // Tab info for sidebar rendering
