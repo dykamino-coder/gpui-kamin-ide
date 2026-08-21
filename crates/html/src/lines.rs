@@ -1885,9 +1885,12 @@ fn hangs(ch: char) -> bool {
 /// входил, `word-spacing` на строке из `&nbsp;` не действовал вовсе
 /// (`word-spacing-001`).
 fn word_separator(ch: char) -> bool {
+    // Идеографический пробел U+3000 — ФИКСИРОВАННОЙ ширины и разделителем
+    // слов НЕ считается (css-text-3 §word-separator; word-spacing-
+    // characters-001): `word-spacing` его не трогает.
     matches!(
         ch as u32,
-        0x20 | 0xA0 | 0x1361 | 0x3000 | 0x10100 | 0x10101 | 0x1039F | 0x1091F
+        0x20 | 0xA0 | 0x1361 | 0x10100 | 0x10101 | 0x1039F | 0x1091F
     )
 }
 

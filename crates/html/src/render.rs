@@ -5620,11 +5620,20 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         } else if !matches!(e.style.width, None | Some(Len::Auto))
             && !matches!(e.style.height, None | Some(Len::Auto))
         {
-            // Обе стороны заданы, но не в точках (`width:100%; height:100%`):
-            // размер решает КОРОБКА — рисунок растягивается на неё
-            // (sizing-percentages-replaced-orthogonal-001: лайм обязан
-            // накрыть контейнер, а не остаться своим пикселем).
-            image = image.size_full();
+            // Обе стороны заданы, но не обе в точках: каждая ось — своим
+            // значением. `width:100%; height:100%` растягивается на коробку
+            // (sizing-percentages-replaced-orthogonal-001), а смешанная
+            // запись `width:50%; height:15px` раньше падала в size_full и
+            // ТЕРЯЛА пиксельную сторону (inline-replaced-width-011..015).
+            image = match (e.style.width, e.style.height) {
+                (Some(Len::Pct(kw)), Some(Len::Px(h))) => {
+                    image.w(gpui::relative(kw)).h(px(h))
+                }
+                (Some(Len::Px(w)), Some(Len::Pct(kh))) => {
+                    image.w(px(w)).h(gpui::relative(kh))
+                }
+                _ => image.size_full(),
+            };
         } else if !matches!(e.style.width, Some(Len::Px(_)))
             && !matches!(e.style.height, Some(Len::Px(_)))
         {
