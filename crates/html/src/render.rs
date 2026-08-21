@@ -5539,9 +5539,23 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // concrete object size = размер плитки, позиционирование = origin,
         // клип по content box (css-images-3 §5.1/5.2). Путь включается только
         // при заданной позиции и точной коробке — прочее живёт старым путём.
-        if let (Some(pos), Some(Len::Px(w)), Some(Len::Px(h))) =
-            (e.style.object_position, e.style.width, e.style.height)
+        // Труба включается при ЛЮБОМ из object-fit/object-position: тест и
+        // эталон (background-*) обязаны сойтись одной механикой; позиция по
+        // умолчанию — центр (css-images-3 §5.2). Раньше последняя картинка
+        // ряда (без object-position) шла другой трубой и расходилась.
+        let wants_pipe = e.style.object_position.is_some()
+            || e
+                .style
+                .object_fit
+                .as_deref()
+                .is_some_and(|f| matches!(f, "contain" | "cover" | "none" | "scale-down"));
+        if let (true, Some(Len::Px(w)), Some(Len::Px(h))) =
+            (wants_pipe, e.style.width, e.style.height)
         {
+            let pos = e.style.object_position.unwrap_or(crate::computed::BgPos {
+                x: Some(Len::Pct(0.5)),
+                y: Some(Len::Pct(0.5)),
+            });
             use crate::computed::BgSize;
             let mut bgc = crate::computed::Computed::default();
             bgc.bg_image = Some(local.unwrap_or(src).to_string());
