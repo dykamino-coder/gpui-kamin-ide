@@ -15,7 +15,7 @@ business logic сторонних plugins находятся вне scope; об�
 - **deferred** — изменение осознанно не планируется до указанного условия;
 - **verify** — код пока не меняется, нужен целевой runtime-прогон.
 
-Наблюдения ниже зафиксированы 20 августа 2026 года на KaminIDE 1.0.53. Source
+Наблюдения ниже зафиксированы 20–21 августа 2026 года на KaminIDE 1.0.53. Source
 аудит выполнен на `origin/main` commit `5b5d93d`.
 
 ## Confirmed incident facts
@@ -61,6 +61,12 @@ Snapshot был получен до более позднего продолже
   scrollbar thumb в момент подгрузки предыдущего окна; вниз тот же эффект не
   наблюдается. Source audit подтверждает нарушенный anchor contract, описанный
   в BR-16, но Windows CEF runtime ещё должен измерить величину displacement.
+- toast `Extension crashed — Contained — extensions stayed alive: shell client
+  disconnected` составляется не из native crash: shell WebSocket close вызывает
+  `RpcEndpoint.failAll("shell client disconnected")`, отклонённый host-to-shell
+  RPC доходит до необработанного Promise в child, а общий
+  `unhandledRejection` containment показывает crash toast, оставляя extension
+  host живым. Нарушенный cancellation contract описан в BR-19.
 
 Agent Teams и hook approval имеют отдельные подтверждённые границы:
 
@@ -521,6 +527,46 @@ timeout, duplicate callback, чужой token и cleanup после PTY exit. Wi
 teardown отклоняются. Почему исходная длинная session вошла в teardown,
 определяется отдельно по BR-17 logs и не угадывается этим fix.
 
+### BR-19 — Treat shell disconnect as lifecycle cancellation, not extension crash
+
+**Status:** ready. **Dependency:** implementation starts from the refreshed main
+after the current draft PR chain; no dependency on BR-17 evidence.
+**Acceptance:** automated + Windows runtime merge gate.
+
+Source chain reproduces the screenshot text exactly:
+
+- `ws-server.ts` handles shell WebSocket close by calling
+  `endpoint.failAll("shell client disconnected")`. Rejecting all pending calls
+  is necessary: otherwise `showQuickPick`, editor operations and secret relay
+  can wait forever and leak pending RPC entries;
+- the rejection crosses `HOST_REQUEST_RENDERER` back into the extension-host
+  child as an ordinary `Error` without a lifecycle/cancellation type;
+- internal fire-and-forget surfaces currently discard Promises without rejection
+  handlers. Confirmed examples include editor decorations/selections and the
+  stateful `createInputBox().show()` / `createQuickPick().show()` paths;
+- `child-crash.ts` treats every post-boot `unhandledRejection` as an extension
+  crash and emits `Contained — extensions stayed alive: ...`. Therefore the
+  displayed toast is a false crash classification, while the final clause
+  correctly reports that the child process was deliberately kept alive.
+
+The fix must preserve `failAll` liveness while introducing a typed, generation-
+scoped peer-disconnect/cancellation result. Every internal fire-and-forget RPC
+boundary handles only that expected lifecycle cancellation; awaited VS Code-like
+APIs settle deterministically as cancelled/hidden according to their contract.
+Do not globally swallow `unhandledRejection` and do not match the human-readable
+error string: genuine extension errors and unexpected RPC failures must still
+reach crash containment.
+
+Automated tests disconnect the shell with pending editor decoration/selection,
+quick input and representative awaited calls; pending maps clear, no expected
+disconnect becomes an unhandled rejection or crash notification, and a genuine
+unexpected rejection still does. A rapid disconnect/reconnect test proves that
+an old client generation cannot cancel or settle a call owned by the new one.
+The Windows gate disconnects/reconnects the shell while extensions and Bridge
+sessions remain active: no false `Extension crashed` toast appears, interactive
+operations either cancel or recover, and a deliberately thrown extension error
+is still surfaced.
+
 ## Current draft PR integration order
 
 Все перечисленные PR остаются draft. `mergeable` относительно сегодняшнего
@@ -529,7 +575,7 @@ protection в GitHub сейчас отсутствуют. Maintainer agent сл�
 одному и не закрывает PR без merge:
 
 1. PR #12 — canonical docs/testing/backlog. Сначала включить текущие BR-17,
-   BR-18 и dependency template changes.
+   BR-18, BR-19 и dependency template changes.
 2. PR #13 — BR-10 hook approval UI; выполнить его Windows gate.
 3. Обновить PR #14 от `origin/main`, пересобрать committed Bridge artifacts и
    повторить automated + Windows gates. Это обязательно после #13, потому что
@@ -548,20 +594,21 @@ protection в GitHub сейчас отсутствуют. Maintainer agent сл�
 ## Recommended next task order
 
 1. BR-18 secret-safe SessionEnd teardown relay.
-2. BR-17 persistent server logs как независимый operational PR.
-3. BR-04 recovery после extension-host respawn.
-4. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
-5. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
+2. BR-19 expected shell-disconnect cancellation без ложного crash toast.
+3. BR-17 persistent server logs как независимый operational PR.
+4. BR-04 recovery после extension-host respawn.
+5. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
+6. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
    как fix PR только если симптом сохранился; отдельная задача для reconnect не
    заводится.
-6. BR-16 upward history anchoring идёт отдельным UI PR и не блокирует connection
+7. BR-16 upward history anchoring идёт отдельным UI PR и не блокирует connection
    recovery chain.
-7. BR-11 inventory native blockers, затем минимальный BR-07.
-8. BR-08 без удаления существующего maintenance contract.
-9. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
+8. BR-11 inventory native blockers, затем минимальный BR-07.
+9. BR-08 без удаления существующего maintenance contract.
+10. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
    migration на всех deployments.
-10. BR-15 Agent Teams selection eval.
-11. BR-02 и только затем решение по BR-03.
+11. BR-15 Agent Teams selection eval.
+12. BR-02 и только затем решение по BR-03.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.
