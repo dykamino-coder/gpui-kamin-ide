@@ -171,8 +171,25 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
             })
         };
         let toks: Vec<&str> = raw.split_whitespace().collect();
+        // Осевые ключевые слова (css-transforms §4): одиночный `top`/`bottom`
+        // — это ось Y с центром по X; пара слов может идти в любом порядке,
+        // но `top 100%` невалидна — тогда точка отсчёта остаётся `0 0`
+        // (None = без origin-обёртки).
+        let vert_only = |t: &str| matches!(t.trim(), "top" | "bottom");
+        let horiz_only = |t: &str| matches!(t.trim(), "left" | "right");
+        let keyword =
+            |t: &str| matches!(t.trim(), "top" | "bottom" | "left" | "right" | "center");
         let (ox, oy) = match toks.as_slice() {
+            [a] if vert_only(a) => (fx + fw * 0.5, side(a, fh, fy)?),
             [a] => (side(a, fw, fx)?, fy + fh * 0.5),
+            [a, b] if vert_only(a) || horiz_only(b) => {
+                // Обратный порядок допустим только у ПАРЫ ключевых слов.
+                if keyword(a) && keyword(b) {
+                    (side(b, fw, fx)?, side(a, fh, fy)?)
+                } else {
+                    return None;
+                }
+            }
             [a, b] => (side(a, fw, fx)?, side(b, fh, fy)?),
             _ => return None,
         };

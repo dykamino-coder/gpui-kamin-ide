@@ -2908,7 +2908,14 @@ fn paragraph_pieces(
         // абзац отдаёт по ЛОГИЧЕСКОМУ порядку, а при RTL и вертикали оно
         // считается по-другому — там работает прежний обход через распорку.
         let plain_flow = inherited.rtl != Some(true) && inherited.vertical != Some(true);
-        if plain_flow && at_static_position(&e.style) && inline_level(e) {
+        // Статическая позиция считается для ГИПОТЕТИЧЕСКОГО статического
+        // элемента (§10.3.7: «if position had been static») — блокификация
+        // `display: inline` под absolute на неё не влияет, метка
+        // inline_display возвращает такой элемент в строчный путь.
+        if plain_flow
+            && at_static_position(&e.style)
+            && (inline_level(e) || e.style.inline_display == Some(true))
+        {
             let mut merged = inline::inherit(inherited, &e.style);
             merged.position = None;
             // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
@@ -3419,7 +3426,10 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable) => true,
             Some(Display::GridLanes) => e.style.lanes_inline,
-            Some(_) => false,
+            // Блокифицированный `display: inline` (§9.7) для СТАТИЧЕСКОЙ
+            // позиции остаётся строчным: гипотеза §10.3.7 считается без
+            // блокификации (htb-rtl-*).
+            Some(_) => e.style.inline_display == Some(true),
             None => e.inline,
         };
         // Флаги направления нужны и СТРОЧНОМУ атому: в rtl-строке статическая

@@ -955,8 +955,17 @@ impl Paragraph {
         };
         let from = self.x_at(segs, line.range.start, Edge::Start);
         let x = self.x_at(segs, at.max(line.range.start), Edge::Start) - from;
+        // Стартовое смещение строки — как у отрисовки: отступ первой строки,
+        // свисающий открывающий знак, левый вырез обтекания. Без него точка
+        // жила от голого края коробки, и статическая позиция абсолюта в
+        // строке с `text-indent` промахивалась ровно на отступ
+        // (htb-ltr-*: регресс 08-12, зелёные квадраты не закрывали красное).
+        // Доля выключки (center/right) сюда пока не входит.
+        let hang = self.hang_first(line.range.start);
+        let shift = self.span(segs, line.range.start, line.range.start + hang);
+        let lead = line.indent - shift + px(self.flow_cut(row).0);
         point(
-            bounds.origin.x + x,
+            bounds.origin.x + lead + x,
             bounds.origin.y + self.line_height * row as f32,
         )
     }

@@ -2664,8 +2664,16 @@ impl Element for LatePlace {
             // отсчитывается от правого края). У блочной распорки во всю
             // ширину правый край — правый край содержимого, у точечной в
             // строке — сама точка.
-            (Some(hole), None) if now.rtl => gpui::point(
+            // Правокрайняя формула верна для БЛОЧНОЙ распорки во всю
+            // ширину; у ТОЧЕЧНОГО щупа в строке ширина нулевая, и вычитание
+            // своей ширины уводило коробку влево на неё целиком
+            // (htb-rtl-*: регресс 08-19).
+            (Some(hole), None) if now.rtl && hole.size.width > px(0.0) => gpui::point(
                 hole.origin.x + hole.size.width - bounds.size.width - bounds.origin.x,
+                hole.origin.y - bounds.origin.y,
+            ),
+            (Some(hole), None) if now.rtl => gpui::point(
+                hole.origin.x - bounds.origin.x,
                 hole.origin.y - bounds.origin.y,
             ),
             (Some(hole), None) if now.own_vertical && !now.vertical => gpui::point(
