@@ -1459,6 +1459,20 @@ impl Computed {
                 String::new()
             }
         });
+        // Дорожки сетки в единицах шрифта: считаются от СВОЕГО кегля, он к
+        // этому моменту уже разрешён вызывающим (см. ниже по функции).
+        let own_px = match self.font_size {
+            Some(Len::Px(v)) => v,
+            _ => parent_font_px,
+        };
+        for list in [self.grid_tracks.as_mut(), self.grid_rows.as_mut()]
+            .into_iter()
+            .flatten()
+        {
+            for t in list.iter_mut() {
+                t.resolve_font(&family, own_px);
+            }
+        }
         match self.font_size {
             Some(Len::Em(k)) => self.font_size = Some(Len::Px(k * parent_font_px)),
             Some(Len::Ch(k)) => {
@@ -1564,6 +1578,11 @@ impl Computed {
         Computed {
             color: self.color,
             font_size: self.font_size,
+            // Гарнитура — свойство ТЕКСТА: без неё кусок в строчном ряду
+            // набирался подменным системным шрифтом, и `@font-face` (в том
+            // числе Ahem у стенда) не доезжал никуда, где рядом стоит
+            // картинка или иной атом.
+            font_family: self.font_family.clone(),
             font_weight: self.font_weight,
             italic: self.italic,
             underline: self.underline,
@@ -5538,9 +5557,35 @@ pub enum Track {
     Fr(f32),
     /// Доля ШИРИНЫ СЕТКИ (`25%`) — не путать с долей остатка (`fr`).
     Pct(f32),
+    /// Длина в единицах ШРИФТА (`2ch`, `1em`, `8rem`): кегль и метрики на
+    /// разборе ещё неизвестны, величина считается вместе с прочими `em`.
+    Font(Len),
     Auto,
     MinContent,
     MaxContent,
+}
+
+impl Track {
+    /// Перевести отложенную длину в точки: единицы шрифта известны только
+    /// после разрешения кегля узла.
+    fn resolve_font_one(&mut self, family: &str, size_px: f32) {
+        if let Track::Font(l) = *self {
+            *self = Track::Px(crate::metrics::spacing_px(Some(l), family, size_px));
+        }
+    }
+}
+
+impl TrackSize {
+    /// То же для обеих граней записи.
+    fn resolve_font(&mut self, family: &str, size_px: f32) {
+        match self {
+            TrackSize::Single(t) => t.resolve_font_one(family, size_px),
+            TrackSize::MinMax(a, b) => {
+                a.resolve_font_one(family, size_px);
+                b.resolve_font_one(family, size_px);
+            }
+        }
+    }
 }
 
 /// Дорожка целиком: одиночная либо пара граней `minmax(a, b)`.
@@ -5709,6 +5754,11 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
         match Len::parse(t) {
             Some(Len::Px(px)) => Some(Track::Px(px)),
             Some(Len::Pct(p)) => Some(Track::Pct(p)),
+            // Единицы шрифта откладываются: раньше они роняли разбор, а с
+            // ним и ВЕСЬ список дорожек — сетка выходила из равных долей.
+            Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_) | Len::Ic(_))) => {
+                Some(Track::Font(l))
+            }
             _ => None,
         }
     }
