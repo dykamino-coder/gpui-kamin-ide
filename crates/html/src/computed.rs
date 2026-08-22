@@ -1575,6 +1575,10 @@ impl Computed {
             svg_fill: self.svg_fill.clone(),
             webkit_box: self.webkit_box,
             webkit_box_vertical: self.webkit_box_vertical,
+            // Сдвиг от базовой линии — свойство ТЕКСТА: без него строчный
+            // кусок в общем прогоне остаётся на базовой линии.
+            vertical_shift: self.vertical_shift,
+            vertical_shift_px: self.vertical_shift_px,
             text_fit: self.text_fit,
             hyphen_char: self.hyphen_char.clone(),
             ..Computed::default()

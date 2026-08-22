@@ -350,6 +350,35 @@ impl Paragraph {
     }
 
     /// Вырез строки номер `line_no`: (слева, справа).
+    /// Надбавки строки сверху и снизу от сдвинутых по вертикали кусков.
+    ///
+    /// Сдвиг `vertical-align` не просто двигает знаки — он РАСТИТ строчную
+    /// коробку (CSS 2.1 §10.8): её верх и низ берутся по объединению всех
+    /// кусков после выравнивания. На каждую строку своя пара: абзац с
+    /// надстрочным знаком в одной строке не должен раздувать остальные.
+    fn line_padding(&self) -> Vec<(f32, f32)> {
+        if self.shift_spans.is_empty() {
+            return vec![(0.0, 0.0); self.lines.len()];
+        }
+        self.lines
+            .iter()
+            .map(|line| {
+                let (mut above, mut below) = (0.0f32, 0.0f32);
+                for (range, dy) in &self.shift_spans {
+                    if range.end <= line.range.start || range.start >= line.range.end {
+                        continue;
+                    }
+                    // Ось сдвига смотрит вниз: отрицательное поднимает знак
+                    // над строкой, положительное опускает.
+                    let v = f32::from(*dy);
+                    above = above.max(-v);
+                    below = below.max(v);
+                }
+                (above, below)
+            })
+            .collect()
+    }
+
     fn flow_cut(&self, line_no: usize) -> (f32, f32) {
         if self.flow.0.is_empty() && self.flow.1.is_empty() {
             return (0.0, 0.0);
@@ -1950,6 +1979,7 @@ impl Element for Paragraph {
         let spans = self.spans.clone();
         let word_spans = self.word_spans.clone();
         let letter_spans = self.letter_spans.clone();
+        let shift_spans = self.shift_spans.clone();
         // Обрыв по `line-clamp` обязан доехать и до замера: иначе коробка
         // считается по ПОЛНОМУ числу строк, а рисуются обрезанные, и рамка
         // выходит выше текста (`text-wrap-balance-line-clamp-004`).
@@ -1978,6 +2008,7 @@ impl Element for Paragraph {
                 probe.spans = spans.clone();
                 probe.word_spans = word_spans.clone();
                 probe.letter_spans = letter_spans.clone();
+                probe.shift_spans = shift_spans.clone();
                 probe.clamp = clamp;
                 probe.fit = fit;
                 probe.tab_stop = tab_stop;
@@ -2052,7 +2083,15 @@ impl Element for Paragraph {
                     gpui::AvailableSpace::Definite(w) if width > w => w,
                     _ => width,
                 };
-                let across = line_height * lines.len() as f32;
+                // Высота абзаца — сумма ШАГОВ строк: обычно это ровно
+                // `line_height`, но строка со сдвинутым по вертикали куском
+                // выше на его вылет (CSS 2.1 §10.8).
+                let across = {
+                    probe.lines = lines.clone();
+                    let pads = probe.line_padding();
+                    let extra: f32 = pads.iter().map(|(a, b)| a + b).sum();
+                    line_height * lines.len() as f32 + px(extra)
+                };
                 if vertical {
                     // Строка идёт вниз: её длина — это ВЫСОТА коробки, а
                     // строки набегают вбок и занимают ширину. Стороны, уже
@@ -2186,8 +2225,19 @@ impl Element for Paragraph {
         }
         let segs = self.measure(window);
         let count = self.lines.len();
+        // Надбавки строк от сдвинутых кусков: шаг до следующей строки и
+        // сдвиг набора внутри своей.
+        let pads = self.line_padding();
+        let step = |i: usize| -> Pixels {
+            let (a, b) = pads.get(i).copied().unwrap_or((0.0, 0.0));
+            self.line_height + px(a + b)
+        };
+        // Надбавка сверху опускает НАБОР строки: поднятый знак занимает её,
+        // а базовая линия остаётся на своём месте относительно кегля.
+        let above = |i: usize| -> Pixels { px(pads.get(i).copied().unwrap_or((0.0, 0.0)).0) };
         let mut y = if self.lines_reversed && count > 0 {
-            bounds.origin.y + self.line_height * (count as f32 - 1.0)
+            let total: f32 = (0..count).map(|i| f32::from(step(i))).sum();
+            bounds.origin.y + px(total) - self.line_height
         } else {
             bounds.origin.y
         };
@@ -2300,22 +2350,21 @@ impl Element for Paragraph {
                     };
                     (px(0.), dx + lead)
                 };
-                self.paint_justified(&range, &segs, free, bounds, y, dx, window, cx);
+                // Набор строки опускается на её верхнюю надбавку: поднятый
+                // кусок занимает добавленное место, а остальной текст
+                // остаётся на своей базовой линии.
+                self.paint_justified(&range, &segs, free, bounds, y + above(i), dx, window, cx);
                 if line.ellipsis {
                     let text = self.span(&segs, line.range.start, range.end);
                     self.paint_suffix(
                         self.marker_str(),
                         line.range.start,
-                        point(bounds.origin.x + dx + text, y),
+                        point(bounds.origin.x + dx + text, y + above(i)),
                         window,
                         cx,
                     );
                 }
-                y += if self.lines_reversed {
-                    -self.line_height
-                } else {
-                    self.line_height
-                };
+                y += if self.lines_reversed { -step(i) } else { step(i) };
                 continue;
             }
             let dx = match align {
@@ -2333,7 +2382,7 @@ impl Element for Paragraph {
                     free
                 );
             }
-            let at = point(bounds.origin.x + dx, y);
+            let at = point(bounds.origin.x + dx, y + above(i));
             // Висящие пробелы конца строки при письме справа налево уходят по
             // правилу L1 на ЛЕВЫЙ край и отодвигали бы текст от края коробки.
             // Рисовать их незачем: они пустые.
@@ -2351,11 +2400,7 @@ impl Element for Paragraph {
                 String::new()
             };
             self.paint_line(&visible, &runs, at, &mark, window, cx);
-            y += if self.lines_reversed {
-                -self.line_height
-            } else {
-                self.line_height
-            };
+            y += if self.lines_reversed { -step(i) } else { step(i) };
         }
         for (_, el) in self.overlays.iter_mut() {
             el.paint(window, cx);

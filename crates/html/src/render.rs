@@ -801,6 +801,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     if e.style.flex_shrink.is_none() {
                         e.style.flex_shrink = Some(1.0);
                     }
+                    // `vertical-align` на элементе гибкого контейнера не
+                    // действует (css-flexbox-1 §4): он выравнивается своими
+                    // свойствами, а не как кусок строки.
+                    e.style.vertical_shift = None;
+                    e.style.vertical_shift_px = None;
                     // Элемент ряда под обособлением строчной оси: главный
                     // размер берётся из `contain-intrinsic-size`, а не от
                     // содержимого. В колонке главная ось блочная — её уже
