@@ -511,6 +511,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // Сдвиг НЕ наследуется: он принадлежит своему куску, иначе надстрочный
     // знак поднимал бы весь текст после себя.
     c.vertical_shift = own.vertical_shift;
+    c.vertical_shift_px = own.vertical_shift_px;
     c.upright = own.upright.or(parent.upright);
     // Наследуемые текстовые свойства из второй волны разбора. Без них
     // `text-transform` на контейнере не доходил до вложенного текста —
@@ -958,7 +959,9 @@ pub fn shift_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usi
             Some(Len::Px(v)) => v,
             _ => base_size,
         };
-        let dy = style.vertical_shift.map(|k| k * size);
+        let dy = style
+            .vertical_shift_px
+            .or_else(|| style.vertical_shift.map(|k| k * size));
         if let Some(v) = dy {
             out.push((at..end, gpui::px(v)));
         }
