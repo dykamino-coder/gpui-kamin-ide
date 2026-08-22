@@ -145,7 +145,6 @@ pub enum AutoFlow {
     ColDense,
 }
 
-
 /// `text-transform`: регистр меняется при отрисовке текста, не в шрифте.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TextTransform {
@@ -1759,7 +1758,10 @@ impl Computed {
         }
         match key {
             "box-sizing" => self.border_box = Some(v == "border-box"),
-            "display" if v.trim().eq_ignore_ascii_case("-webkit-box") || v.trim().eq_ignore_ascii_case("-webkit-inline-box") => {
+            "display"
+                if v.trim().eq_ignore_ascii_case("-webkit-box")
+                    || v.trim().eq_ignore_ascii_case("-webkit-inline-box") =>
+            {
                 self.webkit_box = Some(true);
             }
             "display" => {
@@ -1851,7 +1853,10 @@ impl Computed {
                     // Запись из ДВУХ слов: из неё берётся только внутренний
                     // вид «лунки» — его иначе не выразить вовсе. Полный разбор
                     // двух слов ЗАМЕРЕН и откачен (см. комментарий выше).
-                    two if two.split_whitespace().any(|w| w == "grid-lanes" || w == "masonry") => {
+                    two if two
+                        .split_whitespace()
+                        .any(|w| w == "grid-lanes" || w == "masonry") =>
+                    {
                         if two.split_whitespace().any(|w| w == "inline") {
                             self.lanes_inline = true;
                         }
@@ -1998,6 +2003,7 @@ impl Computed {
                     track: self.grid_auto_fill_min,
                     track_pct: auto_fill_pct(v),
                     intrinsic: auto_fill_intrinsic(v),
+                    intrinsic_min: auto_fill_intrinsic(v) && v.contains("min-content"),
                     fit_px: auto_fill_fit_px(v),
                 });
             }
@@ -2010,6 +2016,7 @@ impl Computed {
                     track: self.grid_auto_fill_row,
                     track_pct: auto_fill_pct(v),
                     intrinsic: auto_fill_intrinsic(v),
+                    intrinsic_min: auto_fill_intrinsic(v) && v.contains("min-content"),
                     fit_px: auto_fill_fit_px(v),
                 });
             }
@@ -2076,10 +2083,11 @@ impl Computed {
                     return;
                 }
                 let parsed = Sides::shorthand(v);
-                let neg = |l: &Option<Len>| {
-                    matches!(l, Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if *n < 0.0)
-                };
-                if neg(&parsed.top) || neg(&parsed.right) || neg(&parsed.bottom) || neg(&parsed.left)
+                let neg = |l: &Option<Len>| matches!(l, Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if *n < 0.0);
+                if neg(&parsed.top)
+                    || neg(&parsed.right)
+                    || neg(&parsed.bottom)
+                    || neg(&parsed.left)
                 {
                     return;
                 }
@@ -2603,7 +2611,9 @@ impl Computed {
                 // счётчик не участвует (list-style-type-string-*).
                 let t = v.trim();
                 if (t.starts_with('"') && t.ends_with('"') && t.len() >= 2)
-                    || (t.starts_with(char::from(39)) && t.ends_with(char::from(39)) && t.len() >= 2)
+                    || (t.starts_with(char::from(39))
+                        && t.ends_with(char::from(39))
+                        && t.len() >= 2)
                 {
                     self.marker_text = Some(t[1..t.len() - 1].to_string());
                     self.no_marker = Some(false);
@@ -3043,7 +3053,8 @@ impl Computed {
                         (None, Some(c)) => self.gradient = Some(solid_gradient(c)),
                         _ => {}
                     }
-                } else if let Some(rest) = v.strip_prefix("image-set(")
+                } else if let Some(rest) = v
+                    .strip_prefix("image-set(")
                     .or_else(|| v.strip_prefix("-webkit-image-set("))
                 {
                     // Первый кандидат с неотрицательным разрешением и без
@@ -3055,9 +3066,9 @@ impl Computed {
                             .split("type(")
                             .nth(1)
                             .is_some_and(|t| !t.contains("image/"));
-                        let neg_res = cand
-                            .split_whitespace()
-                            .any(|t| t.starts_with('-') && (t.ends_with('x') || t.ends_with("dppx")));
+                        let neg_res = cand.split_whitespace().any(|t| {
+                            t.starts_with('-') && (t.ends_with('x') || t.ends_with("dppx"))
+                        });
                         if bad_type || neg_res {
                             continue;
                         }
@@ -3346,9 +3357,7 @@ impl Computed {
                     _ => None,
                 }
             }
-            "line-clamp" if v.trim().eq_ignore_ascii_case("auto") => {
-                self.clamp_auto = Some(true)
-            }
+            "line-clamp" if v.trim().eq_ignore_ascii_case("auto") => self.clamp_auto = Some(true),
             "line-clamp" => self.line_clamp = v.parse().ok(),
             "-webkit-line-clamp" => self.webkit_line_clamp = v.parse().ok(),
             "-webkit-box-orient" => {
@@ -3417,9 +3426,7 @@ impl Computed {
                     _ => {
                         // Отрицательная длина делает декларацию невалидной
                         // целиком (css-backgrounds-3 §3.9) — размер не трогать.
-                        let neg = |l: &Option<Len>| {
-                            matches!(l, Some(Len::Px(v) | Len::Pct(v)) if *v < 0.0)
-                        };
+                        let neg = |l: &Option<Len>| matches!(l, Some(Len::Px(v) | Len::Pct(v)) if *v < 0.0);
                         let mut it = v.split_whitespace();
                         let w = it.next().and_then(Len::parse);
                         let h = it.next().and_then(Len::parse);
@@ -3513,11 +3520,13 @@ impl Computed {
                 // свойство сперва чистит СВОЮ подгруппу тегов — повтор и
                 // `normal` переопределяют, а не копятся при наследовании.
                 const CAPS: &[&str] = &["smcp", "c2sc", "pcap", "c2pc", "unic", "titl"];
-                const NUMERIC: &[&str] =
-                    &["lnum", "onum", "pnum", "tnum", "frac", "afrc", "ordn", "zero"];
+                const NUMERIC: &[&str] = &[
+                    "lnum", "onum", "pnum", "tnum", "frac", "afrc", "ordn", "zero",
+                ];
                 const LIGA: &[&str] = &["liga", "clig", "dlig", "hlig", "calt"];
-                const EAST: &[&str] =
-                    &["jp78", "jp83", "jp90", "jp04", "smpl", "trad", "fwid", "pwid", "ruby"];
+                const EAST: &[&str] = &[
+                    "jp78", "jp83", "jp90", "jp04", "smpl", "trad", "fwid", "pwid", "ruby",
+                ];
                 const POS: &[&str] = &["subs", "sups"];
                 const ALT: &[&str] = &["hist", "salt", "swsh", "ornm", "nalt"];
                 let alt_tag = |t: &str| {
@@ -3586,8 +3595,8 @@ impl Computed {
                                     .filter(|n| (1..=99).contains(n))
                                     .map(|n| format!("{pre}{n:02}"))
                             };
-                            if let Some(t) = func("styleset(", "ss")
-                                .or_else(|| func("character-variant(", "cv"))
+                            if let Some(t) =
+                                func("styleset(", "ss").or_else(|| func("character-variant(", "cv"))
                             {
                                 self.font_features.push((t, 1));
                             } else if raw.starts_with("swash(") {
@@ -3678,8 +3687,8 @@ impl Computed {
                 for token in v.split_whitespace() {
                     match token {
                         "none" | "hidden" => vis = Some(false),
-                        "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge"
-                        | "inset" | "outset" => vis = Some(true),
+                        "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset"
+                        | "outset" => vis = Some(true),
                         "thin" => w = Some(Len::Px(1.0)),
                         "medium" => w = Some(Len::Px(3.0)),
                         "thick" => w = Some(Len::Px(5.0)),
@@ -4011,10 +4020,8 @@ impl Computed {
                                 .enumerate()
                             {
                                 if let Some(raw) = parts.get(i) {
-                                    *dest += raw
-                                        .trim_end_matches("px")
-                                        .parse::<f32>()
-                                        .unwrap_or(0.0);
+                                    *dest +=
+                                        raw.trim_end_matches("px").parse::<f32>().unwrap_or(0.0);
                                 }
                             }
                         }
@@ -4160,9 +4167,7 @@ impl Computed {
                 self.combine_upright = match it.next() {
                     Some("none") | None => None,
                     Some("all") => Some(0),
-                    Some("digits") => {
-                        Some(it.next().and_then(|n| n.parse().ok()).unwrap_or(2))
-                    }
+                    Some("digits") => Some(it.next().and_then(|n| n.parse().ok()).unwrap_or(2)),
                     _ => None,
                 };
             }
@@ -4479,8 +4484,7 @@ impl Computed {
                         Some((r @ ("nonzero" | "evenodd"), b)) => (r, b),
                         _ => ("nonzero", rest),
                     };
-                    self.clip_shape =
-                        Some(format!("shapedef:{rule}:{}", body.replace(',', ";")));
+                    self.clip_shape = Some(format!("shapedef:{rule}:{}", body.replace(',', ";")));
                 }
                 // `clip-path: path(правило, 'd')` — контур SVG: форма
                 // растрируется маской покрытия; запятые в d заменяются
@@ -4623,9 +4627,7 @@ impl Computed {
                             | Len::Ic(_)
                             | Len::Ex(_)
                             | Len::Lh(_)
-                            | Len::LhPx(..)) => {
-                                crate::metrics::fallback_len_px(l, "", 16.0)
-                            }
+                            | Len::LhPx(..)) => crate::metrics::fallback_len_px(l, "", 16.0),
                             Len::Vw(_) | Len::Vh(_) | Len::Calc(_) => None,
                             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
                         });
@@ -4675,7 +4677,10 @@ impl Computed {
                 image.fill = value.split_whitespace().any(|w| w == "fill");
                 let nums: Vec<&str> = value.split_whitespace().filter(|w| *w != "fill").collect();
                 let one = |t: &str| match t.strip_suffix('%') {
-                    Some(n) => n.parse().ok().map(|k: f32| BorderImageSlice::Pct(k / 100.0)),
+                    Some(n) => n
+                        .parse()
+                        .ok()
+                        .map(|k: f32| BorderImageSlice::Pct(k / 100.0)),
                     None => t.parse().ok().map(BorderImageSlice::Px),
                 };
                 if let Some(sides) = four(&nums, one) {
@@ -4688,7 +4693,10 @@ impl Computed {
                         return Some(BorderImageWidth::Auto);
                     }
                     if let Some(n) = t.strip_suffix('%') {
-                        return n.parse().ok().map(|k: f32| BorderImageWidth::Pct(k / 100.0));
+                        return n
+                            .parse()
+                            .ok()
+                            .map(|k: f32| BorderImageWidth::Pct(k / 100.0));
                     }
                     // Голое число — множитель толщины рамки, и проверяется ДО
                     // Len: та принимает числа без единиц как точки, и
@@ -5304,7 +5312,11 @@ pub(crate) fn parse_url(v: &str) -> Option<String> {
                 // Обрыв на конце файла закрывает запись сам (§4.2): скобки
                 // может не быть, и тогда резать последний знак нельзя, а
                 // кавычка остаётся только открывающая (`uri-017`).
-                let inner_end = if v[..end].ends_with(')') { end - 1 } else { end };
+                let inner_end = if v[..end].ends_with(')') {
+                    end - 1
+                } else {
+                    end
+                };
                 let inner = v[at + 4..inner_end.max(at + 4)].trim();
                 let inner = match inner.chars().next() {
                     Some(q @ ('"' | '\'')) if inner.len() > 1 => {
@@ -5611,7 +5623,10 @@ pub enum TrackSize {
     /// `repeat(auto-fill | auto-fit, …)` — сколько дорожек влезет; при
     /// `fit` пустые схлопываются (css-grid-2 §auto-repeat). Считает это
     /// раскладка: на разборе ширины контейнера ещё нет.
-    AutoRepeat { fit: bool, tracks: Vec<TrackSize> },
+    AutoRepeat {
+        fit: bool,
+        tracks: Vec<TrackSize>,
+    },
 }
 
 /// Разрезать короткую запись сетки по косой черте ВНЕ скобок.
@@ -5663,6 +5678,9 @@ pub struct AutoRepeat {
     /// число повторов задают сами элементы — по дорожке на каждого
     /// (row-auto-repeat-max-content-001).
     pub intrinsic: bool,
+    /// Дорожка названа `min-content`: меряется САМЫМ УЗКИМ местом
+    /// содержимого, а не самым широким.
+    pub intrinsic_min: bool,
     /// Потолок `fit-content(N)`: дорожка по содержимому, но не шире N.
     pub fit_px: Option<f32>,
 }
@@ -5706,7 +5724,9 @@ pub(crate) fn auto_fill_fit_px(v: &str) -> Option<f32> {
 /// Дорожка повтора задана ПО СОДЕРЖИМОМУ: `repeat(auto-fill, max-content)`
 /// и родня. Точечного размера у неё нет — повторы считают сами элементы.
 fn auto_fill_intrinsic(v: &str) -> bool {
-    let Some(rest) = v.split("repeat(").nth(1) else { return false };
+    let Some(rest) = v.split("repeat(").nth(1) else {
+        return false;
+    };
     let inner = match rest.rfind(')') {
         Some(i) => &rest[..i],
         None => rest,
@@ -5763,7 +5783,6 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
             return Some(Track::MaxContent);
         }
 
-
         if let Some(fr) = t.strip_suffix("fr") {
             return fr.trim().parse().ok().map(Track::Fr);
         }
@@ -5772,9 +5791,7 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
             Some(Len::Pct(p)) => Some(Track::Pct(p)),
             // Единицы шрифта откладываются: раньше они роняли разбор, а с
             // ним и ВЕСЬ список дорожек — сетка выходила из равных долей.
-            Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_) | Len::Ic(_))) => {
-                Some(Track::Font(l))
-            }
+            Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_) | Len::Ic(_))) => Some(Track::Font(l)),
             _ => None,
         }
     }
@@ -5971,7 +5988,10 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
             continue;
         }
         for t in &words[1..] {
-            if let Some(n) = t.strip_suffix('%').and_then(|n| n.trim().parse::<f32>().ok()) {
+            if let Some(n) = t
+                .strip_suffix('%')
+                .and_then(|n| n.trim().parse::<f32>().ok())
+            {
                 any_pct = true;
                 raw.push((colour, Some(n / 100.0)));
                 raw_px.push((colour, None));
@@ -5980,7 +6000,10 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
                 // только при отрисовке. Хранится своим списком.
                 raw.push((colour, None));
                 raw_px.push((colour, Some(v)));
-            } else if !t.trim().is_empty() && Len::parse(t).is_none() && t.trim().parse::<f32>().is_err() {
+            } else if !t.trim().is_empty()
+                && Len::parse(t).is_none()
+                && t.trim().parse::<f32>().is_err()
+            {
                 continue;
             } else {
                 raw.push((colour, None));
@@ -6047,7 +6070,8 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
             for i in 1..K {
                 let t = i as f32 / K as f32;
                 let h = (h1 + d * t).rem_euclid(360.0);
-                let (r, g, b) = crate::color_space::hsl_to_rgb(h, s1 + (s2 - s1) * t, l1 + (l2 - l1) * t);
+                let (r, g, b) =
+                    crate::color_space::hsl_to_rgb(h, s1 + (s2 - s1) * t, l1 + (l2 - l1) * t);
                 let a = c1.a + (c2.a - c1.a) * t;
                 dense.push((Color { r, g, b, a }, p1 + (p2 - p1) * t));
             }

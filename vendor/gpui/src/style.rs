@@ -758,8 +758,11 @@ impl Style {
             ));
         }
 
-        continuation(window, cx);
-
+        // KaminIDE patch: рамка коробки рисуется ДО потомков (CSS 2.1
+        // Appendix E: фон и рамка — шаги 2-3, потомки — 4-9). Прежде она
+        // шла после, и рамка родителя ложилась поверх детей: у всей семьи
+        // отступов и полей красная рамка эталона перекрывала чёрную рамку
+        // содержимого, хотя геометрия совпадала.
         if self.is_border_visible() {
             let border_widths = self.border_widths.to_pixels(rem_size);
             let max_border_width = border_widths.max();
@@ -821,6 +824,9 @@ impl Style {
                 },
             );
         }
+
+
+        continuation(window, cx);
 
         #[cfg(debug_assertions)]
         if self.debug_below {
