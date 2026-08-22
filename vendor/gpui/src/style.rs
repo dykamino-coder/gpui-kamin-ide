@@ -287,6 +287,9 @@ pub struct Style {
     /// repeat(auto-fill, minmax(<min>, 1fr))`.
     /// Takes precedence over `grid_cols` when set.
     pub grid_cols_min: Option<Pixels>,
+    /// KaminIDE patch: `repeat(auto-fit, …)` — пустые дорожки схлопываются,
+    /// остаток делят непустые (css-grid-2 §auto-repeat).
+    pub grid_cols_fit: bool,
 
     /// The row span of this element
     /// Equivalent to the Tailwind `grid-rows-<number>`
@@ -884,6 +887,7 @@ impl Default for Style {
             grid_rows: None,
             grid_cols: None,
             grid_cols_min: None,
+            grid_cols_fit: false,
             grid_template_cols: None,
             grid_template_rows: None,
             grid_location: None,

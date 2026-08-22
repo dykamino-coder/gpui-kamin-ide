@@ -5584,6 +5584,11 @@ impl TrackSize {
                 a.resolve_font_one(family, size_px);
                 b.resolve_font_one(family, size_px);
             }
+            TrackSize::AutoRepeat { tracks, .. } => {
+                for t in tracks.iter_mut() {
+                    t.resolve_font(family, size_px);
+                }
+            }
         }
     }
 }
@@ -5596,6 +5601,10 @@ impl TrackSize {
 pub enum TrackSize {
     Single(Track),
     MinMax(Track, Track),
+    /// `repeat(auto-fill | auto-fit, …)` — сколько дорожек влезет; при
+    /// `fit` пустые схлопываются (css-grid-2 §auto-repeat). Считает это
+    /// раскладка: на разборе ширины контейнера ещё нет.
+    AutoRepeat { fit: bool, tracks: Vec<TrackSize> },
 }
 
 /// Разрезать короткую запись сетки по косой черте ВНЕ скобок.
@@ -5794,7 +5803,7 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
             .and_then(|r| r.strip_suffix(')'))
         {
             let (count, rest) = inner.split_once(',')?;
-            let count: usize = count.trim().parse().ok()?;
+            let count = count.trim();
             let unit: Vec<TrackSize> = tokenize_tracks(rest)
                 .iter()
                 .filter_map(|t| one(t))
@@ -5802,6 +5811,16 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
             if unit.is_empty() {
                 return None;
             }
+            // Число повторов бывает не числом: `auto-fill` и `auto-fit`
+            // считает раскладка — ей известна ширина контейнера.
+            if count.eq_ignore_ascii_case("auto-fill") || count.eq_ignore_ascii_case("auto-fit") {
+                out.push(TrackSize::AutoRepeat {
+                    fit: count.eq_ignore_ascii_case("auto-fit"),
+                    tracks: unit,
+                });
+                continue;
+            }
+            let count: usize = count.parse().ok()?;
             for _ in 0..count.min(64) {
                 out.extend(unit.iter().cloned());
             }

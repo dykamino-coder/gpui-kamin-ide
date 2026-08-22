@@ -3675,6 +3675,15 @@ pub enum GridTrack {
     MaxContent,
     /// `minmax(min, max)` — пара из двух дорожек выше.
     MinMax(Box<(GridTrack, GridTrack)>),
+    /// KaminIDE patch: `repeat(auto-fill | auto-fit, …)` — сколько дорожек
+    /// влезет. При `fit` пустые дорожки схлопываются в ноль, и остаток
+    /// делят непустые (css-grid-2 §auto-repeat).
+    AutoRepeat {
+        /// Схлопывать пустые дорожки (`auto-fit`).
+        fit: bool,
+        /// Что именно повторяется: одна дорожка или их набор.
+        tracks: Vec<GridTrack>,
+    },
 }
 
 impl Default for GridTrack {

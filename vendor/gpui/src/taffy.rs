@@ -401,6 +401,8 @@ impl ToTaffy<taffy::style::Style> for Style {
                         G::MaxContent => max_content(),
                         _ => auto(),
                     },
+                    // Повтор гранью быть не может: он раскрывается выше.
+                    G::AutoRepeat { .. } => auto(),
                 }
             };
             let side_max = move |t: &G| -> taffy::MaxTrackSizingFunction {
@@ -419,9 +421,27 @@ impl ToTaffy<taffy::style::Style> for Style {
                         G::MaxContent => max_content(),
                         _ => auto(),
                     },
+                    G::AutoRepeat { .. } => auto(),
                 }
             };
             match track {
+                // Повтор отдаётся раскладке своим видом: она сама считает,
+                // сколько дорожек влезет, и схлопывает пустые при `auto-fit`.
+                crate::GridTrack::AutoRepeat { fit, tracks } => {
+                    let count = if *fit {
+                        taffy::style::RepetitionCount::AutoFit
+                    } else {
+                        taffy::style::RepetitionCount::AutoFill
+                    };
+                    let inner: Vec<taffy::TrackSizingFunction> = tracks
+                        .iter()
+                        .map(|t| taffy::TrackSizingFunction {
+                            min: side(t),
+                            max: side_max(t),
+                        })
+                        .collect();
+                    taffy::style_helpers::repeat(count, inner)
+                }
                 crate::GridTrack::MinMax(pair) => {
                     taffy::GridTemplateComponent::Single(minmax(side(&pair.0), side_max(&pair.1)))
                 }
@@ -488,7 +508,11 @@ impl ToTaffy<taffy::style::Style> for Style {
                 None => match self.grid_cols_min {
                     // repeat(auto-fill, minmax(<min>, 1fr))
                     Some(min) => vec![repeat(
-                        taffy::style::RepetitionCount::AutoFill,
+                        if self.grid_cols_fit {
+                            taffy::style::RepetitionCount::AutoFit
+                        } else {
+                            taffy::style::RepetitionCount::AutoFill
+                        },
                         vec![minmax(length(f32::from(min) * scale_factor), fr(1.0))],
                     )],
                     None => to_grid_repeat(&self.grid_cols),

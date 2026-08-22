@@ -83,6 +83,10 @@ fn track(t: &TrackSize) -> gpui::GridTrack {
             gpui::GridTrack::Fraction(*f),
         ))),
         TrackSize::Single(one) => bound(one),
+        TrackSize::AutoRepeat { fit, tracks } => gpui::GridTrack::AutoRepeat {
+            fit: *fit,
+            tracks: tracks.iter().map(track).collect(),
+        },
     }
 }
 
@@ -238,7 +242,25 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
     match (&c.grid_tracks, c.grid_cols, auto_fill) {
         (Some(tracks), _, _) => d = along_line(d, tracks.iter().map(track).collect()),
         // «Сколько влезет» умеет сама раскладка — короткая форма GPUI.
-        (None, _, Some(min)) if !flip => d = d.grid_cols_min(px(min)),
+        (None, _, Some(min)) if !flip => {
+            // Повтор отдаётся раскладке СВОИМ видом: она считает, сколько
+            // дорожек влезет, и при `auto-fit` схлопывает пустые
+            // (css-grid-2 §auto-repeat). Прежняя короткая форма подменяла
+            // дорожку растяжкой `minmax(min, 1fr)`, и уцелевшие дорожки
+            // забирали весь остаток — раздавать было нечего.
+            let r = c.auto_repeat_cols;
+            let unit = match r.and_then(|r| r.track_pct) {
+                Some(k) => gpui::GridTrack::Percent(k),
+                None => gpui::GridTrack::Pixels(px(min)),
+            };
+            d = along_line(
+                d,
+                vec![gpui::GridTrack::AutoRepeat {
+                    fit: r.is_some_and(|r| r.fit),
+                    tracks: vec![unit],
+                }],
+            )
+        }
         (None, Some(n), _) if !flip => d = d.grid_cols(n),
         (None, Some(n), _) => {
             d = d.grid_template_rows((0..n).map(|_| gpui::GridTrack::Auto).collect())
