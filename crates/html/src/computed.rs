@@ -1030,6 +1030,13 @@ pub struct Computed {
     /// Сдвиг, названный единицей ШРИФТА (`ex`, `ch`): хранится сырым —
     /// метрики гарнитуры и кегль известны только при наборе строки.
     pub vertical_shift_len: Option<Len>,
+    /// `vertical-align: text-top` (`true`) и `text-bottom` (`false`): край
+    /// куска равняется по краю ТЕКСТОВОЙ области родителя, а не строки, —
+    /// величина зависит от кеглей обоих и считается при наборе.
+    pub vertical_align_text: Option<bool>,
+    /// Кегль РОДИТЕЛЯ строчного куска: `text-top`/`text-bottom` равняются по
+    /// его текстовой области, а не по самой высокой в строке.
+    pub vertical_align_base: Option<f32>,
     /// `text-orientation: upright` — глифы стоят прямо, а не лежат боком.
     /// Меняет и меру `ch`: продвижение нуля идёт вдоль оси СТРОКИ, а она в
     /// вертикальном письме вертикальна, то есть равна кеглю.
@@ -1583,6 +1590,8 @@ impl Computed {
             vertical_shift: self.vertical_shift,
             vertical_shift_px: self.vertical_shift_px,
             vertical_shift_len: self.vertical_shift_len,
+            vertical_align_text: self.vertical_align_text,
+            vertical_align_base: self.vertical_align_base,
             text_fit: self.text_fit,
             hyphen_char: self.hyphen_char.clone(),
             ..Computed::default()
@@ -3300,6 +3309,11 @@ impl Computed {
                     Some(l @ (Len::Ex(_) | Len::Ch(_))) => self.vertical_shift_len = Some(l),
                     _ => {}
                 }
+                self.vertical_align_text = match v {
+                    "text-top" => Some(true),
+                    "text-bottom" => Some(false),
+                    _ => None,
+                };
                 self.vertical_align = match v {
                     "middle" => Some(Align::Center),
                     "top" => Some(Align::Start),

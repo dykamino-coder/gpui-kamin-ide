@@ -3417,7 +3417,7 @@ fn paragraph_pieces(
                 ]
                 .concat(),
             )
-            .shift_spans(inline::shift_spans(&pieces, biggest))
+            .shift_spans(inline::shift_spans(&pieces, biggest, f32::from(line)))
             .align_last(
                 inherited
                     .text_align_last
@@ -3708,10 +3708,20 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
         // путь блоков давал пустую коробку (clip-path-ellipse-2-ref: рисунок
         // absolute с left/top не рисовался вовсе).
-        if e.tag == "svg" {
+        // Тот же список, что и у обычного пути: у замещаемых детей-блоков
+        // нет, и блочная ветка давала пустую коробку — картинка с краями
+        // не рисовалась вовсе.
+        if matches!(
+            e.tag.as_str(),
+            "svg" | "img" | "canvas" | "video" | "embed" | "object" | "iframe"
+        ) {
             let mut copy = e.clone();
             copy.style.position = None;
-            let built = crate::svg::element(&copy).unwrap_or_else(|| image(&copy));
+            let built = if e.tag == "svg" {
+                crate::svg::element(&copy).unwrap_or_else(|| image(&copy))
+            } else {
+                image(&copy)
+            };
             let holder = styled_div_with(e, &merged).child(built);
             return Some(if stretched {
                 holder.into_any_element()

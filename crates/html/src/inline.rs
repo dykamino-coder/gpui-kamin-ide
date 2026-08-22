@@ -513,6 +513,13 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.vertical_shift = own.vertical_shift;
     c.vertical_shift_px = own.vertical_shift_px;
     c.vertical_shift_len = own.vertical_shift_len;
+    c.vertical_align_text = own.vertical_align_text;
+    // Кегль родителя нужен `text-top`/`text-bottom`: край куска равняется по
+    // ЕГО текстовой области.
+    c.vertical_align_base = match parent.font_size {
+        Some(crate::value::Len::Px(v)) => Some(v),
+        _ => own.vertical_align_base,
+    };
     c.upright = own.upright.or(parent.upright);
     // Наследуемые текстовые свойства из второй волны разбора. Без них
     // `text-transform` на контейнере не доходил до вложенного текста —
@@ -945,7 +952,11 @@ pub fn wrap_spans(
 ///
 /// `vertical-align: super`/`sub` поднимает и опускает кусок внутри строки.
 /// Доля кегля взята браузерная: треть вверх и пятая часть вниз.
-pub fn shift_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
+pub fn shift_spans(
+    pieces: &[Piece],
+    base_size: f32,
+    line_px: f32,
+) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     let mut at = 0usize;
     for p in pieces {
@@ -978,7 +989,27 @@ pub fn shift_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usi
                     -crate::metrics::spacing_px(Some(l), &family, size)
                 })
             })
-            .or_else(|| style.vertical_shift.map(|k| k * size));
+            .or_else(|| style.vertical_shift.map(|k| k * size))
+            .or_else(|| {
+                // `text-top`/`text-bottom` равняют край куска по краю
+                // ТЕКСТОВОЙ области родителя (CSS 2.1 §10.8.1). Разница
+                // берётся из метрик обоих кеглей: подъём и спуск шрифта —
+                // доли кегля, поэтому величина пропорциональна их разности.
+                // Коробка куска — это глифы ПЛЮС полулидинг с каждой
+                // стороны (CSS 2.1 §10.8.1), а у родителя берётся текстовая
+                // область без лидинга. Подъём и спуск — доли кегля.
+                const ASCENT: f32 = 0.8;
+                const DESCENT: f32 = 0.2;
+                let parent = style.vertical_align_base.unwrap_or(base_size);
+                let half = ((line_px - size) / 2.0).max(0.0);
+                style.vertical_align_text.map(|top| {
+                    if top {
+                        (ASCENT * size + half) - ASCENT * parent
+                    } else {
+                        DESCENT * parent - (DESCENT * size + half)
+                    }
+                })
+            });
         if let Some(v) = dy {
             out.push((at..end, gpui::px(v)));
         }
