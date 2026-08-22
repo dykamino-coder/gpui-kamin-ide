@@ -106,6 +106,13 @@ pub fn collect(
                     continue;
                 }
                 let mut merged = inherit(inherited, &e.style);
+                // Относительный сдвиг строчного КОПИТСЯ вниз: вложенные
+                // куски двигаются на сумму сдвигов предков.
+                let own_rel = relative_inset(&e.style);
+                if own_rel != (0.0, 0.0) {
+                    let base = merged.rel_shift.unwrap_or((0.0, 0.0));
+                    merged.rel_shift = Some((base.0 + own_rel.0, base.1 + own_rel.1));
+                }
                 // Фон строчного бокса рисует прогон текста: коробки у него
                 // нет, а фон обязан рваться на переносах вместе со строкой.
                 // Берётся из СЛИТОГО стиля: отложенный цвет (`currentColor`,
@@ -260,6 +267,22 @@ fn overlay_in_row(el: AnyElement) -> AnyElement {
             hole.child(kept).into_any_element()
         }
     }
+}
+
+/// Относительный сдвиг коробки в точках: `left - right`, `top - bottom`
+/// (CSS 2.1 §9.4.3). Нулевой, если элемент не относительный.
+pub(crate) fn relative_inset(style: &Computed) -> (f32, f32) {
+    if style.position != Some(crate::computed::Position::Relative) {
+        return (0.0, 0.0);
+    }
+    let px_of = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    (
+        px_of(style.inset.left) - px_of(style.inset.right),
+        px_of(style.inset.top) - px_of(style.inset.bottom),
+    )
 }
 
 /// Сдвинуть куски вне потока на относительный сдвиг их строчного предка.
@@ -942,6 +965,28 @@ pub fn wrap_spans(
         let w = crate::lines::wrap_of(style);
         if w != whole {
             out.push((at..end, w));
+        }
+        at = end;
+    }
+    out
+}
+
+/// Относительный сдвиг ПО КУСКАМ: отрезок байт → смещение отрисовки.
+///
+/// Отдельно от `shift_spans`: тот растит строчную коробку, а относительный
+/// сдвиг на поток не влияет вовсе (CSS 2.1 §9.4.3).
+pub fn rel_spans(pieces: &[Piece]) -> Vec<(std::ops::Range<usize>, (f32, f32))> {
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    for p in pieces {
+        let Piece::Text { text, style } = p else {
+            continue;
+        };
+        let end = at + text.len();
+        if let Some(d) = style.rel_shift
+            && d != (0.0, 0.0)
+        {
+            out.push((at..end, d));
         }
         at = end;
     }

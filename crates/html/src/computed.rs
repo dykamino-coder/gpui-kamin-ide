@@ -1037,6 +1037,10 @@ pub struct Computed {
     /// Кегль РОДИТЕЛЯ строчного куска: `text-top`/`text-bottom` равняются по
     /// его текстовой области, а не по самой высокой в строке.
     pub vertical_align_base: Option<f32>,
+    /// Накопленный относительный сдвиг строчных предков куска в точках
+    /// (CSS 2.1 §9.4.3): двигает ТОЛЬКО отрисовку, места в потоке не меняет
+    /// и строку не растит.
+    pub rel_shift: Option<(f32, f32)>,
     /// `text-orientation: upright` — глифы стоят прямо, а не лежат боком.
     /// Меняет и меру `ch`: продвижение нуля идёт вдоль оси СТРОКИ, а она в
     /// вертикальном письме вертикальна, то есть равна кеглю.
@@ -1592,6 +1596,7 @@ impl Computed {
             vertical_shift_len: self.vertical_shift_len,
             vertical_align_text: self.vertical_align_text,
             vertical_align_base: self.vertical_align_base,
+            rel_shift: self.rel_shift,
             text_fit: self.text_fit,
             hyphen_char: self.hyphen_char.clone(),
             ..Computed::default()

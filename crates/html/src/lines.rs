@@ -156,6 +156,10 @@ pub struct Paragraph {
     /// Сдвиг куска по вертикали (`vertical-align: super`/`sub`): смещение
     /// базовой линии в точках, вниз положительное.
     shift_spans: Vec<(std::ops::Range<usize>, Pixels)>,
+    /// Относительный сдвиг кусков (CSS 2.1 §9.4.3): двигает только
+    /// отрисовку. Отдельно от `shift_spans` — тот растит строчную коробку,
+    /// а этот на поток не влияет вовсе.
+    rel_spans: Vec<(std::ops::Range<usize>, (f32, f32))>,
     /// Границы строк в байтах — считаются на замере, переиспользуются на
     /// отрисовке.
     lines: Vec<Line>,
@@ -227,6 +231,7 @@ impl Paragraph {
             word_spans: Vec::new(),
             letter_spans: Vec::new(),
             shift_spans: Vec::new(),
+            rel_spans: Vec::new(),
             lines: Vec::new(),
             clamp: None,
             text_overflow: false,
@@ -254,6 +259,11 @@ impl Paragraph {
     }
 
     /// Сдвиг кусков по вертикали: отрезок байт → смещение базовой линии.
+    pub fn rel_spans(mut self, spans: Vec<(std::ops::Range<usize>, (f32, f32))>) -> Self {
+        self.rel_spans = spans;
+        self
+    }
+
     pub fn shift_spans(mut self, spans: Vec<(std::ops::Range<usize>, Pixels)>) -> Self {
         self.shift_spans = spans;
         self
@@ -2339,6 +2349,7 @@ impl Element for Paragraph {
                 || !self.word_spans.is_empty()
                 || !self.letter_spans.is_empty()
                 || !self.shift_spans.is_empty()
+                || !self.rel_spans.is_empty()
             {
                 let (free, dx) = if align == Align::Justify {
                     (free, lead)
@@ -2498,6 +2509,7 @@ impl Paragraph {
             word_spans: self.word_spans.clone(),
             letter_spans: self.letter_spans.clone(),
             shift_spans: self.shift_spans.clone(),
+            rel_spans: self.rel_spans.clone(),
             ortho_limit: self.ortho_limit,
             runs: Vec::new(),
             font_size: self.font_size,
@@ -2799,7 +2811,10 @@ impl Paragraph {
         // трекинг скаляром, поэтому кусок с другим значением обязан идти
         // отдельным вызовом. Без этого `letter-spacing` на `<span>` внутри
         // слова не действовал вовсе.
-        if !self.letter_spans.is_empty() || !self.shift_spans.is_empty() {
+        if !self.letter_spans.is_empty()
+            || !self.shift_spans.is_empty()
+            || !self.rel_spans.is_empty()
+        {
             let mut cuts: Vec<usize> = Vec::new();
             let mut cut = |edge: usize| {
                 if edge > range.start && edge < range.end {
@@ -2822,6 +2837,10 @@ impl Paragraph {
             }
             // Сдвиг по вертикали — свойство самого глифа: он обязан ехать
             // отдельным вызовом целиком.
+            for (r, _) in self.rel_spans.iter() {
+                cut(r.start);
+                cut(r.end);
+            }
             for (r, _) in self.shift_spans.iter() {
                 cut(r.start);
                 cut(r.end);
@@ -2908,9 +2927,18 @@ impl Paragraph {
                 .find(|(r, _)| r.contains(&word.range.start))
                 .map(|(_, v)| *v)
                 .unwrap_or(px(0.));
+            // Относительный сдвиг двигает ТОЛЬКО отрисовку куска: место в
+            // потоке за ним сохраняется, соседи не съезжают (§9.4.3).
+            let (rx, ry) = self
+                .rel_spans
+                .iter()
+                .find(|(r, _)| r.contains(&word.range.start))
+                .map(|(_, v)| *v)
+                .unwrap_or((0.0, 0.0));
+            let at = point(x + px(rx), y + dy + px(ry));
             // Подложка прогона — отдельным вызовом, см. выше.
-            let _ = shaped.paint_background(point(x, y + dy), self.line_height, window, cx);
-            let _ = shaped.paint(point(x, y + dy), self.line_height, window, cx);
+            let _ = shaped.paint_background(at, self.line_height, window, cx);
+            let _ = shaped.paint(at, self.line_height, window, cx);
             // Растянутый выключкой пробел тоже принадлежит прогону, и его
             // подложка обязана быть сплошной. Красим ТОЛЬКО когда пробел
             // целиком внутри одного прогона с фоном — иначе фон соседнего

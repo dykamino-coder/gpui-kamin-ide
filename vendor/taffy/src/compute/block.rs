@@ -169,6 +169,12 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
         .maybe_apply_aspect_ratio(aspect_ratio)
         .maybe_add(box_sizing_adjustment);
 
+    // KaminIDE patch: коробка с НЕпрозрачным переполнением своей базовой
+    // линии наружу не отдаёт — ею служит нижний край margin-бокса
+    // (CSS 2.1 §10.8.1: у `inline-block` с `overflow != visible` базовая
+    // линия это низ коробки, а не последняя строка содержимого).
+    let hides_baseline = style.overflow().y.is_scroll_container();
+
     // Determine margin collapsing behaviour
     let own_margins_collapse_with_children = Line {
         start: vertical_margins_are_collapsible.start
@@ -283,7 +289,7 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
         size: final_outer_size,
         #[cfg(feature = "content_size")]
         content_size,
-        first_baselines: Point { x: None, y: first_baseline },
+        first_baselines: Point { x: None, y: if hides_baseline { None } else { first_baseline } },
         top_margin: if own_margins_collapse_with_children.start {
             first_child_top_margin_set
         } else {

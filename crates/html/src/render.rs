@@ -3418,6 +3418,7 @@ fn paragraph_pieces(
                 .concat(),
             )
             .shift_spans(inline::shift_spans(&pieces, biggest, f32::from(line)))
+            .rel_spans(inline::rel_spans(&pieces))
             .align_last(
                 inherited
                     .text_align_last
