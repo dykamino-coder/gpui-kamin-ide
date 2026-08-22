@@ -15,14 +15,28 @@ const D50: [f32; 3] = [0.964_295_7, 1.0, 0.825_104_6];
 
 /// XYZ (D65) → линейный sRGB.
 const XYZ_TO_LINEAR_SRGB: [f32; 9] = [
-    3.240_97, -1.537_383_2, -0.498_610_76, -0.969_243_65, 1.875_967_5, 0.041_555_06, 0.055_630_08,
-    -0.203_976_96, 1.056_971_5,
+    3.240_97,
+    -1.537_383_2,
+    -0.498_610_76,
+    -0.969_243_65,
+    1.875_967_5,
+    0.041_555_06,
+    0.055_630_08,
+    -0.203_976_96,
+    1.056_971_5,
 ];
 
 /// Линейный sRGB → XYZ (D65).
 const LINEAR_SRGB_TO_XYZ: [f32; 9] = [
-    0.412_390_8, 0.357_584_33, 0.180_480_79, 0.212_639, 0.715_168_65, 0.072_192_32, 0.019_330_82,
-    0.119_194_78, 0.950_532_15,
+    0.412_390_8,
+    0.357_584_33,
+    0.180_480_79,
+    0.212_639,
+    0.715_168_65,
+    0.072_192_32,
+    0.019_330_82,
+    0.119_194_78,
+    0.950_532_15,
 ];
 
 /// XYZ D50 → XYZ D65 (преобразование Брэдфорда).
@@ -224,7 +238,8 @@ fn lab(body: &str, ok: bool) -> Option<(f32, f32, f32, f32)> {
     // Доля светлоты считается от 100 в CIE Lab и от единицы в OKLab.
     // Светлота ЗАЖИМАЕТСЯ в свой диапазон (CSS Color 4 §9.2): значения
     // сверх сотни законны в записи, но обрезаются при вычислении.
-    let l = number(&list[0], if ok { 1.0 } else { 100.0 })?.clamp(0.0, if ok { 1.0 } else { 100.0 });
+    let l =
+        number(&list[0], if ok { 1.0 } else { 100.0 })?.clamp(0.0, if ok { 1.0 } else { 100.0 });
     let x = number(&list[1], if ok { 0.4 } else { 125.0 })?;
     let y = number(&list[2], if ok { 0.4 } else { 125.0 })?;
     let (r, g, b) = if ok {
@@ -242,7 +257,8 @@ fn lch(body: &str, ok: bool) -> Option<(f32, f32, f32, f32)> {
     if list.len() < 3 {
         return None;
     }
-    let l = number(&list[0], if ok { 1.0 } else { 100.0 })?.clamp(0.0, if ok { 1.0 } else { 100.0 });
+    let l =
+        number(&list[0], if ok { 1.0 } else { 100.0 })?.clamp(0.0, if ok { 1.0 } else { 100.0 });
     let c = number(&list[1], if ok { 0.4 } else { 150.0 })?;
     let h = number(&list[2], 1.0)?.to_radians();
     let (x, y) = (c * h.cos(), c * h.sin());
@@ -276,11 +292,7 @@ fn lab_to_srgb(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
     let z = cube(fz, 0.0) * D50[2];
     let xyz = mul(D50_TO_D65, [x, y, z]);
     let lin = mul(XYZ_TO_LINEAR_SRGB, xyz);
-    (
-        srgb_gamma(lin[0]),
-        srgb_gamma(lin[1]),
-        srgb_gamma(lin[2]),
-    )
+    (srgb_gamma(lin[0]), srgb_gamma(lin[1]), srgb_gamma(lin[2]))
 }
 
 fn oklab_to_srgb(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
@@ -316,8 +328,11 @@ fn linear_srgb_to_oklab(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
 /// краёв диапазона решается сразу.
 fn gamut_map(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let eps = 1e-4;
-    let inside =
-        |v: (f32, f32, f32)| (-eps..=1.0 + eps).contains(&v.0) && (-eps..=1.0 + eps).contains(&v.1) && (-eps..=1.0 + eps).contains(&v.2);
+    let inside = |v: (f32, f32, f32)| {
+        (-eps..=1.0 + eps).contains(&v.0)
+            && (-eps..=1.0 + eps).contains(&v.1)
+            && (-eps..=1.0 + eps).contains(&v.2)
+    };
     if inside((r, g, b)) {
         return (r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0));
     }
@@ -341,7 +356,11 @@ fn gamut_map(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
         }
     }
     let v = oklab_to_srgb(l, lo * h.cos(), lo * h.sin());
-    (v.0.clamp(0.0, 1.0), v.1.clamp(0.0, 1.0), v.2.clamp(0.0, 1.0))
+    (
+        v.0.clamp(0.0, 1.0),
+        v.1.clamp(0.0, 1.0),
+        v.2.clamp(0.0, 1.0),
+    )
 }
 
 /// `color(<пространство> c1 c2 c3[/A])` (§10).
@@ -387,7 +406,10 @@ fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
                 }
             };
             // ProPhoto считается при D50 — переводим к D65.
-            mul(D50_TO_D65, mul(PROPHOTO_TO_XYZ, [g(c[0]), g(c[1]), g(c[2])]))
+            mul(
+                D50_TO_D65,
+                mul(PROPHOTO_TO_XYZ, [g(c[0]), g(c[1]), g(c[2])]),
+            )
         }
         "rec2020" => {
             const A: f32 = 1.099_296_8;
@@ -466,7 +488,6 @@ fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
         first.3 * w1 + second.3 * w2,
     ))
 }
-
 
 /// Относительный цвет (css-color-5 §4): `hsl(from currentColor h s l)`.
 ///
@@ -580,10 +601,7 @@ pub(crate) fn resolve_relative(
                             .and_then(|n| n.parse::<f32>().ok().map(|v| v / 100.0))
                             .or_else(|| t.parse().ok())
                     } else {
-                        t.strip_suffix("deg")
-                            .unwrap_or(t)
-                            .parse::<f32>()
-                            .ok()
+                        t.strip_suffix("deg").unwrap_or(t).parse::<f32>().ok()
                     }
                 }
             };
@@ -607,7 +625,11 @@ pub(crate) fn rgb_to_hsl(c: crate::value::Color) -> (f32, f32, f32) {
         return (0.0, 0.0, l);
     }
     let d = max - min;
-    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let s = if l > 0.5 {
+        d / (2.0 - max - min)
+    } else {
+        d / (max + min)
+    };
     let h = if (max - c.r).abs() < 1e-6 {
         ((c.g - c.b) / d).rem_euclid(6.0)
     } else if (max - c.g).abs() < 1e-6 {
@@ -635,7 +657,6 @@ pub(crate) fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (f32, f32, f32) {
     (r + m, g + m, b + m)
 }
 
-
 /// Применить вшитый цветовой профиль ICC к готовому образу.
 ///
 /// Понимается матричный профиль RGB (v2): колоранты `rXYZ/gXYZ/bXYZ` и
@@ -662,14 +683,26 @@ pub(crate) fn apply_icc(
         // (обычный случай картинок-эталонов) это просто цвет.
         let a = px[3] as f32 / 255.0;
         let un = |v: u8| {
-            if a > 0.0 { (v as f32 / 255.0 / a).min(1.0) } else { 0.0 }
+            if a > 0.0 {
+                (v as f32 / 255.0 / a).min(1.0)
+            } else {
+                0.0
+            }
         };
         let (b, g, r) = (un(px[0]), un(px[1]), un(px[2]));
-        let lin = [curve_at(&curves[0], r), curve_at(&curves[1], g), curve_at(&curves[2], b)];
+        let lin = [
+            curve_at(&curves[0], r),
+            curve_at(&curves[1], g),
+            curve_at(&curves[2], b),
+        ];
         let xyz50 = mul(m, lin);
         let xyz = mul(D50_TO_D65, xyz50);
         let srgb = mul(XYZ_TO_LINEAR_SRGB, xyz);
-        let (r, g, b) = gamut_map(srgb_gamma(srgb[0]), srgb_gamma(srgb[1]), srgb_gamma(srgb[2]));
+        let (r, g, b) = gamut_map(
+            srgb_gamma(srgb[0]),
+            srgb_gamma(srgb[1]),
+            srgb_gamma(srgb[2]),
+        );
         out.push((b * a * 255.0).round() as u8);
         out.push((g * a * 255.0).round() as u8);
         out.push((r * a * 255.0).round() as u8);
@@ -697,8 +730,12 @@ pub fn load_profiles(css: &str) {
     let mut from = 0usize;
     while let Some(at) = lower[from..].find("@color-profile") {
         let start = from + at;
-        let Some(open) = css[start..].find('{') else { break };
-        let name = css[start + "@color-profile".len()..start + open].trim().to_string();
+        let Some(open) = css[start..].find('{') else {
+            break;
+        };
+        let name = css[start + "@color-profile".len()..start + open]
+            .trim()
+            .to_string();
         // Слова `@color-profile` встречаются и в ТЕКСТЕ страницы (заголовок
         // теста): правилом считается только запись с именем `--…` прямо
         // перед скобкой.
@@ -706,20 +743,29 @@ pub fn load_profiles(css: &str) {
             from = start + "@color-profile".len();
             continue;
         }
-        let Some(close) = css[start + open..].find('}') else { break };
+        let Some(close) = css[start + open..].find('}') else {
+            break;
+        };
         let block = &css[start + open + 1..start + open + close];
         from = start + open + close;
         let Some(src) = block.split(';').find_map(|d| {
             let (k, v) = d.split_once(':')?;
-            k.trim().eq_ignore_ascii_case("src").then(|| v.trim().to_string())
+            k.trim()
+                .eq_ignore_ascii_case("src")
+                .then(|| v.trim().to_string())
         }) else {
             continue;
         };
-        let Some(path) = crate::computed::parse_url(&src) else { continue };
+        let Some(path) = crate::computed::parse_url(&src) else {
+            continue;
+        };
         let clean = path.strip_prefix("file:///").unwrap_or(&path);
         let read = std::fs::read(clean);
         if std::env::var("HTML_ICC").is_ok() {
-            eprintln!("ICC profile '{name}' <- {clean}: {:?}", read.as_ref().map(|b| b.len()));
+            eprintln!(
+                "ICC profile '{name}' <- {clean}: {:?}",
+                read.as_ref().map(|b| b.len())
+            );
         }
         if let Ok(bytes) = read
             && name.starts_with("--")
@@ -744,13 +790,19 @@ fn icc_to_srgb(profile: &[u8], c: [f32; 3]) -> Option<(f32, f32, f32)> {
     ];
     let xyz = mul(D50_TO_D65, mul(m, lin));
     let srgb = mul(XYZ_TO_LINEAR_SRGB, xyz);
-    Some(gamut_map(srgb_gamma(srgb[0]), srgb_gamma(srgb[1]), srgb_gamma(srgb[2])))
+    Some(gamut_map(
+        srgb_gamma(srgb[0]),
+        srgb_gamma(srgb[1]),
+        srgb_gamma(srgb[2]),
+    ))
 }
 
 /// Найти запись каталога ICC по подписи: (смещение, длина).
 fn icc_tag(profile: &[u8], sig: &[u8; 4]) -> Option<(usize, usize)> {
     let be32 = |at: usize| -> Option<u32> {
-        Some(u32::from_be_bytes(profile.get(at..at + 4)?.try_into().ok()?))
+        Some(u32::from_be_bytes(
+            profile.get(at..at + 4)?.try_into().ok()?,
+        ))
     };
     let count = be32(128)? as usize;
     for i in 0..count.min(256) {
@@ -777,9 +829,8 @@ fn icc_matrix(profile: &[u8]) -> Option<[f32; 9]> {
     }
     // Хранение по столбцам -> матрица по строкам.
     Some([
-        cols[0][0], cols[1][0], cols[2][0],
-        cols[0][1], cols[1][1], cols[2][1],
-        cols[0][2], cols[1][2], cols[2][2],
+        cols[0][0], cols[1][0], cols[2][0], cols[0][1], cols[1][1], cols[2][1], cols[0][2],
+        cols[1][2], cols[2][2],
     ])
 }
 
@@ -843,17 +894,18 @@ mod tests {
             a.3,
         );
         for (got, want) in [(a.0, b.0), (a.1, b.1), (a.2, b.2)] {
-            assert!(
-                (got - want).abs() < 0.02,
-                "{what}: {got} против {want}"
-            );
+            assert!((got - want).abs() < 0.02, "{what}: {got} против {want}");
         }
     }
 
     /// Белый и красный обязаны совпасть во всех записях.
     #[test]
     fn known_colors_survive_the_conversion() {
-        close(parse("lab(100% 0 0)").unwrap(), (1.0, 1.0, 1.0), "lab белый");
+        close(
+            parse("lab(100% 0 0)").unwrap(),
+            (1.0, 1.0, 1.0),
+            "lab белый",
+        );
         close(
             parse("oklch(0.628 0.2577 29.23)").unwrap(),
             (1.0, 0.0, 0.0),

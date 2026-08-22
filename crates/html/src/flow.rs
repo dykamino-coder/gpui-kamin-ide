@@ -65,13 +65,27 @@ impl FlowRow {
     /// Размер ребёнка в осях раскладки: в вертикальном письме инлайн-ось —
     /// физическая высота.
     fn tdims(&self, c: &FlowChild) -> (f32, f32) {
-        if self.vertical_rl { (c.h, c.w) } else { (c.w, c.h) }
+        if self.vertical_rl {
+            (c.h, c.w)
+        } else {
+            (c.w, c.h)
+        }
     }
 
     /// Вырез на полосе [y, y+h): точный экстент форм с обеих сторон.
     fn cut(&self, y: f32, h: f32) -> (f32, f32) {
-        let l = self.shapes.0.iter().map(|f| f.cut(y, y + h)).fold(0.0f32, f32::max);
-        let r = self.shapes.1.iter().map(|f| f.cut(y, y + h)).fold(0.0f32, f32::max);
+        let l = self
+            .shapes
+            .0
+            .iter()
+            .map(|f| f.cut(y, y + h))
+            .fold(0.0f32, f32::max);
+        let r = self
+            .shapes
+            .1
+            .iter()
+            .map(|f| f.cut(y, y + h))
+            .fold(0.0f32, f32::max);
         (l, r)
     }
 
@@ -287,13 +301,25 @@ pub enum FloatShape {
     Band { top: f32, h: f32, w: f32 },
     /// Круг с центром (cx, cy) от верха полосы флоата.
     Circle { top: f32, cx: f32, cy: f32, r: f32 },
-    Ellipse { top: f32, cx: f32, cy: f32, rx: f32, ry: f32 },
+    Ellipse {
+        top: f32,
+        cx: f32,
+        cy: f32,
+        rx: f32,
+        ry: f32,
+    },
     /// Многоугольник: вершины в точках от начала стороны; экстент полосы —
     /// максимум X рёбер в её диапазоне.
-    Poly { top: f32, pts: std::sync::Arc<Vec<(f32, f32)>> },
+    Poly {
+        top: f32,
+        pts: std::sync::Arc<Vec<(f32, f32)>>,
+    },
     /// Профиль из картинки (`shape-outside: url(...)`): экстент на каждую
     /// точку высоты, от начала стороны.
-    Profile { top: f32, ext: std::sync::Arc<Vec<f32>> },
+    Profile {
+        top: f32,
+        ext: std::sync::Arc<Vec<f32>>,
+    },
 }
 
 impl FloatShape {
@@ -317,12 +343,14 @@ impl FloatShape {
                     0.0
                 }
             }
-            FloatShape::Circle { top, cx, cy, r } => {
-                ellipse_cut(top + cy, r, r, cx, y0, y1)
-            }
-            FloatShape::Ellipse { top, cx, cy, rx, ry } => {
-                ellipse_cut(top + cy, rx, ry, cx, y0, y1)
-            }
+            FloatShape::Circle { top, cx, cy, r } => ellipse_cut(top + cy, r, r, cx, y0, y1),
+            FloatShape::Ellipse {
+                top,
+                cx,
+                cy,
+                rx,
+                ry,
+            } => ellipse_cut(top + cy, rx, ry, cx, y0, y1),
             FloatShape::Profile { top, ref ext } => {
                 let a = (y0 - top).max(0.0) as usize;
                 let b = ((y1 - top).ceil()).max(0.0) as usize;
@@ -367,17 +395,34 @@ impl FloatShape {
     pub fn hash_bits(&self) -> u64 {
         let q = |v: f32| (v * 8.0) as i64 as u64;
         match *self {
-            FloatShape::Band { top, h, w } => 1 ^ q(top).rotate_left(8) ^ q(h).rotate_left(24) ^ q(w).rotate_left(40),
-            FloatShape::Circle { top, cx, cy, r } => 2 ^ q(top).rotate_left(6) ^ q(cx).rotate_left(18) ^ q(cy).rotate_left(30) ^ q(r).rotate_left(44),
-            FloatShape::Ellipse { top, cx, cy, rx, ry } => 3 ^ q(top).rotate_left(5) ^ q(cx).rotate_left(15) ^ q(cy).rotate_left(27) ^ q(rx).rotate_left(39) ^ q(ry).rotate_left(51),
+            FloatShape::Band { top, h, w } => {
+                1 ^ q(top).rotate_left(8) ^ q(h).rotate_left(24) ^ q(w).rotate_left(40)
+            }
+            FloatShape::Circle { top, cx, cy, r } => {
+                2 ^ q(top).rotate_left(6)
+                    ^ q(cx).rotate_left(18)
+                    ^ q(cy).rotate_left(30)
+                    ^ q(r).rotate_left(44)
+            }
+            FloatShape::Ellipse {
+                top,
+                cx,
+                cy,
+                rx,
+                ry,
+            } => {
+                3 ^ q(top).rotate_left(5)
+                    ^ q(cx).rotate_left(15)
+                    ^ q(cy).rotate_left(27)
+                    ^ q(rx).rotate_left(39)
+                    ^ q(ry).rotate_left(51)
+            }
             FloatShape::Profile { top, ref ext } => ext
                 .iter()
                 .fold(5u64 ^ q(top), |acc, &v| acc.rotate_left(9) ^ q(v)),
-            FloatShape::Poly { top, ref pts } => pts
-                .iter()
-                .fold(4u64 ^ q(top), |acc, &(x, y)| {
-                    acc.rotate_left(7) ^ q(x) ^ q(y).rotate_left(3)
-                }),
+            FloatShape::Poly { top, ref pts } => pts.iter().fold(4u64 ^ q(top), |acc, &(x, y)| {
+                acc.rotate_left(7) ^ q(x) ^ q(y).rotate_left(3)
+            }),
         }
     }
 }
@@ -611,10 +656,7 @@ impl Element for ColumnStack {
                 let cx_ = i as f32 * (col_w + self.gap) - self.gap * 0.5;
                 window.paint_quad(gpui::fill(
                     Bounds {
-                        origin: point(
-                            bounds.origin.x + px(cx_ - rw * 0.5),
-                            bounds.origin.y,
-                        ),
+                        origin: point(bounds.origin.x + px(cx_ - rw * 0.5), bounds.origin.y),
                         size: size(px(rw), px(target)),
                     },
                     color,

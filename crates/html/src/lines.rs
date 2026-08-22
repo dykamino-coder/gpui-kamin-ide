@@ -395,11 +395,28 @@ impl Paragraph {
         }
         let lh = f32::from(self.line_height);
         let (y0, y1) = (line_no as f32 * lh, (line_no as f32 + 1.0) * lh);
-        let l = self.flow.0.iter().map(|f| f.cut(y0, y1)).fold(0.0f32, f32::max);
-        let r = self.flow.1.iter().map(|f| f.cut(y0, y1)).fold(0.0f32, f32::max);
+        let l = self
+            .flow
+            .0
+            .iter()
+            .map(|f| f.cut(y0, y1))
+            .fold(0.0f32, f32::max);
+        let r = self
+            .flow
+            .1
+            .iter()
+            .map(|f| f.cut(y0, y1))
+            .fold(0.0f32, f32::max);
         // След вырезов строк: FLOW_DBG=1.
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("FLOW_DBG").is_ok()); *ON } {
-            eprintln!("FLOWCUT #{line_no} y={y0}..{y1} l={l} r={r} {:?}", self.flow);
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("FLOW_DBG").is_ok());
+            *ON
+        } {
+            eprintln!(
+                "FLOWCUT #{line_no} y={y0}..{y1} l={l} r={r} {:?}",
+                self.flow
+            );
         }
         (l, r)
     }
@@ -1226,9 +1243,7 @@ impl Paragraph {
             // вообще есть. При замере по максимальному содержимому предела
             // нет, и сохранённый пробел в ширину ВХОДИТ (`pre-wrap-017`:
             // коробка `width: max-content` выходила на знак уже).
-            let measured = if self.wrap.break_spaces
-                || (limit.is_none() && self.wrap.keep_spaces)
-            {
+            let measured = if self.wrap.break_spaces || (limit.is_none() && self.wrap.keep_spaces) {
                 at
             } else {
                 trim_hanging(&self.text[start..at]) + start
@@ -1348,7 +1363,11 @@ impl Paragraph {
         // что узел из идеографических пробелов не доезжает до раскладки
         // ВООБЩЕ (отбрасывался разбором). Когда след ведёт «строка пропала»,
         // смотреть надо сюда, а не в саму раскладку.
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_LINES").is_ok()); *ON } {
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("HTML_LINES").is_ok());
+            *ON
+        } {
             eprintln!(
                 "LINES fonts={:?} {:?} -> {:?}",
                 self.runs
@@ -1536,9 +1555,7 @@ impl Paragraph {
                         // Конец текста переносчик тоже зовёт обязательным
                         // разрывом — но переносить там нечего, а лишняя точка
                         // ломает счёт строк.
-                        unicode_linebreak::BreakOpportunity::Mandatory
-                            if at < self.text.len() =>
-                        {
+                        unicode_linebreak::BreakOpportunity::Mandatory if at < self.text.len() => {
                             out.push(Stop {
                                 at,
                                 mandatory: true,
@@ -2060,7 +2077,11 @@ impl Element for Paragraph {
                     probe.apply_fit(w, window);
                 }
                 let lines = probe.split(limit, window);
-                if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_MEASURE").is_ok()); *ON } {
+                if {
+                    static ON: std::sync::LazyLock<bool> =
+                        std::sync::LazyLock::new(|| std::env::var("HTML_MEASURE").is_ok());
+                    *ON
+                } {
                     eprintln!(
                         "MEASURE {:?} known={:?}x{:?} avail={:?}x{:?} limit={:?} lines={:?}",
                         probe.text,
@@ -2318,10 +2339,7 @@ impl Element for Paragraph {
             // выключку считается уже без него. Правый вырез обтекания
             // (`shape-outside`) — тоже: прижатая вправо строка упирается в
             // форму, а не в край коробки (circle-024: text-align right).
-            let free = bounds.size.width
-                - line.width
-                - line.indent
-                - px(self.flow_cut(i).1);
+            let free = bounds.size.width - line.width - line.indent - px(self.flow_cut(i).1);
             let free = if free < px(0.) { px(0.) } else { free };
             // Свисающий открывающий знак уходит ЗА край: строка сдвигается
             // влево на его ширину. Считается до выбора пути отрисовки —
@@ -2375,7 +2393,11 @@ impl Element for Paragraph {
                         cx,
                     );
                 }
-                y += if self.lines_reversed { -step(i) } else { step(i) };
+                y += if self.lines_reversed {
+                    -step(i)
+                } else {
+                    step(i)
+                };
                 continue;
             }
             let dx = match align {
@@ -2383,7 +2405,11 @@ impl Element for Paragraph {
                 Align::Right => free,
                 _ => px(0.),
             } + lead;
-            if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok()); *ON } {
+            if {
+                static ON: std::sync::LazyLock<bool> =
+                    std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok());
+                *ON
+            } {
                 eprintln!(
                     "TCA para {:?} align={:?} bw={:?} lw={:?} free={:?}",
                     &self.text[..self.text.len().min(6)],
@@ -2411,7 +2437,11 @@ impl Element for Paragraph {
                 String::new()
             };
             self.paint_line(&visible, &runs, at, &mark, window, cx);
-            y += if self.lines_reversed { -step(i) } else { step(i) };
+            y += if self.lines_reversed {
+                -step(i)
+            } else {
+                step(i)
+            };
         }
         for (_, el) in self.overlays.iter_mut() {
             el.paint(window, cx);
@@ -3087,7 +3117,11 @@ pub fn align_of(a: Option<crate::computed::TextAlign>) -> Align {
 /// Выключка абзаца с разворотом логических краёв по стороне письма.
 pub fn align_for(c: &crate::computed::Computed) -> Align {
     let rtl = c.rtl == Some(true);
-    if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("TA_DBG").is_ok()); *ON } {
+    if {
+        static ON: std::sync::LazyLock<bool> =
+            std::sync::LazyLock::new(|| std::env::var("TA_DBG").is_ok());
+        *ON
+    } {
         eprintln!("TA align_for rtl={rtl} ta={:?}", c.text_align);
     }
     let value = c
@@ -3367,4 +3401,3 @@ fn cluster_start(rest: &str) -> bool {
         unicode_linebreak::BreakClass::CombiningMark
     )
 }
-

@@ -363,7 +363,9 @@ fn parse_attr_sel(raw: &str) -> Option<AttrSel> {
         .strip_suffix('i')
         .or_else(|| value.strip_suffix('I'))
         .map(str::trim_end)
-        && (stripped.ends_with('"') || stripped.ends_with('\'') || stripped.ends_with(char::is_whitespace))
+        && (stripped.ends_with('"')
+            || stripped.ends_with('\'')
+            || stripped.ends_with(char::is_whitespace))
     {
         ci = true;
         value = stripped.trim_end();
@@ -506,14 +508,12 @@ pub struct Media {
 
 /// Носитель по умолчанию — печать? Ставит стенд для `*-print`-тестов;
 /// приложение всегда экран.
-pub static PRINT_MEDIA: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+pub static PRINT_MEDIA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Объявления `@page` документа в порядке появления (css-page-3). Вложенные
 /// марджин-боксы (`@top-left` и родня) пока отрезаются. Копится при разборе
 /// листов, забирается сборщиком документа (`take_page_decls`).
-pub static PAGE_DECLS: std::sync::Mutex<Vec<(String, String)>> =
-    std::sync::Mutex::new(Vec::new());
+pub static PAGE_DECLS: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
 
 pub fn take_page_decls() -> Vec<(String, String)> {
     std::mem::take(&mut PAGE_DECLS.lock().unwrap())
@@ -552,7 +552,7 @@ impl Default for Media {
             width: 1280.0,
             height: 800.0,
             dark: true,
-                    print: PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed),
+            print: PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed),
         }
     }
 }
@@ -881,10 +881,7 @@ fn supports_eval_term(term: &str) -> SupTri {
             }
             "font-format" => {
                 let f = args.trim().to_ascii_lowercase();
-                if matches!(
-                    f.as_str(),
-                    "woff" | "woff2" | "truetype" | "opentype"
-                ) {
+                if matches!(f.as_str(), "woff" | "woff2" | "truetype" | "opentype") {
                     SupTri::True
                 } else {
                     SupTri::False
@@ -929,7 +926,11 @@ fn supports_eval_term(term: &str) -> SupTri {
 /// Кончается ли накопленный кусок НЕЗАВЕРШЁННЫМ hex-экранированием:
 /// обратная косая, за ней от одной до шести шестнадцатеричных цифр.
 fn ends_with_open_escape(cur: &str) -> bool {
-    let hex_len = cur.chars().rev().take_while(|c| c.is_ascii_hexdigit()).count();
+    let hex_len = cur
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_hexdigit())
+        .count();
     if hex_len == 0 || hex_len > 6 {
         return false;
     }
@@ -1351,7 +1352,10 @@ pub(crate) fn split_selector_list(raw: &str) -> Vec<&str> {
 /// специфичного селектора списка (селекторы-4 §specificity). `:has()` -
 /// max по списку аргументов БЕЗ собственного веса псевдокласса.
 fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
-    if let Some(arg) = pseudo.strip_prefix("has(").and_then(|r| r.strip_suffix(')')) {
+    if let Some(arg) = pseudo
+        .strip_prefix("has(")
+        .and_then(|r| r.strip_suffix(')'))
+    {
         return split_top_level(arg, ',')
             .into_iter()
             .filter_map(|one| {
@@ -1399,7 +1403,9 @@ pub(crate) fn nth_of_parts(arg: &str) -> Option<(String, Vec<Selector>)> {
             b')' | b']' => depth -= 1,
             c if depth == 0
                 && c.eq_ignore_ascii_case(&b'o')
-                && bytes.get(i + 1).is_some_and(|f| f.eq_ignore_ascii_case(&b'f'))
+                && bytes
+                    .get(i + 1)
+                    .is_some_and(|f| f.eq_ignore_ascii_case(&b'f'))
                 && i > 0
                 && bytes[i - 1].is_ascii_whitespace()
                 && bytes
@@ -1493,7 +1499,8 @@ mod tests {
         assert_eq!(rules[0].decls.get("color").map(String::as_str), Some("red"));
         // Отрицание — запасная ветка для движка БЕЗ поддержки; применять её
         // нельзя, иначе применяются обе ветки пары сразу.
-        let neg = parse_stylesheet_media("@supports not (display: grid) { p { color: red } }", media);
+        let neg =
+            parse_stylesheet_media("@supports not (display: grid) { p { color: red } }", media);
         assert!(neg.is_empty());
         let pos = parse_stylesheet_media("@supports (display: grid) { p { color: red } }", media);
         assert_eq!(pos.len(), 1);
@@ -1572,7 +1579,10 @@ mod tests {
         assert_eq!(mixed.classes, vec!["c".to_string()]);
         let b = mixed.prev.expect("сосед");
         assert_eq!(b.0.classes, vec!["b".to_string()]);
-        assert_eq!(b.0.ancestor.as_ref().expect("предок").0.classes, vec!["a".to_string()]);
+        assert_eq!(
+            b.0.ancestor.as_ref().expect("предок").0.classes,
+            vec!["a".to_string()]
+        );
     }
 
     #[test]

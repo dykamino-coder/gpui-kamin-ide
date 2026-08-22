@@ -62,12 +62,8 @@ fn untaint_filters(e: &mut Element) {
             if !p.tag.starts_with("fe") {
                 continue;
             }
-            let val = |p: &Element, k: &str| {
-                p.attrs
-                    .iter()
-                    .find(|(a, _)| a == k)
-                    .map(|(_, v)| v.clone())
-            };
+            let val =
+                |p: &Element, k: &str| p.attrs.iter().find(|(a, _)| a == k).map(|(_, v)| v.clone());
             let dirty_ref = |name: &Option<String>, prev: bool| match name.as_deref() {
                 None => prev,
                 Some(n) => tainted.contains(n),
@@ -129,7 +125,12 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
     // вкатывается в сам transform парой translate. Одно значение — x,
     // второй осью служит середина fill-box (css-transforms §4);
     // доли — от fill-box (атрибуты width/height фигуры).
-    let attr_of = |name: &str| e.attrs.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
+    let attr_of = |name: &str| {
+        e.attrs
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    };
     let num_attr = |name: &str| attr_of(name).and_then(|v| v.trim().parse::<f32>().ok());
     let origin = attr_of("transform-origin").and_then(|raw| {
         let (fx, fy, fw, fh) = (
@@ -177,8 +178,7 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         // (None = без origin-обёртки).
         let vert_only = |t: &str| matches!(t.trim(), "top" | "bottom");
         let horiz_only = |t: &str| matches!(t.trim(), "left" | "right");
-        let keyword =
-            |t: &str| matches!(t.trim(), "top" | "bottom" | "left" | "right" | "center");
+        let keyword = |t: &str| matches!(t.trim(), "top" | "bottom" | "left" | "right" | "center");
         let (ox, oy) = match toks.as_slice() {
             [a] if vert_only(a) => (fx + fw * 0.5, side(a, fh, fy)?),
             [a] => (side(a, fw, fx)?, fy + fh * 0.5),
@@ -326,24 +326,43 @@ pub fn size_of(e: &Element) -> (f32, f32) {
         Some(crate::value::Len::Px(v)) => Some(v),
         _ => None,
     };
-    if let (Some(w), Some(h)) = (
-        css(e.style.width).or_else(|| num("width")),
-        css(e.style.height).or_else(|| num("height")),
-    ) {
+    let given_w = css(e.style.width).or_else(|| num("width"));
+    let given_h = css(e.style.height).or_else(|| num("height"));
+    if let (Some(w), Some(h)) = (given_w, given_h) {
         return (w, h);
     }
-    if let Some(vb) = e.attr("viewBox") {
+    // `viewBox` задаёт СООТНОШЕНИЕ сторон, а не собственный размер: заданная
+    // сторона тянет за собой вторую (CSS Images 3 §5 default sizing).
+    let ratio = e.attr("viewBox").and_then(|vb| {
         let p: Vec<f32> = vb
             .split([' ', ','])
             .filter(|s| !s.is_empty())
             .filter_map(|s| s.parse().ok())
             .collect();
-        if p.len() == 4 && p[2] > 0.0 && p[3] > 0.0 {
-            return (p[2], p[3]);
+        (p.len() == 4 && p[2] > 0.0 && p[3] > 0.0).then(|| (p[2], p[3]))
+    });
+    match (given_w, given_h, ratio) {
+        (Some(w), None, Some((vw, vh))) => (w, w * vh / vw),
+        (None, Some(h), Some((vw, vh))) => (h * vw / vh, h),
+        // Ни одной стороны: рисунок сам себе размера не даёт. По CSS 2.1
+        // §10.3.2 замещаемый без собственных сторон занимает 300x150, а с
+        // соотношением — наибольший такой прямоугольник, что в 300x150
+        // влезает. Прежде отдавали viewBox как СОБСТВЕННЫЙ размер и 120x120
+        // без него — рисунок выходил своего масштаба, а не блочного.
+        (None, None, Some((vw, vh))) => {
+            let k = (DEFAULT_REPLACED.0 / vw).min(DEFAULT_REPLACED.1 / vh);
+            (vw * k, vh * k)
         }
+        (Some(w), None, None) => (w, DEFAULT_REPLACED.1),
+        (None, Some(h), None) => (DEFAULT_REPLACED.0, h),
+        _ => DEFAULT_REPLACED,
     }
-    (120.0, 120.0)
 }
+
+/// Размер замещаемого элемента, у которого нет собственного (CSS 2.1
+/// §10.3.2: «the used value of 'width' becomes 300px … 'height' becomes
+/// 150px»).
+const DEFAULT_REPLACED: (f32, f32) = (300.0, 150.0);
 
 /// Кэш готовых растров: ключ — разметка и размер.
 ///
@@ -397,8 +416,7 @@ pub fn element(e: &Element) -> Option<AnyElement> {
         for c in &e.children {
             if let Node::Element(el) = c {
                 let own = if horiz {
-                    px_len(el.style.width)
-                        .or_else(|| el.attr("width").and_then(|v| v.parse().ok()))
+                    px_len(el.style.width).or_else(|| el.attr("width").and_then(|v| v.parse().ok()))
                 } else {
                     px_len(el.style.height)
                         .or_else(|| el.attr("height").and_then(|v| v.parse().ok()))
@@ -423,10 +441,8 @@ pub fn element(e: &Element) -> Option<AnyElement> {
     } else {
         0.0
     };
-    let visible_y = !contained
-        && e.style.overflow_y == Some(crate::computed::Overflow::Visible);
-    let visible_x = !contained
-        && e.style.overflow_x == Some(crate::computed::Overflow::Visible);
+    let visible_y = !contained && e.style.overflow_y == Some(crate::computed::Overflow::Visible);
+    let visible_x = !contained && e.style.overflow_x == Some(crate::computed::Overflow::Visible);
     let rw = if visible_x {
         w.max(child_extent(true))
     } else {
@@ -448,18 +464,16 @@ pub fn element(e: &Element) -> Option<AnyElement> {
         img = img.bg(bg.to_hsla());
     }
     if rw > w + 0.5 || rh > h + 0.5 {
-        Some(
-            {
-                use gpui::ParentElement as _;
-                use gpui::Styled as _;
-                gpui::div()
-                    .w(gpui::px(w))
-                    .h(gpui::px(h))
-                    .flex_shrink_0()
-                    .child(img.absolute().top_0().left_0())
-                    .into_any_element()
-            },
-        )
+        Some({
+            use gpui::ParentElement as _;
+            use gpui::Styled as _;
+            gpui::div()
+                .w(gpui::px(w))
+                .h(gpui::px(h))
+                .flex_shrink_0()
+                .child(img.absolute().top_0().left_0())
+                .into_any_element()
+        })
     } else {
         Some(img.into_any_element())
     }
@@ -479,6 +493,14 @@ fn serialize_sized(e: &Element, w: f32, h: f32) -> String {
     };
     let mut out = String::new();
     out.push_str(&format!("<svg width=\"{w}\" height=\"{h}\""));
+    // Пространство имён обязательно: разметка идёт растеризатору отдельным
+    // документом. В XHTML рисунок часто пишут с ПРЕФИКСОМ (`<svg:svg
+    // xmlns:svg=…>`), собственного `xmlns` у корня нет, а имена мы храним
+    // без префикса — без этой строки usvg не разбирал документ вовсе, и
+    // рисунок пропадал целиком (вся семья `*-replaced-*` в CSS2).
+    if !e.attrs.iter().any(|(k, _)| k == "xmlns") {
+        out.push_str(" xmlns=\"http://www.w3.org/2000/svg\"");
+    }
     for (k, v) in &e.attrs {
         if k == "width" || k == "height" {
             continue;
@@ -572,3 +594,4 @@ mod tests {
         assert!(rasterize("<svg", 10.0, 10.0).is_none());
     }
 }
+

@@ -179,7 +179,8 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
         // шрифта: подъём плюс спуск (и зазор строк, если он есть). У Ahem она
         // ровно кегль, у текстовых шрифтов около 1.15–1.3 — из-за постоянной
         // 1.31 соседние коробки одной страницы расходились по высоте строк.
-        let line = f32::from(text_system.ascent(id, size)) - f32::from(text_system.descent(id, size));
+        let line =
+            f32::from(text_system.ascent(id, size)) - f32::from(text_system.descent(id, size));
         // `ic` — продвижение знака `水`. Шрифт без него отдаёт запасной глиф,
         // и такой замер отбрасывается в пользу целого кегля.
         let ic = text_system

@@ -15,7 +15,6 @@
 
 pub mod apply;
 pub mod background;
-pub mod flow;
 pub mod border_image;
 pub mod color_space;
 pub mod computed;
@@ -28,6 +27,7 @@ pub mod doc;
 pub mod dom;
 pub mod encoding;
 pub mod float;
+pub mod flow;
 pub mod fonts;
 pub mod forms;
 pub mod inline;

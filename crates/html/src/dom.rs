@@ -80,6 +80,19 @@ pub(crate) const INLINE_TAGS: &[&str] = &[
 /// (CSS2/generated-content content-067 и родня).
 pub(crate) const DROP_TAGS: &[&str] = &["script", "style", "noscript"];
 
+/// Имя тега без пространственного префикса.
+///
+/// В XHTML рисунок и формулы часто пишут с префиксом (`<svg:svg
+/// xmlns:svg="…">`), а разборщик HTML держит двоеточие частью имени. Движок
+/// сверяет теги по коротким именам, поэтому `svg:svg` не опознавался как
+/// рисунок вовсе — вся семья замещаемых тестов CSS2 рисовала пустоту.
+fn local_name(name: &str) -> String {
+    match name.split_once(':') {
+        Some((_, local)) if !local.is_empty() => local.to_string(),
+        _ => name.to_string(),
+    }
+}
+
 /// Стиль по умолчанию для тега — то, что браузер берёт из своей таблицы.
 /// Без него `<b>` не жирный, а `<h1>` неотличим от абзаца.
 fn user_agent_css() -> &'static str {
@@ -282,32 +295,33 @@ fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         // run-in, не строчный. Плавающие и позиционированные соседи
         // ПРОЗРАЧНЫ: они вне потока и вбеганию не мешают (§9.2.3).
         let Some(j) = (i + 1..nodes.len()).find(|&j| {
-            !is_blank(&nodes[j])
-                && !matches!(&nodes[j], Node::Element(t) if out_of_flow(t))
+            !is_blank(&nodes[j]) && !matches!(&nodes[j], Node::Element(t) if out_of_flow(t))
         }) else {
             i += 1;
             continue;
         };
         let target_ok = matches!(&nodes[j], Node::Element(t)
-            if !t.inline
-                && t.style.run_in != Some(true)
-                && !matches!(
-                    t.style.display,
-                    Some(Display::None)
-                        | Some(Display::InlineBlock)
-                        | Some(Display::InlineFlex)
-                        | Some(Display::InlineGrid)
-                        | Some(Display::InlineTable)
-                        | Some(Display::Table)
-                        | Some(Display::TableRow)
-                        | Some(Display::TableRowGroup)
-                        | Some(Display::TableCell)
-                ));
+        if !t.inline
+            && t.style.run_in != Some(true)
+            && !matches!(
+                t.style.display,
+                Some(Display::None)
+                    | Some(Display::InlineBlock)
+                    | Some(Display::InlineFlex)
+                    | Some(Display::InlineGrid)
+                    | Some(Display::InlineTable)
+                    | Some(Display::Table)
+                    | Some(Display::TableRow)
+                    | Some(Display::TableRowGroup)
+                    | Some(Display::TableCell)
+            ));
         if !target_ok {
             i += 1;
             continue;
         }
-        let Node::Element(mut run) = nodes.remove(i) else { unreachable!() };
+        let Node::Element(mut run) = nodes.remove(i) else {
+            unreachable!()
+        };
         run.inline = true;
         run.style.display = None;
         run.style.run_in = None;
@@ -316,7 +330,9 @@ fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         // (run-in-inherit-001: 5.88 -> 7.35). Цвет нового блока вбёгнутый
         // перенимает неправильно — хвост запаркован.
         let _ = parent;
-        let Node::Element(target) = &mut nodes[j - 1] else { unreachable!() };
+        let Node::Element(target) = &mut nodes[j - 1] else {
+            unreachable!()
+        };
         target.children.insert(0, Node::Element(run));
         // На месте i теперь стоит бывший j-1 — им и продолжаем.
     }
@@ -343,7 +359,9 @@ fn content_box_static_position(nodes: &mut [Node]) {
         }
         let pad = el.style.padding;
         for child in el.children.iter_mut() {
-            let Node::Element(child) = child else { continue };
+            let Node::Element(child) = child else {
+                continue;
+            };
             if child.style.position != Some(Position::Absolute) {
                 continue;
             }
@@ -392,7 +410,9 @@ fn hoist_grid_abspos(nodes: &mut [Node]) {
         }
         let mut taken = vec![];
         for child in el.children.iter_mut() {
-            let Node::Element(child) = child else { continue };
+            let Node::Element(child) = child else {
+                continue;
+            };
             if own_containing_block(&child.style) || is_grid(&child.style) {
                 continue;
             }
@@ -725,7 +745,7 @@ pub(crate) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
             .map(|a| a.value.to_string())
     };
     Some(Ancestor {
-        tag: name.local.to_string(),
+        tag: local_name(&name.local),
         id: find("id"),
         classes: find("class")
             .map(|v| v.split_whitespace().map(str::to_string).collect())
@@ -1044,7 +1064,7 @@ fn walk(
             }
         }
         NodeData::Element { name, attrs, .. } => {
-            let tag = name.local.to_string();
+            let tag = local_name(&name.local);
             if DROP_TAGS.contains(&tag.as_str()) {
                 return;
             }
@@ -1068,15 +1088,17 @@ fn walk(
                 classes: classes.clone(),
                 attrs: attrs.clone(),
                 spot,
-                href: attrs.iter().find(|(k, _)| k == "href").map(|(_, v)| v.clone()),
-                dir: attrs
+                href: attrs
                     .iter()
-                    .find(|(k, _)| k == "dir")
-                    .and_then(|(_, v)| match v.to_ascii_lowercase().as_str() {
+                    .find(|(k, _)| k == "href")
+                    .map(|(_, v)| v.clone()),
+                dir: attrs.iter().find(|(k, _)| k == "dir").and_then(|(_, v)| {
+                    match v.to_ascii_lowercase().as_str() {
                         "rtl" => Some(true),
                         "ltr" => Some(false),
                         _ => None,
-                    }),
+                    }
+                }),
                 has_marks: has_marks_of(handle),
             };
 
@@ -1208,7 +1230,16 @@ fn walk(
             // занимаются именно они, и без них разметка теряет часть смысла.
             // `::before` строится ДО детей, `::after` — после: счётчики они
             // видят в том же порядке, что и браузер (css-lists §counters).
-            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, Sibs::EMPTY, "before", &attrs) {
+            if let Some(el) = pseudo_box(
+                rules,
+                vars,
+                counters,
+                &me,
+                path,
+                Sibs::EMPTY,
+                "before",
+                &attrs,
+            ) {
                 children.push(Node::Element(el));
             }
             walk_children(
@@ -1222,7 +1253,16 @@ fn walk(
                 style.preserve_newlines.unwrap_or(preserve),
                 &mut children,
             );
-            if let Some(el) = pseudo_box(rules, vars, counters, &me, path, Sibs::EMPTY, "after", &attrs) {
+            if let Some(el) = pseudo_box(
+                rules,
+                vars,
+                counters,
+                &me,
+                path,
+                Sibs::EMPTY,
+                "after",
+                &attrs,
+            ) {
                 children.push(Node::Element(el));
             }
             // Выход из области: счётчик, созданный этим узлом, дальше по
@@ -1349,7 +1389,11 @@ fn apply_counter_decls(
         if kind == 2 && is_item && !explicit_item {
             // Пункт обратного списка считает ВНИЗ (css-lists-3
             // §list-item-counter).
-            let step = if counters.is_reversed("list-item") { -1 } else { 1 };
+            let step = if counters.is_reversed("list-item") {
+                -1
+            } else {
+                1
+            };
             counters.update("list-item", step, false);
         }
         let Some(text) = decl else { continue };
@@ -1437,7 +1481,15 @@ fn pseudo_box(
     let mut own_resets: Vec<String> = vec![];
     // У псевдоэлемента-создателя предварительного обхода нет: своей области
     // в дереве коробок он не открывает, и таких пар в наборе не встречается.
-    apply_counter_decls(&style, counters, &mut own_resets, "", &[], &mut false, &|_, _| 0);
+    apply_counter_decls(
+        &style,
+        counters,
+        &mut own_resets,
+        "",
+        &[],
+        &mut false,
+        &|_, _| 0,
+    );
     // Составляющие склеиваются по порядку (css-content-3 §2): строки как
     // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
     let mut text = String::new();
@@ -1531,7 +1583,10 @@ pub(crate) fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Si
         // `:dir(rtl|ltr)` — направление узла: свой атрибут `dir`, иначе
         // ближайшего предка с ним; по умолчанию письмо слева направо
         // (селекторы-4 §direction-pseudo).
-        if let Some(want) = pseudo.strip_prefix("dir(").and_then(|r| r.strip_suffix(')')) {
+        if let Some(want) = pseudo
+            .strip_prefix("dir(")
+            .and_then(|r| r.strip_suffix(')'))
+        {
             let rtl = me
                 .dir
                 .or_else(|| path.iter().rev().find_map(|a| a.dir))
@@ -1547,13 +1602,19 @@ pub(crate) fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Si
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
         }
-        if let Some(want) = pseudo.strip_prefix("lang(").and_then(|r| r.strip_suffix(')')) {
+        if let Some(want) = pseudo
+            .strip_prefix("lang(")
+            .and_then(|r| r.strip_suffix(')'))
+        {
             if !lang_matches(want, me, path) {
                 return false;
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
         }
-        if let Some(arg) = pseudo.strip_prefix("has(").and_then(|r| r.strip_suffix(')')) {
+        if let Some(arg) = pseudo
+            .strip_prefix("has(")
+            .and_then(|r| r.strip_suffix(')'))
+        {
             if !me.has_marks.contains(&has_id(arg)) {
                 return false;
             }
@@ -1628,7 +1689,9 @@ fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool {
     let Some(lang) = lang_of(me).or_else(|| path.iter().rev().find_map(lang_of)) else {
         return false;
     };
-    let want = want.trim().trim_matches(|c| c == '"' || c == char::from(39));
+    let want = want
+        .trim()
+        .trim_matches(|c| c == '"' || c == char::from(39));
     if want.is_empty() || want == "*" {
         return !lang.is_empty();
     }
@@ -1643,7 +1706,10 @@ fn lang_matches(want: &str, me: &Ancestor, path: &[Ancestor]) -> bool {
 /// по имени). Неизвестный или слойный (`:hover`) здесь считается
 /// НЕвыполненным: базовый каскад такое правило не применяет.
 fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
-    if let Some(inner) = pseudo.strip_prefix("not(").and_then(|r| r.strip_suffix(')')) {
+    if let Some(inner) = pseudo
+        .strip_prefix("not(")
+        .and_then(|r| r.strip_suffix(')'))
+    {
         return Selector::parse(inner).is_some_and(|inner| !matches(&inner, me, path, sibs));
     }
     if pseudo == "link" || pseudo == "visited" {
@@ -1651,7 +1717,10 @@ fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> b
         let visited = href.is_empty() || href.starts_with('#');
         return (pseudo == "visited") == visited;
     }
-    if let Some(want) = pseudo.strip_prefix("dir(").and_then(|r| r.strip_suffix(')')) {
+    if let Some(want) = pseudo
+        .strip_prefix("dir(")
+        .and_then(|r| r.strip_suffix(')'))
+    {
         let rtl = me
             .dir
             .or_else(|| path.iter().rev().find_map(|a| a.dir))
@@ -1661,10 +1730,16 @@ fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> b
     if pseudo == "root" {
         return me.tag == "html";
     }
-    if let Some(want) = pseudo.strip_prefix("lang(").and_then(|r| r.strip_suffix(')')) {
+    if let Some(want) = pseudo
+        .strip_prefix("lang(")
+        .and_then(|r| r.strip_suffix(')'))
+    {
         return lang_matches(want, me, path);
     }
-    if let Some(arg) = pseudo.strip_prefix("has(").and_then(|r| r.strip_suffix(')')) {
+    if let Some(arg) = pseudo
+        .strip_prefix("has(")
+        .and_then(|r| r.strip_suffix(')'))
+    {
         return me.has_marks.contains(&has_id(arg));
     }
     if let Some(ok) = nth_of_holds(pseudo, me, path, sibs) {
@@ -1765,7 +1840,12 @@ fn nth_matches(arg: &str, index: usize) -> bool {
 }
 
 /// То же сопоставление, но без отсева по псевдоклассу — для слоя наведения.
-pub(crate) fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
+pub(crate) fn matches_ignoring_pseudo(
+    sel: &Selector,
+    me: &Ancestor,
+    path: &[Ancestor],
+    sibs: Sibs,
+) -> bool {
     if !matches_compound(sel, me) {
         return false;
     }
@@ -2259,10 +2339,7 @@ mod white_space_tests {
     /// зависит, считается ли хвостовой пробел в ширину строки.
     #[test]
     fn break_spaces_reaches_the_wrap_rules() {
-        let nodes = parse(
-            r#"<div style="white-space: break-spaces">X XX X</div>"#,
-            "",
-        );
+        let nodes = parse(r#"<div style="white-space: break-spaces">X XX X</div>"#, "");
         fn find(nodes: &[Node]) -> Option<&Element> {
             for n in nodes {
                 if let Node::Element(e) = n {

@@ -268,7 +268,8 @@ fn along(mode: Tiling, span: f32, piece: f32) -> Vec<(f32, f32)> {
 /// по атласу — зелёная кромка тонула в красной середине (`border-image-002`).
 /// Вырезка на каждый кадр непозволительна, поэтому куски запоминаются.
 type SliceKey = (usize, u32, u32, u32, u32, u32, u32);
-type SliceCache = std::sync::Mutex<std::collections::HashMap<SliceKey, std::sync::Arc<gpui::RenderImage>>>;
+type SliceCache =
+    std::sync::Mutex<std::collections::HashMap<SliceKey, std::sync::Arc<gpui::RenderImage>>>;
 static SLICES: std::sync::OnceLock<SliceCache> = std::sync::OnceLock::new();
 const SLICE_CAP: usize = 256;
 
@@ -312,7 +313,8 @@ fn paint_slice(
         match hit {
             Some(found) => found,
             None => {
-                let Some(cut) = gpui::crop_image(raster, key.1, key.2, key.3, key.4, out_w, out_h) else {
+                let Some(cut) = gpui::crop_image(raster, key.1, key.2, key.3, key.4, out_w, out_h)
+                else {
                     return;
                 };
                 if let Ok(mut m) = cache.lock() {

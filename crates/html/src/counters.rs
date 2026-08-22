@@ -254,7 +254,11 @@ mod tests {
         c.reset("n", 1);
         c.enter();
         c.reset("n", 7);
-        assert_eq!(c.chain_of("n"), vec![1, 7], "вложенный счётчик рядом с внешним");
+        assert_eq!(
+            c.chain_of("n"),
+            vec![1, 7],
+            "вложенный счётчик рядом с внешним"
+        );
         c.leave_scope("n");
         c.leave();
         c.enter();

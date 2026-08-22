@@ -46,13 +46,10 @@ impl Render for Page {
             && std::env::var("WPT_PAGE").is_ok())
         .then(|| page_box(kamin_html::css::page_decls_snapshot()));
         let opts = RenderOpts {
-            viewport: page
-                .as_ref()
-                .map(|p| (p.area.0, p.area.1))
-                .unwrap_or((
-                    f32::from(window.viewport_size().width),
-                    f32::from(window.viewport_size().height),
-                )),
+            viewport: page.as_ref().map(|p| (p.area.0, p.area.1)).unwrap_or((
+                f32::from(window.viewport_size().width),
+                f32::from(window.viewport_size().height),
+            )),
             text,
             normal_line_height: 1.31,
             doc_salt: self.doc.salt(),
@@ -191,7 +188,12 @@ fn page_box(decls: Vec<(String, String)>) -> PageBox {
     let mut bg: Option<Color> = None;
     let mut border = (
         0.0f32,
-        Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+        Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        },
     );
     // Длина: точки как есть; vw/vh — от ДЕФОЛТНОЙ страницы (по тестам
     // page-size-016/017); проценты полей — от ОБЪЯВЛЕННОГО размера
@@ -256,12 +258,11 @@ fn page_box(decls: Vec<(String, String)>) -> PageBox {
                     3 => (side(0), side(1), side(2), side(1)),
                     _ => (side(0), side(1), side(2), side(3)),
                 };
-                for (slot, (t, vert)) in margin.iter_mut().zip([
-                    (a, true),
-                    (b, false),
-                    (c, true),
-                    (d, false),
-                ]) {
+                for (slot, (t, vert)) in
+                    margin
+                        .iter_mut()
+                        .zip([(a, true), (b, false), (c, true), (d, false)])
+                {
                     if let Some(px) = px_of(t, vert) {
                         *slot = px;
                     }
@@ -452,7 +453,10 @@ const SEPARATOR: &str = "<body style=\"background:#cfd8e8;margin:0\"></body>";
 /// наибольшее допустимое ЧИСЛО разошедшихся точек.
 fn fuzzy_pixels(source: &str) -> usize {
     let lower = source.to_ascii_lowercase();
-    let Some(at) = lower.find("name=\"fuzzy\"").or_else(|| lower.find("name=fuzzy")) else {
+    let Some(at) = lower
+        .find("name=\"fuzzy\"")
+        .or_else(|| lower.find("name=fuzzy"))
+    else {
         return 0;
     };
     let tail = &lower[at..];
@@ -983,7 +987,8 @@ fn main() {
                 })
                 .unwrap_or(0);
             // Свой файл отчёта на шард: параллельные прогоны не бьются за один путь.
-            let report_path = std::env::var("WPT_REPORT").unwrap_or_else(|_| "target/wpt-report.txt".into());
+            let report_path =
+                std::env::var("WPT_REPORT").unwrap_or_else(|_| "target/wpt-report.txt".into());
             let mut report = String::new();
             // Показать страницу и дождаться ЕЁ кадра.
             //
@@ -1104,7 +1109,8 @@ fn main() {
                     }
                     last = Some(now);
                 }
-                note.borrow_mut().push(if last.is_some() { 'o' } else { 'n' });
+                note.borrow_mut()
+                    .push(if last.is_some() { 'o' } else { 'n' });
                 last
             };
             // Время на пару: страница, у которой один кадр считается
@@ -1171,9 +1177,7 @@ fn main() {
                 if std::env::var("CROP_DBG").is_ok() {
                     eprintln!("CROP sizes={page_sizes:?}");
                 }
-                if let (Some(Some(a)), Some(Some(b))) =
-                    (page_sizes.first(), page_sizes.get(1))
-                {
+                if let (Some(Some(a)), Some(Some(b))) = (page_sizes.first(), page_sizes.get(1)) {
                     let area = (a.0.max(b.0), a.1.max(b.1));
                     for shot in shots.iter_mut() {
                         if let Some(s) = shot.take() {
@@ -1205,7 +1209,9 @@ fn main() {
                 let source_for_refs = std::fs::read_to_string(test).unwrap_or_default();
                 for tag in source_for_refs.to_ascii_lowercase().split("<link").skip(1) {
                     let head = &tag[..tag.find('>').unwrap_or(tag.len())];
-                    let Some(rel_at) = head.find("rel") else { continue };
+                    let Some(rel_at) = head.find("rel") else {
+                        continue;
+                    };
                     let rel = head[rel_at + 3..]
                         .trim_start()
                         .strip_prefix('=')
@@ -1222,7 +1228,9 @@ fn main() {
                     if !anti && !rel.split_whitespace().any(|t| t == "match") {
                         continue;
                     }
-                    let Some(at) = head.find("href") else { continue };
+                    let Some(at) = head.find("href") else {
+                        continue;
+                    };
                     let rest = &head[at + 4..];
                     let Some(open) = rest.find(['"', '\'']) else {
                         continue;
@@ -1232,7 +1240,9 @@ fn main() {
                         continue;
                     };
                     let href = &rest[open + 1..open + 1 + close];
-                    let dir = std::path::Path::new(test).parent().unwrap_or_else(|| std::path::Path::new("."));
+                    let dir = std::path::Path::new(test)
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("."));
                     let full = dir.join(href);
                     let full = full.to_string_lossy().replace('/', "\\");
                     if anti {

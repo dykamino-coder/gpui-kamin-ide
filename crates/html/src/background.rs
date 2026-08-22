@@ -52,13 +52,20 @@ pub fn load(src: &str) -> Option<Arc<RenderImage>> {
 #[derive(Clone)]
 pub enum Source {
     Raster(Arc<RenderImage>),
-    Vector { markup: String, size: Intrinsic },
+    Vector {
+        markup: String,
+        size: Intrinsic,
+    },
     /// Градиент: своей величины НЕТ вовсе (css-images-3 §4.4) — обе оси
     /// берутся от области, а растрируется он точно в размер плитки.
-    Gradient { raw: String },
+    Gradient {
+        raw: String,
+    },
     /// Базовая форма `clip-path` (`circle`/`ellipse`): альфа-маска буфера
     /// группы. Радиусы и центр считаются от размера плитки (= коробки).
-    Shape { raw: String },
+    Shape {
+        raw: String,
+    },
 }
 
 impl Source {
@@ -124,8 +131,6 @@ impl Source {
         }
     }
 }
-
-
 
 /// Перевести `shape()` (css-shapes-2 §2.4) в контур SVG `d`.
 ///
@@ -196,13 +201,21 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                     d.push_str(&format!(
                         "{}{} {} {} {} {} {} ",
                         if rel { 'c' } else { 'C' },
-                        c1.0, c1.1, c2.0, c2.1, x, y
+                        c1.0,
+                        c1.1,
+                        c2.0,
+                        c2.1,
+                        x,
+                        y
                     ));
                 } else {
                     d.push_str(&format!(
                         "{}{} {} {} {} ",
                         if rel { 'q' } else { 'Q' },
-                        c1.0, c1.1, x, y
+                        c1.0,
+                        c1.1,
+                        x,
+                        y
                     ));
                 }
             }
@@ -215,7 +228,10 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                     d.push_str(&format!(
                         "{}{} {} {} {} ",
                         if rel { 's' } else { 'S' },
-                        c.0, c.1, x, y
+                        c.0,
+                        c.1,
+                        x,
+                        y
                     ));
                 } else {
                     d.push_str(&format!("{}{} {} ", if rel { 't' } else { 'T' }, x, y));
@@ -227,10 +243,7 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                 let (x, y) = pair(toks.get(2)?, toks.get(3)?)?;
                 let of_at = toks.iter().position(|t| *t == "of")?;
                 let rx = val(toks.get(of_at + 1)?, bw)?;
-                let ry = toks
-                    .get(of_at + 2)
-                    .and_then(|t| val(t, bh))
-                    .unwrap_or(rx);
+                let ry = toks.get(of_at + 2).and_then(|t| val(t, bh)).unwrap_or(rx);
                 let sweep = if toks.contains(&"cw") { 1 } else { 0 };
                 let large = if toks.contains(&"large") { 1 } else { 0 };
                 let rot = toks
@@ -242,7 +255,13 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                 d.push_str(&format!(
                     "{}{} {} {} {} {} {} {} ",
                     if rel { 'a' } else { 'A' },
-                    rx, ry, rot, large, sweep, x, y
+                    rx,
+                    ry,
+                    rot,
+                    large,
+                    sweep,
+                    x,
+                    y
                 ));
             }
             "close" => d.push_str("Z "),
@@ -379,7 +398,12 @@ fn rasterize_rrect(args: &str, w: u32, h: u32, scale: f32) -> Option<Arc<RenderI
             } else if px_ > fw - corners[1].0 && py < corners[1].1 {
                 (corners[1].0, corners[1].1, fw - corners[1].0, corners[1].1)
             } else if px_ > fw - corners[2].0 && py > fh - corners[2].1 {
-                (corners[2].0, corners[2].1, fw - corners[2].0, fh - corners[2].1)
+                (
+                    corners[2].0,
+                    corners[2].1,
+                    fw - corners[2].0,
+                    fh - corners[2].1,
+                )
             } else if px_ < corners[3].0 && py > fh - corners[3].1 {
                 (corners[3].0, corners[3].1, corners[3].0, fh - corners[3].1)
             } else {
@@ -389,8 +413,7 @@ fn rasterize_rrect(args: &str, w: u32, h: u32, scale: f32) -> Option<Arc<RenderI
                 let dx = (px_ - cx) / rx;
                 let dy = (py - cy) / ry;
                 let d = (dx * dx + dy * dy).sqrt();
-                let grad =
-                    ((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry)).sqrt() / d.max(1e-6);
+                let grad = ((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry)).sqrt() / d.max(1e-6);
                 (d - 1.0) / grad.max(1e-6)
             } else {
                 (-px_).max(px_ - fw).max(-py).max(py - fh)
@@ -491,8 +514,16 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
         }
     };
     let corner_r = |far: bool| -> f32 {
-        let dx = if far { cx.max(fw - cx) } else { cx.min(fw - cx) };
-        let dy = if far { cy.max(fh - cy) } else { cy.min(fh - cy) };
+        let dx = if far {
+            cx.max(fw - cx)
+        } else {
+            cx.min(fw - cx)
+        };
+        let dy = if far {
+            cy.max(fh - cy)
+        } else {
+            cy.min(fh - cy)
+        };
         (dx * dx + dy * dy).sqrt()
     };
     let radius = |token: &str, c: f32, side: f32, pct_base: f32| -> Option<f32> {
@@ -750,42 +781,43 @@ fn rrect_of(raw: &str, b: &ShapeBox) -> Option<((f32, f32, f32, f32), [(f32, f32
         [(h[0], v[0]), (h[1], v[1]), (h[2], v[2]), (h[3], v[3])]
     };
     if let Some(at) = raw.find("inset(") {
-        let inner = raw[at + 6..].rsplit_once(')').map(|(a, _)| a).unwrap_or(&raw[at + 6..]);
+        let inner = raw[at + 6..]
+            .rsplit_once(')')
+            .map(|(a, _)| a)
+            .unwrap_or(&raw[at + 6..]);
         {
-        let (sides_s, round_s) = match inner.split_once("round") {
-            Some((a, r)) => (a, Some(r)),
-            None => (inner, None),
-        };
-        let v: Vec<&str> = sides_s.split_whitespace().collect();
-        let side = |i: usize| v.get(i).copied().unwrap_or("0");
-        let (t, r, bo, l) = match v.len() {
-            1 => (side(0), side(0), side(0), side(0)),
-            2 => (side(0), side(1), side(0), side(1)),
-            3 => (side(0), side(1), side(2), side(1)),
-            _ => (side(0), side(1), side(2), side(3)),
-        };
-        let (t, r2, bo, l) = (
-            len_px(t, b.rh),
-            len_px(r, b.rw),
-            len_px(bo, b.rh),
-            len_px(l, b.rw),
-        );
-        let rect = (
-            b.rx + l,
-            b.ry + t,
-            (b.rw - l - r2).max(0.0),
-            (b.rh - t - bo).max(0.0),
-        );
-        let radii = round_s.map(parse_round).unwrap_or([(0.0, 0.0); 4]);
-        return Some((rect, radii));
+            let (sides_s, round_s) = match inner.split_once("round") {
+                Some((a, r)) => (a, Some(r)),
+                None => (inner, None),
+            };
+            let v: Vec<&str> = sides_s.split_whitespace().collect();
+            let side = |i: usize| v.get(i).copied().unwrap_or("0");
+            let (t, r, bo, l) = match v.len() {
+                1 => (side(0), side(0), side(0), side(0)),
+                2 => (side(0), side(1), side(0), side(1)),
+                3 => (side(0), side(1), side(2), side(1)),
+                _ => (side(0), side(1), side(2), side(3)),
+            };
+            let (t, r2, bo, l) = (
+                len_px(t, b.rh),
+                len_px(r, b.rw),
+                len_px(bo, b.rh),
+                len_px(l, b.rw),
+            );
+            let rect = (
+                b.rx + l,
+                b.ry + t,
+                (b.rw - l - r2).max(0.0),
+                (b.rh - t - bo).max(0.0),
+            );
+            let radii = round_s.map(parse_round).unwrap_or([(0.0, 0.0); 4]);
+            return Some((rect, radii));
         }
     }
     // Слово-коробка (или пустая/непонятная запись формы НЕ здесь — сюда
     // приходят только распознанные): margin/border/padding/content-box без
     // функции — прямоугольник опорной коробки с её радиусами.
-    let word_only = raw
-        .split_whitespace()
-        .all(|w| w.ends_with("-box"));
+    let word_only = raw.split_whitespace().all(|w| w.ends_with("-box"));
     if word_only && !raw.is_empty() {
         return Some(((b.rx, b.ry, b.rw, b.rh), b.radius));
     }
@@ -797,58 +829,74 @@ fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static str)> {
     let raw = raw.trim();
     // Функция может идти ПОСЛЕ слова-коробки: `padding-box polygon(...)`.
     if let Some(at) = raw.find("polygon(") {
-        let inner = raw[at + 8..].rsplit_once(')').map(|(a, _)| a).unwrap_or(&raw[at + 8..]);
+        let inner = raw[at + 8..]
+            .rsplit_once(')')
+            .map(|(a, _)| a)
+            .unwrap_or(&raw[at + 8..]);
         let inner = inner;
         {
-        let mut rule = "nonzero";
-        let mut pts_src = inner;
-        if let Some(rest) = inner.trim_start().strip_prefix("evenodd") {
-            rule = "evenodd";
-            pts_src = rest.trim_start().trim_start_matches(',');
-        } else if let Some(rest) = inner.trim_start().strip_prefix("nonzero") {
-            pts_src = rest.trim_start().trim_start_matches(',');
-        }
-        let len_px = |t: &str, base: f32| -> f32 {
-            match crate::value::Len::parse(t) {
-                Some(crate::value::Len::Px(v)) => v,
-                Some(crate::value::Len::Pct(k)) => k * base,
-                _ => 0.0,
+            let mut rule = "nonzero";
+            let mut pts_src = inner;
+            if let Some(rest) = inner.trim_start().strip_prefix("evenodd") {
+                rule = "evenodd";
+                pts_src = rest.trim_start().trim_start_matches(',');
+            } else if let Some(rest) = inner.trim_start().strip_prefix("nonzero") {
+                pts_src = rest.trim_start().trim_start_matches(',');
             }
-        };
-        let mut d = String::new();
-        for (i, pair) in pts_src.split(',').enumerate() {
-            let mut it = pair.split_whitespace();
-            let x = b.rx + len_px(it.next()?, b.rw);
-            let y = b.ry + len_px(it.next()?, b.rh);
-            d.push_str(if i == 0 { "M" } else { "L" });
-            d.push_str(&format!("{x} {y} "));
-        }
-        if d.is_empty() {
-            return None;
-        }
-        d.push('Z');
-        return Some((d, if rule == "evenodd" { "evenodd" } else { "nonzero" }));
+            let len_px = |t: &str, base: f32| -> f32 {
+                match crate::value::Len::parse(t) {
+                    Some(crate::value::Len::Px(v)) => v,
+                    Some(crate::value::Len::Pct(k)) => k * base,
+                    _ => 0.0,
+                }
+            };
+            let mut d = String::new();
+            for (i, pair) in pts_src.split(',').enumerate() {
+                let mut it = pair.split_whitespace();
+                let x = b.rx + len_px(it.next()?, b.rw);
+                let y = b.ry + len_px(it.next()?, b.rh);
+                d.push_str(if i == 0 { "M" } else { "L" });
+                d.push_str(&format!("{x} {y} "));
+            }
+            if d.is_empty() {
+                return None;
+            }
+            d.push('Z');
+            return Some((
+                d,
+                if rule == "evenodd" {
+                    "evenodd"
+                } else {
+                    "nonzero"
+                },
+            ));
         }
     }
     if let Some(at) = raw.find("path(") {
-        let inner = raw[at + 5..].rsplit_once(')').map(|(a, _)| a).unwrap_or(&raw[at + 5..]);
+        let inner = raw[at + 5..]
+            .rsplit_once(')')
+            .map(|(a, _)| a)
+            .unwrap_or(&raw[at + 5..]);
         {
-        let d = inner
-            .trim()
-            .trim_matches('"')
-            .trim_matches('\'')
-            .to_string();
-        if d.is_empty() {
-            return None;
-        }
-        return Some((d, "nonzero"));
+            let d = inner
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+            if d.is_empty() {
+                return None;
+            }
+            return Some((d, "nonzero"));
         }
     }
     if let Some(at) = raw.find("shape(") {
-        let inner = raw[at + 6..].rsplit_once(')').map(|(a, _)| a).unwrap_or(&raw[at + 6..]);
+        let inner = raw[at + 6..]
+            .rsplit_once(')')
+            .map(|(a, _)| a)
+            .unwrap_or(&raw[at + 6..]);
         {
-        let d = shape_to_path(&inner.replace(',', ";"), b.rw, b.rh)?;
-        return Some((d, "nonzero"));
+            let d = shape_to_path(&inner.replace(',', ";"), b.rw, b.rh)?;
+            return Some((d, "nonzero"));
         }
     }
     None
@@ -856,13 +904,24 @@ fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static str)> {
 
 /// Скруглённый прямоугольник в маску: SDF по угловым эллипсам (та же
 /// математика, что `rasterize_rrect`, но с началом и размером).
-fn rrect_mask(rect: (f32, f32, f32, f32), radii: [(f32, f32); 4], cols: usize, rows: usize) -> Vec<u8> {
+fn rrect_mask(
+    rect: (f32, f32, f32, f32),
+    radii: [(f32, f32); 4],
+    cols: usize,
+    rows: usize,
+) -> Vec<u8> {
     let (x0, y0, w, h) = rect;
     let (x1, y1) = (x0 + w, y0 + h);
     // Переполнение радиусов: один множитель от худшей пары смежных
     // (css-backgrounds-3 §5.5).
     let mut k = 1.0f32;
-    let sum = |a: f32, c: f32, side: f32| if a + c > side && a + c > 0.0 { side / (a + c) } else { 1.0 };
+    let sum = |a: f32, c: f32, side: f32| {
+        if a + c > side && a + c > 0.0 {
+            side / (a + c)
+        } else {
+            1.0
+        }
+    };
     k = k.min(sum(radii[0].0, radii[1].0, w));
     k = k.min(sum(radii[3].0, radii[2].0, w));
     k = k.min(sum(radii[0].1, radii[3].1, h));
@@ -939,7 +998,9 @@ fn dilate(iv: &mut [Option<(i32, i32)>], sm: f32, cols: usize, rows: usize) {
     }
     let cap = ((cols.max(rows) as f32) * std::f32::consts::SQRT_2) as i32;
     let r = (sm.ceil() as i32).clamp(0, cap.max(1));
-    let dx: Vec<i32> = (0..=r).map(|k| (((r * r - k * k) as f32).sqrt()) as i32).collect();
+    let dx: Vec<i32> = (0..=r)
+        .map(|k| (((r * r - k * k) as f32).sqrt()) as i32)
+        .collect();
     let src: Vec<Option<(i32, i32)>> = iv.to_vec();
     let top = src.iter().position(|s| s.is_some());
     let bot = src.iter().rposition(|s| s.is_some());
@@ -955,10 +1016,11 @@ fn dilate(iv: &mut [Option<(i32, i32)>], sm: f32, cols: usize, rows: usize) {
         }
     };
     for y in 0..rows as i32 {
-        let Some((x1, x2)) = src[y as usize] else { continue };
-        let contains = |m: i32| -> bool {
-            matches!(src[m as usize], Some((a, b)) if a <= x1 && b >= x2)
+        let Some((x1, x2)) = src[y as usize] else {
+            continue;
         };
+        let contains =
+            |m: i32| -> bool { matches!(src[m as usize], Some((a, b)) if a <= x1 && b >= x2) };
         // вверх
         let y0 = (y - r).max(0);
         let mut my = y - 1;
@@ -1005,8 +1067,12 @@ fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
     for (i, name) in ["width", "height"].iter().enumerate() {
         while let Some(at) = head.find(&format!("{name}=")) {
             let rest = &head[at + name.len() + 1..];
-            let Some(quote) = rest.chars().next() else { break };
-            let Some(end) = rest[1..].find(quote) else { break };
+            let Some(quote) = rest.chars().next() else {
+                break;
+            };
+            let Some(end) = rest[1..].find(quote) else {
+                break;
+            };
             own[i] = Some(rest[1..1 + end].to_string());
             head.replace_range(at..at + name.len() + 2 + end + 1, "");
         }
@@ -1069,7 +1135,10 @@ fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
             let Some(colour) = words.first().and_then(|w| crate::value::Color::parse(w)) else {
                 continue;
             };
-            let angles: Vec<f32> = words[1..].iter().filter_map(|w| angle_fraction(w)).collect();
+            let angles: Vec<f32> = words[1..]
+                .iter()
+                .filter_map(|w| angle_fraction(w))
+                .collect();
             if angles.is_empty() {
                 raw.push((colour, None));
             }
@@ -1152,9 +1221,7 @@ fn angle_fraction(token: &str) -> Option<f32> {
 /// Расставить позиции стопов по правилам css-images: крайние без позиции — на
 /// края, промежуточные — поровну между соседями с позициями, и позиции не
 /// убывают.
-fn place_stops(
-    raw: Vec<(crate::value::Color, Option<f32>)>,
-) -> Vec<(crate::value::Color, f32)> {
+fn place_stops(raw: Vec<(crate::value::Color, Option<f32>)>) -> Vec<(crate::value::Color, f32)> {
     let last = raw.len() - 1;
     let mut out: Vec<(crate::value::Color, f32)> = Vec::with_capacity(raw.len());
     let mut floor = 0.0f32;
@@ -1185,7 +1252,12 @@ fn place_stops(
 /// Цвет градиента в точке `t` (0..1) по расставленным стопам.
 fn colour_at(stops: &[(crate::value::Color, f32)], t: f32) -> crate::value::Color {
     let Some(first) = stops.first() else {
-        return crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+        return crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.0,
+        };
     };
     if t <= first.1 {
         return first.0;
@@ -1193,7 +1265,11 @@ fn colour_at(stops: &[(crate::value::Color, f32)], t: f32) -> crate::value::Colo
     for pair in stops.windows(2) {
         let (a, b) = (&pair[0], &pair[1]);
         if t >= a.1 && t <= b.1 {
-            let k = if b.1 > a.1 { (t - a.1) / (b.1 - a.1) } else { 1.0 };
+            let k = if b.1 > a.1 {
+                (t - a.1) / (b.1 - a.1)
+            } else {
+                1.0
+            };
             return crate::value::Color {
                 r: a.0.r + (b.0.r - a.0.r) * k,
                 g: a.0.g + (b.0.g - a.0.g) * k,
@@ -1246,7 +1322,12 @@ fn decode(bytes: &[u8]) -> Option<Source> {
 /// Нулевая ось `viewBox`: соотношение вырождено, рисовать нечего.
 fn degenerate_viewbox(markup: &str) -> bool {
     let head = match markup.find("<svg") {
-        Some(at) => &markup[at..markup[at..].find('>').map(|e| at + e).unwrap_or(markup.len())],
+        Some(at) => {
+            &markup[at..markup[at..]
+                .find('>')
+                .map(|e| at + e)
+                .unwrap_or(markup.len())]
+        }
         None => return false,
     };
     let Some(at) = head.find("viewBox=") else {
@@ -1273,7 +1354,12 @@ fn degenerate_viewbox(markup: &str) -> bool {
 /// не рисует, и рисунок из одного фона выходил прозрачным (box-sizing-007).
 pub(crate) fn svg_root_background(markup: &str) -> Option<crate::value::Color> {
     let head = match markup.find("<svg") {
-        Some(at) => &markup[at..markup[at..].find('>').map(|e| at + e).unwrap_or(markup.len())],
+        Some(at) => {
+            &markup[at..markup[at..]
+                .find('>')
+                .map(|e| at + e)
+                .unwrap_or(markup.len())]
+        }
         None => return None,
     };
     let at = head.find("style=")?;
@@ -1289,7 +1375,12 @@ pub(crate) fn svg_root_background(markup: &str) -> Option<crate::value::Color> {
 
 fn svg_size(markup: &str) -> Intrinsic {
     let head = match markup.find("<svg") {
-        Some(at) => &markup[at..markup[at..].find('>').map(|e| at + e).unwrap_or(markup.len())],
+        Some(at) => {
+            &markup[at..markup[at..]
+                .find('>')
+                .map(|e| at + e)
+                .unwrap_or(markup.len())]
+        }
         None => markup,
     };
     let raw = |name: &str| -> Option<&str> {
@@ -1305,7 +1396,10 @@ fn svg_size(markup: &str) -> Intrinsic {
         if v.ends_with('%') {
             return None;
         }
-        v.trim_end_matches("px").parse().ok().filter(|n: &f32| *n > 0.0)
+        v.trim_end_matches("px")
+            .parse()
+            .ok()
+            .filter(|n: &f32| *n > 0.0)
     };
     let ratio = raw("viewBox").and_then(|vb| {
         let nums: Vec<f32> = vb
@@ -1349,7 +1443,8 @@ fn percent_decode(text: &str) -> Vec<u8> {
     while i < bytes.len() {
         if bytes[i] == b'%'
             && i + 2 < bytes.len()
-            && let Ok(v) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+            && let Ok(v) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
         {
             out.push(v);
             i += 3;
@@ -1431,9 +1526,9 @@ fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
     let (bw, bh) = box_size;
     // Соотношение для растяжений: своё, иначе — из умолчального размера.
     let auto = default_size(i, box_size);
-    let ratio = i.ratio.unwrap_or_else(|| {
-        if auto.1 > 0.0 { auto.0 / auto.1 } else { 1.0 }
-    });
+    let ratio = i
+        .ratio
+        .unwrap_or_else(|| if auto.1 > 0.0 { auto.0 / auto.1 } else { 1.0 });
     match size {
         BgSize::Auto => auto,
         // Без своего соотношения картинка растягивается на место под фон
@@ -1524,7 +1619,9 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
 /// области ряда, но обрезается прямоугольниками ячеек — вызывающий ставит
 /// маску сам и зовёт отрисовку с областью ряда.
 pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Window) {
-    let Some(src) = c.bg_image.clone() else { return };
+    let Some(src) = c.bg_image.clone() else {
+        return;
+    };
     let size = c.bg_size;
     let pos = c.bg_pos;
     let repeat = c.bg_repeat.unwrap_or(BgRepeat::Repeat);
@@ -1560,7 +1657,10 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
     let Some(found) = source(&src) else { return };
     // Место под фон: свой край по `background-origin`.
     let bounds = Bounds {
-        origin: gpui::point(bounds.origin.x + px(inset[3]), bounds.origin.y + px(inset[0])),
+        origin: gpui::point(
+            bounds.origin.x + px(inset[3]),
+            bounds.origin.y + px(inset[0]),
+        ),
         size: gpui::size(
             bounds.size.width - px(inset[1] + inset[3]),
             bounds.size.height - px(inset[0] + inset[2]),
@@ -1622,10 +1722,19 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
     if std::env::var("HTML_BG").is_ok() {
         eprintln!(
             "BG box=({:.0},{:.0}) tile=({:.0},{:.0}) start=({:.0},{:.0}) xs={} ys={}",
-            box_size.0, box_size.1, tile.0, tile.1, start.0, start.1, xs.len(), ys.len()
+            box_size.0,
+            box_size.1,
+            tile.0,
+            tile.1,
+            start.0,
+            start.1,
+            xs.len(),
+            ys.len()
         );
     }
-    let Some(image) = found.raster(tile) else { return };
+    let Some(image) = found.raster(tile) else {
+        return;
+    };
     let corners = gpui::Corners::all(px(radius));
     window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
         for y in &ys {
@@ -1674,9 +1783,7 @@ fn tiling(mode: Tiling, start: f32, tile: f32, box_len: f32) -> Vec<f32> {
             }
             let count = fit.min(max);
             let gap = (box_len - count * tile) / (count - 1.0);
-            (0..count as u32)
-                .map(|i| i as f32 * (tile + gap))
-                .collect()
+            (0..count as u32).map(|i| i as f32 * (tile + gap)).collect()
         }
         // `round` уже подогнал размер плитки — дальше это обычная кладка.
         Tiling::Repeat | Tiling::Round => {
