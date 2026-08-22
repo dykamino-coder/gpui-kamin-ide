@@ -1027,6 +1027,9 @@ pub struct Computed {
     /// что доля кегля на момент разбора ещё неизвестна — у строчного своего
     /// кегля обычно нет, он приходит наследованием.
     pub vertical_shift_px: Option<f32>,
+    /// Сдвиг, названный единицей ШРИФТА (`ex`, `ch`): хранится сырым —
+    /// метрики гарнитуры и кегль известны только при наборе строки.
+    pub vertical_shift_len: Option<Len>,
     /// `text-orientation: upright` — глифы стоят прямо, а не лежат боком.
     /// Меняет и меру `ch`: продвижение нуля идёт вдоль оси СТРОКИ, а она в
     /// вертикальном письме вертикальна, то есть равна кеглю.
@@ -1579,6 +1582,7 @@ impl Computed {
             // кусок в общем прогоне остаётся на базовой линии.
             vertical_shift: self.vertical_shift,
             vertical_shift_px: self.vertical_shift_px,
+            vertical_shift_len: self.vertical_shift_len,
             text_fit: self.text_fit,
             hyphen_char: self.hyphen_char.clone(),
             ..Computed::default()
@@ -3276,15 +3280,25 @@ impl Computed {
                     "super" => Some(-1.0 / 3.0),
                     "sub" => Some(1.0 / 5.0),
                     other => match Len::parse(other) {
-                        // Доля кегля — только у процента: он и написан долей.
-                        // Ось сдвига смотрит вниз, а положительное значение
-                        // поднимает знак ВВЕРХ.
+                        // Долей кегля пишутся процент и `em` — их и храним
+                        // долей. Ось сдвига смотрит вниз, а положительное
+                        // значение поднимает знак ВВЕРХ.
                         Some(Len::Pct(k)) => (k != 0.0).then_some(-k),
+                        Some(Len::Em(k)) => (k != 0.0).then_some(-k),
                         _ => None,
                     },
                 };
-                if let Some(Len::Px(px)) = Len::parse(v) {
-                    self.vertical_shift_px = (px != 0.0).then_some(-px);
+                // Точки и единицы ШРИФТА считаются сразу в точках: доля
+                // кегля тут не годится — `ex` зависит от метрик гарнитуры, а
+                // кегль строчного приходит наследованием уже после разбора.
+                match Len::parse(v) {
+                    // Точки не зависят ни от чего — сразу в поле.
+                    Some(Len::Px(px)) => self.vertical_shift_px = (px != 0.0).then_some(-px),
+                    // Единицы шрифта ждут набора: у строчного своих метрик
+                    // обычно нет, они приходят наследованием уже после
+                    // разбора, и здесь вышли бы от чужой гарнитуры.
+                    Some(l @ (Len::Ex(_) | Len::Ch(_))) => self.vertical_shift_len = Some(l),
+                    _ => {}
                 }
                 self.vertical_align = match v {
                     "middle" => Some(Align::Center),

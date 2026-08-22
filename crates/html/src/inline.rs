@@ -512,6 +512,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // знак поднимал бы весь текст после себя.
     c.vertical_shift = own.vertical_shift;
     c.vertical_shift_px = own.vertical_shift_px;
+    c.vertical_shift_len = own.vertical_shift_len;
     c.upright = own.upright.or(parent.upright);
     // Наследуемые текстовые свойства из второй волны разбора. Без них
     // `text-transform` на контейнере не доходил до вложенного текста —
@@ -959,8 +960,24 @@ pub fn shift_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usi
             Some(Len::Px(v)) => v,
             _ => base_size,
         };
-        let dy = style
-            .vertical_shift_px
+        // К вне-поточной коробке выравнивание в строке не применяется
+        // (CSS 2.1 §9.5, §10.8): она из строки вынута.
+        let out_of_flow = style.float.is_some_and(|f| f != 0)
+            || matches!(
+                style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            );
+        let dy = (!out_of_flow)
+            .then(|| style.vertical_shift_px)
+            .flatten()
+            .or_else(|| {
+                // Единица шрифта разрешается ЗДЕСЬ: кегль и гарнитура куска
+                // уже известны.
+                style.vertical_shift_len.map(|l| {
+                    let family = style.font_family.clone().unwrap_or_default();
+                    -crate::metrics::spacing_px(Some(l), &family, size)
+                })
+            })
             .or_else(|| style.vertical_shift.map(|k| k * size));
         if let Some(v) = dy {
             out.push((at..end, gpui::px(v)));
