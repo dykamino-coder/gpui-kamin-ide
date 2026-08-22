@@ -62,6 +62,9 @@ fn bound(t: &Track) -> gpui::GridTrack {
         Track::MaxContent => gpui::GridTrack::MaxContent,
         Track::Fr(f) => gpui::GridTrack::Fraction(*f),
         Track::Pct(p) => gpui::GridTrack::Percent(*p),
+        // Сюда единица шрифта дойти не должна: её переводит в точки
+        // разрешение кегля. Если всё же дошла — ведём себя как `auto`.
+        Track::Font(_) => gpui::GridTrack::Auto,
     }
 }
 
