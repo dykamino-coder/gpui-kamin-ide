@@ -267,6 +267,24 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
         }
         _ => {}
     }
+    // Повтор по ОСИ РЯДОВ: у классической сетки его не было вовсе, и
+    // `grid-template-rows: repeat(auto-fill, …)` уходил в никуда — ряды
+    // становились неявными, нулевой высоты.
+    if let Some(r) = c.grid_rows_repeat() {
+        let unit = match r.track_pct {
+            Some(k) => gpui::GridTrack::Percent(k),
+            None => gpui::GridTrack::Pixels(px(r.track.unwrap_or(0.0))),
+        };
+        let line = vec![gpui::GridTrack::AutoRepeat {
+            fit: r.fit,
+            tracks: vec![unit],
+        }];
+        d = if flip {
+            d.grid_template_cols(line)
+        } else {
+            d.grid_template_rows(line)
+        };
+    }
     // Строчная сетка ОБНИМАЕТ свои Px-дорожки (shrink-to-fit): блочная
     // ширина на всю строку ломала все пары с `display: inline grid` в
     // разметке эталонов (subgrid-alignment-in-subgridded-axis: серый фон до

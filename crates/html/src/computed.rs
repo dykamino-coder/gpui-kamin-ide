@@ -4863,6 +4863,13 @@ impl Computed {
         )
     }
 
+    /// Повтор «сколько влезет» по оси РЯДОВ, если он задан и годен к
+    /// передаче раскладке (есть размер дорожки).
+    pub fn grid_rows_repeat(&self) -> Option<AutoRepeat> {
+        let r = self.auto_repeat_rows?;
+        (r.track.is_some() || r.track_pct.is_some()).then_some(r)
+    }
+
     /// Обособлена ли СТРОЧНАЯ ось: `contain: size` держит обе, `inline-size`
     /// только её (css-contain-2 §containment-types).
     pub fn contains_inline_size(&self) -> bool {
