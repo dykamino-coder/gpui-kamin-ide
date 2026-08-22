@@ -656,7 +656,23 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
     //
     // 0-width borders are turned into width -1 so that inner_sdf is > 1.0 near
     // the border. Without this, antialiasing pixels would be drawn.
-    float2 straight_border_inner_corner_to_point = corner_to_point + reduced_border;
+    // KaminIDE patch: внутренний прямоугольник рамки строится из ЧЕТЫРЁХ ширин
+    // сразу, а не из одной на полукоробку. Прежде ширина выбиралась по знаку
+    // `center_to_point`, и сторона обрезалась по средней линии коробки:
+    // `border-bottom: 96px` на коробке высотой 96 красил только нижние 48 px.
+    // Симметричную рамку формула повторяет бит в бит, а перекрывающие коробку
+    // ширины вырождают внутренний прямоугольник — разность даёт сплошную
+    // заливку сама, без отдельной ветки.
+    float4 reduced_edges = float4(
+        quad.border_widths.left == 0.0 ? -antialias_threshold : quad.border_widths.left,
+        quad.border_widths.top == 0.0 ? -antialias_threshold : quad.border_widths.top,
+        quad.border_widths.right == 0.0 ? -antialias_threshold : quad.border_widths.right,
+        quad.border_widths.bottom == 0.0 ? -antialias_threshold : quad.border_widths.bottom
+    );
+    float2 inner_min = reduced_edges.xy - half_size;
+    float2 inner_max = half_size - reduced_edges.zw;
+    float2 straight_border_inner_corner_to_point =
+        max(inner_min - center_to_point, center_to_point - inner_max);
 
     // Whether the point is beyond the inner edge of the straight border
     bool is_beyond_inner_straight_border =

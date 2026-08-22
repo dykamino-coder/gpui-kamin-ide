@@ -595,7 +595,18 @@ fn fs_quad(input: QuadVarying) -> @location(0) vec4<f32> {
             corner_center_to_point.y >= 0;
 
     // Vector from straight border inner corner to point.
-    let straight_border_inner_corner_to_point = corner_to_point + reduced_border;
+    // KaminIDE patch: см. windows/shaders.hlsl — внутренний прямоугольник
+    // рамки из четырёх ширин, а не одной на полукоробку.
+    let reduced_min = vec2<f32>(
+        select(quad.border_widths.left, -antialias_threshold, quad.border_widths.left == 0.0),
+        select(quad.border_widths.top, -antialias_threshold, quad.border_widths.top == 0.0));
+    let reduced_max = vec2<f32>(
+        select(quad.border_widths.right, -antialias_threshold, quad.border_widths.right == 0.0),
+        select(quad.border_widths.bottom, -antialias_threshold, quad.border_widths.bottom == 0.0));
+    let inner_min = reduced_min - half_size;
+    let inner_max = half_size - reduced_max;
+    let straight_border_inner_corner_to_point =
+        max(inner_min - center_to_point, center_to_point - inner_max);
 
     // Whether the point is beyond the inner edge of the straight border.
     let is_beyond_inner_straight_border =
