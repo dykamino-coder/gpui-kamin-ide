@@ -2072,7 +2072,15 @@ impl Element for Paragraph {
                     let font = run.font.clone();
                     let size = run.font_size.unwrap_or(probe.font_size);
                     let id = window.text_system().resolve_font(&font);
-                    window.text_system().baseline_offset(id, size, line_height)
+                    // Полулидинг считается сам: готовая `baseline_offset`
+                    // ВЫЧИТАЕТ спуск, а он в метриках хранится со знаком
+                    // минус (`direct_write.rs`), и лишний спуск уходил в
+                    // отступ сверху — базовая линия вставала ниже верной
+                    // (Ahem 16px: 14.4 вместо 12.8).
+                    let ascent = window.text_system().ascent(id, size);
+                    let descent = window.text_system().descent(id, size);
+                    let content = ascent + descent.abs();
+                    (line_height - content) / 2.0 + ascent
                 });
                 (
                     size(known.width.unwrap_or(width), known.height.unwrap_or(across)),
