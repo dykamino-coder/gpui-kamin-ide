@@ -697,8 +697,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // элементы ряда съезжали друг к другу против браузера.
     // Блок внутри строчного разрывает его на анонимные коробки (CSS 2.1
     // §9.2.1.1) — разбиение идёт ДО схлопывания полей: вынесенный блок
-    // обязан схлопнуть свои поля с новыми соседями.
-    let split = split_block_in_inline(nodes);
+    // обязан схлопнуть свои поля с новыми соседями. В гибком контейнере и
+    // сетке разрыва нет вовсе: там дети блокифицируются, и куски уехали бы
+    // по чужим дорожкам.
+    let split = if ordered_context {
+        nodes.to_vec()
+    } else {
+        split_block_in_inline(nodes)
+    };
     let nodes: &[Node] = &split;
     let collapsed = if ordered_context {
         reorder(nodes.to_vec())
@@ -1627,26 +1633,61 @@ fn out_of_flow(c: &Computed) -> bool {
         )
 }
 
+/// Настоящий ли это строчный элемент.
+///
+/// `display: inline` хранится как строчная коробка с пометкой — по одному
+/// лишь тегу судить нельзя: `<div style="display:inline">` строчный, а
+/// `<span style="display:block">` блочный.
+fn real_inline(e: &Element) -> bool {
+    // Атомарные строчные — кнопка, поле, список выбора и замещаемые — стоят
+    // в строке целиком, и содержимое их не разрывает: рвутся только
+    // НЕзамещаемые строчные коробки (CSS 2.1 §9.2.1.1).
+    const ATOMIC: &[&str] = &[
+        "button", "select", "textarea", "input", "img", "svg", "canvas", "video", "audio",
+        "object", "embed", "iframe", "meter", "progress",
+    ];
+    if ATOMIC.contains(&e.tag.as_str()) {
+        return false;
+    }
+    if e.style.inline_display == Some(true) {
+        return true;
+    }
+    match e.style.display {
+        Some(_) => false,
+        None => e.inline || crate::dom::INLINE_TAGS.contains(&e.tag.as_str()),
+    }
+}
+
 /// Блочный ли это узел с точки зрения разрыва строчного.
 fn breaks_inline(n: &Node) -> bool {
     let Node::Element(e) = n else { return false };
-    if out_of_flow(&e.style) {
+    if out_of_flow(&e.style) || real_inline(e) {
         return false;
     }
+    // Рвут строку только НАСТОЯЩИЕ блочные виды. Внутренние части таблицы
+    // (ряд, ячейка, группа) сами по себе разрыва не вызывают: вокруг них
+    // сборщик строит анонимную таблицу, и её судьба решается отдельно.
     match e.style.display {
-        Some(Display::Block) | Some(Display::Flex) | Some(Display::Grid) | Some(Display::Table) => {
-            true
-        }
+        Some(Display::Block)
+        | Some(Display::Flex)
+        | Some(Display::Grid)
+        | Some(Display::GridLanes)
+        | Some(Display::Table)
+        | Some(Display::ListItem) => true,
         Some(_) => false,
-        // Без своего `display` блочность решает тег.
         None => !e.inline && !crate::dom::INLINE_TAGS.contains(&e.tag.as_str()),
     }
 }
 
 /// Есть ли в поддереве строчного блочный потомок в потоке.
+///
+/// `display: contents` своей коробки не даёт — блок из-под него виден
+/// строчному хозяину как свой (css-display-3 §box-generation).
 fn contains_block(children: &[Node]) -> bool {
     children.iter().any(|n| match n {
-        Node::Element(e) if e.inline || crate::dom::INLINE_TAGS.contains(&e.tag.as_str()) => {
+        Node::Element(e)
+            if real_inline(e) || e.style.display == Some(Display::Contents) =>
+        {
             !out_of_flow(&e.style) && contains_block(&e.children)
         }
         other => breaks_inline(other),
@@ -1661,11 +1702,7 @@ fn contains_block(children: &[Node]) -> bool {
 /// идущие блоки в отдельные анонимные коробки не заворачиваются.
 fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
     let need = nodes.iter().any(|n| match n {
-        Node::Element(e) => {
-            (e.inline || crate::dom::INLINE_TAGS.contains(&e.tag.as_str()))
-                && !out_of_flow(&e.style)
-                && contains_block(&e.children)
-        }
+        Node::Element(e) => real_inline(e) && !out_of_flow(&e.style) && contains_block(&e.children),
         Node::Text(_) => false,
     });
     if !need {
@@ -1677,8 +1714,7 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
             out.push(node.clone());
             continue;
         };
-        let inline_host = e.inline || crate::dom::INLINE_TAGS.contains(&e.tag.as_str());
-        if !inline_host || out_of_flow(&e.style) || !contains_block(&e.children) {
+        if !real_inline(e) || out_of_flow(&e.style) || !contains_block(&e.children) {
             out.push(node.clone());
             continue;
         }
@@ -1686,7 +1722,14 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
         // своего оформления не имеет, а спан внутри неё — имеет.
         let mut piece: Vec<Node> = vec![];
         let flush = |piece: &mut Vec<Node>, out: &mut Vec<Node>| {
-            if piece.is_empty() {
+            // Кусок из одних схлопываемых пробелов коробки не создаёт —
+            // иначе он рисовал бы фон и рамку строчного на пустом месте.
+            let blank = piece.iter().all(|n| match n {
+                Node::Text(t) => t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n')),
+                Node::Element(_) => false,
+            });
+            if piece.is_empty() || blank {
+                piece.clear();
                 return;
             }
             let mut host = e.clone();
@@ -1716,6 +1759,15 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
                     if block.style.inset.top.is_none() {
                         block.style.inset.top = e.style.inset.top;
                     }
+                }
+                // Прозрачность и слой хозяина действуют на ВЕСЬ разорванный
+                // элемент, включая вынесенный блок: раньше блок был куском
+                // строки и получал их заодно с ней.
+                if e.style.opacity.is_some() && block.style.opacity.is_none() {
+                    block.style.opacity = e.style.opacity;
+                }
+                if e.style.z_index.is_some() && block.style.z_index.is_none() {
+                    block.style.z_index = e.style.z_index;
                 }
                 out.push(Node::Element(block));
                 continue;
