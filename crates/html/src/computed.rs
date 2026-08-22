@@ -4778,15 +4778,26 @@ impl Computed {
         w > 0.0 && h > 0.0 && !uniform && max_r > w.min(h) * 0.5 + 0.01
     }
 
+    /// Обособление размера не действует на таблицу: её размер задают
+    /// дорожки, а не «содержимое как таковое» (css-contain-2 §size
+    /// containment; Blink `layout_table.h` — таблица не годится под него).
+    fn size_containment_applies(&self) -> bool {
+        !matches!(
+            self.display,
+            Some(Display::Table) | Some(Display::InlineTable)
+        )
+    }
+
     /// Обособлена ли СТРОЧНАЯ ось: `contain: size` держит обе, `inline-size`
     /// только её (css-contain-2 §containment-types).
     pub fn contains_inline_size(&self) -> bool {
-        self.contain_size == Some(true) || self.contain_inline_size == Some(true)
+        self.size_containment_applies()
+            && (self.contain_size == Some(true) || self.contain_inline_size == Some(true))
     }
 
     /// Обособлена ли БЛОЧНАЯ ось.
     pub fn contains_block_size(&self) -> bool {
-        self.contain_size == Some(true)
+        self.size_containment_applies() && self.contain_size == Some(true)
     }
 
     /// То же по ФИЗИЧЕСКИМ осям: при вертикальном письме строчная ось идёт

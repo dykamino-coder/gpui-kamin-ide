@@ -695,6 +695,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // Схлопывание вертикальных отступов есть ТОЛЬКО в обычном потоке: в
     // гибком контейнере и сетке CSS его запрещает, а мы схлопывали везде —
     // элементы ряда съезжали друг к другу против браузера.
+    // Блок внутри строчного разрывает его на анонимные коробки (CSS 2.1
+    // §9.2.1.1) — разбиение идёт ДО схлопывания полей: вынесенный блок
+    // обязан схлопнуть свои поля с новыми соседями.
+    let split = split_block_in_inline(nodes);
+    let nodes: &[Node] = &split;
     let collapsed = if ordered_context {
         reorder(nodes.to_vec())
     } else {
@@ -1612,6 +1617,116 @@ fn layered(el: AnyElement, c: &Computed, allowed: bool) -> AnyElement {
 /// пишут — «картинка слева, текст справа» — выражается рядом из двух колонок
 /// точно. Отличие от браузера одно: текст не заворачивается ПОД плавающий
 /// блок, когда тот кончился. `clear` закрывает ряд и начинает новый.
+/// Уходит ли элемент из потока: плавающие и внепоточные строчного не рвут
+/// (Blink `layout_inline.cc`: разрыв вызывают только блоки В ПОТОКЕ).
+fn out_of_flow(c: &Computed) -> bool {
+    c.float.is_some_and(|f| f != 0)
+        || matches!(
+            c.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        )
+}
+
+/// Блочный ли это узел с точки зрения разрыва строчного.
+fn breaks_inline(n: &Node) -> bool {
+    let Node::Element(e) = n else { return false };
+    if out_of_flow(&e.style) {
+        return false;
+    }
+    match e.style.display {
+        Some(Display::Block) | Some(Display::Flex) | Some(Display::Grid) | Some(Display::Table) => {
+            true
+        }
+        Some(_) => false,
+        // Без своего `display` блочность решает тег.
+        None => !e.inline && !crate::dom::INLINE_TAGS.contains(&e.tag.as_str()),
+    }
+}
+
+/// Есть ли в поддереве строчного блочный потомок в потоке.
+fn contains_block(children: &[Node]) -> bool {
+    children.iter().any(|n| match n {
+        Node::Element(e) if e.inline || crate::dom::INLINE_TAGS.contains(&e.tag.as_str()) => {
+            !out_of_flow(&e.style) && contains_block(&e.children)
+        }
+        other => breaks_inline(other),
+    })
+}
+
+/// Разорвать строчные, внутри которых лежит блок (CSS 2.1 §9.2.1.1).
+///
+/// Строчный элемент с блочным потомком превращается в тройку «анонимный
+/// блок | блок | анонимный блок»: строчное содержимое до и после блока
+/// остаётся в своих анонимных коробках, сам блок встаёт между ними. Подряд
+/// идущие блоки в отдельные анонимные коробки не заворачиваются.
+fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
+    let need = nodes.iter().any(|n| match n {
+        Node::Element(e) => {
+            (e.inline || crate::dom::INLINE_TAGS.contains(&e.tag.as_str()))
+                && !out_of_flow(&e.style)
+                && contains_block(&e.children)
+        }
+        Node::Text(_) => false,
+    });
+    if !need {
+        return nodes.to_vec();
+    }
+    let mut out: Vec<Node> = vec![];
+    for node in nodes {
+        let Node::Element(e) = node else {
+            out.push(node.clone());
+            continue;
+        };
+        let inline_host = e.inline || crate::dom::INLINE_TAGS.contains(&e.tag.as_str());
+        if !inline_host || out_of_flow(&e.style) || !contains_block(&e.children) {
+            out.push(node.clone());
+            continue;
+        }
+        // Куски строчного содержимого копят стиль хозяина: анонимная коробка
+        // своего оформления не имеет, а спан внутри неё — имеет.
+        let mut piece: Vec<Node> = vec![];
+        let flush = |piece: &mut Vec<Node>, out: &mut Vec<Node>| {
+            if piece.is_empty() {
+                return;
+            }
+            let mut host = e.clone();
+            host.children = std::mem::take(piece);
+            out.push(Node::Element(anon_element(
+                "anon-block",
+                vec![Node::Element(host)],
+            )));
+        };
+        // Блок может лежать глубже, внутри вложенных строчных: сперва
+        // раскрываем их, и тогда на этом уровне он виден анонимной коробкой.
+        let kids = split_block_in_inline(&e.children);
+        for child in &kids {
+            if breaks_inline(child) {
+                flush(&mut piece, &mut out);
+                // Относительный сдвиг строчного хозяина переносится на
+                // вынесенный блок (§9.2.1.1: разрыв не отменяет смещения).
+                let mut block = match child {
+                    Node::Element(c) => c.clone(),
+                    Node::Text(_) => unreachable!("блоком бывает только элемент"),
+                };
+                if e.style.position == Some(crate::computed::Position::Relative) {
+                    block.style.position = Some(crate::computed::Position::Relative);
+                    if block.style.inset.left.is_none() {
+                        block.style.inset.left = e.style.inset.left;
+                    }
+                    if block.style.inset.top.is_none() {
+                        block.style.inset.top = e.style.inset.top;
+                    }
+                }
+                out.push(Node::Element(block));
+                continue;
+            }
+            piece.push(child.clone());
+        }
+        flush(&mut piece, &mut out);
+    }
+    out
+}
+
 fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
     let floated = nodes.iter().any(|n| match n {
         Node::Element(e) => e.style.float.is_some_and(|f| f != 0),
@@ -5618,16 +5733,26 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         if e.style.contains_height() && matches!(e.style.height, None | Some(Len::Auto)) {
             d = d.h(px(ch + pad_y));
         }
-        let mut image = match crate::background::source(src) {
-            Some(crate::background::Source::Vector { markup, .. })
-                if cw > 0.0 && ch > 0.0 =>
-            {
+        // Источник берётся тем же путём, что и вне обособления: строку со
+        // схемой `file:` система уходит скачивать, и картинка молча не
+        // рисуется. Растр декодируется своим декодером, вектор растрируется
+        // в уже посчитанный размер.
+        let local = src
+            .strip_prefix("file:///")
+            .or_else(|| src.strip_prefix("file://"))
+            .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
+        let mut image = match crate::background::source(local.unwrap_or(src)) {
+            Some(crate::background::Source::Vector { markup, .. }) if cw > 0.0 && ch > 0.0 => {
                 match crate::svg::rasterize(&markup, cw, ch) {
                     Some(r) => gpui::img(r),
                     None => gpui::img(SharedString::from(src.to_string())),
                 }
             }
-            _ => gpui::img(SharedString::from(src.to_string())),
+            Some(crate::background::Source::Raster(ready)) => gpui::img(ready),
+            _ => match local {
+                Some(path) => gpui::img(std::path::PathBuf::from(path)),
+                None => gpui::img(SharedString::from(src.to_string())),
+            },
         };
         image = image.w(px(cw)).h(px(ch)).object_fit(gpui::ObjectFit::Fill);
         return d.child(image).into_any_element();

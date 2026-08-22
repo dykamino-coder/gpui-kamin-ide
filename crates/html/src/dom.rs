@@ -62,7 +62,7 @@ impl Element {
 }
 
 /// Теги, которые в HTML участвуют в строке текста, а не разрывают её.
-const INLINE_TAGS: &[&str] = &[
+pub(crate) const INLINE_TAGS: &[&str] = &[
     "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark",
     "q", "rp", "rt", "ruby", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u",
     "var", "wbr", "img", "svg",
@@ -1034,7 +1034,13 @@ fn walk(
             // (`word-space-transform-011`: `あ<wbr>い<wbr>\n<wbr>う` шло одной
             // строкой, потому что перевод пропадал ещё на разборе).
             if preserve || !text.chars().all(collapsible) || text.contains(' ') {
-                out.push(Node::Text(text));
+                // Комментарий разрезает пробельный кусок надвое, а схлопывание
+                // работает по одному узлу — выходило два пробела подряд.
+                // Соседние текстовые узлы склеиваются в один отрезок.
+                match out.last_mut() {
+                    Some(Node::Text(prev)) if !preserve => prev.push_str(&text),
+                    _ => out.push(Node::Text(text)),
+                }
             }
         }
         NodeData::Element { name, attrs, .. } => {

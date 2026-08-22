@@ -643,10 +643,14 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     }
     // Вклад обособленной коробки в измеряющего родителя — тоже
     // `contain-intrinsic-size`: он же перебивает автоминимум элемента ряда
-    // или сетки (`min-width: auto` = размер по содержимому, а содержимое
-    // здесь не считается). ОТСТУПЛЕНИЕ ОТ СПЕКИ: коробка не сожмётся ниже
-    // этой величины даже при явной меньшей ширине — так сходится набор.
-    if c.contains_width() && matches!(c.min_width, None | Some(Len::Auto)) && !shrink_to_fit {
+    // или сетки (`min-width: auto` = размер по содержимому, а содержимого
+    // здесь нет). При ЯВНОЙ ширине вклад не нужен — она и есть ответ, а
+    // подпорка снизу растягивала коробку против написанного.
+    if c.contains_width()
+        && matches!(c.min_width, None | Some(Len::Auto))
+        && matches!(c.width, None | Some(Len::Auto))
+        && !shrink_to_fit
+    {
         let side = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,
             _ => 0.0,
