@@ -15,7 +15,7 @@ business logic сторонних plugins находятся вне scope; об�
 - **deferred** — изменение осознанно не планируется до указанного условия;
 - **verify** — код пока не меняется, нужен целевой runtime-прогон.
 
-Наблюдения ниже зафиксированы 20–21 августа 2026 года на KaminIDE 1.0.53. Source
+Наблюдения ниже зафиксированы 20–24 августа 2026 года на KaminIDE 1.0.53. Source
 аудит выполнен на `origin/main` commit `5b5d93d`.
 
 ## Confirmed incident facts
@@ -67,6 +67,14 @@ Snapshot был получен до более позднего продолже
   RPC доходит до необработанного Promise в child, а общий
   `unhandledRejection` containment показывает crash toast, оставляя extension
   host живым. Нарушенный cancellation contract описан в BR-19.
+- в новой session во время активной работы агента Console продолжала показывать
+  output, Chat header, counters и activity spinner продолжали обновляться, но
+  центральная лента периодически становилась пустой. При этом в ней оставался
+  marker `58 earlier messages — scroll up to load`. По коду такой marker
+  означает, что viewer уже получил и признал видимыми больше 150 записей, однако
+  последние 150 не дали ни одной отрисованной карточки. Это отдельный
+  visibility/render-window incident BR-22, а не доказательство общего CEF/GPU
+  сбоя или потери Bridge connection.
 
 Agent Teams и hook approval имеют отдельные подтверждённые границы:
 
@@ -719,6 +727,58 @@ IDs and forbids silent family fallback. Production audit records
 raw-versus-distinct assistant counts and subagent rows before/after the current
 join without mutating data.
 
+### BR-22 — Keep live chat render window populated by drawable rows
+
+**Status:** investigation. **Dependency:** diagnostic capture из текущего UI;
+BR-01 желателен для корреляции с runtime events. **Acceptance будущего fix:**
+automated differential/render tests + Windows CEF runtime gate.
+
+Наблюдаемый 24 августа screenshot локализует отказ уже после загрузки данных:
+
+- Console и activity state продолжают обновляться, поэтому agent/PTY не
+  остановились и весь application renderer не перестал рисовать;
+- `58 earlier messages` создаётся только при
+  `visibleMerged.length - renderCap === 58`, где начальный `renderCap` равен
+  150;
+- между marker и live activity spinner нет ни одной message/tool card. Значит,
+  viewer считает хвост окна видимым, но `JsonlEntry` возвращает `null` для всего
+  смонтированного хвоста либо эквивалентно теряет уже подготовленные vnode.
+
+Source уже содержит защиту от этого класса ошибок: неизвестные entry types,
+bookkeeping rows, невидимые attachments и несколько system subtypes должны быть
+отфильтрованы до windowing. Но контракт остаётся раздвоенным: `entryIsVisible`
+решает, что занимает слот, а `JsonlEntry` отдельно решает, что реально рисуется.
+Кроме того, `recentTip` допускает записи от последнего assistant до конца в
+обход `entryIsVisible`, проверяя только `NON_RENDERING_ENTRY_TYPES`. Поэтому
+точная причина текущего случая пока не доказана: это может быть новый
+entry/subtype/attachment shape, один из `recentTip` bypass paths либо stale
+derived/vnode cache. Исправлять произвольно выбранный вариант без dump нельзя.
+
+До implementation нужен diagnostic, сохранённый кнопкой со stethoscope прямо
+во время пустого состояния, и второй dump после самовосстановления той же
+session. Уже существующий `DiagnosticButton` записывает store/drop summary,
+`mergedCount`, `visibleMergedCount`, `visibleByType` и последние 40 visible rows;
+в evidence также фиксируются точное local time + timezone, tab/session id,
+было ли active streaming/tool burst/Agent Teams и происходили ли tab switch,
+reconnect или compaction. Payload previews перед передачей redacted; tokens,
+prompts и tool output не публикуются.
+
+Будущий fix обязан сделать один predicate/source of truth для «занимает слот и
+рисуется», а не пополнять очередной несвязанный deny-list. Tests строят окно из
+более чем 150 строк каждого non-rendering/unknown/system/attachment/sidechain
+shape, длинный live tool burst, stub→canonical hand-off и cache hit/miss. Для
+непустой loaded session invariant: mounted tail содержит хотя бы последнюю
+drawable conversation row; поток структурных событий не может циклически
+переключать её на пустое окно. Windows gate держит новую session с активным
+streaming и сериями user-tools минимум 10 минут: Console и Chat продолжают
+обновляться, центральная лента не мигает и не исчезает.
+
+До event trace BR-22 не объединяется с BR-06: BR-06 связан с update после tab
+switch/reconnect и pointer activity, а текущий incident возникал периодически в
+уже активной новой session. BR-22 нужно классифицировать до BR-16, потому что оба
+будущих change PR затрагивают `JsonlViewer` render/window contract и иначе
+создадут лишний конфликт или скроют регрессию друг друга.
+
 ## Current draft PR integration order
 
 Все перечисленные PR остаются draft. `mergeable` относительно сегодняшнего
@@ -756,14 +816,16 @@ protection в GitHub сейчас отсутствуют. Maintainer agent сл�
 8. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
    как fix PR только если симптом сохранился; отдельная задача для reconnect не
    заводится.
-9. BR-16 upward history anchoring идёт отдельным UI PR и не блокирует connection
-   recovery chain.
-10. BR-11 inventory native blockers, затем минимальный BR-07.
-11. BR-08 без удаления существующего maintenance contract.
-12. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
+9. BR-22 live render-window collapse: сначала получить paired diagnostic dumps
+   пустого и восстановившегося состояния и локализовать расходящийся entry path.
+10. BR-16 upward history anchoring идёт после классификации BR-22 отдельным UI
+   PR и не блокирует connection recovery chain.
+11. BR-11 inventory native blockers, затем минимальный BR-07.
+12. BR-08 без удаления существующего maintenance contract.
+13. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
    migration на всех deployments.
-13. BR-15 Agent Teams selection eval.
-14. BR-02 и только затем решение по BR-03.
+14. BR-15 Agent Teams selection eval.
+15. BR-02 и только затем решение по BR-03.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.
