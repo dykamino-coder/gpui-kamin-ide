@@ -333,7 +333,21 @@ impl Element for Img {
                             }
 
                             let image_size = data.render_size(frame_index);
-                            style.aspect_ratio = Some(image_size.width / image_size.height);
+                            // KaminIDE patch: соотношение сторон влияет ТОЛЬКО
+                            // когда хотя бы одна сторона автоматическая
+                            // (css-sizing-4 §aspect-ratio: «only ever has an
+                            // effect if at least one of the box's sizes is
+                            // automatic»). Прежде оно ставилось всегда и
+                            // вдобавок затирало заданное свойством
+                            // `aspect-ratio`: картинка с обеими заданными
+                            // сторонами тянулась к своей пропорции.
+                            let both_definite = !matches!(style.size.width, Length::Auto)
+                                && !matches!(style.size.height, Length::Auto);
+                            if !both_definite {
+                                style
+                                    .aspect_ratio
+                                    .get_or_insert(image_size.width / image_size.height);
+                            }
 
                             if let Length::Auto = style.size.width {
                                 style.size.width = match style.size.height {
