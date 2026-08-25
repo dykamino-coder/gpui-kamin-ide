@@ -792,7 +792,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     } else {
         collapsed
     };
-    let collapsed = by_layer(wrap_floats(collapsed, inherited.width));
+    let collapsed = by_layer(wrap_floats(collapsed, inherited.width, inherited.clear));
     // Блок мы изображаем гибкой колонкой, а её дети по умолчанию сжимаются —
     // в обычном потоке этого нет: ребёнок выше родителя обязан вылезти, а не
     // ужаться. Поэтому в потоке сжатие детям выключается, если разметка не
@@ -1793,7 +1793,21 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
     out
 }
 
-fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
+fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>) -> Vec<Node> {
+    // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
+    // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
+    // наследования у ненаследуемого свойства нет, а родительский стиль есть
+    // только у вызывающего.
+    let nodes: Vec<Node> = nodes
+        .into_iter()
+        .map(|n| match n {
+            Node::Element(mut e) if e.style.clear_inherit => {
+                e.style.clear = parent_clear;
+                Node::Element(e)
+            }
+            other => other,
+        })
+        .collect();
     let floated = nodes.iter().any(|n| match n {
         Node::Element(e) => e.style.float.is_some_and(|f| f != 0),
         Node::Text(_) => false,
@@ -1835,7 +1849,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
             }
             // `clear` у соседа обрывает ряд: он обязан начать свой. Так
             // написаны эталоны WPT — колонка из `float: right` + `clear: both`.
-            if j > i && next.style.clear == Some(true) {
+            if j > i && clears_side(next.style.clear, side) {
                 break;
             }
             let mut floater = next.clone();
@@ -1897,7 +1911,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>) -> Vec<Node> {
         let mut out_of_flow: Vec<Node> = vec![];
         while j < nodes.len() {
             if let Node::Element(next) = &nodes[j]
-                && (next.style.clear == Some(true) || next.style.float.is_some_and(|f| f != 0))
+                && (clears_side(next.style.clear, side) || next.style.float.is_some_and(|f| f != 0))
             {
                 break;
             }
@@ -4034,6 +4048,14 @@ fn at_static_position(c: &Computed) -> bool {
         && !edge_set(c.inset.right)
         && !edge_set(c.inset.bottom)
         && !edge_set(c.inset.left)
+}
+
+/// Обрывает ли `clear` обтекание со стороны `side` (-1 слева, 1 справа).
+///
+/// `clear: left` правый флоат не трогает и наоборот (CSS 2.1 §9.5.2);
+/// прежде `clear` был двузначным, и любая сторона обрывала любой ряд.
+fn clears_side(clear: Option<i8>, side: i8) -> bool {
+    matches!(clear, Some(c) if c == 0 || c == side)
 }
 
 /// Задан ли край позиционированного элемента.

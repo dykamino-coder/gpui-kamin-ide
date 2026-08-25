@@ -984,8 +984,14 @@ pub struct Computed {
     pub transform_origin_px: (Option<f32>, Option<f32>),
     /// `float`: -1 — влево, 1 — вправо, 0 — не обтекается.
     pub float: Option<i8>,
-    /// `clear` — прервать обтекание перед этим блоком.
-    pub clear: Option<bool>,
+    /// `clear: inherit` — сторону берёт родитель. Своего наследования у
+    /// `clear` нет (свойство ненаследуемое), поэтому ключевое слово помнится
+    /// отдельно и разрешается там, где родительский стиль под рукой.
+    pub(crate) clear_inherit: bool,
+    /// `clear` — сторона, с которой обтекание обрывается перед этим блоком:
+    /// -1 слева, 1 справа, 0 с обеих. Стороны различаются, потому что
+    /// `clear: left` мимо правого флоата проходит насквозь (CSS 2.1 §9.5.2).
+    pub clear: Option<i8>,
     /// `writing-mode`: вертикальное письмо — блоки идут по горизонтали.
     pub vertical: Option<bool>,
     /// `writing-mode: vertical-rl` — блоки идут справа налево.
@@ -4152,7 +4158,15 @@ impl Computed {
                     _ => Some(0),
                 }
             }
-            "clear" => self.clear = Some(v != "none"),
+            "clear" => {
+                self.clear_inherit = v == "inherit";
+                self.clear = match v {
+                    "left" => Some(-1),
+                    "right" => Some(1),
+                    "both" => Some(0),
+                    _ => None,
+                }
+            }
             "text-orientation" => self.upright = Some(v == "upright"),
             "writing-mode" => {
                 // `sideways-*` отличается от `vertical-*` только поворотом
