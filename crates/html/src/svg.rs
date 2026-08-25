@@ -594,4 +594,3 @@ mod tests {
         assert!(rasterize("<svg", 10.0, 10.0).is_none());
     }
 }
-

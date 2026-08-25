@@ -4328,8 +4328,22 @@ impl Computed {
                     if parts.len() == 4 {
                         let side = |t: &str| match t {
                             "auto" => None,
+                            // Нулевая длина есть ноль в любой единице, и
+                            // `rect(-0em, …)` обязан обрезать, а не читаться
+                            // как `auto` (`visufx/clip-076…102`). Кегель на
+                            // этом шаге ещё не известен, поэтому ненулевые
+                            // относительные единицы по-прежнему мимо.
                             _ => match Len::parse(t) {
                                 Some(Len::Px(v)) => Some(v),
+                                Some(
+                                    Len::Em(v)
+                                    | Len::Ex(v)
+                                    | Len::Ch(v)
+                                    | Len::Ic(v)
+                                    | Len::Lh(v)
+                                    | Len::Vh(v)
+                                    | Len::Vw(v),
+                                ) if v == 0.0 => Some(0.0),
                                 _ => None,
                             },
                         };
@@ -6138,10 +6152,26 @@ fn solid_gradient(c: Color) -> Gradient {
 
 fn assign_size(slot: &mut Option<Len>, v: &str) {
     let parsed = Len::parse(v);
-    if matches!(
-        parsed,
-        Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if n < 0.0
-    ) {
+    // Отрицательный размер невалиден в ЛЮБОЙ единице (CSS 2.1 §10.4:
+    // `min-width`/`min-height` — «Value: <length> | <percentage> | inherit»,
+    // отрицательные значения не допускаются). Прежде отбраковывались только
+    // px, проценты и em, а `min-height: -1ex` доживал до раскладки.
+    let negative = match parsed {
+        Some(
+            Len::Px(n)
+            | Len::Pct(n)
+            | Len::Em(n)
+            | Len::Vh(n)
+            | Len::Vw(n)
+            | Len::Ch(n)
+            | Len::Ex(n)
+            | Len::Ic(n)
+            | Len::Lh(n),
+        ) => n < 0.0,
+        Some(Len::EmPx(a, b) | Len::LhPx(a, b)) => a < 0.0 || b < 0.0,
+        _ => false,
+    };
+    if negative {
         return;
     }
     *slot = parsed;

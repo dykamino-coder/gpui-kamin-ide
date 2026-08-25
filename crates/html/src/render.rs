@@ -7685,7 +7685,15 @@ fn track_list(
         return (0..cols as usize)
             .map(|i| match first_row.get(i).copied().flatten() {
                 Some(w) => gpui::GridTrack::Pixels(px(w)),
-                None => gpui::GridTrack::Fraction(1.0),
+                // Пол дорожки — ноль, а не содержимое: фиксированная
+                // раскладка содержимое НЕ меряет (CSS 2.1 §17.5.2.1), и
+                // колонка вправе быть у́же него. Голая доля брала минимумом
+                // вклад `min-content`, из-за чего сумма колонок перерастала
+                // заданную ширину таблицы (`fixed-table-layout-003a01`).
+                None => gpui::GridTrack::MinMax(Box::new((
+                    gpui::GridTrack::Pixels(px(0.0)),
+                    gpui::GridTrack::Fraction(1.0),
+                ))),
             })
             .collect();
     }
