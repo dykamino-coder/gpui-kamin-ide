@@ -15,6 +15,7 @@
 
 pub mod apply;
 pub mod background;
+pub mod bands;
 pub mod border_image;
 pub mod color_space;
 pub mod computed;
