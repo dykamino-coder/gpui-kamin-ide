@@ -742,7 +742,9 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
             // определённой ширины — раскладка сжимает его до самого узкого
             // содержимого, и текст встаёт столбиком по букве. В браузере такой
             // элемент занимает ширину содержимого без переносов; повторяем это.
-            let horizontal = c.inset.left.is_some() && c.inset.right.is_some();
+            // Явный `auto` краем не считается (CSS 2.1 §9.3.2).
+            let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
+            let horizontal = edge(c.inset.left) && edge(c.inset.right);
             if !horizontal && c.width.is_none() {
                 d = d.flex_shrink_0().whitespace_nowrap();
             }

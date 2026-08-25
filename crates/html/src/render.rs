@@ -3778,8 +3778,8 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // элементу коробка нужна настоящая, поэтому он идёт без пустышки.
         // Остальным она нужна: без неё сдвигаются соседи (замерено на
         // `position-sticky-contained-by-display-table`).
-        let stretched = (e.style.inset.left.is_some() && e.style.inset.right.is_some())
-            || (e.style.inset.top.is_some() && e.style.inset.bottom.is_some());
+        let stretched = (edge_set(e.style.inset.left) && edge_set(e.style.inset.right))
+            || (edge_set(e.style.inset.top) && edge_set(e.style.inset.bottom));
         // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
         // путь блоков давал пустую коробку (clip-path-ellipse-2-ref: рисунок
         // absolute с left/top не рисовался вовсе).
@@ -4030,10 +4030,21 @@ fn at_static_position(c: &Computed) -> bool {
     // сборщик дерева; пустышка в потоке ломала бы этот слой.
     c.position == Some(crate::computed::Position::Absolute)
         && !relative_size
-        && c.inset.top.is_none()
-        && c.inset.right.is_none()
-        && c.inset.bottom.is_none()
-        && c.inset.left.is_none()
+        && !edge_set(c.inset.top)
+        && !edge_set(c.inset.right)
+        && !edge_set(c.inset.bottom)
+        && !edge_set(c.inset.left)
+}
+
+/// Задан ли край позиционированного элемента.
+///
+/// `left: auto` — это ОТСУТСТВИЕ края (CSS 2.1 §9.3.2: начальное значение
+/// `auto`), а разбор даёт на него `Some(Len::Auto)`. Проверка `is_some()`
+/// читала явный `auto` как заданный край, и элемент терял статическую
+/// позицию: `abspos-*-applies-to-*` вставали в угол содержащего блока
+/// вместо своего места в потоке.
+fn edge_set(l: Option<Len>) -> bool {
+    !matches!(l, None | Some(Len::Auto))
 }
 
 /// Есть ли у инлайнового куска собственная коробка.
