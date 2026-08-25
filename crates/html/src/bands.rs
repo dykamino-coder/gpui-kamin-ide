@@ -304,6 +304,11 @@ impl FloatBands {
             if !b.top.is_finite() || !next.top.is_finite() {
                 continue;
             }
+            // Полоса, кончившаяся ВЫШЕ потребителя, его строк не режет:
+            // `cut` на ней и так дал бы ноль, но и держать её незачем.
+            if next.top <= from_y {
+                continue;
+            }
             let (top, h) = (b.top - from_y, next.top - b.top);
             if h <= 0.0 {
                 continue;
@@ -442,6 +447,51 @@ mod tests {
                 w: 40.0
             }]
         );
+    }
+
+    /// Лесенка из четырёх флоатов — геометрия `CSS2/floats-clear/floats-005`
+    /// (дюйм = 96 точек, содержащий блок 1.25in).
+    ///
+    /// Последняя строка ловит наследование экстента при разрезе: полоса
+    /// [96, 120) несёт 91.2, а [120, 192) — 72.
+    #[test]
+    fn ladder() {
+        let mut b = FloatBands::new(120.0);
+        assert_eq!(b.add_float(-1, 115.2, 96.0, None), (0.0, 0.0));
+        assert_eq!(b.add_float(-1, 72.0, 96.0, None), (0.0, 96.0));
+        assert_eq!(b.add_float(-1, 19.2, 24.0, None), (72.0, 96.0));
+        assert_eq!(b.add_float(-1, 48.0, 24.0, None), (72.0, 120.0));
+    }
+
+    /// Правило 3: узкий правый не влезает рядом с широким левым и уходит под
+    /// него (`floats/floats-rule3-outside-left-002`).
+    #[test]
+    fn rule3_opposite() {
+        let mut b = FloatBands::new(500.0);
+        assert_eq!(b.add_float(-1, 475.0, 50.0, None), (0.0, 0.0));
+        assert_eq!(b.add_float(1, 50.0, 50.0, None), (450.0, 50.0));
+    }
+
+    /// Разрез посередине чужого флоата: новая полоса наследует его экстент.
+    #[test]
+    fn split_inherits() {
+        let mut b = FloatBands::new(200.0);
+        b.add_float(-1, 40.0, 100.0, None);
+        // Правый встаёт на своей стороне и режет левую полосу пополам.
+        assert_eq!(b.add_float(1, 30.0, 50.0, None), (170.0, 0.0));
+        assert_eq!(b.available(0.0, 10.0), (40.0, 170.0));
+        // Ниже правого левый ещё держится.
+        assert_eq!(b.available(60.0, 10.0), (40.0, 200.0));
+    }
+
+    /// `available` через границу двух полос берёт худшее из обеих.
+    #[test]
+    fn available_window() {
+        let mut b = FloatBands::new(200.0);
+        b.add_float(-1, 30.0, 20.0, None);
+        b.add_float(1, 50.0, 100.0, None);
+        // Окно [10, 40) задевает и полосу с левым флоатом, и следующую.
+        assert_eq!(b.available(10.0, 30.0), (30.0, 150.0));
     }
 
     /// Смещение потребителя вжигается в верх формы.
