@@ -1137,6 +1137,11 @@ pub struct Computed {
     pub run_in: Option<bool>,
     /// `display: table-caption` — метка для таблицы.
     pub is_caption: Option<bool>,
+    /// Род группы рядов: 0 — шапка, 1 — тело, 2 — подвал. `Display` у всех
+    /// трёх ОДИН (`TableRowGroup`), раскладка у них одинаковая, — а §17.5.3
+    /// требует переставить шапку вверх, подвал вниз. Различить их по
+    /// `Display` нечем, поэтому род хранится отдельно.
+    pub row_group_kind: Option<u8>,
     /// `contain: style` — счётчики и кавычки не выходят из поддерева.
     pub contain_style: Option<bool>,
     /// `contain-intrinsic-size`: подменная своя величина (css-sizing-5 §5).
@@ -1772,6 +1777,9 @@ impl Computed {
             }
             "display" => {
                 self.inline_display = None;
+                // Каскад мог поставить группу выше по важности, а ниже —
+                // обычный блок: метка рода не переживает своё значение.
+                self.row_group_kind = None;
                 // Запись из ДВУХ слов (CSS Display 3): `inline grid-lanes`,
                 // `block flow` и родня — внешний вид и внутренний.
                 //
@@ -1830,6 +1838,11 @@ impl Computed {
                     // Таблица, стоящая В СТРОКЕ, как inline-block.
                     "inline-table" => Some(Display::InlineTable),
                     "table-row-group" | "table-header-group" | "table-footer-group" => {
+                        self.row_group_kind = Some(match v {
+                            "table-header-group" => 0,
+                            "table-footer-group" => 2,
+                            _ => 1,
+                        });
                         Some(Display::TableRowGroup)
                     }
                     // run-in решается ПОСЛЕ построения дерева: вбегает

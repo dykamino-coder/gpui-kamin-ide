@@ -6429,16 +6429,26 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // не трогается. Прошлая попытка ломала css-position — она сдвигала
     // ряды и там, где группы уже стояли по порядку.
     let fixed = {
-        let first_of = |tag: &str| -> Option<u64> {
+        // Роль группы задаётся ТЕГОМ ИЛИ `display` (§17.5.3): `div` с
+        // `table-header-group` встаёт первым так же, как `<thead>`.
+        let kind_of = |g: &Element| -> Option<u8> {
+            match g.tag.as_str() {
+                "thead" => Some(0),
+                "tbody" => Some(1),
+                "tfoot" => Some(2),
+                _ => g.style.row_group_kind,
+            }
+        };
+        let first_with = |k: u8| -> Option<u64> {
             fixed.iter().find_map(|n| match n {
-                Node::Element(g) if g.tag == tag => Some(g.node_id),
+                Node::Element(g) if kind_of(g) == Some(k) => Some(g.node_id),
                 _ => None,
             })
         };
         // Заголовочной и подвальной становится только ПЕРВАЯ группа
-        // своего рода; последующие thead/tfoot — обычные группы рядов.
-        let head = first_of("thead");
-        let foot = first_of("tfoot");
+        // своего рода; последующие — обычные группы рядов.
+        let head = first_with(0);
+        let foot = first_with(2);
         let key = |n: &Node| match n {
             Node::Element(g) if Some(g.node_id) == head => 0u8,
             Node::Element(g) if Some(g.node_id) == foot => 2,
@@ -6650,23 +6660,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         .is_some_and(|v| v.eq_ignore_ascii_case("groups"));
     // Границы ГРУПП РЯДОВ: первый/последний ряд группы несёт её кромку
     // (UA-хинт `rules=groups` — тонкая сплошная, если авторState не задал).
+    // Границы снимаются с самих РЯДОВ, а не с детей таблицы: группа может
+    // стоять на любом теге через `display: table-row-group`, её ряды — через
+    // `display: table-row`, и до фильтра `thead|tbody|tfoot` они не доходили
+    // (`border-*-width-applies-to-001/002/003`). Первым и последним рядом
+    // группы считаются края её НЕПРЕРЫВНОГО куска в собранном порядке —
+    // после перестановки §17.5.3 он уже правильный.
     let mut group_of: std::collections::HashMap<u64, (&Element, bool, bool)> =
         std::collections::HashMap::new();
-    for child in &e.children {
-        let Node::Element(g) = child else { continue };
-        if !matches!(g.tag.as_str(), "thead" | "tbody" | "tfoot") {
-            continue;
-        }
-        let trs: Vec<u64> = g
-            .children
-            .iter()
-            .filter_map(|c| match c {
-                Node::Element(r) if r.tag == "tr" => Some(r.node_id),
-                _ => None,
-            })
-            .collect();
-        for (i, id) in trs.iter().enumerate() {
-            group_of.insert(*id, (g, i == 0, i + 1 == trs.len()));
+    {
+        let mut i = 0usize;
+        while i < rows.len() {
+            let Some(g) = rows[i].1.3 else {
+                i += 1;
+                continue;
+            };
+            let mut j = i;
+            while j < rows.len() && rows[j].1.3.map(|o| o.node_id) == Some(g.node_id) {
+                j += 1;
+            }
+            for k in i..j {
+                group_of.insert(rows[k].0.node_id, (g, k == i, k + 1 == j));
+            }
+            i = j;
         }
     }
     // ПРОБОВАЛИ И ОТКАТИЛИ: подавать ряды в обратном порядке для vertical-rl
@@ -6716,7 +6732,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         let group_layer;
         let inherited = match carry.3 {
             Some(g) => {
-                group_layer = inline::inherit(inherited, g);
+                group_layer = inline::inherit(inherited, &g.style);
                 &group_layer
             }
             None => inherited,
@@ -7791,7 +7807,9 @@ fn relative_shift(e: &Element) -> (f32, f32) {
 
 /// Сдвиг, фон и СТИЛЬ ГРУППЫ строк: письмо/шрифт с `<tbody>` наследуются в
 /// ряды и ячейки, хотя своей коробки у группы нет (ch-units-vrl-006).
-type RowCarry<'a> = (f32, f32, Option<crate::value::Color>, Option<&'a Computed>);
+/// Сдвиг, фон и САМА ГРУППА рядов: от неё нужны и наследуемый стиль, и
+/// `node_id` с рамками — кромки группы строит ряд.
+type RowCarry<'a> = (f32, f32, Option<crate::value::Color>, Option<&'a Element>);
 
 fn collect_rows<'a>(
     nodes: &'a [Node],
@@ -7820,7 +7838,7 @@ fn collect_rows<'a>(
                 || e.tag == "tfoot"
                 || e.style.display == Some(Display::TableRowGroup)
             {
-                let deeper = (shift.0, shift.1, shift.2, Some(&e.style));
+                let deeper = (shift.0, shift.1, shift.2, Some(e));
                 collect_rows(&e.children, deeper, out);
             }
         }
