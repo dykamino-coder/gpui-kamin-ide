@@ -2975,6 +2975,13 @@ impl Computed {
                     let one = side(&list, i);
                     let on = border_style(&one);
                     self.border_visible[i] = Some(on);
+                    // Ранг рисунка — участник разбора сросшихся кромок
+                    // (§17.6.2.1), и `hidden` там гасит соседей. Сокращение
+                    // его не писало вовсе, поэтому `border-style: hidden` на
+                    // ряде или группе до разбора не доезжал.
+                    if let Some(rank) = border_style_rank(&one) {
+                        self.border_side_styles[i] = Some(rank);
+                    }
                     // Свой рисунок рамки делает её видимой: начальная толщина
                     // `medium` — это 3px, и задавать её отдельно не требуется.
                     if on && w.is_none() {

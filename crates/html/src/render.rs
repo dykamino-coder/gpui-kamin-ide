@@ -7328,7 +7328,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     if last { bottom_w } else { 0.0 },
                     if start_col == 0 { px_of(b.left) } else { 0.0 },
                 ];
-                if widths.iter().any(|w| *w > 0.0) {
+                // Нулевая толщина у `hidden` не значит «кромки нет»: скрытая
+                // кромка ГАСИТ соседей (§17.6.2.1), поэтому в разбор она
+                // обязана попасть наравне с видимыми.
+                let hidden_grp = g.style.border_side_styles.contains(&Some(1));
+                if widths.iter().any(|w| *w > 0.0) || hidden_grp {
                     let black = crate::value::Color {
                         r: 0.0,
                         g: 0.0,
