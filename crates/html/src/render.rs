@@ -713,7 +713,17 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     let collapsed = if ordered_context {
         reorder(nodes.to_vec())
     } else {
-        collapse_margins(nodes)
+        // Схлопывание идёт ДО наследования стилей, поэтому кегль уровня
+        // передаётся отдельно: `margin: 1em` без своего `font-size` меряется
+        // от родительского.
+        let base = match inherited.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let prev = COLLAPSE_FONT_PX.with(|c| c.replace(base));
+        let out = collapse_margins(nodes);
+        COLLAPSE_FONT_PX.with(|c| c.set(prev));
+        out
     };
     // Плавающий блок и выравнивание по базовой линии на элементе гибкого
     // контейнера или сетки НЕ действуют — так велит CSS. Без этого правила
@@ -2829,6 +2839,15 @@ fn in_flow(c: &Computed) -> bool {
         )
 }
 
+thread_local! {
+    /// Кегль РОДИТЕЛЯ на разбираемом уровне: единицы шрифта в отступах
+    /// меряются от кегля элемента, а он к моменту схлопывания ещё не
+    /// унаследован — наследование живёт ниже по пути (`inline::inherit`).
+    /// Значение ставит `blocks()` вокруг вызова `collapse_margins` и
+    /// возвращает на место после него.
+    static COLLAPSE_FONT_PX: std::cell::Cell<f32> = const { std::cell::Cell::new(16.0) };
+}
+
 /// Отступ в точках для схлопывания.
 ///
 /// Схлопывание идёт ДО каскада размеров шрифта, а разметка пишет `margin: 1em 0`
@@ -2838,9 +2857,17 @@ fn in_flow(c: &Computed) -> bool {
 /// Проценты не переводятся: они считаются от ширины родителя, а её тут никто
 /// не знает, и выдуманное число было бы хуже пропуска.
 fn margin_px(l: Option<Len>, style: &Computed) -> Option<f32> {
+    // Кегль элемента: свой, если задан, иначе унаследованный от уровня
+    // (см. `COLLAPSE_FONT_PX`). Прежде вместо унаследованного брались
+    // постоянные 16 точек, и `table{font-size:50px} div{margin:1em 0}`
+    // схлопывался по 16 вместо 50 — вся семья Hixie `margin-collapse-1xx`
+    // расходилась с эталоном ровно на эту разницу.
+    let parent = COLLAPSE_FONT_PX.with(std::cell::Cell::get);
     let base = match style.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.0,
+        Some(Len::Em(k)) => k * parent,
+        Some(Len::Pct(k)) => k * parent,
+        _ => parent,
     };
     match l? {
         Len::Px(v) => Some(v),
