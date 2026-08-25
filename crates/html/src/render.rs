@@ -4254,17 +4254,27 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     };
     let mut left: Vec<crate::flow::FloatShape> = Vec::new();
     let mut right: Vec<crate::flow::FloatShape> = Vec::new();
-    // Стек подряд стоящих флоатов одной стороны: каждый следующий кладётся
-    // дальше от края на ширину предыдущих.
-    let (mut off_l, mut off_r) = (0.0f32, 0.0f32);
-    // Полоса флоатов: не влезающий в ширину контейнера падает под
-    // предыдущие (CSS 2.1 §9.5.1 правило 3; shape-outside-border-box-001:
-    // два флоата по 175px в контейнере 200px обязаны встать столбиком).
-    let (mut row_top, mut row_h) = (0.0f32, 0.0f32);
-    // Нижний край всех флоатов: хост-BFC обязан их охватить высотой
-    // (CSS2 §10.6.7; в shape_flow флоаты абсолютные и высоту хоста сами
-    // не растят — единственный путь без охвата, scout-flowroot).
-    let mut floats_bottom = 0.0f32;
+    // Ширина содержащего блока: от неё считаются доли формы и поля
+    // (`shape-margin: 5%`), она же — дальний край для правила 7 §9.5.1.
+    // Известна только точками: непроходную единицу `px_of` глушит в ноль.
+    let cb_w = px_of(&e.style.width);
+    // Стенка РАЗМЕЩЕНИЯ. Без известной ширины переноса флоатов здесь нет
+    // совсем, а вертикальное письмо не переносит никогда — полосам в обоих
+    // случаях ставится заведомо недостижимая стенка. 8192 = 2^13: обратный
+    // перевод правого края в отступ от своей стороны (`wall - fx - mw`)
+    // остаётся точным до 2^-11 точки, на два порядка точнее допуска полос.
+    const NO_WALL: f32 = 8192.0;
+    let wall = if cb_w > 0.0 && inherited.vertical_rl != Some(true) {
+        cb_w
+    } else {
+        NO_WALL
+    };
+    // Полосы занятости (CSS 2.1 §9.5.1) держат ПРЯМОУГОЛЬНУЮ занятость
+    // margin-box и отвечают только за размещение. Точная форма выреза
+    // (`shape-outside`) в полосы не попадает вовсе и идёт отдельными
+    // списками `left`/`right`: форма меняет область ОБТЕКАНИЯ, но не
+    // позицию самого флоата (css-shapes-1 §1).
+    let mut bands = crate::bands::FloatBands::new(wall);
     let mut floats: Vec<AnyElement> = Vec::new();
     let mut rest: Vec<Node> = Vec::new();
     let host_side: i32 = if e.attr("side") == Some("right") {
@@ -4324,22 +4334,13 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         } else {
             (0.0, 0.0, mw, mh)
         };
-        // Доля поля формы — от ширины содержащего блока; она известна,
-        // когда контейнер задан точками (тестовый случай).
-        let cb_w = px_of(&e.style.width);
-        if inherited.vertical_rl != Some(true) {
-            let off_side = if side < 0 { off_l } else { off_r };
-            if off_side > 0.0 && cb_w > 0.0 && off_side + mw > cb_w + 0.01 {
-                row_top += row_h;
-                row_h = 0.0;
-                if side < 0 {
-                    off_l = 0.0;
-                } else {
-                    off_r = 0.0;
-                }
-            }
-            row_h = row_h.max(mh);
-        }
+        // Размещение по правилам 1-9 §9.5.1. `clear` сюда не доезжает:
+        // группу и хвост `wrap_floats` рвёт на первом же `clear` своей
+        // стороны.
+        let (fx, fy) = bands.add_float(side as i8, mw, mh, None);
+        // Форма выреза и держатель адресуются ОТ СВОЕЙ стороны, а полосы
+        // считают обе границы от инлайн-начала: перевод здесь и только здесь.
+        let off = if side < 0 { fx } else { wall - fx - mw };
         let sm = match f.style.shape_margin {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(p)) => p * cb_w,
@@ -4358,7 +4359,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     let cx = if side < 0 { cx } else { mw - cx };
                     crate::flow::FloatShape::Ellipse {
                         top: 0.0,
-                        cx: cx + if side < 0 { off_l } else { off_r },
+                        cx: cx + off,
                         cy,
                         rx: rx + sm,
                         ry: ry + sm,
@@ -4367,7 +4368,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 None => crate::flow::FloatShape::Band {
                     top: 0.0,
                     h: mh,
-                    w: (if side < 0 { off_l } else { off_r }) + mw + sm,
+                    w: off + mw + sm,
                 },
             }
         } else if raw.contains("url(") || raw.contains("-gradient(") {
@@ -4434,20 +4435,14 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     top: cby,
                     ext: std::sync::Arc::new(
                         ext.into_iter()
-                            .map(|v| {
-                                if v > 0.0 {
-                                    (if side < 0 { off_l } else { off_r }) + v + sm
-                                } else {
-                                    0.0
-                                }
-                            })
+                            .map(|v| if v > 0.0 { off + v + sm } else { 0.0 })
                             .collect(),
                     ),
                 },
                 None => crate::flow::FloatShape::Band {
                     top: by,
                     h: bh,
-                    w: (if side < 0 { off_l } else { off_r }) + mw + sm,
+                    w: off + mw + sm,
                 },
             }
         } else {
@@ -4486,13 +4481,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     top: 0.0,
                     ext: std::sync::Arc::new(
                         ext.into_iter()
-                            .map(|v| {
-                                if v > 0.0 {
-                                    (if side < 0 { off_l } else { off_r }) + v
-                                } else {
-                                    0.0
-                                }
-                            })
+                            .map(|v| if v > 0.0 { off + v } else { 0.0 })
                             .collect(),
                     ),
                 },
@@ -4503,16 +4492,15 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     crate::flow::FloatShape::Band {
                         top: by,
                         h: bh,
-                        w: (if side < 0 { off_l } else { off_r }) + w_cut + sm,
+                        w: off + w_cut + sm,
                     }
                 }
             }
         };
         let mut shape = shape;
-        if row_top > 0.0 {
-            shape.shift_top(row_top);
+        if fy > 0.0 {
+            shape.shift_top(fy);
         }
-        floats_bottom = floats_bottom.max(row_top + mh);
         if side < 0 {
             left.push(shape);
         } else {
@@ -4538,33 +4526,28 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
             // флоатов идут влево; инлайн-старт — верх, а у float:right
             // (line-right) — НИЗ (css-writing-modes §7,
             // shape-outside-circle-049 и родня).
-            let col = div()
-                .absolute()
-                .right(px(if side < 0 { off_l } else { off_r } + mr));
+            let col = div().absolute().right(px(off + mr));
             if side < 0 {
                 col.top(px(mt))
             } else {
                 col.bottom(px(mt))
             }
         } else if side < 0 {
-            div().absolute().left(px(off_l + ml)).top(px(mt + row_top))
+            div().absolute().left(px(off + ml)).top(px(mt + fy))
         } else {
-            div().absolute().right(px(off_r + mr)).top(px(mt + row_top))
+            div().absolute().right(px(off + mr)).top(px(mt + fy))
         };
         floats.push(holder.child(built).into_any_element());
-        if side < 0 {
-            off_l += mw;
-        } else {
-            off_r += mw;
-        }
     }
     let shapes = std::sync::Arc::new((left, right));
     // В вертикальном письме ширина контейнера — блок-прогресс контента
     // (число колонок): полная ширина растягивала бы его на страницу.
     let mut host = if inherited.vertical_rl == Some(true) {
         div().relative()
-    } else if floats_bottom > 0.0 {
-        div().relative().w_full().min_h(px(floats_bottom))
+    } else if bands.bottom(None) > 0.0 {
+        // §10.6.7: хост обязан охватить флоаты высотой — здесь они
+        // абсолютные и сами её не растят.
+        div().relative().w_full().min_h(px(bands.bottom(None)))
     } else {
         div().relative().w_full()
     };
