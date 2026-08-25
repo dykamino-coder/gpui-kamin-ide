@@ -1628,6 +1628,30 @@ impl Element for EdgePainter {
             side(&mut horiz, y1, x0, x1, 2, 1);
             side(&mut vert, x0, y0, y1, 3, -1);
         }
+        // Снимок вертикалей для стыков: горизонталь тянется в угол на
+        // половину ВЕРТИКАЛЬНОЙ кромки, а не своей (§17.6.2: кромки
+        // центрированы на линиях сетки, и ширина стыка задаётся
+        // перпендикуляром). Своя полуширина рисовала ус там, где вертикали
+        // нет вовсе: `border-top-width: 96px` вылезал на 48 точек за край.
+        let vert_spans: Vec<(f32, f32, f32, f32, u8)> = vert
+            .iter()
+            .map(|c| (c.line, c.a, c.b, c.w, c.style))
+            .collect();
+        let half_at = |x: f32, y: f32| -> f32 {
+            let mut widest = 0.0f32;
+            for c in &vert_spans {
+                if (c.0 - x).abs() >= 0.75 || y < c.1 - 0.25 || y > c.2 + 0.25 {
+                    continue;
+                }
+                // Погашенная вертикаль не рисуется, значит и заливать под
+                // неё угол нечем.
+                if c.4 == 1 {
+                    return 0.0;
+                }
+                widest = widest.max(c.3);
+            }
+            widest / 2.0
+        };
         let mut draw = |cands: &mut Vec<Cand>, vertical: bool| {
             cands.sort_by(|p, q| {
                 p.line
@@ -1692,7 +1716,7 @@ impl Element for EdgePainter {
                     // иначе оставалось пустым квадратом, а продление обеих
                     // осей рисовало лишние усы на пунктирных рамках.
                     let (a, b) = if !vertical && win.style >= 9 {
-                        (a - win.w / 2.0, b + win.w / 2.0)
+                        (a - half_at(a, line), b + half_at(b, line))
                     } else {
                         (a, b)
                     };
