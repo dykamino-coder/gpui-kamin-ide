@@ -1251,8 +1251,23 @@ pub fn row_rects_for(node_id: u64) -> RowRects {
 pub fn forget_row_rects() {
     ROW_RECTS.with(|m| m.borrow_mut().clear());
     CELL_EDGES.with(|m| m.borrow_mut().clear());
+    BAND_RETRIES.with(|m| m.borrow_mut().clear());
     forget_clamp_buffers();
 }
+
+thread_local! {
+    /// Сколько кадров полоса фона прождала своих проб. Ключ — адрес буфера
+    /// проб.
+    ///
+    /// Полоса без единой ячейки (`<col>` без рядов, `<col>` за краем сетки)
+    /// не дождётся их никогда, а запрос кадра без счётчика вертел бы окно
+    /// вечно: документ не успокаивается, и стенд снимает его на таймауте.
+    static BAND_RETRIES: std::cell::RefCell<std::collections::HashMap<usize, u8>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Сколько кадров ждать пробы, прежде чем счесть полосу пустой.
+const BAND_WAIT_FRAMES: u8 = 2;
 
 pub struct CellsClipped {
     style: crate::computed::Computed,
@@ -1324,10 +1339,23 @@ impl Element for CellsClipped {
         }
         if rects.is_empty() {
             // Пробы ячеек ещё не писали (первый кадр) — без нового кадра
-            // окно не перерисуется, и фон не появится никогда.
-            window.request_animation_frame();
+            // окно не перерисуется, и фон не появится никогда. Но ждать
+            // бесконечно нельзя: у полосы может не быть ячеек вовсе.
+            let key = std::rc::Rc::as_ptr(&self.rects) as usize;
+            let waited = BAND_RETRIES.with(|m| {
+                let mut m = m.borrow_mut();
+                let n = m.entry(key).or_insert(0);
+                *n = n.saturating_add(1);
+                *n
+            });
+            if waited <= BAND_WAIT_FRAMES {
+                window.request_animation_frame();
+            }
             return;
         }
+        BAND_RETRIES.with(|m| {
+            m.borrow_mut().remove(&(std::rc::Rc::as_ptr(&self.rects) as usize));
+        });
         // Область ряда/колонки — охват ТОЧНЫХ ячеек (span = 1): от неё
         // считается и размер плитки, и `background-position`. Объединённые
         // лежат и на чужих дорожках — они только маски.
@@ -1996,7 +2024,18 @@ impl IntoElement for ClampCut {
 }
 
 /// Проба ячейки: канвас, записывающий свои границы для фона ряда.
-pub fn cell_rect_probe(rects: RowRects, exact: bool, shift: (f32, f32)) -> AnyElement {
+///
+/// `border` — ширины сторон ячейки в порядке верх-право-низ-лево. Абсолютный
+/// ребёнок в taffy лежит ВНУТРИ рамки, поэтому канвас меряет поле подкладки,
+/// а §17.5.1 велит вести фон полосы «from the top of the cells to the bottom
+/// of the cells», то есть по внешним краям рамок: ячейка с
+/// `border-bottom: 60px` и пустым содержимым давала полосе нулевую высоту.
+pub fn cell_rect_probe(
+    rects: RowRects,
+    exact: bool,
+    shift: (f32, f32),
+    border: [f32; 4],
+) -> AnyElement {
     gpui::canvas(
         // Запись В PREPAINT: подготовка ВСЕХ элементов идёт до отрисовки,
         // и полоса фона читает прямоугольники СВОЕГО кадра — с записью в
@@ -2006,10 +2045,13 @@ pub fn cell_rect_probe(rects: RowRects, exact: bool, shift: (f32, f32)) -> AnyEl
             // фоновая сетка начинается от середины рамки таблицы.
             let bounds = Bounds {
                 origin: gpui::point(
-                    bounds.origin.x + gpui::px(shift.0),
-                    bounds.origin.y + gpui::px(shift.1),
+                    bounds.origin.x + gpui::px(shift.0 - border[3]),
+                    bounds.origin.y + gpui::px(shift.1 - border[0]),
                 ),
-                size: bounds.size,
+                size: gpui::size(
+                    bounds.size.width + gpui::px(border[1] + border[3]),
+                    bounds.size.height + gpui::px(border[0] + border[2]),
+                ),
             };
             rects.borrow_mut().push((bounds, exact));
         },
