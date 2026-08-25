@@ -6610,36 +6610,31 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     } {
         eprintln!("TCA cols={col_widths:?}");
     }
-    // Фон КОЛОНКИ картинкой — той же полосой, что фон ряда: слой на площадь
-    // колонки, обрезанный прямоугольниками её ячеек. Полосы колонок идут
-    // ПЕРЕД рядами: колонка рисуется ниже ряда (css-tables-3 §layers).
+    // Слой ГРУПП КОЛОНОК и слой КОЛОНОК — две полосы, снизу вверх (§17.5.1:
+    // «the next layer contains the column groups… on top of the column groups
+    // are the areas representing the column boxes»). У каждой свой буфер
+    // проб: площадь группы шире колоночной, и `background-position` у них
+    // разный. Обе идут ПЕРЕД рядами: колонка рисуется ниже ряда
+    // (css-tables-3 §layers).
+    let grp_els = colgroup_elements(&e.children);
     let col_els = col_elements(&e.children);
+    let mut grp_rects: Vec<Option<crate::interact::RowRects>> = vec![None; cols as usize];
     let mut col_rects: Vec<Option<crate::interact::RowRects>> = vec![None; cols as usize];
-    {
-        let mut seen: Vec<u64> = vec![];
-        for (i, el) in col_els.iter().enumerate() {
-            let Some(el) = el else { continue };
-            let picture = el.style.bg_image.is_some() || el.style.gradient_raw.is_some();
-            // Колонка/группа с одним ЦВЕТОМ тоже красится полосой: своей
-            // коробки у неё нет, фон рисуют её ячейки.
-            if !(picture || el.style.background.is_some() || !el.style.shadows.is_empty()) {
-                continue;
-            }
-            let rects = crate::interact::row_rects_for(el.node_id ^ opts.doc_salt);
-            if i < col_rects.len() {
-                col_rects[i] = Some(rects.clone());
-            }
-            if !seen.contains(&el.node_id) {
-                seen.push(el.node_id);
-                let mut band_style = el.style.clone();
-                if band_style.bg_image.is_none() {
-                    band_style.bg_image = band_style.gradient_raw.clone();
-                }
-                cells
-                    .push(crate::interact::CellsClipped::new(rects, band_style).into_any_element());
-            }
-        }
-    }
+    let have_rows = !row_elements.is_empty();
+    push_col_bands(
+        &grp_els,
+        opts.doc_salt,
+        have_rows,
+        &mut grp_rects,
+        &mut cells,
+    );
+    push_col_bands(
+        &col_els,
+        opts.doc_salt,
+        have_rows,
+        &mut col_rects,
+        &mut cells,
+    );
     // Ширины рамки самой таблицы: крайние ячейки расползаются фоном на её
     // половину в сросшейся модели.
     let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, "", 16.0);
@@ -7222,6 +7217,27 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 ) {
                     if !probed.contains(&el.node_id) {
                         probed.push(el.node_id);
+                        d = d.child(crate::interact::cell_rect_probe(
+                            rects,
+                            span_cols == 1,
+                            shift,
+                            cell_border,
+                        ));
+                    }
+                }
+            }
+            // Та же проба для слоя ГРУППЫ: её коробка идёт «from the left
+            // edge of its leftmost column to the right edge of its rightmost
+            // column» (§17.5.1) — площадь шире колоночной, поэтому буфер
+            // свой.
+            let mut probed_group: Vec<u64> = vec![];
+            for i in cell_cols.clone() {
+                if let (Some(rects), Some(el)) = (
+                    grp_rects.get(i).and_then(|r| r.clone()),
+                    grp_els.get(i).copied().flatten(),
+                ) {
+                    if !probed_group.contains(&el.node_id) {
+                        probed_group.push(el.node_id);
                         d = d.child(crate::interact::cell_rect_probe(
                             rects,
                             span_cols == 1,
@@ -8119,6 +8135,77 @@ fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
         }
     }
     out
+}
+
+/// Группы колонок по индексам дорожек: слой группы лежит ПОД слоем колонки
+/// (§17.5.1) и красится отдельной полосой.
+///
+/// Длина и индексы совпадают с `col_elements` дорожка в дорожку: обе идут по
+/// одному дереву и кладут ровно столько же записей.
+///
+/// Группа без своих колонок внутри уже стоит колонкой в `col_elements` —
+/// второй раз её сюда не берём: буфер проб выдаётся по `node_id`, и обе
+/// полосы делили бы один набор прямоугольников. Первая забрала бы его себе,
+/// вторая осталась бы пустой.
+fn colgroup_elements(children: &[Node]) -> Vec<Option<&Element>> {
+    let mut out: Vec<Option<&Element>> = vec![];
+    for child in children {
+        let Node::Element(el) = child else { continue };
+        match col_role(el) {
+            Some(false) => out.extend(std::iter::repeat_n(None, col_span(el))),
+            Some(true) => {
+                let inner = col_elements(&el.children);
+                if inner.is_empty() {
+                    out.extend(std::iter::repeat_n(None, col_span(el)));
+                } else {
+                    out.extend(std::iter::repeat_n(Some(el), inner.len()));
+                }
+            }
+            None => {}
+        }
+    }
+    out
+}
+
+/// Полоса слоя на каждую красящую дорожку плюс буфер проб по её индексу.
+///
+/// Одно тело на слой групп и слой колонок: различаются они только набором
+/// элементов и порядком вызова (§17.5.1 — группы ПОД колонками).
+fn push_col_bands<'a>(
+    els: &[Option<&'a Element>],
+    salt: u64,
+    have_rows: bool,
+    rects_by_col: &mut [Option<crate::interact::RowRects>],
+    cells: &mut Vec<AnyElement>,
+) {
+    let mut seen: Vec<u64> = vec![];
+    for (i, el) in els.iter().enumerate() {
+        let Some(el) = el else { continue };
+        // Полоса красит СВОИ ЯЧЕЙКИ. Ячеек нет — красить нечего, а пустая
+        // полоса ещё и просит перерисовку два кадра подряд впустую
+        // (`table-column-rendering-001`: колонка сама по себе не рисуется).
+        // Дорожка за краем сетки буфера не получает: её пробы не напишет
+        // никто.
+        if !have_rows || i >= rects_by_col.len() {
+            continue;
+        }
+        let picture = el.style.bg_image.is_some() || el.style.gradient_raw.is_some();
+        // Дорожка с одним ЦВЕТОМ тоже красится полосой: своей коробки у неё
+        // нет, фон рисуют её ячейки.
+        if !(picture || el.style.background.is_some() || !el.style.shadows.is_empty()) {
+            continue;
+        }
+        let rects = crate::interact::row_rects_for(el.node_id ^ salt);
+        rects_by_col[i] = Some(rects.clone());
+        if !seen.contains(&el.node_id) {
+            seen.push(el.node_id);
+            let mut band_style = el.style.clone();
+            if band_style.bg_image.is_none() {
+                band_style.bg_image = band_style.gradient_raw.clone();
+            }
+            cells.push(crate::interact::CellsClipped::new(rects, band_style).into_any_element());
+        }
+    }
 }
 
 fn col_element_widths(
