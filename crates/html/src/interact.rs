@@ -1354,7 +1354,8 @@ impl Element for CellsClipped {
             return;
         }
         BAND_RETRIES.with(|m| {
-            m.borrow_mut().remove(&(std::rc::Rc::as_ptr(&self.rects) as usize));
+            m.borrow_mut()
+                .remove(&(std::rc::Rc::as_ptr(&self.rects) as usize));
         });
         // Область ряда/колонки — охват ТОЧНЫХ ячеек (span = 1): от неё
         // считается и размер плитки, и `background-position`. Объединённые

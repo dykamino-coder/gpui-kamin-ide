@@ -1186,6 +1186,52 @@ fn walk(
             let first_line = layer("first-line");
 
             if style.display == Some(Display::None) {
+                // Колонка — единственный `display: none`, который таблице
+                // НУЖЕН живым: из неё берутся ширина дорожки, слой краски и
+                // рамка для разбора сросшихся кромок. Собирается отдельной
+                // веткой: счётчики, псевдоэлементы, `dir="auto"` и кадры
+                // анимации у безкоробочного узла не действуют, а общий путь
+                // ниже применил бы их все.
+                let Some(role) = style.col_role else {
+                    return;
+                };
+                // §17.2.1: у колонки детей нет вовсе, у группы колонок
+                // остаются только колонки.
+                let mut kids: Vec<Node> = vec![];
+                if role == 1 {
+                    let mut path2 = path.to_vec();
+                    path2.push(me.clone());
+                    let mut raw: Vec<Node> = vec![];
+                    walk_children(
+                        handle,
+                        rules,
+                        vars,
+                        frames,
+                        counter,
+                        counters,
+                        &path2,
+                        style.preserve_newlines.unwrap_or(preserve),
+                        &mut raw,
+                    );
+                    kids = raw
+                        .into_iter()
+                        .filter(|n| matches!(n, Node::Element(c) if c.style.col_role == Some(0)))
+                        .collect();
+                }
+                *counter += 1;
+                out.push(Node::Element(Element {
+                    list_item: None,
+                    node_id: *counter,
+                    anim: None,
+                    inline: false,
+                    tag,
+                    style,
+                    hover: None,
+                    first_letter: None,
+                    first_line: None,
+                    children: kids,
+                    attrs,
+                }));
                 return;
             }
 
@@ -1264,6 +1310,21 @@ fn walk(
                 &attrs,
             ) {
                 children.push(Node::Element(el));
+            }
+            // Колонка значит что-то ТОЛЬКО внутри таблицы или группы
+            // колонок. У любого другого родителя она исчезает ровно так же,
+            // как исчезала до сих пор: `empty-cells-applies-to-012` ставит
+            // `display: table-column` с красным фоном ВНУТРИ ряда и требует
+            // «no red». Без этой отсечки такой узел уехал бы в анонимную
+            // ячейку и покрасился.
+            let holds_columns = matches!(tag.as_str(), "table" | "colgroup")
+                || style.col_role == Some(1)
+                || matches!(
+                    style.display,
+                    Some(Display::Table) | Some(Display::InlineTable)
+                );
+            if !holds_columns {
+                children.retain(|n| !matches!(n, Node::Element(c) if c.style.col_role.is_some()));
             }
             // Выход из области: счётчик, созданный этим узлом, дальше по
             // документу уступает место счётчику предка.

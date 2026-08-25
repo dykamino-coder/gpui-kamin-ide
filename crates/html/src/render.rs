@@ -7193,11 +7193,22 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     [0.0; 4],
                 ));
             }
+            // Рамка ячейки — обратно в границы: канвас пробы лежит внутри
+            // неё, а фон полосы идёт по внешним краям (§17.5.1).
+            let cell_border = {
+                let b = cell.style.borders();
+                let px_of = |l: Option<Len>| match l {
+                    Some(Len::Px(v)) => v,
+                    _ => 0.0,
+                };
+                [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)]
+            };
             if let Some(rects) = &row_rects {
                 d = d.child(crate::interact::cell_rect_probe(
                     rects.clone(),
                     span_rows == 1,
                     shift,
+                    cell_border,
                 ));
             }
             // Проба и для колонок ячейки: объединённая регистрируется в
@@ -7215,6 +7226,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             rects,
                             span_cols == 1,
                             shift,
+                            cell_border,
                         ));
                     }
                 }
@@ -8024,7 +8036,8 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
             }
             Node::Element(el) => {
                 // Колоночные элементы — не содержимое: их читают дорожки.
-                if matches!(el.tag.as_str(), "col" | "colgroup") {
+                // Роль задаётся тегом ИЛИ `display` (§17.2.1).
+                if col_role(el).is_some() {
                     continue;
                 }
                 let group = el.style.display == Some(Display::TableRowGroup)
@@ -8063,35 +8076,46 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
 /// ряда (CSS 2.1 §17.5.2.1).
 /// Элементы `<col>` по индексам колонок (повтор на span): фон колонки
 /// рисуется в её ячейках (css-tables-3 §drawing-backgrounds).
+/// Колоночная роль элемента: тег ИЛИ `display` (§17.2.1). `Some(false)` —
+/// колонка, `Some(true)` — группа колонок.
+fn col_role(el: &Element) -> Option<bool> {
+    match el.tag.as_str() {
+        "col" => Some(false),
+        "colgroup" => Some(true),
+        _ => match el.style.col_role {
+            Some(0) => Some(false),
+            Some(1) => Some(true),
+            _ => None,
+        },
+    }
+}
+
+/// Пролёт колонки: атрибут `span` — только HTML-ный, у элемента с колоночным
+/// `display` его нет, и пролёт всегда единичный.
+fn col_span(el: &Element) -> usize {
+    el.attr("span")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(1)
+        .max(1)
+}
+
 fn col_elements(children: &[Node]) -> Vec<Option<&Element>> {
     let mut out: Vec<Option<&Element>> = vec![];
     for child in children {
         let Node::Element(el) = child else { continue };
-        match el.tag.as_str() {
-            "col" => {
-                let span = el
-                    .attr("span")
-                    .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or(1)
-                    .max(1);
-                out.extend(std::iter::repeat_n(Some(el), span));
-            }
-            "colgroup" => {
+        match col_role(el) {
+            Some(false) => out.extend(std::iter::repeat_n(Some(el), col_span(el))),
+            Some(true) => {
                 let inner = col_elements(&el.children);
                 if inner.is_empty() {
-                    // Группа без <col> внутри сама несёт свои колонки:
-                    // её span и стиль (фон группы) ложатся на каждую.
-                    let span = el
-                        .attr("span")
-                        .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(1)
-                        .max(1);
-                    out.extend(std::iter::repeat_n(Some(el), span));
+                    // Группа без колонок внутри сама стоит колонкой: её
+                    // пролёт и стиль ложатся на каждую дорожку.
+                    out.extend(std::iter::repeat_n(Some(el), col_span(el)));
                 } else {
                     out.extend(inner);
                 }
             }
-            _ => {}
+            None => {}
         }
     }
     out
@@ -8106,8 +8130,8 @@ fn col_element_widths(
     let mut collapsed = vec![];
     for child in children {
         let Node::Element(el) = child else { continue };
-        match el.tag.as_str() {
-            "col" => {
+        match col_role(el) {
+            Some(false) => {
                 let w = match el.style.width {
                     Some(Len::Px(v)) => Some(v),
                     // `ch` на колонке считается с ЕЁ письмом: стоячий ноль
@@ -8134,15 +8158,11 @@ fn col_element_widths(
                 // нулевая дорожка, ячейки не рисуются (css-tables-3
                 // §visibility-collapse-cell-rendering).
                 let c = el.style.collapsed == Some(true);
-                let span = el
-                    .attr("span")
-                    .and_then(|v| v.parse::<usize>().ok())
-                    .unwrap_or(1)
-                    .max(1);
+                let span = col_span(el);
                 widths.extend(std::iter::repeat_n(w, span));
                 collapsed.extend(std::iter::repeat_n(c, span));
             }
-            "colgroup" => {
+            Some(true) => {
                 let (w, c) = col_element_widths(&el.children, base_font, family);
                 if w.is_empty() {
                     let ww = match el.style.width {
@@ -8150,11 +8170,7 @@ fn col_element_widths(
                         _ => None,
                     };
                     let cc = el.style.collapsed == Some(true);
-                    let span = el
-                        .attr("span")
-                        .and_then(|v| v.parse::<usize>().ok())
-                        .unwrap_or(1)
-                        .max(1);
+                    let span = col_span(el);
                     widths.extend(std::iter::repeat_n(ww, span));
                     collapsed.extend(std::iter::repeat_n(cc, span));
                 } else {
@@ -8162,7 +8178,7 @@ fn col_element_widths(
                     collapsed.extend(c);
                 }
             }
-            _ => {}
+            None => {}
         }
     }
     (widths, collapsed)
