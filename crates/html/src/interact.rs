@@ -2658,6 +2658,17 @@ pub struct Spot {
     /// блок vrl вешается своим блок-началом, правым краем
     /// (abs-pos-border-offset-003, ref: left 55 = контент-лево + width).
     pub own_vertical: bool,
+    /// Ось, которую уже разрешил СОДЕРЖАЩИЙ БЛОК (край в `inset` задан):
+    /// сдвиг по ней не нужен. `(x, y)`. Умолчание `(false, false)` — правятся
+    /// обе оси, то есть прежнее поведение верхнего слоя.
+    ///
+    /// Слою начального содержащего блока нужна ровно ПУСТАЯ ось: заданную
+    /// считает раскладка от области просмотра, а статическая позиция нужна
+    /// только там, где обе стороны `auto` (§10.3.7, §10.6.4).
+    pub fixed_axes: (bool, bool),
+    /// Поле по СВОБОДНОЙ оси, в точках. Базовый сдвиг ставит коробку ровно в
+    /// дырку, а по CSS от статической позиции её отодвигает собственное поле.
+    pub free_margin: (f32, f32),
 }
 
 pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;
@@ -2676,7 +2687,9 @@ thread_local! {
     /// нашлось позиционированного предка. По §10.1 их содержащий блок —
     /// область просмотра, а не ближайший родитель, поэтому они дописываются
     /// последними детьми документа.
-    static ICB: std::cell::RefCell<Vec<Vec<AnyElement>>> =
+    /// Пара `(SpotCell, AnyElement)`: по ПУСТОЙ оси элемент стоит на
+    /// статической позиции, и её сообщает щуп с его места в потоке.
+    static ICB: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -2687,15 +2700,34 @@ pub fn icb_open() {
 
 /// Забрать накопленное верхним слоем ICB и закрыть его.
 pub fn icb_close() -> Vec<AnyElement> {
-    ICB.with(|s| s.borrow_mut().pop()).unwrap_or_default()
+    ICB.with(|s| s.borrow_mut().pop())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(spot, el)| icb_place(spot, el))
+        .collect()
+}
+
+/// Заместитель слоя ICB — БЕЗ обёртки, в отличие от `spot_place`.
+///
+/// Любая коробка вокруг стала бы для раскладки содержащим блоком абсолютного
+/// ребёнка (понятия «позиционированный предок» у раскладки нет), и края
+/// считались бы от неё, а не от области просмотра — то есть ровно то, ради
+/// чего затеян вынос. `LatePlace` своей коробки не заводит: он отдаёт
+/// `layout_id` ребёнка.
+fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
+    LatePlace {
+        child: Some(child),
+        spot,
+    }
+    .into_any_element()
 }
 
 /// Отдать элемент слою ICB. Слоя нет — элемент возвращается, рисовать на
 /// месте.
-pub fn icb_push(el: AnyElement) -> Option<AnyElement> {
+pub fn icb_push(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
     ICB.with(|s| match s.borrow_mut().last_mut() {
         Some(layer) => {
-            layer.push(el);
+            layer.push((spot, el));
             None
         }
         None => Some(el),
@@ -2903,6 +2935,21 @@ impl Element for LatePlace {
             (Some(hole), None) => hole.origin - bounds.origin,
             (None, _) => gpui::point(px(0.0), px(0.0)),
         };
+        // Ось, которую задал содержащий блок, раскладка уже разрешила — щуп
+        // её не трогает; по свободной оси к дырке добавляется поле (§10.3.7:
+        // от статической позиции коробку отодвигает `margin`).
+        let shift = gpui::point(
+            if now.fixed_axes.0 {
+                px(0.0)
+            } else {
+                shift.x + px(now.free_margin.0)
+            },
+            if now.fixed_axes.1 {
+                px(0.0)
+            } else {
+                shift.y + px(now.free_margin.1)
+            },
+        );
         let child = self.child.as_mut().unwrap();
         window.with_element_offset(shift, |window| child.prepaint(window, cx));
     }

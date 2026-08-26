@@ -1166,17 +1166,53 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // стоит на статической позиции, а её знает лишь раскладка.
             // Отрицательный `z-index` рисуется ПОД потоком, слой же идёт
             // последним — такие остаются на месте.
+            // Достаточно ОДНОЙ заданной оси: по ней край считает раскладка от
+            // области просмотра, по пустой элемент стоит на СТАТИЧЕСКОЙ
+            // позиции (§10.3.7, §10.6.4), и её сообщает щуп, оставшийся на
+            // месте элемента. Ось задана, если задана хотя бы одна сторона.
+            //
+            // Внутри отложенного поддерева щуп готовится ПОЗЖЕ слоя, и дырка
+            // была бы пуста — такие остаются на месте.
+            let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
+            let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
             let to_icb = !ordered_context
+                && layer_ok
                 && e.style.position == Some(crate::computed::Position::Absolute)
                 && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
                 && e.style.z_index.unwrap_or(0) >= 0
-                && edge_set(e.style.inset.left)
-                && edge_set(e.style.inset.right)
-                && edge_set(e.style.inset.top)
-                && edge_set(e.style.inset.bottom);
+                && (x_set || y_set);
             let built = if to_icb {
-                match crate::interact::icb_push(built) {
-                    None => continue,
+                let spot: crate::interact::SpotCell = Default::default();
+                spot.set(crate::interact::Spot {
+                    fixed_axes: (x_set, y_set),
+                    free_margin: (
+                        if x_set {
+                            0.0
+                        } else {
+                            margin_px(e.style.margin.left, &e.style).unwrap_or(0.0)
+                        },
+                        if y_set {
+                            0.0
+                        } else {
+                            margin_px(e.style.margin.top, &e.style).unwrap_or(0.0)
+                        },
+                    ),
+                    rtl: inherited.rtl == Some(true),
+                    vertical: inherited.vertical == Some(true),
+                    vertical_rl: inherited.vertical_rl == Some(true),
+                    own_vertical: e.style.vertical == Some(true),
+                    ..Default::default()
+                });
+                match crate::interact::icb_push(spot.clone(), built) {
+                    None => {
+                        // Пустая ось требует щупа: статическую позицию взять
+                        // больше неоткуда. При заданных обеих осях на месте
+                        // не остаётся ничего.
+                        if !(x_set && y_set) {
+                            out.push(crate::interact::spot_probe(spot, true));
+                        }
+                        continue;
+                    }
                     Some(kept) => kept,
                 }
             } else {
