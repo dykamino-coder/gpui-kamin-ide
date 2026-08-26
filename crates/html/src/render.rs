@@ -2736,26 +2736,22 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
         // Отсечка по ЗНАЧЕНИЮ, а не по «свойство написано»: `padding: 0` и
         // `border: 0` схлопыванию не мешают (CSS 2.1 §8.3.1).
         let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
-        let separated = !zero(e.style.padding.top) || !zero(e.style.borders().top) || own_context;
-        if separated {
+        // Поля КОРНЯ ни с чем не схлопываются (§8.3.1).
+        if e.tag == "html" || !top_edge_open(e) {
             continue;
         }
-        // Именно ПЕРВЫЙ блок в потоке: отступ второго и последующих
-        // схлопывается с соседом, а не выносится наружу.
-        // Первый IN-FLOW блок: плавающие и абсолютные пропускаются (они вне
-        // потока и примыкание не рвут, §8.3.1), непробельный текст и блок вне
-        // условий останавливают поиск.
-        let child_top = first_in_flow(e.children.iter().enumerate())
-            .and_then(|(i, ch)| margin_px(ch.style.margin.top, &ch.style).map(|v| (i, v)));
-        if let Some((i, v)) = child_top {
-            let own = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);
-            // Больший из положительных плюс меньший из отрицательных:
-            // отрицательный детский отступ тоже всплывает — идиома
-            // `margin-top: -1px` первым ребёнком обязана поднять родителя
-            // (border-*-width-thin и родня).
-            e.style.margin.top = Some(Len::Px(collapsed(own, v)));
-            if let Node::Element(ch) = &mut e.children[i] {
-                ch.style.margin.top = Some(Len::Px(0.0));
+        // Верхнее поле родителя и ВСЯ ведущая цепочка полей потомков — одно
+        // поле (§8.3.1). Прежде поднималось поле ровно ОДНОГО ребёнка, и на
+        // следующем уровне то же поле внука поднималось повторно.
+        let mut path: Vec<usize> = vec![];
+        let mut eat: Vec<(Vec<usize>, bool)> = vec![];
+        let chain = leading_chain(&e.children, &mut path, &mut eat);
+        if let (Some(s), Some(own)) = (chain, margin_or_bail(e.style.margin.top, &e.style))
+            && !eat.is_empty()
+        {
+            e.style.margin.top = Some(Len::Px(solve(adjoin(strut_of(own), s))));
+            for (p, deep) in &eat {
+                zero_at(&mut e.children, p, true, *deep);
             }
         }
         // То же СНИЗУ: отступ последнего ребёнка протекает наружу, если
@@ -3005,6 +3001,18 @@ fn own_context(e: &Element) -> bool {
         || e.style.column_width.is_some()
 }
 
+/// Ноль по ЗНАЧЕНИЮ, а не по «свойство написано»: `padding: 0` и `border: 0`
+/// схлопыванию не мешают (CSS 2.1 §8.3.1).
+fn zero_len(l: Option<Len>) -> bool {
+    matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)))
+}
+
+/// Открыт ли ВЕРХНИЙ край коробки для примыкания к полю первого ребёнка: нет
+/// ни рамки, ни поля сверху, и коробка не заводит своего контекста (§8.3.1).
+fn top_edge_open(e: &Element) -> bool {
+    !own_context(e) && zero_len(e.style.padding.top) && zero_len(e.style.borders().top)
+}
+
 /// Струна примыкающих полей (CSS 2.1 §8.3.1): больший положительный и самый
 /// отрицательный. Свёртка ассоциативна, поэтому все три случая спеки — сосед,
 /// родитель с ребёнком и схлопывание насквозь — считаются одним кодом.
@@ -3129,6 +3137,13 @@ fn through_strut(e: &Element) -> Option<Strut> {
     if e.tag == "html" {
         return None;
     }
+    // Коробка с `clear` насквозь не схлопывается: клиренс разделяет её поля
+    // (§8.3.1, «if the element's margins are collapsed … clearance»). Пустой
+    // `<div class="clear-left">` между флоатом и соседом иначе пропускал бы
+    // поле соседа наружу (`floats-clear/margin-collapse-033…035`).
+    if e.style.clear.is_some() {
+        return None;
+    }
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
     let b = e.style.borders();
     if !zero(e.style.padding.top)
@@ -3167,6 +3182,93 @@ fn through_strut(e: &Element) -> Option<Strut> {
         s = adjoin(s, through_strut(ch)?);
     }
     Some(s)
+}
+
+/// Ведущая цепочка примыкания к ВЕРХНЕМУ краю коробки (§8.3.1).
+///
+/// Верхнее поле коробки примыкает к верхнему полю её первого ребёнка в потоке.
+/// Если тот схлопывается насквозь, примыкание тянется ВБОК, к следующему
+/// брату; если не схлопывается — ВГЛУБЬ, к его собственному первому ребёнку.
+///
+/// Меряет ИММУТАБЕЛЬНО и копит пути до съеденных полей: обнулять на ходу
+/// нельзя, потому что доля или `calc` на середине цепи заставят вернуть
+/// `None`, а записанные нули уже не откатить.
+fn leading_chain(
+    children: &[Node],
+    path: &mut Vec<usize>,
+    eat: &mut Vec<(Vec<usize>, bool)>,
+) -> Option<Strut> {
+    let mut s = strut_of(0.0);
+    for (i, c) in children.iter().enumerate() {
+        let ch = match c {
+            Node::Text(t) if blank_text(t) => continue,
+            // Непробельный текст — строчная коробка, примыкание кончилось.
+            Node::Text(_) => return Some(s),
+            Node::Element(ch) => ch,
+        };
+        if ch.inline {
+            // Пустой `<span>` прозрачен, замещаемый атом рождает строку.
+            if ch.children.is_empty() && !replaced_inline(&ch.tag) {
+                continue;
+            }
+            return Some(s);
+        }
+        // Атомарный строчный в потоке есть и рождает строчную коробку.
+        if atomic_inline(&ch.style) {
+            return Some(s);
+        }
+        // Плавающий и абсолютный в потоке не участвуют и примыкания не рвут.
+        if !in_flow(&ch.style) {
+            continue;
+        }
+        // Клиренс разделяет поля (§8.3.1): дальше по цепи примыкание не
+        // идёт, и поле такого ребёнка наружу не уходит.
+        if ch.style.clear.is_some() {
+            return Some(s);
+        }
+        // Поле САМОГО ребёнка примыкает к полю родителя всегда — даже когда
+        // ребёнок заводит свой контекст: запрет §8.3.1 лежит на РОДИТЕЛЕ.
+        s = adjoin(s, strut_of(margin_or_bail(ch.style.margin.top, &ch.style)?));
+        path.push(i);
+        if let Some(t) = through_strut(ch) {
+            // Насквозь: поля всего поддерева уже в струне, идём к брату.
+            s = adjoin(s, t);
+            eat.push((path.clone(), true));
+            path.pop();
+            continue;
+        }
+        eat.push((path.clone(), false));
+        if top_edge_open(ch) {
+            s = adjoin(s, leading_chain(&ch.children, path, eat)?);
+        }
+        path.pop();
+        return Some(s);
+    }
+    Some(s)
+}
+
+/// Обнулить поле по пути: наружу оно ушло одним полем родителя, и раскладка
+/// сложила бы его второй раз. `deep` — коробка схлопнулась насквозь: чистится
+/// она сама с обеих сторон.
+fn zero_at(children: &mut [Node], path: &[usize], top: bool, deep: bool) {
+    let Some((&i, rest)) = path.split_first() else {
+        return;
+    };
+    let Some(Node::Element(ch)) = children.get_mut(i) else {
+        return;
+    };
+    if !rest.is_empty() {
+        zero_at(&mut ch.children, rest, top, deep);
+        return;
+    }
+    if deep {
+        ch.style.margin.top = Some(Len::Px(0.0));
+        ch.style.margin.bottom = Some(Len::Px(0.0));
+    } else if top {
+        ch.style.margin.top = Some(Len::Px(0.0));
+    } else {
+        ch.style.margin.bottom = Some(Len::Px(0.0));
+    }
 }
 
 /// Отступ в точках для схлопывания.
@@ -8894,25 +8996,27 @@ mod tests {
             "<div class=\"wrap\"><div class=\"in\" style=\"margin-top: 24px\">x</div></div>",
             "",
         );
+        // Примыкание ТРАНЗИТИВНО (§8.3.1): поле уходит на самую внешнюю
+        // коробку цепи, а у всех внутренних снимается. Пока подъём шёл на
+        // один уровень, то же поле поднималось повторно на каждом.
         let inner = match &nodes[0] {
             Node::Element(html) => collapse_margins(&html.children),
             _ => panic!("нет корня"),
         };
         let body = match &inner[0] {
-            Node::Element(b) => collapse_margins(&b.children),
+            Node::Element(b) => b,
             _ => panic!("нет body"),
         };
-        let wrap = match &body[0] {
-            Node::Element(e) => e,
-            _ => panic!("нет обёртки"),
-        };
         assert_eq!(
-            wrap.style.margin.top,
+            body.style.margin.top,
             Some(Len::Px(24.0)),
-            "отступ вынесен наружу"
+            "отступ вынесен на внешнюю коробку"
         );
+        let wrap_top =
+            find_class(std::slice::from_ref(&inner[0]), "wrap").and_then(|e| e.style.margin.top);
+        assert_eq!(wrap_top, Some(Len::Px(0.0)), "у обёртки отступ снят");
         let child_top =
-            find_class(std::slice::from_ref(&body[0]), "in").and_then(|e| e.style.margin.top);
+            find_class(std::slice::from_ref(&inner[0]), "in").and_then(|e| e.style.margin.top);
         assert_eq!(child_top, Some(Len::Px(0.0)), "у ребёнка отступ снят");
     }
 }
