@@ -2450,6 +2450,12 @@ impl Computed {
                 // `rgba(0, 0, 0, .5)` распадался на куски, ни один из которых
                 // не цвет, и фон терялся целиком — самая частая запись
                 // полупрозрачной подложки.
+                // Слова и длины ПОЛОЖЕНИЯ копятся отдельно и решаются одним
+                // разбором: ключевое слово несёт СВОЮ ось (css-backgrounds-3
+                // §3.6), поэтому `bottom repeat-x` и `repeat-x bottom` — одно
+                // и то же. Разбор тот же, что у отдельного свойства, иначе
+                // тест и эталон разойдутся механикой, а не раскладкой.
+                let mut pos: Vec<String> = vec![];
                 for token in split_outside_parens(v) {
                     match token.as_str() {
                         "no-repeat" => self.bg_repeat = Some(BgRepeat::NoRepeat),
@@ -2458,13 +2464,26 @@ impl Computed {
                         "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
                         "cover" => self.bg_size = BgSize::Cover,
                         "contain" => self.bg_size = BgSize::Contain,
+                        // Привязка и коробки положением НЕ являются: слово
+                        // съедается здесь, иначе уедет в разбор положения.
+                        "scroll" | "fixed" | "local" | "border-box" | "padding-box"
+                        | "content-box" => {}
                         t if t.starts_with("url(") => {}
+                        // Ключевые слова осей и длины — это положение.
+                        "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
+                        t if Len::parse(t).is_some() => pos.push(token.clone()),
                         t => {
                             if let Some(c) = Color::parse(t) {
                                 self.background = Some(c);
                             }
                         }
                     }
+                }
+                // Положение ставится ТОЛЬКО когда слово о нём в записи есть:
+                // разбор пустой строки отдаёт «по центру», и каждый фон без
+                // положения уехал бы в середину коробки.
+                if !pos.is_empty() {
+                    self.bg_pos = parse_pos_words(&pos.join(" "));
                 }
                 // Цвет живёт в НИЖНЕМ слое списка — верхний его не допускает.
                 if layers.len() > 1 {
