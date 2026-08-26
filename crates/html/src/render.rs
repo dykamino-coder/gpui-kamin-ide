@@ -913,7 +913,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // складывают сюда содержимое, а забирается оно последними детьми.
     crate::interact::late_open();
     let nodes = collapsed.as_slice();
-    for n in nodes {
+    for (idx, n) in nodes.iter().enumerate() {
         let is_inline = match n {
             // Пробельный узел между инлайн-соседями — часть строки, а не
             // разрыв: `<button>A</button> <button>B</button>` в разметке с
@@ -1180,6 +1180,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 && e.style.position == Some(crate::computed::Position::Absolute)
                 && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
                 && e.style.z_index.unwrap_or(0) >= 0
+                && !stays_positioned(&nodes[idx + 1..])
                 && (x_set || y_set);
             let built = if to_icb {
                 let spot: crate::interact::SpotCell = Default::default();
@@ -4165,6 +4166,49 @@ fn at_static_position(c: &Computed) -> bool {
 /// прежде `clear` был двузначным, и любая сторона обрывала любой ряд.
 fn clears_side(clear: Option<i8>, side: i8) -> bool {
     matches!(clear, Some(c) if c == 0 || c == side)
+}
+
+/// Есть ли ДАЛЬШЕ по разметке позиционированный элемент, который останется на
+/// месте.
+///
+/// Слой начального содержащего блока дописывается последним ребёнком
+/// документа, поэтому вынесенный рисуется поверх всего, что осталось в потоке.
+/// По CSS 2.1 §9.9 шаг 8 позиционированные с `z-index: auto` рисуются В
+/// ПОРЯДКЕ РАЗМЕТКИ: сосед, стоящий ПОСЛЕ, обязан лечь СВЕРХУ. Пока он
+/// остаётся на месте, вынос переворачивает пару местами.
+///
+/// Сосед, который сам уйдёт в слой, порядок НЕ ломает: слой копится в порядке
+/// сборки. `fixed` не считается: он и так рисуется отложенно, поверх всего.
+fn stays_positioned(rest: &[Node]) -> bool {
+    fn walk(nodes: &[Node], under_cb: bool) -> bool {
+        nodes.iter().any(|n| {
+            let Node::Element(e) = n else { return false };
+            let pos = e.style.position;
+            let positioned = matches!(
+                pos,
+                Some(crate::computed::Position::Relative)
+                    | Some(crate::computed::Position::Sticky)
+                    | Some(crate::computed::Position::Absolute)
+            );
+            // Тот же предикат, что и у выноса: такой сосед уедет в слой, и
+            // взаимный порядок сохранится.
+            let hoisted = pos == Some(crate::computed::Position::Absolute)
+                && !under_cb
+                && e.style.z_index.unwrap_or(0) >= 0
+                && (edge_set(e.style.inset.left)
+                    || edge_set(e.style.inset.right)
+                    || edge_set(e.style.inset.top)
+                    || edge_set(e.style.inset.bottom));
+            if positioned && !hoisted {
+                return true;
+            }
+            walk(
+                &e.children,
+                under_cb || crate::inline::establishes_cb(&e.style),
+            )
+        })
+    }
+    walk(rest, false)
 }
 
 /// Задан ли край позиционированного элемента.
