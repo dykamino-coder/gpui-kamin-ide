@@ -8113,6 +8113,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // edges» против «the width of a CSS table … excluding table padding and
     // table borders».
     let table_border_box = e.tag == "table" && e.style.border_box.is_none();
+    // ЗАМЕРЕНО И ОТКАЧЕНО: разделить таблицу на обёртку и сетку по §17.4 —
+    // обёртка несёт `position` и края, сетка сжимается по содержимому гибким
+    // рядом. CSS2 4715 без изменений: вердикт 10.70 у семьи
+    // `table-anonymous-objects-059…078` держится не на растяжении коробки.
+    // Следующая гипотеза — потолок дорожек §17.5.2.2 в `track_list`.
     let needs_clone =
         collapse || table_border_box || min_h != e.style.min_height || min_w != e.style.min_width;
     let host_style;
