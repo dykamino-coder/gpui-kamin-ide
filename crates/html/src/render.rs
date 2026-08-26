@@ -643,9 +643,23 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
     crate::interact::icb_open();
-    let mut out = blocks(std::slice::from_ref(node), &root, opts);
-    out.extend(crate::interact::icb_close());
-    out.into_iter().next()
+    let out = blocks(std::slice::from_ref(node), &root, opts);
+    let layer = crate::interact::icb_close();
+    let first = out.into_iter().next()?;
+    if layer.is_empty() {
+        return Some(first);
+    }
+    // Лента отдаёт РОВНО ОДИН элемент на блок, поэтому слой уходит внутрь
+    // обёртки. Содержащим блоком становится она, а не окно: в ленте окна
+    // всё равно нет — блок живёт в прокрутке. Без обёртки вынесенный
+    // элемент просто пропадал бы с экрана.
+    Some(
+        div()
+            .relative()
+            .child(first)
+            .children(layer)
+            .into_any_element(),
+    )
 }
 
 /// Разбор списка детей на блоки: инлайн-подряд склеивается в абзац.
