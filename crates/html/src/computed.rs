@@ -1135,6 +1135,10 @@ pub struct Computed {
     pub inline_display: Option<bool>,
     /// `display: run-in` — вбегание решает `dom::fold_run_ins`.
     pub run_in: Option<bool>,
+    /// Есть ли выше по дереву коробка, устанавливающая содержащий блок для
+    /// внепоточных потомков (§10.1 п.4). Ставится при наследовании: сам
+    /// каскад предков не видит.
+    pub(crate) cb_ancestor: bool,
     /// `display: table-caption` — метка для таблицы.
     pub is_caption: Option<bool>,
     /// Род группы рядов: 0 — шапка, 1 — тело, 2 — подвал. `Display` у всех

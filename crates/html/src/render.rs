@@ -507,7 +507,13 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // навсегда — три такие паники, и рамки исчезали до перезапуска.
     IFRAME_DEPTH.with(|d| d.set(0));
     collect_mask_defs(nodes);
-    blocks(nodes, &root, opts)
+    // Слой начального содержащего блока: внепоточные элементы без
+    // позиционированного предка дописываются последними детьми документа —
+    // их края решает область просмотра (§10.1 п.4).
+    crate::interact::icb_open();
+    let mut out = blocks(nodes, &root, opts);
+    out.extend(crate::interact::icb_close());
+    out
 }
 
 thread_local! {
@@ -634,9 +640,12 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     IFRAME_DEPTH.with(|d| d.set(0));
     collect_mask_defs(nodes);
     let root = opts.root_style();
-    blocks(std::slice::from_ref(node), &root, opts)
-        .into_iter()
-        .next()
+    // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
+    // элемент всё равно не уедет, а без слоя он остался бы на месте.
+    crate::interact::icb_open();
+    let mut out = blocks(std::slice::from_ref(node), &root, opts);
+    out.extend(crate::interact::icb_close());
+    out.into_iter().next()
 }
 
 /// Разбор списка детей на блоки: инлайн-подряд склеивается в абзац.
@@ -707,7 +716,10 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     let split = if ordered_context {
         nodes.to_vec()
     } else {
-        split_block_in_inline(nodes)
+        // Анонимная таблица вокруг ПРОГОНА табличных братьев (§17.2.1 шаг 3)
+        // — до разбиения блока в строчном и до схлопывания полей, как это
+        // делает и сборщик дерева в браузере.
+        split_block_in_inline(&wrap_anon_tables(nodes))
     };
     let nodes: &[Node] = &split;
     let collapsed = if ordered_context {
@@ -1115,6 +1127,24 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Только в обычном потоке: в сетке и гибком контейнере пустышка
             // стала бы ЯЧЕЙКОЙ и сдвинула соседей, а по CSS абсолютный
             // ребёнок из раскладки родителя выключен.
+            // Внепоточный элемент, которому не нашлось позиционированного
+            // предка: его содержащий блок — область просмотра (§10.1 п.4), а
+            // не родитель. Элемент строится НА СВОЁМ МЕСТЕ — наследование,
+            // шрифт, письмо и маски остаются верными, — а готовый уходит
+            // последним ребёнком документа, где края решит уже вьюпорт.
+            //
+            // Пока только при заданных ОБЕИХ осях: при пустой оси элемент
+            // стоит на статической позиции, а её знает лишь раскладка.
+            // Отрицательный `z-index` рисуется ПОД потоком, слой же идёт
+            // последним — такие остаются на месте.
+            // ЗАМЕРЕНО И ОТКАЧЕНО: выносить абсолютный элемент без
+            // позиционированного предка в слой начального содержащего блока
+            // (§10.1 п.4) — стек `interact::icb_*`, ветка при заданных обеих
+            // осях. CSS2 4636 -> 4626: +2 (`abspos-containing-block-002/007`)
+            // против -12, из них девять — `background-intrinsic-*`: вынесенный
+            // элемент теряет базу для своих долей, а `cb_ancestor` у них
+            // ложно пуст. Возвращаться, когда признак предка будет считаться
+            // по настоящей цепочке коробок, а не по наследованию стиля.
             if !ordered_context && at_static_position(&e.style) {
                 // Позиционированный элемент рисуется ПОВЕРХ обычного
                 // содержимого (CSS 2.1 §9.9, шаг 8) и без заданного `z-index`:
@@ -7912,6 +7942,92 @@ fn has_box_style_probe(c: &Computed) -> bool {
         || c.bg_image.is_some()
         || c.gradient_raw.is_some()
         || c.border_visible.contains(&Some(true))
+}
+
+/// Табличная роль бесхозного узла: `Some(true)` — структурная (ряд, группа
+/// рядов, колонка, группа колонок), `Some(false)` — ячейка, `None` — обычная
+/// коробка.
+///
+/// Колонка приходит с `Display::None` и живой меткой роли: коробки она не
+/// даёт, но прогон рвать не должна и обязана попасть в ту же анонимную
+/// таблицу.
+///
+/// Плавающее и абсолютное по §9.7 блокифицируются и табличной ролью быть
+/// перестают. Блокификации у нас пока нет, поэтому такие узлы проход не
+/// трогает — их судьбу решает прежний путь.
+fn anon_role(n: &Node) -> Option<bool> {
+    let Node::Element(e) = n else { return None };
+    if e.style.float.is_some_and(|f| f != 0)
+        || matches!(
+            e.style.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        )
+    {
+        return None;
+    }
+    if col_role(e).is_some() {
+        return Some(true);
+    }
+    if is_cell(e) {
+        return Some(false);
+    }
+    match e.style.display {
+        Some(Display::TableRow) | Some(Display::TableRowGroup) => Some(true),
+        _ => match e.tag.as_str() {
+            "tr" | "thead" | "tbody" | "tfoot" => Some(true),
+            _ => None,
+        },
+    }
+}
+
+/// §17.2.1, шаг 3: ПОСЛЕДОВАТЕЛЬНЫЕ братья с табличной ролью, стоящие в
+/// не-табличном родителе, заворачиваются в ОДНУ анонимную таблицу.
+///
+/// Поэлементная обёртка у нас уже была, и каждая бесхозная роль получала
+/// СВОЮ таблицу — ряды вставали друг под друга отдельными таблицами вместо
+/// одной. Починку содержимого (ряд вокруг ячеек, ячейка вокруг прочего)
+/// делает `fixup_table_children` уже внутри собранной таблицы.
+fn wrap_anon_tables(nodes: &[Node]) -> Vec<Node> {
+    if !nodes.iter().any(|n| anon_role(n).is_some()) {
+        return nodes.to_vec();
+    }
+    fn flush(run: &mut Vec<Node>, out: &mut Vec<Node>) {
+        if run.is_empty() {
+            return;
+        }
+        let mut t = anon_element("table", std::mem::take(run));
+        t.style.display = Some(Display::Table);
+        // Свой номер узла: по нему таблица просит буферы проб. Нулевой у
+        // всех анонимных узлов общий, и две таблицы делили бы один буфер —
+        // первая забрала бы его, вторая осталась пустой.
+        t.node_id = match t.children.first() {
+            Some(Node::Element(e)) => e.node_id.rotate_left(1) ^ 0x7ab1_e000,
+            _ => 0,
+        };
+        out.push(Node::Element(t));
+    }
+    let mut out: Vec<Node> = vec![];
+    let mut run: Vec<Node> = vec![];
+    let mut gap: Vec<Node> = vec![];
+    for n in nodes {
+        if anon_role(n).is_some() {
+            run.append(&mut gap);
+            run.push(n.clone());
+        } else if is_blank(n) && !run.is_empty() {
+            // Пробел между табличными братьями прогона не рвёт (§17.2.1,
+            // «consecutive»). Место ему решит следующий узел: внутри прогона
+            // он уйдёт в таблицу и там пропадёт, за прогоном — останется
+            // снаружи.
+            gap.push(n.clone());
+        } else {
+            flush(&mut run, &mut out);
+            out.append(&mut gap);
+            out.push(n.clone());
+        }
+    }
+    flush(&mut run, &mut out);
+    out.append(&mut gap);
+    out
 }
 
 fn anon_element(tag: &str, children: Vec<Node>) -> Element {

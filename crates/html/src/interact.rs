@@ -2667,6 +2667,37 @@ thread_local! {
 }
 
 /// Открыть слой на время сборки детей контейнера.
+thread_local! {
+    /// Слои НАЧАЛЬНОГО содержащего блока: внепоточные элементы, которым не
+    /// нашлось позиционированного предка. По §10.1 их содержащий блок —
+    /// область просмотра, а не ближайший родитель, поэтому они дописываются
+    /// последними детьми документа.
+    static ICB: std::cell::RefCell<Vec<Vec<AnyElement>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Открыть слой ICB: документ, блок ленты или вложенный документ.
+pub fn icb_open() {
+    ICB.with(|s| s.borrow_mut().push(Vec::new()));
+}
+
+/// Забрать накопленное верхним слоем ICB и закрыть его.
+pub fn icb_close() -> Vec<AnyElement> {
+    ICB.with(|s| s.borrow_mut().pop()).unwrap_or_default()
+}
+
+/// Отдать элемент слою ICB. Слоя нет — элемент возвращается, рисовать на
+/// месте.
+pub fn icb_push(el: AnyElement) -> Option<AnyElement> {
+    ICB.with(|s| match s.borrow_mut().last_mut() {
+        Some(layer) => {
+            layer.push(el);
+            None
+        }
+        None => Some(el),
+    })
+}
+
 pub fn late_open() {
     LATE.with(|s| s.borrow_mut().push(Vec::new()));
 }

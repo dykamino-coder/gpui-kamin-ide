@@ -423,8 +423,28 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
 
 /// Наследование: в CSS вниз идут только текстовые свойства. Бокс-свойства
 /// (отступы, фон) принадлежат самому элементу и вниз не передаются.
+/// Устанавливает ли коробка содержащий блок для внепоточных потомков
+/// (§10.1 п.4 плюс барьеры css-transforms и css-contain).
+///
+/// Список ШИРЕ, чем `position` не `static`: лишний барьер значит невынесенный
+/// элемент, то есть прежнее поведение, а пропущенный — вынос из коробки,
+/// которая обязана была его удержать.
+fn establishes_cb(c: &Computed) -> bool {
+    matches!(
+        c.position,
+        Some(crate::computed::Position::Relative)
+            | Some(crate::computed::Position::Absolute)
+            | Some(crate::computed::Position::Fixed)
+            | Some(crate::computed::Position::Sticky)
+    ) || c.transform.is_some()
+        || c.filter.is_some()
+        || c.contain_paint == Some(true)
+        || c.contain_layout == Some(true)
+}
+
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
+    c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.color = own.color.or(parent.color);
     // `background-color: inherit` переносит вычисленное значение родителя —
     // вместе с нерешённой относительной функцией (css-color-5 §4.1).
