@@ -8118,11 +8118,26 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // edges» против «the width of a CSS table … excluding table padding and
     // table borders».
     let table_border_box = e.tag == "table" && e.style.border_box.is_none();
-    // ЗАМЕРЕНО И ОТКАЧЕНО: разделить таблицу на обёртку и сетку по §17.4 —
-    // обёртка несёт `position` и края, сетка сжимается по содержимому гибким
-    // рядом. CSS2 4715 без изменений: вердикт 10.70 у семьи
-    // `table-anonymous-objects-059…078` держится не на растяжении коробки.
-    // Следующая гипотеза — потолок дорожек §17.5.2.2 в `track_list`.
+    // §17.4: `position` и края — свойства ОБЁРТКИ таблицы, а не её сетки;
+    // ширину сетки решает §17.5.2.2 (сжатие по содержимому). Пока коробка
+    // одна, абсолютная таблица с ОБОИМИ краями инлайн-оси получала ширину от
+    // краёв, и колонки расползались: сжатие у нас выражено только
+    // `align_self`, а его у абсолютной коробки с двумя краями не спрашивают.
+    let split_wrapper = matches!(
+        inherited.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) && edge_set(inherited.inset.left)
+        && edge_set(inherited.inset.right)
+        && e.style.width.is_none();
+    // Стиль СЕТКИ — без позиционирования и краёв: их заберёт обёртка.
+    let grid_style = split_wrapper.then(|| {
+        let mut c = inherited.clone();
+        c.position = None;
+        c.inset = Default::default();
+        c.z_index = None;
+        c
+    });
+    let inherited: &Computed = grid_style.as_ref().unwrap_or(inherited);
     let needs_clone =
         collapse || table_border_box || min_h != e.style.min_height || min_w != e.style.min_width;
     let host_style;
@@ -8232,6 +8247,19 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     } else {
         outer.into_any_element()
     };
+    // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
+    // по содержимому — тот же приём, что у корневого стола ниже.
+    if split_wrapper {
+        let mut wrap = Computed::default();
+        wrap.position = e.style.position;
+        wrap.inset = e.style.inset;
+        wrap.z_index = e.style.z_index;
+        return crate::apply::apply(div(), &wrap)
+            .flex()
+            .flex_row()
+            .child(outer)
+            .into_any_element();
+    }
     if root_table {
         return div()
             .flex()
