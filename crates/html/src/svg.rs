@@ -562,8 +562,15 @@ mod tests {
         let nodes = parse(r#"<svg width="40" height="20"></svg>"#, "");
         assert_eq!(size_of(find_svg(&nodes).unwrap()), (40.0, 20.0));
 
+        // `viewBox` даёт СООТНОШЕНИЕ, а не собственный размер: без своих
+        // сторон замещаемый занимает наибольший прямоугольник этого
+        // соотношения, влезающий в 300x150 (CSS 2.1 §10.3.2).
         let nodes = parse(r#"<svg viewBox="0 0 64 32"></svg>"#, "");
-        assert_eq!(size_of(find_svg(&nodes).unwrap()), (64.0, 32.0));
+        assert_eq!(size_of(find_svg(&nodes).unwrap()), (300.0, 150.0));
+
+        // Заданная сторона тянет за собой вторую по тому же соотношению.
+        let nodes = parse(r#"<svg width="80" viewBox="0 0 64 32"></svg>"#, "");
+        assert_eq!(size_of(find_svg(&nodes).unwrap()), (80.0, 40.0));
     }
 
     #[test]
