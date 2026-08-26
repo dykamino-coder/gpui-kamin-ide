@@ -7487,30 +7487,39 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .and_then(|v| v.parse::<usize>().ok())
                         .unwrap_or(1)
                         .max(1);
-                    match cell.style.width {
-                        Some(Len::Px(v)) if span == 1 => {
-                            // Колонка = width + горизонтальные паддинги и
-                            // рамки ячейки (§17.5.2.1, content-box); в
-                            // сросшейся модели рамка входит ПОЛОВИНОЙ.
-                            let side = |l: Option<Len>| match l {
-                                Some(Len::Px(p)) => p,
-                                _ => 0.0,
-                            };
-                            let extra = if cell.style.border_box == Some(true) {
-                                0.0
+                    // Колонка = width + горизонтальные паддинги и рамки
+                    // ячейки (§17.5.2.1, content-box); в сросшейся модели
+                    // рамка входит ПОЛОВИНОЙ.
+                    let side = |l: Option<Len>| match l {
+                        Some(Len::Px(p)) => p,
+                        _ => 0.0,
+                    };
+                    let extra = if cell.style.border_box == Some(true) {
+                        0.0
+                    } else {
+                        let b = cell.style.borders();
+                        let border = side(b.left) + side(b.right);
+                        side(cell.style.padding.left)
+                            + side(cell.style.padding.right)
+                            + if e.style.border_collapse == Some(true) {
+                                border / 2.0
                             } else {
-                                let b = cell.style.borders();
-                                let border = side(b.left) + side(b.right);
-                                side(cell.style.padding.left)
-                                    + side(cell.style.padding.right)
-                                    + if e.style.border_collapse == Some(true) {
-                                        border / 2.0
-                                    } else {
-                                        border
-                                    }
-                            };
-                            out.push(Some(v + extra));
-                        }
+                                border
+                            }
+                    };
+                    match cell.style.width {
+                        Some(Len::Px(v)) if span == 1 => out.push(Some(v + extra)),
+                        // Доля считается от места, отдаваемого дорожкам:
+                        // ширина таблицы за вычетом зазоров (§17.5.2.1,
+                        // «a percentage value ... of the table width»).
+                        // Известна, только когда ширина таблицы в точках.
+                        Some(Len::Pct(p)) if span == 1 => match e.style.width {
+                            Some(Len::Px(tw)) => {
+                                let gaps = spacing.0 * (f32::from(cols) + 1.0);
+                                out.push(Some((tw - gaps).max(0.0) * p + extra));
+                            }
+                            _ => out.push(None),
+                        },
                         _ => out.extend(std::iter::repeat_n(None, span)),
                     }
                 }
