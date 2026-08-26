@@ -8543,6 +8543,11 @@ fn fixup_row_children(row: &Element) -> Vec<Node> {
                     cells.push(child.clone());
                 }
                 Node::Text(t) if !t.trim().is_empty() => run.push(child.clone()),
+                // §17.2.1 шаг 1 п.4 гасит пробел только МЕЖДУ внутренними
+                // табличными коробками. Внутри прогона строчных братьев он
+                // часть анонимной ячейки: без него соседние слова слипались,
+                // и строка выходила короче.
+                Node::Text(_) if !run.is_empty() => run.push(child.clone()),
                 Node::Element(_) => run.push(child.clone()),
                 _ => {}
             }
