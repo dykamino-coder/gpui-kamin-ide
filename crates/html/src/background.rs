@@ -1623,12 +1623,31 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
         return;
     };
     let size = c.bg_size;
-    let pos = c.bg_pos;
     let repeat = c.bg_repeat.unwrap_or(BgRepeat::Repeat);
     let family = c.font_family.clone().unwrap_or_default();
     let font = match c.font_size {
         Some(Len::Px(v)) => v,
         _ => 16.0,
+    };
+    // Смещение плитки — та же длина, что и всюду: `background-position: 3em`
+    // сводится к точкам ЗДЕСЬ, где известны кегль и гарнитура. Ниже по пути
+    // непроходная единица читалась как ноль, и плитка вставала в угол
+    // (`background-root-019`, `-023`).
+    let pos = {
+        // Переводятся ТОЛЬКО единицы шрифта: всё прочее (точки, проценты,
+        // `calc`) ниже по пути уже понимают, а лишний перевод их портит —
+        // ЗАМЕРЕНО: сплошной перевод дал CSS2 4614 -> 4610, вся потеря в
+        // семье `border-*-width-applies-to-00*`.
+        let to_px = |l: Option<Len>| match l {
+            Some(u @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_) | Len::Lh(_))) => {
+                Some(Len::Px(crate::metrics::spacing_px(Some(u), &family, font)))
+            }
+            other => other,
+        };
+        crate::computed::BgPos {
+            x: to_px(c.bg_pos.x),
+            y: to_px(c.bg_pos.y),
+        }
     };
     let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, &family, font);
     let border = c.borders();
