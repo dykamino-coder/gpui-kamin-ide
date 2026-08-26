@@ -2836,17 +2836,7 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
         }
         let top = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);
         let bottom = margin_px(e.style.margin.bottom, &e.style).unwrap_or(0.0);
-        // ЗАМЕРЕНО И ОТКАЧЕНО: схлопывание НАСКВОЗЬ (пустая коробка отдаёт
-        // свои поля струне) — CSS2 +10 против -33. Прибавка ровно та, что
-        // ожидалась (`margin-collapse-016/026/102/104/111/115/116`, два
-        // `box-display` про пустой блок), но вся семья `bidi-box-model-*`
-        // краснеет: предикат `through_strut` считает схлопывающейся коробку
-        // С ТЕКСТОМ, хотя строчная коробка это запрещает (§8.3.1). Отдельно
-        // проверено, что сама струна поведения не меняет: с выключенным
-        // схлопыванием свод остаётся 4666 при нулевой разнице по парам.
-        // Возвращаться, разобравшись, почему текстовый ребёнок не рвёт
-        // предикат.
-        let through: Option<Strut> = None;
+        let through = through_strut(e);
         let mut merged = match strut {
             Some(s) => {
                 let m = adjoin(s, strut_of(top));
@@ -3035,6 +3025,144 @@ fn solve(s: Strut) -> f32 {
 /// §8.3.1: своими полями коробка схлопывается, когда у неё нулевой
 /// `min-height`, нет рамок и полей по вертикали, высота ноль или `auto`, она
 /// не содержит строчной коробки, и поля всех её детей в потоке тоже
+
+/// Замещаемый строчный атом: своих детей не имеет, но КОРОБКУ рождает —
+/// значит, рождает и строчную коробку. Пустой `<span>` — не рождает.
+fn replaced_inline(tag: &str) -> bool {
+    matches!(
+        tag,
+        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input" | "br"
+    )
+}
+
+/// Строчного УРОВНЯ, но В ПОТОКЕ: `inline-block` и родня. Рождает строчную
+/// коробку, в отличие от плавающего и абсолютного, которых в потоке нет.
+/// Разбор держит `display: inline` как `InlineBlock` с пометкой
+/// `inline_display`, поэтому одного взгляда на `display` мало.
+fn atomic_inline(c: &Computed) -> bool {
+    c.float.is_none()
+        && !matches!(
+            c.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        )
+        && c.inline_display != Some(true)
+        && matches!(
+            c.display,
+            Some(Display::InlineBlock)
+                | Some(Display::InlineFlex)
+                | Some(Display::InlineGrid)
+                | Some(Display::InlineTable)
+        )
+}
+
+/// Содержит ли коробка строчную коробку (§8.3.1, «does not contain a line
+/// box»; нулевые строчные коробки §9.4.2 не в счёт).
+///
+/// Правила те же, что у `first_in_flow`: пробельный текст прозрачен,
+/// непробельный рождает строку; ПУСТОЙ строчный элемент прозрачен, а
+/// замещаемый атом (`img` и родня) — нет; вне потока строки не рождает никто;
+/// `display: contents` своей коробки не даёт — смотреть надо в его детей.
+fn holds_line_box(children: &[Node]) -> bool {
+    children.iter().any(|n| match n {
+        Node::Text(t) => !blank_text(t),
+        Node::Element(ch) => {
+            if ch.style.display == Some(Display::None) {
+                return false;
+            }
+            if ch.style.display == Some(Display::Contents) {
+                return holds_line_box(&ch.children);
+            }
+            // Плавающий и абсолютный строчной коробки не рождают.
+            if ch.style.float.is_some_and(|f| f != 0)
+                || matches!(
+                    ch.style.position,
+                    Some(crate::computed::Position::Absolute)
+                        | Some(crate::computed::Position::Fixed)
+                )
+            {
+                return false;
+            }
+            // Атомарный строчный в потоке — своя строчная коробка. Проверять
+            // ДО `in_flow`: он их не различает и валит в одну корзину с
+            // плавающим.
+            if atomic_inline(&ch.style) {
+                return true;
+            }
+            if ch.inline {
+                return replaced_inline(&ch.tag) || holds_line_box(&ch.children);
+            }
+            // Блочный ребёнок строки не рождает: его содержимое разбирает
+            // рекурсия `through_strut`.
+            false
+        }
+    })
+}
+
+/// Поле в точках или `None`, если единица нам не по зубам (доля, `vh`,
+/// `calc`). Ноль подставлять НЕЛЬЗЯ: ветка насквозь значение ЗАПИСЫВАЕТ
+/// обратно, и написанное пропадёт навсегда (`margin-bottom-103`: `50%`
+/// превращалось в `0`).
+fn margin_or_bail(l: Option<Len>, style: &Computed) -> Option<f32> {
+    match l {
+        None => Some(0.0),
+        Some(_) => margin_px(l, style),
+    }
+}
+
+/// Схлопывается ли коробка НАСКВОЗЬ, и какая струна из неё выходит.
+///
+/// §8.3.1: своими полями коробка схлопывается, когда у неё нулевой
+/// `min-height`, нет рамок и полей по вертикали, высота ноль или `auto`, она
+/// НЕ СОДЕРЖИТ СТРОЧНОЙ КОРОБКИ, и поля всех её детей в потоке тоже
+/// схлопываются. Возвращаются слитые поля — свои плюс поля всех
+/// насквозь-потомков: это и есть транзитивность примыкания.
+fn through_strut(e: &Element) -> Option<Strut> {
+    if e.inline || !in_flow(&e.style) || own_context(e) {
+        return None;
+    }
+    // Поля КОРНЯ ни с чем не схлопываются (§8.3.1).
+    if e.tag == "html" {
+        return None;
+    }
+    let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
+    let b = e.style.borders();
+    if !zero(e.style.padding.top)
+        || !zero(e.style.padding.bottom)
+        || !zero(b.top)
+        || !zero(b.bottom)
+        || !zero(e.style.min_height)
+        || !matches!(
+            e.style.height,
+            None | Some(Len::Auto) | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))
+        )
+    {
+        return None;
+    }
+    // Главная проверка содержимого: без неё `<div>` из четырёх `<img>`
+    // считался пустым (ЗАМЕРЕНО: -30 на эталонах `bidi-box-model-*`).
+    if holds_line_box(&e.children) {
+        return None;
+    }
+    let mut s = adjoin(
+        strut_of(margin_or_bail(e.style.margin.top, &e.style)?),
+        strut_of(margin_or_bail(e.style.margin.bottom, &e.style)?),
+    );
+    // «all of its in-flow children's margins collapse» — рекурсия по блочным
+    // детям в потоке. Строчных здесь уже нет (проверка выше), вне потока —
+    // запрета не создают.
+    for c in &e.children {
+        let Node::Element(ch) = c else { continue };
+        if ch.inline
+            || ch.style.display == Some(Display::None)
+            || ch.style.display == Some(Display::Contents)
+            || !in_flow(&ch.style)
+        {
+            continue;
+        }
+        s = adjoin(s, through_strut(ch)?);
+    }
+    Some(s)
+}
 
 /// Отступ в точках для схлопывания.
 ///
