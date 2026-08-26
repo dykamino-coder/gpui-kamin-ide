@@ -1657,7 +1657,18 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
         gpui::canvas(
             |_, _, _| {},
             move |bounds: Bounds<Pixels>, _, window, _| {
-                paint_area(&style, bounds, window);
+                if style.bg_fixed == Some(true) {
+                    // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
+                    // а красится только внутри своей коробки: сдвиг между
+                    // ними держит сам `paint_tiles`.
+                    let view = Bounds {
+                        origin: gpui::point(px(0.0), px(0.0)),
+                        size: window.viewport_size(),
+                    };
+                    paint_tiles(&style, view, Some(bounds), window);
+                } else {
+                    paint_area(&style, bounds, window);
+                }
             },
         )
         .absolute()
