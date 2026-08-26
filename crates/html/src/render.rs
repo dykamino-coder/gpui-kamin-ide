@@ -7204,7 +7204,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // `ws-break-spaces-applies-to` не двигается ни на пару. Значит
         // сохранённые пробелы в ячейке теряются НЕ здесь, и до того, как
         // найдено настоящее место, правка только вредит.
-        let row_style = inline::inherit(&inline::inherit(inherited, &e.style), &own);
+        // `inherited` — УЖЕ слитый стиль самой таблицы, поэтому второй мерж
+        // сырого `e.style` разрешал относительные единицы повторно:
+        // `font-size: 2em` на теге давал ячейке 64 точки вместо 32, строки
+        // не влезали в колонку и таблица разъезжалась на лишние полосы
+        // (вся семья `table-anonymous-objects-059…098`).
+        let row_style = inline::inherit(inherited, &own);
         let mut col_ix = 0usize;
         for child in &row.children {
             let Node::Element(cell) = child else { continue };
