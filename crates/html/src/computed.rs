@@ -742,6 +742,9 @@ pub struct Computed {
     /// `background-color: inherit`: фон не наследуемый, слово переносит
     /// вычисленное значение родителя (включая нерешённую функцию).
     pub(crate) background_inherit: bool,
+    /// `background: inherit` — сокращение, значит наследуется весь фон, а не
+    /// только цвет.
+    pub(crate) background_all_inherit: bool,
     /// Явное `inherit` на ненаследуемых размерах и краях: значение берётся
     /// от родителя при слиянии (`inline::inherit`), как у padding/border.
     pub(crate) width_inherit: bool,
@@ -2405,6 +2408,11 @@ impl Computed {
             "background" | "background-color" => {
                 if v == "inherit" {
                     self.background_inherit = true;
+                    // Сокращение наследует ВЕСЬ фон, а не только цвет
+                    // (css-backgrounds-3 §2.1): картинку, повтор, положение и
+                    // размер. Флага два, потому что `background-color:
+                    // inherit` чужую картинку тащить не должен.
+                    self.background_all_inherit = key == "background";
                     return;
                 }
                 // Цвет от `currentColor` решается не здесь: цвет элемента

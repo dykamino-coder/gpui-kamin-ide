@@ -516,6 +516,15 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     if own.background_inherit {
         c.background = parent.background;
         c.background_rcs = own.background_rcs.clone().or(parent.background_rcs.clone());
+        if own.background_all_inherit {
+            c.bg_image = parent.bg_image.clone();
+            c.bg_repeat = parent.bg_repeat;
+            c.bg_pos = parent.bg_pos;
+            c.bg_size = parent.bg_size;
+            c.bg_fixed = parent.bg_fixed;
+            c.gradient = parent.gradient.clone();
+            c.gradient_raw = parent.gradient_raw.clone();
+        }
     }
     // Относительный цвет решается ЗДЕСЬ: только теперь известен цвет самого
     // элемента. Функция остаётся в поле — её унаследуют дети и решат своим
