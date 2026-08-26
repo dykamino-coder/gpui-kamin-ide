@@ -1595,6 +1595,61 @@ fn origin(pos: BgPos, box_size: (f32, f32), tile: (f32, f32)) -> (f32, f32) {
 }
 
 /// Слой фоновой картинки: канвас, рисующий плитки внутри своих границ.
+/// Коробка ПОЗИЦИОНИРОВАНИЯ корня — отступы её краёв от краёв холста.
+///
+/// Хранится отступами, а не готовым прямоугольником: при `width: auto` (а так
+/// во всей семье `background-root-*`) размер известен только на отрисовке,
+/// когда виден холст.
+#[derive(Clone, Copy, Default)]
+pub struct RootArea {
+    /// Поле плюс рамка корня с этой стороны.
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    /// Padding-box корня, если размер ЗАДАН: размер плюс отступы по оси.
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+    /// `vertical-rl`: заданная ширина отмеряется от ПРАВОГО края холста.
+    pub from_right: bool,
+}
+
+impl RootArea {
+    fn rect(&self, clip: Bounds<Pixels>) -> Bounds<Pixels> {
+        let (cw, ch) = (f32::from(clip.size.width), f32::from(clip.size.height));
+        let w = self.width.unwrap_or(cw - self.left - self.right).max(0.0);
+        let h = self.height.unwrap_or(ch - self.top - self.bottom).max(0.0);
+        let x = if self.from_right && self.width.is_some() {
+            cw - self.right - w
+        } else {
+            self.left
+        };
+        Bounds {
+            origin: gpui::point(clip.origin.x + px(x), clip.origin.y + px(self.top)),
+            size: gpui::size(px(w), px(h)),
+        }
+    }
+}
+
+/// Слой фона КАНВАСА: плитки меряются коробкой корня, а красят весь холст.
+pub fn canvas_layer(c: &Computed, area: RootArea) -> Option<AnyElement> {
+    c.bg_image.as_ref()?;
+    let style = c.clone();
+    Some(
+        gpui::canvas(
+            |_, _, _| {},
+            move |clip: Bounds<Pixels>, _, window, _| {
+                paint_tiles(&style, area.rect(clip), Some(clip), window);
+            },
+        )
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .into_any_element(),
+    )
+}
+
 pub fn layer(c: &Computed) -> Option<AnyElement> {
     c.bg_image.as_ref()?;
     let style = c.clone();
@@ -1619,6 +1674,23 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
 /// области ряда, но обрезается прямоугольниками ячеек — вызывающий ставит
 /// маску сам и зовёт отрисовку с областью ряда.
 pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Window) {
+    paint_tiles(c, bounds, None, window);
+}
+
+/// Нарисовать плитки: `area` задаёт РАЗМЕР и НАЧАЛО ОТСЧЁТА, `canvas` — что
+/// именно закрашивается.
+///
+/// Две области нужны одному фону — КАНВАСУ (CSS 2.1 §14.2): краска «extends to
+/// cover the entire canvas», а плитки «are sized and positioned relative to the
+/// root element's box as if they were painted for that element alone». У
+/// обычной коробки области совпадают, и `None` оставляет прежний путь слово в
+/// слово.
+pub fn paint_tiles(
+    c: &Computed,
+    bounds: Bounds<Pixels>,
+    canvas: Option<Bounds<Pixels>>,
+    window: &mut gpui::Window,
+) {
     let Some(src) = c.bg_image.clone() else {
         return;
     };
@@ -1720,9 +1792,45 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
         rounded(repeat.axis(true), tile.0, box_size.0),
         rounded(repeat.axis(false), tile.1, box_size.1),
     );
+    // Плитки МЕРЯЮТСЯ областью позиционирования, а КЛАДУТСЯ по всей краске:
+    // у канваса это весь холст, и полоса `repeat-x` обязана выходить за поля
+    // корня (`background-root-016`: «extending … to the left and right edges
+    // of the page»).
+    let clip = canvas.unwrap_or(bounds);
     let start = origin(pos, box_size, tile);
-    let mut xs = tiling(repeat.axis(true), start.0, tile.0, box_size.0);
-    let mut ys = tiling(repeat.axis(false), start.1, tile.1, box_size.1);
+    let shift = (
+        f32::from(bounds.origin.x - clip.origin.x),
+        f32::from(bounds.origin.y - clip.origin.y),
+    );
+    let span = (f32::from(clip.size.width), f32::from(clip.size.height));
+    // `space` раздаёт зазоры внутри ОБЛАСТИ ПОЗИЦИОНИРОВАНИЯ, а не по холсту
+    // (css-backgrounds-3 §3.4), поэтому длина ему нужна своя.
+    let lay = |mode: Tiling, from: f32, tile: f32, shift: f32, own: f32, all: f32| {
+        if mode == Tiling::Space {
+            tiling(mode, from, tile, own)
+                .into_iter()
+                .map(|v| v + shift)
+                .collect()
+        } else {
+            tiling(mode, from + shift, tile, all)
+        }
+    };
+    let mut xs = lay(
+        repeat.axis(true),
+        start.0,
+        tile.0,
+        shift.0,
+        box_size.0,
+        span.0,
+    );
+    let mut ys = lay(
+        repeat.axis(false),
+        start.1,
+        tile.1,
+        shift.1,
+        box_size.1,
+        span.1,
+    );
     // Общий потолок числа квадов: потолок НА ОСЬ пропускал произведение
     // (плитка 1x1 на вьюпорт = ~480 тысяч квадов — кадр не заканчивался,
     // hidpi-invert-filter-background висел). Плитки ПРОРЕЖИВАЮТСЯ с
@@ -1755,10 +1863,10 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
         return;
     };
     let corners = gpui::Corners::all(px(radius));
-    window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
+    window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
         for y in &ys {
             for x in &xs {
-                let at = gpui::point(bounds.origin.x + px(*x), bounds.origin.y + px(*y));
+                let at = gpui::point(clip.origin.x + px(*x), clip.origin.y + px(*y));
                 let cell = Bounds {
                     origin: at,
                     size: gpui::size(px(tile.0), px(tile.1)),

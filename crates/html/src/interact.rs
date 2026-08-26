@@ -1482,6 +1482,27 @@ pub fn cell_edges_for(key: u64) -> CellEdges {
 }
 
 /// Проба кромок: как проба фона, пишет в PREPAINT границы и рамки ячейки.
+/// Метка «коробка СЕТКИ»: проба ничего не рисует, а сообщает слою кромок,
+/// где кончаются дорожки. Граница сетки есть ВСЕГДА, даже когда рисующей
+/// кромки у таблицы нет, и смешивать эти два понятия нельзя (замеры «крайние
+/// линии только с `source == 0`» и «нулевая проба таблицы» — обе давали
+/// +21/-25).
+pub const GRID_BOX: u8 = u8::MAX;
+
+/// Проба ГРАНИЦЫ СЕТКИ: координаты те же, что у пробы кромок таблицы
+/// (`inset` — ширины её рамочного места), но без самих кромок.
+pub fn grid_probe(edges: CellEdges, inset: [f32; 4]) -> AnyElement {
+    edge_probe(
+        edges,
+        [0.0; 4],
+        [crate::value::Color::default(); 4],
+        [0; 4],
+        GRID_BOX,
+        0,
+        inset,
+    )
+}
+
 pub fn edge_probe(
     edges: CellEdges,
     widths: [f32; 4],
@@ -1583,6 +1604,11 @@ impl Element for EdgePainter {
         _cx: &mut App,
     ) {
         let cells = std::mem::take(&mut *self.edges.borrow_mut());
+        // Начало сетки по каждой оси — отдельно от того, кто эту линию красит.
+        let grid_lo = cells
+            .iter()
+            .find(|c| c.source == GRID_BOX)
+            .map(|c| (f32::from(c.bounds.origin.x), f32::from(c.bounds.origin.y)));
         // Кандидат кромки на ЛИНИИ сетки: совпадающие отрезки соседей — ОДНА
         // кромка, победитель по CSS 2.1 §17.6.2.1 (hidden гасит всех, затем
         // шире, ранг стиля, источник ячейка>таблица, порядок в документе).
@@ -1601,6 +1627,9 @@ impl Element for EdgePainter {
         let mut vert: Vec<Cand> = vec![];
         let mut horiz: Vec<Cand> = vec![];
         for c in &cells {
+            if c.source == GRID_BOX {
+                continue;
+            }
             let bnd = c.bounds;
             let (x0, y0) = (f32::from(bnd.origin.x), f32::from(bnd.origin.y));
             let (x1, y1) = (
@@ -1652,7 +1681,7 @@ impl Element for EdgePainter {
             }
             widest / 2.0
         };
-        let mut draw = |cands: &mut Vec<Cand>, vertical: bool| {
+        let mut draw = |cands: &mut Vec<Cand>, vertical: bool, grid_lo: Option<f32>| {
             cands.sort_by(|p, q| {
                 p.line
                     .partial_cmp(&q.line)
@@ -1661,16 +1690,14 @@ impl Element for EdgePainter {
             // Крайние линии таблицы: кромка не центрируется, а рисуется
             // внутрь бокса (наружная половина у браузеров уходит в поля,
             // эталоны считают рамку частью коробки).
-            // ЗАМЕРЕНО И ОТКАЧЕНО: брать крайние линии только с кромок САМОЙ
-            // таблицы (`source == 0`), а при их отсутствии считать, что
-            // крайних линий нет вовсе. Внутренние кромки таблицы без своей
-            // рамки тогда центрируются верно (`fixed-table-layout-003e/f`,
-            // +21), но кромка ряда и группы на краю таблицы теряет наружную
-            // половину: CSS2 4614 -> 4610, вся потеря — семья
-            // `border-*-width-applies-to-00*`. Правильная развязка — знать
-            // границу СЕТКИ отдельно от того, кто её рисует.
-            let lo_line = cands.first().map(|c| c.line).unwrap_or(0.0);
-            let hi_line = cands.last().map(|c| c.line).unwrap_or(0.0);
+            // Начало сетки — не «первая нарисованная кромка», а край ДОРОЖЕК.
+            // У браузера коробка таблицы раздаётся наружу на половину
+            // победившей кромки, а сама кромка красится центрировано. Выноса
+            // у нас нет: сетка стоит там, где у браузера ВНЕШНИЙ край
+            // коробки, — поэтому кромку НАЧАЛЬНОЙ линии вжимаем внутрь, её
+            // наружная половина и занимает недостающий вынос. Конец сетки
+            // координату не сдвигает: там центр.
+            let lo_line = grid_lo.unwrap_or_else(|| cands.first().map(|c| c.line).unwrap_or(0.0));
             let mut i = 0;
             while i < cands.len() {
                 let mut j = i + 1;
@@ -1712,7 +1739,6 @@ impl Element for EdgePainter {
                     let edge_dir = match outward {
                         Some(d) => Some(d),
                         None if (line - lo_line).abs() < 0.75 => Some(1),
-                        None if (line - hi_line).abs() < 0.75 => Some(-1),
                         None => None,
                     };
                     let (lo, hi) = match edge_dir {
@@ -1744,8 +1770,8 @@ impl Element for EdgePainter {
                 i = j;
             }
         };
-        draw(&mut vert, true);
-        draw(&mut horiz, false);
+        draw(&mut vert, true, grid_lo.map(|g| g.0));
+        draw(&mut horiz, false, grid_lo.map(|g| g.1));
     }
 }
 
