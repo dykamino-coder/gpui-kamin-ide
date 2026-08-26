@@ -7680,7 +7680,15 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     ];
     let min_h = min_fix(e.style.min_height, bw[0] + bw[2] + pad_px[0] + pad_px[2]);
     let min_w = min_fix(e.style.min_width, bw[1] + bw[3] + pad_px[1] + pad_px[3]);
-    let needs_clone = collapse || min_h != e.style.min_height || min_w != e.style.min_width;
+    // У ТЕГА `<table>` ширина считается по BORDER-BOX (UA-правило
+    // css-tables-3: `table { box-sizing: border-box }`), у `display: table` на
+    // прочих тегах — контентная. Тесты пишут это прямо: «the width of an
+    // HTML/XHTML table is the distance between the left and right table border
+    // edges» против «the width of a CSS table … excluding table padding and
+    // table borders».
+    let table_border_box = e.tag == "table" && e.style.border_box.is_none();
+    let needs_clone =
+        collapse || table_border_box || min_h != e.style.min_height || min_w != e.style.min_width;
     let host_style;
     let mut outer = if needs_clone {
         let mut c = inherited.clone();
@@ -7696,6 +7704,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         }
         c.min_height = min_h;
         c.min_width = min_w;
+        if table_border_box {
+            c.border_box = Some(true);
+        }
         host_style = c;
         styled_div_with(e, &host_style).flex().flex_col()
     } else {
