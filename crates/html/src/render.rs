@@ -2732,32 +2732,7 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
         // позиционирование. Раньше учитывались только рамка и внутренний
         // отступ, и содержимое прокручиваемой панели вставало на 6-8 точек
         // выше браузерного.
-        let own_context = !matches!(
-            e.style.overflow_y,
-            None | Some(crate::computed::Overflow::Visible)
-        ) || !matches!(
-            e.style.overflow_x,
-            None | Some(crate::computed::Overflow::Visible)
-        ) || matches!(
-            e.style.display,
-            Some(Display::Flex)
-                | Some(Display::InlineFlex)
-                | Some(Display::Grid)
-                | Some(Display::InlineGrid)
-                | Some(Display::InlineBlock)
-                | Some(Display::Table)
-                | Some(Display::InlineTable)
-        ) || matches!(
-            e.style.position,
-            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
-        ) || e.style.float.is_some()
-            || e.style.contain_paint == Some(true)
-            || e.style.contain_layout == Some(true)
-            || e.style.contain_size == Some(true)
-            || e.style.flow_root == Some(true)
-            || matches!(e.style.display, Some(Display::TableCell))
-            || e.style.column_count.is_some()
-            || e.style.column_width.is_some();
+        let own_context = own_context(e);
         // Отсечка по ЗНАЧЕНИЮ, а не по «свойство написано»: `padding: 0` и
         // `border: 0` схлопыванию не мешают (CSS 2.1 §8.3.1).
         let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
@@ -2827,46 +2802,78 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
             }
         }
     }
-    let mut prev_bottom: Option<f32> = None;
+    // Струна примыкающих полей соседей (§8.3.1). `emitted` — сколько точек уже
+    // ЗАПИСАНО в стили этого зазора: раскладка складывает поля сама, и
+    // верхнему полю следующего блока достаётся только разница.
+    let mut strut: Option<Strut> = None;
+    let mut emitted = 0.0f32;
     for node in out.iter_mut() {
         let Node::Element(e) = node else {
             // Переводы строк между блоками разрывом потока не считаются: в
             // форматированной разметке они стоят везде, и из-за них
-            // схлопывание не срабатывало ни разу (поймано сравнением с
-            // Chrome — документ уезжал вниз).
+            // схлопывание не срабатывало ни разу.
             if matches!(node, Node::Text(t) if blank_text(t)) {
                 continue;
             }
-            prev_bottom = None;
+            strut = None;
             continue;
         };
-        // Отступы схлопываются только у блоков в обычном потоке: плавающий и
-        // абсолютный не схлопываются ни с соседями, ни через себя — соседний
-        // блок видит того, кто был ДО них. Раньше ряд из четырёх плавающих
-        // блоков с полем в кегль терял поле у всех, кроме первого.
-        // Плавающий и абсолютный цепочку не рвут: сосед видит того, кто был
-        // ДО них. А вот СТРОЧНЫЙ элемент с содержимым порождает строчную
-        // коробку, и отступы блоков через неё уже не примыкают
-        // (CSS 2.1 §8.3.1).
+        // Строчный элемент С СОДЕРЖИМЫМ порождает строчную коробку, и поля
+        // блоков через неё уже не примыкают.
         if e.inline {
             if !e.children.is_empty() {
-                prev_bottom = None;
+                strut = None;
             }
             continue;
         }
+        // ЗАМЕРЕНО И ОТКАЧЕНО: обрывать струну на атомарном строчном
+        // (`inline-block` и родня в потоке рождают строчную коробку). CSS2
+        // -38, вся потеря — семья `bidi-box-model-*`: там такой сосед стоит
+        // между блоками сплошь, и разрыв струны разводит их полями врозь.
+        // Возвращаться вместе с настоящей строчной коробкой в раскладке.
         if !in_flow(&e.style) {
             continue;
         }
         let top = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);
-        if let Some(bottom) = prev_bottom {
-            // Слитый отступ по CSS 2.1 §8.3.1 — это БОЛЬШИЙ из положительных
-            // плюс МЕНЬШИЙ из отрицательных. Нижний отступ соседа раскладка уже
-            // поставила, поэтому верхнему достаётся разница. Прежняя формула
-            // `(top - bottom).max(0)` считала только положительный случай:
-            // при `margin-bottom: -10px` соседи расходились на 30 вместо 10.
-            e.style.margin.top = Some(Len::Px(collapsed(top, bottom) - bottom));
+        let bottom = margin_px(e.style.margin.bottom, &e.style).unwrap_or(0.0);
+        // ЗАМЕРЕНО И ОТКАЧЕНО: схлопывание НАСКВОЗЬ (пустая коробка отдаёт
+        // свои поля струне) — CSS2 +10 против -33. Прибавка ровно та, что
+        // ожидалась (`margin-collapse-016/026/102/104/111/115/116`, два
+        // `box-display` про пустой блок), но вся семья `bidi-box-model-*`
+        // краснеет: предикат `through_strut` считает схлопывающейся коробку
+        // С ТЕКСТОМ, хотя строчная коробка это запрещает (§8.3.1). Отдельно
+        // проверено, что сама струна поведения не меняет: с выключенным
+        // схлопыванием свод остаётся 4666 при нулевой разнице по парам.
+        // Возвращаться, разобравшись, почему текстовый ребёнок не рвёт
+        // предикат.
+        let through: Option<Strut> = None;
+        let mut merged = match strut {
+            Some(s) => {
+                let m = adjoin(s, strut_of(top));
+                // Верхний край насквозь-схлопнутой коробки встаёт там, где
+                // разрешается струна до неё вместе с её верхним полем. Та же
+                // строка даёт это и обычной коробке: нижнее поле соседа
+                // раскладка уже поставила, верхнему достаётся разница.
+                e.style.margin.top = Some(Len::Px(solve(m) - emitted));
+                emitted = solve(m);
+                m
+            }
+            None => {
+                // Примыкать не к чему: верхнее поле остаётся как написано.
+                emitted = top;
+                strut_of(top)
+            }
+        };
+        if let Some(own) = through {
+            merged = adjoin(merged, own);
+            // Своё нижнее поле коробка не ставит: оно ушло в струну, и
+            // раскладка сложила бы его второй раз.
+            e.style.margin.bottom = Some(Len::Px(0.0));
+            strut = Some(merged);
+            continue;
         }
-        prev_bottom = Some(margin_px(e.style.margin.bottom, &e.style).unwrap_or(0.0));
+        strut = Some(strut_of(bottom));
+        emitted = bottom;
     }
     out
 }
@@ -2971,6 +2978,63 @@ thread_local! {
     /// возвращает на место после него.
     static COLLAPSE_FONT_PX: std::cell::Cell<f32> = const { std::cell::Cell::new(16.0) };
 }
+
+/// Заводит ли коробка СВОЙ блочный контекст форматирования: через её край
+/// поля не схлопываются ни с детьми, ни насквозь (CSS 2.1 §8.3.1).
+fn own_context(e: &Element) -> bool {
+    !matches!(
+        e.style.overflow_y,
+        None | Some(crate::computed::Overflow::Visible)
+    ) || !matches!(
+        e.style.overflow_x,
+        None | Some(crate::computed::Overflow::Visible)
+    ) || matches!(
+        e.style.display,
+        Some(Display::Flex)
+            | Some(Display::InlineFlex)
+            | Some(Display::Grid)
+            | Some(Display::InlineGrid)
+            | Some(Display::InlineBlock)
+            | Some(Display::Table)
+            | Some(Display::InlineTable)
+    ) || matches!(
+        e.style.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) || e.style.float.is_some()
+        || e.style.contain_paint == Some(true)
+        || e.style.contain_layout == Some(true)
+        || e.style.contain_size == Some(true)
+        || e.style.flow_root == Some(true)
+        || matches!(e.style.display, Some(Display::TableCell))
+        || e.style.column_count.is_some()
+        || e.style.column_width.is_some()
+}
+
+/// Струна примыкающих полей (CSS 2.1 §8.3.1): больший положительный и самый
+/// отрицательный. Свёртка ассоциативна, поэтому все три случая спеки — сосед,
+/// родитель с ребёнком и схлопывание насквозь — считаются одним кодом.
+type Strut = (f32, f32);
+
+fn strut_of(v: f32) -> Strut {
+    (v.max(0.0), v.min(0.0))
+}
+
+fn adjoin(a: Strut, b: Strut) -> Strut {
+    (a.0.max(b.0), a.1.min(b.1))
+}
+
+/// Итог струны: максимум положительных минус максимум модулей отрицательных.
+fn solve(s: Strut) -> f32 {
+    s.0 + s.1
+}
+
+/// Строчного УРОВНЯ, но В ПОТОКЕ: `inline-block` и родня. Рождает строчную
+
+/// Схлопывается ли коробка НАСКВОЗЬ, и какая струна из неё выходит.
+///
+/// §8.3.1: своими полями коробка схлопывается, когда у неё нулевой
+/// `min-height`, нет рамок и полей по вертикали, высота ноль или `auto`, она
+/// не содержит строчной коробки, и поля всех её детей в потоке тоже
 
 /// Отступ в точках для схлопывания.
 ///
