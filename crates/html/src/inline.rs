@@ -429,7 +429,15 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
 /// Список ШИРЕ, чем `position` не `static`: лишний барьер значит невынесенный
 /// элемент, то есть прежнее поведение, а пропущенный — вынос из коробки,
 /// которая обязана была его удержать.
-fn establishes_cb(c: &Computed) -> bool {
+pub(crate) fn establishes_cb(c: &Computed) -> bool {
+    // Растворённый элемент коробки не даёт и содержащим блоком быть не может
+    // (css-display-3 §3.2).
+    if matches!(
+        c.display,
+        Some(crate::computed::Display::Contents) | Some(crate::computed::Display::None)
+    ) {
+        return false;
+    }
     matches!(
         c.position,
         Some(crate::computed::Position::Relative)
