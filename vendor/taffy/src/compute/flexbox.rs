@@ -2162,9 +2162,26 @@ fn perform_absolute_layout_on_absolute_children(
 
         let non_auto_margin = margin.map(|m| m.unwrap_or(0.0));
 
+        // KaminIDE patch: auto-поля абсолютной коробки делят ОСТАТОК между
+        // заданными краями (CSS 2.1 §10.3.7 п.5, §10.6.4), а не всю ширину
+        // содержащего блока: краёв в исходной формуле не было вовсе, и
+        // `left: 96px; margin: auto` уводило коробку вдвое дальше. Если хотя
+        // бы один край `auto`, делить нечего — auto-поле равно нулю (п.3).
+        // Отсчёт идёт от `inset_relative_size`: содержащим блоком абсолютной
+        // коробки служит коробка ОТСТУПА предка, а не её внешний край.
         let free_space = Size {
-            width: constants.container_size.width - final_size.width - non_auto_margin.horizontal_axis_sum(),
-            height: constants.container_size.height - final_size.height - non_auto_margin.vertical_axis_sum(),
+            width: match (left, right) {
+                (Some(l), Some(r)) => {
+                    inset_relative_size.width - final_size.width - non_auto_margin.horizontal_axis_sum() - l - r
+                }
+                _ => 0.0,
+            },
+            height: match (top, bottom) {
+                (Some(t), Some(b)) => {
+                    inset_relative_size.height - final_size.height - non_auto_margin.vertical_axis_sum() - t - b
+                }
+                _ => 0.0,
+            },
         }
         .f32_max(Size::ZERO);
 
