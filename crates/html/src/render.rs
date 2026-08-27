@@ -4586,6 +4586,9 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // элементу коробка нужна настоящая, поэтому он идёт без пустышки.
         // Остальным она нужна: без неё сдвигаются соседи (замерено на
         // `position-sticky-contained-by-display-table`).
+        // ПРОБОВАЛИ И ОТКАТИЛИ: считать «растянутым» и элемент с ДОЛЕЙ
+        // размера, чтобы доля не бралась от нулевой пустышки. Замерено по
+        // семьям *replaced*, positioning/*, normal-flow/*, *float*: 0 и 0.
         let stretched = (edge_set(e.style.inset.left) && edge_set(e.style.inset.right))
             || (edge_set(e.style.inset.top) && edge_set(e.style.inset.bottom));
         // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
