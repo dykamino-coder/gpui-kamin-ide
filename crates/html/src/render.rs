@@ -7120,20 +7120,24 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 .w(px(cw))
                 .h(px(ch))
                 .object_fit(gpui::ObjectFit::Fill);
-        } else if let (Some(Len::Pct(kw)), None | Some(Len::Auto)) = (e.style.width, e.style.height)
+        } else if let (Some(Len::Pct(_)), None | Some(Len::Auto)) = (e.style.width, e.style.height)
         {
             // Доля ширины при auto-высоте: ширину даёт содержащий блок, высоту
             // — собственное соотношение сторон (§10.3.2, §10.6.2). Раньше доля
             // не попадала ни в одну ветку, и замещаемый рисовался СВОИМ
             // пикселем (`absolute-replaced-width-006`: 15×15 вместо 96×96).
-            image = image.w(gpui::relative(kw));
+            // Долю по этой оси УЖЕ поставил хозяин (`styled_div(e)` несёт
+            // стиль элемента целиком), поэтому картинке остаётся заполнить
+            // его: `relative(kw)` внутри давал долю ОТ ДОЛИ — `width: 50%`
+            // выходило четвертью содержащего блока.
+            image = image.w(gpui::relative(1.0));
             if let Some(r) = ratio_of().filter(|r| *r > 0.0) {
                 image.style().aspect_ratio = Some(r);
             }
-        } else if let (None | Some(Len::Auto), Some(Len::Pct(kh))) = (e.style.width, e.style.height)
+        } else if let (None | Some(Len::Auto), Some(Len::Pct(_))) = (e.style.width, e.style.height)
         {
             // Зеркально: доля высоты при auto-ширине.
-            image = image.h(gpui::relative(kh));
+            image = image.h(gpui::relative(1.0));
             if let Some(r) = ratio_of().filter(|r| *r > 0.0) {
                 image.style().aspect_ratio = Some(r);
             }
@@ -7146,8 +7150,8 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             // запись `width:50%; height:15px` раньше падала в size_full и
             // ТЕРЯЛА пиксельную сторону (inline-replaced-width-011..015).
             image = match (e.style.width, e.style.height) {
-                (Some(Len::Pct(kw)), Some(Len::Px(h))) => image.w(gpui::relative(kw)).h(px(h)),
-                (Some(Len::Px(w)), Some(Len::Pct(kh))) => image.w(px(w)).h(gpui::relative(kh)),
+                (Some(Len::Pct(_)), Some(Len::Px(h))) => image.w(gpui::relative(1.0)).h(px(h)),
+                (Some(Len::Px(w)), Some(Len::Pct(_))) => image.w(px(w)).h(gpui::relative(1.0)),
                 _ => image.size_full(),
             };
         } else if !matches!(e.style.width, Some(Len::Px(_)))
