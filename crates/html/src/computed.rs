@@ -5275,13 +5275,21 @@ impl Computed {
         // Цвет из БОКОВОГО сокращения принадлежит своей стороне: раньше он
         // писался в общий цвет, и `border-bottom: 2px solid red` красил все
         // четыре стороны.
+        // Опущенная часть сокращения возвращается к НАЧАЛЬНОМУ значению
+        // (§1.4.2, §8.5.4): у цвета это `currentColor`, то есть пусто — цвет
+        // решает отрисовка. Прежде запись `border: solid 1em` оставляла цвет
+        // от менее специфичного правила.
         match (color, side) {
             (Some(c), None) => {
                 self.border_color = Some(c);
                 self.border_colors = [Some(c); 4];
             }
             (Some(c), Some(i)) => self.border_colors[i] = Some(c),
-            (None, _) => {}
+            (None, None) => {
+                self.border_color = None;
+                self.border_colors = [None; 4];
+            }
+            (None, Some(i)) => self.border_colors[i] = None,
         }
         let Some(w) = width else { return };
         match side {
