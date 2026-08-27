@@ -4956,13 +4956,18 @@ fn has_own_box(c: &Computed) -> bool {
     // воспроизводится: CSS2 5039 → 5043, oldfront 2345 без изменений. Внутри
     // такой коробки живут отступ первой строки, сжатие по содержимому и свой
     // перенос — прогон их не знает.
-    let atomic = matches!(
+    // Настоящий `display: inline` сюда НЕ входит: разбор держит его как
+    // `InlineBlock` с пометкой `inline_display`, и без этой отсечки каждый
+    // `<span>` становился атомарной коробкой — вместе с ней уезжали
+    // сохранённые пробелы и перенос (`white-space-pre-005`).
+    let atomic = (matches!(
         c.display,
         Some(Display::InlineBlock)
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
-    ) || (c.display == Some(Display::GridLanes) && c.lanes_inline);
+    ) && c.inline_display != Some(true))
+        || (c.display == Some(Display::GridLanes) && c.lanes_inline);
     // ПЕРЕМЕРЕНО 28.08 и ВКЛЮЧЕНО: прежний замер (flexbox 363→359 из-за
     // непрокинутой базовой линии атома) больше не воспроизводится — CSS2
     // 5039 → 5043, oldfront 2345 без изменений. Флаг `ATOM_BOX`, под которым
