@@ -1971,6 +1971,15 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
             i += 1;
             continue;
         };
+        // Бандовый хост: пробег флоатов ОБЕИХ сторон, не обрывающийся на
+        // `clear`, и хвост, раскладываемый по полосам занятости вместо
+        // флекс-ряда. Гейт узкий (см. `band_host`); не сошёлся — идём
+        // сегодняшней веткой ниже, ни строки в ней не меняя.
+        if let Some((host, next)) = band_host(&nodes, i, cb_width) {
+            out.push(Node::Element(host));
+            i = next;
+            continue;
+        }
         // Подряд идущие плавающие блоки стоят в ОДНОМ ряду, а не каждый в
         // своём: `float: left` у четырёх соседей выстраивает их бок о бок.
         // Прежде каждый начинал свой ряд, и они вставали столбиком.
@@ -2296,6 +2305,217 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
 /// Меряли базовым шрифтом окна — и на любом документе со своей типографикой
 /// (`body { font: 13px system-ui }`) разрез уезжал: мерилось одно, рисовалось
 /// другое.
+/// Роль соседа плавающих блоков в бандовом хосте.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum BandPiece {
+    /// Инлайн-блок с известным margin-box — строчный поток атомов
+    /// (`FlowRow`): такие коробки стоят В СТРОКУ и делят её.
+    Atom,
+    /// Коробка со СВОИМ контекстом форматирования: её border-box не
+    /// перекрывает флоаты вовсе (§9.5, последний абзац) — она ищет окно и
+    /// съезжает вниз.
+    Bfc,
+    /// Пустая распорка без ширины: обычный блок в потоке. Флоаты она
+    /// перекрывает (обтекают только СТРОКИ), а показать ей нечего — от неё
+    /// нужна одна высота. Держит эталоны `floats-wrap-top-below-002*-ref`.
+    Strut,
+}
+
+/// Точки поля: `auto` считается нулём.
+///
+/// Отдельно от `px_of2`, потому что `margin: auto` у коробки С ЗАДАННОЙ
+/// шириной поле не растит, а лишь выбирает, к какому краю прижаться
+/// (§10.3.3); занятость от него не меняется. Без этого гейт бандового хоста
+/// не сработал бы вовсе: `floats-wrap-top-below-bfc-001l` — `margin-right:
+/// auto`, `-001r` — `margin-left: auto`.
+fn px_margin(l: &Option<Len>) -> Option<f32> {
+    match l {
+        Some(Len::Auto) => Some(0.0),
+        other => px_of2(other),
+    }
+}
+
+/// margin-box коробки в точках, когда ВСЕ стороны заданы точками.
+///
+/// Полосы занятости меряют только числа (`bands.rs`), и брать их можно лишь
+/// у коробки, чей размер известен из стиля целиком.
+fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
+    let b = c.borders();
+    Some((
+        px_of2(&c.width)?
+            + px_of2(&c.padding.left)?
+            + px_of2(&c.padding.right)?
+            + px_of2(&b.left)?
+            + px_of2(&b.right)?
+            + px_margin(&c.margin.left)?
+            + px_margin(&c.margin.right)?,
+        px_of2(&c.height)?
+            + px_of2(&c.padding.top)?
+            + px_of2(&c.padding.bottom)?
+            + px_of2(&b.top)?
+            + px_of2(&b.bottom)?
+            + px_margin(&c.margin.top)?
+            + px_margin(&c.margin.bottom)?,
+    ))
+}
+
+/// Чем сосед флоатов может быть в бандовом хосте; `None` — не может ничем,
+/// и весь хост отменяется.
+///
+/// Порядок проверок важен: `own_context` истинен и для `inline-block`
+/// (`:3087`), а строчную коробку блочной веткой ставить нельзя — она встанет
+/// на свою строку вместо общей.
+fn band_piece(n: &Node) -> Option<BandPiece> {
+    let Node::Element(c) = n else {
+        // Непустой текст рядом с флоатом бандовый хост не набирает: это
+        // работа наборщика строк, а он про полосы ещё не знает.
+        return None;
+    };
+    // Внепоточный сосед получил бы хост своим содержащим блоком; `clear`
+    // требует зазора, которого шаг B1 не считает.
+    if matches!(
+        c.style.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) || c.style.float.is_some_and(|f| f != 0)
+        || c.style.clear.is_some()
+    {
+        return None;
+    }
+    let (mw, mh) = px_margin_box(&c.style)?;
+    // ОБЕ стороны обязаны стоять в стиле точками. Одного `px_margin_box` мало:
+    // `width: auto` там `None` и складывается как НОЛЬ, а по §10.3.5 это
+    // shrink-to-fit, которого полосы не считают. Без этой проверки коробка с
+    // одними полями прошла бы гейт с нулевой шириной.
+    let sized = matches!(c.style.height, Some(Len::Px(_)))
+        && matches!(c.style.width, Some(Len::Px(_)))
+        && mw > 0.0
+        && mh > 0.0;
+    if matches!(
+        c.style.display,
+        Some(Display::InlineBlock) | Some(Display::InlineFlex)
+    ) {
+        return sized.then_some(BandPiece::Atom);
+    }
+    if own_context(c) {
+        return sized.then_some(BandPiece::Bfc);
+    }
+    // Распорка: своей ширины нет, внутри пусто, краски нет — видно её нечем,
+    // и место она занимает только по высоте.
+    let invisible = c.style.background.is_none()
+        && c.children.iter().all(is_blank)
+        && matches!(c.style.width, None | Some(Len::Auto))
+        && matches!(c.style.height, Some(Len::Px(_)))
+        && mw == 0.0;
+    (invisible && mh > 0.0).then_some(BandPiece::Strut)
+}
+
+/// Синтетический узел бандового хоста для пробега флоатов, начинающегося на
+/// `i`; вернуть хост и номер узла ЗА хвостом.
+///
+/// Отличий от сегодняшнего пробега (`wrap_floats:1985-2038`) три:
+///
+/// 1. пробег НЕ обрывается ни на смене стороны, ни на `clear` — обе стороны
+///    и очистка уезжают в один хост;
+/// 2. `style.float` и `style.clear` с детей НЕ снимаются: их читает
+///    `shape_flow`, который гасит их сам перед сборкой (`:5091`);
+/// 3. флоатам не задаются ни `flex_shrink`, ни `fit-content` — ряда, ради
+///    которого это делалось, здесь нет, а размер и так обязан быть в точках.
+///
+/// Гейт (все условия разом, иначе `None`):
+///
+/// * ширина содержащего блока известна ТОЧКАМИ и больше нуля — без неё
+///   полосам негде поставить дальнюю стенку (`shape_flow` ставит
+///   недостижимую `NO_WALL`, и сужения не будет вовсе);
+/// * у каждого флоата пробега margin-box в точках;
+/// * хвост непустой и состоит ТОЛЬКО из пустого текста и кусков `BandPiece`.
+///
+/// Последнее условие и держит радиус поражения: любой абзац, любой блок без
+/// размеров, любой текст рядом с флоатом уводит на сегодняшний флекс-ряд.
+fn band_host(nodes: &[Node], i: usize, cb_width: Option<Len>) -> Option<(Element, usize)> {
+    if !matches!(cb_width, Some(Len::Px(v)) if v > 0.0) {
+        return None;
+    }
+    let mut floaters: Vec<Element> = vec![];
+    let mut j = i;
+    while j < nodes.len() {
+        if is_blank(&nodes[j]) {
+            j += 1;
+            continue;
+        }
+        let Node::Element(next) = &nodes[j] else {
+            break;
+        };
+        if !next.style.float.is_some_and(|f| f != 0) {
+            break;
+        }
+        // Размер флоата обязан быть в точках: полосы ничего не мерят, а
+        // `width: auto` у флоата — это shrink-to-fit (§10.3.5), который
+        // `px_margin_box` сложил бы как НОЛЬ и посадил флоат нулевой ширины.
+        if !matches!(next.style.width, Some(Len::Px(_)))
+            || !matches!(next.style.height, Some(Len::Px(_)))
+        {
+            return None;
+        }
+        px_margin_box(&next.style)?;
+        floaters.push(next.clone());
+        j += 1;
+    }
+    if floaters.is_empty() {
+        return None;
+    }
+    let mut rest: Vec<Node> = vec![];
+    while j < nodes.len() {
+        if let Node::Element(next) = &nodes[j]
+            && (next.style.float.is_some_and(|f| f != 0) || next.style.clear.is_some())
+        {
+            break;
+        }
+        rest.push(nodes[j].clone());
+        j += 1;
+    }
+    if !rest.iter().any(|n| !is_blank(n))
+        || !rest.iter().all(|n| is_blank(n) || band_piece(n).is_some())
+    {
+        return None;
+    }
+    let side = floaters[0].style.float.unwrap_or(-1);
+    let mut host = Element {
+        list_item: None,
+        node_id: 0,
+        anim: None,
+        tag: "shape-flow".into(),
+        style: Computed {
+            // Ширина содержащего блока — дальняя стенка полос.
+            width: cb_width,
+            ..Computed::default()
+        },
+        hover: None,
+        first_letter: None,
+        first_line: None,
+        children: Vec::new(),
+        attrs: vec![
+            // Сторона первого флоата — только запасной ответ для живого пути
+            // `shape-outside`: у бандового хоста сторона лежит на КАЖДОМ
+            // ребёнке, и `shape_flow` читает её оттуда.
+            (
+                "side".into(),
+                if side < 0 {
+                    "left".into()
+                } else {
+                    "right".into()
+                },
+            ),
+            ("count".into(), floaters.len().to_string()),
+            // Метка бандового хоста: включает блочную ветку `shape_flow`.
+            ("bands".into(), "1".into()),
+        ],
+        inline: false,
+    };
+    host.children = floaters.into_iter().map(Node::Element).collect();
+    host.children.extend(rest);
+    Some((host, j))
+}
+
 fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     let mut font = opts.text.font();
     if let Some(family) = &c.font_family {
@@ -4877,7 +5097,15 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
             rest.push(n.clone());
             continue;
         }
-        let side = host_side;
+        // Сторона — с САМОГО флоата: бандовый хост собирает пробег обеих
+        // сторон и `float` с детей не снимает. Атрибут `side` остаётся
+        // запасным ответом для живого пути `shape-outside`.
+        let side = f
+            .style
+            .float
+            .filter(|v| *v != 0)
+            .map(i32::from)
+            .unwrap_or(host_side);
         let b = f.style.borders();
         let (ml, mr) = (px_of(&f.style.margin.left), px_of(&f.style.margin.right));
         let (mt, mb) = (px_of(&f.style.margin.top), px_of(&f.style.margin.bottom));
@@ -4922,7 +5150,10 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // Размещение по правилам 1-9 §9.5.1. `clear` сюда не доезжает:
         // группу и хвост `wrap_floats` рвёт на первом же `clear` своей
         // стороны.
-        let (fx, fy) = bands.add_float(side as i8, mw, mh, None);
+        // `clear` берётся с самого флоата: у бандового хоста пробег на нём не
+        // рвётся, и очистку исполняют полосы. На живом пути `shape-outside`
+        // группа рвётся раньше, и `clear` там всегда `None`.
+        let (fx, fy) = bands.add_float(side as i8, mw, mh, f.style.clear);
         // Форма выреза и держатель адресуются ОТ СВОЕЙ стороны, а полосы
         // считают обе границы от инлайн-начала: перевод здесь и только здесь.
         let off = if side < 0 { fx } else { wall - fx - mw };
@@ -5092,9 +5323,13 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
             right.push(shape);
         }
         // Сам флоат — absolute у своей стороны.
-        let merged = inline::inherit(inherited, &f.style);
         let mut copy = f.clone();
+        // Сторона и очистка уже прочитаны выше; гасить их надо ДО слияния:
+        // у бандового хоста `float` доживает до сюда, а слитый стиль с
+        // `float` заводит лишний контекст обрезки.
         copy.style.float = None;
+        copy.style.clear = None;
+        let merged = inline::inherit(inherited, &copy.style);
         // Поля кладёт держатель (позиция absolute от края) — на самой
         // коробке они сдвигали бы её обратно (float: right с margin-left
         // вылезал за правый край контейнера).
@@ -5139,6 +5374,77 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     for f in floats {
         host = host.child(f);
     }
+    // Блочные коробки среди полос (§9.5, последний абзац): «The border box of
+    // a table, a block-level replaced element, or an element in the normal
+    // flow that establishes a new block formatting context must not overlap
+    // the margin box of any floats in the same block formatting context».
+    // Такая коробка ищет ОКНО на всю свою высоту и съезжает вниз, пока не
+    // найдёт (`bands.place_among`), а не встаёт «ниже всех флоатов»
+    // (`floats-wrap-bfc-004`: BFC встаёт на y=6, оставаясь сбоку от флоата с
+    // низом 20).
+    //
+    // Ветка включается только на бандовом хосте и только когда в хвосте есть
+    // хоть один НЕ-атом: сплошные инлайн-блоки обязаны идти строчным потоком
+    // `FlowRow` — они делят строку, а здесь каждый кусок берёт свою.
+    //
+    // Вертикальное письмо сюда не пускается: дальняя стенка полос там
+    // недостижимая (`NO_WALL`, `:4845-4850`), и окна не сузятся.
+    let band_host = e.attr("bands") == Some("1");
+    if band_host
+        && inherited.vertical_rl != Some(true)
+        && rest
+            .iter()
+            .any(|n| matches!(band_piece(n), Some(BandPiece::Bfc) | Some(BandPiece::Strut)))
+    {
+        // Потолок потока: низ предыдущего куска (правило 5 §9.5.1). Бежит по
+        // кускам и служит стартом поиска окна для следующего.
+        let mut y = 0.0f32;
+        for n in &rest {
+            let Node::Element(c) = n else {
+                continue;
+            };
+            let (Some(kind), Some((mw, mh))) = (band_piece(n), px_margin_box(&c.style)) else {
+                continue;
+            };
+            if matches!(kind, BandPiece::Strut) {
+                // Распорка своего контекста не заводит: её border-box флоаты
+                // перекрывают (обтекают только строки), а показать ей нечего
+                // — от неё нужна одна высота.
+                y += mh;
+                continue;
+            }
+            let (l, top, _avail) = bands.place_among(mw, mh, y);
+            y = top + mh;
+            let (ml, mt) = (
+                px_margin(&c.style.margin.left).unwrap_or(0.0),
+                px_margin(&c.style.margin.top).unwrap_or(0.0),
+            );
+            // Коробка прижимается к инлайн-НАЧАЛУ полосы. `margin: auto`
+            // прижимом не считается СОЗНАТЕЛЬНО: эталоны `-001r` выравнивают
+            // свои коробки `text-align: right`, о котором `FlowRow` не знает
+            // вовсе, и учесть одно без другого — значит развести пару
+            // (см. scout-bfcdraft §0.3(г)).
+            let mut inner = c.clone();
+            // Поля кладёт держатель — на самой коробке они сдвинули бы её
+            // ещё раз (та же причина, что у флоатов, `:5092-5095`).
+            inner.style.margin = crate::computed::Sides::default();
+            let merged = inline::inherit(inherited, &c.style);
+            let built = styled_div_with(&inner, &merged)
+                .children(blocks(&inner.children, &merged, opts))
+                .into_any_element();
+            host = host.child(
+                div()
+                    .absolute()
+                    .left(px(l + ml))
+                    .top(px(top + mt))
+                    .child(built),
+            );
+        }
+        // §10.6.7 плюс собственная высота потока: держатели абсолютные и сами
+        // хост не растят. `min_h` переопределяет поставленный на `:5129` —
+        // это и нужно, там учтены только флоаты.
+        return host.min_h(px(bands.bottom(None).max(y))).into_any_element();
+    }
     // Картина из инлайн-блоков с известными размерами — построчный поток
     // атомов (FlowRow): flex-переносом вырезы по строкам не выразить, а
     // абзац таких детей не набирает.
@@ -5157,21 +5463,15 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     c.style.display,
                     Some(Display::InlineBlock) | Some(Display::InlineFlex)
                 );
-                let b = c.style.borders();
-                let dims = (|| {
-                    Some((
-                        px_of2(&c.style.width)?
-                            + px_of2(&c.style.padding.left)?
-                            + px_of2(&c.style.padding.right)?
-                            + px_of2(&b.left)?
-                            + px_of2(&b.right)?,
-                        px_of2(&c.style.height)?
-                            + px_of2(&c.style.padding.top)?
-                            + px_of2(&c.style.padding.bottom)?
-                            + px_of2(&b.top)?
-                            + px_of2(&b.bottom)?,
-                    ))
-                })();
+                // Размер атома — MARGIN-box: эталон
+                // `floats-wrap-top-below-003l-ref` держится на
+                // `margin-top: 25px; margin-right: 250px` у второй коробки, а
+                // без полей она встаёт вплотную и уезжает на 25 точек вверх.
+                let dims = px_margin_box(&c.style);
+                let (ml, mt) = (
+                    px_margin(&c.style.margin.left).unwrap_or(0.0),
+                    px_margin(&c.style.margin.top).unwrap_or(0.0),
+                );
                 // Пустая коробка без размеров — разделитель разметки
                 // (незакрытый div в хвосте) — просто пропускается.
                 let empty = !inline_box
@@ -5186,10 +5486,30 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 match (inline_box, dims) {
                     (true, Some((w, h))) if w > 0.0 && h > 0.0 => {
                         let merged = inline::inherit(inherited, &c.style);
-                        let built = styled_div_with(c, &merged)
-                            .children(blocks(&c.children, &merged, opts))
+                        let mut inner = c.clone();
+                        // Поля кладёт СЛОТ, а не сама коробка: `FlowRow`
+                        // раскладывает ребёнка `layout_as_root` с
+                        // ОПРЕДЕЛЁННЫМ размером (`flow.rs:256-263`), и поле,
+                        // оставленное на элементе, вынесло бы его за слот —
+                        // margin-box уехал бы дважды.
+                        inner.style.margin = crate::computed::Sides::default();
+                        let built = styled_div_with(&inner, &merged)
+                            .children(blocks(&inner.children, &merged, opts))
                             .into_any_element();
-                        atoms.push(crate::flow::FlowChild { el: built, w, h });
+                        // Полей нет — слот совпадает с коробкой, лишнего узла
+                        // в дереве не появляется (71 зелёная пара css-shapes
+                        // идёт прежним деревом).
+                        let el = if px_margin_box(&inner.style) == Some((w, h)) {
+                            built
+                        } else {
+                            div()
+                                .relative()
+                                .w(px(w))
+                                .h(px(h))
+                                .child(div().absolute().left(px(ml)).top(px(mt)).child(built))
+                                .into_any_element()
+                        };
+                        atoms.push(crate::flow::FlowChild { el, w, h });
                     }
                     _ => {
                         atoms_ok = false;
