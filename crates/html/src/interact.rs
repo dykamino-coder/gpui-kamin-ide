@@ -2722,6 +2722,15 @@ fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     .into_any_element()
 }
 
+/// Открыт ли слой начального содержащего блока.
+///
+/// Поддерево ленты прокрутки строится в замыкании, а зовёт его
+/// `ScrollArea::request_layout` — уже ПОСЛЕ `icb_close()`. Вынимать оттуда
+/// кандидатов можно только пока слой ещё есть.
+pub fn icb_active() -> bool {
+    ICB.with(|s| !s.borrow().is_empty())
+}
+
 /// Отдать элемент слою ICB. Слоя нет — элемент возвращается, рисовать на
 /// месте.
 pub fn icb_push(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
