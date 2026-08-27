@@ -732,6 +732,12 @@ pub struct Computed {
     /// копирует вычисленное значение родителя — оно известно только при
     /// слиянии стилей.
     pub(crate) border_inherit: bool,
+    /// То же по СТОРОНАМ и по частям рамки: `border-width: inherit`,
+    /// `border-bottom: inherit`, `border-left-color: inherit`. Порядок сторон
+    /// всюду один: верх, право, низ, лево.
+    pub(crate) border_inherit_w: [bool; 4],
+    pub(crate) border_inherit_s: [bool; 4],
+    pub(crate) border_inherit_c: [bool; 4],
     pub(crate) padding_inherit: bool,
     /// `box-shadow: inherit`.
     pub(crate) shadow_inherit: bool,
@@ -2242,14 +2248,56 @@ impl Computed {
                 // вычисленное значение, самим разбором его не выразить.
                 if v == "inherit" {
                     self.border_inherit = true;
+                    self.border_inherit_w = [true; 4];
+                    self.border_inherit_s = [true; 4];
+                    self.border_inherit_c = [true; 4];
                     return;
                 }
                 self.apply_border_shorthand(v, None)
             }
-            "border-top" => self.apply_border_shorthand(v, Some(0)),
-            "border-right" => self.apply_border_shorthand(v, Some(1)),
-            "border-bottom" => self.apply_border_shorthand(v, Some(2)),
-            "border-left" => self.apply_border_shorthand(v, Some(3)),
+            "border-top" | "border-right" | "border-bottom" | "border-left" => {
+                let i = match key {
+                    "border-top" => 0,
+                    "border-right" => 1,
+                    "border-bottom" => 2,
+                    _ => 3,
+                };
+                // `border-bottom: inherit` — все три части ОДНОЙ стороны.
+                if v == "inherit" {
+                    self.border_inherit_w[i] = true;
+                    self.border_inherit_s[i] = true;
+                    self.border_inherit_c[i] = true;
+                    return;
+                }
+                self.apply_border_shorthand(v, Some(i))
+            }
+            "border-width" if v == "inherit" => self.border_inherit_w = [true; 4],
+            "border-style" if v == "inherit" => self.border_inherit_s = [true; 4],
+            "border-color" if v == "inherit" => self.border_inherit_c = [true; 4],
+            "border-top-width"
+            | "border-right-width"
+            | "border-bottom-width"
+            | "border-left-width"
+                if v == "inherit" =>
+            {
+                self.border_inherit_w[side_index(key)] = true;
+            }
+            "border-top-style"
+            | "border-right-style"
+            | "border-bottom-style"
+            | "border-left-style"
+                if v == "inherit" =>
+            {
+                self.border_inherit_s[side_index(key)] = true;
+            }
+            "border-top-color"
+            | "border-right-color"
+            | "border-bottom-color"
+            | "border-left-color"
+                if v == "inherit" =>
+            {
+                self.border_inherit_c[side_index(key)] = true;
+            }
             "border-width" => {
                 // Толщина словом (`thin`/`medium`/`thick`, §8.5.1) до сюда не
                 // доезжала: общее сокращение по сторонам знает только длины, и
@@ -5283,6 +5331,16 @@ fn border_style(v: &str) -> bool {
 }
 
 /// Толщина рамки словом: `thin`, `medium`, `thick` (css-backgrounds-3 §4.1).
+/// Сторона по имени свойства: верх, право, низ, лево.
+fn side_index(key: &str) -> usize {
+    match key.split('-').nth(1) {
+        Some("right") => 1,
+        Some("bottom") => 2,
+        Some("left") => 3,
+        _ => 0,
+    }
+}
+
 fn line_width(v: &str) -> Option<Len> {
     // Отрицательная толщина недействительна (§8.5.1) и делает объявление
     // НЕВАЛИДНЫМ целиком (§4.2): `border-width: -1px` доживало до отрисовки

@@ -561,6 +561,32 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         c.border_color = parent.border_color.or(parent.color);
         c.border_colors = parent.border_colors;
     }
+    // `inherit` по сторонам и по частям рамки. Толщина без рисунка ничего не
+    // рисует, поэтому вместе с ней переносится и он: у наследующей стороны
+    // своего `border-style` обычно нет.
+    for i in 0..4 {
+        if own.border_inherit_w[i] {
+            match i {
+                0 => c.border_width.top = parent.border_width.top,
+                1 => c.border_width.right = parent.border_width.right,
+                2 => c.border_width.bottom = parent.border_width.bottom,
+                _ => c.border_width.left = parent.border_width.left,
+            }
+        }
+        if own.border_inherit_s[i] {
+            c.border_visible[i] = parent.border_visible[i];
+            c.border_side_styles[i] = parent.border_side_styles[i];
+            c.border_dashed = parent.border_dashed;
+            c.border_dotted = parent.border_dotted;
+        }
+        if own.border_inherit_c[i] {
+            // Начальное значение `border-color` — `currentColor`, и по
+            // css-color-3 наследуется оно КЛЮЧЕВЫМ СЛОВОМ: у родителя, своего
+            // цвета рамки не задавшего, наследуется само слово, а решает его
+            // цвет РЕБЁНКА (`border-color-011`).
+            c.border_colors[i] = parent.border_colors[i].or(parent.border_color).or(c.color);
+        }
+    }
     if own.padding_inherit {
         c.padding = parent.padding;
     }
