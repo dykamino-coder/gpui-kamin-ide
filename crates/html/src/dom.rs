@@ -616,6 +616,15 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
         );
     // Блокификация СТРОЧНЫХ вариантов под float/abspos (§9.7): каждый
     // получает свой блочный аналог, а не только `inline`.
+    // §9.7: у абсолютно позиционированной коробки `float` вычисляется в
+    // `none`. Пока сброса не было, `float: right; position: fixed` уезжал в
+    // ряд обтекания и до выноса в слой окна не доходил (`position-fixed-007`).
+    if matches!(
+        style.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) {
+        style.float = None;
+    }
     if out_of_flow {
         match style.display {
             Some(Display::InlineFlex) => style.display = Some(Display::Flex),
