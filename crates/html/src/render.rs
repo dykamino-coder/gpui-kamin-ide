@@ -6932,16 +6932,20 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         (Some(true), _) => (0.0, 0.0),
         (None, _) if e.attr("rules").is_some() => (0.0, 0.0),
         // Заданный `border-spacing` перекрывает умолчание браузера в 2px.
-        (_, Some((x, y))) => (
-            match x {
+        // Шрифтовые единицы разрешаются по кеглю САМОЙ таблицы: `1em` роняло
+        // зазор в ноль, и вся подсемья Хикси с `border-spacing: 1em`
+        // расходилась с эталоном ровно на зазор.
+        (_, Some((x, y))) => {
+            let em = atom_base_font(inherited, opts);
+            let px_of = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
+                Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_))) => {
+                    crate::metrics::fallback_len_px(l, "", em).unwrap_or(0.0)
+                }
                 _ => 0.0,
-            },
-            match y {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            },
-        ),
+            };
+            (px_of(x), px_of(y))
+        }
         // Начальное значение `border-spacing` — НОЛЬ: два пикселя — это
         // умолчание браузера для ТЕГА `<table>`, и оно приходит сюда
         // каскадом из своего стилевого листа. `div` с `display: table`
