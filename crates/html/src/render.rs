@@ -4260,6 +4260,10 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         ) {
             let mut copy = e.clone();
             copy.style.position = None;
+            // Поля несёт ДЕРЖАТЕЛЬ: снимали только позицию, и `margin`
+            // прикладывался дважды — раз держателем, раз внутренней коробкой
+            // (`absolute-replaced-width-050`: край 48 превращался в 72).
+            copy.style.margin = Default::default();
             let built = if e.tag == "svg" {
                 crate::svg::element(&copy).unwrap_or_else(|| image(&copy))
             } else {
