@@ -164,8 +164,28 @@ pub fn collect(
                 // относительная функция) решён только там.
                 if let Some(bg) = merged.background {
                     merged.inline_bg = Some(bg);
-                    let px_of = |l: Option<crate::value::Len>| match l {
+                    // Единицы шрифта разрешаются так же, как в `inline_sides`:
+                    // разбор только по точкам ронял `padding: 1em` в ноль, и
+                    // подсветка строчной коробки шла впритык к тексту.
+                    // Замерено по строчным семьям: приобретено 0, потеряно 0 —
+                    // правка держится на своей правоте, а не на счёте.
+                    //
+                    // ПРОБОВАЛИ И ОТКАТИЛИ вместе с ней: раздувать `line_bounds`
+                    // в `vendor/gpui/.../line.rs` на перелив полосы прогона,
+                    // чтобы фон строки не попадал в один порядок с глифами
+                    // соседней. Замерено там же: 0 и 0.
+                    let size = match merged.font_size {
                         Some(crate::value::Len::Px(v)) => v,
+                        _ => 16.0,
+                    };
+                    let family = merged.font_family.clone().unwrap_or_default();
+                    let px_of = |l: Option<crate::value::Len>| match l {
+                        Some(
+                            crate::value::Len::Px(_)
+                            | crate::value::Len::Em(_)
+                            | crate::value::Len::Ch(_)
+                            | crate::value::Len::Ex(_),
+                        ) => crate::metrics::spacing_px(l, &family, size),
                         _ => 0.0,
                     };
                     merged.inline_pad = Some((
