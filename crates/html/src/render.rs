@@ -8158,16 +8158,21 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     Some(TextAlign::Start) if rtl => d.justify_end(),
                     _ => d.justify_start(),
                 };
+                // Начальное значение `vertical-align` — `baseline` (§17.5.3),
+                // и у одиночного ряда это ВЕРХ ячейки, а не середина. Пока
+                // умолчанием стояла середина, содержимое опускалось на
+                // полразницы высот (`direction-applies-to-005`: квадрат на
+                // 30 точек ниже эталона).
                 d = match cm.vertical_align {
-                    Some(Align::Start) => d.items_start(),
                     Some(Align::End) => d.items_end(),
-                    _ => d.items_center(),
+                    Some(Align::Center) => d.items_center(),
+                    _ => d.items_start(),
                 };
             } else {
                 d = match cm.vertical_align {
-                    Some(Align::Start) => d.justify_start(),
                     Some(Align::End) => d.justify_end(),
-                    _ => d.justify_center(),
+                    Some(Align::Center) => d.justify_center(),
+                    _ => d.justify_start(),
                 };
             }
             // Вертикальное письмо таблицы: ряды идут ПОПЕРЁК — охваты
