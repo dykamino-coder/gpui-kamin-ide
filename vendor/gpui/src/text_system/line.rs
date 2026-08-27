@@ -756,16 +756,30 @@ fn run_background_quad(
         // KaminIDE patch: ширины по сторонам [верх, право, низ, лево] —
         // строчная коробка бывает с частичной рамкой (`border-left` у
         // первого куска). На переносе боковые грани не ставятся.
-        Some((border_color, w)) => crate::PaintQuad {
-            border_widths: crate::Edges {
+        Some((border_color, w)) => {
+            // KaminIDE patch: рамка лежит СНАРУЖИ коробки отступа (§8.1), а
+            // квад рисует её внутрь — поэтому прямоугольник раздувается на
+            // ширины сторон. Прежде рамка съедала полосу изнутри, и коробка
+            // выходила ровно на свою рамку ниже.
+            let e = crate::Edges {
                 top: w[0],
                 right: if pad_right { w[1] } else { px(0.) },
                 bottom: w[2],
                 left: if pad_left { w[3] } else { px(0.) },
-            },
-            border_color,
-            ..quad
-        },
+            };
+            crate::PaintQuad {
+                bounds: Bounds {
+                    origin: point(quad.bounds.origin.x - e.left, quad.bounds.origin.y - e.top),
+                    size: size(
+                        quad.bounds.size.width + e.left + e.right,
+                        quad.bounds.size.height + e.top + e.bottom,
+                    ),
+                },
+                border_widths: e,
+                border_color,
+                ..quad
+            }
+        }
         None => quad,
     }
 }
