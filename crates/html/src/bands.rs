@@ -330,6 +330,52 @@ impl FloatBands {
         }
         Arc::new((left, right))
     }
+
+    /// Место для коробки `w` × `h`, которая флоаты НЕ перекрывает: замещаемый
+    /// элемент, таблица, блок со СВОИМ контекстом форматирования (§9.5,
+    /// последний абзац). Возвращает (левая стенка, верх, доступная ширина).
+    ///
+    /// Одной полосы мало — нужно ОКНО на всю высоту коробки, и окно скользит
+    /// вниз, пока не найдётся место (servo `PlacementAmongFloats::place`).
+    /// Правило 5 здесь не работает: коробка не флоат, ниже потолка сужения
+    /// появляются, и проверять надо каждую задетую полосу, а не только
+    /// верхнюю. Не нашлось нигде — ведём себя как `clear: both`.
+    pub fn place_among(&self, w: f32, h: f32, ceiling: f32) -> (f32, f32, f32) {
+        let mut top = ceiling;
+        loop {
+            let first = self.idx_at(top);
+            let (mut l, mut r) = self.cb;
+            let mut i = first;
+            let mut bot;
+            loop {
+                if let Some(v) = self.bands[i].left {
+                    l = l.max(v);
+                }
+                if let Some(v) = self.bands[i].right {
+                    r = r.min(v);
+                }
+                bot = self.bands[i + 1].top;
+                if bot - top >= h || !bot.is_finite() {
+                    break;
+                }
+                i += 1;
+            }
+            if r - l >= w - EPS {
+                return (l, top, r - l);
+            }
+            if !bot.is_finite() {
+                break;
+            }
+            // Верхняя полоса окна выброшена — искать со следующей. Верх строго
+            // растёт, поэтому цикл конечен.
+            top = self.bands[first + 1].top;
+        }
+        (
+            self.cb.0,
+            ceiling.max(self.clear_l).max(self.clear_r),
+            self.cb.1 - self.cb.0,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -508,5 +554,39 @@ mod tests {
                 w: 30.0
             }]
         );
+    }
+
+    /// §9.5, последний абзац: коробка со своим контекстом ищет ОКНО на всю
+    /// свою высоту. Геометрия `CSS2/floats/floats-wrap-top-below-001l`.
+    #[test]
+    fn place_among_001l() {
+        let mut b = FloatBands::new(400.0);
+        assert_eq!(b.add_float(-1, 50.0, 75.0, Some(-1)), (0.0, 0.0));
+        // `clear: left` сажает второй флоат под первый, а не рядом.
+        assert_eq!(b.add_float(-1, 100.0, 75.0, Some(-1)), (0.0, 75.0));
+        assert_eq!(b.place_among(200.0, 50.0, 0.0), (50.0, 0.0, 350.0));
+        assert_eq!(b.place_among(200.0, 50.0, 50.0), (100.0, 50.0, 300.0));
+    }
+
+    /// `floats-wrap-top-below-002l`: правый 300 рядом не влезает (правило 3)
+    /// и садится на 75; вторая коробка съезжает под оба флоата.
+    #[test]
+    fn place_among_002l() {
+        let mut b = FloatBands::new(400.0);
+        assert_eq!(b.add_float(-1, 150.0, 75.0, None), (0.0, 0.0));
+        assert_eq!(b.add_float(1, 300.0, 75.0, None), (100.0, 75.0));
+        assert_eq!(b.place_among(200.0, 50.0, 0.0), (150.0, 0.0, 250.0));
+        assert_eq!(b.place_among(200.0, 50.0, 50.0), (0.0, 150.0, 400.0));
+    }
+
+    /// `floats-wrap-top-below-003l`: окно съезжает НА ОДНУ полосу, а не ниже
+    /// всех флоатов.
+    #[test]
+    fn place_among_003l() {
+        let mut b = FloatBands::new(400.0);
+        assert_eq!(b.add_float(-1, 250.0, 75.0, None), (0.0, 0.0));
+        assert_eq!(b.add_float(1, 250.0, 75.0, None), (150.0, 75.0));
+        assert_eq!(b.place_among(100.0, 50.0, 0.0), (250.0, 0.0, 150.0));
+        assert_eq!(b.place_among(100.0, 50.0, 50.0), (0.0, 75.0, 150.0));
     }
 }
