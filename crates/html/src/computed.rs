@@ -2061,6 +2061,16 @@ impl Computed {
             // `repeat(auto-fill | auto-fit, minmax(N, 1fr))` — «сколько
             // влезет»: число колонок известно только раскладке. Раньше запись
             // не разбиралась вовсе, и вся сетка схлопывалась в одну колонку.
+            //
+            // ПРОБОВАЛИ И ОТКАТИЛИ: списку СЛОЖНЕЕ одинокого повтора
+            // (`10px repeat(auto-fill, 30px) 50px`) дополнительно записывать
+            // `grid_tracks`/`grid_cols`. Замерено по css-grid: приобретено 6,
+            // потеряно 5, свод 610 -> 608. Раскладка лунками разворачивает
+            // повтор только при ПУСТОМ списке дорожек, и записанный список
+            // отключает разворот там, где он был верен
+            // (`column-auto-repeat-015`, `row-auto-repeat-014`,
+            // `column-subgrid-auto-fill-002/004`). Возвращать вместе с
+            // разворотом повтора при непустом списке.
             "grid-template-columns" if v.contains("auto-fill") || v.contains("auto-fit") => {
                 self.grid_auto_fill_min = auto_fill_min(v);
                 self.auto_repeat_cols = Some(AutoRepeat {
