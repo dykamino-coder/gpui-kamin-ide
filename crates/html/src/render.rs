@@ -4590,7 +4590,8 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // размера, чтобы доля не бралась от нулевой пустышки. Замерено по
         // семьям *replaced*, positioning/*, normal-flow/*, *float*: 0 и 0.
         let stretched = (edge_set(e.style.inset.left) && edge_set(e.style.inset.right))
-            || (edge_set(e.style.inset.top) && edge_set(e.style.inset.bottom));
+            || (edge_set(e.style.inset.top) && edge_set(e.style.inset.bottom))
+            || matches!(e.style.width, Some(Len::Pct(_)));
         // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
         // путь блоков давал пустую коробку (clip-path-ellipse-2-ref: рисунок
         // absolute с left/top не рисовался вовсе).
@@ -4607,6 +4608,16 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             // прикладывался дважды — раз держателем, раз внутренней коробкой
             // (`absolute-replaced-width-050`: край 48 превращался в 72).
             copy.style.margin = Default::default();
+            // Долю размера держатель тоже несёт сам: внутри она считалась ОТ
+            // НЕГО и выходила долей от доли — `width: 50%` давало четверть
+            // содержащего блока (`absolute-replaced-width-006`). Внутренней
+            // коробке остаётся заполнить держателя.
+            if matches!(copy.style.width, Some(Len::Pct(_))) {
+                copy.style.width = Some(Len::Pct(1.0));
+            }
+            if matches!(copy.style.height, Some(Len::Pct(_))) {
+                copy.style.height = Some(Len::Pct(1.0));
+            }
             let built = if e.tag == "svg" {
                 crate::svg::element(&copy).unwrap_or_else(|| image(&copy))
             } else {
