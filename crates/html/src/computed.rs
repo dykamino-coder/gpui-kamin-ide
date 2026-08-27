@@ -2250,7 +2250,36 @@ impl Computed {
             "border-right" => self.apply_border_shorthand(v, Some(1)),
             "border-bottom" => self.apply_border_shorthand(v, Some(2)),
             "border-left" => self.apply_border_shorthand(v, Some(3)),
-            "border-width" => self.border_width = Sides::shorthand(v),
+            "border-width" => {
+                // Толщина словом (`thin`/`medium`/`thick`, §8.5.1) до сюда не
+                // доезжала: общее сокращение по сторонам знает только длины, и
+                // запись `border-width: thin medium medium medium` стирала
+                // толщину на всех сторонах — рамка пропадала целиком.
+                let list: Vec<Option<Len>> = v.split_whitespace().map(line_width).collect();
+                // Недействительное значение делает НЕВАЛИДНЫМ всё объявление
+                // (§4.2), а не одну сторону: иначе опечатка гасила рамку.
+                if list.is_empty() || list.len() > 4 || list.iter().any(Option::is_none) {
+                    return;
+                }
+                let at = |i: usize| -> Option<Len> {
+                    let pick = match (list.len(), i) {
+                        (1, _) => 0,
+                        (2, 0 | 2) => 0,
+                        (2, _) => 1,
+                        (3, 0) => 0,
+                        (3, 2) => 2,
+                        (3, _) => 1,
+                        _ => i,
+                    };
+                    list[pick]
+                };
+                self.border_width = Sides {
+                    top: at(0),
+                    right: at(1),
+                    bottom: at(2),
+                    left: at(3),
+                };
+            }
             "border-collapse" => self.border_collapse = Some(v == "collapse"),
             "border-color" => {
                 if v.eq_ignore_ascii_case("currentcolor") {
