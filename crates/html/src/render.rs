@@ -1944,6 +1944,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
     if !floated {
         return nodes;
     }
+    let mut nodes = nodes;
     let mut out: Vec<Node> = vec![];
     let mut i = 0usize;
     while i < nodes.len() {
@@ -2058,6 +2059,49 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
             }
             rest.push(nodes[j].clone());
             j += 1;
+        }
+        // §9.5.2: у очищающей коробки верхнее поле ЗАМЕНЯЕТСЯ зазором, а не
+        // складывается с ним: её верх = max(своё место, низ флоатов). Ряд
+        // обтекания сам даёт `max(флоаты, колонка)`, поэтому остаток поля
+        // переносится распоркой в КОНЕЦ колонки, а у самой коробки гасится —
+        // иначе она опускалась на своё поле ниже низа флоата.
+        //
+        // Оговорка: если брат ПЕРЕД флоатом схлопывается насквозь, его поле
+        // ещё не выложено, и верх ряда у нас и так ниже настоящего — тогда
+        // перенос только удваивает сдвиг (`clearance-006`).
+        let laid_out = out
+            .iter()
+            .rev()
+            .find(|n| !is_blank(n))
+            .is_none_or(|n| match n {
+                Node::Element(prev) => through_strut(prev).is_none(),
+                Node::Text(_) => true,
+            });
+        if laid_out
+            && let Some(Node::Element(next)) = nodes.get(j)
+            && clears_side(next.style.clear, side)
+            && let Some(top) = margin_px(next.style.margin.top, &next.style).filter(|v| *v > 0.0)
+        {
+            rest.push(Node::Element(Element {
+                list_item: None,
+                node_id: 0,
+                anim: None,
+                tag: "div".into(),
+                style: Computed {
+                    display: Some(Display::Block),
+                    height: Some(Len::Px(top)),
+                    ..Computed::default()
+                },
+                hover: None,
+                first_letter: None,
+                first_line: None,
+                children: vec![],
+                attrs: vec![],
+                inline: false,
+            }));
+            if let Some(Node::Element(next)) = nodes.get_mut(j) {
+                next.style.margin.top = Some(Len::Px(0.0));
+            }
         }
         // Плавающий блок, рядом с которым НЕЧЕМУ обтекать, рядом не нуждается:
         // он остаётся обычным блоком потока. Ряд в этом случае только вредил —
