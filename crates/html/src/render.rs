@@ -9839,7 +9839,16 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                                 });
                                 let ch = crate::metrics::ch_ex_px(&family, fs).0;
                                 let ws = words(&item.children);
-                                let total = ws.iter().sum::<usize>() + ws.len().saturating_sub(1);
+                                // `min-content` меряется самым ДЛИННЫМ СЛОВОМ,
+                                // `max-content` — всей строкой. Шаг повтора брал
+                                // строку в обоих случаях, и число повторов у
+                                // `repeat(auto-fill, min-content)` совпадало с
+                                // `max-content` до сотых.
+                                let total = if repeat.intrinsic_min {
+                                    ws.iter().copied().max().unwrap_or(0)
+                                } else {
+                                    ws.iter().sum::<usize>() + ws.len().saturating_sub(1)
+                                };
                                 total as f32 * ch
                             };
                             // Вклад элемента НА НЕСКОЛЬКО дорожек делится между
