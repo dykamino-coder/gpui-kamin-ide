@@ -1074,7 +1074,51 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // схлопкой верха, и над краской проступала полоса
                 // (background-size-document-root-vrl-*).
                 let mut layer = layer.into_any_element();
-                if e.style.bg_image.is_some()
+                // Донор — САМ корень: область ОТСЧЁТА плитки это его коробка
+                // (§14.2 «sized and positioned relative to the root element's
+                // box»), а красит она весь холст. Донор-тело сюда не входит:
+                // его слой лежит в детях корня, и отсчёт от padding-box корня
+                // получается сам (см. записи о двух откатах ниже).
+                if e.tag == "html"
+                    && e.style.bg_image.is_some()
+                    && let Some(tiles) = {
+                        let side = |l: Option<Len>| match l {
+                            Some(Len::Px(v)) => v,
+                            _ => 0.0,
+                        };
+                        let b = e.style.borders();
+                        let area = crate::background::RootArea {
+                            left: side(e.style.margin.left) + side(b.left),
+                            top: side(e.style.margin.top) + side(b.top),
+                            right: side(e.style.margin.right) + side(b.right),
+                            bottom: side(e.style.margin.bottom) + side(b.bottom),
+                            width: match e.style.width {
+                                Some(Len::Px(w)) => Some(
+                                    w + side(e.style.padding.left) + side(e.style.padding.right),
+                                ),
+                                _ => None,
+                            },
+                            height: match e.style.height {
+                                Some(Len::Px(h)) => Some(
+                                    h + side(e.style.padding.top) + side(e.style.padding.bottom),
+                                ),
+                                _ => None,
+                            },
+                            from_right: e.style.vertical_rl == Some(true),
+                        };
+                        crate::background::canvas_layer(&e.style, area)
+                    }
+                {
+                    layer = div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .child(layer)
+                        .child(tiles)
+                        .into_any_element();
+                } else if e.style.bg_image.is_some()
                     && let Some(tiles) = crate::background::layer(&e.style)
                 {
                     // Область ПОЗИЦИОНИРОВАНИЯ краски — PADDING-BOX корня:
