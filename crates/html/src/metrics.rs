@@ -147,12 +147,34 @@ fn fractions(family: &str) -> (f32, f32, f32, f32) {
     out
 }
 
+thread_local! {
+    static INSTALLED: std::cell::RefCell<std::collections::HashSet<String>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+/// Есть ли такое семейство в системе шрифтов. До `use_text_system` список пуст,
+/// и ответ отрицательный для всех — разбор тогда работает как раньше.
+pub fn font_installed(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    INSTALLED.with(|i| i.borrow().contains(&lower))
+}
+
 /// Поставить щуп поверх системы шрифтов GPUI.
 ///
 /// Вызывается один раз при старте приложения, ПОСЛЕ регистрации своих
 /// шрифтов: до неё `Ahem` ещё не найден и замер вернул бы метрики подмены.
 pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
     let names = text_system.all_font_names();
+    // Список семейств из каскада разбирается ДО отрисовки, а выбирать из него
+    // надо УСТАНОВЛЕННОЕ: `font-family: Courier New, Ahem` при отсутствующем
+    // `Courier New` обязан взять `Ahem`, а не отдать системе имя, которого
+    // нет (§15.3).
+    INSTALLED.with(|i| {
+        *i.borrow_mut() = names
+            .iter()
+            .map(|n| n.to_ascii_lowercase())
+            .collect::<std::collections::HashSet<_>>();
+    });
     if let Some(found) = MONO_FAMILIES
         .into_iter()
         .find(|want| names.iter().any(|have| have.eq_ignore_ascii_case(want)))

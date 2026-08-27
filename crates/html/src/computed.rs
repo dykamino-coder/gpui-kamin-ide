@@ -2673,6 +2673,30 @@ impl Computed {
                     .find_map(|f| generic_family(&f));
                 // Первое НЕ родовое имя списка уходит в шрифт как есть:
                 // подстановкой недостающего занимается сама система шрифтов.
+                // Имя нормализуется до сравнения: неквотированное имя из
+                // нескольких слов — это один пробел между ними (§15.3).
+                let norm = |f: &str| {
+                    let un = crate::css::unescape(f);
+                    un.split_whitespace().collect::<Vec<_>>().join(" ")
+                };
+                let usable = |f: &str| {
+                    let lower = f.to_ascii_lowercase();
+                    !f.is_empty()
+                        && !is_generic(&lower)
+                        && !matches!(lower.as_str(), "inherit" | "initial")
+                };
+                // Первое УСТАНОВЛЕННОЕ имя списка: браузер идёт по списку, пока
+                // не найдёт шрифт (§15.3). Прежде бралось первое подходящее по
+                // виду, и `font-family: Courier New, Ahem` при отсутствующем
+                // `Courier New` набиралось подменой вместо `Ahem`.
+                let installed = v
+                    .split(',')
+                    .map(|f| norm(f.trim().trim_matches(is_quote)))
+                    .find(|f| usable(f) && crate::metrics::font_installed(f));
+                if let Some(found) = installed {
+                    self.font_family = Some(found);
+                    return;
+                }
                 self.font_family = v
                     .split(',')
                     .map(|f| f.trim().trim_matches(is_quote))
