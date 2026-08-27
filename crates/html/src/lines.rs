@@ -2925,6 +2925,73 @@ impl Paragraph {
             px(0.)
         };
         let from = self.x_at(segs, range.start, Edge::Start);
+        // UAX#9 L2 разворачивает прогоны уровня ≥1, а зеркало строки
+        // переворачивает ВСЕ слова разом: латинский прогон внутри правого
+        // абзаца выходил задом наперёд. Прогоны левого уровня выкладываем
+        // заново — в своём порядке и на своём месте (выключенный путь
+        // `BidiInfo` не считал вовсе).
+        //
+        // ЗАМЕРЕНО: приобретено 1, потерь нет. Ожидалось больше: в семье
+        // `bidi-box-model-*` левый прогон чаще всего ОДНО слово, а одиночное
+        // слово зеркало кладёт верно и без разбора. Остаток той семьи держат
+        // распорки полей, а не порядок слов.
+        let mut logical_run: Vec<(usize, Pixels)> = vec![];
+        if self.wrap.rtl && range.start < range.end && range.end <= self.text.len() {
+            let info = unicode_bidi::BidiInfo::new(&self.text, Some(unicode_bidi::Level::rtl()));
+            if let Some(para) = info
+                .paragraphs
+                .iter()
+                .find(|p| p.range.start <= range.start && range.start < p.range.end)
+                .or_else(|| info.paragraphs.first())
+            {
+                let (levels, visual) = info.visual_runs(para, range.clone());
+                for run in visual {
+                    if levels.get(run.start).is_some_and(|l| l.is_rtl()) {
+                        continue;
+                    }
+                    let idx: Vec<usize> = words
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, w)| w.range.start >= run.start && w.range.start < run.end)
+                        .map(|(i, _)| i)
+                        .collect();
+                    if idx.len() < 2 {
+                        continue;
+                    }
+                    // Зеркальные места прогона: слева лежит ПОСЛЕДНЕЕ слово.
+                    let mut mirrored: Vec<(usize, Pixels, Pixels)> = idx
+                        .iter()
+                        .map(|&i| {
+                            let w = &words[i];
+                            let width = self.word_width(w, window);
+                            let logical = (self.x_at(segs, w.range.start, Edge::Start) - from)
+                                + step * w.spaces_before as f32;
+                            let x = bounds.origin.x + bounds.size.width - dx - logical - width;
+                            (i, x, width)
+                        })
+                        .collect();
+                    mirrored
+                        .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                    // Промежутки между зеркальными соседями: в логическом
+                    // порядке те же самые, только в обратную сторону.
+                    let gaps: Vec<Pixels> = mirrored
+                        .windows(2)
+                        .map(|p| p[1].1 - (p[0].1 + p[0].2))
+                        .rev()
+                        .collect();
+                    let mut cursor = mirrored[0].1;
+                    for (k, &i) in idx.iter().enumerate() {
+                        let width = mirrored
+                            .iter()
+                            .find(|(j, _, _)| *j == i)
+                            .map(|(_, _, w)| *w)
+                            .unwrap_or(px(0.));
+                        logical_run.push((i, cursor));
+                        cursor += width + gaps.get(k).copied().unwrap_or(px(0.));
+                    }
+                }
+            }
+        }
         for (wi, word) in words.iter().enumerate() {
             let slice: SharedString = self.text[word.range.clone()].to_string().into();
             let runs = slice_runs(&self.runs, &word.range);
@@ -2944,10 +3011,12 @@ impl Paragraph {
             // При письме справа налево строка раздаётся от ПРАВОГО края:
             // первое слово встаёт справа, последнее — слева. Раздача слева
             // направо переворачивала порядок слов на выключенной строке.
-            let x = if self.wrap.rtl {
-                bounds.origin.x + bounds.size.width - dx - logical - shaped.width
-            } else {
-                bounds.origin.x + dx + logical
+            let x = match logical_run.iter().find(|(i, _)| *i == wi) {
+                Some((_, fixed)) => *fixed,
+                None if self.wrap.rtl => {
+                    bounds.origin.x + bounds.size.width - dx - logical - shaped.width
+                }
+                None => bounds.origin.x + dx + logical,
             };
             // Сдвиг куска по вертикали: надстрочный и подстрочный знак стоят
             // выше и ниже базовой линии, оставаясь в той же строке.
@@ -2995,6 +3064,26 @@ impl Paragraph {
                 }
             }
         }
+    }
+
+    /// Ширина слова в наборе — тем же путём, что и отрисовка.
+    fn word_width(&self, word: &Word, window: &mut Window) -> Pixels {
+        let slice: SharedString = self.text[word.range.clone()].to_string().into();
+        let runs = slice_runs(&self.runs, &word.range);
+        window
+            .text_system()
+            .shape_line_spaced(
+                slice,
+                self.font_size,
+                &runs,
+                None,
+                self.letter_spans
+                    .iter()
+                    .find(|(r, _)| r.contains(&word.range.start))
+                    .map(|(_, v)| *v)
+                    .unwrap_or(self.letter_spacing),
+            )
+            .width
     }
 
     /// Подложка промежутка между словами — только если оба соседа и сам
