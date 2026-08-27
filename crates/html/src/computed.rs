@@ -2584,7 +2584,24 @@ impl Computed {
             }
 
             "color" => self.color = Color::parse(v),
-            "font-size" => self.font_size = Len::parse(v),
+            "font-size" => {
+                // Отрицательный кегль и неразборная запись делают объявление
+                // НЕВАЛИДНЫМ (§4.2, §15.7): прежнее значение остаётся, а не
+                // стирается в `None` (`c526-font-sz-003`: `-0.5in`).
+                let neg = |l: &Len| {
+                    matches!(
+                        l,
+                        Len::Px(v) | Len::Em(v) | Len::Pct(v) | Len::Ex(v) | Len::Ch(v)
+                            if *v < 0.0
+                    )
+                };
+                // Слово (`medium`, `larger`) как и прежде даёт `None`: его
+                // разбирают другие пути. Держится только отрицательная длина.
+                self.font_size = match Len::parse(v) {
+                    Some(l) if neg(&l) => self.font_size,
+                    other => other,
+                };
+            }
             "font-weight" => {
                 self.font_weight = match v {
                     "bold" | "bolder" => Some(700),
@@ -2634,10 +2651,23 @@ impl Computed {
             }
             "line-height" => {
                 // Голое число в line-height — множитель, а не пиксели.
-                self.line_height = match v.parse::<f32>() {
+                let parsed = match v.parse::<f32>() {
                     Ok(mult) if !v.ends_with("px") => Some(Len::Pct(mult)),
                     _ => Len::parse(v),
-                }
+                };
+                // Отрицательная высота строки недействительна (§10.8.1):
+                // объявление отбрасывается целиком, прежнее значение живёт.
+                let neg = |l: &Len| {
+                    matches!(
+                        l,
+                        Len::Px(v) | Len::Em(v) | Len::Pct(v) | Len::Ex(v) | Len::Ch(v)
+                            if *v < 0.0
+                    )
+                };
+                self.line_height = match parsed {
+                    Some(l) if neg(&l) => self.line_height,
+                    other => other,
+                };
             }
             // `text-justify: none` запрещает выключку целиком: строка с
             // `text-align: justify` прижимается к началу, как `start`
@@ -3289,6 +3319,24 @@ impl Computed {
                 // иначе «/ 1 Ahem» уезжало в семейство шрифта целиком.
                 let value = join_slash(v);
                 let (head, family) = split_font(&value);
+                // Недействительная часть валит СОКРАЩЕНИЕ целиком (§4.2):
+                // `font: 4em/-2em serif` не задаёт ни кегля, ни семейства
+                // (`font-146`). Проверка идёт до записи любого куска.
+                if head.split_whitespace().any(|t| {
+                    t.split_once('/').is_some_and(|(_, lh)| {
+                        let neg = |l: &Len| {
+                            matches!(
+                                l,
+                                Len::Px(v) | Len::Em(v) | Len::Pct(v) | Len::Ex(v) | Len::Ch(v)
+                                    if *v < 0.0
+                            )
+                        };
+                        lh.parse::<f32>().is_ok_and(|m| m < 0.0)
+                            || Len::parse(lh).as_ref().is_some_and(neg)
+                    })
+                }) {
+                    return;
+                }
                 for token in head.split_whitespace() {
                     match token {
                         "italic" | "oblique" => self.italic = Some(true),
