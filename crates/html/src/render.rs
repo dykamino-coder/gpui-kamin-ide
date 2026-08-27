@@ -6321,20 +6321,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // Табличная раскладка включается и стилем: `display: table` на
         // контейнере значит ровно то же, что тег.
         _ if merged.display == Some(Display::GridLanes) => {
-            // Корневой поток лунок: html/body ростом с видимую область, как
-            // и обычный корень (общий минимум главного пути в лунковую
-            // ветку не проходил, и body в квирк-режиме не заполнял вьюпорт).
-            if matches!(e.tag.as_str(), "html" | "body")
-                && merged.vertical != Some(true)
-                && e.style.height.is_none()
-                && e.style.min_height.is_none()
-            {
-                let mut rooted = merged.clone();
-                rooted.min_height = Some(Len::Px(opts.viewport.1));
-                lanes(e, &rooted, opts)
-            } else {
-                lanes(e, &merged, opts)
-            }
+            // Минимума высоты в видимую область здесь тоже нет: §10.6.3
+            // одинаков для любой раскладки корня (см. главный путь ниже).
+            lanes(e, &merged, opts)
         }
         _ if matches!(
             e.style.display,
