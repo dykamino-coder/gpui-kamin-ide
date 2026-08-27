@@ -927,6 +927,11 @@ fn determine_container_main_size(
     let main_content_box_inset = constants.content_box_inset.main_axis_sum(constants.dir);
 
     let outer_main_size: f32 = constants.node_outer_size.main(constants.dir).unwrap_or_else(|| {
+        // ПРОБОВАЛИ И ОТКАТИЛИ (KaminIDE): считать ширину строки по
+        // `hypothetical_inner_size` вместо сырой `flex_basis` и зажимать
+        // `flex_basis_min` по `style_max`. Замерено по срезу *width*, flex*,
+        // float*, positioning/*, normal-flow/*: 0 и 0. Ширину абсолютной
+        // коробки с `max-width` у ребёнка держит не эта формула.
         match available_space.main(dir) {
             AvailableSpace::Definite(main_axis_available_space) => {
                 let longest_line_length: f32 = lines
