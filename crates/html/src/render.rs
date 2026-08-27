@@ -3734,6 +3734,18 @@ fn paragraph_pieces(
                 Some(a) => {
                     let mut w = div().flex_shrink_0();
                     w.style().align_self = Some(a);
+                    // Доля куска считается от его КОНТЕЙНЕРА, а обёртка встаёт
+                    // между ним и рядом: без своей ширины она сжимается по
+                    // содержимому, и `width: 100%` внутри разрешался в ноль —
+                    // картинка пропадала целиком (`background-repeat-002-ref`:
+                    // `img{vertical-align:top}` + `width="100%"`). Долю
+                    // повторяем на обёртке, чтобы отсчёт остался прежним.
+                    if let Some(Len::Pct(k)) = e.style.width {
+                        w = w.w(gpui::relative(k));
+                    }
+                    if let Some(Len::Pct(k)) = e.style.height {
+                        w = w.h(gpui::relative(k));
+                    }
                     w.child(el).into_any_element()
                 }
                 None => el,
