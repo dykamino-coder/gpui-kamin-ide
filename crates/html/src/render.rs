@@ -7079,6 +7079,17 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         };
         let max_w = clamp(e.style.max_width, sub_w);
         let max_h = clamp(e.style.max_height, sub_h);
+        // Сперва потолок, затем пол (§10.4).
+        let limit = |v: f32, min: Option<f32>, max: Option<f32>| {
+            let v = match max {
+                Some(m) => v.min(m),
+                None => v,
+            };
+            match min {
+                Some(m) => v.max(m),
+                None => v,
+            }
+        };
         let ratio_of = || {
             crate::background::source(local.unwrap_or(src))
                 .map(|s| s.intrinsic())
@@ -7103,6 +7114,11 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                     .and_then(|s| s.intrinsic().h)
                     .unwrap_or(150.0),
             };
+            // §10.4: пределы держат ВЫВЕДЕННУЮ сторону тоже — заданная
+            // остаётся как написана, а высота из соотношения обязана влезть
+            // в свой потолок и пол. Замерено отдельно: 0 и 0 — правка по
+            // спеке, счёт на ней не держится.
+            let ch = limit(ch, clamp(e.style.min_height, sub_h), max_h);
             image = vectorize(image, cw.max(1.0), ch.max(1.0))
                 .w(px(cw))
                 .h(px(ch))
@@ -7116,6 +7132,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                     .and_then(|s| s.intrinsic().w)
                     .unwrap_or(300.0),
             };
+            let cw = limit(cw, clamp(e.style.min_width, sub_w), max_w);
             image = vectorize(image, cw.max(1.0), ch.max(1.0))
                 .w(px(cw))
                 .h(px(ch))
