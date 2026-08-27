@@ -641,6 +641,18 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
             style.is_caption = None;
         }
     }
+    // Поля к внутренним табличным видам НЕ применяются (§8.3), `clear` — только
+    // к коробкам блочного УРОВНЯ (§9.5.2). Заголовок сюда не входит: он
+    // блочная коробка, и поля у него законны.
+    if matches!(
+        style.display,
+        Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell)
+    ) || style.col_role.is_some()
+    {
+        style.margin = Default::default();
+        style.clear = None;
+        style.clear_inherit = false;
+    }
     if style.inline_display != Some(true) {
         return;
     }
