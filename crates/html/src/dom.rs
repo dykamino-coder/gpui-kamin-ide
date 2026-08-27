@@ -653,6 +653,18 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
         style.clear = None;
         style.clear_inherit = false;
     }
+    // Боковые auto-поля ПЛАВАЮЩЕГО используются нулём (§10.3.5): распирать
+    // флоат от его края им нечем. До taffy `auto` доезжало как есть и уводило
+    // коробку на всю свободную ширину. `float: none` разбирается в `Some(0)` —
+    // поэтому сравнение со значением, а не `is_some`.
+    if style.float.is_some_and(|f| f != 0) {
+        if style.margin.left == Some(Len::Auto) {
+            style.margin.left = Some(Len::Px(0.0));
+        }
+        if style.margin.right == Some(Len::Auto) {
+            style.margin.right = Some(Len::Px(0.0));
+        }
+    }
     if style.inline_display != Some(true) {
         return;
     }
