@@ -671,18 +671,12 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
     // флоат от его края им нечем. До taffy `auto` доезжало как есть и уводило
     // коробку на всю свободную ширину. `float: none` разбирается в `Some(0)` —
     // поэтому сравнение со значением, а не `is_some`.
-    // То же у коробок СТРОЧНОГО уровня (§10.3.2 строчный, §10.3.6 плавающий,
-    // §10.3.9 строчно-блочный): использованное значение бокового `auto`-поля
-    // там ноль — распирать коробку от края нечем.
-    let inline_level = style.inline_display == Some(true)
-        || matches!(
-            style.display,
-            Some(Display::InlineBlock)
-                | Some(Display::InlineTable)
-                | Some(Display::InlineFlex)
-                | Some(Display::InlineGrid)
-        );
-    if style.float.is_some_and(|f| f != 0) || inline_level {
+    // ПРОБОВАЛИ И ОТКАТИЛИ: обнулять боковое `auto`-поле и у коробок
+    // СТРОЧНОГО уровня (§10.3.2, §10.3.9). CSS2 +1, но oldfront 2343 -> 2341:
+    // у ЭЛЕМЕНТА ГИБКОГО контейнера `auto`-поле законно и забирает свободное
+    // место (css-flexbox §8.1), а родителя эта функция не видит.
+    // Возвращать вместе с признаком «ребёнок гибкого контейнера».
+    if style.float.is_some_and(|f| f != 0) {
         if style.margin.left == Some(Len::Auto) {
             style.margin.left = Some(Len::Px(0.0));
         }
