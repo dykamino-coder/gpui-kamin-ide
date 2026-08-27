@@ -5962,7 +5962,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // горизонтальная, высота там задаёт ДЛИНУ строки, и навязанный
             // минимум ломает подбор размера ортогонального потока
             // (`available-size-022`).
-            if matches!(e.tag.as_str(), "html" | "body")
+            // Тело сюда НЕ входит: начальный содержащий блок — коробка
+            // КОРНЯ (§10.1), а `body` ростом с содержимое. Пока минимум
+            // висел и на нём, эталоны семьи `background-root-*` (тело >
+            // блок) расходились с тестами на всю видимую область.
+            // Замерено: приобретено 1, потерь нет.
+            if e.tag.as_str() == "html"
                 && merged.vertical != Some(true)
                 && e.style.height.is_none()
                 && e.style.min_height.is_none()
