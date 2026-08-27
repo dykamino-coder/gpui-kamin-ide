@@ -42,6 +42,48 @@ pub enum Piece {
     Overlay(AnyElement),
 }
 
+/// Схлопывание пробелов ЧЕРЕЗ границу кусков (CSS 2.1 §16.6.1,
+/// css-text-3 §4.1.1).
+///
+/// Схлопывание у нас поузловое, а ряд пробелов сплошь и рядом лежит в РАЗНЫХ
+/// кусках: спека прямо оговаривает пробел «even one outside the boundary of
+/// the inline containing that space». `<span>Row 1, </span>` плюс перевод
+/// строки перед следующим тегом набирались как два пробела — на знак шире
+/// эталона, и так на каждой границе.
+///
+/// Кусок из ОДНИХ пробелов ряд не разрывает: он схлопывается в предыдущий
+/// пробел целиком и остаётся пустым.
+pub fn collapse_across_pieces(pieces: &mut [Piece]) {
+    let mut prev_space = false;
+    for piece in pieces.iter_mut() {
+        match piece {
+            // Кусок вне потока места не занимает и ряд пробелов не рвёт.
+            Piece::Overlay(_) => {}
+            // Замещаемая коробка — не пробел: ряд на ней кончается.
+            Piece::Atom(_) => prev_space = false,
+            Piece::Text { text, style } => {
+                // `white-space: pre*` пробелы бережёт — там схлопывать нечего.
+                if style.keep_spaces == Some(true) || style.preserve_newlines == Some(true) {
+                    prev_space = false;
+                    continue;
+                }
+                if prev_space {
+                    let rest = text.trim_start_matches(' ');
+                    if rest.len() != text.len() {
+                        *text = rest.to_string();
+                    }
+                }
+                match text.chars().next_back() {
+                    Some(' ') => prev_space = true,
+                    // Пустой кусок ряда не меняет: он и есть схлопнутый пробел.
+                    None => {}
+                    Some(_) => prev_space = false,
+                }
+            }
+        }
+    }
+}
+
 /// Собрать инлайн-куски из детей узла.
 pub fn collect(
     children: &[Node],
@@ -1356,6 +1398,11 @@ fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool) {
                 // `white-space: pre*` пробелы бережёт — там удалять нечего.
                 if style.keep_spaces == Some(true) || style.preserve_newlines == Some(true) {
                     return;
+                }
+                // Пустой кусок ряда не обрывает: он и есть схлопнутый пробел,
+                // а настоящий край строки лежит дальше внутрь.
+                if text.is_empty() {
+                    continue;
                 }
                 let trimmed = if leading {
                     text.trim_start_matches(' ')
