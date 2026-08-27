@@ -4672,6 +4672,12 @@ fn has_own_box(c: &Computed) -> bool {
     ) || (c.display == Some(Display::GridLanes) && c.lanes_inline))
         && (c.width.is_some()
             || c.height.is_some()
+            // Потолок — тоже размер: `display: inline-block; max-width: 4em`
+            // без ширины оставался прогоном текста, и потолок пропадал —
+            // усохшая абсолютная коробка выходила шириной во весь текст
+            // (`absolute-non-replaced-width-017`).
+            || c.max_width.is_some()
+            || c.max_height.is_some()
             // Обособленный по размеру контейнер размер ИМЕЕТ, пусть и
             // нулевой: его задаёт `contain-intrinsic-size`, а не содержимое.
             || c.contain_size == Some(true)
