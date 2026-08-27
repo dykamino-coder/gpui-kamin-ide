@@ -251,15 +251,6 @@ fn paint_line(
     window: &mut Window,
     cx: &mut App,
 ) -> Result<()> {
-    // KaminIDE patch: высота коробки СОДЕРЖИМОГО строчной коробки — подъём
-    // плюс спуск шрифта (CSS 2.1 §10.6.1), а не доля кегля. Теми же числами
-    // кладутся глифы (`padding_top + ascent` ниже), поэтому верх полосы
-    // совпадает с верхом глифов точно.
-    let content_height = if layout.ascent + layout.descent > px(0.) {
-        layout.ascent + layout.descent
-    } else {
-        layout.font_size * 1.16
-    };
     let line_bounds = Bounds::new(
         origin,
         size(
