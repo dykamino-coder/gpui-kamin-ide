@@ -1194,13 +1194,19 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // была бы пуста — такие остаются на месте.
             let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
             let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
+            // `fixed` считается ОТ ОКНА всегда (§10.1 п.3): позиционированный
+            // предок ему не содержащий блок, и заданной оси от него не
+            // требуется — незаданная сторона держит статическое место. Пока он
+            // шёл общим путём, коробка висела от края родителя.
+            let fixed = e.style.position == Some(crate::computed::Position::Fixed);
+            let orphan_abs = e.style.position == Some(crate::computed::Position::Absolute)
+                && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
+                && (x_set || y_set);
             let to_icb = !ordered_context
                 && layer_ok
-                && e.style.position == Some(crate::computed::Position::Absolute)
-                && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
+                && (fixed || orphan_abs)
                 && e.style.z_index.unwrap_or(0) >= 0
-                && !stays_positioned(&nodes[idx + 1..])
-                && (x_set || y_set);
+                && !stays_positioned(&nodes[idx + 1..]);
             let built = if to_icb {
                 let spot: crate::interact::SpotCell = Default::default();
                 spot.set(crate::interact::Spot {
