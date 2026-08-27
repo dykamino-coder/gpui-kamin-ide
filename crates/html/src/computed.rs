@@ -5284,11 +5284,21 @@ fn border_style(v: &str) -> bool {
 
 /// Толщина рамки словом: `thin`, `medium`, `thick` (css-backgrounds-3 §4.1).
 fn line_width(v: &str) -> Option<Len> {
+    // Отрицательная толщина недействительна (§8.5.1) и делает объявление
+    // НЕВАЛИДНЫМ целиком (§4.2): `border-width: -1px` доживало до отрисовки
+    // вместо отката к прежнему значению.
+    let non_negative = |l: Len| {
+        (!matches!(
+            l,
+            Len::Px(v) | Len::Em(v) | Len::Pct(v) | Len::Ex(v) | Len::Ch(v) if v < 0.0
+        ))
+        .then_some(l)
+    };
     match v.to_ascii_lowercase().as_str() {
         "thin" => Some(Len::Px(1.0)),
         "medium" => Some(Len::Px(3.0)),
         "thick" => Some(Len::Px(5.0)),
-        _ => Len::parse(v),
+        _ => Len::parse(v).and_then(non_negative),
     }
 }
 
