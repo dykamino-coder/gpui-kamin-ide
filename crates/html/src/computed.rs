@@ -2282,11 +2282,46 @@ impl Computed {
             }
             "border-collapse" => self.border_collapse = Some(v == "collapse"),
             "border-color" => {
-                if v.eq_ignore_ascii_case("currentcolor") {
-                    self.border_color_is_current = true;
-                } else {
-                    self.border_color = Color::parse(v);
+                // От одного до четырёх значений, как у всякого сокращения по
+                // сторонам (§8.5.2). Прежде строка разбиралась целиком, и
+                // запись `border-color: red orange red yellow` не давала
+                // НИЧЕГО: цвет пропадал на всех сторонах разом.
+                let list: Vec<&str> = v.split_whitespace().collect();
+                if list.is_empty() || list.len() > 4 {
+                    return;
                 }
+                if list.len() == 1 {
+                    if v.eq_ignore_ascii_case("currentcolor") {
+                        self.border_color_is_current = true;
+                    } else {
+                        self.border_color = Color::parse(v);
+                    }
+                    return;
+                }
+                let colors: Vec<Option<Color>> =
+                    list.iter().map(|t| side_color(t, self.color)).collect();
+                // Недействительное значение делает НЕВАЛИДНЫМ всё объявление
+                // (§4.2), а не одну сторону.
+                if colors.iter().any(Option::is_none) {
+                    return;
+                }
+                let at = |i: usize| -> Option<Color> {
+                    let pick = match (colors.len(), i) {
+                        (2, 0 | 2) => 0,
+                        (2, _) => 1,
+                        (3, 0) => 0,
+                        (3, 2) => 2,
+                        (3, _) => 1,
+                        _ => i,
+                    };
+                    colors[pick]
+                };
+                for i in 0..4 {
+                    self.border_colors[i] = at(i);
+                }
+                // Общий цвет остаётся у верхней стороны: его читают пути, не
+                // знающие о сторонах.
+                self.border_color = at(0);
             }
             "border-radius" => {
                 // Эллиптические радиусы: `H / V` (css-backgrounds-3 §5.1) —
@@ -3115,7 +3150,13 @@ impl Computed {
                     })
             }
             "background-image" => {
-                if v.starts_with("linear-gradient(") || v.starts_with("radial-gradient(") {
+                // `none` ГАСИТ картинку (§14.2.1): ветки под него не было
+                // вовсе, и заданный ранее адрес переживал отмену.
+                if v.trim().eq_ignore_ascii_case("none") {
+                    self.bg_image = None;
+                    self.gradient = None;
+                    self.gradient_raw = None;
+                } else if v.starts_with("linear-gradient(") || v.starts_with("radial-gradient(") {
                     self.gradient = parse_gradient(v);
                     // Сырая запись нужна фону РЯДА таблицы: он рисуется
                     // слоем картинки, и градиент туда идёт источником.
