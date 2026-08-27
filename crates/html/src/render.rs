@@ -1962,6 +1962,12 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
         // своём: `float: left` у четырёх соседей выстраивает их бок о бок.
         // Прежде каждый начинал свой ряд, и они вставали столбиком.
         let mut floaters: Vec<Element> = vec![];
+        // Сторона КАЖДОГО собранного флоата: пробег берёт обе, и левые с
+        // правыми стоят в одном ряду. Прежде пробег обрывался на смене
+        // стороны, `rest` выходил пустым, и одинокий флоат становился обычным
+        // блоком — он съедал строку потока, а всё за ним падало на его высоту
+        // (`floats-wrap-top-below-bfc-*` и родня).
+        let mut sides: Vec<i8> = vec![];
         let mut j = i;
         while j < nodes.len() {
             if is_blank(&nodes[j]) {
@@ -1974,9 +1980,6 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
             let Some(next_side) = next.style.float.filter(|f| *f != 0) else {
                 break;
             };
-            if next_side != side {
-                break;
-            }
             // `clear` у соседа обрывает ряд: он обязан начать свой. Так
             // написаны эталоны WPT — колонка из `float: right` + `clear: both`.
             if j > i && clears_side(next.style.clear, side) {
@@ -2017,6 +2020,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
                 }
             }
             floaters.push(floater);
+            sides.push(next_side);
             j += 1;
         }
         if {
@@ -2166,7 +2170,8 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
                         .iter()
                         .any(|n| matches!(n, Node::Element(c) if c.tag == "img")))
         };
-        if floaters.iter().any(|f| f.style.shape_outside.is_some())
+        if sides.iter().all(|s| *s == side)
+            && floaters.iter().any(|f| f.style.shape_outside.is_some())
             && floaters.iter().all(|f| sized(f).is_some() || img_float(f))
         {
             let mut host = Element {
@@ -2223,14 +2228,22 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
         };
         column.style.display = Some(Display::Block);
         let mut row_children: Vec<Node> = vec![];
-        if side < 0 {
-            row_children.extend(floaters.into_iter().map(Node::Element));
-            row_children.push(Node::Element(column));
-        } else {
-            row_children.push(Node::Element(column));
-            // Прижатые вправо идут справа налево в порядке разметки.
-            row_children.extend(floaters.into_iter().rev().map(Node::Element));
-        }
+        let paired: Vec<(i8, Element)> = sides.iter().copied().zip(floaters).collect();
+        row_children.extend(
+            paired
+                .iter()
+                .filter(|(s, _)| *s < 0)
+                .map(|(_, f)| Node::Element(f.clone())),
+        );
+        row_children.push(Node::Element(column));
+        // Прижатые вправо идут справа налево в порядке разметки.
+        row_children.extend(
+            paired
+                .iter()
+                .rev()
+                .filter(|(s, _)| *s > 0)
+                .map(|(_, f)| Node::Element(f.clone())),
+        );
         out.push(Node::Element(Element {
             list_item: None,
             node_id: 0,
