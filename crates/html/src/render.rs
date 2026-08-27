@@ -1133,6 +1133,25 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             );
             let built = vertical_hug(built, e, inherited);
             let built = sticky_wrap(built, &e.style, &frame, layer_ok);
+            // Таблица сжимается по содержимому (§17.5.2.2), и выражено это у
+            // нас гибким рядом. В контейнере с БЛОЧНОЙ раскладкой гибкого
+            // ряда нет, `align_self` мёртв, и таблица растягивалась на всю
+            // ширину родителя — видно на `<span style="display:block">` с
+            // табличными детьми.
+            let table_child = e.tag == "table"
+                || matches!(
+                    e.style.display,
+                    Some(Display::Table) | Some(Display::InlineTable)
+                );
+            let block_parent = matches!(
+                inherited.display,
+                Some(Display::Block) | Some(Display::ListItem) | Some(Display::TableCell)
+            );
+            let built = if table_child && block_parent && e.style.width.is_none() {
+                div().flex().flex_row().child(built).into_any_element()
+            } else {
+                built
+            };
             // Абсолютный блок без заданных краёв стоит на СТАТИЧЕСКОЙ позиции —
             // там, где он оказался бы в потоке, а не в углу содержащего блока.
             // Пустышка нулевой высоты держит это место в потоке, элемент висит
