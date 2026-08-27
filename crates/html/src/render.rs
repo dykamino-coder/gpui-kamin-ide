@@ -6621,6 +6621,23 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 .w(px(cw))
                 .h(px(ch))
                 .object_fit(gpui::ObjectFit::Fill);
+        } else if let (Some(Len::Pct(kw)), None | Some(Len::Auto)) = (e.style.width, e.style.height)
+        {
+            // Доля ширины при auto-высоте: ширину даёт содержащий блок, высоту
+            // — собственное соотношение сторон (§10.3.2, §10.6.2). Раньше доля
+            // не попадала ни в одну ветку, и замещаемый рисовался СВОИМ
+            // пикселем (`absolute-replaced-width-006`: 15×15 вместо 96×96).
+            image = image.w(gpui::relative(kw));
+            if let Some(r) = ratio_of().filter(|r| *r > 0.0) {
+                image.style().aspect_ratio = Some(r);
+            }
+        } else if let (None | Some(Len::Auto), Some(Len::Pct(kh))) = (e.style.width, e.style.height)
+        {
+            // Зеркально: доля высоты при auto-ширине.
+            image = image.h(gpui::relative(kh));
+            if let Some(r) = ratio_of().filter(|r| *r > 0.0) {
+                image.style().aspect_ratio = Some(r);
+            }
         } else if !matches!(e.style.width, None | Some(Len::Auto))
             && !matches!(e.style.height, None | Some(Len::Auto))
         {
