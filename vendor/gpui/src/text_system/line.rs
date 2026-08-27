@@ -251,6 +251,15 @@ fn paint_line(
     window: &mut Window,
     cx: &mut App,
 ) -> Result<()> {
+    // KaminIDE patch: высота коробки СОДЕРЖИМОГО строчной коробки — подъём
+    // плюс спуск шрифта (CSS 2.1 §10.6.1), а не доля кегля. Теми же числами
+    // кладутся глифы (`padding_top + ascent` ниже), поэтому верх полосы
+    // совпадает с верхом глифов точно.
+    let content_height = if layout.ascent + layout.descent > px(0.) {
+        layout.ascent + layout.descent
+    } else {
+        layout.font_size * 1.16
+    };
     let line_bounds = Bounds::new(
         origin,
         size(
@@ -520,6 +529,15 @@ fn paint_line_background(
     window: &mut Window,
     cx: &mut App,
 ) -> Result<()> {
+    // KaminIDE patch: высота коробки СОДЕРЖИМОГО строчной коробки — подъём
+    // плюс спуск шрифта (CSS 2.1 §10.6.1), а не доля кегля. Теми же числами
+    // кладутся глифы (`padding_top + ascent` ниже), поэтому верх полосы
+    // совпадает с верхом глифов точно.
+    let content_height = if layout.ascent + layout.descent > px(0.) {
+        layout.ascent + layout.descent
+    } else {
+        layout.font_size * 1.16
+    };
     let line_bounds = Bounds::new(
         origin,
         size(
@@ -596,7 +614,7 @@ fn paint_line_background(
                             *background_origin,
                             glyph_origin.x - background_origin.x,
                             line_height,
-                            layout.font_size,
+                            content_height,
                             background_color.0,
                             background_color.1,
                             background_color.2,
@@ -673,7 +691,7 @@ fn paint_line_background(
                         background_origin,
                         width,
                         line_height,
-                        layout.font_size,
+                        content_height,
                         background_color.0,
                         background_color.1,
                         background_color.2,
@@ -700,7 +718,7 @@ fn paint_line_background(
                 background_origin,
                 last_line_end_x - background_origin.x,
                 line_height,
-                layout.font_size,
+                content_height,
                 background_color.0,
                 background_color.1,
                 background_color.2,
@@ -725,7 +743,7 @@ fn run_background_quad(
     origin: Point<Pixels>,
     width: Pixels,
     line_height: Pixels,
-    font_size: Pixels,
+    content_height: Pixels,
     color: Hsla,
     pad: Point<Pixels>,
     radius: Pixels,
@@ -733,9 +751,9 @@ fn run_background_quad(
     pad_right: bool,
     border: Option<(Hsla, [Pixels; 4])>,
 ) -> crate::PaintQuad {
-    // 1.16 кегля — высота коробки содержимого у типовых интерфейсных
-    // шрифтов; она же центрируется в строке, как половинный интерлиньяж.
-    let band = font_size * 1.16 + pad.y * 2.0;
+    // Высота коробки содержимого приходит замеренной (подъём + спуск);
+    // центрируется она в строке, как половинный интерлиньяж.
+    let band = content_height + pad.y * 2.0;
     let top = origin.y + (line_height - band).half();
     // Поля стоят на КОНЦАХ прогона: на переносе подсветка идёт впритык, иначе
     // она вылезала бы за край колонки с обеих сторон каждой строки.
