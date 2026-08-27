@@ -231,11 +231,67 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
             html.style.canvas_bg = true;
             continue;
         }
+        // §14.2: «the propagated values are treated as if they were specified
+        // on the root element». Фон тела ПЕРЕЕЗЖАЕТ на корень целиком, а не
+        // помечается на месте: иначе область отсчёта плитки считалась бы от
+        // полей ТЕЛА.
+        let mut moved: Option<crate::computed::Computed> = None;
         for c in html.children.iter_mut() {
             let Node::Element(body) = c else { continue };
             if body.tag == "body" && has_bg(body) && body.style.contain_paint != Some(true) {
-                body.style.canvas_bg = true;
+                let s = &mut body.style;
+                let mut take = crate::computed::Computed::default();
+                take.background = s.background.take();
+                take.background_rcs = s.background_rcs.take();
+                take.gradient = s.gradient.take();
+                take.gradient_raw = s.gradient_raw.take();
+                take.bg_image = s.bg_image.take();
+                take.bg_size = std::mem::take(&mut s.bg_size);
+                // Шрифтовые единицы позиции решаются по кеглю ТЕЛА, на
+                // котором они написаны: после переезда их посчитали бы от
+                // кегля корня (`background-position-001`: `6.25ex` при 20px
+                // Ahem у тела давало 100 вместо 200).
+                let em = match s.font_size {
+                    Some(crate::value::Len::Px(v)) => v,
+                    _ => 16.0,
+                };
+                let fam = s.font_family.clone().unwrap_or_default();
+                let to_px = |l: Option<crate::value::Len>| match l {
+                    Some(
+                        crate::value::Len::Em(_)
+                        | crate::value::Len::Ex(_)
+                        | crate::value::Len::Ch(_),
+                    ) => Some(crate::value::Len::Px(crate::metrics::spacing_px(
+                        l, &fam, em,
+                    ))),
+                    other => other,
+                };
+                let mut pos = std::mem::take(&mut s.bg_pos);
+                pos.x = to_px(pos.x);
+                pos.y = to_px(pos.y);
+                take.bg_pos = pos;
+                take.bg_repeat = s.bg_repeat.take();
+                take.bg_clip = s.bg_clip.take();
+                take.bg_origin = s.bg_origin.take();
+                take.bg_fixed = s.bg_fixed.take();
+                moved = Some(take);
+                break;
             }
+        }
+        if let Some(take) = moved {
+            let s = &mut html.style;
+            s.background = take.background;
+            s.background_rcs = take.background_rcs;
+            s.gradient = take.gradient;
+            s.gradient_raw = take.gradient_raw;
+            s.bg_image = take.bg_image;
+            s.bg_size = take.bg_size;
+            s.bg_pos = take.bg_pos;
+            s.bg_repeat = take.bg_repeat;
+            s.bg_clip = take.bg_clip;
+            s.bg_origin = take.bg_origin;
+            s.bg_fixed = take.bg_fixed;
+            s.canvas_bg = true;
         }
     }
     nodes
