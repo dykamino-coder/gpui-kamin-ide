@@ -4063,6 +4063,10 @@ fn paragraph_pieces(
             // ряд строит базовую линию, а кускам с top/middle/bottom нужен
             // собственный прижим (wm-propagation-body-033-ref: полоса-картинка
             // в строке с квадратом прижата к верху, у нас висела на базовой).
+            // ПРОБОВАЛИ И ОТКАТИЛИ: выражать `text-top`/`text-bottom` у
+            // атомарного куска прижимом к краю строки. Замерено по семьям
+            // linebox/*, css1/*, *vertical*: 0 и 0 — этим парам нужен сдвиг
+            // относительно ТЕКСТОВОЙ области родителя, а не край строки.
             use crate::computed::Align;
             let self_align = match e.style.vertical_align {
                 Some(Align::Start) => Some(gpui::AlignItems::FlexStart),
