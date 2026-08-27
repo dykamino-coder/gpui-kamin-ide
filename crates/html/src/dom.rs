@@ -622,7 +622,23 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
             Some(Display::InlineGrid) => style.display = Some(Display::Grid),
             Some(Display::InlineTable) => style.display = Some(Display::Table),
             Some(Display::InlineBlock) => style.display = Some(Display::Block),
+            // ВНУТРЕННИЕ табличные виды блокифицируются в `block`, а не в
+            // `table` (§9.7 вместе с §9.2.4): вне потока ряд, группа рядов и
+            // ячейка своей таблицы уже не образуют. Колонка коробки не
+            // порождала вовсе (`Display::None`), и вне потока квадрат просто
+            // не рисовался (`top-applies-to-006`).
+            Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell) => {
+                style.display = Some(Display::Block)
+            }
+            Some(Display::None) if style.col_role.is_some() => style.display = Some(Display::Block),
             _ => {}
+        }
+        // Метки табличных ролей снимаются вместе с видом: иначе таблица
+        // подобрала бы вне-поточный узел обратно в решётку (§17.2.1).
+        if matches!(style.display, Some(Display::Block)) {
+            style.col_role = None;
+            style.row_group_kind = None;
+            style.is_caption = None;
         }
     }
     if style.inline_display != Some(true) {
