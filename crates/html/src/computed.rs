@@ -3445,6 +3445,52 @@ impl Computed {
                 // иначе «/ 1 Ahem» уезжало в семейство шрифта целиком.
                 let value = join_slash(v);
                 let (head, family) = split_font(&value);
+                // Неизвестное слово в голове сокращения тоже валит его целиком
+                // (§4.2): `font: bold highlighted 100% serif` не задаёт ни
+                // начертания, ни кегля (`c71-fwd-parsing-003`). Слова головы —
+                // это начертание, наклон, вариант, растяжение и системные
+                // ключевые слова; всё прочее начинается с цифры или точки.
+                let head_word = |t: &str| {
+                    matches!(
+                        t,
+                        "normal"
+                            | "italic"
+                            | "oblique"
+                            | "small-caps"
+                            | "bold"
+                            | "bolder"
+                            | "lighter"
+                            | "ultra-condensed"
+                            | "extra-condensed"
+                            | "condensed"
+                            | "semi-condensed"
+                            | "semi-expanded"
+                            | "expanded"
+                            | "extra-expanded"
+                            | "ultra-expanded"
+                            | "xx-small"
+                            | "x-small"
+                            | "small"
+                            | "medium"
+                            | "large"
+                            | "x-large"
+                            | "xx-large"
+                            | "larger"
+                            | "smaller"
+                            | "caption"
+                            | "icon"
+                            | "menu"
+                            | "message-box"
+                            | "small-caption"
+                            | "status-bar"
+                    ) || t.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+                };
+                if head
+                    .split_whitespace()
+                    .any(|t| !head_word(&t.to_ascii_lowercase()))
+                {
+                    return;
+                }
                 // Недействительная часть валит СОКРАЩЕНИЕ целиком (§4.2):
                 // `font: 4em/-2em serif` не задаёт ни кегля, ни семейства
                 // (`font-146`). Проверка идёт до записи любого куска.
