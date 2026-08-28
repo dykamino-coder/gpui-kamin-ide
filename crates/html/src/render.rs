@@ -4416,6 +4416,12 @@ fn paragraph_pieces(
                 .concat(),
             )
             .shift_spans(inline::shift_spans(&pieces, biggest, f32::from(line)))
+            .lh_spans(inline::line_height_spans(
+                &pieces,
+                inherited,
+                biggest,
+                crate::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
+            ))
             .rel_spans(inline::rel_spans(&pieces))
             .align_last(
                 inherited

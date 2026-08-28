@@ -414,6 +414,10 @@ pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
                 // Из слоя берутся ТОЛЬКО текстовые свойства: коробки у буквы
                 // нет, и отступы абзаца ей не принадлежат.
                 letter.font_size = style.font_size.or(own.font_size);
+                // Высота строки — тоже текстовое свойство буквы: без переноса
+                // слой `::first-letter` терял её, и строка садилась на
+                // унаследованную (семья `first-letter-punctuation-*`).
+                letter.line_height = style.line_height.or(own.line_height);
                 letter.color = style.color.or(own.color);
                 letter.font_weight = style.font_weight.or(own.font_weight);
                 letter.italic = style.italic.or(own.italic);
@@ -1196,6 +1200,50 @@ pub fn shift_spans(
             });
         if let Some(v) = dy {
             out.push((at..end, gpui::px(v)));
+        }
+        at = end;
+    }
+    out
+}
+
+/// Высота строки ПО КУСКАМ: отрезок байт → своя `line-height` в точках.
+///
+/// §10.8: высоту строчной коробки задают куски, а не блок — у каждого своя
+/// коробка отступа высотой `line-height`, и полулидинг считается от НЕЁ.
+/// Отдаётся только кусок со СВОИМ значением: унаследованное блок уже учёл.
+pub fn line_height_spans(
+    pieces: &[Piece],
+    inherited: &Computed,
+    base_size: f32,
+    normal: f32,
+) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    for p in pieces {
+        let Piece::Text { text, style } = p else {
+            continue;
+        };
+        if text.is_empty() {
+            continue;
+        }
+        let end = at + text.len();
+        if style.line_height != inherited.line_height
+            && let Some(lh) = style.line_height
+        {
+            let size = match style.font_size {
+                Some(Len::Px(v)) => v,
+                _ => base_size,
+            };
+            let px_of = match lh {
+                Len::Px(v) => Some(v),
+                Len::Pct(k) => Some(k * size),
+                Len::Em(k) => Some(k * size),
+                _ => None,
+            };
+            match px_of {
+                Some(v) => out.push((at..end, gpui::px(v))),
+                None => out.push((at..end, gpui::px(normal * size))),
+            }
         }
         at = end;
     }

@@ -156,6 +156,9 @@ pub struct Paragraph {
     /// Сдвиг куска по вертикали (`vertical-align: super`/`sub`): смещение
     /// базовой линии в точках, вниз положительное.
     shift_spans: Vec<(std::ops::Range<usize>, Pixels)>,
+    /// Своя `line-height` куска (§10.8): строка растёт до полулидинга самого
+    /// высокого куска. Отдельно от `line_height` — та принадлежит блоку.
+    lh_spans: Vec<(std::ops::Range<usize>, Pixels)>,
     /// Относительный сдвиг кусков (CSS 2.1 §9.4.3): двигает только
     /// отрисовку. Отдельно от `shift_spans` — тот растит строчную коробку,
     /// а этот на поток не влияет вовсе.
@@ -231,6 +234,7 @@ impl Paragraph {
             word_spans: Vec::new(),
             letter_spans: Vec::new(),
             shift_spans: Vec::new(),
+            lh_spans: Vec::new(),
             rel_spans: Vec::new(),
             lines: Vec::new(),
             clamp: None,
@@ -261,6 +265,11 @@ impl Paragraph {
     /// Сдвиг кусков по вертикали: отрезок байт → смещение базовой линии.
     pub fn rel_spans(mut self, spans: Vec<(std::ops::Range<usize>, (f32, f32))>) -> Self {
         self.rel_spans = spans;
+        self
+    }
+
+    pub fn lh_spans(mut self, spans: Vec<(std::ops::Range<usize>, Pixels)>) -> Self {
+        self.lh_spans = spans;
         self
     }
 
@@ -367,13 +376,26 @@ impl Paragraph {
     /// кусков после выравнивания. На каждую строку своя пара: абзац с
     /// надстрочным знаком в одной строке не должен раздувать остальные.
     fn line_padding(&self) -> Vec<(f32, f32)> {
-        if self.shift_spans.is_empty() {
+        if self.shift_spans.is_empty() && self.lh_spans.is_empty() {
             return vec![(0.0, 0.0); self.lines.len()];
         }
         self.lines
             .iter()
             .map(|line| {
                 let (mut above, mut below) = (0.0f32, 0.0f32);
+                // Кусок со своей `line-height` растит строку симметрично:
+                // полулидинг его коробки отступа ложится сверху и снизу
+                // (§10.8). Блочное значение уже учтено высотой строки.
+                for (range, lh) in &self.lh_spans {
+                    if range.end <= line.range.start || range.start >= line.range.end {
+                        continue;
+                    }
+                    let half = (f32::from(*lh) - f32::from(self.line_height)) / 2.0;
+                    if half > 0.0 {
+                        above = above.max(half);
+                        below = below.max(half);
+                    }
+                }
                 for (range, dy) in &self.shift_spans {
                     if range.end <= line.range.start || range.start >= line.range.end {
                         continue;
@@ -1086,6 +1108,9 @@ impl Paragraph {
     fn scale_by(&mut self, k: f32) {
         self.font_size = px(f32::from(self.font_size) * k);
         self.line_height = px(f32::from(self.line_height) * k);
+        for (_, lh) in &mut self.lh_spans {
+            *lh = px(f32::from(*lh) * k);
+        }
         self.letter_spacing = px(f32::from(self.letter_spacing) * k);
         self.word_spacing = px(f32::from(self.word_spacing) * k);
         for run in &mut self.runs {
@@ -2007,6 +2032,7 @@ impl Element for Paragraph {
         let word_spans = self.word_spans.clone();
         let letter_spans = self.letter_spans.clone();
         let shift_spans = self.shift_spans.clone();
+        let lh_spans = self.lh_spans.clone();
         // Обрыв по `line-clamp` обязан доехать и до замера: иначе коробка
         // считается по ПОЛНОМУ числу строк, а рисуются обрезанные, и рамка
         // выходит выше текста (`text-wrap-balance-line-clamp-004`).
@@ -2036,6 +2062,7 @@ impl Element for Paragraph {
                 probe.word_spans = word_spans.clone();
                 probe.letter_spans = letter_spans.clone();
                 probe.shift_spans = shift_spans.clone();
+                probe.lh_spans = lh_spans.clone();
                 probe.clamp = clamp;
                 probe.fit = fit;
                 probe.tab_stop = tab_stop;
@@ -2549,6 +2576,7 @@ impl Paragraph {
             word_spans: self.word_spans.clone(),
             letter_spans: self.letter_spans.clone(),
             shift_spans: self.shift_spans.clone(),
+            lh_spans: self.lh_spans.clone(),
             rel_spans: self.rel_spans.clone(),
             ortho_limit: self.ortho_limit,
             runs: Vec::new(),
