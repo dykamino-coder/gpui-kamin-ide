@@ -231,6 +231,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     );
     hoist_grid_abspos(&mut out);
     content_box_static_position(&mut out);
+    flex_items_lose_float(&mut out);
     fold_run_ins(&mut out, None);
     out
 }
@@ -335,6 +336,42 @@ fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         };
         target.children.insert(0, Node::Element(run));
         // На месте i теперь стоит бывший j-1 — им и продолжаем.
+    }
+}
+
+/// Ребёнок гибкого контейнера или сетки не плавает и не очищает.
+///
+/// css-flexbox-1 §4: «`float` and `clear` do not create floating or clearance
+/// for flex item», то же в css-grid-2 §6 для элемента сетки — обе величины
+/// вычисляются в `none` у элемента В ПОТОКЕ (абсолютный ребёнок элементом
+/// контейнера не является и правило его не касается).
+///
+/// Без этого правило §10.6.3 «блок из одних флоатов высотой ноль» считало
+/// гибкий контейнер пустым и обнуляло его высоту (`flex-box-wrap` и родня).
+fn flex_items_lose_float(nodes: &mut [Node]) {
+    for node in nodes.iter_mut() {
+        let Node::Element(el) = node else { continue };
+        flex_items_lose_float(&mut el.children);
+        if !matches!(
+            el.style.display,
+            Some(Display::Grid)
+                | Some(Display::InlineGrid)
+                | Some(Display::Flex)
+                | Some(Display::InlineFlex)
+        ) {
+            continue;
+        }
+        for child in el.children.iter_mut() {
+            let Node::Element(child) = child else { continue };
+            if matches!(
+                child.style.position,
+                Some(Position::Absolute) | Some(Position::Fixed)
+            ) {
+                continue;
+            }
+            child.style.float = None;
+            child.style.clear = None;
+        }
     }
 }
 
