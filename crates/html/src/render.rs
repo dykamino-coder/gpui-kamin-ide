@@ -1306,7 +1306,16 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             } else {
                 built
             };
-            if !ordered_context && at_static_position(&e.style) {
+            // Абсолютная коробка с ОТРИЦАТЕЛЬНЫМ `z-index` не идёт ни в слой
+            // ICB, ни в верхний слой: её место ПОД потоком (§9.9 шаг 3). Но
+            // пустая ось у неё считается от СТАТИЧЕСКОЙ позиции, а гибкая
+            // раскладка такой коробке её не даёт и ставит в начало содержимого
+            // родителя. Нулевая распорка держит место в потоке, и коробка
+            // висит от её угла — там, где написана.
+            let below_free_axis = e.style.position == Some(crate::computed::Position::Absolute)
+                && e.style.z_index.is_some_and(|z| z < 0)
+                && !(x_set && y_set);
+            if !ordered_context && (at_static_position(&e.style) || below_free_axis) {
                 // Позиционированный элемент рисуется ПОВЕРХ обычного
                 // содержимого (CSS 2.1 §9.9, шаг 8) и без заданного `z-index`:
                 // без верхнего слоя следующий за ним сосед закрашивал его
@@ -3071,13 +3080,21 @@ fn by_layer(mut nodes: Vec<Node>) -> Vec<Node> {
     // есть его координата, перестановка меняла раскладку всего родителя
     // (красная полоса `overlapped-red` уезжала в начало страницы). Релятивный
     // с отрицательным `z-index` остаётся на месте и рисуется подложкой.
+    // Переставлять можно только коробку, чьё положение задано краями ПО ОБЕИМ
+    // осям: статической позиции у неё нет вовсе, и место в списке детей на
+    // раскладку не влияет. С пустой осью место по ней держит нулевая распорка,
+    // стоящая там, где элемент написан, — перестановка увозила бы её к началу
+    // родителя.
     let movable = |e: &Element| {
+        let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
+        let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
         e.style.z_index.is_some_and(|z| z < 0)
             && matches!(
                 e.style.position,
                 Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
             )
-            && !at_static_position(&e.style)
+            && x_set
+            && y_set
     };
     let has_negative = nodes.iter().any(|n| match n {
         Node::Element(e) => movable(e),
