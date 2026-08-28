@@ -1082,8 +1082,19 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 if e.tag == "html"
                     && e.style.bg_image.is_some()
                     && let Some(tiles) = {
+                        // Единицы шрифта тоже длина: `html { margin-top: 1em }`
+                        // роняло отсчёт в ноль, и плитка начиналась с края
+                        // холста (`margin-collapse-020`).
+                        let em = match e.style.font_size {
+                            Some(Len::Px(v)) => v,
+                            _ => opts.base_size(),
+                        };
+                        let fam = e.style.font_family.clone().unwrap_or_default();
                         let side = |l: Option<Len>| match l {
                             Some(Len::Px(v)) => v,
+                            Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
+                                crate::metrics::spacing_px(Some(l), &fam, em)
+                            }
                             _ => 0.0,
                         };
                         let b = e.style.borders();
@@ -2198,6 +2209,12 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
             i = j;
             continue;
         }
+        // ПРОБОВАЛИ И ОТКАТИЛИ: пробег РАВНОШИРОКИХ флоатов без заданной
+        // высоты раскладывать колонкой флекс-рядов по `floor(cb / mw)` штук в
+        // ряд (§9.5.1 п.3 и п.5) — высоты для этого знать не нужно. Замерено
+        // по всему CSS2: 0 и 0. Пары `c414-flt-fit-002/003/004` держит не
+        // раскладка рядов, а что-то ещё.
+        //
         // Обтекание ФОРМОЙ (`shape-outside`): ряд-колонка его не выразит —
         // строки должны сужаться каждая по-своему. Плавающие блоки с
         // ИЗВЕСТНЫМИ размерами уходят синтетическим узлом shape-flow:
