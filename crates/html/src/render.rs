@@ -8202,6 +8202,30 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             {
                 cell.style.width = None;
             }
+            // У ВЕРТИКАЛЬНОЙ таблицы кегльная ширина ячейки остаётся на
+            // коробке, но в точки её никто не переводил: `apply` добавляет
+            // отступы только к `Len::Px`, и коробка выходила у́же дорожки на
+            // свои отступы и рамки. Перекладываем в минимум, зеркально
+            // правилу `height` -> `min_height` ниже.
+            if table_is_vertical
+                && !cell.style.width_from_inline
+                && let Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) = cell.style.width
+            {
+                let size = match cell.style.font_size.or(row.style.font_size) {
+                    Some(Len::Px(v)) => v,
+                    _ => table_font,
+                };
+                let family = cell
+                    .style
+                    .font_family
+                    .clone()
+                    .unwrap_or_else(|| table_family.clone());
+                let v = crate::metrics::spacing_px(Some(l), &family, size);
+                if v > 0.0 {
+                    cell.style.width = None;
+                    cell.style.min_width = Some(Len::Px(v));
+                }
+            }
             // Письмо к рядам и группам рядов не применяется (css-writing-modes
             // §applies), а РАЗМЕЩЕНИЕ ячеек в решётке всегда ведёт письмо
             // таблицы — оно уже посчитано табличным кодом. Собственное письмо
