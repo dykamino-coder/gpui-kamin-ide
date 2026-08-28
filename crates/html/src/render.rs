@@ -8244,6 +8244,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     }
                 }
             }
+            // ПРОБОВАЛИ И ОТКАТИЛИ (§17.5.2.1, ячейка обязана влезть в свою
+            // дорожку при фиксированной раскладке): `border_box` + нулевой
+            // `min_width` — потеряно 7 (`margin-bottom-applies-to-001..007`),
+            // приобретено 0; один нулевой `min_width` — 0 и 0. Красное в
+            // `fixed-table-layout-025..031` держит не минимум ячейки.
+            //
             // Потолок высоты к ячейке не применяется вовсе (браузеры
             // игнорируют max-height на ячейках): содержимое выше — растит.
             if matches!(cell.style.max_height, Some(Len::Px(_))) {
