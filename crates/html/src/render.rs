@@ -4768,6 +4768,44 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 image(&copy)
             };
             let holder = styled_div_with(e, &merged).child(built);
+            // Замещаемый атом БЕЗ позиционированного предка считается от
+            // начального содержащего блока (§10.1 п.4), а не от строки, где он
+            // написан: с обеими заданными осями место в строке ему не нужно
+            // вовсе. Тот же приём, что у блочного пути (`to_icb`).
+            let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
+            let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
+            if x_set
+                && y_set
+                && e.style.z_index.unwrap_or(0) >= 0
+                && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
+            {
+                let spot: crate::interact::SpotCell = Default::default();
+                spot.set(crate::interact::Spot {
+                    fixed_axes: (true, true),
+                    rtl: inherited.rtl == Some(true),
+                    vertical: inherited.vertical == Some(true),
+                    vertical_rl: inherited.vertical_rl == Some(true),
+                    own_vertical: e.style.vertical == Some(true),
+                    ..Default::default()
+                });
+                // Слоя нет — элемент возвращается назад, и рисуем его на
+                // месте прежним путём.
+                match crate::interact::icb_push(spot, holder.into_any_element()) {
+                    None => {
+                        return Some(div().w_0().h_0().flex_shrink_0().into_any_element());
+                    }
+                    Some(kept) => {
+                        return Some(
+                            div()
+                                .w_0()
+                                .h_0()
+                                .flex_shrink_0()
+                                .child(kept)
+                                .into_any_element(),
+                        );
+                    }
+                }
+            }
             return Some(if stretched {
                 holder.into_any_element()
             } else {
