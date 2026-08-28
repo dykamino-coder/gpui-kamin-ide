@@ -650,10 +650,20 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
             style.is_caption = None;
         }
     }
-    // ПРОБОВАЛИ И ОТКАТИЛИ: снимать `clear` и со СТРОЧНЫХ уровней и с
-    // заголовка таблицы (§9.5.2 «Applies to: block-level»). Замерено по
-    // семьям *clear*, *float*: 0 и 0 — `clear-applies-to-012/014/015` держит
-    // не применимость свойства, а размещение самой коробки рядом с флоатом.
+    // §9.5.2 «Applies to: block-level»: у коробки НЕ блочного уровня `clear`
+    // не действует. Первый заход давал 0 и 0, потому что размещение самой
+    // коробки рядом с флоатом тогда ещё было сломано.
+    if matches!(
+        style.display,
+        Some(Display::InlineBlock)
+            | Some(Display::InlineTable)
+            | Some(Display::InlineFlex)
+            | Some(Display::InlineGrid)
+    ) || style.is_caption == Some(true)
+    {
+        style.clear = None;
+        style.clear_inherit = false;
+    }
     //
     // Поля к внутренним табличным видам НЕ применяются (§8.3), `clear` — только
     // к коробкам блочного УРОВНЯ (§9.5.2). Заголовок сюда не входит: он
