@@ -921,7 +921,7 @@ pub struct TextRun {
     /// У строчного бокса CSS нет коробки: фон тянется по строкам и рвётся на
     /// переносах. Прогон это умеет, но рисовал фон впритык к глифам, и
     /// подсветка выходила уже браузерной.
-    pub background_pad: Point<Pixels>,
+    pub background_pad: [Pixels; 4],
     /// KaminIDE patch: скругление фона прогона (`border-radius`).
     pub background_radius: Pixels,
     /// KaminIDE patch: рамка строчного бокса (цвет, толщина).

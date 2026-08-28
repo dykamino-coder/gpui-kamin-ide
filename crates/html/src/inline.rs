@@ -195,10 +195,12 @@ pub fn collect(
                         ) => crate::metrics::spacing_px(l, &family, size),
                         _ => 0.0,
                     };
-                    merged.inline_pad = Some((
-                        px_of(e.style.padding.left).max(px_of(e.style.padding.right)),
-                        px_of(e.style.padding.top).max(px_of(e.style.padding.bottom)),
-                    ));
+                    merged.inline_pad = Some([
+                        px_of(e.style.padding.top),
+                        px_of(e.style.padding.right),
+                        px_of(e.style.padding.bottom),
+                        px_of(e.style.padding.left),
+                    ]);
                     merged.inline_radius = Some(px_of(e.style.radius.tl));
                 }
                 // Рамка строчной коробки рисуется прогоном: и ровная, и
@@ -2098,10 +2100,7 @@ fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
         background_border: style
             .inline_border
             .map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),
-        background_pad: {
-            let (x, y) = style.inline_pad.unwrap_or((0.0, 0.0));
-            gpui::point(gpui::px(x), gpui::px(y))
-        },
+        background_pad: style.inline_pad.unwrap_or_default().map(gpui::px),
         background_radius: gpui::px(style.inline_radius.unwrap_or(0.0)),
         underline: style.underline.unwrap_or(false).then(|| UnderlineStyle {
             thickness: gpui::px(1.),

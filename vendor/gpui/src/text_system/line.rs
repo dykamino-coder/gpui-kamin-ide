@@ -18,8 +18,10 @@ pub struct DecorationRun {
 
     /// The background color for this run
     pub background_color: Option<Hsla>,
-    /// KaminIDE patch: поля вокруг фона прогона (строчный бокс).
-    pub background_pad: Point<Pixels>,
+    /// KaminIDE patch: поля вокруг фона прогона (строчный бокс) по четырём
+    /// сторонам, `[верх, право, низ, лево]`. Одной парой их держать нельзя:
+    /// `padding-top: 20px` без нижнего раздувал полосу вниз на те же 20 px.
+    pub background_pad: [Pixels; 4],
     /// KaminIDE patch: скругление фона прогона (строчный бокс).
     pub background_radius: Pixels,
     /// KaminIDE patch: рамка строчного бокса — цвет и толщина. Рисуется по
@@ -529,11 +531,24 @@ fn paint_line_background(
     } else {
         layout.font_size * 1.16
     };
+    // KaminIDE patch: полоса строчной коробки переливается за строку — по
+    // §10.8 отступ и рамка строчного высоту строки не меняют. Слой фона
+    // обязан ВКЛЮЧАТЬ перелив: иначе `BoundsTree` даёт ему порядок ниже
+    // глифов соседней строки, и фон уходит под чужой текст.
+    let bleed = decoration_runs.iter().fold((px(0.), px(0.)), |(t, b), r| {
+        let (bt, bb) = r
+            .background_border
+            .map_or((px(0.), px(0.)), |(_, w)| (w[0], w[2]));
+        (
+            t.max(r.background_pad[0] + bt),
+            b.max(r.background_pad[2] + bb),
+        )
+    });
     let line_bounds = Bounds::new(
-        origin,
+        point(origin.x, origin.y - bleed.0),
         size(
             layout.width,
-            line_height * (wrap_boundaries.len() as f32 + 1.),
+            line_height * (wrap_boundaries.len() as f32 + 1.) + bleed.0 + bleed.1,
         ),
     );
         // KaminIDE patch: выключка по ширине — остаток строки раздаётся её
@@ -554,7 +569,7 @@ fn paint_line_background(
         // режется переносом так же, как он.
         let mut current_background: Option<(
             Point<Pixels>,
-            (Hsla, Point<Pixels>, Pixels, bool, Option<(Hsla, [Pixels; 4])>),
+            (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>),
         )> = None;
         let text_system = cx.text_system().clone();
         let mut glyph_origin = point(
@@ -632,7 +647,7 @@ fn paint_line_background(
 
                 let mut finished_background: Option<(
                     Point<Pixels>,
-                    (Hsla, Point<Pixels>, Pixels, bool, Option<(Hsla, [Pixels; 4])>),
+                    (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>),
                 )> = None;
                 if glyph.index >= run_end {
                     let mut style_run = decoration_runs.next();
@@ -736,7 +751,7 @@ fn run_background_quad(
     line_height: Pixels,
     content_height: Pixels,
     color: Hsla,
-    pad: Point<Pixels>,
+    pad: [Pixels; 4],
     radius: Pixels,
     pad_left: bool,
     pad_right: bool,
@@ -744,12 +759,16 @@ fn run_background_quad(
 ) -> crate::PaintQuad {
     // Высота коробки содержимого приходит замеренной (подъём + спуск);
     // центрируется она в строке, как половинный интерлиньяж.
-    let band = content_height + pad.y * 2.0;
-    let top = origin.y + (line_height - band).half();
+    // Отступ строчной коробки — по своей стороне (CSS 2.1 §8.4): половинный
+    // интерлиньяж принадлежит СТРОКЕ и в коробку отступа не входит, поэтому
+    // верх считается от коробки содержимого, а не от раздутой полосы. При
+    // равных верхе и низе формула совпадает с прежней.
+    let band = content_height + pad[0] + pad[2];
+    let top = origin.y + (line_height - content_height).half() - pad[0];
     // Поля стоят на КОНЦАХ прогона: на переносе подсветка идёт впритык, иначе
     // она вылезала бы за край колонки с обеих сторон каждой строки.
-    let left = if pad_left { pad.x } else { px(0.) };
-    let right = if pad_right { pad.x } else { px(0.) };
+    let left = if pad_left { pad[3] } else { px(0.) };
+    let right = if pad_right { pad[1] } else { px(0.) };
     let quad = crate::fill(
         Bounds {
             origin: point(origin.x - left, top),
