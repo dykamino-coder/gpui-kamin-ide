@@ -68,7 +68,9 @@ pub fn collapse_across_pieces(pieces: &mut [Piece]) {
             Piece::Atom(_) => prev_space = false,
             Piece::Text { text, style } => {
                 // `white-space: pre*` пробелы бережёт — там схлопывать нечего.
-                if style.keep_spaces == Some(true) || style.preserve_newlines == Some(true) {
+                // `pre-line` переводы строк бережёт, а ПРОБЕЛЫ схлопывает
+                // (§16.6): освобождать его от схлопки нельзя.
+                if style.keep_spaces == Some(true) {
                     prev_space = false;
                     continue;
                 }
@@ -1524,7 +1526,7 @@ fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool) {
             Piece::Atom(_) | Piece::Overlay(_) => continue,
             Piece::Text { text, style } => {
                 // `white-space: pre*` пробелы бережёт — там удалять нечего.
-                if style.keep_spaces == Some(true) || style.preserve_newlines == Some(true) {
+                if style.keep_spaces == Some(true) {
                     return;
                 }
                 // Пустой кусок ряда не обрывает: он и есть схлопнутый пробел,
