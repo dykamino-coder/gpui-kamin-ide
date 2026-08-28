@@ -7832,8 +7832,38 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 } else {
                     cell.style.width
                 };
+                // Дорожка = `width` ячейки ПЛЮС её горизонтальные отступы и
+                // рамки (§17.5.2.1, коробка содержимого); в сросшейся модели
+                // рамка входит половиной. Та же формула стоит в ветке первого
+                // ряда ниже; без неё колонка выходила у́же ячейки на её рамку
+                // (`margin-applies-to-001..007`).
+                let side = |l: Option<Len>| match l {
+                    Some(Len::Px(p)) => p,
+                    _ => 0.0,
+                };
+                let extra = if cell.style.border_box == Some(true) {
+                    0.0
+                } else {
+                    let b = cell.style.borders();
+                    let border = if table_vertical || orthogonal {
+                        side(b.top) + side(b.bottom)
+                    } else {
+                        side(b.left) + side(b.right)
+                    };
+                    let pad = if table_vertical || orthogonal {
+                        side(cell.style.padding.top) + side(cell.style.padding.bottom)
+                    } else {
+                        side(cell.style.padding.left) + side(cell.style.padding.right)
+                    };
+                    pad + if e.style.border_collapse == Some(true) {
+                        border / 2.0
+                    } else {
+                        border
+                    }
+                };
                 match source {
                     Some(Len::Px(v)) => {
+                        let v = v + extra;
                         let slot = &mut col_widths[ix].0;
                         *slot = Some(slot.map_or(v, |old| old.max(v)));
                     }
@@ -7859,7 +7889,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             .font_family
                             .clone()
                             .unwrap_or_else(|| table_family.clone());
-                        let v = crate::metrics::spacing_px(Some(l), &family, size);
+                        let v = crate::metrics::spacing_px(Some(l), &family, size) + extra;
                         if v > 0.0 {
                             let slot = &mut col_widths[ix].0;
                             *slot = Some(slot.map_or(v, |old| old.max(v)));
