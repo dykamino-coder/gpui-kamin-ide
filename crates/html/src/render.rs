@@ -4183,6 +4183,27 @@ fn paragraph_pieces(
                 ));
             }
         }
+        // Боковые поля атома с собственным прижимом несёт ОБЁРТКА: внутри
+        // неё они сдвигают коробку, но в продвижение строки не входят —
+        // следующий кусок наезжал на предыдущий ровно на его поле
+        // (эталоны `fixed-table-layout-021..023`: `img{vertical-align:top}`
+        // плюс `margin-left`).
+        let wrapped = match e.style.vertical_align {
+            Some(crate::computed::Align::Start)
+            | Some(crate::computed::Align::End)
+            | Some(crate::computed::Align::Center) => true,
+            _ => false,
+        };
+        let original_margin = e.style.margin;
+        let bare;
+        let e = if wrapped {
+            let mut copy = e.clone();
+            copy.style.margin = Default::default();
+            bare = copy;
+            &bare
+        } else {
+            e
+        };
         atom_element(e, inherited, opts).map(|el| {
             // `vertical-align` НА САМОМ куске (`img { vertical-align: top }`):
             // ряд строит базовую линию, а кускам с top/middle/bottom нужен
@@ -4201,7 +4222,7 @@ fn paragraph_pieces(
             };
             let el = match self_align {
                 Some(a) => {
-                    let mut w = div().flex_shrink_0();
+                    let mut w = crate::apply::margins(div().flex_shrink_0(), &original_margin);
                     w.style().align_self = Some(a);
                     // Доля куска считается от его КОНТЕЙНЕРА, а обёртка встаёт
                     // между ним и рядом: без своей ширины она сжимается по
