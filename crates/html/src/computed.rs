@@ -1040,6 +1040,9 @@ pub struct Computed {
     /// Сдвиг куска по вертикали в долях кегля: `vertical-align: super` и
     /// `sub`. Не наследуется — принадлежит самому куску.
     pub vertical_shift: Option<f32>,
+    /// То же, но ПРОЦЕНТОМ: доля считается от `line-height` куска, а не от
+    /// кегля (§10.8.1), и хранить её вместе с `em` нельзя.
+    pub vertical_shift_pct: Option<f32>,
     /// Сдвиг от базовой линии, названный ДЛИНОЙ: хранится в точках, потому
     /// что доля кегля на момент разбора ещё неизвестна — у строчного своего
     /// кегля обычно нет, он приходит наследованием.
@@ -1644,6 +1647,7 @@ impl Computed {
             // Сдвиг от базовой линии — свойство ТЕКСТА: без него строчный
             // кусок в общем прогоне остаётся на базовой линии.
             vertical_shift: self.vertical_shift,
+            vertical_shift_pct: self.vertical_shift_pct,
             vertical_shift_px: self.vertical_shift_px,
             vertical_shift_len: self.vertical_shift_len,
             vertical_align_text: self.vertical_align_text,
@@ -3617,7 +3621,12 @@ impl Computed {
                         // Долей кегля пишутся процент и `em` — их и храним
                         // долей. Ось сдвига смотрит вниз, а положительное
                         // значение поднимает знак ВВЕРХ.
-                        Some(Len::Pct(k)) => (k != 0.0).then_some(-k),
+                        Some(Len::Pct(k)) => {
+                            // Процент — доля `line-height`, и считается он
+                            // позже: кладём в своё поле.
+                            self.vertical_shift_pct = (k != 0.0).then_some(-k);
+                            None
+                        }
                         Some(Len::Em(k)) => (k != 0.0).then_some(-k),
                         _ => None,
                     },

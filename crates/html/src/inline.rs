@@ -1178,6 +1178,20 @@ pub fn shift_spans(
                 })
             })
             .or_else(|| style.vertical_shift.map(|k| k * size))
+            // Процент считается от `line-height` САМОГО куска (§10.8.1), а не
+            // от кегля: `vertical-align: 50%` при `line-height: 2` — это кегль
+            // целиком, а не половина. Замерено: 0 и 0 — правка по спеке, в
+            // своде такой записи почти нет.
+            .or_else(|| {
+                style.vertical_shift_pct.map(|k| {
+                    let own = match style.line_height {
+                        Some(Len::Px(v)) => v,
+                        Some(Len::Pct(f)) | Some(Len::Em(f)) => f * size,
+                        _ => line_px,
+                    };
+                    k * own
+                })
+            })
             .or_else(|| {
                 // `text-top`/`text-bottom` равняют край куска по краю
                 // ТЕКСТОВОЙ области родителя (CSS 2.1 §10.8.1). Разница
