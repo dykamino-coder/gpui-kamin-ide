@@ -151,6 +151,12 @@ impl Len {
     /// одну длину вместо того чтобы пропасть (`word-spacing-001`).
     pub fn parse_spacing(raw: &str) -> Option<Self> {
         let s = raw.trim();
+        // `normal` — ЗАДАННЫЙ ноль, а не «не задано»: без него наследованное
+        // значение не сбросить, и `<span style="letter-spacing: normal">`
+        // внутри разреженного абзаца оставался разреженным (§16.4).
+        if s.eq_ignore_ascii_case("normal") {
+            return Some(Len::Px(0.0));
+        }
         if let Some(inner) = s
             .strip_prefix("calc(")
             .or_else(|| s.strip_prefix("CALC("))
