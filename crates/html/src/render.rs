@@ -4819,7 +4819,15 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             // (`line-edge-white-space-collapse-001`).
             // Обособленная блочная ось высоту уже задала (пусть нулевую) —
             // подставлять кегль строки поверх неё нельзя.
-            if merged.height.is_none() && !has_text(&e.children) && !merged.contains_height() {
+            // …и только у НАСТОЯЩЕГО строчного: у `inline-block` высота идёт от
+            // содержимого, и подставленный кегль строки накрывал детей-блоков
+            // (`border-left-width-applies-to-012`: квадрат 96 выходил 19).
+            let genuine_inline = e.style.display.is_none() || e.style.inline_display == Some(true);
+            if genuine_inline
+                && merged.height.is_none()
+                && !has_text(&e.children)
+                && !merged.contains_height()
+            {
                 box_ = box_.h(px(line_height_px(&merged, opts)));
             }
             // `vertical-align` коробки в строке: верх/низ/середина СТРОКИ
