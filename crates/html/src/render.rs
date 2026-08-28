@@ -2523,7 +2523,13 @@ fn band_host(nodes: &[Node], i: usize, cb_width: Option<Len>) -> Option<(Element
         rest.push(nodes[j].clone());
         j += 1;
     }
-    if !rest.iter().any(|n| !is_blank(n))
+    // Пустой хвост хост НЕ отменяет, если флоатов НЕСКОЛЬКО: лесенку
+    // (§9.5.1 п.5) и правило 3 флекс-ряд не выражает вовсе. Одинокий флоат с
+    // пустым хвостом полосам не нужен — его кладёт ветка ниже, и хост ей
+    // только мешал (замерено: с пустым хвостом при любом числе флоатов
+    // приобретено 10, потеряно 9).
+    // ЗАМЕРЕНО: отсекать здесь ещё и пробеги с `clear` — 5065 -> 5064.
+    if (floaters.len() < 2 && !rest.iter().any(|n| !is_blank(n)))
         || !rest.iter().all(|n| is_blank(n) || band_piece(n).is_some())
     {
         return None;
@@ -5392,11 +5398,15 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // `float` заводит лишний контекст обрезки.
         copy.style.float = None;
         copy.style.clear = None;
-        let merged = inline::inherit(inherited, &copy.style);
+        let mut merged = inline::inherit(inherited, &copy.style);
         // Поля кладёт держатель (позиция absolute от края) — на самой
         // коробке они сдвигали бы её обратно (float: right с margin-left
-        // вылезал за правый край контейнера).
+        // вылезал за правый край контейнера). Снимать их надо И СО СЛИТОГО
+        // стиля: коробку строит он, и через него поле возвращалось —
+        // четвёрка флоатов с `margin: 10px` уезжала на поле целиком
+        // (`floats-014`).
         copy.style.margin = crate::computed::Sides::default();
+        merged.margin = crate::computed::Sides::default();
         let built = if copy.tag == "img" {
             image(&copy)
         } else {
