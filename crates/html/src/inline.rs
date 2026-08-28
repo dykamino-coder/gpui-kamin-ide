@@ -223,13 +223,19 @@ pub fn collect(
                 // она осталась куском текста). По CSS строку можно рвать
                 // между текстом и такой коробкой; у нас это выражается
                 // нулевым пробелом по краям (`line-breaking-atomic-007`).
+                // Настоящий `display: inline` сюда НЕ входит: разбор держит
+                // его как `InlineBlock` с пометкой `inline_display`, и без
+                // отсечки каждый `<span>` обрамлялся служебными нулевыми
+                // пробелами — они рвали ряд схлопываемых пробелов, возвращали
+                // краевой проход и добавляли лишнюю точку переноса. Та же
+                // отсечка стоит в `has_own_box`.
                 let atomic = matches!(
                     e.style.display,
                     Some(crate::computed::Display::InlineBlock)
                         | Some(crate::computed::Display::InlineFlex)
                         | Some(crate::computed::Display::InlineGrid)
                         | Some(crate::computed::Display::InlineTable)
-                );
+                ) && e.style.inline_display != Some(true);
                 // Ограничитель атомарной коробки — служебный знак, а не текст
                 // документа: замена нулевого пробела идеографическим его
                 // касаться не должна, иначе вокруг `inline-block` появляется
