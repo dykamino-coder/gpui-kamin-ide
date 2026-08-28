@@ -7720,7 +7720,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         _ => opts.base_size(),
     };
     let table_family = inherited.font_family.clone().unwrap_or_default();
-    let (from_cols, cols_collapsed) = col_element_widths(&e.children, table_font, &table_family);
+    let (from_cols, cols_collapsed, cols_pct) =
+        col_element_widths(&e.children, table_font, &table_family);
     let mut busy: Vec<u16> = vec![0; cols as usize];
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
@@ -8854,6 +8855,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         &first_row_widths,
         &col_widths,
         &cols_collapsed,
+        &cols_pct,
     );
     if {
         static ON: std::sync::LazyLock<bool> =
@@ -9113,8 +9115,9 @@ fn track_list_collapsed(
     first_row: &[Option<f32>],
     col_widths: &[(Option<f32>, Option<f32>)],
     collapsed: &[bool],
+    pcts: &[Option<f32>],
 ) -> Vec<gpui::GridTrack> {
-    let mut tracks = track_list(cols, fixed, first_row, col_widths);
+    let mut tracks = track_list(cols, fixed, first_row, col_widths, pcts);
     for (i, t) in tracks.iter_mut().enumerate() {
         if collapsed.get(i).copied().unwrap_or(false) {
             *t = gpui::GridTrack::Pixels(px(0.0));
@@ -9128,22 +9131,53 @@ fn track_list(
     fixed: bool,
     first_row: &[Option<f32>],
     col_widths: &[(Option<f32>, Option<f32>)],
+    pcts: &[Option<f32>],
 ) -> Vec<gpui::GridTrack> {
     // `table-layout: fixed` — ширины из первого ряда, безразмерные колонки
     // делят остаток поровну; содержимое не меряется.
     if fixed {
+        // Доли колонок (§17.5.2.1): доля берётся от ширины таблицы, а базис
+        // всех дорожек здесь нулевой — значит свободное место равно ей самой,
+        // и долю точно выражает `Fraction`. Остаток делят безразмерные.
+        let pct_sum: f32 = (0..cols as usize)
+            .filter_map(|i| pcts.get(i).copied().flatten())
+            .sum();
+        let auto_n = (0..cols as usize)
+            .filter(|i| {
+                pcts.get(*i).copied().flatten().is_none()
+                    && first_row.get(*i).copied().flatten().is_none()
+            })
+            .count();
+        let share = if auto_n > 0 {
+            ((1.0 - pct_sum).max(0.0)) / auto_n as f32
+        } else {
+            0.0
+        };
         return (0..cols as usize)
-            .map(|i| match first_row.get(i).copied().flatten() {
-                Some(w) => gpui::GridTrack::Pixels(px(w)),
-                // Пол дорожки — ноль, а не содержимое: фиксированная
-                // раскладка содержимое НЕ меряет (CSS 2.1 §17.5.2.1), и
-                // колонка вправе быть у́же него. Голая доля брала минимумом
-                // вклад `min-content`, из-за чего сумма колонок перерастала
-                // заданную ширину таблицы (`fixed-table-layout-003a01`).
-                None => gpui::GridTrack::MinMax(Box::new((
-                    gpui::GridTrack::Pixels(px(0.0)),
-                    gpui::GridTrack::Fraction(1.0),
-                ))),
+            .map(|i| {
+                match (
+                    pcts.get(i).copied().flatten(),
+                    first_row.get(i).copied().flatten(),
+                ) {
+                    (Some(p), _) => gpui::GridTrack::MinMax(Box::new((
+                        gpui::GridTrack::Pixels(px(0.0)),
+                        gpui::GridTrack::Fraction(p),
+                    ))),
+                    (None, Some(w)) => gpui::GridTrack::Pixels(px(w)),
+                    (None, None) if pct_sum > 0.0 => gpui::GridTrack::MinMax(Box::new((
+                        gpui::GridTrack::Pixels(px(0.0)),
+                        gpui::GridTrack::Fraction(share),
+                    ))),
+                    // Пол дорожки — ноль, а не содержимое: фиксированная
+                    // раскладка содержимое НЕ меряет (CSS 2.1 §17.5.2.1), и
+                    // колонка вправе быть у́же него. Голая доля брала минимумом
+                    // вклад `min-content`, из-за чего сумма колонок перерастала
+                    // заданную ширину таблицы (`fixed-table-layout-003a01`).
+                    (None, None) => gpui::GridTrack::MinMax(Box::new((
+                        gpui::GridTrack::Pixels(px(0.0)),
+                        gpui::GridTrack::Fraction(1.0),
+                    ))),
+                }
             })
             .collect();
     }
@@ -9666,9 +9700,12 @@ fn col_element_widths(
     children: &[Node],
     base_font: f32,
     family: &str,
-) -> (Vec<Option<f32>>, Vec<bool>) {
+) -> (Vec<Option<f32>>, Vec<bool>, Vec<Option<f32>>) {
     let mut widths = vec![];
     let mut collapsed = vec![];
+    // Доля ширины колонки (§17.5.2.1): в точках её не выразить, дорожка
+    // получает её отдельно.
+    let mut pcts: Vec<Option<f32>> = vec![];
     for child in children {
         let Node::Element(el) = child else { continue };
         match col_role(el) {
@@ -9700,29 +9737,40 @@ fn col_element_widths(
                 // §visibility-collapse-cell-rendering).
                 let c = el.style.collapsed == Some(true);
                 let span = col_span(el);
+                let p = match el.style.width {
+                    Some(Len::Pct(k)) => Some(k),
+                    _ => None,
+                };
                 widths.extend(std::iter::repeat_n(w, span));
                 collapsed.extend(std::iter::repeat_n(c, span));
+                pcts.extend(std::iter::repeat_n(p, span));
             }
             Some(true) => {
-                let (w, c) = col_element_widths(&el.children, base_font, family);
+                let (w, c, p) = col_element_widths(&el.children, base_font, family);
                 if w.is_empty() {
                     let ww = match el.style.width {
                         Some(Len::Px(v)) => Some(v),
+                        _ => None,
+                    };
+                    let pp = match el.style.width {
+                        Some(Len::Pct(k)) => Some(k),
                         _ => None,
                     };
                     let cc = el.style.collapsed == Some(true);
                     let span = col_span(el);
                     widths.extend(std::iter::repeat_n(ww, span));
                     collapsed.extend(std::iter::repeat_n(cc, span));
+                    pcts.extend(std::iter::repeat_n(pp, span));
                 } else {
                     widths.extend(w);
                     collapsed.extend(c);
+                    pcts.extend(p);
                 }
             }
             None => {}
         }
     }
-    (widths, collapsed)
+    (widths, collapsed, pcts)
 }
 
 fn is_cell(e: &Element) -> bool {
