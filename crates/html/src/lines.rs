@@ -2382,7 +2382,17 @@ impl Element for Paragraph {
                 // Набор строки опускается на её верхнюю надбавку: поднятый
                 // кусок занимает добавленное место, а остальной текст
                 // остаётся на своей базовой линии.
-                self.paint_justified(&range, &segs, free, bounds, y + above(i), dx, window, cx);
+                self.paint_justified(
+                    &range,
+                    &segs,
+                    free,
+                    line.width,
+                    bounds,
+                    y + above(i),
+                    dx,
+                    window,
+                    cx,
+                );
                 if line.ellipsis {
                     let text = self.span(&segs, line.range.start, range.end);
                     self.paint_suffix(
@@ -2830,6 +2840,7 @@ impl Paragraph {
         range: &std::ops::Range<usize>,
         segs: &[Seg],
         free: Pixels,
+        line_width: Pixels,
         bounds: Bounds<Pixels>,
         y: Pixels,
         dx: Pixels,
@@ -2925,6 +2936,10 @@ impl Paragraph {
             px(0.)
         };
         let from = self.x_at(segs, range.start, Edge::Start);
+        // Ось зеркала правой строки — её СОБСТВЕННЫЙ правый край, а не край
+        // коробки: прижим уже учтён в `dx`, и вычитать его из ширины коробки
+        // значит ошибиться на `free − 2·dx` (`bidi-box-model-013`: 380 точек).
+        let mirror = bounds.origin.x + dx + line_width + free;
         // UAX#9 L2 разворачивает прогоны уровня ≥1, а зеркало строки
         // переворачивает ВСЕ слова разом: латинский прогон внутри правого
         // абзаца выходил задом наперёд. Прогоны левого уровня выкладываем
@@ -2966,7 +2981,7 @@ impl Paragraph {
                             let width = self.word_width(w, window);
                             let logical = (self.x_at(segs, w.range.start, Edge::Start) - from)
                                 + step * w.spaces_before as f32;
-                            let x = bounds.origin.x + bounds.size.width - dx - logical - width;
+                            let x = mirror - logical - width;
                             (i, x, width)
                         })
                         .collect();
@@ -3013,9 +3028,7 @@ impl Paragraph {
             // направо переворачивала порядок слов на выключенной строке.
             let x = match logical_run.iter().find(|(i, _)| *i == wi) {
                 Some((_, fixed)) => *fixed,
-                None if self.wrap.rtl => {
-                    bounds.origin.x + bounds.size.width - dx - logical - shaped.width
-                }
+                None if self.wrap.rtl => mirror - logical - shaped.width,
                 None => bounds.origin.x + dx + logical,
             };
             // Сдвиг куска по вертикали: надстрочный и подстрочный знак стоят
