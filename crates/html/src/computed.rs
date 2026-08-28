@@ -2732,8 +2732,48 @@ impl Computed {
                     .or_else(|| generic.map(str::to_string));
             }
             "text-decoration" | "text-decoration-line" => {
-                self.underline = Some(v.contains("underline"));
-                self.line_through = Some(v.contains("line-through"));
+                // Недействительный токен делает объявление НЕВАЛИДНЫМ целиком
+                // (§4.2): прежде свойство искалось подстрокой, и
+                // `text-decoration: diagonal` проезжало как «нет подчёркивания»
+                // вместо того, чтобы оставить прежнее значение
+                // (`c71-fwd-parsing-003`).
+                let line = |t: &str| {
+                    matches!(
+                        t,
+                        "none"
+                            | "underline"
+                            | "overline"
+                            | "line-through"
+                            | "blink"
+                            | "spelling-error"
+                            | "grammar-error"
+                    )
+                };
+                // У сокращения к линиям добавляются рисунок, толщина и цвет.
+                let extra = |t: &str| {
+                    key == "text-decoration"
+                        && (matches!(
+                            t,
+                            "solid"
+                                | "double"
+                                | "dotted"
+                                | "dashed"
+                                | "wavy"
+                                | "auto"
+                                | "from-font"
+                        ) || Len::parse(t).is_some()
+                            || Color::parse(t).is_some())
+                };
+                let lower = v.to_ascii_lowercase();
+                let mut words = lower.split_whitespace().peekable();
+                if words.peek().is_none() {
+                    return;
+                }
+                if !lower.split_whitespace().all(|t| line(t) || extra(t)) {
+                    return;
+                }
+                self.underline = Some(lower.split_whitespace().any(|t| t == "underline"));
+                self.line_through = Some(lower.split_whitespace().any(|t| t == "line-through"));
             }
             "line-height" => {
                 // Голое число в line-height — множитель, а не пиксели.
