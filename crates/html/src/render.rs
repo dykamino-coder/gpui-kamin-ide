@@ -4323,10 +4323,10 @@ fn paragraph_pieces(
     // строка кончается, и отрицательный отступ ей не помеха. Ряд из слов
     // остаётся запасным путём — на нём отступ становится распоркой, а она
     // отрицательной ширины не бывает.
-    let spaced =
-        indent != crate::lines::Indent::default() && crate::lines::rules(inherited).is_none();
-    if !spaced
-        && inline::single_block(&pieces, opts.base_size())
+    // Ряда из слов под отступ первой строки больше нет: `lines::rules` отдаёт
+    // правила переноса ВСЕГДА, и своя раскладка строк умеет и отступ, и
+    // отрицательный отступ.
+    if inline::single_block(&pieces, opts.base_size())
         && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text)
     {
         // `word-space-transform` смотрит на СОСЕДЕЙ точки переноса, а они
@@ -4482,14 +4482,6 @@ fn paragraph_pieces(
             .selectable(id, opts.selection_color());
             return para.into_any_element();
         }
-        let id = gpui::ElementId::Integer(text_id(&text));
-        return crate::select::Selectable::new(
-            id,
-            SharedString::from(text),
-            runs,
-            opts.selection_color(),
-        )
-        .into_any_element();
     }
     let mut render_text = |t: String, style: &Computed| -> AnyElement {
         if {
@@ -4558,16 +4550,6 @@ fn paragraph_pieces(
         .text_align
         .unwrap_or(crate::computed::TextAlign::Start)
         .physical(inherited.rtl == Some(true));
-    if spaced {
-        return inline::as_word_row(
-            pieces,
-            word,
-            indent.px,
-            inherited.vertical_align,
-            Some(align),
-            &mut render_text,
-        );
-    }
     inline::as_wrapped_row(
         pieces,
         inherited.vertical_align,

@@ -1816,67 +1816,6 @@ fn line_break() -> AnyElement {
     gpui::div().w_full().h_0().into_any_element()
 }
 
-/// `word-spacing` и `text-indent`: строка из слов с зазором.
-///
-/// Обходной путь вместо правки шейпера: пробел остаётся в куске, а лишний
-/// интервал даёт зазор гибкой строки — расстановка получается точной, а
-/// перенос идёт по словам, как в браузере. Отступ первой строки — распорка
-/// перед первым словом: при переносе она остаётся только на первой строке,
-/// ровно как `text-indent`.
-pub fn as_word_row(
-    pieces: Vec<Piece>,
-    word_spacing: f32,
-    indent: f32,
-    align: Option<crate::computed::Align>,
-    text_align: Option<crate::computed::TextAlign>,
-    render_text: &mut dyn FnMut(String, &Computed) -> AnyElement,
-) -> AnyElement {
-    use crate::computed::{Align, TextAlign};
-    // Предел ширины — родитель: без него ряд считает себя по содержимому и
-    // не переносит НИЧЕГО, сколько бы ни вылезал (`line-breaking-atomic-007`:
-    // три знака по 50 в коробке шириной 40 стояли в строку).
-    let mut row = gpui::div()
-        .flex()
-        .flex_wrap()
-        .max_w_full()
-        .gap_x(gpui::px(word_spacing));
-    row = match align {
-        Some(Align::Center) => row.items_center(),
-        Some(Align::Start) => row.items_start(),
-        Some(Align::End) => row.items_end(),
-        _ => row.items_baseline(),
-    };
-    row = match text_align {
-        Some(TextAlign::Center) => row.justify_center(),
-        Some(TextAlign::Right) => row.justify_end(),
-        Some(TextAlign::Left) => row.justify_start(),
-        _ => row,
-    };
-    if indent != 0.0 {
-        row = row.child(gpui::div().w(gpui::px(indent)).flex_shrink_0());
-    }
-    for p in drop_hanging_tail(pieces) {
-        row = match p {
-            Piece::Atom(el) => row.child(el),
-            Piece::Overlay(el) => row.child(overlay_in_row(el)),
-            Piece::Text { text, style } => {
-                // Пробел остаётся при слове: зазор ДОБАВЛЯЕТСЯ к нему, а не
-                // заменяет — иначе слова слипаются на нулевом `word-spacing`.
-                for (n, part) in text.split('\n').enumerate() {
-                    if n > 0 {
-                        row = row.child(line_break());
-                    }
-                    for w in part.split_inclusive(' ') {
-                        row = row.child(render_text(w.to_string(), &style));
-                    }
-                }
-                row
-            }
-        };
-    }
-    row.into_any_element()
-}
-
 /// Схлопывание пробелов, как в HTML: переводы строк и повторы — один пробел.
 fn normalize_spaces(raw: &str) -> String {
     let chars: Vec<char> = raw.chars().collect();
