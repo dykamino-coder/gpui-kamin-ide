@@ -467,6 +467,11 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                     // Коробочная часть первой строки: интерлиньяж и подложка
                     // (css-pseudo-4 §4.1; first-line-line-height-001/002).
                     c.background = style.background.or(base.background);
+                    // Красит подложку прогон текста, и берёт он её из
+                    // `inline_bg`: слой первой строки накладывается уже ПОСЛЕ
+                    // сборки кусков, когда `inline_bg` посчитан по своему
+                    // стилю (`c25-pseudo-elmnt-000`: зелёной полосы не было).
+                    c.inline_bg = style.background.or(base.inline_bg);
                     c.line_height = style.line_height.or(base.line_height);
                     c
                 };

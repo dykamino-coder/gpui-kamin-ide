@@ -188,6 +188,12 @@ impl Selector {
             let body = &rest[1..];
             let end = delim(body);
             let name = &body[..end];
+            // Псевдоэлемент стоит ПОСЛЕДНИМ в составной части (Selectors §3):
+            // `p:first-line.two` — недействительный селектор, а разбирался как
+            // годный, и правило красило чужой абзац (`c25-pseudo-elmnt-000`).
+            if sel.pseudo.as_deref().is_some_and(is_pseudo_element) {
+                return None;
+            }
             if kind == '[' {
                 // Атрибутное условие тянется до закрывающей скобки, кавычки
                 // внутри — со своим содержимым.
@@ -330,6 +336,22 @@ impl Selector {
 /// Разбор внутренности атрибутного условия: `name`, `name=value`,
 /// `name~="v" i` и родня. Кавычки значения снимаются, ` i` в хвосте —
 /// регистронезависимость.
+/// ПсевдоЭЛЕМЕНТ (а не псевдокласс): после него составная часть кончается.
+fn is_pseudo_element(name: &str) -> bool {
+    matches!(
+        name,
+        "before"
+            | "after"
+            | "first-line"
+            | "first-letter"
+            | "marker"
+            | "placeholder"
+            | "selection"
+            | "backdrop"
+            | "file-selector-button"
+    )
+}
+
 fn parse_attr_sel(raw: &str) -> Option<AttrSel> {
     let raw = raw.trim();
     let op_at = raw.char_indices().find(|(i, c)| {
@@ -713,8 +735,14 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
         if parts.iter().any(|one| one.trim().is_empty()) {
             continue;
         }
-        for one in parts {
-            if let Some(sel) = Selector::parse(one) {
+        // Недействительная часть списка тоже валит ВЕСЬ список (§4.1.7):
+        // `p:first-line.two, p.two {}` не применяется ни к кому. Прежде
+        // негодная часть просто выбрасывалась, и правило красило соседа
+        // (`c25-pseudo-elmnt-000`).
+        let sels: Option<Vec<Selector>> = parts.iter().map(|one| Selector::parse(one)).collect();
+        let Some(sels) = sels else { continue };
+        for sel in sels {
+            {
                 out.push(Rule {
                     sel,
                     decls: decls.clone(),
