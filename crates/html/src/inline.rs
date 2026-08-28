@@ -1558,6 +1558,12 @@ fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool) {
         match piece {
             // Коробка без текста для ряда пробелов прозрачна.
             Piece::Atom(_) | Piece::Overlay(_) => continue,
+            // Распорка полей строчной коробки и метка атома прозрачны так же:
+            // место они занимают, содержимым строки не являются, и пробел за
+            // ними по-прежнему стоит на КРАЮ строки (css-text-3 §4.1.3).
+            // Прежде первая же распорка обрывала проход, и ведущий пробел
+            // после `<span style="padding-left:1em">` не срезался никогда.
+            Piece::Text { text, .. } if text == SPACER || text == ZWSP => continue,
             Piece::Text { text, style } => {
                 // `white-space: pre*` пробелы бережёт — там удалять нечего.
                 if style.keep_spaces == Some(true) {
@@ -2009,6 +2015,9 @@ pub fn text_and_runs(pieces: &[Piece], base: &TextStyle) -> Option<(String, Vec<
 /// (WJ) запрещает разрыв и ПЕРЕД собой — а значит, и по пробелу перед коробкой.
 /// Поэтому точки переноса считаются по тексту БЕЗ распорок (`Paragraph`).
 pub const SPACER: &str = "\u{feff}";
+
+/// Метка атомарного куска: ширины не несёт, ряд пробелов не рвёт.
+pub const ZWSP: &str = "\u{200b}";
 
 /// Места распорок в тексте абзаца — байтовые смещения.
 ///
