@@ -3131,7 +3131,10 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
     // Замерено: CSS2 5078 -> 5082 (+5, потеряна одна —
     // `block-formatting-context-height-002`: там нулевая коробка лежит внутри
     // АБСОЛЮТНОГО контейнера, и по §10.6.7 высоту флоата обязан взять он, а
-    // наша раскладка её оттуда уже не получает).
+    // наша раскладка её оттуда уже не получает). oldfront 2352 -> 2349:
+    // `flexbox_item-float`, `flexbox_item-top-float`, `flex-box-wrap` —
+    // там контейнер приходит сюда БЕЗ своего `display`, то есть гибким его
+    // никто не сделал, и прежняя зелень держалась на этой же ошибке.
     for node in out.iter_mut() {
         let Node::Element(e) = node else { continue };
         let has_float = e
