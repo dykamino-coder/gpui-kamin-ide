@@ -3158,10 +3158,60 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
         // «дотянулась ли высота» на этом шаге ещё не известно, и снятие
         // условия открывало подъём там, где высота на деле выросла.
         // Возвращать вместе с настоящей проверкой итоговой высоты.
+        // `min-height` закрывает подъём, только если он ДЕЙСТВИТЕЛЬНО тянет
+        // коробку выше её содержимого (§8.3.1 говорит о РАСХОЖДЕНИИ итоговой
+        // высоты с высотой по содержимому, а не о написанном свойстве).
+        // Нижняя оценка содержимого — сумма разрешимых в точки высот блочных
+        // детей в потоке; неизвестная высота хотя бы у одного оставляет
+        // прежний запрет.
+        let raises = match margin_px(e.style.min_height, &e.style) {
+            None => !zero(e.style.min_height),
+            Some(mh) if mh <= 0.0 => false,
+            Some(mh) => {
+                let mut sum = 0.0f32;
+                let mut known = true;
+                for c in &e.children {
+                    match c {
+                        Node::Text(t) if blank_text(t) => {}
+                        Node::Text(_) => known = false,
+                        Node::Element(ch) if !in_flow(&ch.style) => {}
+                        Node::Element(ch) if ch.inline => known = false,
+                        Node::Element(ch) => {
+                            let b = ch.style.borders();
+                            let side = |l: Option<Len>| match l {
+                                None => Some(0.0),
+                                Some(Len::Px(v)) => Some(v),
+                                _ => None,
+                            };
+                            let own = match (
+                                margin_px(ch.style.height, &ch.style),
+                                side(ch.style.padding.top),
+                                side(ch.style.padding.bottom),
+                                side(b.top),
+                                side(b.bottom),
+                            ) {
+                                (Some(h), Some(pt), Some(pb), Some(bt), Some(bb)) => {
+                                    Some(h + pt + pb + bt + bb)
+                                }
+                                _ => None,
+                            };
+                            match own {
+                                Some(v) => sum += v,
+                                None => known = false,
+                            }
+                        }
+                    }
+                    if !known {
+                        break;
+                    }
+                }
+                !known || mh > sum + 0.01
+            }
+        };
         let closed = !zero(e.style.padding.bottom)
             || !zero(e.style.borders().bottom)
             || !matches!(e.style.height, None | Some(Len::Auto))
-            || !zero(e.style.min_height)
+            || raises
             || own_context;
         if closed {
             continue;
