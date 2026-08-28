@@ -3163,7 +3163,8 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
         // высоты с высотой по содержимому, а не о написанном свойстве).
         // Нижняя оценка содержимого — сумма разрешимых в точки высот блочных
         // детей в потоке; неизвестная высота хотя бы у одного оставляет
-        // прежний запрет.
+        // прежний запрет. Замерено: CSS2 5074 -> 5077, oldfront 2353 -> 2352
+        // (`css-flexbox-height-animation-stretch` 0.47 -> 1.00).
         let raises = match margin_px(e.style.min_height, &e.style) {
             None => !zero(e.style.min_height),
             Some(mh) if mh <= 0.0 => false,
