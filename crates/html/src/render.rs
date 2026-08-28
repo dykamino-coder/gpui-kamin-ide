@@ -3659,6 +3659,13 @@ fn through_strut(e: &Element) -> Option<Strut> {
     // запрета не создают.
     for c in &e.children {
         let Node::Element(ch) = c else { continue };
+        // `clear` у ребёнка в потоке закрывает схлопывание насквозь (§8.3.1
+        // исключение 2) — проверять ДО отсечки строчных: псевдоэлемент
+        // помечается строчным независимо от своего `display`, и клирфикс
+        // `div::after { clear: both; display: block }` был отсюда не виден.
+        if in_flow(&ch.style) && ch.style.clear.is_some() {
+            return None;
+        }
         if ch.inline
             || ch.style.display == Some(Display::None)
             || ch.style.display == Some(Display::Contents)
