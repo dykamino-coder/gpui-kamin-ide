@@ -1472,7 +1472,25 @@ pub fn sided_border(c: &Computed) -> Option<(Color, [f32; 4])> {
         if sides[i] <= 0.0 {
             continue;
         }
-        let side = c.border_colors[i].or(c.border_color).or(c.color)?;
+        // Цвет рамки по умолчанию — цвет текста, а он на строчном куске
+        // часто не задан вовсе: без запасного чёрного прогон отказывался от
+        // рамки, и кусок уходил в коробку, двигая текст на её ширину. То же
+        // умолчание уже стоит на блочном пути (`apply.rs`).
+        //
+        // ЗАМЕРЕНО ОТДЕЛЬНО: вместе с этим включить в `vendor/gpui` полосу
+        // прогона для рамки БЕЗ фона (сейчас квад заводится только при
+        // заданной подсветке, и рамка строчной коробки не рисуется вовсе) —
+        // 19 приобретено, 17 потеряно, все потери в семьях `bidi-*`.
+        // Возвращать вместе с геометрией полосы.
+        let side = c.border_colors[i]
+            .or(c.border_color)
+            .or(c.color)
+            .unwrap_or(Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            });
         match color {
             None => color = Some(side),
             Some(prev) if prev == side => {}
@@ -1501,8 +1519,14 @@ pub fn uniform_border(c: &Computed) -> Option<(Color, f32)> {
     let color = match (c.border_color, sides[0], sides[1], sides[2], sides[3]) {
         (_, Some(a), Some(b2), Some(c2), Some(d)) if a == b2 && a == c2 && a == d => a,
         (Some(one), None, None, None, None) => one,
-        // Цвет не задан вовсе — рамка красится цветом текста.
-        (None, None, None, None, None) => c.color?,
+        // Цвет не задан вовсе — рамка красится цветом текста, а без него
+        // чёрным (то же умолчание, что у блочного пути).
+        (None, None, None, None, None) => c.color.unwrap_or(Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        }),
         _ => return None,
     };
     Some((color, t))
