@@ -1189,7 +1189,10 @@ pub fn shift_spans(
                 const ASCENT: f32 = 0.8;
                 const DESCENT: f32 = 0.2;
                 let parent = style.vertical_align_base.unwrap_or(base_size);
-                let half = ((line_px - size) / 2.0).max(0.0);
+                // Полулидинг БЫВАЕТ отрицательным: `L = line-height − AD`
+                // (§10.8.1), и при `line-height` меньше кегля коробка куска
+                // выше строки. Зажим нулём убивал ровно этот случай.
+                let half = (line_px - size) / 2.0;
                 style.vertical_align_text.map(|top| {
                     if top {
                         (ASCENT * size + half) - ASCENT * parent
