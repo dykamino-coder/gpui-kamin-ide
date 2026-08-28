@@ -735,6 +735,34 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         // делает и сборщик дерева в браузере.
         split_block_in_inline(&wrap_anon_tables(nodes))
     };
+    // §10.3.3: у блока в потоке с `width: auto` боковое `auto`-поле
+    // используется НУЛЁМ, а коробка занимает всю ширину. У нас блок — гибкая
+    // колонка, и любое auto-поле на поперечной оси отменяет растяжение до
+    // дорожки: абзац сжимался по содержимому и уезжал к краю.
+    let split = if ordered_context {
+        split
+    } else {
+        split
+            .into_iter()
+            .map(|n| match n {
+                Node::Element(mut e)
+                    if in_flow(&e.style)
+                        && matches!(e.style.width, None | Some(Len::Auto))
+                        && (e.style.margin.left == Some(Len::Auto)
+                            || e.style.margin.right == Some(Len::Auto)) =>
+                {
+                    if e.style.margin.left == Some(Len::Auto) {
+                        e.style.margin.left = Some(Len::Px(0.0));
+                    }
+                    if e.style.margin.right == Some(Len::Auto) {
+                        e.style.margin.right = Some(Len::Px(0.0));
+                    }
+                    Node::Element(e)
+                }
+                other => other,
+            })
+            .collect()
+    };
     let nodes: &[Node] = &split;
     let collapsed = if ordered_context {
         reorder(nodes.to_vec())
