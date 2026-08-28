@@ -7332,7 +7332,9 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) = (e.style.width, e.style.height) {
             // Заданная ширина + auto-высота: высота из соотношения (§10.6.2),
             // без соотношения — своя, резерв 150.
-            let cw = (w - sub_w).max(0.0);
+            // §10.7: пределы зажимают и НАЗВАННУЮ сторону тоже. Коробку
+            // `apply` уже зажал, а картинка шла как написана и вылезала за неё.
+            let cw = limit((w - sub_w).max(0.0), clamp(e.style.min_width, sub_w), max_w);
             let ch = match ratio_of() {
                 Some(r) if r > 0.0 => cw / r,
                 _ => crate::background::source(local.unwrap_or(src))
@@ -7350,7 +7352,11 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 .object_fit(gpui::ObjectFit::Fill);
         } else if let (None | Some(Len::Auto), Some(Len::Px(h))) = (e.style.width, e.style.height) {
             // Зеркально: заданная высота + auto-ширина (§10.3.2).
-            let ch = (h - sub_h).max(0.0);
+            let ch = limit(
+                (h - sub_h).max(0.0),
+                clamp(e.style.min_height, sub_h),
+                max_h,
+            );
             let cw = match ratio_of() {
                 Some(r) if r > 0.0 => ch * r,
                 _ => crate::background::source(local.unwrap_or(src))
