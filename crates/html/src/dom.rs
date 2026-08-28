@@ -718,7 +718,7 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
 fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
     if !matches!(
         tag,
-        "img" | "canvas" | "embed" | "iframe" | "video" | "object"
+        "img" | "canvas" | "embed" | "iframe" | "video" | "object" | "table"
     ) {
         return;
     }
@@ -736,6 +736,18 @@ fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, 
     // Своего пикселя у холста нет, но размер по умолчанию задан разметкой:
     // 300 на 150 (HTML §4.12.5). Без него `<canvas width="20">` выходил
     // нулевой высоты, а холст без атрибутов — пустым местом.
+    // Таблица замещаемой не является: у неё намёком служит только `width`
+    // (HTML §15.3.2), а `attr_*` держит соотношение сторон замещаемого и
+    // таблице не принадлежит. Без этого `<table width="300">` вовсе не
+    // доходил до стиля, и таблица сжималась по содержимому.
+    if tag == "table" {
+        let w = style.attr_width.take();
+        style.attr_height = None;
+        if matches!(style.width, None | Some(Len::Auto)) {
+            style.width = w;
+        }
+        return;
+    }
     if tag == "canvas" {
         style.attr_width = style.attr_width.or(Some(Len::Px(300.0)));
         style.attr_height = style.attr_height.or(Some(Len::Px(150.0)));
