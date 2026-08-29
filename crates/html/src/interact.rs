@@ -2306,6 +2306,7 @@ pub fn frame_sanitize() {
     // паника оставила бы его открытым навсегда, и следующий документ клал бы
     // свои внепоточные элементы в чужой слой.
     ICB.with(|s| s.borrow_mut().clear());
+    CB.with(|s| s.borrow_mut().clear());
 }
 
 /// Ключ с порядковым номером вхождения базового ключа в этом кадре.
@@ -2692,6 +2693,44 @@ thread_local! {
     /// статической позиции, и её сообщает щуп с его места в потоке.
     static ICB: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
         const { std::cell::RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    /// Слой БЛИЖАЙШЕГО содержащего блока: абсолютная коробка, чей родитель
+    /// содержащим блоком не является, переезжает сюда.
+    ///
+    /// Раскладка под нами считает края абсолютной коробки от НЕПОСРЕДСТВЕННОГО
+    /// родителя — понятия «позиционированный предок» у неё нет. §10.1 требует
+    /// ближайшего предка с `position` не `static`, поэтому коробка собирается
+    /// на своём месте, а детём становится этому предку.
+    static CB: std::cell::RefCell<Vec<Vec<(SpotCell, AnyElement)>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Открыть слой содержащего блока вокруг детей позиционированной коробки.
+pub fn cb_open() {
+    CB.with(|s| s.borrow_mut().push(Vec::new()));
+}
+
+/// Забрать накопленное верхним слоем содержащего блока и закрыть его.
+pub fn cb_close() -> Vec<AnyElement> {
+    CB.with(|s| s.borrow_mut().pop())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(spot, el)| icb_place(spot, el))
+        .collect()
+}
+
+/// Отдать элемент слою ближайшего содержащего блока. Слоя нет — элемент
+/// возвращается, рисовать на месте.
+pub fn cb_push(spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
+    CB.with(|s| match s.borrow_mut().last_mut() {
+        Some(layer) => {
+            layer.push((spot, el));
+            None
+        }
+        None => Some(el),
+    })
 }
 
 /// Открыть слой ICB: документ, блок ленты или вложенный документ.

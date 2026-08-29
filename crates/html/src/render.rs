@@ -1298,12 +1298,24 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             let orphan_abs = e.style.position == Some(crate::computed::Position::Absolute)
                 && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
                 && (x_set || y_set);
+            // Позиционированный предок ЕСТЬ, но это не родитель: коробку
+            // забирает слой ближайшего содержащего блока (§10.1).
+            let far_abs = e.style.position == Some(crate::computed::Position::Absolute)
+                && inherited.cb_ancestor
+                && !crate::inline::establishes_cb(inherited)
+                && (x_set || y_set);
             let to_icb = !ordered_context
                 && layer_ok
                 && (fixed || orphan_abs)
                 && e.style.z_index.unwrap_or(0) >= 0
                 && !stays_positioned(&nodes[idx + 1..]);
-            let built = if to_icb {
+            let to_cb = !to_icb
+                && !ordered_context
+                && layer_ok
+                && far_abs
+                && e.style.z_index.unwrap_or(0) >= 0
+                && !stays_positioned(&nodes[idx + 1..]);
+            let built = if to_icb || to_cb {
                 let spot: crate::interact::SpotCell = Default::default();
                 spot.set(crate::interact::Spot {
                     fixed_axes: (x_set, y_set),
@@ -1325,7 +1337,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     own_vertical: e.style.vertical == Some(true),
                     ..Default::default()
                 });
-                match crate::interact::icb_push(spot.clone(), built) {
+                let sent = if to_icb {
+                    crate::interact::icb_push(spot.clone(), built)
+                } else {
+                    crate::interact::cb_push(spot.clone(), built)
+                };
+                match sent {
                     None => {
                         // Пустая ось требует щупа: статическую позицию взять
                         // больше неоткуда. При заданных обеих осях на месте
@@ -7051,7 +7068,18 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     ));
                 }
             }
+            // Абсолютный потомок ищет ближайшего позиционированного предка
+            // (§10.1), а раскладка под нами знает только непосредственного
+            // родителя. Пока строятся дети, открыт слой: коробка, чей родитель
+            // содержащим блоком не является, переезжает сюда.
+            let cb_layer = crate::inline::establishes_cb(&merged);
+            if cb_layer {
+                crate::interact::cb_open();
+            }
             kids.extend(blocks(&children, &merged, opts));
+            if cb_layer {
+                kids.extend(crate::interact::cb_close());
+            }
             if is_clamp {
                 let max_h = match merged.max_height {
                     Some(Len::Px(v)) => Some(v),
