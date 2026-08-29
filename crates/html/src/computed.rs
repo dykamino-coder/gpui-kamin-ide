@@ -2754,7 +2754,17 @@ impl Computed {
                 self.inset_shadows = parse_shadows(&inset.join(",").replace("inset", " "));
             }
 
-            "color" => self.color = Color::parse(v),
+            // Неразборный цвет делает объявление недействительным (§4.2):
+            // прежнее значение живёт, а не сменяется умолчанием. Пустой слот
+            // у нас и означает «взять у родителя», поэтому `inherit` его
+            // очищает (`color-174`).
+            "color" => {
+                self.color = if v == "inherit" {
+                    None
+                } else {
+                    Color::parse(v).or(self.color)
+                }
+            }
             "font-size" => {
                 // Отрицательный кегль и неразборная запись делают объявление
                 // НЕВАЛИДНЫМ (§4.2, §15.7): прежнее значение остаётся, а не
@@ -2782,6 +2792,14 @@ impl Computed {
             }
             "font-style" => self.italic = Some(v == "italic" || v == "oblique"),
             "font-family" => {
+                // Имя семейства — либо строка в кавычках, либо ряд
+                // ИДЕНТИФИКАТОРОВ (§15.3). Неверное имя делает объявление
+                // недействительным целиком (§4.2): прежде разбор просто
+                // пропускал негодное имя и брал следующее из списка, из-за
+                // чего `font-family: 1Ahem, Ahem` набиралось шрифтом Ahem.
+                if !v.split(',').all(|part| family_name_ok(part.trim())) {
+                    return;
+                }
                 let lower = v.to_ascii_lowercase();
                 // Моноширинный запрос несёт смысл (код) и решает выбор
                 // встроенного шрифта, если названного в системе нет.
@@ -3569,7 +3587,11 @@ impl Computed {
                     } else if let Some(u) = url {
                         self.bg_image = Some(u);
                     }
-                } else if let Some(url) = parse_url(v) {
+                } else if v.trim_end().ends_with(')')
+                    && let Some(url) = parse_url(v)
+                {
+                    // Хвост после `url(...)` делает объявление недействительным
+                    // (§4.2): `background-image: url(x) repeat` не картинка.
                     self.bg_image = Some(url);
                 }
             }
@@ -5531,6 +5553,23 @@ impl Computed {
     /// `border: 1px solid #333` — ширина и цвет; стиль линии GPUI различает
     /// только solid/dashed на весь элемент, поэтому его не разбираем.
     fn apply_border_shorthand(&mut self, v: &str, side: Option<usize>) {
+        // Негодная часть роняет ВСЁ объявление (§4.2), а не пропускается:
+        // `border: -1px solid red` не даёт ни рамки `medium`, ни красного
+        // цвета. Проверка отдельным проходом — применение ниже правит поля по
+        // ходу разбора, и откатить его на середине уже нельзя.
+        let known = |token: &str| {
+            token == "none"
+                || token == "hidden"
+                || border_style(token)
+                || line_width(token).is_some()
+                || Color::parse(token).is_some()
+        };
+        if !split_outside_parens(v)
+            .iter()
+            .all(|t| known(t.as_str().trim()))
+        {
+            return;
+        }
         let mut width = None;
         let mut color = None;
         let mut visible_style = false;
@@ -6741,6 +6780,41 @@ fn solid_gradient(c: Color) -> Gradient {
     }
 }
 
+/// Годное имя семейства: строка в кавычках либо ряд идентификаторов.
+///
+/// Идентификатор по §4.1.3 начинается с буквы, подчёркивания, не-ASCII знака
+/// или экранирования; за ними идут буквы, цифры, дефисы, подчёркивания и
+/// экранирования. Цифра первой запрещена, дефис с цифрой следом — тоже.
+fn family_name_ok(part: &str) -> bool {
+    if part.is_empty() {
+        return false;
+    }
+    if (part.starts_with('"') && part.ends_with('"') && part.len() >= 2)
+        || (part.starts_with('\'') && part.ends_with('\'') && part.len() >= 2)
+    {
+        return true;
+    }
+    part.split_whitespace().all(|word| {
+        let mut chars = word.chars();
+        let Some(first) = chars.next() else {
+            return false;
+        };
+        let head_ok = first.is_alphabetic()
+            || first == '_'
+            || first == '\\'
+            || first as u32 >= 0xa0
+            || (first == '-'
+                && word
+                    .chars()
+                    .nth(1)
+                    .is_some_and(|c| c.is_alphabetic() || c == '_' || c as u32 >= 0xa0));
+        head_ok
+            && word.chars().all(|c| {
+                c.is_alphanumeric() || c == '-' || c == '_' || c == '\\' || c as u32 >= 0xa0
+            })
+    })
+}
+
 fn assign_size(slot: &mut Option<Len>, v: &str) {
     let parsed = Len::parse(v);
     // Отрицательный размер невалиден в ЛЮБОЙ единице (CSS 2.1 §10.4:
@@ -6765,7 +6839,16 @@ fn assign_size(slot: &mut Option<Len>, v: &str) {
     if negative {
         return;
     }
-    *slot = parsed;
+    // `none` снимает предел (§10.4) — слот гаснет по праву. Прочая
+    // неразборная запись объявление роняет: слот сохраняет прежнее значение,
+    // а не гаснет (§4.2).
+    if v.trim().eq_ignore_ascii_case("none") {
+        *slot = None;
+        return;
+    }
+    if let Some(l) = parsed {
+        *slot = Some(l);
+    }
 }
 
 fn parse_shadows(v: &str) -> Vec<Shadow> {
