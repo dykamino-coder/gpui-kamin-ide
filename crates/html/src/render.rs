@@ -2008,6 +2008,17 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
                         block.style.inset.top = e.style.inset.top;
                     }
                 }
+                // `inherit` на размере вынесенного блока брал бы значение уже
+                // не у хозяина, а у его родителя: разрыв делает блок БРАТОМ
+                // хозяина. Значение забирается здесь, пока связь ещё видна.
+                if block.style.width_inherit {
+                    block.style.width = e.style.width;
+                    block.style.width_inherit = false;
+                }
+                if block.style.height_inherit {
+                    block.style.height = e.style.height;
+                    block.style.height_inherit = false;
+                }
                 // Прозрачность и слой хозяина действуют на ВЕСЬ разорванный
                 // элемент, включая вынесенный блок: раньше блок был куском
                 // строки и получал их заодно с ней.
