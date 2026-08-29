@@ -7542,6 +7542,28 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
 }
 
 /// Список: маркер рисуем сами — `list-style` в GPUI нет.
+
+/// Пункт списка не сжимается, как и любой блок потока.
+///
+/// `blocks()` ставит `flex-shrink: 0` каждому ребёнку потока (умолчание GPUI —
+/// 1.0), а строки списка строятся мимо него, напрямую. В колонке нулевой
+/// высоты обе строки сжимались до автоминимума: пункт высотой 100 выходил
+/// двадцатью точками (`flex-box-wrap-ref`).
+///
+/// Список со СВОИМ гибким или сеточным видом — исключение: его пункты
+/// настоящие элементы контейнера, и по css-flexbox-1 §7.2 умолчание
+/// `flex-shrink` у них 1.
+fn shrink0(d: gpui::Div, li: &Element, list: &Element) -> gpui::Div {
+    let flex_parent = matches!(
+        list.style.display,
+        Some(Display::Flex) | Some(Display::InlineFlex) | Some(Display::Grid) | Some(Display::InlineGrid)
+    );
+    if li.style.flex_shrink.is_none() && !flex_parent {
+        d.flex_shrink_0()
+    } else {
+        d
+    }
+}
 fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let ordered = e.tag == "ol";
     let mut rows = vec![];
@@ -7590,7 +7612,7 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             kids.extend(li.children.iter().cloned());
             rows.push(
-                styled_div_with(li, &merged)
+                shrink0(styled_div_with(li, &merged), li, e)
                     .flex()
                     .flex_col()
                     .children(blocks(&kids, &merged, opts))
@@ -7599,7 +7621,7 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             continue;
         }
         rows.push(
-            styled_div_with(li, &merged)
+            shrink0(styled_div_with(li, &merged), li, e)
                 .flex()
                 .flex_row()
                 .gap_x(px(6.))
