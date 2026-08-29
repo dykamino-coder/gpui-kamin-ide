@@ -3324,12 +3324,13 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
                 !known || mh > sum + 0.01
             }
         };
-        let closed = !zero(e.style.padding.bottom)
+        // Край закрыт СВОИМИ свойствами: поле ребёнка остаётся внутри и
+        // трогать его нечем.
+        if !zero(e.style.padding.bottom)
             || !zero(e.style.borders().bottom)
             || !matches!(e.style.height, None | Some(Len::Auto))
-            || raises
-            || own_context;
-        if closed {
+            || own_context
+        {
             continue;
         }
         // Снизу плавающий ИЛИ АБСОЛЮТНЫЙ ребёнок ЗАКРЫВАЕТ подъём: float
@@ -3349,6 +3350,17 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
             }))
             .and_then(|(i, ch)| margin_px(ch.style.margin.bottom, &ch.style).map(|v| (i, v)));
         if let Some((i, v)) = child_bottom {
+            // Минимальная высота выше содержимого: поле последнего ребёнка
+            // ПРИМЫКАЕТ к его нижнему краю (§8.3.1), но наружу не идёт и
+            // родителя не растит — низ родителя решает `min-height` (§10.6.3).
+            // Третьего исхода не было вовсе: поле оставалось внутри и место
+            // занимало.
+            if raises {
+                if let Node::Element(ch) = &mut e.children[i] {
+                    ch.style.margin.bottom = Some(Len::Px(0.0));
+                }
+                continue;
+            }
             let own = margin_px(e.style.margin.bottom, &e.style).unwrap_or(0.0);
             e.style.margin.bottom = Some(Len::Px(collapsed(own, v)));
             if let Node::Element(ch) = &mut e.children[i] {
@@ -10491,10 +10503,15 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     if !row_dir && tracks.iter().any(intrinsic_track) {
         let n = tracks.len();
         let cross_of = |item: &Element| -> f32 {
-            let w = item_width(item);
-            if w > 0.0 {
-                return w;
+            // Вклад элемента в интрин-дорожку — его СОДЕРЖИМОЕ плюс края
+            // коробки (css-grid-2 §11.5.1). Прежде отступы и поля отвечали за
+            // весь вклад: `item_width` при `width: auto` возвращал только их,
+            // и ветка содержимого не запускалась ни разу у элемента с
+            // отступом — дорожки выходили шириной в поля.
+            if item_declared_width(item) > 0.0 {
+                return item_width(item);
             }
+            let extra = item_box_extra(item);
             let st = crate::inline::inherit(merged, &item.style);
             let fs = match st.font_size {
                 Some(Len::Px(v)) => v,
@@ -10511,11 +10528,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             // `width: 2ch` — точечная мера в знаках (intrinsic-sizing-cols-*:
             // первый элемент задаёт ширину ВСЕМ auto-колонкам).
             if let Some(Len::Ch(k)) = item.style.width {
-                return k * ch;
+                return k * ch + extra;
             }
             let ws = words(&item.children);
             let total = ws.iter().sum::<usize>() + ws.len().saturating_sub(1);
-            total as f32 * ch
+            total as f32 * ch + extra
         };
         let fixed_px = |t: &TrackSize| match t {
             TrackSize::Single(Track::Px(w)) => Some(*w),
@@ -11779,12 +11796,25 @@ fn shortest_lane_free(
 
 /// Ширина элемента по его же стилю — для раздачи по лункам-рядам.
 fn item_width(e: &Element) -> f32 {
+    item_declared_width(e) + item_box_extra(e)
+}
+
+/// Заданная ширина элемента в точках, без краёв коробки. Ноль — `auto`.
+fn item_declared_width(e: &Element) -> f32 {
     let px_of = |l: Option<Len>| match l {
         Some(Len::Px(v)) => v,
         _ => 0.0,
     };
-    let declared = px_of(e.style.width).max(px_of(e.style.min_width));
-    let box_extra = if e.style.border_box == Some(true) {
+    px_of(e.style.width).max(px_of(e.style.min_width))
+}
+
+/// Края коробки по инлайн-оси: отступы, рамки и поля.
+fn item_box_extra(e: &Element) -> f32 {
+    let px_of = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let inner = if e.style.border_box == Some(true) {
         0.0
     } else {
         px_of(e.style.padding.left)
@@ -11792,7 +11822,7 @@ fn item_width(e: &Element) -> f32 {
             + px_of(e.style.borders().left)
             + px_of(e.style.borders().right)
     };
-    declared + box_extra + px_of(e.style.margin.left) + px_of(e.style.margin.right)
+    inner + px_of(e.style.margin.left) + px_of(e.style.margin.right)
 }
 
 /// Высота элемента по его же стилю — для раздачи по лункам.
