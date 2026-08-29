@@ -2286,6 +2286,20 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
                 // действует только на ЭЛЕМЕНТ раскладки, поэтому строчный по
                 // природе тег (картинка) здесь же делается блочным: иначе он
                 // уходит в абзац, и выравнивание достаётся абзацу, а не ему.
+                // Выравнивание себя действует только на ЭЛЕМЕНТ раскладки:
+                // строчный по природе тег иначе уходит в абзац, и сторона
+                // достаётся абзацу, а не картинке. Гейт узкий — только
+                // замещаемый тег и только когда перед ним в блоке ничего нет:
+                // широкий уже мерился в минус (запись выше).
+                // Доля размера у замещаемого считается от содержащего блока,
+                // и блокификация его подменяет: `<iframe height="50%">` теряет
+                // отсчёт (`float-replaced-height-005`). Такие остаются как есть.
+                let pct_size = matches!(lone.style.width, Some(Len::Pct(_)))
+                    || matches!(lone.style.height, Some(Len::Pct(_)));
+                if replaced_inline(&lone.tag) && !pct_size && out.iter().all(is_blank) {
+                    lone.inline = false;
+                    lone.style.display = Some(Display::Block);
+                }
                 lone.style.align_self = Some(if side < 0 { Align::Start } else { Align::End });
                 out.push(Node::Element(lone));
             }
