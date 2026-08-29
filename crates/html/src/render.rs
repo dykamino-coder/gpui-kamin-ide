@@ -8165,7 +8165,14 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     );
     // Ширины рамки самой таблицы: крайние ячейки расползаются фоном на её
     // половину в сросшейся модели.
-    let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, "", 16.0);
+    // Кегль СВОЙ, а не жёсткие 16 точек: `border: 0.5em` у таблицы с крупным
+    // шрифтом давал вчетверо тоньше линию (`border-conflict-element-001d/e`).
+    let table_em = match inherited.font_size {
+        Some(Len::Px(v)) => v,
+        _ => 16.0,
+    };
+    let table_family = inherited.font_family.clone().unwrap_or_default();
+    let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, &table_family, table_em);
     let table_border = e.style.borders();
     let bw = [
         px_of(table_border.top),
@@ -8368,6 +8375,24 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     cell.style.border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
                 };
                 let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
+                // Половина кромки лежит ВНУТРИ ячейки и место занимает
+                // (§17.6.2). Кладётся паддингом поверх авторского: проба
+                // кромок стоит по паддинг-боксу, и рамкой линия уехала бы
+                // внутрь.
+                let half = |i: usize, own: Option<Len>| {
+                    let base = match own {
+                        Some(Len::Px(v)) => v,
+                        _ => 0.0,
+                    };
+                    Some(Len::Px(base + widths[i] / 2.0))
+                };
+                cell.style.padding = crate::computed::Sides {
+                    top: half(0, cell.style.padding.top),
+                    right: half(1, cell.style.padding.right),
+                    bottom: half(2, cell.style.padding.bottom),
+                    left: half(3, cell.style.padding.left),
+                };
+
                 cell.style.border_width = Default::default();
                 cell.style.border_visible = [None; 4];
                 (widths.iter().any(|w| *w > 0.0) || styles.contains(&1)).then_some((
@@ -9338,11 +9363,14 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         if collapse {
             c.border_width = Default::default();
             c.border_visible = [None; 4];
+            // §17.6.2: внутрь таблицы уходит ПОЛОВИНА её кромки. Паддингом,
+            // а не рамкой: проба кромок — абсолютный ребёнок по паддинг-боксу,
+            // и рамка утащила бы линию сетки внутрь на свою величину.
             c.padding = crate::computed::Sides {
-                top: Some(Len::Px(bw[0])),
-                right: Some(Len::Px(bw[1])),
-                bottom: Some(Len::Px(bw[2])),
-                left: Some(Len::Px(bw[3])),
+                top: Some(Len::Px(bw[0] / 2.0)),
+                right: Some(Len::Px(bw[1] / 2.0)),
+                bottom: Some(Len::Px(bw[2] / 2.0)),
+                left: Some(Len::Px(bw[3] / 2.0)),
             };
         }
         c.min_height = min_h;
