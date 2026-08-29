@@ -4894,6 +4894,26 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
     }
     match e.tag.as_str() {
         "img" => Some(image_with(e, Some(atom_base_font(inherited, opts)))),
+        // Замещаемые с адресом в СВОЁМ атрибуте: у блочного пути такие рукава
+        // есть, у строчного не было, и `<object data>` в строке терял
+        // собственный размер (§10.3.2, §10.6.2) — коробки не заводил и уходил
+        // прогоном запасного текста. Отсечка по атрибуту обязательна: объект
+        // без `data` и видео без `poster` замещаемыми не являются.
+        "embed" if e.attr("src").is_some() => {
+            Some(image_with(e, Some(atom_base_font(inherited, opts))))
+        }
+        "object" if e.attr("data").is_some() => {
+            let mut copy = e.clone();
+            let url = e.attr("data").unwrap_or_default().to_string();
+            copy.attrs.push(("src".to_string(), url));
+            Some(image_with(&copy, Some(atom_base_font(inherited, opts))))
+        }
+        "video" if e.attr("poster").is_some() => {
+            let mut copy = e.clone();
+            let url = e.attr("poster").unwrap_or_default().to_string();
+            copy.attrs.push(("src".to_string(), url));
+            Some(image_with(&copy, Some(atom_base_font(inherited, opts))))
+        }
         "iframe" => {
             if let Some(el) = iframe(e, opts) {
                 return Some(el);
