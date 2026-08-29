@@ -713,6 +713,12 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
     ) || style.is_caption == Some(true)
+        // Абсолютная коробка вне потока: флоатов выше неё в её контексте нет,
+        // и очищать нечего (§9.5.2 действует на поток).
+        || matches!(
+            style.position,
+            Some(Position::Absolute) | Some(Position::Fixed)
+        )
     {
         style.clear = None;
         style.clear_inherit = false;
