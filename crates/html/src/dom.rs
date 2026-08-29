@@ -1341,6 +1341,27 @@ fn walk(
                 // веткой: счётчики, псевдоэлементы, `dir="auto"` и кадры
                 // анимации у безкоробочного узла не действуют, а общий путь
                 // ниже применил бы их все.
+                // Фон КОРНЯ красит канвас, даже когда коробок документ не
+                // даёт вовсе (§14.2: «the canvas background is the root
+                // element's background»). Узел остаётся пустышкой с одним
+                // стилем: коробку `display: none` ему всё равно не соберут, а
+                // пометка канваса без него не ставится.
+                if me.tag == "html" {
+                    out.push(Node::Element(Element {
+                        tag: "html".to_string(),
+                        inline: false,
+                        node_id: 0,
+                        style,
+                        hover: None,
+                        first_letter: None,
+                        first_line: None,
+                        children: vec![],
+                        attrs: vec![],
+                        anim: Default::default(),
+                        list_item: None,
+                    }));
+                    return;
+                }
                 let Some(role) = style.col_role else {
                     return;
                 };
