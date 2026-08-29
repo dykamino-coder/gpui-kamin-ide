@@ -739,6 +739,10 @@ pub struct Computed {
     pub(crate) border_inherit_s: [bool; 4],
     pub(crate) border_inherit_c: [bool; 4],
     pub(crate) padding_inherit: bool,
+    /// `inherit` по СТОРОНАМ у полей и отступов, порядок [верх, право, низ,
+    /// лево]. Сокращение ставит все четыре.
+    pub(crate) margin_inherit: [bool; 4],
+    pub(crate) padding_inherit_side: [bool; 4],
     /// `box-shadow: inherit`.
     pub(crate) shadow_inherit: bool,
     /// Относительный цвет фона (css-color-5): функция с `from currentColor`
@@ -2183,7 +2187,9 @@ impl Computed {
                     return;
                 }
                 let parsed = Sides::shorthand(v);
-                let neg = |l: &Option<Len>| matches!(l, Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if *n < 0.0);
+                let neg = |l: &Option<Len>| {
+                    matches!(l, Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if *n < 0.0)
+                };
                 if neg(&parsed.top)
                     || neg(&parsed.right)
                     || neg(&parsed.bottom)
@@ -2198,9 +2204,19 @@ impl Computed {
                 }
             }
             "padding-top" => {
+                // `inherit` разбором не выражается: слово копирует вычисленное
+                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
+                // `None`, и отступ обнулялся.
+                if v == "inherit" {
+                    self.padding_inherit_side[0] = true;
+                    return;
+                }
                 // Отрицательный внутренний отступ невалиден (§8.4) — слот
                 // не трогается (ref-no-vert-space-between и родня).
-                if matches!(Len::parse(v), Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if n < 0.0) {
+                if matches!(
+                    Len::parse(v),
+                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
+                ) {
                     return;
                 }
                 self.padding.top = Len::parse(v);
@@ -2209,9 +2225,19 @@ impl Computed {
                 }
             }
             "padding-right" => {
+                // `inherit` разбором не выражается: слово копирует вычисленное
+                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
+                // `None`, и отступ обнулялся.
+                if v == "inherit" {
+                    self.padding_inherit_side[1] = true;
+                    return;
+                }
                 // Отрицательный внутренний отступ невалиден (§8.4) — слот
                 // не трогается (ref-no-vert-space-between и родня).
-                if matches!(Len::parse(v), Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if n < 0.0) {
+                if matches!(
+                    Len::parse(v),
+                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
+                ) {
                     return;
                 }
                 self.padding.right = Len::parse(v);
@@ -2220,9 +2246,19 @@ impl Computed {
                 }
             }
             "padding-bottom" => {
+                // `inherit` разбором не выражается: слово копирует вычисленное
+                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
+                // `None`, и отступ обнулялся.
+                if v == "inherit" {
+                    self.padding_inherit_side[2] = true;
+                    return;
+                }
                 // Отрицательный внутренний отступ невалиден (§8.4) — слот
                 // не трогается (ref-no-vert-space-between и родня).
-                if matches!(Len::parse(v), Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if n < 0.0) {
+                if matches!(
+                    Len::parse(v),
+                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
+                ) {
                     return;
                 }
                 self.padding.bottom = Len::parse(v);
@@ -2231,9 +2267,19 @@ impl Computed {
                 }
             }
             "padding-left" => {
+                // `inherit` разбором не выражается: слово копирует вычисленное
+                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
+                // `None`, и отступ обнулялся.
+                if v == "inherit" {
+                    self.padding_inherit_side[3] = true;
+                    return;
+                }
                 // Отрицательный внутренний отступ невалиден (§8.4) — слот
                 // не трогается (ref-no-vert-space-between и родня).
-                if matches!(Len::parse(v), Some(Len::Px(n) | Len::Pct(n) | Len::Em(n)) if n < 0.0) {
+                if matches!(
+                    Len::parse(v),
+                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
+                ) {
                     return;
                 }
                 self.padding.left = Len::parse(v);
@@ -2248,30 +2294,50 @@ impl Computed {
             // Соответствие сторон берётся горизонтальное: письмо на разборе
             // ещё неизвестно, а гасят почти всегда сбросом всех сторон.
             "margin" => {
+                if v == "inherit" {
+                    self.margin_inherit = [true; 4];
+                    return;
+                }
                 self.margin = Sides::shorthand(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.margin = Default::default();
                 }
             }
             "margin-top" => {
+                if v == "inherit" {
+                    self.margin_inherit[0] = true;
+                    return;
+                }
                 self.margin.top = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.margin.block_start = None;
                 }
             }
             "margin-right" => {
+                if v == "inherit" {
+                    self.margin_inherit[1] = true;
+                    return;
+                }
                 self.margin.right = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.margin.inline_end = None;
                 }
             }
             "margin-bottom" => {
+                if v == "inherit" {
+                    self.margin_inherit[2] = true;
+                    return;
+                }
                 self.margin.bottom = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.margin.block_end = None;
                 }
             }
             "margin-left" => {
+                if v == "inherit" {
+                    self.margin_inherit[3] = true;
+                    return;
+                }
                 self.margin.left = Len::parse(v);
                 if let Some(l) = self.logical.as_mut() {
                     l.margin.inline_start = None;

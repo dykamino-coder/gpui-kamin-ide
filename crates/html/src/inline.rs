@@ -615,6 +615,28 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     if own.padding_inherit {
         c.padding = parent.padding;
     }
+    for (i, on) in own.margin_inherit.iter().enumerate() {
+        if !on {
+            continue;
+        }
+        match i {
+            0 => c.margin.top = parent.margin.top,
+            1 => c.margin.right = parent.margin.right,
+            2 => c.margin.bottom = parent.margin.bottom,
+            _ => c.margin.left = parent.margin.left,
+        }
+    }
+    for (i, on) in own.padding_inherit_side.iter().enumerate() {
+        if !on {
+            continue;
+        }
+        match i {
+            0 => c.padding.top = parent.padding.top,
+            1 => c.padding.right = parent.padding.right,
+            2 => c.padding.bottom = parent.padding.bottom,
+            _ => c.padding.left = parent.padding.left,
+        }
+    }
     if own.width_inherit {
         c.width = parent.width;
     }
