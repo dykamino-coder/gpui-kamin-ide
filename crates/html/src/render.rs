@@ -3831,6 +3831,15 @@ fn margin_px(l: Option<Len>, style: &Computed) -> Option<f32> {
     match l? {
         Len::Px(v) => Some(v),
         Len::Em(k) => Some(k * base),
+        // Единицы шрифта, считающиеся по МЕТРИКЕ гарнитуры: сюда они доезжают
+        // неразрешёнными, потому что `resolve_em` живёт в наследовании
+        // (`inline::inherit`), а схлопывание идёт раньше. Прежде `-6ex`
+        // отдавало `None`, поле пропадало целиком (`positioning/top-091`).
+        l @ (Len::Ch(_) | Len::Ex(_)) => Some(crate::metrics::spacing_px(
+            Some(l),
+            &style.font_family.clone().unwrap_or_default(),
+            base,
+        )),
         _ => None,
     }
 }
