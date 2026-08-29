@@ -775,7 +775,13 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             _ => 16.0,
         };
         let prev = COLLAPSE_FONT_PX.with(|c| c.replace(base));
-        let out = collapse_margins(nodes);
+        let out = collapse_margins(
+            nodes,
+            matches!(
+                inherited.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            ),
+        );
         COLLAPSE_FONT_PX.with(|c| c.set(prev));
         out
     };
@@ -3161,7 +3167,10 @@ fn by_layer(mut nodes: Vec<Node>) -> Vec<Node> {
 /// складываются, а сливаются в больший из двух. Движок раскладки под нами
 /// складывает их, и документ становится длиннее браузерного — расхождение
 /// накапливается сверху вниз и было поймано сравнением с Chrome.
-fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
+/// `abs_parent` — родитель абсолютно позиционирован: по §10.6.7 его
+/// автовысота ВКЛЮЧАЕТ плавающих детей, и правило «блок из одних флоатов
+/// высотой ноль» (§10.6.3) к его детям не применяется.
+fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
     let mut out: Vec<Node> = nodes.to_vec();
     // §10.6.3: в высоту `auto` входят только дети В ПОТОКЕ — «floating boxes
     // are ignored». Блок, у которого в потоке нет ничего, кроме плавающих
@@ -3180,7 +3189,7 @@ fn collapse_margins(nodes: &[Node]) -> Vec<Node> {
     // `flexbox_item-float`, `flexbox_item-top-float`, `flex-box-wrap` —
     // там контейнер приходит сюда БЕЗ своего `display`, то есть гибким его
     // никто не сделал, и прежняя зелень держалась на этой же ошибке.
-    for node in out.iter_mut() {
+    for node in out.iter_mut().filter(|_| !abs_parent) {
         let Node::Element(e) = node else { continue };
         let has_float = e
             .children
