@@ -73,6 +73,22 @@ pub(crate) const INLINE_TAGS: &[&str] = &[
     "button", "label", "input", "select", "textarea", "output", "meter", "progress",
 ];
 
+/// Теги, которым таблица агента даёт блочный вид (HTML §15.3.2-15.3.12).
+///
+/// Правило для НЕИЗВЕСТНОГО тега — строчный: своей записи в листе агента у
+/// него нет, а начальное значение `display` — `inline`. Прежде блочным
+/// становилось всё, чего нет в `INLINE_TAGS`, и `<foo>` внутри абзаца рвал
+/// строку (`line-breaking-font-size-zero-001`).
+pub(crate) const BLOCK_TAGS: &[&str] = &[
+    "html", "body", "address", "blockquote", "center", "div", "figure", "figcaption", "footer",
+    "form", "header", "hr", "legend", "listing", "main", "p", "plaintext", "pre", "xmp", "article",
+    "aside", "h1", "h2", "h3", "h4", "h5", "h6", "hgroup", "nav", "section", "search", "dir", "dd",
+    "dl", "dt", "ol", "ul", "menu", "li", "table", "caption", "colgroup", "col", "thead", "tbody",
+    "tfoot", "tr", "td", "th", "fieldset", "details", "summary", "dialog", "optgroup", "option",
+    "frameset", "frame", "noframes", "head", "title", "meta", "link", "base", "script", "style",
+    "noscript", "template", "slot", "map", "area", "source", "track", "param",
+];
+
 /// Теги, содержимое которых не рисуется НИКОГДА (код и стили).
 ///
 /// `head`/`title`/`meta`/`link` сюда не входят: их прячет таблица агента
@@ -1491,7 +1507,8 @@ fn walk(
                 list_item,
                 node_id: *counter,
                 anim,
-                inline: INLINE_TAGS.contains(&tag.as_str()),
+                inline: INLINE_TAGS.contains(&tag.as_str())
+                    || !BLOCK_TAGS.contains(&tag.as_str()),
                 tag,
                 style,
                 hover,
