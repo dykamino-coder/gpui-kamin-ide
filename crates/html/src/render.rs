@@ -8022,6 +8022,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         px_of_pre(tb.left),
     ];
     let mut win_edges: std::collections::HashMap<u64, [f32; 4]> = Default::default();
+    // Наружные полуширины таблицы: победитель на ЕЁ линиях. Копится прямо в
+    // условиях края — свод по всем клеткам затягивал сюда и внутренние линии,
+    // и таблица без рамки получала паддинг от кромок середины
+    // (`fixed-table-layout-027`: крайние дорожки схлопывались в ноль).
+    let mut outer_win = [0.0f32; 4];
     if collapse_cells_pre {
         struct Cel {
             r: usize,
@@ -8098,30 +8103,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // Внешние линии спорят с рамкой самой таблицы.
             if a.r == 0 {
                 w[0] = w[0].max(bw_pre[0]);
+                outer_win[0] = outer_win[0].max(w[0]);
             }
             if a.c == 0 {
                 w[3] = w[3].max(bw_pre[3]);
+                outer_win[3] = outer_win[3].max(w[3]);
             }
             if a.c + a.sc >= cols as usize {
                 w[1] = w[1].max(bw_pre[1]);
+                outer_win[1] = outer_win[1].max(w[1]);
             }
             if a.r + a.sr >= rows_n {
                 w[2] = w[2].max(bw_pre[2]);
+                outer_win[2] = outer_win[2].max(w[2]);
             }
             win_edges.insert(a.id, w);
         }
     }
-    // Наружные полуширины таблицы: победитель на её линии, а не своя рамка.
-    let outer_win = {
-        let mut o = bw_pre;
-        for w in win_edges.values() {
-            o[0] = o[0].max(w[0]);
-            o[1] = o[1].max(w[1]);
-            o[2] = o[2].max(w[2]);
-            o[3] = o[3].max(w[3]);
-        }
-        o
-    };
+    let outer_win = [
+        outer_win[0].max(bw_pre[0]),
+        outer_win[1].max(bw_pre[1]),
+        outer_win[2].max(bw_pre[2]),
+        outer_win[3].max(bw_pre[3]),
+    ];
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
     // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
@@ -8374,6 +8378,30 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // Градиент ряда идёт слоем-картинкой: источник понимает записи
             // `linear-gradient(...)` и растрирует их сам.
             let mut band_style = row.style.clone();
+            if band_style.bg_image.is_none() {
+                band_style.bg_image = band_style.gradient_raw.clone();
+            }
+            cells.push(
+                crate::interact::CellsClipped::new(rects.clone(), band_style).into_any_element(),
+            );
+        }
+        // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
+        // полоса идёт от левого края крайней левой колонки до правого края
+        // крайней правой и обрезается прямоугольниками ячеек. Своей коробки у
+        // группы в сетке нет, поэтому картинка и градиент пропадали вовсе —
+        // рисовался только сплошной цвет, который течёт вниз наследованием.
+        let grp_band: Option<crate::interact::RowRects> = carry.3.and_then(|g| {
+            (g.style.bg_image.is_some()
+                || g.style.gradient_raw.is_some()
+                || !g.style.shadows.is_empty())
+            .then(|| crate::interact::row_rects_for(g.node_id ^ opts.doc_salt))
+        });
+        if let (Some(rects), Some(g)) = (&grp_band, carry.3)
+            && group_of
+                .get(&row.node_id)
+                .is_some_and(|(_, first, _)| *first)
+        {
+            let mut band_style = g.style.clone();
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
@@ -8935,6 +8963,14 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)]
             };
             if let Some(rects) = &row_rects {
+                d = d.child(crate::interact::cell_rect_probe(
+                    rects.clone(),
+                    span_rows == 1,
+                    shift,
+                    cell_border,
+                ));
+            }
+            if let Some(rects) = &grp_band {
                 d = d.child(crate::interact::cell_rect_probe(
                     rects.clone(),
                     span_rows == 1,
