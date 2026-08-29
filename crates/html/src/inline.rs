@@ -475,6 +475,13 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                     // стилю (`c25-pseudo-elmnt-000`: зелёной полосы не было).
                     c.inline_bg = style.background.or(base.inline_bg);
                     c.line_height = style.line_height.or(base.line_height);
+                    // ПРОБОВАЛИ И ОТКАТИЛИ: переносить сюда и сдвиг по
+                    // вертикали (§5.12.1 относит `vertical-align` к свойствам
+                    // `::first-line`). Проба по 372 парам семей `first-line-*`
+                    // и `first-letter-*`: `first-line-pseudo-012` 4.66 -> 4.94,
+                    // флипов ноль. Краска поднимается, а коробка нет: высоту
+                    // абзаца заявляет `float::FirstLine` (`measure_first_line`),
+                    // и подъёма она не знает. Возвращаться вместе с ней.
                     c
                 };
                 let len = text.len();
