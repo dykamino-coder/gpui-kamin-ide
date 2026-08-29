@@ -9485,6 +9485,14 @@ fn collect_rows<'a>(
                 e.style.background.or(carry.2),
                 carry.3,
             );
+            // `visibility: collapse` на ряде или группе рядов ВЫБРАСЫВАЕТ их
+            // из сетки, как и на колонке: ряды не рисуются, а их высота из
+            // таблицы уходит (css-tables-3 §visibility-collapse). Прежде
+            // читалась только колонка, и схлопнутый ряд оставлял пустую
+            // полосу.
+            if e.style.collapsed == Some(true) {
+                continue;
+            }
             // Роль задаётся тегом ИЛИ стилем: разметка на `div` с
             // `display: table-row` встречается не реже настоящих таблиц.
             if e.tag == "tr" || e.style.display == Some(Display::TableRow) {
