@@ -397,12 +397,25 @@ fn parse_attr_sel(raw: &str) -> Option<AttrSel> {
         .and_then(|v| v.strip_suffix('"'))
         .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
         .unwrap_or(value);
+    let name = unescape(name).to_ascii_lowercase();
     Some(AttrSel {
-        name: unescape(name).to_ascii_lowercase(),
+        ci: ci || CI_ATTRS.contains(&name.as_str()),
+        name,
         op: Some((op, unescape(value))),
-        ci,
     })
 }
+
+/// Атрибуты HTML, значения которых сравниваются БЕЗ учёта регистра даже без
+/// флага ` i` (HTML, «Case-sensitivity of selectors»). Перечень закрытый:
+/// прочие атрибуты сравниваются посимвольно.
+const CI_ATTRS: &[&str] = &[
+    "accept", "accept-charset", "align", "alink", "axis", "bgcolor", "charset", "checked", "clear",
+    "codetype", "color", "compact", "declare", "defer", "dir", "direction", "disabled", "enctype",
+    "face", "frame", "hreflang", "http-equiv", "lang", "language", "link", "media", "method",
+    "multiple", "nohref", "noresize", "noshade", "nowrap", "readonly", "rel", "rev", "rules",
+    "scope", "scrolling", "selected", "shape", "target", "text", "type", "valign", "valuetype",
+    "vlink",
+];
 
 /// Где в значении стоит восклицательный знак — вне строк, скобок и
 /// экранирования. `content: "!"` пометкой важности не является.

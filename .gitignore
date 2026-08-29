@@ -70,3 +70,4 @@ __pycache__/
 # Корпуса тестов: свои репозитории, клонируются отдельно
 vendor/wpt-parsing/
 vendor/html5lib-tests/
+target-release/
