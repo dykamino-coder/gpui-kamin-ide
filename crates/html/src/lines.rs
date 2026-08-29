@@ -1041,7 +1041,12 @@ impl Paragraph {
         // Доля выключки (center/right) сюда пока не входит.
         let hang = self.hang_first(line.range.start);
         let shift = self.span(segs, line.range.start, line.range.start + hang);
-        let lead = line.indent - shift + px(self.flow_cut(row).0);
+        let lead = if self.wrap.rtl {
+            px(0.)
+        } else {
+            line.indent
+        } - shift
+            + px(self.flow_cut(row).0);
         point(
             bounds.origin.x + lead + x,
             bounds.origin.y + self.line_height * row as f32,
@@ -2373,7 +2378,15 @@ impl Element for Paragraph {
             // выключенная строка свисает так же, как обычная.
             let hang = self.hang_first(line.range.start);
             let shift = self.span(&segs, line.range.start, line.range.start + hang);
-            let lead = line.indent - shift;
+            // Отступ первой строки идёт от НАЧАЛЬНОГО края (§16.1): в rtl это
+            // правый край, и место ему уже отдано вычетом из остатка выше.
+            // Прибавка слева считала бы его второй раз, а при выключке вправо
+            // и вовсе гасила: `(W - w - indent) + indent = W - w`.
+            let lead = if self.wrap.rtl {
+                px(0.)
+            } else {
+                line.indent
+            } - shift;
             // Строка с межсловным интервалом рисуется ПО СЛОВАМ: одним
             // набором промежутки не показать — шейпер о них не знает. Раздача
             // остатка при этом нулевая, слова просто встают по своим местам.
