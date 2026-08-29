@@ -8004,6 +8004,124 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let (from_cols, cols_collapsed, cols_pct) =
         col_element_widths(&e.children, table_font, &table_family);
     let mut busy: Vec<u16> = vec![0; cols as usize];
+    // §17.6.2.1: ширина линии сетки — ПОБЕДИВШАЯ среди примыкающих коробок,
+    // и внутрь каждой уходит её половина. Пока половина бралась от своей
+    // кромки, дорожки выходили у́же эталона ровно на разницу.
+    //
+    // Разбор ведётся только по ячейкам и рамке таблицы: у рядов, колонок и
+    // групп победа решается на краске, и пускать их в раскладку нельзя —
+    // семья `border-*-applies-to-*` держится ровно на этом.
+    let collapse_cells_pre = e.style.border_collapse == Some(true)
+        || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
+    let px_of_pre = |l: Option<Len>| crate::metrics::spacing_px(l, &table_family, table_font);
+    let tb = e.style.borders();
+    let bw_pre = [
+        px_of_pre(tb.top),
+        px_of_pre(tb.right),
+        px_of_pre(tb.bottom),
+        px_of_pre(tb.left),
+    ];
+    let mut win_edges: std::collections::HashMap<u64, [f32; 4]> = Default::default();
+    if collapse_cells_pre {
+        struct Cel {
+            r: usize,
+            c: usize,
+            sr: usize,
+            sc: usize,
+            w: [f32; 4],
+            id: u64,
+        }
+        let mut cels: Vec<Cel> = vec![];
+        let mut occ: Vec<u16> = vec![0; cols as usize];
+        let mut r = 0usize;
+        for row in &row_elements {
+            for slot in occ.iter_mut() {
+                *slot = slot.saturating_sub(1);
+            }
+            let mut c = 0usize;
+            for child in &row.children {
+                let Node::Element(cell) = child else { continue };
+                if !is_cell(cell) {
+                    continue;
+                }
+                while c < occ.len() && occ[c] > 0 {
+                    c += 1;
+                }
+                let sc = cell
+                    .attr("colspan")
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(1)
+                    .max(1);
+                let sr = cell
+                    .attr("rowspan")
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(1)
+                    .max(1);
+                let b = cell.style.borders();
+                cels.push(Cel {
+                    r,
+                    c,
+                    sr,
+                    sc,
+                    w: [px_of_pre(b.top), px_of_pre(b.right), px_of_pre(b.bottom), px_of_pre(b.left)],
+                    id: cell.node_id,
+                });
+                for k in c..(c + sc).min(occ.len()) {
+                    occ[k] = occ[k].max(sr as u16);
+                }
+                c += sc;
+            }
+            r += 1;
+        }
+        let rows_n = r;
+        for a in cels.iter() {
+            let mut w = a.w;
+            for b in cels.iter() {
+                if b.id == a.id {
+                    continue;
+                }
+                let cols_over = a.c < b.c + b.sc && b.c < a.c + a.sc;
+                let rows_over = a.r < b.r + b.sr && b.r < a.r + a.sr;
+                if cols_over && b.r + b.sr == a.r {
+                    w[0] = w[0].max(b.w[2]);
+                }
+                if cols_over && a.r + a.sr == b.r {
+                    w[2] = w[2].max(b.w[0]);
+                }
+                if rows_over && b.c + b.sc == a.c {
+                    w[3] = w[3].max(b.w[1]);
+                }
+                if rows_over && a.c + a.sc == b.c {
+                    w[1] = w[1].max(b.w[3]);
+                }
+            }
+            // Внешние линии спорят с рамкой самой таблицы.
+            if a.r == 0 {
+                w[0] = w[0].max(bw_pre[0]);
+            }
+            if a.c == 0 {
+                w[3] = w[3].max(bw_pre[3]);
+            }
+            if a.c + a.sc >= cols as usize {
+                w[1] = w[1].max(bw_pre[1]);
+            }
+            if a.r + a.sr >= rows_n {
+                w[2] = w[2].max(bw_pre[2]);
+            }
+            win_edges.insert(a.id, w);
+        }
+    }
+    // Наружные полуширины таблицы: победитель на её линии, а не своя рамка.
+    let outer_win = {
+        let mut o = bw_pre;
+        for w in win_edges.values() {
+            o[0] = o[0].max(w[0]);
+            o[1] = o[1].max(w[1]);
+            o[2] = o[2].max(w[2]);
+            o[3] = o[3].max(w[3]);
+        }
+        o
+    };
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
     // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
@@ -8085,8 +8203,21 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     } else {
                         side(cell.style.padding.left) + side(cell.style.padding.right)
                     };
+                    // В сросшейся модели дорожка считает ПОЛОВИНУ победившей
+                    // линии — ту же, что легла в паддинг ячейки; своя кромка
+                    // могла быть у́же соседней.
                     pad + if e.style.border_collapse == Some(true) {
-                        border / 2.0
+                        let w = win_edges.get(&cell.node_id).copied().unwrap_or([
+                            side(cell.style.borders().top),
+                            side(cell.style.borders().right),
+                            side(cell.style.borders().bottom),
+                            side(cell.style.borders().left),
+                        ]);
+                        if table_vertical || orthogonal {
+                            (w[0] + w[2]) / 2.0
+                        } else {
+                            (w[1] + w[3]) / 2.0
+                        }
                     } else {
                         border
                     }
@@ -8379,12 +8510,13 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // (§17.6.2). Кладётся паддингом поверх авторского: проба
                 // кромок стоит по паддинг-боксу, и рамкой линия уехала бы
                 // внутрь.
+                let win = win_edges.get(&cell.node_id).copied().unwrap_or(widths);
                 let half = |i: usize, own: Option<Len>| {
                     let base = match own {
                         Some(Len::Px(v)) => v,
                         _ => 0.0,
                     };
-                    Some(Len::Px(base + widths[i] / 2.0))
+                    Some(Len::Px(base + win[i] / 2.0))
                 };
                 cell.style.padding = crate::computed::Sides {
                     top: half(0, cell.style.padding.top),
@@ -8778,11 +8910,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // Полосы фонов рядов и колонок в сросшейся модели начинаются от
             // СЕРЕДИНЫ рамки таблицы (CSS 2.1 §17.6.2): пробы сдвинуты на
             // полкромки — сами ячейки остаются в потоке с полной рамкой.
-            let shift = if collapse_cells {
-                (-bw[3] / 2.0, -bw[0] / 2.0)
-            } else {
-                (0.0, 0.0)
-            };
+            // Полкромки таблицы лежит в её паддинге, полкромки ячейки — в
+            // паддинге ячейки: полосы фонов встают по месту без поправки.
+            let shift = (0.0, 0.0);
             if let Some((widths, colors, styles, doc_ix)) = cell_edge {
                 d = d.child(crate::interact::edge_probe(
                     table_edges.clone(),
@@ -9179,7 +9309,13 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         side(cell.style.padding.left)
                             + side(cell.style.padding.right)
                             + if e.style.border_collapse == Some(true) {
-                                border / 2.0
+                                // Половина ПОБЕДИВШЕЙ линии — та же, что
+                                // легла в паддинг ячейки (§17.6.2.1).
+                                let w = win_edges
+                                    .get(&cell.node_id)
+                                    .map(|w| (w[1] + w[3]) / 2.0)
+                                    .unwrap_or(border / 2.0);
+                                w
                             } else {
                                 border
                             }
@@ -9367,10 +9503,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // а не рамкой: проба кромок — абсолютный ребёнок по паддинг-боксу,
             // и рамка утащила бы линию сетки внутрь на свою величину.
             c.padding = crate::computed::Sides {
-                top: Some(Len::Px(bw[0] / 2.0)),
-                right: Some(Len::Px(bw[1] / 2.0)),
-                bottom: Some(Len::Px(bw[2] / 2.0)),
-                left: Some(Len::Px(bw[3] / 2.0)),
+                top: Some(Len::Px(outer_win[0] / 2.0)),
+                right: Some(Len::Px(outer_win[1] / 2.0)),
+                bottom: Some(Len::Px(outer_win[2] / 2.0)),
+                left: Some(Len::Px(outer_win[3] / 2.0)),
             };
         }
         c.min_height = min_h;
