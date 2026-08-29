@@ -224,6 +224,17 @@ impl Selector {
                 // `:hover` и `::before` дают одно и то же имя: различать их
                 // незачем — псевдоэлементы отбираются по имени.
                 ':' => {
+                    // Неизвестный псевдокласс или псевдоэлемент делает
+                    // селектор недействительным, а с ним и ВЕСЬ список
+                    // (Selectors §3.1): `p:invalidPseudoClass, p.test1`
+                    // не красит ни того, ни другого. Прежде неизвестное имя
+                    // просто не совпадало, и вторая часть списка работала.
+                    // Имя псевдокласса сравнивается без учёта регистра
+                    // (`:FiRSt-cHIlD` — тот же `:first-child`).
+                    let bare = name.trim_start_matches(':').to_ascii_lowercase();
+                    if !bare.is_empty() && !known_pseudo(&bare) {
+                        return None;
+                    }
                     // Пустышка от второго двоеточия `::after` — не
                     // псевдокласс, копить её нельзя.
                     if let Some(prev) = sel.pseudo.take()
@@ -336,6 +347,73 @@ impl Selector {
 /// Разбор внутренности атрибутного условия: `name`, `name=value`,
 /// `name~="v" i` и родня. Кавычки значения снимаются, ` i` в хвосте —
 /// регистронезависимость.
+/// Известно ли имя псевдокласса или псевдоэлемента.
+///
+/// Перечень закрытый: по Selectors §3.1 неизвестное имя роняет весь список
+/// селекторов, поэтому сюда входит и то, что мы разбираем, но не исполняем —
+/// иначе правило с ним пропало бы целиком.
+fn known_pseudo(name: &str) -> bool {
+    let head = name.split_once('(').map_or(name, |(h, _)| h);
+    is_pseudo_element(head)
+        || matches!(
+            head,
+            "hover"
+                | "active"
+                | "focus"
+                | "focus-visible"
+                | "focus-within"
+                | "link"
+                | "visited"
+                | "any-link"
+                | "target"
+                | "target-within"
+                | "root"
+                | "empty"
+                | "scope"
+                | "checked"
+                | "indeterminate"
+                | "default"
+                | "disabled"
+                | "enabled"
+                | "read-only"
+                | "read-write"
+                | "required"
+                | "optional"
+                | "valid"
+                | "invalid"
+                | "in-range"
+                | "out-of-range"
+                | "placeholder-shown"
+                | "autofill"
+                | "open"
+                | "modal"
+                | "fullscreen"
+                | "picture-in-picture"
+                | "defined"
+                | "host"
+                | "first-child"
+                | "last-child"
+                | "only-child"
+                | "first-of-type"
+                | "last-of-type"
+                | "only-of-type"
+                | "nth-child"
+                | "nth-last-child"
+                | "nth-of-type"
+                | "nth-last-of-type"
+                | "nth-col"
+                | "nth-last-col"
+                | "not"
+                | "is"
+                | "where"
+                | "has"
+                | "matches"
+                | "any"
+                | "lang"
+                | "dir"
+        )
+}
+
 /// ПсевдоЭЛЕМЕНТ (а не псевдокласс): после него составная часть кончается.
 fn is_pseudo_element(name: &str) -> bool {
     matches!(
