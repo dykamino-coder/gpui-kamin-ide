@@ -10502,16 +10502,19 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     };
     if !row_dir && tracks.iter().any(intrinsic_track) {
         let n = tracks.len();
+        // ПРОБОВАЛИ И ОТКАТИЛИ: считать вклад по СОДЕРЖИМОМУ плюс края
+        // коробки, когда ширина `auto` (css-grid-2 §11.5.1) — сейчас у
+        // элемента с отступом весь вклад дают одни поля, и ветка содержимого
+        // не запускается вовсе. Проба по всей папке css-grid (1130 пар):
+        // приобретено 0, потеряно 0, сдвинулось 12, из них восемь в худшую
+        // сторону (`column-subgrid-grid-gap-001` 80.82 -> 83.12,
+        // `grid-lanes-gap-002` 8.89 -> 10.02). Эталоны этих семей держит не
+        // вклад дорожки, а что-то ниже.
         let cross_of = |item: &Element| -> f32 {
-            // Вклад элемента в интрин-дорожку — его СОДЕРЖИМОЕ плюс края
-            // коробки (css-grid-2 §11.5.1). Прежде отступы и поля отвечали за
-            // весь вклад: `item_width` при `width: auto` возвращал только их,
-            // и ветка содержимого не запускалась ни разу у элемента с
-            // отступом — дорожки выходили шириной в поля.
-            if item_declared_width(item) > 0.0 {
-                return item_width(item);
+            let w = item_width(item);
+            if w > 0.0 {
+                return w;
             }
-            let extra = item_box_extra(item);
             let st = crate::inline::inherit(merged, &item.style);
             let fs = match st.font_size {
                 Some(Len::Px(v)) => v,
@@ -10528,11 +10531,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             // `width: 2ch` — точечная мера в знаках (intrinsic-sizing-cols-*:
             // первый элемент задаёт ширину ВСЕМ auto-колонкам).
             if let Some(Len::Ch(k)) = item.style.width {
-                return k * ch + extra;
+                return k * ch;
             }
             let ws = words(&item.children);
             let total = ws.iter().sum::<usize>() + ws.len().saturating_sub(1);
-            total as f32 * ch + extra
+            total as f32 * ch
         };
         let fixed_px = |t: &TrackSize| match t {
             TrackSize::Single(Track::Px(w)) => Some(*w),
@@ -11796,25 +11799,12 @@ fn shortest_lane_free(
 
 /// Ширина элемента по его же стилю — для раздачи по лункам-рядам.
 fn item_width(e: &Element) -> f32 {
-    item_declared_width(e) + item_box_extra(e)
-}
-
-/// Заданная ширина элемента в точках, без краёв коробки. Ноль — `auto`.
-fn item_declared_width(e: &Element) -> f32 {
     let px_of = |l: Option<Len>| match l {
         Some(Len::Px(v)) => v,
         _ => 0.0,
     };
-    px_of(e.style.width).max(px_of(e.style.min_width))
-}
-
-/// Края коробки по инлайн-оси: отступы, рамки и поля.
-fn item_box_extra(e: &Element) -> f32 {
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
-    let inner = if e.style.border_box == Some(true) {
+    let declared = px_of(e.style.width).max(px_of(e.style.min_width));
+    let box_extra = if e.style.border_box == Some(true) {
         0.0
     } else {
         px_of(e.style.padding.left)
@@ -11822,7 +11812,7 @@ fn item_box_extra(e: &Element) -> f32 {
             + px_of(e.style.borders().left)
             + px_of(e.style.borders().right)
     };
-    inner + px_of(e.style.margin.left) + px_of(e.style.margin.right)
+    declared + box_extra + px_of(e.style.margin.left) + px_of(e.style.margin.right)
 }
 
 /// Высота элемента по его же стилю — для раздачи по лункам.
