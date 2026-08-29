@@ -2777,10 +2777,22 @@ impl Computed {
                 self.line_through = Some(lower.split_whitespace().any(|t| t == "line-through"));
             }
             "line-height" => {
-                // Голое число в line-height — множитель, а не пиксели.
+                // Голое число в line-height — множитель, а не пиксели, и
+                // наследуется оно множителем: у потомка своя высота строки.
+                //
+                // Доля — наоборот: §10.8.1 «Computed value: for <length> and
+                // <percentage> the absolute value», то есть `200%` считается
+                // от СВОЕГО кегля и наследуется уже точками. У нас обе записи
+                // давали `Len::Pct`, доля доживала до потомка и множилась на
+                // его кегль (`c548-ln-ht-003` против зелёной `-004` — та же
+                // разметка, разная запись). `Len::Em` сводится к точкам до
+                // наследования, поэтому доля тегируется им.
                 let parsed = match v.parse::<f32>() {
                     Ok(mult) if !v.ends_with("px") => Some(Len::Pct(mult)),
-                    _ => Len::parse(v),
+                    _ => match Len::parse(v) {
+                        Some(Len::Pct(k)) if v.trim_end().ends_with('%') => Some(Len::Em(k)),
+                        other => other,
+                    },
                 };
                 // Отрицательная высота строки недействительна (§10.8.1):
                 // объявление отбрасывается целиком, прежнее значение живёт.
