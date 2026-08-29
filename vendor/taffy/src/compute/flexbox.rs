@@ -2187,8 +2187,12 @@ fn perform_absolute_layout_on_absolute_children(
                 }
                 _ => 0.0,
             },
-        }
-        .f32_max(Size::ZERO);
+        };
+        // KaminIDE patch: остаток бывает ОТРИЦАТЕЛЬНЫМ, и по CSS 2.1 §10.3.7
+        // решённое `auto`-поле обязано уйти в минус — коробка вылезает за
+        // содержащий блок. Зажим в ноль его гасил, и `margin: auto` у
+        // переполняющей абсолютной коробки прижимал её к началу оси
+        // (`absolute-non-replaced-width-005/007/008`).
 
         // Expand auto margins to fill available space
         let resolved_margin = {
@@ -2211,11 +2215,29 @@ fn perform_absolute_layout_on_absolute_children(
                 },
             };
 
+            // KaminIDE patch: два `auto`-поля при ОТРИЦАТЕЛЬНОМ остатке
+            // поровну не делятся — CSS 2.1 §10.3.7: «unless this would make
+            // them negative, in which case when direction of the containing
+            // block is ltr, set margin-left to zero and solve for
+            // margin-right». Начальное поле обнуляется, весь остаток уходит
+            // конечному.
+            let both_auto_x = margin.left.is_none() && margin.right.is_none();
+            let (auto_left, auto_right) = if both_auto_x && auto_margin_size.width < 0.0 {
+                (0.0, free_space.width)
+            } else {
+                (auto_margin_size.width, auto_margin_size.width)
+            };
+            let both_auto_y = margin.top.is_none() && margin.bottom.is_none();
+            let (auto_top, auto_bottom) = if both_auto_y && auto_margin_size.height < 0.0 {
+                (0.0, free_space.height)
+            } else {
+                (auto_margin_size.height, auto_margin_size.height)
+            };
             Rect {
-                left: margin.left.unwrap_or(auto_margin_size.width),
-                right: margin.right.unwrap_or(auto_margin_size.width),
-                top: margin.top.unwrap_or(auto_margin_size.height),
-                bottom: margin.bottom.unwrap_or(auto_margin_size.height),
+                left: margin.left.unwrap_or(auto_left),
+                right: margin.right.unwrap_or(auto_right),
+                top: margin.top.unwrap_or(auto_top),
+                bottom: margin.bottom.unwrap_or(auto_bottom),
             }
         };
 

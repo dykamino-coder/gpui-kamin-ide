@@ -825,10 +825,15 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // ignored: for direction ltr `right`, for rtl `left`». Раскладка под нами
     // всегда берёт начальный край, поэтому при rtl левый край снимается здесь.
     let set = |l: Option<Len>| matches!(l, Some(x) if x != Len::Auto);
-    let drop_left = c.position == Some(Position::Relative)
-        && c.cb_rtl
-        && set(c.inset.left)
-        && set(c.inset.right);
+    // У АБСОЛЮТНОЙ коробки то же правило §10.3.7: избыточен один из краёв,
+    // и при rtl это левый. Но избыток возникает, только когда заданы все три
+    // величины — при `width: auto` края решают ширину, и отбрасывать нечего.
+    let over = match c.position {
+        Some(Position::Relative) => true,
+        Some(Position::Absolute) | Some(Position::Fixed) => set(c.width),
+        _ => false,
+    };
+    let drop_left = over && c.cb_rtl && set(c.inset.left) && set(c.inset.right);
     for (val, f) in [
         (c.inset.top, 0u8),
         (c.inset.right, 1),
