@@ -3373,7 +3373,10 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
     // верхнему полю следующего блока достаётся только разница.
     let mut strut: Option<Strut> = None;
     let mut emitted = 0.0f32;
-    for node in out.iter_mut() {
+    // Последняя коробка прогона с клиренсом: её остаток поля остаётся ВНУТРИ
+    // родителя и наружу не уходит.
+    let mut cleared_run: Option<usize> = None;
+    for (idx, node) in out.iter_mut().enumerate() {
         let Node::Element(e) = node else {
             // Переводы строк между блоками разрывом потока не считаются: в
             // форматированной разметке они стоят везде, и из-за них
@@ -3420,6 +3423,23 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
                 strut_of(top)
             }
         };
+        // Коробка с клиренсом, которая иначе схлопнулась бы насквозь
+        // (§8.3.1): её поля СЛИВАЮТСЯ между собой, но получившееся поле не
+        // схлопывается с нижним полем родителя — «these margins collapse with
+        // the adjoining margins of following siblings but the resulting margin
+        // does not collapse with the bottom margin of the parent block».
+        // Верхнее поле уже выложено рядом обтекания, поэтому наружу идёт
+        // только остаток.
+        if through.is_none()
+            && e.style.clear.is_some()
+            && through_strut_no_clear(e).is_some()
+        {
+            emitted = top;
+            e.style.margin.bottom = Some(Len::Px(0.0));
+            strut = Some(adjoin(strut_of(top), strut_of(bottom)));
+            cleared_run = Some(idx);
+            continue;
+        }
         if let Some(own) = through {
             merged = adjoin(merged, own);
             // Своё нижнее поле коробка не ставит: оно ушло в струну, и
@@ -3435,6 +3455,17 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         }
         strut = Some(strut_of(bottom));
         emitted = bottom;
+        cleared_run = None;
+    }
+    // Прогон кончился на коробке с клиренсом: остаток слитого поля пишется ей
+    // самой — родителя он растит, но наружу не выходит.
+    if let (Some(i), Some(s)) = (cleared_run, strut) {
+        let rest = solve(s) - emitted;
+        if rest > 0.0
+            && let Some(Node::Element(e)) = out.get_mut(i)
+        {
+            e.style.margin.bottom = Some(Len::Px(rest));
+        }
     }
     out
 }
@@ -3700,6 +3731,16 @@ fn margin_or_bail(l: Option<Len>, style: &Computed) -> Option<f32> {
 /// схлопываются. Возвращаются слитые поля — свои плюс поля всех
 /// насквозь-потомков: это и есть транзитивность примыкания.
 fn through_strut(e: &Element) -> Option<Strut> {
+    through_strut_inner(e, false)
+}
+
+/// То же, но без вето по `clear`: нужно, чтобы отличить «не схлопывается
+/// вовсе» от «схлопнулась бы, если бы не клиренс».
+fn through_strut_no_clear(e: &Element) -> Option<Strut> {
+    through_strut_inner(e, true)
+}
+
+fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
     if e.inline || !in_flow(&e.style) || own_context(e) {
         return None;
     }
@@ -3719,7 +3760,7 @@ fn through_strut(e: &Element) -> Option<Strut> {
     // Держит их не вето, а что-то ниже по цепи. Признак документа пришлось бы
     // нести отдельным thread-local, а рамка рисует вложенный документ тем же
     // `render()` и признак бы затёрла.
-    if e.style.clear.is_some() {
+    if e.style.clear.is_some() && !ignore_clear {
         return None;
     }
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
