@@ -8327,6 +8327,19 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 || cell.style.overflow_y == Some(crate::computed::Overflow::Hidden)
                 || spans_collapsed;
             let mut cell = cell.clone();
+            // ПРОБОВАЛИ И ОТКАТИЛИ: держать внутри ячейки ПОЛОВИНУ её кромки
+            // прозрачной рамкой, а внутри таблицы — половину своей (§17.6.2:
+            // «row-width = (0.5 * border-width0) + padding-left1 + …», «the
+            // width of the table includes half the table border»), заодно сняв
+            // поправку `shift` у проб. Проба по 39 парам семей
+            // `table-backgrounds-b[cs]-*`, `collapsing-border-model-*`,
+            // `border-conflict-style-10*`: флипов ноль, все шесть `bc-*`
+            // подтянулись (13.73 -> 12.10, 5.00 -> 4.01, 1.00 -> 0.81), но
+            // потеряны `fixed-table-layout-027` (0.00 -> «красное видно») и
+            // `collapsing-border-model-008` (0.00 -> 1.36). Половина берётся от
+            // ПОБЕДИВШЕЙ кромки соседей (§17.6.2.1), а не от своей: без
+            // разрешения ширин по всей сетке модель не сходится.
+            //
             // Сросшиеся рамки (border-collapse): рамки С ЯЧЕЕК СНИМАЮТСЯ
             // целиком — их рисует отдельный слой кромок на линиях сетки
             // (см. interact::EdgePainter): кромка соседей ОДНА, рисуется
