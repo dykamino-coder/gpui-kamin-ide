@@ -9269,6 +9269,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         px_of(pad.left),
     ];
     let min_h = min_fix(e.style.min_height, bw[0] + bw[2] + pad_px[0] + pad_px[2]);
+    // ПРОБОВАЛИ И ОТКАТИЛИ: поднимать нижнюю грань ширины таблицы до суммы
+    // дорожек с зазорами (§17.5.2: «the used width is the greater of the value
+    // of width and MIN»). Проба по 19 парам семей `separated-border-model-*` и
+    // `fixed-table-layout-02*`: флипов ноль, `separated-border-model-004d`
+    // 1.90 -> 1.75. Минимум доезжает, но заданную ширину не перебивает —
+    // упирается ниже, в раздачу дорожек внутри сетки.
     let min_w = min_fix(e.style.min_width, bw[1] + bw[3] + pad_px[1] + pad_px[3]);
     // У ТЕГА `<table>` ширина считается по BORDER-BOX (UA-правило
     // css-tables-3: `table { box-sizing: border-box }`), у `display: table` на
