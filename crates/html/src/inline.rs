@@ -1415,19 +1415,20 @@ fn inline_sides(e: &Element, merged: &Computed) -> (f32, f32) {
         _ => 0.0,
     };
     let border = e.style.borders();
-    // Отступ вокруг ПОДСВЕТКИ держит сам прогон текста (`inline_pad`), поэтому
-    // распорка его не повторяет — иначе он считался бы дважды и диакритика
-    // уезжала из-под своей коробки (`shaping-arabic-diacritics-002`).
-    let pad = |l: Option<Len>| {
-        if e.style.background.is_some() {
-            0.0
-        } else {
-            px_of(l)
-        }
-    };
+    // Боковой отступ строчной коробки занимает место в строке ВСЕГДА (§8.4),
+    // фон там задан или нет: `padding-right: 4em` двигает следующее слово и
+    // рвёт строку. Прежде отступ гасился при заданном фоне — считалось, что
+    // его держит прогон текста (`inline_pad`), но прогон только КРАСИТ:
+    // ширина квада приходит разностью положений глифов, а раздутие на
+    // `pad[1]`/`pad[3]` продвижения не даёт.
+    //
+    // Замерено: CSS2 5170 -> 5173, CSS3 2352 -> 2351. Потеря одна и известна:
+    // `css-text/shaping-arabic-diacritics-002` 0.04 -> 9.14. Там отступ задан
+    // спану ВНУТРИ арабского слова, и распорка U+FEFF рвёт курсивное
+    // соединение — чинится не здесь, а прозрачностью распорки для набора.
     (
-        px_of(e.style.margin.left) + px_of(border.left) + pad(e.style.padding.left),
-        px_of(e.style.margin.right) + px_of(border.right) + pad(e.style.padding.right),
+        px_of(e.style.margin.left) + px_of(border.left) + px_of(e.style.padding.left),
+        px_of(e.style.margin.right) + px_of(border.right) + px_of(e.style.padding.right),
     )
 }
 
