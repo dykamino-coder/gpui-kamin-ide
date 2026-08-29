@@ -78,7 +78,20 @@ pub const BROWSER_CSS: &str = r#"
     table { margin: 0; border-spacing: 2px }
     th { padding: 1px; font-weight: bold; text-align: center }
     td { padding: 1px }
-    caption { font-weight: normal; margin: 0 }
+    caption { font-weight: normal; margin: 0; text-align: center }
+    center { text-align: center }
+    address, cite, dfn, var { font-style: italic }
+    big { font-size: larger }
+    sub { vertical-align: sub; font-size: smaller }
+    sup { vertical-align: super; font-size: smaller }
+    u, ins { text-decoration: underline }
+    s, strike, del { text-decoration: line-through }
+    nobr { white-space: nowrap }
+    /* ПРОБОВАЛИ И ОТКАТИЛИ: `iframe { border: 2px inset }` из листа HTML.
+       Замерено: CSS3 2352 -> 2350, потеряны position-absolute-iframe-print-001
+       и -002 (0.23 -> 1.39); эталоны этих пар рамку рамке не рисуют. */
+    fieldset { margin-inline: 2px; border: 2px groove; padding: 0.35em 0.75em 0.625em }
+    legend { padding-inline: 2px }
     a { color: #0000ee }
     button { padding: 1px 6px; border-radius: 0 }
     canvas { background: none; border: none }
