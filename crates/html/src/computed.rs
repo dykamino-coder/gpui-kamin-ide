@@ -61,6 +61,18 @@ pub struct Corners {
     pub bl: Option<Len>,
 }
 
+/// Разряды `inherit_bits`: ненаследуемые свойства, у которых слово `inherit`
+/// обязано скопировать вычисленное значение родителя (§6.2.1).
+pub(crate) mod inh {
+    pub(crate) const BG_REPEAT: u16 = 1 << 0;
+    pub(crate) const Z_INDEX: u16 = 1 << 1;
+    pub(crate) const OUTLINE_W: u16 = 1 << 2;
+    pub(crate) const DISPLAY: u16 = 1 << 3;
+    pub(crate) const BG_IMAGE: u16 = 1 << 4;
+    pub(crate) const BG_POS: u16 = 1 << 5;
+    pub(crate) const CLIP: u16 = 1 << 6;
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Display {
     Block,
@@ -742,6 +754,12 @@ pub struct Computed {
     /// `inherit` по СТОРОНАМ у полей и отступов, порядок [верх, право, низ,
     /// лево]. Сокращение ставит все четыре.
     pub(crate) margin_inherit: [bool; 4],
+    /// `inherit` у ненаследуемых свойств, которым своей ветки не было:
+    /// повтор мостовой (`background-repeat`), слой (`z-index`), обводка,
+    /// вид (`display`), плитка и её место (`background-image`,
+    /// `background-position`), обрезка (`clip`), сокращение шрифта,
+    /// преобразование регистра.
+    pub(crate) inherit_bits: u16,
     pub(crate) padding_inherit_side: [bool; 4],
     /// `box-shadow: inherit`.
     pub(crate) shadow_inherit: bool,
@@ -1828,6 +1846,10 @@ impl Computed {
                 self.webkit_box = Some(true);
             }
             "display" => {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::DISPLAY;
+                    return;
+                }
                 self.inline_display = None;
                 // Каскад мог поставить группу выше по важности, а ниже —
                 // обычный блок: метка рода не переживает своё значение.
@@ -3241,6 +3263,10 @@ impl Computed {
                 }
             }
             "z-index" => {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::Z_INDEX;
+                    return;
+                }
                 // Целое за пределами i32 КЛАМПИТСЯ, а не падает в auto
                 // (z-index-001: -2147483649 обязан остаться меньше -100).
                 self.z_index = v
@@ -3385,6 +3411,14 @@ impl Computed {
                 self.outline = Some(o);
             }
             "outline-width" | "outline-color" | "outline-offset" | "outline-style" => {
+                // `outline-width: inherit` берёт у родителя ТОЛЬКО толщину:
+                // остальные части обводки остаются своими. Разбор слова здесь
+                // не выражается — `outline_width_of("inherit")` даёт `None`, и
+                // толщина пропадала.
+                if v == "inherit" && key == "outline-width" {
+                    self.inherit_bits |= inh::OUTLINE_W;
+                    return;
+                }
                 let mut o = self.outline.unwrap_or_default();
                 match key {
                     "outline-width" => o.width = outline_width_of(v).or(o.width),
@@ -3405,6 +3439,10 @@ impl Computed {
                     })
             }
             "background-image" => {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::BG_IMAGE;
+                    return;
+                }
                 // `none` ГАСИТ картинку (§14.2.1): ветки под него не было
                 // вовсе, и заданный ранее адрес переживал отмену.
                 if v.trim().eq_ignore_ascii_case("none") {
@@ -3539,6 +3577,19 @@ impl Computed {
             // --- Текст -------------------------------------------------------
             // `font: [начертание] [вес] размер[/интерлиньяж] семейство`.
             "font" => {
+                // Все части сокращения наследуемые: `inherit` для них — это
+                // «своего значения нет», то есть ОЧИСТКА слота. Подстановка
+                // родительского значения тут не работает: ниже по разбору
+                // `own.font_size.or(parent.font_size)` вернул бы свой прежний
+                // (`font: 0 Ahem; font: inherit` оставлял нулевой кегль).
+                if v == "inherit" {
+                    self.font_size = None;
+                    self.font_family = None;
+                    self.font_weight = None;
+                    self.italic = None;
+                    self.line_height = None;
+                    return;
+                }
                 // `font: 50px / 1 Ahem` — вокруг косой черты разрешены пробелы,
                 // а кегль с высотой строки обязаны разбираться одним куском:
                 // иначе «/ 1 Ahem» уезжало в семейство шрифта целиком.
@@ -3638,6 +3689,12 @@ impl Computed {
             }
             "word-spacing" => self.word_spacing = Len::parse_spacing(v),
             "text-transform" => {
+                // Свойство наследуемое: `inherit` очищает свой слот, иначе
+                // прежнее объявление того же правила его переживало.
+                if v == "inherit" {
+                    self.text_transform = None;
+                    return;
+                }
                 // Значений бывает несколько сразу (`capitalize full-width`):
                 // разбираются все, неизвестное пропускается, а не обнуляет
                 // объявление целиком.
@@ -3856,6 +3913,10 @@ impl Computed {
             // Запись бывает и ПОосевой: `repeat space`, `round no-repeat`.
             // Один keyword задаёт обе оси, два — свою каждой.
             "background-repeat" => {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::BG_REPEAT;
+                    return;
+                }
                 let word = |w: &str| match w {
                     "no-repeat" => Some(Tiling::None),
                     "space" => Some(Tiling::Space),
@@ -3926,6 +3987,10 @@ impl Computed {
                 }
             }
             "background-position" => {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::BG_POS;
+                    return;
+                }
                 self.bg_pos = parse_pos_words(v);
             }
             // `object-position` — та же грамматика, но для замещаемого
@@ -4805,6 +4870,10 @@ impl Computed {
             // Устаревшее `clip` (CSS 2.1): rect с запятыми или пробелами;
             // `auto` в позиции — соответствующий край коробки.
             "clip" => {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::CLIP;
+                    return;
+                }
                 if let Some(rest) = v.trim().strip_prefix("rect(") {
                     let rest = rest.trim_end_matches(')');
                     // Разделители — ЛИБО три запятые, ЛИБО одни пробелы:

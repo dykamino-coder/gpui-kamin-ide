@@ -615,6 +615,40 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     if own.padding_inherit {
         c.padding = parent.padding;
     }
+    // Ненаследуемые свойства со словом `inherit`: значение родителя берётся
+    // целиком (§6.2.1). Разбор их слотов слово не выражает — там оно давало
+    // умолчание или роняло объявление.
+    if own.inherit_bits != 0 {
+        use crate::computed::inh;
+        let on = |b: u16| own.inherit_bits & b != 0;
+        if on(inh::BG_REPEAT) {
+            c.bg_repeat = parent.bg_repeat;
+        }
+        if on(inh::Z_INDEX) {
+            c.z_index = parent.z_index;
+        }
+        if on(inh::OUTLINE_W) {
+            let w = parent.outline.and_then(|o| o.width);
+            let mut o = c.outline.unwrap_or_default();
+            o.width = w;
+            c.outline = Some(o);
+        }
+        if on(inh::DISPLAY) {
+            c.display = parent.display;
+            c.inline_display = parent.inline_display;
+        }
+        if on(inh::BG_IMAGE) {
+            c.bg_image = parent.bg_image.clone();
+            c.gradient = parent.gradient.clone();
+            c.gradient_raw = parent.gradient_raw.clone();
+        }
+        if on(inh::BG_POS) {
+            c.bg_pos = parent.bg_pos;
+        }
+        if on(inh::CLIP) {
+            c.clip_rect = parent.clip_rect;
+        }
+    }
     for (i, on) in own.margin_inherit.iter().enumerate() {
         if !on {
             continue;
