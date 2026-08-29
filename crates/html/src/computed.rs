@@ -5891,6 +5891,13 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
                 arg(2).unwrap_or_else(|| "decimal".to_string()),
             )),
             "attr" if args.len() == 1 => out.push(ContentItem::Attr(arg(0)?)),
+            // ПРОБОВАЛИ И ОТКАТИЛИ: принимать `url()` (§12.2 объявляет его
+            // действительным) и класть в псевдоэлемент синтетический `<img>`.
+            // Проба по 195 парам `generated-content`: флипов ноль, потеряна
+            // `before-after-table-whitespace-001` (0.15 -> 0.58) и просела
+            // `before-after-images-001` (0.00 -> 0.41). Обе требуют, чтобы
+            // НЕНАЙДЕННАЯ картинка давала коробку НУЛЕВОГО размера — сперва
+            // это, потом уже `url()`.
             _ => return None,
         }
         at = close + 1;
