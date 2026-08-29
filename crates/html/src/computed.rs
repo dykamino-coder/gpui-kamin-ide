@@ -755,6 +755,11 @@ pub struct Computed {
     /// от родителя при слиянии (`inline::inherit`), как у padding/border.
     pub(crate) width_inherit: bool,
     pub(crate) height_inherit: bool,
+    /// То же у пределов: `min-width`, `min-height`, `max-width`, `max-height`.
+    pub(crate) minmax_inherit: [bool; 4],
+    /// Сторона письма СОДЕРЖАЩЕГО БЛОКА: избыточный край выбирается по ней,
+    /// а не по своей (§9.4.3). Ставится при наследовании.
+    pub(crate) cb_rtl: bool,
     /// top/right/bottom/left.
     pub(crate) inset_inherit: [bool; 4],
     pub gradient: Option<Gradient>,
@@ -2152,10 +2157,25 @@ impl Computed {
                 self.height_inherit = v == "inherit";
                 assign_size(&mut self.height, v);
             }
-            "min-width" => assign_size(&mut self.min_width, v),
-            "min-height" => assign_size(&mut self.min_height, v),
-            "max-width" => assign_size(&mut self.max_width, v),
-            "max-height" => assign_size(&mut self.max_height, v),
+            // Пределы не наследуются, но `inherit` берёт значение родителя
+            // явно (§6.2.1). Без этой ветки `assign_size` стирал слот в
+            // `None`, и `max-height: inherit` снимал предел вовсе.
+            "min-width" => {
+                self.minmax_inherit[0] = v == "inherit";
+                assign_size(&mut self.min_width, v);
+            }
+            "min-height" => {
+                self.minmax_inherit[1] = v == "inherit";
+                assign_size(&mut self.min_height, v);
+            }
+            "max-width" => {
+                self.minmax_inherit[2] = v == "inherit";
+                assign_size(&mut self.max_width, v);
+            }
+            "max-height" => {
+                self.minmax_inherit[3] = v == "inherit";
+                assign_size(&mut self.max_height, v);
+            }
 
             "padding" => {
                 if v == "inherit" {

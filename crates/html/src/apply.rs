@@ -820,11 +820,20 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     ) {
         return d;
     }
+    // §9.4.3: у относительно сдвинутой коробки с ОБОИМИ горизонтальными
+    // краями один из них избыточен — «if neither is auto, one of them must be
+    // ignored: for direction ltr `right`, for rtl `left`». Раскладка под нами
+    // всегда берёт начальный край, поэтому при rtl левый край снимается здесь.
+    let set = |l: Option<Len>| matches!(l, Some(x) if x != Len::Auto);
+    let drop_left = c.position == Some(Position::Relative)
+        && c.cb_rtl
+        && set(c.inset.left)
+        && set(c.inset.right);
     for (val, f) in [
         (c.inset.top, 0u8),
         (c.inset.right, 1),
         (c.inset.bottom, 2),
-        (c.inset.left, 3),
+        (if drop_left { None } else { c.inset.left }, 3),
     ] {
         let Some(l) = val else { continue };
         if l == Len::Auto {

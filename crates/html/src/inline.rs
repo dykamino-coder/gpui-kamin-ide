@@ -545,6 +545,7 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
+    c.cb_rtl = parent.rtl == Some(true);
     c.color = own.color.or(parent.color);
     // `background-color: inherit` переносит вычисленное значение родителя —
     // вместе с нерешённой относительной функцией (css-color-5 §4.1).
@@ -619,6 +620,17 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     }
     if own.height_inherit {
         c.height = parent.height;
+    }
+    for (i, on) in own.minmax_inherit.iter().enumerate() {
+        if !on {
+            continue;
+        }
+        match i {
+            0 => c.min_width = parent.min_width,
+            1 => c.min_height = parent.min_height,
+            2 => c.max_width = parent.max_width,
+            _ => c.max_height = parent.max_height,
+        }
     }
     for (i, on) in own.inset_inherit.iter().enumerate() {
         if !on {
