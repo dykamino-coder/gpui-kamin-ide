@@ -2382,13 +2382,17 @@ impl Element for Paragraph {
                         .find('\n')
                         .map(|i| start + i)
                         .unwrap_or(self.text.len());
-                    // База направления — `direction` ЭЛЕМЕНТА (css-writing-modes
-                    // §2: bidi paragraph level из свойства, не из содержимого);
-                    // авто-детект по первому сильному знаку (UAX9 P3) — только
-                    // когда направления нет вовсе (text-align-end-001: `end` при
-                    // rtl обязан уйти влево и с латинским текстом).
-                    let _ = (start, end);
-                    align_of_value(logical.physical(self.wrap.rtl))
+                    // При `unicode-bidi: plaintext` сторона КАЖДОГО абзаца
+                    // берётся по первому сильному знаку (css-writing-modes-4
+                    // §2.2 -> UAX#9 P2/P3), а не у элемента. Порядок глифов это
+                    // уже учитывал (`BidiInfo::new(text, None)`), выключка —
+                    // нет. Нейтральный абзац сильного знака не имеет и остаётся
+                    // на стороне элемента.
+                    align_of_value(
+                        logical.physical(
+                            first_strong_rtl(&self.text[start..end]).unwrap_or(self.wrap.rtl),
+                        ),
+                    )
                 }
                 None => self.align,
             };
