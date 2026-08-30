@@ -4648,7 +4648,16 @@ fn paragraph_pieces(
                 Some(Len::Px(v)) => gpui::px(v),
                 Some(Len::Pct(k)) => gpui::px(k * biggest),
                 Some(Len::Em(k)) => gpui::px(k * biggest),
-                _ => gpui::px(biggest * normal_fraction(inherited, opts)),
+                // Своей `line-height` у блока нет — её задают КУСКИ: у куска
+                // со своей высотой строки она и берётся, у остальных доля от
+                // кегля (§10.8.1). Канал `lh_spans` умеет строку только
+                // растить, и объявленная `font: 100px/1` терялась.
+                _ => gpui::px(inline::max_line_height(
+                    &pieces,
+                    own_size(inherited, opts),
+                    opts.base_size(),
+                    normal_fraction(inherited, opts),
+                )),
             };
             if {
                 static ON: std::sync::LazyLock<bool> =

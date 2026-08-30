@@ -2145,6 +2145,33 @@ pub fn max_font_size(pieces: &[Piece], strut: f32, em_base: f32) -> f32 {
     })
 }
 
+/// Высота строки абзаца: максимум по кускам, но с УЧЁТОМ объявленной на
+/// куске `line-height`.
+///
+/// Прежде высота считалась как «самый крупный кегль × доля normal», и
+/// объявленная на куске `line-height` доходила только каналом `lh_spans`,
+/// который умеет строку растить и не умеет сжимать. У `font: 100px/1` строка
+/// выходила 132 вместо 100, а глиф садился по полулидингу на 16 точек ниже
+/// (§10.8: лидинг тут ноль — содержимое равно `line-height`).
+pub fn max_line_height(pieces: &[Piece], strut: f32, em_base: f32, fraction: f32) -> f32 {
+    pieces.iter().fold(strut * fraction, |acc, p| match p {
+        Piece::Text { style, .. } => {
+            let size = match style.font_size {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) => k * em_base,
+                _ => strut,
+            };
+            let own = match style.line_height {
+                Some(Len::Px(v)) => v,
+                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+                _ => size * fraction,
+            };
+            acc.max(own)
+        }
+        Piece::Atom(_) | Piece::Overlay(_) => acc,
+    })
+}
+
 /// Один `StyledText` с прогонами — честный перенос по словам сквозь границы
 /// `<b>`/`<a>`/`<span>`.
 /// Текст и прогоны абзаца — то же, что уходит в `StyledText`.
