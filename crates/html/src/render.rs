@@ -2109,7 +2109,26 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
         // `clear`, и хвост, раскладываемый по полосам занятости вместо
         // флекс-ряда. Гейт узкий (см. `band_host`); не сошёлся — идём
         // сегодняшней веткой ниже, ни строки в ней не меняя.
-        if let Some((host, next)) = band_host(&nodes, i, cb_width) {
+        // Правило 6 (§9.5.1): верх флоата — верх строки, в которой он
+        // объявлен. Прогон АТОМОВ известного размера перед флоатом уходит в
+        // хост вместе с ним, иначе флоат встаёт ПОД прогоном (`floats-001`).
+        // Прогон ТЕКСТА полосам не отдаём: наборщик строк про них не знает.
+        let lead_at = out
+            .iter()
+            .rposition(|n| !is_blank(n) && band_piece(n) != Some(BandPiece::Atom))
+            .map_or(0, |p| p + 1);
+        let has_lead = out[lead_at..]
+            .iter()
+            .any(|n| band_piece(n) == Some(BandPiece::Atom));
+        let hosted = has_lead
+            .then(|| band_host(&nodes, i, cb_width, &out[lead_at..]))
+            .flatten()
+            .map(|(h, n)| (h, n, true))
+            .or_else(|| band_host(&nodes, i, cb_width, &[]).map(|(h, n)| (h, n, false)));
+        if let Some((host, next, took_lead)) = hosted {
+            if took_lead {
+                out.truncate(lead_at);
+            }
             out.push(Node::Element(host));
             i = next;
             continue;
@@ -2607,10 +2626,16 @@ fn band_piece(n: &Node) -> Option<BandPiece> {
 ///
 /// Последнее условие и держит радиус поражения: любой абзац, любой блок без
 /// размеров, любой текст рядом с флоатом уводит на сегодняшний флекс-ряд.
-fn band_host(nodes: &[Node], i: usize, cb_width: Option<Len>) -> Option<(Element, usize)> {
-    if !matches!(cb_width, Some(Len::Px(v)) if v > 0.0) {
-        return None;
-    }
+fn band_host(
+    nodes: &[Node],
+    i: usize,
+    cb_width: Option<Len>,
+    lead: &[Node],
+) -> Option<(Element, usize)> {
+    let cb_w = match cb_width {
+        Some(Len::Px(v)) if v > 0.0 => v,
+        _ => return None,
+    };
     let mut floaters: Vec<Element> = vec![];
     let mut j = i;
     while j < nodes.len() {
@@ -2648,6 +2673,32 @@ fn band_host(nodes: &[Node], i: usize, cb_width: Option<Len>) -> Option<(Element
         }
         rest.push(nodes[j].clone());
         j += 1;
+    }
+    if !lead.is_empty() {
+        // Прогон отдаём полосам ЦЕЛИКОМ и только когда он вместе с флоатами
+        // помещается в одну строку: разъехавшийся прогон — это перенос, а
+        // его считает наборщик строк, не полосы.
+        if !lead
+            .iter()
+            .all(|n| is_blank(n) || band_piece(n) == Some(BandPiece::Atom))
+        {
+            return None;
+        }
+        let mut row = 0.0f32;
+        for n in lead {
+            if let Node::Element(e) = n {
+                row += px_margin_box(&e.style)?.0;
+            }
+        }
+        for f in &floaters {
+            row += px_margin_box(&f.style)?.0;
+        }
+        if row > cb_w + 0.01 {
+            return None;
+        }
+        let mut all = lead.to_vec();
+        all.extend(rest);
+        rest = all;
     }
     // Пустой хвост хост НЕ отменяет, если флоатов НЕСКОЛЬКО: лесенку
     // (§9.5.1 п.5) и правило 3 флекс-ряд не выражает вовсе. Одинокий флоат с
