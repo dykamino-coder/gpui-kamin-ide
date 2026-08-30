@@ -1685,6 +1685,19 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
 /// области ряда, но обрезается прямоугольниками ячеек — вызывающий ставит
 /// маску сам и зовёт отрисовку с областью ряда.
 pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Window) {
+    // `background-attachment: fixed` и здесь считается от ОБЛАСТИ ПРОСМОТРА,
+    // а красится внутри своей области — та же двухобластная модель, что у
+    // обычной коробки (`layer`). Без неё полоса ряда и группы клала плитку от
+    // своего верха и уезжала вниз на всю свою высоту
+    // (`background-attachment-applies-to-004/005/006`).
+    if c.bg_fixed == Some(true) {
+        let view = Bounds {
+            origin: gpui::point(px(0.0), px(0.0)),
+            size: window.viewport_size(),
+        };
+        paint_tiles(c, view, Some(bounds), window);
+        return;
+    }
     paint_tiles(c, bounds, None, window);
 }
 
