@@ -218,6 +218,13 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
     }
     for n in nodes.iter_mut() {
         let Node::Element(html) = n else { continue };
+        // §10.5: «A percentage height on the root element is relative to the
+        // initial containing block» — высота начального блока определена
+        // всегда. Пометка живёт на самом узле: снимаемая обёртка уносит её с
+        // собой, и дети `body` верхнего уровня её не получают.
+        if html.tag == "html" {
+            html.style.root_box = true;
+        }
         if html.tag != "html" {
             if html.tag == "body" && has_bg(html) && html.style.contain_paint != Some(true) {
                 html.style.canvas_bg = true;

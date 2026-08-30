@@ -553,6 +553,37 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.cb_rtl = parent.rtl == Some(true);
+    // §10.5: доля высоты считается только от ОПРЕДЕЛЁННОЙ высоты содержащего
+    // блока. Определена она у корня (его блок — начальный), при высоте
+    // родителя в точках, при доле от определённого деда и у абсолютной
+    // коробки — та задаёт отсчёт сама.
+    // Элемент гибкого контейнера, сетки и содержимое ячейки получают
+    // определённую высоту от РАСКЛАДКИ (css-flexbox-1 §9.8 растяжение,
+    // css-grid-2 дорожки, §17.5.3 ячейка) — признака у нас на это нет, и
+    // считать их блок неопределённым нельзя: замерено CSS3 2355 -> 2348,
+    // потери во `flexbox-definite-sizes-*` и `*-subgrid-*`.
+    let laid_out_parent = matches!(
+        parent.display,
+        Some(crate::computed::Display::Flex)
+            | Some(crate::computed::Display::InlineFlex)
+            | Some(crate::computed::Display::Grid)
+            | Some(crate::computed::Display::InlineGrid)
+            | Some(crate::computed::Display::TableCell)
+    );
+    // Растяжение передаётся дальше: у растянутой коробки высота от полосы, и
+    // для её потомков блок определён (`column-align-items-005`).
+    c.stretched = laid_out_parent && !matches!(own.height, Some(crate::value::Len::Px(_)));
+    c.cb_height_def = parent.root_box
+        || laid_out_parent
+        || parent.stretched
+        || match parent.height {
+            Some(crate::value::Len::Px(_)) => true,
+            Some(crate::value::Len::Pct(_)) => parent.cb_height_def,
+            _ => matches!(
+                parent.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            ),
+        };
     c.color = own.color.or(parent.color);
     // `background-color: inherit` переносит вычисленное значение родителя —
     // вместе с нерешённой относительной функцией (css-color-5 §4.1).
