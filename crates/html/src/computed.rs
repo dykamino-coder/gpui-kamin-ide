@@ -1237,6 +1237,11 @@ pub struct Computed {
     /// `clip: rect(t r b l)` (CSS 2.1 §11.1.2, только absolute): координаты
     /// видимой области от углов border-box; None в позиции — auto (край).
     pub clip_rect: Option<[Option<f32>; 4]>,
+    /// Тот же прямоугольник, но КАК НАПИСАН: единицы шрифта на разборе ещё не
+    /// меряются, а `clip: rect(1em, …)` без них читался как `auto` и не
+    /// обрезал вовсе (`visufx/clip-079/080/091/092`). Сводится к точкам в
+    /// `resolve_em`, где кегль и метрики семейства уже известны.
+    pub clip_len: Option<[Option<Len>; 4]>,
     /// `clip-path: inset(t r b l ...)`: срезы краёв видимой области.
     pub clip_inset: Option<[Len; 4]>,
     /// `clip-path: rect(t r b l)` — координаты КРАЁВ от верхнего-левого
@@ -4960,6 +4965,16 @@ impl Computed {
                             side(parts[1]),
                             side(parts[2]),
                             side(parts[3]),
+                        ]);
+                        let raw = |t: &str| match t {
+                            "auto" => None,
+                            _ => Len::parse(t),
+                        };
+                        self.clip_len = Some([
+                            raw(parts[0]),
+                            raw(parts[1]),
+                            raw(parts[2]),
+                            raw(parts[3]),
                         ]);
                     }
                 }

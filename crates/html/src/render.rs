@@ -6218,7 +6218,25 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     // ПАРК: буфер группы создаёт stacking context, которого у `clip` нет —
     // z-переплетение детей с внешними соседями рвётся
     // (clip-no-stacking-context, 1 пара).
-    let clip_rect = c.clip_rect.filter(|_| {
+    // Единицы шрифта в `clip: rect(...)` меряются ЗДЕСЬ: на разборе кегль ещё
+    // неизвестен, а к отрисовке он уже слит. Прежде ненулевые `em`/`ex`
+    // читались как `auto`, и обрезки не было вовсе (`visufx/clip-079` и родня).
+    let clip_rect = c
+        .clip_len
+        .map(|sides| {
+            let base = match c.font_size {
+                Some(Len::Px(v)) => v,
+                _ => 16.0,
+            };
+            let family = c.font_family.clone().unwrap_or_default();
+            sides.map(|l| match l {
+                Some(Len::Px(v)) => Some(v),
+                Some(other) => Some(crate::metrics::spacing_px(Some(other), &family, base)),
+                None => None,
+            })
+        })
+        .or(c.clip_rect)
+        .filter(|_| {
         matches!(
             c.position,
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
