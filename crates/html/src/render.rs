@@ -3605,6 +3605,19 @@ fn first_in_flow<'a>(
                 // display мало: обычный строчный элемент своей коробки не
                 // имеет и примыкание НЕ рвёт (пустой `<span>` между блоками
                 // прозрачен).
+                // Своей коробки у `display: inline` нет, и примыкание он
+                // рвёт не собой, а СТРОЧНОЙ КОРОБКОЙ, которую рождает его
+                // содержимое: вокруг неё встаёт анонимная блочная коробка
+                // (§9.2.1.1). Пустой такой элемент прозрачен, а с текстом
+                // внутри обязан оборвать поиск — иначе отступ предыдущего
+                // блока протекает под анонимную коробку, и строка встаёт на
+                // него выше (`inline-formatting-context-002`).
+                if ch.style.inline_display == Some(true) {
+                    if replaced_inline(&ch.tag) || holds_line_box(&ch.children) {
+                        return None;
+                    }
+                    continue;
+                }
                 if ch.style.inline_display != Some(true)
                     && matches!(
                         ch.style.display,
@@ -3785,7 +3798,11 @@ fn holds_line_box(children: &[Node]) -> bool {
             if atomic_inline(&ch.style) {
                 return true;
             }
-            if ch.inline {
+            // `display: inline` делает строчным ЛЮБОЙ тег: своей коробки у
+            // него нет, а строчную рождает его содержимое. Без этой ветки
+            // `<div style="display:inline">` считался блочным ребёнком и
+            // строки «не рождал», хотя текст внутри него её рождает.
+            if ch.inline || ch.style.inline_display == Some(true) {
                 return replaced_inline(&ch.tag) || holds_line_box(&ch.children);
             }
             // Блочный ребёнок строки не рождает: его содержимое разбирает
