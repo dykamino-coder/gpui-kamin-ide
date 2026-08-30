@@ -553,7 +553,6 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.cb_rtl = parent.rtl == Some(true);
-    c.merged = true;
     // §10.5: доля высоты считается только от ОПРЕДЕЛЁННОЙ высоты содержащего
     // блока. Определена она у корня (его блок — начальный), при высоте
     // родителя в точках, при доле от определённого деда и у абсолютной
@@ -569,6 +568,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             | Some(crate::computed::Display::InlineFlex)
             | Some(crate::computed::Display::Grid)
             | Some(crate::computed::Display::InlineGrid)
+            | Some(crate::computed::Display::GridLanes)
             | Some(crate::computed::Display::TableCell)
     );
     // Растяжение передаётся дальше: у растянутой коробки высота от полосы, и
