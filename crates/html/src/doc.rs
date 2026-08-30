@@ -472,7 +472,7 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
                     e.style.logical.as_ref().map(|l| l.border.clone())
                 );
             }
-            e.style.resolve_logical();
+            e.style.resolve_logical(mode.0);
             // Унаследованное обратно снимается: наследованием занимается
             // сборщик дерева, и оставленное здесь значение завело бы узлу
             // собственную коробку (см. `has_box_style`).
