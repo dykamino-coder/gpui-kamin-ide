@@ -3249,13 +3249,19 @@ fn by_layer(mut nodes: Vec<Node>) -> Vec<Node> {
     let movable = |e: &Element| {
         let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
         let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
+        // Элемент сетки с ЯВНЫМИ дорожками по обеим осям место в списке детей
+        // тоже не держит: его позицию задаёт размещение, а не порядок
+        // (css-grid-2 §8). Значит, его можно переставить ради порядка краски
+        // (§9.9 шаг 3), как и внепоточную коробку с заданными краями.
+        let placed = e.style.grid_col.is_some() && e.style.grid_row.is_some();
         e.style.z_index.is_some_and(|z| z < 0)
-            && matches!(
-                e.style.position,
-                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
-            )
-            && x_set
-            && y_set
+            && (placed
+                || (matches!(
+                    e.style.position,
+                    Some(crate::computed::Position::Absolute)
+                        | Some(crate::computed::Position::Fixed)
+                ) && x_set
+                    && y_set))
     };
     let has_negative = nodes.iter().any(|n| match n {
         Node::Element(e) => movable(e),
