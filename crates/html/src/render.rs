@@ -8798,7 +8798,28 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 cell.style.max_height = None;
             }
             let cell = &cell;
-            let mut d = styled_div(cell);
+            // Коробке ячейки нужен СЛИТЫЙ стиль: у сырого `cell.style`
+            // шрифтовые единицы не разрешены, и `apply` считает их от жёстких
+            // 16 точек — `padding: 1em` при кегле 20 давало 16
+            // (`table-height-algorithm-008a/b/c`). Берутся только те слоты,
+            // где это безопасно: ширину и её минимум решает дорожка, и их
+            // подмена уже мерилась отдельно.
+            let box_style = {
+                let mut c = cell.style.clone();
+                let fixup = |own: Option<Len>, merged: Option<Len>| match own {
+                    Some(Len::Px(_)) | None => own,
+                    _ => merged,
+                };
+                c.padding = crate::computed::Sides {
+                    top: fixup(c.padding.top, cm.padding.top),
+                    right: fixup(c.padding.right, cm.padding.right),
+                    bottom: fixup(c.padding.bottom, cm.padding.bottom),
+                    left: fixup(c.padding.left, cm.padding.left),
+                };
+                c.height = fixup(c.height, cm.height);
+                c
+            };
+            let mut d = styled_div_with(cell, &box_style);
             // Заливка строки И ГРУППЫ строк: своей коробки у них в общей сетке
             // не остаётся, поэтому фон рисуют ячейки. Раньше бралась только
             // строка, и `<tbody style="background">` пропадал молча
