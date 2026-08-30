@@ -4475,6 +4475,23 @@ fn paragraph_pieces(
             } else {
                 el
             };
+            // Абсолютная коробка с заданными краями места в строке не
+            // занимает — `atom_element` вернул пустышку нулевого размера.
+            // Атомом её отдавать нельзя: атом уводит абзац с текстового пути
+            // в ряд, и содержащим блоком абсолюта становится коробка ВСЕГО
+            // абзаца, а §10.1 п.4 требует прямоугольник фрагментов строчного
+            // предка. `Overlay` абзац с текстового пути не уводит.
+            if matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            ) && !at_static_position(&e.style)
+                && !matches!(
+                    e.tag.as_str(),
+                    "svg" | "img" | "canvas" | "video" | "embed" | "object" | "iframe"
+                )
+            {
+                return inline::Piece::Overlay(el);
+            }
             inline::Piece::Atom(el)
         })
     };
