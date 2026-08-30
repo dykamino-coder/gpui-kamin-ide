@@ -5132,7 +5132,10 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         return Some(built);
     }
     match e.tag.as_str() {
-        "img" => Some(image_with(e, Some(atom_base_font(inherited, opts)))),
+        "img" => Some(image_with(
+            &pct_height_to_px(e, inherited),
+            Some(atom_base_font(inherited, opts)),
+        )),
         // Замещаемые с адресом в СВОЁМ атрибуте: у блочного пути такие рукава
         // есть, у строчного не было, и `<object data>` в строке терял
         // собственный размер (§10.3.2, §10.6.2) — коробки не заводил и уходил
@@ -6839,7 +6842,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         None
     };
     match e.tag.as_str() {
-        "img" => image(e),
+        "img" => image(&pct_height_to_px(e, inherited)),
         // Замещаемые с картинкой-источником рисуются как <img>: embed через
         // src, object через data, video через poster (css-images §5:
         // object-fit/-position действуют на всех замещаемых).
@@ -7394,6 +7397,35 @@ fn atom_base_font(inherited: &Computed, opts: &RenderOpts) -> f32 {
 
 fn image(e: &Element) -> AnyElement {
     image_with(e, None)
+}
+
+/// Доля ВЫСОТЫ замещаемого, сведённая к точкам по содержащему блоку.
+///
+/// Держатель картинки стоит внутри анонимного ряда строки
+/// (`inline::as_wrapped_row`): у ряда высота `auto`, элемент прижат по базовой
+/// линии и не растягивается, поэтому доля высоты бралась ОТ РЯДА и разрешалась
+/// в ноль — картинка не рисовалась ни одной точкой
+/// (`background-image-cover-002-ref`). Содержащий блок здесь известен точно —
+/// это `inherited`, и доля сводится к точкам ещё на сборке.
+///
+/// Только обычный блочный контейнер: у гибкого, сеточного и лунок высота
+/// приходит от раскладки, и подстановка ломает `row-auto-repeat-auto-023`.
+fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
+    let (Some(Len::Pct(k)), Some(Len::Px(h))) = (e.style.height, inherited.height) else {
+        return e.clone();
+    };
+    if !matches!(inherited.display, None | Some(Display::Block)) {
+        return e.clone();
+    }
+    // `height` в разборе — высота СОДЕРЖИМОГО (§10.6.2, content-box): отступы
+    // и рамку прибавляет уже раскладка. Вычитать их отсюда нельзя — картинка
+    // выходила на 6 точек короче (0.91 вместо 0.00 на `cover-002`).
+    if h <= 0.0 {
+        return e.clone();
+    }
+    let mut copy = e.clone();
+    copy.style.height = Some(Len::Px(k * h));
+    copy
 }
 
 /// То же, но с базовым кеглем для разрешения долей: атом строится от СЫРОГО
