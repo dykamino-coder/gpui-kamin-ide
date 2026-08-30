@@ -931,6 +931,15 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             .collect()
     };
     let mut out = vec![];
+    // Порядок краски подслоя (§9.9 шаг 3): соседние распорки отрицательного
+    // `z-index` стоят в порядке разметки, а рисоваться обязаны по z. Высота у
+    // них нулевая и y общий, поэтому перестановка СОСЕДЕЙ раскладку не меняет
+    // — в отличие от перестановки в общем списке детей, замеренной в минус
+    // (см. `movable`). Прогон рвётся сам, как только между распорками встаёт
+    // что-то ещё.
+    let mut below_run_start = 0usize;
+    let mut below_run_end = usize::MAX;
+    let mut below_zs: Vec<i32> = vec![];
     // Липкому ребёнку нужны две вещи, которых он сам не видит: коробка
     // родителя и видимая часть ленты. Их снимает распорка — она идёт первой,
     // потому что готовит замер до отрисовки детей.
@@ -1430,15 +1439,32 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 };
                 match taken {
                     None => out.push(probe),
-                    Some(kept) => out.push(
-                        div()
-                            .relative()
-                            .w_full()
-                            .h_0()
-                            .flex_shrink_0()
-                            .child(kept)
-                            .into_any_element(),
-                    ),
+                    Some(kept) => {
+                        let contiguous = below && out.len() == below_run_end;
+                        out.push(
+                            div()
+                                .relative()
+                                .w_full()
+                                .h_0()
+                                .flex_shrink_0()
+                                .child(kept)
+                                .into_any_element(),
+                        );
+                        if below {
+                            if !contiguous {
+                                below_run_start = out.len() - 1;
+                                below_zs.clear();
+                            }
+                            below_zs.push(e.style.z_index.unwrap_or(0));
+                            let mut at = below_zs.len() - 1;
+                            while at > 0 && below_zs[at - 1] > below_zs[at] {
+                                below_zs.swap(at - 1, at);
+                                out.swap(below_run_start + at - 1, below_run_start + at);
+                                at -= 1;
+                            }
+                            below_run_end = out.len();
+                        }
+                    }
                 }
                 continue;
             }
