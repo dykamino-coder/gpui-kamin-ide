@@ -677,6 +677,15 @@ impl LineLayoutCache {
                     }
                 }
                 layout.width += letter_spacing * (i as f32);
+                // KaminIDE patch: знак без глифа. Набор выбрасывает
+                // «default ignorable» (U+FEFF и родню) целиком, и трекинг на
+                // нём не даёт ширины ни одному глифу. А для CSS такой знак —
+                // носитель ПРОДВИЖЕНИЯ: строчная коробка держит им место под
+                // своё поле и отступ (§8.4). Ширину набора считаем по знакам,
+                // раз глифов не осталось вовсе.
+                if i == 0 {
+                    layout.width += letter_spacing * (text.chars().count() as f32);
+                }
             }
 
             let key = Arc::new(CacheKey {

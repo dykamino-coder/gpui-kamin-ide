@@ -268,9 +268,16 @@ pub fn collect(
                 // унаследованного `direction`. Замерено: CSS2 4765 -> 4765,
                 // приобретено 0 / потеряно 0. Уровень куска здесь ещё не
                 // посчитан, и подмена сводилась к тому же `direction`.
-                let (mut lead, mut trail) = inline_sides(e, &merged);
+                let ((mut mlead, mut mtrail), (mut lead, mut trail)) = inline_sides(e, &merged);
                 if merged.rtl == Some(true) {
                     std::mem::swap(&mut lead, &mut trail);
+                    std::mem::swap(&mut mlead, &mut mtrail);
+                }
+                if mlead != 0.0 {
+                    out.push(Piece::Text {
+                        text: SPACER.into(),
+                        style: margin_spacer_style(&merged, inherited, mlead),
+                    });
                 }
                 if lead != 0.0 {
                     out.push(Piece::Text {
@@ -305,6 +312,12 @@ pub fn collect(
                     out.push(Piece::Text {
                         text: SPACER.into(),
                         style: spacer_style(&merged, trail),
+                    });
+                }
+                if mtrail != 0.0 {
+                    out.push(Piece::Text {
+                        text: SPACER.into(),
+                        style: margin_spacer_style(&merged, inherited, mtrail),
                     });
                 }
                 if atomic {
@@ -1509,7 +1522,7 @@ pub fn word_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usiz
 /// Доля тут не считается: она берётся от ширины контейнера, которая на сборке
 /// кусков ещё не решена. Пропуск честнее приблизительной длины — её видно в
 /// сравнении с браузером.
-fn inline_sides(e: &Element, merged: &Computed) -> (f32, f32) {
+fn inline_sides(e: &Element, merged: &Computed) -> ((f32, f32), (f32, f32)) {
     let size = match merged.font_size {
         Some(Len::Px(v)) => v,
         _ => 16.0,
@@ -1533,24 +1546,29 @@ fn inline_sides(e: &Element, merged: &Computed) -> (f32, f32) {
     // `css-text/shaping-arabic-diacritics-002` 0.04 -> 9.14. Там отступ задан
     // спану ВНУТРИ арабского слова, и распорка U+FEFF рвёт курсивное
     // соединение — чинится не здесь, а прозрачностью распорки для набора.
+    // Поле возвращается ОТДЕЛЬНО от рамки с отступом: под полем виден фон
+    // ПРЕДКА (§8.3 — поля всегда прозрачны), а под рамкой и отступом — свой
+    // (§14.2). Одной распоркой обе полосы не выразить: фон у неё один.
     (
-        px_of(e.style.margin.left) + px_of(border.left) + px_of(e.style.padding.left),
-        px_of(e.style.margin.right) + px_of(border.right) + px_of(e.style.padding.right),
+        (px_of(e.style.margin.left), px_of(e.style.margin.right)),
+        (
+            px_of(border.left) + px_of(e.style.padding.left),
+            px_of(border.right) + px_of(e.style.padding.right),
+        ),
     )
 }
 
 /// Слой знака-распорки: ширину ему даёт трекинг на своём куске, а всё
 /// остальное с него снимается — фон и замена пробелов принадлежат тексту.
 ///
-/// ПРОБОВАЛИ И ОТКАТИЛИ: выпускать поле ОТДЕЛЬНОЙ распоркой и красить его
-/// фоном предка (§8.3 — поля прозрачны, под ними виден фон предка), чтобы
-/// закрыть `inline-formatting-context-002/003`. Замерено по срезу из 3646
-/// пар строчных и текстовых семей: 0 и 0, числа пар не сдвинулись ни на
-/// сотую. Причина проверена кадром и отладочной печатью: распорка ПОЛУЧАЕТ
-/// чёрный фон, но полоса не рисуется — ширину распорке даёт трекинг, а
-/// полосу прогона рисует ширина ГЛИФОВ. Тот же потолок записан в
-/// `inline_sides`: «раздутие на pad[1]/pad[3] продвижения не даёт».
-/// Возвращаться сюда только вместе с геометрией полосы прогона.
+/// Фон снимается ИМЕННО ЗДЕСЬ, а поле красится своей распоркой
+/// (`margin_spacer_style`): под полем виден фон предка, под отступом — свой.
+/// Первый заход на это без правки набора дал 0 и 0 на 3646 парах: распорка
+/// фон получала, но полоса не рисовалась. Корень был в наборе — «default
+/// ignorable» U+FEFF выбрасывается целиком, глифов у прогона не остаётся, и
+/// цикл краски полосы не идёт ни разу. Чинится в `vendor/gpui`
+/// (`line_layout.rs` — ширина по знакам, `line.rs` — квад безглифного
+/// прогона), обе пометки «KaminIDE patch».
 fn spacer_style(merged: &Computed, advance: f32) -> Computed {
     let mut style = merged.clone();
     style.letter_spacing = Some(Len::Px(advance));
@@ -1558,6 +1576,16 @@ fn spacer_style(merged: &Computed, advance: f32) -> Computed {
     style.word_space_char = None;
     style.inline_bg = None;
     style.inline_border = None;
+    style
+}
+
+/// Слой распорки ПОЛЯ строчной коробки: своего фона у поля нет, сквозь него
+/// виден фон предка (§8.3 «margin properties … are always transparent»).
+/// Рамку распорке поля не даём: полосу с рамкой уже мерили дважды, обе потери
+/// в `bidi-*` (см. запись у `uniform_border`).
+fn margin_spacer_style(merged: &Computed, inherited: &Computed, advance: f32) -> Computed {
+    let mut style = spacer_style(merged, advance);
+    style.inline_bg = inherited.inline_bg;
     style
 }
 

@@ -562,6 +562,7 @@ fn paint_line_background(
             )
         });
     window.paint_layer(line_bounds, |window| {
+        let all_style_runs = decoration_runs;
         let mut decoration_runs = decoration_runs.iter();
         let mut wraps = wrap_boundaries.iter().peekable();
         let mut run_end = 0;
@@ -589,6 +590,31 @@ fn paint_line_background(
         let mut line_ix = 0usize;
         let mut gaps_passed = 0usize;
         let mut prev_space = false;
+        // KaminIDE patch: набор БЕЗ ЕДИНОГО глифа. «Default ignorable» (U+FEFF
+        // и родня) выбрасывается набором целиком, цикл ниже не идёт ни разу, и
+        // фон такого прогона не рисовался вовсе. Для CSS это полоса строчной
+        // коробки: место под своё поле и отступ она держит знаком-распоркой, а
+        // ширину распорке даёт трекинг (§8.4 — боковые поля, рамки и отступы
+        // строчной коробки занимают место в строке и красятся).
+        if layout.runs.iter().all(|r| r.glyphs.is_empty())
+            && let Some(style_run) = all_style_runs
+                .iter()
+                .find(|r| r.background_color.is_some())
+            && let Some(bg) = style_run.background_color
+        {
+            window.paint_quad(run_background_quad(
+                glyph_origin,
+                layout.width,
+                line_height,
+                content_height,
+                bg,
+                style_run.background_pad,
+                style_run.background_radius,
+                true,
+                true,
+                style_run.background_border,
+            ));
+        }
         for (run_ix, run) in layout.runs.iter().enumerate() {
             max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
 
