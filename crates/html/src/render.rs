@@ -4858,6 +4858,10 @@ fn paragraph_pieces(
         pieces,
         inherited.vertical_align,
         Some(align),
+        match inherited.text_indent {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        },
         &mut render_text,
     )
 }

@@ -2329,6 +2329,7 @@ pub fn as_wrapped_row(
     pieces: Vec<Piece>,
     align: Option<crate::computed::Align>,
     text_align: Option<crate::computed::TextAlign>,
+    indent: f32,
     render_text: &mut dyn FnMut(String, &Computed) -> AnyElement,
 ) -> AnyElement {
     use crate::computed::{Align, TextAlign};
@@ -2356,6 +2357,18 @@ pub fn as_wrapped_row(
         Some(TextAlign::Left) => row.justify_start(),
         _ => row,
     };
+    // Отступ первой строки (§16.1) в ряду выражает пустая коробка первым
+    // куском: текстовый путь несёт его полем `Indent`, а сюда абзац попадает,
+    // когда в нём есть атом, и отступ пропадал молча.
+    if indent != 0.0 {
+        row = row.child(
+            gpui::div()
+                .w(gpui::px(indent))
+                .h_0()
+                .flex_shrink_0()
+                .into_any_element(),
+        );
+    }
     for p in split_glued_tail(drop_hanging_tail(pieces)) {
         row = match p {
             Piece::Atom(el) => row.child(el),
