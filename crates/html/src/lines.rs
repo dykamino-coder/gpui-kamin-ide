@@ -3164,6 +3164,11 @@ impl Paragraph {
     }
 
     /// Ширина слова в наборе — тем же путём, что и отрисовка.
+    /// ПРОБОВАЛИ И ОТКАТИЛИ: чистить слово от незримых знаков перед набором
+    /// и замером, как это делает общий путь (`trim_runs`). Проба по 296 парам
+    /// семей `bidi-*`, `letter-spacing-*`, `shaping-arabic-*`: не сдвинулась
+    /// НИ ОДНА — знаки управления двунаправленностью лежат в своих кусках, а
+    /// не внутри слов, и в этот путь не попадают.
     fn word_width(&self, word: &Word, window: &mut Window) -> Pixels {
         let slice: SharedString = self.text[word.range.clone()].to_string().into();
         let runs = slice_runs(&self.runs, &word.range);
