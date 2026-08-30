@@ -6860,6 +6860,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             image(&copy)
         }
         "iframe" if built_iframe.is_some() => built_iframe.take().unwrap(),
+        // ЗАМЕРЕНО И ОТКАЧЕНО: давать рамке БЕЗ адреса резервную ширину 300
+        // точек при `display: block` (§10.3.4 -> §10.3.2). Замерено по срезу
+        // из 416 пар семей *image*/*replaced*: приобретено 0, потеряно 1 —
+        // `float-replaced-height-004` 0.00 -> «красное видно». Это второй
+        // заход на резервный размер бесадресной рамки; первый (коробка
+        // 300×150 целиком) стоил 13 пар, запись выше.
         // Рисунок не разобрался — показываем запасной текст, а не пустоту.
         "svg" => crate::svg::element(e).unwrap_or_else(|| {
             styled_div_with(e, &merged)
@@ -7414,6 +7420,8 @@ fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
     let (Some(Len::Pct(k)), Some(Len::Px(h))) = (e.style.height, inherited.height) else {
         return e.clone();
     };
+    // ЗАМЕРЕНО И ОТКАЧЕНО: пускать сюда и `inline-block` — 0 и 0 по обоим
+    // сводам, `sizing-percentages-replaced-orthogonal-001` не сдвинулась.
     if !matches!(inherited.display, None | Some(Display::Block)) {
         return e.clone();
     }
