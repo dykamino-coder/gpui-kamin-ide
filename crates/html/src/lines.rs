@@ -368,6 +368,45 @@ impl Paragraph {
         self
     }
 
+    /// Расходится ли трекинг ОТРЕЗКОВ с общим трекингом абзаца.
+    ///
+    /// `letter_spans` заполняется на КАЖДЫЙ кусок с заданным `letter-spacing`,
+    /// а свойство наследуется: `p { letter-spacing: 1em }` даёт запись на все
+    /// куски с тем же значением, что и общее. Пустой разницы достаточно, чтобы
+    /// абзац ушёл на пословную краску, где видимого порядка UAX#9 нет вовсе —
+    /// и буквы вставали в логическом порядке (`bidi-005b`…`-009b`).
+    ///
+    /// Незримый знак (распорка полей, метка атома, управление
+    /// двунаправленностью) несёт свой трекинг всегда: у него он и есть
+    /// продвижение, поэтому расхождением считается любое НЕнулевое значение.
+    fn letter_spans_diverge(&self) -> bool {
+        let common = f32::from(self.letter_spacing);
+        self.letter_spans.iter().any(|(r, v)| {
+            let seen = f32::from(*v);
+            let body = self.text.get(r.clone()).unwrap_or("");
+            let invisible = !body.is_empty()
+                && body.chars().all(|c| {
+                    matches!(
+                        c,
+                        '\u{feff}' | '\u{200b}' | '\u{200e}' | '\u{200f}'
+                            | '\u{202a}'..='\u{202e}'
+                            | '\u{2066}'..='\u{2069}'
+                    )
+                });
+            // Незримый знак с ОБЩИМ трекингом — просто унаследовавший его
+            // знак управления двунаправленностью: расхождением он не является.
+            // Расходится только распорка, чей трекинг и есть её ширина.
+            if invisible && (seen - common).abs() <= 0.01 {
+                return false;
+            }
+            if invisible {
+                seen != 0.0
+            } else {
+                (seen - common).abs() > 0.01
+            }
+        })
+    }
+
     /// Вырез строки номер `line_no`: (слева, справа).
     /// Надбавки строки сверху и снизу от сдвинутых по вертикали кусков.
     ///
@@ -2405,7 +2444,7 @@ impl Element for Paragraph {
                 || body.contains('\u{9}')
                 || self.word_spacing != px(0.)
                 || !self.word_spans.is_empty()
-                || !self.letter_spans.is_empty()
+                || self.letter_spans_diverge()
                 || !self.shift_spans.is_empty()
                 || !self.rel_spans.is_empty()
             {
