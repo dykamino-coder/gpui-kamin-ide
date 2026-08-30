@@ -622,6 +622,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // считает долю всегда, его блок определён по построению.
         if matches!(l, Len::Pct(_))
             && f % 2 == 1
+            && c.merged
             && !c.cb_height_def
             && !c.root_box
             && !matches!(
