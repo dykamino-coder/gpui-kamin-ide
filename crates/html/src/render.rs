@@ -7172,6 +7172,11 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // Ширина колонки без их числа — это «сколько влезет»: ровно
                 // то, что умеет короткая форма дорожек в GPUI.
                 d = d.grid().grid_cols_min(px(w));
+            // ЗАМЕРЕНО И ОТКАЧЕНО: пускать сюда и ЯВНЫЙ `display: block` (в
+            // эталонах вертикального письма он написан прямо, и они шли
+            // блочным потоком сверху вниз). Полный свод CSS3: приобретено 0,
+            // потеряно 1 — `grid-positioned-children-writing-modes-001`
+            // 0.39 -> 1.32.
             } else if merged.vertical == Some(true) && e.style.display.is_none() {
                 // Вертикальное письмо: ось блочного потока — горизонтальная.
                 // Дети идут слева направо (`vertical-lr`) или справа налево

@@ -1801,6 +1801,11 @@ pub fn autospace_spans(
             {
                 let family = p_style.font_family.clone().unwrap_or_default();
                 let had = crate::metrics::spacing_px(p_style.letter_spacing, &family, p_size);
+                // ЗАМЕРЕНО И ОТКАЧЕНО: считать зазор от `ic`, а не от кегля
+                // (css-text-4 §7.1 «1/8 of the ideographic advance»). Полный
+                // свод CSS3: приобретено 0, потеряно 1 —
+                // `text-autospace-supplementary-ideograph` 0.08 -> 0.59.
+                // Пары `text-autospace-elements-005/005b` (0.56) не сдвинулись.
                 out.push((p_at..p_at + p_len, gpui::px(had + p_size / 8.0)));
             }
             prev = Some((at + off, ch.len_utf8(), ch, size, style));
