@@ -457,8 +457,13 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // потока: она разворачивается при `vertical-rl`. У КОЛОНКИ (ось
         // потока) поперечная — ось строки, и её разворачивает `direction: rtl`
         // (`flexbox-writing-mode-004/005`: контейнеры-колонки шли зеркально).
+        // `sideways-lr` — единственное письмо, где строчная ось идёт СНИЗУ
+        // ВВЕРХ (css-writing-modes-4 §3.1), поэтому поперечная ось колонки
+        // разворачивается им так же, как `direction: rtl`.
+        let inline_reversed =
+            (c.rtl == Some(true)) != (c.sideways == Some(true) && c.vertical_rl != Some(true));
         let flip = if matches!(c.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse)) {
-            c.rtl == Some(true)
+            inline_reversed
         } else {
             c.vertical_rl == Some(true)
         };
