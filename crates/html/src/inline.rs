@@ -2277,7 +2277,14 @@ fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     if !style.font_features.is_empty() {
         font.features = gpui::FontFeatures(std::sync::Arc::new(style.font_features.clone()));
     }
-    let color = style.color.map(Color::to_hsla).unwrap_or(base.color);
+    // `visibility: hidden` на самом куске: место в строке он держит, а чернил
+    // не даёт (§11.2). Прозрачный цвет, а не пропуск куска, — иначе поехали бы
+    // ширины и переносы.
+    let color = if style.hidden == Some(true) {
+        gpui::hsla(0.0, 0.0, 0.0, 0.0)
+    } else {
+        style.color.map(Color::to_hsla).unwrap_or(base.color)
+    };
     // Кегль куска: без него разный размер в строке собрать в один блок было
     // нельзя (см. `single_block`).
     let base_px = f32::from(base.font_size.to_pixels(gpui::px(16.)));

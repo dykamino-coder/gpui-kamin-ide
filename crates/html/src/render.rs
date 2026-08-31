@@ -132,8 +132,29 @@ fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     Some(layer.into_any_element())
 }
 
+/// Объявлен ли где-то в поддереве СВОЙ `visibility: visible`.
+///
+/// По §11.2 потомок скрытого элемента виден, если объявил видимость сам.
+/// Читается собственное значение узла, до слияния: `Some(false)` приходит
+/// только из авторского CSS — прочие места ставят лишь `Some(true)`.
+fn shows_inside(nodes: &[Node]) -> bool {
+    nodes.iter().any(|n| match n {
+        Node::Text(_) => false,
+        Node::Element(e) => e.style.hidden == Some(false) || shows_inside(&e.children),
+    })
+}
+
 fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
-    let c = style;
+    // Скрытая коробка с видимым потомком не прячется целиком: раскладка та
+    // же, гаснет только СВОЯ краска — иначе ранний возврат из отрисовки
+    // уносит и потомка (`visufx/visibility-005`).
+    let bare;
+    let c = if style.hidden == Some(true) && shows_inside(&e.children) {
+        bare = style.paint_off();
+        &bare
+    } else {
+        style
+    };
     let mut d = apply(div(), c);
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
     // наведения к нему не применяется.

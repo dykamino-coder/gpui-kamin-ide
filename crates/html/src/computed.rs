@@ -1333,6 +1333,32 @@ impl Computed {
     /// Зовётся ПОСЛЕ того, как письмо унаследовано: до этого неизвестно, какая
     /// ось строчная. Физическое значение, если оно задано, не трогается —
     /// логическое лишь заполняет пустое место.
+    /// Стиль без СВОЕЙ краски: `visibility: hidden` прячет коробку, но не
+    /// поддерево — потомок с `visibility: visible` обязан рисоваться (§11.2).
+    /// Гасить целиком нельзя: раскладка обязана остаться прежней, поэтому
+    /// снимается только краска, а размеры и рамки по толщине не трогаются.
+    pub fn paint_off(&self) -> Computed {
+        let mut c = self.clone();
+        c.hidden = None;
+        c.background = None;
+        c.bg_image = None;
+        c.gradient = None;
+        c.gradient_raw = None;
+        c.border_color = Some(crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.0,
+        });
+        c.border_colors = [c.border_color; 4];
+        c.outline = None;
+        c.shadows.clear();
+        c.text_shadow = None;
+        c.underline = None;
+        c.line_through = None;
+        c
+    }
+
     pub fn resolve_logical(&mut self, parent_vertical: Option<bool>) {
         let Some(logical) = self.logical.take() else {
             return;
@@ -1669,6 +1695,9 @@ impl Computed {
     pub fn text_only(&self) -> Computed {
         Computed {
             color: self.color,
+            // Видимость — свойство ТЕКСТА тоже: скрытый кусок держит место, но
+            // не красится, а запасная ветка «строка из слов» флаг теряла.
+            hidden: self.hidden,
             font_size: self.font_size,
             // Гарнитура — свойство ТЕКСТА: без неё кусок в строчном ряду
             // набирался подменным системным шрифтом, и `@font-face` (в том
