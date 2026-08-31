@@ -5846,6 +5846,11 @@ fn parse_justify(v: &str) -> Option<Justify> {
         "flex-end" => Some(Justify::End),
         // `left`/`right` физические; при письме слева направо они совпадают
         // с началом и концом строки.
+        //
+        // ЗАМЕРЕНО И ОТКАЧЕНО: развести их в отдельные значения, чтобы при
+        // rtl они НЕ переставлялись вместе с `start`/`end` (css-align-3 §4).
+        // Правка верна по спеке, но полный свод обоих: 0 и 0 —
+        // `flexbox_justifycontent-right-002` (8.53) держит не это.
         "start" | "left" => Some(Justify::WmStart),
         "end" | "right" => Some(Justify::WmEnd),
         "space-between" => Some(Justify::Between),
