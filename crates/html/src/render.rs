@@ -1496,8 +1496,15 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Расширение на элементы сетки без `position` ЗАМЕРЕНО В МИНУС
             // (display-inline-grid 0.08 -> 8.20, inline-z-axis-002/004) —
             // подложка в строчной сетке рвёт свою же краску.
+            // `<body>` исключён: его родитель — корневой элемент, а тот
+            // всегда образует КОРНЕВОЙ контекст наложения. Шаги 1-2
+            // приложения E — собственные фон и рамка корня, шаг 3 —
+            // отрицательный `z-index` ПОВЕРХ них, а не под всем окном; братьев
+            // у `<body>` нет, уходить не подо что
+            // (`root-element-creates-stacking-context`).
             if e.style.z_index.is_some_and(|z| z < 0)
                 && e.style.position == Some(crate::computed::Position::Relative)
+                && e.tag != "body"
             {
                 done = crate::interact::Underlay::new(done).into_any_element();
             }
