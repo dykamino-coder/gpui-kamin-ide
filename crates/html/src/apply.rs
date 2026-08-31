@@ -527,6 +527,21 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         d = d.flex_basis(len_to_gpui(b));
     }
     if let Some(j) = c.justify_content {
+        // `start`/`end` — начало и конец ОСИ ПИСЬМА (css-align-3 §4), а
+        // `AlignContent::Start`/`End` у раскладки физические: смещение всегда
+        // считается от `padding_border.main_start`, разворот выражен только
+        // обратным обходом. Ось выше уже переведена в физическую (`rtl_row`
+        // разворачивает ряд), поэтому при письме справа налево начало и конец
+        // надо поменять местами (`flexbox_justifycontent-start-rtl`).
+        let j = if rtl_row {
+            match j {
+                Justify::WmStart => Justify::WmEnd,
+                Justify::WmEnd => Justify::WmStart,
+                other => other,
+            }
+        } else {
+            j
+        };
         d.style().justify_content = Some(to_content(j));
     }
     // `align-content` — распределение СТРОК, когда их несколько: без него
