@@ -1406,6 +1406,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             let below_free_axis = e.style.position == Some(crate::computed::Position::Absolute)
                 && e.style.z_index.is_some_and(|z| z < 0)
                 && !(x_set && y_set);
+            // ЗАМЕРЕНО И ОТКАЧЕНО: уводить в верхний слой ВСЯКУЮ абсолютную
+            // коробку с одной свободной осью (§9.9 шаг 8) — по симметрии с
+            // `below_free_axis`. Полный свод CSS2: приобретено 3, ПОТЕРЯНО
+            // 165 (вся семья `vertical-align-0NN` уходит в «красное видно»,
+            // `floats-wrap-bfc-outside-001` 0.08 -> 7.28). Распорка держит
+            // место свободной оси только там, где элемент и так вне строки;
+            // в абзаце она рвёт строку. Возвращаться только с настоящей
+            // статической позицией внутри строки.
             if !ordered_context && (at_static_position(&e.style) || below_free_axis) {
                 // Позиционированный элемент рисуется ПОВЕРХ обычного
                 // содержимого (CSS 2.1 §9.9, шаг 8) и без заданного `z-index`:
