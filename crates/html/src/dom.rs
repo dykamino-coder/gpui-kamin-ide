@@ -388,17 +388,58 @@ fn subgrid_slot(
             count.saturating_sub((-n) as usize)
         }
     };
+    // Конечная линия — это КРАЙ, а не дорожка: у сетки из N дорожек линий
+    // N+1, и потолок у неё `count`, а не `count - 1`. С общим потолком
+    // подсетка, упирающаяся в последнюю линию родителя, теряла дорожку:
+    // `grid-column: 2 / 5` при четырёх колонках давало пролёт 2 вместо 3, а
+    // проверка длины среза этого не ловит.
+    let edge = |n: i16| -> usize {
+        if n > 0 {
+            (n as usize - 1).min(count)
+        } else {
+            count.saturating_sub(((-n) as usize).saturating_sub(1))
+        }
+    };
     match place {
         Some((Placement::Line(a), Placement::Line(b))) => {
-            let (s, t) = (line(*a), line(*b));
+            let (s, t) = (line(*a), edge(*b));
             Some((s.min(t), (t as i32 - s as i32).unsigned_abs() as usize))
         }
         Some((Placement::Line(a), Placement::Span(k))) => Some((line(*a), *k as usize)),
         Some((Placement::Line(a), Placement::Auto)) => Some((line(*a), 1)),
         Some((Placement::Span(k), Placement::Line(b))) => {
-            Some((line(*b).saturating_sub(*k as usize), *k as usize))
+            Some((edge(*b).saturating_sub(*k as usize), *k as usize))
         }
         _ => None,
+    }
+}
+
+/// Поправка среза на РАЗНИЦУ зазоров (css-grid-2 §subgrids).
+///
+/// Свой зазор у подсетки остаётся, но дорожка получает половину разницы
+/// зазоров с каждой стороны, обращённой к ВНУТРЕННЕМУ стыку среза: три
+/// эталона WPT выписывают результат числами (`grid-gap-larger-001-ref`
+/// `70px 130px 70px` при родительских 100/190/100).
+pub(crate) fn subgrid_gap_slice(
+    slice: &mut [crate::computed::TrackSize],
+    parent: Option<Len>,
+    own: Option<Len>,
+) {
+    use crate::computed::{Track, TrackSize};
+    let px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let d = px(parent) - px(own);
+    let n = slice.len();
+    if d == 0.0 || n < 2 {
+        return;
+    }
+    for (i, t) in slice.iter_mut().enumerate() {
+        let sides = u8::from(i > 0) + u8::from(i + 1 < n);
+        if let TrackSize::Single(Track::Px(w)) = t {
+            *w = (*w + d / 2.0 * f32::from(sides)).max(0.0);
+        }
     }
 }
 
@@ -491,13 +532,23 @@ fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                         *w = (*w - trail).max(0.0);
                     }
                     // ЗАМЕРЕНО И ОТКАЧЕНО: брать зазор подсеточной оси у
-                    // РОДИТЕЛЯ (css-grid-2 §subgrids). Полный свод CSS3:
-                    // приобретено 0, потеряно 3 — `grid-lanes-subgrid-001c`
-                    // 0.03 -> 0.53, `-002c` 0.50 -> 0.56,
-                    // `row-subgrid-grid-gap-005` 0.32 -> 0.56. Срез дорожек
-                    // родителя уже несёт зазоры внутри себя, и родительский
-                    // зазор ложится вторым разом. Возвращаться вместе с
-                    // вычитанием зазоров из среза.
+                    // РОДИТЕЛЯ. Полный свод CSS3: приобретено 0, потеряно 3 —
+                    // `grid-lanes-subgrid-001c` 0.03 -> 0.53, `-002c`
+                    // 0.50 -> 0.56, `row-subgrid-grid-gap-005` 0.32 -> 0.56.
+                    // Причина ОДНОСТОРОННОСТЬ, а не двойной счёт: гейт выше
+                    // пропускает только обычную сетку, и во всех трёх парах
+                    // тест написан на ЛУНКАХ (свой срез — `render.rs`), а
+                    // эталон на сетке — стороны разъехались. Само правило
+                    // тоже иное: при разнице зазоров дорожка получает половину
+                    // разницы с каждой стороны внутреннего стыка, а свой зазор
+                    // остаётся. Возвращаться симметрично обоим путям.
+                    let (prow, pcol) = el.style.gap.unwrap_or((None, None));
+                    let (crow, ccol) = child.style.gap.unwrap_or((None, None));
+                    subgrid_gap_slice(
+                        &mut slice,
+                        if row_dir { prow } else { pcol },
+                        if row_dir { crow } else { ccol },
+                    );
                     // В подсеточной оси SELF-выравнивание не действует:
                     // подсетка держит всю дорожку.
                     if row_dir {

@@ -11833,6 +11833,16 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 if let Some(TrackSize::Single(Track::Px(w))) = slice.last_mut() {
                     *w = (*w - trail).max(0.0);
                 }
+                // Разница зазоров — тем же правилом, что и на разборе:
+                // иначе стороны разъезжаются, когда тест написан на лунках, а
+                // эталон на обычной сетке (замерено: 0 и −3).
+                let (prow, pcol) = merged.gap.unwrap_or((None, None));
+                let (crow, ccol) = item.style.gap.unwrap_or((None, None));
+                crate::dom::subgrid_gap_slice(
+                    &mut slice,
+                    if row_dir { prow } else { pcol },
+                    if row_dir { crow } else { ccol },
+                );
                 // В сабгридной оси SELF-выравнивание НЕ действует: субгрид
                 // держит ВСЮ дорожку (все четыре js/je/jc/jb варианта
                 // subgrid-alignment-in-subgridded-axis-001 обязаны совпасть).
