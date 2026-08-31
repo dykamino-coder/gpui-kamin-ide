@@ -2393,6 +2393,53 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
                     lone.inline = false;
                     lone.style.display = Some(Display::Block);
                 }
+                // Перед флоатом стоят одни АТОМЫ (замещаемые и строчные
+                // блоки): они и флоат обязаны остаться в ОДНОЙ строке, а
+                // сторону флоат держит сам. Выражается гибким рядом с
+                // раздачей по краям — блокификация тут не годится, она
+                // унесла бы флоат на свою строку
+                // (`borders/border-color-001-ref`: вторая картинка обязана
+                // стоять у правого края той же строки).
+                // Атомом здесь считается и замещаемый тег БЕЗ заданных
+                // размеров: у картинки они приходят из файла, а `band_piece`
+                // требует точек.
+                let atom_like = |n: &Node| match n {
+                    Node::Text(_) => false,
+                    Node::Element(e) => {
+                        band_piece(n) == Some(BandPiece::Atom)
+                            || (replaced_inline(&e.tag) && e.style.float.is_none())
+                    }
+                };
+                let lead_at = out
+                    .iter()
+                    .rposition(|n| !is_blank(n) && !atom_like(n))
+                    .map_or(0, |p| p + 1);
+                let lead_atoms = out[lead_at..].iter().any(atom_like);
+                if lead_atoms && side > 0 {
+                    let mut row: Vec<Node> = out.split_off(lead_at);
+                    lone.style.margin.left = Some(Len::Auto);
+                    row.push(Node::Element(lone));
+                    out.push(Node::Element(Element {
+                        list_item: None,
+                        node_id: 0,
+                        anim: None,
+                        tag: "float-row".into(),
+                        style: Computed {
+                            display: Some(Display::Flex),
+                            ..Computed::default()
+                        },
+                        hover: None,
+                        first_letter: None,
+                        first_line: None,
+                        children: row,
+                        attrs: vec![],
+                        inline: false,
+                    }));
+                    out.extend(rest);
+                    out.extend(out_of_flow);
+                    i = j;
+                    continue;
+                }
                 lone.style.align_self = Some(if side < 0 { Align::Start } else { Align::End });
                 out.push(Node::Element(lone));
             }
