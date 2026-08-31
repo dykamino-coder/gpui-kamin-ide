@@ -255,6 +255,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     hoist_grid_abspos(&mut out);
     content_box_static_position(&mut out);
     flex_items_lose_float(&mut out);
+    subgrid_takes_parent_tracks(&mut out);
     fold_run_ins(&mut out, None);
     out
 }
@@ -371,6 +372,141 @@ fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
 ///
 /// Без этого правило §10.6.3 «блок из одних флоатов высотой ноль» считало
 /// гибкий контейнер пустым и обнуляло его высоту (`flex-box-wrap` и родня).
+/// Начало и длина пролёта подсетки в дорожках родителя.
+///
+/// Только явные формы: у подсетки без размещения среза нет, и трогать её
+/// нельзя — авто-размещение считает уже раскладка.
+fn subgrid_slot(
+    place: &Option<(crate::computed::Placement, crate::computed::Placement)>,
+    count: usize,
+) -> Option<(usize, usize)> {
+    use crate::computed::Placement;
+    let line = |n: i16| -> usize {
+        if n > 0 {
+            (n as usize - 1).min(count.saturating_sub(1))
+        } else {
+            count.saturating_sub((-n) as usize)
+        }
+    };
+    match place {
+        Some((Placement::Line(a), Placement::Line(b))) => {
+            let (s, t) = (line(*a), line(*b));
+            Some((s.min(t), (t as i32 - s as i32).unsigned_abs() as usize))
+        }
+        Some((Placement::Line(a), Placement::Span(k))) => Some((line(*a), *k as usize)),
+        Some((Placement::Line(a), Placement::Auto)) => Some((line(*a), 1)),
+        Some((Placement::Span(k), Placement::Line(b))) => {
+            Some((line(*b).saturating_sub(*k as usize), *k as usize))
+        }
+        _ => None,
+    }
+}
+
+/// Дорожки родительской сетки — вниз, в ПОДСЕТКУ (css-grid-2 §subgrids).
+///
+/// Своих дорожек в подсеточной оси у подсетки нет: она берёт СРЕЗ
+/// родительских по своему пролёту. У раскладки лунок это уже сделано
+/// (`render::lanes`), а обычная сетка разбирала `grid-template-columns:
+/// subgrid` как «одну колонку» (`count_tracks` считает слово дорожкой), и
+/// тест с эталоном гоняли одно свойство разным кодом.
+///
+/// Обход СВЕРХУ ВНИЗ: вложенная подсетка обязана увидеть уже проставленные
+/// дорожки внешней.
+fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
+    for node in nodes.iter_mut() {
+        let Node::Element(el) = node else { continue };
+        if matches!(
+            el.style.display,
+            Some(Display::Grid) | Some(Display::InlineGrid)
+        ) {
+            for row_dir in [false, true] {
+                let tracks = if row_dir {
+                    el.style.grid_rows.clone()
+                } else {
+                    el.style.grid_tracks.clone()
+                }
+                .unwrap_or_default();
+                if tracks.is_empty()
+                    || !tracks.iter().all(|t| {
+                        matches!(
+                            t,
+                            crate::computed::TrackSize::Single(crate::computed::Track::Px(_))
+                        )
+                    })
+                {
+                    continue;
+                }
+                for child in el.children.iter_mut() {
+                    let Node::Element(child) = child else { continue };
+                    if !child.style.subgrid {
+                        continue;
+                    }
+                    let place = if row_dir {
+                        &child.style.grid_row
+                    } else {
+                        &child.style.grid_col
+                    };
+                    let Some((at, span)) = subgrid_slot(place, tracks.len()) else {
+                        continue;
+                    };
+                    let slice: Vec<crate::computed::TrackSize> = (at..at + span)
+                        .filter_map(|i| tracks.get(i).cloned())
+                        .collect();
+                    if slice.len() != span || span == 0 {
+                        continue;
+                    }
+                    // Свои края подсетки вычитаются из первой и последней
+                    // дорожки куска — ровно как в раскладке лунок.
+                    let px = |l: Option<Len>| match l {
+                        Some(Len::Px(v)) => v,
+                        _ => 0.0,
+                    };
+                    let bs = child.style.borders();
+                    let (lead, trail) = if row_dir {
+                        (
+                            px(child.style.margin.top) + px(bs.top) + px(child.style.padding.top),
+                            px(child.style.margin.bottom)
+                                + px(bs.bottom)
+                                + px(child.style.padding.bottom),
+                        )
+                    } else {
+                        (
+                            px(child.style.margin.left) + px(bs.left) + px(child.style.padding.left),
+                            px(child.style.margin.right)
+                                + px(bs.right)
+                                + px(child.style.padding.right),
+                        )
+                    };
+                    let mut slice = slice;
+                    if let Some(crate::computed::TrackSize::Single(crate::computed::Track::Px(
+                        w,
+                    ))) = slice.first_mut()
+                    {
+                        *w = (*w - lead).max(0.0);
+                    }
+                    if let Some(crate::computed::TrackSize::Single(crate::computed::Track::Px(
+                        w,
+                    ))) = slice.last_mut()
+                    {
+                        *w = (*w - trail).max(0.0);
+                    }
+                    // В подсеточной оси SELF-выравнивание не действует:
+                    // подсетка держит всю дорожку.
+                    if row_dir {
+                        child.style.grid_rows = Some(slice);
+                        child.style.align_self = None;
+                    } else {
+                        child.style.grid_tracks = Some(slice);
+                        child.style.grid_cols = Some(span as u16);
+                        child.style.justify_self = None;
+                    }
+                }
+            }
+        }
+        subgrid_takes_parent_tracks(&mut el.children);
+    }
+}
+
 fn flex_items_lose_float(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
