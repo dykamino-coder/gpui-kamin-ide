@@ -1698,11 +1698,13 @@ fn walk(
             if !holds_columns {
                 children.retain(|n| !matches!(n, Node::Element(c) if c.style.col_role.is_some()));
             }
-            // Выход из области: счётчик, созданный этим узлом, дальше по
-            // документу уступает место счётчику предка.
-            for name in &own_resets {
-                counters.leave_scope(name);
-            }
+            // Область счётчика НЕ закрывается на выходе из элемента: по
+            // §12.4.1 она включает элемент, его потомков И СЛЕДУЮЩИХ СЕСТЁР.
+            // Ровно это делает ленивая чистка `remove_stale` — она держит
+            // запись, пока обход не вышел за РОДИТЕЛЯ создателя. Жадное
+            // снятие здесь её опережало, и `counter-reset` на спане умирал
+            // вместе с ним (`content-counter-008`: после `XLIX` шло `XIII`
+            // вместо `L`).
             if box_level {
                 counters.leave();
             }
@@ -1950,9 +1952,6 @@ fn pseudo_box(
                 }
             }
         }
-    }
-    for name in &own_resets {
-        counters.leave_scope(name);
     }
     counters.leave();
     Some(Element {
