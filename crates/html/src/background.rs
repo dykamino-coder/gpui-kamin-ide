@@ -826,6 +826,58 @@ fn rrect_of(raw: &str, b: &ShapeBox) -> Option<((f32, f32, f32, f32), [(f32, f32
             return Some((rect, radii));
         }
     }
+    // `rect(t r b l)` — края от сторон опорной коробки, `auto` значит край
+    // (css-shapes-1 §3.1). Отличается от `inset` тем, что правый и нижний
+    // отсчитываются от ЛЕВОГО и ВЕРХНЕГО края, а не внутрь от своих.
+    if let Some(at) = raw.find("rect(") {
+        let inner = raw[at + 5..]
+            .rsplit_once(')')
+            .map(|(a, _)| a)
+            .unwrap_or(&raw[at + 5..]);
+        let (sides_s, round_s) = match inner.split_once("round") {
+            Some((a, r)) => (a, Some(r)),
+            None => (inner, None),
+        };
+        let v: Vec<&str> = sides_s.split_whitespace().collect();
+        let edge = |i: usize, base: f32, dflt: f32| -> f32 {
+            match v.get(i).copied() {
+                None | Some("auto") => dflt,
+                Some(t) => len_px(t, base),
+            }
+        };
+        let (t, r2, bo, l) = (
+            edge(0, b.rh, 0.0),
+            edge(1, b.rw, b.rw),
+            edge(2, b.rh, b.rh),
+            edge(3, b.rw, 0.0),
+        );
+        let rect = (b.rx + l, b.ry + t, (r2 - l).max(0.0), (bo - t).max(0.0));
+        let radii = round_s.map(parse_round).unwrap_or([(0.0, 0.0); 4]);
+        return Some((rect, radii));
+    }
+    // `xywh(x y w h)` — угол и размер прямо (css-shapes-1 §3.1).
+    if let Some(at) = raw.find("xywh(") {
+        let inner = raw[at + 5..]
+            .rsplit_once(')')
+            .map(|(a, _)| a)
+            .unwrap_or(&raw[at + 5..]);
+        let (sides_s, round_s) = match inner.split_once("round") {
+            Some((a, r)) => (a, Some(r)),
+            None => (inner, None),
+        };
+        let v: Vec<&str> = sides_s.split_whitespace().collect();
+        let at_i = |i: usize, base: f32| -> f32 {
+            v.get(i).map_or(0.0, |t| len_px(t, base))
+        };
+        let rect = (
+            b.rx + at_i(0, b.rw),
+            b.ry + at_i(1, b.rh),
+            at_i(2, b.rw).max(0.0),
+            at_i(3, b.rh).max(0.0),
+        );
+        let radii = round_s.map(parse_round).unwrap_or([(0.0, 0.0); 4]);
+        return Some((rect, radii));
+    }
     // Слово-коробка (или пустая/непонятная запись формы НЕ здесь — сюда
     // приходят только распознанные): margin/border/padding/content-box без
     // функции — прямоугольник опорной коробки с её радиусами.
