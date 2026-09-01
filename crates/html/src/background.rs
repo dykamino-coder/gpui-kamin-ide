@@ -668,6 +668,11 @@ pub fn shape_profile(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Option<Vec<
     let cols = b.mw.ceil().max(1.0) as usize;
     let mask = shape_mask(raw, b, cols, rows)?;
     let mut iv = mask_intervals(&mask, cols, rows, b.threshold);
+    // `shape-margin` раздувает фигуру наружу на своё расстояние
+    // (css-shapes-1 §2.2): контур обтекания — множество точек не дальше
+    // `shape-margin` от исходной фигуры. Раздутие было написано и не
+    // подключено — общий растровый путь отдавал профиль как есть.
+    dilate(&mut iv, sm, cols, rows);
     Some(
         iv.into_iter()
             .map(|slot| match slot {
