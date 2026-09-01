@@ -40603,6 +40603,7 @@ var wrapper_default = import_websocket.default;
 
 // src/main/ws/connection-manager.ts
 var vscode4 = __toESM(require("vscode"), 1);
+var import_node_crypto2 = require("node:crypto");
 
 // src/main/mcp/permission-manager.ts
 var import_node_fs = __toESM(require("node:fs"), 1);
@@ -41163,6 +41164,21 @@ var TranscriptMirror = class {
   }
 };
 
+// src/main/ws/connection-state.ts
+function toRendererConnectionState(state, authority, authorityGeneration, authoritySequence, revision) {
+  return {
+    status: state.status === "authenticated" ? "connected" : state.status === "connected" ? "connecting" : state.status,
+    authority,
+    authorityGeneration,
+    authoritySequence,
+    revision,
+    sessionId: state.sessionId,
+    error: state.error,
+    nextRetryAt: state.nextRetryAt,
+    retryAttempt: state.retryAttempt
+  };
+}
+
 // src/main/ws/connection-manager.ts
 var import_fs5 = __toESM(require("fs"), 1);
 var import_path6 = __toESM(require("path"), 1);
@@ -41274,12 +41290,7 @@ function handleServerMessage(msg, ctx) {
       if (!ctx.isIntentionallyDisconnected()) ctx.scheduleReconnect();
       break;
     case "session:error":
-      ctx.setState({ status: "error", error: msg.error });
-      setTimeout(() => {
-        if (ctx.getStatus() === "error" && !ctx.isIntentionallyDisconnected()) {
-          ctx.setState({ status: "connected", error: void 0 });
-        }
-      }, 5e3);
+      ctx.terminateSessionWithError(msg.error);
       break;
     case "mcp:call":
       ctx.handleMcpCall(msg);
@@ -41588,6 +41599,9 @@ var SESSION_ESTABLISH_TIMEOUT_MS = 25e3;
 var DOWNLOAD_TIMEOUT_MS = 3e4;
 var MAX_RESUME_FAILURES_BEFORE_FRESH = 3;
 var RESUME_LOOP_ALIVE_MS = 8e3;
+var parsedHostGeneration = Number.parseInt(process.env.KAMIN_EXTHOST_GENERATION ?? "0", 10);
+var CONNECTION_AUTHORITY_GENERATION = Number.isSafeInteger(parsedHostGeneration) && parsedHostGeneration >= 0 ? parsedHostGeneration : 0;
+var lastConnectionAuthoritySequence = 0;
 var ConnectionManager = class _ConnectionManager {
   // Shared cache of the last tree update (all connections share one tree per token)
   static lastTree = null;
@@ -41630,6 +41644,11 @@ var ConnectionManager = class _ConnectionManager {
   static onActivity = null;
   ws = null;
   state = { status: "disconnected" };
+  stateAuthority = (0, import_node_crypto2.randomUUID)();
+  stateAuthorityGeneration = CONNECTION_AUTHORITY_GENERATION;
+  stateAuthoritySequence = ++lastConnectionAuthoritySequence;
+  /** Orders every state publication for this tab across async WS callbacks. */
+  stateRevision = 0;
   config;
   window;
   // Reconnect
@@ -42013,11 +42032,13 @@ var ConnectionManager = class _ConnectionManager {
   /** Returns current connection state. Maps ExtendedConnectionState to
    *  ConnectionState for IPC compatibility. */
   getState() {
-    return {
-      status: this.state.status === "authenticated" ? "connected" : this.state.status === "connecting" ? "connecting" : this.state.status === "connected" ? "connecting" : this.state.status,
-      sessionId: this.state.sessionId,
-      error: this.state.error
-    };
+    return toRendererConnectionState(
+      this.state,
+      this.stateAuthority,
+      this.stateAuthorityGeneration,
+      this.stateAuthoritySequence,
+      this.stateRevision
+    );
   }
   /** Returns internal extended state (includes 'authenticated'). */
   getExtendedState() {
@@ -42264,7 +42285,7 @@ var ConnectionManager = class _ConnectionManager {
       tabId: this.tabId,
       batcher: this.batcher,
       setState: (s) => this.setState(s),
-      getStatus: () => this.state.status,
+      terminateSessionWithError: (error) => this.terminateSessionWithError(error),
       setLastModel: (m) => {
         this.lastModel = m;
       },
@@ -42425,20 +42446,25 @@ var ConnectionManager = class _ConnectionManager {
   /** Update internal state and notify renderer via IPC. */
   setState(state) {
     this.state = state;
+    this.stateRevision++;
     if (state.status === "authenticated") {
       this.clearEstablishTimer();
       this.establishFailures = 0;
     }
-    const rendererState = {
-      status: state.status === "authenticated" ? "connected" : state.status === "connected" ? "connecting" : state.status,
-      sessionId: state.sessionId,
-      error: state.error,
-      nextRetryAt: state.nextRetryAt,
-      retryAttempt: state.retryAttempt,
-      closeCode: state.closeCode
-    };
+    const rendererState = this.getState();
     this.window.webContents.send("connection-state-changed", this.tabId, rendererState);
     _ConnectionManager.onStatus?.(this.tabId, rendererState.status);
+  }
+  /** `session:error` is a fatal lifecycle/protocol failure. Close our socket as
+   * a safeguard even when connected to an older server that only sent the
+   * frame but forgot to close; the normal close path schedules reattach. */
+  terminateSessionWithError(error) {
+    this.setState({ ...this.state, status: "error", error });
+    if (this.ws && (this.ws.readyState === wrapper_default.OPEN || this.ws.readyState === wrapper_default.CONNECTING)) {
+      this.ws.close(1011, "Session error");
+      return;
+    }
+    this.scheduleReconnect();
   }
   /** Schedule reconnect with exponential backoff. 1s, 2s, 4s, 8s, 16s, 30s. */
   scheduleReconnect() {
@@ -43194,7 +43220,7 @@ var TabManager = class {
    */
   getConnectionState(tabId) {
     const tab = this.tabs.get(tabId);
-    return tab?.connection.getState() ?? { status: "disconnected" };
+    return tab?.connection.getState() ?? { status: "disconnected", authority: "missing", authorityGeneration: 0, authoritySequence: 0, revision: 0 };
   }
   /**
    * Send PTY input to a specific tab.
@@ -43383,18 +43409,26 @@ var TabManager = class {
     return this.tabs.get(tabId);
   }
   getTabInfo(tab) {
+    const connection = tab.connection.getState();
     return {
       id: tab.id,
       cwd: tab.config.cwd ?? "",
       label: tab.label,
       folderName: tab.folderName,
       createdAt: tab.createdAt,
-      status: tab.connection.getState().status,
+      status: connection.status,
+      connectionAuthority: connection.authority,
+      connectionAuthorityGeneration: connection.authorityGeneration,
+      connectionAuthoritySequence: connection.authoritySequence,
+      connectionRevision: connection.revision,
+      error: connection.error,
+      nextRetryAt: connection.nextRetryAt,
+      retryAttempt: connection.retryAttempt,
       effort: tab.effort,
       model: tab.model,
       sessionTitle: tab.sessionTitle,
       conversationId: tab.conversationId,
-      sessionId: tab.connection.getSessionId(),
+      sessionId: connection.sessionId,
       settingsDir: tab.settingsDir
     };
   }
@@ -43662,8 +43696,8 @@ function registerSessionsIPC(ctx) {
   ipcMain.handle("get-connection-state", () => {
     const mgr = tm();
     const activeId = mgr?.getActiveTabId();
-    if (!activeId) return { status: "disconnected" };
-    return mgr?.getConnectionState(activeId) ?? { status: "disconnected" };
+    if (!activeId) return { status: "disconnected", authority: "missing", authorityGeneration: 0, authoritySequence: 0, revision: 0 };
+    return mgr?.getConnectionState(activeId) ?? { status: "disconnected", authority: "missing", authorityGeneration: 0, authoritySequence: 0, revision: 0 };
   });
   ipcMain.on("session:interrupt", (_event, tabId) => {
     tm()?.interruptSession(tabId);
@@ -50298,7 +50332,7 @@ function registerSyncIPC(ctx) {
 }
 
 // src/incident-diagnostics.ts
-var import_node_crypto2 = require("node:crypto");
+var import_node_crypto3 = require("node:crypto");
 var import_node_fs7 = require("node:fs");
 var import_node_path9 = require("node:path");
 
@@ -50428,7 +50462,7 @@ var MAX_COUNTER = 1e9;
 var MIN_SAMPLE_INTERVAL_MS = 1e4;
 var INCIDENT_LOG_MAX_BYTES = 1 * 1024 * 1024;
 var INCIDENT_LOG_BACKUPS = 3;
-var TAB_REF_KEY = (0, import_node_crypto2.randomBytes)(32);
+var TAB_REF_KEY = (0, import_node_crypto3.randomBytes)(32);
 function boundedCount(value) {
   if (typeof value !== "number" || !Number.isFinite(value)) return 0;
   return Math.min(MAX_COUNTER, Math.max(0, Math.trunc(value)));
@@ -50460,7 +50494,7 @@ function classifyCause(value, status, closeCode) {
 }
 function tabRef(value) {
   const id = typeof value === "string" ? value : "missing";
-  return (0, import_node_crypto2.createHmac)("sha256", TAB_REF_KEY).update(id).digest("hex").slice(0, 12);
+  return (0, import_node_crypto3.createHmac)("sha256", TAB_REF_KEY).update(id).digest("hex").slice(0, 12);
 }
 function normalizeConnectionTransition(tabId, raw) {
   const state = raw && typeof raw === "object" ? raw : {};
