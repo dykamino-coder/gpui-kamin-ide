@@ -14,7 +14,7 @@ set -o pipefail
 LIST="${1:?список пар}"
 N="${2:-6}"
 STALL="${WPT_STALL_SECS:-90}"
-BIN="target/debug/examples/wptrun.exe"
+BIN="${WPT_BIN:-target/debug/examples/wptrun.exe}"
 [ -x "$BIN" ] || { echo "нет бинаря $BIN — сначала cargo build --example wptrun -p kamin-html"; exit 1; }
 total=$(grep -c '|' "$LIST")
 per=$(( (total + N - 1) / N ))

@@ -1680,10 +1680,20 @@ impl Paragraph {
                     // Табуляция тоже пробел: `break-spaces` рвёт и после неё,
                     // хотя UAX-14 держит подряд идущие табуляции вместе
                     // (`break-spaces-tab-003`).
+                    // Пробел здесь — ЛЮБОЙ сохранённый пробельный знак:
+                    // `break-spaces` рвёт и после идеографического U+3000,
+                    // и после em-space U+2003 (`break-spaces-with-ideographic-
+                    // space-005/010`, `trailing-ideographic-space-break-spaces-007`
+                    // показывали красное). Перевод строки исключён: его разрыв
+                    // обязательный и ставится своим проходом.
                     for (i, ch) in self.text.char_indices() {
-                        if matches!(ch, ' ' | '\t') && self.wrap_at(i).break_spaces {
+                        if ch.is_whitespace()
+                            && ch != '\n'
+                            && ch != '\r'
+                            && self.wrap_at(i).break_spaces
+                        {
                             out.push(Stop {
-                                at: i + 1,
+                                at: i + ch.len_utf8(),
                                 mandatory: false,
                             });
                         }
