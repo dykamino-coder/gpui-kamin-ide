@@ -3426,7 +3426,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
     // а не два. Без этого блок уезжает вниз на величину детского отступа.
     for node in out.iter_mut() {
         let Node::Element(e) = node else { continue };
-        if e.inline {
+        if inline_level_box(e) {
             continue;
         }
         // Отступ не протекает наружу и через край блока с собственным
@@ -3594,7 +3594,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         };
         // Строчный элемент С СОДЕРЖИМЫМ порождает строчную коробку, и поля
         // блоков через неё уже не примыкают.
-        if e.inline {
+        if inline_level_box(e) {
             if !e.children.is_empty() {
                 strut = None;
             }
@@ -8062,6 +8062,27 @@ pub fn gather_text_public(nodes: &[Node], out: &mut String) {
 /// не знает — с широкой коробкой в первую строку попадал весь абзац, и её
 /// начертание доставалось второй строке тоже
 /// (`text-autospace-first-line-001`).
+/// Уровень коробки для схлопывания полей: тег — только УМОЛЧАНИЕ, вид из
+/// каскада сильнее. `e.inline` ставится по имени тега (`dom.rs`), поэтому
+/// `<span style="display:block">` доезжал сюда «строчным», и поля соседей
+/// через него не примыкали — эталоны `flex-direction-column*` разводило на
+/// лишние 16 точек (в них разметка именно такая).
+fn inline_level_box(e: &Element) -> bool {
+    match e.style.display {
+        // Строчными считаются только НАСТОЯЩИЕ строчные виды. Первый заход
+        // писал `Some(_) => true`, и в строчные попадали лунки сетки: CSS2
+        // +6, а css-grid −46 (`column-align-items-*`, `*-dense-packing-*`
+        // уходили 0.00 → 1.5-3.2). `display: inline` после каскада — это
+        // `InlineBlock` с пометкой `inline_display` (см. `computed.rs`).
+        Some(Display::InlineBlock)
+        | Some(Display::InlineFlex)
+        | Some(Display::InlineGrid)
+        | Some(Display::InlineTable) => true,
+        Some(_) => false,
+        None => e.inline,
+    }
+}
+
 fn gather_until_break(nodes: &[Node], out: &mut String) -> bool {
     for n in nodes {
         match n {

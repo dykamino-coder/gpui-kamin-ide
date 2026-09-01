@@ -2762,6 +2762,16 @@ impl Paragraph {
         // уровень по первому знаку и падает на конце текста. Пустая строка
         // бывает у абзаца из одних пробелов и после жёсткого разрыва в конце.
         if range.start >= range.end || range.end > self.text.len() {
+            // Пустой отрезок с ХВОСТОМ — это строка обрыва `line-clamp`, у
+            // которой под многоточие не осталось места ни для одного слова
+            // (`clamp_lines` схлопывает диапазон в `head..head`). Знак обрыва
+            // рисуется в цикле по прогонам ниже, поэтому ранний выход уносил
+            // и его: коробка занимала высоту, но многоточия не показывала
+            // (`text-wrap-balance-line-clamp-004`).
+            if !suffix.is_empty() && !self.text.is_empty() {
+                let anchor = range.start.min(self.text.len().saturating_sub(1));
+                self.paint_suffix(suffix, anchor, at, window, cx);
+            }
             return;
         }
         let base = if self.wrap.rtl {
