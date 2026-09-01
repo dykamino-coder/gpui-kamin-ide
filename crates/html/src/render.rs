@@ -10704,7 +10704,7 @@ mod tests {
              </div>",
         );
         let children = match &page[0] {
-            Node::Element(e) => collapse_margins(&e.children),
+            Node::Element(e) => collapse_margins(&e.children, false),
             _ => panic!("нет страницы"),
         };
         let stack = children
@@ -10734,11 +10734,11 @@ mod tests {
             "",
         );
         let inner = match &nodes[0] {
-            Node::Element(html) => collapse_margins(&html.children),
+            Node::Element(html) => collapse_margins(&html.children, false),
             _ => panic!("нет корня"),
         };
         let body = match &inner[0] {
-            Node::Element(b) => collapse_margins(&b.children),
+            Node::Element(b) => collapse_margins(&b.children, false),
             _ => panic!("нет body"),
         };
         for (i, n) in body.iter().enumerate() {
@@ -10760,11 +10760,11 @@ mod tests {
             "",
         );
         let inner = match &nodes[0] {
-            Node::Element(html) => collapse_margins(&html.children),
+            Node::Element(html) => collapse_margins(&html.children, false),
             _ => panic!("нет корня"),
         };
         let body = match &inner[0] {
-            Node::Element(b) => collapse_margins(&b.children),
+            Node::Element(b) => collapse_margins(&b.children, false),
             _ => panic!("нет body"),
         };
         let second = match &body[1] {
@@ -10784,11 +10784,11 @@ mod tests {
             "",
         );
         let inner = match &nodes[0] {
-            Node::Element(html) => collapse_margins(&html.children),
+            Node::Element(html) => collapse_margins(&html.children, false),
             _ => panic!("нет корня"),
         };
         let body = match &inner[0] {
-            Node::Element(b) => collapse_margins(&b.children),
+            Node::Element(b) => collapse_margins(&b.children, false),
             _ => panic!("нет body"),
         };
         let second = match &body[1] {
@@ -10811,7 +10811,7 @@ mod tests {
         // коробку цепи, а у всех внутренних снимается. Пока подъём шёл на
         // один уровень, то же поле поднималось повторно на каждом.
         let inner = match &nodes[0] {
-            Node::Element(html) => collapse_margins(&html.children),
+            Node::Element(html) => collapse_margins(&html.children, false),
             _ => panic!("нет корня"),
         };
         let body = match &inner[0] {
