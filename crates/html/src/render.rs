@@ -182,6 +182,13 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
+        // ★ ЗАМЕРЕНО, ЭФФЕКТА НЕТ (01.09): считать долю `normal` по метрикам
+        // шрифта (как `normal_fraction`) вместо жёстких 1.2 — срез из 31 пары
+        // `line-clamp`/`text-wrap-balance` дал 20 → 20. Запасная формула тут не
+        // берётся вовсе: высоту приносит замер (`clamp_cut`). Недостающие
+        // 6-7 точек в `text-wrap-balance-line-clamp-*` — это разница САМОЙ
+        // строки (наши 19.2 против ~21.3 у эталона), то есть вопрос к
+        // `metrics::normal_line`, а не к обрезке.
         let line = match c.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Em(k)) => k * font,
