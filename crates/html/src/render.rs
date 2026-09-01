@@ -705,7 +705,34 @@ fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> 
     }
 }
 
+thread_local! {
+    /// Ширина содержащего блока в точках, когда её видно из стиля родителя.
+    /// Нужна замещаемому элементу БЕЗ собственного размера, но С соотношением:
+    /// §10.3.2 (последний пункт) берёт его ширину из уравнения для блочных
+    /// коробок, то есть из содержащего блока, а резерв 300×150 применяется
+    /// только когда ширину взять неоткуда.
+    static CB_WIDTH: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+}
+
+/// Вернуть прежнюю ширину содержащего блока по выходе из `blocks()`.
+struct CbWidthGuard(Option<f32>);
+impl Drop for CbWidthGuard {
+    fn drop(&mut self) {
+        CB_WIDTH.set(self.0);
+    }
+}
+fn scopeguard_cb(prev: Option<f32>) -> CbWidthGuard {
+    CbWidthGuard(prev)
+}
+
 fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
+    let cb_prev = CB_WIDTH.get();
+    if let Some(Len::Px(w)) = inherited.width
+        && w > 0.0
+    {
+        CB_WIDTH.set(Some(w));
+    }
+    let _cb_guard = scopeguard_cb(cb_prev);
     // `content-visibility: hidden`: содержимое пропускается целиком
     // (css-contain-2 §4) — коробка остаётся, детей нет.
     let stripped: Vec<Node>;
@@ -2441,6 +2468,46 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
                     .rposition(|n| !is_blank(n) && !atom_like(n))
                     .map_or(0, |p| p + 1);
                 let lead_atoms = out[lead_at..].iter().any(atom_like);
+                // ЛЕВЫЙ флоат, перед которым в этом же блоке уже вышел
+                // строчный прогон (§9.5 п.1 и п.6): его верх — верх ТЕКУЩЕЙ
+                // строки, а сама строка вокруг него сужается, то есть на
+                // экране он стоит ЛЕВЕЕ прогона, хотя в разметке идёт после.
+                // Мы же дописывали его блоком следом, и полосы менялись
+                // местами (`box-generation-001`: жёлтая «Float» уезжала на 70
+                // точек вправо от оранжевой «Inline box»).
+                let inline_run_like = |n: &Node| match n {
+                    Node::Text(_) => true,
+                    Node::Element(e) => e.style.float.is_none() && inline_level_box(e),
+                };
+                let run_at = out
+                    .iter()
+                    .rposition(|n| !is_blank(n) && !inline_run_like(n))
+                    .map_or(0, |p| p + 1);
+                if side < 0 && !lead_atoms && run_at < out.len() {
+                    let row: Vec<Node> = out.split_off(run_at);
+                    let mut children = vec![Node::Element(lone)];
+                    children.extend(row);
+                    out.push(Node::Element(Element {
+                        list_item: None,
+                        node_id: 0,
+                        anim: None,
+                        tag: "float-row".into(),
+                        style: Computed {
+                            display: Some(Display::Flex),
+                            ..Computed::default()
+                        },
+                        hover: None,
+                        first_letter: None,
+                        first_line: None,
+                        children,
+                        attrs: vec![],
+                        inline: false,
+                    }));
+                    out.extend(rest);
+                    out.extend(out_of_flow);
+                    i = j;
+                    continue;
+                }
                 if lead_atoms && side > 0 {
                     let mut row: Vec<Node> = out.split_off(lead_at);
                     lone.style.margin.left = Some(Len::Auto);
@@ -7852,7 +7919,16 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                     (Some(w), None, None) => (w, 150.0),
                     (None, Some(h), None) => (300.0, h),
                     (None, None, Some(r)) => {
-                        let w = (150.0 * r).min(300.0);
+                        // §10.3.2, последний пункт: при обеих `auto` и одном
+                        // лишь соотношении ширина берётся из содержащего
+                        // блока, а не из резерва. Резерв остаётся, когда
+                        // ширину взять неоткуда (`ratio-2.svg` в
+                        // `visudet/replaced-elements-*`: мы рисовали 300×150,
+                        // эталон — 200×100 по `div { width: 200px }`).
+                        let w = CB_WIDTH
+                            .get()
+                            .filter(|v| *v > 0.0)
+                            .unwrap_or_else(|| (150.0 * r).min(300.0));
                         (w, w / r)
                     }
                     (None, None, None) => (300.0, 150.0),
