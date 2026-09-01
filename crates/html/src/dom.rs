@@ -1620,17 +1620,14 @@ fn walk(
             // §instantiating-counters). Считается ЗДЕСЬ, до применения
             // директив: запись создаётся уже готовым числом.
             let reversed_start = |nm: &str, counters: &mut crate::counters::Counters| {
-                let escapes = counters.escapes_creator(nm);
                 crate::counters_scan::reversed_initial(
-                    rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos, escapes,
+                    rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
                 )
             };
-            let mut own_resets: Vec<String> = vec![];
             let mut is_list_item = false;
             apply_counter_decls(
                 &style,
                 counters,
-                &mut own_resets,
                 &tag,
                 &attrs,
                 &mut is_list_item,
@@ -1772,7 +1769,6 @@ fn walk(
 fn apply_counter_decls(
     style: &Computed,
     counters: &mut crate::counters::Counters,
-    resets: &mut Vec<String>,
     tag: &str,
     attrs: &[(String, String)],
     item_flag: &mut bool,
@@ -1803,9 +1799,6 @@ fn apply_counter_decls(
             _ => 0,
         };
         counters.reset_flagged("list-item", start, reversed_list);
-        if !resets.iter().any(|r| r == "list-item") {
-            resets.push("list-item".to_string());
-        }
     }
     // Пункт списка увеличивает `list-item` сам, если этого не сказано явно
     // (css-lists-3 §list-item-counter). Порядок строгий: явное увеличение,
@@ -1865,9 +1858,6 @@ fn apply_counter_decls(
             match kind {
                 0 => {
                     counters.reset_flagged(name, value, reversed);
-                    if !resets.iter().any(|r| r == name) {
-                        resets.push(name.to_string());
-                    }
                 }
                 1 => counters.update(name, value, false),
                 _ => counters.update(name, value, true),
@@ -1914,13 +1904,11 @@ fn pseudo_box(
     // Псевдоэлемент — настоящий брат содержимого хозяина: у него свой
     // уровень пути, свои директивы и своя область видимости.
     counters.enter_pseudo(which == "before");
-    let mut own_resets: Vec<String> = vec![];
     // У псевдоэлемента-создателя предварительного обхода нет: своей области
     // в дереве коробок он не открывает, и таких пар в наборе не встречается.
     apply_counter_decls(
         &style,
         counters,
-        &mut own_resets,
         "",
         &[],
         &mut false,

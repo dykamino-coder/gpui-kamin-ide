@@ -3284,32 +3284,6 @@ fn text_id(text: &str) -> u64 {
     h.finish()
 }
 
-/// Римская запись номера — для `list-style-type: lower-roman`.
-fn roman(mut n: usize) -> String {
-    const TABLE: &[(usize, &str)] = &[
-        (1000, "m"),
-        (900, "cm"),
-        (500, "d"),
-        (400, "cd"),
-        (100, "c"),
-        (90, "xc"),
-        (50, "l"),
-        (40, "xl"),
-        (10, "x"),
-        (9, "ix"),
-        (5, "v"),
-        (4, "iv"),
-        (1, "i"),
-    ];
-    let mut out = String::new();
-    for (value, sign) in TABLE {
-        while n >= *value {
-            out.push_str(sign);
-            n -= value;
-        }
-    }
-    out
-}
 
 /// Внешний отступ на обёртке: то же, что делает `apply`, но только поля.
 fn apply_margin(d: gpui::Div, c: &Computed) -> gpui::Div {

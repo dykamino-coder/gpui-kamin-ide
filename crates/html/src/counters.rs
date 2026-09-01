@@ -147,57 +147,6 @@ impl Counters {
             }),
         }
     }
-
-    /// Выход из узла, который счётчик СОЗДАВАЛ (Blink
-    /// `RemoveCounterIfAncestorExists`): если под своей записью лежит запись
-    /// предка — свою снять, иначе последующие братья унаследовали бы её
-    /// вместо предковой.
-    pub fn leave_scope(&mut self, name: &str) {
-        let cur = self.path.clone();
-        let Some(st) = self.stack.get_mut(name) else {
-            return;
-        };
-        if st.len() <= 1 || st.last().is_none_or(|e| e.owner != cur) {
-            return;
-        }
-        let prev = st[st.len() - 2].owner.clone();
-        if covers(&prev, &cur) {
-            st.pop();
-            return;
-        }
-        // Запись «дяди»: её создатель не предок, но лежит внутри предка —
-        // свою всё равно снимаем (Blink §600), иначе область вложенного
-        // сброса протекает на последующих братьев.
-        let pp = parent(&prev);
-        if covers(pp, &cur) && pp != parent(&cur) {
-            st.pop();
-        }
-    }
-
-    /// Переживёт ли будущая запись выход из своего создателя.
-    ///
-    /// Зеркало `leave_scope`: если под ней окажется запись предка или
-    /// «дяди», её снимут на выходе — значит последующие братья её не
-    /// увидят, и область обратного счёта обрывается поддеревом создателя.
-    /// ВАЖНО: правило обязано меняться вместе с `leave_scope`.
-    pub fn escapes_creator(&mut self, name: &str) -> bool {
-        let cur = self.path.clone();
-        let Some(st) = self.stack.get_mut(name) else {
-            return true;
-        };
-        remove_stale(st, &cur);
-        // Запись своего уровня будет вытеснена новой — смотреть надо под неё.
-        let mut i = st.len();
-        if i > 0 && parent(&st[i - 1].owner) == parent(&cur) {
-            i -= 1;
-        }
-        let Some(prev) = i.checked_sub(1).map(|k| &st[k]) else {
-            return true;
-        };
-        let pp = parent(&prev.owner);
-        !(covers(&prev.owner, &cur) || (covers(pp, &cur) && pp != parent(&cur)))
-    }
-
     /// `counter(имя)`: значение ВНУТРЕННЕГО счётчика; чтение счётчик не
     /// создаёт — пустой стек читается нулём.
     pub fn value_of(&mut self, name: &str) -> i32 {
@@ -259,7 +208,6 @@ mod tests {
             vec![1, 7],
             "вложенный счётчик рядом с внешним"
         );
-        c.leave_scope("n");
         c.leave();
         c.enter();
         c.reset("n", 9);

@@ -221,7 +221,6 @@ pub(crate) fn reversed_initial(
     level: &[Handle],
     spots: &[Spot],
     pos: usize,
-    escapes: bool,
 ) -> i32 {
     let mut scan = Scan {
         rules,
@@ -232,9 +231,10 @@ pub(crate) fn reversed_initial(
         done: false,
     };
     scan.node(creator, me, path, sibs, true);
-    // Область счётчика включает последующих братьев создателя — но только
-    // если запись переживёт выход из него (см. `Counters::escapes_creator`).
-    if escapes && !scan.done {
+    // Область счётчика включает последующих братьев создателя ВСЕГДА: запись
+    // живёт до конца родителя (§12.4.1), и прежний гейт «переживёт ли выход»
+    // потерял смысл вместе с жадным снятием области.
+    if !scan.done {
         let mut idx = sibs.pos;
         for (i, sib) in level.iter().enumerate().skip(pos + 1) {
             let Some(spot) = spots.get(i) else { continue };
