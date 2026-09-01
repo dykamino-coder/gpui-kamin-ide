@@ -11,11 +11,15 @@ pub(crate) fn rotate(path: &Path, backups: usize) {
         let _ = std::fs::remove_file(path);
         return;
     }
-    let backup = |n: usize| path.with_file_name(format!(
-        "{}.{}",
-        path.file_name().and_then(|n| n.to_str()).unwrap_or("crash.log"),
-        n
-    ));
+    let backup = |n: usize| {
+        path.with_file_name(format!(
+            "{}.{}",
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("crash.log"),
+            n
+        ))
+    };
     let _ = std::fs::remove_file(backup(backups));
     for i in (1..backups).rev() {
         let from = backup(i);
@@ -50,8 +54,14 @@ mod tests {
 
         rotate(&path, 2);
 
-        assert_eq!(std::fs::read_to_string(dir.join("crash.log.1")).unwrap(), "current");
-        assert_eq!(std::fs::read_to_string(dir.join("crash.log.2")).unwrap(), "previous");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("crash.log.1")).unwrap(),
+            "current"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("crash.log.2")).unwrap(),
+            "previous"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -17,9 +17,9 @@ mod log_files;
 mod renderer_fields;
 
 #[cfg(windows)]
-use std::io::Write as _;
-#[cfg(windows)]
 use renderer_fields::{safe_status, view_ref};
+#[cfg(windows)]
+use std::io::Write as _;
 
 /// Что делать после того, как отчёт записан.
 #[derive(Clone, Copy)]
