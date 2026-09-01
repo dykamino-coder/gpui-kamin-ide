@@ -118,6 +118,24 @@ npm --prefix extensions/claude-bridge/webview run build
 keyboard/focus, соседние элементы и визуальный результат. Незапущенная из-за
 окружения проверка явно указывается в PR — её нельзя выдавать за пройденную.
 
+### Класс приёмки
+
+Каждый change PR выбирает один или несколько классов приёмки и объясняет выбор:
+
+- **automated merge gate** — применимые проверки обязаны пройти до merge;
+- **Windows runtime merge gate** — обязателен до merge, если корректность
+  зависит от CEF/webview lifecycle, native TUI, focus/keyboard/mouse, host
+  respawn или другого поведения, которое unit test достоверно не воспроизводит;
+- **post-merge production observation** — неблокирующее наблюдение после
+  выпуска. Оно допустимо для диагностики, telemetry и редких сбоев, которые PR
+  не заявляет исправленными до получения полевых данных.
+
+Production observation не заменяет Windows runtime gate для уже заявленного
+UX-исправления. Если Windows-проверка является merge gate, в PR приводятся
+сценарий, ожидаемый результат и evidence. Если проверка отложена до production,
+PR явно называет владельца наблюдения и не утверждает, что полевой дефект уже
+устранён.
+
 ## 5. Коммиты и PR
 
 Заголовок PR и итогового squash-коммита следует Conventional Commits и пишется
@@ -236,3 +254,11 @@ installer. Если release branch изменилась после сборки,
 
 Перезапись уже опубликованной версии не допускается. Исправление после релиза
 получает новый patch и проходит тот же процесс как hotfix.
+
+Успешная публикация обязана оставлять проверяемую связь между release HEAD и
+artifact: Docker image содержит source/revision labels и provenance attestation,
+а workflow до build проверяет version/digest installer asset и после push —
+version tag, digest и labels. GitHub Actions pin-ятся на полные commit SHA.
+Существующий tag с неизвестным или другим revision является ошибкой, а не
+успешным skip. Ручная публикация image вне release pipeline не считается
+завершённым релизом.

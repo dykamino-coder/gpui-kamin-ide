@@ -35,3 +35,11 @@ runtime claims:
 A full removal of the deprecated webview alias is a separate breaking migration.
 Do not infer Electron from structural names such as `BrowserWindow`, `ipcMain`,
 or `webContents`: those interfaces are implemented locally by the host facade.
+
+## Related operational documents
+
+- `TESTING.md` — постоянный контур проверок и классы приёмки;
+- `SKILLS_SYNC.md` — контракт snapshot/reload для skills;
+- `RUNTIME_RELIABILITY.md` — подтверждённые runtime-инциденты, решения и
+  последовательность независимых change PR;
+- `PLUGIN_HARNESS.md` — границы split-host plugin runtime.
