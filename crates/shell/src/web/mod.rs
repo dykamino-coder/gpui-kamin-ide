@@ -27,10 +27,12 @@ mod pump;
 mod render_handler;
 mod scheme;
 mod shared_texture;
+mod visibility;
 
 pub use diag::{ctx_took, draw_took, drawn, rows_built};
 pub use element::{ensure_focus_handles, web_view};
 pub use process::{exit_if_child_process, init, shutdown};
+pub use visibility::{mark_visible, mark_visible_union};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -139,10 +141,6 @@ pub fn take_repaint_request() -> bool {
     DIRTY.swap(false, Ordering::Relaxed)
 }
 
-/// Видимые сейчас вью (по решению раскладки; обновляет `RootView::sync_panels`).
-static VISIBLE: LazyLock<Mutex<std::collections::HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
-
 /// Когда вью пропало из раскладки (для отсрочки выгрузки).
 static HIDDEN_AT: LazyLock<Mutex<std::collections::HashMap<String, std::time::Instant>>> =
     LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
@@ -150,43 +148,6 @@ static HIDDEN_AT: LazyLock<Mutex<std::collections::HashMap<String, std::time::In
 /// Сколько скрытое вью живёт до выгрузки. Достаточно, чтобы щёлканье по тулам
 /// туда-обратно не убивало renderer, и мало, чтобы память возвращалась.
 const HIDDEN_TTL: std::time::Duration = std::time::Duration::from_secs(20);
-
-/// Сообщить, какие вью сейчас видимы. Зовётся после каждого события.
-pub fn mark_visible(ids: Vec<String>) {
-    if let Ok(mut set) = VISIBLE.lock() {
-        set.clear();
-        set.extend(ids);
-    }
-}
-
-/// Расширить множество видимых, не сбрасывая прежнее: для кадров с неполным
-/// снапшотом реестра тулов — полный ранний выход замораживал TTL скрытых
-/// вью навсегда (они не выгружались), а сброс «скрывал» живые панели.
-pub fn mark_visible_union(ids: Vec<String>) {
-    if let Ok(mut set) = VISIBLE.lock() {
-        set.extend(ids);
-    }
-}
-
-/// Сообщить exthost, что вью скрыто/показано (`kamin:webview:viewState`).
-/// Канал ПРИНИМАЛСЯ, но никем не слался: exthost считал вью вечно видимым,
-/// копил posts в очередь мёртвого iframe (`posts.purge` не звался) и держал
-/// его `resolvedHtml` (~1.6MB на вью) до dispose, которого после reap нет.
-fn notify_view_state(id: &str, visible: bool) {
-    let id = id.to_string();
-    std::thread::spawn(move || {
-        if let Some(c) = crate::host_link::client() {
-            let _ = c.request(
-                "kamin:webview:viewState",
-                vec![
-                    serde_json::json!(id),
-                    serde_json::json!(visible), // active
-                    serde_json::json!(visible),
-                ],
-            );
-        }
-    });
-}
 
 /// Выгрузить браузеры вью, скрытых дольше [`HIDDEN_TTL`]: их renderer-процессы
 /// держат десятки МБ на состояние, которое всё равно пересобирается при
@@ -201,7 +162,7 @@ pub(crate) fn respawn_stalled() {
     use std::collections::HashMap;
     static RESPAWNS: LazyLock<Mutex<HashMap<String, u32>>> =
         LazyLock::new(|| Mutex::new(HashMap::new()));
-    let visible = VISIBLE.lock().map(|s| s.clone()).unwrap_or_default();
+    let visible = visibility::visible_set();
     for id in browsers::ids() {
         if !visible.contains(&id) {
             continue;
@@ -238,7 +199,7 @@ pub(crate) fn respawn_stalled() {
 const NEVER_REAP: &[&str] = &["claudeBridgeChat"];
 
 pub(crate) fn reap_hidden() {
-    let visible = VISIBLE.lock().map(|s| s.clone()).unwrap_or_default();
+    let visible = visibility::visible_set();
     let now = std::time::Instant::now();
     for id in browsers::ids() {
         if NEVER_REAP.contains(&id.as_str()) {
@@ -265,8 +226,10 @@ pub(crate) fn reap_hidden() {
                 m.remove(&id);
             }
             // Renderer уходит — exthost обязан узнать, иначе копит посты и HTML
-            // для несуществующего iframe.
-            notify_view_state(&id, false);
+            // для несуществующего iframe. Скрытым вью его уже уведомили
+            // (`visibility::sleep_hidden`), но выгрузка — отдельное событие:
+            // вью могло пропасть из раскладки минуя обычный путь.
+            visibility::notify_view_state(&id, false);
             browsers::close(&id);
             shared_texture::forget_view(&id);
             copy_frame::forget_view(&id);
@@ -318,7 +281,7 @@ pub fn ensure_html_view(view_id: &str) {
         open(id, &url, w.round() as i32, h.round() as i32, scale);
         // Вью поднялось (первый показ или возврат после reap) — сообщаем
         // exthost, иначе он считает его скрытым и не шлёт посты.
-        notify_view_state(id, true);
+        visibility::notify_view_state(id, true);
         return;
     }
     // Стор обновился — перечитываем ту же страницу: обработчик схемы отдаст
