@@ -100,6 +100,10 @@ export function forkExtHost(deps: ParentDeps): ExtHostHandle {
   let child: ChildProcess | null = null
   let disposed = false
   let respawnAttempts = 0
+  // Monotonic for the lifetime of the supervising host. Unlike a timestamp
+  // created inside the child, this survives extension-host crashes and cannot
+  // move backwards after a wall-clock/NTP adjustment.
+  let childGeneration = 0
   // True once the child has signalled CHILD_READY at least once; a later ready is
   // a respawn-after-crash, which needs the renderer to re-seed its mirror.
   let everReady = false
@@ -228,6 +232,7 @@ export function forkExtHost(deps: ParentDeps): ExtHostHandle {
   let tFork = 0
   const spawn = (): void => {
     ready = false // fresh generation is not invocable until it signals CHILD_READY
+    childGeneration += 1
     tFork = Date.now()
     console.error(`[boot] fork exthost: ${selfScript} execArgv=${JSON.stringify(process.execArgv)}`)
     const proc = fork(selfScript, [`--${EXTHOST_ROLE_ARG}=${EXTHOST_ROLE_VALUE}`], {
@@ -242,7 +247,11 @@ export function forkExtHost(deps: ParentDeps): ExtHostHandle {
       // servers too. (Windows uses taskkill /T by ppid, no group needed.) NOT
       // unref'd — we still supervise it.
       detached: process.platform !== "win32",
-      env: { ...process.env, KAMIN_HOST_TRANSPORT: "ipc" },
+      env: {
+        ...process.env,
+        KAMIN_HOST_TRANSPORT: "ipc",
+        KAMIN_EXTHOST_GENERATION: String(childGeneration),
+      },
     })
     child = proc
     // Child stdout/stderr → our stderr so its logs + crash stacks reach the

@@ -9,6 +9,7 @@ import { applyRestoredState } from '../lib/tabs-persist'
 import type { WebviewRole } from './useBridgeListeners'
 import { setFrameRetentionProvider } from '../lib/host-ready'
 import { jsonlEntriesByTab } from '../signals/jsonl'
+import { mergeInitialTabSnapshot } from '../signals/tab-connection-reconcile'
 
 /**
  * Runs the one-time initialization logic on mount:
@@ -122,8 +123,9 @@ export function useInit(bridge: KaminBridgeApi, role: WebviewRole = 'chat'): voi
       hasToken.value = !!(config.serverUrl && config.token)
 
       const existingTabs = await bridge.listTabs()
+      const initialTabs = mergeInitialTabSnapshot(tabs.value, existingTabs)
       if (existingTabs.length > 0) {
-        tabs.value = existingTabs
+        tabs.value = initialTabs
       }
       // Always restore persisted state, even when there are no live tabs —
       // a user who restarts the app with all tabs closed still needs their
@@ -132,7 +134,7 @@ export function useInit(bridge: KaminBridgeApi, role: WebviewRole = 'chat'): voi
       try {
         const persisted = await bridge.restoreTabsState()
         if (Array.isArray(persisted) && persisted.length > 0) {
-          applyRestoredState(persisted, existingTabs)
+          applyRestoredState(persisted, initialTabs)
         }
       } catch { /* restore is best-effort */ }
       if (existingTabs.length > 0) {
