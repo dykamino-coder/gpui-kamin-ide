@@ -443,9 +443,16 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
     let (kind, rest) = raw.split_once('(')?;
     let circle = kind.trim().eq_ignore_ascii_case("circle");
     let rest = rest.trim_end_matches(')');
-    let (rads, pos) = match rest.split_once(" at ") {
-        Some((r, p)) => (r.trim(), Some(p.trim())),
-        None => (rest.trim(), None),
+    // Ключевое слово `at` может стоять ПЕРВЫМ, без радиусов перед ним:
+    // `ellipse(at 110px 50%)`. Деление по строке с двумя пробелами такую
+    // запись не находило вовсе, и `at` уходило в радиус по X
+    // (`shape-outside-ellipse-023`).
+    let (rads, pos) = match rest.trim().strip_prefix("at ") {
+        Some(p) => ("", Some(p.trim())),
+        None => match rest.split_once(" at ") {
+            Some((r, p)) => (r.trim(), Some(p.trim())),
+            None => (rest.trim(), None),
+        },
     };
     // Центр: `at X Y`; доля — от стороны коробки; одиночное слово — сторона.
     let axis = |token: &str, side: f32| -> Option<f32> {
