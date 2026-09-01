@@ -5829,80 +5829,10 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     w: off + mw + sm,
                 },
             }
-        } else if raw.contains("url(") || raw.contains("-gradient(") {
-            // Форма из АЛЬФЫ картинки или градиента (css-shapes §3.2.1):
-            // изображение ложится в content-box, экстент строки — самый
-            // дальний от начала стороны пиксель с альфой выше порога.
-            let (cbx, cby) = (ml + bl + pl, mt + bt + pt);
-            let thr = f.style.shape_threshold.unwrap_or(0.0);
-            let profile = (if raw.contains("-gradient(") {
-                // Градиент растрируется точно в content-box.
-                let g = raw
-                    .find("-gradient(")
-                    .and_then(|at| {
-                        raw[..at]
-                            .rfind(|c: char| c.is_whitespace())
-                            .map(|s| s + 1)
-                            .or(Some(0))
-                    })
-                    .map(|s| raw[s..].trim().to_string())
-                    .unwrap_or_else(|| raw.clone());
-                crate::background::source(g.trim_end_matches(|c| c != ')'))
-                    .and_then(|src| src.raster((cw.max(1.0), chh.max(1.0))))
-            } else {
-                crate::computed::parse_url(&raw).and_then(|u| crate::background::load(&u))
-            })
-            .and_then(|img| {
-                let bytes = img.as_bytes(0)?;
-                let sz = img.size(0);
-                let (iw, ih) = (sz.width.0.max(1) as usize, sz.height.0.max(1) as usize);
-                if bytes.len() < iw * ih * 4 {
-                    return None;
-                }
-                let rows = chh.max(1.0) as usize;
-                let mut ext = vec![0.0f32; rows];
-                for (yt, slot) in ext.iter_mut().enumerate() {
-                    let ys = (yt * ih / rows).min(ih - 1);
-                    // Самый дальний ОТ НАЧАЛА СТОРОНЫ непрозрачный
-                    // пиксель строки: левому флоату — самый правый,
-                    // правому — самый ЛЕВЫЙ (скан задом наперёд давал
-                    // правому минимальный экстент вместо максимального:
-                    // shape-image-012..023).
-                    let scan: Box<dyn Iterator<Item = usize>> = if side < 0 {
-                        Box::new((0..iw).rev())
-                    } else {
-                        Box::new(0..iw)
-                    };
-                    for xs in scan {
-                        let a = bytes[(ys * iw + xs) * 4 + 3] as f32 / 255.0;
-                        if a > thr {
-                            let xt = (xs as f32 + 1.0) * cw / iw as f32;
-                            *slot = if side < 0 {
-                                cbx + xt
-                            } else {
-                                mw - (cbx + (xs as f32) * cw / iw as f32)
-                            };
-                            break;
-                        }
-                    }
-                }
-                Some(ext)
-            });
-            match profile {
-                Some(ext) => crate::flow::FloatShape::Profile {
-                    top: cby,
-                    ext: std::sync::Arc::new(
-                        ext.into_iter()
-                            .map(|v| if v > 0.0 { off + v + sm } else { 0.0 })
-                            .collect(),
-                    ),
-                },
-                None => crate::flow::FloatShape::Band {
-                    top: by,
-                    h: bh,
-                    w: off + mw + sm,
-                },
-            }
+        // ЗАМЕЧАНИЕ: особый путь картинки и градиента снят — общий
+        // растровый путь строит ту же маску в content-box и с подключённым
+        // `shape-margin` (см. `background::shape_profile`) раздувает её по
+        // обеим осям, а особый раздувал только по горизонтали.
         } else {
             // Общий путь произвольной формы (css-shapes-1 §3): растровая
             // маска margin-box -> интервалы строк -> дилатация Минковского
