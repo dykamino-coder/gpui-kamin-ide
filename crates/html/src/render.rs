@@ -5389,6 +5389,16 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             if let Some(a) = self_align {
                 box_.style().align_self = Some(a);
             }
+            // ★ ЗАМЕРЕНО, ЭФФЕКТА НЕТ (01.09): открывать здесь слой содержащего
+            // блока, как это делает блочный путь (`cb_open`/`cb_close` ниже по
+            // файлу), чтобы абсолютный ребёнок строчного `position: relative`
+            // не уезжал к внешнему содержащему блоку. Срез из 229 пар:
+            // 205 → 205 при гейте «только настоящая строчная коробка», и
+            // 205 → 197 без него (`position-relative-table-{tbody,thead,tfoot,
+            // tr}-*-absolute-child` уходили 0.00 → «красное видно»).
+            // До `position-absolute-in-inline-*` правка НЕ доезжает: там у
+            // строчного нет своей коробки, он идёт прогоном текста, и вешать
+            // слой не на что — чинить надо в сборке прогонов.
             Some(
                 box_.children(blocks(&e.children, &merged, opts))
                     .into_any_element(),
