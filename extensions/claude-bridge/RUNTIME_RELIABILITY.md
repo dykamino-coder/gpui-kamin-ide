@@ -779,6 +779,98 @@ switch/reconnect и pointer activity, а текущий incident возника�
 будущих change PR затрагивают `JsonlViewer` render/window contract и иначе
 создадут лишний конфликт или скроют регрессию друг друга.
 
+### BR-23 — Make session-complete notifications transient and turn-scoped
+
+**Status:** confirmed source defect. **Dependency:** implementation обновляется
+от финального merged connection-state PR перед изменением
+`handle-server-message.ts` или committed Bridge artifacts. **Acceptance
+будущего fix:** automated lifecycle/protocol tests + Windows native-toast gate.
+
+Screenshot 31 августа подтверждает, что `Session finished — Tab … is ready`
+остаётся на экране без countdown. Это не modal и не случайная остановка timer:
+Bridge вызывает `vscode.window.showInformationMessage(text, "Open")`, а native
+shell классифицирует любой `shell.showMessage` с хотя бы одним action как
+`sticky: true`. Поэтому для такого toast намеренно не создаётся 8-секундный
+timer и countdown bar. Для сравнения, `Anthropic busy` идёт без action и shell
+автоматически закрывает его через свои 8 секунд; заявленные webview `duration:
+6000` при маршрутизации через shared notification API сейчас теряются.
+
+Наблюдение «при Agent Teams уведомление может повторяться по мере завершения
+агентов» не объясняется прямой обработкой `SubagentStop`: bridge status hook
+явно считает его informational и не отправляет `session:activity`. Но найден
+отдельный источник повторов внутри одного main turn. Server публикует и
+авторитетные hook-driven состояния (`UserPromptSubmit`/`Stop`), и эвристические
+OSC-title состояния; `handle-server-message.ts` передаёт в `SessionIdleTracker`
+оба вида без `hookDriven`. Tracker не знает turn identity и после каждого
+debounced `working -> idle` снова разрешает toast, если позже увидел новый
+`working`. Поэтому OSC idle/resume blips во время orchestration способны
+породить несколько `Session finished` до единственного main `Stop`. Точное
+равенство количества toast числу subagents кодом не гарантировано, но повторное
+срабатывание в одном turn разрешено и противоречит уже заявленному
+hook-authoritative activity contract.
+
+Fix не должен делать все notifications с actions transient: elicitation и
+approval ожидают решения пользователя и обязаны оставаться sticky. Нужен явный
+contract именно для completion toast: `Open` остаётся рабочим, toast сам
+закрывается, а ожидающий `shell.showMessage` request при timeout завершается
+`undefined/null` и не течёт. Idle notification создаётся не более одного раза
+на завершение main turn; `SubagentStop` его не создаёт; после появления
+hook-driven `UserPromptSubmit` эвристический OSC idle не завершает turn, а
+hook-driven `Stop` завершает. Fallback для server без lifecycle hooks описывается
+и тестируется отдельно. Существующие suppression для displayed active tab,
+reconnect settle и закрытого tab сохраняются.
+
+Automated tests покрывают: main turn с несколькими `SubagentStart/Stop` и OSC
+idle/resume blips даёт один completion; два последовательных main turns дают по
+одному; transient action toast отвечает host request на click, dismiss и
+timeout; question/elicitation остаётся sticky; duration не теряется между
+webview, extension host и shell. Windows gate проверяет countdown, автозакрытие,
+`Open`, hover pause и отсутствие серии toast в живой Agent Teams session.
+
+### BR-24 — Bound and reconcile lost webview invoke replies
+
+**Status:** confirmed incident; root-cause investigation. **Dependency:** BR-01
+diagnostics желательны; implementation только после текущей последовательности
+PR #12–#16. **Acceptance будущего fix:** automated transport/lifecycle tests +
+Windows CEF runtime gate.
+
+Windows acceptance PR #13 воспроизвёл 3 раза из 5: mutating call
+`hooks:set-plugin-approval` завершился host-side, approval store был записан и
+sync залогирован, но соответствующий `invoke-reply` не дошёл до webview. Promise
+остался в `pending` без deadline, а full-screen approval modal завис на
+`Saving…`. PR #13 добавил только feature-local 15-секундный bound, возвращение
+управления dialog и reconciliation через повторное чтение pending approvals.
+Это сохраняет approval UI рабочим, но не исправляет общий transport: любой
+другой `inv()` всё ещё способен ждать бесконечно.
+
+Причина потери frame пока не доказана. Текущий код не различает `postMessage`
+failure, hidden/disposed webview, renderer reload и reply, пришедший после
+смены document generation. Поэтому задача не объявляет простое добавление
+глобального timeout полным исправлением. Сначала нужны privacy-safe counters и
+correlation по invoke id/channel, document generation и результату
+`source.postMessage`, без args/result payload. Диагностика должна отличать
+«handler не завершился», «reply send rejected/returned false», «renderer был
+заменён» и «reply просрочен/неизвестен».
+
+Transport contract обязан ограничивать каждый pending invoke и очищать его при
+webview teardown/reload. Read-only idempotent операции могут повторяться только
+по явной policy. Mutating operation после timeout нельзя слепо повторять:
+запись могла состояться, как в #13, поэтому caller получает indeterminate
+outcome и выполняет domain-specific read-back/reconciliation. Late/duplicate
+reply не должен резолвить новый request с переиспользованным id или оставлять
+утечку. Отдельно определяется UX для обычных panels и blocking dialogs.
+
+Tests покрывают normal reply, handler reject, dropped/false `postMessage`,
+renderer reload до reply, late и duplicate reply, pending cleanup и mutating
+call с успешной записью при потерянном ответе. Windows gate повторяет
+disposable approval scenario и несколько read-only invokes при tab switch,
+hide/show, extension-host reconnect и CEF reload; ни один promise или modal не
+остаётся бесконечно pending, а повторная mutation не выполняется автоматически.
+
+BR-23 и BR-24 зафиксированы отдельным docs follow-up и не меняют выполняемую
+maintainer-цепочку ниже. Этот follow-up объединяется только после PR #16, чтобы
+не сдвигать base уже обновляемых PR #14–#16.
+
 ## Current draft PR integration order
 
 Все перечисленные PR остаются draft. `mergeable` относительно сегодняшнего
@@ -813,19 +905,23 @@ protection в GitHub сейчас отсутствуют. Maintainer agent сл�
    смешиваются с BR-20 и не пытаются вычислять quota из JSONL.
 6. BR-04 recovery после extension-host respawn.
 7. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
-8. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
+8. BR-24 lost invoke replies: сначала transport diagnostics, затем bounded
+   lifecycle и reconciliation без blind retry mutating calls.
+9. BR-23 completion toast после финального connection-state PR; отдельно от
+   sticky elicitation/approval semantics.
+10. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
    как fix PR только если симптом сохранился; отдельная задача для reconnect не
    заводится.
-9. BR-22 live render-window collapse: сначала получить paired diagnostic dumps
+11. BR-22 live render-window collapse: сначала получить paired diagnostic dumps
    пустого и восстановившегося состояния и локализовать расходящийся entry path.
-10. BR-16 upward history anchoring идёт после классификации BR-22 отдельным UI
+12. BR-16 upward history anchoring идёт после классификации BR-22 отдельным UI
    PR и не блокирует connection recovery chain.
-11. BR-11 inventory native blockers, затем минимальный BR-07.
-12. BR-08 без удаления существующего maintenance contract.
-13. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
+13. BR-11 inventory native blockers, затем минимальный BR-07.
+14. BR-08 без удаления существующего maintenance contract.
+15. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
    migration на всех deployments.
-14. BR-15 Agent Teams selection eval.
-15. BR-02 и только затем решение по BR-03.
+16. BR-15 Agent Teams selection eval.
+17. BR-02 и только затем решение по BR-03.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.
