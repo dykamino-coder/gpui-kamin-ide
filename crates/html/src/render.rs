@@ -5756,6 +5756,18 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         let (pl, pr) = (px_of(&f.style.padding.left), px_of(&f.style.padding.right));
         let (pt, pb) = (px_of(&f.style.padding.top), px_of(&f.style.padding.bottom));
         let (mut cw, mut chh) = (px_of(&f.style.width), px_of(&f.style.height));
+        // `box-sizing: border-box` — заданная длина ВКЛЮЧАЕТ отступы и рамку
+        // (css-ui-3 §5.1), а дальше здесь считается контентная. Без вычитания
+        // опорная коробка выходила шире содержащего блока, и вырез уводил
+        // строки в минус (`shape-outside-content-box-003`, `-padding-box-003`).
+        if f.style.border_box == Some(true) {
+            if cw > 0.0 {
+                cw = (cw - pl - pr - bl - br_).max(0.0);
+            }
+            if chh > 0.0 {
+                chh = (chh - pt - pb - bt - bb).max(0.0);
+            }
+        }
         // Флоат без своих размеров с картинкой-формой: размер — интринзик
         // картинки (частый паттерн shape-image-тестов).
         if cw <= 0.0
