@@ -1469,6 +1469,15 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 match taken {
                     None => out.push(probe),
                     Some(kept) => {
+                        // ЗАМЕРЕНО И ОТКАЧЕНО: заворачивать `kept` в
+                        // `Underlay`, чтобы коробка с отрицательным `z-index`
+                        // легла ПОД поток (§9.9 шаг 3) — срез из 259 пар семей
+                        // *shape*: 0 и 0, НИ ОДНО число не сдвинулось.
+                        // Подложка порядок не меняет: нижним слоям сцена даёт
+                        // общий номер, а сортировка устойчива. Тройку
+                        // `spec-examples/shape-outside-004…006` сломал коммит
+                        // `05b7a4f` (28.08, гейт `x_set && y_set` в `movable`),
+                        // и возвращать её надо порядком краски, а не слоем.
                         let contiguous = below && out.len() == below_run_end;
                         out.push(
                             div()
