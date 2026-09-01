@@ -878,6 +878,11 @@ impl Paragraph {
             .last()
             .map(|l| l.range.end)
             .unwrap_or(0);
+        // ЗАМЕРЕНО И ОТКАЧЕНО: резервировать при подборе место под
+        // МНОГОТОЧИЕ (условие `l.width + ell <= middle`). Срез из 27 пар
+        // семей balance/clamp/text-wrap: 0 и 0 — колонка, к которой сходится
+        // двоичный поиск, от этого условия не меняется.
+        // `text-wrap-balance-line-clamp-*` держит не подбор ширины.
         let (mut narrow, mut wide) = (px(0.), limit);
         for _ in 0..12 {
             let middle = (narrow + wide) / 2.;
