@@ -270,7 +270,7 @@ export class TabManager {
    */
   getConnectionState(tabId: string): ConnectionState {
     const tab = this.tabs.get(tabId)
-    return tab?.connection.getState() ?? { status: 'disconnected' }
+    return tab?.connection.getState() ?? { status: 'disconnected', authority: 'missing', authorityGeneration: 0, authoritySequence: 0, revision: 0 }
   }
 
   /**
@@ -502,18 +502,28 @@ export class TabManager {
   }
 
   private getTabInfo(tab: Tab): TabInfo {
+    // One atomic read: status/sessionId/retry metadata must describe the same
+    // connection revision or a list snapshot can manufacture a hybrid state.
+    const connection = tab.connection.getState()
     return {
       id: tab.id,
       cwd: tab.config.cwd ?? '',
       label: tab.label,
       folderName: tab.folderName,
       createdAt: tab.createdAt,
-      status: tab.connection.getState().status,
+      status: connection.status,
+      connectionAuthority: connection.authority,
+      connectionAuthorityGeneration: connection.authorityGeneration,
+      connectionAuthoritySequence: connection.authoritySequence,
+      connectionRevision: connection.revision,
+      error: connection.error,
+      nextRetryAt: connection.nextRetryAt,
+      retryAttempt: connection.retryAttempt,
       effort: tab.effort,
       model: tab.model,
       sessionTitle: tab.sessionTitle,
       conversationId: tab.conversationId,
-      sessionId: tab.connection.getSessionId(),
+      sessionId: connection.sessionId,
       settingsDir: tab.settingsDir,
     }
   }

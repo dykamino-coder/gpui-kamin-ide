@@ -20,7 +20,7 @@ export type ServerMessage =
   | { type: 'session:created'; sessionId: string; effort?: string; model?: string; settingsDir?: string }
   | { type: 'session:output'; data: string }
   | { type: 'session:exit'; code: number; sessionId: string }
-  | { type: 'session:error'; error: string }
+  | { type: 'session:error'; error: string; fatal?: boolean }
   | { type: 'mcp:call'; requestId: string; toolName: string; input: Record<string, unknown> }
   | { type: 'jsonl:entries'; entries: unknown[] }
   | { type: 'jsonl:status'; status: string; filePath?: string; error?: string; compacted?: boolean; replayComplete?: boolean; fileHead?: string; fileSize?: number; replayProgress?: { sent: number; total: number }; segmentIndex?: { boundaries: { ts: string }[]; counts: number[] } }

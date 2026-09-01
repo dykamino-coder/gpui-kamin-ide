@@ -92,8 +92,8 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   ipcMain.handle('get-connection-state', () => {
     const mgr = tm()
     const activeId = mgr?.getActiveTabId()
-    if (!activeId) return { status: 'disconnected' }
-    return mgr?.getConnectionState(activeId) ?? { status: 'disconnected' }
+    if (!activeId) return { status: 'disconnected', authority: 'missing', authorityGeneration: 0, authoritySequence: 0, revision: 0 }
+    return mgr?.getConnectionState(activeId) ?? { status: 'disconnected', authority: 'missing', authorityGeneration: 0, authoritySequence: 0, revision: 0 }
   })
 
   // ─── PTY / Terminal (per-tab) ──────────────────────
