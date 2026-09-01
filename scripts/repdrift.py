@@ -31,12 +31,15 @@ def load(path):
             value = float(parts[2])
         except ValueError:
             value = NON_NUMERIC
-        out[parts[0]] = value
+        # Ключ — ПАРА, а не тест: один тест встречается в своде дважды с
+        # разными эталонами (`zorder/z-index-020`), и ключ по одному пути
+        # склеивал такие строки, занижая счёт зелёных.
+        out[parts[0] + "|" + parts[1]] = value
     return out
 
 
-def name(path):
-    return path.replace("\\", "/").rsplit("/", 1)[-1]
+def name(key):
+    return key.split("|")[0].replace("\\", "/").rsplit("/", 1)[-1]
 
 
 def main():
