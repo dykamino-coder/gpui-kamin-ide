@@ -2500,6 +2500,11 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
                         .iter()
                         .any(|n| matches!(n, Node::Element(c) if c.tag == "img")))
         };
+        // ЗАМЕРЕНО И ОТКАЧЕНО: пускать сюда пробег из флоатов ОБЕИХ сторон
+        // (снять этот конъюнкт и вернуть сторону детям перед пушем). Срез из
+        // 259 пар семей *shape*: 0 и 0 — тройка `spec-examples/shape-outside-
+        // 001…003` как была «красное видно», так и осталась, её держит не
+        // односторонность пробега.
         if sides.iter().all(|s| *s == side)
             && floaters.iter().any(|f| f.style.shape_outside.is_some())
             && floaters.iter().all(|f| sized(f).is_some() || img_float(f))
