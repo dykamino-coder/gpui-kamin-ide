@@ -4965,6 +4965,7 @@ fn paragraph_pieces(
             Some(Len::Px(v)) => v,
             _ => 0.0,
         },
+        inherited.nowrap == Some(true),
         &mut render_text,
     )
 }

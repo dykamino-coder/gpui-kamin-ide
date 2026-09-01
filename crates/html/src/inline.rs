@@ -2342,6 +2342,7 @@ pub fn as_wrapped_row(
     align: Option<crate::computed::Align>,
     text_align: Option<crate::computed::TextAlign>,
     indent: f32,
+    nowrap: bool,
     render_text: &mut dyn FnMut(String, &Computed) -> AnyElement,
 ) -> AnyElement {
     use crate::computed::{Align, TextAlign};
@@ -2352,7 +2353,21 @@ pub fn as_wrapped_row(
     // ряд из одних картинок не садился на их высоту. Замерено: приобретено 3,
     // потеряно 37 — ряд переносится, и минимум ложится на ВСЮ пачку строк, а
     // не на каждую. Возвращать вместе с настоящей строчной раскладкой атомов.
-    let mut row = gpui::div().flex().flex_wrap().max_w_full();
+    // `white-space: nowrap` — строка НЕ переносится (css-text-3 §3): ряд
+    // остаётся один и вылезает за край. До ряда значение не доходило вовсе,
+    // оно доезжало только до текстового стиля, и раскладка переносила атомы.
+    // Перенос ряда нужен и для ЖЁСТКИХ разрывов: `<br>` и сохранённый перевод
+    // строки выражаются распоркой на всю ширину, а она работает только в
+    // переносящемся ряду. `nowrap` запрещает лишь МЯГКИЙ перенос (css-text-3
+    // §3), поэтому при жёстком разрыве перенос ряда остаётся.
+    let hard_break = pieces.iter().any(|p| match p {
+        Piece::Text { text, .. } => text.contains('\n'),
+        _ => false,
+    });
+    let mut row = gpui::div().flex().max_w_full();
+    if !nowrap || hard_break {
+        row = row.flex_wrap();
+    }
     row = match align {
         Some(Align::Center) => row.items_center(),
         Some(Align::Start) => row.items_start(),
