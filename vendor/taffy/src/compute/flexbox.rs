@@ -1422,6 +1422,12 @@ fn calculate_children_base_lines(
     // Only compute baselines for flex rows because we only support baseline alignment in the cross axis
     // where that axis is also the inline axis
     // TODO: this may need revisiting if/when we support vertical writing modes
+    //
+    // KaminIDE: ЗАМЕРЕНО И ОТКАЧЕНО — снять этот возврат и считать базовые
+    // линии у колонки тоже. Полный свод CSS3: 0 и 0. Тридцать пар
+    // `css-grid/alignment/grid-self-baseline-*` идут СЕТОЧНЫМ путём, а не
+    // гибким, и одной базовой линии по вертикали им мало: нужна карта
+    // логических осей.
     if !constants.is_row {
         return;
     }
