@@ -32,6 +32,16 @@ export interface FrameRetention {
   entries?: number
 }
 
+export function readSharedHeapMB(): number | undefined {
+  try {
+    const mem = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory
+    if (typeof mem?.usedJSHeapSize === 'number' && mem.usedJSHeapSize >= 0) {
+      return Math.round(mem.usedJSHeapSize / 1_048_576)
+    }
+  } catch { /* not exposed */ }
+  return undefined
+}
+
 let retentionProvider: (() => FrameRetention) | undefined
 
 /** Registered by whichever root owns a session store (only chat holds a full
@@ -68,11 +78,7 @@ function installCrashPong(): void {
         // actually needs to name a culprit.
         // `performance.memory` is Chromium-only and not in TS's lib — hence the
         // cast. Absent → omit the field rather than report a zero.
-        let heapMB: number | undefined
-        try {
-          const mem = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory
-          if (mem?.usedJSHeapSize) heapMB = Math.round(mem.usedJSHeapSize / 1_048_576)
-        } catch { /* not exposed */ }
+        const heapMB = readSharedHeapMB()
         let retention: FrameRetention | undefined
         try { retention = retentionProvider?.() } catch { /* provider threw — omit */ }
         try { parent.postMessage({ __kaminPong: true, heapMB, retention }, "*") } catch { /* no parent */ }

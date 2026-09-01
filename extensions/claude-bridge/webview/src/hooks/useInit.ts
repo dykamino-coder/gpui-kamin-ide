@@ -3,13 +3,17 @@ import { useEffect } from 'preact/hooks'
 import type { KaminBridgeApi } from '../../shared/types'
 
 // Signals
-import { tabs, applyTabSwitch } from '../signals/tabs'
+import { activeTabId, tabs, applyTabSwitch } from '../signals/tabs'
 import { sidebarMode, activeCustomizePanel, installedSkills, hasToken, filePanelVisible, filePanelBottomVisible, filePanelSplit, initializing } from '../signals/ui'
 import { applyRestoredState } from '../lib/tabs-persist'
 import type { WebviewRole } from './useBridgeListeners'
 import { setFrameRetentionProvider } from '../lib/host-ready'
 import { jsonlEntriesByTab } from '../signals/jsonl'
 import { mergeInitialTabSnapshot } from '../signals/tab-connection-reconcile'
+import { snd } from '../lib/bridge-transport'
+import { buildRendererIncidentSample } from '../lib/renderer-incident-sample'
+
+const INCIDENT_SAMPLE_INTERVAL_MS = 15_000
 
 /**
  * Runs the one-time initialization logic on mount:
@@ -29,6 +33,19 @@ export function useInit(bridge: KaminBridgeApi, role: WebviewRole = 'chat'): voi
       for (const list of store.values()) entries += list.length
       return { role, tabs: store.size, entries }
     })
+  }, [role])
+
+  useEffect(() => {
+    const report = (): void => {
+      snd('diag:renderer-sample', buildRendererIncidentSample(
+        role,
+        jsonlEntriesByTab.value,
+        activeTabId.value,
+      ))
+    }
+    report()
+    const timer = window.setInterval(report, INCIDENT_SAMPLE_INTERVAL_MS)
+    return () => window.clearInterval(timer)
   }, [role])
 
   useEffect(() => {

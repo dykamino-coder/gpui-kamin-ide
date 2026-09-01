@@ -2408,7 +2408,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net2 = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes2, createHash: createHash2 } = require("crypto");
+    var { randomBytes: randomBytes3, createHash: createHash2 } = require("crypto");
     var { Duplex, Readable } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -2946,7 +2946,7 @@ var require_websocket = __commonJS({
         }
       }
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes2(16).toString("base64");
+      const key = randomBytes3(16).toString("base64");
       const request = isSecure ? https.request : http.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
@@ -11470,8 +11470,8 @@ function loadPluginOptions(pluginId) {
   const out = {};
   try {
     const installedPath = import_path2.default.join(import_os.default.homedir(), ".claude", "plugins", "installed_plugins.json");
-    const installed2 = JSON.parse(import_fs2.default.readFileSync(installedPath, "utf-8"));
-    const root = installed2?.plugins?.[pluginId]?.[0]?.installPath;
+    const installed3 = JSON.parse(import_fs2.default.readFileSync(installedPath, "utf-8"));
+    const root = installed3?.plugins?.[pluginId]?.[0]?.installPath;
     if (typeof root === "string") {
       const at = pluginId.lastIndexOf("@");
       const pluginName = at > 0 ? pluginId.slice(0, at) : pluginId;
@@ -11680,19 +11680,19 @@ function appendLine(inst, stream, text) {
   broadcast("monitor:output", { id: inst.id, entry });
   if (stream === "stdout" && text) queueClaudeNotification(inst, text);
 }
-function consumeMonitorOutput(previous, chunk, emit) {
+function consumeMonitorOutput(previous, chunk, emit2) {
   let buffer = previous + chunk;
   let idx;
   while ((idx = buffer.indexOf("\n")) !== -1) {
     const rawLine = buffer.slice(0, idx).replace(/\r$/, "");
     buffer = buffer.slice(idx + 1);
     if (rawLine) {
-      emit(rawLine.length > MAX_PENDING_LINE_CHARS ? `${rawLine.slice(0, MAX_PENDING_LINE_CHARS)}
+      emit2(rawLine.length > MAX_PENDING_LINE_CHARS ? `${rawLine.slice(0, MAX_PENDING_LINE_CHARS)}
 [monitor] line truncated` : rawLine);
     }
   }
   if (buffer.length > MAX_PENDING_LINE_CHARS) {
-    emit(`${buffer.slice(0, MAX_PENDING_LINE_CHARS)}
+    emit2(`${buffer.slice(0, MAX_PENDING_LINE_CHARS)}
 [monitor] unterminated line truncated`);
     return "";
   }
@@ -12269,8 +12269,8 @@ async function executeHook(req) {
     command = powerShellEnvPlaceholders(command);
   }
   if (req.pluginId) {
-    const installed2 = await loadInstalledPluginsMap();
-    const pluginRoot = installed2.get(req.pluginId)?.installPath;
+    const installed3 = await loadInstalledPluginsMap();
+    const pluginRoot = installed3.get(req.pluginId)?.installPath;
     if (!pluginRoot || !import_node_fs3.default.existsSync(pluginRoot)) {
       return {
         stdout: "",
@@ -16273,11 +16273,11 @@ var require_out = __commonJS({
       async.read(path45, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports2.stat = stat;
-    function statSync(path45, optionsOrSettings) {
+    function statSync2(path45, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
       return sync.read(path45, settings);
     }
-    exports2.statSync = statSync;
+    exports2.statSync = statSync2;
     function getSettings(settingsOrOptions = {}) {
       if (settingsOrOptions instanceof settings_1.default) {
         return settingsOrOptions;
@@ -36642,14 +36642,14 @@ var require_turndown_cjs = __commonJS({
         } else if (node.nodeType === 1) {
           replacement = replacementForNode.call(self, node);
         }
-        return join2(output, replacement);
+        return join3(output, replacement);
       }, "");
     }
     function postProcess(output) {
       var self = this;
       this.rules.forEach(function(rule) {
         if (typeof rule.append === "function") {
-          output = join2(output, rule.append(self.options));
+          output = join3(output, rule.append(self.options));
         }
       });
       return output.replace(/^[\t\r\n]+/, "").replace(/[\t\r\n\s]+$/, "");
@@ -36661,7 +36661,7 @@ var require_turndown_cjs = __commonJS({
       if (whitespace.leading || whitespace.trailing) content = content.trim();
       return whitespace.leading + rule.replacement(content, node, this.options) + whitespace.trailing;
     }
-    function join2(output, replacement) {
+    function join3(output, replacement) {
       var s1 = trimTrailingNewlines(output);
       var s2 = trimLeadingNewlines(replacement);
       var nls = Math.max(output.length - s1.length, replacement.length - s2.length);
@@ -40538,7 +40538,7 @@ var import_path34 = __toESM(require("path"), 1);
 
 // src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
-var import_node_path9 = __toESM(require("node:path"), 1);
+var import_node_path10 = __toESM(require("node:path"), 1);
 
 // src/resync-tracker.ts
 var ResyncTracker = class {
@@ -41844,7 +41844,8 @@ var ConnectionManager = class _ConnectionManager {
         const reasonStr = reason?.toString() || "";
         this.setState({
           status: "disconnected",
-          error: reasonStr ? `Connection closed: ${code} ${reasonStr}` : void 0
+          error: reasonStr ? `Connection closed: ${code} ${reasonStr}` : void 0,
+          closeCode: code
         });
         this.scheduleReconnect();
       } else {
@@ -44927,8 +44928,8 @@ async function ensureDependencyClosure(data, pluginId, manifestOverride) {
       const depAt = depId.lastIndexOf("@");
       const depName = depAt > 0 ? depId.slice(0, depAt) : depId;
       const depMarketplace = depAt > 0 ? depId.slice(depAt + 1) : marketplace;
-      let installed2 = data?.plugins?.[depId]?.[0];
-      if (!installed2?.installPath) {
+      let installed3 = data?.plugins?.[depId]?.[0];
+      if (!installed3?.installPath) {
         if (!crossMarketplaceDependencyAllowed(rootMarketplace, depMarketplace)) {
           throw new Error(
             `Cross-marketplace dependency ${depId} required by ${id} is not allowed; add ${depMarketplace} to allowCrossMarketplaceDependenciesOn in ${rootMarketplace}`
@@ -44965,10 +44966,10 @@ async function ensureDependencyClosure(data, pluginId, manifestOverride) {
           installedAt: now,
           lastUpdated: now
         }];
-        installed2 = data.plugins[depId][0];
+        installed3 = data.plugins[depId][0];
       }
       if (dependency.version) {
-        const installedVersion = String(installed2.version ?? "");
+        const installedVersion = String(installed3.version ?? "");
         if (!import_semver.default.validRange(dependency.version)) throw new Error(`Invalid dependency range ${dependency.version} for ${depId}`);
         if (!import_semver.default.valid(installedVersion) || !import_semver.default.satisfies(installedVersion, dependency.version, { includePrerelease: true })) {
           throw new Error(`Dependency ${depId}@${installedVersion || "unknown"} does not satisfy ${dependency.version} required by ${id}`);
@@ -46318,9 +46319,9 @@ function registerContentHandlers() {
               if (!depRaw) continue;
               const qualifiedForm = depRaw.includes("@") ? depRaw : marketplace ? `${depRaw}@${marketplace}` : depRaw;
               const bareForm = depRaw.split("@")[0];
-              const installed2 = installedKeys.has(qualifiedForm) || installedBareNames.has(bareForm);
-              const enabled = installed2 && enabledMap.get(qualifiedForm) !== false && (!installedKeys.has(qualifiedForm) ? enabledMap.get(bareForm) !== false : true);
-              depList.push({ name: bareForm, requested: depRaw, installed: installed2, enabled });
+              const installed3 = installedKeys.has(qualifiedForm) || installedBareNames.has(bareForm);
+              const enabled = installed3 && enabledMap.get(qualifiedForm) !== false && (!installedKeys.has(qualifiedForm) ? enabledMap.get(bareForm) !== false : true);
+              depList.push({ name: bareForm, requested: depRaw, installed: installed3, enabled });
             }
           }
           return {
@@ -50330,6 +50331,255 @@ function registerSyncIPC(ctx) {
   ipcMain.handle("sync:force", () => forceSync(ctx));
 }
 
+// src/incident-diagnostics.ts
+var import_node_crypto3 = require("node:crypto");
+var import_node_fs7 = require("node:fs");
+var import_node_path9 = require("node:path");
+
+// ../../../src/kamin-host/rolling-log.ts
+var import_node_fs6 = require("node:fs");
+function removeIfPresent(path45) {
+  try {
+    if ((0, import_node_fs6.existsSync)(path45)) (0, import_node_fs6.unlinkSync)(path45);
+  } catch {
+  }
+}
+function rotateLogFiles(path45, backups) {
+  if (backups <= 0) {
+    removeIfPresent(path45);
+    return !(0, import_node_fs6.existsSync)(path45);
+  }
+  removeIfPresent(`${path45}.${String(backups)}`);
+  for (let i = backups - 1; i >= 1; i -= 1) {
+    const from = `${path45}.${String(i)}`;
+    if (!(0, import_node_fs6.existsSync)(from)) continue;
+    const to = `${path45}.${String(i + 1)}`;
+    removeIfPresent(to);
+    try {
+      (0, import_node_fs6.renameSync)(from, to);
+    } catch {
+    }
+  }
+  if ((0, import_node_fs6.existsSync)(path45)) {
+    removeIfPresent(`${path45}.1`);
+    try {
+      (0, import_node_fs6.renameSync)(path45, `${path45}.1`);
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+var RollingLogWriter = class {
+  constructor(path45, options) {
+    this.path = path45;
+    this.options = options;
+    if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
+      throw new Error("rolling log maxBytes must be a positive safe integer");
+    }
+    if (!Number.isSafeInteger(options.backups) || options.backups < 0) {
+      throw new Error("rolling log backups must be a non-negative safe integer");
+    }
+    if (options.rotateOnOpen && (0, import_node_fs6.existsSync)(path45) && (0, import_node_fs6.statSync)(path45).size > 0) {
+      rotateLogFiles(path45, options.backups);
+    }
+    this.open();
+  }
+  path;
+  options;
+  fd = null;
+  bytes = 0;
+  permanentlyClosed = false;
+  write(chunk) {
+    if (this.permanentlyClosed) return;
+    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
+    let offset = 0;
+    while (offset < data.length) {
+      if (this.bytes >= this.options.maxBytes) this.rotate();
+      const remaining = this.options.maxBytes - this.bytes;
+      const size = Math.min(remaining, data.length - offset);
+      if (size <= 0) break;
+      try {
+        if (this.fd === null) this.open();
+        if (this.fd === null) return;
+        const written = (0, import_node_fs6.writeSync)(this.fd, data, offset, size);
+        if (written <= 0) return;
+        this.bytes += written;
+        offset += written;
+      } catch {
+        this.closeDescriptor();
+        return;
+      }
+    }
+  }
+  close() {
+    this.permanentlyClosed = true;
+    this.closeDescriptor();
+  }
+  closeDescriptor() {
+    if (this.fd === null) return;
+    try {
+      (0, import_node_fs6.closeSync)(this.fd);
+    } catch {
+    }
+    this.fd = null;
+  }
+  open() {
+    if (this.permanentlyClosed) return;
+    try {
+      this.fd = (0, import_node_fs6.openSync)(this.path, "a");
+      try {
+        this.bytes = (0, import_node_fs6.statSync)(this.path).size;
+      } catch {
+        this.closeDescriptor();
+        this.bytes = 0;
+        return;
+      }
+      if (this.bytes >= this.options.maxBytes) this.rotate();
+    } catch {
+      this.fd = null;
+      this.bytes = 0;
+    }
+  }
+  rotate() {
+    this.closeDescriptor();
+    const rotated = rotateLogFiles(this.path, this.options.backups);
+    this.bytes = 0;
+    try {
+      this.fd = (0, import_node_fs6.openSync)(this.path, rotated ? "a" : "w");
+      this.bytes = (0, import_node_fs6.statSync)(this.path).size;
+    } catch {
+      this.closeDescriptor();
+      this.bytes = 0;
+    }
+  }
+};
+
+// src/incident-diagnostics.ts
+var MAX_TRACKED_TABS = 256;
+var MAX_TRACKED_RENDERERS = 16;
+var MAX_COUNTER = 1e9;
+var MIN_SAMPLE_INTERVAL_MS = 1e4;
+var INCIDENT_LOG_MAX_BYTES = 1 * 1024 * 1024;
+var INCIDENT_LOG_BACKUPS = 3;
+var TAB_REF_KEY = (0, import_node_crypto3.randomBytes)(32);
+function boundedCount(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return Math.min(MAX_COUNTER, Math.max(0, Math.trunc(value)));
+}
+function boundedHeap(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  return Math.min(MAX_COUNTER, Math.round(value * 10) / 10);
+}
+function safeStatus(value) {
+  if (value === "disconnected" || value === "connecting" || value === "connected" || value === "error") return value;
+  return "error";
+}
+function safeRole(value) {
+  if (value === "chat" || value === "tools" || value === "customize") return value;
+  return "unknown";
+}
+function classifyCause(value, status, closeCode) {
+  if (status !== "error" && status !== "disconnected") return "none";
+  if (closeCode === 1006 || closeCode === 1012 || closeCode === 1013 || closeCode === 1014) return "network";
+  if (typeof closeCode === "number") return "remote-close";
+  if (typeof value !== "string" || value.length === 0) return "unknown";
+  const text = value.toLowerCase();
+  if (text.includes("401") || text.includes("403") || text.includes("auth") || text.includes("token")) return "auth";
+  if (text.includes("timeout") || text.includes("timed out")) return "timeout";
+  if (text.includes("session")) return "session";
+  if (text.includes("closed") || text.includes("close code")) return "remote-close";
+  if (text.includes("network") || text.includes("socket") || text.includes("econn") || text.includes("dns")) return "network";
+  return "unknown";
+}
+function tabRef(value) {
+  const id = typeof value === "string" ? value : "missing";
+  return (0, import_node_crypto3.createHmac)("sha256", TAB_REF_KEY).update(id).digest("hex").slice(0, 12);
+}
+function normalizeConnectionTransition(tabId, raw) {
+  const state = raw && typeof raw === "object" ? raw : {};
+  const status = safeStatus(state.status);
+  return {
+    event: "connection-transition",
+    tabRef: tabRef(tabId),
+    status,
+    cause: classifyCause(state.error, status, state.closeCode),
+    retryAttempt: boundedCount(state.retryAttempt)
+  };
+}
+function normalizeRendererSample(raw) {
+  const sample = raw && typeof raw === "object" ? raw : {};
+  const windowState = sample.windowState === "within-configured-window" || sample.windowState === "over-configured-window" ? sample.windowState : "unknown";
+  return {
+    event: "renderer-sample",
+    role: safeRole(sample.role),
+    heapMB: boundedHeap(sample.heapMB),
+    retainedTabs: boundedCount(sample.retainedTabs),
+    retainedEntries: boundedCount(sample.retainedEntries),
+    activeEntries: boundedCount(sample.activeEntries),
+    storeWindow: boundedCount(sample.storeWindow),
+    scrollUpMax: boundedCount(sample.scrollUpMax),
+    windowState
+  };
+}
+function formatIncidentLine(record) {
+  return `[incident] ${JSON.stringify({
+    schema: 1,
+    ts: (/* @__PURE__ */ new Date()).toISOString(),
+    appVersion: process.env.KAMIN_APP_VERSION ?? "unknown",
+    processRole: "extension-host",
+    pid: process.pid,
+    ...record
+  })}`;
+}
+var lastConnectionByTab = /* @__PURE__ */ new Map();
+var lastSampleByRole = /* @__PURE__ */ new Map();
+var installed2 = false;
+var incidentLog = null;
+function emit(record) {
+  incidentLog?.write(`${formatIncidentLine(record)}
+`);
+}
+function recordBridgeOutbound(channel, args) {
+  if (channel !== "connection-state-changed") return;
+  const record = normalizeConnectionTransition(args[0], args[1]);
+  const signature = `${record.status}:${record.cause}:${String(record.retryAttempt)}`;
+  if (lastConnectionByTab.get(record.tabRef) === signature) return;
+  lastConnectionByTab.set(record.tabRef, signature);
+  while (lastConnectionByTab.size > MAX_TRACKED_TABS) {
+    const oldest = lastConnectionByTab.keys().next().value;
+    if (oldest === void 0) break;
+    lastConnectionByTab.delete(oldest);
+  }
+  emit(record);
+}
+function recordRendererSample(raw, now = Date.now()) {
+  const record = normalizeRendererSample(raw);
+  const last = lastSampleByRole.get(record.role) ?? 0;
+  if (now - last < MIN_SAMPLE_INTERVAL_MS) return;
+  lastSampleByRole.set(record.role, now);
+  while (lastSampleByRole.size > MAX_TRACKED_RENDERERS) {
+    const oldest = lastSampleByRole.keys().next().value;
+    if (oldest === void 0) break;
+    lastSampleByRole.delete(oldest);
+  }
+  emit(record);
+}
+function installIncidentDiagnostics(logDir, subscribe) {
+  if (installed2) return;
+  installed2 = true;
+  try {
+    (0, import_node_fs7.mkdirSync)(logDir, { recursive: true });
+    incidentLog = new RollingLogWriter((0, import_node_path9.join)(logDir, "incident.log"), {
+      maxBytes: INCIDENT_LOG_MAX_BYTES,
+      backups: INCIDENT_LOG_BACKUPS,
+      rotateOnOpen: true
+    });
+  } catch {
+  }
+  subscribe((sample) => recordRendererSample(sample));
+}
+
 // src/bridge-host.ts
 var HEAVY_SESSION_CHANNELS = /* @__PURE__ */ new Set([
   "jsonl-entries",
@@ -50422,11 +50672,17 @@ var BridgeHost = class {
   mcpManager;
   constructor(context, opts) {
     const webContents = {
-      send: (channel, ...args) => this.post({ kind: "event", channel, args })
+      send: (channel, ...args) => {
+        recordBridgeOutbound(channel, args);
+        this.post({ kind: "event", channel, args });
+      }
     };
     this.sink = { webContents, isDestroyed: () => this.disposed };
     this.event = { sender: webContents };
     registerShimWindow(this.sink);
+    installIncidentDiagnostics(context.globalStorageUri.fsPath, (listener) => {
+      ipcMain.on("diag:renderer-sample", (_event, sample) => listener(sample));
+    });
     setPermissionStorageDir(context.globalStorageUri.fsPath);
     this.configStore = new ConfigStore(context.globalStorageUri.fsPath);
     this.configStore.migrateFromElectron();
@@ -50434,8 +50690,8 @@ var BridgeHost = class {
     setPluginLspProjectResolver((tabId, file) => {
       const direct = tabId ? this.tabManager.getTab(tabId)?.config.cwd : void 0;
       if (direct) return direct;
-      const resolvedFile = import_node_path9.default.resolve(file);
-      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path9.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path9.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const resolvedFile = import_node_path10.default.resolve(file);
+      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path10.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path10.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
     });
     const getUserCwd = () => vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
     const ctx = {
