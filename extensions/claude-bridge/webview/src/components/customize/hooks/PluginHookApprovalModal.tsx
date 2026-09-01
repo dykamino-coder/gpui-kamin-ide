@@ -26,6 +26,24 @@ interface SelectionState {
 
 const EMPTY_SELECTION = new Set<string>()
 
+/** The webview↔host invoke transport answers by frame id and has no deadline
+ *  of its own, so a dropped reply leaves the promise pending forever. Observed
+ *  on the Windows approval gate: the host logged `{ok:true}` for
+ *  `hooks:set-plugin-approval` while this modal stayed on `Saving…` — and it
+ *  is a full-screen overlay, so the wedge also locks the chat behind it. Bound
+ *  the wait, surface it, and let the user retry (the write is idempotent). */
+const SAVE_TIMEOUT_MS = 15_000
+
+function withSaveTimeout<T>(pending: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('Bridge did not answer in 15s. Approvals may not be saved — try again.')),
+      SAVE_TIMEOUT_MS,
+    )
+    void pending.then(resolve, reject).finally(() => { clearTimeout(timer) })
+  })
+}
+
 function showRestartNotice(pluginId: string): void {
   showToast({
     type: 'info',
@@ -85,35 +103,32 @@ export function PluginHookApprovalModal(): JSX.Element | null {
 
   if (!pending) return null
 
-  async function approveSelected(): Promise<void> {
+  async function save(hashes: string[], failure: string): Promise<void> {
     if (!pending) return
+    const pluginId = pending.pluginId
     setSaving(true)
     try {
-      const result = await bridge.hooksSetPluginApproval(pending.pluginId, Array.from(selected))
-      if (!result?.ok) throw new Error(result?.error || 'Approval could not be saved')
-      if (result.restartRequired) showRestartNotice(pending.pluginId)
+      const result = await withSaveTimeout(bridge.hooksSetPluginApproval(pluginId, hashes))
+      if (!result?.ok) throw new Error(result?.error || failure)
+      if (result.restartRequired) showRestartNotice(pluginId)
       setQueue(current => current.slice(1))
-    } catch (err) {
-      showToast({ type: 'error', title: pending.pluginId, message: err instanceof Error ? err.message : String(err) })
-    } finally {
       setSaving(false)
+    } catch (err) {
+      // Hand the dialog back first: the recovery read below travels the same
+      // transport and must not extend `Saving…` by a second timeout.
+      setSaving(false)
+      showToast({ type: 'error', title: pluginId, message: err instanceof Error ? err.message : String(err) })
+      // The host may have written the store even though we never saw the reply.
+      // Re-read the pending set so a save that did land still closes the modal
+      // instead of asking the user to redo a decision the bridge already has.
+      try {
+        setQueue(await withSaveTimeout(bridge.hooksListPendingPluginApprovals()))
+      } catch { /* keep the queue as-is — the toast already asked for a retry */ }
     }
   }
 
-  async function rejectAll(): Promise<void> {
-    if (!pending) return
-    setSaving(true)
-    try {
-      const result = await bridge.hooksSetPluginApproval(pending.pluginId, [])
-      if (!result?.ok) throw new Error(result?.error || 'Rejection could not be saved')
-      if (result.restartRequired) showRestartNotice(pending.pluginId)
-      setQueue(current => current.slice(1))
-    } catch (err) {
-      showToast({ type: 'error', title: pending.pluginId, message: err instanceof Error ? err.message : String(err) })
-    } finally {
-      setSaving(false)
-    }
-  }
+  const approveSelected = (): Promise<void> => save(Array.from(selected), 'Approval could not be saved')
+  const rejectAll = (): Promise<void> => save([], 'Rejection could not be saved')
 
   function handleDialogKeyDown(event: KeyboardEvent): void {
     if (event.key !== 'Tab' || !dialogRef.current) return
