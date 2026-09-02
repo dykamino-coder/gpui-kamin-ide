@@ -72,8 +72,9 @@ for part in target/wpt-shard-*.list; do
 done
 fail=0
 for p in "${pids[@]}"; do wait "$p" || fail=1; done
-cat target/wpt-shard-*.txt > target/wpt-report-merged.txt
-got=$(grep -c '|' target/wpt-report-merged.txt)
-green=$(awk -F'|' '$3~/^[0-9.]+$/ && $3+0<=0.5' target/wpt-report-merged.txt | wc -l)
-hung=$(grep -c '|HUNG' target/wpt-report-merged.txt)
+MERGED="${WPT_REPORT:-target/wpt-report-merged.txt}"
+cat target/wpt-shard-*.txt > "$MERGED"
+got=$(grep -c '|' "$MERGED")
+green=$(awk -F'|' '$3~/^[0-9.]+$/ && $3+0<=0.5' "$MERGED" | wc -l)
+hung=$(grep -c '|HUNG' "$MERGED")
 echo "pairs: $got/$total, green: $green, hung: $hung, fail_flag: $fail"
