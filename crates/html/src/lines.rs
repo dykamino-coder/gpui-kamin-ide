@@ -883,13 +883,23 @@ impl Paragraph {
         // семей balance/clamp/text-wrap: 0 и 0 — колонка, к которой сходится
         // двоичный поиск, от этого условия не меняется.
         // `text-wrap-balance-line-clamp-*` держит не подбор ширины.
+        // Место под МНОГОТОЧИЕ входит в колонку: на оборванной строке за
+        // текстом рисуется знак обрыва, и колонка, в которую он не влезает,
+        // подбором не годится (css-text-4 §5: обрыв — часть последней
+        // строки). Прошлый заход мерил ширину строки КАК ЕСТЬ; здесь хвост
+        // сперва обрезается, как это делает сам обрыв (`ellipsize`).
+        let ell = self.suffix_width(self.marker_str(), 0, window);
         let (mut narrow, mut wide) = (px(0.), limit);
         for _ in 0..12 {
             let middle = (narrow + wide) / 2.;
             let probe = self.lay(Some(middle), &segs);
-            let fits = probe
-                .get(max - 1)
-                .is_some_and(|l: &Line| l.range.end >= end);
+            let fits = probe.get(max - 1).is_some_and(|l: &Line| {
+                if l.range.end < end {
+                    return false;
+                }
+                let cut = l.range.start + trim_hanging(&self.text[l.range.clone()]);
+                self.span(&segs, l.range.start, cut) + ell <= middle
+            });
             if fits {
                 wide = middle;
             } else {
@@ -2880,6 +2890,14 @@ impl Paragraph {
     /// Строковый маркер несёт шрифт контейнера; многоточие и знак переноса
     /// остаются в шрифте прогона у среза.
     fn style_marker_run(&self, mark: &str, run: &mut TextRun) {
+        // Знак обрыва — содержимое САМОГО БЛОКА, а не куска, на котором
+        // строка оборвалась: кегль у него блочный (css-overflow-3 §4.1,
+        // «the ellipsis is styled as the block»). Прогон брался с места
+        // обрыва вместе со своим кеглем, и внутри `<span style="font-size:
+        // 1rem">` в блоке с `4rem` многоточие выходило вчетверо уже нужного
+        // (`text-wrap-balance-line-clamp-002`: место под него при подборе
+        // колонки считалось 8.8 точки вместо 35.2).
+        run.font_size = None;
         if let (Some(m), Some(f)) = (self.overflow_marker.as_deref(), self.marker_font.as_ref())
             && mark == m
         {
