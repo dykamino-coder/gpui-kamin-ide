@@ -279,6 +279,44 @@ pub fn collect(
                         style: margin_spacer_style(&merged, inherited, mlead),
                     });
                 }
+                // ПУСТАЯ строчная коробка: прогона текста у неё нет, а
+                // отступ, рамку и фон рисовать надо (§8.4). Распорка их не
+                // красит (см. запись у `spacer_style`), поэтому коробка идёт
+                // отдельным слоем — он места в строке не занимает (место
+                // держат распорки) и высоту строки не меняет (§10.8: поля,
+                // отступы и рамки строчного в неё не входят).
+                let mut inner_text = String::new();
+                crate::render::gather_text_public(&e.children, &mut inner_text);
+                if inner_text.is_empty() && (lead != 0.0 || trail != 0.0) {
+                    let px_of = |l: Option<Len>| match l {
+                        Some(Len::Px(v)) => v,
+                        _ => 0.0,
+                    };
+                    let size = match merged.font_size {
+                        Some(Len::Px(v)) => v,
+                        _ => 16.0,
+                    };
+                    let bs = e.style.borders();
+                    let top = px_of(e.style.padding.top) + px_of(bs.top);
+                    let line = match merged.line_height {
+                        Some(Len::Px(v)) => v,
+                        Some(Len::Em(k)) => k * size,
+                        _ => size * 1.2,
+                    };
+                    // Коробка стоит на области содержимого: она в середине
+                    // строки, а полулидинг делит остаток поровну (§10.8).
+                    let dy = ((line - size) / 2.0 - top).max(-line);
+                    let mut copy = e.clone();
+                    copy.style.width = Some(Len::Px(0.0));
+                    copy.style.height = Some(Len::Px(size));
+                    copy.style.margin = Default::default();
+                    copy.style.position = None;
+                    copy.style.display = None;
+                    let boxel = crate::render::styled_div_with(&copy, &merged)
+                        .absolute()
+                        .top(gpui::px(dy));
+                    out.push(Piece::Overlay(boxel.into_any_element()));
+                }
                 if lead != 0.0 {
                     out.push(Piece::Text {
                         text: SPACER.into(),

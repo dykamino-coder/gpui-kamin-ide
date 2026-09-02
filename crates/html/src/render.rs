@@ -144,7 +144,7 @@ fn shows_inside(nodes: &[Node]) -> bool {
     })
 }
 
-fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
+pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // Скрытая коробка с видимым потомком не прячется целиком: раскладка та
     // же, гаснет только СВОЯ краска — иначе ранний возврат из отрисовки
     // уносит и потомка (`visufx/visibility-005`).
