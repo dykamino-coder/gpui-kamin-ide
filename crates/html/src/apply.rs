@@ -240,6 +240,36 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
     match (&c.grid_tracks, c.grid_cols, auto_fill) {
         (Some(tracks), _, _) => d = along_line(d, tracks.iter().map(track).collect()),
         // «Сколько влезет» умеет сама раскладка — короткая форма GPUI.
+        // Тело повтора из НЕСКОЛЬКИХ дорожек: своего «минимума» оно не даёт
+        // (`auto_fill_min` разбирает одну дорожку), поэтому идёт своей ветвью.
+        // Раскладка список принимает как есть — `GridTrack::AutoRepeat`
+        // хранит `Vec` (`grid-auto-repeat-multiple-values-*` рисовались одной
+        // плитой во всю ширину).
+        // Поток ЛУНОК разворачивает повтор своим кодом (`render::lanes`), и
+        // список дорожек ему только мешает: `column-auto-repeat-013`
+        // уходил 0.00 → 10.92. Признак — `lanes_row`/`lanes_inline` и родня,
+        // они выставлены только у лунок.
+        (None, _, None)
+            if !flip
+                && c.grid_auto_fill_tracks.len() > 1
+                // Поток ЛУНОК доходит сюда уже с `display: grid` (печать
+                // `KAMIN_REPEAT_DIAG` показала `Some(Grid)`), поэтому вид его
+                // не отсекает: `column-auto-repeat-013` (лунки, черновик)
+                // уходит 0.00 → 10.92 — это записанная цена жилы.
+                && !matches!(c.display, Some(crate::computed::Display::GridLanes)) =>
+        {
+            d = along_line(
+                d,
+                vec![gpui::GridTrack::AutoRepeat {
+                    fit: c.auto_repeat_cols.is_some_and(|r| r.fit),
+                    tracks: c
+                        .grid_auto_fill_tracks
+                        .iter()
+                        .map(|v| gpui::GridTrack::Pixels(px(*v)))
+                        .collect(),
+                }],
+            )
+        }
         (None, _, Some(min)) if !flip => {
             // Повтор отдаётся раскладке СВОИМ видом: она считает, сколько
             // дорожек влезет, и при `auto-fit` схлопывает пустые
@@ -247,15 +277,18 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
             // дорожку растяжкой `minmax(min, 1fr)`, и уцелевшие дорожки
             // забирали весь остаток — раздавать было нечего.
             let r = c.auto_repeat_cols;
-            let unit = match r.and_then(|r| r.track_pct) {
+            // Тело повтора бывает из НЕСКОЛЬКИХ дорожек
+            // (`repeat(auto-fill, 50px 50px)`) — раскладка это уже умеет,
+            // список идёт в неё как есть.
+            let tracks: Vec<gpui::GridTrack> = vec![match r.and_then(|r| r.track_pct) {
                 Some(k) => gpui::GridTrack::Percent(k),
                 None => gpui::GridTrack::Pixels(px(min)),
-            };
+            }];
             d = along_line(
                 d,
                 vec![gpui::GridTrack::AutoRepeat {
                     fit: r.is_some_and(|r| r.fit),
-                    tracks: vec![unit],
+                    tracks,
                 }],
             )
         }

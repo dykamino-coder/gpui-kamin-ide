@@ -708,6 +708,10 @@ pub struct Computed {
     /// `repeat(auto-fill, minmax(N, 1fr))` — сколько влезет колонок шириной
     /// не меньше N. Число колонок здесь считает раскладка, а не разметка.
     pub grid_auto_fill_min: Option<f32>,
+    /// Тело повтора из НЕСКОЛЬКИХ дорожек: `repeat(auto-fill, 50px 50px)`
+    /// повторяет пару, а не одну дорожку. Пусто — тело из одной дорожки, её
+    /// размер лежит в `grid_auto_fill_min`.
+    pub grid_auto_fill_tracks: Vec<f32>,
     /// То же по рядам: `grid-template-rows: repeat(auto-fill, 100px)`.
     pub grid_auto_fill_row: Option<f32>,
     /// Повтор «сколько влезет» по колонкам и по рядам целиком: нужен и вид
@@ -2166,6 +2170,7 @@ impl Computed {
             // разворотом повтора при непустом списке.
             "grid-template-columns" if v.contains("auto-fill") || v.contains("auto-fit") => {
                 self.grid_auto_fill_min = auto_fill_min(v);
+                self.grid_auto_fill_tracks = auto_fill_tracks(v);
                 self.auto_repeat_cols = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_min,
@@ -6413,6 +6418,54 @@ pub struct AutoRepeat {
 ///
 /// Берётся либо нижняя граница `minmax(N, …)`, либо сама дорожка, если она
 /// задана точкой: `repeat(auto-fill, 100px)` — три колонки в трёхстах точках.
+/// Все дорожки тела повтора `repeat(auto-fill | auto-fit, …)` в точках.
+///
+/// Тело бывает из нескольких дорожек — `repeat(auto-fill, 50px 50px)`
+/// повторяет ПАРУ. Пока бралась одна, `Len::parse("50px 50px")` не разбирался
+/// вовсе, и сетка не получала дорожек: `grid-auto-repeat-multiple-values-*`
+/// рисовались одной плитой во всю ширину. Имена линий (`[all x v]`) к размеру
+/// не относятся и выбрасываются.
+///
+/// Пусто, если тело из одной дорожки или хоть один кусок не разобрался: такой
+/// случай ведёт прежняя ветка по `auto_fill_min`.
+fn auto_fill_tracks(v: &str) -> Vec<f32> {
+    if v.contains("minmax(") || v.contains("fit-content(") {
+        return Vec::new();
+    }
+    let Some(rest) = v.split("repeat(").nth(1) else {
+        return Vec::new();
+    };
+    let Some(end) = rest.rfind(')') else {
+        return Vec::new();
+    };
+    let Some(body) = rest[..end].split_once(',').map(|(_, b)| b) else {
+        return Vec::new();
+    };
+    // Имена линий в квадратных скобках размера не несут.
+    let mut clean = String::with_capacity(body.len());
+    let mut depth = 0usize;
+    for ch in body.chars() {
+        match ch {
+            '[' => depth += 1,
+            ']' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => clean.push(ch),
+            _ => {}
+        }
+    }
+    let parts: Vec<&str> = clean.split_whitespace().collect();
+    if parts.len() < 2 {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(parts.len());
+    for t in parts {
+        match Len::parse(t) {
+            Some(Len::Px(px)) => out.push(px),
+            _ => return Vec::new(),
+        }
+    }
+    out
+}
+
 fn auto_fill_min(v: &str) -> Option<f32> {
     let px_of = |t: &str| match Len::parse(t.trim()) {
         Some(Len::Px(px)) => Some(px),
