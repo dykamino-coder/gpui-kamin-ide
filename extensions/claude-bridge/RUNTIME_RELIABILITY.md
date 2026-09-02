@@ -995,14 +995,84 @@ Invariant после каждого update: `Active badge === rendered active ro
 Windows gate запускает несколько teammates, завершает их в разном порядке и
 проверяет вкладки во время работы, сразу после завершения и после cleanup.
 
-BR-23–BR-27 зафиксированы docs-only и не меняют runtime или generated
+### BR-28 — Measure sidebar geometry during session hover
+
+**Status:** investigation; hover-induced displacement пока не доказан кодом.
+**Dependency:** implementation не начинается до закрытия текущей PR queue;
+baseline capture выполняется до BR-29. **Acceptance:** отдельный bounded Windows
+GPUI evidence artifact, не speculative functional PR.
+
+Screenshot 2 сентября показывает session actions pill у `Front-Back для
+проект...` и визуально отличающийся промежуток перед `35 inactive sessions`.
+Source не подтверждает, что fly-out добавляет место в sessions list:
+
+- `overlay_pill()` рендерится в отдельном overlay window как `absolute`;
+- `anchor_probe()` также `absolute` и не должен участвовать в layout строки;
+- session row имеет фиксированную высоту 24 px, а контейнер sessions — постоянный
+  gap 2 px;
+- inactive toggle всегда имеет собственный left padding 18 px, chevron 12 px и
+  gap 6 px, поэтому его label по дизайну начинается правее session label;
+- единственное hover-driven изменение внутри layout — unpinned `pin_btn()`,
+  который раскрывается с width 0 до 20 px и перераспределяет горизонтальный
+  бюджет только hovered row.
+
+По одному screenshot нельзя отличить реальный vertical reflow от постоянного
+indent, изменения truncation/time/pin allocation или GPUI flex regression.
+Исследование снимает paired bounds без движения/scroll между кадрами: session
+row, label, time, pin, group sessions container, inactive toggle, scroll
+viewport, `anchor_probe` и overlay pill — до hover, на hover и после leave.
+Evidence фиксирует logical/physical px, DPI, sidebar width, scrollbar presence,
+open/pinned state и положение строки у нижней границы viewport. Матрица включает
+pinned/unpinned, open/inactive, с/без scrollbar и несколько project groups.
+
+Если sibling bounds не меняются, задача закрывается как optical/expected indent
+с документированным сравнением; произвольная правка padding запрещена. Если
+меняются — отдельный change PR локализует первый ancestor с изменившимся
+height/y и добавляет regression probe. Этот incident не объединяется с BR-29
+без такого evidence: общий hover subsystem ещё не доказывает общую layout cause.
+
+### BR-29 — Make hover-to-rename transition atomic
+
+**Status:** ready; подтверждён source lifecycle defect. **Dependency:** paired
+baseline из BR-28 и закрытая текущая PR queue. **Acceptance:** automated state/
+geometry tests + Windows GPUI sidebar gate.
+
+Переход в inline rename сейчас не владеет teardown hover actions:
+
+- `ShellEvent::BeginRename` закрывает только `session_menu`, ставит
+  `renaming_session` и создаёт input, но не очищает `hover_pill`,
+  `hover_pill_anchor`, `hover_pill_panel` или generation;
+- rename branch в `session_row()` возвращается до установки `on_hover` и
+  `anchor_probe`, поэтому заменённый hovered node может не прислать leave;
+- process-global `pill_anchor()` хранит последнюю геометрию как unscoped
+  `Option<[f32; 4]>` и сам не очищается при исчезновении anchor;
+- passive overlay продолжает рисовать actions, пока одновременно сохранены
+  `hover_pill` и старая anchor geometry. Общий mouse-down dismiss уменьшает
+  частоту проявления, но не покрывает F2, double-click, замену node и ordering
+  capture/target events как явный контракт rename.
+
+Fix вводит один state transition helper: перед `BeginRename` он инвалидирует
+pending close generation, очищает оба hover sources и связанную geometry, затем
+показывает input. Anchor geometry становится id/generation-scoped либо явно
+сбрасывается вместе с state, чтобы координаты одной строки нельзя было
+использовать для другой. Rename не зависит от случайного `mouseleave` или
+глобального mouse-down listener.
+
+Tests покрывают rename из fly-out button, double-click и F2 после anchor hover и
+panel hover, delayed leave предыдущего node, cancel/commit/blur, смену session и
+scroll во время transition. Invariant: при `renaming_session = id` для `id` нет
+actions overlay и stale anchor; input не перекрыт, не обрезан pill hitbox и
+сразу имеет focus. Windows gate повторяет оба screenshot-сценария и отдельно
+сверяет bounds из BR-28 до/после fix.
+
+BR-23–BR-29 зафиксированы docs-only и не меняют runtime или generated
 artifacts. Agents track не содержит предположения о данных из другой session.
 
 ## Current open PR boundary
 
 PR #12–#16 и release PR #18 уже находятся в `origin/main`. На момент последнего
 аудита открыты docs PR #17 и runtime/build PR #19–#22. До их merge/закрытия
-BR-25–BR-27 не получают implementation branches: это сохраняет требование
+BR-25–BR-29 не получают implementation branches: это сохраняет требование
 пользователя сначала завершить предыдущую очередь и не создаёт конфликтов в
 committed `tools.html`/`extension.js` artifacts.
 
@@ -1049,6 +1119,8 @@ Windows lifecycle gate, затем BR-25 verification. PR #21 не считае�
   утверждённому metric contract;
 - deployment skills: BR-12; BR-13 ждёт отдельного подтверждения migration и не
   выполняет destructive container cleanup.
+- native sessions sidebar: BR-28 paired geometry capture → BR-29; отдельный
+  layout fix создаётся только если BR-28 докажет sibling reflow.
 
 BR-04, BR-08, BR-14, BR-17, BR-19, BR-23 и BR-24 не образуют общую строгую
 цепочку. Они следуют priority ниже, не смешиваются в один PR и перед началом
@@ -1059,30 +1131,33 @@ BR-04, BR-08, BR-14, BR-17, BR-19, BR-23 и BR-24 не образуют общу
 2. BR-25: после #21 выполнить instrumented Windows verification одной session.
 3. BR-27: исправить единую partition `Active`/`Completed`.
 4. BR-26: сделать replay snapshot атомарным и убрать empty/partial flicker.
-5. BR-19 expected shell-disconnect cancellation без ложного crash toast.
-6. BR-17 persistent server logs как независимый operational PR.
-7. BR-20 plan-usage compatibility как независимый server/dashboard PR.
-8. BR-21 metric contract, затем его bounded aggregation PRs; analytics fixes не
+5. BR-28 paired sidebar geometry capture без speculative layout changes.
+6. BR-29 atomic hover-to-rename transition; отдельный layout fix — только по
+   результату BR-28.
+7. BR-19 expected shell-disconnect cancellation без ложного crash toast.
+8. BR-17 persistent server logs как независимый operational PR.
+9. BR-20 plan-usage compatibility как независимый server/dashboard PR.
+10. BR-21 metric contract, затем его bounded aggregation PRs; analytics fixes не
    смешиваются с BR-20 и не пытаются вычислять quota из JSONL.
-9. BR-04 recovery после extension-host respawn.
-10. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
-11. BR-24 lost invoke replies: сначала transport diagnostics, затем bounded
+11. BR-04 recovery после extension-host respawn.
+12. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
+13. BR-24 lost invoke replies: сначала transport diagnostics, затем bounded
    lifecycle и reconciliation без blind retry mutating calls.
-12. BR-23 completion toast после финального connection-state PR; отдельно от
+14. BR-23 completion toast после финального connection-state PR; отдельно от
    sticky elicitation/approval semantics.
-13. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
+15. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
    как fix PR только если симптом сохранился; отдельная задача для reconnect не
    заводится.
-14. BR-22 live render-window collapse: сначала получить paired diagnostic dumps
+16. BR-22 live render-window collapse: сначала получить paired diagnostic dumps
    пустого и восстановившегося состояния и локализовать расходящийся entry path.
-15. BR-16 upward history anchoring идёт после классификации BR-22 отдельным UI
+17. BR-16 upward history anchoring идёт после классификации BR-22 отдельным UI
    PR и не блокирует connection recovery chain.
-16. BR-11 inventory native blockers, затем минимальный BR-07.
-17. BR-08 без удаления существующего maintenance contract.
-18. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
+18. BR-11 inventory native blockers, затем минимальный BR-07.
+19. BR-08 без удаления существующего maintenance contract.
+20. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
    migration на всех deployments.
-19. BR-15 Agent Teams selection eval.
-20. BR-02 и только затем решение по BR-03.
+21. BR-15 Agent Teams selection eval.
+22. BR-02 и только затем решение по BR-03.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.
