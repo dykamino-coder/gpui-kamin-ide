@@ -1905,6 +1905,14 @@ impl Computed {
         // часть `overflow`, и перестановка этой пары ЗАМЕРЕНА в минус —
         // девять пар `textarea-pre-wrap-*` уходят 0.00 → 0.76. Список
         // расширять по одному, каждое имя — со своим замером.
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО: добавить сюда `border` и `grid` (со своими
+        // исключениями: `border-spacing`/`border-collapse`/`border-radius`/
+        // `border-image` не части `border`, `grid-gap` не часть `grid`).
+        // Статический просмотр нашёл 6 красных пар, где длинное свойство
+        // `border-*` стоит ПЕРЕД сокращением, и 13 таких же с `grid`, но срез
+        // из 1817 пар (border/grid/gap/margin-collapse/ch-units/line-names)
+        // дал 1290 → 1290: ни одной пары в любую сторону. Значит порядок в
+        // этих парах не решает — держат их другие корни.
         const SHORTHANDS: &[&str] = &["background"];
         let семья = |k: &'a str| -> &'a str {
             for root in SHORTHANDS {
