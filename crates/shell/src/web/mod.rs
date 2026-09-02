@@ -17,6 +17,7 @@ mod d3d_log;
 mod diag;
 mod element;
 mod frames;
+mod gpu_mode;
 mod gpu_texture;
 mod input;
 mod open_shared;

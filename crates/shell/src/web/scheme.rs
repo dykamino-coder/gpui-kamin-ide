@@ -33,6 +33,11 @@ pub(crate) fn register() {
 /// Ответ страницей из стора. Тема-блок вставляется ЗДЕСЬ, при каждой отдаче:
 /// стор хранит страницу без темы, поэтому перезагрузка вью всегда получает
 /// АКТИВНУЮ палитру (смена темы в рантайме — `webview_theme`).
+///
+/// Тем же швом заходит и глушение бесконечных анимаций без видеокарты
+/// (`gpu_mode.rs`): через этот обработчик идут ВСЕ наши страницы — и чат, и
+/// вью расширений, — поэтому одна вставка покрывает их разом, а перезагрузка
+/// вью не может её потерять.
 fn html_reply(view_id: &str) -> Option<ResourceHandler> {
     let html = crate::ui::chat_webview::stored_html(view_id).unwrap_or_else(|| {
         println!("[cef] HTML вью {view_id} ещё не готов");
@@ -42,7 +47,8 @@ fn html_reply(view_id: &str) -> Option<ResourceHandler> {
         kamin_theme::current_palette(),
         kamin_theme::current_is_light(),
     );
-    reply("text/html", format!("{theme}{html}").into_bytes())
+    let motion = super::gpu_mode::reduced_motion_block();
+    reply("text/html", format!("{theme}{motion}{html}").into_bytes())
 }
 
 /// Ответ произвольным телом.

@@ -45,7 +45,10 @@ pub fn start_pump(cx: &mut gpui::App) {
             // `web::deliver`): eval на каждую пачку заставлял страницу
             // перевёрстываться сотни раз в секунду.
             super::flush_pending_pulls();
-            bg.timer(std::time::Duration::from_millis(8)).await;
+            // Без видеокарты половина кадра дисплея — цена, которую машина не
+            // тянет: кадр окна растеризует процессор, и заказы копятся быстрее,
+            // чем WARP их отрабатывает (`gpu_mode.rs`).
+            bg.timer(super::gpu_mode::repaint_interval()).await;
         }
     })
     .detach();
