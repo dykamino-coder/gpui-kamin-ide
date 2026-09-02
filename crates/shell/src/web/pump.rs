@@ -61,6 +61,9 @@ pub fn start_pump(cx: &mut gpui::App) {
         loop {
             bg.timer(std::time::Duration::from_millis(1000)).await;
             super::diag::report();
+            // Сначала усыпить ушедшее с экрана, потом выгружать: скрытое вью
+            // перестаёт рисовать сразу, а renderer теряет только через TTL.
+            super::visibility::sleep_hidden();
             super::reap_hidden();
             super::respawn_stalled();
             crate::probe::registry::paint_watchdog();

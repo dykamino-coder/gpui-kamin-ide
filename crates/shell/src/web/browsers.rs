@@ -169,9 +169,9 @@ cef::wrap_life_span_handler! {
         fn on_after_created(&self, browser: Option<&mut Browser>) {
             let Some(browser) = browser else { return };
             // В offscreen-режиме браузер считается скрытым, пока не сказано
-            // иначе: скрытый не рисует ни одного кадра.
+            // иначе. Говорим ФАКТ: пока шло создание, вью могло уйти с экрана.
             if let Some(host) = browser.host() {
-                host.was_hidden(0);
+                host.was_hidden(super::visibility::hidden_flag(&self.id));
             }
             if let Ok(mut map) = BROWSERS.lock() {
                 map.insert(self.id.clone(), browser.clone());
