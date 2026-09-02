@@ -5467,7 +5467,7 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
     }
     match e.tag.as_str() {
         "img" => Some(image_with(
-            &pct_height_to_px(e, inherited),
+            &with_inherited_font(&pct_height_to_px(e, inherited), inherited),
             Some(atom_base_font(inherited, opts)),
         )),
         // Замещаемые с адресом в СВОЁМ атрибуте: у блочного пути такие рукава
@@ -5475,20 +5475,27 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // собственный размер (§10.3.2, §10.6.2) — коробки не заводил и уходил
         // прогоном запасного текста. Отсечка по атрибуту обязательна: объект
         // без `data` и видео без `poster` замещаемыми не являются.
-        "embed" if e.attr("src").is_some() => {
-            Some(image_with(e, Some(atom_base_font(inherited, opts))))
-        }
+        "embed" if e.attr("src").is_some() => Some(image_with(
+            &with_inherited_font(e, inherited),
+            Some(atom_base_font(inherited, opts)),
+        )),
         "object" if e.attr("data").is_some() => {
             let mut copy = e.clone();
             let url = e.attr("data").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
-            Some(image_with(&copy, Some(atom_base_font(inherited, opts))))
+            Some(image_with(
+                &with_inherited_font(&copy, inherited),
+                Some(atom_base_font(inherited, opts)),
+            ))
         }
         "video" if e.attr("poster").is_some() => {
             let mut copy = e.clone();
             let url = e.attr("poster").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
-            Some(image_with(&copy, Some(atom_base_font(inherited, opts))))
+            Some(image_with(
+                &with_inherited_font(&copy, inherited),
+                Some(atom_base_font(inherited, opts)),
+            ))
         }
         "iframe" => {
             if let Some(el) = iframe(e, opts) {
@@ -5496,8 +5503,12 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             }
             None
         }
-        "svg" => crate::svg::element(e)
-            .or_else(|| Some(image_with(e, Some(atom_base_font(inherited, opts))))),
+        "svg" => crate::svg::element(e).or_else(|| {
+            Some(image_with(
+                &with_inherited_font(e, inherited),
+                Some(atom_base_font(inherited, opts)),
+            ))
+        }),
         // Свой бокс (фон, рамка, отступы) означает, что кусок не может быть
         // прогоном текста: прогон не умеет рисовать вокруг себя рамку.
         _ if has_own_box(&e.style) => {
@@ -7715,6 +7726,27 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
 
 /// Кегль для разрешения долей на атоме: свой размер шрифта уже разрешён в
 /// слитом стиле, иначе — базовый.
+/// Кусок с УНАСЛЕДОВАННЫМ шрифтом для разрешения шрифтовых единиц.
+///
+/// `image_with` разрешает `em`/`ex`/`ch` по стилю САМОГО куска, а гарнитуры у
+/// `<img>` своей нет — метрика бралась запасная (пол-кегля вместо настоящего
+/// роста строчной), и `height: 0.25ex` при `font: 250px/1 Ahem` давало 31
+/// точку вместо 50 (`units-003`: оранжевый квадрат не совпадал с навесными
+/// прямоугольниками).
+fn with_inherited_font(e: &Element, inherited: &Computed) -> Element {
+    if e.style.font_family.is_some() && e.style.monospace.is_some() {
+        return e.clone();
+    }
+    let mut copy = e.clone();
+    if copy.style.font_family.is_none() {
+        copy.style.font_family = inherited.font_family.clone();
+    }
+    if copy.style.monospace.is_none() {
+        copy.style.monospace = inherited.monospace;
+    }
+    copy
+}
+
 fn atom_base_font(inherited: &Computed, opts: &RenderOpts) -> f32 {
     match inherited.font_size {
         Some(Len::Px(v)) => v,
