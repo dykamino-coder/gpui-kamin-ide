@@ -8035,6 +8035,9 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // срез из тех же 493 пар опять 416, целевые пары 0.53/1.56/2.10 без
         // движения, и только две из шести шевельнулись 0.96 → 0.91. Значит
         // автоматический минимум этим парам не корень; корень искать заново.
+        // Использованный размер замещённого после §10.4: если пределы его
+        // изменили, коробка обязана ужаться вместе с рисунком.
+        let mut узкая: Option<(f32, f32)> = None;
         let ratio_of = || {
             crate::background::source(local.unwrap_or(src))
                 .map(|s| s.intrinsic())
@@ -8065,7 +8068,25 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             // остаётся как написана, а высота из соотношения обязана влезть
             // в свой потолок и пол. Замерено отдельно: 0 и 0 — правка по
             // спеке, счёт на ней не держится.
+            let ch_free = ch;
             let ch = limit(ch, clamp(e.style.min_height, sub_h), max_h);
+            // §10.4: когда потолок или пол ИЗМЕНИЛИ выведенную сторону,
+            // заданная пересчитывается по соотношению — коробка остаётся
+            // пропорциональной, а не растягивается. `width: 200px` при
+            // `max-height: 50px` у картинки 100×50 — это 100×50, а не
+            // 200×50.
+            let cw = match ratio_of() {
+                Some(r) if r > 0.0 && (ch - ch_free).abs() > 0.01 => {
+                    let w = limit(ch * r, clamp(e.style.min_width, sub_w), max_w);
+                    // Коробка ужимается ТОЛЬКО когда предел и правда изменил
+                    // выведенную сторону: иначе высота у неё остаётся `auto`,
+                    // и подстановка ломала замещённые без пределов вовсе
+                    // (`replaced-intrinsic-004`).
+                    узкая = Some((w, ch));
+                    w
+                }
+                _ => cw,
+            };
             image = vectorize(image, cw.max(1.0), ch.max(1.0))
                 .w(px(cw))
                 .h(px(ch))
@@ -8083,7 +8104,17 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                     .and_then(|s| s.intrinsic().w)
                     .unwrap_or(300.0),
             };
+            let cw_free = cw;
             let cw = limit(cw, clamp(e.style.min_width, sub_w), max_w);
+            // Зеркально §10.4: изменённая ширина тянет за собой высоту.
+            let ch = match ratio_of() {
+                Some(r) if r > 0.0 && (cw - cw_free).abs() > 0.01 => {
+                    let h = limit(cw / r, clamp(e.style.min_height, sub_h), max_h);
+                    узкая = Some((cw, h));
+                    h
+                }
+                _ => ch,
+            };
             image = vectorize(image, cw.max(1.0), ch.max(1.0))
                 .w(px(cw))
                 .h(px(ch))
@@ -8223,6 +8254,10 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 image.object_fit(gpui::ObjectFit::Fill)
             }
             _ => image.object_fit(gpui::ObjectFit::Contain),
+        };
+        let d = match узкая {
+            Some((w, h)) => d.w(px(w + sub_w)).h(px(h + sub_h)),
+            None => d,
         };
         return d.child(image).into_any_element();
     }
