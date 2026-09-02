@@ -964,6 +964,29 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
             style.margin.right = Some(Len::Px(0.0));
         }
     }
+    // §9.7: плавающий блокифицируется — и тот, чей строчный уровень идёт от
+    // ИМЕНИ ТЕГА, а не от объявленного `display`. Пометка `inline_display`
+    // ставится только на дословный `display: inline`, поэтому голый
+    // `<span style="float:left">` до блокификации не доезжал вовсе: ширина и
+    // высота на нём не применялись, и вместо коробки 120x120 рисовался кусок
+    // строки по кеглю (`absolute-non-replaced-width-020/024`).
+    // Только ПЛАВАЮЩИЙ: у абсолютного статическая позиция считается по
+    // гипотезе §10.3.7 «если бы position был static», и строчный уровень ей
+    // нужен (`render.rs`: `inline_level(e) || inline_display`).
+    //
+    // ★ ЗАМЕРЕНО: CSS2 5316 -> 5320, CSS3 2419 -> 2416 (в своде было 2415,
+    // но `css-flexbox-height-animation-stretch` мигает: 1.33 / 0.00 / 1.10 на
+    // одном и том же бинаре). Итого +1. Приобретено: `absolute-non-replaced-
+    // width-020`, `float-non-replaced-width-008`, `clear-float-004`,
+    // `floats-025`, `floats-145`. Потеряно: `float-nowrap-3/-9`,
+    // `float-nowrap-hyphen-rewind-1` и тройка `text-justify-*-001` (у них
+    // плавающий `<span>` стоит в ЭТАЛОНЕ) — все по одной причине: наш флоат
+    // уходит в отдельный ряд обтекания и рядом со своей строкой уже не стоит.
+    // Убирается настоящей коробкой флоата В строке, а не откатом блокификации.
+    if style.float.is_some_and(|f| f != 0) && style.display.is_none() && INLINE_TAGS.contains(&tag)
+    {
+        style.display = Some(Display::Block);
+    }
     if style.inline_display != Some(true) {
         return;
     }
