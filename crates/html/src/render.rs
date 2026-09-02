@@ -6245,6 +6245,19 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     let mut host = if inherited.vertical_rl == Some(true) {
         div().relative()
     } else if bands.bottom(None) > 0.0 {
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО: гейтить охват флоатов признаком «коробка
+        // образует свой контекст форматирования», как это делают Blink
+        // (`block_layout_algorithm.cc`: `IsNewFormattingContext()`) и Servo
+        // (`BlockFormattingContext::layout`). Предикат был полный: флоат,
+        // внепоточность, `inline-*`, таблица, ячейка, гибкий, сетка,
+        // `flow-root`, `contain`, обрезка по `overflow`, корень и тело.
+        // Срез флоатов (333 пары, 233 зелёных): 230. Приобретений ноль,
+        // потери — `clear-003` 0.00 → 3.84, `floats-005` 0.00 → 0.72,
+        // `floats-wrap-top-below-bfc-001l` 0.01 → 0.61.
+        // Причина: у нас флоаты в этом хосте АБСОЛЮТНЫЕ, и `min_h` держит не
+        // только §10.6.7, но и высоту, которую по спеке дают ОЧИСТИВШИЕ их
+        // братья в потоке. Возвращать вместе с клиренсом как величиной в
+        // потоке (шаг F6 из `target/scout-float-bands-design.md`).
         // §10.6.7: хост обязан охватить флоаты высотой — здесь они
         // абсолютные и сами её не растят.
         div().relative().w_full().min_h(px(bands.bottom(None)))
