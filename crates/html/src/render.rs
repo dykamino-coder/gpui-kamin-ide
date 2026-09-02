@@ -8635,7 +8635,14 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             Some(Len::Px(v)) => Some(v),
             _ => None,
         };
-        match (e.style.table_fixed == Some(true), px_of(e.style.width)) {
+        // Ширина стола ДОЛЕЙ решается от содержащего блока: `width: 80%` в
+        // шестистах сорока — это 512 (`fixed-table-layout-023`).
+        let своя_ширина = match e.style.width {
+            Some(Len::Px(v)) => Some(v),
+            Some(Len::Pct(k)) => CB_WIDTH.get().filter(|v| *v > 0.0).map(|cb| cb * k),
+            _ => None,
+        };
+        match (e.style.table_fixed == Some(true), своя_ширина) {
             (true, Some(tw)) => {
                 let side = |l: Option<Len>| px_of(l).unwrap_or(0.0);
                 let tbz = e.style.borders();
@@ -10174,8 +10181,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // от ширины таблицы БЕЗ её рамок и без зазоров между ячейками
         // (`fixed-table-layout-022` расписывает это прямо в тексте: 533 − 58
         // рамок − 75 зазоров = 400).
-        match e.style.width {
-            Some(Len::Px(v)) => {
+        match match e.style.width {
+            Some(Len::Px(v)) => Some(v),
+            Some(Len::Pct(k)) => CB_WIDTH.get().filter(|v| *v > 0.0).map(|cb| cb * k),
+            _ => None,
+        } {
+            Some(v) => {
                 let side = |l: Option<Len>| match l {
                     Some(Len::Px(w)) => w,
                     _ => 0.0,
