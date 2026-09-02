@@ -899,6 +899,11 @@ pub struct Computed {
 
     pub grid_rows: Option<Vec<TrackSize>>,
     pub grid_auto_cols: Option<TrackSize>,
+    /// Список неявных дорожек, когда их больше одной: `grid-auto-columns: A B C`.
+    /// Пусто — дорожка одна, она в `grid_auto_cols`.
+    pub grid_auto_cols_list: Vec<TrackSize>,
+    /// То же для неявных РЯДОВ.
+    pub grid_auto_rows_list: Vec<TrackSize>,
     pub grid_auto_rows: Option<TrackSize>,
     pub grid_auto_flow: Option<AutoFlow>,
     pub grid_col: Option<(Placement, Placement)>,
@@ -3281,10 +3286,18 @@ impl Computed {
                 self.grid_rows = parse_tracks(v);
             }
             "grid-auto-columns" => {
-                self.grid_auto_cols = parse_tracks(v).and_then(|t| t.into_iter().next())
+                // `grid-auto-columns: A B C` задаёт НЕСКОЛЬКО неявных дорожек,
+                // и раскладка их циклит. Пока бралась первая, вторая колонка
+                // получала ширину первой (`grid-support-grid-auto-columns-
+                // rows-002`, `grid-floats-no-intrude-002`).
+                let all = parse_tracks(v).unwrap_or_default();
+                self.grid_auto_cols_list = if all.len() > 1 { all.clone() } else { Vec::new() };
+                self.grid_auto_cols = all.into_iter().next();
             }
             "grid-auto-rows" => {
-                self.grid_auto_rows = parse_tracks(v).and_then(|t| t.into_iter().next())
+                let all = parse_tracks(v).unwrap_or_default();
+                self.grid_auto_rows_list = if all.len() > 1 { all.clone() } else { Vec::new() };
+                self.grid_auto_rows = all.into_iter().next();
             }
             "grid-auto-flow" => {
                 let dense = v.contains("dense");

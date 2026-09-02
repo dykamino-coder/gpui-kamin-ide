@@ -527,8 +527,32 @@ impl ToTaffy<taffy::style::Style> for Style {
                 crate::GridAutoFlow::RowDense => taffy::GridAutoFlow::RowDense,
                 crate::GridAutoFlow::ColumnDense => taffy::GridAutoFlow::ColumnDense,
             },
-            grid_auto_rows: to_auto_track(&self.grid_auto_rows, scale_factor).into(),
-            grid_auto_columns: to_auto_track(&self.grid_auto_cols, scale_factor).into(),
+            // KaminIDE patch: список неявных дорожек сильнее одиночной.
+            grid_auto_rows: if self.grid_auto_rows_list.is_empty() {
+                to_auto_track(&self.grid_auto_rows, scale_factor).into()
+            } else {
+                self.grid_auto_rows_list
+                    .iter()
+                    .filter_map(|t| match to_grid_track::<String>(t, scale_factor) {
+                        taffy::GridTemplateComponent::Single(one) => Some(one),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .into()
+            },
+            // KaminIDE patch: список неявных дорожек сильнее одиночной.
+            grid_auto_columns: if self.grid_auto_cols_list.is_empty() {
+                to_auto_track(&self.grid_auto_cols, scale_factor).into()
+            } else {
+                self.grid_auto_cols_list
+                    .iter()
+                    .filter_map(|t| match to_grid_track::<String>(t, scale_factor) {
+                        taffy::GridTemplateComponent::Single(one) => Some(one),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .into()
+            },
             grid_row: self
                 .grid_location
                 .as_ref()

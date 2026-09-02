@@ -323,6 +323,14 @@ pub struct Style {
     /// KaminIDE patch: размер неявных колонок (`grid-auto-columns`).
     pub grid_auto_cols: Option<GridTrack>,
 
+    /// KaminIDE patch: `grid-auto-columns: A B C` — НЕСКОЛЬКО неявных дорожек,
+    /// раскладка их циклит. Одиночного `grid_auto_cols` для этого мало, а
+    /// менять его тип значило бы трогать всех, кто его читает.
+    pub grid_auto_cols_list: Vec<GridTrack>,
+
+    /// KaminIDE patch: то же для неявных РЯДОВ (`grid-auto-rows: A B C`).
+    pub grid_auto_rows_list: Vec<GridTrack>,
+
     /// The grid location of this element
     pub grid_location: Option<GridLocation>,
 
@@ -875,6 +883,8 @@ impl Default for Style {
             grid_auto_flow: None,
             grid_auto_rows: None,
             grid_auto_cols: None,
+            grid_auto_cols_list: Vec::new(),
+            grid_auto_rows_list: Vec::new(),
             // Flexbox
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::NoWrap,

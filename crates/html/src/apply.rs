@@ -359,9 +359,17 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
     };
     if let Some(t) = auto_line {
         d.style().grid_auto_rows = Some(track(t));
+        if !c.grid_auto_rows_list.is_empty() {
+            d.style().grid_auto_rows_list =
+                Some(c.grid_auto_rows_list.iter().map(track).collect());
+        }
     }
     if let Some(t) = auto_flow_axis {
         d.style().grid_auto_cols = Some(track(t));
+        if !c.grid_auto_cols_list.is_empty() {
+            d.style().grid_auto_cols_list =
+                Some(c.grid_auto_cols_list.iter().map(track).collect());
+        }
     }
     if let Some(f) = c.grid_auto_flow {
         // Направление наполнения тоже логическое: «по рядам» значит «вдоль
