@@ -414,6 +414,21 @@ fn subgrid_slot(
     }
 }
 
+/// Пролёт подсетки, когда НАЧАЛЬНОЙ линии нет: `span k`, голое `auto` и
+/// отсутствие записи вовсе. Начало такой подсетки знает только
+/// авто-размещение, а сколько дорожек она занимает — видно сразу
+/// (css-grid-2 §subgrid-size-contribution: число дорожек авто-размещённой
+/// подсетки берётся из её пролёта).
+fn subgrid_span(place: &Option<(crate::computed::Placement, crate::computed::Placement)>) -> usize {
+    use crate::computed::Placement;
+    match place {
+        Some((Placement::Span(k), Placement::Auto)) | Some((Placement::Auto, Placement::Span(k))) => {
+            (*k as usize).max(1)
+        }
+        _ => 1,
+    }
+}
+
 /// Поправка среза на РАЗНИЦУ зазоров (css-grid-2 §subgrids).
 ///
 /// Свой зазор у подсетки остаётся, но дорожка получает половину разницы
@@ -477,17 +492,38 @@ fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                 {
                     continue;
                 }
+                // Курсор авто-размещения (§8.5, разрежённая укладка): у
+                // подсетки без начальной линии срез всё равно ЕСТЬ — она
+                // встаёт в следующее свободное место своего пролёта. Курсор
+                // ведут ВСЕ дети, а не только подсеточные: место занимает
+                // каждый.
+                let mut cur = 0usize;
                 for child in el.children.iter_mut() {
                     let Node::Element(child) = child else { continue };
-                    if !child.style.subgrid {
-                        continue;
-                    }
                     let place = if row_dir {
                         &child.style.grid_row
                     } else {
                         &child.style.grid_col
                     };
-                    let Some((at, span)) = subgrid_slot(place, tracks.len()) else {
+                    let slot = match subgrid_slot(place, tracks.len()) {
+                        Some((at, span)) => {
+                            cur = (at + span).min(tracks.len());
+                            Some((at, span))
+                        }
+                        None => {
+                            let span = subgrid_span(place);
+                            if cur + span > tracks.len() {
+                                cur = 0;
+                            }
+                            let at = cur;
+                            cur = (cur + span).min(tracks.len());
+                            (at + span <= tracks.len()).then_some((at, span))
+                        }
+                    };
+                    if !child.style.subgrid {
+                        continue;
+                    }
+                    let Some((at, span)) = slot else {
                         continue;
                     };
                     let slice: Vec<crate::computed::TrackSize> = (at..at + span)
