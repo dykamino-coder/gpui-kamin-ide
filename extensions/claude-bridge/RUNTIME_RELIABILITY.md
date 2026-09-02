@@ -6,6 +6,12 @@
 business logic сторонних plugins находятся вне scope; общий Bridge UI и relay
 остаются в scope, даже если дефект впервые проявился на конкретном plugin.
 
+Maintainer/release agent не имеет доступа к corporate GitLab, private/internal
+marketplace и связанным plugin repositories. Задача, acceptance которой требует
+реальный corporate clone/pull/sync/install, обязана пометить этот шаг как
+owner-only post-merge production observation по `TESTING.md`; недоступный шаг
+не передаётся maintainer agent как merge gate.
+
 Статусы:
 
 - **ready** — причина или нарушенный контракт локализованы достаточно для
