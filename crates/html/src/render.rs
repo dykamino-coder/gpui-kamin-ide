@@ -7976,6 +7976,17 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 None => v,
             }
         };
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО: подсказка, ПЕРЕНЕСЁННАЯ через отношение
+        // сторон, в автоматическом минимуме гибкого элемента (css-flexbox
+        // §4.5). Патч вендора написан (`FlexItem::aspect_ratio` +
+        // зажим `min_content` перенесённым размером в
+        // `vendor/taffy/src/compute/flexbox.rs`). Срез flex/aspect/ratio
+        // (493 пары, 416 зелёных): 416, ни одной пары в любую сторону, и
+        // целевые `flexbox-min-{width,height}-auto-002` остались 0.53/0.96/
+        // 1.56/2.10. Причина: отношение сторон ставится на ВНУТРЕННЮЮ
+        // картинку (`image.style().aspect_ratio` ниже), а гибкий элемент —
+        // это ВНЕШНЯЯ коробка замещённого, и у её узла отношения нет вовсе.
+        // Возвращать вместе с отношением сторон на внешней коробке.
         let ratio_of = || {
             crate::background::source(local.unwrap_or(src))
                 .map(|s| s.intrinsic())
