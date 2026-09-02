@@ -3412,7 +3412,6 @@ fn text_id(text: &str) -> u64 {
     h.finish()
 }
 
-
 /// Внешний отступ на обёртке: то же, что делает `apply`, но только поля.
 fn apply_margin(d: gpui::Div, c: &Computed) -> gpui::Div {
     let mut d = d;
@@ -3474,18 +3473,96 @@ fn by_layer(mut nodes: Vec<Node>) -> Vec<Node> {
                 ) && x_set
                     && y_set))
     };
-    let has_negative = nodes.iter().any(|n| match n {
-        Node::Element(e) => movable(e),
+    // §9.9 шаг 8, обратная сторона того же правила: позиционированная коробка
+    // без отрицательного `z-index` рисуется ПОВЕРХ содержимого потока. Порядок
+    // краски у нас — порядок детей, поэтому написанный ПЕРВЫМ абсолют
+    // закрашивался следующим за ним братом (проба: белый квадрат
+    // `right-offset-003` пропадал под синим блоком, хотя стоял верно).
+    // Условие то же, что у подслоя: края заданы по ОБЕИМ осям, значит места в
+    // потоке коробка не держит и перестановка меняет только краску.
+    let over = |e: &Element| {
+        let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
+        let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
+        matches!(
+            e.style.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        ) && x_set
+            && y_set
+            && !e.style.z_index.is_some_and(|z| z < 0)
+    };
+    // Переставлять можно только ЧЕРЕЗ ПОТОК: порядок между позиционированными
+    // соседями — это их порядок в разметке (§9.9 шаг 8 сохраняет его), и
+    // прыжок через такого соседа менял бы наложение (`abspos-013`: красный
+    // `fixed` с краями обязан лежать ПОД зелёным `fixed` без краёв).
+    // Позиционированным считается и ПОДДЕРЕВО: краску поверх даёт не сам
+    // сосед, а его потомок (`position-relative-table-tbody-top`: зелёный
+    // `tbody` лежит внутри непозиционированной таблицы, и прыжок абсолюта
+    // через неё открывал красный индикатор).
+    fn positioned_inside(n: &Node, depth: usize) -> bool {
+        match n {
+            Node::Element(e) => {
+                e.style.position.is_some()
+                    || (depth < 8 && e.children.iter().any(|c| positioned_inside(c, depth + 1)))
+            }
+            Node::Text(_) => false,
+        }
+    }
+    let mut after_positioned = vec![false; nodes.len()];
+    let mut seen = false;
+    for (i, n) in nodes.iter().enumerate().rev() {
+        after_positioned[i] = seen;
+        if positioned_inside(n, 0) {
+            seen = true;
+        }
+    }
+    // Внутри таблицы порядок детей — это её СТРОЕНИЕ (ряды, группы, ячейки), и
+    // перестановка ломает саму решётку, а не краску.
+    let table_here = nodes.iter().any(|n| match n {
+        Node::Element(e) => {
+            e.style.row_group_kind.is_some()
+                || e.style.col_role.is_some()
+                || e.style.is_caption == Some(true)
+                || matches!(
+                    e.style.display,
+                    Some(Display::TableRow)
+                        | Some(Display::TableCell)
+                        | Some(Display::TableRowGroup)
+                        | Some(Display::Table)
+                )
+                || matches!(
+                    e.tag.as_str(),
+                    "tr" | "td" | "th" | "tbody" | "thead" | "tfoot"
+                )
+        }
         Node::Text(_) => false,
     });
-    if !has_negative {
+    let over_at = |i: usize, n: &Node| match n {
+        Node::Element(e) => over(e) && !after_positioned[i] && !table_here,
+        Node::Text(_) => false,
+    };
+    let touched = nodes.iter().enumerate().any(|(i, n)| {
+        over_at(i, n)
+            || match n {
+                Node::Element(e) => movable(e),
+                Node::Text(_) => false,
+            }
+    });
+    if !touched {
         return nodes;
     }
-    nodes.sort_by_key(|n| match n {
-        Node::Element(e) if movable(e) => e.style.z_index.unwrap_or(0).min(0),
-        _ => 0,
-    });
-    nodes
+    let keys: Vec<i32> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| match n {
+            Node::Element(e) if movable(e) => e.style.z_index.unwrap_or(0).min(0),
+            _ if over_at(i, n) => 1,
+            _ => 0,
+        })
+        .collect();
+    let mut order: Vec<usize> = (0..nodes.len()).collect();
+    order.sort_by_key(|i| keys[*i]);
+    let mut taken: Vec<Option<Node>> = nodes.into_iter().map(Some).collect();
+    order.into_iter().filter_map(|i| taken[i].take()).collect()
 }
 
 /// Схлопывание вертикальных отступов соседних блоков.
