@@ -147,9 +147,10 @@ retention. Полная переработка допускается тольк
 
 ### BR-01 — Durable incident diagnostics
 
-**Status:** ready. **Dependency:** none. **Acceptance:** automated merge gate +
-Windows compile/privacy/runtime gate; воспроизведение редкого crash через
-10–15 часов остаётся post-merge production observation и не блокирует merge.
+**Status:** merged в PR #16; post-merge observation редкого incident остаётся
+открытым. **Dependency:** none. **Acceptance:** automated merge gate + Windows
+compile/privacy/runtime gate; воспроизведение редкого crash через 10–15 часов
+остаётся post-merge production observation и не блокирует merge.
 
 Изменение:
 
@@ -203,8 +204,8 @@ selections и LSP state повторно seed-ятся в новый child.
 
 ### BR-05 — Rehydrate authoritative connection state
 
-**Status:** ready. **Dependency:** none. **Acceptance:** automated + Windows
-runtime merge gate.
+**Status:** merged в PR #14. **Dependency:** none. **Acceptance:** automated +
+Windows runtime merge gate.
 
 Нужно устранить расхождение host/session state и Chat tab state:
 
@@ -277,8 +278,9 @@ reload, changed skills sync планирует, а pending maintenance може�
 
 ### BR-09 — Make Agent Teams report delivery explicit
 
-**Status:** ready для soft hardening. **Dependency:** none. **Acceptance:**
-automated + authenticated Windows runtime merge gate.
+**Status:** merged в PR #15; automatic selection остаётся отдельным BR-15.
+**Dependency:** none. **Acceptance:** automated + authenticated Windows runtime
+merge gate.
 
 Agent Teams остаются включёнными по умолчанию. Bridge system prompt должен
 зафиксировать общий контракт делегирования:
@@ -301,8 +303,8 @@ recovery request без duplicate teammate и бесконечного ожид�
 
 ### BR-10 — Show the effective hook in approval UI
 
-**Status:** ready. **Dependency:** none. **Acceptance:** automated + Windows UI
-runtime merge gate.
+**Status:** merged в PR #13. **Dependency:** none. **Acceptance:** automated +
+Windows UI runtime merge gate.
 
 Approval hash и повторный review после изменения hook сохраняются. Modal должна
 без исполнения показать canonical pre-rewrite declaration (`command` + `args`
@@ -524,10 +526,11 @@ session ID, reason, age/idle durations и exit code/signal.
 
 ### BR-18 — Keep SessionEnd relay available and secret-safe during teardown
 
-**Status:** ready для relay lifecycle fix; причина запуска teardown остаётся
+**Status:** draft implementation в PR #20; причина запуска teardown остаётся
 investigation и использует evidence из BR-17. **Dependency:** none для fix,
 BR-17 для классификации исходного termination trigger. **Acceptance:** automated
-+ authenticated Windows runtime merge gate.
++ authenticated Windows runtime merge gate; PR #20 не merge-ится, пока draft и
+этот gate не закрыты либо явно не переклассифицированы по `TESTING.md`.
 
 Source audit подтверждает самостоятельный teardown defect:
 
@@ -1003,6 +1006,25 @@ BR-25–BR-27 не получают implementation branches: это сохран
 пользователя сначала завершить предыдущую очередь и не создаёт конфликтов в
 committed `tools.html`/`extension.js` artifacts.
 
+Строгий integration order текущей очереди:
+
+1. PR #17 — сначала закрепить актуальную карту задач и acceptance policy.
+2. PR #22 — затем закрепить LF для Linux image scripts до следующих server
+   build/runtime gates.
+3. PR #21 — visibility lifecycle; его Windows gate обязателен до BR-25.
+4. PR #19 — software-render throttle после обновления от `main`, уже содержащего
+   #21, и с повторным combined Windows renderer gate.
+5. PR #20 — только после снятия draft и выполнения/явной классификации его
+   acceptance; server image validation использует уже объединённый #22.
+
+Текущие heads #19 и #21 пересекаются по `crates/shell/src/web/mod.rs` и
+`crates/shell/src/web/pump.rs`. `git merge-tree` на зафиксированных heads не
+показывает textual conflict, но это один renderer lifecycle surface, поэтому
+результаты отдельного тестирования не заменяют повторный gate на rebased exact
+head. #20 source-wise независим от renderer PR, а #22 является build guard, не
+runtime fix. После каждого merge следующий PR обновляется от нового
+`origin/main`; mergeability против старой базы недостаточна.
+
 Особая зависимость Agents track — PR #21: сначала его полный automated и
 Windows lifecycle gate, затем BR-25 verification. PR #21 не считается
 автоматическим доказательством исправления Agents panel. BR-27 после этого идёт
@@ -1010,6 +1032,27 @@ Windows lifecycle gate, затем BR-25 verification. PR #21 не считае�
 пересобирает generated artifacts из объединённых sources, без `ours`/`theirs`.
 
 ## Recommended next task order
+
+Это scheduler priority, а не одна двадцатишаговая dependency chain. Нормативны
+явные `Dependency` в карточках и строгий integration order открытой очереди
+выше. После её завершения пункты без зависимости разрешено вести независимо в
+разных worktree, но каждый следующий PR создаётся от свежего `origin/main`.
+Пересекающиеся tracks остаются последовательными:
+
+- Agent Teams UI: #21 → BR-25 verification → BR-27 → BR-26; BR-15 только
+  после стабильности delivery/view lifecycle;
+- long session: BR-01 (merged) → BR-02 → BR-03;
+- history UI: BR-22 classification → BR-16, а BR-06 создаётся только при
+  повторном воспроизведении после текущей очереди;
+- native attention: BR-11 → BR-07;
+- analytics: BR-20 отдельно от BR-21, затем bounded BR-21 child PRs по
+  утверждённому metric contract;
+- deployment skills: BR-12; BR-13 ждёт отдельного подтверждения migration и не
+  выполняет destructive container cleanup.
+
+BR-04, BR-08, BR-14, BR-17, BR-19, BR-23 и BR-24 не образуют общую строгую
+цепочку. Они следуют priority ниже, не смешиваются в один PR и перед началом
+повторно проверяются на file overlap с уже открытыми branches.
 
 1. Завершить либо явно закрыть текущую очередь PR #17 и #19–#22; каждый PR
    сохраняет собственные acceptance gates.
