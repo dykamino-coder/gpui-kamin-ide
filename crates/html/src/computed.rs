@@ -2242,18 +2242,35 @@ impl Computed {
             // влезет»: число колонок известно только раскладке. Раньше запись
             // не разбиралась вовсе, и вся сетка схлопывалась в одну колонку.
             //
-            // ПРОБОВАЛИ И ОТКАТИЛИ: списку СЛОЖНЕЕ одинокого повтора
-            // (`10px repeat(auto-fill, 30px) 50px`) дополнительно записывать
-            // `grid_tracks`/`grid_cols`. Замерено по css-grid: приобретено 6,
-            // потеряно 5, свод 610 -> 608. Раскладка лунками разворачивает
-            // повтор только при ПУСТОМ списке дорожек, и записанный список
-            // отключает разворот там, где он был верен
-            // (`column-auto-repeat-015`, `row-auto-repeat-014`,
-            // `column-subgrid-auto-fill-002/004`). Возвращать вместе с
-            // разворотом повтора при непустом списке.
+            // СДЕЛАНО (прежний откат снят): списку СЛОЖНЕЕ одинокого повтора
+            // (`10px repeat(auto-fill, 30px) 50px`) пишется и `grid_tracks`,
+            // и `grid_cols`, а сам повтор внутри непустого списка
+            // разворачивает раскладка лунок. Замерено по css-grid (1133 пары)
+            // 645 -> 648 и по всему css3 2417 -> 2420: приобретено 3
+            // (`grid-auto-repeat-multiple-values-002/003`,
+            // `row-auto-repeat-013`), потеряно 0.
+            //
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО: писать список ВСЕГДА, в том числе для
+            // одинокого повтора. По css-grid 645 -> 604: приобретено 6,
+            // потеряно 47 (`column-auto-repeat-001/013/017/018/027..030`,
+            // `-auto-001/011..014/025/026`, `-fit-content-004/005`,
+            // `-max-content-001/002` и далее). Записанный список уводит
+            // одинокий повтор с прежнего пути раскладки, а тот считает число
+            // повторов точнее: по долям, по содержимому и по `fit-content`.
+            // Отсюда условие `l.len() > 1` ниже — оно не заплатка, а граница
+            // между двумя честными путями счёта повторов.
             "grid-template-columns" if v.contains("auto-fill") || v.contains("auto-fit") => {
                 self.grid_auto_fill_min = auto_fill_min(v);
                 self.grid_auto_fill_tracks = auto_fill_tracks(v);
+                // Список пишется и при авто-повторе: дорожки ДО и ПОСЛЕ него
+                // (`max-content repeat(auto-fill, max-content) max-content`)
+                // иначе теряются целиком. Разворот самого повтора при
+                // непустом списке делает раскладка лунок — это и есть
+                // условие возврата из прежнего отката.
+                if let Some(list) = parse_tracks(v).filter(|l| l.len() > 1) {
+                    self.grid_cols = count_tracks(v);
+                    self.grid_tracks = Some(list);
+                }
                 self.auto_repeat_cols = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_min,
@@ -2267,6 +2284,12 @@ impl Computed {
             // `grid-lanes-direction: row` (`row-auto-repeat-001`).
             "grid-template-rows" if v.contains("auto-fill") || v.contains("auto-fit") => {
                 self.grid_auto_fill_row = auto_fill_min(v);
+                // Только когда вокруг повтора ЕСТЬ свои дорожки: одинокий
+                // повтор целиком ведёт прежний путь раскладки, он считает
+                // число повторов точнее (доли, содержимое, `fit-content`).
+                if let Some(list) = parse_tracks(v).filter(|l| l.len() > 1) {
+                    self.grid_rows = Some(list);
+                }
                 self.auto_repeat_rows = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_row,

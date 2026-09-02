@@ -11544,6 +11544,51 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         px_of(merged.width)
     };
     let mut tracks = tracks;
+    // Повтор «сколько влезет» ВНУТРИ непустого списка разворачивается НА
+    // МЕСТЕ: `max-content repeat(auto-fill, max-content) max-content` — это
+    // крайние дорожки плюс столько повторов, сколько влезет между ними.
+    // Прежде разбор такой список не записывал вовсе, и крайние дорожки
+    // исчезали (условие возврата из отката в `computed.rs` — «разворот при
+    // непустом списке» — теперь выполнено).
+    if let Some(at) = tracks
+        .iter()
+        .position(|t| matches!(t, TrackSize::AutoRepeat { .. }))
+        && tracks.len() > 1
+    {
+        let TrackSize::AutoRepeat { tracks: тело, .. } = tracks[at].clone() else {
+            unreachable!()
+        };
+        // Сколько влезет: место минус крайние дорожки в точках и зазоры.
+        let px_track = |t: &TrackSize| match t {
+            TrackSize::Single(Track::Px(v)) => Some(*v),
+            _ => None,
+        };
+        let шаг: f32 = тело.iter().filter_map(px_track).sum::<f32>()
+            + cross_gap * (тело.len().saturating_sub(1)) as f32;
+        let края: f32 = tracks
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != at)
+            .filter_map(|(_, t)| px_track(t))
+            .sum();
+        let n = match (room, шаг > 0.0) {
+            (Some(room), true) => {
+                let свободно = (room - края - cross_gap * tracks.len() as f32).max(0.0);
+                (((свободно + cross_gap) / (шаг + cross_gap)).floor() as usize).max(1)
+            }
+            // Тело по СОДЕРЖИМОМУ (`max-content`) или место неизвестно: один
+            // повтор — столько, сколько точно законно (§7.2.3.2: при
+            // неопределённом месте `auto-fill` даёт одну итерацию).
+            _ => 1,
+        };
+        let mut раскрыт: Vec<TrackSize> = Vec::with_capacity(tracks.len() + n * тело.len());
+        раскрыт.extend_from_slice(&tracks[..at]);
+        for _ in 0..n {
+            раскрыт.extend(тело.iter().cloned());
+        }
+        раскрыт.extend_from_slice(&tracks[at + 1..]);
+        tracks = раскрыт;
+    }
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО: точечные дорожки ДО и ПОСЛЕ повтора
     // (`100px repeat(auto-fit, 100px)`, `repeat(4,50px) repeat(auto-fit,50px)
     // repeat(4,50px)`) — разбор их терял, и повтор делил ВЕСЬ контейнер.
