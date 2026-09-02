@@ -8205,7 +8205,23 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                     if let Some(m) = min_h {
                         scale = scale.max(m / h0);
                     }
-                    let (rw, rh) = (w0 * scale, h0 * scale);
+                    // Без СОБСТВЕННОГО соотношения стороны независимы: потолок
+                    // высоты режет только высоту, и ширина остаётся своей
+                    // (§10.4, таблица «no intrinsic ratio»). Прежде общий
+                    // множитель ужимал и её — картинка без соотношения под
+                    // `max-height: 20px` выходила у́же в пятнадцать раз
+                    // (`replaced-elements-max-height-20`, снимки `no-ratio` и
+                    // `height-25-no-ratio`).
+                    let без_соотношения = side.ratio.is_none()
+                        && !(side.w.is_some() && side.h.is_some());
+                    let (rw, rh) = if без_соотношения {
+                        (
+                            limit(w0, min_w, max_w),
+                            limit(h0, min_h, max_h),
+                        )
+                    } else {
+                        (w0 * scale, h0 * scale)
+                    };
                     image = vectorize(image, rw, rh)
                         .w(px(rw))
                         .h(px(rh))
