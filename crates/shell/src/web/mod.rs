@@ -28,6 +28,7 @@ mod pump;
 mod render_handler;
 mod scheme;
 mod shared_texture;
+mod typed;
 mod visibility;
 
 pub use diag::{ctx_took, draw_took, drawn, rows_built};
