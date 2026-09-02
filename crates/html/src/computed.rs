@@ -5768,6 +5768,26 @@ impl Computed {
         {
             return;
         }
+        // Каждая часть встречается не больше ОДНОГО раза (§8.5.4: сокращение
+        // это `<border-width> || <border-style> || <border-color>`).
+        // `border: 1px solid red green` негодно целиком, а прежде вторая
+        // краска просто побеждала первую.
+        {
+            let (mut w, mut st, mut c) = (0usize, 0usize, 0usize);
+            for token in split_outside_parens(v) {
+                let t = token.as_str().trim();
+                if t == "none" || t == "hidden" || border_style(t) {
+                    st += 1;
+                } else if line_width(t).is_some() {
+                    w += 1;
+                } else if Color::parse(t).is_some() {
+                    c += 1;
+                }
+            }
+            if w > 1 || st > 1 || c > 1 {
+                return;
+            }
+        }
         let mut width = None;
         let mut color = None;
         let mut visible_style = false;
