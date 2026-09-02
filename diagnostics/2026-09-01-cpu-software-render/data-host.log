@@ -1,0 +1,41 @@
+[boot] startExtHost 9ms
+[boot] invoke-table live at 10ms
+KaminIDE: activated 1/1 extensions
+  ✓ dykamino-studio.claude-bridge@6.3.1
+[bridge] resolveWebviewView claudeBridgeChat
+[bridge] resolveWebviewView claudeBridgePlanView
+[bridge] resolveWebviewView claudeBridgeConsoleView
+[bridge] resolveWebviewView claudeBridgeTodosView
+[bridge] resolveWebviewView claudeBridgeAgentsView
+[bridge] resolveWebviewView claudeBridgeToolsUsageView
+(node:10148) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+(Use `kaminhost --trace-warnings ...` to show where the warning was created)
+[MCP] Failed to connect to "plugin:mcp-pipes@ai-hub:git-versioner": HTTP 421: Invalid Host header
+[sync] User data synced (skills: 0, agents: 0, commands: 0, plugins: 3, settings: true, claudeMd: true)
+[sync] Project data synced for nps-app (skills: 0, rules: 2, agents: 0, commands: 0)
+[sync] User data synced (skills: 0, agents: 0, commands: 0, plugins: 3, settings: true, claudeMd: true)
+[sync] Project data synced for nps-app (skills: 0, rules: 2, agents: 0, commands: 0)
+[sync] User data synced (skills: 0, agents: 0, commands: 0, plugins: 3, settings: true, claudeMd: true)
+[sync] Project data synced for nps-app (skills: 0, rules: 2, agents: 0, commands: 0)
+[marketplaces] ai-hub: sub-clone pull failed for "arch-lens" — fatal: Unencrypted HTTP is not recommended for GitLab. Ensure the repository remote URL is using HTTPS or see https://aka.ms/gcm/unsaferemotes about how to allow unsafe remotes.fatal: could not read Username for 'http://gitlab.aton.global': terminal prompts disabled
+[marketplaces] ai-hub: sub-clone pull failed for "mcp-airflow" — fatal: Unencrypted HTTP is not recommended for GitLab. Ensure the repository remote URL is using HTTPS or see https://aka.ms/gcm/unsaferemotes about how to allow unsafe remotes.fatal: could not read Username for 'http://gitlab.aton.global': terminal prompts disabled
+[marketplaces] ai-hub: sub-clone pull failed for "mcp-cms" — fatal: Unencrypted HTTP is not recommended for GitLab. Ensure the repository remote URL is using HTTPS or see https://aka.ms/gcm/unsaferemotes about how to allow unsafe remotes.fatal: could not read Username for 'http://gitlab.aton.global': terminal prompts disabled
+[marketplaces] ai-hub: sub-clone pull failed for "mcp-mail" — fatal: Unencrypted HTTP is not recommended for GitLab. Ensure the repository remote URL is using HTTPS or see https://aka.ms/gcm/unsaferemotes about how to allow unsafe remotes.fatal: could not read Username for 'http://gitlab.aton.global': terminal prompts disabled
+[marketplaces] ai-hub: sub-clone pull failed for "mcp-mssql" — fatal: Unencrypted HTTP is not recommended for GitLab. Ensure the repository remote URL is using HTTPS or see https://aka.ms/gcm/unsaferemotes about how to allow unsafe remotes.fatal: could not read Username for 'http://gitlab.aton.global': terminal prompts disabled
+[marketplaces] ai-hub: sub-clone pull failed for "memory-mcp" — fatal: Unencrypted HTTP is not recommended for GitLab. Ensure the repository remote URL is using HTTPS or see https://aka.ms/gcm/unsaferemotes about how to allow unsafe remotes.fatal: could not read Username for 'http://gitlab.aton.global': terminal prompts disabled
+[marketplaces] ai-hub: sub-clone pull failed for "skill-fixer" — fatal: Unencrypted HTTP is not recommended for GitLab. Ensure the repository remote URL is using HTTPS or see https://aka.ms/gcm/unsaferemotes about how to allow unsafe remotes.fatal: could not read Username for 'http://gitlab.aton.global': terminal prompts disabled
+[marketplaces] ai-hub: sub-clone pull failed for "svg-map-renderer" — fatal: Unencrypted HTTP is not recommended for GitLab. Ensure the repository remote URL is using HTTPS or see https://aka.ms/gcm/unsaferemotes about how to allow unsafe remotes.fatal: could not read Username for 'http://gitlab.aton.global': terminal prompts disabled
+[marketplaces] ai-hub: sub-clone pull failed for "tsql-tools" — fatal: Unencrypted HTTP is not recommended for GitLab. Ensure the repository remote URL is using HTTPS or see https://aka.ms/gcm/unsaferemotes about how to allow unsafe remotes.fatal: could not read Username for 'http://gitlab.aton.global': terminal prompts disabled
+[loop блок child] 7764ms на 66488ms от старта
+[loop блок] 7764ms
+[loop блок child] 523ms на 1043582ms от старта
+[loop блок] 524ms
+[loop блок child] 682ms на 1204089ms от старта
+[loop блок] 683ms
+[sync] User data synced (skills: 0, agents: 0, commands: 0, plugins: 3, settings: true, claudeMd: true)
+[loop блок] 481ms
+[loop блок child] 481ms на 4489741ms от старта
+[loop блок] 483ms
+[loop блок child] 483ms на 4493880ms от старта
+[loop блок] 722ms
+[loop блок child] 723ms на 4512549ms от старта

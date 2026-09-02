@@ -1,0 +1,14 @@
+﻿main pid = 38392
+
+=== D3D/DXGI/GPU modules ===
+
+ModuleName    FileName                           MB
+----------    --------                           --
+dxgi.dll      C:\Windows\SYSTEM32\dxgi.dll        1
+d3d11.dll     C:\Windows\SYSTEM32\d3d11.dll     2,4
+dcomp.dll     C:\Windows\SYSTEM32\dcomp.dll     1,9
+d3d10warp.dll C:\Windows\SYSTEM32\d3d10warp.dll   7
+
+
+
+=== all modules count: 123 ===

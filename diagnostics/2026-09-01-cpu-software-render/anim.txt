@@ -1,0 +1,24 @@
+﻿> claudeBridgeChat
+< {"ok":true}
+> claudeBridgeConsoleView
+< {"ok":true}
+> claudeBridgeAgentsView
+< {"ok":true}
+> claudeBridgePlanView
+< {"ok":true}
+> claudeBridgeTodosView
+< {"ok":true}
+> claudeBridgeToolsUsageView
+< {"ok":true}
+
+--- chrome_debug [anim] ---
+[38392:40580:0901/125640.149:INFO:CONSOLE:1] "[anim] claudeBridgeChat vis=visible hidden=false n=1 :: _spinner_1yjoq_35/_spin_1yjoq_35", source: kamin://deliver (1)
+[38392:40580:0901/125640.223:INFO:CONSOLE:1] "[anim] claudeBridgeConsoleView vis=visible hidden=false n=0 :: ", source: kamin://deliver (1)
+
+--- raf/mutations ---
+[38392:40580:0901/125731.331:INFO:CONSOLE:1] "[raf] claudeBridgeChat rafPerSec=60 mutPerSec=4 vis=visible anims=1", source: kamin://deliver (1)
+[38392:40580:0901/125731.354:INFO:CONSOLE:1] "[raf] claudeBridgeConsoleView rafPerSec=60 mutPerSec=0 vis=visible anims=0", source: kamin://deliver (1)
+
+--- raf на простое ---
+[38392:40580:0901/125930.051:INFO:CONSOLE:1] "[raf2] claudeBridgeChat rafPerSec=60 vis=visible anims=0", source: kamin://deliver (1)
+[38392:40580:0901/125930.054:INFO:CONSOLE:1] "[raf2] claudeBridgeConsoleView rafPerSec=60 vis=visible anims=0", source: kamin://deliver (1)

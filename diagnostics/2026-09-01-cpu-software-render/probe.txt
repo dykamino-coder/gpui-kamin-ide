@@ -1,0 +1,12 @@
+﻿> {"cmd":"ping"}
+< {"ok":true,"app":"kaminide-gpui","version":"1.0.53"}
+
+> {"cmd":"tools"}
+< {"ok":true,"tools":[{"id":"claudeBridge","label":"Claude Bridge","views":[{"id":"claudeBridgeChat","name":"Claude","webview":true}]},{"id":"claudeBridgePlan","label":"Bridge Plan","views":[{"id":"claudeBridgePlanView","name":"Plan","webview":true}]},{"id":"claudeBridgeTodos","label":"Bridge Todos","views":[{"id":"claudeBridgeTodosView","name":"Todos","webview":true}]},{"id":"claudeBridgeAgents","label":"Bridge Agents","views":[{"id":"claudeBridgeAgentsView","name":"Agents","webview":true}]},{"id":"claudeBridgeToolsUsage","label":"Bridge Tools","views":[{"id":"claudeBridgeToolsUsageView","name":"Tools","webview":true}]},{"id":"claudeBridgeConsole","label":"Bridge Console","views":[{"id":"claudeBridgeConsoleView","name":"Console","webview":true}]}]}
+
+> {"cmd":"views"}
+< {"ok":false,"err":"unknown cmd: views"}
+
+> {"cmd":"state"}
+< {"ok":false,"err":"unknown cmd: state"}
+

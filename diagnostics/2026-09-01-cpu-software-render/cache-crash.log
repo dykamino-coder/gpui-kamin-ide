@@ -1,0 +1,19 @@
+[pid 53012] [КРАХ] main: старт, база модуля 0x00007FF7C41A0000
+[pid 29000] [КРАХ] main: старт, база модуля 0x00007FF7C41A0000
+[pid 59624] [КРАХ] main: старт, база модуля 0x00007FF7D8EF0000
+[pid 4076] [КРАХ] main: старт, база модуля 0x00007FF7D8EF0000
+[pid 23148] [КРАХ] main: старт, база модуля 0x00007FF7D8EF0000
+[pid 36692] [КРАХ] main: старт, база модуля 0x00007FF7D8EF0000
+[pid 14828] [КРАХ] main: старт, база модуля 0x00007FF7D8EF0000
+[pid 36692] [КРАХ] renderer вью «claudeBridgeTodosView» умер: статус TS_PROCESS_CRASHED, код -2147483645, STATUS_BREAKPOINT
+[pid 36692] [КРАХ] renderer вью «claudeBridgeConsoleView» умер: статус TS_PROCESS_CRASHED, код -2147483645, STATUS_BREAKPOINT
+[pid 36692] [КРАХ] renderer вью «claudeBridgeChat» умер: статус TS_PROCESS_CRASHED, код -2147483645, STATUS_BREAKPOINT
+[pid 36692] [КРАХ] renderer вью «claudeBridgeToolsUsageView» умер: статус TS_PROCESS_CRASHED, код -2147483645, STATUS_BREAKPOINT
+[pid 14264] [КРАХ] main: старт, база модуля 0x00007FF6FE960000
+[pid 24304] [КРАХ] main: старт, база модуля 0x00007FF6FE960000
+[pid 332] [КРАХ] main: старт, база модуля 0x00007FF6FE960000
+[pid 16420] [КРАХ] main: старт, база модуля 0x00007FF6FE960000
+[pid 17220] [КРАХ] main: старт, база модуля 0x00007FF6FE960000
+[pid 21496] [КРАХ] main: старт, база модуля 0x00007FF65D910000
+[pid 11456] [КРАХ] main: старт, база модуля 0x00007FF65D910000
+[pid 38392] [КРАХ] main: старт, база модуля 0x00007FF65D910000

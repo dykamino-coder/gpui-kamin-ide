@@ -38,6 +38,8 @@ extensions/claude-bridge/server/installer/
 # ── Логи и дампы ─────────────────────────────────────────────
 *.log
 /logs/
+# Исключение: снятые с прода логи, приложенные к разбору как evidence.
+!/diagnostics/**/*.log
 *.dmp
 *.heapsnapshot
 *.cpuprofile

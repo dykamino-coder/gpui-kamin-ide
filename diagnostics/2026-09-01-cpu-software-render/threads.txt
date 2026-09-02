@@ -1,0 +1,37 @@
+﻿main pid = 38392, threads = 62, handles = 1243
+
+
+  Tid StartAddr        State Wait           CpuSec10s
+  --- ---------        ----- ----           ---------
+43636 0x7FFCD3C7CC70 Running                     7,27
+33204 0x7FFCD3C7CC70 Running                     6,92
+35212 0x7FFCD3C7CC70 Running                     6,25
+29296 0x7FFCD3C7CC70 Running                     6,11
+27448 0x7FFCD3C7CC70 Running                        6
+43056 0x7FFCD3C7CC70   Ready                     5,97
+38688 0x7FFCD3C7CC70   Ready                     5,83
+15208 0x7FFCD3C7CC70   Ready                     5,73
+42268 0x7FFCD3C7CC70 Running                     5,58
+43548 0x7FFCD3C7CC70    Wait UserRequest         4,14
+40580 0x7FFCD3C7CC70    Wait UserRequest         1,97
+20936 0x7FFCD3C7CC70    Wait EventPairLow        0,33
+39456 0x7FFCD3C7CC70    Wait LpcReply            0,02
+34384 0x7FFCD3C7CC70    Wait UserRequest         0,02
+19568 0x7FFCD3C7CC70    Wait EventPairLow           0
+40772 0x7FFCD3C7CC70    Wait UserRequest            0
+23760 0x7FFCD3C7CC70    Wait UserRequest            0
+ 6184 0x7FFCD3C7CC70    Wait EventPairLow           0
+22708 0x0               Wait UserRequest            0
+32836 0x7FFCD3C7CC70    Wait ExecutionDelay         0
+34812 0x7FFCD3C7CC70    Wait UserRequest            0
+28692 0x7FFCD3C7CC70    Wait ExecutionDelay         0
+22992 0x7FFCD3C7CC70    Wait Unknown                0
+43952 0x7FFCD3C7CC70    Wait EventPairLow           0
+43604 0x7FFCD3C7CC70    Wait UserRequest            0
+ 2724 0x7FFCD3C7CC70    Wait UserRequest            0
+35224 0x7FFCD3C7CC70    Wait EventPairLow           0
+27360 0x7FFCD3C7CC70    Wait UserRequest            0
+40600 0x0               Wait UserRequest            0
+37676 0x7FFCD3C7CC70    Wait EventPairLow           0
+
+
