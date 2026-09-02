@@ -26,6 +26,13 @@
 //    explicit prepared statements but DuckDB Neo's API isn't structured
 //    around long-lived statements. For batch inserts we wrap in a single
 //    BEGIN / COMMIT so the 500-row buffer flushes atomically.
+//  - Every WRITE goes through `withStatsWrite` (database/write-lock.ts).
+//    Two concurrent write transactions can fail each other's COMMIT, and a
+//    failed COMMIT whose rollback touches an index is a FatalException that
+//    kills the process — this is how 6.3.131 died. Reads stay parallel.
+//  - A batch is deduplicated by uuid before INSERT (jsonl-batch.ts):
+//    ON CONFLICT only covers rows already committed, and a duplicate inside
+//    one transaction surfaces at COMMIT — the same fatal path.
 
 import fs from 'fs'
 import fsp from 'fs/promises'
@@ -33,6 +40,8 @@ import path from 'path'
 import os from 'os'
 import type { DuckDBConnection } from '@duckdb/node-api'
 import { getDb, getDbByIndex } from './database/lifecycle'
+import { withStatsWrite } from './database/write-lock'
+import { dedupeByUuid } from './jsonl-batch'
 import { debugLog, warnLog } from '../logging'
 
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
@@ -225,12 +234,31 @@ async function tokenInfoFromSlug(db: DuckDBConnection, slug: string): Promise<{ 
   return null
 }
 
+/** Files being processed right now. Two passes over the same file (a
+ *  live-mode trigger landing during the bulk sweep) would read the same
+ *  unswept bytes and race on the offset row; the second caller shares the
+ *  first pass instead, and the next sweep picks up whatever was appended. */
+const inFlight = new Map<string, Promise<{ inserted: number }>>()
+
 async function processOneFile(info: JsonlFileInfo, dedicatedDb?: DuckDBConnection): Promise<{ inserted: number }> {
+  const active = inFlight.get(info.path)
+  if (active) return active
+  const run = processOneFileUnguarded(info, dedicatedDb).finally(() => {
+    inFlight.delete(info.path)
+  })
+  inFlight.set(info.path, run)
+  return run
+}
+
+async function processOneFileUnguarded(info: JsonlFileInfo, dedicatedDb?: DuckDBConnection): Promise<{ inserted: number }> {
   const filePath = info.path
   // Use dedicated connection if caller provided one (sweeper worker pool
   // — one conn per worker so parallel files don't share a conn). Falls
   // back to round-robin pool for ad-hoc callers.
   const db = dedicatedDb ?? await getDb()
+  // Single-statement write on this connection, serialised with every other
+  // writer of the stats DB (see header: a failed COMMIT is fatal).
+  const write = (sql: string, args: unknown[]) => withStatsWrite(() => db.run(sql, args as any[]))
   let stat: fs.Stats
   try { stat = await fsp.stat(filePath) } catch { return { inserted: 0 } }
   const size = stat.size
@@ -268,21 +296,21 @@ async function processOneFile(info: JsonlFileInfo, dedicatedDb?: DuckDBConnectio
   // also keeps Sessions cardinality clean.
   if (slugInfo && !info.isSubagent) {
     if (!tokenRow) {
-      await db.run(SQL_ENSURE_SESSION_TOKEN, [sessionId, slugInfo.tokenId, slugInfo.userName, new Date().toISOString()])
+      await write(SQL_ENSURE_SESSION_TOKEN, [sessionId, slugInfo.tokenId, slugInfo.userName, new Date().toISOString()])
     } else if (!tokenRow.token_id || tokenRow.token_id.length === 0) {
       // Heal the legacy '' rows that the old backfill produced.
-      await db.run(SQL_REFRESH_SESSION_TOKEN, [slugInfo.tokenId, sessionId])
+      await write(SQL_REFRESH_SESSION_TOKEN, [slugInfo.tokenId, sessionId])
     }
   }
 
   const subFlag = info.isSubagent ? 1 : 0
-  await db.run(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId, subFlag, info.parentSessionId])
+  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId, subFlag, info.parentSessionId])
 
   if (startByte >= size) {
     // Only touch jsonl_offsets when the position actually moved — an
     // unconditional upsert on every idle sweep is more needless MVCC churn.
     if (!offsetRow || Number(offsetRow.last_offset ?? -1) !== size || Number(offsetRow.last_size ?? -1) !== size) {
-      await db.run(SQL_UPSERT_OFFSET, [filePath, size, size, new Date().toISOString()])
+      await write(SQL_UPSERT_OFFSET, [filePath, size, size, new Date().toISOString()])
     }
     return { inserted: 0 }
   }
@@ -308,18 +336,21 @@ async function processOneFile(info: JsonlFileInfo, dedicatedDb?: DuckDBConnectio
   // INSERT … ON CONFLICT DO NOTHING so the 500-row buffer is one unit.
   // (Appender API would be faster but bypasses ON CONFLICT — see header
   // comment for tradeoff. Idempotency wins for the incremental path.)
-  async function insertMany(rows: unknown[][]): Promise<void> {
+  async function insertMany(buffered: unknown[][]): Promise<void> {
+    const rows = dedupeByUuid(buffered)
     if (rows.length === 0) return
-    await db.run('BEGIN')
-    try {
-      for (const args of rows) {
-        await db.run(SQL_INSERT_EVENT, args as any[])
+    await withStatsWrite(async () => {
+      await db.run('BEGIN')
+      try {
+        for (const args of rows) {
+          await db.run(SQL_INSERT_EVENT, args as any[])
+        }
+        await db.run('COMMIT')
+      } catch (err) {
+        try { await db.run('ROLLBACK') } catch { /* ignore */ }
+        throw err
       }
-      await db.run('COMMIT')
-    } catch (err) {
-      try { await db.run('ROLLBACK') } catch { /* ignore */ }
-      throw err
-    }
+    })
   }
 
   // Resume per-session metadata accumulators from session_tokens so the
@@ -449,7 +480,7 @@ async function processOneFile(info: JsonlFileInfo, dedicatedDb?: DuckDBConnectio
   }
 
   // Backfill model for user-rows (next-assistant lookup, per session).
-  try { await db.run(SQL_FILL_USER_MODELS, [sessionId]) } catch (err) {
+  try { await write(SQL_FILL_USER_MODELS, [sessionId]) } catch (err) {
     warnLog('fillUserModels failed', { sessionId, error: String(err) })
   }
 
@@ -462,7 +493,7 @@ async function processOneFile(info: JsonlFileInfo, dedicatedDb?: DuckDBConnectio
     : slugInfo?.userName ?? null
   const tokenIdAfter = slugInfo?.tokenId
     ?? (tokenRowAfter?.token_id && tokenRowAfter.token_id.length > 0 ? tokenRowAfter.token_id : null)
-  await db.run(SQL_APPLY_TOKEN_AND_SUBAGENT, [
+  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [
     tokenIdAfter,
     userNameAfter,
     subFlag,
@@ -476,7 +507,7 @@ async function processOneFile(info: JsonlFileInfo, dedicatedDb?: DuckDBConnectio
   // subagents share parent's title etc).
   if (!info.isSubagent) {
     const conversationContext = metaPeakInSegment + metaPreBoundarySnapshots.reduce((a, b) => a + b, 0)
-    await db.run(SQL_UPDATE_SESSION_META, [
+    await write(SQL_UPDATE_SESSION_META, [
       metaTitleChanged ? metaTitle : null,
       metaPeakInSegment,
       metaCompactBoundaries,
@@ -486,17 +517,18 @@ async function processOneFile(info: JsonlFileInfo, dedicatedDb?: DuckDBConnectio
     ])
   }
 
-  await db.run(SQL_UPSERT_OFFSET, [filePath, size, size, new Date().toISOString()])
+  await write(SQL_UPSERT_OFFSET, [filePath, size, size, new Date().toISOString()])
   return { inserted }
 }
 
 let running = false
 let timer: ReturnType<typeof setInterval> | null = null
 
-// Sweep N JSONL files concurrently. DuckDB allows multi-thread writes
-// within one process via MVCC, so reading + INSERTing N files in
-// parallel is safe and far faster than sequential. Cap at 8 to balance
-// FS read concurrency on spinning disks; SSDs handle higher fine.
+// Sweep N JSONL files concurrently: the file reads, parsing and DuckDB
+// READS run in parallel; the writes of all workers are serialised by
+// `withStatsWrite` (concurrent write transactions were the crash of
+// 6.3.131, see header). Cap at 8 to balance FS read concurrency on
+// spinning disks; SSDs handle higher fine.
 const SWEEP_CONCURRENCY = 8
 
 export async function sweepAll(): Promise<{ files: number; inserted: number }> {
