@@ -2675,6 +2675,23 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
             tag: "div".into(),
             style: Computed {
                 flex_grow: Some(1.0),
+                // ЗАМЕРЕНО: CSS2 5336 → 5338 (+10/−8), CSS3 2418 → 2417
+                // (+1/−2), итого +1. Приобретения — обтекание текстом
+                // (`floats-rule3-outside-right-001` 1.84 → 0.00,
+                // `floats-wrap-bfc-002/003-*-overflow` 5-8 → 0.00, четвёрка
+                // `float-nowrap-*`). Потери — БФК со СВОИМИ полями рядом с
+                // флоатом (`floats-wrap-bfc-with-margin-004/005/008/009`,
+                // `floats-132`, `floats-rule7-outside-left-001`): им остаток
+                // ряда достаётся без учёта их полей. Чинится каналом «поле
+                // БФК входит в остаток», которого в ряду нет.
+                // Колонка обтекания берёт ОСТАТОК ряда, а не своё содержимое:
+                // при основе «по содержимому» её max-content складывался с
+                // шириной флоата, ряд переносился, и `float: right` уезжал
+                // ПОД текст к левому краю вместо правого края той же строки
+                // (проба: `float:right` 60 точек и три слова в двухстах).
+                flex_basis: Some(Len::Px(0.0)),
+                flex_shrink: Some(1.0),
+                min_width: Some(Len::Px(0.0)),
                 ..Computed::default()
             },
             hover: None,
