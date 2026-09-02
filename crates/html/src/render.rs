@@ -12605,11 +12605,17 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 // эталон на обычной сетке (замерено: 0 и −3).
                 let (prow, pcol) = merged.gap.unwrap_or((None, None));
                 let (crow, ccol) = item.style.gap.unwrap_or((None, None));
-                crate::dom::subgrid_gap_slice(
-                    &mut slice,
-                    if row_dir { prow } else { pcol },
-                    if row_dir { crow } else { ccol },
-                );
+                let par = if row_dir { prow } else { pcol };
+                // Незаданный зазор подсетки — `normal`, то есть «как у
+                // родителя» (css-grid-2 §subgrid-gaps), разница ноль.
+                let own = if row_dir { crow } else { ccol }.or(par);
+                if crow.is_none() && ccol.is_none() {
+                    item.style.gap = Some(if row_dir { (par, ccol) } else { (crow, par) });
+                    if !row_dir {
+                        item.style.column_gap = par;
+                    }
+                }
+                crate::dom::subgrid_gap_slice(&mut slice, par, own);
                 // В сабгридной оси SELF-выравнивание НЕ действует: субгрид
                 // держит ВСЮ дорожку (все четыре js/je/jc/jb варианта
                 // subgrid-alignment-in-subgridded-axis-001 обязаны совпасть).

@@ -544,11 +544,25 @@ fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // остаётся. Возвращаться симметрично обоим путям.
                     let (prow, pcol) = el.style.gap.unwrap_or((None, None));
                     let (crow, ccol) = child.style.gap.unwrap_or((None, None));
-                    subgrid_gap_slice(
-                        &mut slice,
-                        if row_dir { prow } else { pcol },
-                        if row_dir { crow } else { ccol },
-                    );
+                    let par = if row_dir { prow } else { pcol };
+                    let own = if row_dir { crow } else { ccol };
+                    // Незаданный зазор подсетки — это `normal`, а он по
+                    // css-grid-2 §subgrid-gaps значит «такие же зазоры, как у
+                    // родителя», то есть разница НОЛЬ. Пока `None` считался
+                    // нулём, разница выходила равной родительскому зазору и
+                    // дорожки раздувались на его половину.
+                    let own = own.or(par);
+                    if own != Some(Len::Px(0.0)) && crow.is_none() && ccol.is_none() {
+                        child.style.gap = Some(if row_dir {
+                            (par, ccol)
+                        } else {
+                            (crow, par)
+                        });
+                        if !row_dir {
+                            child.style.column_gap = par;
+                        }
+                    }
+                    subgrid_gap_slice(&mut slice, par, own);
                     // В подсеточной оси SELF-выравнивание не действует:
                     // подсетка держит всю дорожку.
                     if row_dir {
