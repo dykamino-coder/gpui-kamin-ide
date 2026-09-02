@@ -36,6 +36,7 @@ import {
   deleteSessionByConversationId,
 } from './session-manager'
 import { eventBus } from '../events/bus'
+import { sendSessionError as sendError } from './session-error'
 
 /**
  * Map: sessionId → WS client.
@@ -124,8 +125,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Authenticate token
           const resolved = await resolveToken(msg.token)
           if (!resolved) {
-            sendError(ws, 'Invalid token')
-            ws.close(4001, 'Invalid token')
+            sendError(ws, 'Invalid token', 4001, 'Invalid token')
             return
           }
 
@@ -140,8 +140,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           const maxSessions = 10 // TODO: get from token.max_sessions after DB migration
           const currentCount = countUserSessions(resolved.tokenId)
           if (currentCount >= maxSessions) {
-            sendError(ws, `Max sessions reached (${maxSessions})`)
-            ws.close(4002, 'Max sessions reached')
+            sendError(ws, `Max sessions reached (${maxSessions})`, 4002, 'Max sessions reached')
             return
           }
 
@@ -291,8 +290,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Resume a previous conversation
           const resolved = await resolveToken(msg.token)
           if (!resolved) {
-            sendError(ws, 'Invalid token')
-            ws.close(4001, 'Invalid token')
+            sendError(ws, 'Invalid token', 4001, 'Invalid token')
             return
           }
 
@@ -886,12 +884,6 @@ export function attachSessionWebSocket(_server: HttpServer): void {
       handleSocketGone()
     })
   })
-}
-
-function sendError(ws: WS, error: string): void {
-  if (ws.readyState === WS.OPEN) {
-    ws.send(JSON.stringify({ type: 'session:error', error }))
-  }
 }
 
 /**

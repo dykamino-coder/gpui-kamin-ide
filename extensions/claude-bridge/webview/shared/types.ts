@@ -10,6 +10,13 @@ export interface ConnectionConfig {
 
 export interface ConnectionState {
   status: 'disconnected' | 'connecting' | 'connected' | 'error'
+  authority: string
+  /** Monotonic extension-host generation issued by the surviving supervisor. */
+  authorityGeneration: number
+  /** Monotonic manager sequence inside one extension-host generation. */
+  authoritySequence: number
+  /** Monotonic per-tab revision used to order snapshots and live events. */
+  revision: number
   sessionId?: string
   error?: string
   /** Epoch ms of the scheduled reconnect. The UI counts down to it, which a
@@ -20,6 +27,8 @@ export interface ConnectionState {
   /** Which attempt the pending retry will be. Retries never stop, so this is
    *  what shows the loop is alive. */
   retryAttempt?: number
+  /** Allowlisted diagnostic only; the server-provided close reason is excluded. */
+  closeCode?: number
 }
 
 // Tab info for sidebar rendering
@@ -30,6 +39,11 @@ export interface TabInfo {
   folderName: string      // basename(cwd) for grouping
   createdAt: string       // ISO timestamp
   status: ConnectionState['status']
+  connectionAuthority: string
+  connectionAuthorityGeneration: number
+  connectionAuthoritySequence: number
+  connectionRevision: number
+  error?: string
   /** Mirrored from the tab's ConnectionState so the header can count down to a
    *  pending reconnect (see ConnectionStatusBadge). */
   nextRetryAt?: number

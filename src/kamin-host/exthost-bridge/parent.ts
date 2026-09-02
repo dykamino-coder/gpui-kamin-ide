@@ -4,10 +4,9 @@
 // so the renderer-facing method table routes calls into the child, plus a
 // `ready` promise the boot sequence waits on.
 import { type ChildProcess, execFile, fork } from "node:child_process"
-import { createWriteStream, type WriteStream } from "node:fs"
-import { join } from "node:path"
 import type { KaminSession, SessionsSnapshot } from "../../api/types.js"
 import type { EnvCollectionSnapshot, HostFs, IndexedFileRef, WatchEvent } from "../../exthost/host-services.js"
+import { createHostIncidentLogs } from "../incident-log.js"
 import type { MessagePortLike } from "../port.js"
 import { SLOW_FRAME_MS, isRpcFrame } from "../protocol.js"
 import { RpcEndpoint } from "../rpc.js"
@@ -100,6 +99,10 @@ export function forkExtHost(deps: ParentDeps): ExtHostHandle {
   let child: ChildProcess | null = null
   let disposed = false
   let respawnAttempts = 0
+  // Monotonic for the lifetime of the supervising host. Unlike a timestamp
+  // created inside the child, this survives extension-host crashes and cannot
+  // move backwards after a wall-clock/NTP adjustment.
+  let childGeneration = 0
   // True once the child has signalled CHILD_READY at least once; a later ready is
   // a respawn-after-crash, which needs the renderer to re-seed its mirror.
   let everReady = false
@@ -219,8 +222,7 @@ export function forkExtHost(deps: ParentDeps): ExtHostHandle {
   // Persist the child's stdout/stderr (extension activation stacks, console.*)
   // to a log file, like VS Code's extension-host log — the GUI shell swallows
   // stderr, so this is the only way to read activation failures post-mortem.
-  let hostLog: WriteStream | null = null
-  try { hostLog = createWriteStream(join(deps.dataDir, "host.log"), { flags: "w" }) } catch { /* best-effort */ }
+  const logs = createHostIncidentLogs(deps.dataDir)
 
   const selfScript = process.argv[1] ?? ""
   // Диагностика бюджета: сколько живёт форк до сигнала готовности. Родитель
@@ -228,6 +230,7 @@ export function forkExtHost(deps: ParentDeps): ExtHostHandle {
   let tFork = 0
   const spawn = (): void => {
     ready = false // fresh generation is not invocable until it signals CHILD_READY
+    childGeneration += 1
     tFork = Date.now()
     console.error(`[boot] fork exthost: ${selfScript} execArgv=${JSON.stringify(process.execArgv)}`)
     const proc = fork(selfScript, [`--${EXTHOST_ROLE_ARG}=${EXTHOST_ROLE_VALUE}`], {
@@ -242,19 +245,24 @@ export function forkExtHost(deps: ParentDeps): ExtHostHandle {
       // servers too. (Windows uses taskkill /T by ppid, no group needed.) NOT
       // unref'd — we still supervise it.
       detached: process.platform !== "win32",
-      env: { ...process.env, KAMIN_HOST_TRANSPORT: "ipc" },
+      env: {
+        ...process.env,
+        KAMIN_HOST_TRANSPORT: "ipc",
+        KAMIN_EXTHOST_GENERATION: String(childGeneration),
+      },
     })
     child = proc
     // Child stdout/stderr → our stderr so its logs + crash stacks reach the
     // Rust shell's tracing (the child has no console of its own).
-    proc.stdout?.on("data", (d: Buffer) => { process.stderr.write(d); hostLog?.write(d) })
-    proc.stderr?.on("data", (d: Buffer) => { process.stderr.write(d); hostLog?.write(d) })
+    proc.stdout?.on("data", (d: Buffer) => { process.stderr.write(d); logs.writeRaw(d) })
+    proc.stderr?.on("data", (d: Buffer) => { process.stderr.write(d); logs.writeRaw(d) })
     // Swallow IPC errors (EPIPE / channel-closed on a dying child) — the `exit`
     // handler owns recovery; an unhandled 'error' here would crash the parent.
     proc.on("error", (e) => { console.error("exthost child: ipc error", e.message) })
     endpoint = new RpcEndpoint(childPort(proc))
     serve(endpoint)
-    proc.on("exit", (code) => {
+    proc.on("exit", (code, signal) => {
+      logs.writeExtensionExit(proc.pid ?? null, code, signal ?? null)
       // Null the endpoint FIRST so calls racing into the respawn window reject
       // promptly ("child not ready") instead of queueing on the dead endpoint
       // (whose guarded post drops the frame, hanging the promise forever).
@@ -299,6 +307,12 @@ export function forkExtHost(deps: ParentDeps): ExtHostHandle {
       if (!endpoint) throw new Error("exthost child not ready")
       return await endpoint.call<T>(CHILD_INVOKE, method, ...params)
     },
-    dispose: () => { disposed = true; failReadyWaiters("exthost disposed"); killProcessTree(child?.pid); child?.kill() },
+    dispose: () => {
+      disposed = true
+      failReadyWaiters("exthost disposed")
+      killProcessTree(child?.pid)
+      child?.kill()
+      logs.close()
+    },
   }
 }
