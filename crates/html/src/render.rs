@@ -1077,19 +1077,23 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)
                 | Some(Display::InlineTable) => !ordered_context,
-                // ПРОБОВАЛИ И ОТКАТИЛИ: пускать сюда же `display: inline
-                // grid-lanes` (разбор держит его как `GridLanes` с пометкой
-                // `lanes_inline`), чтобы тест и эталон шли одним путём.
-                // Замерено полным сводом CSS3: приобретено 19, потеряно 22.
-                // Вся восьмёрка `flow-tolerance-*` уходит обратно в красное
-                // (0.00 -> 5.66 и родня), с ней десяток подсеточных.
-                // Проверено по частям: ни `breaks_line`, ни `flex_shrink_0`
-                // на числа не влияют вовсе — весь итог даёт эта строка.
-                // Возвращать вместе с настоящей строчной коробкой лунок.
-                // ПРОБОВАНО: строчный контейнер лунок атомом строки
-                // (ac-001 9.45→7.9 — сетки в ряд), но grid-семья 573→558:
-                // абзацный атом для лунок хуже блочного пути. Возвращать
-                // вместе с настоящей строчной коробкой атома.
+                // `display: inline grid-lanes` — такая же строчная коробка:
+                // разбор держит её как `GridLanes` с пометкой `lanes_inline`,
+                // и по css-display-3 внешний вид у неё `inline`. Эталоны
+                // семьи `grid-lanes-intrinsic-sizing-*` написаны на
+                // `display: inline-grid`, и без этой строки девять сеток
+                // вставали столбиком вместо ряда.
+                Some(Display::GridLanes) if e.style.lanes_inline => !ordered_context,
+                // Прежний откат этой строки СНЯТ (03.09). Он мерился, когда
+                // строчный атом строил лунки голым `blocks()` и терял их
+                // целиком — оттого вся восьмёрка `flow-tolerance-*` и уходила
+                // в красное (0.00 -> 5.66 и родня). Теперь `atom_element`
+                // отдаёт лунки блочному пути (`element()`), и обе правки
+                // вместе дают по всему CSS3 2420 -> 2442: приобретено 27,
+                // потеряно 5 (`row-line-names-007/008/010/012`,
+                // `row-subgrid-abs-pos-002` — рядные лунки, они ждут обтяжку
+                // по РЯДАМ, корень R4 из `target/scout-subgrid-orthogonal-
+                // 2026-09.md`).
                 Some(_) => false,
                 // Дети гибкого контейнера и сетки блокируются по CSS: каждый
                 // сам себе элемент раскладки. Без оговорки `<span>` без
@@ -2075,10 +2079,11 @@ fn breaks_inline(n: &Node) -> bool {
     // (ряд, ячейка, группа) сами по себе разрыва не вызывают: вокруг них
     // сборщик строит анонимную таблицу, и её судьба решается отдельно.
     match e.style.display {
+        // Строчные лунки строку НЕ рвут — внешний вид у них `inline`.
+        Some(Display::GridLanes) => !e.style.lanes_inline,
         Some(Display::Block)
         | Some(Display::Flex)
         | Some(Display::Grid)
-        | Some(Display::GridLanes)
         | Some(Display::Table)
         | Some(Display::ListItem) => true,
         Some(_) => false,
@@ -5517,6 +5522,12 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
     // ЗАМЕРЕНО: правка верна по пробе, но своды не двигает — CSS2
     // 5343 -> 5343 и CSS3 2420 -> 2420, ноль приобретено, ноль потеряно:
     // эталоны этой семьи держит ещё и выравнивание по базовой линии.
+    // Лунки сетки — та же история: раскладку лунок строит только блочный
+    // путь, а строчный отдавал голый `blocks()`, и `display: inline
+    // grid-lanes` терял лунки целиком.
+    if e.style.display == Some(Display::GridLanes) {
+        return Some(element(e, inherited, opts));
+    }
     if e.style.column_count.is_some() || e.style.column_width.is_some() {
         let merged = inline::inherit(inherited, &e.style);
         let gap = match e.style.column_gap {
