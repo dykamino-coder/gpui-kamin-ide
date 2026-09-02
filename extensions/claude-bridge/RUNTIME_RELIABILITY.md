@@ -6,6 +6,12 @@
 business logic сторонних plugins находятся вне scope; общий Bridge UI и relay
 остаются в scope, даже если дефект впервые проявился на конкретном plugin.
 
+Maintainer/release agent не имеет доступа к corporate GitLab, private/internal
+marketplace и связанным plugin repositories. Задача, acceptance которой требует
+реальный corporate clone/pull/sync/install, обязана пометить этот шаг как
+owner-only post-merge production observation по `TESTING.md`; недоступный шаг
+не передаётся maintainer agent как merge gate.
+
 Статусы:
 
 - **ready** — причина или нарушенный контракт локализованы достаточно для
@@ -15,8 +21,9 @@ business logic сторонних plugins находятся вне scope; об�
 - **deferred** — изменение осознанно не планируется до указанного условия;
 - **verify** — код пока не меняется, нужен целевой runtime-прогон.
 
-Наблюдения ниже зафиксированы 20–24 августа 2026 года на KaminIDE 1.0.53. Source
-аудит выполнен на `origin/main` commit `5b5d93d`.
+Наблюдения ниже зафиксированы 20 августа — 2 сентября 2026 года на KaminIDE
+1.0.53 и 1.0.54. Последний source-аудит выполнен на `origin/main` commit
+`73256c2`.
 
 ## Confirmed incident facts
 
@@ -89,6 +96,22 @@ Agent Teams и hook approval имеют отдельные подтверждё�
   wrapping, хотя от его содержания зависит область автоматически запускаемого
   hook.
 
+Отдельный инцидент Agents panel 2 сентября относится к одной session. Все
+видимые имена (`gloss-*`, `hubs-monorepo`, `kaiten-card`, `links-repos` и
+`fix-terms`) действительно запускались внутри неё; оснований считать строки
+примесью другой session нет. Подтверждена следующая последовательность:
+
+- Console показывала работающие `links-repos` и `fix-terms`, пока Agents panel
+  оставалась пустой;
+- затем вкладка `Active` с badge `0` временно показала семь строк со статусом
+  `DONE`;
+- через несколько секунд эти строки исчезли из `Active`, badge `Completed`
+  стал `10`, и завершённые агенты текущей session появились там.
+
+Source-аудит подтвердил две самостоятельные UI/state ошибки и одну transport-
+границу, требующую проверки после PR #21. Они вынесены в отдельный track
+BR-25–BR-27; ни одна из задач не предполагает cross-session contamination.
+
 Релизный audit также выявил operational gap. Опубликованный image `6.3.130`
 появился до release commit и не содержит source revision label. GitHub workflow
 затем завершился зелёным, но пропустил build, потому что version tag уже
@@ -124,9 +147,10 @@ retention. Полная переработка допускается тольк
 
 ### BR-01 — Durable incident diagnostics
 
-**Status:** ready. **Dependency:** none. **Acceptance:** automated merge gate +
-Windows compile/privacy/runtime gate; воспроизведение редкого crash через
-10–15 часов остаётся post-merge production observation и не блокирует merge.
+**Status:** merged в PR #16; post-merge observation редкого incident остаётся
+открытым. **Dependency:** none. **Acceptance:** automated merge gate + Windows
+compile/privacy/runtime gate; воспроизведение редкого crash через 10–15 часов
+остаётся post-merge production observation и не блокирует merge.
 
 Изменение:
 
@@ -180,8 +204,8 @@ selections и LSP state повторно seed-ятся в новый child.
 
 ### BR-05 — Rehydrate authoritative connection state
 
-**Status:** ready. **Dependency:** none. **Acceptance:** automated + Windows
-runtime merge gate.
+**Status:** merged в PR #14. **Dependency:** none. **Acceptance:** automated +
+Windows runtime merge gate.
 
 Нужно устранить расхождение host/session state и Chat tab state:
 
@@ -254,8 +278,9 @@ reload, changed skills sync планирует, а pending maintenance може�
 
 ### BR-09 — Make Agent Teams report delivery explicit
 
-**Status:** ready для soft hardening. **Dependency:** none. **Acceptance:**
-automated + authenticated Windows runtime merge gate.
+**Status:** merged в PR #15; automatic selection остаётся отдельным BR-15.
+**Dependency:** none. **Acceptance:** automated + authenticated Windows runtime
+merge gate.
 
 Agent Teams остаются включёнными по умолчанию. Bridge system prompt должен
 зафиксировать общий контракт делегирования:
@@ -278,8 +303,8 @@ recovery request без duplicate teammate и бесконечного ожид�
 
 ### BR-10 — Show the effective hook in approval UI
 
-**Status:** ready. **Dependency:** none. **Acceptance:** automated + Windows UI
-runtime merge gate.
+**Status:** merged в PR #13. **Dependency:** none. **Acceptance:** automated +
+Windows UI runtime merge gate.
 
 Approval hash и повторный review после изменения hook сохраняются. Modal должна
 без исполнения показать canonical pre-rewrite declaration (`command` + `args`
@@ -501,10 +526,11 @@ session ID, reason, age/idle durations и exit code/signal.
 
 ### BR-18 — Keep SessionEnd relay available and secret-safe during teardown
 
-**Status:** ready для relay lifecycle fix; причина запуска teardown остаётся
+**Status:** draft implementation в PR #20; причина запуска teardown остаётся
 investigation и использует evidence из BR-17. **Dependency:** none для fix,
 BR-17 для классификации исходного termination trigger. **Acceptance:** automated
-+ authenticated Windows runtime merge gate.
++ authenticated Windows runtime merge gate; PR #20 не merge-ится, пока draft и
+этот gate не закрыты либо явно не переклассифицированы по `TESTING.md`.
 
 Source audit подтверждает самостоятельный teardown defect:
 
@@ -779,53 +805,359 @@ switch/reconnect и pointer activity, а текущий incident возника�
 будущих change PR затрагивают `JsonlViewer` render/window contract и иначе
 создадут лишний конфликт или скроют регрессию друг друга.
 
-## Current draft PR integration order
+### BR-23 — Make session-complete notifications transient and turn-scoped
 
-Все перечисленные PR остаются draft. `mergeable` относительно сегодняшнего
-`main` не гарантирует корректность после предыдущего merge; checks и branch
-protection в GitHub сейчас отсутствуют. Maintainer agent сливает строго по
-одному и не закрывает PR без merge:
+**Status:** confirmed source defect. **Dependency:** implementation обновляется
+от финального merged connection-state PR перед изменением
+`handle-server-message.ts` или committed Bridge artifacts. **Acceptance
+будущего fix:** automated lifecycle/protocol tests + Windows native-toast gate.
 
-1. PR #12 — canonical docs/testing/backlog. Сначала включить текущие BR-17,
-   BR-18, BR-19 и dependency template changes.
-2. PR #13 — BR-10 hook approval UI; выполнить его Windows gate.
-3. Обновить PR #14 от `origin/main`, пересобрать committed Bridge artifacts и
-   повторить automated + Windows gates. Это обязательно после #13, потому что
-   оба PR меняют `builtin-extensions/claude-bridge/chat.html`. Затем слить #14.
-4. Обновить и проверить PR #15 на свежем `origin/main`, выполнить authenticated
-   Agent Teams gate и слить #15.
-5. Обновить PR #16 после #14/#15, пересобрать artifacts и повторить все checks,
-   включая Windows Rust/runtime gate. #16 пересекается с #14 по connection
-   state, shared types, `useInit`, host parent и generated artifacts; затем
-   слить #16.
+Screenshot 31 августа подтверждает, что `Session finished — Tab … is ready`
+остаётся на экране без countdown. Это не modal и не случайная остановка timer:
+Bridge вызывает `vscode.window.showInformationMessage(text, "Open")`, а native
+shell классифицирует любой `shell.showMessage` с хотя бы одним action как
+`sticky: true`. Поэтому для такого toast намеренно не создаётся 8-секундный
+timer и countdown bar. Для сравнения, `Anthropic busy` идёт без action и shell
+автоматически закрывает его через свои 8 секунд; заявленные webview `duration:
+6000` при маршрутизации через shared notification API сейчас теряются.
 
-После каждого merge maintainer делает `fetch`, проверяет новый `origin/main` и
-только затем обновляет следующий PR. Generated files не разрешаются через
-`ours`/`theirs`: они пересобираются из объединённых sources.
+Наблюдение «при Agent Teams уведомление может повторяться по мере завершения
+агентов» не объясняется прямой обработкой `SubagentStop`: bridge status hook
+явно считает его informational и не отправляет `session:activity`. Но найден
+отдельный источник повторов внутри одного main turn. Server публикует и
+авторитетные hook-driven состояния (`UserPromptSubmit`/`Stop`), и эвристические
+OSC-title состояния; `handle-server-message.ts` передаёт в `SessionIdleTracker`
+оба вида без `hookDriven`. Tracker не знает turn identity и после каждого
+debounced `working -> idle` снова разрешает toast, если позже увидел новый
+`working`. Поэтому OSC idle/resume blips во время orchestration способны
+породить несколько `Session finished` до единственного main `Stop`. Точное
+равенство количества toast числу subagents кодом не гарантировано, но повторное
+срабатывание в одном turn разрешено и противоречит уже заявленному
+hook-authoritative activity contract.
+
+Fix не должен делать все notifications с actions transient: elicitation и
+approval ожидают решения пользователя и обязаны оставаться sticky. Нужен явный
+contract именно для completion toast: `Open` остаётся рабочим, toast сам
+закрывается, а ожидающий `shell.showMessage` request при timeout завершается
+`undefined/null` и не течёт. Idle notification создаётся не более одного раза
+на завершение main turn; `SubagentStop` его не создаёт; после появления
+hook-driven `UserPromptSubmit` эвристический OSC idle не завершает turn, а
+hook-driven `Stop` завершает. Fallback для server без lifecycle hooks описывается
+и тестируется отдельно. Существующие suppression для displayed active tab,
+reconnect settle и закрытого tab сохраняются.
+
+Automated tests покрывают: main turn с несколькими `SubagentStart/Stop` и OSC
+idle/resume blips даёт один completion; два последовательных main turns дают по
+одному; transient action toast отвечает host request на click, dismiss и
+timeout; question/elicitation остаётся sticky; duration не теряется между
+webview, extension host и shell. Windows gate проверяет countdown, автозакрытие,
+`Open`, hover pause и отсутствие серии toast в живой Agent Teams session.
+
+### BR-24 — Bound and reconcile lost webview invoke replies
+
+**Status:** confirmed incident; root-cause investigation. **Dependency:** BR-01
+diagnostics желательны; implementation только после текущей последовательности
+PR #12–#16. **Acceptance будущего fix:** automated transport/lifecycle tests +
+Windows CEF runtime gate.
+
+Windows acceptance PR #13 воспроизвёл 3 раза из 5: mutating call
+`hooks:set-plugin-approval` завершился host-side, approval store был записан и
+sync залогирован, но соответствующий `invoke-reply` не дошёл до webview. Promise
+остался в `pending` без deadline, а full-screen approval modal завис на
+`Saving…`. PR #13 добавил только feature-local 15-секундный bound, возвращение
+управления dialog и reconciliation через повторное чтение pending approvals.
+Это сохраняет approval UI рабочим, но не исправляет общий transport: любой
+другой `inv()` всё ещё способен ждать бесконечно.
+
+Причина потери frame пока не доказана. Текущий код не различает `postMessage`
+failure, hidden/disposed webview, renderer reload и reply, пришедший после
+смены document generation. Поэтому задача не объявляет простое добавление
+глобального timeout полным исправлением. Сначала нужны privacy-safe counters и
+correlation по invoke id/channel, document generation и результату
+`source.postMessage`, без args/result payload. Диагностика должна отличать
+«handler не завершился», «reply send rejected/returned false», «renderer был
+заменён» и «reply просрочен/неизвестен».
+
+Transport contract обязан ограничивать каждый pending invoke и очищать его при
+webview teardown/reload. Read-only idempotent операции могут повторяться только
+по явной policy. Mutating operation после timeout нельзя слепо повторять:
+запись могла состояться, как в #13, поэтому caller получает indeterminate
+outcome и выполняет domain-specific read-back/reconciliation. Late/duplicate
+reply не должен резолвить новый request с переиспользованным id или оставлять
+утечку. Отдельно определяется UX для обычных panels и blocking dialogs.
+
+Tests покрывают normal reply, handler reject, dropped/false `postMessage`,
+renderer reload до reply, late и duplicate reply, pending cleanup и mutating
+call с успешной записью при потерянном ответе. Windows gate повторяет
+disposable approval scenario и несколько read-only invokes при tab switch,
+hide/show, extension-host reconnect и CEF reload; ни один promise или modal не
+остаётся бесконечно pending, а повторная mutation не выполняется автоматически.
+
+### BR-25 — Verify Agents view delivery and rehydration after reveal
+
+**Status:** verify/investigation. **Dependency:** PR #21 должен пройти свой
+Windows runtime gate и быть объединён либо присутствовать в отдельном
+integration build. **Acceptance:** instrumented Windows Agent Teams runtime
+gate; новый fix PR создаётся только если симптом сохраняется.
+
+Agents panel — отдельная `tools.html` CEF webview со своим `useBridgeListeners`
+и собственной копией agent state. В KaminIDE 1.0.54 shell не сообщает exthost
+обычные hide/show transitions этой view: `kamin:webview:viewState` отправляется
+при creation/reap, но не при каждом уходе панели с экрана. Поэтому
+`WebviewView.visible` может остаться `true`, `BridgeHost` не фиксирует
+пропущенный hidden-view stream как stale и reveal не обязан вызвать
+`resyncActive()`. PR #21 добавляет недостающий visibility lifecycle, однако он
+не меняет Agents state machine и сам по себе не заявляет этот инцидент
+исправленным.
+
+Скриншоты подтверждают потерю актуального представления, но без event trace не
+доказывают, что visibility gap — единственная причина первоначально пустой
+панели. После #21 нужно в одной session:
+
+1. запустить не менее двух teammates при скрытой Agents panel;
+2. открыть панель во время их работы и получить все `running` rows без движения
+   мыши, повторного toggle и ожидания reap;
+3. повторить hide/show, tab switch и открытие старой session с завершёнными и
+   работающими агентами;
+4. записать только bounded metadata: view id/visibility, resync generation,
+   `jsonl-status` replay start/complete, число agent lifecycle rows по batch и
+   итоговые counts без prompts, reports и tool payloads.
+
+Если после #21 running rows всё ещё отсутствуют, отдельный implementation PR
+локализует потерю между host cache, Agent view fan-out и parser generation. До
+этого добавлять произвольный polling или повторный replay по timer нельзя.
+
+### BR-26 — Publish Agent replay state atomically
+
+**Status:** ready; подтверждён source defect. **Dependency:** none для кода, но
+Windows gate выполняется вместе с исправной visibility lifecycle из BR-25.
+**Acceptance:** automated replay-generation tests + Windows CEF runtime gate.
+
+Каждый `replayJsonlToRenderer()` сначала отправляет
+`jsonl-status { replayComplete:false }`. Agents listener немедленно удаляет
+`tabAgentTrees[tabId]`, после чего до 4 500 cached rows приезжают yielding
+chunks по 150. `AgentsToolPanel` не проверяет `tabJsonlLive` и рендерит дерево
+после каждого частичного batch. В результате уже отображавшийся список может
+стать пустым, затем показать только раннюю часть replay и ещё раз перестроиться
+после `replayComplete`. Комментарий в `buildAgentTreeNodes()` о том, что panel
+не показывает промежуточный replay, относится только к sidebar tree и не
+выполняется самой `AgentsToolPanel`.
+
+Fix должен иметь generation-scoped staging state: replay собирается отдельно,
+а опубликованный snapshot меняется атомарно только после соответствующего
+`replayComplete`. Во время resync panel сохраняет последний согласованный
+snapshot либо показывает один явный loading state, но не чередует empty/partial
+lists. Более старый или прерванный replay не может опубликоваться поверх нового;
+live entries, пришедшие на границе, не теряются и не удваиваются.
+
+Tests покрывают cold hydration, resync при двух running agents, 10 завершённых
+agents, несколько chunks, live entry между последним chunk и completion, два
+перекрывающихся replay generation и empty genuine session. Windows gate
+повторяет последовательность четырёх скриншотов: panel не мигает, running rows
+не исчезают, а завершённая history появляется одним согласованным update.
+
+### BR-27 — Derive Active and Completed from one lifecycle partition
+
+**Status:** ready; подтверждён source defect. **Dependency:** рекомендуется до
+BR-26, чтобы atomic snapshot уже публиковал корректно разделённые rows.
+**Acceptance:** automated state/renderer tests + authenticated Windows Agent
+Teams gate.
+
+Текущий `AgentsToolPanel` использует разные правила для badge и содержимого:
+
+- `activeCount` считает только `status === "running"`;
+- вкладка `Active` рендерит всех members команды, пока сама команда не
+  `disbanded`, и все standalone rows независимо от agent status;
+- `completedCount` не считает terminal members активной команды;
+- `scheduleCleanup()` лишь через 5 секунд переносит `done/error/terminated` из
+  live tree в `tabAgentHistory`.
+
+Это точно объясняет состояние `Active 0` с семью `DONE` rows и их последующий
+переезд в `Completed`. Fix вводит одну derived partition над одним snapshot:
+каждый agent текущей session находится ровно в одном из `Active` или
+`Completed`; badge равен числу реально отрисованных rows; terminal agent
+появляется в `Completed` сразу, а cleanup меняет только storage/retention и не
+видимую классификацию. `done`, `error`, `terminated` и disbanded team сохраняют
+различимые labels; повторный replay не дублирует rows.
+
+Fixtures обязаны проходить через реальный wire projection. Сейчас server
+`leanEntries()` удаляет весь `toolUseResult`, хотя agent parser читает из него
+bounded lifecycle status и completion counters. Это отдельная подтверждённая
+contract inconsistency, но не доказанная причина данных скриншотов. Исправление
+не должно возвращать тяжёлый duplicate payload целиком: нужен либо узкий
+lifecycle DTO для Agent/Task, либо parser, основанный только на полях, которые
+действительно сохраняются на wire.
+
+Automated tests покрывают running→done/error/terminated, idle notification,
+`teammate_spawned`, disband, cleanup before/after 5 seconds и repeated replay.
+Invariant после каждого update: `Active badge === rendered active rows`,
+`Completed badge === rendered completed rows`, пересечение множеств пусто.
+Windows gate запускает несколько teammates, завершает их в разном порядке и
+проверяет вкладки во время работы, сразу после завершения и после cleanup.
+
+### BR-28 — Measure sidebar geometry during session hover
+
+**Status:** investigation; hover-induced displacement пока не доказан кодом.
+**Dependency:** implementation не начинается до закрытия текущей PR queue;
+baseline capture выполняется до BR-29. **Acceptance:** отдельный bounded Windows
+GPUI evidence artifact, не speculative functional PR.
+
+Screenshot 2 сентября показывает session actions pill у `Front-Back для
+проект...` и визуально отличающийся промежуток перед `35 inactive sessions`.
+Source не подтверждает, что fly-out добавляет место в sessions list:
+
+- `overlay_pill()` рендерится в отдельном overlay window как `absolute`;
+- `anchor_probe()` также `absolute` и не должен участвовать в layout строки;
+- session row имеет фиксированную высоту 24 px, а контейнер sessions — постоянный
+  gap 2 px;
+- inactive toggle всегда имеет собственный left padding 18 px, chevron 12 px и
+  gap 6 px, поэтому его label по дизайну начинается правее session label;
+- единственное hover-driven изменение внутри layout — unpinned `pin_btn()`,
+  который раскрывается с width 0 до 20 px и перераспределяет горизонтальный
+  бюджет только hovered row.
+
+По одному screenshot нельзя отличить реальный vertical reflow от постоянного
+indent, изменения truncation/time/pin allocation или GPUI flex regression.
+Исследование снимает paired bounds без движения/scroll между кадрами: session
+row, label, time, pin, group sessions container, inactive toggle, scroll
+viewport, `anchor_probe` и overlay pill — до hover, на hover и после leave.
+Evidence фиксирует logical/physical px, DPI, sidebar width, scrollbar presence,
+open/pinned state и положение строки у нижней границы viewport. Матрица включает
+pinned/unpinned, open/inactive, с/без scrollbar и несколько project groups.
+
+Если sibling bounds не меняются, задача закрывается как optical/expected indent
+с документированным сравнением; произвольная правка padding запрещена. Если
+меняются — отдельный change PR локализует первый ancestor с изменившимся
+height/y и добавляет regression probe. Этот incident не объединяется с BR-29
+без такого evidence: общий hover subsystem ещё не доказывает общую layout cause.
+
+### BR-29 — Make hover-to-rename transition atomic
+
+**Status:** ready; подтверждён source lifecycle defect. **Dependency:** paired
+baseline из BR-28 и закрытая текущая PR queue. **Acceptance:** automated state/
+geometry tests + Windows GPUI sidebar gate.
+
+Переход в inline rename сейчас не владеет teardown hover actions:
+
+- `ShellEvent::BeginRename` закрывает только `session_menu`, ставит
+  `renaming_session` и создаёт input, но не очищает `hover_pill`,
+  `hover_pill_anchor`, `hover_pill_panel` или generation;
+- rename branch в `session_row()` возвращается до установки `on_hover` и
+  `anchor_probe`, поэтому заменённый hovered node может не прислать leave;
+- process-global `pill_anchor()` хранит последнюю геометрию как unscoped
+  `Option<[f32; 4]>` и сам не очищается при исчезновении anchor;
+- passive overlay продолжает рисовать actions, пока одновременно сохранены
+  `hover_pill` и старая anchor geometry. Общий mouse-down dismiss уменьшает
+  частоту проявления, но не покрывает F2, double-click, замену node и ordering
+  capture/target events как явный контракт rename.
+
+Fix вводит один state transition helper: перед `BeginRename` он инвалидирует
+pending close generation, очищает оба hover sources и связанную geometry, затем
+показывает input. Anchor geometry становится id/generation-scoped либо явно
+сбрасывается вместе с state, чтобы координаты одной строки нельзя было
+использовать для другой. Rename не зависит от случайного `mouseleave` или
+глобального mouse-down listener.
+
+Tests покрывают rename из fly-out button, double-click и F2 после anchor hover и
+panel hover, delayed leave предыдущего node, cancel/commit/blur, смену session и
+scroll во время transition. Invariant: при `renaming_session = id` для `id` нет
+actions overlay и stale anchor; input не перекрыт, не обрезан pill hitbox и
+сразу имеет focus. Windows gate повторяет оба screenshot-сценария и отдельно
+сверяет bounds из BR-28 до/после fix.
+
+BR-23–BR-29 зафиксированы docs-only и не меняют runtime или generated
+artifacts. Agents track не содержит предположения о данных из другой session.
+
+## Current open PR boundary
+
+PR #12–#16 и release PR #18 уже находятся в `origin/main`. На момент последнего
+аудита открыты docs PR #17 и runtime/build PR #19–#22. До их merge/закрытия
+BR-25–BR-29 не получают implementation branches: это сохраняет требование
+пользователя сначала завершить предыдущую очередь и не создаёт конфликтов в
+committed `tools.html`/`extension.js` artifacts.
+
+Строгий integration order текущей очереди:
+
+1. PR #17 — сначала закрепить актуальную карту задач и acceptance policy.
+2. PR #22 — затем закрепить LF для Linux image scripts до следующих server
+   build/runtime gates.
+3. PR #21 — visibility lifecycle; его Windows gate обязателен до BR-25.
+4. PR #19 — software-render throttle после обновления от `main`, уже содержащего
+   #21, и с повторным combined Windows renderer gate.
+5. PR #20 — только после снятия draft и выполнения/явной классификации его
+   acceptance; server image validation использует уже объединённый #22.
+
+Текущие heads #19 и #21 пересекаются по `crates/shell/src/web/mod.rs` и
+`crates/shell/src/web/pump.rs`. `git merge-tree` на зафиксированных heads не
+показывает textual conflict, но это один renderer lifecycle surface, поэтому
+результаты отдельного тестирования не заменяют повторный gate на rebased exact
+head. #20 source-wise независим от renderer PR, а #22 является build guard, не
+runtime fix. После каждого merge следующий PR обновляется от нового
+`origin/main`; mergeability против старой базы недостаточна.
+
+Особая зависимость Agents track — PR #21: сначала его полный automated и
+Windows lifecycle gate, затем BR-25 verification. PR #21 не считается
+автоматическим доказательством исправления Agents panel. BR-27 после этого идёт
+перед BR-26; каждый implementation PR начинается от нового `origin/main` и
+пересобирает generated artifacts из объединённых sources, без `ours`/`theirs`.
 
 ## Recommended next task order
 
-1. BR-18 secret-safe SessionEnd teardown relay.
-2. BR-19 expected shell-disconnect cancellation без ложного crash toast.
-3. BR-17 persistent server logs как независимый operational PR.
-4. BR-20 plan-usage compatibility как независимый server/dashboard PR.
-5. BR-21 metric contract, затем его bounded aggregation PRs; analytics fixes не
+Это scheduler priority, а не одна двадцатишаговая dependency chain. Нормативны
+явные `Dependency` в карточках и строгий integration order открытой очереди
+выше. После её завершения пункты без зависимости разрешено вести независимо в
+разных worktree, но каждый следующий PR создаётся от свежего `origin/main`.
+Пересекающиеся tracks остаются последовательными:
+
+- Agent Teams UI: #21 → BR-25 verification → BR-27 → BR-26; BR-15 только
+  после стабильности delivery/view lifecycle;
+- long session: BR-01 (merged) → BR-02 → BR-03;
+- history UI: BR-22 classification → BR-16, а BR-06 создаётся только при
+  повторном воспроизведении после текущей очереди;
+- native attention: BR-11 → BR-07;
+- analytics: BR-20 отдельно от BR-21, затем bounded BR-21 child PRs по
+  утверждённому metric contract;
+- deployment skills: BR-12; BR-13 ждёт отдельного подтверждения migration и не
+  выполняет destructive container cleanup.
+- native sessions sidebar: BR-28 paired geometry capture → BR-29; отдельный
+  layout fix создаётся только если BR-28 докажет sibling reflow.
+
+BR-04, BR-08, BR-14, BR-17, BR-19, BR-23 и BR-24 не образуют общую строгую
+цепочку. Они следуют priority ниже, не смешиваются в один PR и перед началом
+повторно проверяются на file overlap с уже открытыми branches.
+
+1. Завершить либо явно закрыть текущую очередь PR #17 и #19–#22; каждый PR
+   сохраняет собственные acceptance gates.
+2. BR-25: после #21 выполнить instrumented Windows verification одной session.
+3. BR-27: исправить единую partition `Active`/`Completed`.
+4. BR-26: сделать replay snapshot атомарным и убрать empty/partial flicker.
+5. BR-28 paired sidebar geometry capture без speculative layout changes.
+6. BR-29 atomic hover-to-rename transition; отдельный layout fix — только по
+   результату BR-28.
+7. BR-19 expected shell-disconnect cancellation без ложного crash toast.
+8. BR-17 persistent server logs как независимый operational PR.
+9. BR-20 plan-usage compatibility как независимый server/dashboard PR.
+10. BR-21 metric contract, затем его bounded aggregation PRs; analytics fixes не
    смешиваются с BR-20 и не пытаются вычислять quota из JSONL.
-6. BR-04 recovery после extension-host respawn.
-7. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
-8. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
+11. BR-04 recovery после extension-host respawn.
+12. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
+13. BR-24 lost invoke replies: сначала transport diagnostics, затем bounded
+   lifecycle и reconciliation без blind retry mutating calls.
+14. BR-23 completion toast после финального connection-state PR; отдельно от
+   sticky elicitation/approval semantics.
+15. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
    как fix PR только если симптом сохранился; отдельная задача для reconnect не
    заводится.
-9. BR-22 live render-window collapse: сначала получить paired diagnostic dumps
+16. BR-22 live render-window collapse: сначала получить paired diagnostic dumps
    пустого и восстановившегося состояния и локализовать расходящийся entry path.
-10. BR-16 upward history anchoring идёт после классификации BR-22 отдельным UI
+17. BR-16 upward history anchoring идёт после классификации BR-22 отдельным UI
    PR и не блокирует connection recovery chain.
-11. BR-11 inventory native blockers, затем минимальный BR-07.
-12. BR-08 без удаления существующего maintenance contract.
-13. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
+18. BR-11 inventory native blockers, затем минимальный BR-07.
+19. BR-08 без удаления существующего maintenance contract.
+20. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
    migration на всех deployments.
-14. BR-15 Agent Teams selection eval.
-15. BR-02 и только затем решение по BR-03.
+21. BR-15 Agent Teams selection eval.
+22. BR-02 и только затем решение по BR-03.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.
