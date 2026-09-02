@@ -9385,6 +9385,17 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     left: fixup(c.padding.left, cm.padding.left),
                 };
                 c.height = fixup(c.height, cm.height);
+                // Толщина рамки — тем же правилом: `border: 1em solid` у
+                // ячейки доезжало сюда неразрешённым `Em`, а раскладка кладёт
+                // только `Px` (`apply.rs`: прочие длины молча отбрасываются),
+                // и рамка пропадала целиком (`table-height-algorithm-008b/c`
+                // против зелёной `-008a`, где то же самое написано отступом).
+                c.border_width = crate::computed::Sides {
+                    top: fixup(c.border_width.top, cm.border_width.top),
+                    right: fixup(c.border_width.right, cm.border_width.right),
+                    bottom: fixup(c.border_width.bottom, cm.border_width.bottom),
+                    left: fixup(c.border_width.left, cm.border_width.left),
+                };
                 c
             };
             let mut d = styled_div_with(cell, &box_style);
