@@ -966,6 +966,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.cursor = own.cursor.clone().or(parent.cursor.clone());
     c.no_marker = own.no_marker.or(parent.no_marker);
     c.border_collapse = own.border_collapse.or(parent.border_collapse);
+    c.empty_cells_hide = own.empty_cells_hide.or(parent.empty_cells_hide);
     c.border_spacing = own.border_spacing.or(parent.border_spacing);
     c.caret_color = own.caret_color.or(parent.caret_color);
     // `em` считается от размера шрифта — а он известен только здесь, когда

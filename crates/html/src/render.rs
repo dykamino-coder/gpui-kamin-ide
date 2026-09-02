@@ -9155,8 +9155,31 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             while col_ix < occupied.len() && occupied[col_ix] > 0 {
                 col_ix += 1;
             }
+            // §17.6.1.1: `empty-cells: hide` прячет фон и рамку ПУСТОЙ
+            // ячейки — в раздельной модели рамок. Пустая это та, у которой нет
+            // ни текста, ни элементов-детей.
+            let прячем_пустую = inline::inherit(&row_style, &cell.style).empty_cells_hide
+                == Some(true)
+                && e.style.border_collapse != Some(true)
+                && {
+                    let mut текст = String::new();
+                    gather_text(&cell.children, &mut текст);
+                    текст.trim().is_empty()
+                        && !cell.children.iter().any(|n| matches!(n, Node::Element(_)))
+                };
             // Ячейка в НУЛЕВОЙ дорожке: свои горизонтальные отступ и рамку
             // она держать не может — дорожки под них нет (§17.5.2.1).
+            let cell = &if прячем_пустую {
+                let mut copy = cell.clone();
+                copy.style.background = None;
+                copy.style.gradient = None;
+                copy.style.bg_image = None;
+                copy.style.border_visible = [Some(false); 4];
+                copy.style.border_width = Default::default();
+                copy
+            } else {
+                cell.clone()
+            };
             let cell = &if zero_cols.get(col_ix).copied().unwrap_or(false) {
                 let mut copy = cell.clone();
                 copy.style.padding.left = Some(Len::Px(0.0));

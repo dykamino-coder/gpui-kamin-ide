@@ -837,6 +837,9 @@ pub struct Computed {
     pub(crate) border_color_is_current: bool,
     /// `border-collapse: collapse` — зазор между ячейками пропадает.
     pub border_collapse: Option<bool>,
+    /// `empty-cells: hide` — у ПУСТОЙ ячейки не рисуются ни фон, ни рамка
+    /// (CSS 2.1 §17.6.1.1). Свойство наследуемое.
+    pub empty_cells_hide: Option<bool>,
     /// Форма курсора: у GPUI набор совпадает с CSS почти буква в букву.
     pub cursor: Option<String>,
     /// `visibility: hidden` — место занимает, но не рисуется.
@@ -2612,6 +2615,7 @@ impl Computed {
                 };
             }
             "border-collapse" => self.border_collapse = Some(v == "collapse"),
+            "empty-cells" => self.empty_cells_hide = Some(v.trim() == "hide"),
             "border-color" => {
                 // От одного до четырёх значений, как у всякого сокращения по
                 // сторонам (§8.5.2). Прежде строка разбиралась целиком, и
