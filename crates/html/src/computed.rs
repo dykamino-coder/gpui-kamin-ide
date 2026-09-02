@@ -744,6 +744,12 @@ pub struct Computed {
     pub opacity: Option<f32>,
 
     pub background: Option<Color>,
+    /// Фон ЗАЯВЛЕН автором (`background` или `background-color`), пусть даже
+    /// прозрачным. Умолчание UA у полей ввода ставится только тогда, когда
+    /// автор не сказал ничего: сокращение `background: linear-gradient(...)`
+    /// сбрасывает цвет в прозрачный (§2.1), и подставлять поверх него
+    /// служебную заливку нельзя.
+    pub bg_explicit: bool,
     /// `border: inherit` / `padding: inherit`: свойства не наследуемые, слово
     /// копирует вычисленное значение родителя — оно известно только при
     /// слиянии стилей.
@@ -1873,12 +1879,60 @@ impl Computed {
     }
 
     /// Один проход: только обычные объявления либо только важные.
-    fn apply_pass(&mut self, d: &Decls, vars: &Decls, important: bool) {
+    fn apply_pass<'a>(&mut self, d: &'a Decls, vars: &Decls, important: bool) {
+        // Порядок ЗАПИСИ решает только между СОКРАЩЕНИЕМ и его длинным
+        // свойством (`background` и `background-color`, `border` и
+        // `border-width`): там он и виден — `background-color: red;
+        // background: green` обязано дать зелёный, а обратная запись красный,
+        // и словарь без порядка давал одно и то же.
+        //
+        // Между СОСЕДЯМИ (`border-width` и `border-style`, `white-space` и
+        // `overflow-wrap`) порядок записи НЕ применяется: замерено, что от
+        // него CSS2 теряет `border-width-012`, а CSS3 — девять пар
+        // `textarea-pre-wrap-*`; наши свойства кое-где читают состояние друг
+        // друга на применении, и полный порядок вскрывает эту зависимость.
+        // Возвращать полный порядок вместе с независимым применением
+        // объявлений.
+        let order: Vec<&str> = d
+            .get(crate::css::ORDER_KEY)
+            .map(|s| s.split(crate::css::DECL_SEP).collect())
+            .unwrap_or_default();
         let mut keys: Vec<&String> = d.keys().collect();
-        keys.sort_by_key(|k| (k.matches('-').count(), k.as_str()));
-        for k in &keys {
+        // Внутри СЕМЬИ (сокращение и его длинные свойства) порядок — по
+        // записи; сами семьи идут прежним порядком «сперва общее».
+        // Семья — только НАСТОЯЩЕЕ сокращение со своими длинными свойствами.
+        // По одному лишь общему началу судить нельзя: `overflow-wrap` не
+        // часть `overflow`, и перестановка этой пары ЗАМЕРЕНА в минус —
+        // девять пар `textarea-pre-wrap-*` уходят 0.00 → 0.76. Список
+        // расширять по одному, каждое имя — со своим замером.
+        const SHORTHANDS: &[&str] = &["background"];
+        let семья = |k: &'a str| -> &'a str {
+            for root in SHORTHANDS {
+                if k.len() > root.len()
+                    && k.starts_with(root)
+                    && k.as_bytes().get(root.len()) == Some(&b'-')
+                    && d.contains_key(*root)
+                {
+                    return root;
+                }
+            }
+            k
+        };
+        let место = |k: &str| order.iter().position(|n| *n == k).unwrap_or(usize::MAX);
+        let mut keys: Vec<&'a String> = d.keys().collect();
+        keys.sort_by_cached_key(|k| {
+            let root = семья(k.as_str());
+            (
+                root.matches('-').count(),
+                root,
+                if order.is_empty() { 0 } else { место(k) },
+                k.as_str(),
+            )
+        });
+        let ordered = keys;
+        for k in &ordered {
             let Some(v) = d.get(*k) else { continue };
-            if k.starts_with("--") {
+            if k.starts_with("--") || k.as_str() == crate::css::ORDER_KEY {
                 continue;
             }
             for part in v.split(crate::css::DECL_SEP) {
@@ -2747,6 +2801,26 @@ impl Computed {
                     // inherit` чужую картинку тащить не должен.
                     self.background_all_inherit = key == "background";
                     return;
+                }
+                // Сокращение СБРАСЫВАЕТ все свои длинные свойства
+                // (css-backgrounds-3 §2.1): `background-color: red;
+                // background: bottom fixed` оставляет фон ПРОЗРАЧНЫМ, а
+                // прежде красный переживал сокращение. Сбрасывает только
+                // `background`; `background-color` трогает лишь цвет.
+                // Сокращение СБРАСЫВАЕТ свои длинные свойства
+                // (css-backgrounds-3 §2.1): `background-color: red;
+                // background: bottom fixed` оставляет фон ПРОЗРАЧНЫМ.
+                // Сбрасывается только ЦВЕТ: остальные части разбор ниже берёт
+                // из записи не полностью, и полный сброс терял то, чего он не
+                // умеет прочесть обратно (замерено: девять пар
+                // `textarea-pre-wrap-*` уходили 0.00 → 0.76).
+                // Негодное объявление не сбрасывает ничего (§4.1.7).
+                if key == "background" && background_shorthand_valid(v) {
+                    self.background = None;
+                    self.background_rcs = None;
+                }
+                if key == "background-color" || background_shorthand_valid(v) {
+                    self.bg_explicit = true;
                 }
                 // Цвет от `currentColor` решается не здесь: цвет элемента
                 // известен только после каскада, а запись наследуется
@@ -5911,6 +5985,61 @@ fn parse_justify(v: &str) -> Option<Justify> {
 }
 
 /// Одна грань размещения: `3`, `span 2`, `auto`.
+/// Годно ли значение сокращения `background` целиком.
+///
+/// Негодное объявление ОТБРАСЫВАЕТСЯ, а не сбрасывает свои длинные свойства
+/// (CSS 2.1 §4.1.7): `background: green` в одном правиле и `background: red\;`
+/// (значение с экранированной точкой с запятой, то есть цвет `red;`) в
+/// другом обязаны оставить фон зелёным. Разбор ниже намеренно снисходителен —
+/// он берёт из записи всё, что узнал, — поэтому годность проверяется
+/// отдельно, и только ею решается сброс (`escapes-002/014`, `keywords-000`).
+fn background_shorthand_valid(v: &str) -> bool {
+    if v.contains("gradient(") || v.contains("url(") {
+        return true;
+    }
+    let mut any = false;
+    for token in split_outside_parens(v) {
+        let t = token.trim();
+        if t.is_empty() || t == "/" {
+            continue;
+        }
+        any = true;
+        let known = matches!(
+            t,
+            "none"
+                | "transparent"
+                | "initial"
+                | "unset"
+                | "revert"
+                | "no-repeat"
+                | "repeat"
+                | "repeat-x"
+                | "repeat-y"
+                | "space"
+                | "round"
+                | "cover"
+                | "contain"
+                | "scroll"
+                | "fixed"
+                | "local"
+                | "border-box"
+                | "padding-box"
+                | "content-box"
+                | "text"
+                | "left"
+                | "right"
+                | "top"
+                | "bottom"
+                | "center"
+        ) || Len::parse(t).is_some()
+            || Color::parse(t).is_some();
+        if !known {
+            return false;
+        }
+    }
+    any
+}
+
 fn parse_placement(v: &str) -> Placement {
     let v = v.trim();
     if let Some(n) = v.strip_prefix("span") {

@@ -14,6 +14,14 @@ pub type Decls = HashMap<String, String>;
 /// Разделитель повторных объявлений одного свойства внутри значения.
 pub const DECL_SEP: char = char::from_u32(1).unwrap();
 
+/// Служебный ключ со списком свойств В ПОРЯДКЕ ЗАПИСИ.
+///
+/// Каскад решает порядком объявлений (CSS 2.1 §6.4.1), а словарь его не
+/// помнит: `background-color: red; background: green` и обратная запись
+/// давали ОДИН исход. Имя начинается со служебного знака — свойства с
+/// таким именем в разметке не бывает.
+pub const ORDER_KEY: &str = "\u{2}order";
+
 /// Одно правило: с чем сопоставлять и что применять.
 #[derive(Clone, Debug)]
 pub struct Rule {
@@ -530,6 +538,7 @@ fn top_level_bang(value: &str) -> Option<usize> {
 /// Разбор `style="a: 1; b: 2"`.
 pub fn parse_decls(raw: &str) -> Decls {
     let mut out = Decls::new();
+    let mut order: Vec<String> = Vec::new();
     for item in split_top_level(raw, ';') {
         // Двоеточие ищется НЕэкранированное: `bac\\kground` — это имя
         // `background`, а `background\\:` — имя с двоеточием внутри, то есть
@@ -588,6 +597,16 @@ pub fn parse_decls(raw: &str) -> Decls {
             if key.starts_with("--") {
                 out.insert(key, val.to_string());
             } else {
+                // Порядок записи: имя запоминается при ПЕРВОМ появлении —
+                // повтор того же свойства применяется на его месте, внутри
+                // склеенного значения. В словарь список кладётся ПОСЛЕ
+                // разбора и только к непустому: `parse_decls(...).is_empty()`
+                // отличает сломанный синтаксис от целого (`@supports`,
+                // `@page`), и служебный ключ не должен делать пустое
+                // непустым.
+                if !out.contains_key(&key) {
+                    order.push(key.clone());
+                }
                 match out.entry(key) {
                     std::collections::hash_map::Entry::Occupied(mut e) => {
                         let s = e.get_mut();
@@ -600,6 +619,9 @@ pub fn parse_decls(raw: &str) -> Decls {
                 }
             }
         }
+    }
+    if !out.is_empty() && !order.is_empty() {
+        out.insert(ORDER_KEY.to_string(), order.join(&DECL_SEP.to_string()));
     }
     out
 }

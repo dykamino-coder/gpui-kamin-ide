@@ -281,7 +281,10 @@ fn progress(e: &Element, style: &Computed) -> AnyElement {
 /// шли безусловно и затирали фон, рамку, скругление и отступы из CSS.
 fn field_box(style: &Computed) -> gpui::Div {
     let mut d = apply(div(), style).flex().items_center().min_h(px(24.));
-    if style.background.is_none() && style.gradient.is_none() {
+    // Служебная заливка поля — только когда автор о фоне НЕ говорил:
+    // `background: linear-gradient(...)` сбрасывает цвет в прозрачный, и
+    // заливка поверх него закрашивала бы страницу под полем.
+    if !style.bg_explicit && style.background.is_none() && style.gradient.is_none() {
         d = d.bg(rgb(FIELD_BG));
     }
     // «Автор ничего не сказал» — это когда не заданы НИ толщина, НИ рисунок.
