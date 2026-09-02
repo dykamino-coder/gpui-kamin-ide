@@ -61,6 +61,27 @@ extensions/claude-bridge/verify-pr.sh --install
 Plugin-specific business logic и содержимое стороннего plugin repository не
 являются частью Bridge PR.
 
+### Corporate GitLab и marketplaces
+
+Release/maintainer agent находится вне корпоративного контура: у него нет
+сетевого и credential-доступа к internal GitLab, private marketplace repository
+и plugin repositories, на которые ссылается этот marketplace. Он не вводит
+реальный PAT, не импортирует Windows Credential Manager записи и не пытается
+подключать корпоративный marketplace при merge/release.
+
+Для изменения marketplace/plugin transport до merge остаются обязательными все
+доступные проверки: unit tests, redacted fixtures `known_marketplaces.json` и
+`marketplace.json`, disposable local Git/auth fixture, error/redaction paths и
+Windows UI/runtime сценарии, которым не нужен корпоративный repository. Реальные
+clone/pull/sync/install из corporate GitLab выполняет владелец доступа только
+после обычной выкладки как non-blocking production observation.
+
+Описание PR должно разделять эти два контура и перечислять: что maintainer уже
+проверил, что физически недоступно, кто выполнит corporate observation, какой
+результат ожидается и какое bounded/redacted evidence будет приложено. Нельзя
+передавать в PR или агенту PAT, credential export, repository contents либо
+необходимость подключения к корпоративной сети.
+
 ## Skills sync
 
 Контракт и целевая матрица находятся в `SKILLS_SYNC.md`. Изменение sync или PTY
@@ -105,6 +126,9 @@ review не появится.
 
 Для post-merge production observation достаточно заранее определить, какой
 сигнал будет собран, где он появится и кто подтвердит результат после выпуска.
+Если observation зависит от corporate GitLab/marketplace, владельцем является
+пользователь внутри корпоративного контура, а maintainer agent явно пропускает
+этот шаг как недоступный, не помечая его passed или failed.
 
 Release/CI PR дополнительно прикладывает source commit, image digest, revision
 labels/attestation, installer asset version/digest и результат dry-run. Зелёный
