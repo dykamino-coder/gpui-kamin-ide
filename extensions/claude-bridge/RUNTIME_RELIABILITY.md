@@ -1065,35 +1065,60 @@ actions overlay и stale anchor; input не перекрыт, не обреза�
 сразу имеет focus. Windows gate повторяет оба screenshot-сценария и отдельно
 сверяет bounds из BR-28 до/после fix.
 
-BR-23–BR-29 зафиксированы docs-only и не меняют runtime или generated
+### BR-30 — Keep incident-log records atomic across rotation
+
+**Status:** ready; подтверждён source defect и локальное воспроизведение.
+**Dependency:** none для кода; выполнить до следующего evidence run BR-02,
+который опирается на машинно-разбираемый `incident.log`. **Acceptance:**
+automated filesystem/rotation tests; Windows smoke проверяет только запись и
+чтение логов и не требует доступа к корпоративному marketplace.
+
+`RollingLogWriter.write()` строго заполняет оставшиеся байты текущего файла и
+только затем выполняет rotation. Для raw `host.log` это ожидаемый bounded
+streaming contract, но все writers `incident.log` передают целую строку
+`[incident] <json>\n`. Если свободного места меньше длины такой строки, начало
+record остаётся в `.1`, а окончание попадает в новый `incident.log`; ни один
+fragment больше не является валидной JSONL-записью. Дефект воспроизводится на
+текущем `main` с `maxBytes = 32`: rotation boundary проходит внутри одного JSON
+record. Существующие tests проверяют byte cap на произвольных chunks, но не
+атомарность structured records и не UTF-8 boundary.
+
+Fix сохраняет текущий byte-bounded `write()` для raw stream и добавляет
+record-aware path для incident events. Если bounded record помещается в пустое
+поколение, но не помещается в остаток текущего, writer сначала выполняет
+rotation, а затем записывает record целиком. Поведение для record больше
+`maxBytes` задаётся явно и не ослабляет retention cap; все incident emitters
+используют один новый path.
+
+Tests ставят rotation boundary внутри ASCII и multibyte records, читают каждое
+сохранённое поколение отдельно и подтверждают, что каждая непустая строка имеет
+полный `[incident] ` prefix, валидный JSON и корректный UTF-8. Отдельно остаются
+зелёными текущие raw-chunk, retention и restart tests.
+
+BR-23–BR-30 зафиксированы docs-only и не меняют runtime или generated
 artifacts. Agents track не содержит предположения о данных из другой session.
 
 ## Current open PR boundary
 
-PR #12–#16 и release PR #18 уже находятся в `origin/main`. На момент последнего
-аудита открыты docs PR #17 и runtime/build PR #19–#22. До их merge/закрытия
-BR-25–BR-29 не получают implementation branches: это сохраняет требование
-пользователя сначала завершить предыдущую очередь и не создаёт конфликтов в
+PR #12–#19 и PR #21–#23 уже находятся в `origin/main`. На момент этого аудита
+открыт только draft PR #20. До его merge/закрытия BR-25–BR-30 не получают
+implementation branches: это сохраняет требование пользователя сначала
+завершить предыдущую очередь и не создаёт конфликтов в server lifecycle или
 committed `tools.html`/`extension.js` artifacts.
 
 Строгий integration order текущей очереди:
 
-1. PR #17 — сначала закрепить актуальную карту задач и acceptance policy.
-2. PR #22 — затем закрепить LF для Linux image scripts до следующих server
-   build/runtime gates.
-3. PR #21 — visibility lifecycle; его Windows gate обязателен до BR-25.
-4. PR #19 — software-render throttle после обновления от `main`, уже содержащего
-   #21, и с повторным combined Windows renderer gate.
-5. PR #20 — только после снятия draft и выполнения/явной классификации его
-   acceptance; server image validation использует уже объединённый #22.
+1. PR #20 обновить от текущего `origin/main`, уже содержащего #23.
+2. Семантически разрешить его overlap с #23 в
+   `extensions/claude-bridge/server/src/core/pty/session-core.ts`, не выбирая
+   целиком `ours` или `theirs`.
+3. Снять draft только после выполнения либо явной классификации acceptance;
+   server image validation использует уже объединённый #22.
 
-Текущие heads #19 и #21 пересекаются по `crates/shell/src/web/mod.rs` и
-`crates/shell/src/web/pump.rs`. `git merge-tree` на зафиксированных heads не
-показывает textual conflict, но это один renderer lifecycle surface, поэтому
-результаты отдельного тестирования не заменяют повторный gate на rebased exact
-head. #20 source-wise независим от renderer PR, а #22 является build guard, не
-runtime fix. После каждого merge следующий PR обновляется от нового
-`origin/main`; mergeability против старой базы недостаточна.
+PR #20 source-wise независим от renderer PR, но его старый head и #23 меняют
+один server lifecycle surface. Поэтому mergeability против старой базы
+недостаточна: tests и acceptance выполняются на exact head после обновления от
+текущего `origin/main`.
 
 Особая зависимость Agents track — PR #21: сначала его полный automated и
 Windows lifecycle gate, затем BR-25 verification. PR #21 не считается
@@ -1109,9 +1134,9 @@ Windows lifecycle gate, затем BR-25 verification. PR #21 не считае�
 разных worktree, но каждый следующий PR создаётся от свежего `origin/main`.
 Пересекающиеся tracks остаются последовательными:
 
-- Agent Teams UI: #21 → BR-25 verification → BR-27 → BR-26; BR-15 только
+- Agent Teams UI: #21 (merged) → BR-25 verification → BR-27 → BR-26; BR-15 только
   после стабильности delivery/view lifecycle;
-- long session: BR-01 (merged) → BR-02 → BR-03;
+- long session: BR-01 (merged) → BR-30 → BR-02 → BR-03;
 - history UI: BR-22 classification → BR-16, а BR-06 создаётся только при
   повторном воспроизведении после текущей очереди;
 - native attention: BR-11 → BR-07;
@@ -1126,8 +1151,8 @@ BR-04, BR-08, BR-14, BR-17, BR-19, BR-23 и BR-24 не образуют общу
 цепочку. Они следуют priority ниже, не смешиваются в один PR и перед началом
 повторно проверяются на file overlap с уже открытыми branches.
 
-1. Завершить либо явно закрыть текущую очередь PR #17 и #19–#22; каждый PR
-   сохраняет собственные acceptance gates.
+1. Обновить от текущего `origin/main` и завершить либо явно закрыть draft PR
+   #20; его acceptance выполняется на exact rebased/merged head.
 2. BR-25: после #21 выполнить instrumented Windows verification одной session.
 3. BR-27: исправить единую partition `Active`/`Completed`.
 4. BR-26: сделать replay snapshot атомарным и убрать empty/partial flicker.
@@ -1157,7 +1182,8 @@ BR-04, BR-08, BR-14, BR-17, BR-19, BR-23 и BR-24 не образуют общу
 20. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
    migration на всех deployments.
 21. BR-15 Agent Teams selection eval.
-22. BR-02 и только затем решение по BR-03.
+22. BR-30 atomic incident records across rotation.
+23. BR-02 и только затем решение по BR-03.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.
