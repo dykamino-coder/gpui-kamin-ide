@@ -2668,6 +2668,15 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
         // `floats-wrap-bfc-with-margin-008/009` 0.00 → 1.05. Наложение
         // рушит вертикальное место: у нас флоат в ряду задаёт высоту, а
         // абсолют её больше не держит.
+        // Хвост со СВОИМИ боковыми полями остаётся на прежней основе: остаток
+        // ряда достаётся ему без учёта этих полей, и коробка выходит у́же
+        // нужного (`floats-wrap-bfc-with-margin-004/005/008/009`).
+        let хвост_с_полями = rest.iter().any(|n| match n {
+            Node::Element(e) => [e.style.margin.left, e.style.margin.right]
+                .iter()
+                .any(|m| !matches!(m, None | Some(Len::Px(0.0)))),
+            Node::Text(_) => false,
+        });
         let mut column = Element {
             list_item: None,
             node_id: 0,
@@ -2689,9 +2698,9 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
                 // шириной флоата, ряд переносился, и `float: right` уезжал
                 // ПОД текст к левому краю вместо правого края той же строки
                 // (проба: `float:right` 60 точек и три слова в двухстах).
-                flex_basis: Some(Len::Px(0.0)),
+                flex_basis: (!хвост_с_полями).then_some(Len::Px(0.0)),
                 flex_shrink: Some(1.0),
-                min_width: Some(Len::Px(0.0)),
+                min_width: (!хвост_с_полями).then_some(Len::Px(0.0)),
                 ..Computed::default()
             },
             hover: None,
