@@ -22,8 +22,17 @@ BIN="${WPT_BIN:-target/debug/examples/wptrun.exe}"
 [ -x "$BIN" ] || { echo "нет бинаря $BIN — сначала cargo build --example wptrun -p kamin-html"; exit 1; }
 total=$(grep -c '|' "$LIST")
 per=$(( (total + N - 1) / N ))
-rm -f target/wpt-shard-*.txt target/wpt-shard-*.list
-split -l "$per" -d "$LIST" target/wpt-shard- --additional-suffix=.list
+# СВОЙ каталог на прогон: имена шардов были общими на всю машину, и два
+# прогона одновременно стирали работу друг друга (`rm -f` в начале плюс
+# склейка `cat target/wpt-shard-*.txt` в конце). Отчёты выходили
+# перемешанные: свод сетки приносил вердикты флексбокса, а десятки пар
+# получали ложный HUNG от соперничества. Каталог берётся от имени отчёта,
+# поэтому два прогона с разными `WPT_REPORT` не пересекаются.
+MERGED="${WPT_REPORT:-target/wpt-report-merged.txt}"
+WORK="$(dirname "$MERGED")/.shard-$(basename "$MERGED" .txt)"
+rm -rf "$WORK"
+mkdir -p "$WORK"
+split -l "$per" -d "$LIST" "$WORK/part-" --additional-suffix=.list
 
 run_shard() { # $1 = list file, $2 = report file
   local list="$1" report="$2" tries=0
@@ -69,15 +78,15 @@ run_shard() { # $1 = list file, $2 = report file
 
 pids=()
 i=0
-for part in target/wpt-shard-*.list; do
-  run_shard "$part" "target/wpt-shard-$i.txt" &
+for part in "$WORK"/part-*.list; do
+  run_shard "$part" "$WORK/rep-$i.txt" &
   pids+=($!)
   i=$((i+1))
 done
 fail=0
 for p in "${pids[@]}"; do wait "$p" || fail=1; done
-MERGED="${WPT_REPORT:-target/wpt-report-merged.txt}"
-cat target/wpt-shard-*.txt > "$MERGED"
+cat "$WORK"/rep-*.txt > "$MERGED"
+rm -rf "$WORK"
 got=$(grep -c '|' "$MERGED")
 green=$(awk -F'|' '$3~/^[0-9.]+$/ && $3+0<=0.5' "$MERGED" | wc -l)
 hung=$(grep -c '|HUNG' "$MERGED")
