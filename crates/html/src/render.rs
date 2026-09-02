@@ -8559,6 +8559,82 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let table_family = inherited.font_family.clone().unwrap_or_default();
     let (from_cols, cols_collapsed, cols_pct) =
         col_element_widths(&e.children, table_font, &table_family);
+    // §17.5.2.1: при фиксированной раскладке и ЗАДАННОЙ ширине стола
+    // колонка, которой места уже не осталось, получает НОЛЬ — и ячейка в ней
+    // не вправе распирать дорожку своим отступом, иначе она вылезает за край
+    // стола (`fixed-table-layout-025/028..031`). Ширина стола АВТО в этот
+    // гейт не попадает: на ней держится семья `margin-*-applies-to-*`, на
+    // которой умерли три прошлых захода (см. записи ниже по ячейке).
+    let zero_cols: Vec<bool> = {
+        let px_of = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        };
+        match (e.style.table_fixed == Some(true), px_of(e.style.width)) {
+            (true, Some(tw)) => {
+                let side = |l: Option<Len>| px_of(l).unwrap_or(0.0);
+                let tbz = e.style.borders();
+                let gap = if e.style.border_collapse == Some(true) {
+                    0.0
+                } else {
+                    match e.style.border_spacing {
+                        Some((Some(Len::Px(g)), _)) => g,
+                        _ => 0.0,
+                    }
+                };
+                let base = tw - side(tbz.left) - side(tbz.right) - gap * (f32::from(cols) + 1.0);
+                let mut declared = vec![None::<f32>; cols as usize];
+                for (i, w) in from_cols.iter().enumerate() {
+                    if let (Some(w), Some(slot)) = (w, declared.get_mut(i)) {
+                        *slot = Some(*w);
+                    }
+                }
+                if let Some(row) = row_elements.first() {
+                    let mut i = 0usize;
+                    for c in &row.children {
+                        let Node::Element(cell) = c else { continue };
+                        if !is_cell(cell) {
+                            continue;
+                        }
+                        let span = cell
+                            .attr("colspan")
+                            .and_then(|v| v.parse::<usize>().ok())
+                            .unwrap_or(1)
+                            .max(1);
+                        // Доля ячейки первого ряда — тоже ЗАЯВЛЕННАЯ
+                        // ширина: `width: 50%` при столе в сто точках это
+                        // пятьдесят, и вместе со своим отступом дорожка
+                        // забирает всё место (`fixed-table-layout-025`).
+                        let своя = match cell.style.width {
+                            Some(Len::Px(v)) => Some(v),
+                            Some(Len::Pct(k)) => Some(base.max(0.0) * k),
+                            _ => None,
+                        };
+                        if span == 1
+                            && let Some(w) = своя
+                            && let Some(slot) = declared.get_mut(i)
+                            && slot.is_none()
+                        {
+                            let b = cell.style.borders();
+                            *slot = Some(
+                                w + side(cell.style.padding.left)
+                                    + side(cell.style.padding.right)
+                                    + side(b.left)
+                                    + side(b.right),
+                            );
+                        }
+                        i += span;
+                    }
+                }
+                let sum: f32 = declared.iter().flatten().sum();
+                let свободно = base - sum;
+                (0..cols as usize)
+                    .map(|i| declared.get(i).copied().flatten().is_none() && свободно <= 0.5)
+                    .collect()
+            }
+            _ => vec![false; cols as usize],
+        }
+    };
     let mut busy: Vec<u16> = vec![0; cols as usize];
     // §17.6.2.1: ширина линии сетки — ПОБЕДИВШАЯ среди примыкающих коробок,
     // и внутрь каждой уходит её половина. Пока половина бралась от своей
@@ -9007,6 +9083,18 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             while col_ix < occupied.len() && occupied[col_ix] > 0 {
                 col_ix += 1;
             }
+            // Ячейка в НУЛЕВОЙ дорожке: свои горизонтальные отступ и рамку
+            // она держать не может — дорожки под них нет (§17.5.2.1).
+            let cell = &if zero_cols.get(col_ix).copied().unwrap_or(false) {
+                let mut copy = cell.clone();
+                copy.style.padding.left = Some(Len::Px(0.0));
+                copy.style.padding.right = Some(Len::Px(0.0));
+                copy.style.border_width.left = Some(Len::Px(0.0));
+                copy.style.border_width.right = Some(Len::Px(0.0));
+                copy
+            } else {
+                cell.clone()
+            };
             let mut cm = inline::inherit(&row_style, &cell.style);
             // Потолок вертикальной ячейки режет доступное место её
             // ортогонального потока — как у блока (см. ortho_limit в
