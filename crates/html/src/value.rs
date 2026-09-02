@@ -58,6 +58,60 @@ pub enum Len {
     Auto,
 }
 
+/// Число по грамматике CSS (css-syntax-3 §4.3.3), а не по правилам Rust.
+///
+/// `f32::from_str` берёт то, чего в CSS нет: `6.` (точка без дробной части) и
+/// `6 ` вместе с внутренним пробелом. Из-за этого `height: 6.px` и
+/// `height: 6 px` применялись шестью точками, тогда как оба объявления
+/// НЕГОДНЫ и должны отбрасываться целиком (`units-003`).
+fn css_number(s: &str) -> Option<f32> {
+    let b = s.as_bytes();
+    if b.is_empty() {
+        return None;
+    }
+    let mut i = 0usize;
+    if b[i] == b'+' || b[i] == b'-' {
+        i += 1;
+    }
+    let start = i;
+    while i < b.len() && b[i].is_ascii_digit() {
+        i += 1;
+    }
+    let целых = i - start;
+    let mut дробных = 0usize;
+    if i < b.len() && b[i] == b'.' {
+        i += 1;
+        let fs = i;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+        дробных = i - fs;
+        if дробных == 0 {
+            return None;
+        }
+    }
+    if целых == 0 && дробных == 0 {
+        return None;
+    }
+    if i < b.len() && (b[i] == b'e' || b[i] == b'E') {
+        i += 1;
+        if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
+            i += 1;
+        }
+        let es = i;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == es {
+            return None;
+        }
+    }
+    if i != b.len() {
+        return None;
+    }
+    s.parse::<f32>().ok()
+}
+
 impl Len {
     /// `1rem` = 16px, как в браузере по умолчанию. Свой базовый размер шрифта
     /// мы не задаём: документ рисуется внутри чата, где размер уже выбран.
@@ -78,7 +132,7 @@ impl Len {
             return Some(Len::MaxContent);
         }
         if let Some(num) = s.strip_suffix('%') {
-            return num.trim().parse::<f32>().ok().map(|v| Len::Pct(v / 100.0));
+            return css_number(num).map(|v| Len::Pct(v / 100.0));
         }
         // `em` разбирается ДО `rem`: иначе `1rem` съедалось бы правилом для
         // `em` вместе с буквой `r`.
@@ -94,7 +148,7 @@ impl Len {
             ("vw", Len::Vw as fn(f32) -> Len),
         ] {
             if let Some(num) = s.strip_suffix(suffix) {
-                return num.trim().parse::<f32>().ok().map(|v| unit(v / 100.0));
+                return css_number(num).map(|v| unit(v / 100.0));
             }
         }
         // `ic` — ширина иероглифа (advance у 水). У шрифтов CJK она равна
@@ -102,28 +156,24 @@ impl Len {
         // §6.1.4). Синонимом `em` она была только потому, что замера не было:
         // у текстового шрифта иероглиф либо шире кегля, либо его нет вовсе.
         if let Some(num) = s.strip_suffix("ic") {
-            return num.trim().parse::<f32>().ok().map(Len::Ic);
+            return css_number(num).map(Len::Ic);
         }
         // `ch` и `ex` разбираются в свои единицы: перевести их в точки можно
         // только зная шрифт, а он известен после наследования.
         if let Some(num) = s.strip_suffix("ch") {
-            return num.trim().parse::<f32>().ok().map(Len::Ch);
+            return css_number(num).map(Len::Ch);
         }
         if let Some(num) = s.strip_suffix("ex") {
-            return num.trim().parse::<f32>().ok().map(Len::Ex);
+            return css_number(num).map(Len::Ex);
         }
         if let Some(num) = s.strip_suffix("rem") {
-            return num
-                .trim()
-                .parse::<f32>()
-                .ok()
-                .map(|v| Len::Px(v * Self::REM_PX));
+            return css_number(num).map(|v| Len::Px(v * Self::REM_PX));
         }
         if let Some(num) = s.strip_suffix("em") {
-            return num.trim().parse::<f32>().ok().map(Len::Em);
+            return css_number(num).map(Len::Em);
         }
         if let Some(num) = s.strip_suffix("lh") {
-            return num.trim().parse::<f32>().ok().map(Len::Lh);
+            return css_number(num).map(Len::Lh);
         }
         // Абсолютные единицы (css-values-4 §6.2): 1in = 96px = 2.54cm =
         // 25.4mm = 101.6q = 6pc. Порядок важен: «pc» раньше «c»-хвостов нет,
@@ -138,12 +188,12 @@ impl Len {
             ("q", 96.0 / 101.6),
         ] {
             if let Some(num) = s.strip_suffix(suffix) {
-                return num.trim().parse::<f32>().ok().map(|v| Len::Px(v * factor));
+                return css_number(num).map(|v| Len::Px(v * factor));
             }
         }
         // Голое число: в CSS допустимо только для 0, но модель часто пишет
         // `padding: 8` — принимаем как px, иначе виджет разъезжается.
-        s.parse::<f32>().ok().map(Len::Px)
+        css_number(s).map(Len::Px)
     }
 
     /// Разбор для `word-spacing` и `letter-spacing`: там доля берётся от кегля
