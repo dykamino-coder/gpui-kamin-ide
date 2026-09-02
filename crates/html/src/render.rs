@@ -8226,6 +8226,15 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         };
         return d.child(image).into_any_element();
     }
+    // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки
+    // она не порождает и в замер по содержимому не входит (HTML §4.8.4.4 —
+    // «if the element has no src attribute … the element represents
+    // nothing»). Подпись-заглушка тут вредна: она даёт ширину, и
+    // `width: max-content` вокруг такой картинки выходил шире содержимого
+    // (`white-space-intrinsic-size-024/025`).
+    if e.attr("src").is_none_or(|s| s.trim().is_empty()) && e.attr("alt").is_none() {
+        return d.into_any_element();
+    }
     // Пустая рамка вместо чужой картинки: молча ничего не показать хуже —
     // в разметке останется дыра без объяснения.
     d.child(SharedString::from(
