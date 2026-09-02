@@ -10009,6 +10009,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         &col_widths,
         &cols_collapsed,
         &cols_pct,
+        // Место под КОЛОНКИ, а не вся ширина стола: §17.5.2.1 считает долю
+        // от ширины таблицы БЕЗ её рамок и без зазоров между ячейками
+        // (`fixed-table-layout-022` расписывает это прямо в тексте: 533 − 58
+        // рамок − 75 зазоров = 400).
+        match e.style.width {
+            Some(Len::Px(v)) => {
+                let side = |l: Option<Len>| match l {
+                    Some(Len::Px(w)) => w,
+                    _ => 0.0,
+                };
+                let bs = e.style.borders();
+                let gap = if e.style.border_collapse == Some(true) {
+                    0.0
+                } else {
+                    match e.style.border_spacing {
+                        Some((Some(Len::Px(g)), _)) => g,
+                        _ => 0.0,
+                    }
+                };
+                Some(v - side(bs.left) - side(bs.right) - gap * (cols as f32 + 1.0))
+            }
+            _ => None,
+        },
     );
     if {
         static ON: std::sync::LazyLock<bool> =
@@ -10278,8 +10301,9 @@ fn track_list_collapsed(
     col_widths: &[(Option<f32>, Option<f32>)],
     collapsed: &[bool],
     pcts: &[Option<f32>],
+    table_px: Option<f32>,
 ) -> Vec<gpui::GridTrack> {
-    let mut tracks = track_list(cols, fixed, first_row, col_widths, pcts);
+    let mut tracks = track_list(cols, fixed, first_row, col_widths, pcts, table_px);
     for (i, t) in tracks.iter_mut().enumerate() {
         if collapsed.get(i).copied().unwrap_or(false) {
             *t = gpui::GridTrack::Pixels(px(0.0));
@@ -10294,6 +10318,7 @@ fn track_list(
     first_row: &[Option<f32>],
     col_widths: &[(Option<f32>, Option<f32>)],
     pcts: &[Option<f32>],
+    table_px: Option<f32>,
 ) -> Vec<gpui::GridTrack> {
     // `table-layout: fixed` — ширины из первого ряда, безразмерные колонки
     // делят остаток поровну; содержимое не меряется.
@@ -10310,6 +10335,9 @@ fn track_list(
                     && first_row.get(*i).copied().flatten().is_none()
             })
             .count();
+        // Доли переводятся в точки только рядом с ПИКСЕЛЬНОЙ колонкой: без
+        // неё свободное место равно ширине стола, и `Fraction` точен сам.
+        let в_точках = table_px.is_some() && first_row.iter().any(|w| w.is_some());
         let share = if auto_n > 0 {
             ((1.0 - pct_sum).max(0.0)) / auto_n as f32
         } else {
@@ -10321,11 +10349,28 @@ fn track_list(
                     pcts.get(i).copied().flatten(),
                     first_row.get(i).copied().flatten(),
                 ) {
+                    // Доля колонки берётся от ширины ТАБЛИЦЫ, а `Fraction`
+                    // делит только СВОБОДНОЕ место: пока все дорожки долевые,
+                    // это одно и то же, но рядом с ПИКСЕЛЬНОЙ колонкой
+                    // расходится — 13 % от трёхсот выходило 39 вместо 52
+                    // (`fixed-table-layout-022/023` против зелёной `-021`,
+                    // которая отличается ровно отсутствием `col{width}`).
+                    (Some(p), _) if в_точках => {
+                        gpui::GridTrack::Pixels(px(p * table_px.unwrap_or(0.0)))
+                    }
                     (Some(p), _) => gpui::GridTrack::MinMax(Box::new((
                         gpui::GridTrack::Pixels(px(0.0)),
                         gpui::GridTrack::Fraction(p),
                     ))),
                     (None, Some(w)) => gpui::GridTrack::Pixels(px(w)),
+                    // Когда доли уже переведены в точки, безразмерной
+                    // колонке достаётся ОСТАТОК: равные доли делят его
+                    // поровну, а прежний `share` считал его от всей ширины
+                    // стола и отдавал 69 вместо 124.
+                    (None, None) if в_точках => gpui::GridTrack::MinMax(Box::new((
+                        gpui::GridTrack::Pixels(px(0.0)),
+                        gpui::GridTrack::Fraction(1.0),
+                    ))),
                     (None, None) if pct_sum > 0.0 => gpui::GridTrack::MinMax(Box::new((
                         gpui::GridTrack::Pixels(px(0.0)),
                         gpui::GridTrack::Fraction(share),
@@ -10494,6 +10539,11 @@ fn anon_role(n: &Node) -> Option<bool> {
     if is_cell(e) {
         return Some(false);
     }
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО: считать табличной ролью и ПОДПИСЬ (§17.2.1),
+    // чтобы бесхозный `display: table-caption` попадал в анонимную таблицу
+    // (`e.style.is_caption == Some(true)` и тег `caption`). Срез из 18 пар с
+    // подписью: 17 зелёных до и после, `caption-position-001` ушла
+    // 2.79 → 2.88. Значит её держит не сборка анонимной таблицы.
     match e.style.display {
         Some(Display::TableRow) | Some(Display::TableRowGroup) => Some(true),
         _ => match e.tag.as_str() {
