@@ -10751,6 +10751,10 @@ fn fixup_row_children(row: &Element) -> Vec<Node> {
                         .collect();
                     walk(&merged, donor, cells, run, extra);
                 }
+                // §17.2.1 шаг 2: ребёнок ряда, который не ячейка, уходит в
+                // АНОНИМНУЮ ЯЧЕЙКУ этого же ряда — ряд внутри ряда тоже.
+                // Прежде он выталкивался сестринским рядом, и таблица
+                // получала лишнюю строку (`table-anonymous-objects-090`).
                 Node::Element(el)
                     if el.tag == "tr"
                         || matches!(
@@ -10758,7 +10762,8 @@ fn fixup_row_children(row: &Element) -> Vec<Node> {
                             Some(Display::TableRow) | Some(Display::TableRowGroup)
                         ) =>
                 {
-                    extra.extend(fixup_row_children(el));
+                    run.push(child.clone());
+                    let _ = el;
                 }
                 Node::Element(el) if is_cell(el) => {
                     if !run.is_empty() {
