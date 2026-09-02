@@ -15,8 +15,9 @@ business logic сторонних plugins находятся вне scope; об�
 - **deferred** — изменение осознанно не планируется до указанного условия;
 - **verify** — код пока не меняется, нужен целевой runtime-прогон.
 
-Наблюдения ниже зафиксированы 20–24 августа 2026 года на KaminIDE 1.0.53. Source
-аудит выполнен на `origin/main` commit `5b5d93d`.
+Наблюдения ниже зафиксированы 20 августа — 2 сентября 2026 года на KaminIDE
+1.0.53 и 1.0.54. Последний source-аудит выполнен на `origin/main` commit
+`73256c2`.
 
 ## Confirmed incident facts
 
@@ -88,6 +89,22 @@ Agent Teams и hook approval имеют отдельные подтверждё�
 - длинный matcher выводится одной строкой без читаемой структуры и bounded
   wrapping, хотя от его содержания зависит область автоматически запускаемого
   hook.
+
+Отдельный инцидент Agents panel 2 сентября относится к одной session. Все
+видимые имена (`gloss-*`, `hubs-monorepo`, `kaiten-card`, `links-repos` и
+`fix-terms`) действительно запускались внутри неё; оснований считать строки
+примесью другой session нет. Подтверждена следующая последовательность:
+
+- Console показывала работающие `links-repos` и `fix-terms`, пока Agents panel
+  оставалась пустой;
+- затем вкладка `Active` с badge `0` временно показала семь строк со статусом
+  `DONE`;
+- через несколько секунд эти строки исчезли из `Active`, badge `Completed`
+  стал `10`, и завершённые агенты текущей session появились там.
+
+Source-аудит подтвердил две самостоятельные UI/state ошибки и одну transport-
+границу, требующую проверки после PR #21. Они вынесены в отдельный track
+BR-25–BR-27; ни одна из задач не предполагает cross-session contamination.
 
 Релизный audit также выявил operational gap. Опубликованный image `6.3.130`
 появился до release commit и не содержит source revision label. GitHub workflow
@@ -867,61 +884,156 @@ disposable approval scenario и несколько read-only invokes при tab 
 hide/show, extension-host reconnect и CEF reload; ни один promise или modal не
 остаётся бесконечно pending, а повторная mutation не выполняется автоматически.
 
-BR-23 и BR-24 зафиксированы отдельным docs follow-up и не меняют выполняемую
-maintainer-цепочку ниже. Этот follow-up объединяется только после PR #16, чтобы
-не сдвигать base уже обновляемых PR #14–#16.
+### BR-25 — Verify Agents view delivery and rehydration after reveal
 
-## Current draft PR integration order
+**Status:** verify/investigation. **Dependency:** PR #21 должен пройти свой
+Windows runtime gate и быть объединён либо присутствовать в отдельном
+integration build. **Acceptance:** instrumented Windows Agent Teams runtime
+gate; новый fix PR создаётся только если симптом сохраняется.
 
-Все перечисленные PR остаются draft. `mergeable` относительно сегодняшнего
-`main` не гарантирует корректность после предыдущего merge; checks и branch
-protection в GitHub сейчас отсутствуют. Maintainer agent сливает строго по
-одному и не закрывает PR без merge:
+Agents panel — отдельная `tools.html` CEF webview со своим `useBridgeListeners`
+и собственной копией agent state. В KaminIDE 1.0.54 shell не сообщает exthost
+обычные hide/show transitions этой view: `kamin:webview:viewState` отправляется
+при creation/reap, но не при каждом уходе панели с экрана. Поэтому
+`WebviewView.visible` может остаться `true`, `BridgeHost` не фиксирует
+пропущенный hidden-view stream как stale и reveal не обязан вызвать
+`resyncActive()`. PR #21 добавляет недостающий visibility lifecycle, однако он
+не меняет Agents state machine и сам по себе не заявляет этот инцидент
+исправленным.
 
-1. PR #12 — canonical docs/testing/backlog. Сначала включить текущие BR-17,
-   BR-18, BR-19 и dependency template changes.
-2. PR #13 — BR-10 hook approval UI; выполнить его Windows gate.
-3. Обновить PR #14 от `origin/main`, пересобрать committed Bridge artifacts и
-   повторить automated + Windows gates. Это обязательно после #13, потому что
-   оба PR меняют `builtin-extensions/claude-bridge/chat.html`. Затем слить #14.
-4. Обновить и проверить PR #15 на свежем `origin/main`, выполнить authenticated
-   Agent Teams gate и слить #15.
-5. Обновить PR #16 после #14/#15, пересобрать artifacts и повторить все checks,
-   включая Windows Rust/runtime gate. #16 пересекается с #14 по connection
-   state, shared types, `useInit`, host parent и generated artifacts; затем
-   слить #16.
+Скриншоты подтверждают потерю актуального представления, но без event trace не
+доказывают, что visibility gap — единственная причина первоначально пустой
+панели. После #21 нужно в одной session:
 
-После каждого merge maintainer делает `fetch`, проверяет новый `origin/main` и
-только затем обновляет следующий PR. Generated files не разрешаются через
-`ours`/`theirs`: они пересобираются из объединённых sources.
+1. запустить не менее двух teammates при скрытой Agents panel;
+2. открыть панель во время их работы и получить все `running` rows без движения
+   мыши, повторного toggle и ожидания reap;
+3. повторить hide/show, tab switch и открытие старой session с завершёнными и
+   работающими агентами;
+4. записать только bounded metadata: view id/visibility, resync generation,
+   `jsonl-status` replay start/complete, число agent lifecycle rows по batch и
+   итоговые counts без prompts, reports и tool payloads.
+
+Если после #21 running rows всё ещё отсутствуют, отдельный implementation PR
+локализует потерю между host cache, Agent view fan-out и parser generation. До
+этого добавлять произвольный polling или повторный replay по timer нельзя.
+
+### BR-26 — Publish Agent replay state atomically
+
+**Status:** ready; подтверждён source defect. **Dependency:** none для кода, но
+Windows gate выполняется вместе с исправной visibility lifecycle из BR-25.
+**Acceptance:** automated replay-generation tests + Windows CEF runtime gate.
+
+Каждый `replayJsonlToRenderer()` сначала отправляет
+`jsonl-status { replayComplete:false }`. Agents listener немедленно удаляет
+`tabAgentTrees[tabId]`, после чего до 4 500 cached rows приезжают yielding
+chunks по 150. `AgentsToolPanel` не проверяет `tabJsonlLive` и рендерит дерево
+после каждого частичного batch. В результате уже отображавшийся список может
+стать пустым, затем показать только раннюю часть replay и ещё раз перестроиться
+после `replayComplete`. Комментарий в `buildAgentTreeNodes()` о том, что panel
+не показывает промежуточный replay, относится только к sidebar tree и не
+выполняется самой `AgentsToolPanel`.
+
+Fix должен иметь generation-scoped staging state: replay собирается отдельно,
+а опубликованный snapshot меняется атомарно только после соответствующего
+`replayComplete`. Во время resync panel сохраняет последний согласованный
+snapshot либо показывает один явный loading state, но не чередует empty/partial
+lists. Более старый или прерванный replay не может опубликоваться поверх нового;
+live entries, пришедшие на границе, не теряются и не удваиваются.
+
+Tests покрывают cold hydration, resync при двух running agents, 10 завершённых
+agents, несколько chunks, live entry между последним chunk и completion, два
+перекрывающихся replay generation и empty genuine session. Windows gate
+повторяет последовательность четырёх скриншотов: panel не мигает, running rows
+не исчезают, а завершённая history появляется одним согласованным update.
+
+### BR-27 — Derive Active and Completed from one lifecycle partition
+
+**Status:** ready; подтверждён source defect. **Dependency:** рекомендуется до
+BR-26, чтобы atomic snapshot уже публиковал корректно разделённые rows.
+**Acceptance:** automated state/renderer tests + authenticated Windows Agent
+Teams gate.
+
+Текущий `AgentsToolPanel` использует разные правила для badge и содержимого:
+
+- `activeCount` считает только `status === "running"`;
+- вкладка `Active` рендерит всех members команды, пока сама команда не
+  `disbanded`, и все standalone rows независимо от agent status;
+- `completedCount` не считает terminal members активной команды;
+- `scheduleCleanup()` лишь через 5 секунд переносит `done/error/terminated` из
+  live tree в `tabAgentHistory`.
+
+Это точно объясняет состояние `Active 0` с семью `DONE` rows и их последующий
+переезд в `Completed`. Fix вводит одну derived partition над одним snapshot:
+каждый agent текущей session находится ровно в одном из `Active` или
+`Completed`; badge равен числу реально отрисованных rows; terminal agent
+появляется в `Completed` сразу, а cleanup меняет только storage/retention и не
+видимую классификацию. `done`, `error`, `terminated` и disbanded team сохраняют
+различимые labels; повторный replay не дублирует rows.
+
+Fixtures обязаны проходить через реальный wire projection. Сейчас server
+`leanEntries()` удаляет весь `toolUseResult`, хотя agent parser читает из него
+bounded lifecycle status и completion counters. Это отдельная подтверждённая
+contract inconsistency, но не доказанная причина данных скриншотов. Исправление
+не должно возвращать тяжёлый duplicate payload целиком: нужен либо узкий
+lifecycle DTO для Agent/Task, либо parser, основанный только на полях, которые
+действительно сохраняются на wire.
+
+Automated tests покрывают running→done/error/terminated, idle notification,
+`teammate_spawned`, disband, cleanup before/after 5 seconds и repeated replay.
+Invariant после каждого update: `Active badge === rendered active rows`,
+`Completed badge === rendered completed rows`, пересечение множеств пусто.
+Windows gate запускает несколько teammates, завершает их в разном порядке и
+проверяет вкладки во время работы, сразу после завершения и после cleanup.
+
+BR-23–BR-27 зафиксированы docs-only и не меняют runtime или generated
+artifacts. Agents track не содержит предположения о данных из другой session.
+
+## Current open PR boundary
+
+PR #12–#16 и release PR #18 уже находятся в `origin/main`. На момент последнего
+аудита открыты docs PR #17 и runtime/build PR #19–#22. До их merge/закрытия
+BR-25–BR-27 не получают implementation branches: это сохраняет требование
+пользователя сначала завершить предыдущую очередь и не создаёт конфликтов в
+committed `tools.html`/`extension.js` artifacts.
+
+Особая зависимость Agents track — PR #21: сначала его полный automated и
+Windows lifecycle gate, затем BR-25 verification. PR #21 не считается
+автоматическим доказательством исправления Agents panel. BR-27 после этого идёт
+перед BR-26; каждый implementation PR начинается от нового `origin/main` и
+пересобирает generated artifacts из объединённых sources, без `ours`/`theirs`.
 
 ## Recommended next task order
 
-1. BR-18 secret-safe SessionEnd teardown relay.
-2. BR-19 expected shell-disconnect cancellation без ложного crash toast.
-3. BR-17 persistent server logs как независимый operational PR.
-4. BR-20 plan-usage compatibility как независимый server/dashboard PR.
-5. BR-21 metric contract, затем его bounded aggregation PRs; analytics fixes не
+1. Завершить либо явно закрыть текущую очередь PR #17 и #19–#22; каждый PR
+   сохраняет собственные acceptance gates.
+2. BR-25: после #21 выполнить instrumented Windows verification одной session.
+3. BR-27: исправить единую partition `Active`/`Completed`.
+4. BR-26: сделать replay snapshot атомарным и убрать empty/partial flicker.
+5. BR-19 expected shell-disconnect cancellation без ложного crash toast.
+6. BR-17 persistent server logs как независимый operational PR.
+7. BR-20 plan-usage compatibility как независимый server/dashboard PR.
+8. BR-21 metric contract, затем его bounded aggregation PRs; analytics fixes не
    смешиваются с BR-20 и не пытаются вычислять quota из JSONL.
-6. BR-04 recovery после extension-host respawn.
-7. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
-8. BR-24 lost invoke replies: сначала transport diagnostics, затем bounded
+9. BR-04 recovery после extension-host respawn.
+10. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
+11. BR-24 lost invoke replies: сначала transport diagnostics, затем bounded
    lifecycle и reconciliation без blind retry mutating calls.
-9. BR-23 completion toast после финального connection-state PR; отдельно от
+12. BR-23 completion toast после финального connection-state PR; отдельно от
    sticky elicitation/approval semantics.
-10. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
+13. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
    как fix PR только если симптом сохранился; отдельная задача для reconnect не
    заводится.
-11. BR-22 live render-window collapse: сначала получить paired diagnostic dumps
+14. BR-22 live render-window collapse: сначала получить paired diagnostic dumps
    пустого и восстановившегося состояния и локализовать расходящийся entry path.
-12. BR-16 upward history anchoring идёт после классификации BR-22 отдельным UI
+15. BR-16 upward history anchoring идёт после классификации BR-22 отдельным UI
    PR и не блокирует connection recovery chain.
-13. BR-11 inventory native blockers, затем минимальный BR-07.
-14. BR-08 без удаления существующего maintenance contract.
-15. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
+16. BR-11 inventory native blockers, затем минимальный BR-07.
+17. BR-08 без удаления существующего maintenance contract.
+18. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
    migration на всех deployments.
-16. BR-15 Agent Teams selection eval.
-17. BR-02 и только затем решение по BR-03.
+19. BR-15 Agent Teams selection eval.
+20. BR-02 и только затем решение по BR-03.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.
