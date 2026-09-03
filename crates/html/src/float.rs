@@ -468,6 +468,25 @@ fn measure_columns(
         off += seg.len() + 1;
     }
     let lines = boundaries.len() + 1;
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (03.09): `column-fill: auto` с заданной высотой —
+    // колонки заполняются ПОДРЯД до высоты фрагментатора (css-multicol-1
+    // §3.3), то есть `per_col = floor(высота / высота строки)`, а не поровну.
+    // Высота протягивалась в `ColumnFlow` из `column_flow` (`render.rs`).
+    // Срез css-break+css-multicol (1498 пар, 341 зелёная): 342, приобретено
+    // 21, потеряно 20. Патч — `target/column-fill.patch`.
+    //
+    // Важнее самих чисел совпадение: ровно ТЕ ЖЕ двадцать пар
+    // (`overflow-clip-004`, `table-cell-expansion-006`,
+    // `flex-container-fragmentation-008/009`, `monolithic-with-overflow`,
+    // `out-of-flow-in-multicolumn-120/127`, `overflowing-block-003`,
+    // `box-shadow-001`, `become-unfragmented-001`) рушатся и от разреза
+    // ребёнка по краю колонки (запись у `ColumnStack` в `flow.rs`) — при том
+    // что правки совершенно разные. Значит, они зелены не потому, что мы
+    // фрагментируем верно, а потому, что не фрагментируем вовсе, и любой
+    // ЧАСТИЧНЫЙ шаг их ломает. Отсюда порядок работ: фрагментацию делать
+    // одним куском (высота фрагментатора + разрыв между блочными детьми
+    // РЕКУРСИВНО + монолиты), а не по частям; поштучные заходы измеримо
+    // упираются в +1.
     let per_col = lines.div_ceil(count).max(1);
     let cuts: Vec<usize> = (1..count)
         .filter_map(|i| boundaries.get(i * per_col - 1).copied())
