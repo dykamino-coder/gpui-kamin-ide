@@ -4004,11 +4004,15 @@ impl Computed {
                 // Точка переноса показывается пробелом: обычным или
                 // идеографическим (css-text-4). `none` и `auto-phrase`
                 // не показывают ничего.
-                self.word_space_char = match v {
+                // Значение из ДВУХ слов (`ideographic-space auto-phrase`,
+                // css-text-4 §word-space-transform) сравнением целиком не
+                // ловилось и падало в `none`. Ключевое слово ищем среди
+                // разделённых пробелом кусков.
+                self.word_space_char = v.split_whitespace().find_map(|w| match w {
                     "space" => Some(' '),
                     "ideographic-space" => Some('\u{3000}'),
                     _ => None,
-                };
+                });
             }
             "overflow-wrap" | "word-wrap" => {
                 self.break_word = Some(matches!(v, "break-word" | "anywhere"));

@@ -1962,7 +1962,7 @@ pub fn space_transform_pieces(pieces: &mut [Piece]) {
             _ => seq.push((usize::MAX, 0, '\u{0}')),
         }
     }
-    let mut edits: Vec<(usize, usize)> = vec![];
+    let mut edits: Vec<(usize, usize, char)> = vec![];
     for k in 0..seq.len() {
         let (piece, at, ch) = seq[k];
         if ch != '\u{200b}' || piece == usize::MAX {
@@ -1971,16 +1971,20 @@ pub fn space_transform_pieces(pieces: &mut [Piece]) {
         let Piece::Text { style, .. } = &pieces[piece] else {
             continue;
         };
-        if style.word_space_char != Some('\u{3000}') {
+        // Значение `space` подставляет ОБЫЧНЫЙ пробел, и оно тоже работает:
+        // сравнение шло только с идеографическим, и половина свойства не
+        // действовала вовсе.
+        let Some(sep) = style.word_space_char else {
             continue;
-        }
+        };
         if k > 0 && k + 1 < seq.len() && ideographic(seq[k - 1].2) && ideographic(seq[k + 1].2) {
-            edits.push((piece, at));
+            edits.push((piece, at, sep));
         }
     }
-    for (piece, at) in edits {
+    for (piece, at, sep) in edits {
         if let Piece::Text { text, .. } = &mut pieces[piece] {
-            text.replace_range(at..at + '\u{200b}'.len_utf8(), "\u{3000}");
+            let mut buf = [0u8; 4];
+            text.replace_range(at..at + '\u{200b}'.len_utf8(), sep.encode_utf8(&mut buf));
         }
     }
 }

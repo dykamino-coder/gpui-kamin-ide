@@ -4606,7 +4606,24 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // остаётся нулевой. Значит развилка не в способе замера, а в том, что
         // предел ортогонального потока обязан приходить от РОДИТЕЛЯ (§7.3), а
         // не подменяться шириной обёртки. Возвращать вместе с ним.
-        let inner = div().w(px(limit)).child(inner).into_any_element();
+        // …и всё же ОДИН случай жёсткую ширину не терпит: АБСОЛЮТНАЯ коробка
+        // со свободной строчной осью. Её размер по этой оси — по содержимому
+        // (§10.3.7), а жёсткая ширина делает `natural.width` тождественно
+        // равной пределу, и высота выходит во весь предел ортогонального
+        // потока — коробка растягивалась на весь содержащий блок и вылезала
+        // за него. Гейт узкий: потоковых коробок, на которых мерились четыре
+        // отката выше, он не касается.
+        let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
+        let free_inline = matches!(
+            inherited.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        ) && !matches!(inherited.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
+            && !(edge(inherited.inset.top) && edge(inherited.inset.bottom));
+        let inner = if free_inline {
+            div().max_w(px(limit)).child(inner).into_any_element()
+        } else {
+            div().w(px(limit)).child(inner).into_any_element()
+        };
         // Высота заявляется только под ортогональным зажимом (max-height от
         // §7.3) и только при ПОЛНОМ зажиме — иначе коробка без высоты
         // схлопывалась в ноль (даже фон пропадал), а заявка без зажима
@@ -8253,6 +8270,15 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // изменили, коробка обязана ужаться вместе с рисунком.
         let mut узкая: Option<(f32, f32)> = None;
         let ratio_of = || {
+            // ЗАЯВЛЕННОЕ отношение сильнее природного (css-sizing-4 §4):
+            // `aspect-ratio: 1/1` на картинке 2:1 обязан её переформатировать.
+            // Форма `auto <ratio>` — обратный случай, там природное сильнее,
+            // но разбор её теряет целиком (`computed.rs`: `split_once('/')`
+            // спотыкается о слово `auto`), поэтому в поле лежит только
+            // заявленное без `auto`.
+            if let Some(r) = e.style.aspect_ratio.filter(|r| *r > 0.0) {
+                return Some(r);
+            }
             crate::background::source(local.unwrap_or(src))
                 .map(|s| s.intrinsic())
                 .and_then(|i| {
