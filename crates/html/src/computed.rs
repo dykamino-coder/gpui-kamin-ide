@@ -4156,8 +4156,36 @@ impl Computed {
                     _ => None,
                 }
             }
-            "line-clamp" if v.trim().eq_ignore_ascii_case("auto") => self.clamp_auto = Some(true),
-            "line-clamp" => self.line_clamp = v.parse().ok(),
+            // css-overflow-4 §5.1: `none | [<integer> || <'block-ellipsis'>]
+            // -webkit-legacy?`; `auto` — срез по высоте контейнера. Строка
+            // многоточия идёт маркером абзаца (`lines::marker_str`).
+            "line-clamp" => {
+                self.line_clamp = None;
+                self.clamp_auto = None;
+                let mut rest = v.trim();
+                while !rest.is_empty() {
+                    let quote = rest.as_bytes()[0];
+                    let (word, tail) = if quote == b'"' || quote == b'\'' {
+                        match rest[1..].find(quote as char) {
+                            Some(end) => (&rest[..end + 2], &rest[end + 2..]),
+                            None => (rest, ""),
+                        }
+                    } else {
+                        match rest.find(char::is_whitespace) {
+                            Some(end) => (&rest[..end], &rest[end..]),
+                            None => (rest, ""),
+                        }
+                    };
+                    rest = tail.trim_start();
+                    if word.len() >= 2 && (word.starts_with('"') || word.starts_with('\'')) {
+                        self.overflow_marker = Some(word[1..word.len() - 1].to_string());
+                    } else if word.eq_ignore_ascii_case("auto") {
+                        self.clamp_auto = Some(true);
+                    } else if let Ok(n) = word.parse::<u32>() {
+                        self.line_clamp = Some(n);
+                    }
+                }
+            }
             "-webkit-line-clamp" => self.webkit_line_clamp = v.parse().ok(),
             "-webkit-box-orient" => {
                 self.webkit_box_vertical = Some(v.eq_ignore_ascii_case("vertical"))

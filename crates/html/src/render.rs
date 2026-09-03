@@ -170,13 +170,20 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // Обрезает только ВЛАДЕЛЕЦ line-clamp: свойство не наследуется, но
     // слитый стиль несёт его вниз для текст-ранов — потомки резали себя
     // тем же потолком и с чужими ключами бюджета.
-    if e.style.clamp_auto == Some(true) && c.max_height.is_some() {
-        if let Some(cut) = crate::interact::clamp_cut(e.node_id) {
+    // Срез меняет только АВТОМАТИЧЕСКУЮ высоту (css-overflow-4 §5.3):
+    // заданная `height`/`min-height` остаётся, строки после среза прячет
+    // бюджет абзаца (`line-clamp-010`, `webkit-line-clamp-040`).
+    let sized = e.style.height.is_some() || e.style.min_height.is_some();
+    // В многоколоночнике `continue: collapse` ведёт себя как `auto`
+    // (css-overflow-4 §5.2): срез не действует (`line-clamp-039`).
+    let multicol = e.style.column_count.is_some() || e.style.column_width.is_some();
+    if !multicol && e.style.clamp_auto == Some(true) && c.max_height.is_some() {
+        if let Some(cut) = crate::interact::clamp_cut(e.node_id).filter(|_| !sized) {
             d = d.max_h(px(cut));
         }
         d = d.overflow_hidden();
     }
-    if let Some(n) = e.style.clamp_lines() {
+    if let Some(n) = e.style.clamp_lines().filter(|_| !multicol) {
         d = d.line_clamp(n as usize);
         let font = match c.font_size {
             Some(Len::Px(v)) => v,
@@ -202,7 +209,10 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         } {
             eprintln!("CLAMP branch node={} n={} cut={}", e.node_id, n, cut);
         }
-        d = d.max_h(px(cut)).overflow_hidden();
+        if !sized {
+            d = d.max_h(px(cut));
+        }
+        d = d.overflow_hidden();
     }
     for extra in decorations(c) {
         d = d.child(extra);
@@ -2064,9 +2074,16 @@ fn layered(el: AnyElement, c: &Computed, allowed: bool) -> AnyElement {
             .into_any_element();
     }
     match c.z_index {
-        Some(z) if z > 0 => gpui::deferred(el)
-            .with_priority(z as usize)
-            .into_any_element(),
+        // Отложенный слой рисуется вне масок дерева — маску обрезающего
+        // предка ему передаёт пара обёрток (`interact::MaskKeep/MaskUse`).
+        Some(z) if z > 0 => {
+            let cell: crate::interact::MaskCell = Default::default();
+            let inner = crate::interact::MaskUse { cell: cell.clone(), child: el };
+            let deferred = gpui::deferred(inner)
+                .with_priority(z as usize)
+                .into_any_element();
+            crate::interact::MaskKeep { cell, child: deferred }.into_any_element()
+        }
         // ПРОБОВАЛИ И ОТКАТИЛИ: откладывать ЛЮБОЙ абсолютный элемент, чтобы
         // он рисовался поверх соседей (CSS 2.1 §9.9, шаг 8). На пробе помогло
         // — блок стал виден, — но на наборе обрушило всё: css-position 31 → 0,
