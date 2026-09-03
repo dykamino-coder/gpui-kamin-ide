@@ -47,7 +47,11 @@ run_shard() { # $1 = list file, $2 = report file
     while kill -0 "$pid" 2>/dev/null; do
       sleep 5
       local now
-      now=$(grep -c '|' "$report.part" 2>/dev/null || echo 0)
+      # `grep -c` при НУЛЕ совпадений и печатает 0, и выходит с ошибкой —
+      # тогда `|| echo 0` дописывал вторую строку, и сравнение ниже падало
+      # («integer expression expected»), убивая весь свод на середине.
+      now=$(grep -c '|' "$report.part" 2>/dev/null | head -1)
+      now=${now:-0}
       if [ "$now" -gt "$last" ]; then last=$now; quiet=0; else quiet=$((quiet+5)); fi
       if [ "$quiet" -ge "$STALL" ]; then
         kill -9 "$pid" 2>/dev/null
