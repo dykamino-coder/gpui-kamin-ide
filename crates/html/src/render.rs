@@ -7588,10 +7588,18 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 copy.style.margin.top = None;
                                 copy.style.margin.bottom = None;
                                 let inner = inline::inherit(&merged, &copy.style);
-                                crate::flow::StackChild {
-                                    el: styled_div_with(&copy, &inner)
+                                // Копии на случай разреза между колонками:
+                                // элемент GPUI рисуется один раз, а фрагмент
+                                // нужен свой в каждой колонке. Больше, чем
+                                // колонок, ребёнок занять не может.
+                                let build = || {
+                                    styled_div_with(&copy, &inner)
                                         .children(blocks(&copy.children, &inner, opts))
-                                        .into_any_element(),
+                                        .into_any_element()
+                                };
+                                crate::flow::StackChild {
+                                    el: build(),
+                                    frags: (1..cols.max(1)).map(|_| build()).collect(),
                                     h,
                                     mt,
                                     mb,

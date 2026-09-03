@@ -460,9 +460,27 @@ fn ellipse_cut(cy_abs: f32, rx: f32, ry: f32, cx: f32, y0: f32, y1: f32) -> f32 
 /// (схлопываются между соседями по правилам потока).
 pub struct StackChild {
     pub el: AnyElement,
+    /// Запасные копии ТОГО ЖЕ ребёнка. Разрез между колонками рисует по
+    /// копии на фрагмент: элемент GPUI рисуется ровно один раз, и показать
+    /// одну коробку в двух колонках иначе нечем. Копий столько же, сколько
+    /// колонок, — больше ребёнок занять не может.
+    pub frags: Vec<AnyElement>,
     pub h: f32,
     pub mt: f32,
     pub mb: f32,
+}
+
+/// Кусок ребёнка в колонке: чей он, какая по счёту копия, в какой колонке
+/// стоит, на сколько отступает от её верха, какая часть содержимого видна
+/// (`from` — от собственного верха ребёнка) и какой она высоты.
+#[derive(Clone, Copy)]
+struct Frag {
+    kid: usize,
+    copy: usize,
+    col: usize,
+    y: f32,
+    from: f32,
+    h: f32,
 }
 
 /// Колонки многоколоночного потока для БЛОЧНЫХ детей с известными
@@ -478,17 +496,26 @@ pub struct StackChild {
 /// `{кто, копия, колонка, отступ, срез, высота}`, раскладка ставит каждую
 /// копию ЦЕЛИКОМ и поднимает её на срез, а отрисовка режет маской
 /// `with_content_mask` — это и есть вид `slice` из css-break-3 §4.
-/// Срез css-break+css-multicol (1498 пар, 333 зелёных): 342, приобретено
-/// 29, потеряно 20.
+/// Замерено ЧЕТЫРЕ раза на срезе css-break+css-multicol (1498 пар):
 ///
-/// Возвращать вместе с МОНОЛИТАМИ: сейчас режется всё подряд, а по
-/// css-break-3 §4.1 неразрезаемы строка целиком, `break-inside: avoid`,
-/// ячейка таблицы и коробка с обрезкой переполнения. Отсюда все потери —
-/// `overflow-clip-004`, `table-cell-expansion-006`,
-/// `tall-line-in-short-fragmentainer-002`, `change-fragmentainer-size-000`
-/// ушли в «красное видно». Свойство `break-inside` у нас не разбирается
-/// ВООБЩЕ (в `computed.rs` нет ни одного его упоминания) — с него и
-/// начинать. Патч целиком: `target/frag-slice.patch`, разбор раздела —
+/// * голый разрез, маска на каждом ребёнке — 333 -> 342 (+29/−20);
+/// * плюс монолиты (`break-inside: avoid`, прокрутка, замещаемый, таблица,
+///   ячейка, сплошной строчный набор) — 341 -> 338 (+18/−21);
+/// * плюс маска ТОЛЬКО разрезанному ребёнку — 341 -> 342 (+2/−1);
+/// * то же без отсечки «сплошной строчный набор» — 341 -> 341 (+5/−5).
+///
+/// Отсюда главный вывод, который и надо помнить: почти весь «выигрыш»
+/// первого захода был ЛОЖНЫЙ — его давала маска, прятавшая переполнение у
+/// НЕразрезанных детей (`overflow-clip-004`, `overflow-unsplittable-*`,
+/// `overflowing-block-003` и родня возвращаются, как только маску ограничить
+/// разрезанными). Сам разрез по высотам детей стоит +2 и упирается в то,
+/// что укладка колонок не видит СТРОК: смелая отсечка режет посреди строки
+/// и теряет ровно столько же, сколько приобретает.
+///
+/// Возвращать вместе с фрагментацией ПО СТРОКАМ (высота строки и её
+/// границы), а не по высотам детей. Разбор `break-inside` написан в том же
+/// патче и тоже откачен — без разреза он мёртвый. Патч целиком:
+/// `target/frag-slice.patch`, разбор раздела —
 /// `target/scout-cssbreak-2026-09.md`.
 pub struct ColumnStack {
     children: Vec<StackChild>,
@@ -498,7 +525,7 @@ pub struct ColumnStack {
     fixed_height: Option<f32>,
     /// Линейка между колонками: ширина и цвет.
     rule: Option<(f32, gpui::Hsla)>,
-    slots: std::cell::RefCell<Vec<(f32, f32)>>,
+    plan: std::cell::RefCell<Vec<Frag>>,
     col_w: std::cell::Cell<f32>,
     target: std::cell::Cell<f32>,
 }
@@ -517,7 +544,7 @@ impl ColumnStack {
             gap,
             fixed_height,
             rule,
-            slots: std::cell::RefCell::new(Vec::new()),
+            plan: std::cell::RefCell::new(Vec::new()),
             col_w: std::cell::Cell::new(0.0),
             target: std::cell::Cell::new(0.0),
         }
@@ -526,52 +553,76 @@ impl ColumnStack {
     /// Жадная укладка при данной высоте колонки: сколько колонок вышло и
     /// минимальный недолаз. Вертикальные поля соседей СХЛОПЫВАЮТСЯ
     /// (CSS 2.1 §8.3.1) и обнуляются на границе колонки (css-break §5).
-    fn fill(kids: &[(f32, f32, f32)], target: f32) -> (usize, f32, Vec<(usize, f32)>) {
+    fn fill(kids: &[(f32, f32, f32)], target: f32, limit: usize) -> (usize, f32, Vec<Frag>) {
         let mut col = 0usize;
         let mut y = 0.0f32;
         let mut prev_mb = 0.0f32;
         let mut first = true;
         let mut shortage = f32::MAX;
-        let mut slots = Vec::with_capacity(kids.len());
-        for &(h, mt, mb) in kids {
+        let mut out: Vec<Frag> = Vec::with_capacity(kids.len());
+        for (kid, &(h, mt, mb)) in kids.iter().enumerate() {
             let lead = if first { mt } else { prev_mb.max(mt) };
             if !first && y + lead + h > target + 0.01 {
                 shortage = shortage.min(y + lead + h - target);
+                // Коробка, не влезшая в остаток колонки, РЕЖЕТСЯ по её краю
+                // (css-break-3 §4: «slice» — вид разрыва по умолчанию), а не
+                // уезжает следующей колонкой целиком. Целиком уходит только
+                // та, что и в пустой колонке помещается: для неё разрез
+                // пустой первой частью ничего не даёт.
+                let room = target - (y + lead);
+                if h > target + 0.01 && room > 0.01 {
+                    let mut done = 0.0f32;
+                    let mut copy = 0usize;
+                    out.push(Frag { kid, copy, col, y: y + lead, from: 0.0, h: room });
+                    done += room;
+                    while done < h - 0.01 && copy + 1 < limit {
+                        copy += 1;
+                        col += 1;
+                        let part = (h - done).min(target);
+                        out.push(Frag { kid, copy, col, y: 0.0, from: done, h: part });
+                        done += part;
+                    }
+                    y = out.last().map(|f| f.y + f.h).unwrap_or(0.0);
+                    prev_mb = mb;
+                    first = false;
+                    continue;
+                }
                 col += 1;
                 y = 0.0;
                 // Поле на границе колонки съедается.
-                slots.push((col, y));
-                y += h + 0.0;
+                out.push(Frag { kid, copy: 0, col, y, from: 0.0, h });
+                y += h;
                 prev_mb = mb;
                 first = false;
                 continue;
             }
-            slots.push((col, y + lead));
+            out.push(Frag { kid, copy: 0, col, y: y + lead, from: 0.0, h });
             y += lead + h;
             prev_mb = mb;
             first = false;
         }
-        (col + 1, shortage, slots)
+        (col + 1, shortage, out)
     }
 
     /// Высота колонок: заданная (fill:auto) либо баланс.
-    fn balance(&self, kids: &[(f32, f32, f32)]) -> (f32, Vec<(usize, f32)>) {
+    fn balance(&self, kids: &[(f32, f32, f32)]) -> (f32, Vec<Frag>) {
+        let limit = self.count;
         if let Some(h) = self.fixed_height {
-            let (_, _, slots) = Self::fill(kids, h);
+            let (_, _, slots) = Self::fill(kids, h, limit);
             return (h, slots);
         }
         let total: f32 = kids.iter().map(|&(h, ..)| h).sum();
         let tallest = kids.iter().fold(0.0f32, |m, &(h, ..)| m.max(h));
         let mut target = (total / self.count as f32).max(tallest).max(1.0);
         for _ in 0..6 {
-            let (cols, shortage, slots) = Self::fill(kids, target);
+            let (cols, shortage, slots) = Self::fill(kids, target, limit);
             if cols <= self.count {
                 return (target, slots);
             }
             // Как blink: расти ровно на минимально необходимое.
             target += if shortage.is_finite() { shortage } else { 1.0 };
         }
-        let (_, _, slots) = Self::fill(kids, target);
+        let (_, _, slots) = Self::fill(kids, target, limit);
         (target, slots)
     }
 }
@@ -617,7 +668,7 @@ impl Element for ColumnStack {
                     gap,
                     fixed_height: fixed,
                     rule: None,
-                    slots: std::cell::RefCell::new(Vec::new()),
+                    plan: std::cell::RefCell::new(Vec::new()),
                     col_w: std::cell::Cell::new(0.0),
                     target: std::cell::Cell::new(0.0),
                 };
@@ -641,26 +692,37 @@ impl Element for ColumnStack {
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
         let heights: Vec<(f32, f32, f32)> =
             self.children.iter().map(|c| (c.h, c.mt, c.mb)).collect();
-        let (target, cols) = self.balance(&heights);
+        let (target, plan) = self.balance(&heights);
         self.col_w.set(col_w);
         self.target.set(target);
-        let slots: Vec<(f32, f32)> = cols
-            .iter()
-            .map(|&(col, y)| (col as f32 * (col_w + self.gap), y))
-            .collect();
-        for (c, (sx, sy)) in self.children.iter_mut().zip(slots.iter()) {
-            let origin = point(bounds.origin.x + px(*sx), bounds.origin.y + px(*sy));
-            c.el.layout_as_root(
+        let step = col_w + self.gap;
+        for f in &plan {
+            let full_h = self.children[f.kid].h;
+            let x = bounds.origin.x + px(f.col as f32 * step);
+            let y = bounds.origin.y + px(f.y);
+            let kid = &mut self.children[f.kid];
+            let el = if f.copy == 0 {
+                &mut kid.el
+            } else {
+                match kid.frags.get_mut(f.copy - 1) {
+                    Some(e) => e,
+                    None => continue,
+                }
+            };
+            // Копия раскладывается ЦЕЛИКОМ и поднимается на срез: видимой её
+            // часть делает маска в отрисовке. Иначе половина коробки просто
+            // сжалась бы, а не продолжилась в следующей колонке.
+            el.layout_as_root(
                 size(
                     gpui::AvailableSpace::Definite(px(col_w)),
-                    gpui::AvailableSpace::Definite(px(c.h)),
+                    gpui::AvailableSpace::Definite(px(full_h)),
                 ),
                 window,
                 cx,
             );
-            c.el.prepaint_at(origin, window, cx);
+            el.prepaint_at(point(x, y - px(f.from)), window, cx);
         }
-        *self.slots.borrow_mut() = slots;
+        *self.plan.borrow_mut() = plan;
     }
 
     fn paint(
@@ -688,8 +750,30 @@ impl Element for ColumnStack {
                 ));
             }
         }
-        for c in self.children.iter_mut() {
-            c.el.paint(window, cx);
+        let plan = self.plan.borrow().clone();
+        let col_w = self.col_w.get();
+        let step = col_w + self.gap;
+        for f in plan {
+            let x = bounds.origin.x + px(f.col as f32 * step);
+            let y = bounds.origin.y + px(f.y);
+            let mask = gpui::ContentMask {
+                bounds: Bounds {
+                    origin: point(x, y),
+                    size: size(px(col_w), px(f.h)),
+                },
+            };
+            let kid = &mut self.children[f.kid];
+            let el = if f.copy == 0 {
+                &mut kid.el
+            } else {
+                match kid.frags.get_mut(f.copy - 1) {
+                    Some(e) => e,
+                    None => continue,
+                }
+            };
+            // Маска и режет: копия нарисована во всю свою высоту, видна
+            // только полоса своей колонки (css-break-3 §4, вид `slice`).
+            window.with_content_mask(Some(mask), |window| el.paint(window, cx));
         }
     }
 }
