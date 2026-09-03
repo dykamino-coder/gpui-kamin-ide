@@ -3,18 +3,24 @@ import type { JsonlEntryData } from '../types/jsonl'
 import { tabAgentTrees, tabJsonlLive, recordAgentHistory, findAgentByName, type AgentInfo, type AgentTreeState } from '../signals/agents'
 import { sessionTree } from '../signals/tabs'
 
+/** A fresh, unpublished agent tree (replay staging builds into one of these
+ *  and publishes it whole — see signals/agent-replay.ts). */
+export function createAgentTree(): AgentTreeState {
+  return {
+    teams: new Map(),
+    standaloneAgents: new Map(),
+    pendingAgentCalls: new Map(),
+    teamNameAliases: new Map(),
+    taskIdToAgent: new Map(),
+    agentIdToAgent: new Map(),
+  }
+}
+
 function getOrCreateTree(tabId: string): AgentTreeState {
   const map = tabAgentTrees.value
   let tree = map.get(tabId)
   if (!tree) {
-    tree = {
-      teams: new Map(),
-      standaloneAgents: new Map(),
-      pendingAgentCalls: new Map(),
-      teamNameAliases: new Map(),
-      taskIdToAgent: new Map(),
-      agentIdToAgent: new Map(),
-    }
+    tree = createAgentTree()
     // Mutate the inner map — signal will be triggered by callers
     map.set(tabId, tree)
   }
@@ -31,6 +37,18 @@ function getOrCreateTree(tabId: string): AgentTreeState {
  *  мёртвом PTY — staleness-прунер (STALE_RUNNING_MS). */
 export function parseAgentEntries(tabId: string, entries: any[]): boolean {
   const tree = getOrCreateTree(tabId)
+  const changed = parseAgentEntriesInto(tree, entries)
+  if (changed) {
+    // Trigger signal update
+    tabAgentTrees.value = new Map(tabAgentTrees.value)
+  }
+  return changed
+}
+
+/** Parse entries into `tree` without touching any signal. Returns true if
+ *  anything changed. Used by the live path (through the wrapper above) and
+ *  by replay staging, which publishes the finished tree atomically. */
+export function parseAgentEntriesInto(tree: AgentTreeState, entries: any[]): boolean {
   let changed = false
 
   for (const entry of entries) {
@@ -363,10 +381,6 @@ export function parseAgentEntries(tabId: string, entries: any[]): boolean {
     }
   }
 
-  if (changed) {
-    // Trigger signal update
-    tabAgentTrees.value = new Map(tabAgentTrees.value)
-  }
   return changed
 }
 

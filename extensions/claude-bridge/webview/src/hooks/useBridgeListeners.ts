@@ -22,6 +22,7 @@ import { splitTrailingEscape, stripMouseTracking } from '../lib/strip-mouse-trac
 
 // Agent tree helpers
 import { parseAgentEntries, markAllAgentsExited, scheduleCleanup, mergeAgentTree, touchAgentAlive } from './useAgentTree'
+import { beginAgentReplay, stageAgentEntries, publishAgentReplay, abandonAgentReplay } from '../signals/agent-replay'
 
 // Queue: auto-send queued messages when CLI becomes idle
 import { appendJsonlEntries, applyStreamingEntry, applyStreamingDelta, clearJsonlEntries, jsonlEntriesByTab, replaceWindowWithSegment, setArchivedView } from '../signals/jsonl'
@@ -92,6 +93,8 @@ export function useBridgeListeners(
 ): void {
   const reconnectSnapshotRequests = useRef(new ConnectionSnapshotRequestGate())
 
+    // Replay generation per tab (BR-26): the value handed to publishAgentReplay.
+  const replayGeneration = new Map<string, number>()
   useEffect(() => {
     let reconnectSnapshotRequest: number | undefined
     // hookDrivenTabs / stuckIdleTimers живут на уровне модуля (см. выше):
@@ -139,6 +142,8 @@ export function useBridgeListeners(
       // reachable forever. Only the SESSION that was closed is dropped.
       clearJsonlEntries(tabId)
       clearAgentTabState(tabId)
+      abandonAgentReplay(tabId)
+      replayGeneration.delete(tabId)
       forgetTabRecency(tabId)
       resetToolUsage(tabId)
       // Виджеты (permission/elicitation/askUser) закрытого таба — сироты:
@@ -338,6 +343,10 @@ export function useBridgeListeners(
       // Agents section). On console/plan/todos it built a tree nobody shows —
       // pure waste, and it walked `entries` (the FULL batch, not the slim slice).
       if (agentData) {
+        // Mid-replay batches are STAGED and published as one snapshot on
+        // replayComplete (BR-26): the panel keeps its last consistent tree
+        // instead of flashing empty → partial → rebuilt.
+        if (stageAgentEntries(tabId, entries)) return
         const agentChanged = parseAgentEntries(tabId, entries)
         if (agentChanged && sessionTree.value) {
           sessionTree.value = mergeAgentTree(sessionTree.value)
@@ -381,9 +390,9 @@ export function useBridgeListeners(
     const unsubJsonlStatus = bridge.onJsonlStatus((tabId: string, status: any) => {
       if (status.status === 'watching' && !status.replayComplete) {
         tabJsonlLive.value = new Set([...tabJsonlLive.value].filter(id => id !== tabId))
-        const next = new Map(tabAgentTrees.value)
-        next.delete(tabId)
-        tabAgentTrees.value = next
+        // Open a replay generation: the published tree stays as it is until
+        // this generation completes; a newer replay supersedes it.
+        if (agentData) replayGeneration.set(tabId, beginAgentReplay(tabId))
         // Реплей начнётся с нуля — счётчики тулов тоже (дедуп по id их
         // восстановит без задвоения).
         resetToolUsage(tabId)
@@ -398,11 +407,18 @@ export function useBridgeListeners(
         // index so the segment strip can show every compact, not only the ones
         // that fit the resident window.
         if (role !== 'customize') bridge.requestBoundaries?.(tabId)
+        const generation = replayGeneration.get(tabId)
         setTimeout(() => {
           if (tabJsonlLive.value.has(tabId)) return
           const nextLive = new Set(tabJsonlLive.value)
           nextLive.add(tabId)
           tabJsonlLive.value = nextLive
+          // Publish the staged snapshot atomically (a stale generation is a
+          // no-op), then hand finished agents to history as before.
+          if (agentData && generation !== undefined && publishAgentReplay(tabId, generation)) {
+            replayGeneration.delete(tabId)
+            if (sessionTree.value) sessionTree.value = mergeAgentTree(sessionTree.value)
+          }
           const changed = markAllAgentsExited(tabId)
           if (changed && sessionTree.value) {
             sessionTree.value = mergeAgentTree(sessionTree.value)

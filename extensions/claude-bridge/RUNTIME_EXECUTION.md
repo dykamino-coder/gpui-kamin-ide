@@ -85,7 +85,7 @@ Diagnostic-only результаты сами по себе release не выз�
 | [BR-23](RUNTIME_RELIABILITY.md#br-23--make-session-complete-notifications-transient-and-turn-scoped) | ready | change | notifications | PR #14 уже merged | Turn-scoped transient completion PR |
 | [BR-24](RUNTIME_RELIABILITY.md#br-24--bound-and-reconcile-lost-webview-invoke-replies) | ready | change | invoke transport | none | Сначала bounded correlation/lifecycle diagnostics PR |
 | [BR-25](RUNTIME_RELIABILITY.md#br-25--verify-agents-view-delivery-and-rehydration-after-reveal) | waiting | verify | Agent Teams UI | baseline done (INC-2026-0002); completion после BR-31 + BR-27 + BR-26 | Текущая пачка: completion gate |
-| [BR-26](RUNTIME_RELIABILITY.md#br-26--publish-agent-replay-state-atomically) | ready | change | Agent Teams UI | none | Текущая пачка: generation-scoped staging PR |
+| [BR-26](RUNTIME_RELIABILITY.md#br-26--publish-agent-replay-state-atomically) | done | none | Agent Teams UI | none | Generation-scoped replay staging в `main`; BR-25 completion ждёт BR-31 |
 | [BR-27](RUNTIME_RELIABILITY.md#br-27--derive-active-and-completed-from-one-lifecycle-partition) | done | none | Agent Teams UI | none | Partition + parser fix в `main`; BR-26 разблокирован |
 | [BR-28](RUNTIME_RELIABILITY.md#br-28--measure-sidebar-geometry-during-session-hover) | done | none | native sidebar | none | Paired artifact INC-2026-0003: sibling reflow не воспроизводится |
 | [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | ready | change | native sidebar | none | Текущая пачка: atomic rename transition |
