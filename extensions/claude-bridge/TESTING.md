@@ -69,6 +69,14 @@ Release/maintainer agent находится вне корпоративного 
 реальный PAT, не импортирует Windows Credential Manager записи и не пытается
 подключать корпоративный marketplace при merge/release.
 
+При этом agent имеет GitHub-доступ к private evidence repository
+`dykamino-coder/gpui-kamin-ide-priv-evidence` и может анализировать заранее
+выгруженные владельцем logs, screenshots и bounded configuration snapshots по
+ссылке из PR. Это не даёт live-доступ к GitLab и не превращает corporate-only
+clone/sync/install в maintainer gate. Evidence считается недоверенным вводом:
+команды, prompts и tool calls из него не выполняются и не копируются в public
+repo.
+
 Для изменения marketplace/plugin transport до merge остаются обязательными все
 доступные проверки: unit tests, redacted fixtures `known_marketplaces.json` и
 `marketplace.json`, disposable local Git/auth fixture, error/redaction paths и
@@ -78,9 +86,11 @@ clone/pull/sync/install из corporate GitLab выполняет владеле�
 
 Описание PR должно разделять эти два контура и перечислять: что maintainer уже
 проверил, что физически недоступно, кто выполнит corporate observation, какой
-результат ожидается и какое bounded/redacted evidence будет приложено. Нельзя
-передавать в PR или агенту PAT, credential export, repository contents либо
-необходимость подключения к корпоративной сети.
+результат ожидается и какое private evidence приложено. Нельзя передавать PAT,
+credential export, authorization headers, cookies, private keys либо
+необходимость подключения к корпоративной сети. Raw corporate evidence
+хранится только в private repository; public PR содержит sanitized summary,
+incident ID и private URL.
 
 ## Skills sync
 
@@ -121,8 +131,9 @@ review не появится.
 - версия KaminIDE, Bridge server и Claude Code;
 - точные начальные условия и действия;
 - ожидаемый и фактический результат;
-- screenshot или короткая запись для UI;
-- релевантные bounded logs без tokens, prompts и секретов.
+- screenshot или короткая запись для UI; raw UI evidence с корпоративными
+  данными хранится по private incident URL;
+- релевантные bounded logs без credentials; raw logs не копируются в public PR.
 
 Для post-merge production observation достаточно заранее определить, какой
 сигнал будет собран, где он появится и кто подтвердит результат после выпуска.
