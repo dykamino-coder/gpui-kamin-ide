@@ -378,6 +378,8 @@ pub struct Grouped {
     pub blend: u32,
     /// Обрезка многоугольником: вершины в долях коробки (`clip-path`).
     pub polygon: Vec<(crate::value::Len, crate::value::Len)>,
+    /// Правило намотки полигона: `evenodd` шейдер не умеет.
+    pub polygon_evenodd: bool,
     /// Сдвиг опорной коробки формы от bounds наружу: верх/право/низ/лево
     /// (margin-box положительные, content-box отрицательные).
     pub poly_expand: [f32; 4],
@@ -422,6 +424,7 @@ impl Grouped {
             opacity: 1.0,
             blend: 0,
             polygon: Vec::new(),
+            polygon_evenodd: false,
             poly_expand: [0.0; 4],
             mask: None,
             mask_size: None,
@@ -581,6 +584,19 @@ impl Element for Grouped {
             (l + t + r + b > 0.0).then_some((l, t, r, b))
         });
         let (sl, st, sr, sb) = shape_ext.unwrap_or((0.0, 0.0, 0.0, 0.0));
+        // Опорная коробка шире `bounds` (`clip-path: margin-box`, срезы с
+        // отрицательными краями): буфер группы кроет и поля, иначе краска
+        // там (outline) терялась бы вместе с буфером.
+        let (sl, st, sr, sb) = match self.clip_inset {
+            Some([t, r, b, l]) => {
+                let neg = |v: crate::value::Len| match v {
+                    crate::value::Len::Px(p) if p < 0.0 => -p,
+                    _ => 0.0,
+                };
+                (sl.max(neg(l)), st.max(neg(t)), sr.max(neg(r)), sb.max(neg(b)))
+            }
+            None => (sl, st, sr, sb),
+        };
         let area = Bounds {
             origin: gpui::point(
                 bounds.origin.x - margin - px(sl),
@@ -625,7 +641,28 @@ impl Element for Grouped {
         // смещает (доля — от свободного места, как у background-position).
         // Битый источник — маски нет, элемент виден целиком
         // (bad-mask-image-svg-*).
-        let mask = self.mask.as_deref().and_then(|src| {
+        // Полигон сверх восьми вершин (предел шейдера) или с `evenodd` —
+        // растровой маской-путём в системе коробки (clip-path-polygon-004/005).
+        let poly_mask = if self.mask.is_none() && (polygon.len() > 8 || self.polygon_evenodd) {
+            let d: Vec<String> = polygon
+                .iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    format!(
+                        "{}{} {}",
+                        if i == 0 { "M" } else { "L" },
+                        f32::from(p.x - bounds.origin.x),
+                        f32::from(p.y - bounds.origin.y)
+                    )
+                })
+                .collect();
+            let rule = if self.polygon_evenodd { "evenodd" } else { "nonzero" };
+            Some(format!("pathdef:{rule}:{} Z", d.join(" ")))
+        } else {
+            None
+        };
+        let polygon = if poly_mask.is_some() { Vec::new() } else { polygon };
+        let mask = self.mask.as_deref().or(poly_mask.as_deref()).and_then(|src| {
             // Слои: `url(a), url(b)` — полотно, собранное по mask-composite;
             // одиночный слой идёт плиткой прямо в композит.
             let layers: Vec<String> = if src.starts_with("shape:") {

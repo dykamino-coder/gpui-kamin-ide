@@ -6859,13 +6859,43 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
         )
     });
+    // Голое слово коробки — срез краями этой коробки от border-box:
+    // margin-box шире на поля, padding-box уже на рамку, content-box — на
+    // рамку и отбивку (clip-path-marginBox-*, -paddingBox-*, -contentBox-*).
+    let bare_inset = if c.clip_bare_box && c.clip_inset.is_none() {
+        let b = c.borders();
+        let s = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let [t, r, bo, l] = match c.clip_ref {
+            Some(1) => [
+                -s(c.margin.top),
+                -s(c.margin.right),
+                -s(c.margin.bottom),
+                -s(c.margin.left),
+            ],
+            Some(2) => [s(b.top), s(b.right), s(b.bottom), s(b.left)],
+            Some(3) => [
+                s(b.top) + s(c.padding.top),
+                s(b.right) + s(c.padding.right),
+                s(b.bottom) + s(c.padding.bottom),
+                s(b.left) + s(c.padding.left),
+            ],
+            _ => [0.0; 4],
+        };
+        Some([Len::Px(t), Len::Px(r), Len::Px(bo), Len::Px(l)])
+    } else {
+        None
+    };
+    let clip_inset = c.clip_inset.or(bare_inset);
     if blur <= 0.0
         && blend == 0
         && polygon.is_empty()
         && c.isolate != Some(true)
         && mask.is_none()
         && clip_rect.is_none()
-        && c.clip_inset.is_none()
+        && clip_inset.is_none()
         && c.clip_edges.is_none()
         && c.clip_xywh.is_none()
     {
@@ -6898,7 +6928,7 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     };
     wrapper.mask_origin_off = box_off(c.mask_origin);
     wrapper.clip_rect = clip_rect;
-    wrapper.clip_inset = c.clip_inset;
+    wrapper.clip_inset = clip_inset;
     wrapper.clip_edges = c.clip_edges;
     wrapper.clip_xywh = c.clip_xywh;
     // `clip`/`mask-clip` живут в системе координат элемента ДО трансформа, а
@@ -6920,6 +6950,7 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     // расширяет bounds на поля, content-box сужает на рамку+паддинг
     // (clip-path-polygon-008: полигон в margin-box; masking 82→84).
     wrapper.polygon = polygon.to_vec();
+    wrapper.polygon_evenodd = c.clip_polygon_evenodd;
     let side = |l: Option<Len>| match l {
         Some(Len::Px(v)) => v,
         _ => 0.0,

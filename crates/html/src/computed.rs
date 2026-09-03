@@ -899,6 +899,10 @@ pub struct Computed {
     pub collapsed: Option<bool>,
     /// Опорная коробка clip-path: 0 border, 1 margin, 2 padding, 3 content.
     pub clip_ref: Option<u8>,
+    /// `clip-path` задан ОДНИМ словом коробки (`margin-box`, `padding-box`,
+    /// …): обрезка краями этой коробки (css-masking-1 §5.1 «If specified by
+    /// itself, uses the edges of the specified box … as clipping path»).
+    pub clip_bare_box: bool,
     /// Маска-изображение (`mask-image: url(...)|<gradient>`): источник
     /// строкой до растра при сборке группы.
     pub mask_image: Option<String>,
@@ -1233,6 +1237,8 @@ pub struct Computed {
     pub clip_margin_box: Option<u8>,
     /// `clip-path: polygon(…)`: вершины в долях или точках коробки.
     pub clip_polygon: Option<Vec<(Len, Len)>>,
+    /// Правило намотки полигона `clip-path: polygon(evenodd, …)`.
+    pub clip_polygon_evenodd: bool,
     /// `mix-blend-mode`: как слой смешивается с тем, что под ним.
     pub blend: Option<u8>,
     /// `isolation: isolate`: поддерево смешивается внутри себя, а с кадром —
@@ -5445,17 +5451,27 @@ impl Computed {
                 // Опорная коробка формы (css-masking §1.3.1.1): слово до или
                 // после функции; точки полигона отсчитываются от неё
                 // (clip-path-polygon-008: margin-box).
+                // У элемента с CSS-коробкой `fill-box` = content-box,
+                // `stroke-box`/`view-box` = border-box (css-masking-1 §1.3.1.1).
                 self.clip_ref = if v.contains("margin-box") {
                     Some(1)
                 } else if v.contains("padding-box") {
                     Some(2)
-                } else if v.contains("content-box") {
+                } else if v.contains("content-box") || v.contains("fill-box") {
                     Some(3)
-                } else if v.contains("border-box") {
+                } else if v.contains("border-box")
+                    || v.contains("stroke-box")
+                    || v.contains("view-box")
+                {
                     Some(0)
                 } else {
                     self.clip_ref
                 };
+                if key == "clip-path" {
+                    self.clip_bare_box = !v.is_empty()
+                        && !v.contains('(')
+                        && v.split_whitespace().all(|w| w.ends_with("-box"));
+                }
                 // `clip-path: shape(...)` (css-shapes-2): команды хранятся
                 // с `;` вместо запятых (по ним режутся слои), доли резолвит
                 // отрисовка по размеру коробки.
@@ -5509,6 +5525,16 @@ impl Computed {
                         Some(i) => &rest[..i],
                         None => rest,
                     };
+                    // Первым может стоять правило намотки (css-shapes-1
+                    // §3.1): `polygon(evenodd, …)`. Вершин любое число —
+                    // больше восьми (предел шейдера) и `evenodd` уходят
+                    // растровой маской-путём при отрисовке.
+                    let (rule, rest) = match rest.trim_start().split_once(',') {
+                        Some((r, tail)) if matches!(r.trim(), "nonzero" | "evenodd") => {
+                            (r.trim(), tail)
+                        }
+                        _ => ("nonzero", rest),
+                    };
                     let points: Vec<(Len, Len)> = rest
                         .split(',')
                         .filter_map(|pair| {
@@ -5517,10 +5543,10 @@ impl Computed {
                             let y = Len::parse(it.next()?)?;
                             Some((x, y))
                         })
-                        .take(8)
                         .collect();
                     if points.len() >= 3 {
                         self.clip_polygon = Some(points);
+                        self.clip_polygon_evenodd = rule == "evenodd";
                     }
                 } else if v.starts_with("circle(") || v.starts_with("ellipse(") {
                     // Форма с параметрами (радиусы, `at`, ключевые стороны)
