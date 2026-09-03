@@ -2882,7 +2882,13 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
             .into_any_element();
     }
     let mut wrap = if vertical_flow {
-        gpui::div().h_full().w_0().flex_shrink_0().flex().flex_col()
+        // Распорка НУЛЕВАЯ и по строчной оси тоже: при вертикальном письме
+        // `h_full` отдавал контейнеру ДО-ПОВОРОТНУЮ высоту, равную
+        // собственной ширине абсолюта, и коробка контейнера росла ровно на
+        // неё (замерено на голой пробе: рамка 122.4 CSS против 42.4 у
+        // эталона, излишек 80 = ширина абсолюта). Место абсолюта считает
+        // сдвиг (`LatePlace`), распорке размер не нужен.
+        gpui::div().h_0().w_0().flex_shrink_0().flex().flex_col()
     } else {
         gpui::div().w_full().h_0().flex_shrink_0().flex().flex_row()
     };
