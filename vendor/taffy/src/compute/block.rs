@@ -32,6 +32,13 @@ struct BlockItem {
     min_size: Size<Option<f32>>,
     /// The maximum allowable size of this item
     max_size: Size<Option<f32>>,
+    /// KaminIDE patch: соотношение сторон элемента. Ширина блока в потоке
+    /// добирается РАСТЯЖЕНИЕМ до содержащего блока, и по css-sizing-4 §4
+    /// полученный размер обязан вернуться в соотношение сторон — иначе
+    /// высота остаётся авто и коробка выходит не той формы. Абсолютный путь
+    /// в этом же файле так и делает, потоковый — нет, потому что поля с
+    /// соотношением у него просто не было.
+    aspect_ratio: Option<f32>,
 
     /// The overflow style of the item
     overflow: Point<Overflow>,
@@ -344,6 +351,7 @@ fn generate_item_list(
                     .maybe_resolve(node_inner_size, |val, basis| tree.calc(val, basis))
                     .maybe_apply_aspect_ratio(aspect_ratio)
                     .maybe_add(box_sizing_adjustment),
+                aspect_ratio,
                 overflow: child_style.overflow(),
                 scrollbar_width: child_style.scrollbar_width(),
                 position: child_style.position(),
@@ -448,6 +456,10 @@ fn perform_final_layout_on_in_flow_children(
                                 .maybe_clamp(item.min_size.width, item.max_size.width),
                         )
                     })
+                    // KaminIDE patch: добранная растяжением ширина возвращается
+                    // в соотношение сторон (css-sizing-4 §4), как это уже
+                    // делает абсолютный путь ниже по файлу.
+                    .maybe_apply_aspect_ratio(item.aspect_ratio)
                     .maybe_clamp(item.min_size, item.max_size)
             };
 

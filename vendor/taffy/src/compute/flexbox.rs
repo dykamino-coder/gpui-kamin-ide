@@ -681,6 +681,12 @@ fn determine_flex_base_size(
                     dir,
                     cross_axis_available_space.into_option().maybe_sub(child.margin.cross_axis_sum(dir)),
                 );
+                // KaminIDE patch: РАСТЯНУТЫЙ поперечный размер возвращается в
+                // соотношение сторон (css-flexbox-1 §9.8 вместе с
+                // css-sizing-4 §4): элемент с `aspect-ratio` и авто-главным
+                // размером обязан взять его из растяжения, а не остаться по
+                // содержимому.
+                ckd = ckd.maybe_apply_aspect_ratio(child_style.aspect_ratio());
             }
             ckd
         };
