@@ -131,6 +131,29 @@ impl Len {
         if s.eq_ignore_ascii_case("max-content") {
             return Some(Len::MaxContent);
         }
+        // `stretch` (css-sizing-4 §4.1) — «занять всё место содержащего
+        // блока»: для коробки без боковых полей это и есть его ширина.
+        // Приставочные написания того же значения живут в вёрстке дольше
+        // самого ключевого слова. Прежде вся запись выбрасывалась, и коробка
+        // падала в `auto`.
+        if s.eq_ignore_ascii_case("stretch")
+            || s.eq_ignore_ascii_case("-webkit-fill-available")
+            || s.eq_ignore_ascii_case("-moz-available")
+        {
+            return Some(Len::Pct(1.0));
+        }
+        // `fit-content(<length-percentage>)` (css-sizing-3 §4.1) — это
+        // `fit-content`, зажатый сверху аргументом. Самого зажима у нас пока
+        // нет, но `fit-content` куда ближе к истине, чем выброшенная запись:
+        // без неё коробка растягивалась во всю ширину как при `auto`.
+        let lower = s.to_ascii_lowercase();
+        if let Some(arg) = lower
+            .strip_prefix("fit-content(")
+            .and_then(|r| r.strip_suffix(')'))
+            && Len::parse(arg).is_some()
+        {
+            return Some(Len::FitContent);
+        }
         if let Some(num) = s.strip_suffix('%') {
             return css_number(num).map(|v| Len::Pct(v / 100.0));
         }
