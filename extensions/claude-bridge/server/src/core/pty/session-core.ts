@@ -442,24 +442,31 @@ export async function createSession(
       void (async () => {
         try {
           const { getDb } = await import('../stats/database/lifecycle')
+          const { withStatsWrite } = await import('../stats/database/write-lock')
           const db = await getDb()
           const realCwd = config.cwd || null
           const titleAtInsert = session.sessionTitle || null
-          await db.run(
-            `INSERT INTO session_tokens (session_id, token_id, user_name, cwd, title, created_at, deleted)
-             VALUES (?, ?, ?, ?, ?, ?, 0)
-             ON CONFLICT (session_id) DO NOTHING`,
-            [conversationId, tokenId, userName, realCwd, titleAtInsert, new Date().toISOString()],
-          )
-          await db.run(
-            `UPDATE session_tokens
-             SET token_id = ?,
-                 user_name = ?,
-                 cwd = COALESCE(NULLIF(cwd, ''), ?),
-                 title = COALESCE(NULLIF(title, ''), ?)
-             WHERE session_id = ? AND (token_id IS NULL OR token_id = '')`,
-            [tokenId, userName, realCwd, titleAtInsert, conversationId],
-          )
+          // Serialised with the JSONL sweeper, which inserts the same
+          // session_tokens row on first sight of the file: two writers on
+          // one key would fail a COMMIT, and DuckDB turns that into a
+          // process-killing FatalException (stats/database/write-lock.ts).
+          await withStatsWrite(async () => {
+            await db.run(
+              `INSERT INTO session_tokens (session_id, token_id, user_name, cwd, title, created_at, deleted)
+               VALUES (?, ?, ?, ?, ?, ?, 0)
+               ON CONFLICT (session_id) DO NOTHING`,
+              [conversationId, tokenId, userName, realCwd, titleAtInsert, new Date().toISOString()],
+            )
+            await db.run(
+              `UPDATE session_tokens
+               SET token_id = ?,
+                   user_name = ?,
+                   cwd = COALESCE(NULLIF(cwd, ''), ?),
+                   title = COALESCE(NULLIF(title, ''), ?)
+               WHERE session_id = ? AND (token_id IS NULL OR token_id = '')`,
+              [tokenId, userName, realCwd, titleAtInsert, conversationId],
+            )
+          })
         } catch (err) {
           warnLog('session_tokens insert failed', { conversationId, error: String(err) })
         }

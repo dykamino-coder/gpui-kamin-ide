@@ -36,6 +36,18 @@
 
 <!-- Что было запущено? Что невозможно было запустить и почему? -->
 
+## Ограничения доступа
+
+- [ ] Реальный corporate GitLab/private marketplace не требуется
+- [ ] Требуется owner-only corporate production observation после выпуска
+
+Maintainer-проверки, недоступный corporate-only сценарий, владелец и ожидаемое
+evidence:
+
+<!-- Maintainer agent не имеет доступа к corporate GitLab, marketplace/plugins,
+PAT, Windows Credentials или VPN. Он запускает доступные gates и не пытается
+выполнять недоступный сценарий. Не прикладывайте secrets или repository data. -->
+
 ## Класс приёмки
 
 Отметьте применимое и кратко объясните выбор:
