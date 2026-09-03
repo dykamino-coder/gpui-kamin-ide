@@ -43,7 +43,9 @@ runtime-пачку по правилам репозитория`.
    повторяется первым шагом следующей пачки вместе с BR-31.
 6. **BR-28** — done: Diagnostic PR #35, private INC-2026-0003 — sibling reflow
    не воспроизводится, задача закрыта как optical/expected indent.
-7. **BR-29** — blocked: Change/Fix PR #37 готов и прошёл Windows GPUI gate, но обязательный job «Rust checks on Windows» падает на `cargo fmt --all -- --check` уже на `origin/main` (`crates/html/examples/wptrun.rs` и др.), поэтому merge по правилам репозитория невозможен до починки gate на `main`.
+7. **BR-29** — done: Change/Fix PR #37 (atomic hover→rename, id-scoped якорь pill),
+   Windows GPUI gate пройден; merge стал возможен после PR #40, который сделал
+   job «Rust checks on Windows» зелёным на `main`.
 
 **Release.** После последнего release-relevant merge (#36) подготовлен Release PR #38 `chore(release): KaminIDE 1.0.55 / server 6.3.132` (только версии). Installer, загрузка asset и merge release PR ждут явной авторизации владельца по CLAUDE.md.
 
@@ -87,7 +89,7 @@ PR по `crates/`.
 | [BR-26](RUNTIME_RELIABILITY.md#br-26--publish-agent-replay-state-atomically) | done | none | Agent Teams UI | none | Generation-scoped replay staging в `main`; BR-25 completion ждёт BR-31 |
 | [BR-27](RUNTIME_RELIABILITY.md#br-27--derive-active-and-completed-from-one-lifecycle-partition) | done | none | Agent Teams UI | none | Partition + parser fix в `main`; BR-26 разблокирован |
 | [BR-28](RUNTIME_RELIABILITY.md#br-28--measure-sidebar-geometry-during-session-hover) | done | none | native sidebar | none | Paired artifact INC-2026-0003: sibling reflow не воспроизводится |
-| [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | ready | change | native sidebar | none | Текущая пачка: atomic rename transition |
+| [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | done | none | native sidebar | none | Atomic rename transition в `main` (PR #37) |
 | [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation) | done | none | diagnostics | none | Record-aware writer PR в `main`; BR-02 evidence run разблокирован |
 | [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | ready | change | CEF/webview delivery | none | Следующая пачка: event-driven pull wake (INC-2026-0002) |
 

@@ -8,7 +8,7 @@
 //! группа=add/delete. RMB=полное контекст-меню. time/drag — след. итерация.
 
 pub use crate::ui::sessions::actions::{activate_session, menu_data};
-pub use crate::ui::sessions::pill::{overlay_pill, pill_anchor};
+pub use crate::ui::sessions::pill::{anchor_for, overlay_pill};
 pub use crate::ui::sessions::pill_menu::{project_actions_pill, session_actions_pill};
 
 use crate::ui::sessions::actions::new_no_folder_session;

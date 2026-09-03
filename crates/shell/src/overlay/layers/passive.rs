@@ -61,8 +61,11 @@ pub(crate) fn add_passive(
         );
     }
 
+    // Пилюля только по якорю ТОЙ ЖЕ строки и никогда для строки в inline
+    // rename: инпут не должен быть перекрыт actions overlay (BR-29).
     if let Some(hp) = r.hover_pill.clone()
-        && let Some(a) = *crate::ui::sessions_list::pill_anchor().lock().unwrap()
+        && r.renaming_session.as_deref() != Some(hp.as_str())
+        && let Some(a) = crate::ui::sessions_list::anchor_for(&hp)
     {
         // Hover-пилюля строки сессии/группы (fly-out за сайдбар → поверх
         // вебвью возможен только в overlay)
