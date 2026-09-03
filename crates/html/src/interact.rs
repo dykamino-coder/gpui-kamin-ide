@@ -1032,6 +1032,10 @@ pub struct Transformed {
     pub origin: (f32, f32),
     /// Точка отсчёта В ТОЧКАХ по осям — сильнее доли, когда задана.
     pub origin_px: (Option<f32>, Option<f32>),
+    /// Матрица функций в порядке записи (см. `computed::Transform::lin`).
+    pub lin: [[f32; 2]; 2],
+    /// Сдвиг: пиксели, доля ширины, доля высоты.
+    pub tr: [[f32; 3]; 2],
 }
 
 impl Transformed {
@@ -1045,6 +1049,8 @@ impl Transformed {
             translate_pct: (0.0, 0.0),
             origin: (0.5, 0.5),
             origin_px: (None, None),
+            lin: [[1.0, 0.0], [0.0, 1.0]],
+            tr: [[0.0; 3]; 2],
         }
     }
 }
@@ -1116,20 +1122,19 @@ impl Element for Transformed {
             dev(-(f32::from(bounds.origin.x) + ox)),
             dev(-(f32::from(bounds.origin.y) + oy)),
         );
-        // Порядок как в CSS: сдвиг, затем поворот, затем масштаб — всё вокруг
-        // точки отсчёта, поэтому она сначала уводится в ноль и возвращается.
+        // Матрица функций в порядке записи (css-transforms-1
+        // §transform-rendering), вокруг точки отсчёта: она уводится в ноль и
+        // возвращается. Проценты сдвига считаются от собственного размера —
+        // он известен только здесь, на отрисовке.
+        let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+        let shift = |row: [f32; 3]| (row[0] + w * row[1] + h * row[2]) * scale_factor;
         let matrix = gpui::TransformationMatrix::unit()
             .translate(origin)
-            .rotate(gpui::Radians(self.rotate))
-            .skew(gpui::Radians(self.skew.0), gpui::Radians(self.skew.1))
-            .scale(gpui::size(self.scale.0, self.scale.1))
-            .translate(back)
-            // Проценты сдвига считаются от собственного размера — он известен
-            // только здесь, на отрисовке.
-            .translate(gpui::point(
-                dev(self.translate.0 + f32::from(bounds.size.width) * self.translate_pct.0),
-                dev(self.translate.1 + f32::from(bounds.size.height) * self.translate_pct.1),
-            ));
+            .compose(gpui::TransformationMatrix {
+                rotation_scale: self.lin,
+                translation: [shift(self.tr[0]), shift(self.tr[1])],
+            })
+            .translate(back);
         let child = self.child.as_mut().unwrap();
         window.with_transformation(matrix, |window| child.paint(window, cx));
     }

@@ -507,6 +507,17 @@ pub struct Transform {
     /// Сдвиг, заданный долями СОБСТВЕННОГО размера: `translate(-50%, -50%)`.
     /// Разрешается при отрисовке, когда размер известен.
     pub translate_pct: (f32, f32),
+    /// Аффинная матрица всех функций В ПОРЯДКЕ ЗАПИСИ (css-transforms-1
+    /// §transform-rendering: «multiply … from left to right»): линейная
+    /// часть и сдвиг. Разложение выше складывает функции покомпонентно и
+    /// порядок теряет (`translate(200px) rotate(180deg)` уводило коробку за
+    /// экран) — рисует отрисовка по матрице, разложение остаётся для SVG и
+    /// сдвига клипа.
+    pub lin: [[f32; 2]; 2],
+    /// Сдвиг по осям: пиксели, доля СОБСТВЕННОЙ ширины, доля высоты —
+    /// проценты внутри цепочки складываются линейно и разрешаются при
+    /// отрисовке.
+    pub tr: [[f32; 3]; 2],
 }
 
 impl Default for Transform {
@@ -517,9 +528,43 @@ impl Default for Transform {
             scale: (1.0, 1.0),
             translate: (0.0, 0.0),
             translate_pct: (0.0, 0.0),
+            lin: [[1.0, 0.0], [0.0, 1.0]],
+            tr: [[0.0; 3]; 2],
         }
     }
 }
+
+impl Transform {
+    /// Дописать функцию справа: `M := M · [l | v]`.
+    fn push(&mut self, l: [[f32; 2]; 2], v: [[f32; 3]; 2]) {
+        let m = self.lin;
+        self.lin = [
+            [
+                m[0][0] * l[0][0] + m[0][1] * l[1][0],
+                m[0][0] * l[0][1] + m[0][1] * l[1][1],
+            ],
+            [
+                m[1][0] * l[0][0] + m[1][1] * l[1][0],
+                m[1][0] * l[0][1] + m[1][1] * l[1][1],
+            ],
+        ];
+        for i in 0..2 {
+            for k in 0..3 {
+                self.tr[i][k] += m[i][0] * v[0][k] + m[i][1] * v[1][k];
+            }
+        }
+    }
+
+    fn rot(a: f32) -> [[f32; 2]; 2] {
+        [[a.cos(), -a.sin()], [a.sin(), a.cos()]]
+    }
+
+    fn diag(x: f32, y: f32) -> [[f32; 2]; 2] {
+        [[x, 0.0], [0.0, y]]
+    }
+}
+
+const NO_SHIFT: [[f32; 3]; 2] = [[0.0; 3]; 2];
 
 /// `filter`: цветовое преобразование элемента.
 ///
@@ -4796,16 +4841,28 @@ impl Computed {
                     }
                     let first = nums.first().copied().unwrap_or(0.0);
                     let angle = angle_at(0);
+                    // Имена функций регистронезависимы (css-transforms-1
+                    // §7, CSS Syntax §4): `scale3D`, `rotatex`, `translateY`
+                    // — одно и то же.
+                    let lower = name.to_ascii_lowercase();
+                    let name = lower.as_str();
                     match name {
-                        "rotate" | "rotateZ" => t.rotate_rad += angle,
+                        "rotate" | "rotatez" => {
+                            t.rotate_rad += angle;
+                            t.push(Transform::rot(angle), NO_SHIFT);
+                        }
                         "scale" => {
                             let sx = frac_at(0, 1.0);
+                            let sy = frac_at(1, sx);
                             t.scale.0 *= sx;
-                            t.scale.1 *= frac_at(1, sx);
+                            t.scale.1 *= sy;
+                            t.push(Transform::diag(sx, sy), NO_SHIFT);
                         }
                         "skew" => {
+                            let ay = angle_at(1);
                             t.skew_rad.0 += angle;
-                            t.skew_rad.1 += angle_at(1);
+                            t.skew_rad.1 += ay;
+                            t.push([[1.0, angle.tan()], [ay.tan(), 1.0]], NO_SHIFT);
                         }
                         // matrix(a b c d e f): разложение на компоненты
                         // (перенос, поворот, масштаб, скос) — QR-подобное,
@@ -4815,6 +4872,7 @@ impl Computed {
                                 (nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]);
                             t.translate.0 += e2;
                             t.translate.1 += f2;
+                            t.push([[a, c], [b, d]], [[e2, 0.0, 0.0], [f2, 0.0, 0.0]]);
                             let sx = (a * a + b * b).sqrt();
                             if sx > 1e-6 {
                                 t.rotate_rad += b.atan2(a);
@@ -4826,18 +4884,38 @@ impl Computed {
                                 t.skew_rad.0 += shear.atan();
                             }
                         }
-                        "skewX" => t.skew_rad.0 += angle,
-                        "skewY" => t.skew_rad.1 += angle,
-                        "scaleX" => t.scale.0 *= frac_at(0, 1.0),
-                        "scaleY" => t.scale.1 *= frac_at(0, 1.0),
+                        "skewx" => {
+                            t.skew_rad.0 += angle;
+                            t.push([[1.0, angle.tan()], [0.0, 1.0]], NO_SHIFT);
+                        }
+                        "skewy" => {
+                            t.skew_rad.1 += angle;
+                            t.push([[1.0, 0.0], [angle.tan(), 1.0]], NO_SHIFT);
+                        }
+                        "scalex" => {
+                            let k = frac_at(0, 1.0);
+                            t.scale.0 *= k;
+                            t.push(Transform::diag(k, 1.0), NO_SHIFT);
+                        }
+                        "scaley" => {
+                            let k = frac_at(0, 1.0);
+                            t.scale.1 *= k;
+                            t.push(Transform::diag(1.0, k), NO_SHIFT);
+                        }
                         // Поворот вокруг оси экрана БЕЗ перспективы — это
                         // прямая проекция на плоскость, то есть сжатие поперёк
                         // оси ровно на косинус угла (css-transforms-2 §11):
                         // `rotateX(60deg)` даёт половину высоты. Перспективы у
                         // нас нет, и приближением это не является — при
                         // `perspective: none` так считает и браузер.
-                        "rotateX" => t.scale.1 *= angle.cos(),
-                        "rotateY" => t.scale.0 *= angle.cos(),
+                        "rotatex" => {
+                            t.scale.1 *= angle.cos();
+                            t.push(Transform::diag(1.0, angle.cos()), NO_SHIFT);
+                        }
+                        "rotatey" => {
+                            t.scale.0 *= angle.cos();
+                            t.push(Transform::diag(angle.cos(), 1.0), NO_SHIFT);
+                        }
                         // Поворот вокруг произвольной оси: та же проекция, но
                         // ось задана вектором. Ось экрана даёт обычный поворот,
                         // остальные — сжатие поперёк себя.
@@ -4856,37 +4934,49 @@ impl Computed {
                                     last.to_radians()
                                 };
                                 let (x, y, z) = (x / len, y / len, z / len);
+                                let (kx, ky) = (
+                                    1.0 - y.abs() * (1.0 - a.cos()),
+                                    1.0 - x.abs() * (1.0 - a.cos()),
+                                );
                                 t.rotate_rad += a * z;
-                                t.scale.1 *= 1.0 - x.abs() * (1.0 - a.cos());
-                                t.scale.0 *= 1.0 - y.abs() * (1.0 - a.cos());
+                                t.scale.1 *= ky;
+                                t.scale.0 *= kx;
+                                t.push(Transform::rot(a * z), NO_SHIFT);
+                                t.push(Transform::diag(kx, ky), NO_SHIFT);
                             }
                         }
                         // Третья ось без перспективы ничего не меняет: смещение
                         // по ней не видно, а масштаб по ней не на что влиять.
-                        "translateZ" | "perspective" => {}
-                        "scaleZ" => {}
+                        "translatez" | "perspective" => {}
+                        "scalez" => {}
                         "scale3d" => {
+                            let sy = nums.get(1).copied().unwrap_or(1.0);
                             t.scale.0 *= first;
-                            t.scale.1 *= nums.get(1).copied().unwrap_or(1.0);
+                            t.scale.1 *= sy;
+                            t.push(Transform::diag(first, sy), NO_SHIFT);
                         }
                         "translate3d" => {
                             let parts: Vec<&str> = arg.split(',').map(str::trim).collect();
+                            let mut v = NO_SHIFT;
                             for (i, dest) in [&mut t.translate.0, &mut t.translate.1]
                                 .into_iter()
                                 .enumerate()
                             {
                                 if let Some(raw) = parts.get(i) {
-                                    *dest +=
-                                        raw.trim_end_matches("px").parse::<f32>().unwrap_or(0.0);
+                                    let d = raw.trim_end_matches("px").parse::<f32>().unwrap_or(0.0);
+                                    *dest += d;
+                                    v[i][0] = d;
                                 }
                             }
+                            t.push(Transform::diag(1.0, 1.0), v);
                         }
                         // Проценты в сдвиге считаются от СВОЕГО размера —
                         // на этом стоит типовое центрирование
                         // `translate(-50%, -50%)`. Раньше процент срезался как
                         // единица, и элемент уезжал на 50 точек.
-                        "translate" | "translateX" | "translateY" => {
+                        "translate" | "translatex" | "translatey" => {
                             let parts: Vec<&str> = arg.split(',').map(str::trim).collect();
+                            let mut v = NO_SHIFT;
                             let mut axis = |i: usize, x: bool| {
                                 let Some(raw) = parts.get(i) else { return };
                                 let value = raw
@@ -4894,27 +4984,34 @@ impl Computed {
                                     .trim_end_matches('%')
                                     .parse::<f32>()
                                     .unwrap_or(0.0);
+                                let row = if x { 0 } else { 1 };
                                 let dest = if raw.ends_with('%') {
+                                    // Доля своей ширины по x, высоты по y.
+                                    v[row][1 + row] = value / 100.0;
                                     if x {
                                         &mut t.translate_pct.0
                                     } else {
                                         &mut t.translate_pct.1
                                     }
-                                } else if x {
-                                    &mut t.translate.0
                                 } else {
-                                    &mut t.translate.1
+                                    v[row][0] = value;
+                                    if x {
+                                        &mut t.translate.0
+                                    } else {
+                                        &mut t.translate.1
+                                    }
                                 };
                                 *dest += value / if raw.ends_with('%') { 100.0 } else { 1.0 };
                             };
                             match name {
-                                "translateX" => axis(0, true),
-                                "translateY" => axis(0, false),
+                                "translatex" => axis(0, true),
+                                "translatey" => axis(0, false),
                                 _ => {
                                     axis(0, true);
                                     axis(1, false);
                                 }
                             }
+                            t.push(Transform::diag(1.0, 1.0), v);
                         }
                         // Скос выразить нечем: матрица GPUI хранит поворот и
                         // масштаб, но не сдвиг осей.

@@ -6954,6 +6954,8 @@ fn transformed(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.scale = t.scale;
     wrapper.translate = t.translate;
     wrapper.translate_pct = t.translate_pct;
+    wrapper.lin = t.lin;
+    wrapper.tr = t.tr;
     if let Some(o) = c.transform_origin {
         wrapper.origin = o;
     }
