@@ -8,7 +8,7 @@
 //! разрешил CSS.
 
 use gpui::{
-    AnyElement, App, Bounds, Div, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
     InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, ParentElement, Pixels, Styled, Window, px,
 };
@@ -798,7 +798,12 @@ impl Element for CellsClipped {
         // отрисовки — здесь забираются прямоугольники ЭТОГО ЖЕ кадра.
         // Пустота возможна только на самом первом кадре документа.
         let rects = std::mem::take(&mut *self.rects.borrow_mut());
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok()); *ON } {
+        let res = {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok());
+            *ON
+        };
+        if res {
             eprintln!("ROWBG paint: rects={} {:?}", rects.len(), rects);
         }
         if rects.is_empty() {
@@ -810,11 +815,8 @@ impl Element for CellsClipped {
         // Область ряда/колонки — охват ТОЧНЫХ ячеек (span = 1): от неё
         // считается и размер плитки, и `background-position`. Объединённые
         // лежат и на чужих дорожках — они только маски.
-        let exact: Vec<Bounds<Pixels>> = rects
-            .iter()
-            .filter(|(_, e)| *e)
-            .map(|(b, _)| *b)
-            .collect();
+        let exact: Vec<Bounds<Pixels>> =
+            rects.iter().filter(|(_, e)| *e).map(|(b, _)| *b).collect();
         let all: Vec<Bounds<Pixels>> = rects.iter().map(|(b, _)| *b).collect();
         let base = if exact.is_empty() { &all } else { &exact };
         let mut area = base[0];
@@ -845,7 +847,10 @@ impl Element for CellsClipped {
                 sh.color
             };
             let shifted = Bounds {
-                origin: gpui::point(area.origin.x + gpui::px(sh.x), area.origin.y + gpui::px(sh.y)),
+                origin: gpui::point(
+                    area.origin.x + gpui::px(sh.x),
+                    area.origin.y + gpui::px(sh.y),
+                ),
                 size: area.size,
             };
             if sh.blur > 0.0 {
@@ -955,9 +960,14 @@ pub fn edge_probe(
                     bounds.size.height - gpui::px(inset[0] + inset[2]),
                 ),
             };
-            edges
-                .borrow_mut()
-                .push(EdgeCell { bounds, widths, colors, styles, source, doc_ix });
+            edges.borrow_mut().push(EdgeCell {
+                bounds,
+                widths,
+                colors,
+                styles,
+                source,
+                doc_ix,
+            });
         },
         |_, _, _, _| {},
     )
@@ -1048,31 +1058,37 @@ impl Element for EdgePainter {
         for c in &cells {
             let bnd = c.bounds;
             let (x0, y0) = (f32::from(bnd.origin.x), f32::from(bnd.origin.y));
-            let (x1, y1) = (x0 + f32::from(bnd.size.width), y0 + f32::from(bnd.size.height));
+            let (x1, y1) = (
+                x0 + f32::from(bnd.size.width),
+                y0 + f32::from(bnd.size.height),
+            );
             let is_table = c.source == 0;
-            let mut side =
-                |list: &mut Vec<Cand>, line: f32, a: f32, b: f32, i: usize, out: i8| {
-                    if c.widths[i] > 0.0 || c.styles[i] == 1 {
-                        list.push(Cand {
-                            line,
-                            a,
-                            b,
-                            w: c.widths[i],
-                            style: c.styles[i],
-                            source: c.source,
-                            doc_ix: c.doc_ix,
-                            colour: c.colors[i],
-                            outward: if is_table { out } else { 0 },
-                        });
-                    }
-                };
+            let side = |list: &mut Vec<Cand>, line: f32, a: f32, b: f32, i: usize, out: i8| {
+                if c.widths[i] > 0.0 || c.styles[i] == 1 {
+                    list.push(Cand {
+                        line,
+                        a,
+                        b,
+                        w: c.widths[i],
+                        style: c.styles[i],
+                        source: c.source,
+                        doc_ix: c.doc_ix,
+                        colour: c.colors[i],
+                        outward: if is_table { out } else { 0 },
+                    });
+                }
+            };
             side(&mut horiz, y0, x0, x1, 0, -1);
             side(&mut vert, x1, y0, y1, 1, 1);
             side(&mut horiz, y1, x0, x1, 2, 1);
             side(&mut vert, x0, y0, y1, 3, -1);
         }
         let mut draw = |cands: &mut Vec<Cand>, vertical: bool| {
-            cands.sort_by(|p, q| p.line.partial_cmp(&q.line).unwrap_or(std::cmp::Ordering::Equal));
+            cands.sort_by(|p, q| {
+                p.line
+                    .partial_cmp(&q.line)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
             // Крайние линии таблицы: кромка не центрируется, а рисуется
             // внутрь бокса (наружная половина у браузеров уходит в поля,
             // эталоны считают рамку частью коробки).
@@ -1085,7 +1101,9 @@ impl Element for EdgePainter {
                     j += 1;
                 }
                 let group = &cands[i..j];
-                let outward = group.iter().find_map(|c| (c.outward != 0).then_some(c.outward));
+                let outward = group
+                    .iter()
+                    .find_map(|c| (c.outward != 0).then_some(c.outward));
                 let mut cuts: Vec<f32> = group.iter().flat_map(|c| [c.a, c.b]).collect();
                 cuts.sort_by(|p, q| p.partial_cmp(q).unwrap_or(std::cmp::Ordering::Equal));
                 cuts.dedup_by(|p, q| (*p - *q).abs() < 0.5);
@@ -1190,7 +1208,7 @@ thread_local! {
     /// Стек активных clamp-контейнеров при ПОСТРОЕНИИ дерева:
     /// (ключ, граница BFC уже пройдена).
     static CLAMP_STACK: std::cell::RefCell<Vec<(u64, bool)>> =
-        std::cell::RefCell::new(Vec::new());
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 pub fn clamp_lines_for(key: u64) -> ClampLines {
@@ -1259,9 +1277,12 @@ pub fn clamp_probe(
 ) -> AnyElement {
     gpui::canvas(
         move |bounds: Bounds<Pixels>, _, _| {
-            lines
-                .borrow_mut()
-                .push(ClampEntry { bounds, line, skip_count, fixed_height });
+            lines.borrow_mut().push(ClampEntry {
+                bounds,
+                line,
+                skip_count,
+                fixed_height,
+            });
         },
         |_, _, _, _| {},
     )
@@ -1288,7 +1309,12 @@ pub struct ClampCut {
 
 impl ClampCut {
     pub fn new(key: u64, lines: ClampLines, limit: Option<u32>, max_h: Option<f32>) -> Self {
-        ClampCut { key, lines, limit, max_h }
+        ClampCut {
+            key,
+            lines,
+            limit,
+            max_h,
+        }
     }
 }
 
@@ -1351,7 +1377,11 @@ impl Element for ClampCut {
                 let n = (h / e.line).round().max(1.0) as usize;
                 let step = h / n as f32;
                 for i in 0..n {
-                    rows.push((y0 + i as f32 * step, y0 + (i + 1) as f32 * step, !e.skip_count));
+                    rows.push((
+                        y0 + i as f32 * step,
+                        y0 + (i + 1) as f32 * step,
+                        !e.skip_count,
+                    ));
                 }
             } else if h > 0.0 {
                 blocks.push((y0, y0 + h, e.fixed_height));
@@ -1400,10 +1430,20 @@ impl Element for ClampCut {
             cut = Some(c2);
         }
         let rel = cut.map(|c| (c - top).max(0.0));
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_CLAMP_DBG").is_ok()); *ON } {
+        let res = {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("HTML_CLAMP_DBG").is_ok());
+            *ON
+        };
+        if res {
             eprintln!(
                 "CLAMPCUT key={} rows={} blocks={} limit={:?} max_h={:?} rel={:?}",
-                self.key, rows.len(), blocks.len(), self.limit, self.max_h, rel
+                self.key,
+                rows.len(),
+                blocks.len(),
+                self.limit,
+                self.max_h,
+                rel
             );
         }
         // Гистерезис: мелкие колебания точки (обрезка двигает схлопнутые
@@ -1540,14 +1580,19 @@ impl Element for CombinedUpright {
             .as_mut()
             .unwrap()
             .layout_as_root(space, window, cx);
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok()); *ON } {
+        let res = {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
+            *ON
+        };
+        if res {
             eprintln!("VT natural={:?}", self.natural);
         }
         let mut style = gpui::Style::default();
         let side = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(px(self.em)),
         ));
-        style.size.width = side.clone();
+        style.size.width = side;
         style.size.height = side;
         (window.request_layout(style, [], cx), ())
     }
@@ -1580,14 +1625,12 @@ impl Element for CombinedUpright {
         let cx_ = bounds.origin.x + bounds.size.width / 2.0;
         let cy_ = bounds.origin.y + bounds.size.height / 2.0;
         // Ужатие по строчной оси содержимого: длиннее кегля — в кегль.
-        let sx = if self.compress
-            && self.natural.width > px(self.em)
-            && self.natural.width > px(0.0)
-        {
-            self.em / f32::from(self.natural.width)
-        } else {
-            1.0
-        };
+        let sx =
+            if self.compress && self.natural.width > px(self.em) && self.natural.width > px(0.0) {
+                self.em / f32::from(self.natural.width)
+            } else {
+                1.0
+            };
         // Сначала ужатие от угла куска (кусок 2-4 кегля превращается в
         // квадрат кегля), затем контр-поворот вокруг центра квадрата —
         // квадрат переходит в себя. Порядок звеньев подобран ЗАМЕРОМ:
@@ -1595,7 +1638,10 @@ impl Element for CombinedUpright {
         let matrix = gpui::TransformationMatrix::unit()
             .translate(gpui::point(dev(bounds.origin.x), dev(bounds.origin.y)))
             .scale(gpui::size(sx, 1.0))
-            .translate(gpui::point(dev(bounds.origin.x) * -1.0, dev(bounds.origin.y) * -1.0))
+            .translate(gpui::point(
+                dev(bounds.origin.x) * -1.0,
+                dev(bounds.origin.y) * -1.0,
+            ))
             .translate(gpui::point(dev(cx_), dev(cy_)))
             .rotate(gpui::Radians(-std::f32::consts::FRAC_PI_2))
             .translate(gpui::point(dev(cx_) * -1.0, dev(cy_) * -1.0));
@@ -1744,7 +1790,12 @@ impl Element for VerticalText {
         // строк, его меньше не сделать. А высота — длина строки, и её решает
         // родитель: заявленная здесь, она делала коробку сколь угодно длинной,
         // ограничение до текста не доходило, и он не переносился никогда.
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok()); *ON } {
+        let res = {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
+            *ON
+        };
+        if res {
             eprintln!("VT2 natural={:?} cap={:?}", self.natural, self.claim_cap);
         }
         // Факт прошлого кадра сильнее свободного замера: перенос строк при
@@ -1754,7 +1805,12 @@ impl Element for VerticalText {
             .key
             .and_then(|k| VT_MEASURED.with(|c| c.borrow().get(&k).copied()))
             .unwrap_or(self.natural.height);
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok()); *ON } {
+        let res = {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
+            *ON
+        };
+        if res {
             eprintln!("VT3 key={:?} claim={:?}", self.key, claim);
         }
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
@@ -2075,7 +2131,10 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
             .w_0()
             .h_0()
             .flex_shrink_0()
-            .child(LatePlace { child: Some(child), spot })
+            .child(LatePlace {
+                child: Some(child),
+                spot,
+            })
             .into_any_element();
     }
     let mut wrap = if vertical_flow {
@@ -2099,10 +2158,10 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
         wrap.justify_start()
     };
     wrap.child(LatePlace {
-            child: Some(child),
-            spot,
-        })
-        .into_any_element()
+        child: Some(child),
+        spot,
+    })
+    .into_any_element()
 }
 
 pub struct LatePlace {
@@ -2150,10 +2209,7 @@ impl Element for LatePlace {
             // ставит распорка ряда), поэтому правится только та ось, вдоль
             // которой идут строки.
             (Some(hole), Some(line)) if now.vertical && now.vertical_rl => {
-                gpui::point(
-                    hole.origin.x - px(line) - bounds.origin.x,
-                    px(0.0),
-                )
+                gpui::point(hole.origin.x - px(line) - bounds.origin.x, px(0.0))
             }
             (Some(hole), Some(line)) if now.vertical => {
                 gpui::point(hole.origin.x + px(line) - bounds.origin.x, px(0.0))
@@ -2216,5 +2272,3 @@ impl IntoElement for LatePlace {
         self
     }
 }
-
-

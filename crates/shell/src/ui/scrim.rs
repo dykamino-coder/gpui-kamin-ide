@@ -34,10 +34,10 @@ fn scrim(dark_a: f32, light_a: f32) -> gpui::Rgba {
     }
 }
 
-/// `--overlay-soft` — токен для списочных оверлеев. ВНИМАНИЕ: QuickOpen,
-/// Find in Files и Workspace Symbols токеном НЕ пользуются — у них в CSS
-/// литерал `rgba(0, 0, 0, 0.35)` в обеих темах (`QuickOpen.module.css:9`,
-/// `FindInFiles.module.css:9`), для них есть `soft_literal()`.
+// `--overlay-soft` — токен для списочных оверлеев. ВНИМАНИЕ: QuickOpen,
+// Find in Files и Workspace Symbols токеном НЕ пользуются — у них в CSS
+// литерал `rgba(0, 0, 0, 0.35)` в обеих темах (`QuickOpen.module.css:9`,
+// `FindInFiles.module.css:9`), для них есть `soft_literal()`.
 
 /// Литеральный `rgba(0, 0, 0, 0.35)` — ровно как в CSS этих трёх оверлеев
 /// (ревью ц.14: тем-зависимая подмена осветлила их в светлой теме вдвое).

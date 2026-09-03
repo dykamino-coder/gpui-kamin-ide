@@ -51,10 +51,15 @@ pub fn load(src: &str) -> Option<Arc<RenderImage>> {
 #[derive(Clone)]
 pub enum Source {
     Raster(Arc<RenderImage>),
-    Vector { markup: String, size: Intrinsic },
+    Vector {
+        markup: String,
+        size: Intrinsic,
+    },
     /// Градиент: своей величины НЕТ вовсе (css-images-3 §4.4) — обе оси
     /// берутся от области, а растрируется он точно в размер плитки.
-    Gradient { raw: String },
+    Gradient {
+        raw: String,
+    },
 }
 
 impl Source {
@@ -159,8 +164,12 @@ fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
     for name in ["width", "height"] {
         while let Some(at) = head.find(&format!("{name}=")) {
             let rest = &head[at + name.len() + 1..];
-            let Some(quote) = rest.chars().next() else { break };
-            let Some(end) = rest[1..].find(quote) else { break };
+            let Some(quote) = rest.chars().next() else {
+                break;
+            };
+            let Some(end) = rest[1..].find(quote) else {
+                break;
+            };
             head.replace_range(at..at + name.len() + 2 + end + 1, "");
         }
     }
@@ -210,7 +219,10 @@ fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
             let Some(colour) = words.first().and_then(|w| crate::value::Color::parse(w)) else {
                 continue;
             };
-            let angles: Vec<f32> = words[1..].iter().filter_map(|w| angle_fraction(w)).collect();
+            let angles: Vec<f32> = words[1..]
+                .iter()
+                .filter_map(|w| angle_fraction(w))
+                .collect();
             if angles.is_empty() {
                 raw.push((colour, None));
             }
@@ -293,9 +305,7 @@ fn angle_fraction(token: &str) -> Option<f32> {
 /// Расставить позиции стопов по правилам css-images: крайние без позиции — на
 /// края, промежуточные — поровну между соседями с позициями, и позиции не
 /// убывают.
-fn place_stops(
-    raw: Vec<(crate::value::Color, Option<f32>)>,
-) -> Vec<(crate::value::Color, f32)> {
+fn place_stops(raw: Vec<(crate::value::Color, Option<f32>)>) -> Vec<(crate::value::Color, f32)> {
     let last = raw.len() - 1;
     let mut out: Vec<(crate::value::Color, f32)> = Vec::with_capacity(raw.len());
     let mut floor = 0.0f32;
@@ -326,7 +336,12 @@ fn place_stops(
 /// Цвет градиента в точке `t` (0..1) по расставленным стопам.
 fn colour_at(stops: &[(crate::value::Color, f32)], t: f32) -> crate::value::Color {
     let Some(first) = stops.first() else {
-        return crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+        return crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.0,
+        };
     };
     if t <= first.1 {
         return first.0;
@@ -334,7 +349,11 @@ fn colour_at(stops: &[(crate::value::Color, f32)], t: f32) -> crate::value::Colo
     for pair in stops.windows(2) {
         let (a, b) = (&pair[0], &pair[1]);
         if t >= a.1 && t <= b.1 {
-            let k = if b.1 > a.1 { (t - a.1) / (b.1 - a.1) } else { 1.0 };
+            let k = if b.1 > a.1 {
+                (t - a.1) / (b.1 - a.1)
+            } else {
+                1.0
+            };
             return crate::value::Color {
                 r: a.0.r + (b.0.r - a.0.r) * k,
                 g: a.0.g + (b.0.g - a.0.g) * k,
@@ -385,7 +404,12 @@ fn decode(bytes: &[u8]) -> Option<Source> {
 /// Нулевая ось `viewBox`: соотношение вырождено, рисовать нечего.
 fn degenerate_viewbox(markup: &str) -> bool {
     let head = match markup.find("<svg") {
-        Some(at) => &markup[at..markup[at..].find('>').map(|e| at + e).unwrap_or(markup.len())],
+        Some(at) => {
+            &markup[at..markup[at..]
+                .find('>')
+                .map(|e| at + e)
+                .unwrap_or(markup.len())]
+        }
         None => return false,
     };
     let Some(at) = head.find("viewBox=") else {
@@ -408,7 +432,12 @@ fn degenerate_viewbox(markup: &str) -> bool {
 
 fn svg_size(markup: &str) -> Intrinsic {
     let head = match markup.find("<svg") {
-        Some(at) => &markup[at..markup[at..].find('>').map(|e| at + e).unwrap_or(markup.len())],
+        Some(at) => {
+            &markup[at..markup[at..]
+                .find('>')
+                .map(|e| at + e)
+                .unwrap_or(markup.len())]
+        }
         None => markup,
     };
     let raw = |name: &str| -> Option<&str> {
@@ -424,7 +453,10 @@ fn svg_size(markup: &str) -> Intrinsic {
         if v.ends_with('%') {
             return None;
         }
-        v.trim_end_matches("px").parse().ok().filter(|n: &f32| *n > 0.0)
+        v.trim_end_matches("px")
+            .parse()
+            .ok()
+            .filter(|n: &f32| *n > 0.0)
     };
     let ratio = raw("viewBox").and_then(|vb| {
         let nums: Vec<f32> = vb
@@ -468,7 +500,8 @@ fn percent_decode(text: &str) -> Vec<u8> {
     while i < bytes.len() {
         if bytes[i] == b'%'
             && i + 2 < bytes.len()
-            && let Ok(v) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+            && let Ok(v) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
         {
             out.push(v);
             i += 3;
@@ -550,9 +583,9 @@ fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
     let (bw, bh) = box_size;
     // Соотношение для растяжений: своё, иначе — из умолчального размера.
     let auto = default_size(i, box_size);
-    let ratio = i.ratio.unwrap_or_else(|| {
-        if auto.1 > 0.0 { auto.0 / auto.1 } else { 1.0 }
-    });
+    let ratio = i
+        .ratio
+        .unwrap_or_else(|| if auto.1 > 0.0 { auto.0 / auto.1 } else { 1.0 });
     match size {
         BgSize::Auto => auto,
         // Без своего соотношения картинка растягивается на место под фон
@@ -639,7 +672,9 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
 /// области ряда, но обрезается прямоугольниками ячеек — вызывающий ставит
 /// маску сам и зовёт отрисовку с областью ряда.
 pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Window) {
-    let Some(src) = c.bg_image.clone() else { return };
+    let Some(src) = c.bg_image.clone() else {
+        return;
+    };
     let size = c.bg_size;
     let pos = c.bg_pos;
     let repeat = c.bg_repeat.unwrap_or(BgRepeat::Repeat);
@@ -675,7 +710,10 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
     let Some(found) = source(&src) else { return };
     // Место под фон: свой край по `background-origin`.
     let bounds = Bounds {
-        origin: gpui::point(bounds.origin.x + px(inset[3]), bounds.origin.y + px(inset[0])),
+        origin: gpui::point(
+            bounds.origin.x + px(inset[3]),
+            bounds.origin.y + px(inset[0]),
+        ),
         size: gpui::size(
             bounds.size.width - px(inset[1] + inset[3]),
             bounds.size.height - px(inset[0] + inset[2]),
@@ -722,10 +760,19 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
     if std::env::var("HTML_BG").is_ok() {
         eprintln!(
             "BG box=({:.0},{:.0}) tile=({:.0},{:.0}) start=({:.0},{:.0}) xs={} ys={}",
-            box_size.0, box_size.1, tile.0, tile.1, start.0, start.1, xs.len(), ys.len()
+            box_size.0,
+            box_size.1,
+            tile.0,
+            tile.1,
+            start.0,
+            start.1,
+            xs.len(),
+            ys.len()
         );
     }
-    let Some(image) = found.raster(tile) else { return };
+    let Some(image) = found.raster(tile) else {
+        return;
+    };
     let corners = gpui::Corners::all(px(radius));
     window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
         for y in &ys {
@@ -774,9 +821,7 @@ fn tiling(mode: Tiling, start: f32, tile: f32, box_len: f32) -> Vec<f32> {
             }
             let count = fit.min(max);
             let gap = (box_len - count * tile) / (count - 1.0);
-            (0..count as u32)
-                .map(|i| i as f32 * (tile + gap))
-                .collect()
+            (0..count as u32).map(|i| i as f32 * (tile + gap)).collect()
         }
         // `round` уже подогнал размер плитки — дальше это обычная кладка.
         Tiling::Repeat | Tiling::Round => {

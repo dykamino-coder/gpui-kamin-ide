@@ -148,7 +148,7 @@ cef::wrap_request_handler! {
             kamin_crash::note_renderer_termination(&self.id, &status, error_code);
             super::diag::renderer_died();
             if let Some(browser) = browser
-                && let Some(mut frame) = browser.main_frame()
+                && let Some(frame) = browser.main_frame()
             {
                 use cef::ImplFrame as _;
                 let url = CefStringUtf16::from(&frame.url());

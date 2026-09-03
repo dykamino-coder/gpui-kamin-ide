@@ -13,6 +13,20 @@
 //! `z-index`, переходы и анимации — не переносятся, потому что примитивов под
 //! них в GPUI нет.
 
+// Стилевые lint'ы clippy, которые в движке вёрстки дают только шум: длинные
+// сигнатуры и типы отражают CSS-модель, индексные циклы идут по нескольким
+// массивам сразу, а `Default` + присваивания читаются как таблица свойств.
+// Корректностные lint'ы остаются включёнными и держатся под `-D warnings`.
+#![allow(
+    clippy::type_complexity,
+    clippy::field_reassign_with_default,
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::needless_range_loop,
+    clippy::manual_clamp,
+    clippy::nonminimal_bool,
+    clippy::redundant_guards
+)]
 pub mod apply;
 pub mod background;
 pub mod border_image;

@@ -490,9 +490,9 @@ pub fn dead_fields() -> Vec<String> {
         .filter(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
         .filter(|f| !CONSUMERS.iter().any(|src| reads_field(src, f)))
         .filter(|f| {
-            !ACCESSORS.iter().any(|(field, call)| {
-                field == f && CONSUMERS.iter().any(|src| src.contains(call))
-            })
+            !ACCESSORS
+                .iter()
+                .any(|(field, call)| field == f && CONSUMERS.iter().any(|src| src.contains(call)))
         })
         .collect()
 }
