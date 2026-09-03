@@ -964,18 +964,11 @@ fn apply_displacement_map(
     input2: Image,
 ) -> Result<Image, Error> {
     let pixmap1 = input1.into_color_space(cs)?.take()?;
-    // KaminIDE patch: карта смещения обязана быть unpremultiplied
-    // (контракт displacement_map::apply) — как у соседних примитивов.
-    let mut pixmap2 = input2.into_color_space(cs)?.take()?;
-    demultiply_alpha(pixmap2.data_mut().as_rgba_mut());
+    let pixmap2 = input2.into_color_space(cs)?.take()?;
 
     let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
 
-    // KaminIDE patch: scale_coordinates уже умножает на масштаб холста, а
-    // displacement_map::apply домножает на fe.scale() сам — передача
-    // fe.scale() сюда удваивала множитель, смещение всегда улетало за
-    // регион, и выход примитива был пустым (все tainting-* WPT).
-    let (sx, sy) = match scale_coordinates(1.0, 1.0, ts) {
+    let (sx, sy) = match scale_coordinates(fe.scale(), fe.scale(), ts) {
         Some(v) => v,
         None => return Ok(Image::from_image(pixmap1, cs)),
     };

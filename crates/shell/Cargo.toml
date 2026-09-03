@@ -19,8 +19,8 @@ cef = { version = "150", default-features = false }
 # Кадр CEF заворачиваем в RenderImage gpui — тип кадра берём из image той же версии.
 image = { version = "0.25", default-features = false }
 # Пре-декод SVG-иконок дерева (icon_raster) — та же версия, что в vendored gpui.
-resvg = { version = "0.45.0", default-features = false }
-usvg = { version = "0.45.0", default-features = false }
+resvg = { version = "0.48.0", default-features = false }
+usvg = { version = "0.48.0", default-features = false }
 lsp-types = { version = "0.97.0", features = ["proposed"] }
 gpui.workspace = true
 gpui-component.workspace = true
@@ -36,7 +36,7 @@ kamin-metrics.workspace = true
 kamin-theme.workspace = true
 kamin-probe = { workspace = true, optional = true }
 # data:-иконки расширений (`isImageIcon`)
-base64 = "0.22.1"
+base64 = "0.23.1"
 # radial-bg бейк + probe-скриншоты
 png = "0.18"
 # window_handle() для wry build_as_child (вебвью-оверлей)

@@ -331,7 +331,7 @@ version = "0.2.2"
 package = "gpui_refineable"
 
 [dependencies.resvg]
-version = "0.45.0"
+version = "0.48.0"
 features = [
     "text",
     "system-fonts",
@@ -392,7 +392,7 @@ version = "=0.9.0"
 version = "2.0.12"
 
 [dependencies.usvg]
-version = "0.45.0"
+version = "0.48.0"
 default-features = false
 
 [dependencies.unicode-linebreak]
