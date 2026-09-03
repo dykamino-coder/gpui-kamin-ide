@@ -1049,12 +1049,21 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // его на одну строку вместо всей коробки родителя. На этом стоит
             // приём эталонов WPT: `::after` с `content: ""` и `inset: 0`
             // накрывает красное зелёным (`overflow-wrap-anywhere-001`).
+            // Только когда заданы ОБЕ оси: у коробки с одним краем свободная
+            // ось остаётся статической, а статическая позиция строчного — в
+            // строке, не в блочном потоке. Такую коробку ведёт щуп в
+            // `atom_element` (`x_set != y_set`).
             Node::Element(e)
                 if matches!(
                     e.style.position,
                     Some(crate::computed::Position::Absolute)
                         | Some(crate::computed::Position::Fixed)
                 ) && !at_static_position(&e.style)
+                    && {
+                        let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
+                        (edge(e.style.inset.left) || edge(e.style.inset.right))
+                            && (edge(e.style.inset.top) || edge(e.style.inset.bottom))
+                    }
                     // Поле формы и заменяемый элемент строит СВОЙ путь
                     // (`forms::element`, картинка), и краями он распоряжается
                     // сам. Выведенный из строки, он терял свою коробку —
@@ -1764,6 +1773,21 @@ fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Ve
         }
         if !in_flow(&ch.style) {
             continue;
+        }
+        // Элемент СЕТКИ с невытягивающим выравниванием: по строчной оси
+        // (у него вертикальной) он размером в содержимое, а не в область
+        // (css-grid-1 §6.6 вместе с css-align-3 §6.1 — `stretch` растягивает,
+        // остальное нет). Пока вертикальный абзац брал весь предел
+        // ортогонального потока, эталоны `orthogonal-positioned-grid-items-*`
+        // (`place-items: start`) вылезали за сетку на всю высоту окна.
+        if matches!(
+            container.display,
+            Some(Display::Grid) | Some(Display::InlineGrid)
+        ) && matches!(
+            ch.style.align_self.or(container.align_items),
+            Some(Align::Start) | Some(Align::Center) | Some(Align::End) | Some(Align::Baseline)
+        ) {
+            ch.style.hug_inline = true;
         }
         // Корень с vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
         // flow). Прижим самим стилем корня (align-self) — контейнеры-колонки
@@ -4639,7 +4663,8 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         let free_inline = (matches!(
             inherited.position,
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
-        ) || inherited.abs_static)
+        ) || inherited.abs_static
+            || inherited.hug_inline)
             && !matches!(inherited.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
             && !(edge(inherited.inset.top) && edge(inherited.inset.bottom));
         let inner = if free_inline {
@@ -5497,6 +5522,37 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             // вовсе. Тот же приём, что у блочного пути (`to_icb`).
             let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
             let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
+            // РОВНО ОДНА заданная ось: по ней коробку ставит край, по
+            // свободной — статическая позиция в строке (§10.3.7 п.1/§10.6.4
+            // п.1, оси независимы). Прежде такая коробка сидела в нулевом
+            // держателе, стоявшем в статической точке по ОБЕИМ осям, и край
+            // ПРИБАВЛЯЛСЯ к статической координате вместо того, чтобы её
+            // заменить (`probe/svpf.html`: `left: 80` после «34» давало 240,
+            // а не 80). Щуп в строке отдаёт дырку, `LatePlace` обнуляет сдвиг
+            // по заданной оси и ставит свободную в дырку — ровно как у коробки
+            // без краёв, только с `fixed_axes`.
+            if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {
+                let spot: crate::interact::SpotCell = Default::default();
+                spot.set(crate::interact::Spot {
+                    hole: None,
+                    next_line: None,
+                    fixed_axes: (x_set, y_set),
+                    rtl: inherited.rtl == Some(true),
+                    vertical: inherited.vertical == Some(true),
+                    vertical_rl: inherited.vertical_rl == Some(true),
+                    own_vertical: e.style.vertical == Some(true),
+                    ..Default::default()
+                });
+                let probe = crate::interact::spot_probe(spot.clone(), false);
+                return match crate::interact::late_push(spot, holder.into_any_element()) {
+                    None => Some(probe),
+                    Some(kept) => {
+                        let mut hole = div().relative().w_0().h_0().flex_shrink_0();
+                        hole.style().align_self = Some(gpui::AlignItems::FlexStart);
+                        Some(hole.child(kept).into_any_element())
+                    }
+                };
+            }
             if x_set
                 && y_set
                 && e.style.z_index.unwrap_or(0) >= 0
