@@ -206,9 +206,13 @@ pub fn collect(
                 // Рамка строчной коробки рисуется прогоном: и ровная, и
                 // с РАЗНЫМИ гранями (у прогона теперь пооосевые ширины) —
                 // коробка рвала перенос, и span с рамкой уезжал столбиком.
-                if let Some((color, width)) = uniform_border(&e.style) {
+                let font_px = match merged.font_size {
+                    Some(Len::Px(v)) => v,
+                    _ => 16.0,
+                };
+                if let Some((color, width)) = uniform_border(&e.style, font_px) {
                     merged.inline_border = Some((color, [width; 4]));
-                } else if let Some(sided) = sided_border(&e.style) {
+                } else if let Some(sided) = sided_border(&e.style, font_px) {
                     merged.inline_border = Some(sided);
                 }
                 // Контур строчного куска рисует тот же прогон: коробки у
@@ -604,6 +608,13 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.cb_rtl = parent.rtl == Some(true);
+    // Относительный сдвиг строчного предка КОПИТСЯ вниз (§9.4.3: сдвиг несёт
+    // с собой всё содержимое коробки). Куски вне потока его получали
+    // (`shift_overlays`), а вложенные куски самой строки — нет: сдвиг
+    // родителя терялся на первом же слиянии стилей.
+    if c.rel_shift.is_none() {
+        c.rel_shift = parent.rel_shift;
+    }
     // §10.5: доля высоты считается только от ОПРЕДЕЛЁННОЙ высоты содержащего
     // блока. Определена она у корня (его блок — начальный), при высоте
     // родителя в точках, при доле от определённого деда и у абсолютной
@@ -1660,13 +1671,37 @@ fn margin_spacer_style(merged: &Computed, inherited: &Computed, advance: f32) ->
 /// Рамка с РАЗНЫМИ гранями, выражаемая прогоном: все заданные стороны в
 /// точках и ЕДИНЫЙ цвет (или цвет текста). Возврат — [верх, право, низ,
 /// лево]; незаданные стороны нулевые.
-pub fn sided_border(c: &Computed) -> Option<(Color, [f32; 4])> {
-    let w = c.borders();
-    let px_of = |l: Option<Len>| match l {
+/// Толщина грани строчной рамки в точках.
+///
+/// Шрифтовые единицы разрешаются по СВОЕМУ кеглю — тем же `spacing_px`, каким
+/// уже считаются боковые поля и отступы строчной коробки (`inline_sides`).
+/// Прежде сюда пускались только `Len::Px`, и `border-left: 0.2em` — самая
+/// обычная запись — уводила `<span>` из прогона текста в настоящую коробку:
+/// она садится в строку атомом и растит строку на спуск шрифта. По
+/// css-backgrounds-3 §4.1 `<line-width>` — это `<length [0,∞]>` любых единиц,
+/// сужения до точек спека не даёт.
+fn border_px(l: Option<Len>, c: &Computed, font_px: f32) -> Option<f32> {
+    match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(v),
+        Some(u @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
+            // Кегль берётся у ВЫЗЫВАЮЩЕГО: сюда приходит собственный стиль
+            // элемента, а `font-size` у `<span>` чаще всего не объявлен —
+            // единицы считаются по слитому кеглю строки.
+            let size = match c.font_size {
+                Some(Len::Px(v)) => v,
+                _ => font_px,
+            };
+            let family = c.font_family.clone().unwrap_or_default();
+            Some(crate::metrics::spacing_px(Some(u), &family, size))
+        }
         _ => None,
-    };
+    }
+}
+
+pub fn sided_border(c: &Computed, font_px: f32) -> Option<(Color, [f32; 4])> {
+    let w = c.borders();
+    let px_of = |l: Option<Len>| border_px(l, c, font_px);
     let sides = [
         px_of(w.top)?,
         px_of(w.right)?,
@@ -1716,12 +1751,12 @@ pub fn sided_border(c: &Computed) -> Option<(Color, [f32; 4])> {
     Some((color?, sides))
 }
 
-pub fn uniform_border(c: &Computed) -> Option<(Color, f32)> {
+pub fn uniform_border(c: &Computed, font_px: f32) -> Option<(Color, f32)> {
     let w = c.borders();
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    // Здесь незаданная грань — НЕ ноль: ровной рамке нужны все четыре, и
+    // `None` обязан рушить сведение (иначе `border-left` в одиночку сошёл бы
+    // за ровную рамку по всем сторонам).
+    let px_of = |l: Option<Len>| l.and_then(|v| border_px(Some(v), c, font_px));
     let (t, r, b, l) = (
         px_of(w.top)?,
         px_of(w.right)?,

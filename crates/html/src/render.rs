@@ -5615,7 +5615,14 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         }),
         // Свой бокс (фон, рамка, отступы) означает, что кусок не может быть
         // прогоном текста: прогон не умеет рисовать вокруг себя рамку.
-        _ if has_own_box(&e.style) => {
+        _ if has_own_box(
+            &e.style,
+            match inherited.font_size {
+                Some(Len::Px(v)) => v,
+                _ => 16.0,
+            },
+        ) =>
+        {
             let merged = inline::inherit(inherited, &e.style);
             let mut box_ = styled_div_with(e, &merged);
             // Строчная коробка БЕЗ содержимого всё равно высотой в строку:
@@ -5892,7 +5899,7 @@ fn edge_set(l: Option<Len>) -> bool {
 /// боковая рамка, тень, прозрачность и три угла из четырёх у `<span>` молча
 /// пропадали. У настоящего `display: inline` размеры не проверяются: CSS их
 /// такому элементу и не даёт.
-fn has_own_box(c: &Computed) -> bool {
+fn has_own_box(c: &Computed, font_px: f32) -> bool {
     // Нулевая величина коробки не создаёт: `padding: 0` и `border: 0` пишут
     // в стиль ноль, и по одному лишь «задано» кусок вынимался из строки —
     // а вынутый кусок рвёт соединение букв и общий перенос по словам.
@@ -5967,7 +5974,8 @@ fn has_own_box(c: &Computed) -> bool {
     // и рамка внутрь вместо наружу. Возвращаться вместе с ней.
     let inline_level = c.display.is_none();
     if inline_level
-        && (crate::inline::uniform_border(c).is_some() || crate::inline::sided_border(c).is_some())
+        && (crate::inline::uniform_border(c, font_px).is_some()
+            || crate::inline::sided_border(c, font_px).is_some())
     {
         return false;
     }
