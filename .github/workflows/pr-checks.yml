@@ -241,6 +241,23 @@ jobs:
 
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # crates/html tests read the html5lib and WPT parsing corpora from
+      # vendor/ (gitignored locally). Pinned to the commits the local runs use.
+      - name: Fetch the html5lib and WPT parsing corpora
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q --depth 1 https://github.com/html5lib/html5lib-tests.git vendor/html5lib-tests
+          git -C vendor/html5lib-tests fetch -q --depth 1 origin 224991ec10db04f056a89eed8b0bd8695fd2950e
+          git -C vendor/html5lib-tests checkout -q 224991ec10db04f056a89eed8b0bd8695fd2950e
+          git clone -q --depth 1 --filter=blob:none --sparse https://github.com/web-platform-tests/wpt.git vendor/wpt-parsing
+          git -C vendor/wpt-parsing sparse-checkout set html/syntax/parsing/resources
+          git -C vendor/wpt-parsing fetch -q --depth 1 origin 6371636b3e1c45c8c5f4d83df0026ea591204638
+          git -C vendor/wpt-parsing checkout -q 6371636b3e1c45c8c5f4d83df0026ea591204638
+          ls vendor/html5lib-tests/tokenizer vendor/html5lib-tests/encoding vendor/wpt-parsing/html/syntax/parsing/resources > /dev/null
+          echo "html5lib-tests $(git -C vendor/html5lib-tests rev-parse --short HEAD), wpt $(git -C vendor/wpt-parsing rev-parse --short HEAD)"
+
       - run: cargo test --workspace
       - run: python scripts/check_event_routing.py
 
