@@ -15,3 +15,8 @@ sanitized symptom, проверенные факты, status, acceptance и priv
 
 Существующие BR-карточки пока остаются в `RUNTIME_RELIABILITY.md`; их не нужно
 механически переписывать для начала нового flow.
+
+Каждая незакрытая карточка `INC-*` со статусом `reported`, `confirmed` или
+`investigation` обязана иметь строку в очереди incidents
+`../RUNTIME_EXECUTION.md` либо входить в его текущую пачку. Иначе evidence
+сохранено, но maintainer backlog-run не обязан начать исследование.

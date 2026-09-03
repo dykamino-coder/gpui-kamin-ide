@@ -1,9 +1,9 @@
 # Исполняемый реестр Claude Bridge runtime
 
 Этот файл отвечает только за маршрутизацию работ из
-[`RUNTIME_RELIABILITY.md`](RUNTIME_RELIABILITY.md). Подробные факты, причины,
-ограничения и acceptance каждой BR-задачи остаются в исходном разделе и здесь
-не дублируются.
+[`RUNTIME_RELIABILITY.md`](RUNTIME_RELIABILITY.md) и отдельных карточек
+[`runtime-issues/INC-*.md`](runtime-issues/). Подробные факты, причины,
+ограничения и acceptance остаются в исходных карточках и здесь не дублируются.
 
 ## Значения полей
 
@@ -91,6 +91,16 @@ Diagnostic-only результаты сами по себе release не выз�
 | [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | waiting | change | native sidebar | BR-28 | Текущая пачка: atomic rename transition |
 | [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation) | ready | change | diagnostics | none | Текущая пачка: record-aware writer PR |
 
+## Очередь отдельных incidents
+
+Карточка `INC-*` со статусом `reported`, `confirmed` или `investigation` обязана
+находиться в этой таблице либо в текущей пачке. Наличие только файла в
+`runtime-issues/` не считается планированием работы.
+
+| ID | State | Result | Track | Строгий prerequisite | Следующий artifact |
+| --- | --- | --- | --- | --- | --- |
+| [INC-2026-0001](runtime-issues/INC-2026-0001.md) | ready | research | CEF performance | none | Planned batch C: source audit private evidence + bounded Windows measurement; затем отдельный Fix PR либо точный needs-evidence outcome |
+
 ## Декомпозиция BR-21
 
 BR-21 не является одним Change/Fix PR. Первый decision PR утверждает значения
@@ -112,8 +122,8 @@ JSONL analytics.
 Они не являются частью текущего snapshot и не запускаются автоматически:
 
 - **B — independent fixes:** BR-19 → BR-17 → BR-20 → BR-23 → BR-04 → BR-14;
-- **C — contracts and diagnostics:** BR-21 decision, BR-24 diagnostics, BR-11,
-  BR-12, BR-08, BR-06 и BR-02;
+- **C — contracts and diagnostics:** INC-2026-0001, BR-21 decision, BR-24
+  diagnostics, BR-11, BR-12, BR-08, BR-06 и BR-02;
 - **conditional:** BR-21A–E, BR-07, BR-15, BR-16, BR-03 и любой child из
   BR-22/BR-24/BR-28 только после их prerequisites;
 - **owner-blocked:** BR-13 и BR-22 evidence collection.
