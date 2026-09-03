@@ -30,7 +30,10 @@ use gpui::{
 /// Кусок инлайн-содержимого: либо текст со своим стилем, либо готовый элемент
 /// (картинка, кнопка — то, что текстом не является).
 pub enum Piece {
-    Text { text: String, style: Computed },
+    Text {
+        text: String,
+        style: Computed,
+    },
     Atom(AnyElement),
     /// Элемент ВНЕ потока строки: места не занимает, но рисуется там, где
     /// стоит в тексте (абсолютный элемент на статической позиции). В отличие
@@ -190,7 +193,10 @@ pub fn collect(
                 // Относительный сдвиг строчного куска несёт и его потомков вне
                 // потока: абсолютный элемент внутри `position: relative`
                 // спана стоит от СДВИНУТОГО места (`static-position/htb-*`).
-                out.extend(shift_overlays(collect(&e.children, &merged, atom), &e.style));
+                out.extend(shift_overlays(
+                    collect(&e.children, &merged, atom),
+                    &e.style,
+                ));
                 if let Some(mark) = close {
                     out.push(Piece::Text {
                         text: mark.to_string(),
@@ -449,10 +455,10 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // Кегль НОЛЬ вешает набор намертво (DirectWrite-цикл: `font: 0 Ahem` из
     // vars-font-shorthand-001 замораживал страницу навсегда) — клэмп к
     // микроскопическому: визуально то же «ничего», формулы живы.
-    if let Some(Len::Px(v)) = c.font_size {
-        if v <= 0.0 {
-            c.font_size = Some(Len::Px(0.01));
-        }
+    if let Some(Len::Px(v)) = c.font_size
+        && v <= 0.0
+    {
+        c.font_size = Some(Len::Px(0.01));
     }
     c.font_weight = own.font_weight.or(parent.font_weight);
     c.italic = own.italic.or(parent.italic);
@@ -586,10 +592,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             .iter()
             .any(|w| !matches!(w, None | Some(Len::Px(0.0))))
     };
-    if has_border
-        && c.border_color.is_none()
-        && c.border_colors.iter().all(Option::is_none)
-    {
+    if has_border && c.border_color.is_none() && c.border_colors.iter().all(Option::is_none) {
         c.border_color = c.color.or(Some(Color {
             r: 0.0,
             g: 0.0,
@@ -888,7 +891,10 @@ pub fn wrap_spans(
 ///
 /// `vertical-align: super`/`sub` поднимает и опускает кусок внутри строки.
 /// Доля кегля взята браузерная: треть вверх и пятая часть вниз.
-pub fn shift_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
+pub fn shift_spans(
+    pieces: &[Piece],
+    base_size: f32,
+) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     let mut at = 0usize;
     for p in pieces {
@@ -1088,7 +1094,12 @@ pub fn sided_border(c: &Computed) -> Option<(Color, [f32; 4])> {
         Some(Len::Px(v)) => Some(v),
         _ => None,
     };
-    let sides = [px_of(w.top)?, px_of(w.right)?, px_of(w.bottom)?, px_of(w.left)?];
+    let sides = [
+        px_of(w.top)?,
+        px_of(w.right)?,
+        px_of(w.bottom)?,
+        px_of(w.left)?,
+    ];
     if !sides.iter().any(|v| *v > 0.0) {
         return None;
     }
@@ -1115,7 +1126,12 @@ pub fn uniform_border(c: &Computed) -> Option<(Color, f32)> {
         Some(Len::Px(v)) => Some(v),
         _ => None,
     };
-    let (t, r, b, l) = (px_of(w.top)?, px_of(w.right)?, px_of(w.bottom)?, px_of(w.left)?);
+    let (t, r, b, l) = (
+        px_of(w.top)?,
+        px_of(w.right)?,
+        px_of(w.bottom)?,
+        px_of(w.left)?,
+    );
     if t <= 0.0 || t != r || t != b || t != l {
         return None;
     }
@@ -1390,8 +1406,19 @@ pub fn transform_case(text: &str, style: &Computed) -> String {
 fn opening_punct(c: char) -> bool {
     matches!(
         c,
-        '「' | '『' | '（' | '〔' | '【' | '〈' | '《' | '〖' | '〘' | '〚' | '｛' | '［'
-            | '｟' | '｢'
+        '「' | '『'
+            | '（'
+            | '〔'
+            | '【'
+            | '〈'
+            | '《'
+            | '〖'
+            | '〘'
+            | '〚'
+            | '｛'
+            | '［'
+            | '｟'
+            | '｢'
     )
 }
 
@@ -1537,9 +1564,7 @@ fn normalize_spaces(raw: &str) -> String {
         // ШИРОКИМИ знаками перевод УДАЛЯЕТСЯ, а не становится пробелом —
         // иначе японский текст, набранный в несколько строк, получает лишние
         // пробелы на каждом переводе.
-        let drop = had_break
-            && before.is_some_and(wide_cjk)
-            && after.is_some_and(wide_cjk);
+        let drop = had_break && before.is_some_and(wide_cjk) && after.is_some_and(wide_cjk);
         if !drop {
             out.push(' ');
         }
@@ -1571,11 +1596,11 @@ fn wide_cjk(ch: char) -> bool {
         || (0x20000..=0x3FFFD).contains(&c)
 }
 
-/// Табуляция до ближайшей ПОЗИЦИИ табуляции, а не в `tab-size` пробелов.
-///
-/// По CSS `tab-size: 8` значит, что табуляция доводит строку до ближайшего
-/// кратного восьми, то есть от третьего знака добирает пять пробелов, а не
-/// восемь. Пока раскрывалось постоянным числом, отступ кода после любого
+// Табуляция до ближайшей ПОЗИЦИИ табуляции, а не в `tab-size` пробелов.
+//
+// По CSS `tab-size: 8` значит, что табуляция доводит строку до ближайшего
+// кратного восьми, то есть от третьего знака добирает пять пробелов, а не
+// восемь. Пока раскрывалось постоянным числом, отступ кода после любого
 
 /// Схлопываемый пробел по CSS — ТОЛЬКО эти четыре знака.
 ///
@@ -1659,7 +1684,9 @@ pub fn spacers(pieces: &[Piece]) -> Vec<usize> {
     let mut at = 0usize;
     let mut out = Vec::new();
     for p in pieces {
-        let Piece::Text { text, .. } = p else { continue };
+        let Piece::Text { text, .. } = p else {
+            continue;
+        };
         if text == SPACER {
             out.push(at);
         }
@@ -1684,7 +1711,6 @@ pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement)> {
     }
     out
 }
-
 
 fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     let mut font = base.font();

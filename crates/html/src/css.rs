@@ -592,6 +592,8 @@ enum Piece<'a> {
     /// Правило с телом: заголовок и содержимое фигурных скобок.
     Block { head: &'a str, body: &'a str },
     /// At-правило-предложение: заголовок до точки с запятой, тела нет.
+    /// Заголовок пока никем не читается, но остаётся в разборе для симметрии.
+    #[allow(dead_code)]
     Statement { head: &'a str },
 }
 
@@ -880,7 +882,8 @@ mod tests {
         assert_eq!(rules[0].decls.get("color").map(String::as_str), Some("red"));
         // Отрицание — запасная ветка для движка БЕЗ поддержки; применять её
         // нельзя, иначе применяются обе ветки пары сразу.
-        let neg = parse_stylesheet_media("@supports not (display: grid) { p { color: red } }", media);
+        let neg =
+            parse_stylesheet_media("@supports not (display: grid) { p { color: red } }", media);
         assert!(neg.is_empty());
         let pos = parse_stylesheet_media("@supports (display: grid) { p { color: red } }", media);
         assert_eq!(pos.len(), 1);
@@ -948,7 +951,10 @@ mod tests {
         assert_eq!(mixed.classes, vec!["c".to_string()]);
         let b = mixed.prev.expect("сосед");
         assert_eq!(b.0.classes, vec!["b".to_string()]);
-        assert_eq!(b.0.ancestor.as_ref().expect("предок").0.classes, vec!["a".to_string()]);
+        assert_eq!(
+            b.0.ancestor.as_ref().expect("предок").0.classes,
+            vec!["a".to_string()]
+        );
     }
 
     #[test]

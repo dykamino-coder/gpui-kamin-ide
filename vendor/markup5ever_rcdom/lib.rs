@@ -339,7 +339,7 @@ impl Drop for Node {
         let mut nodes = mem::take(&mut *self.children.borrow_mut());
         while let Some(node) = nodes.pop() {
             let children = mem::take(&mut *node.children.borrow_mut());
-            nodes.extend(children.into_iter());
+            nodes.extend(children);
             if let NodeData::Element {
                 ref template_contents,
                 ..
@@ -675,7 +675,7 @@ impl TreeSink for RcDom {
     }
 
     fn maybe_clone_an_option_into_selectedcontent(&self, option: &Self::Handle) {
-        let NodeData::Element { name, attrs, .. } = &option.data else {
+        let NodeData::Element { name, .. } = &option.data else {
             panic!("\"maybe clone an option into selectedcontent\" called with non-element node");
         };
         debug_assert_eq!(name.local_name(), &local_name!("option"));

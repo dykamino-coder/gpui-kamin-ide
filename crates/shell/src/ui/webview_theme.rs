@@ -16,8 +16,10 @@ use kamin_theme::{Color, Palette};
 /// surface→menu/dropdown/editorWidget). Рамп-палитра gpui для чата давала
 /// backdrop (#010409 у Claude Bridge Dark) вместо editor.background #0d1117 —
 /// «чат весь тёмный» (скрин юзера vs Tauri 0.2.87).
-static CONTRIB_COLORS: LazyLock<Mutex<Option<Vec<(String, String)>>>> =
-    LazyLock::new(|| Mutex::new(None));
+/// Сырые пары `(имя, цвет)` contributed-темы; `None` — темы нет.
+type ContribColors = Option<Vec<(String, String)>>;
+
+static CONTRIB_COLORS: LazyLock<Mutex<ContribColors>> = LazyLock::new(|| Mutex::new(None));
 
 /// Задать/сбросить сырые colors contributed-темы (theme_sync).
 pub fn set_contrib_colors(colors: Option<Vec<(String, String)>>) {
