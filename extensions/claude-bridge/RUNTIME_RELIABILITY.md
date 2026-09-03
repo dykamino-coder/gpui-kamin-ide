@@ -923,10 +923,10 @@ hide/show, extension-host reconnect и CEF reload; ни один promise или 
 
 ### BR-25 — Verify Agents view delivery and rehydration after reveal
 
-**Status:** verify/investigation. **Dependency:** PR #21 должен пройти свой
-Windows runtime gate и быть объединён либо присутствовать в отдельном
-integration build. **Acceptance:** instrumented Windows Agent Teams runtime
-gate; новый fix PR создаётся только если симптом сохраняется.
+**Status:** baseline done (INC-2026-0002); completion gate waiting.
+**Dependency:** BR-31, затем BR-27 и BR-26. **Acceptance:** instrumented
+Windows Agent Teams runtime gate; новый fix PR создаётся только если симптом
+сохраняется.
 
 Agents panel — отдельная `tools.html` CEF webview со своим `useBridgeListeners`
 и собственной копией agent state. В KaminIDE 1.0.54 shell не сообщает exthost
@@ -954,6 +954,17 @@ Agents panel — отдельная `tools.html` CEF webview со своим `us
 Если после #21 running rows всё ещё отсутствуют, отдельный implementation PR
 локализует потерю между host cache, Agent view fan-out и parser generation. До
 этого добавлять произвольный polling или повторный replay по timer нельзя.
+
+**Baseline result (2026-09-03, `origin/main` 8a1e6f9, INC-2026-0002).** Gate
+выполнен с двумя teammates при скрытой панели, hide/show, tab switch,
+пересозданием после reap и открытием старой session после перезапуска
+приложения; записаны только bounded metadata. Потеря локализована не в host
+cache, fan-out или parser generation, а в shell delivery pump: кадры доходят
+до per-view outbox, но страница забирает их только на тике насоса
+перерисовки, который просыпается лишь по кадру CEF — см. BR-31. Visibility
+lifecycle #21 работает. Отдельно подтверждено, что завершённые teammates
+остаются `RUNNING` в live и после replay (BR-27). Completion gate повторяется
+после BR-31, BR-27 и BR-26 по процедуре R6 из INC-2026-0002.
 
 ### BR-26 — Publish Agent replay state atomically
 
@@ -1016,6 +1027,11 @@ contract inconsistency, но не доказанная причина данны
 не должно возвращать тяжёлый duplicate payload целиком: нужен либо узкий
 lifecycle DTO для Agent/Task, либо parser, основанный только на полях, которые
 действительно сохраняются на wire.
+
+Runtime evidence (INC-2026-0002): в Windows gate завершённые teammates
+остались `RUNNING` (`Active 2`, `Completed 0`) и в live, и после replay через
+27 минут; wire entries содержали только `Agent` tool_use без terminal signal.
+Fix обязан закрывать lifecycle по полям, реально присутствующим на wire.
 
 Automated tests покрывают running→done/error/terminated, idle notification,
 `teammate_spawned`, disband, cleanup before/after 5 seconds и repeated replay.
@@ -1170,3 +1186,26 @@ file overlap с уже открытыми branches.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.
+
+### BR-31 — Wake the webview delivery pump on host posts
+
+**Status:** ready; подтверждён source defect (INC-2026-0002). **Dependency:**
+none; BR-25 completion зависит от него. **Acceptance:** automated test на
+wake без кадра + Windows CEF runtime gate (reveal без pointer).
+
+`web::deliver()` в `crates/shell/src/web/mod.rs` кладёт кадр в per-view outbox
+и ставит id в `PULL_PENDING`, но пробуждение насоса (`WAKE`) происходит
+только из `repaint_requested()` — по кадру или resize CEF.
+`flush_pending_pulls()` в `crates/shell/src/web/pump.rs` выполняется лишь на
+тике насоса, поэтому страница, которая ничего не рисует, не получает
+`__kaminPull()` и не забирает ни события, ни invoke-ответы, пока какое-нибудь
+вью не перерисуется: движение мыши, стриминг, пересоздание соседнего вью.
+Именно это даёт «пустая панель агентов до движения мыши», зависшие invoke из
+статичных панелей и ложную картину «exthost завис».
+
+Fix: `deliver()` и любой другой путь, ставящий `PULL_PENDING`, будит насос тем
+же каналом, что `repaint_requested()`, либо получает собственный event-driven
+flush; polling или timer не добавляются. Tests: unit test, что постановка в
+`PULL_PENDING` приводит к flush без кадра; Windows gate — процедура R6 из
+INC-2026-0002: reveal пересозданного Agents view без pointer даёт rows и
+invoke reply не позже 1 с в статичной странице.
