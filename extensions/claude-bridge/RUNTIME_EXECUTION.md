@@ -47,7 +47,14 @@ runtime-пачку по правилам репозитория`.
    Windows GPUI gate пройден; merge стал возможен после PR #40, который сделал
    job «Rust checks on Windows» зелёным на `main`.
 
-**Release.** После последнего release-relevant merge (#36) подготовлен Release PR #38 `chore(release): KaminIDE 1.0.55 / server 6.3.132` (только версии). Installer, загрузка asset и merge release PR ждут явной авторизации владельца по CLAUDE.md.
+**Release.** Release PR #38 `chore(release): KaminIDE 1.0.55 / server 6.3.132`
+влит (`main` d9321a1) после зелёного CI. Installer
+`KaminIDE_1.0.55_x64-setup.exe` собран из HEAD c599cae, проверен тихой
+установкой поверх 1.0.54 и опубликован в GitHub Release `kaminide-latest`;
+образ `dykamino/open-claude-bridge:6.3.132` (+ `latest`) опубликован вручную
+через podman, потому что `docker.yml` по-прежнему падает на login без
+секретов Docker Hub. CI Rust-gate починен отдельным PR #40 (fmt, clippy,
+корпуса тестов, pin toolchain 1.96.0), после чего BR-29 (#37) влит.
 
 Следующая планируемая пачка не начинается в этом запуске. Кандидаты для неё:
 BR-31 (delivery pump wake) + BR-25 completion, затем BR-15 (зависит от
