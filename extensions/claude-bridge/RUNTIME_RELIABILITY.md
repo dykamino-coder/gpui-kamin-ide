@@ -1113,7 +1113,8 @@ BR-29 идёт без sibling-layout fix.
 
 ### BR-29 — Make hover-to-rename transition atomic
 
-**Status:** fixed (Change/Fix PR `fix/sidebar-rename-transition`); Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся).
+**Status:** fixed (Change/Fix PR `fix/sidebar-rename-transition`); Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся). Merge стал
+возможен после PR #40 (зелёный Rust-gate на `main`).
 **Dependency:** paired baseline из BR-28 (INC-2026-0003, done).
 **Acceptance:** automated state/geometry tests + Windows GPUI sidebar gate.
 
