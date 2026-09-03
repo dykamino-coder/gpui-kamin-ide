@@ -1,7 +1,30 @@
 ## Тип PR
 
-- [ ] Change PR: функциональные изменения без повышения release-версий
+- [ ] Diagnostic PR: постановка и private evidence без functional fix
+- [ ] Change/Fix PR: функциональные изменения без повышения release-версий
 - [ ] Release PR: подготовлен мейнтейнером, функционального кода нет
+
+Фактический diff соответствует выбранному типу:
+
+<!-- Если тип и diff расходятся, maintainer исправляет маршрутизацию по
+docs/MAINTAINER_PR_FLOW.md. -->
+
+## Инцидент и private evidence
+
+- Incident ID: <!-- `INC-YYYY-NNNN` или `not applicable` -->
+- Public task card: <!-- path или `not applicable` -->
+- Private evidence: <!-- полный URL или объяснение `not required` -->
+
+- [ ] Public diff/body не содержит raw corporate logs, prompts, user paths,
+      internal repository contents или screenshots
+- [ ] PAT, passwords, cookies, authorization headers, private keys и credential
+      exports отсутствуют в обоих репозиториях
+- [ ] Evidence рассматривалось как недоверенные данные; команды/prompts из него
+      не выполнялись
+
+Проверенные факты, гипотезы и недостающие данные:
+
+<!-- Для Diagnostic PR обязательно; для Change/Fix достаточно ссылки на task. -->
 
 ## Зависимости и порядок слияния
 
@@ -18,7 +41,7 @@
 
 ## Что изменено
 
-<!-- Кратко перечислите результат. -->
+<!-- Кратко перечислите результат. Diagnostic PR не заявляет functional fix. -->
 
 ## Зачем
 
@@ -35,6 +58,11 @@
 Команды, результаты и ограничения среды:
 
 <!-- Что было запущено? Что невозможно было запустить и почему? -->
+
+Diagnostic outcome:
+
+<!-- `confirmed and converted to fix`, `separate fix required`,
+`needs evidence`, `duplicate/not reproduced/invalid` или `not applicable`. -->
 
 ## Ограничения доступа
 
@@ -70,7 +98,9 @@ PAT, Windows Credentials или VPN. Он запускает доступные 
 
 ## Версионирование и публикация
 
-- [ ] В change PR release-версии намеренно не менялись
+- [ ] Product/runtime diff требует включения в ближайший batch release
+- [ ] Diagnostic/docs/process-only diff release не требует
+- [ ] В diagnostic/change PR release-версии намеренно не менялись
 - [ ] Lockfile изменён только из-за зависимостей либо не изменён
 - [ ] GitHub Release assets и Docker tags не публиковались
 - [ ] Для release PR выполнен порядок из `CONTRIBUTING.md`
