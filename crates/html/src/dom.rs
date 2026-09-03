@@ -217,7 +217,9 @@ fn content_box_static_position(nodes: &mut [Node]) {
         }
         let pad = el.style.padding;
         for child in el.children.iter_mut() {
-            let Node::Element(child) = child else { continue };
+            let Node::Element(child) = child else {
+                continue;
+            };
             if child.style.position != Some(Position::Absolute) {
                 continue;
             }
@@ -266,7 +268,9 @@ fn hoist_grid_abspos(nodes: &mut [Node]) {
         }
         let mut taken = vec![];
         for child in el.children.iter_mut() {
-            let Node::Element(child) = child else { continue };
+            let Node::Element(child) = child else {
+                continue;
+            };
             if own_containing_block(&child.style) || is_grid(&child.style) {
                 continue;
             }
@@ -570,15 +574,17 @@ fn walk(
                 id: id.clone(),
                 classes: classes.clone(),
                 spot,
-                href: attrs.iter().find(|(k, _)| k == "href").map(|(_, v)| v.clone()),
-                dir: attrs
+                href: attrs
                     .iter()
-                    .find(|(k, _)| k == "dir")
-                    .and_then(|(_, v)| match v.to_ascii_lowercase().as_str() {
+                    .find(|(k, _)| k == "href")
+                    .map(|(_, v)| v.clone()),
+                dir: attrs.iter().find(|(k, _)| k == "dir").and_then(|(_, v)| {
+                    match v.to_ascii_lowercase().as_str() {
                         "rtl" => Some(true),
                         "ltr" => Some(false),
                         _ => None,
-                    }),
+                    }
+                }),
             };
 
             let inline_decls: Decls = attrs
@@ -884,7 +890,10 @@ fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) 
         // `:dir(rtl|ltr)` — направление узла: свой атрибут `dir`, иначе
         // ближайшего предка с ним; по умолчанию письмо слева направо
         // (селекторы-4 §direction-pseudo).
-        if let Some(want) = pseudo.strip_prefix("dir(").and_then(|r| r.strip_suffix(')')) {
+        if let Some(want) = pseudo
+            .strip_prefix("dir(")
+            .and_then(|r| r.strip_suffix(')'))
+        {
             let rtl = me
                 .dir
                 .or_else(|| path.iter().rev().find_map(|a| a.dir))
@@ -983,7 +992,12 @@ fn nth_matches(arg: &str, index: usize) -> bool {
 }
 
 /// То же сопоставление, но без отсева по псевдоклассу — для слоя наведения.
-fn matches_ignoring_pseudo(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: &[Ancestor]) -> bool {
+fn matches_ignoring_pseudo(
+    sel: &Selector,
+    me: &Ancestor,
+    path: &[Ancestor],
+    sibs: &[Ancestor],
+) -> bool {
     if !matches_compound(sel, me) {
         return false;
     }
@@ -1372,10 +1386,7 @@ mod white_space_tests {
     /// зависит, считается ли хвостовой пробел в ширину строки.
     #[test]
     fn break_spaces_reaches_the_wrap_rules() {
-        let nodes = parse(
-            r#"<div style="white-space: break-spaces">X XX X</div>"#,
-            "",
-        );
+        let nodes = parse(r#"<div style="white-space: break-spaces">X XX X</div>"#, "");
         fn find(nodes: &[Node]) -> Option<&Element> {
             for n in nodes {
                 if let Node::Element(e) = n {

@@ -76,7 +76,11 @@ fn load_faces_into(css: &str) {
                 loaded
             }
         };
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("FONT_DBG").is_ok()); *ON } {
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("FONT_DBG").is_ok());
+            *ON
+        } {
             eprintln!("FONT_DBG face family={family:?} src={src:?} real={real:?}");
         }
         if let Some(real) = real {

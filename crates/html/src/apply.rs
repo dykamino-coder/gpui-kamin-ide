@@ -26,9 +26,7 @@ fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         | Len::Ic(_)
         | Len::Ex(_)
         | Len::Lh(_)
-        | Len::LhPx(..)) => {
-            px(crate::metrics::fallback_len_px(l, "", 16.0).unwrap_or(0.0)).into()
-        }
+        | Len::LhPx(..)) => px(crate::metrics::fallback_len_px(l, "", 16.0).unwrap_or(0.0)).into(),
         // Единицы окна разрешает сборщик дерева; сюда они доходят только у
         // узлов вне его — доля родителя ближе всего по смыслу.
         Len::Vw(k) | Len::Vh(k) => relative(k),
@@ -239,9 +237,7 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
     if c.display == Some(Display::InlineGrid) && c.width.is_none() {
         if let Some(tracks) = &c.grid_tracks {
             let all_px: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
-                crate::computed::TrackSize::Single(crate::computed::Track::Px(w)) => {
-                    Some(acc + w)
-                }
+                crate::computed::TrackSize::Single(crate::computed::Track::Px(w)) => Some(acc + w),
                 _ => None,
             });
             if let Some(mut total) = all_px.filter(|t| *t > 0.0) {
@@ -361,9 +357,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // значит главная ось гибкого ряда — вертикальная. Пока сюда попадало
         // `None`, контейнер оставался горизонтальным (замерено пробой: ряд в
         // `vertical-rl` против колонки с прижимом вправо — 5.42%).
-        (None, true)
-            if matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex)) =>
-        {
+        (None, true) if matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex)) => {
             if c.rtl == Some(true) {
                 Some(FlexDir::ColReverse)
             } else {
@@ -376,9 +370,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // §block-flow) — вертикальные результаты перевода осей разворачиваются.
     // Горизонтальные (из `column`) не трогаются: ось блока у slr обычная,
     // слева направо.
-    let dir = if c.vertical == Some(true)
-        && c.sideways == Some(true)
-        && c.vertical_rl != Some(true)
+    let dir = if c.vertical == Some(true) && c.sideways == Some(true) && c.vertical_rl != Some(true)
     {
         dir.map(|d| match d {
             FlexDir::Col => FlexDir::ColReverse,
@@ -683,7 +675,12 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
             _ => 0.0,
         };
         let border = c.borders();
-        let b = [side(border.top), side(border.right), side(border.bottom), side(border.left)];
+        let b = [
+            side(border.top),
+            side(border.right),
+            side(border.bottom),
+            side(border.left),
+        ];
         let pd = [
             side(c.padding.top),
             side(c.padding.right),
@@ -869,13 +866,8 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // рамка видна).
     let sides: Vec<_> = c.border_colors.iter().flatten().collect();
     let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
-    let border_image_on = c
-        .border_image
-        .as_ref()
-        .is_some_and(|bi| !bi.src.is_empty());
-    if !border_image_on
-        && let Some(bc) = uniform.copied().copied().or(c.border_color)
-    {
+    let border_image_on = c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty());
+    if !border_image_on && let Some(bc) = uniform.copied().copied().or(c.border_color) {
         d = d.border_color(bc.to_hsla());
     }
     if c.border_dashed == Some(true) {
@@ -928,7 +920,7 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
             d.style().mouse_cursor = Some(st);
         }
     }
-        // Тень без своего цвета — цветом текста ЭТОГО элемента (метка:
+    // Тень без своего цвета — цветом текста ЭТОГО элемента (метка:
     // отрицательная альфа; css-backgrounds-3 §7, currentColor).
     let shadow_colour = |sh: &crate::computed::Shadow| {
         if sh.color.a < 0.0 {
@@ -942,7 +934,7 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
             sh.color
         }
     };
-if !c.inset_shadows.is_empty() {
+    if !c.inset_shadows.is_empty() {
         d.style().inset_box_shadow = Some(
             c.inset_shadows
                 .iter()
@@ -1058,10 +1050,18 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
         // Логические края — по НАПРАВЛЕНИЮ ПИСЬМА: `end` при rtl — левый
         // край (text-align-end-001: текст уходил вправо).
         Some(TextAlign::Start) => {
-            d = if c.rtl == Some(true) { d.text_right() } else { d.text_left() }
+            d = if c.rtl == Some(true) {
+                d.text_right()
+            } else {
+                d.text_left()
+            }
         }
         Some(TextAlign::End) => {
-            d = if c.rtl == Some(true) { d.text_left() } else { d.text_right() }
+            d = if c.rtl == Some(true) {
+                d.text_left()
+            } else {
+                d.text_right()
+            }
         }
         None => {}
     }

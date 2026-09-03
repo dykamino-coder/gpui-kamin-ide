@@ -1120,9 +1120,7 @@ impl Paragraph {
             // вообще есть. При замере по максимальному содержимому предела
             // нет, и сохранённый пробел в ширину ВХОДИТ (`pre-wrap-017`:
             // коробка `width: max-content` выходила на знак уже).
-            let measured = if self.wrap.break_spaces
-                || (limit.is_none() && self.wrap.keep_spaces)
-            {
+            let measured = if self.wrap.break_spaces || (limit.is_none() && self.wrap.keep_spaces) {
                 at
             } else {
                 trim_hanging(&self.text[start..at]) + start
@@ -1241,7 +1239,11 @@ impl Paragraph {
         // что узел из идеографических пробелов не доезжает до раскладки
         // ВООБЩЕ (отбрасывался разбором). Когда след ведёт «строка пропала»,
         // смотреть надо сюда, а не в саму раскладку.
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_LINES").is_ok()); *ON } {
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("HTML_LINES").is_ok());
+            *ON
+        } {
             eprintln!(
                 "LINES fonts={:?} {:?} -> {:?}",
                 self.runs
@@ -1429,9 +1431,7 @@ impl Paragraph {
                         // Конец текста переносчик тоже зовёт обязательным
                         // разрывом — но переносить там нечего, а лишняя точка
                         // ломает счёт строк.
-                        unicode_linebreak::BreakOpportunity::Mandatory
-                            if at < self.text.len() =>
-                        {
+                        unicode_linebreak::BreakOpportunity::Mandatory if at < self.text.len() => {
                             out.push(Stop {
                                 at,
                                 mandatory: true,
@@ -1943,7 +1943,11 @@ impl Element for Paragraph {
                     probe.apply_fit(w, window);
                 }
                 let lines = probe.split(limit, window);
-                if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_MEASURE").is_ok()); *ON } {
+                if {
+                    static ON: std::sync::LazyLock<bool> =
+                        std::sync::LazyLock::new(|| std::env::var("HTML_MEASURE").is_ok());
+                    *ON
+                } {
                     eprintln!(
                         "MEASURE {:?} known={:?}x{:?} avail={:?}x{:?} limit={:?} lines={:?}",
                         probe.text,
@@ -2234,7 +2238,11 @@ impl Element for Paragraph {
                 Align::Right => free,
                 _ => px(0.),
             } + lead;
-            if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok()); *ON } {
+            if {
+                static ON: std::sync::LazyLock<bool> =
+                    std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok());
+                *ON
+            } {
                 eprintln!(
                     "TCA para {:?} align={:?} bw={:?} lw={:?} free={:?}",
                     &self.text[..self.text.len().min(6)],
@@ -2911,7 +2919,11 @@ pub fn align_of(a: Option<crate::computed::TextAlign>) -> Align {
 /// Выключка абзаца с разворотом логических краёв по стороне письма.
 pub fn align_for(c: &crate::computed::Computed) -> Align {
     let rtl = c.rtl == Some(true);
-    if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("TA_DBG").is_ok()); *ON } {
+    if {
+        static ON: std::sync::LazyLock<bool> =
+            std::sync::LazyLock::new(|| std::env::var("TA_DBG").is_ok());
+        *ON
+    } {
         eprintln!("TA align_for rtl={rtl} ta={:?}", c.text_align);
     }
     let value = c
@@ -3191,4 +3203,3 @@ fn cluster_start(rest: &str) -> bool {
         unicode_linebreak::BreakClass::CombiningMark
     )
 }
-

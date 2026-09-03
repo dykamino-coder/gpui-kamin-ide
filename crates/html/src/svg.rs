@@ -187,8 +187,7 @@ pub fn element(e: &Element) -> Option<AnyElement> {
         for c in &e.children {
             if let Node::Element(el) = c {
                 let own = if horiz {
-                    px_len(el.style.width)
-                        .or_else(|| el.attr("width").and_then(|v| v.parse().ok()))
+                    px_len(el.style.width).or_else(|| el.attr("width").and_then(|v| v.parse().ok()))
                 } else {
                     px_len(el.style.height)
                         .or_else(|| el.attr("height").and_then(|v| v.parse().ok()))
@@ -213,10 +212,8 @@ pub fn element(e: &Element) -> Option<AnyElement> {
     } else {
         0.0
     };
-    let visible_y = !contained
-        && e.style.overflow_y == Some(crate::computed::Overflow::Visible);
-    let visible_x = !contained
-        && e.style.overflow_x == Some(crate::computed::Overflow::Visible);
+    let visible_y = !contained && e.style.overflow_y == Some(crate::computed::Overflow::Visible);
+    let visible_x = !contained && e.style.overflow_x == Some(crate::computed::Overflow::Visible);
     let rw = if visible_x {
         w.max(child_extent(true))
     } else {
@@ -232,18 +229,16 @@ pub fn element(e: &Element) -> Option<AnyElement> {
         .w(gpui::px(rw))
         .h(gpui::px(rh));
     if rw > w + 0.5 || rh > h + 0.5 {
-        Some(
-            {
-                use gpui::ParentElement as _;
-                use gpui::Styled as _;
-                gpui::div()
-                    .w(gpui::px(w))
-                    .h(gpui::px(h))
-                    .flex_shrink_0()
-                    .child(img.absolute().top_0().left_0())
-                    .into_any_element()
-            },
-        )
+        Some({
+            use gpui::ParentElement as _;
+            use gpui::Styled as _;
+            gpui::div()
+                .w(gpui::px(w))
+                .h(gpui::px(h))
+                .flex_shrink_0()
+                .child(img.absolute().top_0().left_0())
+                .into_any_element()
+        })
     } else {
         Some(img.into_any_element())
     }

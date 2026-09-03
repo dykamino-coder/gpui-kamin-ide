@@ -167,7 +167,11 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             _ => 1.2 * font,
         };
         let cut = crate::interact::clamp_cut(e.node_id).unwrap_or(n as f32 * line);
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_CLAMP_DBG").is_ok()); *ON } {
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("HTML_CLAMP_DBG").is_ok());
+            *ON
+        } {
             eprintln!("CLAMP branch node={} n={} cut={}", e.node_id, n, cut);
         }
         d = d.max_h(px(cut)).overflow_hidden();
@@ -882,9 +886,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                                 w + side(e.style.padding.left) + side(e.style.padding.right);
                             let band = band.w(px(pad_w));
                             if e.style.vertical_rl == Some(true) {
-                                band.right(px(
-                                    side(e.style.margin.right) + side(b.right),
-                                ))
+                                band.right(px(side(e.style.margin.right) + side(b.right)))
                             } else {
                                 band.left(px(side(e.style.margin.left) + side(b.left)))
                             }
@@ -1517,8 +1519,18 @@ fn wrap_floats(nodes: Vec<Node>) -> Vec<Node> {
             floaters.push(floater);
             j += 1;
         }
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("FL_DBG").is_ok()); *ON } {
-            eprintln!("FL floaters={} i={} j={} total={}", floaters.len(), i, j, nodes.len());
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("FL_DBG").is_ok());
+            *ON
+        } {
+            eprintln!(
+                "FL floaters={} i={} j={} total={}",
+                floaters.len(),
+                i,
+                j,
+                nodes.len()
+            );
         }
         // Соседи до ближайшего `clear` — они и обтекают.
         let mut rest: Vec<Node> = vec![];
@@ -1542,14 +1554,13 @@ fn wrap_floats(nodes: Vec<Node>) -> Vec<Node> {
             {
                 let mut lone = floaters.remove(0);
                 lone.style.flex_shrink = None;
-            // Обтекать нечем — но сторону блок обязан держать: `float: right`
-            // без соседей всё равно стоит У ПРАВОГО края. Ряда тут нет, и
-            // сторону задаёт выравнивание себя в колонке родителя. Оно
-            // действует только на ЭЛЕМЕНТ раскладки, поэтому строчный по
-            // природе тег (картинка) здесь же делается блочным: иначе он
-            // уходит в абзац, и выравнивание достаётся абзацу, а не ему.
-                lone.style.align_self =
-                    Some(if side < 0 { Align::Start } else { Align::End });
+                // Обтекать нечем — но сторону блок обязан держать: `float: right`
+                // без соседей всё равно стоит У ПРАВОГО края. Ряда тут нет, и
+                // сторону задаёт выравнивание себя в колонке родителя. Оно
+                // действует только на ЭЛЕМЕНТ раскладки, поэтому строчный по
+                // природе тег (картинка) здесь же делается блочным: иначе он
+                // уходит в абзац, и выравнивание достаётся абзацу, а не ему.
+                lone.style.align_self = Some(if side < 0 { Align::Start } else { Align::End });
                 out.push(Node::Element(lone));
             }
             out.extend(rest);
@@ -2699,7 +2710,8 @@ fn paragraph_pieces(
     // строка кончается, и отрицательный отступ ей не помеха. Ряд из слов
     // остаётся запасным путём — на нём отступ становится распоркой, а она
     // отрицательной ширины не бывает.
-    let spaced = indent != crate::lines::Indent::default() && crate::lines::rules(inherited).is_none();
+    let spaced =
+        indent != crate::lines::Indent::default() && crate::lines::rules(inherited).is_none();
     if !spaced
         && inline::single_block(&pieces, opts.base_size())
         && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text)
@@ -2740,7 +2752,12 @@ fn paragraph_pieces(
                 Some(Len::Em(k)) => gpui::px(k * biggest),
                 _ => gpui::px(biggest * normal_fraction(inherited, opts)),
             };
-            if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("PLAIN_DBG").is_ok()); *ON } && inherited.preserve_newlines == Some(true) {
+            if {
+                static ON: std::sync::LazyLock<bool> =
+                    std::sync::LazyLock::new(|| std::env::var("PLAIN_DBG").is_ok());
+                *ON
+            } && inherited.preserve_newlines == Some(true)
+            {
                 eprintln!("PLAIN pre text={:?}", text);
             }
             let id = gpui::ElementId::Integer(text_id(&text));
@@ -2762,7 +2779,11 @@ fn paragraph_pieces(
                 inherited
                     .bidi_plaintext
                     .unwrap_or(false)
-                    .then(|| inherited.text_align.unwrap_or(crate::computed::TextAlign::Start))
+                    .then(|| {
+                        inherited
+                            .text_align
+                            .unwrap_or(crate::computed::TextAlign::Start)
+                    })
                     .filter(|a| {
                         matches!(
                             a,
@@ -2832,7 +2853,11 @@ fn paragraph_pieces(
         .into_any_element();
     }
     let mut render_text = |t: String, style: &Computed| -> AnyElement {
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok()); *ON } {
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok());
+            *ON
+        } {
             eprintln!(
                 "RT t={:?} rot={:?} lh={:?} fs={:?}",
                 t.chars().take(3).collect::<String>(),
@@ -2865,7 +2890,11 @@ fn paragraph_pieces(
         let d = apply(div(), &style.text_only())
             .max_w_full()
             .child(SharedString::from(t.clone()));
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok()); *ON } {
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok());
+            *ON
+        } {
             let tag = t.chars().take(3).collect::<String>();
             return d
                 .relative()
@@ -2900,7 +2929,12 @@ fn paragraph_pieces(
             &mut render_text,
         );
     }
-    inline::as_wrapped_row(pieces, inherited.vertical_align, Some(align), &mut render_text)
+    inline::as_wrapped_row(
+        pieces,
+        inherited.vertical_align,
+        Some(align),
+        &mut render_text,
+    )
 }
 
 /// Обернуть готовый абзац тенью текста, если она задана.
@@ -3327,8 +3361,7 @@ fn has_own_box(c: &Computed) -> bool {
     // 1px разъезжался на четверть страницы).
     let inline_level = c.display.is_none();
     if inline_level
-        && (crate::inline::uniform_border(c).is_some()
-            || crate::inline::sided_border(c).is_some())
+        && (crate::inline::uniform_border(c).is_some() || crate::inline::sided_border(c).is_some())
     {
         return false;
     }
@@ -4081,10 +4114,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 merged.overflow_y,
                 Some(crate::computed::Overflow::Hidden) | Some(crate::computed::Overflow::Scroll)
             ) || merged.float.is_some();
-            let _bfc_guard = (!is_clamp
-                && makes_bfc
-                && crate::interact::clamp_context().is_some())
-            .then(crate::interact::ClampGuard::enter_bfc);
+            let _bfc_guard = (!is_clamp && makes_bfc && crate::interact::clamp_context().is_some())
+                .then(crate::interact::ClampGuard::enter_bfc);
             if let Some((key, skip)) = crate::interact::clamp_context() {
                 // Строки дают пробы абзацев (paragraph_probed); здесь — только
                 // коробка с краской: блок прячется целиком, если срез внутри.
@@ -4415,8 +4446,6 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         .into_any_element()
 }
 
-
-
 /// Текст поддерева — нужен формам (`<textarea>`, `<option>`).
 pub fn gather_text_public(nodes: &[Node], out: &mut String) {
     gather_text(nodes, out)
@@ -4573,14 +4602,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         _ => opts.base_size(),
     };
     let table_family = inherited.font_family.clone().unwrap_or_default();
-    let (from_cols, cols_collapsed) =
-        col_element_widths(&e.children, table_font, &table_family);
+    let (from_cols, cols_collapsed) = col_element_widths(&e.children, table_font, &table_family);
     let mut busy: Vec<u16> = vec![0; cols as usize];
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
     // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
-    let table_is_vertical =
-        e.style.vertical == Some(true) || inherited.vertical == Some(true);
+    let table_is_vertical = e.style.vertical == Some(true) || inherited.vertical == Some(true);
     for row in &row_elements {
         let mut ix = 0usize;
         for slot in busy.iter_mut() {
@@ -4666,7 +4693,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             ix += span;
         }
     }
-    if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok()); *ON } {
+    if {
+        static ON: std::sync::LazyLock<bool> =
+            std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok());
+        *ON
+    } {
         eprintln!("TCA cols={col_widths:?}");
     }
     // Фон КОЛОНКИ картинкой — той же полосой, что фон ряда: слой на площадь
@@ -4694,9 +4725,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 if band_style.bg_image.is_none() {
                     band_style.bg_image = band_style.gradient_raw.clone();
                 }
-                cells.push(
-                    crate::interact::CellsClipped::new(rects, band_style).into_any_element(),
-                );
+                cells
+                    .push(crate::interact::CellsClipped::new(rects, band_style).into_any_element());
             }
         }
     }
@@ -4860,22 +4890,35 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             let cell_edge = if collapse_cells {
                 let b = cell.style.borders();
                 let widths = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
-                let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+                let black = crate::value::Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                };
                 let side_colour = |i: usize| {
                     cell.style.border_colors[i]
                         .or(cell.style.border_color)
                         .unwrap_or(black)
                 };
-                let colors = [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+                let colors = [
+                    side_colour(0),
+                    side_colour(1),
+                    side_colour(2),
+                    side_colour(3),
+                ];
                 let side_style = |i: usize| {
-                    cell.style.border_side_styles[i]
-                        .unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
+                    cell.style.border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
                 };
                 let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
                 cell.style.border_width = Default::default();
                 cell.style.border_visible = [None; 4];
-                (widths.iter().any(|w| *w > 0.0) || styles.contains(&1))
-                    .then_some((widths, colors, styles, cell.node_id as u32))
+                (widths.iter().any(|w| *w > 0.0) || styles.contains(&1)).then_some((
+                    widths,
+                    colors,
+                    styles,
+                    cell.node_id as u32,
+                ))
             } else {
                 None
             };
@@ -4920,7 +4963,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             // Письмо к рядам и группам рядов не применяется (css-writing-modes
             // §applies), а РАЗМЕЩЕНИЕ ячеек в решётке всегда ведёт письмо
-    // таблицы — оно уже посчитано табличным кодом. Собственное письмо
+            // таблицы — оно уже посчитано табличным кодом. Собственное письмо
             // ячейки остаётся: оно законно управляет её СОДЕРЖИМЫМ
             // (ортогональные ячейки, table-cell-align-002).
             // `ch` на высоте ячейки разрешается с письмом РЯДА: при
@@ -4992,8 +5035,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 && cell.style.min_width.is_none()
                 && cell.style.width.is_none()
             {
-                let upright =
-                    row.style.upright.or(inherited.upright) == Some(true);
+                let upright = row.style.upright.or(inherited.upright) == Some(true);
                 let base = match inherited.font_size {
                     Some(Len::Px(v)) => v,
                     _ => opts.base_size(),
@@ -5009,8 +5051,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     Some(Len::Ch(k)) => Some(if upright {
                         k * base
                     } else {
-                        let family =
-                            inherited.font_family.clone().unwrap_or_default();
+                        let family = inherited.font_family.clone().unwrap_or_default();
                         k * crate::metrics::ch_ex_px(&family, base).0
                     }),
                     _ => None,
@@ -5050,7 +5091,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 for child in cell.children.iter_mut() {
                     if let Node::Element(el) = child
                         && let Some(Len::Pct(k)) = el.style.height
-                        && el.style.overflow_y.is_some_and(|o| o != crate::computed::Overflow::Visible)
+                        && el
+                            .style
+                            .overflow_y
+                            .is_some_and(|o| o != crate::computed::Overflow::Visible)
                         && let Some(Len::Px(m)) = el.style.min_height
                     {
                         el.style.height = Some(Len::Px(m * k));
@@ -5072,8 +5116,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // Ряд с КАРТИНКОЙ красит и цвет САМ (см. CellsClipped) —
                 // ячейка его не дублирует, иначе цвет ложится поверх
                 // картинки. Ряду только с тенью цвет оставляют ячейки.
-                let picture =
-                    row.style.bg_image.is_some() || row.style.gradient_raw.is_some();
+                let picture = row.style.bg_image.is_some() || row.style.gradient_raw.is_some();
                 if !picture {
                     d = d.bg(bg.to_hsla());
                 }
@@ -5143,10 +5186,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // ФОРСИРУЕТ ltr (§5.1 — upright задаёт направление ltr), а у
                 // `sideways-lr` базовое направление само снизу вверх —
                 // разворот инвертируется.
-                let rtl_line =
-                    e.style.rtl == Some(true) && e.style.upright != Some(true);
-                let base_up = e.style.sideways == Some(true)
-                    && e.style.vertical_rl != Some(true);
+                let rtl_line = e.style.rtl == Some(true) && e.style.upright != Some(true);
+                let base_up = e.style.sideways == Some(true) && e.style.vertical_rl != Some(true);
                 let gr = if rtl_line != base_up {
                     cols as i16 - col_ix as i16 - span_cols as i16 + 1
                 } else {
@@ -5218,17 +5259,28 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 ));
             }
             if let Some(rects) = &row_rects {
-                d = d.child(crate::interact::cell_rect_probe(rects.clone(), span_rows == 1, shift));
+                d = d.child(crate::interact::cell_rect_probe(
+                    rects.clone(),
+                    span_rows == 1,
+                    shift,
+                ));
             }
             // Проба и для колонок ячейки: объединённая регистрируется в
             // каждой накрытой колонке — полоса колонки красит её целиком.
             let cell_cols = (col_ix - span_cols as usize)..col_ix;
             let mut probed: Vec<u64> = vec![];
             for i in cell_cols.clone() {
-                if let (Some(rects), Some(el)) = (col_rects.get(i).and_then(|r| r.clone()), col_els.get(i).copied().flatten()) {
+                if let (Some(rects), Some(el)) = (
+                    col_rects.get(i).and_then(|r| r.clone()),
+                    col_els.get(i).copied().flatten(),
+                ) {
                     if !probed.contains(&el.node_id) {
                         probed.push(el.node_id);
-                        d = d.child(crate::interact::cell_rect_probe(rects, span_cols == 1, shift));
+                        d = d.child(crate::interact::cell_rect_probe(
+                            rects,
+                            span_cols == 1,
+                            shift,
+                        ));
                     }
                 }
             }
@@ -5249,20 +5301,31 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         rw[2],
                         if start_col == 0 { rw[3] } else { 0.0 },
                     ];
-                    let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+                    let black = crate::value::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    };
                     let side_colour = |k: usize| {
                         row.style.border_colors[k]
                             .or(row.style.border_color)
                             .unwrap_or(black)
                     };
-                    let colors =
-                        [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+                    let colors = [
+                        side_colour(0),
+                        side_colour(1),
+                        side_colour(2),
+                        side_colour(3),
+                    ];
                     let side_style = |k: usize| {
-                        row.style.border_side_styles[k]
-                            .unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
+                        row.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 {
+                            9
+                        } else {
+                            0
+                        })
                     };
-                    let styles =
-                        [side_style(0), side_style(1), side_style(2), side_style(3)];
+                    let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
                     d = d.child(crate::interact::edge_probe(
                         table_edges.clone(),
                         widths,
@@ -5276,17 +5339,23 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             // Кромки ГРУППЫ РЯДОВ: верх у первого ряда группы, низ у
             // последнего; `rules=groups` даёт тонкую сплошную по умолчанию.
-            if collapse_cells
-                && let Some((g, first, last)) = group_of.get(&row.node_id).copied()
-            {
+            if collapse_cells && let Some((g, first, last)) = group_of.get(&row.node_id).copied() {
                 let b = g.style.borders();
                 let default_w = if rules_groups { 1.0 } else { 0.0 };
-                let explicit_top = g.style.border_width.top.is_some()
-                    || g.style.border_visible[0].is_some();
-                let explicit_bottom = g.style.border_width.bottom.is_some()
-                    || g.style.border_visible[2].is_some();
-                let top_w = if explicit_top { px_of(b.top) } else { default_w };
-                let bottom_w = if explicit_bottom { px_of(b.bottom) } else { default_w };
+                let explicit_top =
+                    g.style.border_width.top.is_some() || g.style.border_visible[0].is_some();
+                let explicit_bottom =
+                    g.style.border_width.bottom.is_some() || g.style.border_visible[2].is_some();
+                let top_w = if explicit_top {
+                    px_of(b.top)
+                } else {
+                    default_w
+                };
+                let bottom_w = if explicit_bottom {
+                    px_of(b.bottom)
+                } else {
+                    default_w
+                };
                 // Боковые кромки группы несут крайние ячейки ряда.
                 let start_col = col_ix - span_cols as usize;
                 let last_col = col_ix >= cols as usize;
@@ -5297,14 +5366,25 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     if start_col == 0 { px_of(b.left) } else { 0.0 },
                 ];
                 if widths.iter().any(|w| *w > 0.0) {
-                    let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
-                    let side_colour = |k: usize| {
-                        g.style.border_colors[k].or(g.style.border_color).unwrap_or(black)
+                    let black = crate::value::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
                     };
-                    let colors = [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+                    let side_colour = |k: usize| {
+                        g.style.border_colors[k]
+                            .or(g.style.border_color)
+                            .unwrap_or(black)
+                    };
+                    let colors = [
+                        side_colour(0),
+                        side_colour(1),
+                        side_colour(2),
+                        side_colour(3),
+                    ];
                     let side_style = |k: usize| {
-                        g.style.border_side_styles[k]
-                            .unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
+                        g.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
                     };
                     let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
                     d = d.child(crate::interact::edge_probe(
@@ -5324,7 +5404,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // колонки краю; верх/низ — только крайние ряды.
             if collapse_cells {
                 for i in cell_cols {
-                    let Some(el) = col_els.get(i).copied().flatten() else { continue };
+                    let Some(el) = col_els.get(i).copied().flatten() else {
+                        continue;
+                    };
                     let b = el.style.borders();
                     let cw = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
                     let hidden = el.style.border_side_styles.contains(&Some(1));
@@ -5351,14 +5433,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     if !(widths.iter().any(|w| *w > 0.0) || hidden) {
                         continue;
                     }
-                    let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
-                    let side_colour = |k: usize| {
-                        el.style.border_colors[k].or(el.style.border_color).unwrap_or(black)
+                    let black = crate::value::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
                     };
-                    let colors = [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+                    let side_colour = |k: usize| {
+                        el.style.border_colors[k]
+                            .or(el.style.border_color)
+                            .unwrap_or(black)
+                    };
+                    let colors = [
+                        side_colour(0),
+                        side_colour(1),
+                        side_colour(2),
+                        side_colour(3),
+                    ];
                     let side_style = |k: usize| {
-                        el.style.border_side_styles[k]
-                            .unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
+                        el.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 {
+                            9
+                        } else {
+                            0
+                        })
                     };
                     let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
                     d = d.child(crate::interact::edge_probe(
@@ -5446,8 +5543,15 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .or_else(|| first_row_widths.get(i).copied().flatten())
         })
         .collect();
-    if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok()); *ON } {
-        eprintln!("TABLE cols={} col_widths={:?} first_row={:?}", cols, col_widths, first_row_widths);
+    if {
+        static ON: std::sync::LazyLock<bool> =
+            std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok());
+        *ON
+    } {
+        eprintln!(
+            "TABLE cols={} col_widths={:?} first_row={:?}",
+            cols, col_widths, first_row_widths
+        );
     }
     let tracks = track_list_collapsed(
         cols,
@@ -5456,7 +5560,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         &col_widths,
         &cols_collapsed,
     );
-    if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok()); *ON } {
+    if {
+        static ON: std::sync::LazyLock<bool> =
+            std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok());
+        *ON
+    } {
         eprintln!("TABLE tracks={:?}", tracks);
     }
     // Таблица ЗАДАННОЙ высоты раздаёт лишнее место рядам БЕЗ своей высоты
@@ -5483,7 +5591,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         Some(Len::Px(v)) => Some(v),
                         _ => None,
                     };
-                    match own.into_iter().chain(row.children.iter().filter_map(cell_h)).fold(None::<f32>, |a, v| Some(a.map_or(v, |x| x.max(v)))) {
+                    match own
+                        .into_iter()
+                        .chain(row.children.iter().filter_map(cell_h))
+                        .fold(None::<f32>, |a, v| Some(a.map_or(v, |x| x.max(v))))
+                    {
                         Some(h) => gpui::GridTrack::Pixels(px(h)),
                         None => gpui::GridTrack::Fraction(1.0),
                     }
@@ -5520,9 +5632,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // (css-tables-3 §computing-the-table-height, CSSWG #5336): пороги
     // пересчитываются в контентные, компенсацию вернёт общий слой.
     let min_fix = |len: Option<Len>, edges: f32| match len {
-        Some(Len::Px(v)) if e.style.border_box != Some(true) => {
-            Some(Len::Px((v - edges).max(0.0)))
-        }
+        Some(Len::Px(v)) if e.style.border_box != Some(true) => Some(Len::Px((v - edges).max(0.0))),
         other => other,
     };
     let pad = &e.style.padding;
@@ -5534,9 +5644,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     ];
     let min_h = min_fix(e.style.min_height, bw[0] + bw[2] + pad_px[0] + pad_px[2]);
     let min_w = min_fix(e.style.min_width, bw[1] + bw[3] + pad_px[1] + pad_px[3]);
-    let needs_clone = collapse
-        || min_h != e.style.min_height
-        || min_w != e.style.min_width;
+    let needs_clone = collapse || min_h != e.style.min_height || min_w != e.style.min_width;
     let host_style;
     let mut outer = if needs_clone {
         let mut c = inherited.clone();
@@ -5568,31 +5676,42 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // `align-self` не работает, и стол растягивался на всё окно. Гибкая
     // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
     let root_table = matches!(e.tag.as_str(), "html" | "body") && e.style.width.is_none();
-    let mut outer = outer
-        .child(
-            grid_box
-                // `border-spacing: 2px` — умолчание браузера для таблицы с
-                // раздельными рамками. Без него строки идут плотнее, и
-                // расхождение копится вниз по таблице.
-                .gap_x(px(spacing.0))
-                .gap_y(px(spacing.1))
-                // Зазор действует и МЕЖДУ краем таблицы и крайними ячейками
-                // (CSS 2.1 §17.6.1), не только между ячейками. Эталоны
-                // гасят его отрицательным полем на таблице.
-                .px(px(spacing.0))
-                .py(px(spacing.1))
-                .children(cells)
-                .into_any_element(),
-        );
+    let mut outer = outer.child(
+        grid_box
+            // `border-spacing: 2px` — умолчание браузера для таблицы с
+            // раздельными рамками. Без него строки идут плотнее, и
+            // расхождение копится вниз по таблице.
+            .gap_x(px(spacing.0))
+            .gap_y(px(spacing.1))
+            // Зазор действует и МЕЖДУ краем таблицы и крайними ячейками
+            // (CSS 2.1 §17.6.1), не только между ячейками. Эталоны
+            // гасят его отрицательным полем на таблице.
+            .px(px(spacing.0))
+            .py(px(spacing.1))
+            .children(cells)
+            .into_any_element(),
+    );
     if collapse && (bw.iter().any(|w| *w > 0.0) || e.style.border_side_styles.contains(&Some(1))) {
         // Рамка самой таблицы — участник разбора конфликтов: её кромки
         // уходят в тот же слой (EdgePainter), линии — внутренние края
         // рамочного места, победившая кромка рисуется наружу.
-        let black = crate::value::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
-        let side_colour = |i: usize| {
-            e.style.border_colors[i].or(e.style.border_color).unwrap_or(black)
+        let black = crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
         };
-        let colors = [side_colour(0), side_colour(1), side_colour(2), side_colour(3)];
+        let side_colour = |i: usize| {
+            e.style.border_colors[i]
+                .or(e.style.border_color)
+                .unwrap_or(black)
+        };
+        let colors = [
+            side_colour(0),
+            side_colour(1),
+            side_colour(2),
+            side_colour(3),
+        ];
         let side_style =
             |i: usize| e.style.border_side_styles[i].unwrap_or(if bw[i] > 0.0 { 9 } else { 0 });
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
@@ -5676,22 +5795,24 @@ fn track_list(
     // раздаёт раскладка между дорожками `auto` — это ближе к табличной
     // раздаче «пропорционально разнице полной и минимальной ширины».
     (0..cols as usize)
-        .map(|i| match col_widths.get(i).copied().unwrap_or((None, None)) {
-            // Заявленная ширина, но не уже содержимого: minmax с потолком
-            // ниже пола отдаёт пол (правило сетки), то есть
-            // max(min-content, ширина).
-            (Some(w), _) => gpui::GridTrack::MinMax(Box::new((
-                gpui::GridTrack::MinContent,
-                gpui::GridTrack::Pixels(px(w)),
-            ))),
-            // Процентная колонка забирает долю ОСТАТКА: соседние колонки по
-            // содержимому, свободное место делится по долям.
-            (None, Some(k)) => gpui::GridTrack::Fraction(k),
-            (None, None) => gpui::GridTrack::MinMax(Box::new((
-                gpui::GridTrack::MinContent,
-                gpui::GridTrack::Auto,
-            ))),
-        })
+        .map(
+            |i| match col_widths.get(i).copied().unwrap_or((None, None)) {
+                // Заявленная ширина, но не уже содержимого: minmax с потолком
+                // ниже пола отдаёт пол (правило сетки), то есть
+                // max(min-content, ширина).
+                (Some(w), _) => gpui::GridTrack::MinMax(Box::new((
+                    gpui::GridTrack::MinContent,
+                    gpui::GridTrack::Pixels(px(w)),
+                ))),
+                // Процентная колонка забирает долю ОСТАТКА: соседние колонки по
+                // содержимому, свободное место делится по долям.
+                (None, Some(k)) => gpui::GridTrack::Fraction(k),
+                (None, None) => gpui::GridTrack::MinMax(Box::new((
+                    gpui::GridTrack::MinContent,
+                    gpui::GridTrack::Auto,
+                ))),
+            },
+        )
         .collect()
 }
 
@@ -6027,8 +6148,7 @@ fn col_element_widths(
                     // авто-колонке: явный глиф-замер уводил ширину
                     // (ch-units-vrl-007/008 были зелёными на авто).
                     Some(Len::Ch(k))
-                        if el.style.upright == Some(true)
-                            && el.style.vertical == Some(true) =>
+                        if el.style.upright == Some(true) && el.style.vertical == Some(true) =>
                     {
                         let base = match el.style.font_size {
                             Some(Len::Px(v)) => v,
@@ -6267,8 +6387,6 @@ fn line_height_px(style: &Computed, opts: &RenderOpts) -> f32 {
     }
 }
 
-
-
 /// Раскладка ЛУНКАМИ (`display: grid-lanes`, CSS Grid 3).
 ///
 /// Решётки тут нет: дорожки задают только поперечную ось, а вдоль потока
@@ -6289,8 +6407,9 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // `grid-template-rows: repeat(auto-fill, auto)` без колоночных дорожек —
     // это лунки рядами (`row-auto-repeat-*`: вся укладка шла столбиком,
     // потому что направление читалось только из свойства).
-    let row_tracks =
-        merged.grid_rows.is_some() || merged.auto_repeat_rows.is_some() || merged.grid_auto_fill_row.is_some();
+    let row_tracks = merged.grid_rows.is_some()
+        || merged.auto_repeat_rows.is_some()
+        || merged.grid_auto_fill_row.is_some();
     let col_tracks = merged.grid_tracks.is_some()
         || merged.auto_repeat_cols.is_some()
         || merged.grid_auto_fill_min.is_some();
@@ -6364,67 +6483,67 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             .track
             .or_else(|| repeat.track_pct.map(|k| k * room))
             .unwrap_or_else(|| {
-            e.children
-                .iter()
-                .filter_map(|n| match n {
-                    Node::Element(item) => {
-                        let size = if row_dir {
-                            item_height(item, merged, opts)
-                        } else {
-                            item_width(item)
-                        };
-                        // Доля элемента считается от места контейнера:
-                        // `width: 25%` в трёхстах шестидесяти — дорожка 90
-                        // (`column-auto-repeat-auto-002`). Точечный замер её
-                        // не видел, и дорожки не разворачивались вовсе.
-                        // Процент БЛОЧНОЙ оси (height в рядах) считается от
-                        // ДОРОЖКИ, а auto-дорожка размера не имеет — процент
-                        // не резолвится, элемент остаётся контентным
-                        // (row-auto-repeat-auto-002: ряды по строке, не 25%
-                        // контейнера). Инлайн-ось (width в колонках) меряется
-                        // от контейнера как раньше (column-auto-repeat-auto-002).
-                        let pct = match (row_dir, item.style.height, item.style.width) {
-                            (false, _, Some(Len::Pct(k))) => Some(k * room),
-                            _ => None,
-                        };
-                        let size = pct.unwrap_or(size);
-                        // Дорожка по содержимому меряет ТЕКСТ: у безразмерного
-                        // элемента точечной ширины нет, и повторы не
-                        // разворачивались вовсе (column-auto-repeat-
-                        // max-content-001: Ahem-строка 120px задаёт дорожку).
-                        let size = if size > 0.0 || row_dir {
-                            size
-                        } else {
-                            let st = crate::inline::inherit(merged, &item.style);
-                            let fs = match st.font_size {
-                                Some(Len::Px(v)) => v,
-                                _ => 16.0,
+                e.children
+                    .iter()
+                    .filter_map(|n| match n {
+                        Node::Element(item) => {
+                            let size = if row_dir {
+                                item_height(item, merged, opts)
+                            } else {
+                                item_width(item)
                             };
-                            let family = st.font_family.clone().unwrap_or_else(|| {
-                                if st.monospace == Some(true) {
-                                    crate::metrics::mono_family().to_string()
-                                } else {
-                                    String::new()
-                                }
-                            });
-                            let ch = crate::metrics::ch_ex_px(&family, fs).0;
-                            let ws = words(&item.children);
-                            let total = ws.iter().sum::<usize>() + ws.len().saturating_sub(1);
-                            total as f32 * ch
-                        };
-                        // Вклад элемента НА НЕСКОЛЬКО дорожек делится между
-                        // ними (css-grid-2 §11.5.1): `width: 200px` при
-                        // `span 2` — это две дорожки по сто, а не одна в
-                        // двести. Пока считали целиком, число повторов
-                        // выходило 300/200 = 1, и вся укладка шла столбиком
-                        // (`column-auto-repeat-auto-001`).
-                        let (_, span) = lane_span(item, usize::MAX, row_dir);
-                        Some(size / span.max(1) as f32)
-                    }
-                    _ => None,
-                })
-                .fold(0.0f32, f32::max)
-        });
+                            // Доля элемента считается от места контейнера:
+                            // `width: 25%` в трёхстах шестидесяти — дорожка 90
+                            // (`column-auto-repeat-auto-002`). Точечный замер её
+                            // не видел, и дорожки не разворачивались вовсе.
+                            // Процент БЛОЧНОЙ оси (height в рядах) считается от
+                            // ДОРОЖКИ, а auto-дорожка размера не имеет — процент
+                            // не резолвится, элемент остаётся контентным
+                            // (row-auto-repeat-auto-002: ряды по строке, не 25%
+                            // контейнера). Инлайн-ось (width в колонках) меряется
+                            // от контейнера как раньше (column-auto-repeat-auto-002).
+                            let pct = match (row_dir, item.style.height, item.style.width) {
+                                (false, _, Some(Len::Pct(k))) => Some(k * room),
+                                _ => None,
+                            };
+                            let size = pct.unwrap_or(size);
+                            // Дорожка по содержимому меряет ТЕКСТ: у безразмерного
+                            // элемента точечной ширины нет, и повторы не
+                            // разворачивались вовсе (column-auto-repeat-
+                            // max-content-001: Ahem-строка 120px задаёт дорожку).
+                            let size = if size > 0.0 || row_dir {
+                                size
+                            } else {
+                                let st = crate::inline::inherit(merged, &item.style);
+                                let fs = match st.font_size {
+                                    Some(Len::Px(v)) => v,
+                                    _ => 16.0,
+                                };
+                                let family = st.font_family.clone().unwrap_or_else(|| {
+                                    if st.monospace == Some(true) {
+                                        crate::metrics::mono_family().to_string()
+                                    } else {
+                                        String::new()
+                                    }
+                                });
+                                let ch = crate::metrics::ch_ex_px(&family, fs).0;
+                                let ws = words(&item.children);
+                                let total = ws.iter().sum::<usize>() + ws.len().saturating_sub(1);
+                                total as f32 * ch
+                            };
+                            // Вклад элемента НА НЕСКОЛЬКО дорожек делится между
+                            // ними (css-grid-2 §11.5.1): `width: 200px` при
+                            // `span 2` — это две дорожки по сто, а не одна в
+                            // двести. Пока считали целиком, число повторов
+                            // выходило 300/200 = 1, и вся укладка шла столбиком
+                            // (`column-auto-repeat-auto-001`).
+                            let (_, span) = lane_span(item, usize::MAX, row_dir);
+                            Some(size / span.max(1) as f32)
+                        }
+                        _ => None,
+                    })
+                    .fold(0.0f32, f32::max)
+            });
         if step > 0.0 {
             let n = (((room + cross_gap) / (step + cross_gap)).floor() as usize).max(1);
             // Явные линии тянут повторы ДАЛЬШЕ места: `grid-row: 9 / span 2`
@@ -6764,7 +6883,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 probe[lane].push((top, top + height));
             }
         }
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok()); *ON } {
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok());
+            *ON
+        } {
             eprintln!("LA placed={placed:?} reach0={reach:?}");
         }
         // Верх следующего элемента той же лунки — ПО КООРДИНАТЕ, не по порядку
@@ -6798,7 +6921,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 Some((idx, height))
             })
             .collect();
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok()); *ON } {
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok());
+            *ON
+        } {
             eprintln!("LA reach={reach:?}");
         }
     }
@@ -6836,15 +6963,22 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             let wrapped = (|| -> Option<Node> {
                 // Свои инсеты сильнее дорожек — обёртка их не перекрывает.
                 let ins = item.style.inset;
-                if ins.top.is_some() || ins.bottom.is_some() || ins.left.is_some() || ins.right.is_some()
+                if ins.top.is_some()
+                    || ins.bottom.is_some()
+                    || ins.left.is_some()
+                    || ins.right.is_some()
                 {
                     return None;
                 }
                 let (fixed, span) = lane_span(item, count, row_dir);
                 let a = fixed?;
                 let span = span.clamp(1, count);
-                let a = if track_rev { count.saturating_sub(a + span) } else { a }
-                    .min(count - span);
+                let a = if track_rev {
+                    count.saturating_sub(a + span)
+                } else {
+                    a
+                }
+                .min(count - span);
                 let px_of = |t: Option<&TrackSize>| match t {
                     Some(TrackSize::Single(Track::Px(w))) => Some(*w),
                     _ => None,
@@ -6882,23 +7016,28 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 // Инлайн-ось — justify-self (rtl зеркалит), блочная — align-self;
                 // без своих значений — *-items контейнера.
                 let flip = merged.rtl == Some(true);
-                style.justify_content = Some(
-                    match item.style.justify_self.or(merged.justify_items) {
+                style.justify_content =
+                    Some(match item.style.justify_self.or(merged.justify_items) {
                         Some(Align::End) => {
-                            if flip { Justify::Start } else { Justify::End }
+                            if flip {
+                                Justify::Start
+                            } else {
+                                Justify::End
+                            }
                         }
                         Some(Align::Center) => Justify::Center,
                         _ => {
-                            if flip { Justify::End } else { Justify::Start }
+                            if flip {
+                                Justify::End
+                            } else {
+                                Justify::Start
+                            }
                         }
-                    },
-                );
-                style.align_items = Some(
-                    match item.style.align_self.or(merged.align_items) {
-                        Some(a @ (Align::End | Align::Center | Align::Stretch)) => a,
-                        _ => Align::Start,
-                    },
-                );
+                    });
+                style.align_items = Some(match item.style.align_self.or(merged.align_items) {
+                    Some(a @ (Align::End | Align::Center | Align::Stretch)) => a,
+                    _ => Align::Start,
+                });
                 let mut freed = item.clone();
                 freed.style.position = None;
                 Some(Node::Element(Element {
@@ -6915,8 +7054,10 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 }))
             })();
             let ins = item.style.inset;
-            let has_insets =
-                ins.top.is_some() || ins.bottom.is_some() || ins.left.is_some() || ins.right.is_some();
+            let has_insets = ins.top.is_some()
+                || ins.bottom.is_some()
+                || ins.left.is_some()
+                || ins.right.is_some();
             match wrapped {
                 Some(w) => extras.push(w),
                 // Заданные края — от контейнера; без краёв и линий элемент
@@ -7040,7 +7181,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 let (lead, trail) = if row_dir {
                     (
                         side(item.style.margin.top, bs.top, item.style.padding.top),
-                        side(item.style.margin.bottom, bs.bottom, item.style.padding.bottom),
+                        side(
+                            item.style.margin.bottom,
+                            bs.bottom,
+                            item.style.padding.bottom,
+                        ),
                     )
                 } else {
                     (
@@ -7110,7 +7255,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 .sum();
             if width > 0.0 {
                 let area = width + cross_gap * (span as f32 - 1.0);
-                let own = if row_dir { item.style.height } else { item.style.width };
+                let own = if row_dir {
+                    item.style.height
+                } else {
+                    item.style.width
+                };
                 if own.is_none() {
                     if row_dir {
                         item.style.height = Some(Len::Px(area));
@@ -7234,9 +7383,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     for lane in slots {
         let mut lane = lane;
         lane.sort_by(|a, b| a.top.total_cmp(&b.top));
-        lane_extents.push(
-            lane.iter().map(|s| s.top + s.height).fold(0.0f32, f32::max),
-        );
+        lane_extents.push(lane.iter().map(|s| s.top + s.height).fold(0.0f32, f32::max));
         let last_real = lane.iter().rposition(|s| s.real);
         let mut nodes: Vec<Node> = Vec::with_capacity(lane.len() * 2);
         let mut cursor = 0.0f32;
@@ -7285,8 +7432,10 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             // (`column-align-items-001`). Распорка чужого элемента ПОСЛЕ
             // хвостового съедает остаток — тогда коробки нет.
             if tail && j == last_idx {
-                if let (Some(along @ (Align::Center | Align::End | Align::Start)), Node::Element(el)) =
-                    (s.along, &s.node)
+                if let (
+                    Some(along @ (Align::Center | Align::End | Align::Start)),
+                    Node::Element(el),
+                ) = (s.along, &s.node)
                 {
                     nodes.push(lane_align_box(el.clone(), along, row_dir));
                     continue;
@@ -7335,8 +7484,8 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // четырёх дорожек).
     // `width: min-content/max-content` — та же обтяжка по дорожкам: точечная
     // мера контейнера и есть их сумма (intrinsic-sizing-cols-*).
-    let hug_width = merged.width.is_none()
-        || matches!(merged.width, Some(Len::MinContent | Len::MaxContent));
+    let hug_width =
+        merged.width.is_none() || matches!(merged.width, Some(Len::MinContent | Len::MaxContent));
     if merged.lanes_inline && !row_dir && hug_width {
         let total: f32 = tracks
             .iter()
@@ -7385,7 +7534,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             Justify::WmStart | Justify::WmEnd => {
                 let flip = merged.rtl == Some(true);
                 let end = (j? == Justify::WmEnd) != flip;
-                Some(if end { gpui::JustifyContent::End } else { gpui::JustifyContent::Start })
+                Some(if end {
+                    gpui::JustifyContent::End
+                } else {
+                    gpui::JustifyContent::Start
+                })
             }
             Justify::Stretch => None,
         }
@@ -7413,11 +7566,19 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // обратном заполнении (column-fill-reverse-align-content-001: start
         // тянет группы к верху). Без заданной раздачи зеркальная лунка
         // прижата к концу.
-        let along_content = if row_dir { merged.justify_content } else { merged.align_content };
+        let along_content = if row_dir {
+            merged.justify_content
+        } else {
+            merged.align_content
+        };
         // `safe` у content-раздачи: при переполнении лунки содержимым раздача
         // отставляется в start (css-align 5.3; у зеркальной лунки start —
         // её End-дефолт: row-fill-reverse-justify-content-safe-001).
-        let along_safe = if row_dir { merged.justify_content_safe } else { merged.align_content_safe };
+        let along_safe = if row_dir {
+            merged.justify_content_safe
+        } else {
+            merged.align_content_safe
+        };
         let along_size = px_of_size(if row_dir { merged.width } else { merged.height });
         let overflowed = matches!(
             (lane_extents.get(i), along_size),
@@ -7483,7 +7644,10 @@ fn lane_span(e: &Element, count: usize, row_dir: bool) -> (Option<usize>, usize)
     match across {
         Some((Placement::Line(a), Placement::Line(b))) => {
             let (s, t) = (line(a), line(b));
-            (Some(s.min(t)), (t as i32 - s as i32).unsigned_abs() as usize)
+            (
+                Some(s.min(t)),
+                (t as i32 - s as i32).unsigned_abs() as usize,
+            )
         }
         Some((Placement::Line(a), Placement::Span(k))) => (Some(line(a)), k as usize),
         Some((Placement::Line(a), Placement::Auto)) => (Some(line(a)), 1),
@@ -7645,7 +7809,6 @@ fn item_height(e: &Element, inherited: &Computed, opts: &RenderOpts) -> f32 {
     }
 }
 
-
 /// Есть ли в поддереве непустой текст — по нему считается высота строки.
 /// Длины слов текста поддерева (в знаках) — для пословной оценки переноса.
 fn words(nodes: &[Node]) -> Vec<usize> {
@@ -7686,7 +7849,6 @@ fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
         opts.normal_line_height
     }
 }
-
 
 /// Пустой ли текстовый узел ПО CSS.
 ///
