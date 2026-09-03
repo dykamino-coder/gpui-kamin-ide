@@ -128,8 +128,19 @@ npm --prefix extensions/claude-bridge/server ci
 npm --prefix extensions/claude-bridge/server run typecheck
 npm --prefix extensions/claude-bridge/server run lint
 npm --prefix extensions/claude-bridge/server test
-npm --prefix extensions/claude-bridge/server run format:check
 ```
+
+Если менялся dashboard Bridge:
+
+```bash
+npm --prefix extensions/claude-bridge/server/src/ui ci
+npm --prefix extensions/claude-bridge/server/src/ui run build
+```
+
+Server пока не имеет полностью нормализованного Prettier baseline, поэтому CI
+проверяет формат только затронутых server-файлов. Полный `format:check` нельзя
+выдавать за пройденный и нельзя исправлять массовым переформатированием внутри
+функционального PR.
 
 Если менялись extension или webview, пересобрать и закоммитить runtime-выход:
 
@@ -142,6 +153,14 @@ npm --prefix extensions/claude-bridge/webview run build
 
 В Git намеренно входят `builtin-extensions/claude-bridge/extension.js` и
 собранные `*.html`. Их diff должен соответствовать исходникам.
+
+Workflow `.github/workflows/pr-checks.yml` автоматически выполняет этот контур
+для затронутых частей каждого PR. Job `required quality gate` имеет стабильное
+имя и проходит только когда все применимые Node, Bridge и Rust jobs успешны;
+docs-only PR ограничивается проверкой scope и whitespace. Workflow использует
+только read-only `GITHUB_TOKEN`, не получает production secrets и ничего не
+публикует. Ручные Windows и corporate-only gates ниже остаются отдельными и не
+подменяются CI.
 
 Для UI-изменения дополнительно проверяются Windows runtime, hover/click,
 keyboard/focus, соседние элементы и визуальный результат. Незапущенная из-за
