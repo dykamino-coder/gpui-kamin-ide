@@ -13,6 +13,11 @@ logs, screenshots и corporate identifiers находятся только в pr
 `dykamino-coder/gpui-kamin-ide-priv-evidence`; public card содержит incident ID
 и private URL.
 
+Исполняемое состояние, строгие prerequisites и текущая bounded пачка находятся
+в `RUNTIME_EXECUTION.md`. Этот файл остаётся единственным источником подробной
+фактуры и acceptance BR-задач; execution registry не заменяет source audit и не
+дублирует техническое описание.
+
 Maintainer/release agent не имеет доступа к corporate GitLab, private/internal
 marketplace и связанным plugin repositories. Задача, acceptance которой требует
 реальный corporate clone/pull/sync/install, обязана пометить этот шаг как
@@ -402,8 +407,9 @@ system instruction или orchestration layer; недетерминирован�
 
 ### BR-16 — Stabilize upward history scroll anchoring
 
-**Status:** ready. **Dependency:** none. **Acceptance:** automated + Windows CEF
-runtime merge gate.
+**Status:** waiting/ready after classification. **Dependency:** BR-22 должен
+сначала классифицировать пустое render window; после этого BR-16 выполняется
+отдельно. **Acceptance:** automated + Windows CEF runtime merge gate.
 
 Текущий scroll-up path нарушает собственный anchor contract в двух проверяемых
 местах:
@@ -951,8 +957,8 @@ Agents panel — отдельная `tools.html` CEF webview со своим `us
 
 ### BR-26 — Publish Agent replay state atomically
 
-**Status:** ready; подтверждён source defect. **Dependency:** none для кода, но
-Windows gate выполняется вместе с исправной visibility lifecycle из BR-25.
+**Status:** ready; подтверждён source defect. **Dependency:** BR-25 baseline и
+BR-27; Windows gate завершается повторной проверкой BR-25.
 **Acceptance:** automated replay-generation tests + Windows CEF runtime gate.
 
 Каждый `replayJsonlToRenderer()` сначала отправляет
@@ -980,8 +986,9 @@ agents, несколько chunks, live entry между последним chun
 
 ### BR-27 — Derive Active and Completed from one lifecycle partition
 
-**Status:** ready; подтверждён source defect. **Dependency:** рекомендуется до
-BR-26, чтобы atomic snapshot уже публиковал корректно разделённые rows.
+**Status:** ready; подтверждён source defect. **Dependency:** BR-25 baseline;
+выполняется до BR-26, чтобы atomic snapshot уже публиковал корректно
+разделённые rows.
 **Acceptance:** automated state/renderer tests + authenticated Windows Agent
 Teams gate.
 
@@ -1056,7 +1063,7 @@ height/y и добавляет regression probe. Этот incident не объе
 ### BR-29 — Make hover-to-rename transition atomic
 
 **Status:** ready; подтверждён source lifecycle defect. **Dependency:** paired
-baseline из BR-28 и закрытая текущая PR queue. **Acceptance:** automated state/
+baseline из BR-28. **Acceptance:** automated state/
 geometry tests + Windows GPUI sidebar gate.
 
 Переход в inline rename сейчас не владеет teardown hover actions:
@@ -1124,10 +1131,10 @@ artifacts. Agents track не содержит предположения о да
 
 PR #12–#24 и PR #26 находятся в `origin/main`; PR #20 (BR-18) обновлён от
 `origin/main` с #23, прошёл automated и Windows runtime gate и объединён. PR #25
-(сырые diagnostic logs с рабочей машины) закрыт без merge: такое evidence
-ждёт отдельного private evidence flow. Открытых PR предыдущей очереди нет, и
-BR-25–BR-30 могут получать implementation branches по порядку ниже; каждый —
-от свежего `origin/main`.
+(сырые diagnostic logs с рабочей машины) закрыт без merge; его допустимые
+материалы перенесены в private incident `INC-2026-0001`. PR #27 с новым flow
+также находится в `origin/main`. На момент формирования
+`RUNTIME_EXECUTION.md` открытых PR нет.
 
 Особая зависимость Agents track — PR #21: сначала его полный automated и
 Windows lifecycle gate, затем BR-25 verification. PR #21 не считается
@@ -1135,13 +1142,11 @@ Windows lifecycle gate, затем BR-25 verification. PR #21 не считае�
 перед BR-26; каждый implementation PR начинается от нового `origin/main` и
 пересобирает generated artifacts из объединённых sources, без `ours`/`theirs`.
 
-## Recommended next task order
+## Scheduling constraints
 
-Это scheduler priority, а не одна двадцатишаговая dependency chain. Нормативны
-явные `Dependency` в карточках и строгий integration order открытой очереди
-выше. После её завершения пункты без зависимости разрешено вести независимо в
-разных worktree, но каждый следующий PR создаётся от свежего `origin/main`.
-Пересекающиеся tracks остаются последовательными:
+Текущая пачка и состояние каждой задачи определены в `RUNTIME_EXECUTION.md`.
+Ниже остаются только отношения между tracks; отдельный нумерованный scheduler в
+этом файле больше не ведётся, чтобы два списка не расходились.
 
 - Agent Teams UI: #21 (merged) → BR-25 verification → BR-27 → BR-26; BR-15 только
   после стабильности delivery/view lifecycle;
@@ -1157,41 +1162,8 @@ Windows lifecycle gate, затем BR-25 verification. PR #21 не считае�
   layout fix создаётся только если BR-28 докажет sibling reflow.
 
 BR-04, BR-08, BR-14, BR-17, BR-19, BR-23 и BR-24 не образуют общую строгую
-цепочку. Они следуют priority ниже, не смешиваются в один PR и перед началом
-повторно проверяются на file overlap с уже открытыми branches.
-
-1. BR-18 закрыт merge PR #20; открытой очереди нет.
-2. BR-25: после #21 выполнить instrumented Windows verification одной session.
-3. BR-27: исправить единую partition `Active`/`Completed`.
-4. BR-26: сделать replay snapshot атомарным и убрать empty/partial flicker.
-5. BR-28 paired sidebar geometry capture без speculative layout changes.
-6. BR-29 atomic hover-to-rename transition; отдельный layout fix — только по
-   результату BR-28.
-7. BR-19 expected shell-disconnect cancellation без ложного crash toast.
-8. BR-17 persistent server logs как независимый operational PR.
-9. BR-20 plan-usage compatibility как независимый server/dashboard PR.
-10. BR-21 metric contract, затем его bounded aggregation PRs; analytics fixes не
-   смешиваются с BR-20 и не пытаются вычислять quota из JSONL.
-11. BR-04 recovery после extension-host respawn.
-12. BR-14 release provenance guard идёт независимо и не блокирует runtime chain.
-13. BR-24 lost invoke replies: сначала transport diagnostics, затем bounded
-   lifecycle и reconciliation без blind retry mutating calls.
-14. BR-23 completion toast после финального connection-state PR; отдельно от
-   sticky elicitation/approval semantics.
-15. Повторный Windows-прогон tab switch и disconnect/reconnect. BR-06 создаётся
-   как fix PR только если симптом сохранился; отдельная задача для reconnect не
-   заводится.
-16. BR-22 live render-window collapse: сначала получить paired diagnostic dumps
-   пустого и восстановившегося состояния и локализовать расходящийся entry path.
-17. BR-16 upward history anchoring идёт после классификации BR-22 отдельным UI
-   PR и не блокирует connection recovery chain.
-18. BR-11 inventory native blockers, затем минимальный BR-07.
-19. BR-08 без удаления существующего maintenance contract.
-20. BR-12 deployment skills baseline; BR-13 независимо ждёт подтверждения legacy
-   migration на всех deployments.
-21. BR-15 Agent Teams selection eval.
-22. BR-30 atomic incident records across rotation.
-23. BR-02 и только затем решение по BR-03.
+цепочку. Они не смешиваются в один PR и перед началом повторно проверяются на
+file overlap с уже открытыми branches.
 
 Каждый PR остаётся change PR без version bump. Release и production rollout
 выполняются отдельно по `CONTRIBUTING.md`.

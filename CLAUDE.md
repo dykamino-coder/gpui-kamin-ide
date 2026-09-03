@@ -65,6 +65,14 @@ Change/Fix PR. Diagnostic-only merge release не вызывает.
 docs/process/diagnostic изменения release не вызывают. Release всё равно
 выполняется отдельной branch/PR и по всем gates ниже.
 
+Отдельная команда владельца `Выполни текущую runtime-пачку по правилам
+репозитория` запускает только явно перечисленную текущую пачку из
+`extensions/claude-bridge/RUNTIME_EXECUTION.md`. Она не означает «сделать весь
+backlog»: agent фиксирует snapshot пачки, создаёт отдельный bounded PR на каждый
+deliverable, не смешивает разные BR-задачи, соблюдает строгие prerequisites и
+не начинает следующую планируемую пачку без нового запуска. Подробный порядок —
+в `docs/MAINTAINER_PR_FLOW.md`.
+
 ## Качество
 
 - Соблюдать границы `ui/`, `state/`, `host/` из `ARCHITECTURE.md`.

@@ -217,6 +217,12 @@ Conventional Commit-заголовка. Прямой push и force-push в `main
 относятся к следующему запуску. Diagnostic-only и чистая docs/process пачка
 release не создают.
 
+Runtime backlog запускается отдельно фразой `Выполни текущую runtime-пачку по
+правилам репозитория`. В этом режиме состав работ берётся только из текущей
+пачки `extensions/claude-bridge/RUNTIME_EXECUTION.md`; следующие пачки не
+подмешиваются. Каждый deliverable получает отдельный PR, а строгие зависимости
+проверяются после каждого merge от свежего `origin/main`.
+
 ## 6. Release PR
 
 Release PR создаёт мейнтейнер из актуального `origin/main` после объединения
