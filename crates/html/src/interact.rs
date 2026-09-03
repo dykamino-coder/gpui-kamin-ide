@@ -2913,6 +2913,20 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     // родителя — при письме справа налево содержимое такой коробки уезжало за
     // её край на всю эту ширину.
     let now = spot.get();
+    // Спан с СОБСТВЕННЫМ вертикальным письмом в горизонтальном содержащем
+    // блоке и с заданной осью: нулевая обёртка вставала после абзаца и сама
+    // становилась точкой отсчёта (`abs-pos-non-replaced-vlr-121`: зелёный
+    // на y = 0 при эталоне 160). Голый заместитель считает сдвиг от дырки
+    // щупа сам; `!vertical` обязателен — вертикальные классы с обёрткой
+    // зелёные (`vlr-087`, `vlr-119`). Разбор:
+    // `target/scout-vabs-stretch-2026-09.md`, часть 5.
+    if now.fixed_axes != (false, false) && !now.vertical && now.own_vertical {
+        return LatePlace {
+            child: Some(child),
+            spot,
+        }
+        .into_any_element();
+    }
     // При вертикальном письме поток строк идёт поперёк: распорка тянется по
     // высоте, а не по ширине, иначе она уводила бы содержимое вниз. Ветка
     // нужна только позиции В СТРОКЕ (next_line): блочный заместитель без неё
@@ -3072,10 +3086,18 @@ impl Element for LatePlace {
                 hole.origin.x - bounds.origin.x,
                 hole.origin.y - bounds.origin.y,
             ),
-            (Some(hole), None) if now.own_vertical && !now.vertical => gpui::point(
-                hole.origin.x + bounds.size.width - bounds.origin.x,
-                hole.origin.y - bounds.origin.y,
-            ),
+            // Ширину коробки прибавляет только БЛОЧНЫЙ щуп
+            // (`abs-pos-border-offset-003`: ортогональный `.parent` прижат к
+            // правому краю vrl-контейнера); строчный щуп 0×0 сдвига не
+            // получает.
+            (Some(hole), None)
+                if now.own_vertical && !now.vertical && hole.size.width > px(0.0) =>
+            {
+                gpui::point(
+                    hole.origin.x + bounds.size.width - bounds.origin.x,
+                    hole.origin.y - bounds.origin.y,
+                )
+            }
             (Some(hole), None) => hole.origin - bounds.origin,
             (None, _) => gpui::point(px(0.0), px(0.0)),
         };
