@@ -470,9 +470,25 @@ pub struct StackChild {
     /// замещаемый элемент и сплошной строчный набор. Такая уходит в
     /// следующую колонку целиком.
     pub monolith: bool,
+    /// Точки ЗАКОННОГО разреза (css-break-3 §4.3, класс A) — границы
+    /// вложенных блочных детей, рекурсивно: `(need, from)` — сколько
+    /// ребёнка от верха должно уместиться до разреза и с какого смещения
+    /// продолжать в следующей колонке (поле на границе усекается,
+    /// css-break-3 §5.2). По возрастанию.
+    pub cuts: Vec<(f32, f32)>,
     pub h: f32,
     pub mt: f32,
     pub mb: f32,
+}
+
+/// Мера ребёнка для укладки колонок.
+#[derive(Clone)]
+pub struct Kid {
+    pub h: f32,
+    pub mt: f32,
+    pub mb: f32,
+    pub monolith: bool,
+    pub cuts: Vec<(f32, f32)>,
 }
 
 /// Кусок ребёнка в колонке: чей он, какая по счёту копия, в какой колонке
@@ -571,78 +587,118 @@ impl ColumnStack {
         }
     }
 
-    /// Жадная укладка при данной высоте колонки: сколько колонок вышло и
-    /// минимальный недолаз. Вертикальные поля соседей СХЛОПЫВАЮТСЯ
-    /// (CSS 2.1 §8.3.1) и обнуляются на границе колонки (css-break §5).
-    fn fill(
-        kids: &[(f32, f32, f32, bool)],
-        target: f32,
-        limit: usize,
-    ) -> (usize, f32, Vec<Frag>) {
+    /// Жадная укладка при данной высоте колонки: сколько колонок вышло,
+    /// минимальный недолаз и план кусков. Вертикальные поля соседей
+    /// СХЛОПЫВАЮТСЯ (CSS 2.1 §8.3.1) и обнуляются на границе колонки
+    /// (css-break §5). Не влезший ребёнок режется по ближайшей снизу
+    /// ЗАКОННОЙ точке (класс A); без таких точек — по краю колонки, если
+    /// он выше колонки, иначе уходит в следующую целиком; монолит режется
+    /// никогда и с верха пустой колонки переполняет её (css-break-3 §4.1).
+    fn fill(kids: &[Kid], target: f32, limit: usize) -> (usize, f32, Vec<Frag>) {
         let mut col = 0usize;
         let mut y = 0.0f32;
         let mut prev_mb = 0.0f32;
         let mut first = true;
+        let mut placed = false;
         let mut shortage = f32::MAX;
         let mut out: Vec<Frag> = Vec::with_capacity(kids.len());
-        for (kid, &(h, mt, mb, monolith)) in kids.iter().enumerate() {
-            let lead = if first { mt } else { prev_mb.max(mt) };
-            if !first && y + lead + h > target + 0.01 {
-                shortage = shortage.min(y + lead + h - target);
-                // Коробка, не влезшая в остаток колонки, РЕЖЕТСЯ по её краю
-                // (css-break-3 §4: «slice» — вид разрыва по умолчанию), а не
-                // уезжает следующей колонкой целиком. Целиком уходит только
-                // та, что и в пустой колонке помещается: для неё разрез
-                // пустой первой частью ничего не даёт.
-                let room = target - (y + lead);
-                if !monolith && h > target + 0.01 && room > 0.01 {
-                    let mut done = 0.0f32;
-                    let mut copy = 0usize;
-                    out.push(Frag { kid, copy, col, y: y + lead, from: 0.0, h: room });
-                    done += room;
-                    while done < h - 0.01 && copy + 1 < limit {
-                        copy += 1;
-                        col += 1;
-                        let part = (h - done).min(target);
-                        out.push(Frag { kid, copy, col, y: 0.0, from: done, h: part });
-                        done += part;
-                    }
-                    y = out.last().map(|f| f.y + f.h).unwrap_or(0.0);
-                    prev_mb = mb;
-                    first = false;
-                    continue;
+        for (kid, k) in kids.iter().enumerate() {
+            let lead = if first { k.mt } else { prev_mb.max(k.mt) };
+            let mut cur = y + lead;
+            let mut from = 0.0f32;
+            let mut copy = 0usize;
+            loop {
+                let room = target - cur;
+                let rest = k.h - from;
+                if rest <= room + 0.01 {
+                    out.push(Frag { kid, copy, col, y: cur, from, h: rest });
+                    y = cur + rest;
+                    placed = true;
+                    break;
                 }
+                let cut = if k.monolith {
+                    None
+                } else {
+                    k.cuts
+                        .iter()
+                        .copied()
+                        .filter(|&(need, nf)| {
+                            nf > from + 0.01 && need >= from - 0.01 && need - from <= room + 0.01
+                        })
+                        .last()
+                };
+                // Недолаз: на сколько не хватило колонки до ближайшего
+                // разреза (или до конца ребёнка).
+                let next = k
+                    .cuts
+                    .iter()
+                    .map(|&(need, _)| need - from)
+                    .find(|&d| d > room + 0.01)
+                    .unwrap_or(rest);
+                shortage = shortage.min(next - room);
+                match cut {
+                    Some((need, nf)) => {
+                        out.push(Frag { kid, copy, col, y: cur, from, h: (need - from).max(0.0) });
+                        from = nf;
+                    }
+                    None if !k.monolith && k.cuts.is_empty() && rest > target + 0.01 && room > 0.01 => {
+                        // Коробка без точек разреза выше колонки — вид
+                        // `slice` по краю (css-break-3 §4).
+                        out.push(Frag { kid, copy, col, y: cur, from, h: room });
+                        from += room;
+                    }
+                    None if placed => {
+                        // Из непустой колонки — в следующую целиком; поле на
+                        // границе колонки съедается.
+                        col += 1;
+                        cur = 0.0;
+                        placed = false;
+                        continue;
+                    }
+                    None if !k.monolith && rest > target + 0.01 && room > 0.01 => {
+                        out.push(Frag { kid, copy, col, y: cur, from, h: room });
+                        from += room;
+                    }
+                    None => {
+                        // Монолит с верха пустой колонки: остаётся и
+                        // переполняет.
+                        out.push(Frag { kid, copy, col, y: cur, from, h: rest });
+                        y = cur + rest;
+                        placed = true;
+                        break;
+                    }
+                }
+                if copy + 1 >= limit {
+                    // Копий больше нет — остаток за кадром.
+                    y = target;
+                    placed = true;
+                    break;
+                }
+                copy += 1;
                 col += 1;
-                y = 0.0;
-                // Поле на границе колонки съедается.
-                out.push(Frag { kid, copy: 0, col, y, from: 0.0, h });
-                y += h;
-                prev_mb = mb;
-                first = false;
-                continue;
+                cur = 0.0;
+                placed = false;
             }
-            out.push(Frag { kid, copy: 0, col, y: y + lead, from: 0.0, h });
-            y += lead + h;
-            prev_mb = mb;
+            prev_mb = k.mb;
             first = false;
         }
         (col + 1, shortage, out)
     }
 
     /// Высота колонок: заданная (fill:auto) либо баланс.
-    fn balance(&self, kids: &[(f32, f32, f32, bool)]) -> (f32, Vec<Frag>) {
+    fn balance(&self, kids: &[Kid]) -> (f32, Vec<Frag>) {
         let limit = self.count;
         if let Some(h) = self.fixed_height {
             let (_, _, slots) = Self::fill(kids, h, limit);
             return (h, slots);
         }
-        let total: f32 = kids.iter().map(|&(h, ..)| h).sum();
+        let total: f32 = kids.iter().map(|k| k.h).sum();
         // Разрезаемая коробка потолка колонке не задаёт: её высоту держит
         // только сумма. Потолок нужен монолитам — они остаются целыми.
         let tallest = kids
             .iter()
-            .filter(|k| k.3)
-            .fold(0.0f32, |m, &(h, ..)| m.max(h));
+            .filter(|k| k.monolith)
+            .fold(0.0f32, |m, k| m.max(k.h));
         let mut target = (total / self.count as f32).max(tallest).max(1.0);
         for _ in 0..6 {
             let (cols, shortage, slots) = Self::fill(kids, target, limit);
@@ -676,10 +732,10 @@ impl Element for ColumnStack {
         window: &mut Window,
         _cx: &mut App,
     ) -> (LayoutId, ()) {
-        let heights: Vec<(f32, f32, f32, bool)> = self
+        let heights: Vec<Kid> = self
             .children
             .iter()
-            .map(|c| (c.h, c.mt, c.mb, c.monolith))
+            .map(|c| Kid { h: c.h, mt: c.mt, mb: c.mb, monolith: c.monolith, cuts: c.cuts.clone() })
             .collect();
         let count = self.count;
         let fixed = self.fixed_height;
@@ -723,10 +779,10 @@ impl Element for ColumnStack {
     ) {
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
-        let heights: Vec<(f32, f32, f32, bool)> = self
+        let heights: Vec<Kid> = self
             .children
             .iter()
-            .map(|c| (c.h, c.mt, c.mb, c.monolith))
+            .map(|c| Kid { h: c.h, mt: c.mt, mb: c.mb, monolith: c.monolith, cuts: c.cuts.clone() })
             .collect();
         let (target, plan) = self.balance(&heights);
         self.col_w.set(col_w);

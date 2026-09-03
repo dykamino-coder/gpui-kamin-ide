@@ -389,6 +389,9 @@ pub struct ColumnFlow {
     font: Font,
     font_size: f32,
     line_height: f32,
+    /// `column-fill: auto` с заданной высотой: колонки заполняются подряд до
+    /// этой высоты, а не делятся поровну (css-multicol-1 §3.3).
+    fill_height: Option<f32>,
     cuts: Rc<std::cell::RefCell<(Vec<usize>, Pixels, usize)>>,
     child: Option<AnyElement>,
 }
@@ -404,6 +407,7 @@ impl ColumnFlow {
         font: Font,
         font_size: f32,
         line_height: f32,
+        fill_height: Option<f32>,
     ) -> Self {
         ColumnFlow {
             build,
@@ -414,6 +418,7 @@ impl ColumnFlow {
             font,
             font_size,
             line_height,
+            fill_height,
             cuts: Rc::new(std::cell::RefCell::new((Vec::new(), px(0.), 1))),
             child: None,
         }
@@ -430,6 +435,7 @@ fn measure_columns(
     font: &Font,
     font_size: f32,
     line_height: f32,
+    fill_height: Option<f32>,
     width: Pixels,
     window: &mut Window,
 ) -> (Vec<usize>, usize, Pixels) {
@@ -487,7 +493,14 @@ fn measure_columns(
     // одним куском (высота фрагментатора + разрыв между блочными детьми
     // РЕКУРСИВНО + монолиты), а не по частям; поштучные заходы измеримо
     // упираются в +1.
-    let per_col = lines.div_ceil(count).max(1);
+    // `column-fill: auto` (css-multicol-1 §3.3): колонки заполняются ПОДРЯД
+    // до высоты фрагментатора, а не делятся поровну. Пока высота не
+    // учитывалась вовсе, и заданная высота коробки не влияла на разрезы:
+    // строки распределялись ровно по числу колонок.
+    let per_col = match fill_height {
+        Some(h) if h >= line_height => ((h / line_height).floor() as usize).max(1),
+        _ => lines.div_ceil(count).max(1),
+    };
     let cuts: Vec<usize> = (1..count)
         .filter_map(|i| boundaries.get(i * per_col - 1).copied())
         .collect();
@@ -521,6 +534,7 @@ impl Element for ColumnFlow {
         let font_size = self.font_size;
         let line_height = self.line_height;
         let cuts = self.cuts.clone();
+        let fill_height = self.fill_height;
         let layout_id = window.request_measured_layout(
             Style::default(),
             move |known, available, window, _cx| {
@@ -536,6 +550,7 @@ impl Element for ColumnFlow {
                     &font,
                     font_size,
                     line_height,
+                    fill_height,
                     width,
                     window,
                 );
@@ -565,6 +580,7 @@ impl Element for ColumnFlow {
                 &self.font,
                 self.font_size,
                 self.line_height,
+                self.fill_height,
                 bounds.size.width,
                 window,
             );

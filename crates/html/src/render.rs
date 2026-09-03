@@ -3328,6 +3328,12 @@ fn column_flow(
             measure_font(inherited, opts),
             size,
             line,
+            // `column-fill: auto` с заданной высотой: колонки заполняются
+            // подряд до неё (css-multicol-1 §3.3).
+            match (e.style.column_fill_auto, e.style.height) {
+                (Some(true), Some(Len::Px(h))) if h > 0.0 => Some(h),
+                _ => None,
+            },
         )
         .into_any_element(),
     )
@@ -7642,40 +7648,146 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     // план target/scout-multicol.md / scout-fragmentation.md).
                     // Коробка ребёнка и его вертикальные поля отдельно:
                     // поля схлопываются между соседями и на границах колонок.
-                    let full_h = |c: &Element| -> Option<(f32, f32, f32)> {
+                    // Флоаты в поддереве ломают известность высоты.
+                    fn has_float(n: &Element, depth: u8) -> bool {
+                        if depth == 0 {
+                            return false;
+                        }
+                        n.children.iter().any(|k| match k {
+                            Node::Element(e) => {
+                                e.style.float.unwrap_or(0) != 0 || has_float(e, depth - 1)
+                            }
+                            _ => false,
+                        })
+                    }
+                    /// Мера блочного ребёнка для укладки колонок: высота с
+                    /// отбивками и рамками, поля и точки ЗАКОННОГО разреза
+                    /// (css-break-3 §4.3, класс A) — границы вложенных
+                    /// блочных детей, рекурсивно. Высота `auto` складывается
+                    /// из тех же детей со схлопыванием полей (CSS 2.1
+                    /// §8.3.1); строчное содержимое высоты не даёт — такой
+                    /// ребёнок мерить нечем, и весь стек идёт другим путём.
+                    fn shape(c: &Element, depth: u8) -> Option<(f32, f32, f32, Vec<(f32, f32)>)> {
                         let px_or = |l: &Option<Len>, strict: bool| match l {
                             None => Some(0.0),
                             Some(Len::Px(v)) => Some(*v),
                             Some(_) if !strict => Some(0.0),
                             _ => None,
                         };
-                        // Флоаты в поддереве ломают известность высоты.
-                        fn has_float(n: &Element, depth: u8) -> bool {
-                            if depth == 0 {
-                                return false;
-                            }
-                            n.children.iter().any(|k| match k {
-                                Node::Element(e) => {
-                                    e.style.float.unwrap_or(0) != 0 || has_float(e, depth - 1)
-                                }
-                                _ => false,
-                            })
-                        }
                         if has_float(c, 3) {
                             return None;
                         }
                         let b = c.style.borders();
-                        Some((
-                            px_or(&c.style.height, true)?
-                                + px_or(&c.style.padding.top, false)?
-                                + px_or(&c.style.padding.bottom, false)?
-                                + px_or(&b.top, false)?
-                                + px_or(&b.bottom, false)?,
-                            px_or(&c.style.margin.top, false)?,
-                            px_or(&c.style.margin.bottom, false)?,
-                        ))
-                    };
-                    let stackable: Option<Vec<(Element, (f32, f32, f32))>> = e
+                        let mt = px_or(&c.style.margin.top, false)?;
+                        let mb = px_or(&c.style.margin.bottom, false)?;
+                        let top = px_or(&c.style.padding.top, false)? + px_or(&b.top, false)?;
+                        let bot = px_or(&c.style.padding.bottom, false)? + px_or(&b.bottom, false)?;
+                        let kids: Vec<&Node> = c.children.iter().filter(|n| !is_blank(n)).collect();
+                        // Спуск — по физике контейнера. ★ ЗАМЕРЕНО (04.09,
+                        // срез 1498): без гейта 384, гейт «только блочный
+                        // поток» 376 (+15/−23) — flex-колонки, flex с
+                        // переносом и ВЛОЖЕННЫЙ многоколоночник без спуска
+                        // теряют высоту и вылетают из укладки целиком.
+                        // Ряд flex без переноса: дети рядом — высота ряда
+                        // равна наибольшему, точек разреза между ними нет.
+                        // Сетка и таблица: дети не стопкой, спуска нет.
+                        let is_flex = matches!(
+                            c.style.display,
+                            Some(Display::Flex) | Some(Display::InlineFlex)
+                        ) || c.style.webkit_box == Some(true);
+                        let row_nowrap = is_flex
+                            && matches!(
+                                c.style.flex_dir,
+                                None
+                                    | Some(crate::computed::FlexDir::Row)
+                                    | Some(crate::computed::FlexDir::RowReverse)
+                            )
+                            && c.style.flex_wrap != Some(true)
+                            && c.style.webkit_box_vertical != Some(true);
+                        let no_descent = matches!(
+                            c.style.display,
+                            Some(Display::Grid)
+                                | Some(Display::InlineGrid)
+                                | Some(Display::GridLanes)
+                                | Some(Display::Table)
+                                | Some(Display::InlineTable)
+                                | Some(Display::TableRow)
+                                | Some(Display::TableRowGroup)
+                        );
+                        let inner: Option<Vec<(f32, f32, f32, Vec<(f32, f32)>)>> = if depth == 0
+                            || no_descent
+                        {
+                            None
+                        } else {
+                            kids.iter()
+                                .map(|n| match n {
+                                    Node::Element(k)
+                                        if !k.inline
+                                            && k.style.position.is_none()
+                                            && k.style.float.unwrap_or(0) == 0 =>
+                                    {
+                                        shape(k, depth - 1)
+                                    }
+                                    _ => None,
+                                })
+                                .collect()
+                        };
+                        let mut cuts: Vec<(f32, f32)> = Vec::new();
+                        // Стек вложенных: конец, поле первого, схлопнувшееся
+                        // сквозь верх без отбивки, поле последнего.
+                        let mut stacked: Option<(f32, f32, f32)> = None;
+                        if let Some(kids) = inner.filter(|k| !k.is_empty()) {
+                            let inner_h: Vec<f32> = kids.iter().map(|k| k.0).collect();
+                            let mut y = top;
+                            let mut prev_mb = 0.0f32;
+                            let mut through = 0.0f32;
+                            let mut first = true;
+                            for (h, kmt, kmb, kcuts) in kids {
+                                let lead = if first {
+                                    if top == 0.0 {
+                                        through = kmt;
+                                        0.0
+                                    } else {
+                                        kmt
+                                    }
+                                } else {
+                                    prev_mb.max(kmt)
+                                };
+                                if !first {
+                                    cuts.push((y, y + lead));
+                                }
+                                let start = y + lead;
+                                for (need, nf) in kcuts {
+                                    cuts.push((start + need, start + nf));
+                                }
+                                y = start + h;
+                                prev_mb = kmb;
+                                first = false;
+                            }
+                            stacked = Some((y, through, prev_mb));
+                            if row_nowrap {
+                                let tallest = inner_h.iter().copied().fold(0.0f32, f32::max);
+                                stacked = Some((top + tallest, 0.0, 0.0));
+                                cuts.clear();
+                            }
+                        }
+                        let (h, mt, mb) = match c.style.height {
+                            Some(Len::Px(v)) => (v + top + bot, mt, mb),
+                            None => match stacked {
+                                Some((end, through, last_mb)) => (
+                                    end + bot,
+                                    mt.max(through),
+                                    if bot == 0.0 { mb.max(last_mb) } else { mb },
+                                ),
+                                None if kids.is_empty() => (top + bot, mt, mb),
+                                None => return None,
+                            },
+                            Some(_) => return None,
+                        };
+                        cuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
+                        Some((h, mt, mb, cuts))
+                    }
+                    let stackable: Option<Vec<(Element, (f32, f32, f32, Vec<(f32, f32)>))>> = e
                         .children
                         .iter()
                         .filter(|n| !is_blank(n))
@@ -7685,7 +7797,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     && c.style.position.is_none()
                                     && c.style.float.unwrap_or(0) == 0 =>
                             {
-                                full_h(c).map(|h| ((*c).clone(), h))
+                                shape(c, 4).map(|h| ((*c).clone(), h))
                             }
                             _ => None,
                         })
@@ -7727,7 +7839,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         };
                         let children: Vec<crate::flow::StackChild> = kids
                             .into_iter()
-                            .map(|(c, (h, mt, mb))| {
+                            .map(|(c, (h, mt, mb, cuts))| {
                                 let mut copy = c;
                                 // Поля кладёт укладка колонок, не коробка.
                                 copy.style.margin.top = None;
@@ -7782,12 +7894,16 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                             | Some(Display::Table)
                                             | Some(Display::TableCell)
                                     )
-                                    ;
-                                let _ = block_kid;
+                                    // Сплошной СТРОЧНЫЙ набор тоже монолит:
+                                    // резать его можно лишь между строками, а
+                                    // строк укладка колонок не видит, и разрез
+                                    // приходился бы посреди строки.
+                                    || !copy.children.iter().any(block_kid);
                                 crate::flow::StackChild {
                                     el: build(),
                                     frags: (1..cols.max(1)).map(|_| build()).collect(),
                                     monolith,
+                                    cuts,
                                     h,
                                     mt,
                                     mb,
