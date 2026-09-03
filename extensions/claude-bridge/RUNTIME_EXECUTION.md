@@ -88,7 +88,7 @@ Diagnostic-only результаты сами по себе release не выз�
 | [BR-26](RUNTIME_RELIABILITY.md#br-26--publish-agent-replay-state-atomically) | waiting | change | Agent Teams UI | BR-25 baseline + BR-27 | Текущая пачка: generation-scoped staging PR |
 | [BR-27](RUNTIME_RELIABILITY.md#br-27--derive-active-and-completed-from-one-lifecycle-partition) | waiting | change | Agent Teams UI | BR-25 baseline | Текущая пачка: единая lifecycle partition |
 | [BR-28](RUNTIME_RELIABILITY.md#br-28--measure-sidebar-geometry-during-session-hover) | done | none | native sidebar | none | Paired artifact INC-2026-0003: sibling reflow не воспроизводится |
-| [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | ready | change | native sidebar | none | Текущая пачка: atomic rename transition |
+| [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | blocked | change | native sidebar | none | Fix PR готов; merge заблокирован падающим job «Rust checks on Windows» (cargo fmt --all по crates/html на main) |
 | [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation) | done | none | diagnostics | none | Record-aware writer PR в `main`; BR-02 evidence run разблокирован |
 | [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | ready | change | CEF/webview delivery | none | Следующая пачка: event-driven pull wake (INC-2026-0002) |
 
