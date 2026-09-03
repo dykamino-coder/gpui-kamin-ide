@@ -1,6 +1,6 @@
 {
   "name": "open-claude-bridge",
-  "version": "6.3.131",
+  "version": "6.3.132",
   "description": "Bridge server for the KaminIDE client and Claude CLI PTY sessions",
   "type": "module",
   "main": "./src/index.ts",
