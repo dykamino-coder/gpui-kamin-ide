@@ -4614,10 +4614,13 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // за него. Гейт узкий: потоковых коробок, на которых мерились четыре
         // отката выше, он не касается.
         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-        let free_inline = matches!(
+        // Коробка на СТАТИЧЕСКОЙ позиции тоже абсолютна: `position` с неё
+        // снято ради отсчёта, и без пометки `abs_static` гейт её не узнавал.
+        let free_inline = (matches!(
             inherited.position,
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
-        ) && !matches!(inherited.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
+        ) || inherited.abs_static)
+            && !matches!(inherited.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
             && !(edge(inherited.inset.top) && edge(inherited.inset.bottom));
         let inner = if free_inline {
             div().max_w(px(limit)).child(inner).into_any_element()
@@ -4752,6 +4755,7 @@ fn paragraph_pieces(
         {
             let mut merged = inline::inherit(inherited, &e.style);
             merged.position = None;
+            merged.abs_static = true;
             // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
             // путь блоков давал пустую коробку (clip-path-ellipse-2-ref).
             let inner = if e.tag == "svg" {
@@ -5338,6 +5342,7 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // позиционирования она меряется своим содержимым и висит от угла
         // пустышки, то есть ровно от статической позиции.
         merged.position = None;
+        merged.abs_static = true;
         // Замещаемый элемент строит своя ветка: голая коробка со стилем
         // теряла содержимое (сломанная картинка с alt-подписью пропадала,
         // `abs-pos-vlr-border-001`). Позиция снимается копией — та же
