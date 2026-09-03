@@ -2297,9 +2297,19 @@ thread_local! {
 /// ключи солятся документом, но мусор копился бы бесконечно.
 pub fn forget_vt_measures() {
     VT_MEASURED.with(|c| c.borrow_mut().clear());
+    // Рамка повёрнутого абзаца живёт только на время его подготовки; если
+    // подготовка оборвалась паникой, `set(prev)` не выполнится, и рамка
+    // протекла бы в следующие страницы — щупы горизонтальных абсолютов
+    // считались бы повёрнутыми (`abspos-*` из CSS2 уходили в красное).
+    VT_FRAME.with(|c| c.set(None));
 }
 
 pub fn frame_sanitize() {
+    // Рамка повёрнутого абзаца не должна пережить страницу: сброс при смене
+    // документа приходит позже начала следующего рендера, и щупы
+    // горизонтальных абсолютов считались повёрнутыми (`css-sizing/aspect-
+    // ratio/abspos-014..021`: 0.00 в одиночку и 2.36 в пачке).
+    VT_FRAME.with(|c| c.set(None));
     VT_SEQ.with(|c| c.borrow_mut().clear());
     LATE.with(|s| s.borrow_mut().clear());
     // Слой начального содержащего блока — тот же расходник кадра: пойманная
@@ -2492,7 +2502,9 @@ impl Element for VerticalText {
                 });
             }
         }
+        let prev = VT_FRAME.with(|c| c.replace(Some(bounds)));
         child.prepaint_at(bounds.origin, window, cx);
+        VT_FRAME.with(|c| c.set(prev));
     }
 
     fn paint(
@@ -2657,6 +2669,38 @@ impl IntoElement for ScrollArea {
 /// поэтому элемент уходит последним ребёнком и возвращается на место сдвигом:
 /// щуп запоминает, где стояла распорка, заместитель — где встал сам, разница
 /// и есть нужный сдвиг.
+thread_local! {
+    /// Рамка `VerticalText`, внутри которого сейчас идёт подготовка.
+    ///
+    /// Повёрнутый абзац подготавливается в ДО-ПОВОРОТНОЙ системе, а матрица
+    /// поворота живёт только в `paint`. Щуп статической позиции пишет дырку
+    /// именно в подготовке, поэтому без этой рамки `LatePlace` читает
+    /// до-поворотную точку как экранную, и коробка уезжает на колонку.
+    static VT_FRAME: std::cell::Cell<Option<Bounds<Pixels>>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Экранная точка для до-поворотной, если мы внутри повёрнутого абзаца.
+///
+/// Поворот — на четверть по часовой вокруг верхнего правого угла рамки
+/// (`VerticalText::paint`): до-поворотная `(px, py)` от угла рамки становится
+/// экранной `(x + w - py - thickness, y + px)`. Толщина — колонка строки, в
+/// которую коробка встала.
+fn vt_map(hole: Bounds<Pixels>, thickness: Pixels) -> Bounds<Pixels> {
+    let Some(vt) = VT_FRAME.with(|c| c.get()) else {
+        return hole;
+    };
+    let pre_x = hole.origin.x - vt.origin.x;
+    let pre_y = hole.origin.y - vt.origin.y;
+    Bounds {
+        origin: gpui::point(
+            vt.origin.x + vt.size.width - pre_y - thickness,
+            vt.origin.y + pre_x,
+        ),
+        size: hole.size,
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 pub struct Spot {
     pub hole: Option<Bounds<Pixels>>,
@@ -2683,6 +2727,13 @@ pub struct Spot {
     /// считает раскладка от области просмотра, а статическая позиция нужна
     /// только там, где обе стороны `auto` (§10.3.7, §10.6.4).
     pub fixed_axes: (bool, bool),
+    /// Толщина колонки строки в повёрнутом абзаце: на неё отступает экранная
+    /// точка дырки от правого края рамки. Ноль — коробка вне поворота.
+    pub line_thickness: f32,
+    /// Дырка уже отображена из повёрнутого абзаца в экранную систему
+    /// (`vt_map`): дальше её ставит не горизонтальный рукав щупа, а свой —
+    /// сдвиг только по свободной оси, при `rtl` — от НИЖНЕГО края.
+    pub rotated: bool,
     /// Поле по СВОБОДНОЙ оси, в точках. Базовый сдвиг ставит коробку ровно в
     /// дырку, а по CSS от статической позиции её отодвигает собственное поле.
     pub free_margin: (f32, f32),
@@ -2844,7 +2895,8 @@ pub fn spot_probe(spot: SpotCell, full: bool) -> AnyElement {
         .child(gpui::canvas(
             move |bounds, _, _| {
                 let mut now = spot.get();
-                now.hole = Some(bounds);
+                now.rotated = VT_FRAME.with(|c| c.get()).is_some();
+                now.hole = Some(vt_map(bounds, gpui::px(now.line_thickness)));
                 spot.set(now);
             },
             |_, _, _, _| {},
@@ -3001,6 +3053,17 @@ impl Element for LatePlace {
             // только через `Path`, проверять `od -c`.
             // Возвращать вместе с независимым решением осей (корень B): до
             // боевых пар этот рукав просто не доезжает.
+            // Повёрнутый абзац: дырка уже экранная (`vt_map`). Строчная ось
+            // здесь вертикальна, и при `direction: rtl` она идёт снизу вверх
+            // — щуп отмечает НИЖНИЙ край коробки, а не верхний
+            // (`abs-pos-non-replaced-vrl-126`: коробка стояла ровно на свою
+            // высоту ниже нужного). Горизонтальные rtl-рукава ниже к такой
+            // дырке не относятся — они сдвигают по x.
+            (Some(hole), None) if now.rotated && now.rtl => gpui::point(
+                hole.origin.x - bounds.origin.x,
+                hole.origin.y - bounds.size.height - bounds.origin.y,
+            ),
+            (Some(hole), None) if now.rotated => hole.origin - bounds.origin,
             (Some(hole), None) if now.rtl && hole.size.width > px(0.0) => gpui::point(
                 hole.origin.x + hole.size.width - bounds.size.width - bounds.origin.x,
                 hole.origin.y - bounds.origin.y,
