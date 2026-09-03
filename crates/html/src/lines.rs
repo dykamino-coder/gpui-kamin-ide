@@ -1101,9 +1101,19 @@ impl Paragraph {
             line.indent
         } - shift
             + px(self.flow_cut(row).0);
+        // Строки рисуются снизу вверх (`lines_reversed` — это `vertical-lr`),
+        // и НОМЕР строки в списке тогда зеркален её месту на экране. Щуп
+        // статической позиции брал номер как есть и садился на зеркальную
+        // строку — оттого вся семья `abs-pos-non-replaced-vlr-*` промахивалась
+        // ровно на отражение, а `-vrl-*` (там порядок прямой) была цела.
+        let visual = if self.lines_reversed {
+            self.lines.len().saturating_sub(1).saturating_sub(row)
+        } else {
+            row
+        };
         point(
             bounds.origin.x + lead + x,
-            bounds.origin.y + self.line_height * row as f32,
+            bounds.origin.y + self.line_height * visual as f32,
         )
     }
 
