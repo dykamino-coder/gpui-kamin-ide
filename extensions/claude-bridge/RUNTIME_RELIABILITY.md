@@ -1096,11 +1096,14 @@ actions overlay и stale anchor; input не перекрыт, не обреза�
 
 ### BR-30 — Keep incident-log records atomic across rotation
 
-**Status:** ready; подтверждён source defect и локальное воспроизведение.
-**Dependency:** none для кода; выполнить до следующего evidence run BR-02,
-который опирается на машинно-разбираемый `incident.log`. **Acceptance:**
-automated filesystem/rotation tests; Windows smoke проверяет только запись и
-чтение логов и не требует доступа к корпоративному marketplace.
+**Status:** fixed в change PR пачки `RB-2026-09-A` (record-aware
+`RollingLogWriter.writeRecord`, единый emitter path в `incident-log.ts`);
+BR-02 может опираться на машинно-разбираемый `incident.log` после merge.
+**Dependency:** none. **Acceptance:** automated filesystem/rotation tests —
+rotation boundary внутри ASCII и multibyte records, поколения читаются по
+отдельности, oversized record заменяется bounded marker `record-dropped`;
+Windows smoke проверяет только запись и чтение логов и не требует доступа к
+корпоративному marketplace.
 
 `RollingLogWriter.write()` строго заполняет оставшиеся байты текущего файла и
 только затем выполняет rotation. Для raw `host.log` это ожидаемый bounded

@@ -25,7 +25,33 @@ export interface HostIncidentLogs {
   close(): void
 }
 
-export function createHostIncidentLogs(dataDir: string): HostIncidentLogs {
+export interface HostIncidentLogOptions {
+  /** Test seam: the incident generation cap. Production keeps the default. */
+  incidentMaxBytes?: number
+}
+
+/** Every incident line goes through here: one `[incident] <json>\n` record,
+ *  written atomically across rotation (`RollingLogWriter.writeRecord`). A
+ *  record that cannot fit a whole generation is replaced by a bounded marker
+ *  naming the event and its size, so the trail stays machine-readable and the
+ *  retention cap stays honest. */
+function emitIncident(writer: RollingLogWriter | null, payload: Record<string, unknown>): void {
+  if (!writer) return
+  const record = `[incident] ${JSON.stringify({ ...common(), ...payload })}\n`
+  if (writer.writeRecord(record)) return
+  // The marker is deliberately smaller than any real record (no appVersion,
+  // role or pid): a marker that could itself be oversized would vanish too.
+  const dropped = `[incident] ${JSON.stringify({
+    schema: 1,
+    ts: new Date().toISOString(),
+    event: "record-dropped",
+    droppedEvent: typeof payload.event === "string" ? payload.event : "unknown",
+    bytes: Buffer.byteLength(record, "utf8"),
+  })}\n`
+  writer.writeRecord(dropped)
+}
+
+export function createHostIncidentLogs(dataDir: string, options: HostIncidentLogOptions = {}): HostIncidentLogs {
   let raw: RollingLogWriter | null = null
   let incident: RollingLogWriter | null = null
   try {
@@ -39,28 +65,28 @@ export function createHostIncidentLogs(dataDir: string): HostIncidentLogs {
   } catch { /* best-effort diagnostics */ }
   try {
     incident = new RollingLogWriter(join(dataDir, "incident.log"), {
-      maxBytes: INCIDENT_LOG_MAX_BYTES,
+      maxBytes: options.incidentMaxBytes ?? INCIDENT_LOG_MAX_BYTES,
       backups: INCIDENT_LOG_BACKUPS,
       rotateOnOpen: true,
     })
-    incident.write(`[incident] ${JSON.stringify({
-      ...common(),
+    emitIncident(incident, {
       processRole: "kamin-host",
       pid: process.pid,
       event: "host-log-start",
-    })}\n`)
+    })
   } catch { /* best-effort diagnostics */ }
 
   return {
     writeRaw: (chunk) => raw?.write(chunk),
-    writeExtensionExit: (pid, exitCode, signal) => incident?.write(`[incident] ${JSON.stringify({
-      ...common(),
-      processRole: "extension-host",
-      pid,
-      event: "process-exit",
-      exitCode,
-      signal,
-    })}\n`),
+    writeExtensionExit: (pid, exitCode, signal) => {
+      emitIncident(incident, {
+        processRole: "extension-host",
+        pid,
+        event: "process-exit",
+        exitCode,
+        signal,
+      })
+    },
     close: () => { raw?.close(); incident?.close() },
   }
 }
