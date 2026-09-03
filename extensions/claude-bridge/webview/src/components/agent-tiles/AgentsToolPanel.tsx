@@ -1,6 +1,7 @@
 import type { JSX } from 'preact'
 import { useState, useEffect, useRef } from 'preact/hooks'
-import { tabAgentTrees, tabAgentHistory, findAgentByName, agentEntriesWithLive, type AgentInfo, type TeamInfo } from '../../signals/agents'
+import { tabAgentTrees, tabAgentHistory, findAgentByName, agentEntriesWithLive, type AgentInfo } from '../../signals/agents'
+import { partitionAgents, type PartitionSide, type TeamView } from '../../signals/agent-partition'
 import { jsonlEntriesByTab } from '../../signals/jsonl'
 import { activeTabId } from '../../signals/tabs'
 import { JsonlEntry } from '../jsonl-viewer/JsonlEntry'
@@ -15,26 +16,30 @@ const STATUS_LABEL: Record<AgentInfo['status'], string> = {
 }
 
 /** The Agents tool panel (claudeBridgeAgentsView). A browser for the session's
- *  teammates/subagents rendered as a TREE: each TEAM is a group (with an
- *  active/disbanded badge) over its member rows, plus any standalone agents and
- *  a History section of ones the tree already pruned. Clicking a member reads
- *  its chat inline (Back returns). Reads the agent tree directly so it populates
- *  wherever `agentData` is on for this view. */
+ *  teammates/subagents rendered as a TREE: each TEAM is a group over its member
+ *  rows, plus standalone agents. `Active` and `Completed` are the two sides of
+ *  ONE lifecycle partition (`partitionAgents`): every agent is on exactly one
+ *  side, a terminal agent moves to `Completed` the moment its status changes,
+ *  and each badge equals the rows its tab renders. The 5 s cleanup that moves
+ *  finished agents from the tree into history changes storage only — the
+ *  partition reads both. Clicking a row reads its chat inline (Back returns). */
 export function AgentsToolPanel(): JSX.Element {
   const tabId = activeTabId.value
   const tree = tabId ? tabAgentTrees.value.get(tabId) : undefined
-  const teams = tree ? [...tree.teams.values()] : []
-  const standalone = tree ? [...tree.standaloneAgents.values()] : []
-  const liveNames = new Set([...teams.flatMap((t) => [...t.agents.values()]), ...standalone].map((a) => a.name))
-  const history = ((tabId ? tabAgentHistory.value.get(tabId) : undefined) ?? []).filter((a) => !liveNames.has(a.name))
+  const history = (tabId ? tabAgentHistory.value.get(tabId) : undefined) ?? []
+  const partition = partitionAgents(tree, history)
 
   const [tab, setTab] = useState<'active' | 'completed'>('active')
   const [selected, setSelected] = useState<string | null>(null)
-  const known = new Set<string>([...liveNames, ...history.map((a) => a.name)])
+  const known = new Set<string>()
+  for (const side of [partition.active, partition.completed]) {
+    for (const t of side.teams) for (const m of t.members) known.add(m.name)
+    for (const a of side.solo) known.add(a.name)
+  }
   const sel = selected && known.has(selected) ? selected : null
   if (sel) return <AgentReader name={sel} onBack={() => { setSelected(null) }} />
 
-  if (teams.length === 0 && standalone.length === 0 && history.length === 0) {
+  if (partition.active.count === 0 && partition.completed.count === 0) {
     return (
       <div class={styles.empty}>
         <i class="fas fa-users" style="font-size:26px;color:var(--text-disabled)" />
@@ -45,13 +50,7 @@ export function AgentsToolPanel(): JSX.Element {
   }
 
   const open = (name: string): void => { setSelected(name) }
-  // Active = the live structure (teams still going + standalone). Completed =
-  // dissolved teams + the pruned-agent history.
-  const activeTeams = teams.filter((t) => t.status !== 'disbanded')
-  const disbandedTeams = teams.filter((t) => t.status === 'disbanded')
-  const activeCount = activeTeams.flatMap((t) => [...t.agents.values()]).filter((a) => a.status === 'running').length
-    + standalone.filter((a) => a.status === 'running').length
-  const completedCount = history.length + disbandedTeams.reduce((n, t) => n + t.agents.size, 0)
+  const side = tab === 'active' ? partition.active : partition.completed
 
   return (
     <div style="display:flex;flex-direction:column;height:100%">
@@ -59,54 +58,47 @@ export function AgentsToolPanel(): JSX.Element {
         active={tab}
         onChange={setTab}
         tabs={[
-          { key: 'active', label: 'Active', count: activeCount },
-          { key: 'completed', label: 'Completed', count: completedCount },
+          { key: 'active', label: 'Active', count: partition.active.count },
+          { key: 'completed', label: 'Completed', count: partition.completed.count },
         ]}
       />
       <div class={styles.tree} style="flex:1;overflow-y:auto">
-        {tab === 'active' ? (
-          activeTeams.length === 0 && standalone.length === 0
-            ? <div class={styles.tabEmpty}>No active agents.</div>
-            : <>
-                {activeTeams.map((team) => <TeamGroup key={`team:${team.name}`} team={team} onOpen={open} />)}
-                {standalone.length > 0 && (
-                  <div class={styles.section}>
-                    {standalone.map((a) => <AgentRow key={a.name} agent={a} onClick={() => { open(a.name) }} />)}
-                  </div>
-                )}
-              </>
-        ) : (
-          disbandedTeams.length === 0 && history.length === 0
-            ? <div class={styles.tabEmpty}>Nothing completed yet.</div>
-            : <>
-                {disbandedTeams.map((team) => <TeamGroup key={`team:${team.name}`} team={team} onOpen={open} />)}
-                {history.length > 0 && (
-                  <div class={styles.section}>
-                    {history.map((a) => <AgentRow key={`h:${a.name}`} agent={a} onClick={() => { open(a.name) }} />)}
-                  </div>
-                )}
-              </>
-        )}
+        {side.count === 0
+          ? <div class={styles.tabEmpty}>{tab === 'active' ? 'No active agents.' : 'Nothing completed yet.'}</div>
+          : <SideRows side={side} onOpen={open} />}
       </div>
     </div>
   )
 }
 
-function TeamGroup({ team, onOpen }: { team: TeamInfo; onOpen: (name: string) => void }): JSX.Element {
-  const members = [...team.agents.values()]
-  const running = members.filter((m) => m.status === 'running').length
+function SideRows({ side, onOpen }: { side: PartitionSide; onOpen: (name: string) => void }): JSX.Element {
+  return (
+    <>
+      {side.teams.map((team) => <TeamGroup key={`team:${team.name}`} team={team} onOpen={onOpen} />)}
+      {side.solo.length > 0 && (
+        <div class={styles.section}>
+          {side.solo.map((a) => <AgentRow key={a.name} agent={a} onClick={() => { onOpen(a.name) }} />)}
+        </div>
+      )}
+    </>
+  )
+}
+
+function TeamGroup({ team, onOpen }: { team: TeamView; onOpen: (name: string) => void }): JSX.Element {
+  const running = team.members.filter((m) => m.status === 'running').length
+  const badge = team.status === 'disbanded'
+    ? 'disbanded'
+    : running > 0 ? `${running} live` : `${team.members.length} finished`
   return (
     <div class={styles.teamGroup}>
       <div class={styles.teamHeader} title={team.description || team.name}>
         <i class="fas fa-users" style="font-size:11px;flex-shrink:0" aria-hidden="true" />
         <span class={styles.teamName}>{team.name}</span>
-        {team.status === 'disbanded'
-          ? <span class={`${styles.badge} ${styles.disbanded}`}>disbanded</span>
-          : <span class={styles.badge}>{running}/{members.length} live</span>}
+        <span class={`${styles.badge} ${team.status === 'disbanded' ? styles.disbanded : ''}`}>{badge}</span>
       </div>
-      {members.length === 0
+      {team.members.length === 0
         ? <div class={styles.teamEmpty}>no members</div>
-        : members.map((a) => <AgentRow key={a.name} agent={a} nested onClick={() => { onOpen(a.name) }} />)}
+        : team.members.map((a) => <AgentRow key={a.name} agent={a} nested onClick={() => { onOpen(a.name) }} />)}
     </div>
   )
 }
