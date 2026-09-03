@@ -749,6 +749,15 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         if on(inh::CLIP) {
             c.clip_rect = parent.clip_rect;
         }
+        if on(inh::BG_ORIGIN) {
+            c.bg_origin = parent.bg_origin;
+        }
+        if on(inh::BG_CLIP) {
+            c.bg_clip = parent.bg_clip;
+        }
+        if on(inh::BG_SIZE) {
+            c.bg_size = parent.bg_size;
+        }
     }
     for (i, on) in own.margin_inherit.iter().enumerate() {
         if !on {

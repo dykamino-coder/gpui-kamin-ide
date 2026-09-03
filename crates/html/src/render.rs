@@ -98,20 +98,23 @@ fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     let family = c.font_family.clone().unwrap_or_default();
     let px_of = |l: Option<Len>| crate::metrics::spacing_px(l, &family, size);
     let border = c.borders();
-    let pad = |b: Option<Len>, p: Option<Len>| {
-        px_of(b)
-            + if clip == crate::computed::BgClip::ContentBox {
-                px_of(p)
-            } else {
-                0.0
-            }
+    // Абсолютный слой в раскладке отсчитывается уже от padding-box
+    // (`vendor/taffy/src/compute/block.rs`, как в CSS 2.1 §10.1): рамку
+    // вычитать второй раз нельзя — проба `probe-bg-clipinset` давала 60×60
+    // вместо 100×100 при рамке 20px.
+    let pad = |p: Option<Len>| {
+        if clip == crate::computed::BgClip::ContentBox {
+            px_of(p)
+        } else {
+            0.0
+        }
     };
     let mut layer = div()
         .absolute()
-        .top(px(pad(border.top, c.padding.top)))
-        .right(px(pad(border.right, c.padding.right)))
-        .bottom(px(pad(border.bottom, c.padding.bottom)))
-        .left(px(pad(border.left, c.padding.left)));
+        .top(px(pad(c.padding.top)))
+        .right(px(pad(c.padding.right)))
+        .bottom(px(pad(c.padding.bottom)))
+        .left(px(pad(c.padding.left)));
     layer = match (&c.gradient, c.background) {
         (Some(g), _) => layer.bg(crate::apply::fill(g)),
         (None, Some(bg)) => layer.bg(gpui::Background::from(bg.to_hsla())),
@@ -233,9 +236,21 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
     // остаётся острым, иначе растёт на разлёт; доля считается от размера
     // раздутой фигуры (известные ширина и высота).
     for sh in &c.shadows {
-        if sh.blur > 0.0 || sh.color.a <= 0.0 {
+        // Тень без цвета помечена отрицательной альфой и берёт `color`
+        // (css-backgrounds-3 §7.1) — как в `apply::shadow_colour`.
+        if sh.blur > 0.0 || sh.color.a == 0.0 {
             continue;
         }
+        let colour = if sh.color.a < 0.0 {
+            c.color.unwrap_or(crate::value::Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            })
+        } else {
+            sh.color
+        };
         let spread = sh.spread;
         let radius = match c.radius.tl {
             Some(Len::Px(v)) if v > 0.0 => v + spread,
@@ -270,7 +285,7 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
                 .border_r(px(widths[1]))
                 .border_b(px(widths[2]))
                 .border_l(px(widths[3]))
-                .border_color(sh.color.to_hsla())
+                .border_color(colour.to_hsla())
                 .into_any_element(),
         );
     }

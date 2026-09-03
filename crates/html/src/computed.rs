@@ -71,6 +71,9 @@ pub(crate) mod inh {
     pub(crate) const BG_IMAGE: u16 = 1 << 4;
     pub(crate) const BG_POS: u16 = 1 << 5;
     pub(crate) const CLIP: u16 = 1 << 6;
+    pub(crate) const BG_ORIGIN: u16 = 1 << 7;
+    pub(crate) const BG_CLIP: u16 = 1 << 8;
+    pub(crate) const BG_SIZE: u16 = 1 << 9;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -4235,6 +4238,15 @@ impl Computed {
             // перебить заданное ранее в том же наборе обязано.
             // Откуда отсчитывается картинка. Умолчание — внутренний край
             // рамки, и `padding-box` его же и означает.
+            "background-origin" if v.trim() == "inherit" => {
+                self.inherit_bits |= inh::BG_ORIGIN;
+            }
+            "background-clip" | "-webkit-background-clip" if v.trim() == "inherit" => {
+                self.inherit_bits |= inh::BG_CLIP;
+            }
+            "background-size" if v.trim() == "inherit" => {
+                self.inherit_bits |= inh::BG_SIZE;
+            }
             "background-origin" => {
                 self.bg_origin = match v.trim() {
                     "border-box" => Some(BgClip::BorderBox),

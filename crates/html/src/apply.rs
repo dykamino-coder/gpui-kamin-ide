@@ -1039,10 +1039,21 @@ fn apply_radius(mut d: Div, c: &Computed) -> Div {
         return d;
     }
     let r = &c.radius;
+    // Проценты — от BORDER-BOX (css-backgrounds-3 §5.1), а `c.width` —
+    // содержимое: отбивки и рамка прибавляются. Проба `probe-bg-radiuspct`
+    // (`width:20; padding:20; border:20; border-radius:100% 0 0 0`) давала
+    // радиус 20 вместо 100.
+    let px_len = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let b = c.borders();
+    let extra_w = px_len(c.padding.left) + px_len(c.padding.right) + px_len(b.left) + px_len(b.right);
+    let extra_h = px_len(c.padding.top) + px_len(c.padding.bottom) + px_len(b.top) + px_len(b.bottom);
     let base = match (c.width, c.height) {
-        (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
-        (Some(Len::Px(w)), _) => w,
-        (_, Some(Len::Px(h))) => h,
+        (Some(Len::Px(w)), Some(Len::Px(h))) => (w + extra_w).min(h + extra_h),
+        (Some(Len::Px(w)), _) => w + extra_w,
+        (_, Some(Len::Px(h))) => h + extra_h,
         _ => f32::NAN,
     };
     let resolve = |l: Option<Len>| -> Option<f32> {
