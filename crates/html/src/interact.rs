@@ -2990,22 +2990,17 @@ impl Element for LatePlace {
             // ширину; у ТОЧЕЧНОГО щупа в строке ширина нулевая, и вычитание
             // своей ширины уводило коробку влево на неё целиком
             // (htb-rtl-*: регресс 08-19).
-            // В ВЕРТИКАЛЬНОМ письме `direction` переворачивает строчную
-            // ось, а она вертикальна (css-writing-modes-3 §7.1): начало
-            // отсчёта — НИЖНИЙ край дырки, не правый. Правокрайняя формула
-            // применялась и здесь, и коробку выносило вбок ровно на её
-            // ширину — вся половина семьи `abs-pos-non-replaced-*` с `rtl`
-            // уезжала за содержащий блок.
-            (Some(hole), None) if now.rtl && now.vertical && hole.size.height > px(0.0) => {
-                gpui::point(
-                    hole.origin.x - bounds.origin.x,
-                    hole.origin.y + hole.size.height - bounds.size.height - bounds.origin.y,
-                )
-            }
-            (Some(hole), None) if now.rtl && now.vertical => gpui::point(
-                hole.origin.x - bounds.origin.x,
-                hole.origin.y - bounds.origin.y,
-            ),
+            // ЗАМЕРЕНО, ЭФФЕКТА НЕТ (03.09): в вертикальном письме отсчитывать
+            // `rtl` от НИЖНЕГО края дырки, а не от правого (css-writing-modes-3
+            // §7.1: `direction` переворачивает строчную ось, а она вертикальна).
+            // Правка рассуждением верна, но на двенадцати пробах `apw-*` не
+            // сдвинула НИ ОДНОЙ сотой, и сборка HEAD без неё даёт те же числа.
+            // Прежняя запись «apw-l 2.67 -> 0.00» была ЛОЖНОЙ: список пар
+            // собирался конкатенацией, `"\a"` давал байт BEL, обе стороны не
+            // грузились, и пустая страница сходилась с пустой. Списки строить
+            // только через `Path`, проверять `od -c`.
+            // Возвращать вместе с независимым решением осей (корень B): до
+            // боевых пар этот рукав просто не доезжает.
             (Some(hole), None) if now.rtl && hole.size.width > px(0.0) => gpui::point(
                 hole.origin.x + hole.size.width - bounds.size.width - bounds.origin.x,
                 hole.origin.y - bounds.origin.y,
