@@ -607,6 +607,7 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
+    c.transform_ancestor = parent.transform_ancestor || parent.transform.is_some();
     c.cb_rtl = parent.rtl == Some(true);
     // Относительный сдвиг строчного предка КОПИТСЯ вниз (§9.4.3: сдвиг несёт
     // с собой всё содержимое коробки). Куски вне потока его получали
@@ -757,6 +758,13 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         }
         if on(inh::BG_SIZE) {
             c.bg_size = parent.bg_size;
+        }
+        if on(inh::TRANSFORM) {
+            c.transform = parent.transform;
+        }
+        if on(inh::TRANSFORM_ORIGIN) {
+            c.transform_origin = parent.transform_origin;
+            c.transform_origin_px = parent.transform_origin_px;
         }
     }
     for (i, on) in own.margin_inherit.iter().enumerate() {

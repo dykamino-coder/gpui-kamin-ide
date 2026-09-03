@@ -74,6 +74,55 @@ pub(crate) mod inh {
     pub(crate) const BG_ORIGIN: u16 = 1 << 7;
     pub(crate) const BG_CLIP: u16 = 1 << 8;
     pub(crate) const BG_SIZE: u16 = 1 << 9;
+    pub(crate) const TRANSFORM: u16 = 1 << 10;
+    pub(crate) const TRANSFORM_ORIGIN: u16 = 1 << 11;
+}
+
+/// Есть ли в записи длины в единицах шрифта (`em`, `rem`, `ex`, `ch`).
+fn has_font_units(v: &str) -> bool {
+    v.split(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '-'))
+        .any(|t| {
+            let unit = t.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-');
+            unit.len() < t.len()
+                && matches!(unit.to_ascii_lowercase().as_str(), "em" | "rem" | "ex" | "ch")
+        })
+}
+
+/// Заменить длины в единицах шрифта на пиксели: `1em` → `16px`.
+fn font_lengths_to_px(v: &str, em: f32, rem: f32, ex: f32, ch: f32) -> String {
+    let mut out = String::with_capacity(v.len() + 8);
+    let mut token = String::new();
+    let flush = |token: &mut String, out: &mut String| {
+        if token.is_empty() {
+            return;
+        }
+        let unit_at = token
+            .find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+            .unwrap_or(token.len());
+        let (num, unit) = token.split_at(unit_at);
+        let k = match unit.to_ascii_lowercase().as_str() {
+            "em" => Some(em),
+            "rem" => Some(rem),
+            "ex" => Some(ex),
+            "ch" => Some(ch),
+            _ => None,
+        };
+        match (k, num.parse::<f32>()) {
+            (Some(k), Ok(n)) if unit_at > 0 => out.push_str(&format!("{}px", n * k)),
+            _ => out.push_str(token),
+        }
+        token.clear();
+    };
+    for c in v.chars() {
+        if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+            token.push(c);
+        } else {
+            flush(&mut token, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut token, &mut out);
+    out
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1102,6 +1151,15 @@ pub struct Computed {
     pub transform: Option<Transform>,
     /// `transform-origin` в долях размера элемента.
     pub transform_origin: Option<(f32, f32)>,
+    /// `transform`/`transform-origin` с длинами в единицах шрифта: запись
+    /// ждёт своего кегля и разбирается в `resolve_em` (css-transforms-1
+    /// §computed value: относительные длины становятся абсолютными).
+    pub transform_raw: Option<String>,
+    /// Есть ли выше трансформированный предок: он — содержащий блок и для
+    /// `position: fixed` (css-transforms-1 §transform-rendering: «…for all
+    /// of its absolute-position descendants, fixed-position descendants»).
+    pub transform_ancestor: bool,
+    pub transform_origin_raw: Option<String>,
     /// Точка отсчёта преобразования В ТОЧКАХ по осям — когда записана длиной,
     /// а не долей. Долю из неё делает отрисовка: размер коробки известен там.
     pub transform_origin_px: (Option<f32>, Option<f32>),
@@ -1679,6 +1737,24 @@ impl Computed {
             Some(Len::Px(v)) => v,
             _ => parent_font_px,
         };
+        // Длины в единицах шрифта внутри transform/transform-origin: свой
+        // кегль известен только теперь.
+        if self.transform_raw.is_some() || self.transform_origin_raw.is_some() {
+            let own_font = match self.font_size {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) => k * parent_font_px,
+                _ => parent_font_px,
+            };
+            let (ch, ex) = crate::metrics::ch_ex_px(&family, own_font);
+            if let Some(raw) = self.transform_raw.take() {
+                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                self.apply_one("transform", &px);
+            }
+            if let Some(raw) = self.transform_origin_raw.take() {
+                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                self.apply_one("transform-origin", &px);
+            }
+        }
         for list in [self.grid_tracks.as_mut(), self.grid_rows.as_mut()]
             .into_iter()
             .flatten()
@@ -4810,6 +4886,14 @@ impl Computed {
             }
 
             // --- Преобразования -----------------------------------------------
+            "transform" if v.trim() == "inherit" => self.inherit_bits |= inh::TRANSFORM,
+            "transform-origin" if v.trim() == "inherit" => {
+                self.inherit_bits |= inh::TRANSFORM_ORIGIN
+            }
+            "transform" if has_font_units(v) => self.transform_raw = Some(v.to_string()),
+            "transform-origin" if has_font_units(v) => {
+                self.transform_origin_raw = Some(v.to_string())
+            }
             "transform" => {
                 let mut t = self.transform.unwrap_or_default();
                 // Невалидный аргумент отбрасывает ВСЁ объявление (CSS-каскад),
@@ -4870,6 +4954,14 @@ impl Computed {
                     // — одно и то же.
                     let lower = name.to_ascii_lowercase();
                     let name = lower.as_str();
+                    // `matrix()`/`matrix3d()` — только числа (css-transforms-1
+                    // §matrix): единица делает объявление невалидным
+                    // (`transform-matrix-008`).
+                    if matches!(name, "matrix" | "matrix3d")
+                        && arg.split(',').any(|a| a.trim().parse::<f32>().is_err())
+                    {
+                        invalid = true;
+                    }
                     match name {
                         "rotate" | "rotatez" => {
                             t.rotate_rad += angle;

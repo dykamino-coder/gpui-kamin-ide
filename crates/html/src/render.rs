@@ -828,6 +828,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // `order` в CSS работает ТОЛЬКО внутри гибкого контейнера и сетки; в
     // обычном потоке он не значит ничего. Раньше сортировались дети любого
     // родителя — блоки меняли порядок там, где браузер их не трогает.
+    let under_tf = inherited.transform_ancestor || inherited.transform.is_some();
     let ordered_context = matches!(
         inherited.display,
         Some(Display::Flex)
@@ -1203,14 +1204,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Слой разрешён, только если ни один предок сам не отложен:
             // вложенная отложенная отрисовка в GPUI запрещена.
             let layer_ok = !inside_deferred();
-            let _deferred_guard = DeferGuard::enter(defers(&e.style));
+            let _deferred_guard = DeferGuard::enter(defers(&e.style, under_tf));
             // Ряд обтекания: текст рядом с плавающим блоком и остаток под ним.
             if e.tag == "kamin-float" {
                 out.push(float_flow(e, inherited, opts));
                 continue;
             }
             if let Some(el) = scrollable(e, inherited, opts) {
-                out.push(layered(el, &e.style, layer_ok));
+                out.push(layered(el, &e.style, layer_ok, under_tf));
                 continue;
             }
             if let Some(el) = resizable(e, inherited, opts) {
@@ -1220,7 +1221,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             if let Some(el) = transitioned(e, inherited, opts) {
                 // Наложение считается и для узла с переходом: раньше ветка
                 // уходила мимо, и `z-index` у него пропадал.
-                out.push(layered(el, &e.style, layer_ok));
+                out.push(layered(el, &e.style, layer_ok, under_tf));
                 continue;
             }
             // `display: contents` — своей коробки у элемента нет: дети
@@ -1464,8 +1465,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // предок ему не содержащий блок, и заданной оси от него не
             // требуется — незаданная сторона держит статическое место. Пока он
             // шёл общим путём, коробка висела от края родителя.
-            let fixed = e.style.position == Some(crate::computed::Position::Fixed);
-            let orphan_abs = e.style.position == Some(crate::computed::Position::Absolute)
+            let fixed = e.style.position == Some(crate::computed::Position::Fixed) && !under_tf;
+            // `fixed` под трансформом — абсолют относительно этого предка.
+            let abs_like = e.style.position == Some(crate::computed::Position::Absolute)
+                || (e.style.position == Some(crate::computed::Position::Fixed) && under_tf);
+            let orphan_abs = abs_like
                 && !(inherited.cb_ancestor || crate::inline::establishes_cb(inherited))
                 && (x_set || y_set);
             // Позиционированный предок ЕСТЬ, но это не родитель: коробку
@@ -1490,7 +1494,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // одноосной коробке. Возвращать вместе с проверкой щупа на
             // `table-anonymous-objects-011` (три абсолюта, у одного задан
             // лишь `top`).
-            let far_abs = e.style.position == Some(crate::computed::Position::Absolute)
+            let far_abs = abs_like
                 && inherited.cb_ancestor
                 && !crate::inline::establishes_cb(inherited)
                 && (x_set || y_set);
@@ -1657,7 +1661,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 continue;
             }
             let _ = hoist_margins;
-            let mut done = content_sized(layered(built, &e.style, layer_ok), &e.style);
+            let mut done = content_sized(layered(built, &e.style, layer_ok, under_tf), &e.style);
             // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
             // flow): свой анкор-ряд вокруг ОДНОГО узла — соседей не трогает.
             // Корню с фоном-картинкой не ставится (гасил canvas-слой).
@@ -1690,9 +1694,16 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // отрицательный `z-index` ПОВЕРХ них, а не под всем окном; братьев
             // у `<body>` нет, уходить не подо что
             // (`root-element-creates-stacking-context`).
+            // Родитель — СВОЙ контекст наложения (transform, opacity < 1,
+            // позиционированный с z-index, isolation, filter; CSS 2.1 прил. E,
+            // css-transforms-1 §transform-rendering): отрицательный z-index
+            // ребёнка ложится под его содержимое, но ПОВЕРХ его фона — не под
+            // весь документ (`individual-transform/stacking-context-00*`,
+            // `transform-stacking-001`).
             if e.style.z_index.is_some_and(|z| z < 0)
                 && e.style.position == Some(crate::computed::Position::Relative)
                 && e.tag != "body"
+                && !stacking_context(inherited)
             {
                 done = crate::interact::Underlay::new(done).into_any_element();
             }
@@ -2043,12 +2054,31 @@ fn inside_deferred() -> bool {
     DEFERRED_DEPTH.with(|d| d.get()) > 0
 }
 
+/// Образует ли коробка контекст наложения (CSS 2.1 прил. E; css-transforms-1
+/// §transform-rendering; css-color-3 §3.2 opacity; css-compositing isolation).
+fn stacking_context(c: &Computed) -> bool {
+    c.transform.is_some()
+        || c.translate.is_some()
+        || c.opacity.is_some_and(|o| o < 1.0)
+        || c.isolate == Some(true)
+        || c.filter.is_some()
+        || (c.z_index.is_some()
+            && matches!(
+                c.position,
+                Some(crate::computed::Position::Relative)
+                    | Some(crate::computed::Position::Absolute)
+                    | Some(crate::computed::Position::Fixed)
+                    | Some(crate::computed::Position::Sticky)
+            ))
+}
+
 /// Будет ли элемент с таким стилем отложен.
-fn defers(c: &Computed) -> bool {
-    matches!(
-        c.position,
-        Some(crate::computed::Position::Fixed) | Some(crate::computed::Position::Sticky)
-    ) || c.z_index.is_some_and(|z| z > 0)
+fn defers(c: &Computed, under_tf: bool) -> bool {
+    // `fixed` под трансформированным предком — абсолют в его блоке, а не
+    // слой окна (css-transforms-1 §transform-rendering).
+    (c.position == Some(crate::computed::Position::Fixed) && !under_tf)
+        || c.position == Some(crate::computed::Position::Sticky)
+        || c.z_index.is_some_and(|z| z > 0)
 }
 
 /// Счётчик глубины на время построения детей элемента.
@@ -2103,12 +2133,13 @@ impl Drop for DepthScope {
 /// выражается, поэтому применяем только положительный.
 ///
 /// `allowed` — снаружи ли мы отложенного поддерева: внутри откладывать нельзя.
-fn layered(el: AnyElement, c: &Computed, allowed: bool) -> AnyElement {
+fn layered(el: AnyElement, c: &Computed, allowed: bool, under_tf: bool) -> AnyElement {
+    let fixed_to_window = c.position == Some(crate::computed::Position::Fixed) && !under_tf;
     if !allowed {
         // Внутри отложенного поддерева `position: fixed` отсчитывается от
         // ближайшего отложенного предка, а не от окна: своей системы
         // координат ему взять неоткуда.
-        if c.position == Some(crate::computed::Position::Fixed) {
+        if fixed_to_window {
             return div()
                 .absolute()
                 .top_0()
@@ -2121,7 +2152,7 @@ fn layered(el: AnyElement, c: &Computed, allowed: bool) -> AnyElement {
     }
     // `position: fixed` — отсчёт от ОКНА: отложенная отрисовка выносит
     // элемент из потока родителя, а размер окна задаёт его систему координат.
-    if c.position == Some(crate::computed::Position::Fixed) {
+    if fixed_to_window {
         let priority = c.z_index.unwrap_or(0).max(0) as usize;
         return gpui::deferred(div().absolute().top_0().left_0().size_full().child(el))
             .with_priority(priority)
