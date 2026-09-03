@@ -6,6 +6,20 @@ GitHub Action, webhook или отдельный межрепозиторный 
 агент `dykamino-coder` уже имеет доступ к public repository и
 `gpui-kamin-ide-priv-evidence`.
 
+Есть два разных режима ручного запуска:
+
+- `обработай открытую очередь PR по правилам репозитория` — snapshot уже
+  открытых PR;
+- `Выполни текущую runtime-пачку по правилам репозитория` — snapshot только
+  раздела **Текущая пачка** из
+  `extensions/claude-bridge/RUNTIME_EXECUTION.md`, после чего agent сам создаёт
+  отдельный bounded PR на каждый deliverable.
+
+Первый режим не начинает backlog, второй не добавляет следующие планируемые
+пачки. Если в начале backlog-run уже есть открытые PR, agent сначала
+классифицирует их: зависимые от текущей пачки включает в snapshot на нужном
+месте, независимые оставляет следующему обычному PR-run и явно сообщает это.
+
 ## 1. Зафиксировать очередь
 
 В начале запуска агент:
@@ -19,6 +33,23 @@ GitHub Action, webhook или отдельный межрепозиторный 
    `origin/main`.
 
 Blocked PR не задерживает независимые PR. Зависимый PR ждёт prerequisite.
+
+### Snapshot runtime-пачки
+
+Для backlog-run agent дополнительно фиксирует ID, state, result type и строгие
+prerequisites всех шагов текущей пачки. Каждый шаг получает новую
+branch/worktree от свежего `origin/main` и отдельный PR:
+
+- `verify`/`research` создаёт Diagnostic PR с sanitized результатом; raw
+  evidence остаётся в private repository;
+- `change` создаёт Change/Fix PR и обновляет состояние task тем же diff;
+- неизвестная причина не заменяется speculative fix;
+- результат, не покрывающий известную задачу, получает новый child ID, а не
+  расширяет текущий PR без границ.
+
+Пересекающийся track выполняется строго последовательно. После каждого merge
+agent заново делает `fetch` и проверяет следующую branch на semantic/file
+overlap с обновлённым `main`.
 
 ## 2. Определить тип по diff
 
@@ -100,10 +131,11 @@ Post-merge corporate observation не блокирует merge/release, если
 
 ## 6. Один release на пачку
 
-Ручная задача владельца «обработай очередь PR по правилам репозитория» включает
-один release после последнего mergeable release-relevant Change/Fix PR текущего
-snapshot, если владелец не ограничил задачу словами `review only`, `без merge`
-или `без release`.
+Ручная задача владельца «обработай очередь PR по правилам репозитория» либо
+«Выполни текущую runtime-пачку по правилам репозитория» включает один release
+после последнего mergeable release-relevant Change/Fix PR текущего snapshot,
+если владелец не ограничил задачу словами `review only`, `без merge` или
+`без release`.
 
 - Если ни один Change/Fix PR не смержен, release не создаётся.
 - Diagnostic-only изменения release не вызывают.
@@ -121,4 +153,6 @@ snapshot, если владелец не ограничил задачу сло�
 - проверки точных merge candidates;
 - недоступные corporate observations и их владельцев;
 - release PR/version/assets либо причину отсутствия release;
-- порядок оставшихся dependencies.
+- порядок оставшихся dependencies;
+- для backlog-run — outcome каждого ID текущей пачки и подтверждение, что
+  следующая планируемая пачка не начиналась.

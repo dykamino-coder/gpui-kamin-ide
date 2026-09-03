@@ -42,4 +42,6 @@ or `webContents`: those interfaces are implemented locally by the host facade.
 - `SKILLS_SYNC.md` — контракт snapshot/reload для skills;
 - `RUNTIME_RELIABILITY.md` — подтверждённые runtime-инциденты, решения и
   последовательность независимых change PR;
+- `RUNTIME_EXECUTION.md` — исполняемое состояние, строгие prerequisites и
+  текущая bounded пачка из задач `RUNTIME_RELIABILITY.md`;
 - `PLUGIN_HARNESS.md` — границы split-host plugin runtime.
