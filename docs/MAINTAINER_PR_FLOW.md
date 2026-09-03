@@ -36,9 +36,9 @@ Blocked PR не задерживает независимые PR. Зависим
 
 ### Snapshot runtime-пачки
 
-Для backlog-run agent дополнительно фиксирует ID, state, result type и строгие
-prerequisites всех шагов текущей пачки. Каждый шаг получает новую
-branch/worktree от свежего `origin/main` и отдельный PR:
+Для backlog-run agent дополнительно фиксирует BR/INC ID, state, result type и
+строгие prerequisites всех шагов текущей пачки. Каждый deliverable получает
+новую branch/worktree от свежего `origin/main` и отдельный PR:
 
 - `verify`/`research` создаёт Diagnostic PR с sanitized результатом; raw
   evidence остаётся в private repository;
