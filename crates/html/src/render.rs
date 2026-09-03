@@ -5597,6 +5597,34 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             });
         }
         let inner = styled_div_with(e, &merged).children(blocks(&e.children, &merged, opts));
+        // Незамещаемая коробка с РОВНО ОДНОЙ заданной осью — тем же щупом, что
+        // и замещаемая выше: без этого `<span>` с одним краем падал в нулевой
+        // держатель, и край считался от него (`abs-pos-non-replaced-vlr-017`:
+        // `right: 2em` уводил коробку на свои же 160 влево).
+        let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
+        let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
+        if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {
+            let spot: crate::interact::SpotCell = Default::default();
+            spot.set(crate::interact::Spot {
+                hole: None,
+                next_line: None,
+                fixed_axes: (x_set, y_set),
+                rtl: inherited.rtl == Some(true),
+                vertical: inherited.vertical == Some(true),
+                vertical_rl: inherited.vertical_rl == Some(true),
+                own_vertical: e.style.vertical == Some(true),
+                ..Default::default()
+            });
+            let probe = crate::interact::spot_probe(spot.clone(), false);
+            return match crate::interact::late_push(spot, inner.into_any_element()) {
+                None => Some(probe),
+                Some(kept) => {
+                    let mut hole = div().relative().w_0().h_0().flex_shrink_0();
+                    hole.style().align_self = Some(gpui::AlignItems::FlexStart);
+                    Some(hole.child(kept).into_any_element())
+                }
+            };
+        }
         if stretched {
             return Some(inner.into_any_element());
         }
