@@ -7603,9 +7603,52 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                         .children(blocks(&copy.children, &inner, opts))
                                         .into_any_element()
                                 };
+                                // Монолиты (css-break-3 §4.1) — их разрыв
+                                // запрещён, и в следующую колонку они уходят
+                                // целиком: `break-inside: avoid`,
+                                // прокручиваемая или обрезающая коробка,
+                                // замещаемый элемент, таблица и ячейка,
+                                // атомарная строчная коробка. Сюда же —
+                                // сплошной СТРОЧНЫЙ набор: резать его можно
+                                // только между строками, а строк укладка
+                                // колонок не видит, и разрез приходился бы
+                                // посреди строки.
+                                let scrolls = |o: Option<crate::computed::Overflow>| {
+                                    matches!(o, Some(o) if o != crate::computed::Overflow::Visible)
+                                };
+                                let block_kid = |n: &Node| {
+                                    matches!(n, Node::Element(k)
+                                        if !k.inline || k.style.display == Some(Display::Block))
+                                };
+                                let monolith = copy.style.break_inside_avoid
+                                    || scrolls(copy.style.overflow_x)
+                                    || scrolls(copy.style.overflow_y)
+                                    || matches!(
+                                        copy.tag.as_str(),
+                                        "img"
+                                            | "svg"
+                                            | "canvas"
+                                            | "video"
+                                            | "embed"
+                                            | "object"
+                                            | "iframe"
+                                            | "table"
+                                    )
+                                    || matches!(
+                                        copy.style.display,
+                                        Some(Display::InlineBlock)
+                                            | Some(Display::InlineFlex)
+                                            | Some(Display::InlineGrid)
+                                            | Some(Display::InlineTable)
+                                            | Some(Display::Table)
+                                            | Some(Display::TableCell)
+                                    )
+                                    ;
+                                let _ = block_kid;
                                 crate::flow::StackChild {
                                     el: build(),
                                     frags: (1..cols.max(1)).map(|_| build()).collect(),
+                                    monolith,
                                     h,
                                     mt,
                                     mb,

@@ -1271,6 +1271,10 @@ pub struct Computed {
     pub column_fill_auto: Option<bool>,
     /// `column-span: all` — блок растянут на все колонки.
     pub column_span: Option<bool>,
+    /// `break-inside: avoid*` — коробку нельзя разрывать между колонками и
+    /// страницами (css-break-3 §4.1). Свойство не разбиралось вовсе, и
+    /// отличить монолит от обычной коробки было нечем.
+    pub break_inside_avoid: bool,
     /// `column-rule-*`: линейка между колонками.
     pub column_rule_width: Option<Len>,
     pub column_rule_visible: Option<bool>,
@@ -4448,6 +4452,13 @@ impl Computed {
             "column-fill" => self.column_fill_auto = Some(v.trim() == "auto"),
             // `column-span: all` — растяжка на все колонки.
             "column-span" => self.column_span = Some(v.trim() == "all"),
+            // `avoid`, `avoid-column`, `avoid-page`, `avoid-region` — все
+            // запрещают разрыв ВНУТРИ коробки; `auto` разрешает.
+            // `page-break-inside` — устаревшее написание того же (css-break-3
+            // §6.4 требует считать их одним свойством).
+            "break-inside" | "page-break-inside" => {
+                self.break_inside_avoid = v.trim().starts_with("avoid")
+            }
             "column-rule-width" => {
                 self.column_rule_width = match v.trim() {
                     "thin" => Some(Len::Px(1.0)),
