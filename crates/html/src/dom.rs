@@ -256,8 +256,29 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     content_box_static_position(&mut out);
     flex_items_lose_float(&mut out);
     subgrid_takes_parent_tracks(&mut out);
+    filter_ref_only_empty(&mut out);
     fold_run_ins(&mut out, None);
     out
+}
+
+/// `filter: url(#id)` дешёвым слоем рисуется только у коробки БЕЗ содержимого
+/// (`interact::FilterLayer`): у коробки с детьми слой лёг бы поверх них.
+/// Решается здесь, пока дерево целое — при сборке абсолютные дети уже
+/// вынесены в свои слои, и родитель выглядит пустым
+/// (`filter-region-transformed-composited-child-001`).
+fn filter_ref_only_empty(nodes: &mut [Node]) {
+    for node in nodes.iter_mut() {
+        let Node::Element(el) = node else { continue };
+        if el.style.filter_ref.is_some()
+            && el.children.iter().any(|c| match c {
+                Node::Element(_) => true,
+                Node::Text(t) => !t.trim().is_empty(),
+            })
+        {
+            el.style.filter_ref = None;
+        }
+        filter_ref_only_empty(&mut el.children);
+    }
 }
 
 /// Вбегание `display: run-in` (CSS 2.1 §9.2.3): элемент без блочного

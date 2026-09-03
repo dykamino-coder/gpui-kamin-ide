@@ -217,7 +217,8 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         }
         d = d.overflow_hidden();
     }
-    for extra in decorations(c) {
+    let empty = !e.children.iter().any(|n| !is_blank(n));
+    for extra in decorations(c, empty) {
         d = d.child(extra);
     }
     d
@@ -227,7 +228,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
 ///
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
-fn decorations(c: &Computed) -> Vec<AnyElement> {
+fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     let mut out: Vec<AnyElement> = vec![];
 
     // РЕЗКАЯ тень (без размытия): примитив тени с нулевым размытием
@@ -290,6 +291,37 @@ fn decorations(c: &Computed) -> Vec<AnyElement> {
         );
     }
 
+    // `filter: url(#id)` на HTML-элементе (filter-effects-1 §filter
+    // region): дешёвый путь для коробки без содержимого — SVG с `<rect>`
+    // цвета фона и этим фильтром растрируется resvg и ложится слоем поверх
+    // коробки; область — по умолчанию −10 %/120 % от border-box, поэтому
+    // холст вдвое шире, а слой сдвинут на половину коробки. Фильтр над
+    // готовым буфером группы — отдельная задача.
+    // Только у коробки БЕЗ содержимого: над содержимым слой лёг бы поверх
+    // детей (filter-region-transformed-composited-child-001).
+    if empty
+        && let Some(id) = c.filter_ref.as_deref()
+        && let Some(def) = mask_def(&format!("filter:{id}"))
+    {
+        let fill = match c.background {
+            Some(col) if col.a > 0.0 => format!(
+                "rgba({},{},{},{})",
+                (col.r * 255.0).round(),
+                (col.g * 255.0).round(),
+                (col.b * 255.0).round(),
+                col.a
+            ),
+            _ => "none".to_string(),
+        };
+        out.push(
+            crate::interact::FilterLayer {
+                def,
+                id: id.to_string(),
+                fill,
+            }
+            .into_any_element(),
+        );
+    }
     // Фоновая картинка идёт первой: она поверх цвета фона и под всем
     // остальным — тот же порядок, что в браузере.
     if let Some(layer) = crate::background::layer(c) {
@@ -671,6 +703,13 @@ fn collect_mask_defs(nodes: &[Node]) {
                     }
                 }
                 out.insert(id.to_string(), markup);
+            }
+            // `<filter id>` — целиком, с атрибутами области (x/y/width/height,
+            // filterUnits): ключ с префиксом, чтобы не спутать с маской.
+            if tag == "filter" && let Some(id) = e.attr("id") {
+                let mut markup = String::new();
+                crate::svg::write_element(e, &mut markup);
+                out.insert(format!("filter:{id}"), markup);
             }
             walk(&e.children, out);
         }

@@ -234,6 +234,11 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         if k == "transform-origin" {
             continue;
         }
+        // `divisor="0"` у feConvolveMatrix: по спеке берётся умолчание (сумма
+        // ядра), а usvg на нуле возвращает ошибку и элемент исчезает.
+        if k == "divisor" && v.trim().parse::<f32>().ok() == Some(0.0) {
+            continue;
+        }
         // Объявления трансформа из `style=` уже учтены в `e.style` и
         // уходят нашим `transform="…"`; в usvg `transform` —
         // презентационный атрибут, и объявление из `style` его ПЕРЕБИВАЕТ,

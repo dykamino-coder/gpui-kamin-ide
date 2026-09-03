@@ -1372,6 +1372,9 @@ pub struct Computed {
     pub radius_ell: Option<[Option<(f32, f32)>; 4]>,
     /// `filter`: цветовые преобразования, применённые к собственным цветам.
     pub filter: Option<Filter>,
+    /// `filter: url(#id)` — ссылка на SVG-`<filter>` документа; рисуется
+    /// растровым слоем поверх коробки (`interact::FilterLayer`).
+    pub filter_ref: Option<String>,
 
     /// `background-image: url(...)` — ссылка на картинку-заливку.
     pub bg_image: Option<String>,
@@ -4782,6 +4785,12 @@ impl Computed {
                         }
                     };
                     match name {
+                        "url" => {
+                            let id = arg.trim_matches(|c| c == '"' || c == '\'').trim();
+                            if let Some(id) = id.strip_prefix('#') {
+                                self.filter_ref = Some(id.to_string());
+                            }
+                        }
                         "grayscale" => f.grayscale = amount(),
                         "brightness" => f.brightness = amount(),
                         "saturate" => f.saturate = amount(),

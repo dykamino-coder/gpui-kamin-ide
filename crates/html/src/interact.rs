@@ -3316,3 +3316,108 @@ impl Element for MaskUse {
         window.with_content_mask(mask, |window| self.child.paint(window, cx));
     }
 }
+
+/// Слой `filter: url(#id)`: SVG с прямоугольником цвета фона под этим
+/// фильтром, растрированный resvg по размеру коробки. Холст вдвое больше
+/// коробки, прямоугольник в центре — область фильтра по умолчанию выходит
+/// за коробку на десятую часть с каждой стороны, заданная — сколько
+/// угодно.
+pub struct FilterLayer {
+    pub def: String,
+    pub id: String,
+    pub fill: String,
+}
+
+impl IntoElement for FilterLayer {
+    type Element = Self;
+    fn into_element(self) -> Self {
+        self
+    }
+}
+
+thread_local! {
+    /// Растры слоёв фильтра по (разметка, размер): кадр за кадром одно и то же.
+    static FILTER_RASTERS: std::cell::RefCell<
+        std::collections::HashMap<(String, u32, u32), std::sync::Arc<gpui::RenderImage>>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+impl Element for FilterLayer {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let mut style = gpui::Style::default();
+        style.position = gpui::Position::Absolute;
+        style.inset = gpui::Edges {
+            top: gpui::px(0.0).into(),
+            right: gpui::px(0.0).into(),
+            bottom: gpui::px(0.0).into(),
+            left: gpui::px(0.0).into(),
+        };
+        (window.request_layout(style, [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        _cx: &mut App,
+    ) {
+        let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        let (cw, ch) = (w * 2.0, h * 2.0);
+        let markup = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cw}" height="{ch}" viewBox="0 0 {cw} {ch}"><defs>{}</defs><rect x="{}" y="{}" width="{w}" height="{h}" fill="{}" filter="url(#{})"/></svg>"##,
+            self.def,
+            w * 0.5,
+            h * 0.5,
+            self.fill,
+            self.id
+        );
+        let sf = window.scale_factor();
+        let key = (markup.clone(), (cw * sf) as u32, (ch * sf) as u32);
+        let image = FILTER_RASTERS.with(|m| m.borrow().get(&key).cloned()).or_else(|| {
+            let img = crate::svg::rasterize(&markup, cw * sf, ch * sf)?;
+            FILTER_RASTERS.with(|m| m.borrow_mut().insert(key.clone(), img.clone()));
+            Some(img)
+        });
+        let Some(image) = image else { return };
+        let area = Bounds {
+            origin: gpui::point(bounds.origin.x - px(w * 0.5), bounds.origin.y - px(h * 0.5)),
+            size: gpui::size(px(cw), px(ch)),
+        };
+        let _ = window.paint_image(area, gpui::Corners::default(), image, 0, false);
+    }
+}
