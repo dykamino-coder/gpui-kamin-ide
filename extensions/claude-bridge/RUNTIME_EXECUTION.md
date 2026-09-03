@@ -93,13 +93,15 @@ Diagnostic-only результаты сами по себе release не выз�
 
 ## Очередь отдельных incidents
 
-Карточка `INC-*` со статусом `reported`, `confirmed` или `investigation` обязана
-находиться в этой таблице либо в текущей пачке. Наличие только файла в
-`runtime-issues/` не считается планированием работы.
+Входящая очередь определяется файлами `runtime-issues/INC-*.md` с незакрытым
+статусом (`reported`, `confirmed`, `investigation` или `blocked`). Создание или
+уточнение одной карточки не требует правки этого файла: один Diagnostic PR
+меняет один уникальный incident path и может выполняться параллельно с другими.
 
-| ID | State | Result | Track | Строгий prerequisite | Следующий artifact |
-| --- | --- | --- | --- | --- | --- |
-| [INC-2026-0001](runtime-issues/INC-2026-0001.md) | ready | research | CEF performance | none | Planned batch C: source audit private evidence + bounded Windows measurement; затем отдельный Fix PR либо точный needs-evidence outcome |
+Этот файл меняется отдельным coordination PR только при продвижении выбранных
+ID в текущую или планируемую пачку. Maintainer фиксирует snapshot ID в начале
+запуска; более новые карточки остаются во входящей очереди до следующего
+запуска. `INC-2026-0001` уже продвинут в планируемую пачку C ниже.
 
 ## Декомпозиция BR-21
 

@@ -16,7 +16,12 @@ sanitized symptom, проверенные факты, status, acceptance и priv
 Существующие BR-карточки пока остаются в `RUNTIME_RELIABILITY.md`; их не нужно
 механически переписывать для начала нового flow.
 
-Каждая незакрытая карточка `INC-*` со статусом `reported`, `confirmed` или
-`investigation` обязана иметь строку в очереди incidents
-`../RUNTIME_EXECUTION.md` либо входить в его текущую пачку. Иначе evidence
-сохранено, но maintainer backlog-run не обязан начать исследование.
+Все карточки `INC-*` со статусом `reported`, `confirmed`, `investigation` или
+`blocked` автоматически образуют входящую очередь. Diagnostic PR создаёт или
+уточняет только свою карточку и не редактирует общий
+`../RUNTIME_EXECUTION.md`; статусы `resolved` и `rejected` закрывают incident.
+
+Выбранные ID продвигаются в текущую или планируемую runtime-пачку отдельным
+coordination PR. Maintainer agent фиксирует snapshot при запуске, поэтому новая
+карточка или PR не расширяет уже выполняемую пачку и относится к следующему
+запуску.
