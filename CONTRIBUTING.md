@@ -35,6 +35,13 @@ change PR; остаётся blocked в ожидании точно назван�
 как duplicate/invalid/not reproduced. Diagnostic-only merge не вызывает
 release.
 
+Каждый новый incident использует собственный path, поэтому его Diagnostic PR
+не меняет общий `extensions/claude-bridge/RUNTIME_EXECUTION.md`. Все карточки
+`INC-*.md` с незакрытым статусом автоматически входят во входящую очередь;
+выбранные ID добавляются в текущую или планируемую runtime-пачку отдельным
+coordination PR. Новый incident после snapshot maintainer agent обрабатывается
+в следующем запуске и не расширяет текущую пачку.
+
 ## 1. Ветки и worktree
 
 Каждая задача выполняется в отдельной ветке и, если одновременно работают
