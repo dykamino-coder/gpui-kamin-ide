@@ -5671,6 +5671,16 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                     .into_any_element(),
             )
         }
+        // `<canvas>` — замещаемый элемент с собственными размерами 300x150
+        // по умолчанию (HTML §4.12.5); рисовать в нём нечего, но место он
+        // занимает и фон несёт. Своего рукава у него не было, и голый
+        // `<canvas>` с одним лишь фоном пропадал из строки целиком: коробки
+        // фон не заводит (`has_own_box`), а строчный путь возвращал `None`.
+        // Размеры уже проставлены разбором (`dom.rs`), здесь нужна коробка.
+        "canvas" => {
+            let merged = inline::inherit(inherited, &e.style);
+            Some(styled_div_with(e, &merged).flex_shrink_0().into_any_element())
+        }
         _ => None,
     }
 }
