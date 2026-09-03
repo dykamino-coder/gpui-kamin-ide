@@ -615,7 +615,7 @@ fn main() {
                 .update_window(window.into(), |_, window, _| {
                     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
                     match window.window_handle().map(|h| h.as_raw()) {
-                        Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get() as isize,
+                        Ok(RawWindowHandle::Win32(handle)) => handle.hwnd.get(),
                         _ => 0,
                     }
                 })
@@ -992,7 +992,7 @@ fn main() {
                 let _ = std::fs::write("target/wpt-timing.txt", &timing);
             }
             let _ = std::fs::write(report_path.as_str(), report);
-            slow.sort_by(|a, b| b.0.cmp(&a.0));
+            slow.sort_by_key(|a| std::cmp::Reverse(a.0));
             let mut lines = String::new();
             for (ms, test) in &slow {
                 lines.push_str(&format!("{ms}|{test}\n"));

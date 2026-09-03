@@ -762,18 +762,18 @@ impl Paragraph {
         // Место под многоточие отбирается ЦЕЛЫМИ кусками: строка обрывается по
         // точке переноса, а не посреди слова. Слово, которое с многоточием уже
         // не влезает, уходит со строки целиком — как в браузере.
-        if let Some(room) = limit.map(|w| w - ell) {
-            if self.span(&segs, head, end) > room {
-                end = self
-                    .opportunities()
-                    .iter()
-                    .map(|s| s.at)
-                    .filter(|at| *at > head && *at <= end)
-                    .map(|at| head + trim_hanging(&self.text[head..at]))
-                    .filter(|at| self.span(&segs, head, *at) <= room)
-                    .max()
-                    .unwrap_or(head);
-            }
+        if let Some(room) = limit.map(|w| w - ell)
+            && self.span(&segs, head, end) > room
+        {
+            end = self
+                .opportunities()
+                .iter()
+                .map(|s| s.at)
+                .filter(|at| *at > head && *at <= end)
+                .map(|at| head + trim_hanging(&self.text[head..at]))
+                .filter(|at| self.span(&segs, head, *at) <= room)
+                .max()
+                .unwrap_or(head);
         }
         let width = self.span(&segs, head, end) + ell;
         lines.push(Line {
@@ -880,7 +880,7 @@ impl Paragraph {
         // Знак-распорка несёт ПОЛЕ строчной коробки, а не трекинг: вычитать
         // его на конце строки нельзя — иначе коробка теряет своё правое поле
         // и выходит уже на целый em (`word-space-transform-010`).
-        if self.text[..end].chars().next_back() == Some('\u{feff}') {
+        if self.text[..end].ends_with('\u{feff}') {
             return px(0.);
         }
         let at = self.text[..end]
@@ -1130,10 +1130,10 @@ impl Paragraph {
             let head = start + self.hang_first(start);
             // Свисает ли знак — зависит от того, влезает ли строка БЕЗ него;
             // поэтому ширина считается дважды: сначала без свисания.
-            let bare = self.span(&segs, head, measured);
+            let bare = self.span(segs, head, measured);
             let tight = limit.is_some_and(|w| bare > w);
             let tail_hang = self.hang_last(measured, at >= part.end, tight);
-            let mut width = self.span(&segs, head, measured - tail_hang)
+            let mut width = self.span(segs, head, measured - tail_hang)
                 - self.tail_spacing(measured - tail_hang);
             // Строка, кончающаяся мягким переносом, несёт ещё и знак переноса.
             if self.text[..measured].ends_with('\u{00ad}') {
@@ -1198,7 +1198,7 @@ impl Paragraph {
                 let extra = if hyphen { self.hyphen_w.get() } else { px(0.) };
                 out.push(Line {
                     range: start..cut,
-                    width: self.span(&segs, head, tail) - self.tail_spacing(tail) + extra,
+                    width: self.span(segs, head, tail) - self.tail_spacing(tail) + extra,
                     ellipsis: false,
                     hyphen,
                     indent: ind,
@@ -1229,7 +1229,7 @@ impl Paragraph {
             let tail = tail - self.hang_last(tail, true, true);
             out.push(Line {
                 range: start..end,
-                width: self.span(&segs, head, tail) - self.tail_spacing(tail),
+                width: self.span(segs, head, tail) - self.tail_spacing(tail),
                 ellipsis: false,
                 hyphen: false,
                 indent: self.indent_of(head_of_part, first_part, limit),
@@ -1239,11 +1239,12 @@ impl Paragraph {
         // что узел из идеографических пробелов не доезжает до раскладки
         // ВООБЩЕ (отбрасывался разбором). Когда след ведёт «строка пропала»,
         // смотреть надо сюда, а не в саму раскладку.
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("HTML_LINES").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!(
                 "LINES fonts={:?} {:?} -> {:?}",
                 self.runs
@@ -1554,6 +1555,7 @@ impl Paragraph {
 
 /// Сторона письма по ПЕРВОМУ СИЛЬНОМУ знаку куска: `Some(true)` — справа
 /// налево, `None` — сильных знаков нет вовсе.
+#[allow(dead_code)] // задел для bidi-разметки кусков
 fn first_strong_rtl(text: &str) -> Option<bool> {
     for ch in text.chars() {
         match unicode_bidi::bidi_class(ch) {
@@ -1943,11 +1945,12 @@ impl Element for Paragraph {
                     probe.apply_fit(w, window);
                 }
                 let lines = probe.split(limit, window);
-                if {
+                let res = {
                     static ON: std::sync::LazyLock<bool> =
                         std::sync::LazyLock::new(|| std::env::var("HTML_MEASURE").is_ok());
                     *ON
-                } {
+                };
+                if res {
                     eprintln!(
                         "MEASURE {:?} known={:?}x{:?} avail={:?}x{:?} limit={:?} lines={:?}",
                         probe.text,
@@ -2238,11 +2241,12 @@ impl Element for Paragraph {
                 Align::Right => free,
                 _ => px(0.),
             } + lead;
-            if {
+            let res = {
                 static ON: std::sync::LazyLock<bool> =
                     std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok());
                 *ON
-            } {
+            };
+            if res {
                 eprintln!(
                     "TCA para {:?} align={:?} bw={:?} lw={:?} free={:?}",
                     &self.text[..self.text.len().min(6)],
@@ -2919,11 +2923,12 @@ pub fn align_of(a: Option<crate::computed::TextAlign>) -> Align {
 /// Выключка абзаца с разворотом логических краёв по стороне письма.
 pub fn align_for(c: &crate::computed::Computed) -> Align {
     let rtl = c.rtl == Some(true);
-    if {
+    let res = {
         static ON: std::sync::LazyLock<bool> =
             std::sync::LazyLock::new(|| std::env::var("TA_DBG").is_ok());
         *ON
-    } {
+    };
+    if res {
         eprintln!("TA align_for rtl={rtl} ta={:?}", c.text_align);
     }
     let value = c

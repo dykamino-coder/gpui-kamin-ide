@@ -137,10 +137,10 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     let mut d = apply(div(), c);
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
     // наведения к нему не применяется.
-    if c.pointer_events_none != Some(true) {
-        if let Some(h) = &e.hover {
-            d = apply_hover(d, h);
-        }
+    if c.pointer_events_none != Some(true)
+        && let Some(h) = &e.hover
+    {
+        d = apply_hover(d, h);
     }
     // Обрезка контейнера (css-overflow-3/4): точная точка среза приходит
     // из бюджета строк ПРОШЛОГО кадра (interact::ClampCut) — низ N-й
@@ -167,11 +167,12 @@ fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             _ => 1.2 * font,
         };
         let cut = crate::interact::clamp_cut(e.node_id).unwrap_or(n as f32 * line);
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("HTML_CLAMP_DBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!("CLAMP branch node={} n={} cut={}", e.node_id, n, cut);
         }
         d = d.max_h(px(cut)).overflow_hidden();
@@ -775,7 +776,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 None => {
                     e.inline
                         && (!ordered_context || e.tag == "br")
-                        && !e.style.float.is_some_and(|f| f != 0)
+                        && e.style.float.is_none_or(|f| f == 0)
                 }
             },
         };
@@ -1519,11 +1520,12 @@ fn wrap_floats(nodes: Vec<Node>) -> Vec<Node> {
             floaters.push(floater);
             j += 1;
         }
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("FL_DBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!(
                 "FL floaters={} i={} j={} total={}",
                 floaters.len(),
@@ -2634,7 +2636,6 @@ fn paragraph_pieces(
     // считает по готовому тексту байтовые смещения.
     inline::hyphenate_pieces(&mut pieces);
     inline::space_transform_pieces(&mut pieces);
-    let mut pieces = pieces;
     inline::trim_edge_spaces(&mut pieces);
     // Свой `unicode-bidi` у самого абзаца знаками не обрамлялся: их ставит
     // сборка КУСКОВ, а корень абзаца куском не бывает. Из-за этого
@@ -2853,11 +2854,12 @@ fn paragraph_pieces(
         .into_any_element();
     }
     let mut render_text = |t: String, style: &Computed| -> AnyElement {
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!(
                 "RT t={:?} rot={:?} lh={:?} fs={:?}",
                 t.chars().take(3).collect::<String>(),
@@ -2890,11 +2892,12 @@ fn paragraph_pieces(
         let d = apply(div(), &style.text_only())
             .max_w_full()
             .child(SharedString::from(t.clone()));
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             let tag = t.chars().take(3).collect::<String>();
             return d
                 .relative()
@@ -3594,7 +3597,7 @@ fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<An
             inner.style.margin = Default::default();
             use gpui::{InteractiveElement, StatefulInteractiveElement};
             let mut d = crate::apply::margins(div(), &outer_margin)
-                .id(gpui::ElementId::Integer(node.node_id as u64 + 1))
+                .id(gpui::ElementId::Integer(node.node_id + 1))
                 .track_scroll(handle)
                 .child(element(&inner, &inherited, &opts));
             if h {
@@ -3608,7 +3611,7 @@ fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<An
     );
     Some(
         crate::interact::ScrollArea::new(
-            gpui::ElementId::Integer(e.node_id as u64),
+            gpui::ElementId::Integer(e.node_id),
             horizontal,
             vertical,
             build,
@@ -3647,7 +3650,7 @@ fn resizable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<Any
         element(&mixed, &inherited, &opts)
     });
     Some(
-        crate::interact::Resizable::new(gpui::ElementId::Integer(e.node_id as u64), axis, build)
+        crate::interact::Resizable::new(gpui::ElementId::Integer(e.node_id), axis, build)
             .into_any_element(),
     )
 }
@@ -3674,12 +3677,8 @@ fn transitioned(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         element(&mixed, &inherited, &opts)
     });
     Some(
-        crate::transition::Transition::new(
-            gpui::ElementId::Integer(e.node_id as u64),
-            seconds,
-            build,
-        )
-        .into_any_element(),
+        crate::transition::Transition::new(gpui::ElementId::Integer(e.node_id), seconds, build)
+            .into_any_element(),
     )
 }
 
@@ -3762,7 +3761,7 @@ fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement 
     }
     gpui::AnimationExt::with_animation(
         d,
-        gpui::ElementId::Integer(e.node_id as u64),
+        gpui::ElementId::Integer(e.node_id),
         anim,
         move |d, delta| {
             let c = frame_at(&frames, delta);
@@ -4693,11 +4692,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             ix += span;
         }
     }
-    if {
+    let res = {
         static ON: std::sync::LazyLock<bool> =
             std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok());
         *ON
-    } {
+    };
+    if res {
         eprintln!("TCA cols={col_widths:?}");
     }
     // Фон КОЛОНКИ картинкой — той же полосой, что фон ряда: слой на площадь
@@ -5161,9 +5161,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // Вертикальное письмо таблицы: ряды идут ПОПЕРЁК — охваты
             // меняются осями вместе с сеткой (css-writing-modes-3 §8).
             let (grid_cols, grid_rows) = if e.style.vertical == Some(true) {
-                (span_rows as u16, span_cols as u16)
+                (span_rows, span_cols)
             } else {
-                (span_cols, span_rows as u16)
+                (span_cols, span_rows)
             };
             if grid_cols > 1 {
                 d = d.col_span(grid_cols);
@@ -5273,15 +5273,14 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 if let (Some(rects), Some(el)) = (
                     col_rects.get(i).and_then(|r| r.clone()),
                     col_els.get(i).copied().flatten(),
-                ) {
-                    if !probed.contains(&el.node_id) {
-                        probed.push(el.node_id);
-                        d = d.child(crate::interact::cell_rect_probe(
-                            rects,
-                            span_cols == 1,
-                            shift,
-                        ));
-                    }
+                ) && !probed.contains(&el.node_id)
+                {
+                    probed.push(el.node_id);
+                    d = d.child(crate::interact::cell_rect_probe(
+                        rects,
+                        span_cols == 1,
+                        shift,
+                    ));
                 }
             }
             // Кромки РЯДА (border на <tr>) — участник разбора сросшихся
@@ -5543,11 +5542,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .or_else(|| first_row_widths.get(i).copied().flatten())
         })
         .collect();
-    if {
+    let res = {
         static ON: std::sync::LazyLock<bool> =
             std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok());
         *ON
-    } {
+    };
+    if res {
         eprintln!(
             "TABLE cols={} col_widths={:?} first_row={:?}",
             cols, col_widths, first_row_widths
@@ -5560,11 +5560,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         &col_widths,
         &cols_collapsed,
     );
-    if {
+    let res = {
         static ON: std::sync::LazyLock<bool> =
             std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok());
         *ON
-    } {
+    };
+    if res {
         eprintln!("TABLE tracks={:?}", tracks);
     }
     // Таблица ЗАДАННОЙ высоты раздаёт лишнее место рядам БЕЗ своей высоты
@@ -5979,7 +5980,6 @@ fn fixup_row_children(row: &Element) -> Vec<Node> {
                 || !is_cell(el)
         }
         Node::Text(t) => !t.trim().is_empty(),
-        _ => false,
     });
     if !needs_fix {
         return vec![Node::Element(row.clone())];
@@ -6042,8 +6042,6 @@ fn fixup_table_children(children: &[Node]) -> Vec<Node> {
                             if row {
                                 flush(&mut stray, &mut out);
                                 out.push(Node::Element(ge));
-                            } else if is_cell(&ge) {
-                                stray.push(Node::Element(ge));
                             } else {
                                 stray.push(Node::Element(ge));
                             }
@@ -6201,177 +6199,6 @@ fn is_cell(e: &Element) -> bool {
     e.tag == "td" || e.tag == "th" || e.style.display == Some(Display::TableCell)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::dom::parse;
-
-    fn find_class<'a>(nodes: &'a [Node], class: &str) -> Option<&'a Element> {
-        for n in nodes {
-            if let Node::Element(e) = n {
-                if e.attr("class")
-                    .is_some_and(|c| c.split_whitespace().any(|x| x == class))
-                {
-                    return Some(e);
-                }
-                if let Some(found) = find_class(&e.children, class) {
-                    return Some(found);
-                }
-            }
-        }
-        None
-    }
-
-    /// Разворачивает обёртки документа до содержимого страницы.
-    fn page_children(html: &str) -> Vec<Node> {
-        fn dive(n: &[Node]) -> Vec<Node> {
-            match n.first() {
-                Some(Node::Element(e)) if e.tag == "html" || e.tag == "body" => dive(&e.children),
-                _ => n.to_vec(),
-            }
-        }
-        dive(&parse(html, ""))
-    }
-
-    #[test]
-    fn margin_collapse_matches_the_browser_on_the_fixture_case() {
-        // Ровно тот случай, на котором сравнение с Chrome показало сдвиг на
-        // 10 точек: блок-обёртка без своего отступа сверху и ребёнок с ним.
-        let page = page_children(
-            "<div class=\"page\">\
-               <div class=\"wrap\" style=\"margin: 0 0 10px\">w</div>\
-               <div class=\"stack\" style=\"margin: 0 0 10px\">\
-                 <div class=\"mt\" style=\"margin-top: 24px\">m</div>\
-               </div>\
-             </div>",
-        );
-        let children = match &page[0] {
-            Node::Element(e) => collapse_margins(&e.children),
-            _ => panic!("нет страницы"),
-        };
-        let stack = children
-            .iter()
-            .find_map(|n| match n {
-                Node::Element(e) if e.attr("class") == Some("stack") => Some(e),
-                _ => None,
-            })
-            .expect("нет обёртки");
-        // Отступ ребёнка вынесен наружу (24) и уменьшен на уже отданные
-        // предыдущим блоком 10 — суммарный зазор остаётся 24, как в браузере.
-        assert_eq!(stack.style.margin.top, Some(Len::Px(14.0)), "у обёртки");
-        let child_top = stack.children.iter().find_map(|n| match n {
-            Node::Element(e) => Some(e.style.margin.top),
-            _ => None,
-        });
-        assert_eq!(child_top, Some(Some(Len::Px(0.0))), "у ребёнка снят");
-    }
-
-    #[test]
-    fn out_of_flow_neighbours_keep_their_margins() {
-        // Плавающий блок в схлопывании не участвует: его поле стоит как
-        // написано, и соседа он не обкрадывает.
-        let nodes = parse(
-            "<div style=\"margin: 16px; float: left\">a</div>\
-             <div style=\"margin: 16px; float: left\">b</div>",
-            "",
-        );
-        let inner = match &nodes[0] {
-            Node::Element(html) => collapse_margins(&html.children),
-            _ => panic!("нет корня"),
-        };
-        let body = match &inner[0] {
-            Node::Element(b) => collapse_margins(&b.children),
-            _ => panic!("нет body"),
-        };
-        for (i, n) in body.iter().enumerate() {
-            let Node::Element(e) = n else { continue };
-            assert_eq!(
-                e.style.margin.top,
-                Some(Len::Px(16.0)),
-                "плавающий блок {i} потерял поле"
-            );
-        }
-    }
-
-    #[test]
-    fn margins_in_em_collapse_too() {
-        // `margin: 1em 0` — самая частая запись отступа в разметке: без
-        // перевода в точки схлопывание не срабатывало вовсе.
-        let nodes = parse(
-            "<div style=\"margin-bottom: 1em\">a</div><div style=\"margin-top: 2em\">b</div>",
-            "",
-        );
-        let inner = match &nodes[0] {
-            Node::Element(html) => collapse_margins(&html.children),
-            _ => panic!("нет корня"),
-        };
-        let body = match &inner[0] {
-            Node::Element(b) => collapse_margins(&b.children),
-            _ => panic!("нет body"),
-        };
-        let second = match &body[1] {
-            Node::Element(e) => e.style.margin.top,
-            _ => panic!("нет второго блока"),
-        };
-        // 32 всего, из них 16 уже дал нижний отступ предыдущего блока.
-        assert_eq!(second, Some(Len::Px(16.0)), "получено {second:?}");
-    }
-
-    #[test]
-    fn adjacent_margins_collapse_into_the_larger() {
-        // В CSS нижний отступ одного блока и верхний отступ следующего не
-        // складываются: остаётся больший. Иначе документ растёт сверху вниз.
-        let nodes = parse(
-            "<div style=\"margin-bottom: 10px\">a</div><div style=\"margin-top: 24px\">b</div>",
-            "",
-        );
-        let inner = match &nodes[0] {
-            Node::Element(html) => collapse_margins(&html.children),
-            _ => panic!("нет корня"),
-        };
-        let body = match &inner[0] {
-            Node::Element(b) => collapse_margins(&b.children),
-            _ => panic!("нет body"),
-        };
-        let second = match &body[1] {
-            Node::Element(e) => e.style.margin.top,
-            _ => panic!("нет второго блока"),
-        };
-        // 24 всего, из них 10 уже дал нижний отступ предыдущего блока.
-        assert_eq!(second, Some(Len::Px(14.0)), "получено {second:?}");
-    }
-
-    #[test]
-    fn first_child_margin_leaks_through_a_borderless_parent() {
-        // Отступ первого ребёнка в CSS — тот же отступ, что у родителя, если
-        // между ними нет ни рамки, ни внутреннего отступа.
-        let nodes = parse(
-            "<div class=\"wrap\"><div class=\"in\" style=\"margin-top: 24px\">x</div></div>",
-            "",
-        );
-        let inner = match &nodes[0] {
-            Node::Element(html) => collapse_margins(&html.children),
-            _ => panic!("нет корня"),
-        };
-        let body = match &inner[0] {
-            Node::Element(b) => collapse_margins(&b.children),
-            _ => panic!("нет body"),
-        };
-        let wrap = match &body[0] {
-            Node::Element(e) => e,
-            _ => panic!("нет обёртки"),
-        };
-        assert_eq!(
-            wrap.style.margin.top,
-            Some(Len::Px(24.0)),
-            "отступ вынесен наружу"
-        );
-        let child_top =
-            find_class(std::slice::from_ref(&body[0]), "in").and_then(|e| e.style.margin.top);
-        assert_eq!(child_top, Some(Len::Px(0.0)), "у ребёнка отступ снят");
-    }
-}
-
 /// Высота строки в точках — для статической позиции блочного элемента.
 fn line_height_px(style: &Computed, opts: &RenderOpts) -> f32 {
     let size = match style.font_size {
@@ -6417,7 +6244,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         Some(explicit) => explicit,
         None => row_tracks && !col_tracks,
     };
-    let tracks = if row_dir {
+    let mut tracks = if row_dir {
         merged.grid_rows.clone().unwrap_or_default()
     } else {
         merged.grid_tracks.clone().unwrap_or_default()
@@ -6429,7 +6256,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     // `repeat(auto-fill, 100px)` — «сколько влезет»: число лунок считается по
     // размеру контейнера ПОПЕРЁК потока. Без этого счёта вся раскладка
     // схлопывалась в одну лунку (`column-auto-repeat-001`).
-    let fill = if row_dir {
+    let _fill = if row_dir {
         merged.grid_auto_fill_row.zip(px_of(merged.height))
     } else {
         merged.grid_auto_fill_min.zip(px_of(merged.width))
@@ -6467,7 +6294,6 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     } else {
         px_of(merged.width)
     };
-    let mut tracks = tracks;
     // Повтор «сколько влезет» разворачивается в настоящий список дорожек: от
     // него зависят и размер лунки, и размер элемента на несколько лунок
     // (`column-auto-repeat-001`: коробка на две дорожки). Дорожка `auto`
@@ -6709,7 +6535,6 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             _ => 16.0,
         },
     };
-    let mut tracks = tracks;
     // Процентный размер — от контейнера: элемент `width:100%` занимает ВЕСЬ
     // ряд, и следующий уходит в другой
     // (grid-lanes-align-content-refinalize-row-geometry-001). Ветка выбирается
@@ -6733,40 +6558,41 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     // Перенос считается ПОСЛОВНО жадно по ширине знака (ch) —
                     // посимвольная оценка ЗАМЕРЕНА И ОТКАЧЕНА (94→93: она
                     // врёт против пословного переноса браузера).
-                    if item.style.height.is_none() && h > 0.0 {
-                        if let Some(TrackSize::Single(Track::Px(w))) = tracks.first() {
-                            let st = crate::inline::inherit(merged, &item.style);
-                            let size = match st.font_size {
-                                Some(Len::Px(v)) => v,
-                                _ => 16.0,
-                            };
-                            let family = st.font_family.clone().unwrap_or_else(|| {
-                                if st.monospace == Some(true) {
-                                    crate::metrics::mono_family().to_string()
+                    if item.style.height.is_none()
+                        && h > 0.0
+                        && let Some(TrackSize::Single(Track::Px(w))) = tracks.first()
+                    {
+                        let st = crate::inline::inherit(merged, &item.style);
+                        let size = match st.font_size {
+                            Some(Len::Px(v)) => v,
+                            _ => 16.0,
+                        };
+                        let family = st.font_family.clone().unwrap_or_else(|| {
+                            if st.monospace == Some(true) {
+                                crate::metrics::mono_family().to_string()
+                            } else {
+                                String::new()
+                            }
+                        });
+                        let ch = crate::metrics::ch_ex_px(&family, size).0;
+                        if ch > 0.0 && *w > ch {
+                            let per_line = (*w / ch).floor().max(1.0) as usize;
+                            let mut lines = 0usize;
+                            let mut used_now = 0usize;
+                            for word in words(&item.children) {
+                                let need = word.min(per_line);
+                                if used_now == 0 {
+                                    lines += 1;
+                                    used_now = need;
+                                } else if used_now + 1 + need <= per_line {
+                                    used_now += 1 + need;
                                 } else {
-                                    String::new()
+                                    lines += 1;
+                                    used_now = need;
                                 }
-                            });
-                            let ch = crate::metrics::ch_ex_px(&family, size).0;
-                            if ch > 0.0 && *w > ch {
-                                let per_line = (*w / ch).floor().max(1.0) as usize;
-                                let mut lines = 0usize;
-                                let mut used_now = 0usize;
-                                for word in words(&item.children) {
-                                    let need = word.min(per_line);
-                                    if used_now == 0 {
-                                        lines += 1;
-                                        used_now = need;
-                                    } else if used_now + 1 + need <= per_line {
-                                        used_now += 1 + need;
-                                    } else {
-                                        lines += 1;
-                                        used_now = need;
-                                    }
-                                }
-                                if lines > 1 {
-                                    h += (lines as f32 - 1.0) * line_height_px(&st, opts);
-                                }
+                            }
+                            if lines > 1 {
+                                h += (lines as f32 - 1.0) * line_height_px(&st, opts);
                             }
                         }
                     }
@@ -6883,11 +6709,12 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 probe[lane].push((top, top + height));
             }
         }
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!("LA placed={placed:?} reach0={reach:?}");
         }
         // Верх следующего элемента той же лунки — ПО КООРДИНАТЕ, не по порядку
@@ -6921,11 +6748,12 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 Some((idx, height))
             })
             .collect();
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("LA_DBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!("LA reach={reach:?}");
         }
     }
@@ -7402,10 +7230,11 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             // Тянется ТОЛЬКО последний элемент лунки: свободное место копится
             // в хвосте, у остальных рост снимается (`column-align-items-003`).
             let tail = last_real == Some(j);
-            if s.real && !tail {
-                if let Node::Element(el) = &mut s.node {
-                    el.style.flex_grow = None;
-                }
+            if s.real
+                && !tail
+                && let Node::Element(el) = &mut s.node
+            {
+                el.style.flex_grow = None;
             }
             // Дети лунки НЕ сжимаются: содержимое шире лунки переполняет её,
             // как блочный поток (row-fill-reverse-justify-content-safe-001:
@@ -7431,15 +7260,15 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             // остальные значения требуют коробки на весь остаток
             // (`column-align-items-001`). Распорка чужого элемента ПОСЛЕ
             // хвостового съедает остаток — тогда коробки нет.
-            if tail && j == last_idx {
-                if let (
+            if tail
+                && j == last_idx
+                && let (
                     Some(along @ (Align::Center | Align::End | Align::Start)),
                     Node::Element(el),
                 ) = (s.along, &s.node)
-                {
-                    nodes.push(lane_align_box(el.clone(), along, row_dir));
-                    continue;
-                }
+            {
+                nodes.push(lane_align_box(el.clone(), along, row_dir));
+                continue;
             }
             nodes.push(s.node);
         }
@@ -7858,4 +7687,175 @@ fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
 /// там, где рваться не должен (`trailing-ideographic-space-017`).
 fn blank_text(t: &str) -> bool {
     t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dom::parse;
+
+    fn find_class<'a>(nodes: &'a [Node], class: &str) -> Option<&'a Element> {
+        for n in nodes {
+            if let Node::Element(e) = n {
+                if e.attr("class")
+                    .is_some_and(|c| c.split_whitespace().any(|x| x == class))
+                {
+                    return Some(e);
+                }
+                if let Some(found) = find_class(&e.children, class) {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
+
+    /// Разворачивает обёртки документа до содержимого страницы.
+    fn page_children(html: &str) -> Vec<Node> {
+        fn dive(n: &[Node]) -> Vec<Node> {
+            match n.first() {
+                Some(Node::Element(e)) if e.tag == "html" || e.tag == "body" => dive(&e.children),
+                _ => n.to_vec(),
+            }
+        }
+        dive(&parse(html, ""))
+    }
+
+    #[test]
+    fn margin_collapse_matches_the_browser_on_the_fixture_case() {
+        // Ровно тот случай, на котором сравнение с Chrome показало сдвиг на
+        // 10 точек: блок-обёртка без своего отступа сверху и ребёнок с ним.
+        let page = page_children(
+            "<div class=\"page\">\
+               <div class=\"wrap\" style=\"margin: 0 0 10px\">w</div>\
+               <div class=\"stack\" style=\"margin: 0 0 10px\">\
+                 <div class=\"mt\" style=\"margin-top: 24px\">m</div>\
+               </div>\
+             </div>",
+        );
+        let children = match &page[0] {
+            Node::Element(e) => collapse_margins(&e.children),
+            _ => panic!("нет страницы"),
+        };
+        let stack = children
+            .iter()
+            .find_map(|n| match n {
+                Node::Element(e) if e.attr("class") == Some("stack") => Some(e),
+                _ => None,
+            })
+            .expect("нет обёртки");
+        // Отступ ребёнка вынесен наружу (24) и уменьшен на уже отданные
+        // предыдущим блоком 10 — суммарный зазор остаётся 24, как в браузере.
+        assert_eq!(stack.style.margin.top, Some(Len::Px(14.0)), "у обёртки");
+        let child_top = stack.children.iter().find_map(|n| match n {
+            Node::Element(e) => Some(e.style.margin.top),
+            _ => None,
+        });
+        assert_eq!(child_top, Some(Some(Len::Px(0.0))), "у ребёнка снят");
+    }
+
+    #[test]
+    fn out_of_flow_neighbours_keep_their_margins() {
+        // Плавающий блок в схлопывании не участвует: его поле стоит как
+        // написано, и соседа он не обкрадывает.
+        let nodes = parse(
+            "<div style=\"margin: 16px; float: left\">a</div>\
+             <div style=\"margin: 16px; float: left\">b</div>",
+            "",
+        );
+        let inner = match &nodes[0] {
+            Node::Element(html) => collapse_margins(&html.children),
+            _ => panic!("нет корня"),
+        };
+        let body = match &inner[0] {
+            Node::Element(b) => collapse_margins(&b.children),
+            _ => panic!("нет body"),
+        };
+        for (i, n) in body.iter().enumerate() {
+            let Node::Element(e) = n else { continue };
+            assert_eq!(
+                e.style.margin.top,
+                Some(Len::Px(16.0)),
+                "плавающий блок {i} потерял поле"
+            );
+        }
+    }
+
+    #[test]
+    fn margins_in_em_collapse_too() {
+        // `margin: 1em 0` — самая частая запись отступа в разметке: без
+        // перевода в точки схлопывание не срабатывало вовсе.
+        let nodes = parse(
+            "<div style=\"margin-bottom: 1em\">a</div><div style=\"margin-top: 2em\">b</div>",
+            "",
+        );
+        let inner = match &nodes[0] {
+            Node::Element(html) => collapse_margins(&html.children),
+            _ => panic!("нет корня"),
+        };
+        let body = match &inner[0] {
+            Node::Element(b) => collapse_margins(&b.children),
+            _ => panic!("нет body"),
+        };
+        let second = match &body[1] {
+            Node::Element(e) => e.style.margin.top,
+            _ => panic!("нет второго блока"),
+        };
+        // 32 всего, из них 16 уже дал нижний отступ предыдущего блока.
+        assert_eq!(second, Some(Len::Px(16.0)), "получено {second:?}");
+    }
+
+    #[test]
+    fn adjacent_margins_collapse_into_the_larger() {
+        // В CSS нижний отступ одного блока и верхний отступ следующего не
+        // складываются: остаётся больший. Иначе документ растёт сверху вниз.
+        let nodes = parse(
+            "<div style=\"margin-bottom: 10px\">a</div><div style=\"margin-top: 24px\">b</div>",
+            "",
+        );
+        let inner = match &nodes[0] {
+            Node::Element(html) => collapse_margins(&html.children),
+            _ => panic!("нет корня"),
+        };
+        let body = match &inner[0] {
+            Node::Element(b) => collapse_margins(&b.children),
+            _ => panic!("нет body"),
+        };
+        let second = match &body[1] {
+            Node::Element(e) => e.style.margin.top,
+            _ => panic!("нет второго блока"),
+        };
+        // 24 всего, из них 10 уже дал нижний отступ предыдущего блока.
+        assert_eq!(second, Some(Len::Px(14.0)), "получено {second:?}");
+    }
+
+    #[test]
+    fn first_child_margin_leaks_through_a_borderless_parent() {
+        // Отступ первого ребёнка в CSS — тот же отступ, что у родителя, если
+        // между ними нет ни рамки, ни внутреннего отступа.
+        let nodes = parse(
+            "<div class=\"wrap\"><div class=\"in\" style=\"margin-top: 24px\">x</div></div>",
+            "",
+        );
+        let inner = match &nodes[0] {
+            Node::Element(html) => collapse_margins(&html.children),
+            _ => panic!("нет корня"),
+        };
+        let body = match &inner[0] {
+            Node::Element(b) => collapse_margins(&b.children),
+            _ => panic!("нет body"),
+        };
+        let wrap = match &body[0] {
+            Node::Element(e) => e,
+            _ => panic!("нет обёртки"),
+        };
+        assert_eq!(
+            wrap.style.margin.top,
+            Some(Len::Px(24.0)),
+            "отступ вынесен наружу"
+        );
+        let child_top =
+            find_class(std::slice::from_ref(&body[0]), "in").and_then(|e| e.style.margin.top);
+        assert_eq!(child_top, Some(Len::Px(0.0)), "у ребёнка отступ снят");
+    }
 }

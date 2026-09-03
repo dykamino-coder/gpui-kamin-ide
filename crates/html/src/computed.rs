@@ -383,8 +383,9 @@ pub enum BgClip {
 }
 
 /// `background-size`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum BgSize {
+    #[default]
     Auto,
     Cover,
     Contain,
@@ -1046,12 +1047,6 @@ pub struct Computed {
     pub caret_color: Option<Color>,
     /// `accent-color` флажков и переключателей.
     pub accent_color: Option<Color>,
-}
-
-impl Default for BgSize {
-    fn default() -> Self {
-        BgSize::Auto
-    }
 }
 
 impl Computed {
@@ -2717,10 +2712,10 @@ impl Computed {
                                 f.all = true;
                             }
                             other => {
-                                if let Some(pct) = other.strip_suffix('%') {
-                                    if let Ok(n) = pct.parse::<f32>() {
-                                        f.target = n / 100.0;
-                                    }
+                                if let Some(pct) = other.strip_suffix('%')
+                                    && let Ok(n) = pct.parse::<f32>()
+                                {
+                                    f.target = n / 100.0;
                                 }
                             }
                         }
@@ -3634,7 +3629,7 @@ impl Computed {
             // Слова укладки вынимаются из хвостовых частей, остаток — ширина
             // и вылет.
             let mut tail_repeat: Vec<String> = vec![];
-            let mut strip = |part: &str, reps: &mut Vec<String>| -> String {
+            let strip = |part: &str, reps: &mut Vec<String>| -> String {
                 let (found, rest): (Vec<&str>, Vec<&str>) = part
                     .split_whitespace()
                     .partition(|w| matches!(*w, "stretch" | "repeat" | "round" | "space"));
@@ -3643,7 +3638,6 @@ impl Computed {
             };
             let width = parts.get(1).map(|p| strip(p, &mut tail_repeat));
             let outset = parts.get(2).map(|p| strip(p, &mut tail_repeat));
-            drop(strip);
             if let Some(width) = width.filter(|w| !w.is_empty()) {
                 set("border-image-width", &width);
             }
@@ -3656,7 +3650,6 @@ impl Computed {
         } else {
             set(name, v);
         }
-        drop(set);
         // Запись хранится и БЕЗ источника: лонгхенды приходят в любом порядке,
         // и `border-image-slice` до `border-image-source` иначе выбрасывался —
         // источник, пришедший следом, получал срезы по умолчанию (вся
@@ -4394,7 +4387,7 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
         let t = t.trim();
         // Именованная линия перед дорожкой: `[side] 240px`. Имя не несёт
         // размера, поэтому просто отбрасывается — но НЕ вместе с дорожкой.
-        let t = t.trim_start_matches(|c| c == '[');
+        let t = t.trim_start_matches('[');
         let t = match t.find(']') {
             Some(at) => t[at + 1..].trim(),
             None => t,

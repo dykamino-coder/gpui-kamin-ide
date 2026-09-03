@@ -8,7 +8,7 @@
 //! разрешил CSS.
 
 use gpui::{
-    AnyElement, App, Bounds, Div, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
     InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, ParentElement, Pixels, Styled, Window, px,
 };
@@ -798,11 +798,12 @@ impl Element for CellsClipped {
         // отрисовки — здесь забираются прямоугольники ЭТОГО ЖЕ кадра.
         // Пустота возможна только на самом первом кадре документа.
         let rects = std::mem::take(&mut *self.rects.borrow_mut());
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("HTML_ROWBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!("ROWBG paint: rects={} {:?}", rects.len(), rects);
         }
         if rects.is_empty() {
@@ -1062,7 +1063,7 @@ impl Element for EdgePainter {
                 y0 + f32::from(bnd.size.height),
             );
             let is_table = c.source == 0;
-            let mut side = |list: &mut Vec<Cand>, line: f32, a: f32, b: f32, i: usize, out: i8| {
+            let side = |list: &mut Vec<Cand>, line: f32, a: f32, b: f32, i: usize, out: i8| {
                 if c.widths[i] > 0.0 || c.styles[i] == 1 {
                     list.push(Cand {
                         line,
@@ -1207,7 +1208,7 @@ thread_local! {
     /// Стек активных clamp-контейнеров при ПОСТРОЕНИИ дерева:
     /// (ключ, граница BFC уже пройдена).
     static CLAMP_STACK: std::cell::RefCell<Vec<(u64, bool)>> =
-        std::cell::RefCell::new(Vec::new());
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 pub fn clamp_lines_for(key: u64) -> ClampLines {
@@ -1429,11 +1430,12 @@ impl Element for ClampCut {
             cut = Some(c2);
         }
         let rel = cut.map(|c| (c - top).max(0.0));
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("HTML_CLAMP_DBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!(
                 "CLAMPCUT key={} rows={} blocks={} limit={:?} max_h={:?} rel={:?}",
                 self.key,
@@ -1578,18 +1580,19 @@ impl Element for CombinedUpright {
             .as_mut()
             .unwrap()
             .layout_as_root(space, window, cx);
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!("VT natural={:?}", self.natural);
         }
         let mut style = gpui::Style::default();
         let side = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(px(self.em)),
         ));
-        style.size.width = side.clone();
+        style.size.width = side;
         style.size.height = side;
         (window.request_layout(style, [], cx), ())
     }
@@ -1787,11 +1790,12 @@ impl Element for VerticalText {
         // строк, его меньше не сделать. А высота — длина строки, и её решает
         // родитель: заявленная здесь, она делала коробку сколь угодно длинной,
         // ограничение до текста не доходило, и он не переносился никогда.
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!("VT2 natural={:?} cap={:?}", self.natural, self.claim_cap);
         }
         // Факт прошлого кадра сильнее свободного замера: перенос строк при
@@ -1801,11 +1805,12 @@ impl Element for VerticalText {
             .key
             .and_then(|k| VT_MEASURED.with(|c| c.borrow().get(&k).copied()))
             .unwrap_or(self.natural.height);
-        if {
+        let res = {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("VT_DBG").is_ok());
             *ON
-        } {
+        };
+        if res {
             eprintln!("VT3 key={:?} claim={:?}", self.key, claim);
         }
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(

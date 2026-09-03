@@ -173,7 +173,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
 
     let mut out = vec![];
     // Наборы кадров собираются из тех же источников, что и правила.
-    let mut frames = parse_keyframes(&user_agent_css());
+    let mut frames = parse_keyframes(user_agent_css());
     frames.extend(parse_keyframes(extra_css));
     frames.extend(parse_keyframes(&doc_css));
     let mut counter = 0u64;
@@ -322,8 +322,8 @@ fn own_containing_block(c: &Computed) -> bool {
     )
 }
 
-/// Кастомные свойства из правил. Селектор не важен: в документе переменные
-/// почти всегда объявлены на корне, а разбирать их область видимости — это
+// Кастомные свойства из правил. Селектор не важен: в документе переменные
+// почти всегда объявлены на корне, а разбирать их область видимости — это
 
 /// Содержимое всех `<style>` документа — html5ever кладёт его текстом внутрь.
 fn collect_style_tags(handle: &Handle, out: &mut String) {
@@ -383,11 +383,7 @@ fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String)]) 
                 style.rtl = Some(true)
             }
         }
-        "ltr" => {
-            if style.rtl.is_none() {
-                style.rtl = Some(false)
-            }
-        }
+        "ltr" if style.rtl.is_none() => style.rtl = Some(false),
         // `dir="auto"` — сторону выбирает первый сильный знак текста; это
         // делает разбор двунаправленности сам, поэтому здесь ничего не ставим.
         _ => {}
@@ -1323,7 +1319,7 @@ mod presentational_tests {
     #[test]
     fn image_size_attributes_reach_the_style() {
         let nodes = parse(r#"<img src="x.png" width="100" height="40">"#, "");
-        fn find<'a>(nodes: &'a [Node]) -> Option<&'a Element> {
+        fn find(nodes: &[Node]) -> Option<&Element> {
             for n in nodes {
                 if let Node::Element(e) = n {
                     if e.tag == "img" {

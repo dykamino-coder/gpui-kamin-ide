@@ -30,7 +30,7 @@ const XYZ_TO_LINEAR_SRGB: [f32; 9] = [
 const LINEAR_SRGB_TO_XYZ: [f32; 9] = [
     0.412_390_8,
     0.357_584_33,
-    0.180_480_79,
+    0.180_480_8,
     0.212_639,
     0.715_168_65,
     0.072_192_32,
@@ -41,7 +41,7 @@ const LINEAR_SRGB_TO_XYZ: [f32; 9] = [
 
 /// XYZ D50 → XYZ D65 (преобразование Брэдфорда).
 const D50_TO_D65: [f32; 9] = [
-    0.955_473_45,
+    0.955_473_4,
     -0.023_098_537,
     0.063_259_31,
     -0.028_369_707,
@@ -73,7 +73,7 @@ const A98_TO_XYZ: [f32; 9] = [
     0.297_345,
     0.627_363_6,
     0.075_291_46,
-    0.027_031_361,
+    0.027_031_36,
     0.070_688_85,
     0.991_337_53,
 ];
@@ -278,7 +278,7 @@ fn lab_to_srgb(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
     let fy = (l + 16.0) / 116.0;
     let fx = a / 500.0 + fy;
     let fz = fy - b / 200.0;
-    let cube = |f: f32, k: f32| {
+    let cube = |f: f32, _k: f32| {
         let c = f * f * f;
         if c > E { c } else { (116.0 * f - 16.0) / K }
     };
@@ -310,11 +310,11 @@ fn oklab_to_srgb(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
 /// Линейный sRGB (возможно, вне охвата) → OKLab.
 fn linear_srgb_to_oklab(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let l = 0.412_221_47 * r + 0.536_332_54 * g + 0.051_445_995 * b;
-    let m = 0.211_903_5 * r + 0.680_699_55 * g + 0.107_396_96 * b;
+    let m = 0.211_903_5 * r + 0.680_699_5 * g + 0.107_396_96 * b;
     let s = 0.088_302_46 * r + 0.281_718_84 * g + 0.629_978_7 * b;
     let (l_, m_, s_) = (l.cbrt(), m.cbrt(), s.cbrt());
     (
-        0.210_454_26 * l_ + 0.793_617_79 * m_ - 0.004_072_047 * s_,
+        0.210_454_26 * l_ + 0.793_617_8 * m_ - 0.004_072_047 * s_,
         1.977_998_5 * l_ - 2.428_592_2 * m_ + 0.450_593_7 * s_,
         0.025_904_037 * l_ + 0.782_771_77 * m_ - 0.808_675_77 * s_,
     )
@@ -473,8 +473,8 @@ fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
         let c = crate::value::Color::parse(color)?;
         Some(((c.r, c.g, c.b, c.a), share))
     };
-    let (first, p1) = one(&it.next()?)?;
-    let (second, p2) = one(&it.next()?)?;
+    let (first, p1) = one(it.next()?)?;
+    let (second, p2) = one(it.next()?)?;
     let (w1, w2) = match (p1, p2) {
         (Some(a), Some(b)) if a + b > 0.0 => (a / (a + b), b / (a + b)),
         (Some(a), None) => (a, 1.0 - a),
@@ -711,9 +711,9 @@ pub(crate) fn apply_icc(
     gpui::bgra_bytes_to_image(w, h, out)
 }
 
-/// Реестр профилей `@color-profile`: имя (`--foo`) — байты ICC.
-///
-/// Живёт одну страницу, как и подмена шрифтов: имена придумывает страница.
+// Реестр профилей `@color-profile`: имя (`--foo`) — байты ICC.
+//
+// Живёт одну страницу, как и подмена шрифтов: имена придумывает страница.
 thread_local! {
     static PROFILES: std::cell::RefCell<std::collections::HashMap<String, Vec<u8>>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
