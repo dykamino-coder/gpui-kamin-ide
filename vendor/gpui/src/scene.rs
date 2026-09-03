@@ -146,13 +146,56 @@ impl Scene {
     }
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
+        // KaminIDE patch: границы примитива ПОСЛЕ трансформации — обход
+        // четырёх углов матрицей.
+        fn placed_by(
+            b: Bounds<ScaledPixels>,
+            m: &TransformationMatrix,
+        ) -> Bounds<ScaledPixels> {
+            let corners = [
+                (b.origin.x.0, b.origin.y.0),
+                (b.origin.x.0 + b.size.width.0, b.origin.y.0),
+                (b.origin.x.0, b.origin.y.0 + b.size.height.0),
+                (
+                    b.origin.x.0 + b.size.width.0,
+                    b.origin.y.0 + b.size.height.0,
+                ),
+            ];
+            let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+            for (x, y) in corners {
+                let tx = m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y;
+                let ty = m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y;
+                x0 = x0.min(tx);
+                y0 = y0.min(ty);
+                x1 = x1.max(tx);
+                y1 = y1.max(ty);
+            }
+            Bounds {
+                origin: point(ScaledPixels(x0), ScaledPixels(y0)),
+                size: crate::Size {
+                    width: ScaledPixels(x1 - x0),
+                    height: ScaledPixels(y1 - y0),
+                },
+            }
+        }
         let mut primitive = primitive.into();
         // KaminIDE patch: порядок и обрезка считаются по МЕСТУ НА ЭКРАНЕ.
         // У спрайта с трансформацией (повёрнутый текст) границы хранятся
         // ДО-трансформными — дерево границ видело глиф в чужой клетке, и фон
         // соседа получал порядок ПОВЕРХ глифа (table-cell-align-005: с
         // третьей ортогональной ячейки текст пропадал под градиентом).
+        // Квад и цветной спрайт с трансформацией — так же (коробка за окном
+        // до трансформа выбрасывалась, хотя трансформ возвращал её в окно:
+        // `transform-origin`, `transform-table-*`).
         let placed_bounds = match &primitive {
+            Primitive::Quad(q) if q.transformation != TransformationMatrix::unit() => {
+                placed_by(q.bounds, &q.transformation)
+            }
+            Primitive::PolychromeSprite(s)
+                if s.transformation != TransformationMatrix::unit() =>
+            {
+                placed_by(s.bounds, &s.transformation)
+            }
             Primitive::MonochromeSprite(s) if s.transformation != TransformationMatrix::unit() => {
                 let b = s.bounds;
                 let corners = [

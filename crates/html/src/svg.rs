@@ -234,10 +234,35 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         if k == "transform-origin" {
             continue;
         }
+        // Объявления трансформа из `style=` уже учтены в `e.style` и
+        // уходят нашим `transform="…"`; в usvg `transform` —
+        // презентационный атрибут, и объявление из `style` его ПЕРЕБИВАЕТ,
+        // а CSS-запись `translate(100px, 0)` парсер SVG не понимает —
+        // получалась единичная матрица (`svg-inline-styles-001..013`).
+        let v = if k == "style" {
+            let kept: Vec<&str> = v
+                .split(';')
+                .filter(|d| {
+                    let name = d.split(':').next().unwrap_or("").trim();
+                    !matches!(
+                        name,
+                        "transform"
+                            | "transform-origin"
+                            | "transform-box"
+                            | "translate"
+                            | "rotate"
+                            | "scale"
+                    )
+                })
+                .collect();
+            std::borrow::Cow::Owned(kept.join(";"))
+        } else {
+            std::borrow::Cow::Borrowed(v.as_str())
+        };
         out.push(' ');
         out.push_str(k);
         out.push_str("=\"");
-        escape_attr(v, out);
+        escape_attr(&v, out);
         out.push('"');
     }
     if let Some(t) = &combined {
