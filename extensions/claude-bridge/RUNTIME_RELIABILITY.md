@@ -1113,9 +1113,10 @@ BR-29 идёт без sibling-layout fix.
 
 ### BR-29 — Make hover-to-rename transition atomic
 
-**Status:** ready; подтверждён source lifecycle defect. **Dependency:** paired
-baseline из BR-28. **Acceptance:** automated state/
-geometry tests + Windows GPUI sidebar gate.
+**Status:** fixed (Change/Fix PR `fix/sidebar-rename-transition`); Windows GPUI gate 2026-09-03 (INC-2026-0003, evidence addendum): hover строки → overlay `hover_pill`; BeginRename через probe (путь fly-out/контекст-меню/F2) при ещё hovered строке → overlay states пусты, инпут `session-rename-input` на месте; повторный enter на переименовываемую строку пилюлю не возвращает; hover соседней строки во время rename показывает её пилюлю и убирает по leave; double-click тоже открывает rename без пилюли; paired bounds по процедуре BR-28 на этой сборке: меняется только полоса hovered row. Фокус инпута probe не измеряет (не менялся). Merge стал
+возможен после PR #40 (зелёный Rust-gate на `main`).
+**Dependency:** paired baseline из BR-28 (INC-2026-0003, done).
+**Acceptance:** automated state/geometry tests + Windows GPUI sidebar gate.
 
 Переход в inline rename сейчас не владеет teardown hover actions:
 
@@ -1144,6 +1145,15 @@ scroll во время transition. Invariant: при `renaming_session = id` д�
 actions overlay и stale anchor; input не перекрыт, не обрезан pill hitbox и
 сразу имеет focus. Windows gate повторяет оба screenshot-сценария и отдельно
 сверяет bounds из BR-28 до/после fix.
+
+**Fix.** `state/rename_transition.rs` — один helper `RootView::begin_rename()`:
+сначала `dismiss_hover_pill()` (оба hover source, generation+1, сброс
+geometry якоря), затем `renaming_session`/инпут; все входы (fly-out кнопка,
+double-click, F2, контекст-меню, probe) идут через него. Hover-enter для
+переименовываемой строки игнорируется до commit/cancel. Якорь пилюли
+(`ui/sessions/anchor.rs`) стал id-scoped: `PillAnchor { id, bounds }`,
+overlay рисует пилюлю только по `anchor_for(hover_pill)` и никогда для строки
+в rename. `DismissHoverPill` использует тот же teardown.
 
 ### BR-30 — Keep incident-log records atomic across rotation
 

@@ -288,11 +288,7 @@ impl RootView {
                 })
                 .detach();
             }
-            ShellEvent::BeginRename(id) => {
-                self.session_menu = None;
-                self.renaming_session = Some(id);
-                self.rename_input = None; // создаётся лениво в render (нужен window)
-            }
+            ShellEvent::BeginRename(id) => self.begin_rename(id),
             ShellEvent::CommitRename => {
                 if let (Some(id), Some(input)) = (&self.renaming_session, &self.rename_input) {
                     let name = input.read(cx).value().trim().to_string();
@@ -342,7 +338,14 @@ impl RootView {
                 hovered,
             } => {
                 // Драг ручки: пилюля не всплывает (мерцала под мышью).
-                if hovered && crate::state::drag_flag::active() {
+                // Строка в inline rename: enter игнорируется (BR-29).
+                if hovered && crate::state::drag_flag::active()
+                    || !crate::state::rename_transition::hover_allowed(
+                        self.renaming_session.as_deref(),
+                        &id,
+                        hovered,
+                    )
+                {
                     return;
                 }
 
@@ -376,10 +379,7 @@ impl RootView {
                 }
             }
             ShellEvent::DismissHoverPill => {
-                self.hover_pill_gen = self.hover_pill_gen.wrapping_add(1);
-                self.hover_pill = None;
-                self.hover_pill_anchor = None;
-                self.hover_pill_panel = None;
+                self.dismiss_hover_pill();
             }
             // Сюда диспетчер чужого не пришлёт
             _ => {}

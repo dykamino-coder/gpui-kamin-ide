@@ -8,6 +8,7 @@
 //! Сборка целиком осталась в `ui::sessions_list`.
 
 pub mod actions;
+pub mod anchor;
 pub mod glyphs;
 pub mod header;
 pub mod pill;
