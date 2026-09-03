@@ -968,9 +968,10 @@ lifecycle #21 работает. Отдельно подтверждено, чт�
 
 ### BR-26 — Publish Agent replay state atomically
 
-**Status:** ready; подтверждён source defect. **Dependency:** BR-25 baseline и
-BR-27; Windows gate завершается повторной проверкой BR-25.
-**Acceptance:** automated replay-generation tests + Windows CEF runtime gate.
+**Status:** fixed (Change/Fix PR `fix/agents-replay-staging`); Windows CEF gate 2026-09-03 (INC-2026-0002, evidence addendum): sampler DOM каждые 50 мс; при hide/show resync с двумя running teammates (два цикла `replayComplete false→true`) ни одного изменения DOM — rows не исчезали и не перестраивались; после reap+reveal новый renderer сразу показал полный snapshot (`Active 2/Completed 8`, затем `0/10`) без пустого или частичного состояния; завершения пришли двумя согласованными update. Насос доставки будился принудительной перерисовкой чата (BR-31 workaround).
+**Dependency:** BR-25 baseline и BR-27 (done); повторная проверка BR-25
+ждёт BR-31. **Acceptance:** automated replay-generation tests + Windows CEF
+runtime gate.
 
 Каждый `replayJsonlToRenderer()` сначала отправляет
 `jsonl-status { replayComplete:false }`. Agents listener немедленно удаляет
@@ -994,6 +995,16 @@ agents, несколько chunks, live entry между последним chun
 перекрывающихся replay generation и empty genuine session. Windows gate
 повторяет последовательность четырёх скриншотов: panel не мигает, running rows
 не исчезают, а завершённая history появляется одним согласованным update.
+
+**Fix.** `signals/agent-replay.ts` держит replay per tab как generation-scoped
+staging: `jsonl-status { replayComplete:false }` открывает поколение и больше
+не удаляет опубликованное дерево, все `jsonl-entries` до `replayComplete`
+копятся в staging, а на completion snapshot строится один раз из записей,
+упорядоченных `orderEntries()` (chunks приходят newest-first), и публикуется
+одной заменой `tabAgentTrees[tab]`. Устаревшее поколение (новый replay начался
+раньше) не публикуется; live entry, пришедшая на границе, входит в тот же
+snapshot ровно один раз; закрытие таба сбрасывает staging. Panel во время
+resync показывает последний согласованный snapshot.
 
 ### BR-27 — Derive Active and Completed from one lifecycle partition
 
