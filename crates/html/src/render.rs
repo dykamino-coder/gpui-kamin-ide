@@ -5220,6 +5220,17 @@ fn paragraph_pieces(
                 Some(measure_font(inherited, opts)),
             )
             .text_fit(inherited.text_fit)
+            .fit_parts(
+                // Масштабируемы только интервалы в ДОЛЯХ кегля; `px` и `em`
+                // (от вычисленного кегля) подбор не трогает.
+                [inherited.letter_spacing, inherited.word_spacing]
+                    .iter()
+                    .all(|l| matches!(l, None | Some(Len::Pct(_)))),
+                matches!(
+                    inherited.line_height,
+                    Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Ex(_)) | Some(Len::Ch(_))
+                ),
+            )
             .hyphen_char(inherited.hyphen_char.clone())
             .tab_stop(gpui::px(match inherited.tab_size_len {
                 // Длина задаёт шаг НАПРЯМУЮ, ширина знака к ней не примешана.

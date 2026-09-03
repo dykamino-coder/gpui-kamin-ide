@@ -232,8 +232,10 @@ pub struct TextFit {
     pub per_line: bool,
     /// `per-line-all`: подбор идёт и для ПОСЛЕДНЕЙ строки тоже.
     pub all: bool,
-    /// Доля ширины коробки, которую надо заполнить (`text-fit: grow 75%`).
-    pub target: f32,
+    /// Процент — ЗАЖИМ множителя, а не доля заполнения (css-text-5
+    /// §text-fit): при `grow` и значении ≥ 100% это максимум, при `shrink` и
+    /// значении ≤ 100% — минимум; иначе, и когда не задан, предела нет.
+    pub target: Option<f32>,
 }
 
 /// Какая пунктуация свисает за край строки (`hanging-punctuation`).
@@ -4070,7 +4072,7 @@ impl Computed {
                         shrink: false,
                         per_line: false,
                         all: false,
-                        target: 1.0,
+                        target: None,
                     };
                     for word in v.split_whitespace() {
                         match word {
@@ -4085,7 +4087,7 @@ impl Computed {
                             other => {
                                 if let Some(pct) = other.strip_suffix('%') {
                                     if let Ok(n) = pct.parse::<f32>() {
-                                        f.target = n / 100.0;
+                                        f.target = Some(n / 100.0);
                                     }
                                 }
                             }

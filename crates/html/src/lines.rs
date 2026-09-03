@@ -98,6 +98,13 @@ pub struct Paragraph {
     marker_font: Option<gpui::Font>,
     /// `text-fit`: подбор кегля под ширину коробки.
     fit: Option<crate::computed::TextFit>,
+    /// Масштабируемые части подбора кегля (css-text-5 §text-fit): интервалы
+    /// в ДОЛЯХ кегля масштабируются вместе с ним, в точках и `em` — нет
+    /// (`em` считается от вычисленного кегля, а его подбор не трогает).
+    fit_spacing_scalable: bool,
+    /// Заданная `line-height` (длина) при подборе не меняется; `normal` и
+    /// число — считаются от использованного кегля и растут с ним.
+    fit_line_height_fixed: bool,
     /// Шаг позиций табуляции (`tab-size` в точках).
     tab_stop: Pixels,
     /// Чем показывать перенос слова (`hyphenate-character`).
@@ -242,6 +249,8 @@ impl Paragraph {
             overflow_marker: None,
             marker_font: None,
             fit: None,
+            fit_spacing_scalable: true,
+            fit_line_height_fixed: false,
             tab_stop: px(8. * 8.),
             hyphen: SharedString::from("\u{2010}"),
             hyphen_w: std::cell::Cell::new(px(0.)),
@@ -1123,6 +1132,13 @@ impl Paragraph {
         self
     }
 
+    /// Какие части абзаца подбор кегля вправе масштабировать.
+    pub fn fit_parts(mut self, spacing_scalable: bool, line_height_fixed: bool) -> Self {
+        self.fit_spacing_scalable = spacing_scalable;
+        self.fit_line_height_fixed = line_height_fixed;
+        self
+    }
+
     /// Подобрать кегль так, чтобы строки заполнили коробку (css-text-5).
     ///
     /// Считается по САМОЙ ШИРОКОЙ строке: увеличивать до тех пор, пока она не
@@ -1133,14 +1149,46 @@ impl Paragraph {
             return;
         };
         let lines = self.split(Some(limit), window);
-        let widest = lines
+        let Some(widest_line) = lines
             .iter()
-            .map(|l| l.width)
-            .fold(px(0.), |a: Pixels, b| if b > a { b } else { a });
+            .max_by(|a, b| a.width.partial_cmp(&b.width).unwrap_or(std::cmp::Ordering::Equal))
+        else {
+            return;
+        };
+        let widest = widest_line.width;
         if widest <= px(0.) || limit <= px(0.) {
             return;
         }
-        let k = f32::from(limit) * f.target / f32::from(widest);
+        // Немасштабируемые части строки (css-text-5 §text-fit: интервалы в
+        // точках и `em`) в подборе не участвуют: множитель считается как
+        // (A + B) / A, где A — масштабируемая ширина, B — остаток места.
+        // Иначе `letter-spacing: 10px` рос вместе с глифами, сумма сходилась,
+        // а глифы выходили не те (`text-fit/spacing`).
+        let fixed = if self.fit_spacing_scalable {
+            0.0
+        } else {
+            let text = &self.text[widest_line.range.clone()];
+            let chars = text.chars().count().max(1) as f32;
+            let spaces = text.chars().filter(|c| c.is_whitespace()).count() as f32;
+            f32::from(self.letter_spacing) * (chars - 1.0) + f32::from(self.word_spacing) * spaces
+        };
+        let scalable = f32::from(widest) - fixed;
+        if scalable <= 0.0 {
+            return;
+        }
+        let mut k = (f32::from(limit) - fixed) / scalable;
+        // Процент — ЗАЖИМ множителя (css-text-5): при `grow` и ≥ 100% —
+        // максимум, при `shrink` и ≤ 100% — минимум; иначе предела нет.
+        // Раньше он множился как доля заполнения, и `shrink 75%` давал кегль
+        // вдвое меньше нужного (`shrink-per-line-all`).
+        if let Some(t) = f.target {
+            if f.grow && t >= 1.0 {
+                k = k.min(t);
+            }
+            if f.shrink && t <= 1.0 {
+                k = k.max(t);
+            }
+        }
         if !k.is_finite() || (k > 1.0 && !f.grow) || (k < 1.0 && !f.shrink) {
             return;
         }
@@ -1176,12 +1224,19 @@ impl Paragraph {
     /// Помножить всё, что задаёт размер набора.
     fn scale_by(&mut self, k: f32) {
         self.font_size = px(f32::from(self.font_size) * k);
-        self.line_height = px(f32::from(self.line_height) * k);
-        for (_, lh) in &mut self.lh_spans {
-            *lh = px(f32::from(*lh) * k);
+        // Заданная длиной `line-height` от подбора не зависит (css-text-5:
+        // «line-height: 1.5em … are not affected by this scaling»); растёт
+        // только `normal` и число — они считаются от использованного кегля.
+        if !self.fit_line_height_fixed {
+            self.line_height = px(f32::from(self.line_height) * k);
+            for (_, lh) in &mut self.lh_spans {
+                *lh = px(f32::from(*lh) * k);
+            }
         }
-        self.letter_spacing = px(f32::from(self.letter_spacing) * k);
-        self.word_spacing = px(f32::from(self.word_spacing) * k);
+        if self.fit_spacing_scalable {
+            self.letter_spacing = px(f32::from(self.letter_spacing) * k);
+            self.word_spacing = px(f32::from(self.word_spacing) * k);
+        }
         for run in &mut self.runs {
             if let Some(size) = run.font_size {
                 run.font_size = Some(px(f32::from(size) * k));
@@ -2714,6 +2769,8 @@ impl Paragraph {
             wrap: self.wrap,
             lines: self.lines.clone(),
             clamp: self.clamp,
+            fit_spacing_scalable: self.fit_spacing_scalable,
+            fit_line_height_fixed: self.fit_line_height_fixed,
             text_overflow: false,
             overflow_marker: None,
             marker_font: None,
