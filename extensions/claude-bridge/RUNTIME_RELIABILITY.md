@@ -1042,10 +1042,9 @@ Windows gate запускает несколько teammates, завершает
 
 ### BR-28 — Measure sidebar geometry during session hover
 
-**Status:** investigation; hover-induced displacement пока не доказан кодом.
-**Dependency:** implementation не начинается до закрытия текущей PR queue;
-baseline capture выполняется до BR-29. **Acceptance:** отдельный bounded Windows
-GPUI evidence artifact, не speculative functional PR.
+**Status:** closed — optical/expected indent (INC-2026-0003, paired artifact
+2026-09-03). **Dependency:** none. **Acceptance:** отдельный bounded Windows
+GPUI evidence artifact, не speculative functional PR — выполнено.
 
 Screenshot 2 сентября показывает session actions pill у `Front-Back для
 проект...` и визуально отличающийся промежуток перед `35 inactive sessions`.
@@ -1075,6 +1074,17 @@ pinned/unpinned, open/inactive, с/без scrollbar и несколько projec
 меняются — отдельный change PR локализует первый ancestor с изменившимся
 height/y и добавляет regression probe. Этот incident не объединяется с BR-29
 без такого evidence: общий hover subsystem ещё не доказывает общую layout cause.
+
+**Result (2026-09-03, INC-2026-0003).** Paired main-window frames до hover /
+на hover / после leave (hover через probe `WM_MOUSEMOVE`, без pointer и
+scroll; overlay-окно с pill в кадр не входит) для семи случаев: open
+unpinned, pinned, active у нижней границы viewport, plain open, inactive row
+в раскрытой группе и сам inactive toggle; scrollbar присутствует, 15 project
+groups, scale 1.25. Во всех случаях между before и hover менялась только
+полоса самой hovered row (раскрытие pin 0→20 px, highlight), ни одна полоса
+выше или ниже не сдвинулась, after-кадр равен before. Sibling bounds не
+меняются — задача закрыта как optical/expected indent; padding не правится,
+BR-29 идёт без sibling-layout fix.
 
 ### BR-29 — Make hover-to-rename transition atomic
 
