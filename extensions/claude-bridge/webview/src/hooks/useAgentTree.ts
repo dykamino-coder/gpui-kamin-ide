@@ -92,6 +92,18 @@ export function parseAgentEntries(tabId: string, entries: any[]): boolean {
             messages: [],
             lastSeenAt: entry.timestamp,
           }
+          // Replay delivers the transcript newest-batch-first, so this teammate's
+          // idle/shutdown notification may already have materialized a synthetic
+          // standalone record (see the `<teammate-message>` branch). Fold that
+          // record in instead of overwriting it with a fresh `running` — the
+          // terminal status and messages are the newer facts (INC-2026-0002).
+          const prior = tree.standaloneAgents.get(agentName)
+          if (prior && prior.id.startsWith('synthetic-')) {
+            if (prior.status !== 'running') agent.status = prior.status
+            agent.messages = prior.messages
+            if (prior.agentId) agent.agentId = prior.agentId
+            if (prior.lastSeenAt && (!agent.lastSeenAt || prior.lastSeenAt > agent.lastSeenAt)) agent.lastSeenAt = prior.lastSeenAt
+          }
           tree.pendingAgentCalls.set(block.id, agent)
           if (teamName && tree.teams.has(teamName)) {
             tree.teams.get(teamName)!.agents.set(agentName, agent)
@@ -145,9 +157,12 @@ export function parseAgentEntries(tabId: string, entries: any[]): boolean {
       }
     }
 
-    if (entry.type === 'user') {
-      const content = entry.message?.content
-      if (!Array.isArray(content)) continue
+    // tool_result blocks live in ARRAY content. A `continue` here used to skip
+    // the rest of the loop body for STRING-content user entries — exactly the
+    // shape teammate idle notifications and background task notifications
+    // arrive in — so no teammate ever left `running` (INC-2026-0002).
+    if (entry.type === 'user' && Array.isArray(entry.message?.content)) {
+      const content = entry.message.content
       for (const block of content) {
         if (block.type === 'tool_result' && block.tool_use_id) {
           const pending = tree.pendingAgentCalls.get(block.tool_use_id)

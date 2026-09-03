@@ -997,9 +997,9 @@ agents, несколько chunks, live entry между последним chun
 
 ### BR-27 — Derive Active and Completed from one lifecycle partition
 
-**Status:** ready; подтверждён source defect. **Dependency:** BR-25 baseline;
-выполняется до BR-26, чтобы atomic snapshot уже публиковал корректно
-разделённые rows.
+**Status:** fixed (Change/Fix PR `fix/agents-panel-lifecycle-partition`);
+Windows Agent Teams gate 2026-09-03 (INC-2026-0002, evidence addendum): три teammates (sleep 20/75/45 с) завершались в порядке alpha3 → gamma3 → beta3; вкладки показывали `Active 3/Completed 5` → `2/6` → `1/7` → `0/8` во время работы, сразу после завершения, после cleanup 5 с и после reap+replay без дублей; badge всегда равнялся числу rows. Насос доставки будился принудительной перерисовкой чата (BR-31 workaround).
+**Dependency:** BR-25 baseline (done); BR-26 строится поверх этого snapshot.
 **Acceptance:** automated state/renderer tests + authenticated Windows Agent
 Teams gate.
 
@@ -1032,6 +1032,20 @@ Runtime evidence (INC-2026-0002): в Windows gate завершённые teammat
 остались `RUNNING` (`Active 2`, `Completed 0`) и в live, и после replay через
 27 минут; wire entries содержали только `Agent` tool_use без terminal signal.
 Fix обязан закрывать lifecycle по полям, реально присутствующим на wire.
+
+**Fix.** Причина «RUNNING навсегда» была не в wire projection, а в parser:
+`parseAgentEntries()` выходил из итерации (`continue`) для user-записей со
+строковым `content` — именно так CLI пишет `<teammate-message>` с
+`idle_notification`/`shutdown_approved` и `<task-notification>` background
+agent'ов, поэтому terminal signal никогда не применялся. Теперь строковые
+записи разбираются; synthetic-запись teammate, созданная уведомлением,
+пришедшим при replay раньше своего `Agent` tool_use, сливается в основную
+запись вместо перезаписи на `running`. `AgentsToolPanel` строит `Active` /
+`Completed` из одной derived partition (`signals/agent-partition.ts`):
+агент ровно в одной вкладке, badge равен числу отрисованных rows, terminal
+agent попадает в `Completed` сразу, cleanup через 5 с меняет только
+storage (tree → history) и не видимую классификацию. Fixtures тестов повторяют
+wire-формы из INC-2026-0002 без `toolUseResult`.
 
 Automated tests покрывают running→done/error/terminated, idle notification,
 `teammate_spawned`, disband, cleanup before/after 5 seconds и repeated replay.
