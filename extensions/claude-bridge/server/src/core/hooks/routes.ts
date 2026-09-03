@@ -14,6 +14,7 @@
 import { Hono } from 'hono'
 import { dispatchHook } from './dispatcher'
 import { getSession } from '../pty/session-manager'
+import { finalizeSessionTeardown, isSessionTearingDown } from '../pty/session-core'
 import type { HookInputPayload } from './types'
 import { warnLog } from '../logging'
 import { readRecentExecutions, clearLog } from './audit-log'
@@ -80,6 +81,15 @@ export function createHooksRoutes(): Hono {
       return c.json({ error: 'Unauthorized' }, 401)
     }
 
+    // An exiting session answers exactly one thing: its own SessionEnd. Auth is
+    // unchanged (still this session's mcpToken) — the window is only about which
+    // work is still accepted, and everything else would run against a CLI that
+    // is already gone.
+    const requestedEvent = c.req.param('event')
+    if (isSessionTearingDown(sessionId) && requestedEvent !== 'SessionEnd') {
+      return c.json({ error: 'Session is shutting down' }, 409)
+    }
+
     let payload: HookInputPayload
     try {
       payload = (await c.req.json()) as HookInputPayload
@@ -91,7 +101,7 @@ export function createHooksRoutes(): Hono {
     // Deterministic session status: the FIRING of these CLI lifecycle events is
     // the authoritative signal (vs scraping OSC spinner glyphs). Emit before any
     // dispatch — idempotent even if the user also has a hook for the same event.
-    const event = c.req.param('event')
+    const event = requestedEvent
     if (isBridgeStatusEvent(event)) {
       applyDeterministicStatus(session, event, payload)
       // Our own no-op status hook has nothing to run — skip the dispatch (and
@@ -115,6 +125,11 @@ export function createHooksRoutes(): Hono {
     if (session.cwd) payload.cwd = session.cwd
     const result = await dispatchHook(sessionId, hookId, payload, session.ws ?? null, session.tokenId)
     c.header('X-Bridge-Hook-Exit-Code', String(result.exitCode))
+
+    // The SessionEnd this window was held open for has been served, so close it
+    // instead of waiting out the timeout. Idempotent: a duplicate callback finds
+    // the window already finalized and the session already gone.
+    if (event === 'SessionEnd') finalizeSessionTeardown(sessionId, 'session-end', -1)
 
     if (commandRelay) {
       return c.json({ result }, 200)

@@ -157,11 +157,13 @@ export function writeSessionSettings(
     ;(merged.hooks as Record<string, HookMatcher[]>)[event] = bucket
     merged.sourceByMatcher.set(matcher, source)
   }
+  // The relay credential is NOT interpolated here: it reaches the hook child
+  // through the CLI's environment (HOOK_RELAY_TOKEN_ENV), so settings.json and
+  // every surface that echoes the declaration stay free of the Bearer value.
   const rewrittenHooks = rewriteHooksForCli(
     sessionId,
     merged.hooks,
     (m) => merged.sourceByMatcher.get(m) ?? { kind: 'user' },
-    mcpToken,
   )
 
   const settings: Record<string, unknown> = {

@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildHookCommandRelay, rewriteHooksForCli } from './proxy-rewriter'
+import { buildHookCommandRelay, HOOK_RELAY_TOKEN_ENV, rewriteHooksForCli } from './proxy-rewriter'
 import { clearSession, listSession, registerSessionHooks } from './registry'
 import { cancelSessionLocalExecs, dispatchHook, handleLocalHookResponse } from './dispatcher'
 import { buildClaudeArgs, buildSessionEnv } from '../pty/session-env'
@@ -26,7 +26,7 @@ describe('plugin hook proxy', () => {
     const hooks: HookSettings = {
       PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: 'guard', async: true, asyncRewake: true }] }],
     }
-    const rewritten = rewriteHooksForCli('plugin-async-test', hooks, { kind: 'plugin', pluginId: 'guard@corp', manifestPath: '/plugin.json' }, 'token')
+    const rewritten = rewriteHooksForCli('plugin-async-test', hooks, { kind: 'plugin', pluginId: 'guard@corp', manifestPath: '/plugin.json' })
     const handler = rewritten.PreToolUse?.[0]?.hooks[0] as any
     expect(handler.type).toBe('command')
     expect(handler.command).toBe('node')
@@ -41,13 +41,16 @@ describe('plugin hook proxy', () => {
     const hooks: HookSettings = {
       PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: 'guard-secrets' }] }],
     }
-    const rewritten = rewriteHooksForCli('plugin-sync-test', hooks, { kind: 'plugin', pluginId: 'guard@corp', manifestPath: '/plugin.json' }, 'token')
+    const rewritten = rewriteHooksForCli('plugin-sync-test', hooks, { kind: 'plugin', pluginId: 'guard@corp', manifestPath: '/plugin.json' })
     const handler = rewritten.PreToolUse?.[0]?.hooks[0] as any
     expect(handler.type).toBe('command')
     expect(handler.command).toBe('node')
     expect(handler.args[0]).toBe('-e')
     expect(handler.args[1]).toContain('/api/hooks/plugin-sync-test/PreToolUse/')
-    expect(handler.args[1]).toContain('Bearer token')
+    // The credential is read from the environment at run time — the command
+    // text itself must stay free of it (see hook-relay-secret.test.ts).
+    expect(handler.args[1]).toContain(HOOK_RELAY_TOKEN_ENV)
+    expect(handler.args[1]).not.toContain('Bearer token')
 
     const registered = listSession('plugin-sync-test')[0]!
     let sent: any
@@ -85,10 +88,15 @@ describe('plugin hook proxy', () => {
     })
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
     const address = server.address() as AddressInfo
-    const script = buildHookCommandRelay(`http://127.0.0.1:${address.port}/hook`, 'secret')
+    const script = buildHookCommandRelay(`http://127.0.0.1:${address.port}/hook`)
     try {
       const result = await new Promise<{ stdout: string; stderr: string; exitCode: number | null }>((resolve, reject) => {
-        const child = spawn(process.execPath, ['-e', script], { stdio: ['pipe', 'pipe', 'pipe'] })
+        const child = spawn(process.execPath, ['-e', script], {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          // The credential now reaches the relay through the CLI's environment,
+          // which hook children inherit — never through the command text.
+          env: { ...process.env, [HOOK_RELAY_TOKEN_ENV]: 'secret' },
+        })
         let stdout = ''
         let stderr = ''
         child.stdout.on('data', chunk => { stdout += chunk.toString() })

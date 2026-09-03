@@ -526,11 +526,21 @@ session ID, reason, age/idle durations и exit code/signal.
 
 ### BR-18 — Keep SessionEnd relay available and secret-safe during teardown
 
-**Status:** draft implementation в PR #20; причина запуска teardown остаётся
-investigation и использует evidence из BR-17. **Dependency:** none для fix,
-BR-17 для классификации исходного termination trigger. **Acceptance:** automated
-+ authenticated Windows runtime merge gate; PR #20 не merge-ится, пока draft и
-этот gate не закрыты либо явно не переклассифицированы по `TESTING.md`.
+**Status:** fix merged (PR #20, обновлён от `origin/main` с #23); причина
+запуска teardown остаётся investigation и использует evidence из BR-17.
+**Dependency:** BR-17 для классификации исходного termination trigger.
+**Acceptance:** automated + authenticated Windows runtime merge gate — оба
+выполнены на exact head PR #20 2026-09-03 (dev shell от `origin/main`
+`3e9854c`, server image из head PR, Claude Code 2.1.236): explicit end и
+disconnect с истёкшим detach grace; relay `SessionEnd` обслужен без `Unknown
+session`, каждый hook вызван не более одного раза, MCP-запросы в окне teardown
+получают 409, после finalize — 404; в session settings, Console, JSONL и logs
+литерального credential нет.
+
+Остаточное наблюдение gate (не часть BR-18, для следующей классификации):
+при explicit end клиент закрывает WS сразу после `session:end`, поэтому
+`SessionEnd` hook с `host: local` доставляется relay-ем, но исполняться на
+клиенте уже не может и отменяется на PTY exit; server-side hook исполняется.
 
 Source audit подтверждает самостоятельный teardown defect:
 
@@ -1100,25 +1110,12 @@ artifacts. Agents track не содержит предположения о да
 
 ## Current open PR boundary
 
-PR #12–#19 и PR #21–#23 уже находятся в `origin/main`. На момент этого аудита
-открыт только draft PR #20. До его merge/закрытия BR-25–BR-30 не получают
-implementation branches: это сохраняет требование пользователя сначала
-завершить предыдущую очередь и не создаёт конфликтов в server lifecycle или
-committed `tools.html`/`extension.js` artifacts.
-
-Строгий integration order текущей очереди:
-
-1. PR #20 обновить от текущего `origin/main`, уже содержащего #23.
-2. Семантически разрешить его overlap с #23 в
-   `extensions/claude-bridge/server/src/core/pty/session-core.ts`, не выбирая
-   целиком `ours` или `theirs`.
-3. Снять draft только после выполнения либо явной классификации acceptance;
-   server image validation использует уже объединённый #22.
-
-PR #20 source-wise независим от renderer PR, но его старый head и #23 меняют
-один server lifecycle surface. Поэтому mergeability против старой базы
-недостаточна: tests и acceptance выполняются на exact head после обновления от
-текущего `origin/main`.
+PR #12–#24 и PR #26 находятся в `origin/main`; PR #20 (BR-18) обновлён от
+`origin/main` с #23, прошёл automated и Windows runtime gate и объединён. PR #25
+(сырые diagnostic logs с рабочей машины) закрыт без merge: такое evidence
+ждёт отдельного private evidence flow. Открытых PR предыдущей очереди нет, и
+BR-25–BR-30 могут получать implementation branches по порядку ниже; каждый —
+от свежего `origin/main`.
 
 Особая зависимость Agents track — PR #21: сначала его полный automated и
 Windows lifecycle gate, затем BR-25 verification. PR #21 не считается
@@ -1151,8 +1148,7 @@ BR-04, BR-08, BR-14, BR-17, BR-19, BR-23 и BR-24 не образуют общу
 цепочку. Они следуют priority ниже, не смешиваются в один PR и перед началом
 повторно проверяются на file overlap с уже открытыми branches.
 
-1. Обновить от текущего `origin/main` и завершить либо явно закрыть draft PR
-   #20; его acceptance выполняется на exact rebased/merged head.
+1. BR-18 закрыт merge PR #20; открытой очереди нет.
 2. BR-25: после #21 выполнить instrumented Windows verification одной session.
 3. BR-27: исправить единую partition `Active`/`Completed`.
 4. BR-26: сделать replay snapshot атомарным и убрать empty/partial flicker.

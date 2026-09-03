@@ -23,7 +23,7 @@ import {
   clearInputThrottle,
 } from './session-io'
 import { clearSessionInputState, notifySessionAttachmentChanged } from './session-input-coordinator'
-import { clearSession as clearHookSession, cancelSessionLocalExecs } from '../hooks'
+import { clearSession as clearHookSession, cancelSessionLocalExecs, HOOK_RELAY_TOKEN_ENV } from '../hooks'
 import { buildSessionEnv as buildEnv } from './session-env'
 import { buildSessionClaudeArgs } from './session-plugin-args'
 import {
@@ -179,6 +179,9 @@ export async function createSession(
   const nodePty = await import('node-pty')
 
   const env = buildEnv(sessionId, userName, config.effort)
+  // Hook relay credential travels in the process environment, never in the
+  // rewritten hook command — see HOOK_RELAY_TOKEN_ENV.
+  env[HOOK_RELAY_TOKEN_ENV] = mcpToken
   const args = buildSessionClaudeArgs(config, settingsDir)
 
   let streamThrottle: Map<string, { timer: NodeJS.Timeout; latest: any }> | null = null
@@ -486,8 +489,9 @@ export async function createSession(
     debugLog('PTY exited', { sessionId, exitCode })
     session.state = 'exited'
     sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
-    cleanupSession(sessionId)
-    eventBus.emit('session:destroyed', { sessionId, tokenId, userName, exitCode })
+    // Also closes an open teardown window: once the CLI is gone its SessionEnd
+    // can no longer arrive, so there is nothing left to keep the relay alive.
+    finalizeSessionTeardown(sessionId, 'pty-exit', exitCode)
   })
 
   eventBus.emit('session:created', {
@@ -514,6 +518,10 @@ const DETACH_GRACE_MS = Number(process.env.OCB_DETACH_GRACE_MS || 10 * 60 * 1000
 // After a polite kill signal, how long we give the CLI to flush + exit
 // before escalating to SIGKILL.
 const KILL_ESCALATE_MS = 3000
+/** How long an exiting session stays resolvable for its own SessionEnd relay.
+ *  Deliberately short: it only has to outlive the CLI's own exit dispatch, and
+ *  SIGKILL escalation plus the PTY exit event normally close it sooner. */
+const TEARDOWN_GRACE_MS = 5000
 
 /**
  * Wait for the session's PTY to exit, escalating to SIGKILL after
@@ -673,17 +681,21 @@ export function followCompactLinks(conversationId: string): string {
 export function destroySession(sessionId: string): void {
   const session = sessions.get(sessionId)
   if (!session) return
+  if (session.teardown) return
 
   debugLog('Destroying session', { sessionId })
   if (session.detachGraceTimer) {
     clearTimeout(session.detachGraceTimer)
     session.detachGraceTimer = null
   }
-  // Cancel any pending local hook executions waiting on this session's WS,
-  // then drop the session's registered hooks so we don't leak entries.
-  cancelSessionLocalExecs(sessionId)
-  clearHookSession(sessionId)
+  // The CLI fires SessionEnd on its way out, so the hook registry and the
+  // session lookup have to survive the kill: clearing them here is what made
+  // that relay call answer `Unknown session`. Instead open a bounded teardown
+  // window — normal MCP and hook traffic is already refused (see
+  // isSessionTearingDown), only the exiting session's own SessionEnd still
+  // resolves, and every path funnels into the single idempotent finalizer.
   session.state = 'exiting'
+  session.teardown = { startedAt: Date.now(), timer: null, finalized: false }
   session.jsonlWatcher?.stop()
 
   // Polite kill first; escalate to SIGKILL if the CLI hasn't exited in time
@@ -711,8 +723,62 @@ export function destroySession(sessionId: string): void {
       } catch { /* best-effort */ }
     }, KILL_ESCALATE_MS + 2000)
   }
+  // Backstop: a CLI that never fires SessionEnd (no hook, or it died first)
+  // must not leave the registration alive.
+  session.teardown.timer = setTimeout(
+    () => finalizeTeardownFor(session, 'timeout', -1),
+    TEARDOWN_GRACE_MS,
+  )
+}
+
+/** True between `destroySession()` and the finalizer. Callers use it to refuse
+ *  work an exiting session must no longer accept. */
+export function isSessionTearingDown(sessionId: string): boolean {
+  return Boolean(sessions.get(sessionId)?.teardown)
+}
+
+/** Close the teardown window. Idempotent, and bound to the session instance:
+ *  a session id that got reused after cleanup can never be torn down by a
+ *  finalizer scheduled for its predecessor. */
+export function finalizeSessionTeardown(
+  sessionId: string,
+  reason: 'session-end' | 'pty-exit' | 'timeout',
+  exitCode: number,
+): void {
+  const session = sessions.get(sessionId)
+  if (!session) return
+  finalizeTeardownFor(session, reason, exitCode)
+}
+
+/** Instance-bound half of the finalizer. Everything scheduled ahead of time
+ *  goes through here: a timer armed for one session must never tear down a
+ *  later session that happens to carry the same id. */
+function finalizeTeardownFor(
+  session: PtySession,
+  reason: 'session-end' | 'pty-exit' | 'timeout',
+  exitCode: number,
+): void {
+  const sessionId = session.id
+  if (sessions.get(sessionId) !== session) return
+  const teardown = session.teardown
+  if (teardown) {
+    if (teardown.finalized) return
+    teardown.finalized = true
+    if (teardown.timer) {
+      clearTimeout(teardown.timer)
+      teardown.timer = null
+    }
+    debugLog('Session teardown finalized', { sessionId, reason, waitedMs: Date.now() - teardown.startedAt })
+  }
+  cancelSessionLocalExecs(sessionId)
+  clearHookSession(sessionId)
   cleanupSession(sessionId)
-  eventBus.emit('session:destroyed', { sessionId, tokenId: session.tokenId, userName: session.userName, exitCode: -1 })
+  eventBus.emit('session:destroyed', {
+    sessionId,
+    tokenId: session.tokenId,
+    userName: session.userName,
+    exitCode,
+  })
 }
 
 /**
