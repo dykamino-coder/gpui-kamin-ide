@@ -89,7 +89,7 @@ Diagnostic-only результаты сами по себе release не выз�
 | [BR-27](RUNTIME_RELIABILITY.md#br-27--derive-active-and-completed-from-one-lifecycle-partition) | waiting | change | Agent Teams UI | BR-25 baseline | Текущая пачка: единая lifecycle partition |
 | [BR-28](RUNTIME_RELIABILITY.md#br-28--measure-sidebar-geometry-during-session-hover) | ready | verify | native sidebar | none | Текущая пачка: paired geometry artifact |
 | [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | waiting | change | native sidebar | BR-28 | Текущая пачка: atomic rename transition |
-| [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation) | ready | change | diagnostics | none | Текущая пачка: record-aware writer PR |
+| [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation) | done | none | diagnostics | none | Record-aware writer PR в `main`; BR-02 evidence run разблокирован |
 
 ## Очередь отдельных incidents
 
