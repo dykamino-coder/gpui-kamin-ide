@@ -1054,7 +1054,11 @@ pub struct Computed {
     /// `-webkit-line-clamp`: действует ТОЛЬКО в паре с
     /// `display: -webkit-box` и `-webkit-box-orient: vertical`
     /// (css-overflow-3 §webkit-line-clamp) — поэтому своё поле и гейт.
-    pub webkit_line_clamp: Option<u32>,
+    /// Какое сокращение записало `line_clamp` последним: `-webkit-line-clamp`
+    /// ставит `continue: -webkit-legacy`, который действует только при
+    /// `display: -webkit-box` с вертикальной ориентацией (css-overflow-4
+    /// §5.1); оба сокращения — одни лонгхенды, побеждает последнее.
+    pub clamp_legacy: Option<bool>,
     /// `line-clamp: auto` — обрезка по max-height контейнера
     /// (css-overflow-4 §line-clamp), без счёта строк.
     pub clamp_auto: Option<bool>,
@@ -1813,7 +1817,7 @@ impl Computed {
             ellipsis: self.ellipsis,
             overflow_marker: self.overflow_marker.clone(),
             line_clamp: self.line_clamp,
-            webkit_line_clamp: self.webkit_line_clamp,
+            clamp_legacy: self.clamp_legacy,
             clamp_auto: self.clamp_auto,
             svg_fill: self.svg_fill.clone(),
             webkit_box: self.webkit_box,
@@ -4216,6 +4220,7 @@ impl Computed {
             "line-clamp" => {
                 self.line_clamp = None;
                 self.clamp_auto = None;
+                self.clamp_legacy = Some(false);
                 let mut rest = v.trim();
                 while !rest.is_empty() {
                     let quote = rest.as_bytes()[0];
@@ -4240,7 +4245,11 @@ impl Computed {
                     }
                 }
             }
-            "-webkit-line-clamp" => self.webkit_line_clamp = v.parse().ok(),
+            "-webkit-line-clamp" => {
+                self.line_clamp = v.trim().parse().ok();
+                self.clamp_auto = None;
+                self.clamp_legacy = Some(true);
+            }
             "-webkit-box-orient" => {
                 self.webkit_box_vertical = Some(v.eq_ignore_ascii_case("vertical"))
             }
@@ -5843,11 +5852,9 @@ impl Computed {
     /// Активный кламп строк: стандартный `line-clamp` всегда, а
     /// `-webkit-line-clamp` — только в паре с `-webkit-box` по вертикали.
     pub fn clamp_lines(&self) -> Option<u32> {
-        self.line_clamp.or_else(|| {
-            (self.webkit_box == Some(true) && self.webkit_box_vertical == Some(true))
-                .then_some(self.webkit_line_clamp)
-                .flatten()
-        })
+        let legacy_ok = self.webkit_box == Some(true) && self.webkit_box_vertical == Some(true);
+        self.line_clamp
+            .filter(|_| self.clamp_legacy != Some(true) || legacy_ok)
     }
 
     /// Уходит ли скругление углов альфа-маской буфера группы.
