@@ -376,6 +376,16 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     if let (Some(w), Some(h)) = (given_w, given_h) {
         return (w, h);
     }
+    // Заявленное `aspect-ratio` СИЛЬНЕЕ соотношения из `viewBox`
+    // (css-sizing-4 §4: «the preferred aspect ratio … overrides any natural
+    // aspect ratio»): рисунок переформатируется, как и картинка.
+    if let Some(r) = e.style.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0) {
+        match (given_w, given_h) {
+            (Some(w), None) => return (w, w / r),
+            (None, Some(h)) => return (h * r, h),
+            _ => {}
+        }
+    }
     // `viewBox` задаёт СООТНОШЕНИЕ сторон, а не собственный размер: заданная
     // сторона тянет за собой вторую (CSS Images 3 §5 default sizing).
     let ratio = e.attr("viewBox").and_then(|vb| {
