@@ -332,7 +332,7 @@ jobs:
             --label "org.opencontainers.image.version=dry-run" \
             --file "$CONTEXT/Dockerfile" \
             "$CONTEXT"
-          test "$(docker image inspect --format '{{ index .Config.Labels \"org.opencontainers.image.revision\" }}' \
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
             "kaminide-release-dry-run:${GITHUB_SHA}")" = "$GITHUB_SHA"
 
   quality-gate:
