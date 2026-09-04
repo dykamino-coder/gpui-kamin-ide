@@ -9,8 +9,9 @@
 - **diagnostic PR** содержит sanitized постановку, incident card и ссылку на
   private evidence, но не содержит functional fix;
 - **change PR** содержит код, тесты и документацию, но не повышает release-версии;
-- **release PR** принадлежит мейнтейнеру и централизованно повышает версии,
-  собирает Windows installer и запускает публикацию.
+- **release PR** принадлежит мейнтейнеру и централизованно повышает версии;
+  CI собирает из него Windows-кандидат, а merge после приёмки разрешает
+  автоматическую production-публикацию из точного commit в `main`.
 
 Так параллельные задачи не конфликтуют в `Cargo.toml`, lockfile и server
 manifest, а номер версии всегда соответствует одному проверенному артефакту.
@@ -163,10 +164,18 @@ docs-only PR ограничивается проверкой scope и whitespace
 подменяются CI.
 
 Проверки независимых компонентов и Docker dry-run выполняются параллельно:
-dry-run собирает image без registry login/push и проверяет `/health`, а итоговый
-`required quality gate` ждёт завершения всей применимой матрицы. Production
-Docker workflow запускается отдельно только после успешного gate точного commit
-в `main`.
+dry-run собирает image без registry login/push и проверяет `/health`. Для
+coordinated release bump и изменений самой release-инфраструктуры отдельный
+Windows job собирает реальный installer и provenance sidecar и сохраняет их как
+GitHub Actions artifact. Итоговый `required quality gate` ждёт завершения всей
+применимой матрицы. PR workflow не получает production secrets и не публикует
+GitHub Release или Docker image.
+
+После trusted push в `main` тот же Windows job заново собирает production
+installer из точного main commit. Только успешный gate этого commit запускает
+отдельный release workflow, который скачивает artifact именно этого run. Таким
+образом локальная сборка и PR artifact используются для приёмки, но никогда не
+подменяют production source.
 
 Тот же workflow запускается после trusted push в `main`, проверяет весь диапазон
 доставленных commit через `github.event.before` и поддерживает общий Cargo/npm
@@ -267,9 +276,10 @@ Runtime backlog запускается отдельно фразой `Выпол
 ## 6. Release PR
 
 Release PR создаёт мейнтейнер из актуального `origin/main` после объединения
-нужных change PR. На время финальной сборки состав релиза фиксируется: если
-release branch перебазирована или в неё добавлен код, все проверки и installer
-запускаются заново.
+нужных change PR. В него не добавляется functional code: diff содержит только
+coordinated version bump и производные lockfiles, а release notes находятся в
+PR body. Любое изменение branch аннулирует прежнюю приёмку и запускает CI
+заново.
 
 В текущей схеме приложение и Docker-образ server выпускаются вместе. Поэтому
 release PR выбирает две новые уникальные patch-версии:
@@ -294,8 +304,10 @@ npm --prefix extensions/claude-bridge/server \
 После изменения Cargo version запускается `cargo check --workspace`, чтобы
 перегенерировать workspace entries в `Cargo.lock`.
 
-Release PR содержит только версии, release notes и необходимые release-файлы.
-Функциональные исправления оформляются отдельным change PR. Заголовок:
+Release PR меняет ровно четыре файла из таблицы: оба источника версии и оба
+lockfile. CI отклоняет coordinated version bump, если в diff отсутствует один
+из них либо присутствует любой другой файл. Release notes записываются в PR
+body; функциональные исправления оформляются отдельным change PR. Заголовок:
 
 ```text
 chore(release): KaminIDE 1.0.43 / server 6.3.118
@@ -304,10 +316,10 @@ chore(release): KaminIDE 1.0.43 / server 6.3.118
 Фактические номера выбираются после последнего `fetch`; номера из примера не
 резервируются заранее.
 
-## 7. Windows installer
+## 7. Windows installer и приёмка release PR
 
-Installer собирается на доверенной Windows x64 машине из точного HEAD
-одобренного release PR. Сначала выполняются полные проверки, затем:
+Workflow `pull request checks` распознаёт coordinated version bump и на
+GitHub-hosted Windows x64 runner выполняет полную production-команду:
 
 ```bash
 npm ci
@@ -323,12 +335,14 @@ node scripts/build_setup_rust.mjs
 `scripts/build_rust_installer.mjs`, NSIS-секция сборщика): его стаб ловился
 эвристиками антивирусов как дроппер — Kaspersky ругался на 1.0.47.
 
-Результат имеет имя `KaminIDE_<version>_x64-setup.exe`. Build guards проверяют,
+Результат имеет имя `KaminIDE_<version>_x64-setup.exe`. Вместе с provenance он
+загружается как Actions artifact `kaminide-release-<commit-sha>` с ограниченным
+сроком хранения. Этот artifact не является опубликованным релизом. Build guards проверяют,
 что release binary новее `Cargo.toml`, а `runtime.tar.zst` соответствует
 текущим host/builtin sources, и не позволяют упаковать старые компоненты под
 новой версией.
 
-Из того же неизменного HEAD создаётся provenance sidecar. Он фиксирует commit и
+Из того же merge candidate создаётся provenance sidecar. Он фиксирует commit и
 tree исходников, обе release-версии, имя, размер и SHA-256 installer:
 
 ```bash
@@ -337,9 +351,15 @@ node scripts/release/provenance-cli.mjs create \
   --output KaminIDE_<version>_provenance.json
 ```
 
-Команда намеренно не перезаписывает существующий sidecar. Если release HEAD или
-installer изменился, старый sidecar считается недействительным и после явного
-удаления создаётся заново.
+Команда намеренно не перезаписывает существующий sidecar. Если release branch
+или installer изменился, старый sidecar считается недействительным, а CI
+создаёт новый artifact для нового SHA.
+
+Мейнтейнер скачивает PR artifact и выполняет применимый Windows runtime smoke
+test. Он также может собрать тот же кандидат локально приведёнными выше
+командами для диагностики. Локальный файл не загружается в GitHub Release и не
+копируется в Docker image: после merge production installer всегда
+пересобирается на Windows runner из точного release commit в `main`.
 
 Минимальный smoke test:
 
@@ -354,45 +374,51 @@ installer изменился, старый sidecar считается недей
 Для изменений самого installer выполняется полная матрица из
 `plan/104-installer-test-matrix.md`.
 
-## 8. Публикация
+## 8. Автоматическая публикация после merge
 
-Порядок публикации обязателен:
+Merge release PR — единственный ручной production approval. Перед ним
+мейнтейнер обязан дождаться зелёного `required quality gate`, скачать и принять
+Windows candidate, проверить неизменность release branch и закрыть review
+threads. Сам merge не переносит PR artifact в production.
 
-1. release PR одобрен и больше не изменяется;
-2. installer и provenance sidecar созданы и проверены из его HEAD;
-3. оба файла загружены в GitHub Release `kaminide-latest`;
-4. в Release оставлена ровно одна актуальная пара
-   `KaminIDE_<version>_x64-setup.exe` +
-   `KaminIDE_<version>_provenance.json`;
-5. только после этого release PR объединён с `main`;
-6. Docker workflow проверяет coordinated app/server version bump, скачивает
-   точную пару assets, связывает source tree с release commit и только затем
-   публикует version tag и `latest`;
-7. проверяются Docker tag, `/download` и `/updates/kaminide/...`.
+После merge порядок полностью автоматический:
 
-Если asset загрузить после merge, workflow может успеть собрать image со старым
-installer. Если release branch изменилась после сборки, asset считается
-устаревшим и пересобирается.
+1. `pull request checks` повторяет применимую матрицу на точном commit в `main`,
+   заново собирает Windows installer и provenance и сохраняет artifact с SHA;
+2. workflow `release` запускается только после успешного gate этого же SHA и
+   требует связанный merged PR в `main`;
+3. workflow скачивает artifact только из связанного trusted-main run и сверяет
+   его provenance с release tree;
+4. публикуется immutable Docker tag
+   `dykamino/open-claude-bridge:<server-version>` с source/revision/version
+   labels, provenance и SBOM;
+5. image запускается по digest, а `/health`, `/api/download/check`, updater
+   manifest и SHA-256 выдаваемого installer проверяются до продвижения aliases;
+6. создаётся immutable GitHub Release `kaminide-v<app-version>` с installer и
+   provenance;
+7. только после успешных проверок текущего release commit обновляются Docker
+   `latest`, compatibility Release `kaminide-latest` и отметка Latest у
+   versioned GitHub Release.
+
+Обычный change/docs/diagnostic merge не содержит coordinated version bump:
+release workflow завершается зелёным no-op и ничего не публикует.
 
 Перезапись уже опубликованной версии не допускается. Исправление после релиза
 получает новый patch и проходит тот же процесс как hotfix.
 
-Успешная публикация обязана оставлять проверяемую связь между release HEAD и
-artifact: Docker image содержит source/revision labels и provenance attestation,
-а workflow до build проверяет version/digest installer asset и после push —
-version tag, digest и labels. GitHub Actions pin-ятся на полные commit SHA.
-Существующий tag с неизвестным или другим revision является ошибкой, а не
-успешным skip. Ручная публикация image вне release pipeline не считается
-завершённым релизом.
+Успешная публикация обязана оставлять проверяемую связь между release commit,
+Actions run, installer, immutable GitHub Release и Docker digest. GitHub Actions
+pin-ятся на полные commit SHA. Существующий version tag или Release с неизвестным
+либо другим revision является ошибкой, а не успешным skip. Ручная публикация
+image вне release pipeline не считается завершённым релизом.
 
 `docker.yml` запускается только после успешного workflow `pull request checks`
-на точном commit в `main` и публикует image, только если одновременно изменились
-app и server release-версии. Merge обычного change PR или самого workflow
-завершается зелёным no-op. Ручной retry принимает только полный `release_sha`,
-достижимый из `origin/main` и имеющий успешный `required quality gate`, и не
-разрешает перезаписать существующий version tag. Installer проверяется по tree,
-а не по равенству commit SHA: при squash merge HEAD release PR и merge commit
-различаются, но их проверенное дерево должно совпасть.
+на точном commit в `main` и публикует только coordinated рост app/server
+версий. Ручной `workflow_dispatch` — это безопасный retry уже проверенного
+release SHA, а не способ выбрать произвольную сборку: принимается только полный
+SHA, достижимый из `main`, с успешным main quality run и его неистёкшим exact
+artifact. Retry идемпотентно проверяет существующие immutable tags/assets и не
+перезаписывает их. Старый release SHA никогда не откатывает `latest`.
 
 ### Одноразовые настройки публикации
 

@@ -140,6 +140,10 @@ merge` или `без release`. Тогда:
 - использовать отдельную release branch от свежего `origin/main`;
 - не добавлять функциональный код в release PR;
 - синхронно обновить все version sources из `CONTRIBUTING.md`;
-- собирать installer из неизменного одобренного release HEAD;
-- не загружать asset и не публиковать ничего без явной авторизации;
-- при любом изменении release HEAD повторить проверки и сборку.
+- дождаться Windows candidate artifact и всех gates точного PR merge candidate;
+- локальную сборку использовать только для приёмки и диагностики, не как
+  production artifact;
+- считать merge release PR явным разрешением автоматическому workflow заново
+  собрать точный `main` commit и опубликовать GitHub Release/Docker image;
+- не запускать release workflow вручную для непроверенного или не-release SHA;
+- при любом изменении release branch повторить проверки и приёмку.

@@ -383,16 +383,20 @@ backup/rollback policy. После этого cleanup оформляется о�
 
 ### BR-14 — Make release artifact provenance verifiable
 
-**Status:** ready как отдельный process/CI PR. **Dependency:** none.
-**Acceptance:** automated merge gate + dry-run доказательство workflow.
+**Status:** implementation in `codex/automate-release-pipeline`.
+**Dependency:** none. **Acceptance:** automated merge gate + реальный Windows
+candidate build без secrets + production no-op на non-release main commit.
 
 Release pipeline должен fail closed, если version tag уже существует, но его
-source revision нельзя связать с одобренным release HEAD. Manual image upload не
-заменяет pipeline; image получает revision/source labels и attestations, а
-workflow проверяет digest/labels после publication. Installer source Release
-создаётся и проверяется до merge согласно `CONTRIBUTING.md`; отсутствие
-`kaminide-latest` не должно маскироваться зелёным skip. Actions pin-ятся на
-полные commit SHA; installer asset version и digest проверяются перед build.
+source revision нельзя связать с одобренным release commit. Manual image upload
+не заменяет pipeline; image получает revision/source labels и attestations, а
+workflow проверяет digest/labels после publication. PR candidate создаётся до
+merge только для ручной приёмки. Production installer заново собирается из
+точного проверенного release commit в `main`; workflow потребляет artifact
+только связанного main run, публикует immutable GitHub Release и versioned
+image, а aliases продвигает после smoke test. Отсутствие artifact/Release не
+маскируется зелёным skip. Actions pin-ятся на полные commit SHA; installer
+version, tree и digest проверяются перед build.
 
 ### BR-15 — Evaluate automatic Agent Teams selection
 

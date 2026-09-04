@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertImageLabels,
+  findDockerHubImage,
   inspectDockerHubImage,
   selectLinuxAmd64Manifest,
 } from "./docker-registry.mjs";
@@ -86,5 +87,33 @@ test("rejects image labels from another release", () => {
         { source: "source", revision: "new", version: "1.2.3" },
       ),
     /does not match release/,
+  );
+});
+
+test("treats only a missing tag manifest as absent", async () => {
+  const responses = [
+    new Response(JSON.stringify({ token: "a-valid-registry-token" })),
+    new Response("not found", { status: 404 }),
+  ];
+  const result = await findDockerHubImage({
+    image: "example/repo",
+    tag: "1.2.3",
+    fetchImpl: async () => responses.shift(),
+  });
+  assert.equal(result, null);
+});
+
+test("does not hide registry failures as a missing tag", async () => {
+  const responses = [
+    new Response(JSON.stringify({ token: "a-valid-registry-token" })),
+    new Response("unavailable", { status: 503 }),
+  ];
+  await assert.rejects(
+    findDockerHubImage({
+      image: "example/repo",
+      tag: "1.2.3",
+      fetchImpl: async () => responses.shift(),
+    }),
+    /Registry request failed \(503\)/,
   );
 });

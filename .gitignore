@@ -25,6 +25,7 @@ extensions/claude-bridge/webview/dist/
 KaminIDE_*-setup.exe
 KaminIDE_*-setup.exe.sig
 KaminIDE_*_provenance.json
+/release-change.json
 /installer.nsi
 extensions/claude-bridge/server/installer/
 

@@ -4,10 +4,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import {
+  classifyReleaseChange,
+  compareReleaseVersions,
   createProvenance,
   gitObjectId,
+  inspectReleaseChange,
   readReleaseVersions,
   validateProvenance,
+  validateReleaseChangePaths,
   verifyProvenance,
 } from "./provenance.mjs";
 
@@ -66,4 +70,71 @@ test("rejects malformed provenance", () => {
     () => validateProvenance({ schemaVersion: 2 }),
     /schemaVersion/,
   );
+});
+
+test("classifies only a coordinated version increase as a release", () => {
+  const previous = { app: "1.0.55", server: "6.3.132" };
+  assert.deepEqual(classifyReleaseChange(previous, previous), {
+    release: false,
+    previous,
+    current: previous,
+  });
+  assert.equal(
+    classifyReleaseChange(previous, {
+      app: "1.0.56",
+      server: "6.3.133",
+    }).release,
+    true,
+  );
+  assert.throws(
+    () =>
+      classifyReleaseChange(previous, {
+        app: "1.0.56",
+        server: previous.server,
+      }),
+    /must change together/,
+  );
+  assert.throws(
+    () =>
+      classifyReleaseChange(previous, {
+        app: "1.0.54",
+        server: "6.3.133",
+      }),
+    /App release version must increase/,
+  );
+});
+
+test("compares stable and prerelease versions", () => {
+  assert.equal(compareReleaseVersions("1.2.3", "1.2.2"), 1);
+  assert.equal(compareReleaseVersions("1.2.3", "1.2.3-rc.1"), 1);
+  assert.equal(compareReleaseVersions("1.2.3-rc.2", "1.2.3-rc.1"), 1);
+  assert.equal(compareReleaseVersions("1.2.3+build.2", "1.2.3+build.1"), 0);
+});
+
+test("requires a release PR to contain exactly version and lock files", () => {
+  const releasePaths = [
+    "Cargo.toml",
+    "Cargo.lock",
+    "extensions/claude-bridge/server/package.json",
+    "extensions/claude-bridge/server/package-lock.json",
+  ];
+  assert.deepEqual(validateReleaseChangePaths(releasePaths), [...releasePaths].sort());
+  assert.throws(
+    () => validateReleaseChangePaths([...releasePaths, "src/main.rs"]),
+    /unexpected: src\/main\.rs/,
+  );
+  assert.throws(
+    () => validateReleaseChangePaths(releasePaths.slice(1)),
+    /missing: Cargo\.toml/,
+  );
+});
+
+test("inspects release versions from two git revisions", async () => {
+  const head = await gitObjectId(repoRoot, "HEAD");
+  const result = await inspectReleaseChange({
+    repoRoot,
+    baseRevision: head,
+    headRevision: head,
+  });
+  assert.equal(result.release, false);
 });

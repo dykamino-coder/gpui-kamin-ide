@@ -45,10 +45,18 @@ export function assertImageLabels(labels, expected) {
   }
 }
 
+export class RegistryRequestError extends Error {
+  constructor(status, url) {
+    super(`Registry request failed (${status}): ${url}`);
+    this.name = "RegistryRequestError";
+    this.status = status;
+    this.url = url;
+  }
+}
+
 async function fetchJson(url, options, fetchImpl) {
   const response = await fetchImpl(url, options);
-  if (!response.ok)
-    throw new Error(`Registry request failed (${response.status}): ${url}`);
+  if (!response.ok) throw new RegistryRequestError(response.status, url);
   return { response, value: await response.json() };
 }
 
@@ -107,4 +115,20 @@ export async function inspectDockerHubImage({ image, tag, fetchImpl = fetch }) {
     attestationCount,
     indexed: INDEX_MEDIA_TYPES.has(mediaType),
   };
+}
+
+export async function findDockerHubImage(options) {
+  try {
+    return await inspectDockerHubImage(options);
+  } catch (error) {
+    const suffix = `/manifests/${options.tag}`;
+    if (
+      error instanceof RegistryRequestError &&
+      error.status === 404 &&
+      error.url.endsWith(suffix)
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
