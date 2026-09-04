@@ -972,7 +972,8 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     } else {
         collapsed
     };
-    let collapsed = by_layer(wrap_floats(collapsed, inherited.width, inherited.clear));
+    let flex_ctx = matches!(inherited.display, Some(Display::Flex) | Some(Display::InlineFlex));
+    let collapsed = by_layer(wrap_floats(collapsed, inherited.width, inherited.clear), flex_ctx);
     // Блок мы изображаем гибкой колонкой, а её дети по умолчанию сжимаются —
     // в обычном потоке этого нет: ребёнок выше родителя обязан вылезти, а не
     // ужаться. Поэтому в потоке сжатие детям выключается, если разметка не
@@ -3756,7 +3757,11 @@ fn is_blank(n: &Node) -> bool {
 /// Отрицательный `z-index` кладёт элемент ПОД поток: отложенной отрисовкой это
 /// не выражается — она всегда рисует поверх. Зато порядок детей мы задаём
 /// сами: такие элементы уходят в начало списка и рисуются раньше.
-fn by_layer(mut nodes: Vec<Node>) -> Vec<Node> {
+/// `flex_ctx` — дети гибкого контейнера: у элемента ряда `z-index` кроме
+/// auto создаёт контекст наложения и без `position` (css-flexbox-1 §4.3:
+/// «z-index values other than auto create a stacking context even if
+/// position is static»; `flex-item-z-ordering-001/002`).
+fn by_layer(mut nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
     // Элемент на статической позиции переставлять НЕЛЬЗЯ: место в потоке и
     // есть его координата. `z-index` меняет только порядок отрисовки, а
     // перестановка меняла и раскладку — абсолютный блок с `z-index: -1`
@@ -3780,6 +3785,7 @@ fn by_layer(mut nodes: Vec<Node>) -> Vec<Node> {
         let placed = e.style.grid_col.is_some() && e.style.grid_row.is_some();
         e.style.z_index.is_some_and(|z| z < 0)
             && (placed
+                || flex_ctx
                 || (matches!(
                     e.style.position,
                     Some(crate::computed::Position::Absolute)
@@ -3797,12 +3803,16 @@ fn by_layer(mut nodes: Vec<Node>) -> Vec<Node> {
     let over = |e: &Element| {
         let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
         let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
-        matches!(
+        (matches!(
             e.style.position,
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
         ) && x_set
             && y_set
-            && !e.style.z_index.is_some_and(|z| z < 0)
+            && !e.style.z_index.is_some_and(|z| z < 0))
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): элемент ряда с z-index > 0 —
+        // поверх соседей той же перестановкой: css-flexbox 734 -> 733
+        // (`flexbox-items-as-stacking-contexts-001` 0.44 -> 0.60), плюсов
+        // ноль. Подслой для z < 0 (`movable` выше) оставлен: +1.
     };
     // Переставлять можно только ЧЕРЕЗ ПОТОК: порядок между позиционированными
     // соседями — это их порядок в разметке (§9.9 шаг 8 сохраняет его), и

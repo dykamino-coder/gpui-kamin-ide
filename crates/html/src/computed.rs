@@ -2288,8 +2288,23 @@ impl Computed {
                 // в контейнере уезжает вниз, а не остаётся вверху.
                 self.flex_wrap_reverse = Some(v == "wrap-reverse");
             }
-            "flex-grow" => self.flex_grow = v.parse().ok(),
-            "flex-shrink" => self.flex_shrink = v.parse().ok(),
+            // Отрицательные значения невалидны (css-flexbox-1 §7.2: «Negative
+            // values are not allowed») — объявление отбрасывается целиком
+            // (`flex-shrink-002`, `flex-basis-004`).
+            "flex-grow" => {
+                if let Ok(g) = v.trim().parse::<f32>()
+                    && g >= 0.0
+                {
+                    self.flex_grow = Some(g);
+                }
+            }
+            "flex-shrink" => {
+                if let Ok(g) = v.trim().parse::<f32>()
+                    && g >= 0.0
+                {
+                    self.flex_shrink = Some(g);
+                }
+            }
             // `flex: 1` — сокращение для grow/shrink/basis; берём первое число.
             // `flex: <рост> <сжатие> <основа>` со всеми сокращёнными формами.
             // Раньше бралось только первое число, и `flex: 0 0 200px` терял
@@ -2364,7 +2379,13 @@ impl Computed {
                 self.flex_basis = Some(Len::Auto);
                 self.basis_content = Some(true);
             }
-            "flex-basis" => self.flex_basis = Len::parse(v),
+            "flex-basis" => {
+                if let Some(l) = Len::parse(v)
+                    && !matches!(l, Len::Px(x) | Len::Pct(x) if x < 0.0)
+                {
+                    self.flex_basis = Some(l);
+                }
+            }
             "align-self" => {
                 if let Ok(a) = align_keyword(v) {
                     self.align_self = a;
