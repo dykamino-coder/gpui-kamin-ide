@@ -6336,6 +6336,18 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // `<canvas>` с одним лишь фоном пропадал из строки целиком: коробки
         // фон не заводит (`has_own_box`), а строчный путь возвращал `None`.
         // Размеры уже проставлены разбором (`dom.rs`), здесь нужна коробка.
+        // ЗАМЕРЕНО И ОТКАЧЕНО (04.09): не переносить атрибуты холста в
+        // `style.width/height` (по HTML §15.3.10 холста в списке
+        // «dimension attributes» нет — атрибуты дают ПРИРОДНЫЙ размер), а
+        // ставить коробке природный размер и соотношение сторон здесь. Срез
+        // из 169 пар с `<canvas>`: 54 -> 52, приобретено 2
+        // (`replaced-alignment-with-aspect-ratio-002`,
+        // `percent-height-replaced-in-percent-cell-003`), потеряно 4 —
+        // `flexbox-flex-basis-content-001a/002a` 0.00 -> 1.9,
+        // `contain-size-replaced-003a`, `replaced-content-spanner-auto-width`
+        // в «красное видно». На заданный размер холста опираются
+        // `flex-basis: content`, `contain: size` и спаннер многоколоночника;
+        // возвращать вместе с ними.
         "canvas" => {
             let merged = inline::inherit(inherited, &e.style);
             Some(styled_div_with(e, &merged).flex_shrink_0().into_any_element())
