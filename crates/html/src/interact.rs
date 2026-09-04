@@ -856,8 +856,20 @@ impl Element for Grouped {
                         {
                             // Форма может выйти за коробку — растр кроет
                             // расширенную область, центр смещён на вынос.
-                            let (cx, cy, rx, ry) =
-                                crate::background::shape_params(raw, bw, bh, 1.0)?;
+                            //
+                            // Радиусы и центр считаются от ОПОРНОЙ КОРОБКИ
+                            // формы (css-masking-1 §1.3.1.1): её края несёт
+                            // `poly_expand`, как и у полигона. Прежде круг
+                            // всегда мерился border-box, и
+                            // `circle(farthest-side) content-box` выходил
+                            // радиусом во всю коробку
+                            // (`clip-path-contentBox-1a/1d/1e`,
+                            // `-fillBox-*`, `-viewBox-*`).
+                            let [pt, pr, pb, pl] = self.poly_expand;
+                            let (rw, rh) = ((bw + pl + pr).max(1.0), (bh + pt + pb).max(1.0));
+                            let (cx0, cy0, rx, ry) =
+                                crate::background::shape_params(raw, rw, rh, 1.0)?;
+                            let (cx, cy) = (cx0 - pl, cy0 - pt);
                             let (aw, ah) = (bw + sl + sr, bh + st + sb);
                             let img = crate::background::rasterize_ellipse_px(
                                 (cx + sl) * sf,
