@@ -895,6 +895,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             _ => 16.0,
         };
         let prev = COLLAPSE_FONT_PX.with(|c| c.replace(base));
+        // Ширина содержащего блока для ПРОЦЕНТНЫХ полей (§8.3: проценты полей
+        // считаются от ширины содержащего блока, схлопывание — по уже
+        // разрешённым значениям). Известна только заданная в точках.
+        let cb_w = match inherited.width {
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        };
+        let prev_w = COLLAPSE_CB_WIDTH_PX.with(|c| c.replace(cb_w));
         let out = collapse_margins(
             nodes,
             matches!(
@@ -903,6 +911,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             ),
         );
         COLLAPSE_FONT_PX.with(|c| c.set(prev));
+        COLLAPSE_CB_WIDTH_PX.with(|c| c.set(prev_w));
         out
     };
     // Плавающий блок и выравнивание по базовой линии на элементе гибкого
@@ -4412,6 +4421,8 @@ thread_local! {
     /// Значение ставит `blocks()` вокруг вызова `collapse_margins` и
     /// возвращает на место после него.
     static COLLAPSE_FONT_PX: std::cell::Cell<f32> = const { std::cell::Cell::new(16.0) };
+    /// Ширина содержащего блока уровня схлопывания (для процентных полей).
+    static COLLAPSE_CB_WIDTH_PX: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
 }
 
 /// Заводит ли коробка СВОЙ блочный контекст форматирования: через её край
@@ -4777,6 +4788,9 @@ fn margin_px(l: Option<Len>, style: &Computed) -> Option<f32> {
             &style.font_family.clone().unwrap_or_default(),
             base,
         )),
+        // Процент — от ширины содержащего блока, когда она известна в точках
+        // (`margin-top-103`, `margin-bottom-113`); иначе поле пропускается.
+        Len::Pct(k) => COLLAPSE_CB_WIDTH_PX.with(std::cell::Cell::get).map(|w| k * w),
         _ => None,
     }
 }
