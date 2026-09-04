@@ -40,6 +40,12 @@ pub fn serialize(e: &Element) -> String {
     out
 }
 
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): дописывать в `<defs>` недостающие
+/// `<filter>` из соседних `<svg>` документа (реестр `render::mask_def`,
+/// ключ `filter:<id>`) перед `</svg>` — срез filter-effects 184 -> 184,
+/// `svg-filter-primitive-units-user-space` и родня не сдвинулись:
+/// одной подстановки определения мало, единицы фильтра считаются от
+/// чужого вьюпорта. Разбор: target/scout-masking-filters-2026-09.md, F5.
 fn subtree_has(e: &Element, tag: &str) -> bool {
     e.tag.eq_ignore_ascii_case(tag)
         || e.children.iter().any(|n| match n {
@@ -132,13 +138,25 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
             .map(|(_, v)| v.as_str())
     };
     let num_attr = |name: &str| attr_of(name).and_then(|v| v.trim().parse::<f32>().ok());
-    let origin = attr_of("transform-origin").and_then(|raw| {
-        let (fx, fy, fw, fh) = (
-            num_attr("x").unwrap_or(0.0),
-            num_attr("y").unwrap_or(0.0),
-            num_attr("width").unwrap_or(0.0),
-            num_attr("height").unwrap_or(0.0),
-        );
+    let (fx, fy, fw, fh) = (
+        num_attr("x").unwrap_or(0.0),
+        num_attr("y").unwrap_or(0.0),
+        num_attr("width").unwrap_or(0.0),
+        num_attr("height").unwrap_or(0.0),
+    );
+    // CSS `transform-origin` сильнее презентационного атрибута
+    // (css-transforms-1 §specificity): доли — от той же опорной коробки, что
+    // и у атрибута, точки — как есть (`transform-box/fill-box-*`,
+    // `svg-origin-relative-length-*`).
+    let style_origin = match (e.style.transform_origin, e.style.transform_origin_px) {
+        (_, (Some(px), Some(py))) => Some((px, py)),
+        (Some((kx, ky)), (px, py)) => Some((
+            px.unwrap_or(fx + fw * kx),
+            py.unwrap_or(fy + fh * ky),
+        )),
+        _ => None,
+    };
+    let origin = style_origin.or_else(|| attr_of("transform-origin").and_then(|raw| {
         let side = |t: &str, base: f32, off: f32| -> Option<f32> {
             let t = t.trim();
             Some(match t {
@@ -194,28 +212,25 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
             _ => return None,
         };
         Some((ox, oy))
-    });
+    }));
     // Стилевой transform на SVG-ребёнке СИЛЬНЕЕ презентационного атрибута
     // (css-transforms §specificity) — сериализуется атрибутом для
     // растеризатора.
+    // Матрица функций В ПОРЯДКЕ ЗАПИСИ (см. `computed::Transform::lin`);
+    // проценты сдвига — от опорной коробки фигуры (css-transforms-1
+    // §transform-box: доля — от reference box; здесь fill-box по атрибутам).
     let style_t = e.style.transform.as_ref().map(|t| {
-        let mut out = String::new();
-        if t.translate != (0.0, 0.0) {
-            out.push_str(&format!("translate({} {}) ", t.translate.0, t.translate.1));
+        let unit = t.lin == [[1.0, 0.0], [0.0, 1.0]]
+            && t.tr == [[0.0; 3]; 2];
+        if unit {
+            return String::new();
         }
-        if t.rotate_rad != 0.0 {
-            out.push_str(&format!("rotate({}) ", t.rotate_rad.to_degrees()));
-        }
-        if t.skew_rad.0 != 0.0 {
-            out.push_str(&format!("skewX({}) ", t.skew_rad.0.to_degrees()));
-        }
-        if t.skew_rad.1 != 0.0 {
-            out.push_str(&format!("skewY({}) ", t.skew_rad.1.to_degrees()));
-        }
-        if t.scale != (1.0, 1.0) {
-            out.push_str(&format!("scale({} {}) ", t.scale.0, t.scale.1));
-        }
-        out.trim_end().to_string()
+        let tx = t.tr[0][0] + fw * t.tr[0][1] + fh * t.tr[0][2];
+        let ty = t.tr[1][0] + fw * t.tr[1][1] + fh * t.tr[1][2];
+        format!(
+            "matrix({} {} {} {} {} {})",
+            t.lin[0][0], t.lin[1][0], t.lin[0][1], t.lin[1][1], tx, ty
+        )
     });
     let attr_t = attr_of("transform").map(str::to_string);
     let transform = style_t.filter(|t| !t.is_empty()).or(attr_t);
