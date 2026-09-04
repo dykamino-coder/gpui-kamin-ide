@@ -397,8 +397,9 @@ threads. Сам merge не переносит PR artifact в production.
 6. создаётся immutable GitHub Release `kaminide-v<app-version>` с installer и
    provenance;
 7. только после успешных проверок текущего release commit обновляются Docker
-   `latest`, compatibility Release `kaminide-latest` и отметка Latest у
-   versioned GitHub Release.
+   `latest`, assets и git-тег compatibility Release `kaminide-latest`, а также
+   отметка Latest у versioned GitHub Release. Rolling tag разрешено передвигать
+   только вперёд по истории `main`.
 
 Обычный change/docs/diagnostic merge не содержит coordinated version bump:
 release workflow завершается зелёным no-op и ничего не публикует.

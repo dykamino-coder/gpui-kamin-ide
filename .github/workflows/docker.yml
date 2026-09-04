@@ -462,6 +462,23 @@ jobs:
             --provenance "$verify_dir/$provenance_name" \
             --release-sha "$RELEASE_SHA"
 
+          current_tag_sha="$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" \
+            --jq '.object.sha')"
+          if [[ "$current_tag_sha" != "$RELEASE_SHA" ]]; then
+            if ! git merge-base --is-ancestor "$current_tag_sha" "$RELEASE_SHA"; then
+              echo "Rolling installer tag cannot move backwards or across histories" >&2
+              exit 1
+            fi
+            gh api --method PATCH "/repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" \
+              -f sha="$RELEASE_SHA" -F force=true > /dev/null
+          fi
+          updated_tag_sha="$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" \
+            --jq '.object.sha')"
+          if [[ "$updated_tag_sha" != "$RELEASE_SHA" ]]; then
+            echo "Rolling installer tag does not point to the release commit" >&2
+            exit 1
+          fi
+
           gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$tag" \
             | jq -r --arg installer "$installer_name" --arg provenance "$provenance_name" \
               '.assets[] | select(.name != $installer and .name != $provenance) | .id' \
