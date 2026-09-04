@@ -8969,7 +8969,26 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 merged.overflow_y,
                 Some(crate::computed::Overflow::Hidden) | Some(crate::computed::Overflow::Scroll)
             ) || merged.float.is_some()
-                || merged.flow_root == Some(true);
+                || merged.flow_root == Some(true)
+                // Независимый контекст форматирования и без overflow/float/
+                // flow-root: гибкий контейнер, сетка, таблица — своя
+                // раскладка по определению, и строки внутри в бюджет
+                // `line-clamp` не входят (css-overflow-4: «skip lines in
+                // independent formatting contexts»; `webkit-line-clamp-012/013`).
+                || matches!(
+                    merged.display,
+                    Some(Display::Flex)
+                        | Some(Display::InlineFlex)
+                        | Some(Display::Grid)
+                        | Some(Display::InlineGrid)
+                        | Some(Display::GridLanes)
+                        | Some(Display::Table)
+                        | Some(Display::InlineTable)
+                        | Some(Display::TableCell)
+                )
+                // `<fieldset>` — тоже отдельная раскладка
+                // (`webkit-line-clamp-027`).
+                || e.tag == "fieldset";
             let _bfc_guard = (!is_clamp && makes_bfc && crate::interact::clamp_context().is_some())
                 .then(crate::interact::ClampGuard::enter_bfc);
             if let Some((key, skip)) = crate::interact::clamp_context() {

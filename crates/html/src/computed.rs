@@ -2205,6 +2205,12 @@ impl Computed {
                     || v.trim().eq_ignore_ascii_case("-webkit-inline-box") =>
             {
                 self.webkit_box = Some(true);
+                // `-webkit-inline-box` — та же легаси-коробка, но ВСТРОЕННАЯ
+                // (по факту `inline-block`): соседний текст обязан стоять с
+                // ней в одной строке (`webkit-line-clamp-024`).
+                if v.trim().eq_ignore_ascii_case("-webkit-inline-box") {
+                    self.display = Some(Display::InlineBlock);
+                }
             }
             "display" => {
                 if v == "inherit" {
