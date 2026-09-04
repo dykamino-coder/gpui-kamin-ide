@@ -1199,18 +1199,13 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
 /// абсолютную длину, поэтому долю разрешаем сами по заданному размеру, а без
 /// него берём заведомо большое значение — растеризатор обрежет его половиной
 /// меньшей стороны, что и даёт круг.
-fn apply_radius(mut d: Div, c: &Computed) -> Div {
-    // Эллиптические углы и большой неоднородный радиус режет альфа-маска
-    // буфера группы; круглое скругление сверху обрезало бы форму вторым
-    // лезвием (см. `Computed::radius_masked`).
-    if c.radius_masked() {
-        return d;
-    }
-    let r = &c.radius;
-    // Проценты — от BORDER-BOX (css-backgrounds-3 §5.1), а `c.width` —
-    // содержимое: отбивки и рамка прибавляются. Проба `probe-bg-radiuspct`
-    // (`width:20; padding:20; border:20; border-radius:100% 0 0 0`) давала
-    // радиус 20 вместо 100.
+/// Радиус угла в точках: доля — от BORDER-BOX (css-backgrounds-3 §5.1), а
+/// `c.width` — содержимое, поэтому отбивки и рамка прибавляются. Проба
+/// `probe-bg-radiuspct` (`width:20; padding:20; border:20;
+/// border-radius:100% 0 0 0`) давала радиус 20 вместо 100. Без заданного
+/// размера берётся заведомо большое значение — растеризатор обрежет его
+/// половиной меньшей стороны, что и даёт круг.
+pub(crate) fn radius_px(c: &Computed, l: Option<Len>) -> Option<f32> {
     let px_len = |l: Option<Len>| match l {
         Some(Len::Px(v)) => v,
         _ => 0.0,
@@ -1224,15 +1219,24 @@ fn apply_radius(mut d: Div, c: &Computed) -> Div {
         (_, Some(Len::Px(h))) => h + extra_h,
         _ => f32::NAN,
     };
-    let resolve = |l: Option<Len>| -> Option<f32> {
-        match l? {
-            Len::Px(v) => Some(v),
-            Len::Pct(p) if base.is_nan() => Some(9999.0 * p.min(1.0)),
-            Len::Pct(p) => Some(base * p),
-            // Шрифтовые единицы — от запасного кегля, единой точкой.
-            l => crate::metrics::fallback_len_px(l, "", 16.0),
-        }
-    };
+    match l? {
+        Len::Px(v) => Some(v),
+        Len::Pct(p) if base.is_nan() => Some(9999.0 * p.min(1.0)),
+        Len::Pct(p) => Some(base * p),
+        // Шрифтовые единицы — от запасного кегля, единой точкой.
+        l => crate::metrics::fallback_len_px(l, "", 16.0),
+    }
+}
+
+fn apply_radius(mut d: Div, c: &Computed) -> Div {
+    // Эллиптические углы и большой неоднородный радиус режет альфа-маска
+    // буфера группы; круглое скругление сверху обрезало бы форму вторым
+    // лезвием (см. `Computed::radius_masked`).
+    if c.radius_masked() {
+        return d;
+    }
+    let r = &c.radius;
+    let resolve = |l: Option<Len>| radius_px(c, l);
     for (val, corner) in [(r.tl, 0u8), (r.tr, 1), (r.br, 2), (r.bl, 3)] {
         let Some(v) = resolve(val) else { continue };
         d = match corner {

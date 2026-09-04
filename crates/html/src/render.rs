@@ -539,10 +539,12 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                     (None, None) => raw,
                 }
             };
-            let corner = match c.radius.tl {
-                Some(Len::Px(v)) => v + off + w,
-                _ => 0.0,
-            };
+            // Угол контура повторяет угол коробки, раздвинутый сдвигом и
+            // толщиной (css-ui-4 §outline): доля решается так же, как у
+            // рамки, — прежде она читалась нулём (`outline-005`).
+            let corner = crate::apply::radius_px(c, c.radius.tl)
+                .filter(|v| *v > 0.0)
+                .map_or(0.0, |v| v + off + w);
             out.push(
                 div()
                     .absolute()
