@@ -538,6 +538,13 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // элемент, который не растягивается, прижимается к концу — это и есть
     // правый край (замерено пробой: ряд в `vertical-rl` против колонки с
     // прижимом вправо расходился на 5.42%).
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): обратная поперечная ось «по спеке» —
+    // колонка при `direction: rtl` и ряд при `vertical-rl` зеркалят
+    // `start`/`end` у `align-items` и у `align-self` детей (css-flexbox-1
+    // §9.6). css-flexbox 733 -> 733 (+1/−1), css-writing-modes 570 -> 564:
+    // шесть `text-orientation-*-100` с явным `flex-start` в vertical-rl
+    // ушли в «красное видно». Зеркало умолчания ниже — единственное, что
+    // подтверждено замером; явные значения оставлять физическими.
     if c.vertical_rl == Some(true)
         && c.align_items.is_none()
         && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
