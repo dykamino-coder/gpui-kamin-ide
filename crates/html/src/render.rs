@@ -6325,10 +6325,17 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                     box_.flex_row()
                 };
             }
-            Some(
+            // Маска, обрезка формой и фильтр действуют и на СТРОЧНУЮ коробку
+            // (css-masking §1: `clip-path` применяется ко всем элементам):
+            // блочный путь заворачивает её в буфер группы, а атомный шёл
+            // мимо, и `clip-path` на `inline-block` не резал ничего
+            // (`clip-path-contentBox-1d/1e`). Обёртка сама возвращает
+            // элемент как есть, когда группировать нечего.
+            Some(grouped(
                 box_.children(blocks(&e.children, &merged, opts))
                     .into_any_element(),
-            )
+                &e.style,
+            ))
         }
         // `<canvas>` — замещаемый элемент с собственными размерами 300x150
         // по умолчанию (HTML §4.12.5); рисовать в нём нечего, но место он
