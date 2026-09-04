@@ -6110,7 +6110,12 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 Some(Len::Px(v)) => v,
                 _ => 16.0,
             },
-        ) =>
+        )
+            // Инлайн с СОБСТВЕННЫМ письмом, отличным от родителя, — по
+            // css-writing-modes-4 §3.1 «its display computes instead to
+            // inline-block»: коробка со своими размерами
+            // (`different-block-flow-dir-001/002`).
+            || (e.style.vertical.is_some() && e.style.vertical != inherited.vertical) =>
         {
             let merged = inline::inherit(inherited, &e.style);
             let mut box_ = styled_div_with(e, &merged);
@@ -6155,6 +6160,50 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             // До `position-absolute-in-inline-*` правка НЕ доезжает: там у
             // строчного нет своей коробки, он идёт прогоном текста, и вешать
             // слой не на что — чинить надо в сборке прогонов.
+            // `inline-block` с ВЕРТИКАЛЬНЫМ письмом — контейнер блоков со своей
+            // осью блочного потока (css-writing-modes-4 §3.1): дети-блоки идут
+            // колонками справа налево (`vertical-rl`) или слева направо
+            // (`block-flow-direction-vrl-011`). Путь атома минует общий гейт в
+            // `element()`, поэтому ось ставится здесь.
+            let mut merged = merged;
+            if e.style.display == Some(Display::InlineBlock)
+                && merged.vertical == Some(true)
+                && e.children.iter().any(|n| {
+                    matches!(n, Node::Element(k)
+                        if !k.inline || matches!(k.style.display, Some(Display::Block)))
+                })
+            {
+                // Предел строчной оси детей — собственная высота коробки (как
+                // `element()` сеет `ortho_limit` от высоты предка): без него
+                // колонки тянулись за низ (`block-flow-direction-vrl-012`).
+                let em_base = match merged.font_size {
+                    Some(Len::Px(v)) => v,
+                    _ => opts.base_size(),
+                };
+                let px_of = |l: Option<Len>| match l {
+                    Some(Len::Px(v)) => Some(v),
+                    Some(Len::Em(k)) => Some(k * em_base),
+                    _ => None,
+                };
+                if let Some(h) = px_of(e.style.height) {
+                    let b = e.style.borders();
+                    let edges = if e.style.border_box == Some(true) {
+                        px_of(b.top).unwrap_or(0.0)
+                            + px_of(b.bottom).unwrap_or(0.0)
+                            + px_of(e.style.padding.top).unwrap_or(0.0)
+                            + px_of(e.style.padding.bottom).unwrap_or(0.0)
+                    } else {
+                        0.0
+                    };
+                    merged.ortho_limit = Some((h - edges).max(0.0));
+                }
+                box_ = box_.flex();
+                box_ = if merged.vertical_rl == Some(true) {
+                    box_.flex_row_reverse()
+                } else {
+                    box_.flex_row()
+                };
+            }
             Some(
                 box_.children(blocks(&e.children, &merged, opts))
                     .into_any_element(),
@@ -8470,12 +8519,23 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // Ширина колонки без их числа — это «сколько влезет»: ровно
                 // то, что умеет короткая форма дорожек в GPUI.
                 d = d.grid().grid_cols_min(px(w));
-            // ЗАМЕРЕНО И ОТКАЧЕНО: пускать сюда и ЯВНЫЙ `display: block` (в
-            // эталонах вертикального письма он написан прямо, и они шли
-            // блочным потоком сверху вниз). Полный свод CSS3: приобретено 0,
-            // потеряно 1 — `grid-positioned-children-writing-modes-001`
-            // 0.39 -> 1.32.
-            } else if merged.vertical == Some(true) && e.style.display.is_none() {
+            // Ось блочного потока не зависит от `display` (css-writing-modes-4
+            // §3.1): inline-block, ячейка, list-item с вертикальным письмом
+            // раскладывают детей той же горизонтальной осью, что и голый блок
+            // (`block-flow-direction-*`, `line-box-direction-*`).
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО: явный `Some(Block)` — он же стоит у
+            // блокифицированных (абсолют в сетке), и
+            // `grid-positioned-children-writing-modes-001` 0.39 -> 1.32 даже с
+            // гейтом «родитель не сетка».
+            // `list-item` сюда НЕ пускать (★ ЗАМЕРЕНО: `li` с одним текстом
+            // становился рядом — `line-box-direction-vrl-019/vlr-020`
+            // 6.58 -> 12.55).
+            } else if merged.vertical == Some(true)
+                && matches!(
+                    e.style.display,
+                    None | Some(Display::InlineBlock) | Some(Display::TableCell)
+                )
+            {
                 // Вертикальное письмо: ось блочного потока — горизонтальная.
                 // Дети идут слева направо (`vertical-lr`) или справа налево
                 // (`vertical-rl`).
@@ -11502,12 +11562,33 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let outer = outer;
     // Обёртка «заголовок + коробка»: заголовок вне рамки и обрезки.
     let outer = if let Some(cap) = caption {
-        let mut wrap = div().flex().flex_col();
-        wrap.style().align_self = Some(gpui::AlignItems::FlexStart);
-        if caption_bottom {
-            wrap.child(outer).child(cap).into_any_element()
+        // `caption-side: top/bottom` — стороны block-start/block-end стола
+        // (css-writing-modes-4 §6, особое исключение для caption-side): в
+        // вертикальном письме заголовок стоит СБОКУ — справа при `vertical-rl`,
+        // слева при `vertical-lr` (`caption-side-vrl-002`).
+        let vertical = e.style.vertical == Some(true);
+        let mut wrap = if vertical {
+            div().flex().flex_row()
         } else {
+            div().flex().flex_col()
+        };
+        wrap.style().align_self = Some(gpui::AlignItems::FlexStart);
+        // Заголовок ПЕРЕД коробкой по порядку детей = у начала оси: для
+        // vrl начало блочной оси — правый край, а ряд идёт слева направо.
+        let cap_first = caption_bottom == (vertical && e.style.vertical_rl == Some(true));
+        // В ряду второй ребёнок сжимался в ноль — обоим своя ширина.
+        let (outer, cap) = if vertical {
+            (
+                div().flex_shrink_0().child(outer).into_any_element(),
+                div().flex_shrink_0().child(cap).into_any_element(),
+            )
+        } else {
+            (outer.into_any_element(), cap)
+        };
+        if cap_first {
             wrap.child(cap).child(outer).into_any_element()
+        } else {
+            wrap.child(outer).child(cap).into_any_element()
         }
     } else {
         outer.into_any_element()

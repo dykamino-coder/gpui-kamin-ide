@@ -149,7 +149,7 @@ head, title, meta, link { display: none }
        ширины ломает выравнивание в столбик, ради которого его и пишут
        (css-text-4 §7, таблица стилей агента). */
     pre, code, kbd, samp, tt, textarea, input { text-autospace: no-autospace }
-    ul, ol { margin: 6px 0; padding-left: 18px }
+    ul, ol { margin: 6px 0; padding-inline-start: 18px }
     li { margin: 2px 0 }
     blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid #4a4a5a }
     hr { height: 1px; margin: 8px 0; background: #4a4a5a }

@@ -258,6 +258,11 @@ pub struct LogicalSides {
     pub inline_end: Option<Len>,
     pub block_start: Option<Len>,
     pub block_end: Option<Len>,
+    /// Порядковый номер объявления каждой стороны (inline_start, inline_end,
+    /// block_start, block_end) — спор с физической стороной решает более
+    /// позднее объявление, а на какую физическую сторону ляжет логическая,
+    /// известно только после наследования письма.
+    pub seq: [u32; 4],
 }
 
 /// `outline`: рамка ВНЕ коробки, не влияющая на раскладку.
@@ -762,8 +767,23 @@ pub enum ContentItem {
     Attr(String),
 }
 
+/// Порядковые номера объявлений физических сторон (top, right, bottom, left)
+/// для полей, отступов и краёв — см. `LogicalSides::seq`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SideSeq {
+    pub padding: [u32; 4],
+    pub margin: [u32; 4],
+    pub inset: [u32; 4],
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
+    /// Счётчик объявлений этого узла: порядок каскада между логическими и
+    /// физическими сторонами (UA `padding-inline-start: 40px` против
+    /// авторского `padding-top: 0` в вертикальном письме —
+    /// `line-box-direction-vrl-019`).
+    pub decl_seq: u32,
+    pub side_seq: SideSeq,
     pub display: Option<Display>,
     pub flex_dir: Option<FlexDir>,
     pub flex_wrap: Option<bool>,
@@ -1610,12 +1630,17 @@ impl Computed {
         // Стороны. Начало строчной оси: слева (обычное письмо), справа (оно же
         // справа налево) или сверху (вертикальное). Начало оси блока: сверху,
         // а в вертикальном — справа при `vertical-rl` и слева при `-lr`.
+        // Логическая сторона ложится на физическую, только если объявлена
+        // ПОЗЖЕ её (порядок каскада): UA `padding-inline-start: 40px` у `ul`
+        // против авторского `padding-top: 0` в `vertical-rl`
+        // (`line-box-direction-vrl-019`, `block-flow-direction-vrl-021`).
+        let phys_seq = self.side_seq;
         let sides = [
-            (&logical.padding, 0u8),
-            (&logical.margin, 1),
-            (&logical.inset, 2),
+            (&logical.padding, 0u8, phys_seq.padding),
+            (&logical.margin, 1, phys_seq.margin),
+            (&logical.inset, 2, phys_seq.inset),
         ];
-        for (from, which) in sides {
+        for (from, which, pseq) in sides {
             let to = match which {
                 0 => &mut self.padding,
                 1 => &mut self.margin,
@@ -1635,11 +1660,11 @@ impl Computed {
             } else {
                 (3u8, 1u8, 0u8, 2u8)
             };
-            for (side, val) in [
-                (i_start, from.inline_start),
-                (i_end, from.inline_end),
-                (b_start, from.block_start),
-                (b_end, from.block_end),
+            for (side, val, lseq) in [
+                (i_start, from.inline_start, from.seq[0]),
+                (i_end, from.inline_end, from.seq[1]),
+                (b_start, from.block_start, from.seq[2]),
+                (b_end, from.block_end, from.seq[3]),
             ] {
                 let slot = match side {
                     0 => &mut to.top,
@@ -1647,7 +1672,9 @@ impl Computed {
                     2 => &mut to.bottom,
                     _ => &mut to.left,
                 };
-                set(slot, val);
+                if lseq >= pseq[side as usize] {
+                    set(slot, val);
+                }
             }
         }
         // Логические кромки: раскладываются той же картой сторон — сырое
@@ -2127,6 +2154,7 @@ impl Computed {
     }
 
     fn apply_one(&mut self, key: &str, val: &str) {
+        self.decl_seq += 1;
         let v = val.trim();
         // Общие для всех свойств слова `initial`/`unset`/`revert`. Для
         // НАСЛЕДУЕМОГО свойства это не «оставить как есть»: незаданное поле у
@@ -2597,10 +2625,8 @@ impl Computed {
                     return;
                 }
                 self.padding = parsed;
-                // Гашение логических слотов — как у полей (порядок каскада).
-                if let Some(l) = self.logical.as_mut() {
-                    l.padding = Default::default();
-                }
+                // Спор с логическими сторонами решает порядок объявлений.
+                self.side_seq.padding = [self.decl_seq; 4];
             }
             "padding-top" => {
                 // `inherit` разбором не выражается: слово копирует вычисленное
@@ -2619,9 +2645,7 @@ impl Computed {
                     return;
                 }
                 self.padding.top = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.padding.block_start = None;
-                }
+                self.side_seq.padding[0] = self.decl_seq;
             }
             "padding-right" => {
                 // `inherit` разбором не выражается: слово копирует вычисленное
@@ -2640,9 +2664,7 @@ impl Computed {
                     return;
                 }
                 self.padding.right = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.padding.inline_end = None;
-                }
+                self.side_seq.padding[1] = self.decl_seq;
             }
             "padding-bottom" => {
                 // `inherit` разбором не выражается: слово копирует вычисленное
@@ -2661,9 +2683,7 @@ impl Computed {
                     return;
                 }
                 self.padding.bottom = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.padding.block_end = None;
-                }
+                self.side_seq.padding[2] = self.decl_seq;
             }
             "padding-left" => {
                 // `inherit` разбором не выражается: слово копирует вычисленное
@@ -2682,9 +2702,7 @@ impl Computed {
                     return;
                 }
                 self.padding.left = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.padding.inline_start = None;
-                }
+                self.side_seq.padding[3] = self.decl_seq;
             }
             // Физическая запись ГАСИТ логический слот той же стороны: разбор
             // идёт в порядке каскада, и авторский `margin: 0` обязан бить
@@ -2698,9 +2716,7 @@ impl Computed {
                     return;
                 }
                 self.margin = Sides::shorthand(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.margin = Default::default();
-                }
+                self.side_seq.margin = [self.decl_seq; 4];
             }
             "margin-top" => {
                 if v == "inherit" {
@@ -2708,9 +2724,7 @@ impl Computed {
                     return;
                 }
                 self.margin.top = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.margin.block_start = None;
-                }
+                self.side_seq.margin[0] = self.decl_seq;
             }
             "margin-right" => {
                 if v == "inherit" {
@@ -2718,9 +2732,7 @@ impl Computed {
                     return;
                 }
                 self.margin.right = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.margin.inline_end = None;
-                }
+                self.side_seq.margin[1] = self.decl_seq;
             }
             "margin-bottom" => {
                 if v == "inherit" {
@@ -2728,9 +2740,7 @@ impl Computed {
                     return;
                 }
                 self.margin.bottom = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.margin.block_end = None;
-                }
+                self.side_seq.margin[2] = self.decl_seq;
             }
             "margin-left" => {
                 if v == "inherit" {
@@ -2738,9 +2748,7 @@ impl Computed {
                     return;
                 }
                 self.margin.left = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.margin.inline_start = None;
-                }
+                self.side_seq.margin[3] = self.decl_seq;
             }
 
             "border" => {
@@ -2943,36 +2951,26 @@ impl Computed {
             "top" => {
                 self.inset_inherit[0] = v == "inherit";
                 self.inset.top = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.inset.block_start = None;
-                }
+                self.side_seq.inset[0] = self.decl_seq;
             }
             "right" => {
                 self.inset_inherit[1] = v == "inherit";
                 self.inset.right = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.inset.inline_end = None;
-                }
+                self.side_seq.inset[1] = self.decl_seq;
             }
             "bottom" => {
                 self.inset_inherit[2] = v == "inherit";
                 self.inset.bottom = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.inset.block_end = None;
-                }
+                self.side_seq.inset[2] = self.decl_seq;
             }
             "left" => {
                 self.inset_inherit[3] = v == "inherit";
                 self.inset.left = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.inset.inline_start = None;
-                }
+                self.side_seq.inset[3] = self.decl_seq;
             }
             "inset" => {
                 self.inset = Sides::shorthand(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.inset = Default::default();
-                }
+                self.side_seq.inset = [self.decl_seq; 4];
             }
             "overflow" => {
                 // Запись из двух слов — оси по отдельности
@@ -3512,6 +3510,7 @@ impl Computed {
                 let (a, b) = axis_pair(v);
                 let block = key.ends_with("block");
                 let which = key.split('-').next().unwrap_or("").to_string();
+                let seq = self.decl_seq;
                 let logical = self.logical();
                 let target = match which.as_str() {
                     "padding" => &mut logical.padding,
@@ -3521,23 +3520,41 @@ impl Computed {
                 if block {
                     target.block_start = a;
                     target.block_end = b;
+                    target.seq[2] = seq;
+                    target.seq[3] = seq;
                 } else {
                     target.inline_start = a;
                     target.inline_end = b;
+                    target.seq[0] = seq;
+                    target.seq[1] = seq;
                 }
             }
-            "padding-inline-start" => self.logical().padding.inline_start = Len::parse(v),
-            "padding-inline-end" => self.logical().padding.inline_end = Len::parse(v),
-            "padding-block-start" => self.logical().padding.block_start = Len::parse(v),
-            "padding-block-end" => self.logical().padding.block_end = Len::parse(v),
-            "margin-inline-start" => self.logical().margin.inline_start = Len::parse(v),
-            "margin-inline-end" => self.logical().margin.inline_end = Len::parse(v),
-            "margin-block-start" => self.logical().margin.block_start = Len::parse(v),
-            "margin-block-end" => self.logical().margin.block_end = Len::parse(v),
-            "inset-inline-start" => self.logical().inset.inline_start = Len::parse(v),
-            "inset-inline-end" => self.logical().inset.inline_end = Len::parse(v),
-            "inset-block-start" => self.logical().inset.block_start = Len::parse(v),
-            "inset-block-end" => self.logical().inset.block_end = Len::parse(v),
+            "padding-inline-start" | "padding-inline-end" | "padding-block-start"
+            | "padding-block-end" | "margin-inline-start" | "margin-inline-end"
+            | "margin-block-start" | "margin-block-end" | "inset-inline-start"
+            | "inset-inline-end" | "inset-block-start" | "inset-block-end" => {
+                let seq = self.decl_seq;
+                let parsed = Len::parse(v);
+                let logical = self.logical();
+                let target = if key.starts_with("padding") {
+                    &mut logical.padding
+                } else if key.starts_with("margin") {
+                    &mut logical.margin
+                } else {
+                    &mut logical.inset
+                };
+                let (slot, i) = if key.ends_with("inline-start") {
+                    (&mut target.inline_start, 0)
+                } else if key.ends_with("inline-end") {
+                    (&mut target.inline_end, 1)
+                } else if key.ends_with("block-start") {
+                    (&mut target.block_start, 2)
+                } else {
+                    (&mut target.block_end, 3)
+                };
+                *slot = parsed;
+                target.seq[i] = seq;
+            }
 
             // --- Раскладка --------------------------------------------------
             "aspect-ratio" => {
