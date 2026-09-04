@@ -3432,7 +3432,13 @@ impl Computed {
                 for t in tokens {
                     if let Some(text) = t.strip_prefix('\u{0}') {
                         on = true;
-                        marker = Some(text.to_string());
+                        // Строка объявления несёт экранирование (css-syntax
+                        // §4.3.7: `\0A` — перевод строки, `\2026` — многоточие),
+                        // а разрывы сегмента в ней преобразуются, как в тексте
+                        // (css-text-3 §4.1.2; Blink `line_truncator.cc`
+                        // `SuppressLineBreaks`): ряд принудительных разрывов —
+                        // один пробел (`text-overflow-string-009…016`).
+                        marker = Some(collapse_segment_breaks(&unescape_content(text)));
                     } else if t == "ellipsis" {
                         on = true;
                         marker = None;
@@ -6632,6 +6638,28 @@ fn find_close(after_open: &str) -> Option<usize> {
 
 /// Экранирование внутри строки содержимого: `\A` — перевод строки, прочие
 /// коды — свои знаки, `\"` — сама кавычка.
+/// Разрывы сегмента в строке-маркере: ряд принудительных разрывов — один
+/// пробел (css-text-3 §4.1.2, «Segment Break Transformation Rules»).
+fn collapse_segment_breaks(text: &str) -> String {
+    if !text.contains(['\n', '\r']) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut in_break = false;
+    for ch in text.chars() {
+        if matches!(ch, '\n' | '\r') {
+            if !in_break {
+                out.push(' ');
+                in_break = true;
+            }
+        } else {
+            in_break = false;
+            out.push(ch);
+        }
+    }
+    out
+}
+
 fn unescape_content(text: &str) -> String {
     if !text.contains('\\') {
         return text.to_string();
