@@ -5141,6 +5141,20 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
             || inherited.hug_inline)
             && !matches!(inherited.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
             && !(edge(inherited.inset.top) && edge(inherited.inset.bottom));
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09), пятый заход по §7.3.1 «Auto-sizing
+        // Block Containers in Orthogonal Flows»: без определённого предка
+        // брать пределом НАЧАЛЬНЫЙ содержащий блок (`max_w` + `fit_within`
+        // от окна). Срез вертикального письма 1086 пар: 596 -> 602,
+        // приобретено 29 (вся семья `sizing-orthog-{vlr,vrl}-in-htb-*`,
+        // `clip-rect-v*`, `caption-side-v*`), потеряно 23 —
+        // `available-size-003…018` (0.05-0.11 -> «красное видно»),
+        // `line-box-height-v{lr,rl}-*` (0.15 -> 0.67), четыре
+        // `float-*-orthog-*-in-htb-*` (0.02-0.32 -> 4.7-6.7),
+        // `direction-upright-001`, `border-slice-001`, `text-combine-*`.
+        // С вычетом собственных полей и рамки из предела — ещё хуже (592).
+        // Значит предел ICB как таковой верен, но коробке нужен НЕ он, а
+        // ближайший определённый scrollport (§7.3.1 п.2), которого у нас нет;
+        // возвращать вместе с ним.
         let inner = if free_inline {
             div().max_w(px(limit)).child(inner).into_any_element()
         } else {
@@ -8039,6 +8053,14 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
         };
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): переводить сюда и единицы шрифта
+        // (`max-height: 8ch`), чтобы предел ортогонального потока не терялся.
+        // Срез вертикального письма 1086 пар: приобретено 0, потеряно 7 —
+        // `available-size-003…018` (0.05-0.11 -> «красное видно»). Тесты
+        // прямо пишут: «**max**-height does not give the element a definite
+        // block size» (§7.3.1 берёт предел у ОПРЕДЕЛЁННОГО размера, а
+        // `max-height` определённым не делает). Значит и нынешний перевод
+        // `max-height` в точках — тоже неверный источник предела.
         let px_of = |l: Option<Len>| match l {
             Some(Len::Px(v)) => Some(v),
             Some(Len::Em(k)) => Some(k * em_base),
