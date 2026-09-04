@@ -665,10 +665,23 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             Some(crate::value::Len::Px(v)) => v,
             _ => 16.0,
         };
+        // `line-height: normal` — доля кегля ПО МЕТРИКАМ шрифта, а не
+        // постоянные 1.2: у `lh`-единицы иначе выходила чужая высота строки
+        // (`line-clamp-auto-*` меряют высоту в `lh`).
+        let family = c.font_family.clone().unwrap_or_else(|| {
+            if c.monospace == Some(true) {
+                crate::metrics::mono_family().to_string()
+            } else {
+                String::new()
+            }
+        });
         let line = match c.line_height {
             Some(crate::value::Len::Px(v)) => v,
-            Some(crate::value::Len::Em(k)) => k * font,
-            _ => 1.2 * font,
+            Some(crate::value::Len::Em(k)) | Some(crate::value::Len::Pct(k)) => k * font,
+            _ => {
+                let f = crate::metrics::normal_line(&family);
+                if f > 0.0 { f * font } else { 1.2 * font }
+            }
         };
         let fix = |l: &mut Option<crate::value::Len>| match *l {
             Some(crate::value::Len::Lh(k)) => *l = Some(crate::value::Len::Px(k * line)),
