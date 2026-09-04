@@ -476,6 +476,15 @@ pub struct StackChild {
     /// продолжать в следующей колонке (поле на границе усекается,
     /// css-break-3 §5.2). По возрастанию.
     pub cuts: Vec<(f32, f32)>,
+    /// Принудительные разрывы (css-break-4 §3.1): перед коробкой, после неё
+    /// и внутри — смещения от верха, где `break-before/after` вложенных
+    /// блочных детей требуют новой колонки.
+    pub force_before: bool,
+    pub force_after: bool,
+    pub forced: Vec<f32>,
+    /// Диапазоны, внутри которых разрыв запрещён (css-break-4 §4.1 —
+    /// монолиты-потомки; рамка и отбивка самой коробки): `[a, b)` от верха.
+    pub solid: Vec<(f32, f32)>,
     pub h: f32,
     pub mt: f32,
     pub mb: f32,
@@ -489,6 +498,10 @@ pub struct Kid {
     pub mb: f32,
     pub monolith: bool,
     pub cuts: Vec<(f32, f32)>,
+    pub force_before: bool,
+    pub force_after: bool,
+    pub forced: Vec<f32>,
+    pub solid: Vec<(f32, f32)>,
 }
 
 /// Кусок ребёнка в колонке: чей он, какая по счёту копия, в какой колонке
@@ -602,7 +615,18 @@ impl ColumnStack {
         let mut placed = false;
         let mut shortage = f32::MAX;
         let mut out: Vec<Frag> = Vec::with_capacity(kids.len());
+        let mut force_next = false;
         for (kid, k) in kids.iter().enumerate() {
+            // Принудительный разрыв перед коробкой или после предыдущей:
+            // новая колонка, если текущая не пуста (css-break-4 §3.1).
+            if (k.force_before || force_next) && placed {
+                col += 1;
+                y = 0.0;
+                placed = false;
+                prev_mb = 0.0;
+                first = true;
+            }
+            force_next = k.force_after;
             let lead = if first { k.mt } else { prev_mb.max(k.mt) };
             let mut cur = y + lead;
             let mut from = 0.0f32;
@@ -610,22 +634,69 @@ impl ColumnStack {
             loop {
                 let room = target - cur;
                 let rest = k.h - from;
+                // Принудительный разрыв ВНУТРИ коробки раньше её конца и раньше
+                // края колонки — режем ровно там.
+                let forced = k
+                    .forced
+                    .iter()
+                    .copied()
+                    .find(|&f| f > from + 0.01 && f < k.h - 0.01 && f - from <= room + 0.01);
+                if let Some(f) = forced {
+                    let nf = k
+                        .cuts
+                        .iter()
+                        .find(|&&(need, _)| (need - f).abs() < 0.01)
+                        .map(|&(_, nf)| nf)
+                        .unwrap_or(f);
+                    out.push(Frag { kid, copy, col, y: cur, from, h: f - from });
+                    from = nf;
+                    if copy + 1 >= limit {
+                        y = target;
+                        placed = true;
+                        break;
+                    }
+                    copy += 1;
+                    col += 1;
+                    cur = 0.0;
+                    placed = false;
+                    continue;
+                }
                 if rest <= room + 0.01 {
                     out.push(Frag { kid, copy, col, y: cur, from, h: rest });
                     y = cur + rest;
                     placed = true;
                     break;
                 }
-                let cut = if k.monolith {
+                // Срез — ПО КРАЮ колонки (css-break-4 §4: slice — правило, не
+                // исключение; Blink `FinishFragmentation`). Класс A нужен
+                // лишь когда край попал внутрь монолита-потомка или в рамку:
+                // тогда разрыв уходит к началу этого диапазона. Точка класса A
+                // ровно на краю даёт усечение поля (`nf`).
+                let edge = from + room;
+                let cut = if k.monolith || room <= 0.01 {
                     None
+                } else if let Some(&(a, _)) =
+                    k.solid.iter().find(|&&(a, b)| a < edge - 0.01 && edge < b - 0.01)
+                {
+                    if a > from + 0.01 {
+                        let nf = k
+                            .cuts
+                            .iter()
+                            .find(|&&(need, _)| (need - a).abs() < 0.01)
+                            .map(|&(_, nf)| nf)
+                            .unwrap_or(a);
+                        Some((a, nf))
+                    } else {
+                        None
+                    }
                 } else {
-                    k.cuts
+                    let nf = k
+                        .cuts
                         .iter()
-                        .copied()
-                        .filter(|&(need, nf)| {
-                            nf > from + 0.01 && need >= from - 0.01 && need - from <= room + 0.01
-                        })
-                        .last()
+                        .find(|&&(need, _)| (need - edge).abs() < 0.01)
+                        .map(|&(_, nf)| nf)
+                        .unwrap_or(edge);
+                    Some((edge, nf))
                 };
                 // Недолаз: на сколько не хватило колонки до ближайшего
                 // разреза (или до конца ребёнка).
@@ -735,7 +806,17 @@ impl Element for ColumnStack {
         let heights: Vec<Kid> = self
             .children
             .iter()
-            .map(|c| Kid { h: c.h, mt: c.mt, mb: c.mb, monolith: c.monolith, cuts: c.cuts.clone() })
+            .map(|c| Kid {
+                h: c.h,
+                mt: c.mt,
+                mb: c.mb,
+                monolith: c.monolith,
+                cuts: c.cuts.clone(),
+                force_before: c.force_before,
+                force_after: c.force_after,
+                forced: c.forced.clone(),
+                solid: c.solid.clone(),
+            })
             .collect();
         let count = self.count;
         let fixed = self.fixed_height;
@@ -782,7 +863,17 @@ impl Element for ColumnStack {
         let heights: Vec<Kid> = self
             .children
             .iter()
-            .map(|c| Kid { h: c.h, mt: c.mt, mb: c.mb, monolith: c.monolith, cuts: c.cuts.clone() })
+            .map(|c| Kid {
+                h: c.h,
+                mt: c.mt,
+                mb: c.mb,
+                monolith: c.monolith,
+                cuts: c.cuts.clone(),
+                force_before: c.force_before,
+                force_after: c.force_after,
+                forced: c.forced.clone(),
+                solid: c.solid.clone(),
+            })
             .collect();
         let (target, plan) = self.balance(&heights);
         self.col_w.set(col_w);

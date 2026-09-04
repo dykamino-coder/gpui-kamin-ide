@@ -7910,6 +7910,44 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     /// §8.3.1); строчное содержимое высоты не даёт — такой
                     /// ребёнок мерить нечем, и весь стек идёт другим путём.
                     fn shape(c: &Element, depth: u8) -> Option<(f32, f32, f32, Vec<(f32, f32)>)> {
+                        shape_full(c, depth).map(|s| (s.0, s.1, s.2, s.3))
+                    }
+                    /// Монолит по css-break-4 §4.1 (Blink `IsMonolithic`): замещаемый,
+                    /// атомарный строчный, прокручиваемый, `break-inside: avoid`,
+                    /// строчное содержимое (строк укладка не видит) — пустая
+                    /// коробка монолитом НЕ является.
+                    fn solid_box(k: &Element) -> bool {
+                        let scrolls = |o: Option<crate::computed::Overflow>| {
+                            matches!(o, Some(crate::computed::Overflow::Scroll))
+                        };
+                        let block_kid = |n: &Node| {
+                            matches!(n, Node::Element(x)
+                                if !x.inline || x.style.display == Some(Display::Block))
+                        };
+                        k.style.break_inside_avoid
+                            || scrolls(k.style.overflow_x)
+                            || scrolls(k.style.overflow_y)
+                            || matches!(
+                                k.tag.as_str(),
+                                "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
+                                    | "table"
+                            )
+                            || matches!(
+                                k.style.display,
+                                Some(Display::InlineBlock)
+                                    | Some(Display::InlineFlex)
+                                    | Some(Display::InlineGrid)
+                                    | Some(Display::InlineTable)
+                                    | Some(Display::Table)
+                                    | Some(Display::TableCell)
+                            )
+                            || (k.children.iter().any(|n| !is_blank(n))
+                                && !k.children.iter().any(block_kid))
+                    }
+                    /// То же плюс смещения принудительных разрывов и диапазоны
+                    /// монолитов внутри.
+                    type Shape = (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>);
+                    fn shape_full(c: &Element, depth: u8) -> Option<Shape> {
                         let px_or = |l: &Option<Len>, strict: bool| match l {
                             None => Some(0.0),
                             Some(Len::Px(v)) => Some(*v),
@@ -7956,25 +7994,70 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 | Some(Display::TableRow)
                                 | Some(Display::TableRowGroup)
                         );
-                        let inner: Option<Vec<(f32, f32, f32, Vec<(f32, f32)>)>> = if depth == 0
-                            || no_descent
-                        {
+                        // (высота, поля, точки, forced, монолиты, force_before, force_after)
+                        type KidShape =
+                            (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>, bool, bool);
+                        let inner: Option<Vec<KidShape>> = if depth == 0 || no_descent {
                             None
                         } else {
                             kids.iter()
                                 .map(|n| match n {
+                                    // Абсолют высоты стопке не даёт и разреза
+                                    // не мешает: нулевая запись, а не отказ
+                                    // от всей укладки (`out-of-flow-in-
+                                    // multicolumn-*`, корень A2).
+                                    Node::Element(k) if out_of_flow(&k.style) => Some((
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        Vec::new(),
+                                        Vec::new(),
+                                        Vec::new(),
+                                        false,
+                                        false,
+                                    )),
                                     Node::Element(k)
                                         if !k.inline
-                                            && k.style.position.is_none()
+                                            && (k.style.position.is_none()
+                                                || k.style.position
+                                                    == Some(crate::computed::Position::Relative))
                                             && k.style.float.unwrap_or(0) == 0 =>
                                     {
-                                        shape(k, depth - 1)
+                                        shape_full(k, depth - 1).map(
+                                            |(h, mt, mb, cuts, forced, solid)| {
+                                                // Монолит-потомок — весь диапазон
+                                                // его высоты; иначе — его собственные
+                                                // монолиты.
+                                                let solid = if solid_box(k) {
+                                                    vec![(0.0, h)]
+                                                } else {
+                                                    solid
+                                                };
+                                                (
+                                                    h,
+                                                    mt,
+                                                    mb,
+                                                    cuts,
+                                                    forced,
+                                                    solid,
+                                                    k.style.break_before_force,
+                                                    k.style.break_after_force,
+                                                )
+                                            },
+                                        )
                                     }
                                     _ => None,
                                 })
                                 .collect()
                         };
                         let mut cuts: Vec<(f32, f32)> = Vec::new();
+                        let mut forced: Vec<f32> = Vec::new();
+                        let mut solid: Vec<(f32, f32)> = Vec::new();
+                        // Рамка и отбивка самой коробки — без разрывов (Blink:
+                        // «Avoid breaking inside block-start border»).
+                        if top > 0.0 {
+                            solid.push((0.0, top));
+                        }
                         // Стек вложенных: конец, поле первого, схлопнувшееся
                         // сквозь верх без отбивки, поле последнего.
                         let mut stacked: Option<(f32, f32, f32)> = None;
@@ -7984,7 +8067,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             let mut prev_mb = 0.0f32;
                             let mut through = 0.0f32;
                             let mut first = true;
-                            for (h, kmt, kmb, kcuts) in kids {
+                            let mut force_next = false;
+                            for (h, kmt, kmb, kcuts, kforced, ksolid, fb, fa) in kids {
                                 let lead = if first {
                                     if top == 0.0 {
                                         through = kmt;
@@ -7997,10 +8081,21 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 };
                                 if !first {
                                     cuts.push((y, y + lead));
+                                    // Принудительный разрыв на границе детей.
+                                    if fb || force_next {
+                                        forced.push(y);
+                                    }
                                 }
+                                force_next = fa;
                                 let start = y + lead;
                                 for (need, nf) in kcuts {
                                     cuts.push((start + need, start + nf));
+                                }
+                                for f in kforced {
+                                    forced.push(start + f);
+                                }
+                                for (a, b) in ksolid {
+                                    solid.push((start + a, start + b));
                                 }
                                 y = start + h;
                                 prev_mb = kmb;
@@ -8011,6 +8106,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 let tallest = inner_h.iter().copied().fold(0.0f32, f32::max);
                                 stacked = Some((top + tallest, 0.0, 0.0));
                                 cuts.clear();
+                                forced.clear();
+                                solid.clear();
+                                solid.push((0.0, top + tallest));
                             }
                         }
                         let (h, mt, mb) = match c.style.height {
@@ -8027,19 +8125,40 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             Some(_) => return None,
                         };
                         cuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
-                        Some((h, mt, mb, cuts))
+                        forced.retain(|&f| f > 0.01 && f < h - 0.01);
+                        if bot > 0.0 {
+                            solid.push((h - bot, h));
+                        }
+                        Some((h, mt, mb, cuts, forced, solid))
                     }
-                    let stackable: Option<Vec<(Element, (f32, f32, f32, Vec<(f32, f32)>))>> = e
+                    // Прямые абсолюты многоколоночника — не в стопку: их
+                    // содержащий блок — весь контейнер, рисуются его детьми
+                    // рядом со стопкой (`out-of-flow-in-multicolumn-094…097`
+                    // при нулевой записи в стопке уходили в колонку).
+                    let direct_oof: Vec<Element> = e
+                        .children
+                        .iter()
+                        .filter_map(|n| match n {
+                            Node::Element(c) if out_of_flow(&c.style) => Some(c.clone()),
+                            _ => None,
+                        })
+                        .collect();
+                    let stackable: Option<Vec<(Element, Shape)>> = e
                         .children
                         .iter()
                         .filter(|n| !is_blank(n))
+                        .filter(|n| !matches!(n, Node::Element(c) if out_of_flow(&c.style)))
                         .map(|n| match n {
+                            // `position: relative` укладке не мешает — сдвиг
+                            // накладывается на месте (корень A1).
                             Node::Element(c)
                                 if !c.inline
-                                    && c.style.position.is_none()
+                                    && (c.style.position.is_none()
+                                        || c.style.position
+                                            == Some(crate::computed::Position::Relative))
                                     && c.style.float.unwrap_or(0) == 0 =>
                             {
-                                shape(c, 4).map(|h| ((*c).clone(), h))
+                                shape_full(c, 4).map(|h| ((*c).clone(), h))
                             }
                             _ => None,
                         })
@@ -8081,7 +8200,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         };
                         let children: Vec<crate::flow::StackChild> = kids
                             .into_iter()
-                            .map(|(c, (h, mt, mb, cuts))| {
+                            .map(|(c, (h, mt, mb, cuts, forced, solid))| {
                                 let mut copy = c;
                                 // Поля кладёт укладка колонок, не коробка.
                                 copy.style.margin.top = None;
@@ -8091,6 +8210,15 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // элемент GPUI рисуется один раз, а фрагмент
                                 // нужен свой в каждой колонке. Больше, чем
                                 // колонок, ребёнок занять не может.
+                                // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): строить копию
+                                // через `element(&copy, &merged, opts)`, чтобы сетка
+                                // и гибкий контейнер внутри стопки рисовались
+                                // (`grid-container-fragmentation-*`): срез
+                                // фрагментации 445 -> 405 (+12/−52) — рамки, тени,
+                                // `break-between-avoid-*`, `fieldset` ушли в
+                                // красное: общий путь элемента кладёт слои и
+                                // выносит абсолюты иначе, чем ждёт стопка.
+                                // Возвращать узкой веткой только для сетки.
                                 let build = || {
                                     styled_div_with(&copy, &inner)
                                         .children(blocks(&copy.children, &inner, opts))
@@ -8106,13 +8234,22 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // только между строками, а строк укладка
                                 // колонок не видит, и разрез приходился бы
                                 // посреди строки.
+                                // Монолитен ПРОКРУЧИВАЕМЫЙ контейнер (css-break-4
+                                // §4.1 «scroll containers»); `hidden`/`clip` —
+                                // обрезка, не прокрутка, и режется как блок
+                                // (корень A4).
                                 let scrolls = |o: Option<crate::computed::Overflow>| {
-                                    matches!(o, Some(o) if o != crate::computed::Overflow::Visible)
+                                    matches!(o, Some(crate::computed::Overflow::Scroll))
                                 };
                                 let block_kid = |n: &Node| {
                                     matches!(n, Node::Element(k)
                                         if !k.inline || k.style.display == Some(Display::Block))
                                 };
+                                // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): `contain: size` как
+                                // монолит (Blink `IsMonolithic`) — срез фрагментации
+                                // 469 -> 467 (+1/−3): `single-line-column-flex-
+                                // fragmentation-051/063` режутся у Blink иначе (рост
+                                // элемента от фрагментации, корень R5 скаута).
                                 let monolith = copy.style.break_inside_avoid
                                     || scrolls(copy.style.overflow_x)
                                     || scrolls(copy.style.overflow_y)
@@ -8140,27 +8277,36 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // резать его можно лишь между строками, а
                                     // строк укладка колонок не видит, и разрез
                                     // приходился бы посреди строки.
-                                    || !copy.children.iter().any(block_kid);
+                                    // ПУСТАЯ коробка с высотой режется по своей
+                                    // высоте (css-break-4 §4.2; корень A3).
+                                    || (copy.children.iter().any(|n| !is_blank(n))
+                                        && !copy.children.iter().any(block_kid));
                                 crate::flow::StackChild {
                                     el: build(),
                                     frags: (1..cols.max(1)).map(|_| build()).collect(),
                                     monolith,
                                     cuts,
+                                    force_before: copy.style.break_before_force,
+                                    force_after: copy.style.break_after_force,
+                                    forced,
+                                    solid,
                                     h,
                                     mt,
                                     mb,
                                 }
                             })
                             .collect();
-                        return d
-                            .child(crate::flow::ColumnStack::new(
-                                children,
-                                cols as usize,
-                                used_gap,
-                                fixed,
-                                rule,
-                            ))
-                            .into_any_element();
+                        let mut d = d.child(crate::flow::ColumnStack::new(
+                            children,
+                            cols as usize,
+                            used_gap,
+                            fixed,
+                            rule,
+                        ));
+                        for oof in &direct_oof {
+                            d = d.child(element(oof, &merged, opts));
+                        }
+                        return d.into_any_element();
                     }
                     let count = e.children.iter().filter(|n| !is_blank(n)).count().max(1);
                     let rows = count.div_ceil(cols as usize).max(1) as u16;

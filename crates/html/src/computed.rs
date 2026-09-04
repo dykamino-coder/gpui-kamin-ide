@@ -1409,6 +1409,10 @@ pub struct Computed {
     /// страницами (css-break-3 §4.1). Свойство не разбиралось вовсе, и
     /// отличить монолит от обычной коробки было нечем.
     pub break_inside_avoid: bool,
+    /// `break-before`/`break-after` (css-break-4 §3.1): принудительный разрыв
+    /// колонки/страницы перед или после коробки.
+    pub break_before_force: bool,
+    pub break_after_force: bool,
     /// `column-rule-*`: линейка между колонками.
     pub column_rule_width: Option<Len>,
     pub column_rule_visible: Option<bool>,
@@ -4692,6 +4696,18 @@ impl Computed {
             // §6.4 требует считать их одним свойством).
             "break-inside" | "page-break-inside" => {
                 self.break_inside_avoid = v.trim().starts_with("avoid")
+            }
+            "break-before" | "page-break-before" => {
+                self.break_before_force = matches!(
+                    v.trim(),
+                    "column" | "page" | "always" | "left" | "right" | "recto" | "verso" | "region"
+                );
+            }
+            "break-after" | "page-break-after" => {
+                self.break_after_force = matches!(
+                    v.trim(),
+                    "column" | "page" | "always" | "left" | "right" | "recto" | "verso" | "region"
+                );
             }
             "column-rule-width" => {
                 self.column_rule_width = match v.trim() {
