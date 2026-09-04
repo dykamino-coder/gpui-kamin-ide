@@ -73,6 +73,15 @@ deliverable, не смешивает разные BR-задачи, соблюд�
 не начинает следующую планируемую пачку без нового запуска. Подробный порядок —
 в `docs/MAINTAINER_PR_FLOW.md`.
 
+При параллельной работе subagents являются workers: они меняют только код,
+tests, fixtures и task-specific card своего deliverable и возвращают результат
+основному maintainer agent. Только основной maintainer последовательно меняет
+общий `RUNTIME_EXECUTION.md`, batch close-out, release branch и release metadata.
+Worker не помечает задачу `done`: этот статус ставится лишь после merge PR,
+повторного `fetch` и проверки результата в актуальном `origin/main`. Зелёный PR
+head, завершившийся worker или созданный release PR сами по себе завершением не
+считаются.
+
 Новые `runtime-issues/INC-*.md` с незакрытым статусом автоматически образуют
 входящую очередь incidents. PR, создающий одну такую карточку, не меняет общий
 `RUNTIME_EXECUTION.md`: выбранные ID продвигаются в текущую или планируемую
@@ -115,6 +124,9 @@ snapshot maintainer agent, относится к следующему запус
   checks; отсутствие checks явно сообщить пользователю.
 - После merge сделать `fetch` и проверить, что `origin/main` содержит ожидаемое
   дерево и последующий release commit не перезаписал изменения.
+- Общий реестр и close-out обновлять только после этой проверки. Если merge или
+  обязательный gate заблокирован, сохранить статус `blocked`/`in progress` и не
+  объявлять пачку завершённой.
 
 ## Release-операции
 

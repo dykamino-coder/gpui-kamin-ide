@@ -51,6 +51,23 @@ Blocked PR не задерживает независимые PR. Зависим
 agent заново делает `fetch` и проверяет следующую branch на semantic/file
 overlap с обновлённым `main`.
 
+### Владение общим состоянием
+
+Параллельные worker agents не редактируют `RUNTIME_EXECUTION.md`, batch
+close-out, release branch, версии или release metadata. Их результат ограничен
+кодом, tests, fixtures и task-specific card одного deliverable. Worker сообщает
+maintainer agent PR head, проверки, ограничения и предлагаемый outcome.
+
+Основной maintainer agent — единственный writer общего состояния. Он обновляет
+реестр отдельным последовательным шагом только после того, как PR смержен,
+выполнен новый `fetch` и результат найден в актуальном `origin/main`. До этого
+задача остаётся `in progress` или `blocked`; завершение worker, зелёный check или
+готовый PR не дают права поставить `done`.
+
+Если во время выполнения обнаружен общий CI/release blocker, maintainer создаёт
+или связывает отдельный bounded task, останавливает зависящие шаги и не пишет
+batch close-out до устранения blocker и повторной проверки оставшихся PR.
+
 ### Параллельное создание incidents
 
 Входящая очередь определяется файлами
@@ -158,6 +175,11 @@ Post-merge corporate observation не блокирует merge/release, если
 - Новый PR, появившийся после snapshot, относится к следующему запуску.
 - Release выполняется отдельной branch/PR строго по `CONTRIBUTING.md`; functional
   code в release PR не добавляется.
+- Пачка не получает финальный release close-out, пока обязательная публикация и
+  post-publish проверки из `CONTRIBUTING.md` не завершились успешно. Красный
+  publication workflow сохраняется как blocker; ручная публикация не
+  переименовывается в успешный pipeline-run и документируется только как
+  отдельное operational исключение.
 
 ## 7. Результат запуска
 
