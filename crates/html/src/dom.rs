@@ -168,11 +168,102 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
     parse_media(html, extra_css, Media::default())
 }
 
+/// XHTML (`application/xhtml+xml`: `<?xml` или `xmlns` XHTML в шапке) у нас
+/// разбирает HTML-парсер, а тот на НЕ-void теге признак самозакрытия
+/// игнорирует: `<div class="a"/>` открывал элемент, и всё дальнейшее
+/// вкладывалось в него (46 пар css-flexbox `.xhtml`, семьи с
+/// `<div/>`-распорками). Такие теги разворачиваются в пару `<tag …></tag>`
+/// до разбора; void-элементы и содержимое `svg`/`math` (там парсер
+/// самозакрытие понимает) не трогаются.
+fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
+    let head = &html[..html.len().min(2048)];
+    let xhtml = head.trim_start().starts_with("<?xml")
+        || head.contains("http://www.w3.org/1999/xhtml");
+    if !xhtml || !html.contains("/>") {
+        return std::borrow::Cow::Borrowed(html);
+    }
+    const VOID: &[&str] = &[
+        "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
+        "source", "track", "wbr", "basefont", "frame", "keygen",
+    ];
+    let mut out = String::with_capacity(html.len() + 256);
+    let mut rest = html;
+    let mut foreign = 0usize;
+    while let Some(at) = rest.find('<') {
+        out.push_str(&rest[..at]);
+        let tag = &rest[at..];
+        // Комментарии, объявления, инструкции — как есть.
+        if tag.starts_with("<!--") {
+            let end = tag.find("-->").map(|e| e + 3).unwrap_or(tag.len());
+            out.push_str(&tag[..end]);
+            rest = &tag[end..];
+            continue;
+        }
+        if tag.starts_with("<!") || tag.starts_with("<?") {
+            let end = tag.find('>').map(|e| e + 1).unwrap_or(tag.len());
+            out.push_str(&tag[..end]);
+            rest = &tag[end..];
+            continue;
+        }
+        // Конец тега — с учётом кавычек в значениях атрибутов.
+        let mut end = None;
+        let mut quote: Option<u8> = None;
+        for (i, b) in tag.bytes().enumerate().skip(1) {
+            match (quote, b) {
+                (Some(q), _) if b == q => quote = None,
+                (Some(_), _) => {}
+                (None, b'"') | (None, b'\'') => quote = Some(b),
+                (None, b'>') => {
+                    end = Some(i);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        let Some(end) = end else {
+            out.push_str(tag);
+            rest = "";
+            break;
+        };
+        let inner = &tag[1..end];
+        let name_end = inner
+            .find(|c: char| c.is_whitespace() || c == '/' || c == '>')
+            .unwrap_or(inner.len());
+        let name = inner[..name_end].to_ascii_lowercase();
+        if let Some(open) = name.strip_prefix('/') {
+            if open == "svg" || open == "math" {
+                foreign = foreign.saturating_sub(1);
+            }
+            out.push_str(&tag[..=end]);
+        } else if inner.trim_end().ends_with('/') {
+            if foreign > 0 || VOID.contains(&name.as_str()) || name.is_empty() {
+                out.push_str(&tag[..=end]);
+            } else {
+                let attrs = inner.trim_end().trim_end_matches('/');
+                out.push('<');
+                out.push_str(attrs);
+                out.push_str("></");
+                out.push_str(&name);
+                out.push('>');
+            }
+        } else {
+            if name == "svg" || name == "math" {
+                foreign += 1;
+            }
+            out.push_str(&tag[..=end]);
+        }
+        rest = &tag[end + 1..];
+    }
+    out.push_str(rest);
+    std::borrow::Cow::Owned(out)
+}
+
 /// То же, но с известными условиями окружения для `@media`.
 pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // Правила `@page` — от последнего РАЗОБРАННОГО документа: почистить,
     // чтобы прошлый лист не красил страницу нового.
     let _ = crate::css::take_page_decls();
+    let html = expand_xhtml_self_closing(html);
     let dom = html5ever::parse_document(RcDom::default(), Default::default())
         .from_utf8()
         .read_from(&mut html.as_bytes())
