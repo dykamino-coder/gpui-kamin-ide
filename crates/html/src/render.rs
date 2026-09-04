@@ -8920,6 +8920,7 @@ fn image(e: &Element) -> AnyElement {
 /// Только обычный блочный контейнер: у гибкого, сеточного и лунок высота
 /// приходит от раскладки, и подстановка ломает `row-auto-repeat-auto-023`.
 fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
+    let e = &pct_limits_to_px(e, inherited);
     let (Some(Len::Pct(k)), Some(Len::Px(h))) = (e.style.height, inherited.height) else {
         return e.clone();
     };
@@ -8936,6 +8937,30 @@ fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
     }
     let mut copy = e.clone();
     copy.style.height = Some(Len::Px(k * h));
+    copy
+}
+
+/// Пределы замещаемого в ДОЛЯХ — в точки от содержащего блока.
+///
+/// Размер рисунка считается на сборке (`image_with`), и доля там уже не с чем
+/// сравнивать: `max-width: 100%` у картинки отбрасывался целиком, и она
+/// вылезала за родителя (css-sizing-3 §5: пределы решаются от содержащего
+/// блока, как и сам размер). Ширина берётся от ширины содержащего блока,
+/// высота — от его высоты и только у обычного блочного контейнера: у гибкого
+/// и сеточного высота приходит от раскладки (та же оговорка, что у
+/// `pct_height_to_px`).
+fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
+    let of = |l: Option<Len>, base: Option<Len>| match (l, base) {
+        (Some(Len::Pct(k)), Some(Len::Px(b))) if b > 0.0 => Some(Len::Px(k * b)),
+        _ => l,
+    };
+    let block_cb = matches!(inherited.display, None | Some(Display::Block));
+    let h_base = block_cb.then_some(inherited.height).flatten();
+    let mut copy = e.clone();
+    copy.style.max_width = of(e.style.max_width, inherited.width);
+    copy.style.min_width = of(e.style.min_width, inherited.width);
+    copy.style.max_height = of(e.style.max_height, h_base);
+    copy.style.min_height = of(e.style.min_height, h_base);
     copy
 }
 
