@@ -176,7 +176,13 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
 /// до разбора; void-элементы и содержимое `svg`/`math` (там парсер
 /// самозакрытие понимает) не трогаются.
 fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
-    let head = &html[..html.len().min(2048)];
+    // Срез шапки — по границе символа: середина многобайтового знака
+    // (CJK в шапке) роняла разбор (`text-orientation-*-100`).
+    let mut cut = html.len().min(2048);
+    while !html.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    let head = &html[..cut];
     let xhtml = head.trim_start().starts_with("<?xml")
         || head.contains("http://www.w3.org/1999/xhtml");
     if !xhtml || !html.contains("/>") {
