@@ -916,6 +916,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.break_word = own.break_word.or(parent.break_word);
     c.balance_lines = own.balance_lines.or(parent.balance_lines);
     c.break_anywhere_strict = own.break_anywhere_strict.or(parent.break_anywhere_strict);
+    c.line_break_loose = own.line_break_loose.or(parent.line_break_loose);
     c.keep_all = own.keep_all.or(parent.keep_all);
     c.hyphens_auto = own.hyphens_auto.or(parent.hyphens_auto);
     c.lang = own.lang.clone().or(parent.lang.clone());

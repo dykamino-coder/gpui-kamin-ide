@@ -1096,6 +1096,9 @@ pub struct Computed {
     /// соседство с пробелом. Это НЕ то же самое, что `word-break: break-all`:
     /// тот рвёт только внутри слова.
     pub break_anywhere_strict: Option<bool>,
+    /// `line-break: normal` (1) / `loose` (2): уровень строгости переноса
+    /// CJK (css-text-3 §5.2); `auto`/`strict`/`anywhere` — `None`.
+    pub line_break_loose: Option<u8>,
     /// `word-break: keep-all` — иероглифическое письмо переносится ТОЛЬКО по
     /// пробелам, между знаками разрыв запрещён.
     pub keep_all: Option<bool>,
@@ -4234,6 +4237,14 @@ impl Computed {
             "line-break" => {
                 self.break_anywhere = Some(v == "anywhere");
                 self.break_anywhere_strict = Some(v == "anywhere");
+                // `auto` у Blink ведёт себя строго (`LineBreakStrictness::
+                // kDefault`), поэтому послабления — только у явных
+                // `normal`/`loose`; `line-break-normal-011`, `-loose-*`.
+                self.line_break_loose = Some(match v {
+                    "normal" => 1,
+                    "loose" => 2,
+                    _ => 0,
+                });
             }
             "hyphenate-character" => {
                 // Значение — строка в кавычках; `auto` значит «сам знак

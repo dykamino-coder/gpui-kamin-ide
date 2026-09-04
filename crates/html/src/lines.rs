@@ -50,6 +50,13 @@ pub struct Wrap {
     pub balance: bool,
     /// `white-space: pre*` — пробелы сохраняются, в начале строки не срезаются.
     pub keep_spaces: bool,
+    /// `line-break: normal` (1) / `loose` (2) — послабления UAX-14 для CJK
+    /// (css-text-3 §5.2): разрыв перед малой каной и знаком долготы (класс
+    /// CJ), в `loose` ещё и перед знаками повтора и между `…`.
+    pub loose: u8,
+    /// Язык куска — китайский или японский: часть послаблений §5.2 действует
+    /// только «if the writing system is Chinese or Japanese».
+    pub cjk_lang: bool,
 }
 
 /// Куда прижимать строку.
@@ -766,7 +773,7 @@ impl Paragraph {
         let mut best = px(0.);
         let mut start = 0usize;
         let mut chunk = |from: usize, to: usize, this: &Self| {
-            let end = if this.wrap.break_spaces {
+            let end = if this.spaces_are_content() {
                 to
             } else {
                 trim_hanging(&this.text[from..to]) + from
@@ -1392,7 +1399,9 @@ impl Paragraph {
             // вообще есть. При замере по максимальному содержимому предела
             // нет, и сохранённый пробел в ширину ВХОДИТ (`pre-wrap-017`:
             // коробка `width: max-content` выходила на знак уже).
-            let measured = if self.wrap.break_spaces || (limit.is_none() && self.wrap.keep_spaces) {
+            let measured = if self.spaces_are_content()
+                || (limit.is_none() && self.wrap.keep_spaces)
+            {
                 at
             } else {
                 trim_hanging(&self.text[start..at]) + start
@@ -1458,7 +1467,7 @@ impl Paragraph {
                         at
                     }
                 });
-                let tail = if self.wrap.break_spaces {
+                let tail = if self.spaces_are_content() {
                     cut
                 } else {
                     trim_hanging(&self.text[start..cut]) + start
@@ -1492,7 +1501,7 @@ impl Paragraph {
             // Тот же довод, что и в цикле: висеть пробелу можно только за
             // КРАЕМ, а при замере по максимальному содержимому края нет
             // (`pre-wrap-017`).
-            let tail = if self.wrap.break_spaces || (limit.is_none() && self.wrap.keep_spaces) {
+            let tail = if self.spaces_are_content() || (limit.is_none() && self.wrap.keep_spaces) {
                 end
             } else {
                 trim_hanging(&self.text[start..end]) + start
@@ -1619,6 +1628,15 @@ impl Paragraph {
     /// Точки, где строку РАЗРЕШЕНО разорвать.
     /// Правила переноса, действующие на байте `at`: сначала свой кусок, потом
     /// абзац целиком.
+    /// Сохранённые пробелы конца строки — СОДЕРЖИМОЕ, а не висящие: при
+    /// `break-spaces` (они занимают место и дают разрыв) и при `pre`
+    /// (css-text-3 §4.1.3 висят только `normal`/`nowrap`/`pre-line` — без
+    /// условий — и `pre-wrap` — условно; `pre` в списке нет:
+    /// `white-space-intrinsic-size-015`, эталон `eol-spaces-bidi-004`).
+    fn spaces_are_content(&self) -> bool {
+        self.wrap.break_spaces || (self.wrap.keep_spaces && self.wrap.nowrap)
+    }
+
     fn wrap_at(&self, at: usize) -> Wrap {
         self.spans
             .iter()
@@ -1737,6 +1755,58 @@ impl Paragraph {
                     }
                 }
                 {
+                    // `line-break: normal`/`loose` (css-text-3 §5.2): перед
+                    // малой каной и знаком долготы (класс CJ) разрыв
+                    // разрешён — UAX-14 в строгом варианте держит их при
+                    // предыдущем знаке. В `loose` ещё перед знаками повтора и
+                    // между неразделимыми `‥…` (класс IN). Слева — не пробел
+                    // и не открывающая скобка/запрет (`line-break-loose-011`,
+                    // `line-break-normal-011`). Уровень берётся ПО МЕСТУ.
+                    for (i, ch) in self.text.char_indices().skip(1) {
+                        let level = self.wrap_at(i).loose;
+                        if level == 0 {
+                            continue;
+                        }
+                        let Some(before) = self.text[..i].chars().next_back() else {
+                            continue;
+                        };
+                        let cjk = self.wrap_at(i).cjk_lang;
+                        let eased = conditional_japanese_starter(ch)
+                            || (level >= 2
+                                && (iteration_mark(ch)
+                                    || (matches!(ch, '\u{2025}' | '\u{2026}')
+                                        && matches!(before, '\u{2025}' | '\u{2026}'))))
+                            // Только для китайского/японского письма (§5.2):
+                            // `normal`/`loose` — перед волнистым тире
+                            // U+301C/U+30A0; `loose` — перед центрированной
+                            // пунктуацией, перед широкими постфиксами (PO)
+                            // и ПОСЛЕ широких префиксов (PR)
+                            // (`line-break-loose-016a/016b/017a/017b/018`).
+                            || (cjk && matches!(ch, '\u{301C}' | '\u{30A0}'))
+                            || (cjk
+                                && level >= 2
+                                && (centered_punctuation(ch) || wide_postfix(ch)));
+                        // После широкого префикса запрет UAX-14 «PR × ID»
+                        // снимается целиком — проверяется только правый знак.
+                        let after_prefix = cjk
+                            && level >= 2
+                            && wide_prefix(before)
+                            && !ch.is_whitespace()
+                            && !no_break_before(ch);
+                        if after_prefix
+                            || (eased
+                                && !before.is_whitespace()
+                                && !no_break_after(before)
+                                && !matches!(before, '\u{200B}' | '\u{2060}' | '\u{00A0}'))
+                        {
+                            out.push(Stop {
+                                at: i,
+                                mandatory: false,
+                            });
+                        }
+                    }
+                }
+                {
                     // Мягкий перенос — ЯВНАЯ точка переноса: она сильнее
                     // запретов типографики. UAX-14 держит вместе перенос и
                     // следующую за ним кавычку (`hyphens-i18n-manual-003`:
@@ -1819,15 +1889,17 @@ impl Paragraph {
         // разрешено только ПЕРЕД первой из них.
         // `line-break: anywhere` и `overflow-wrap: anywhere` снимают запреты
         // типографики целиком — их точки остаются.
+        // `line-break: loose` в китайском/японском письме снимает запрет и
+        // после ШИРОКИХ префиксов (css-text-3 §5.2: «breaks after prefixes
+        // (PR) with East Asian Width A/F/W», `line-break-loose-018`).
         out.retain(|s| {
             let w = self.wrap_at(s.at);
             s.mandatory
                 || w.anywhere
                 || w.wrap_anywhere
-                || self.text[..s.at]
-                    .chars()
-                    .next_back()
-                    .is_none_or(|c| !no_break_after(c))
+                || self.text[..s.at].chars().next_back().is_none_or(|c| {
+                    !no_break_after(c) || (w.loose >= 2 && w.cjk_lang && wide_prefix(c))
+                })
         });
         out.sort_by_key(|s| (s.at, !s.mandatory));
         out.dedup_by_key(|s| s.at);
@@ -2633,6 +2705,9 @@ impl Element for Paragraph {
             // Висящие пробелы конца строки при письме справа налево уходят по
             // правилу L1 на ЛЕВЫЙ край и отодвигали бы текст от края коробки.
             // Рисовать их незачем: они пустые.
+            // ★ ЗАМЕРЕНО: рисовать их и при `pre` — `trailing-space-and-
+            // text-alignment-rtl-002` 0.02 -> 1.67 (пробел вставал справа от
+            // текста и сдвигал его); место в ширине строки они держат.
             let visible = if self.wrap.rtl && !self.wrap.break_spaces {
                 range.start..range.start + trim_hanging(&self.text[range.clone()])
             } else {
@@ -3667,7 +3742,69 @@ pub fn wrap_of(c: &crate::computed::Computed) -> Wrap {
         rtl: c.rtl == Some(true),
         balance: c.balance_lines == Some(true),
         keep_spaces: c.keep_spaces == Some(true),
+        loose: c.line_break_loose.unwrap_or(0),
+        cjk_lang: c
+            .lang
+            .as_deref()
+            .is_some_and(|l| l.starts_with("ja") || l.starts_with("zh")),
     }
+}
+
+/// Центрированная пунктуация (css-text-3 §5.2, `loose` в ja/zh): U+30FB,
+/// U+FF1A, U+FF1B, U+FF65, U+203C, U+2047-2049, U+FF01, U+FF1F.
+fn centered_punctuation(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{30FB}' | '\u{FF1A}' | '\u{FF1B}' | '\u{FF65}' | '\u{203C}'
+            | '\u{2047}'..='\u{2049}' | '\u{FF01}' | '\u{FF1F}'
+    )
+}
+
+/// Постфиксы класса PO с восточноазиатской шириной A/F/W (§5.2, `loose` в
+/// ja/zh): °, ‰, ℃, ％ и полноширинные знаки процента/цента.
+fn wide_postfix(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{00B0}' | '\u{2030}' | '\u{2031}' | '\u{2103}' | '\u{2109}' | '\u{FF05}'
+            | '\u{FFE0}' | '\u{2032}' | '\u{2033}'
+    )
+}
+
+/// Префиксы класса PR с шириной A/F/W (§5.2, `loose` в ja/zh): €, №, ￥, ￡,
+/// ＄, ₩, §, ¶.
+fn wide_prefix(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{20AC}' | '\u{2116}' | '\u{FFE5}' | '\u{FFE1}' | '\u{FF04}' | '\u{FFE6}'
+            | '\u{00A7}' | '\u{00B6}' | '\u{20A9}'
+    )
+}
+
+/// Класс CJ по UAX-14: малая кана, знак долготы, их полуширинные формы.
+/// `unicode_linebreak` разрешает CJ как NS (строгий вариант) — перед ними
+/// разрыва нет; `line-break: normal`/`loose` его возвращают (css-text-3 §5.2:
+/// «breaks before Japanese small kana or the Katakana-Hiragana prolonged
+/// sound mark, i.e. characters from the Unicode line breaking class CJ»).
+fn conditional_japanese_starter(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{3041}' | '\u{3043}' | '\u{3045}' | '\u{3047}' | '\u{3049}' | '\u{3063}'
+            | '\u{3083}' | '\u{3085}' | '\u{3087}' | '\u{308E}' | '\u{3095}' | '\u{3096}'
+            | '\u{30A1}' | '\u{30A3}' | '\u{30A5}' | '\u{30A7}' | '\u{30A9}' | '\u{30C3}'
+            | '\u{30E3}' | '\u{30E5}' | '\u{30E7}' | '\u{30EE}' | '\u{30F5}' | '\u{30F6}'
+            | '\u{30FC}'
+            | '\u{31F0}'..='\u{31FF}'
+            | '\u{FF67}'..='\u{FF70}'
+    )
+}
+
+/// Знаки повтора (css-text-3 §5.2, только `loose`): U+3005, U+303B, U+309D,
+/// U+309E, U+30FD, U+30FE.
+fn iteration_mark(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{3005}' | '\u{303B}' | '\u{309D}' | '\u{309E}' | '\u{30FD}' | '\u{30FE}'
+    )
 }
 
 /// Можно ли разорвать текст ровно на этом месте — граница ли это грозди.
