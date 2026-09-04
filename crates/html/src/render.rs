@@ -1070,6 +1070,41 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     {
                         e.style.align_self = Some(Align::Start);
                     }
+                    // `flex-basis` задаёт размер СОДЕРЖИМОГО (css-flexbox-1 §7.2.3:
+                    // «flex-basis determines the size of the content box, unless
+                    // otherwise specified such as by box-sizing»), а в раскладку
+                    // уходит внешний размер — как `width`/`height` в `apply`, основа
+                    // получает отбивку и рамку по ГЛАВНОЙ оси родителя
+                    // (`flexbox-mbp-horiz-*`, `flexbox-justify-content-horiz-002`).
+                    if matches!(inherited.display, Some(Display::Flex) | Some(Display::InlineFlex))
+                        && inherited.vertical.is_none()
+                        && e.style.border_box != Some(true)
+                        && let Some(Len::Px(b)) = e.style.flex_basis
+                    {
+                        let px_of = |l: Option<Len>| match l {
+                            Some(Len::Px(v)) => v,
+                            _ => 0.0,
+                        };
+                        let bd = e.style.borders();
+                        let row = matches!(
+                            inherited.flex_dir,
+                            None
+                                | Some(crate::computed::FlexDir::Row)
+                                | Some(crate::computed::FlexDir::RowReverse)
+                        );
+                        let extra = if row {
+                            px_of(e.style.padding.left)
+                                + px_of(e.style.padding.right)
+                                + px_of(bd.left)
+                                + px_of(bd.right)
+                        } else {
+                            px_of(e.style.padding.top)
+                                + px_of(e.style.padding.bottom)
+                                + px_of(bd.top)
+                                + px_of(bd.bottom)
+                        };
+                        e.style.flex_basis = Some(Len::Px(b + extra));
+                    }
                     // Элемент сетки с `aspect-ratio`: `normal` ведёт себя как
                     // `start`, а не `stretch` (css-grid-2 §6.6.1 «…except for
                     // items with a preferred aspect ratio»), в оси, где размер
