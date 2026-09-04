@@ -11759,13 +11759,31 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             .child(outer)
             .into_any_element();
     }
-    if root_table {
-        return div()
-            .flex()
-            .flex_row()
-            .w_full()
-            .child(outer)
-            .into_any_element();
+    // Стол с `width: auto` СЖИМАЕТСЯ по содержимому (§17.5.2): у нас это
+    // делает гибкий ряд-обёртка. Приём `align_self: FlexStart` выше работает
+    // только когда родитель — гибкая колонка нашей сборки; под `body` со
+    // сброшенными полями путь другой, и стол растягивался во всю ширину
+    // (`html-display-table`, `root-box-002`). Обёртка снимает зависимость от
+    // родителя. Элемент гибкого контейнера, сетки и ячейки не заворачивается:
+    // там стол — сам элемент раскладки, и обёртка забрала бы его свойства.
+    let shrink_wrap = root_table
+        || (e.style.width.is_none()
+            // Заданная высота или её порог приходят от РАСКЛАДКИ родителя:
+            // обёртка рвёт эту связь (★ ЗАМЕРЕНО: без отсечки
+            // `min-height-table-2` 0.00 -> 19.24).
+            && e.style.height.is_none()
+            && e.style.min_height.is_none()
+            && !inherited.stretched
+            && e.style.flex_basis.is_none()
+            && e.style.align_self.is_none()
+            && e.style.grid_col.is_none()
+            && e.style.grid_row.is_none());
+    if shrink_wrap {
+        let mut wrap = div().flex().flex_row();
+        if root_table {
+            wrap = wrap.w_full();
+        }
+        return wrap.child(outer).into_any_element();
     }
     outer.into_any_element()
 }
