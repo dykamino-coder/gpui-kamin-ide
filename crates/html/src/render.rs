@@ -953,6 +953,123 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     e.style.float = None;
                     e.style.clear = None;
                     e.style.vertical_align = None;
+                    // ★ Эти три правила жили в ветке ОБЫЧНОГО потока (`else`
+                    // ниже) с проверками на Flex/Grid-родителя — и были
+                    // недостижимы по построению (скаут flexbox: пробы
+                    // `flex2-colbasis-*` показали, что компенсация основы не
+                    // действует). Их место — здесь, среди детей ряда/сетки.
+                    let positioned_out = matches!(
+                        e.style.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    );
+                    // `<canvas>` в сетке: атрибуты `width/height` — природный
+                    // размер и соотношение сторон, а не CSS-размер (HTML
+                    // §4.12.5, §15.3.10). Ось, растянутая выравниванием
+                    // (`stretch`, css-align-3 §6.1) или переносимая из
+                    // заданной автором другой оси (css-sizing-4 «transferred
+                    // size»), становится `auto`, соотношение — на коробку
+                    // (`replaced-element-011`, `grid-item-inline-contribution-*`,
+                    // `replaced-alignment-with-aspect-ratio-001`).
+                    if e.tag == "canvas"
+                        && matches!(inherited.display, Some(Display::Grid) | Some(Display::InlineGrid))
+                        && !positioned_out
+                        && (e.style.attr_sized.0 || e.style.attr_sized.1)
+                    {
+                        let stretch = |own: Option<Align>, items: Option<Align>| {
+                            own == Some(Align::Stretch)
+                                || (own.is_none() && items == Some(Align::Stretch))
+                        };
+                        let free_x = e.style.attr_sized.0
+                            && (stretch(e.style.justify_self, inherited.justify_items)
+                                || !e.style.attr_sized.1);
+                        let free_y = e.style.attr_sized.1
+                            && (stretch(e.style.align_self, inherited.align_items)
+                                || !e.style.attr_sized.0);
+                        if free_x || free_y {
+                            if let (Some(Len::Px(w)), Some(Len::Px(h))) =
+                                (e.style.attr_width, e.style.attr_height)
+                                && h > 0.0
+                                && e.style.aspect_ratio.is_none()
+                            {
+                                e.style.aspect_ratio = Some(w / h);
+                            }
+                            if free_x {
+                                e.style.width = None;
+                            }
+                            if free_y {
+                                e.style.height = None;
+                            }
+                        }
+                    }
+                    let ratio_ok = e.style.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0);
+                    // `flex-basis` задаёт размер СОДЕРЖИМОГО (css-flexbox-1 §7.2.3:
+                    // «flex-basis determines the size of the content box, unless
+                    // otherwise specified such as by box-sizing»), а в раскладку
+                    // уходит внешний размер — как `width`/`height` в `apply`, основа
+                    // получает отбивку и рамку по ГЛАВНОЙ оси родителя
+                    // (`flexbox-mbp-horiz-*`, `flexbox-justify-content-horiz-002`).
+                    if matches!(inherited.display, Some(Display::Flex) | Some(Display::InlineFlex))
+                        && inherited.vertical.is_none()
+                        && e.style.border_box != Some(true)
+                        && let Some(Len::Px(b)) = e.style.flex_basis
+                    {
+                        let px_of = |l: Option<Len>| match l {
+                            Some(Len::Px(v)) => v,
+                            _ => 0.0,
+                        };
+                        let bd = e.style.borders();
+                        let row = matches!(
+                            inherited.flex_dir,
+                            None
+                                | Some(crate::computed::FlexDir::Row)
+                                | Some(crate::computed::FlexDir::RowReverse)
+                        );
+                        let extra = if row {
+                            px_of(e.style.padding.left)
+                                + px_of(e.style.padding.right)
+                                + px_of(bd.left)
+                                + px_of(bd.right)
+                        } else {
+                            px_of(e.style.padding.top)
+                                + px_of(e.style.padding.bottom)
+                                + px_of(bd.top)
+                                + px_of(bd.bottom)
+                        };
+                        e.style.flex_basis = Some(Len::Px(b + extra));
+                    }
+                    // Элемент сетки с `aspect-ratio` при `normal` (css-grid-2
+                    // §6.6.1): «sized consistent with the size calculation
+                    // rules for block-level elements» — строчная ось заполняет
+                    // область (как stretch), а БЛОЧНАЯ идёт из соотношения, не
+                    // растягиваясь на ряд: там `start`
+                    // (`grid-aspect-ratio-001/007/010/038`). ★ ЗАМЕРЕНО: `start`
+                    // и по строчной оси — `grid-aspect-ratio-018/038` в красное.
+                    if ratio_ok
+                        && matches!(inherited.display, Some(Display::Grid) | Some(Display::InlineGrid))
+                        && !positioned_out
+                        && inherited.vertical.is_none()
+                    {
+                        let auto_w = matches!(e.style.width, None | Some(Len::Auto));
+                        let auto_h = matches!(e.style.height, None | Some(Len::Auto));
+                        // Обе оси auto: строчная заполняет область, блочная — из
+                        // соотношения. Блочная определена: строчная — из
+                        // соотношения (CSS2 §10.3.2 для замещаемого с
+                        // соотношением; css-sizing-4 §5.1).
+                        if auto_w
+                            && !auto_h
+                            && e.style.justify_self.is_none()
+                            && inherited.justify_items != Some(Align::Stretch)
+                        {
+                            e.style.justify_self = Some(Align::Start);
+                        }
+                        if auto_h
+                            && e.style.align_self.is_none()
+                            && inherited.align_items != Some(Align::Stretch)
+                        {
+                            e.style.align_self = Some(Align::Start);
+                        }
+                    }
                     // `flex-basis: content` — основа по содержимому, и
                     // заданный ГЛАВНЫЙ размер при ней не действует. Какая ось
                     // главная, знает только родитель, поэтому размер снимается
@@ -1063,12 +1180,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     // (`block-aspect-ratio-002/006/…`).
                     // Нулевое и бесконечное отношение — как `auto`
                     // (css-sizing-4 §5.1; `zero-or-infinity-002`).
-                    let ratio_ok = e.style.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0);
                     let positioned_out = matches!(
                         e.style.position,
                         Some(crate::computed::Position::Absolute)
                             | Some(crate::computed::Position::Fixed)
                     );
+                    let ratio_ok = e.style.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0);
                     if ratio_ok
                         && !ordered_context
                         && matches!(e.style.width, None | Some(Len::Auto))
@@ -1079,60 +1196,6 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                         && !positioned_out
                     {
                         e.style.align_self = Some(Align::Start);
-                    }
-                    // `flex-basis` задаёт размер СОДЕРЖИМОГО (css-flexbox-1 §7.2.3:
-                    // «flex-basis determines the size of the content box, unless
-                    // otherwise specified such as by box-sizing»), а в раскладку
-                    // уходит внешний размер — как `width`/`height` в `apply`, основа
-                    // получает отбивку и рамку по ГЛАВНОЙ оси родителя
-                    // (`flexbox-mbp-horiz-*`, `flexbox-justify-content-horiz-002`).
-                    if matches!(inherited.display, Some(Display::Flex) | Some(Display::InlineFlex))
-                        && inherited.vertical.is_none()
-                        && e.style.border_box != Some(true)
-                        && let Some(Len::Px(b)) = e.style.flex_basis
-                    {
-                        let px_of = |l: Option<Len>| match l {
-                            Some(Len::Px(v)) => v,
-                            _ => 0.0,
-                        };
-                        let bd = e.style.borders();
-                        let row = matches!(
-                            inherited.flex_dir,
-                            None
-                                | Some(crate::computed::FlexDir::Row)
-                                | Some(crate::computed::FlexDir::RowReverse)
-                        );
-                        let extra = if row {
-                            px_of(e.style.padding.left)
-                                + px_of(e.style.padding.right)
-                                + px_of(bd.left)
-                                + px_of(bd.right)
-                        } else {
-                            px_of(e.style.padding.top)
-                                + px_of(e.style.padding.bottom)
-                                + px_of(bd.top)
-                                + px_of(bd.bottom)
-                        };
-                        e.style.flex_basis = Some(Len::Px(b + extra));
-                    }
-                    // Элемент сетки с `aspect-ratio`: `normal` ведёт себя как
-                    // `start`, а не `stretch` (css-grid-2 §6.6.1 «…except for
-                    // items with a preferred aspect ratio»), в оси, где размер
-                    // auto (`grid-aspect-ratio-001/007/010`).
-                    if ratio_ok
-                        && matches!(inherited.display, Some(Display::Grid) | Some(Display::InlineGrid))
-                        && !positioned_out
-                    {
-                        if matches!(e.style.width, None | Some(Len::Auto))
-                            && e.style.justify_self.is_none()
-                        {
-                            e.style.justify_self = Some(Align::Start);
-                        }
-                        if matches!(e.style.height, None | Some(Len::Auto))
-                            && e.style.align_self.is_none()
-                        {
-                            e.style.align_self = Some(Align::Start);
-                        }
                     }
                     Node::Element(e)
                 }
@@ -9464,6 +9527,10 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     for child in &e.children {
         let Node::Element(li) = child else { continue };
         if li.tag != "li" {
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО: рисовать не-`li` ребёнка списка обычным
+            // потоком (эталон `flexbox_direction-row-reverse-ref` — `<ul>` из
+            // `<span>` пуст). Срез списков+выключки 383 пары: приобретено 0,
+            // потеряно 2 (`foo-counter-reversed-007a/b` 0.38 -> 0.53).
             continue;
         }
         // Номер пункта считает ОБЩИЙ счётчик `list-item` (css-lists-3

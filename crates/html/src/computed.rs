@@ -805,6 +805,10 @@ pub struct Computed {
     /// пиксель оставляет.
     pub attr_width: Option<Len>,
     pub attr_height: Option<Len>,
+    /// Размер по оси пришёл из АТРИБУТА (`<canvas width>`), а не из CSS:
+    /// у холста атрибуты — природный размер (HTML §4.12.5), не `width`
+    /// (§15.3.10 их к нему не относит), и в сетке ось может растянуться.
+    pub attr_sized: (bool, bool),
     pub basis_content: Option<bool>,
     pub align_items: Option<Align>,
     /// `align-self` — про сам элемент; отдельное поле, иначе он выравнивал

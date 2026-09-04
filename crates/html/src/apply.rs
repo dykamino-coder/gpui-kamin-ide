@@ -572,6 +572,16 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     {
         d = d.items_end();
     }
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (повторно, теперь узко): зеркало поперечной оси у
+    // гибкой КОЛОНКИ при `direction: rtl` (css-flexbox-1 §5.1: cross-start
+    // колонки — inline-start письма, то есть правый край) — умолчание
+    // `items_end` и зеркало явных `start/end` у `align-items` и `align-self`
+    // детей (флаг `cross_mirror` из `inline::inherit`). Срез из 15 пар
+    // (`flexbox_rtl-direction`, `flexbox-align-self-vert-rtl-002..005`,
+    // `flexbox-align-self-vert-002`, `flexbox-align-self-horiz-002`,
+    // `gap-001-rtl` + заложники `text-orientation-*-100`): 6 -> 6, ноль
+    // сдвигов. Те пары держит другое (у `flexbox_rtl-direction` расходятся
+    // поля и высота коробки, а не сторона прижима).
     match c.align_items {
         Some(Align::Center) => d = d.items_center(),
         Some(Align::Start) => d = d.items_start(),

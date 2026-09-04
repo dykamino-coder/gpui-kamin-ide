@@ -1219,9 +1219,11 @@ fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, 
     }
     if style.width.is_none() {
         style.width = style.attr_width;
+        style.attr_sized.0 = tag == "canvas" && style.attr_width.is_some();
     }
     if style.height.is_none() {
         style.height = style.attr_height;
+        style.attr_sized.1 = tag == "canvas" && style.attr_height.is_some();
     }
 }
 
