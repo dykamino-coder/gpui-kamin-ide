@@ -5277,10 +5277,21 @@ fn paragraph_pieces(
             merged.abs_static = true;
             // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
             // путь блоков давал пустую коробку (clip-path-ellipse-2-ref).
+            // Картинка — тем же порядком: у неё детей нет вовсе, и путь
+            // блоков давал пустую коробку, то есть абсолютная картинка без
+            // краёв не рисовалась ВООБЩЕ (`clip-rect-v*`, проба
+            // `probe/absimg2.html`).
             let inner = if e.tag == "svg" {
                 let mut copy = e.clone();
                 copy.style.position = None;
                 crate::svg::element(&copy).unwrap_or_else(|| image(&copy))
+            } else if e.tag == "img" {
+                let mut copy = e.clone();
+                copy.style.position = None;
+                // `clip: rect(...)` и маска у картинки живут в буфере группы:
+                // путь наложения идёт мимо `grouped`, и без обёртки картинка
+                // рисовалась бы целиком (`clip-rect-v*`).
+                grouped(image(&copy), &e.style)
             } else {
                 styled_div_with(e, &merged)
                     .children(blocks(&e.children, &merged, opts))
