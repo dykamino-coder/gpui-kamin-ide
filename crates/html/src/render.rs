@@ -8263,16 +8263,16 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             || matches!(
                                 k.tag.as_str(),
                                 "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
-                                    | "table"
                             )
+                            // Таблица и ячейка монолитами НЕ являются
+                            // (css-break-4 §4.1: монолитен замещаемый,
+                            // прокручиваемый и `break-inside: avoid`);
+                            // строка таблицы — да, но её не режет и укладка.
                             || matches!(
                                 k.style.display,
                                 Some(Display::InlineBlock)
                                     | Some(Display::InlineFlex)
                                     | Some(Display::InlineGrid)
-                                    | Some(Display::InlineTable)
-                                    | Some(Display::Table)
-                                    | Some(Display::TableCell)
                             )
                             || (k.children.iter().any(|n| !is_blank(n))
                                 && !k.children.iter().any(block_kid))
@@ -8602,16 +8602,14 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                             | "embed"
                                             | "object"
                                             | "iframe"
-                                            | "table"
                                     )
+                                    // Таблица и ячейка — не монолиты
+                                    // (css-break-4 §4.1).
                                     || matches!(
                                         copy.style.display,
                                         Some(Display::InlineBlock)
                                             | Some(Display::InlineFlex)
                                             | Some(Display::InlineGrid)
-                                            | Some(Display::InlineTable)
-                                            | Some(Display::Table)
-                                            | Some(Display::TableCell)
                                     )
                                     // Сплошной СТРОЧНЫЙ набор тоже монолит:
                                     // резать его можно лишь между строками, а
