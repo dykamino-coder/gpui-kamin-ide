@@ -24,6 +24,7 @@ extensions/claude-bridge/webview/dist/
 # ── Инсталлеры и генерат NSIS ────────────────────────────────
 KaminIDE_*-setup.exe
 KaminIDE_*-setup.exe.sig
+KaminIDE_*_provenance.json
 /installer.nsi
 extensions/claude-bridge/server/installer/
 

@@ -63,6 +63,17 @@ export async function gitObjectId(repoRoot, revision, suffix = "^{commit}") {
   return requireString(stdout.trim(), `git object for ${revision}`, GIT_OID_RE);
 }
 
+export async function assertCleanWorktree(repoRoot) {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=all"],
+    { cwd: repoRoot },
+  );
+  if (stdout.trim()) {
+    throw new Error("Release provenance requires a clean git worktree");
+  }
+}
+
 export function validateProvenance(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Provenance must be a JSON object");

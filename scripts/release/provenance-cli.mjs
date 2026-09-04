@@ -2,7 +2,11 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createProvenance, verifyProvenance } from "./provenance.mjs";
+import {
+  assertCleanWorktree,
+  createProvenance,
+  verifyProvenance,
+} from "./provenance.mjs";
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
@@ -30,6 +34,7 @@ async function main() {
 
   if (command === "create") {
     const outputPath = resolve(required(values, "output"));
+    await assertCleanWorktree(repoRoot);
     const provenance = await createProvenance({ repoRoot, installerPath });
     await writeFile(outputPath, `${JSON.stringify(provenance, null, 2)}\n`, {
       flag: "wx",
