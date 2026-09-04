@@ -2392,12 +2392,16 @@ fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     } else if style.monospace == Some(true) {
         font.family = crate::metrics::mono_family().into();
     }
-    if let Some(w) = style.font_weight {
-        font.weight = FontWeight(w as f32);
-    }
-    if style.italic == Some(true) {
-        font.style = FontStyle::Italic;
-    }
+    // Вес и курсив — ВСЕГДА от стиля куска: `None` в слитом стиле — это
+    // обычное начертание, а не «как у базы» (база абзаца строится по
+    // первому куску, и `abc<b>def</b>ghi` набирался одним прогоном его
+    // веса — сквозной дефект по всему корпусу).
+    font.weight = FontWeight(style.font_weight.unwrap_or(400) as f32);
+    font.style = if style.italic == Some(true) {
+        FontStyle::Italic
+    } else {
+        FontStyle::Normal
+    };
     if let Some(pct) = style.font_stretch {
         font.stretch = gpui::FontStretch::from_percent(pct);
     }

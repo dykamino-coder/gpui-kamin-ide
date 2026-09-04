@@ -707,35 +707,25 @@ impl WindowTextSystem {
         force_width: Option<Pixels>,
         letter_spacing: Pixels,
     ) -> Arc<LineLayout> {
-        let mut last_run = None::<&TextRun>;
-        let mut last_font: Option<FontId> = None;
         let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
         font_runs.clear();
 
         for run in runs.iter() {
-            let decoration_changed = if let Some(last_run) = last_run
-                && last_run.color == run.color
-                && last_run.underline == run.underline
-                && last_run.strikethrough == run.strikethrough
-            // we do not consider differing background color relevant, as it does not affect glyphs
-            // && last_run.background_color == run.background_color
-            {
-                false
-            } else {
-                last_run = Some(run);
-                true
-            };
-
             let run_size = run.font_size.unwrap_or(font_size);
+            // KaminIDE patch: шрифт прогона разрешается ДО сравнения — прежде
+            // сравнивался `last_font` с самим собой, и после первого прогона
+            // все сливались в один независимо от семейства/веса/курсива
+            // (`abc<b>def</b>ghi` набирался одним начертанием по всему корпусу).
+            // Прогоны одного шрифта и кегля НЕ рвутся по цвету/подчёркиванию:
+            // декорации красятся по `TextRun`, а лишняя граница диапазона в
+            // DirectWrite ломает кернинг и лигатуры через `<span>`.
+            let font_id = self.resolve_font(&run.font);
             if let Some(font_run) = font_runs.last_mut()
-                && Some(font_run.font_id) == last_font
+                && font_run.font_id == font_id
                 && font_run.font_size == run_size
-                && !decoration_changed
             {
                 font_run.len += run.len;
             } else {
-                let font_id = self.resolve_font(&run.font);
-                last_font = Some(font_id);
                 font_runs.push(FontRun {
                     len: run.len,
                     font_id,

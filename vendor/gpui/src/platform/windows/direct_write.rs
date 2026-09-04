@@ -35,6 +35,11 @@ struct FontInfo {
     /// требует css-writing-modes-3 §7.3: «In vertical typographic mode,
     /// fonts are used with their vertical metrics».
     vert_advance: bool,
+    /// KaminIDE patch: физическая грань (PostScript-имя) — у синтетических
+    /// bold/oblique она та же, что у исходной: ID глифов совпадают.
+    face_key: String,
+    /// KaminIDE patch: запрошенные возможности OpenType — ключ шейпинга.
+    features_key: String,
 }
 
 pub(crate) struct DirectWriteTextSystem(RwLock<DirectWriteState>);
@@ -447,6 +452,8 @@ impl DirectWriteState {
                     .tag_value_list()
                     .iter()
                     .any(|(tag, value)| tag == "vert" && *value > 0),
+                face_key: identifier.postscript_name.clone(),
+                features_key: format!("{:?}", font_features.tag_value_list()),
             };
             let font_id = FontId(self.fonts.len());
             self.fonts.push(font_info);
@@ -668,6 +675,18 @@ impl DirectWriteState {
                 text_layout.SetFlowDirection(DWRITE_FLOW_DIRECTION_RIGHT_TO_LEFT)?;
             }
 
+            // KaminIDE patch: шейпинг через границу коробок (css-text-3 §7.4
+            // «boundary shaping»). DirectWrite рвёт шейпинг на границе диапазона
+            // формата, и `ع<b>ع</b>ع` набирался изолированными формами
+            // (Blink шейпит с контекстом соседей). Прогон той же ФИЗИЧЕСКОЙ
+            // грани — отличие лишь синтетическим bold/oblique, ID глифов
+            // совпадают — диапазона не получает: он набирается гранью
+            // действующего формата, а после раскладки его глифы переводятся
+            // на свой `font_id` (растеризация — уже с симуляцией).
+            // Настоящая другая грань (свой файл) рвёт шейпинг, как и прежде.
+            let mut folded: Vec<(usize, usize, FontId)> = Vec::new();
+            let mut applied = font_runs[0].font_id;
+            let mut applied_size = font_runs[0].font_size;
             let mut first_run = true;
             for run in font_runs {
                 if first_run {
@@ -678,8 +697,23 @@ impl DirectWriteState {
                 let current_text = text
                     .get(utf8_offset..(utf8_offset + run.len))
                     .unwrap_or("");
+                let run_utf8_start = utf8_offset;
                 utf8_offset += run.len;
                 let current_text_utf16_length = current_text.encode_utf16().count() as u32;
+                let base = &self.fonts[applied.0];
+                if run.font_size == applied_size
+                    && font_info.is_system_font == base.is_system_font
+                    && font_info.face_key == base.face_key
+                    && font_info.features_key == base.features_key
+                {
+                    if run.font_id != applied {
+                        folded.push((run_utf8_start, run.len, run.font_id));
+                    }
+                    utf16_offset += current_text_utf16_length;
+                    continue;
+                }
+                applied = run.font_id;
+                applied_size = run.font_size;
 
                 let collection = if font_info.is_system_font {
                     &self.system_font_collection
@@ -746,6 +780,43 @@ impl DirectWriteState {
             }
             drawn?;
             let width = px(renderer_context.width);
+            if !folded.is_empty() {
+                let mut out: Vec<ShapedRun> = Vec::with_capacity(runs.len());
+                for run in runs.drain(..) {
+                    let (base_id, size) = (run.font_id, run.font_size);
+                    let base_key = &self.fonts[base_id.0].face_key;
+                    let mut cur: Option<ShapedRun> = None;
+                    for g in run.glyphs {
+                        // Только глифы ТОЙ ЖЕ грани: запасной шрифт DirectWrite
+                        // для недостающих знаков остаётся при своём.
+                        let id = folded
+                            .iter()
+                            .find(|&&(s, l, fid)| {
+                                g.index >= s
+                                    && g.index < s + l
+                                    && self.fonts[fid.0].face_key == *base_key
+                            })
+                            .map_or(base_id, |&(_, _, fid)| fid);
+                        match cur.as_mut() {
+                            Some(c) if c.font_id == id => c.glyphs.push(g),
+                            _ => {
+                                if let Some(c) = cur.take() {
+                                    out.push(c);
+                                }
+                                cur = Some(ShapedRun {
+                                    font_id: id,
+                                    glyphs: vec![g],
+                                    font_size: size,
+                                });
+                            }
+                        }
+                    }
+                    if let Some(c) = cur {
+                        out.push(c);
+                    }
+                }
+                runs = out;
+            }
 
             Ok(LineLayout {
                 font_size,
