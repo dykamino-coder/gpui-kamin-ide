@@ -8413,6 +8413,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 if !x.inline || x.style.display == Some(Display::Block))
                         };
                         k.style.break_inside_avoid
+                            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): считать монолитом
+                            // и `contain: size` (css-contain-2 §size
+                            // containment). Срез css-break + css-multicol
+                            // 1495 пар: 472 -> 467, приобретено 0, потеряно 5
+                            // (`single-line-{column,row}-flex-fragmentation-
+                            // 010/011/051/063` в «красное видно»,
+                            // `overflow-clip-012` 0.00 -> 0.52).
                             || scrolls(k.style.overflow_x)
                             || scrolls(k.style.overflow_y)
                             || matches!(

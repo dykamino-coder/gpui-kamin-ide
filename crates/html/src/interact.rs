@@ -3151,8 +3151,14 @@ impl Element for LatePlace {
             // (`abs-pos-border-offset-003`: ортогональный `.parent` прижат к
             // правому краю vrl-контейнера); строчный щуп 0×0 сдвига не
             // получает.
+            // Прижим к ПРАВОМУ краю дырки верен только когда сторону задаёт
+            // `direction: rtl` САМОГО КОНТЕЙНЕРА (`now.rtl` — направление
+            // потока, а не собственное письмо коробки: css-writing-modes-4
+            // §7.1, Blink `absolute_utils.cc` берёт сторону у
+            // `container_writing_direction`). При `direction: ltr` статическая
+            // позиция — левый край дырки без добавки (рукав ниже).
             (Some(hole), None)
-                if now.own_vertical && !now.vertical && hole.size.width > px(0.0) =>
+                if now.own_vertical && !now.vertical && now.rtl && hole.size.width > px(0.0) =>
             {
                 gpui::point(
                     hole.origin.x + bounds.size.width - bounds.origin.x,
