@@ -1528,18 +1528,42 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // места обнуляются (css-flexbox-1 §8.1) — ровно как auto-поля
                 // абсолюта (§3.8; `fit-content-block-size-abspos` с
                 // переполнением). Поперечные не-auto поля — у держателя.
-                let keep = |l: Option<Len>| if auto(l) { None } else { l };
+                // Поперечные поля — у держателя целиком, включая auto: с
+                // заданным размером и краями с обеих сторон они центрируют
+                // сам абсолют (css-position-3 §3.8; `inline-size: 100px;
+                // margin: auto; inset: 0`).
                 if block_axis {
-                    holder.margin.left = keep(e.style.margin.left);
-                    holder.margin.right = keep(e.style.margin.right);
+                    holder.margin.left = e.style.margin.left;
+                    holder.margin.right = e.style.margin.right;
                 } else {
-                    holder.margin.top = keep(e.style.margin.top);
-                    holder.margin.bottom = keep(e.style.margin.bottom);
+                    holder.margin.top = e.style.margin.top;
+                    holder.margin.bottom = e.style.margin.bottom;
                 }
+                // Поперечный размер держателя — border-box внутренней коробки:
+                // её рамка и отбивка прибавляются (у держателя своих нет).
+                let px_of = |l: Option<Len>| match l {
+                    Some(Len::Px(v)) => v,
+                    _ => 0.0,
+                };
+                let bd = e.style.borders();
                 if block_axis {
-                    holder.width = e.style.width.filter(|l| !kw_len(Some(*l)));
+                    let extra = px_of(e.style.padding.left)
+                        + px_of(e.style.padding.right)
+                        + px_of(bd.left)
+                        + px_of(bd.right);
+                    holder.width = match e.style.width {
+                        Some(Len::Px(w)) => Some(Len::Px(w + extra)),
+                        other => other.filter(|l| !kw_len(Some(*l))),
+                    };
                 } else {
-                    holder.height = e.style.height.filter(|l| !kw_len(Some(*l)));
+                    let extra = px_of(e.style.padding.top)
+                        + px_of(e.style.padding.bottom)
+                        + px_of(bd.top)
+                        + px_of(bd.bottom);
+                    holder.height = match e.style.height {
+                        Some(Len::Px(h)) => Some(Len::Px(h + extra)),
+                        other => other.filter(|l| !kw_len(Some(*l))),
+                    };
                 }
                 let mut inner = e.clone();
                 inner.style.position = None;
