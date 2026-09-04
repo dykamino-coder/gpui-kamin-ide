@@ -8245,6 +8245,35 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     fn shape(c: &Element, depth: u8) -> Option<(f32, f32, f32, Vec<(f32, f32)>)> {
                         shape_full(c, depth).map(|s| (s.0, s.1, s.2, s.3))
                     }
+                    /// Высота сетки по ЯВНЫМ дорожкам рядов: все дорожки в
+                    /// точках, плюс зазоры между ними. `None` — дорожки
+                    /// неизвестны или не все в точках.
+                    fn grid_rows_px(c: &Computed) -> Option<f32> {
+                        use crate::computed::{Track, TrackSize};
+                        if !matches!(
+                            c.display,
+                            Some(Display::Grid) | Some(Display::InlineGrid)
+                        ) {
+                            return None;
+                        }
+                        let rows = c.grid_rows.as_ref()?;
+                        if rows.is_empty() {
+                            return None;
+                        }
+                        let mut total = 0.0f32;
+                        for t in rows {
+                            match t {
+                                TrackSize::Single(Track::Px(v)) => total += v,
+                                _ => return None,
+                            }
+                        }
+                        let gap = match c.gap {
+                            Some((Some(Len::Px(v)), _)) => v,
+                            _ => 0.0,
+                        };
+                        Some(total + gap * (rows.len() as f32 - 1.0))
+                    }
+
                     /// Монолит по css-break-4 §4.1 (Blink `IsMonolithic`): замещаемый,
                     /// атомарный строчный, прокручиваемый, `break-inside: avoid`,
                     /// строчное содержимое (строк укладка не видит) — пустая
@@ -8478,7 +8507,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     if bot == 0.0 { mb.max(last_mb) } else { mb },
                                 ),
                                 None if kids.is_empty() => (top + bot, mt, mb),
-                                None => return None,
+                                // Сетка без заданной высоты: её высоту знают
+                                // ЯВНЫЕ дорожки рядов (`grid-template-rows:
+                                // 200px`) с зазорами между ними. Без этой
+                                // оценки укладка колонок отказывалась от всей
+                                // коробки, и многоколоночник с сеткой внутри
+                                // уходил в запасную сетку целиком
+                                // (`scout-break-2026-09b.md`, корень C1).
+                                None => match grid_rows_px(&c.style) {
+                                    Some(v) => (v + top + bot, mt, mb),
+                                    None => return None,
+                                },
                             },
                             Some(_) => return None,
                         };
