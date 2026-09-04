@@ -3005,6 +3005,13 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     // горизонтальном режиме и при vertical-rl (блочный поток идёт от правого
     // края, css-writing-modes §block-flow). У vertical-lr `direction`
     // строчную ось держит вертикальной, горизонталь остаётся левой.
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): якорь по `direction` и в вертикальном
+    // письме (css-writing-modes-4 §7.1: `direction` ведёт строчную ось) плюс
+    // rtl-ветки `LatePlace` с отражением по y для вертикального контейнера —
+    // css-writing-modes 570 -> 570, L-a12 408 -> 408: ни одна пара не
+    // сдвинулась. Класс «rtl в вертикальном письме» (12 пар, 2.67) держится
+    // не на якоре, а на статической точке rtl-строки (корень B части 5
+    // `target/scout-vabs-stretch-2026-09.md`).
     let anchor_end = if now.vertical {
         now.vertical_rl
     } else {
