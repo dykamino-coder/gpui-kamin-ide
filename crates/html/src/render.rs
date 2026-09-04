@@ -8000,7 +8000,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     _ => opts.base_size(),
                 },
             };
-            let count_from_width = match (e.style.column_width, e.style.width) {
+            // `column-*` — только у блочных контейнеров (css-multicol-1 §2):
+            // сетка ими не режется (`grid-multicol-001`).
+            let multicol = multicol_container(&e.style);
+            let column_width = e.style.column_width.filter(|_| multicol);
+            let column_count = e.style.column_count.filter(|_| multicol);
+            let count_from_width = match (column_width, e.style.width) {
                 (Some(Len::Px(w)), Some(Len::Px(box_w))) if w > 0.0 => {
                     Some((((box_w + used_gap) / (w + used_gap)).floor().max(1.0)) as u16)
                 }
@@ -8009,20 +8014,20 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // Used column-count (css-multicol §3.4, как ResolveUsedColumnCount
             // в blink): заданы оба — МЕНЬШЕЕ из числа и «сколько влезает»;
             // только ширина — сколько влезает.
-            let used_count = match (e.style.column_count, count_from_width) {
+            let used_count = match (column_count, count_from_width) {
                 (Some(c), Some(fw)) => Some(c.min(fw)),
                 (Some(c), None) => Some(c),
                 (None, fw) => fw,
             };
-            let width_driven = e.style.column_count.is_none()
+            let width_driven = column_count.is_none()
                 && count_from_width.is_none()
-                && matches!(e.style.column_width, Some(Len::Px(w)) if w > 0.0);
+                && matches!(column_width, Some(Len::Px(w)) if w > 0.0);
             if let Some(cols) = used_count.filter(|n| *n > 1).or(width_driven.then_some(0)) {
                 // Сплошной текст режется на колонки по строкам, а не по детям:
                 // один длинный абзац иначе оставался в первой колонке целиком.
                 // `columns: auto <w>` без ширины коробки решается в замере —
                 // туда уходит и число, и ширина колонки (§3.4).
-                let col_w_px = match e.style.column_width {
+                let col_w_px = match column_width {
                     Some(Len::Px(w)) if w > 0.0 => Some(w),
                     _ => None,
                 };
@@ -8529,7 +8534,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .gap_x(px(gap));
                     d.style().grid_auto_flow = Some(gpui::GridAutoFlow::Column);
                 }
-            } else if let Some(Len::Px(w)) = e.style.column_width {
+            } else if let Some(Len::Px(w)) = column_width {
                 // Ширина колонки без их числа — это «сколько влезет»: ровно
                 // то, что умеет короткая форма дорожек в GPUI.
                 d = d.grid().grid_cols_min(px(w));

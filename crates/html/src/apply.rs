@@ -280,10 +280,23 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
             // Тело повтора бывает из НЕСКОЛЬКИХ дорожек
             // (`repeat(auto-fill, 50px 50px)`) — раскладка это уже умеет,
             // список идёт в неё как есть.
-            let tracks: Vec<gpui::GridTrack> = vec![match r.and_then(|r| r.track_pct) {
+            let lo = match r.and_then(|r| r.track_pct) {
                 Some(k) => gpui::GridTrack::Percent(k),
                 None => gpui::GridTrack::Pixels(px(min)),
-            }];
+            };
+            // `minmax(N, auto | k fr)`: максимум остаётся у дорожки — растяжка
+            // остатком (§12.8) и доли считает сама раскладка.
+            let track = match r {
+                Some(r) if r.max_auto => {
+                    gpui::GridTrack::MinMax(Box::new((lo, gpui::GridTrack::Auto)))
+                }
+                Some(r) if r.max_fr.is_some() => gpui::GridTrack::MinMax(Box::new((
+                    lo,
+                    gpui::GridTrack::Fraction(r.max_fr.unwrap_or(1.0)),
+                ))),
+                _ => lo,
+            };
+            let tracks: Vec<gpui::GridTrack> = vec![track];
             d = along_line(
                 d,
                 vec![gpui::GridTrack::AutoRepeat {
@@ -302,9 +315,17 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
     // `grid-template-rows: repeat(auto-fill, …)` уходил в никуда — ряды
     // становились неявными, нулевой высоты.
     if let Some(r) = c.grid_rows_repeat() {
-        let unit = match r.track_pct {
+        let lo = match r.track_pct {
             Some(k) => gpui::GridTrack::Percent(k),
             None => gpui::GridTrack::Pixels(px(r.track.unwrap_or(0.0))),
+        };
+        // Максимум `minmax(N, auto | k fr)` — как у колонок выше.
+        let unit = if r.max_auto {
+            gpui::GridTrack::MinMax(Box::new((lo, gpui::GridTrack::Auto)))
+        } else if let Some(k) = r.max_fr {
+            gpui::GridTrack::MinMax(Box::new((lo, gpui::GridTrack::Fraction(k))))
+        } else {
+            lo
         };
         let line = vec![gpui::GridTrack::AutoRepeat {
             fit: r.fit,

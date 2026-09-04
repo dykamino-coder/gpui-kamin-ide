@@ -2490,6 +2490,7 @@ impl Computed {
                     self.grid_cols = count_tracks(v);
                     self.grid_tracks = Some(list);
                 }
+                let (max_auto, max_fr) = auto_fill_max(v);
                 self.auto_repeat_cols = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_min,
@@ -2497,6 +2498,8 @@ impl Computed {
                     intrinsic: auto_fill_intrinsic(v),
                     intrinsic_min: auto_fill_intrinsic(v) && v.contains("min-content"),
                     fit_px: auto_fill_fit_px(v),
+                    max_auto,
+                    max_fr,
                 });
             }
             // То же по РЯДАМ: у раскладки лунками дорожки задают ряды, когда
@@ -2509,6 +2512,7 @@ impl Computed {
                 if let Some(list) = parse_tracks(v).filter(|l| l.len() > 1) {
                     self.grid_rows = Some(list);
                 }
+                let (max_auto, max_fr) = auto_fill_max(v);
                 self.auto_repeat_rows = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_row,
@@ -2516,6 +2520,8 @@ impl Computed {
                     intrinsic: auto_fill_intrinsic(v),
                     intrinsic_min: auto_fill_intrinsic(v) && v.contains("min-content"),
                     fit_px: auto_fill_fit_px(v),
+                    max_auto,
+                    max_fr,
                 });
             }
             // ★ ЗАМЕРЕНО И ОТКАЧЕНО: ИМЕНА ЛИНИЙ целиком (план — в
@@ -7022,6 +7028,31 @@ pub struct AutoRepeat {
     pub intrinsic_min: bool,
     /// Потолок `fit-content(N)`: дорожка по содержимому, но не шире N.
     pub fit_px: Option<f32>,
+    /// Максимум `minmax(N, auto)`: дорожка растягивается остатком
+    /// (css-grid-2 §12.8 «Stretch auto Tracks»); прежде терялся, и живые
+    /// дорожки `auto-fit` оставались минимумом
+    /// (`grid-content-distribution-with-collapsed-tracks-004`).
+    pub max_auto: bool,
+    /// Максимум `minmax(N, k fr)`: доля остатка.
+    pub max_fr: Option<f32>,
+}
+
+/// Максимум `minmax(lo, hi)` в авто-повторе: `auto` или доля `fr`.
+fn auto_fill_max(v: &str) -> (bool, Option<f32>) {
+    let Some(rest) = v.split("minmax(").nth(1) else {
+        return (false, None);
+    };
+    let Some(inner) = rest.find(')').map(|i| &rest[..i]) else {
+        return (false, None);
+    };
+    let hi = inner.splitn(2, ',').nth(1).unwrap_or("").trim();
+    if hi == "auto" {
+        return (true, None);
+    }
+    let fr = hi
+        .strip_suffix("fr")
+        .and_then(|k| k.trim().parse::<f32>().ok());
+    (false, fr)
 }
 
 /// Размер повторяемой дорожки в `repeat(auto-fill | auto-fit, …)`.
