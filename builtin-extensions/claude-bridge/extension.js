@@ -50390,6 +50390,41 @@ var RollingLogWriter = class {
   fd = null;
   bytes = 0;
   permanentlyClosed = false;
+  /**
+   * Append one structured record atomically with respect to rotation.
+   *
+   * `write()` fills the remaining bytes of the current generation before it
+   * rotates — right for a raw stream, wrong for `[incident] <json>` lines:
+   * a rotation boundary inside the record left its head in `.1` and its tail
+   * in the new file, and neither fragment parsed as JSONL. Here a record that
+   * fits an empty generation but not the current remainder rotates first and
+   * is then written whole. A record larger than `maxBytes` is refused (returns
+   * `false`) instead of weakening the retention cap; the caller decides what
+   * bounded marker to emit instead.
+   */
+  writeRecord(record) {
+    if (this.permanentlyClosed) return false;
+    const data = Buffer.isBuffer(record) ? record : Buffer.from(record, "utf8");
+    if (data.length === 0) return true;
+    if (data.length > this.options.maxBytes) return false;
+    if (this.fd === null) this.open();
+    if (this.bytes > 0 && this.bytes + data.length > this.options.maxBytes) this.rotate();
+    const fd = this.descriptor();
+    if (fd === null) return false;
+    let offset = 0;
+    while (offset < data.length) {
+      try {
+        const written = (0, import_node_fs6.writeSync)(fd, data, offset, data.length - offset);
+        if (written <= 0) return false;
+        this.bytes += written;
+        offset += written;
+      } catch {
+        this.closeDescriptor();
+        return false;
+      }
+    }
+    return true;
+  }
   write(chunk) {
     if (this.permanentlyClosed) return;
     const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
@@ -50415,6 +50450,9 @@ var RollingLogWriter = class {
   close() {
     this.permanentlyClosed = true;
     this.closeDescriptor();
+  }
+  descriptor() {
+    return this.fd;
   }
   closeDescriptor() {
     if (this.fd === null) return;
