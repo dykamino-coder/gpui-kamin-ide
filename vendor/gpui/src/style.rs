@@ -231,6 +231,9 @@ pub struct Style {
     pub align_content: Option<AlignContent>,
     /// How should contained within this item be aligned in the main/inline axis
     pub justify_content: Option<JustifyContent>,
+    /// KaminIDE patch: приставка `safe` у выравнивания (css-align-3 §4.4) —
+    /// `align_items`, `align_self`, `align_content`, `justify_content`.
+    pub safe_alignment: (bool, bool, bool, bool),
     /// How large should the gaps between items in a flex container be?
     #[refineable]
     pub gap: Size<DefiniteLength>,
@@ -852,6 +855,7 @@ impl Style {
 impl Default for Style {
     fn default() -> Self {
         Style {
+            safe_alignment: (false, false, false, false),
             display: Display::Block,
             visibility: Visibility::Visible,
             overflow: Point {

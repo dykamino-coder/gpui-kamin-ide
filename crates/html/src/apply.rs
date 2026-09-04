@@ -589,6 +589,23 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         Some(Align::Baseline) => d = d.items_baseline(),
         Some(Align::Stretch) | None => {}
     }
+    // Приставка `safe` (css-align-3 §4.4): при переполнении области
+    // выравнивание падает к началу, иначе содержимое уезжает за край и
+    // становится недоступным. Раскладка читает это из стиля
+    // (`flexbox-safe-overflow-position-*`).
+    // Лунки решают `safe` сами (`render.rs`: раздача не ставится, когда лунка
+    // переполнена) — второй заход в раскладке им мешает (★ ЗАМЕРЕНО:
+    // `grid-lanes-justify-content-001` 0.00 -> 1.37).
+    if c.display != Some(Display::GridLanes)
+        && (c.align_items_safe || c.align_self_safe || c.align_content_safe || c.justify_content_safe)
+    {
+        d.style().safe_alignment = Some((
+            c.align_items_safe,
+            c.align_self_safe,
+            c.align_content_safe,
+            c.justify_content_safe,
+        ));
+    }
     // `align-self` — про САМ элемент, а не про его детей. Раньше оба свойства
     // писались в одно поле, и элемент выравнивал содержимое вместо себя.
     if let Some(a) = c.align_self {

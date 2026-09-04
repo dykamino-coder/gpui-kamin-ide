@@ -161,6 +161,13 @@ pub trait CoreStyle {
     fn border(&self) -> Rect<LengthPercentage> {
         Style::<Self::CustomIdent>::DEFAULT.border
     }
+    /// KaminIDE patch: приставка `safe` у выравнивания
+    /// (`align_items`, `align_self`, `align_content`, `justify_content`) —
+    /// css-align-3 §4.4.
+    #[inline(always)]
+    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
+        (false, false, false, false)
+    }
 }
 
 /// Sets the layout used for the children of this node
@@ -445,6 +452,13 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// How should content contained within this item be aligned in the main/inline axis
     #[cfg(any(feature = "flexbox", feature = "grid"))]
     pub justify_content: Option<JustifyContent>,
+    /// KaminIDE patch: приставка `safe` у выравнивания (css-align-3 §4.4):
+    /// при переполнении области выравнивание падает к `start`, чтобы
+    /// содержимое не уезжало за начало и не становилось недоступным.
+    /// Порядок: `align_items`, `align_self`, `align_content`,
+    /// `justify_content`.
+    #[cfg(any(feature = "flexbox", feature = "grid"))]
+    pub safe_alignment: (bool, bool, bool, bool),
     /// How large should the gaps between items in a grid or flex container be?
     #[cfg(any(feature = "flexbox", feature = "grid"))]
     #[cfg_attr(feature = "serde", serde(default = "style_helpers::zero"))]
@@ -538,6 +552,7 @@ impl<S: CheapCloneStr> Style<S> {
         gap: Size::zero(),
         // Alignment
         #[cfg(any(feature = "flexbox", feature = "grid"))]
+        safe_alignment: (false, false, false, false),
         align_items: None,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         align_self: None,
@@ -660,6 +675,10 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn border(&self) -> Rect<LengthPercentage> {
         self.border
     }
+    #[inline(always)]
+    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
+        self.safe_alignment
+    }
 }
 
 impl<T: CoreStyle> CoreStyle for &'_ T {
@@ -724,6 +743,10 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn border(&self) -> Rect<LengthPercentage> {
         (*self).border()
+    }
+    #[inline(always)]
+    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
+        (*self).safe_alignment()
     }
 }
 

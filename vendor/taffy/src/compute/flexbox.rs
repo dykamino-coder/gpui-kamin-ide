@@ -35,6 +35,9 @@ struct FlexItem {
     max_size: Size<Option<f32>>,
     /// The cross-alignment of this item
     align_self: AlignSelf,
+    /// KaminIDE patch: приставка `safe` у выравнивания этого элемента
+    /// (css-align-3 §4.4).
+    safe_align_self: bool,
 
     /// The overflow style of the item
     overflow: Point<Overflow>,
@@ -148,6 +151,13 @@ struct AlgoConstants {
     align_content: AlignContent,
     /// The justify_content property of this node
     justify_content: Option<JustifyContent>,
+    /// KaminIDE patch: приставка `safe` у выравнивания содержимого и
+    /// элементов (css-align-3 §4.4).
+    safe_align_content: bool,
+    /// То же для главной оси.
+    safe_justify_content: bool,
+    /// То же для поперечной оси элементов (`align-items: safe …`).
+    safe_align_items: bool,
 
     /// The border-box size of the node being laid out (if known)
     node_outer_size: Size<Option<f32>>,
@@ -481,6 +491,9 @@ fn compute_constants(
         align_items,
         align_content,
         justify_content,
+        safe_align_content: style.safe_alignment().2,
+        safe_justify_content: style.safe_alignment().3,
+        safe_align_items: style.safe_alignment().0,
         node_outer_size,
         node_inner_size,
         container_size,
@@ -548,6 +561,13 @@ fn generate_anonymous_flex_items(
                     .border()
                     .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis)),
                 align_self: child_style.align_self().unwrap_or(constants.align_items),
+                // KaminIDE patch: `safe` берётся у элемента, если он задал
+                // своё выравнивание, иначе — у контейнера.
+                safe_align_self: if child_style.align_self().is_some() {
+                    child_style.safe_alignment().1
+                } else {
+                    constants.safe_align_items
+                },
                 overflow: child_style.overflow(),
                 scrollbar_width: child_style.scrollbar_width(),
                 flex_grow: child_style.flex_grow(),
@@ -1708,7 +1728,8 @@ fn distribute_remaining_free_space(flex_lines: &mut [FlexLine], constants: &Algo
             let num_items = line.items.len();
             let layout_reverse = constants.dir.is_reverse();
             let gap = constants.gap.main(constants.dir);
-            let is_safe = false; // TODO: Implement safe alignment
+            // KaminIDE patch: приставка `safe` дошла из стиля.
+            let is_safe = constants.safe_justify_content;
             let raw_justify_content_mode = constants.justify_content.unwrap_or(JustifyContent::FlexStart);
             let justify_content_mode =
                 apply_alignment_fallback(free_space, num_items, raw_justify_content_mode, is_safe);
@@ -1877,7 +1898,8 @@ fn align_flex_lines_per_align_content(flex_lines: &mut [FlexLine], constants: &A
     let gap = constants.gap.cross(constants.dir);
     let total_cross_axis_gap = sum_axis_gaps(gap, num_lines);
     let free_space = constants.inner_container_size.cross(constants.dir) - total_cross_size - total_cross_axis_gap;
-    let is_safe = false; // TODO: Implement safe alignment
+    // KaminIDE patch: приставка `safe` дошла из стиля.
+    let is_safe = constants.safe_align_content;
 
     let align_content_mode = apply_alignment_fallback(free_space, num_lines, constants.align_content, is_safe);
 
