@@ -168,9 +168,10 @@ dry-run собирает image без registry login/push и проверяет 
 Docker workflow запускается отдельно только после успешного gate точного commit
 в `main`.
 
-Тот же workflow запускается после trusted push в `main`, чтобы поддерживать
-общий Cargo/npm cache основной ветки. PR-run может читать cache своей base
-branch, но не публикует многогигабайтный Cargo cache в изолированный
+Тот же workflow запускается после trusted push в `main`, проверяет весь диапазон
+доставленных commit через `github.event.before` и поддерживает общий Cargo/npm
+cache основной ветки. PR-run может читать cache своей base branch, но не
+публикует многогигабайтный Cargo cache в изолированный
 `refs/pull/*/merge`; это сохраняет ускорение между разными PR и не ослабляет
 полный Rust gate для Rust-изменений. Аналогично, Docker dry-run в PR может
 читать общий BuildKit cache, но обновляет его только trusted run в `main`,

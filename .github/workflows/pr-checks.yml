@@ -40,10 +40,16 @@ jobs:
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
         shell: bash
         run: |
           set -euo pipefail
           base_sha="$PR_BASE_SHA"
+          if [[ -z "$base_sha" && "$EVENT_NAME" == "push" && \
+                "$PUSH_BEFORE" =~ ^[0-9a-f]{40}$ && \
+                ! "$PUSH_BEFORE" =~ ^0+$ ]]; then
+            base_sha="$PUSH_BEFORE"
+          fi
           if [[ -z "$base_sha" ]]; then base_sha="$(git rev-parse HEAD^)"; fi
           echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
 
