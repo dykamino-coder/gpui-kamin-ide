@@ -9290,16 +9290,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // Использованный размер замещённого после §10.4: если пределы его
         // изменили, коробка обязана ужаться вместе с рисунком.
         let mut узкая: Option<(f32, f32)> = None;
-        let ratio_of = || {
-            // ЗАЯВЛЕННОЕ отношение сильнее природного (css-sizing-4 §4):
-            // `aspect-ratio: 1/1` на картинке 2:1 обязан её переформатировать.
-            // Форма `auto <ratio>` — обратный случай, там природное сильнее,
-            // но разбор её теряет целиком (`computed.rs`: `split_once('/')`
-            // спотыкается о слово `auto`), поэтому в поле лежит только
-            // заявленное без `auto`.
-            if let Some(r) = e.style.aspect_ratio.filter(|r| *r > 0.0) {
-                return Some(r);
-            }
+        let natural_ratio = || {
             crate::background::source(local.unwrap_or(src))
                 .map(|s| s.intrinsic())
                 .and_then(|i| {
@@ -9308,6 +9299,19 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                         _ => None,
                     })
                 })
+        };
+        let ratio_of = || {
+            // ЗАЯВЛЕННОЕ отношение сильнее природного (css-sizing-4 §4):
+            // `aspect-ratio: 1/1` на картинке 2:1 обязан её переформатировать.
+            // Запись `auto <ratio>` — обратный случай: природное сильнее, а
+            // заявленное служит запасным (§5.1).
+            if let Some(r) = e.style.aspect_ratio.filter(|r| *r > 0.0) {
+                return Some(r);
+            }
+            // `auto <ratio>`: природное сильнее, заявленное — запасное.
+            natural_ratio()
+                .filter(|r| *r > 0.0)
+                .or(e.style.aspect_ratio_auto.filter(|r| *r > 0.0))
         };
         if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
             image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0))

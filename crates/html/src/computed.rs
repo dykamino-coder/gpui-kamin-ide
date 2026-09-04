@@ -1013,6 +1013,12 @@ pub struct Computed {
 
     /// `aspect-ratio` — отношение ширины к высоте.
     pub aspect_ratio: Option<f32>,
+    /// Отношение из записи `auto <ratio>` (css-sizing-4 §5.1): у замещаемого
+    /// оно ЗАПАСНОЕ — природное сильнее. Отдельным полем, потому что
+    /// НЕзамещаемой коробке отношение из этой записи наша раскладка пока не
+    /// выражает (★ ЗАМЕРЕНО: в общем поле `block-aspect-ratio-002/015/016/018/
+    /// 043/047`, `grid-aspect-ratio-005/008` уходили с 0.00 в 14.25).
+    pub aspect_ratio_auto: Option<f32>,
     /// Коробка АБСОЛЮТНА, но позиционирование с неё снято ради статической
     /// позиции (`render.rs`). Само `position` там обнуляется, а знать о нём
     /// нужно: размер по свободной строчной оси у абсолюта считается по
@@ -3588,20 +3594,31 @@ impl Computed {
 
             // --- Раскладка --------------------------------------------------
             "aspect-ratio" => {
-                // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): разбирать `auto <ratio>`
-                // (css-sizing-4 §5.1), отбрасывая слово и оставляя отношение
-                // ВСЕМ коробкам — срез css-sizing 264 -> 259 (+3/−8):
-                // у замещаемого с природным соотношением `auto` велит
-                // предпочесть природное (`replaced-element-020/029/030`), а
-                // для этого нужен признак «auto рядом», который отрисовка
-                // замещаемого учтёт в `image_with::ratio_of`. Возвращать
-                // парой «отношение + флаг», не голым отношением.
-                self.aspect_ratio = match v.split_once('/') {
+                // `auto <ratio>` (css-sizing-4 §5.1): слово `auto` означает,
+                // что у замещаемого ПРИРОДНОЕ соотношение сильнее заявленного,
+                // а у остальных коробок действует заявленное. Прошлый заход
+                // отбрасывал слово и отдавал отношение всем подряд — срез
+                // css-sizing 264 -> 259 (+3/−8, `replaced-element-020/029/030`);
+                // теперь слово живёт флагом, и отрисовка замещаемого его
+                // учитывает (`image_with::ratio_of`).
+                let body = v
+                    .split_whitespace()
+                    .filter(|t| !t.eq_ignore_ascii_case("auto"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let ratio = match body.split_once('/') {
                     Some((a, b)) => match (a.trim().parse::<f32>(), b.trim().parse::<f32>()) {
                         (Ok(a), Ok(b)) if b != 0.0 => Some(a / b),
                         _ => None,
                     },
-                    None => v.parse().ok(),
+                    None => body.trim().parse().ok(),
+                };
+                if v.split_whitespace().any(|t| t.eq_ignore_ascii_case("auto")) {
+                    self.aspect_ratio_auto = ratio;
+                    self.aspect_ratio = None;
+                } else {
+                    self.aspect_ratio_auto = None;
+                    self.aspect_ratio = ratio;
                 }
             }
             "order" => self.order = v.parse().ok(),
