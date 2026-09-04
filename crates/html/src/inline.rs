@@ -644,7 +644,20 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let ratio_height = parent.aspect_ratio.is_some()
         && matches!(parent.height, None | Some(crate::value::Len::Auto))
         && matches!(parent.width, Some(crate::value::Len::Px(_)));
-    c.cb_height_def = parent.root_box
+    // Ребёнок элемента КОЛОНКИ, у которой главный размер неопределён:
+    // блок неопределён, и доля высоты ведёт себя как `auto`
+    // (css-flexbox-1 §9.8 п.1-2; `percentage-heights-016/020`), кроме
+    // случая, когда сам элемент имеет высоту в точках или основу в точках.
+    let indefinite_column_item = parent.flex_main_def == Some(false)
+        && !matches!(parent.height, Some(crate::value::Len::Px(_)))
+        && !matches!(parent.flex_basis, Some(crate::value::Len::Px(_)))
+        // Соотношение сторон САМО даёт главный размер: строчную ось
+        // элемента колонки решает контейнер, и высота выводится из неё
+        // (Blink `AspectRatioProvidesBlockMainSize`;
+        // `flex-aspect-ratio-032/033` — ширина у элемента даже не задана).
+        && parent.aspect_ratio.is_none();
+    c.cb_height_def = !indefinite_column_item
+        && (parent.root_box
         || laid_out_parent
         || parent.stretched
         || ratio_height
@@ -655,7 +668,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
                 parent.position,
                 Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
             ),
-        };
+        });
     c.color = own.color.or(parent.color);
     // `background-color: inherit` переносит вычисленное значение родителя —
     // вместе с нерешённой относительной функцией (css-color-5 §4.1).

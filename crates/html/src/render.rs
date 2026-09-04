@@ -983,6 +983,26 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     e.style.float = None;
                     e.style.clear = None;
                     e.style.vertical_align = None;
+                    // Элемент КОЛОНКИ: определён ли главный размер
+                    // контейнера (css-flexbox-1 §9.8 п.1). От этого зависит,
+                    // определён ли блок у ЕГО детей — доля высоты внутри
+                    // элемента колонки без высоты решается как `auto`
+                    // (Blink `flex_layout_algorithm.cc`:
+                    // `is_initial_block_size_indefinite`).
+                    if matches!(
+                        inherited.display,
+                        Some(Display::Flex) | Some(Display::InlineFlex)
+                    ) && matches!(
+                        inherited.flex_dir,
+                        Some(FlexDir::Col) | Some(FlexDir::ColReverse)
+                    ) {
+                        let definite = matches!(inherited.height, Some(Len::Px(_)))
+                            || (matches!(inherited.height, Some(Len::Pct(_)))
+                                && inherited.cb_height_def)
+                            || inherited.stretched
+                            || inherited.root_box;
+                        e.style.flex_main_def = Some(definite);
+                    }
                     // ★ Эти три правила жили в ветке ОБЫЧНОГО потока (`else`
                     // ниже) с проверками на Flex/Grid-родителя — и были
                     // недостижимы по построению (скаут flexbox: пробы
