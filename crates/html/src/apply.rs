@@ -1091,6 +1091,19 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         if l == Len::Auto {
             continue;
         }
+        // Доля края по оси БЛОКА у относительно сдвинутой коробки считается
+        // от высоты содержащего блока, а когда та не задана — край
+        // вычисляется в `auto`, то есть в ноль (CSS2 §9.3.2: «If the height
+        // of the containing block is not specified explicitly … the value
+        // computes to auto»; Blink `relative_utils.cc::ResolveInset` отдаёт
+        // `nullopt` при неопределённом размере).
+        if c.position == Some(Position::Relative)
+            && matches!(f, 0 | 2)
+            && matches!(l, Len::Pct(_))
+            && !c.cb_height_def
+        {
+            continue;
+        }
         let g = len_to_gpui(l);
         d = match f {
             0 => d.top(g),
