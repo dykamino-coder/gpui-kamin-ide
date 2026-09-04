@@ -1371,6 +1371,19 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // `row-subgrid-abs-pos-002` — рядные лунки, они ждут обтяжку
                 // по РЯДАМ, корень R4 из `target/scout-subgrid-orthogonal-
                 // 2026-09.md`).
+                // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): строчный путь для абсолюта
+                // с объявленным `display: inline` на статической позиции
+                // (css-position-3 §staticpos-rect). Срез 12086 пар вместе с
+                // патчем барьера `contain`: 9343 -> 9346 (+9/-6), причём вся
+                // шестёрка потерь — этого рукава:
+                // `inline-level-absolute-in-block-level-context-002`
+                // (0.26->0.52), `-007` (0.00->0.54), `-010` (0.00->1.04),
+                // `position-absolute-dynamic-static-position-inline`
+                // (0.00->2.10), `abs-pos-border-offset-003` (0.46->1.75),
+                // `css-flexbox-height-animation-stretch` (0.10->1.90), против
+                // всего двух приобретений (`-009`, `-012`). Строчная ветка
+                // теряет полосу обтекания и рамочные смещения — рукав нужен
+                // не здесь, а в `atom_element`.
                 Some(_) => false,
                 // Дети гибкого контейнера и сетки блокируются по CSS: каждый
                 // сам себе элемент раскладки. Без оговорки `<span>` без
@@ -4324,6 +4337,13 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
                     ))
             }))
             .and_then(|(i, ch)| margin_px(ch.style.margin.bottom, &ch.style).map(|v| (i, v)));
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): запрет поглощения, когда в хвосте
+        // есть коробка с клиренсом (CSS 2.1 §8.3.1, «does not collapse with a top
+        // margin that has clearance»): срез CSS2 6204 пары, 5691 -> 5691 (+0/-0),
+        // целевые `margin-collapse-clear-012/-013` как были «красное видно»,
+        // так и остались. Значит потеря не здесь: до этого места дело либо не
+        // доходит (гейты выше), либо `child_bottom` уже `None` — искать
+        // надо во втором проходе (`cleared_run`).
         if let Some((i, v)) = child_bottom {
             // Минимальная высота выше содержимого: поле последнего ребёнка
             // ПРИМЫКАЕТ к его нижнему краю (§8.3.1), но наружу не идёт и
@@ -13278,6 +13298,13 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 | TrackSize::MinMax(..)
         )
     };
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): подразумеваемые колонки лунок,
+    // рождённые только `grid-column-start` детей, мерить по содержимому с
+    // умолчанием `grid-auto-columns: auto` (css-grid-2 §7.2.3). Срез 6445 пар
+    // (сетка/позиционирование/флекс): целевая `column-explicit-placement-001`
+    // стала ХУЖЕ, 6.77 -> 7.53, `-002` не сдвинулась (3.88 -> 3.86).
+    // Ширина по содержимому здесь не та ось: тесты ждут дорожки от
+    // ЯВНОГО размещения с учётом щелей, а не свободную усадку.
     if !row_dir && tracks.iter().any(intrinsic_track) {
         let n = tracks.len();
         // ПРОБОВАЛИ И ОТКАТИЛИ: считать вклад по СОДЕРЖИМОМУ плюс края

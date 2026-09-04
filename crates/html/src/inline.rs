@@ -607,7 +607,18 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
-    c.transform_ancestor = parent.transform_ancestor || parent.transform.is_some();
+    // Барьер содержащего блока для `position: fixed` — не только трансформ.
+    // css-contain-1 §containment-layout п.1: обособление раскладки делает
+    // элемент содержащим блоком для потомков и с `absolute`, И С `fixed`;
+    // §containment-paint говорит то же про `contain: paint`. Для абсолюта
+    // этот список уже полон (`establishes_cb`), а `fixed` признавал барьером
+    // только `transform` и висел от окна вместо предка
+    // (`contain-layout-containing-block-fixed-001`,
+    // `contain-paint-containing-block-fixed-001`).
+    c.transform_ancestor = parent.transform_ancestor
+        || parent.transform.is_some()
+        || parent.contain_layout == Some(true)
+        || parent.contain_paint == Some(true);
     c.cb_rtl = parent.rtl == Some(true);
     // Относительный сдвиг строчного предка КОПИТСЯ вниз (§9.4.3: сдвиг несёт
     // с собой всё содержимое коробки). Куски вне потока его получали
