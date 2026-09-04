@@ -737,10 +737,28 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         if on(inh::Z_INDEX) {
             c.z_index = parent.z_index;
         }
-        if on(inh::OUTLINE_W) {
-            let w = parent.outline.and_then(|o| o.width);
+        if own.inherit_bits
+            & (inh::OUTLINE_W | inh::OUTLINE_C | inh::OUTLINE_S | inh::OUTLINE_O)
+            != 0
+        {
+            let from = parent.outline.unwrap_or_default();
             let mut o = c.outline.unwrap_or_default();
-            o.width = w;
+            if on(inh::OUTLINE_W) {
+                o.width = from.width;
+            }
+            if on(inh::OUTLINE_C) {
+                // `currentColor` вычисляется В СЕБЯ (css-color-4 §resolving):
+                // у родителя он хранится ПУСТЫМ слотом, и наследовать надо
+                // пустоту — цвет возьмётся от СВОЕГО текста, а не от чужого
+                // (`outline-019`: родитель красный, ребёнок зелёный).
+                o.color = from.color;
+            }
+            if on(inh::OUTLINE_S) {
+                o.style = from.style;
+            }
+            if on(inh::OUTLINE_O) {
+                o.offset = from.offset;
+            }
             c.outline = Some(o);
         }
         if on(inh::DISPLAY) {

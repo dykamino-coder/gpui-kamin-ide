@@ -519,7 +519,26 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         let visible = o.style != Some(0);
         // Обводка без своего цвета берёт цвет текста — так решает CSS.
         if let (true, true, Some(colour)) = (visible, w > 0.0, o.color.or(c.color)) {
-            let off = px_of(o.offset);
+            // Отрицательный сдвиг вжимает контур внутрь коробки, но внешняя
+            // сторона фигуры не может стать уже удвоенной толщины
+            // (css-ui-4 §outline-offset; Blink `outline_painter.cc`
+            // `AdjustedOutlineOffset`: `max(offset, -size/2)` по каждой оси
+            // отдельно). Зажимается по ЗАДАННОМУ размеру коробки — иного на
+            // сборке нет (`outline-013…016`).
+            let off = {
+                let raw = px_of(o.offset);
+                let half = |l: Option<Len>| match l {
+                    Some(Len::Px(v)) => Some(v / 2.0),
+                    Some(Len::Em(k)) => Some(k * em / 2.0),
+                    _ => None,
+                };
+                match (half(c.width), half(c.height)) {
+                    (Some(hw), Some(hh)) => raw.max(-hw.min(hh)),
+                    (Some(hw), None) => raw.max(-hw),
+                    (None, Some(hh)) => raw.max(-hh),
+                    (None, None) => raw,
+                }
+            };
             let corner = match c.radius.tl {
                 Some(Len::Px(v)) => v + off + w,
                 _ => 0.0,

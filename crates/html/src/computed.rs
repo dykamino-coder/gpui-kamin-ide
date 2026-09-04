@@ -76,6 +76,9 @@ pub(crate) mod inh {
     pub(crate) const BG_SIZE: u16 = 1 << 9;
     pub(crate) const TRANSFORM: u16 = 1 << 10;
     pub(crate) const TRANSFORM_ORIGIN: u16 = 1 << 11;
+    pub(crate) const OUTLINE_C: u16 = 1 << 12;
+    pub(crate) const OUTLINE_S: u16 = 1 << 13;
+    pub(crate) const OUTLINE_O: u16 = 1 << 14;
 }
 
 /// Есть ли в записи длины в единицах шрифта (`em`, `rem`, `ex`, `ch`).
@@ -3860,6 +3863,13 @@ impl Computed {
                 self.border_spacing = Some((a, b));
             }
             "outline" => {
+                // `outline: inherit` — вычисленное значение родителя целиком
+                // (§6.2.1): само свойство не наследуется, поэтому копируются
+                // все его части (`outline-002`).
+                if v == "inherit" {
+                    self.inherit_bits |= inh::OUTLINE_W | inh::OUTLINE_C | inh::OUTLINE_S;
+                    return;
+                }
                 // Умолчание CSS — `medium`, три точки: без него запись
                 // `outline: solid red` не рисовала ничего.
                 let mut o = self.outline.unwrap_or(Outline {
@@ -3868,7 +3878,7 @@ impl Computed {
                     offset: None,
                     style: None,
                 });
-                for token in v.split_whitespace() {
+                for token in split_ws_top(v) {
                     if let Some(st) = outline_style_of(token) {
                         o.style = Some(st);
                     } else if let Some(l) = outline_width_of(token) {
@@ -3884,8 +3894,13 @@ impl Computed {
                 // остальные части обводки остаются своими. Разбор слова здесь
                 // не выражается — `outline_width_of("inherit")` даёт `None`, и
                 // толщина пропадала.
-                if v == "inherit" && key == "outline-width" {
-                    self.inherit_bits |= inh::OUTLINE_W;
+                if v == "inherit" {
+                    self.inherit_bits |= match key {
+                        "outline-width" => inh::OUTLINE_W,
+                        "outline-color" => inh::OUTLINE_C,
+                        "outline-style" => inh::OUTLINE_S,
+                        _ => inh::OUTLINE_O,
+                    };
                     return;
                 }
                 let mut o = self.outline.unwrap_or_default();
@@ -6638,6 +6653,32 @@ fn find_close(after_open: &str) -> Option<usize> {
 
 /// Экранирование внутри строки содержимого: `\A` — перевод строки, прочие
 /// коды — свои знаки, `\"` — сама кавычка.
+/// Разбить значение по пробелам ВНЕ скобок: `rgba(0, 128, 0, .5)` —
+/// один токен, а `split_whitespace` рассыпал его, и цвет пропадал
+/// (`outline` с функциональным цветом).
+fn split_ws_top(v: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut depth, mut start) = (0i32, None::<usize>);
+    for (i, ch) in v.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = (depth - 1).max(0),
+            _ => {}
+        }
+        if ch.is_whitespace() && depth == 0 {
+            if let Some(st) = start.take() {
+                out.push(&v[st..i]);
+            }
+        } else if start.is_none() {
+            start = Some(i);
+        }
+    }
+    if let Some(st) = start {
+        out.push(&v[st..]);
+    }
+    out
+}
+
 /// Разрывы сегмента в строке-маркере: ряд принудительных разрывов — один
 /// пробел (css-text-3 §4.1.2, «Segment Break Transformation Rules»).
 fn collapse_segment_breaks(text: &str) -> String {
