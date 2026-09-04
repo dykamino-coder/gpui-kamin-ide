@@ -1,7 +1,7 @@
-# Publish dykamino/open-claude-bridge from an immutable, tested release commit.
-# The installer and its provenance sidecar must already exist in the rolling
-# GitHub release. Existing version tags are verified and never overwritten.
-name: docker
+# Publish the Windows installer, GitHub Release and Docker image from the exact
+# successful main quality run. Release PR artifacts are candidates for manual
+# acceptance only; production always consumes a fresh trusted-main artifact.
+name: release
 
 on:
   workflow_run:
@@ -20,8 +20,10 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read
   checks: read
   contents: read
+  pull-requests: read
 
 env:
   IMAGE: dykamino/open-claude-bridge
@@ -44,6 +46,7 @@ jobs:
       app_version: ${{ steps.release.outputs.app_version }}
       server_version: ${{ steps.release.outputs.server_version }}
       publish_latest: ${{ steps.release.outputs.publish_latest }}
+      quality_run_id: ${{ steps.release.outputs.quality_run_id }}
     steps:
       - name: Check out the requested commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -60,6 +63,7 @@ jobs:
           REQUESTED_SHA: ${{ inputs.release_sha }}
           TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
           TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
@@ -74,6 +78,7 @@ jobs:
             exit 1
           fi
 
+          quality_run_id="$TRIGGER_RUN_ID"
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
             if [[ "$TRIGGER_EVENT" != "push" || "$TRIGGER_CONCLUSION" != "success" || \
                   "$TRIGGER_SHA" != "$release_sha" ]]; then
@@ -97,6 +102,26 @@ jobs:
               echo "Manual retry SHA has no successful required quality gate" >&2
               exit 1
             fi
+
+            runs="$RUNNER_TEMP/release-runs.json"
+            gh api --method GET \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/pr-checks.yml/runs" \
+              -f branch=main -f event=push -f status=success \
+              -f head_sha="$release_sha" -f per_page=100 > "$runs"
+            quality_run_id="$(jq -r --arg sha "$release_sha" '
+              .workflow_runs
+              | map(select(
+                  .head_sha == $sha and
+                  .event == "push" and
+                  .conclusion == "success"
+                ))
+              | first
+              | .id // empty
+            ' "$runs")"
+            if [[ -z "$quality_run_id" ]]; then
+              echo "Manual retry SHA has no successful main quality workflow run" >&2
+              exit 1
+            fi
           fi
 
           git fetch --no-tags origin main:refs/remotes/origin/main
@@ -105,48 +130,40 @@ jobs:
             exit 1
           fi
 
-          previous_sha="${release_sha}^"
-          if ! git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
-            echo "Cannot resolve the commit before the release" >&2
-            exit 1
-          fi
-
-          read_app_version() {
-            awk '
-              /^\[workspace\.package\]$/ { section = 1; next }
-              section && /^\[/ { exit }
-              section && /^version[[:space:]]*=/ {
-                sub(/^[^"]*"/, ""); sub(/".*$/, ""); print; exit
-              }
-            '
-          }
-          app_version="$(read_app_version < Cargo.toml)"
-          previous_app="$(git show "$previous_sha:Cargo.toml" | read_app_version)"
-          server_version="$(node -p "require('./$CONTEXT/package.json').version")"
-          previous_server="$(git show "$previous_sha:$CONTEXT/package.json" | node -e \
-            "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).version))")"
-
-          if [[ "$app_version" == "$previous_app" && "$server_version" == "$previous_server" ]]; then
+          artifact_name="kaminide-release-${release_sha}"
+          artifacts="$RUNNER_TEMP/release-artifacts.json"
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$quality_run_id/artifacts" \
+            > "$artifacts"
+          if ! jq -e --arg name "$artifact_name" \
+            '.artifacts | any(.name == $name and .expired == false)' \
+            "$artifacts" > /dev/null; then
             if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-              echo "Manual retry SHA is not a coordinated release commit" >&2
+              echo "Manual retry SHA has no exact release artifact" >&2
               exit 1
             fi
             echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "No coordinated version bump; publication is not required." >> "$GITHUB_STEP_SUMMARY"
+            echo "No trusted release artifact; publication is not required." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          if [[ "$app_version" == "$previous_app" || "$server_version" == "$previous_server" ]]; then
-            echo "App and server versions must change in the same release commit" >&2
+
+          associated_pulls="$RUNNER_TEMP/release-pulls.json"
+          gh api "/repos/$GITHUB_REPOSITORY/commits/$release_sha/pulls" \
+            > "$associated_pulls"
+          if ! jq -e '
+            any(.merged_at != null and .base.ref == "main")
+          ' "$associated_pulls" > /dev/null; then
+            echo "Release commit was not merged through a pull request into main" >&2
             exit 1
           fi
 
-          main_server="$(node -p "require('./$CONTEXT/package.json').version")"
-          if [[ "$release_sha" != "$(git rev-parse origin/main)" ]]; then
-            main_server="$(git show "origin/main:$CONTEXT/package.json" | node -e \
-              "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).version))")"
-          fi
+          app_version="$(node --input-type=module -e \
+            "import {readReleaseVersions} from './scripts/release/provenance.mjs'; console.log((await readReleaseVersions(process.cwd())).app)")"
+          server_version="$(node -p "require('./$CONTEXT/package.json').version")"
+
           publish_latest=false
-          if [[ "$main_server" == "$server_version" ]]; then publish_latest=true; fi
+          if [[ "$release_sha" == "$(git rev-parse origin/main)" ]]; then
+            publish_latest=true
+          fi
 
           {
             echo "publish=true"
@@ -154,6 +171,7 @@ jobs:
             echo "app_version=$app_version"
             echo "server_version=$server_version"
             echo "publish_latest=$publish_latest"
+            echo "quality_run_id=$quality_run_id"
           } >> "$GITHUB_OUTPUT"
           {
             echo "### Docker release"
@@ -161,15 +179,19 @@ jobs:
             echo "- commit: \`$release_sha\`"
             echo "- KaminIDE: \`$app_version\`"
             echo "- Bridge server: \`$server_version\`"
+            echo "- quality run: \`$quality_run_id\`"
             echo "- update latest: \`$publish_latest\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-push:
-    name: publish verified image
+    name: publish verified release
     needs: release-context
     if: needs.release-context.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: write
     steps:
       - name: Check out the immutable release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -183,21 +205,27 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Download the exact installer and provenance sidecar
+      - name: Download the exact installer from the successful main run
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: kaminide-release-${{ needs.release-context.outputs.release_sha }}
+          path: ${{ env.CONTEXT }}/installer
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.release-context.outputs.quality_run_id }}
+
+      - name: Require the complete installer pair
         env:
-          GH_TOKEN: ${{ github.token }}
           APP_VERSION: ${{ needs.release-context.outputs.app_version }}
+          SERVER_VERSION: ${{ needs.release-context.outputs.server_version }}
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$CONTEXT/installer"
-          gh release download kaminide-latest \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern "KaminIDE_${APP_VERSION}_x64-setup.exe" \
-            --pattern "KaminIDE_${APP_VERSION}_provenance.json" \
-            --dir "$CONTEXT/installer"
           test -s "$CONTEXT/installer/KaminIDE_${APP_VERSION}_x64-setup.exe"
           test -s "$CONTEXT/installer/KaminIDE_${APP_VERSION}_provenance.json"
+          jq -e --arg app "$APP_VERSION" --arg server "$SERVER_VERSION" \
+            '.release == true and .current.app == $app and .current.server == $server' \
+            "$CONTEXT/installer/release-change.json" > /dev/null
 
       - name: Verify installer provenance against the release tree
         env:
@@ -217,19 +245,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if docker manifest inspect "$IMAGE:$VERSION" >/dev/null 2>&1; then
-            node scripts/release/verify-image.mjs \
-              --image "$IMAGE" --tag "$VERSION" \
-              --source "$SOURCE_URL" --revision "$RELEASE_SHA" --version "$VERSION" \
-              > "$RUNNER_TEMP/version-image.json"
+          node scripts/release/image-state.mjs \
+            --image "$IMAGE" --tag "$VERSION" \
+            --source "$SOURCE_URL" --revision "$RELEASE_SHA" --version "$VERSION" \
+            > "$RUNNER_TEMP/version-image.json"
+          if [[ "$(jq -r '.exists' "$RUNNER_TEMP/version-image.json")" == "true" ]]; then
+            digest="$(jq -r '.digest' "$RUNNER_TEMP/version-image.json")"
             echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "digest=$digest" >> "$GITHUB_OUTPUT"
             echo "Version tag already contains the verified release; no overwrite." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Require Docker Hub publication credentials
-        if: steps.existing.outputs.exists == 'false'
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -242,32 +271,15 @@ jobs:
           fi
 
       - name: Set up Docker Buildx
-        if: steps.existing.outputs.exists == 'false'
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Log in to Docker Hub
-        if: steps.existing.outputs.exists == 'false'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Prepare immutable and rolling tags
-        if: steps.existing.outputs.exists == 'false'
-        id: tags
-        env:
-          VERSION: ${{ needs.release-context.outputs.server_version }}
-          PUBLISH_LATEST: ${{ needs.release-context.outputs.publish_latest }}
-        shell: bash
-        run: |
-          {
-            echo 'value<<EOF'
-            echo "$IMAGE:$VERSION"
-            if [[ "$PUBLISH_LATEST" == "true" ]]; then echo "$IMAGE:latest"; fi
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build and publish
+      - name: Build and publish the immutable Docker tag
         if: steps.existing.outputs.exists == 'false'
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
@@ -276,50 +288,193 @@ jobs:
           file: ${{ env.CONTEXT }}/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.tags.outputs.value }}
+          tags: ${{ env.IMAGE }}:${{ needs.release-context.outputs.server_version }}
           labels: |
             org.opencontainers.image.source=${{ env.SOURCE_URL }}
             org.opencontainers.image.revision=${{ needs.release-context.outputs.release_sha }}
             org.opencontainers.image.version=${{ needs.release-context.outputs.server_version }}
           cache-from: type=gha,scope=bridge-release
-          cache-to: type=gha,mode=max,scope=bridge-release
+          cache-to: type=gha,mode=max,scope=bridge-release,ignore-error=true
           provenance: mode=max
           sbom: true
 
-      - name: Verify published digest, labels and attestation
-        if: steps.existing.outputs.exists == 'false'
+      - name: Verify the immutable Docker image
+        id: image
         env:
           VERSION: ${{ needs.release-context.outputs.server_version }}
           RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
           PUBLISHED_DIGEST: ${{ steps.build.outputs.digest }}
-          PUBLISH_LATEST: ${{ needs.release-context.outputs.publish_latest }}
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
         shell: bash
         run: |
           set -euo pipefail
+          digest="$PUBLISHED_DIGEST"
+          attempts=12
+          if [[ -z "$digest" ]]; then
+            digest="$EXISTING_DIGEST"
+            attempts=4
+          fi
+          if [[ -z "$digest" ]]; then
+            echo "Cannot resolve the immutable Docker image digest" >&2
+            exit 1
+          fi
           node scripts/release/verify-image.mjs \
             --image "$IMAGE" --tag "$VERSION" \
-            --source "$SOURCE_URL" --revision "$RELEASE_SHA" --version "$VERSION" \
-            --digest "$PUBLISHED_DIGEST" --attempts 12 \
-            > "$RUNNER_TEMP/version-image.json"
-          if [[ "$PUBLISH_LATEST" == "true" ]]; then
-            node scripts/release/verify-image.mjs \
-              --image "$IMAGE" --tag latest \
               --source "$SOURCE_URL" --revision "$RELEASE_SHA" --version "$VERSION" \
-              --digest "$PUBLISHED_DIGEST" --attempts 12 \
-              > "$RUNNER_TEMP/latest-image.json"
-          fi
+            --digest "$digest" --attempts "$attempts" \
+            > "$RUNNER_TEMP/version-image.json"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
           cat "$RUNNER_TEMP/version-image.json" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Verify latest for an idempotent current release
-        if: steps.existing.outputs.exists == 'true' && needs.release-context.outputs.publish_latest == 'true'
+      - name: Smoke-test installer delivery from the immutable image
+        env:
+          APP_VERSION: ${{ needs.release-context.outputs.app_version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          container="$(docker run --detach --publish 127.0.0.1::3456 "$IMAGE@$IMAGE_DIGEST")"
+          cleanup() { docker rm --force "$container" > /dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          port="$(docker port "$container" 3456/tcp | sed 's/.*://')"
+          for _ in $(seq 1 30); do
+            if curl --fail --silent "http://127.0.0.1:${port}/health" \
+              | jq -e '.status == "ok" and .service == "open-claude-bridge"' \
+              > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent "http://127.0.0.1:${port}/health" > /dev/null
+          curl --fail --silent "http://127.0.0.1:${port}/api/download/check" \
+            | jq -e --arg name "KaminIDE_${APP_VERSION}_x64-setup.exe" \
+              '.available == true and .name == $name' > /dev/null
+          manifest="$(curl --fail --silent \
+            "http://127.0.0.1:${port}/updates/kaminide/windows/x86_64/0.0.0")"
+          artifact_url="$(jq -r --arg version "$APP_VERSION" \
+            'select(.version == $version) | .url' <<< "$manifest")"
+          if [[ -z "$artifact_url" ]]; then
+            echo "Updater did not return the expected installer version" >&2
+            exit 1
+          fi
+          curl --fail --silent "$artifact_url" --output "$RUNNER_TEMP/served-installer.exe"
+          expected="$(jq -r '.installer.sha256' \
+            "$CONTEXT/installer/KaminIDE_${APP_VERSION}_provenance.json")"
+          actual="$(sha256sum "$RUNNER_TEMP/served-installer.exe" | awk '{print $1}')"
+          test "$actual" = "$expected"
+
+      - name: Publish or verify the immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ needs.release-context.outputs.app_version }}
+          SERVER_VERSION: ${{ needs.release-context.outputs.server_version }}
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="kaminide-v${APP_VERSION}"
+          installer="$CONTEXT/installer/KaminIDE_${APP_VERSION}_x64-setup.exe"
+          provenance="$CONTEXT/installer/KaminIDE_${APP_VERSION}_provenance.json"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            tag_sha="$(gh api "/repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)"
+            if [[ "$tag_sha" != "$RELEASE_SHA" ]]; then
+              echo "Existing GitHub Release tag points to another commit" >&2
+              exit 1
+            fi
+            verify_dir="$RUNNER_TEMP/versioned-release"
+            mkdir -p "$verify_dir"
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+              --pattern "KaminIDE_${APP_VERSION}_x64-setup.exe" \
+              --pattern "KaminIDE_${APP_VERSION}_provenance.json" \
+              --dir "$verify_dir"
+            node scripts/release/provenance-cli.mjs verify \
+              --installer "$verify_dir/KaminIDE_${APP_VERSION}_x64-setup.exe" \
+              --provenance "$verify_dir/KaminIDE_${APP_VERSION}_provenance.json" \
+              --release-sha "$RELEASE_SHA"
+          else
+            gh release create "$tag" "$installer" "$provenance" \
+              --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" --latest=false \
+              --title "KaminIDE ${APP_VERSION} / Bridge ${SERVER_VERSION}" \
+              --notes "Docker image: ${IMAGE}@${IMAGE_DIGEST}" --generate-notes
+          fi
+
+      - name: Promote and verify Docker latest
+        if: needs.release-context.outputs.publish_latest == 'true'
         env:
           VERSION: ${{ needs.release-context.outputs.server_version }}
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --tag "$IMAGE:latest" "$IMAGE@$IMAGE_DIGEST"
+          node scripts/release/verify-image.mjs \
+            --image "$IMAGE" --tag latest \
+            --source "$SOURCE_URL" --revision "$RELEASE_SHA" --version "$VERSION" \
+            --digest "$IMAGE_DIGEST" --attempts 12 \
+            > "$RUNNER_TEMP/latest-image.json"
+
+      - name: Refresh the rolling installer release
+        if: needs.release-context.outputs.publish_latest == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ needs.release-context.outputs.app_version }}
+          SERVER_VERSION: ${{ needs.release-context.outputs.server_version }}
           RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          digest="$(node -p "JSON.parse(require('fs').readFileSync('$RUNNER_TEMP/version-image.json')).digest")"
-          node scripts/release/verify-image.mjs \
-            --image "$IMAGE" --tag latest \
-            --source "$SOURCE_URL" --revision "$RELEASE_SHA" --version "$VERSION" \
-            --digest "$digest" --attempts 4
+          tag=kaminide-latest
+          installer_name="KaminIDE_${APP_VERSION}_x64-setup.exe"
+          provenance_name="KaminIDE_${APP_VERSION}_provenance.json"
+          installer="$CONTEXT/installer/$installer_name"
+          provenance="$CONTEXT/installer/$provenance_name"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$tag" "$installer" "$provenance" \
+              --repo "$GITHUB_REPOSITORY" --target "$RELEASE_SHA" --latest=false \
+              --title "KaminIDE latest installer" \
+              --notes "Rolling compatibility assets; immutable release: kaminide-v${APP_VERSION}."
+          else
+            release_json="$RUNNER_TEMP/rolling-release.json"
+            gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$tag" > "$release_json"
+            has_installer="$(jq --arg name "$installer_name" \
+              '[.assets[] | select(.name == $name)] | length' "$release_json")"
+            has_provenance="$(jq --arg name "$provenance_name" \
+              '[.assets[] | select(.name == $name)] | length' "$release_json")"
+            if [[ "$has_installer" == "0" ]]; then
+              gh release upload "$tag" "$installer" --repo "$GITHUB_REPOSITORY"
+            fi
+            if [[ "$has_provenance" == "0" ]]; then
+              gh release upload "$tag" "$provenance" --repo "$GITHUB_REPOSITORY"
+            fi
+          fi
+
+          verify_dir="$RUNNER_TEMP/rolling-verify"
+          mkdir -p "$verify_dir"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$installer_name" --pattern "$provenance_name" \
+            --dir "$verify_dir"
+          node scripts/release/provenance-cli.mjs verify \
+            --installer "$verify_dir/$installer_name" \
+            --provenance "$verify_dir/$provenance_name" \
+            --release-sha "$RELEASE_SHA"
+
+          gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$tag" \
+            | jq -r --arg installer "$installer_name" --arg provenance "$provenance_name" \
+              '.assets[] | select(.name != $installer and .name != $provenance) | .id' \
+            | while read -r asset_id; do
+                gh api --method DELETE "/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+              done
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" \
+            --title "KaminIDE latest installer" \
+            --notes "Rolling compatibility assets; immutable release: kaminide-v${APP_VERSION}."
+
+      - name: Mark the current immutable GitHub Release as latest
+        if: needs.release-context.outputs.publish_latest == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ needs.release-context.outputs.app_version }}
+        run: gh release edit "kaminide-v${APP_VERSION}" --repo "$GITHUB_REPOSITORY" --latest

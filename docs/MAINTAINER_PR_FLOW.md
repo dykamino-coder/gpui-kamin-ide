@@ -90,7 +90,7 @@ Checkbox автора помогает маршрутизации, но факт
 | --- | --- |
 | Diagnostic PR | problem statement, task card и ссылка на private evidence; functional code отсутствует |
 | Change/Fix PR | functional code, tests, fixtures или исправляющая документация без release bump |
-| Release PR | только versions, release notes и release artifacts по `CONTRIBUTING.md` |
+| Release PR | в diff только versions и производные lockfiles; release notes находятся в PR body, binary artifacts создаёт CI |
 
 Если Diagnostic PR уже содержит functional fix, агент исправляет тип на
 Change/Fix. Если Release PR содержит функциональный код, агент выносит его в
@@ -175,6 +175,12 @@ Post-merge corporate observation не блокирует merge/release, если
 - Новый PR, появившийся после snapshot, относится к следующему запуску.
 - Release выполняется отдельной branch/PR строго по `CONTRIBUTING.md`; functional
   code в release PR не добавляется.
+- До merge maintainer принимает настоящий Windows candidate из PR Actions
+  artifact. Локальная сборка допустима для диагностики, но не является
+  production source.
+- Merge release PR является production approval: точный commit в `main`
+  пересобирается и публикуется автоматически. Maintainer не загружает installer
+  или Docker image вручную.
 - Пачка не получает финальный release close-out, пока обязательная публикация и
   post-publish проверки из `CONTRIBUTING.md` не завершились успешно. Красный
   publication workflow сохраняется как blocker; ручная публикация не
@@ -188,7 +194,8 @@ Post-merge corporate observation не блокирует merge/release, если
 - merged, closed, replaced и blocked PR;
 - проверки точных merge candidates;
 - недоступные corporate observations и их владельцев;
-- release PR/version/assets либо причину отсутствия release;
+- release PR/version, Actions run, GitHub Release и Docker digest либо причину
+  отсутствия/незавершённости release;
 - порядок оставшихся dependencies;
 - для backlog-run — outcome каждого ID текущей пачки и подтверждение, что
   следующая планируемая пачка не начиналась.

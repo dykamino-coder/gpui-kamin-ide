@@ -9,6 +9,16 @@ const execFileAsync = promisify(execFile);
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const GIT_OID_RE = /^[a-f0-9]{40}$/;
 const VERSION_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+const RELEASE_FILES = {
+  app: "Cargo.toml",
+  server: "extensions/claude-bridge/server/package.json",
+};
+export const RELEASE_CHANGE_PATHS = [
+  RELEASE_FILES.app,
+  "Cargo.lock",
+  RELEASE_FILES.server,
+  "extensions/claude-bridge/server/package-lock.json",
+];
 
 function requireString(value, field, pattern) {
   if (typeof value !== "string" || !pattern.test(value)) {
@@ -28,14 +38,8 @@ export async function sha256File(filePath) {
   return hash.digest("hex");
 }
 
-export async function readReleaseVersions(repoRoot) {
-  const serverManifest = JSON.parse(
-    await readFile(
-      join(repoRoot, "extensions/claude-bridge/server/package.json"),
-      "utf8",
-    ),
-  );
-  const cargoToml = await readFile(join(repoRoot, "Cargo.toml"), "utf8");
+function parseReleaseVersions(cargoToml, serverManifestText) {
+  const serverManifest = JSON.parse(serverManifestText);
   const workspace = cargoToml.match(
     /\[workspace\.package\][\s\S]*?^version\s*=\s*"([^"]+)"/m,
   );
@@ -50,6 +54,124 @@ export async function readReleaseVersions(repoRoot) {
       VERSION_RE,
     ),
   };
+}
+
+export async function readReleaseVersions(repoRoot) {
+  const [cargoToml, serverManifest] = await Promise.all([
+    readFile(join(repoRoot, RELEASE_FILES.app), "utf8"),
+    readFile(join(repoRoot, RELEASE_FILES.server), "utf8"),
+  ]);
+  return parseReleaseVersions(cargoToml, serverManifest);
+}
+
+async function readGitFile(repoRoot, revision, filePath) {
+  const { stdout } = await execFileAsync(
+    "git",
+    ["show", `${revision}:${filePath}`],
+    { cwd: repoRoot, maxBuffer: 10 * 1024 * 1024 },
+  );
+  return stdout;
+}
+
+export async function readReleaseVersionsAt(repoRoot, revision) {
+  const [cargoToml, serverManifest] = await Promise.all([
+    readGitFile(repoRoot, revision, RELEASE_FILES.app),
+    readGitFile(repoRoot, revision, RELEASE_FILES.server),
+  ]);
+  return parseReleaseVersions(cargoToml, serverManifest);
+}
+
+function semverParts(version) {
+  const withoutBuild = version.split("+", 1)[0];
+  const [core, prerelease = ""] = withoutBuild.split("-", 2);
+  return {
+    core: core.split(".").map(Number),
+    prerelease: prerelease ? prerelease.split(".") : [],
+  };
+}
+
+export function compareReleaseVersions(left, right) {
+  requireString(left, "version", VERSION_RE);
+  requireString(right, "version", VERSION_RE);
+  const a = semverParts(left);
+  const b = semverParts(right);
+  for (let index = 0; index < 3; index += 1) {
+    if (a.core[index] !== b.core[index]) {
+      return a.core[index] > b.core[index] ? 1 : -1;
+    }
+  }
+  if (a.prerelease.length === 0 || b.prerelease.length === 0) {
+    if (a.prerelease.length === b.prerelease.length) return 0;
+    return a.prerelease.length === 0 ? 1 : -1;
+  }
+  const length = Math.max(a.prerelease.length, b.prerelease.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftPart = a.prerelease[index];
+    const rightPart = b.prerelease[index];
+    if (leftPart === rightPart) continue;
+    if (leftPart === undefined) return -1;
+    if (rightPart === undefined) return 1;
+    const leftNumber = /^\d+$/.test(leftPart) ? Number(leftPart) : null;
+    const rightNumber = /^\d+$/.test(rightPart) ? Number(rightPart) : null;
+    if (leftNumber !== null && rightNumber !== null) {
+      return leftNumber > rightNumber ? 1 : -1;
+    }
+    if (leftNumber !== null || rightNumber !== null) {
+      return leftNumber !== null ? -1 : 1;
+    }
+    return leftPart > rightPart ? 1 : -1;
+  }
+  return 0;
+}
+
+export function classifyReleaseChange(previous, current) {
+  const appChanged = previous.app !== current.app;
+  const serverChanged = previous.server !== current.server;
+  if (appChanged !== serverChanged) {
+    throw new Error("App and server release versions must change together");
+  }
+  if (!appChanged) {
+    return { release: false, previous, current };
+  }
+  if (compareReleaseVersions(current.app, previous.app) <= 0) {
+    throw new Error("App release version must increase");
+  }
+  if (compareReleaseVersions(current.server, previous.server) <= 0) {
+    throw new Error("Server release version must increase");
+  }
+  return { release: true, previous, current };
+}
+
+export function validateReleaseChangePaths(paths) {
+  const actual = [...new Set(paths)].sort();
+  const expected = [...RELEASE_CHANGE_PATHS].sort();
+  const missing = expected.filter((path) => !actual.includes(path));
+  const unexpected = actual.filter((path) => !expected.includes(path));
+  if (missing.length > 0 || unexpected.length > 0) {
+    const details = [
+      missing.length > 0 ? `missing: ${missing.join(", ")}` : "",
+      unexpected.length > 0 ? `unexpected: ${unexpected.join(", ")}` : "",
+    ].filter(Boolean);
+    throw new Error(`Release PR must change only the release files (${details.join("; ")})`);
+  }
+  return actual;
+}
+
+export async function inspectReleaseChange({
+  repoRoot,
+  baseRevision,
+  headRevision = "HEAD",
+  changedPaths,
+}) {
+  const [previous, current] = await Promise.all([
+    readReleaseVersionsAt(repoRoot, baseRevision),
+    readReleaseVersionsAt(repoRoot, headRevision),
+  ]);
+  const result = classifyReleaseChange(previous, current);
+  if (result.release && changedPaths) {
+    validateReleaseChangePaths(changedPaths);
+  }
+  return result;
 }
 
 export async function gitObjectId(repoRoot, revision, suffix = "^{commit}") {

@@ -103,4 +103,9 @@ PAT, Windows Credentials или VPN. Он запускает доступные 
 - [ ] В diagnostic/change PR release-версии намеренно не менялись
 - [ ] Lockfile изменён только из-за зависимостей либо не изменён
 - [ ] GitHub Release assets и Docker tags не публиковались
-- [ ] Для release PR выполнен порядок из `CONTRIBUTING.md`
+- [ ] Для release PR CI собрал exact-PR Windows candidate; ссылка и runtime
+      acceptance приведены выше
+- [ ] Release PR меняет только `Cargo.toml`, `Cargo.lock`, Bridge server
+      `package.json` и его `package-lock.json`; release notes находятся в body
+- [ ] Release PR не содержит вручную загруженных production assets; merge после
+      приёмки разрешит exact-main automation из `CONTRIBUTING.md`

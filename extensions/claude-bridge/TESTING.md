@@ -141,7 +141,9 @@ review не появится.
 пользователь внутри корпоративного контура, а maintainer agent явно пропускает
 этот шаг как недоступный, не помечая его passed или failed.
 
-Release/CI PR дополнительно прикладывает source commit, image digest, revision
-labels/attestation, installer asset version/digest и результат dry-run. Зелёный
-job, который только пропустил build из-за существующего tag, не является
-доказательством provenance.
+Release PR до merge прикладывает SHA и ссылку на настоящий Windows candidate
+Actions artifact, его provenance/version/digest и результат применимого runtime
+smoke test. После merge close-out дополнительно фиксирует trusted-main Actions
+run, immutable GitHub Release, Docker digest и revision labels/attestation.
+Зелёный job, который не собрал exact-main artifact или лишь увидел существующий
+tag без проверки revision, не является доказательством provenance.
