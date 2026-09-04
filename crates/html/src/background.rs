@@ -1851,16 +1851,33 @@ pub fn paint_tiles(
                 (bounds.size.height - px(px_of(c.padding.top) + px_of(c.padding.bottom))).max(px(0.0)),
             ),
         },
-        _ => Bounds {
-            origin: gpui::point(
-                bounds.origin.x - px(px_of(border.left)),
-                bounds.origin.y - px(px_of(border.top)),
-            ),
-            size: gpui::size(
-                bounds.size.width + px(px_of(border.left) + px_of(border.right)),
-                bounds.size.height + px(px_of(border.top) + px_of(border.bottom)),
-            ),
-        },
+        _ => {
+            // Порядок краски (CSS 2.2 Прил. E, css-backgrounds-3 §3.7): фон
+            // лежит ПОД рамкой, рамка рисуется поверх. Слой плитки — ребёнок
+            // коробки и красится ПОСЛЕ её рамки, поэтому под сплошной
+            // непрозрачной рамкой область краски ужимается до её внутреннего
+            // края: результат тот же, что «под рамкой». Пунктир, `double` и
+            // полупрозрачная рамка пропускают фон — там border-box целиком
+            // (`background-repeat-001`, `c548-ln-ht-001`, `margin-shorthand-001`).
+            let covers = |i: usize| {
+                let opaque = c.border_colors[i]
+                    .or(c.border_color)
+                    .is_none_or(|col| col.a >= 1.0);
+                // solid / inset / outset / groove / ridge — сплошная краска.
+                matches!(c.border_side_styles[i], Some(3..=6) | Some(9)) && opaque
+            };
+            let ext = |side: Option<Len>, i: usize| if covers(i) { 0.0 } else { px_of(side) };
+            let (t, r, b, l) = (
+                ext(border.top, 0),
+                ext(border.right, 1),
+                ext(border.bottom, 2),
+                ext(border.left, 3),
+            );
+            Bounds {
+                origin: gpui::point(bounds.origin.x - px(l), bounds.origin.y - px(t)),
+                size: gpui::size(bounds.size.width + px(l + r), bounds.size.height + px(t + b)),
+            }
+        }
     };
     // Место под фон: свой край по `background-origin`.
     let bounds = Bounds {
