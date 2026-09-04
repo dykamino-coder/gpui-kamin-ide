@@ -622,6 +622,12 @@ pub fn source(src: &str) -> Option<Source> {
     } else if src.starts_with("linear-gradient(")
         || src.starts_with("radial-gradient(")
         || src.starts_with("conic-gradient(")
+        // Повторяющиеся градиенты — те же записи (css-images-3 §4):
+        // растеризатор ниже их понимает, а опознание пропускало
+        // (`shape-outside-linear-gradient-004`).
+        || src.starts_with("repeating-linear-gradient(")
+        || src.starts_with("repeating-radial-gradient(")
+        || src.starts_with("repeating-conic-gradient(")
     {
         Some(Source::Gradient {
             raw: src.to_string(),
@@ -729,10 +735,13 @@ fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> Option<Vec<u
     if raw.contains("url(") || raw.contains("-gradient(") {
         let src = if raw.contains("-gradient(") {
             let at = raw.find("-gradient(")?;
-            let start = raw[..at]
-                .rfind(|c: char| c.is_whitespace())
-                .map(|s| s + 1)
-                .unwrap_or(0);
+            // Начало записи ищется от её ИМЕНИ: у `repeating-linear-gradient`
+            // перед `-gradient(` дефис, а не пробел, и обрезка по пробелу
+            // отдавала растеризатору всю строку целиком.
+            let head = raw[..at].rfind(|c: char| c.is_whitespace()).map_or(0, |s| s + 1);
+            let start = raw[head..at]
+                .rfind("repeating-")
+                .map_or(head, |s| head + s);
             crate::background::source(raw[start..].trim().trim_end_matches(|c| c != ')'))
                 .and_then(|s| s.raster((b.cw.max(1.0), b.ch.max(1.0))))
         } else {
