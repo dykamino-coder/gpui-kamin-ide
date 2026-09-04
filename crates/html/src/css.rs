@@ -1048,6 +1048,12 @@ fn supports_eval_term(term: &str) -> SupTri {
         }
         let mut c = crate::computed::Computed::default();
         c.apply_decls(&decls);
+        // Счётчик порядка объявлений и номера сторон — БУХГАЛТЕРИЯ каскада, а
+        // не значения свойств: они меняются у любого объявления, и без
+        // обнуления «поддержанным» выходило всё подряд, включая
+        // `(color: rainbow)` (`css-supports-005`, `at-supports-009`).
+        c.decl_seq = 0;
+        c.side_seq = Default::default();
         return if format!("{c:?}") != format!("{:?}", crate::computed::Computed::default()) {
             SupTri::True
         } else {
