@@ -1328,6 +1328,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 )
             };
             let hoist_margins = content_sized_wraps(&e.style)
+                && !replaced_tag(e)
                 && (negative(e.style.margin.left) || negative(e.style.margin.right));
             let stripped;
             let e = if hoist_margins {
@@ -1742,7 +1743,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 continue;
             }
             let _ = hoist_margins;
-            let mut done = content_sized(layered(built, &e.style, layer_ok, under_tf), &e.style);
+            // Замещаемому дорожка по содержимому не нужна: его размер по
+            // ключевому слову — природный, считается в `image_with`.
+            let layered_built = layered(built, &e.style, layer_ok, under_tf);
+            let mut done = if replaced_tag(e) {
+                layered_built
+            } else {
+                content_sized(layered_built, &e.style)
+            };
             // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
             // flow): свой анкор-ряд вокруг ОДНОГО узла — соседей не трогает.
             // Корню с фоном-картинкой не ставится (гасил canvas-слой).
@@ -6055,6 +6063,15 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
 ///
 /// Отдельный предикат нужен вызывающей стороне: она обязана снять с элемента
 /// боковые поля ДО сборки — обёртка их не пропускает.
+/// Замещаемый элемент (css-display-3 §2.4): размер даёт содержимое, а не
+/// раскладка детей.
+fn replaced_tag(e: &Element) -> bool {
+    matches!(
+        e.tag.as_str(),
+        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input"
+    )
+}
+
 fn content_sized_wraps(c: &Computed) -> bool {
     let keyword = |l: Option<Len>| {
         matches!(
@@ -8643,6 +8660,32 @@ fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
 /// стиля, и `padding-right: 1em` без разрешения терялся вовсе
 /// (wm-propagation-body-040: сосед вставал на 16 точек левее эталона).
 fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
+    // Ключевое слово содержимого в оси замещаемого — его природный (или
+    // перенесённый через соотношение) размер, то есть `auto` (css-sizing-3
+    // §5.1: «When the box has a preferred aspect ratio, size constraints in
+    // the opposite dimension will transfer through»; Blink
+    // `ComputeReplacedSizeInternal`): `width: min-content; height: 100px` —
+    // ширина из соотношения (`intrinsic-size-017…025`).
+    let kw = |l: Option<Len>| {
+        matches!(
+            l,
+            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+        )
+    };
+    let normalized;
+    let e = if kw(e.style.width) || kw(e.style.height) {
+        let mut copy = e.clone();
+        if kw(copy.style.width) {
+            copy.style.width = None;
+        }
+        if kw(copy.style.height) {
+            copy.style.height = None;
+        }
+        normalized = copy;
+        &normalized
+    } else {
+        e
+    };
     let src = e.attr("src").unwrap_or_default();
     // Размеры коробки ставит общий разбор стиля (`apply`): он же добавляет к
     // заданной ширине отступы и рамку, потому что раскладка под нами считает
