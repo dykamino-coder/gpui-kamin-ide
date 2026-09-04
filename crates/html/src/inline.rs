@@ -935,6 +935,38 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.balance_lines = own.balance_lines.or(parent.balance_lines);
     c.break_anywhere_strict = own.break_anywhere_strict.or(parent.break_anywhere_strict);
     c.line_break_loose = own.line_break_loose.or(parent.line_break_loose);
+    // `align-self` применяется к элементам гибкого контейнера и сетки и к
+    // абсолютам (css-align-3 §6.2 «does not apply to block-level boxes»).
+    // Наш блок собран колонкой flex, и авторское `align-self: flex-end` на
+    // блоке уезжало вправо (`self-align-start-end-flex-001`). Собственные
+    // приёмы сборки ставят `align_self` ПОЗЖЕ, на своих коробках, — их это
+    // не задевает.
+    let self_align_parent = matches!(
+        parent.display,
+        Some(crate::computed::Display::Flex)
+            | Some(crate::computed::Display::InlineFlex)
+            | Some(crate::computed::Display::Grid)
+            | Some(crate::computed::Display::InlineGrid)
+            | Some(crate::computed::Display::GridLanes)
+    );
+    let positioned_self = matches!(
+        own.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    );
+    if !self_align_parent && !positioned_self {
+        c.align_self = None;
+    }
+    // `normal` у элемента ГИБКОГО контейнера = `stretch` (§6.2), а не
+    // «пусто»: пустое значение брало `align-items` родителя
+    // (`self-align-normal-flex`).
+    if own.align_self_normal
+        && matches!(
+            parent.display,
+            Some(crate::computed::Display::Flex) | Some(crate::computed::Display::InlineFlex)
+        )
+    {
+        c.align_self = Some(crate::computed::Align::Stretch);
+    }
     c.font_synth = (
         own.font_synth.0.or(parent.font_synth.0),
         own.font_synth.1.or(parent.font_synth.1),

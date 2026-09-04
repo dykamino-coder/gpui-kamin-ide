@@ -817,6 +817,9 @@ pub struct Computed {
     /// `align-self` — про сам элемент; отдельное поле, иначе он выравнивал
     /// бы своих детей вместо себя.
     pub align_self: Option<Align>,
+    /// Авторское `align-self: normal` (css-align-3 §6.2): у элемента гибкого
+    /// контейнера оно ведёт себя как `stretch`, а не «взять у родителя».
+    pub align_self_normal: bool,
     pub flex_basis: Option<Len>,
     pub justify_content: Option<Justify>,
     pub gap: Option<(Option<Len>, Option<Len>)>,
@@ -2439,6 +2442,7 @@ impl Computed {
                 if let Ok(a) = align_keyword(v) {
                     self.align_self = a;
                     self.align_self_safe = is_safe(v);
+                    self.align_self_normal = v.trim() == "normal";
                 }
             }
             "align-items" => {
