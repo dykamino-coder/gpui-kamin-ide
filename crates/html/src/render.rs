@@ -1476,10 +1476,91 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             } else {
                 e
             };
-            let built = grouped(
-                transformed(animated(e, inherited, opts), &e.style),
-                &e.style,
+            // Абсолют с КЛЮЧЕВЫМ СЛОВОМ содержимого по оси и краями с обеих
+            // сторон этой оси (css-position-3 §3.7-3.8): растяжение краями —
+            // только для автоматического размера; заданный ключевым словом
+            // размер — по содержимому, а остаток делят auto-поля. Держатель =
+            // inset-modified containing block (абсолют с краями элемента,
+            // гибкий контейнер вдоль оси), внутри — та же коробка статической,
+            // без краёв и полей (`div-{min,max,fit}-content-block-size`,
+            // `div-*-auto-margin-*`).
+            let kw_len = |l: Option<Len>| {
+                matches!(
+                    l,
+                    Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+                )
+            };
+            let positioned_out = matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
             );
+            let holder_axis = if positioned_out
+                && e.style.vertical.is_none()
+                && kw_len(e.style.height)
+                && edge_set(e.style.inset.top)
+                && edge_set(e.style.inset.bottom)
+            {
+                Some(true)
+            } else if positioned_out
+                && e.style.vertical.is_none()
+                && kw_len(e.style.width)
+                && edge_set(e.style.inset.left)
+                && edge_set(e.style.inset.right)
+            {
+                Some(false)
+            } else {
+                None
+            };
+            let built = if let Some(block_axis) = holder_axis {
+                let auto = |l: Option<Len>| l == Some(Len::Auto);
+                let mut holder = Computed::default();
+                holder.position = e.style.position;
+                holder.inset = e.style.inset;
+                holder.z_index = e.style.z_index;
+                holder.display = Some(Display::Flex);
+                holder.flex_dir = Some(if block_axis {
+                    crate::computed::FlexDir::Col
+                } else {
+                    crate::computed::FlexDir::Row
+                });
+                // Поля вдоль оси остаются у ВНУТРЕННЕЙ коробки: auto-поля
+                // элемента гибкого контейнера забирают остаток, а при нехватке
+                // места обнуляются (css-flexbox-1 §8.1) — ровно как auto-поля
+                // абсолюта (§3.8; `fit-content-block-size-abspos` с
+                // переполнением). Поперечные не-auto поля — у держателя.
+                let keep = |l: Option<Len>| if auto(l) { None } else { l };
+                if block_axis {
+                    holder.margin.left = keep(e.style.margin.left);
+                    holder.margin.right = keep(e.style.margin.right);
+                } else {
+                    holder.margin.top = keep(e.style.margin.top);
+                    holder.margin.bottom = keep(e.style.margin.bottom);
+                }
+                if block_axis {
+                    holder.width = e.style.width.filter(|l| !kw_len(Some(*l)));
+                } else {
+                    holder.height = e.style.height.filter(|l| !kw_len(Some(*l)));
+                }
+                let mut inner = e.clone();
+                inner.style.position = None;
+                inner.style.inset = Default::default();
+                if block_axis {
+                    inner.style.margin.left = None;
+                    inner.style.margin.right = None;
+                } else {
+                    inner.style.margin.top = None;
+                    inner.style.margin.bottom = None;
+                }
+                inner.style.z_index = None;
+                crate::apply::apply(div(), &holder)
+                    .child(element(&inner, inherited, opts))
+                    .into_any_element()
+            } else {
+                grouped(
+                    transformed(animated(e, inherited, opts), &e.style),
+                    &e.style,
+                )
+            };
             let built = vertical_hug(built, e, inherited);
             let built = sticky_wrap(built, &e.style, &frame, layer_ok);
             // Таблица сжимается по содержимому (§17.5.2.2), и выражено это у
