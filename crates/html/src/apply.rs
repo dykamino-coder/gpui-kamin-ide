@@ -705,6 +705,28 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
             Len::Px(v) => Len::Px(v + pad_y),
             other => other,
         };
+        // Ключевое слово содержимого в `min-height`/`max-height` (css-sizing-3
+        // §4.1): в блочной оси min-content = max-content = высота содержимого,
+        // поэтому `min-height: max-content` даёт used = max(H, содержимое),
+        // а `max-height: max-content` — min(H, содержимое). Заданная высота
+        // становится соответствующим пределом, сама ось — auto
+        // (`block-size-with-min-or-max-content-*`).
+        let kw = |l: Option<Len>| {
+            matches!(
+                l,
+                Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+            )
+        };
+        if f == 1 && let Len::Px(h) = l {
+            if kw(c.min_height) {
+                d = d.min_h(px(h));
+                continue;
+            }
+            if kw(c.max_height) {
+                d = d.max_h(px(h));
+                continue;
+            }
+        }
         let g = len_to_gpui(l);
         d = match f {
             0 => d.w(g),
