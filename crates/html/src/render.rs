@@ -2604,7 +2604,22 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
                     Node::Element(c) => c.clone(),
                     Node::Text(_) => unreachable!("блоком бывает только элемент"),
                 };
-                if e.style.position == Some(crate::computed::Position::Relative) {
+                // Сам блок ПОЗИЦИОНИРОВАН: его собственные края нельзя ни
+                // заменить, ни сложить с чужими (у хозяина они бывают в долях,
+                // у блока — в точках). Сдвиг хозяина накладывается ОБЁРТКОЙ:
+                // каждый слой решает свою долю от того же содержащего блока
+                // (`position-relative-001/002`), а `fixed` едет вместе со
+                // своей статической позицией (`-003`).
+                let host_shift = e.style.position == Some(crate::computed::Position::Relative)
+                    && (e.style.inset.left.is_some() || e.style.inset.top.is_some());
+                let wrap_shift = host_shift
+                    && matches!(
+                        block.style.position,
+                        Some(crate::computed::Position::Relative)
+                            | Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    );
+                if host_shift && !wrap_shift {
                     block.style.position = Some(crate::computed::Position::Relative);
                     if block.style.inset.left.is_none() {
                         block.style.inset.left = e.style.inset.left;
@@ -2632,6 +2647,14 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
                 }
                 if e.style.z_index.is_some() && block.style.z_index.is_none() {
                     block.style.z_index = e.style.z_index;
+                }
+                if wrap_shift {
+                    let mut shifter = anon_element("anon-relshift", vec![Node::Element(block)]);
+                    shifter.style.position = Some(crate::computed::Position::Relative);
+                    shifter.style.inset.left = e.style.inset.left;
+                    shifter.style.inset.top = e.style.inset.top;
+                    out.push(Node::Element(shifter));
+                    continue;
                 }
                 out.push(Node::Element(block));
                 continue;
