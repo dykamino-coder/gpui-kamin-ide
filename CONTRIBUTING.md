@@ -162,6 +162,21 @@ docs-only PR ограничивается проверкой scope и whitespace
 публикует. Ручные Windows и corporate-only gates ниже остаются отдельными и не
 подменяются CI.
 
+Проверки независимых компонентов и Docker dry-run выполняются параллельно:
+dry-run собирает image без registry login/push и проверяет `/health`, а итоговый
+`required quality gate` ждёт завершения всей применимой матрицы. Production
+Docker workflow запускается отдельно только после успешного gate точного commit
+в `main`.
+
+Тот же workflow запускается после trusted push в `main`, проверяет весь диапазон
+доставленных commit через `github.event.before` и поддерживает общий Cargo/npm
+cache основной ветки. PR-run может читать cache своей base branch, но не
+публикует многогигабайтный Cargo cache в изолированный
+`refs/pull/*/merge`; это сохраняет ускорение между разными PR и не ослабляет
+полный Rust gate для Rust-изменений. Аналогично, Docker dry-run в PR может
+читать общий BuildKit cache, но обновляет его только trusted run в `main`,
+чтобы release workflow не потреблял cache из недоверенной PR-среды.
+
 Для UI-изменения дополнительно проверяются Windows runtime, hover/click,
 keyboard/focus, соседние элементы и визуальный результат. Незапущенная из-за
 окружения проверка явно указывается в PR — её нельзя выдавать за пройденную.
@@ -259,9 +274,9 @@ release branch перебазирована или в неё добавлен к
 В текущей схеме приложение и Docker-образ server выпускаются вместе. Поэтому
 release PR выбирает две новые уникальные patch-версии:
 
-| Компонент | Источник истины | Производные файлы |
-|---|---|---|
-| KaminIDE | `Cargo.toml` → `[workspace.package].version` | `Cargo.lock` |
+| Компонент     | Источник истины                                | Производные файлы                                     |
+| ------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| KaminIDE      | `Cargo.toml` → `[workspace.package].version`   | `Cargo.lock`                                          |
 | Bridge server | `extensions/claude-bridge/server/package.json` | `package-lock.json`; runtime читает manifest напрямую |
 
 Индивидуальные `crates/*/Cargo.toml` используют `version.workspace = true` и
@@ -275,6 +290,7 @@ Server manifest и lockfile обновляются одной командой:
 npm --prefix extensions/claude-bridge/server \
   version 6.3.118 --no-git-tag-version
 ```
+
 После изменения Cargo version запускается `cargo check --workspace`, чтобы
 перегенерировать workspace entries в `Cargo.lock`.
 
@@ -312,6 +328,19 @@ node scripts/build_setup_rust.mjs
 текущим host/builtin sources, и не позволяют упаковать старые компоненты под
 новой версией.
 
+Из того же неизменного HEAD создаётся provenance sidecar. Он фиксирует commit и
+tree исходников, обе release-версии, имя, размер и SHA-256 installer:
+
+```bash
+node scripts/release/provenance-cli.mjs create \
+  --installer KaminIDE_<version>_x64-setup.exe \
+  --output KaminIDE_<version>_provenance.json
+```
+
+Команда намеренно не перезаписывает существующий sidecar. Если release HEAD или
+installer изменился, старый sidecar считается недействительным и после явного
+удаления создаётся заново.
+
 Минимальный smoke test:
 
 1. обновление поверх предыдущей опубликованной версии;
@@ -330,11 +359,14 @@ node scripts/build_setup_rust.mjs
 Порядок публикации обязателен:
 
 1. release PR одобрен и больше не изменяется;
-2. installer собран и проверен из его HEAD;
-3. новый installer загружен в GitHub Release `kaminide-latest`;
-4. в Release оставлен ровно один актуальный `KaminIDE_*_x64-setup.exe`;
+2. installer и provenance sidecar созданы и проверены из его HEAD;
+3. оба файла загружены в GitHub Release `kaminide-latest`;
+4. в Release оставлена ровно одна актуальная пара
+   `KaminIDE_<version>_x64-setup.exe` +
+   `KaminIDE_<version>_provenance.json`;
 5. только после этого release PR объединён с `main`;
-6. Docker workflow читает новую server version, скачивает installer и
+6. Docker workflow проверяет coordinated app/server version bump, скачивает
+   точную пару assets, связывает source tree с release commit и только затем
    публикует version tag и `latest`;
 7. проверяются Docker tag, `/download` и `/updates/kaminide/...`.
 
@@ -352,3 +384,30 @@ version tag, digest и labels. GitHub Actions pin-ятся на полные com
 Существующий tag с неизвестным или другим revision является ошибкой, а не
 успешным skip. Ручная публикация image вне release pipeline не считается
 завершённым релизом.
+
+`docker.yml` запускается только после успешного workflow `pull request checks`
+на точном commit в `main` и публикует image, только если одновременно изменились
+app и server release-версии. Merge обычного change PR или самого workflow
+завершается зелёным no-op. Ручной retry принимает только полный `release_sha`,
+достижимый из `origin/main` и имеющий успешный `required quality gate`, и не
+разрешает перезаписать существующий version tag. Installer проверяется по tree,
+а не по равенству commit SHA: при squash merge HEAD release PR и merge commit
+различаются, но их проверенное дерево должно совпасть.
+
+### Одноразовые настройки публикации
+
+Владелец GitHub repository добавляет в **Settings → Secrets and variables →
+Actions** два repository secret:
+
+- `DOCKERHUB_USERNAME` — `dykamino`;
+- `DOCKERHUB_TOKEN` — отдельный Docker Hub access token с правом записи в
+  `dykamino/open-claude-bridge`.
+
+Пароль Docker Hub не используется. Значения не передаются maintainer agent и не
+хранятся в файлах, PR, release assets или логах: GitHub подставляет их только в
+publish job после merge. Если secret отсутствует, workflow падает до login/build
+с точным сообщением и релиз остаётся незавершённым.
+
+Для `main` владелец repository также включает правило pull request и делает
+check `required quality gate` обязательным. Иначе зелёный check виден, но GitHub
+технически не запрещает merge с красной или незапущенной матрицей.

@@ -3,9 +3,12 @@ name: pull request checks
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
-  group: pr-checks-${{ github.event.pull_request.number }}
+  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -23,6 +26,8 @@ jobs:
       bridge_extension: ${{ steps.changes.outputs.bridge_extension }}
       bridge_webview: ${{ steps.changes.outputs.bridge_webview }}
       rust: ${{ steps.changes.outputs.rust }}
+      release_pipeline: ${{ steps.changes.outputs.release_pipeline }}
+      base_sha: ${{ steps.changes.outputs.base_sha }}
     steps:
       - name: Check out the pull request merge candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -33,18 +38,35 @@ jobs:
       - name: Detect applicable checks
         id: changes
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
         shell: bash
         run: |
           set -euo pipefail
+          base_sha="$PR_BASE_SHA"
+          if [[ -z "$base_sha" && "$EVENT_NAME" == "push" && \
+                "$PUSH_BEFORE" =~ ^[0-9a-f]{40}$ && \
+                ! "$PUSH_BEFORE" =~ ^0+$ ]]; then
+            base_sha="$PUSH_BEFORE"
+          fi
+          if [[ -z "$base_sha" ]]; then base_sha="$(git rev-parse HEAD^)"; fi
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+
           changed_files="$RUNNER_TEMP/changed-files.txt"
-          git diff --check "$BASE_SHA...HEAD"
-          git diff --name-only "$BASE_SHA...HEAD" > "$changed_files"
+          git diff --check "$base_sha...HEAD"
+          git diff --name-only "$base_sha...HEAD" > "$changed_files"
+
+          force_all=false
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]] || \
+             grep -Fxq '.github/workflows/pr-checks.yml' "$changed_files"; then
+            force_all=true
+          fi
 
           set_scope() {
             local output="$1"
             local pattern="$2"
-            if grep -Eq "$pattern" "$changed_files"; then
+            if [[ "$force_all" == "true" ]] || grep -Eq "$pattern" "$changed_files"; then
               echo "$output=true" >> "$GITHUB_OUTPUT"
             else
               echo "$output=false" >> "$GITHUB_OUTPUT"
@@ -57,6 +79,7 @@ jobs:
           set_scope bridge_extension '^(extensions/claude-bridge/extension/|builtin-extensions/claude-bridge/(extension\.js|package\.json)$|src/kamin-host/rolling-log\.ts$)'
           set_scope bridge_webview '^(extensions/claude-bridge/webview/|builtin-extensions/claude-bridge/(chat|tools|customize)\.html$)'
           set_scope rust '^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|scripts/check_event_routing\.py$)'
+          set_scope release_pipeline '^(\.github/workflows/docker\.yml$|scripts/release/|extensions/claude-bridge/server/)'
 
           {
             echo '### Pull request scope'
@@ -79,11 +102,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm run check
 
   bridge-server:
@@ -105,17 +128,17 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
           cache-dependency-path: extensions/claude-bridge/server/package-lock.json
 
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
       - name: Check formatting of changed Bridge server files
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ needs.scope.outputs.base_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -147,11 +170,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
           cache-dependency-path: extensions/claude-bridge/extension/package-lock.json
 
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -177,11 +200,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
           cache-dependency-path: extensions/claude-bridge/server/src/ui/package-lock.json
 
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm run build
 
   bridge-webview:
@@ -202,11 +225,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
           cache-dependency-path: extensions/claude-bridge/webview/package-lock.json
 
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -229,8 +252,8 @@ jobs:
       - name: Install Rust quality components
         run: rustup component add rustfmt clippy
 
-      - name: Cache Cargo inputs and build output
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - name: Restore Cargo inputs and build output
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry
@@ -261,6 +284,106 @@ jobs:
       - run: cargo test --workspace
       - run: python scripts/check_event_routing.py
 
+      # PR caches are scoped to refs/pull/*/merge and cannot warm sibling PRs.
+      # A trusted main run maintains the default-branch cache all PRs may read.
+      - name: Save the shared Cargo cache from main
+        if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-cargo-${{ hashFiles('Cargo.lock') }}
+
+  release-dry-run:
+    name: release pipeline dry run
+    needs: scope
+    if: needs.scope.outputs.release_pipeline == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the pull request merge candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+
+      - name: Exercise installer provenance without production artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_version="$(node --input-type=module -e \
+            "import {readReleaseVersions} from './scripts/release/provenance.mjs'; console.log((await readReleaseVersions(process.cwd())).app)")"
+          installer="$RUNNER_TEMP/KaminIDE_${app_version}_x64-setup.exe"
+          provenance="$RUNNER_TEMP/KaminIDE_${app_version}_provenance.json"
+          node -e "require('fs').writeFileSync(process.argv[1], 'non-production CI fixture')" "$installer"
+          node scripts/release/provenance-cli.mjs create \
+            --installer "$installer" --output "$provenance"
+          node scripts/release/provenance-cli.mjs verify \
+            --installer "$installer" --provenance "$provenance" \
+            --release-sha "$(git rev-parse HEAD)"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Build the release image without publishing
+        env:
+          CONTEXT: extensions/claude-bridge/server
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_version="$(node --input-type=module -e \
+            "import {readReleaseVersions} from './scripts/release/provenance.mjs'; console.log((await readReleaseVersions(process.cwd())).app)")"
+          mkdir -p "$CONTEXT/installer"
+          node -e "require('fs').writeFileSync(process.argv[1], 'non-production CI fixture')" \
+            "$CONTEXT/installer/KaminIDE_${app_version}_x64-setup.exe"
+          cache_args=(--cache-from "type=gha,scope=bridge-release")
+          if [[ "$GITHUB_REF" == "refs/heads/main" && \
+                ("$GITHUB_EVENT_NAME" == "push" || "$GITHUB_EVENT_NAME" == "workflow_dispatch") ]]; then
+            cache_args+=(--cache-to "type=gha,mode=max,scope=bridge-release")
+          fi
+
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            "${cache_args[@]}" \
+            --tag "kaminide-release-dry-run:${GITHUB_SHA}" \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=dry-run" \
+            --file "$CONTEXT/Dockerfile" \
+            "$CONTEXT"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+            "kaminide-release-dry-run:${GITHUB_SHA}")" = "$GITHUB_SHA"
+
+      - name: Smoke-test the built Bridge image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="kaminide-release-dry-run:${GITHUB_SHA}"
+          container="$(docker run --detach --publish 127.0.0.1::3456 "$image")"
+          cleanup() { docker rm --force "$container" > /dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          port="$(docker port "$container" 3456/tcp | sed 's/.*://')"
+          for _ in $(seq 1 30); do
+            if curl --fail --silent "http://127.0.0.1:${port}/health" \
+              | jq -e '.status == "ok" and .service == "open-claude-bridge"' \
+              > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs "$container" >&2
+          exit 1
+
   quality-gate:
     name: required quality gate
     needs:
@@ -271,6 +394,7 @@ jobs:
       - bridge-extension
       - bridge-webview
       - rust-windows
+      - release-dry-run
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -284,6 +408,7 @@ jobs:
           EXTENSION_RESULT: ${{ needs.bridge-extension.result }}
           WEBVIEW_RESULT: ${{ needs.bridge-webview.result }}
           RUST_RESULT: ${{ needs.rust-windows.result }}
+          RELEASE_RESULT: ${{ needs.release-dry-run.result }}
         shell: bash
         run: |
           set -euo pipefail
@@ -294,7 +419,8 @@ jobs:
             "$DASHBOARD_RESULT" \
             "$EXTENSION_RESULT" \
             "$WEBVIEW_RESULT" \
-            "$RUST_RESULT"; do
+            "$RUST_RESULT" \
+            "$RELEASE_RESULT"; do
             case "$result" in
               success|skipped) ;;
               *) echo "Applicable check did not pass: $result" >&2; exit 1 ;;

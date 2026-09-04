@@ -1,100 +1,325 @@
-# Сборка и публикация dykamino/open-claude-bridge из extensions/claude-bridge/server/.
-# Версия = server/package.json; существующий тег на Docker Hub не перезаписывается
-# (workflow_dispatch с force=true — единственный способ перезаписать).
-# Инсталлер KaminIDE (161MB) живёт GitHub Release'ом `kaminide-latest`, не в git —
-# он собирается и подписывается локально, workflow лишь скачивает его в installer/.
-# TODO перед мержем: запинить все uses: на полные commit SHA (Dependabot настроен).
+# Publish dykamino/open-claude-bridge from an immutable, tested release commit.
+# The installer and its provenance sidecar must already exist in the rolling
+# GitHub release. Existing version tags are verified and never overwritten.
 name: docker
 
 on:
-  push:
+  workflow_run:
+    workflows: ["pull request checks"]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'extensions/claude-bridge/server/**'
-      - '.github/workflows/docker.yml'
   workflow_dispatch:
     inputs:
-      force:
-        description: 'Push even if the version tag already exists on Docker Hub'
-        type: boolean
-        default: false
+      release_sha:
+        description: "Full main-branch release commit SHA to retry"
+        required: true
+        type: string
 
 concurrency:
-  group: docker-${{ github.ref }}
+  group: docker-main
   cancel-in-progress: false
 
 permissions:
+  checks: read
   contents: read
 
 env:
   IMAGE: dykamino/open-claude-bridge
+  SOURCE_URL: https://github.com/dykamino-coder/gpui-kamin-ide
   CONTEXT: extensions/claude-bridge/server
 
 jobs:
-  build-push:
+  release-context:
+    name: validate release context
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      release_sha: ${{ steps.release.outputs.release_sha }}
+      app_version: ${{ steps.release.outputs.app_version }}
+      server_version: ${{ steps.release.outputs.server_version }}
+      publish_latest: ${{ steps.release.outputs.publish_latest }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out the requested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Read server version
-        id: ver
-        run: echo "version=$(node -p "require('./$CONTEXT/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Skip if tag already on Docker Hub
-        id: guard
+      - name: Require a main-branch commit with a coordinated version bump
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_SHA: ${{ inputs.release_sha }}
+          TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
+          TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
         run: |
-          if [ "${{ inputs.force }}" != "true" ] && \
-             docker manifest inspect "$IMAGE:${{ steps.ver.outputs.version }}" >/dev/null 2>&1; then
+          set -euo pipefail
+          release_sha="$(git rev-parse HEAD)"
+          if [[ ! "$release_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Release SHA is not a full commit id" >&2
+            exit 1
+          fi
+          if [[ -n "$REQUESTED_SHA" && "$REQUESTED_SHA" != "$release_sha" ]]; then
+            echo "Requested SHA did not resolve exactly" >&2
+            exit 1
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            if [[ "$TRIGGER_EVENT" != "push" || "$TRIGGER_CONCLUSION" != "success" || \
+                  "$TRIGGER_SHA" != "$release_sha" ]]; then
+              echo "Publication requires a successful main quality run for this exact commit" >&2
+              exit 1
+            fi
+          else
+            checks="$RUNNER_TEMP/release-checks.json"
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/$GITHUB_REPOSITORY/commits/$release_sha/check-runs?filter=latest&per_page=100" \
+              > "$checks"
+            if ! jq -e '
+              .check_runs
+              | any(
+                  .name == "required quality gate"
+                  and .conclusion == "success"
+                  and .app.slug == "github-actions"
+                )
+            ' "$checks" > /dev/null; then
+              echo "Manual retry SHA has no successful required quality gate" >&2
+              exit 1
+            fi
+          fi
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$release_sha" origin/main; then
+            echo "Release SHA is not reachable from origin/main" >&2
+            exit 1
+          fi
+
+          previous_sha="${release_sha}^"
+          if ! git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
+            echo "Cannot resolve the commit before the release" >&2
+            exit 1
+          fi
+
+          read_app_version() {
+            awk '
+              /^\[workspace\.package\]$/ { section = 1; next }
+              section && /^\[/ { exit }
+              section && /^version[[:space:]]*=/ {
+                sub(/^[^"]*"/, ""); sub(/".*$/, ""); print; exit
+              }
+            '
+          }
+          app_version="$(read_app_version < Cargo.toml)"
+          previous_app="$(git show "$previous_sha:Cargo.toml" | read_app_version)"
+          server_version="$(node -p "require('./$CONTEXT/package.json').version")"
+          previous_server="$(git show "$previous_sha:$CONTEXT/package.json" | node -e \
+            "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).version))")"
+
+          if [[ "$app_version" == "$previous_app" && "$server_version" == "$previous_server" ]]; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              echo "Manual retry SHA is not a coordinated release commit" >&2
+              exit 1
+            fi
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "No coordinated version bump; publication is not required." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ "$app_version" == "$previous_app" || "$server_version" == "$previous_server" ]]; then
+            echo "App and server versions must change in the same release commit" >&2
+            exit 1
+          fi
+
+          main_server="$(node -p "require('./$CONTEXT/package.json').version")"
+          if [[ "$release_sha" != "$(git rev-parse origin/main)" ]]; then
+            main_server="$(git show "origin/main:$CONTEXT/package.json" | node -e \
+              "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).version))")"
+          fi
+          publish_latest=false
+          if [[ "$main_server" == "$server_version" ]]; then publish_latest=true; fi
+
+          {
+            echo "publish=true"
+            echo "release_sha=$release_sha"
+            echo "app_version=$app_version"
+            echo "server_version=$server_version"
+            echo "publish_latest=$publish_latest"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Docker release"
+            echo
+            echo "- commit: \`$release_sha\`"
+            echo "- KaminIDE: \`$app_version\`"
+            echo "- Bridge server: \`$server_version\`"
+            echo "- update latest: \`$publish_latest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-push:
+    name: publish verified image
+    needs: release-context
+    if: needs.release-context.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out the immutable release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.release-context.outputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+
+      - name: Download the exact installer and provenance sidecar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ needs.release-context.outputs.app_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$CONTEXT/installer"
+          gh release download kaminide-latest \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "KaminIDE_${APP_VERSION}_x64-setup.exe" \
+            --pattern "KaminIDE_${APP_VERSION}_provenance.json" \
+            --dir "$CONTEXT/installer"
+          test -s "$CONTEXT/installer/KaminIDE_${APP_VERSION}_x64-setup.exe"
+          test -s "$CONTEXT/installer/KaminIDE_${APP_VERSION}_provenance.json"
+
+      - name: Verify installer provenance against the release tree
+        env:
+          APP_VERSION: ${{ needs.release-context.outputs.app_version }}
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+        run: |
+          node scripts/release/provenance-cli.mjs verify \
+            --installer "$CONTEXT/installer/KaminIDE_${APP_VERSION}_x64-setup.exe" \
+            --provenance "$CONTEXT/installer/KaminIDE_${APP_VERSION}_provenance.json" \
+            --release-sha "$RELEASE_SHA"
+
+      - name: Check whether the immutable version tag exists
+        id: existing
+        env:
+          VERSION: ${{ needs.release-context.outputs.server_version }}
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker manifest inspect "$IMAGE:$VERSION" >/dev/null 2>&1; then
+            node scripts/release/verify-image.mjs \
+              --image "$IMAGE" --tag "$VERSION" \
+              --source "$SOURCE_URL" --revision "$RELEASE_SHA" --version "$VERSION" \
+              > "$RUNNER_TEMP/version-image.json"
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::$IMAGE:${{ steps.ver.outputs.version }} already published — skipping"
+            echo "Version tag already contains the verified release; no overwrite." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Dockerfile бакает installer/KaminIDE_*_x64-setup.exe по глобу — без файла
-      # COPY падает. Release kaminide-latest обновляется локальным релиз-циклом.
-      - name: Fetch KaminIDE installer from release
-        if: steps.guard.outputs.exists == 'false'
+      - name: Require Docker Hub publication credentials
+        if: steps.existing.outputs.exists == 'false'
         env:
-          GH_TOKEN: ${{ github.token }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        shell: bash
         run: |
-          mkdir -p "$CONTEXT/installer"
-          gh release download kaminide-latest \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern 'KaminIDE_*_x64-setup.exe' \
-            --dir "$CONTEXT/installer"
-          ls -la "$CONTEXT/installer"
+          set -euo pipefail
+          if [[ -z "$DOCKERHUB_USERNAME" || -z "$DOCKERHUB_TOKEN" ]]; then
+            echo "Repository secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are required" >&2
+            exit 1
+          fi
 
-      - uses: docker/setup-buildx-action@v4
-        if: steps.guard.outputs.exists == 'false'
+      - name: Set up Docker Buildx
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
-      - uses: docker/login-action@v4
-        if: steps.guard.outputs.exists == 'false'
+      - name: Log in to Docker Hub
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: docker/metadata-action@v6
-        if: steps.guard.outputs.exists == 'false'
-        id: meta
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=raw,value=${{ steps.ver.outputs.version }}
-            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Prepare immutable and rolling tags
+        if: steps.existing.outputs.exists == 'false'
+        id: tags
+        env:
+          VERSION: ${{ needs.release-context.outputs.server_version }}
+          PUBLISH_LATEST: ${{ needs.release-context.outputs.publish_latest }}
+        shell: bash
+        run: |
+          {
+            echo 'value<<EOF'
+            echo "$IMAGE:$VERSION"
+            if [[ "$PUBLISH_LATEST" == "true" ]]; then echo "$IMAGE:latest"; fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
-      - uses: docker/build-push-action@v7
-        if: steps.guard.outputs.exists == 'false'
+      - name: Build and publish
+        if: steps.existing.outputs.exists == 'false'
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ${{ env.CONTEXT }}
           file: ${{ env.CONTEXT }}/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ steps.tags.outputs.value }}
+          labels: |
+            org.opencontainers.image.source=${{ env.SOURCE_URL }}
+            org.opencontainers.image.revision=${{ needs.release-context.outputs.release_sha }}
+            org.opencontainers.image.version=${{ needs.release-context.outputs.server_version }}
+          cache-from: type=gha,scope=bridge-release
+          cache-to: type=gha,mode=max,scope=bridge-release
           provenance: mode=max
           sbom: true
-          # CLAUDE_CODE_CACHE_BUST намеренно не передаём: версия CLI запинена
-          # ARG'ом в Dockerfile, bust только ломает кэш слоя.
+
+      - name: Verify published digest, labels and attestation
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION: ${{ needs.release-context.outputs.server_version }}
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+          PUBLISHED_DIGEST: ${{ steps.build.outputs.digest }}
+          PUBLISH_LATEST: ${{ needs.release-context.outputs.publish_latest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release/verify-image.mjs \
+            --image "$IMAGE" --tag "$VERSION" \
+            --source "$SOURCE_URL" --revision "$RELEASE_SHA" --version "$VERSION" \
+            --digest "$PUBLISHED_DIGEST" --attempts 12 \
+            > "$RUNNER_TEMP/version-image.json"
+          if [[ "$PUBLISH_LATEST" == "true" ]]; then
+            node scripts/release/verify-image.mjs \
+              --image "$IMAGE" --tag latest \
+              --source "$SOURCE_URL" --revision "$RELEASE_SHA" --version "$VERSION" \
+              --digest "$PUBLISHED_DIGEST" --attempts 12 \
+              > "$RUNNER_TEMP/latest-image.json"
+          fi
+          cat "$RUNNER_TEMP/version-image.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify latest for an idempotent current release
+        if: steps.existing.outputs.exists == 'true' && needs.release-context.outputs.publish_latest == 'true'
+        env:
+          VERSION: ${{ needs.release-context.outputs.server_version }}
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest="$(node -p "JSON.parse(require('fs').readFileSync('$RUNNER_TEMP/version-image.json')).digest")"
+          node scripts/release/verify-image.mjs \
+            --image "$IMAGE" --tag latest \
+            --source "$SOURCE_URL" --revision "$RELEASE_SHA" --version "$VERSION" \
+            --digest "$digest" --attempts 4
