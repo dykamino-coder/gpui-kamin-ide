@@ -5293,9 +5293,14 @@ fn paragraph_pieces(
                 // рисовалась бы целиком (`clip-rect-v*`).
                 grouped(image(&copy), &e.style)
             } else {
-                styled_div_with(e, &merged)
-                    .children(blocks(&e.children, &merged, opts))
-                    .into_any_element()
+                // Тот же буфер группы, что и у картинки: маска, обрезка и
+                // фильтр иначе не доходят до коробки на статической позиции.
+                grouped(
+                    styled_div_with(e, &merged)
+                        .children(blocks(&e.children, &merged, opts))
+                        .into_any_element(),
+                    &e.style,
+                )
             };
             return Some(inline::Piece::Overlay(inner));
         }
