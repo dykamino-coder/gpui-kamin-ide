@@ -13963,6 +13963,9 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             Justify::Evenly => Some(gpui::JustifyContent::SpaceEvenly),
             // `start`/`end` по стороне ПИСЬМА: в вертикальном письме и при
             // `rtl` начало ряда — другой край.
+            // `left`/`right` — физические края (лунки).
+            Justify::Left => Some(gpui::JustifyContent::Start),
+            Justify::Right => Some(gpui::JustifyContent::End),
             Justify::WmStart | Justify::WmEnd => {
                 let flip = merged.rtl == Some(true);
                 let end = (j? == Justify::WmEnd) != flip;

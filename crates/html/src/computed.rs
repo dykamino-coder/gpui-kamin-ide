@@ -180,6 +180,10 @@ pub enum Justify {
     Start,
     Center,
     End,
+    /// `left`/`right` — физические стороны; поперёк строчной оси (гибкая
+    /// колонка) ведут себя как `start` (css-align-3 §5.2).
+    Left,
+    Right,
     /// `start`/`end` — оси ПИСЬМА, а не гибкой раскладки: при `row-reverse`
     /// они смотрят в другую сторону, чем `flex-start`/`flex-end`.
     WmStart,
@@ -6416,8 +6420,10 @@ fn parse_justify(v: &str) -> Option<Justify> {
         // rtl они НЕ переставлялись вместе с `start`/`end` (css-align-3 §4).
         // Правка верна по спеке, но полный свод обоих: 0 и 0 —
         // `flexbox_justifycontent-right-002` (8.53) держит не это.
-        "start" | "left" => Some(Justify::WmStart),
-        "end" | "right" => Some(Justify::WmEnd),
+        "start" => Some(Justify::WmStart),
+        "end" => Some(Justify::WmEnd),
+        "left" => Some(Justify::Left),
+        "right" => Some(Justify::Right),
         "space-between" => Some(Justify::Between),
         "space-around" => Some(Justify::Around),
         "space-evenly" => Some(Justify::Evenly),

@@ -132,8 +132,8 @@ fn to_content(j: Justify) -> gpui::AlignContent {
         Justify::End => gpui::AlignContent::FlexEnd,
         // Начало и конец ОСИ ПИСЬМА: у раскладки это отдельные значения, и
         // при обратном направлении ряда они не совпадают с гибкими.
-        Justify::WmStart => gpui::AlignContent::Start,
-        Justify::WmEnd => gpui::AlignContent::End,
+        Justify::WmStart | Justify::Left => gpui::AlignContent::Start,
+        Justify::WmEnd | Justify::Right => gpui::AlignContent::End,
         Justify::Between => gpui::AlignContent::SpaceBetween,
         Justify::Around => gpui::AlignContent::SpaceAround,
         // `space-evenly` отличается от `space-around` шириной крайних
@@ -596,6 +596,25 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         d = d.flex_basis(len_to_gpui(b));
     }
     if let Some(j) = c.justify_content {
+        // `left`/`right` (css-align-3 §5.2): вдоль строчной оси — как
+        // `start`/`end` письма (в ряду); «if the property's axis is not
+        // parallel with the inline axis, this value behaves as start» —
+        // в КОЛОНКЕ это `flex-start` (`flexbox_justifycontent-right-002`).
+        // Только горизонтальное письмо: в вертикальном оси уже переставлены
+        // поворотом, и `left/right` там держит прежний путь (★ ЗАМЕРЕНО:
+        // без этой отсечки `flexbox-justify-content-wmvert-001` 0.00 -> 1.12).
+        let main_vertical = c.vertical.is_none()
+            && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
+        let j = match j {
+            // Не вдоль строчной оси — `start` ПИСЬМА, а не `flex-start`: у
+            // `column-reverse` они смотрят в разные стороны, а спека требует
+            // именно начало письма (`flexbox_justifycontent-left-002`:
+            // «boxes … in the top left corner … top-to-bottom order»).
+            Justify::Left | Justify::Right if main_vertical => Justify::WmStart,
+            Justify::Left => Justify::WmStart,
+            Justify::Right => Justify::WmEnd,
+            other => other,
+        };
         // `start`/`end` — начало и конец ОСИ ПИСЬМА (css-align-3 §4), а
         // `AlignContent::Start`/`End` у раскладки физические: смещение всегда
         // считается от `padding_border.main_start`, разворот выражен только
