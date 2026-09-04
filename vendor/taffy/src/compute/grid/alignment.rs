@@ -35,16 +35,20 @@ pub(super) fn align_tracks(
     let is_safe = false; // TODO: Implement safe alignment
     let track_alignment = apply_alignment_fallback(free_space, num_tracks, track_alignment_style, is_safe);
 
+    // KaminIDE patch: схлопнутая дорожка доли распределения не получает
+    // (css-grid-2 §7.2.3.2: «including any space allotted through distributed
+    // alignment»), а «первая» — первая ЖИВАЯ, не первая по счёту.
+    let first_live = tracks.iter().enumerate().find(|(i, t)| i % 2 == 1 && !t.is_collapsed).map(|(i, _)| i);
+
     // Compute offsets
     let mut total_offset = origin;
     tracks.iter_mut().enumerate().for_each(|(i, track)| {
         // Odd tracks are gutters (but slices are zero-indexed, so odd tracks have even indices)
         let is_gutter = i % 2 == 0;
 
-        // The first non-gutter track is index 1
-        let is_first = i == 1;
+        let is_first = Some(i) == first_live;
 
-        let offset = if is_gutter {
+        let offset = if is_gutter || track.is_collapsed {
             0.0
         } else {
             compute_alignment_offset(free_space, num_tracks, gap, track_alignment, layout_is_reversed, is_first)
@@ -278,7 +282,13 @@ pub(super) fn align_item_within_area(
 
     // Expand auto margins to fill available space
     let auto_margin_count = margin.start.is_none() as u8 + margin.end.is_none() as u8;
-    let auto_margin_size = if auto_margin_count > 0 { free_space / auto_margin_count as f32 } else { 0.0 };
+    // KaminIDE patch: у абсолюта с обоими `auto`-краями auto-поля равны нулю
+    // (css-position-3 §static position: «First set any auto values for
+    // margin-* to 0»; Blink absolute_utils.cc ComputeMargins) — коробка
+    // встаёт в статическую позицию, а не прижимается к концу области.
+    let static_abs = position == Position::Absolute && inset.start.is_none() && inset.end.is_none();
+    let auto_margin_size =
+        if auto_margin_count > 0 && !static_abs { free_space / auto_margin_count as f32 } else { 0.0 };
     let resolved_margin = Line {
         start: margin.start.unwrap_or(auto_margin_size) + baseline_shim,
         end: margin.end.unwrap_or(auto_margin_size),

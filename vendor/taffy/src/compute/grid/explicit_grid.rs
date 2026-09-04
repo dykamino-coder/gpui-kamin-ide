@@ -305,6 +305,32 @@ pub(super) fn initialize_grid_tracks(
         create_implicit_tracks(tracks, counts.positive_implicit + grid_area_tracks, iter, gap)
     }
 
+    // KaminIDE patch: зазоры по обе стороны схлопнутой дорожки схлопываются
+    // (css-grid-2 §7.2.3.2, «When a collapsed track's gutters collapse, they
+    // coincide exactly»): между двумя ЖИВЫМИ дорожками остаётся ровно один
+    // зазор, а перед первой/после последней живой — ни одного. Прежде
+    // схлопывался только зазор ПОСЛЕ схлопнутой дорожки, и хвостовой зазор
+    // перед ней оставался (`grid-content-distribution-with-collapsed-tracks-*`).
+    if tracks.iter().any(|t| t.is_collapsed) {
+        let mut seen_live = false;
+        let mut pending: Option<usize> = None;
+        for i in 0..tracks.len() {
+            if i % 2 == 0 {
+                if seen_live && pending.is_none() {
+                    pending = Some(i);
+                } else {
+                    tracks[i].collapse();
+                }
+            } else if !tracks[i].is_collapsed {
+                seen_live = true;
+                pending = None;
+            }
+        }
+        if let Some(i) = pending {
+            tracks[i].collapse();
+        }
+    }
+
     // Mark first and last grid lines as collapsed
     tracks.first_mut().unwrap().collapse();
     tracks.last_mut().unwrap().collapse();

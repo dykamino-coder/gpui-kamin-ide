@@ -179,7 +179,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     let sized = e.style.height.is_some() || e.style.min_height.is_some();
     // В многоколоночнике `continue: collapse` ведёт себя как `auto`
     // (css-overflow-4 §5.2): срез не действует (`line-clamp-039`).
-    let multicol = e.style.column_count.is_some() || e.style.column_width.is_some();
+    let multicol = multicol_container(&e.style);
     if !multicol && e.style.clamp_auto == Some(true) && c.max_height.is_some() {
         if let Some(cut) = crate::interact::clamp_cut(e.node_id).filter(|_| !sized) {
             d = d.max_h(px(cut));
@@ -3651,6 +3651,22 @@ fn apply_margin(d: gpui::Div, c: &Computed) -> gpui::Div {
 }
 
 /// Пробельный текстовый узел: в подсчёте детей он не участвует.
+/// Многоколоночный контейнер: `column-*` применяются только к блочным
+/// контейнерам (css-multicol-1 §2), сетка и гибкий контейнер ими не
+/// становятся (`grid-multicol-001`,
+/// `column-property-should-not-apply-on-grid-container-001`).
+fn multicol_container(c: &Computed) -> bool {
+    (c.column_count.is_some() || c.column_width.is_some())
+        && !matches!(
+            c.display,
+            Some(Display::Grid)
+                | Some(Display::InlineGrid)
+                | Some(Display::GridLanes)
+                | Some(Display::Flex)
+                | Some(Display::InlineFlex)
+        )
+}
+
 fn is_blank(n: &Node) -> bool {
     matches!(n, Node::Text(t) if blank_text(t))
 }
@@ -5781,7 +5797,7 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
     if e.style.display == Some(Display::GridLanes) {
         return Some(element(e, inherited, opts));
     }
-    if e.style.column_count.is_some() || e.style.column_width.is_some() {
+    if multicol_container(&e.style) {
         let merged = inline::inherit(inherited, &e.style);
         let gap = match e.style.column_gap {
             Some(Len::Px(v)) => v,

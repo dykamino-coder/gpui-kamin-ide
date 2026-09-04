@@ -7013,7 +7013,12 @@ fn auto_fill_min(v: &str) -> Option<f32> {
         // она определённая, иначе по минимальной (css-grid-1 §7.2.3.2):
         // `minmax(min-content, 100px)` повторяется сотнями точек, а
         // `minmax(100px, 1fr)` — сотней из минимума.
-        return px_of(hi).or_else(|| px_of(lo));
+        // Максимум ниже минимума поднимается до него (css-grid-2 §7.2.3.1:
+        // «the max will be floored by the min» — `grid-auto-repeat-minmax`).
+        return match (px_of(hi), px_of(lo)) {
+            (Some(h), Some(l)) => Some(h.max(l)),
+            (h, l) => h.or(l),
+        };
     }
     let rest = v.split("repeat(").nth(1)?;
     let inner = &rest[..rest.rfind(')')?];
