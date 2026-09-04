@@ -166,11 +166,21 @@ fn viewport_overflow(mut nodes: Vec<Node>) -> Vec<Node> {
                 // во вьюпорт ЧЕРЕЗ корень; css-contain-1 §3.1,
                 // contain-{body,html}-overflow-001..004).
                 let own = any_containment(e);
+                // Значение тела уезжает во вьюпорт лишь когда у корня своё
+                // `overflow` — visible по обеим осям (css-overflow-3 §Overflow
+                // Viewport Propagation): иначе во вьюпорт идёт корневое, а
+                // тело держит своё (`overflow-body-propagation-012`).
+                let root_own_overflow = e.tag == "html"
+                    && (matches!(e.style.overflow_x, Some(o) if o != crate::computed::Overflow::Visible)
+                        || matches!(e.style.overflow_y, Some(o) if o != crate::computed::Overflow::Visible));
                 if !own && !root_contained {
                     e.style.overflow_x = None;
                     e.style.overflow_y = None;
                 }
-                strip(&mut e.children, root_contained || (e.tag == "html" && own));
+                strip(
+                    &mut e.children,
+                    root_contained || (e.tag == "html" && (own || root_own_overflow)),
+                );
             }
         }
     }
