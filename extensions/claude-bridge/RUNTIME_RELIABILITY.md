@@ -383,7 +383,8 @@ backup/rollback policy. После этого cleanup оформляется о�
 
 ### BR-14 — Make release artifact provenance verifiable
 
-**Status:** implementation in `codex/automate-release-pipeline`.
+**Status:** implemented in PR #43–#44 and present in `main`; first automatic
+production release remains an observation after repository secrets are added.
 **Dependency:** none. **Acceptance:** automated merge gate + реальный Windows
 candidate build без secrets + production no-op на non-release main commit.
 
@@ -1229,7 +1230,7 @@ Windows lifecycle gate, затем BR-25 verification. PR #21 не считае�
 - native sessions sidebar: BR-28 paired geometry capture → BR-29; отдельный
   layout fix создаётся только если BR-28 докажет sibling reflow.
 
-BR-04, BR-08, BR-14, BR-17, BR-19, BR-23 и BR-24 не образуют общую строгую
+BR-04, BR-08, BR-17, BR-19, BR-23 и BR-24 не образуют общую строгую
 цепочку. Они не смешиваются в один PR и перед началом повторно проверяются на
 file overlap с уже открытыми branches.
 

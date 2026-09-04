@@ -52,17 +52,16 @@ runtime-пачку по правилам репозитория`.
 `KaminIDE_1.0.55_x64-setup.exe` собран из HEAD c599cae, проверен тихой
 установкой поверх 1.0.54 и опубликован в GitHub Release `kaminide-latest`;
 образ `dykamino/open-claude-bridge:6.3.132` (+ `latest`) опубликован вручную
-через podman, потому что `docker.yml` по-прежнему падает на login без
+через podman: действовавший в тот момент `docker.yml` падал на login без
 секретов Docker Hub. CI Rust-gate починен отдельным PR #40 (fmt, clippy,
-корпуса тестов, pin toolchain 1.96.0), после чего BR-29 (#37) влит.
+корпуса тестов, pin toolchain 1.96.0), после чего BR-29 (#37) влит. Новый
+fail-closed release flow находится в `main` после PR #43–#44; его первый
+production-run требует repository secrets и отдельный следующий Release PR.
 
-Следующая планируемая пачка не начинается в этом запуске. Кандидаты для неё:
-BR-31 (delivery pump wake) + BR-25 completion, затем BR-15 (зависит от
-BR-25/27/26). Наблюдения вне пачки, переданные владельцу: CI-проверка
-webview bundles зависит от line endings checkout (Windows-сборка даёт другие
-CSS-module hashes, чем Linux CI), а `cargo fmt --all --check` на `main`
-падает по `crates/html`, поэтому job «Rust checks on Windows» красный для любого
-PR по `crates/`.
+Следующая планируемая пачка не начинается в этом запуске. Первыми кандидатами
+для неё остаются BR-31 (delivery pump wake) + BR-25 completion, затем BR-15
+(зависит от BR-25/27/26). Наблюдавшиеся во время пачки общие CI/release blockers
+устранены PR #40 и PR #43–#44 и не считаются открытыми runtime-задачами.
 
 ## Реестр задач
 
@@ -81,7 +80,7 @@ PR по `crates/`.
 | [BR-11](RUNTIME_RELIABILITY.md#br-11--inventory-native-cli-only-blocking-states) | ready | research | native attention | none | Versioned blocker inventory |
 | [BR-12](RUNTIME_RELIABILITY.md#br-12--establish-the-server-and-builtin-skills-baseline) | ready | verify | deployment skills | none | Versioned roots/mounts inventory без contents |
 | [BR-13](RUNTIME_RELIABILITY.md#br-13--retire-the-legacy-bridge-sync-mount-safely) | blocked | observation | deployment | owner confirms every deployment migration | Migration proof до cleanup PR |
-| [BR-14](RUNTIME_RELIABILITY.md#br-14--make-release-artifact-provenance-verifiable) | ready | change | release | none | Fail-closed provenance PR + dry run |
+| [BR-14](RUNTIME_RELIABILITY.md#br-14--make-release-artifact-provenance-verifiable) | done | observation | release | none | PR #43–#44 в `main`; первый автоматический release после добавления secrets |
 | [BR-15](RUNTIME_RELIABILITY.md#br-15--evaluate-automatic-agent-teams-selection) | waiting | research | Agent Teams | BR-25 + BR-27 + BR-26 | Versioned orchestration eval |
 | [BR-16](RUNTIME_RELIABILITY.md#br-16--stabilize-upward-history-scroll-anchoring) | waiting | change | chat history | classification BR-22 | Keyed-anchor PR с CEF displacement gate |
 | [BR-17](RUNTIME_RELIABILITY.md#br-17--persist-privacy-safe-bridge-server-logs) | ready | change | server operations | none | Persistent bounded logs в disposable compose |
@@ -132,10 +131,11 @@ JSONL analytics.
 
 Они не являются частью текущего snapshot и не запускаются автоматически:
 
-- **B — independent fixes:** BR-19 → BR-17 → BR-20 → BR-23 → BR-04 → BR-14;
+- **B — Agent Teams completion + independent fixes:** BR-31 → BR-25 completion
+  → BR-15; затем BR-19 → BR-17 → BR-20 → BR-23 → BR-04;
 - **C — contracts and diagnostics:** INC-2026-0001, BR-21 decision, BR-24
   diagnostics, BR-11, BR-12, BR-08, BR-06 и BR-02;
-- **conditional:** BR-21A–E, BR-07, BR-15, BR-16, BR-03 и любой child из
+- **conditional:** BR-21A–E, BR-07, BR-16, BR-03 и любой child из
   BR-22/BR-24/BR-28 только после их prerequisites;
 - **owner-blocked:** BR-13 и BR-22 evidence collection.
 
