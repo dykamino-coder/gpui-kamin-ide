@@ -423,6 +423,56 @@ impl DirectWriteState {
                 )
                 .log_err()?
         };
+        // KaminIDE patch: запрет подмены начертания (`font-synthesis-weight`
+        // и `-style`, css-fonts-4 §6.5) приходит своими тегами возможностей
+        // `nsyw`/`nsys`: настоящих тегов OpenType для этого нет, а иного
+        // канала к подбору грани у нас нет. Поддельная грань (у DirectWrite
+        // это `DWRITE_FONT_SIMULATIONS_BOLD`/`_OBLIQUE`) при запрете
+        // пропускается — берётся настоящая, пусть и обычного начертания.
+        let no_synth = |tag: &str| {
+            font_features
+                .tag_value_list()
+                .iter()
+                .any(|(t, v)| t == tag && *v > 0)
+        };
+        let (no_bold, no_oblique) = (no_synth("nsyw"), no_synth("nsys"));
+        // Если поддельны ВСЕ грани запроса (в семействе нет настоящего
+        // жирного/курсивного), заново спрашиваем обычную грань: иначе подбор
+        // возвращал пустоту и шрифт подменялся чужим целиком
+        // (`font-face-local-not-family`, `italic-oblique-fallback`).
+        let font = if no_bold || no_oblique {
+            let plain = unsafe {
+                fontset
+                    .GetMatchingFonts(
+                        &HSTRING::from(family_name),
+                        if no_bold { FontWeight::NORMAL } else { font_weight }.into(),
+                        to_dwrite_stretch(font_stretch),
+                        if no_oblique { FontStyle::Normal } else { font_style }.into(),
+                    )
+                    .log_err()
+            };
+            let all_simulated = {
+                let count = unsafe { font.GetFontCount() };
+                (0..count).all(|i| {
+                    let sim = unsafe {
+                        font.GetFontFaceReference(i)
+                            .ok()
+                            .and_then(|r| r.CreateFontFace().ok())
+                            .map(|f| f.GetSimulations())
+                    };
+                    sim.is_none_or(|s| {
+                        (no_bold && s.0 & DWRITE_FONT_SIMULATIONS_BOLD.0 != 0)
+                            || (no_oblique && s.0 & DWRITE_FONT_SIMULATIONS_OBLIQUE.0 != 0)
+                    })
+                })
+            };
+            match plain {
+                Some(p) if all_simulated => p,
+                _ => font,
+            }
+        } else {
+            font
+        };
         let total_number = unsafe { font.GetFontCount() };
         for index in 0..total_number {
             let Some(font_face_ref) = (unsafe { font.GetFontFaceReference(index).log_err() })
@@ -432,6 +482,12 @@ impl DirectWriteState {
             let Some(font_face) = (unsafe { font_face_ref.CreateFontFace().log_err() }) else {
                 continue;
             };
+            let sims = unsafe { font_face.GetSimulations() };
+            if (no_bold && sims.0 & DWRITE_FONT_SIMULATIONS_BOLD.0 != 0)
+                || (no_oblique && sims.0 & DWRITE_FONT_SIMULATIONS_OBLIQUE.0 != 0)
+            {
+                continue;
+            }
             let Some(identifier) = get_font_identifier(&font_face, &self.components.locale) else {
                 continue;
             };

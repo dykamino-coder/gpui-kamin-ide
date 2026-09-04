@@ -1495,6 +1495,9 @@ pub struct Computed {
     pub counter_set: Option<String>,
     /// Возможности шрифта (`font-feature-settings`, `font-variant`).
     pub font_features: Vec<(String, u32)>,
+    /// `font-synthesis-weight|style|small-caps: none` — подмена начертания
+    /// запрещена (css-fonts-4 §6.5). Ложь = `none`, пусто = `auto`.
+    pub font_synth: (Option<bool>, Option<bool>, Option<bool>),
     /// `caret-color` поля ввода.
     pub caret_color: Option<Color>,
     /// `accent-color` флажков и переключателей.
@@ -4585,6 +4588,47 @@ impl Computed {
                             self.content = Some(list);
                         }
                     }
+                }
+            }
+            "font-synthesis" | "font-synthesis-weight" | "font-synthesis-style"
+            | "font-synthesis-small-caps" => {
+                // css-fonts-4 §6.5: `auto` разрешает подмену, `none`
+                // запрещает; у сокращения перечислены разрешённые части.
+                let allow = |what: &str| match key {
+                    "font-synthesis" => v.contains(what),
+                    _ => v.trim() != "none",
+                };
+                match key {
+                    "font-synthesis-weight" => self.font_synth.0 = Some(allow("weight")),
+                    "font-synthesis-style" => self.font_synth.1 = Some(allow("style")),
+                    "font-synthesis-small-caps" => self.font_synth.2 = Some(allow("small-caps")),
+                    _ => {
+                        self.font_synth = (
+                            Some(allow("weight")),
+                            Some(allow("style")),
+                            Some(allow("small-caps")),
+                        )
+                    }
+                }
+                // Подмена ВЕСА и НАКЛОНА выражается своими тегами возможностей:
+                // подбор грани в gpui читает их и отвергает поддельную грань
+                // (`nsyw`/`nsys` — свои, не OpenType). Малые прописные мы не
+                // синтезируем вовсе, поэтому у них тега нет.
+                for (tag, on) in [("nsyw", self.font_synth.0), ("nsys", self.font_synth.1)] {
+                    self.font_features.retain(|(t, _)| t != tag);
+                    if on == Some(false) {
+                        self.font_features.push((tag.to_string(), 1));
+                    }
+                }
+            }
+            "font-kerning" => {
+                // css-fonts-4 §6.4: `none` гасит кернинг, `normal` включает,
+                // `auto` оставляет решение шрифту (у нас — включён).
+                self.font_features.retain(|(t, _)| t != "kern");
+                match v.trim() {
+                    "none" => self.font_features.push(("kern".to_string(), 0)),
+                    "normal" => self.font_features.push(("kern".to_string(), 1)),
+                    _ => {}
                 }
             }
             "font-feature-settings" => {
