@@ -8102,6 +8102,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 first = false;
                             }
                             stacked = Some((y, through, prev_mb));
+                            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): ряд flex С ПЕРЕНОСОМ
+                            // как строки — жадная сборка по ширинам детей в точках
+                            // (css-flexbox-1 §9.3), разрез между строками, высота —
+                            // сумма строк: срез фрагментации 469 -> 469 (0/0) —
+                            // ширины элементов в тестах не в точках (`flex: 1`,
+                            // проценты), ветка не срабатывает. Нужна ширина из
+                            // раскладки, а не из стиля (корень R4 scout-flexfrag).
                             if row_nowrap {
                                 let tallest = inner_h.iter().copied().fold(0.0f32, f32::max);
                                 stacked = Some((top + tallest, 0.0, 0.0));
