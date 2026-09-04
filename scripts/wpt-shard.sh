@@ -64,8 +64,15 @@ run_shard() { # $1 = list file, $2 = report file
     # осталось = пары work без вердикта; первая из них — висючая (если процесс убит)
     awk -F'|' '{print $1}' "$report" | sort -u > "$report.done"
     grep -vFf "$report.done" "$work" > "$work.rest" || true
-    if [ -s "$work.rest" ]; then
-      if [ "$last" -ge 0 ] && ! kill -0 "$pid" 2>/dev/null; then
+    # НОЛЬ вердиктов за попытку — стенд не запустился вовсе (нет DirectWrite,
+    # битый двоичный файл), а не завис на одной странице. Перезапускать
+    # бессмысленно: 50 попыток x N шардов = сотня модальных окон на экране
+    # пользователя. Обрываем шард сразу.
+    if [ "$last" -eq 0 ]; then
+      echo "shard $list: stend ne zapustilsya, ostalos $(wc -l < "$work.rest") par" >&2
+      : > "$work"
+    elif [ -s "$work.rest" ]; then
+      if ! kill -0 "$pid" 2>/dev/null; then
         # процесс мёртв, а пары остались: первую считаем висючей
         head -1 "$work.rest" | awk -F'|' '{print $1"|"$2"|HUNG"}' >> "$report"
         tail -n +2 "$work.rest" > "$work"

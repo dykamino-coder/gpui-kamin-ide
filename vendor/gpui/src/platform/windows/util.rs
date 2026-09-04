@@ -192,6 +192,14 @@ fn is_color_light(color: &Color) -> bool {
 }
 
 pub(crate) fn show_error(title: &str, content: String) {
+    // KaminIDE patch: пакетным прогонам (стенд WPT) модальное окно смертельно —
+    // процесс встаёт навсегда, ждущий его запускальщик считает это зависанием и
+    // перезапускает, и на экране копятся десятки окон. С `GPUI_NO_ERROR_DIALOG`
+    // ошибка уходит в поток ошибок, а процесс просто падает.
+    if std::env::var_os("GPUI_NO_ERROR_DIALOG").is_some() {
+        eprintln!("{title}: {content}");
+        return;
+    }
     let _ = unsafe {
         MessageBoxW(
             None,
