@@ -6346,6 +6346,54 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 &e.style,
             ))
         }
+        // `<ruby>` — база с НАДСТРОЧНОЙ аннотацией (css-ruby-1 §2): `<rt>`
+        // рисуется над своей базой кеглем в половину, `<rp>` — только для
+        // движков без поддержки руби и не показывается. Собирается атомом:
+        // колонка «аннотация над базой», выключенная по центру. Строка
+        // растёт сама — атом выше её обычной высоты.
+        "ruby" => {
+            let merged = inline::inherit(inherited, &e.style);
+            let mut base: Vec<Node> = Vec::new();
+            let mut over: Vec<Node> = Vec::new();
+            for c in &e.children {
+                match c {
+                    Node::Element(k) if k.tag == "rt" => over.push(c.clone()),
+                    Node::Element(k) if k.tag == "rp" => {}
+                    other => base.push(other.clone()),
+                }
+            }
+            if over.is_empty() {
+                return None;
+            }
+            let mut ann = merged.clone();
+            // Кегль аннотации — половина базового (умолчание браузеров).
+            let font = match merged.font_size {
+                Some(Len::Px(v)) => v,
+                _ => opts.base_size(),
+            };
+            ann.font_size = Some(Len::Px(font * 0.5));
+            ann.line_height = Some(Len::Px(font * 0.5));
+            let col = div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .flex_shrink_0()
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .children(blocks(&over, &ann, opts))
+                        .into_any_element(),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .children(blocks(&base, &merged, opts))
+                        .into_any_element(),
+                );
+            Some(col.into_any_element())
+        }
         // `<canvas>` — замещаемый элемент с собственными размерами 300x150
         // по умолчанию (HTML §4.12.5); рисовать в нём нечего, но место он
         // занимает и фон несёт. Своего рукава у него не было, и голый
