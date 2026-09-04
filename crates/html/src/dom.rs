@@ -571,7 +571,11 @@ pub(crate) fn subgrid_gap_slice(
     for (i, t) in slice.iter_mut().enumerate() {
         let sides = u8::from(i > 0) + u8::from(i + 1 < n);
         if let TrackSize::Single(Track::Px(w)) = t {
-            *w = (*w + d / 2.0 * f32::from(sides)).max(0.0);
+            // Разница зазоров — «extra layer of (potentially negative)
+            // margin» (css-grid-2 §subgrid-item-gaps): дорожка бывает и
+            // ОТРИЦАТЕЛЬНОЙ (`grid-gap-011-ref`: 25 / −50 / 25); Blink
+            // `accumulated_gutter_size_delta_` пола не имеет.
+            *w += d / 2.0 * f32::from(sides);
         }
     }
 }
