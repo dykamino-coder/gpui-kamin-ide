@@ -2013,7 +2013,13 @@ fn orthogonal_children(children: Vec<Node>, container: &Computed, icb_w: f32) ->
                     ch.style.width = Some(Len::Px((w - margins - extra).max(0.0)));
                 }
                 _ => {
-                    ch.style.max_width = Some(Len::Pct(1.0));
+                    // css-writing-modes-4 §7.3.1: без фиксированного размера
+                    // контейнера предел ортогонального потока — начальный
+                    // содержащий блок за вычетом полей ребёнка (Blink
+                    // `space_utils.cc` fallback = ICB). Доля от сжатого по
+                    // содержимому родителя давала бесконечную строку
+                    // (`sizing-orthog-htb-in-vrl-*`).
+                    ch.style.max_width = Some(Len::Px((icb_w - margins).max(0.0)));
                 }
             }
         }
@@ -4908,17 +4914,19 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
             // шаг стопки — кегль, а не своя высота строки; полоса переноса
             // уже одного глифа — в строку ложится ровно один знак (два узких
             // нуля вставали рядом, и стопка выходила короче).
-            stack.line_height = Some(Len::Px(em));
             // Толщина вертикальной строки — LINE-HEIGHT, как у горизонтальной
-            // (стопка глифов стоит в полосе высоты строки, повернутой набок).
+            // (стопка глифов стоит в полосе высоты строки, повернутой набок):
+            // читается ДО подмены шага стопки кеглем, иначе полоса всегда
+            // равнялась кеглю (`vertical-alignment-vrl-022`).
             let lane = match stack.line_height {
                 Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) => k * em,
+                Some(Len::Em(k)) | Some(Len::Pct(k)) => k * em,
                 // До этой точки `ch` мог не разрешиться: стоячий ноль
                 // продвигается на кегль (§7.4) — считаем сами.
                 Some(Len::Ch(k)) => k * em,
                 _ => em,
             };
+            stack.line_height = Some(Len::Px(em));
             let inner = paragraph(nodes, &stack, opts);
             return div()
                 .w(px(lane.max(em)))
@@ -4960,6 +4968,15 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // до поворота, и после поворота он становится высотой коробки — то
         // есть перенос считается по той оси, по которой идёт строка.
         let limit = inherited.ortho_limit.unwrap_or(opts.viewport.1);
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09, пятый заход): предел ортогонального
+        // потока без `ortho_limit` = ICB минус свои рамки/отбивки/поля и
+        // shrink-to-fit (`max_w` + `fit_within` только при `ortho_limit`
+        // = None, css-writing-modes-4 §7.3.1) — css-writing-modes 572 -> 554
+        // (+10/−28): десять `sizing-orthog-*-in-htb` позеленели, но
+        // `available-size-001…018`, `float-*-orthog-*`, `line-box-height-*`
+        // ушли в красное — у них тоже нет `ortho_limit`, а заявка высоты во
+        // весь ICB им противопоказана. Развилка та же, что в четырёх откатах
+        // ниже: предел обязан приходить от родителя, а не от окна.
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО (четыре захода подряд): физическая высота
         // повёрнутого блока по СОДЕРЖИМОМУ. Жёсткая ширина делает
         // `natural.width` тождественно равной пределу, поэтому без
