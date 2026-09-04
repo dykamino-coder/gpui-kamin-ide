@@ -1,15 +1,13 @@
-# Publish dykamino/open-claude-bridge from an immutable release commit.
+# Publish dykamino/open-claude-bridge from an immutable, tested release commit.
 # The installer and its provenance sidecar must already exist in the rolling
 # GitHub release. Existing version tags are verified and never overwritten.
 name: docker
 
 on:
-  push:
+  workflow_run:
+    workflows: ["pull request checks"]
+    types: [completed]
     branches: [main]
-    paths:
-      - "extensions/claude-bridge/server/**"
-      - "scripts/release/**"
-      - ".github/workflows/docker.yml"
   workflow_dispatch:
     inputs:
       release_sha:
@@ -22,6 +20,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  checks: read
   contents: read
 
 env:
@@ -32,6 +31,11 @@ env:
 jobs:
   release-context:
     name: validate release context
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -44,7 +48,7 @@ jobs:
       - name: Check out the requested commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.release_sha || github.sha }}
+          ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -52,8 +56,11 @@ jobs:
         id: release
         env:
           EVENT_NAME: ${{ github.event_name }}
-          PUSH_BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
           REQUESTED_SHA: ${{ inputs.release_sha }}
+          TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
+          TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -67,17 +74,38 @@ jobs:
             exit 1
           fi
 
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            if [[ "$TRIGGER_EVENT" != "push" || "$TRIGGER_CONCLUSION" != "success" || \
+                  "$TRIGGER_SHA" != "$release_sha" ]]; then
+              echo "Publication requires a successful main quality run for this exact commit" >&2
+              exit 1
+            fi
+          else
+            checks="$RUNNER_TEMP/release-checks.json"
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/$GITHUB_REPOSITORY/commits/$release_sha/check-runs?filter=latest&per_page=100" \
+              > "$checks"
+            if ! jq -e '
+              .check_runs
+              | any(
+                  .name == "required quality gate"
+                  and .conclusion == "success"
+                  and .app.slug == "github-actions"
+                )
+            ' "$checks" > /dev/null; then
+              echo "Manual retry SHA has no successful required quality gate" >&2
+              exit 1
+            fi
+          fi
+
           git fetch --no-tags origin main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor "$release_sha" origin/main; then
             echo "Release SHA is not reachable from origin/main" >&2
             exit 1
           fi
 
-          if [[ "$EVENT_NAME" == "push" ]]; then
-            previous_sha="$PUSH_BEFORE"
-          else
-            previous_sha="${release_sha}^"
-          fi
+          previous_sha="${release_sha}^"
           if ! git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
             echo "Cannot resolve the commit before the release" >&2
             exit 1
@@ -253,8 +281,8 @@ jobs:
             org.opencontainers.image.source=${{ env.SOURCE_URL }}
             org.opencontainers.image.revision=${{ needs.release-context.outputs.release_sha }}
             org.opencontainers.image.version=${{ needs.release-context.outputs.server_version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=bridge-release
+          cache-to: type=gha,mode=max,scope=bridge-release
           provenance: mode=max
           sbom: true
 

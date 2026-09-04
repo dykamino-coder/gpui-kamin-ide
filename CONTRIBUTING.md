@@ -162,6 +162,20 @@ docs-only PR ограничивается проверкой scope и whitespace
 публикует. Ручные Windows и corporate-only gates ниже остаются отдельными и не
 подменяются CI.
 
+Проверки независимых компонентов и Docker dry-run выполняются параллельно:
+dry-run собирает image без registry login/push и проверяет `/health`, а итоговый
+`required quality gate` ждёт завершения всей применимой матрицы. Production
+Docker workflow запускается отдельно только после успешного gate точного commit
+в `main`.
+
+Тот же workflow запускается после trusted push в `main`, чтобы поддерживать
+общий Cargo/npm cache основной ветки. PR-run может читать cache своей base
+branch, но не публикует многогигабайтный Cargo cache в изолированный
+`refs/pull/*/merge`; это сохраняет ускорение между разными PR и не ослабляет
+полный Rust gate для Rust-изменений. Аналогично, Docker dry-run в PR может
+читать общий BuildKit cache, но обновляет его только trusted run в `main`,
+чтобы release workflow не потреблял cache из недоверенной PR-среды.
+
 Для UI-изменения дополнительно проверяются Windows runtime, hover/click,
 keyboard/focus, соседние элементы и визуальный результат. Незапущенная из-за
 окружения проверка явно указывается в PR — её нельзя выдавать за пройденную.
@@ -370,13 +384,14 @@ version tag, digest и labels. GitHub Actions pin-ятся на полные com
 успешным skip. Ручная публикация image вне release pipeline не считается
 завершённым релизом.
 
-`docker.yml` автоматически публикует только push в `main`, где одновременно
-изменились app и server release-версии. Merge обычного change PR или самого
-workflow завершается зелёным no-op. Ручной retry принимает только полный
-`release_sha`, достижимый из `origin/main`, и не разрешает перезаписать
-существующий version tag. Installer проверяется по tree, а не по равенству
-commit SHA: при squash merge HEAD release PR и merge commit различаются, но их
-проверенное дерево должно совпасть.
+`docker.yml` запускается только после успешного workflow `pull request checks`
+на точном commit в `main` и публикует image, только если одновременно изменились
+app и server release-версии. Merge обычного change PR или самого workflow
+завершается зелёным no-op. Ручной retry принимает только полный `release_sha`,
+достижимый из `origin/main` и имеющий успешный `required quality gate`, и не
+разрешает перезаписать существующий version tag. Installer проверяется по tree,
+а не по равенству commit SHA: при squash merge HEAD release PR и merge commit
+различаются, но их проверенное дерево должно совпасть.
 
 ### Одноразовые настройки публикации
 
