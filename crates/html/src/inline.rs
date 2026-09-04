@@ -637,9 +637,17 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // Растяжение передаётся дальше: у растянутой коробки высота от полосы, и
     // для её потомков блок определён (`column-align-items-005`).
     c.stretched = laid_out_parent && !matches!(own.height, Some(crate::value::Len::Px(_)));
+    // Высота, выведенная из `aspect-ratio` при определённой ширине, —
+    // определённая (css-sizing-4 §5.1: «the resulting size is definite if
+    // its input sizes are also definite»): проценты детей решаются от неё
+    // (`percentage-resolution-001/002`, `flex-aspect-ratio-047/048`).
+    let ratio_height = parent.aspect_ratio.is_some()
+        && matches!(parent.height, None | Some(crate::value::Len::Auto))
+        && matches!(parent.width, Some(crate::value::Len::Px(_)));
     c.cb_height_def = parent.root_box
         || laid_out_parent
         || parent.stretched
+        || ratio_height
         || match parent.height {
             Some(crate::value::Len::Px(_)) => true,
             Some(crate::value::Len::Pct(_)) => parent.cb_height_def,

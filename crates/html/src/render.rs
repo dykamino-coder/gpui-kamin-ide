@@ -1044,6 +1044,51 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     {
                         e.style.align_self = Some(Align::End);
                     }
+                    // Коробка с `aspect-ratio` при auto-ширине и определённой
+                    // высоте — fit-content, а не растяжка (css-sizing-4 §5.1:
+                    // «automatic sizes are calculated the same as for a replaced
+                    // element with a natural aspect ratio»; Blink length_utils
+                    // `may_apply_aspect_ratio` → FitContent). Блок у нас —
+                    // колонка flex, и `stretch` тянул ширину на всю строку
+                    // (`block-aspect-ratio-002/006/…`).
+                    // Нулевое и бесконечное отношение — как `auto`
+                    // (css-sizing-4 §5.1; `zero-or-infinity-002`).
+                    let ratio_ok = e.style.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0);
+                    let positioned_out = matches!(
+                        e.style.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    );
+                    if ratio_ok
+                        && !ordered_context
+                        && matches!(e.style.width, None | Some(Len::Auto))
+                        && matches!(e.style.height, Some(Len::Px(_)))
+                        && e.style.align_self.is_none()
+                        && inherited.vertical.is_none()
+                        && !e.inline
+                        && !positioned_out
+                    {
+                        e.style.align_self = Some(Align::Start);
+                    }
+                    // Элемент сетки с `aspect-ratio`: `normal` ведёт себя как
+                    // `start`, а не `stretch` (css-grid-2 §6.6.1 «…except for
+                    // items with a preferred aspect ratio»), в оси, где размер
+                    // auto (`grid-aspect-ratio-001/007/010`).
+                    if ratio_ok
+                        && matches!(inherited.display, Some(Display::Grid) | Some(Display::InlineGrid))
+                        && !positioned_out
+                    {
+                        if matches!(e.style.width, None | Some(Len::Auto))
+                            && e.style.justify_self.is_none()
+                        {
+                            e.style.justify_self = Some(Align::Start);
+                        }
+                        if matches!(e.style.height, None | Some(Len::Auto))
+                            && e.style.align_self.is_none()
+                        {
+                            e.style.align_self = Some(Align::Start);
+                        }
+                    }
                     Node::Element(e)
                 }
                 other => other,
@@ -7224,6 +7269,7 @@ fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<An
             let mut inner = node.clone();
             inner.style.overflow_x = None;
             inner.style.overflow_y = None;
+            inner.style.scroller = true;
             // Наружный отступ принадлежит коробке, а не видимой области:
             // оставленный внутри, он увеличивал ленту на свою величину, и
             // содержимое было видно ниже края панели.
@@ -8903,6 +8949,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // ушёл в минус шестью парами). Вписывание в этих условиях ближе.
         image = match e.style.object_fit.as_deref() {
             Some("cover") => image.object_fit(gpui::ObjectFit::Cover),
+            Some("contain") => image.object_fit(gpui::ObjectFit::Contain),
             Some("fill") => image.object_fit(gpui::ObjectFit::Fill),
             Some("scale-down") => image.object_fit(gpui::ObjectFit::ScaleDown),
             Some("none") => image.object_fit(gpui::ObjectFit::None),
@@ -8913,6 +8960,12 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             _ if e.style.width.is_some() && e.style.height.is_some() => {
                 image.object_fit(gpui::ObjectFit::Fill)
             }
+            // Заявленное `aspect-ratio` — preferred aspect ratio КОРОБКИ
+            // (css-sizing-4 §5.1): вторая сторона уже посчитана из него, и
+            // рисунок заполняет коробку (`object-fit: fill` по умолчанию,
+            // css-images-3 §5.2), а не вписывается по своему соотношению
+            // (`replaced-element-0*`, `flex-aspect-ratio-0*`).
+            _ if e.style.aspect_ratio.is_some() => image.object_fit(gpui::ObjectFit::Fill),
             _ => image.object_fit(gpui::ObjectFit::Contain),
         };
         let d = match узкая {

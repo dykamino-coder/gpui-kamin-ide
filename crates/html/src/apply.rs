@@ -605,7 +605,9 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     if let Some(a) = c.justify_self {
         d.style().justify_self = Some(to_items(a));
     }
-    if let Some(r) = c.aspect_ratio {
+    if let Some(r) = c.aspect_ratio
+        && !ratio_as_auto_min(c)
+    {
         d.style().aspect_ratio = Some(r);
     }
     if let Some((row, col)) = c.gap {
@@ -713,7 +715,81 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
             _ => d.max_h(g),
         };
     }
+    // Автоминимум по содержимому в ratio-зависимой оси (css-sizing-4 §5.2:
+    // «its min-content size capped by its maximum size»): размер из
+    // соотношения идёт МИНИМУМОМ этой оси, сам размер остаётся auto — used =
+    // max(ratio-размер, содержимое). Отношение в раскладку при этом не
+    // отдаётся, иначе taffy зафиксировал бы ось (`block-aspect-ratio-009/…`,
+    // `flex-aspect-ratio-040/…`).
+    if ratio_as_auto_min(c)
+        && let Some(r) = c.aspect_ratio
+    {
+        // Определённая ось сперва зажимается своими min/max (§5.1 «size
+        // transfers»: `block-aspect-ratio-033`); при `box-sizing: border-box`
+        // отношение считается по border-box (§5.1), размеры здесь —
+        // content-box, поэтому отбивки прибавляются до переноса и
+        // вычитаются после (`intrinsic-size-012`).
+        let clamp = |v: f32, lo: Option<Len>, hi: Option<Len>| {
+            let v = match lo {
+                Some(Len::Px(l)) => v.max(l),
+                _ => v,
+            };
+            match hi {
+                Some(Len::Px(h)) => v.min(h),
+                _ => v,
+            }
+        };
+        let bb = c.border_box == Some(true);
+        match (c.width, c.height) {
+            (Some(Len::Px(w)), _) => {
+                let w = clamp(w, c.min_width, c.max_width);
+                let mh = if bb { (w + pad_x) / r - pad_y } else { w / r };
+                let mh = clamp(mh.max(0.0), None, c.max_height);
+                d = d.min_h(px(mh + pad_y));
+            }
+            (_, Some(Len::Px(h))) => {
+                let h = clamp(h, c.min_height, c.max_height);
+                let mw = if bb { (h + pad_y) * r - pad_x } else { h * r };
+                let mw = clamp(mw.max(0.0), None, c.max_width);
+                d = d.min_w(px(mw + pad_x));
+            }
+            _ => {}
+        }
+    }
     d
+}
+
+/// Идёт ли `aspect-ratio` автоминимумом (css-sizing-4 §5.2): незамещаемая
+/// коробка без прокрутки, ровно одна ось задана в точках, а минимум
+/// ratio-зависимой оси не задан явно.
+fn set_len(l: Option<Len>) -> bool {
+    matches!(l, Some(x) if x != Len::Auto)
+}
+
+fn ratio_as_auto_min(c: &Computed) -> bool {
+    let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
+    let px_w = matches!(c.width, Some(Len::Px(_)));
+    let px_h = matches!(c.height, Some(Len::Px(_)));
+    c.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0)
+        && visible(c.overflow_x)
+        && visible(c.overflow_y)
+        && !c.scroller
+        // Абсолют с краями по ОБЕИМ сторонам зависимой оси растягивается
+        // краями, и отношение обязано победить растяжку (`abspos-005/006`)
+        // — ему отношение остаётся в раскладке; без краёв автоминимум
+        // действует как у блока (`abspos-012/013`).
+        && !(matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed))
+            && (if px_w {
+                set_len(c.inset.top) && set_len(c.inset.bottom)
+            } else {
+                set_len(c.inset.left) && set_len(c.inset.right)
+            }))
+        && (px_w != px_h)
+        && (if px_w {
+            !matches!(c.min_height, Some(Len::Px(_)))
+        } else {
+            !matches!(c.min_width, Some(Len::Px(_)))
+        })
 }
 
 fn apply_box(mut d: Div, c: &Computed) -> Div {

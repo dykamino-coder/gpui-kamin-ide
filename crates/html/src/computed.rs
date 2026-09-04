@@ -839,6 +839,11 @@ pub struct Computed {
     pub position: Option<Position>,
     pub inset: Sides,
     pub overflow_x: Option<Overflow>,
+    /// Внутренняя копия прокручиваемой коробки (`render` снимает с неё
+    /// `overflow`, чтобы обёртка `ScrollArea` резала сама): по спеке она
+    /// остаётся scroll container — автоминимум по `aspect-ratio` к ней не
+    /// применяется (css-sizing-4 §5.2; `block-aspect-ratio-011/012`).
+    pub scroller: bool,
     pub overflow_y: Option<Overflow>,
     pub opacity: Option<f32>,
 
@@ -3508,6 +3513,14 @@ impl Computed {
 
             // --- Раскладка --------------------------------------------------
             "aspect-ratio" => {
+                // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): разбирать `auto <ratio>`
+                // (css-sizing-4 §5.1), отбрасывая слово и оставляя отношение
+                // ВСЕМ коробкам — срез css-sizing 264 -> 259 (+3/−8):
+                // у замещаемого с природным соотношением `auto` велит
+                // предпочесть природное (`replaced-element-020/029/030`), а
+                // для этого нужен признак «auto рядом», который отрисовка
+                // замещаемого учтёт в `image_with::ratio_of`. Возвращать
+                // парой «отношение + флаг», не голым отношением.
                 self.aspect_ratio = match v.split_once('/') {
                     Some((a, b)) => match (a.trim().parse::<f32>(), b.trim().parse::<f32>()) {
                         (Ok(a), Ok(b)) if b != 0.0 => Some(a / b),
