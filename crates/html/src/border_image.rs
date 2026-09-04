@@ -42,23 +42,6 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                 let Some(found) = crate::background::source(&image.src) else {
                     return;
                 };
-                let intrinsic = found.intrinsic();
-                // Своей величины у рисунка может не быть вовсе — тогда его
-                // область просмотра равна коробке, как и у фона.
-                let (iw, ih) = (
-                    intrinsic.w.unwrap_or(f32::from(bounds.size.width)).max(1.0),
-                    intrinsic
-                        .h
-                        .unwrap_or(f32::from(bounds.size.height))
-                        .max(1.0),
-                );
-                let Some(raster) = found.raster((iw, ih)) else {
-                    return;
-                };
-                // Слой лежит внутри коробки и меряется её ВНУТРЕННИМ краем, а
-                // рамка рисуется от ВНЕШНЕГО: раздуваем на толщину рамки и на
-                // `outset` сверху. Без этого вся девятка уезжала внутрь на
-                // толщину рамки и накрывала содержимое.
                 let area = Bounds {
                     origin: gpui::point(
                         bounds.origin.x - px(base[3] + outset[3]),
@@ -69,6 +52,25 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                         bounds.size.height + px(base[0] + base[2] + outset[0] + outset[2]),
                     ),
                 };
+                let intrinsic = found.intrinsic();
+                // Своей величины у рисунка может не быть вовсе — тогда размер
+                // по умолчанию — ОБЛАСТЬ РАМКИ (css-backgrounds-3 §6.2), а не
+                // padding-box: у коробки 0×0 растр был 1×1
+                // (`border-image-image-type-004/005`).
+                let (iw, ih) = (
+                    intrinsic.w.unwrap_or(f32::from(area.size.width)).max(1.0),
+                    intrinsic
+                        .h
+                        .unwrap_or(f32::from(area.size.height))
+                        .max(1.0),
+                );
+                let Some(raster) = found.raster((iw, ih)) else {
+                    return;
+                };
+                // Слой лежит внутри коробки и меряется её ВНУТРЕННИМ краем, а
+                // рамка рисуется от ВНЕШНЕГО: раздуваем на толщину рамки и на
+                // `outset` сверху. Без этого вся девятка уезжала внутрь на
+                // толщину рамки и накрывала содержимое.
                 let (aw, ah) = (f32::from(area.size.width), f32::from(area.size.height));
                 // Срезы образа в его же точках.
                 let cut = [

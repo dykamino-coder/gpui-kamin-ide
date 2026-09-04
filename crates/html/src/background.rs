@@ -1834,6 +1834,34 @@ pub fn paint_tiles(
         _ => 0.0,
     };
     let Some(found) = source(&src) else { return };
+    // Область ПОКРАСКИ (`background-clip`, css-backgrounds-3 §3.7): плитки
+    // меряются областью позиционирования, а кладутся по всей краске —
+    // border-box по умолчанию заходит под рамку, content-box режется полем
+    // (`origin-*`, `background-size-cover-00*`, `background-origin-007`).
+    // Слой лежит в padding-box коробки.
+    let paint_box = match c.bg_clip {
+        Some(crate::computed::BgClip::PaddingBox) | Some(crate::computed::BgClip::Text) => bounds,
+        Some(crate::computed::BgClip::ContentBox) => Bounds {
+            origin: gpui::point(
+                bounds.origin.x + px(px_of(c.padding.left)),
+                bounds.origin.y + px(px_of(c.padding.top)),
+            ),
+            size: gpui::size(
+                (bounds.size.width - px(px_of(c.padding.left) + px_of(c.padding.right))).max(px(0.0)),
+                (bounds.size.height - px(px_of(c.padding.top) + px_of(c.padding.bottom))).max(px(0.0)),
+            ),
+        },
+        _ => Bounds {
+            origin: gpui::point(
+                bounds.origin.x - px(px_of(border.left)),
+                bounds.origin.y - px(px_of(border.top)),
+            ),
+            size: gpui::size(
+                bounds.size.width + px(px_of(border.left) + px_of(border.right)),
+                bounds.size.height + px(px_of(border.top) + px_of(border.bottom)),
+            ),
+        },
+    };
     // Место под фон: свой край по `background-origin`.
     let bounds = Bounds {
         origin: gpui::point(
@@ -1884,7 +1912,7 @@ pub fn paint_tiles(
     // у канваса это весь холст, и полоса `repeat-x` обязана выходить за поля
     // корня (`background-root-016`: «extending … to the left and right edges
     // of the page»).
-    let clip = canvas.unwrap_or(bounds);
+    let clip = canvas.unwrap_or(paint_box);
     let start = origin(pos, box_size, tile);
     let shift = (
         f32::from(bounds.origin.x - clip.origin.x),
@@ -1895,10 +1923,38 @@ pub fn paint_tiles(
     // (css-backgrounds-3 §3.4), поэтому длина ему нужна своя.
     let lay = |mode: Tiling, from: f32, tile: f32, shift: f32, own: f32, all: f32| {
         if mode == Tiling::Space {
-            tiling(mode, from, tile, own)
-                .into_iter()
-                .map(|v| v + shift)
-                .collect()
+            let base: Vec<f32> = tiling(mode, from, tile, own);
+            // За областью позиционирования плитки продолжаются с тем же
+            // шагом по всей области покраски (css-backgrounds-3 §3.4:
+            // «…continue to be repeated at the same spacing»), иначе под
+            // рамкой пусто (`background-repeat-space-8`).
+            let step = match base.as_slice() {
+                [a, b, ..] => b - a,
+                _ => tile,
+            };
+            let mut out: Vec<f32> = Vec::new();
+            if step > 0.0 {
+                let (first, last) = (base[0], base[base.len() - 1]);
+                let mut v = first - step;
+                let mut n = 0;
+                while v + tile > -shift && n < MAX_TILES as usize {
+                    out.push(v);
+                    v -= step;
+                    n += 1;
+                }
+                out.reverse();
+                out.extend(base.iter().copied());
+                let mut v = last + step;
+                let mut n = 0;
+                while v < all - shift && n < MAX_TILES as usize {
+                    out.push(v);
+                    v += step;
+                    n += 1;
+                }
+            } else {
+                out = base;
+            }
+            out.into_iter().map(|v| v + shift).collect()
         } else {
             tiling(mode, from + shift, tile, all)
         }
@@ -1951,6 +2007,28 @@ pub fn paint_tiles(
         return;
     };
     let corners = gpui::Corners::all(px(radius));
+    // Собственная обрезка коробки (`overflow` ≠ visible) режет по её
+    // padding-box, а фон по `background-clip` живёт до border-box: маска
+    // раздвигается на рамку — ровно на то, что коробка отняла у себя сама
+    // (`attachment-local-clipping-image-*`).
+    let clips_self = matches!(c.overflow_x, Some(o) if o != crate::computed::Overflow::Visible)
+        || matches!(c.overflow_y, Some(o) if o != crate::computed::Overflow::Visible);
+    let outer = if clips_self {
+        let cur = window.content_mask().bounds;
+        Bounds {
+            origin: gpui::point(
+                cur.origin.x - px(px_of(border.left)),
+                cur.origin.y - px(px_of(border.top)),
+            ),
+            size: gpui::size(
+                cur.size.width + px(px_of(border.left) + px_of(border.right)),
+                cur.size.height + px(px_of(border.top) + px_of(border.bottom)),
+            ),
+        }
+    } else {
+        window.content_mask().bounds
+    };
+    window.with_content_mask_replaced(gpui::ContentMask { bounds: outer }, |window| {
     window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
         for y in &ys {
             for x in &xs {
@@ -1963,6 +2041,7 @@ pub fn paint_tiles(
                 let _ = window.paint_image(cell, corners, image.clone(), 0, false);
             }
         }
+    });
     });
 }
 

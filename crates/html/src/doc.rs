@@ -225,8 +225,17 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
         if html.tag == "html" {
             html.style.root_box = true;
         }
+        // Фон переносится только от элемента С КОРОБКОЙ: `display: none` и
+        // `display: contents` коробки не дают, и канвас остаётся чистым
+        // (`background-color-body-propagation-007`, `-root-propagation-001`).
+        let boxed = |e: &crate::Element| {
+            !matches!(
+                e.style.display,
+                Some(crate::computed::Display::None) | Some(crate::computed::Display::Contents)
+            )
+        };
         if html.tag != "html" {
-            if html.tag == "body" && has_bg(html) && html.style.contain_paint != Some(true) {
+            if html.tag == "body" && has_bg(html) && boxed(html) && html.style.contain_paint != Some(true) {
                 html.style.canvas_bg = true;
             }
             continue;
@@ -234,7 +243,7 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
         if html.style.contain_paint == Some(true) {
             continue;
         }
-        if has_bg(html) {
+        if has_bg(html) && boxed(html) {
             html.style.canvas_bg = true;
             continue;
         }
@@ -245,7 +254,7 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
         let mut moved: Option<crate::computed::Computed> = None;
         for c in html.children.iter_mut() {
             let Node::Element(body) = c else { continue };
-            if body.tag == "body" && has_bg(body) && body.style.contain_paint != Some(true) {
+            if body.tag == "body" && has_bg(body) && boxed(body) && body.style.contain_paint != Some(true) {
                 let s = &mut body.style;
                 let mut take = crate::computed::Computed::default();
                 take.background = s.background.take();

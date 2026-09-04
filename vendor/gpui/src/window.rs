@@ -2568,6 +2568,23 @@ impl Window {
         }
     }
 
+    /// KaminIDE patch: подменить маску содержимого БЕЗ пересечения с
+    /// текущей. Нужно собственному фону коробки с `overflow: hidden`: маска
+    /// коробки — её padding-box, а фон по `background-clip` красится до
+    /// border-box (css-backgrounds-3 §3.7; overflow режет содержимое, не
+    /// собственный фон).
+    pub fn with_content_mask_replaced<R>(
+        &mut self,
+        mask: ContentMask<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint_or_prepaint();
+        self.content_mask_stack.push(mask);
+        let result = f(self);
+        self.content_mask_stack.pop();
+        result
+    }
+
     /// Updates the global element offset relative to the current offset. This is used to implement
     /// scrolling. This method should only be called during the prepaint phase of element drawing.
     pub fn with_element_offset<R>(

@@ -1473,7 +1473,11 @@ impl Computed {
                 || self.bg_repeat.is_some()
                 || self.bg_pos.x.is_some()
                 || self.bg_pos.y.is_some()
-                || self.bg_origin.is_some())
+                || self.bg_origin.is_some()
+                // Цвет фона лежит ПОД всеми слоями (css-backgrounds-3 §3.1):
+                // у заливки коробки место одно, поэтому цвет — ей, градиент —
+                // слоем сверху (`bg-color-with-gradient`).
+                || self.background.is_some_and(|c| c.a > 0.0))
     }
 
     /// Место под логические значения — заводится по первому обращению: у
@@ -6353,7 +6357,8 @@ fn background_shorthand_valid(v: &str) -> bool {
     }
     let mut any = false;
     for token in split_outside_parens(v) {
-        let t = token.trim();
+        // Запятая слоя (`none, none`) — не часть слова.
+        let t = token.trim().trim_end_matches(',').trim();
         if t.is_empty() || t == "/" {
             continue;
         }
