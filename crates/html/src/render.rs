@@ -8396,6 +8396,31 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         let mut stacked: Option<(f32, f32, f32)> = None;
                         if let Some(kids) = inner.filter(|k| !k.is_empty()) {
                             let inner_h: Vec<f32> = kids.iter().map(|k| k.0).collect();
+                            // Ряд flex БЕЗ переноса: дети стоят бок о бок, и
+                            // каждый фрагментируется СВОИМИ точками (Blink
+                            // `flex_layout_algorithm.cc`: элементу строки
+                            // выдаётся своя доля фрагментаинера). Значит точки
+                            // ряда — объединение точек детей, а запрет разрыва
+                            // — объединение их монолитных диапазонов: рвать
+                            // нельзя там, где не даёт хоть один. Прежде ряд
+                            // объявлялся монолитом целиком, и разреза не было
+                            // никогда (`single-line-row-flex-fragmentation-*`).
+                            if row_nowrap {
+                                let tallest = inner_h.iter().copied().fold(0.0f32, f32::max);
+                                for k in &kids {
+                                    let start = top;
+                                    for (need, nf) in &k.3 {
+                                        cuts.push((start + need, start + nf));
+                                    }
+                                    for f in &k.4 {
+                                        forced.push(start + f);
+                                    }
+                                    for (a, b) in &k.5 {
+                                        solid.push((start + a, start + b));
+                                    }
+                                }
+                                stacked = Some((top + tallest, 0.0, 0.0));
+                            } else {
                             let mut y = top;
                             let mut prev_mb = 0.0f32;
                             let mut through = 0.0f32;
@@ -8442,13 +8467,6 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             // ширины элементов в тестах не в точках (`flex: 1`,
                             // проценты), ветка не срабатывает. Нужна ширина из
                             // раскладки, а не из стиля (корень R4 scout-flexfrag).
-                            if row_nowrap {
-                                let tallest = inner_h.iter().copied().fold(0.0f32, f32::max);
-                                stacked = Some((top + tallest, 0.0, 0.0));
-                                cuts.clear();
-                                forced.clear();
-                                solid.clear();
-                                solid.push((0.0, top + tallest));
                             }
                         }
                         let (h, mt, mb) = match c.style.height {
