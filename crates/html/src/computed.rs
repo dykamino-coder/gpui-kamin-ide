@@ -1507,6 +1507,12 @@ pub struct Computed {
     /// `font-synthesis-weight|style|small-caps: none` — подмена начертания
     /// запрещена (css-fonts-4 §6.5). Ложь = `none`, пусто = `auto`.
     pub font_synth: (Option<bool>, Option<bool>, Option<bool>),
+    /// Знак акцента (`text-emphasis-style`, css-text-decor-3 §5): рисуется
+    /// над каждым знаком базы, как надстрочная аннотация руби.
+    pub text_emphasis: Option<String>,
+    /// Акцент СНИЗУ (`text-emphasis-position: under`), а также надпись руби
+    /// под базой (`ruby-position: under`).
+    pub emphasis_under: bool,
     /// `caret-color` поля ввода.
     pub caret_color: Option<Color>,
     /// `accent-color` флажков и переключателей.
@@ -4641,6 +4647,54 @@ impl Computed {
                         self.font_features.push((tag.to_string(), 1));
                     }
                 }
+            }
+            "text-emphasis" | "text-emphasis-style" | "text-emphasis-color"
+            | "text-emphasis-position" => {
+                // css-text-decor-3 §5: знак задаётся словом (форма +
+                // заливка) или строкой; `none` его снимает. Цвет знака —
+                // цвет текста, отдельного канала у нас нет.
+                if key == "text-emphasis-position" {
+                    self.emphasis_under = v.split_whitespace().any(|w| w == "under");
+                    return;
+                }
+                if key == "text-emphasis-color" {
+                    return;
+                }
+                let v = v.trim();
+                if v == "none" || v.is_empty() {
+                    self.text_emphasis = None;
+                    return;
+                }
+                // Строка в кавычках — первый её знак (§5.1: «only the first
+                // character is used»).
+                if let Some(q) = v.chars().next().filter(|c| *c == '"' || *c == '\'') {
+                    let body = v.trim_matches(q);
+                    self.text_emphasis = body.chars().next().map(|c| c.to_string());
+                    return;
+                }
+                let open = v.split_whitespace().any(|w| w == "open");
+                let shape = v
+                    .split_whitespace()
+                    .find(|w| {
+                        matches!(*w, "dot" | "circle" | "double-circle" | "triangle" | "sesame")
+                    })
+                    .unwrap_or("circle");
+                let mark = match (shape, open) {
+                    ("dot", false) => '\u{2022}',
+                    ("dot", true) => '\u{25E6}',
+                    ("circle", false) => '\u{25CF}',
+                    ("circle", true) => '\u{25CB}',
+                    ("double-circle", false) => '\u{25C9}',
+                    ("double-circle", true) => '\u{25CE}',
+                    ("triangle", false) => '\u{25B2}',
+                    ("triangle", true) => '\u{25B3}',
+                    ("sesame", false) => '\u{FE45}',
+                    _ => '\u{FE46}',
+                };
+                self.text_emphasis = Some(mark.to_string());
+            }
+            "ruby-position" => {
+                self.emphasis_under = v.split_whitespace().any(|w| w == "under");
             }
             "font-kerning" => {
                 // css-fonts-4 §6.4: `none` гасит кернинг, `normal` включает,

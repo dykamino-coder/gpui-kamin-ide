@@ -971,6 +971,8 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     {
         c.align_self = Some(crate::computed::Align::Stretch);
     }
+    c.text_emphasis = own.text_emphasis.clone().or(parent.text_emphasis.clone());
+    c.emphasis_under = own.emphasis_under || parent.emphasis_under;
     c.font_synth = (
         own.font_synth.0.or(parent.font_synth.0),
         own.font_synth.1.or(parent.font_synth.1),

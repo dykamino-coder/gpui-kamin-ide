@@ -817,6 +817,15 @@ fn scopeguard_cb(prev: Option<f32>) -> CbWidthGuard {
     CbWidthGuard(prev)
 }
 
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): разворачивать `text-emphasis` в поштучные
+// руби (по знаку-аннотации над каждой буквой базы, кроме пробелов и
+// пунктуации — css-text-decor-3 §5.3). Срез руби и акцентов, 167 пар:
+// 125 -> 125, приобретено 6 (`text-emphasis-line-height-001a/002a/002b`,
+// `-position-over-left-002`, `-position-under-left-002`, `-punctuation-3`),
+// потеряно 6 — `-line-height-004a..d` 0.07 -> 0.7 и `-punctuation-1/2`
+// 0.00 -> 6.31/3.12: поштучный атом меняет разбивку строки и подъём базовой
+// линии, а эталоны семьи считают её по-своему. Возвращать вместе с
+// настоящей надстрочной аннотацией (сдвиг базовой линии без атома).
 fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
     let cb_prev = CB_WIDTH.get();
     if let Some(Len::Px(w)) = inherited.width
@@ -6352,7 +6361,10 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // колонка «аннотация над базой», выключенная по центру. Строка
         // растёт сама — атом выше её обычной высоты.
         "ruby" => {
-            let merged = inline::inherit(inherited, &e.style);
+            let mut merged = inline::inherit(inherited, &e.style);
+            // Внутри руби знак акцента больше не разворачивается: сам знак
+            // — уже надпись, и рекурсия ушла бы в бесконечность.
+            merged.text_emphasis = None;
             let mut base: Vec<Node> = Vec::new();
             let mut over: Vec<Node> = Vec::new();
             for c in &e.children {
@@ -6373,25 +6385,24 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             };
             ann.font_size = Some(Len::Px(font * 0.5));
             ann.line_height = Some(Len::Px(font * 0.5));
-            let col = div()
+            let ann_el = div()
                 .flex()
-                .flex_col()
-                .items_center()
-                .flex_shrink_0()
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .children(blocks(&over, &ann, opts))
-                        .into_any_element(),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .children(blocks(&base, &merged, opts))
-                        .into_any_element(),
-                );
+                .flex_row()
+                .children(blocks(&over, &ann, opts))
+                .into_any_element();
+            let base_el = div()
+                .flex()
+                .flex_row()
+                .children(blocks(&base, &merged, opts))
+                .into_any_element();
+            let col = div().flex().flex_col().items_center().flex_shrink_0();
+            // `ruby-position: under` и знак акцента снизу ставят надпись ПОД
+            // базой (css-ruby-1 §4.1, css-text-decor-3 §5.2).
+            let col = if merged.emphasis_under {
+                col.child(base_el).child(ann_el)
+            } else {
+                col.child(ann_el).child(base_el)
+            };
             Some(col.into_any_element())
         }
         // `<canvas>` — замещаемый элемент с собственными размерами 300x150
