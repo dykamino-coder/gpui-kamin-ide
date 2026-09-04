@@ -6211,6 +6211,15 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 Some(atom_base_font(inherited, opts)),
             ))
         }
+        // ЗАМЕРЕНО И ОТКАЧЕНО (04.09): кадру без пригодного `src` давать
+        // замещаемую коробку 300×150 (CSS 2.2 §10.3.2) или по атрибутам.
+        // Срез из 116 пар с `<iframe>`: 83 -> 73, приобретено 2
+        // (`flexbox-basic-iframe-horiz-001`, `stretch-anonymous-block-001`),
+        // потеряно 12 — `inline-block-replaced-height-004/005/007`,
+        // `inline-replaced-height-004/005/007` уходят в «красное видно»,
+        // `contain-size-replaced-003a..d` 0.26 -> 1.42. Пустая коробка кадра
+        // ломает высоту строки у соседей: замещаемому нужен ещё и правильный
+        // вклад в строку, а не только размер.
         "iframe" => {
             if let Some(el) = iframe(e, opts) {
                 return Some(el);
