@@ -935,27 +935,18 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.balance_lines = own.balance_lines.or(parent.balance_lines);
     c.break_anywhere_strict = own.break_anywhere_strict.or(parent.break_anywhere_strict);
     c.line_break_loose = own.line_break_loose.or(parent.line_break_loose);
-    // `align-self` применяется к элементам гибкого контейнера и сетки и к
-    // абсолютам (css-align-3 §6.2 «does not apply to block-level boxes»).
-    // Наш блок собран колонкой flex, и авторское `align-self: flex-end` на
-    // блоке уезжало вправо (`self-align-start-end-flex-001`). Собственные
-    // приёмы сборки ставят `align_self` ПОЗЖЕ, на своих коробках, — их это
-    // не задевает.
-    let self_align_parent = matches!(
-        parent.display,
-        Some(crate::computed::Display::Flex)
-            | Some(crate::computed::Display::InlineFlex)
-            | Some(crate::computed::Display::Grid)
-            | Some(crate::computed::Display::InlineGrid)
-            | Some(crate::computed::Display::GridLanes)
-    );
-    let positioned_self = matches!(
-        own.position,
-        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
-    );
-    if !self_align_parent && !positioned_self {
-        c.align_self = None;
-    }
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): снимать `align-self` у коробки, чей
+    // родитель не гибкий контейнер и не сетка (css-align-3 §6.2 «does not
+    // apply to block-level boxes»). По спеке верно, но наш блок собран
+    // колонкой flex, и на `align_self` держатся собственные приёмы сборки:
+    // соотношение сторон блока (`blocks()` ставит `Align::Start`), обтекание,
+    // сжатие стола. Узкий срез выравнивания (2661 пара) дал +8/−1, а ПОЛНЫЙ
+    // свод v18 -> v19 — минус ~50: вся семья `float-applies-to-*` (0.00 ->
+    // 3.84), `floats-002/025/147`, `clear-float-001/003`,
+    // `block-aspect-ratio-002/015/016/018/043/047`, девять
+    // `shape-outside-*-border-radius-*`, `absolute-replaced-width-020/034`.
+    // Возвращать вместе с признаком «значение авторское», чтобы приёмы сборки
+    // гейт не задевал (`self-align-start-end-flex-001` — цель правки).
     // `normal` у элемента ГИБКОГО контейнера = `stretch` (§6.2), а не
     // «пусто»: пустое значение брало `align-items` родителя
     // (`self-align-normal-flex`).
