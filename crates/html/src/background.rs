@@ -607,6 +607,20 @@ pub fn rasterize_ellipse_px(
     gpui::bgra_bytes_to_image(w, h, bytes)
 }
 
+/// Ключ источника с учётом `image-orientation` (css-images-3 §5.4).
+///
+/// Разворот по EXIF — часть САМОЙ картинки: после него у неё другой природный
+/// размер, и кэш обязан различать развёрнутый растр и сырой. Отдельного
+/// параметра у `source` нет намеренно: кэш ключуется строкой, и приставка
+/// ключа дешевле, чем переписывание тринадцати мест вызова.
+pub fn key(src: &str, c: &crate::computed::Computed) -> String {
+    if c.image_orient_none == Some(true) {
+        format!("exif-none|{src}")
+    } else {
+        src.to_string()
+    }
+}
+
 /// Разобрать ссылку в источник картинки; результат запоминается.
 pub fn source(src: &str) -> Option<Source> {
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
@@ -615,7 +629,12 @@ pub fn source(src: &str) -> Option<Source> {
     {
         return hit.clone();
     }
-    let found = if let Some(shape) = src.strip_prefix("shape:") {
+    // Приставка снимается ДО чтения файла: читать надо настоящий адрес.
+    let (orient, src_plain) = match src.strip_prefix("exif-none|") {
+        Some(rest) => (false, rest),
+        None => (true, src),
+    };
+    let found = if let Some(shape) = src_plain.strip_prefix("shape:") {
         Some(Source::Shape {
             raw: shape.to_string(),
         })
@@ -633,7 +652,9 @@ pub fn source(src: &str) -> Option<Source> {
             raw: src.to_string(),
         })
     } else {
-        read_bytes(src).as_deref().and_then(decode)
+        read_bytes(src_plain)
+            .as_deref()
+            .and_then(|b| decode(b, orient))
     };
     if let Ok(mut map) = cache.lock() {
         if map.len() >= CACHE_CAP {
@@ -1356,7 +1377,7 @@ fn colour_at(stops: &[(crate::value::Color, f32)], t: f32) -> crate::value::Colo
 
 /// Растр или рисунок — по содержимому файла, а не по расширению: у `data:`-URI
 /// расширения нет вовсе.
-fn decode(bytes: &[u8]) -> Option<Source> {
+fn decode(bytes: &[u8], orient: bool) -> Option<Source> {
     // Ищем корневой тег, а не начало файла: перед ним стоят и объявление XML,
     // и комментарий с лицензией — с них начинается добрая половина рисунков
     // набора (`background-size/vector/support/*`). Окно широкое: комментарий
@@ -1380,12 +1401,131 @@ fn decode(bytes: &[u8]) -> Option<Source> {
     let image = gpui::raster_bytes_to_image(bytes)?;
     // Вшитый цветовой профиль (PNG `iCCP`) — часть картинки: её точки заданы
     // в ЕГО пространстве (css-color-4 §12, tagged images).
-    if let Some(profile) = gpui::png_icc_profile(bytes)
-        && let Some(fixed) = crate::color_space::apply_icc(&image, &profile)
+    let image = match gpui::png_icc_profile(bytes)
+        .and_then(|profile| crate::color_space::apply_icc(&image, &profile))
     {
-        return Some(Source::Raster(fixed));
+        Some(fixed) => fixed,
+        None => image,
+    };
+    // Разворот по EXIF (css-images-3 §5.4, начальное значение `from-image`):
+    // «All CSS layout and rendering processes use the image AFTER rotation…
+    // The natural height and width are derived from the rotated rather than
+    // the original image dimensions». Значит применять надо ЗДЕСЬ, до того как
+    // кто-нибудь спросит `Source::intrinsic()`, — как Blink разворачивает в
+    // `LayoutImageResource::ImageOrientation`.
+    if orient
+        && let Some(tag) = exif_orientation(bytes)
+        && tag > 1
+        && let Some(turned) = orient_image(&image, tag)
+    {
+        return Some(Source::Raster(turned));
     }
     Some(Source::Raster(image))
+}
+
+/// Метка `Orientation` (TIFF-тег 0x0112) из EXIF: JPEG `APP1` или PNG `eXIf`.
+///
+/// Значения 1..8 по TIFF 6.0; всё прочее (в том числе «9» из набора) — как
+/// `none`, потому что §5.4 велит невнятную метку считать отсутствующей.
+fn exif_orientation(bytes: &[u8]) -> Option<u16> {
+    // Найти блок TIFF: у JPEG он лежит за «Exif\0\0» в сегменте APP1, у PNG —
+    // телом куска `eXIf`.
+    let tiff = if bytes.starts_with(&[0xFF, 0xD8]) {
+        let mut i = 2usize;
+        loop {
+            if i + 4 > bytes.len() || bytes[i] != 0xFF {
+                return None;
+            }
+            let marker = bytes[i + 1];
+            // Начало сжатых данных — дальше сегментов нет.
+            if marker == 0xDA || marker == 0xD9 {
+                return None;
+            }
+            let len = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]) as usize;
+            let body = bytes.get(i + 4..i + 2 + len)?;
+            if marker == 0xE1 && body.starts_with(b"Exif\0\0") {
+                break &body[6..];
+            }
+            i += 2 + len;
+        }
+    } else {
+        let mut i = 8usize;
+        loop {
+            let len = u32::from_be_bytes(*bytes.get(i..i + 4)?.first_chunk()?) as usize;
+            let kind = bytes.get(i + 4..i + 8)?;
+            if kind == b"eXIf" {
+                break bytes.get(i + 8..i + 8 + len)?;
+            }
+            if kind == b"IEND" {
+                return None;
+            }
+            i += 12 + len;
+        }
+    };
+    let le = match tiff.first_chunk::<2>()? {
+        b"II" => true,
+        b"MM" => false,
+        _ => return None,
+    };
+    let u16_at = |at: usize| -> Option<u16> {
+        let b = *tiff.get(at..at + 2)?.first_chunk()?;
+        Some(if le {
+            u16::from_le_bytes(b)
+        } else {
+            u16::from_be_bytes(b)
+        })
+    };
+    let u32_at = |at: usize| -> Option<u32> {
+        let b = *tiff.get(at..at + 4)?.first_chunk()?;
+        Some(if le {
+            u32::from_le_bytes(b)
+        } else {
+            u32::from_be_bytes(b)
+        })
+    };
+    let ifd = u32_at(4)? as usize;
+    let count = u16_at(ifd)? as usize;
+    for n in 0..count {
+        let at = ifd + 2 + n * 12;
+        if u16_at(at)? == 0x0112 {
+            return u16_at(at + 8);
+        }
+    }
+    None
+}
+
+/// Развернуть растр по метке EXIF (TIFF 6.0, значения 1..8).
+///
+/// Точки переставляются целыми четвёрками — порядок каналов (BGRA,
+/// премультиплицированный) при этом не важен, как и в `crop_image`.
+fn orient_image(
+    image: &Arc<RenderImage>,
+    tag: u16,
+) -> Option<Arc<RenderImage>> {
+    let s = image.size(0);
+    let (w, h) = (s.width.0 as u32, s.height.0 as u32);
+    let bytes = image.as_bytes(0)?;
+    // 5..8 меняют оси местами — у развёрнутой картинки другой природный размер.
+    let swap = matches!(tag, 5 | 6 | 7 | 8);
+    let (ow, oh) = if swap { (h, w) } else { (w, h) };
+    let mut out = Vec::with_capacity((ow * oh * 4) as usize);
+    for oy in 0..oh {
+        for ox in 0..ow {
+            let (sx, sy) = match tag {
+                2 => (w - 1 - ox, oy),
+                3 => (w - 1 - ox, h - 1 - oy),
+                4 => (ox, h - 1 - oy),
+                5 => (oy, ox),
+                6 => (oy, h - 1 - ox),
+                7 => (w - 1 - oy, h - 1 - ox),
+                8 => (w - 1 - oy, ox),
+                _ => (ox, oy),
+            };
+            let at = ((sy * w + sx) * 4) as usize;
+            out.extend_from_slice(bytes.get(at..at + 4)?);
+        }
+    }
+    gpui::bgra_bytes_to_image(ow, oh, out)
 }
 
 /// Своя величина рисунка: `width`/`height` корневого тега, иначе `viewBox`.

@@ -1040,6 +1040,10 @@ pub struct Computed {
     /// Строковый маркер: `list-style-type: "→ "` (css-lists-3 §3).
     pub marker_text: Option<String>,
     pub object_fit: Option<String>,
+    /// `image-orientation: none` (css-images-3 §5.4) — НЕ разворачивать растр
+    /// по метке EXIF. Начальное значение свойства — `from-image`, поэтому
+    /// хранится именно отказ, а не разрешение.
+    pub image_orient_none: Option<bool>,
 
     /// `aspect-ratio` — отношение ширины к высоте.
     pub aspect_ratio: Option<f32>,
@@ -3573,6 +3577,12 @@ impl Computed {
                 }
             }
             "object-fit" => self.object_fit = Some(v.to_string()),
+            // `image-orientation` (css-images-3 §5.4): `from-image | none |
+            // [<angle> || flip]`. Угол со `flip` спека сама помечает
+            // необязательным и устаревшим («optional to implement and
+            // deprecated»), и в корпусе его не просит ни один рефтест —
+            // разбираем два ключевых слова.
+            "image-orientation" => self.image_orient_none = Some(v.trim() == "none"),
             "white-space" => {
                 // `pre` не переносит строки — так же, как `nowrap`; переносят
                 // только `pre-wrap` и `pre-line`.
@@ -4425,7 +4435,12 @@ impl Computed {
                 // не должна оставаться коротким огрызком.
                 self.balance_lines = Some(v == "balance");
             }
-            "vertical-align" => {
+            // `baseline-shift` (css-inline-3 §5.2.2) — ТОТ ЖЕ разбор:
+            // спека сама пишет соответствие («''vertical-align/top''
+            // (''baseline-shift: top'')…», css-inline-3 §5.2). Значения
+            // совпадают дословно, кроме середины: у сокращения она
+            // `middle`, у длинной записи — `center`.
+            "vertical-align" | "baseline-shift" => {
                 // Надстрочный и подстрочный кусок остаются В СТРОКЕ, только
                 // сдвигаются от базовой линии, — это не выравнивание коробки,
                 // поэтому у них своё поле. Доли кегля браузерные.
@@ -4470,7 +4485,10 @@ impl Computed {
                     _ => None,
                 };
                 self.vertical_align = match v {
-                    "middle" => Some(Align::Center),
+                    // `center` — написание середины в `baseline-shift`
+                    // (css-inline-3 §5.2.2): «Align the center of the aligned
+                    // subtree with the center of the line box».
+                    "middle" | "center" => Some(Align::Center),
                     "top" => Some(Align::Start),
                     "bottom" => Some(Align::End),
                     "baseline" => Some(Align::Baseline),
