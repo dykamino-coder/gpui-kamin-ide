@@ -21,6 +21,10 @@ use std::collections::HashMap;
 thread_local! {
     /// Придуманное разметкой имя → имя, под которым шрифт знает система.
     static ALIASES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    /// Придуманное имя → есть ли в семействе знак U+0020. Семейство собирают
+    /// из нескольких правил (подмножества знаков), и пробел у него есть,
+    /// если его несёт ХОТЬ ОДНО.
+    static HAS_SPACE: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
     /// Уже загруженные файлы: одно и то же правило встречается на странице
     /// не по разу, а разбор шрифта дорог.
     static LOADED: RefCell<HashMap<String, Option<String>>> =
@@ -42,6 +46,60 @@ pub fn alias(family: &str) -> Option<String> {
     ALIASES.with(|a| a.borrow().get(&family.to_ascii_lowercase()).cloned())
 }
 
+/// Есть ли в семействе знак пробела (U+0020).
+///
+/// Вопрос не праздный: «первым доступным» шрифтом (css-fonts-4
+/// §first-available-font) семейство становится, только если пробел в нём
+/// есть, — от первого доступного считаются метрики строки, `line-height:
+/// normal`, `ch` и `ex`. Ответ «нет» бывает единственно у правила
+/// `@font-face` с дескриптором `unicode-range`, где пробел не назван. Про
+/// все прочие имена ответ утвердительный: дескриптора у них нет, а его
+/// умолчание — весь набор знаков.
+pub fn covers_space(family: &str) -> bool {
+    HAS_SPACE.with(|s| {
+        s.borrow()
+            .get(&family.to_ascii_lowercase())
+            .copied()
+            .unwrap_or(true)
+    })
+}
+
+/// Покрывает ли дескриптор `unicode-range` знак U+0020.
+///
+/// Видов записи три (css-fonts-4 §unicode-range-desc): одиночный знак `U+20`,
+/// отрезок `U+0-7F` и маска `U+00??`. Негодная запись делает дескриптор
+/// недействительным целиком, а его умолчание — `U+0-10FFFF`, то есть пробел
+/// покрыт.
+fn range_has_space(value: Option<&str>) -> bool {
+    let Some(value) = value else { return true };
+    let mut any = false;
+    for part in value.split(',') {
+        let part = part.trim();
+        let Some(body) = part.strip_prefix("U+").or_else(|| part.strip_prefix("u+")) else {
+            return true;
+        };
+        let (lo, hi) = match body.split_once('-') {
+            Some((a, b)) => (
+                u32::from_str_radix(a.trim(), 16).ok(),
+                u32::from_str_radix(b.trim(), 16).ok(),
+            ),
+            None if body.contains('?') => (
+                u32::from_str_radix(&body.replace('?', "0"), 16).ok(),
+                u32::from_str_radix(&body.replace('?', "F"), 16).ok(),
+            ),
+            None => {
+                let one = u32::from_str_radix(body, 16).ok();
+                (one, one)
+            }
+        };
+        match (lo, hi) {
+            (Some(lo), Some(hi)) if lo <= hi => any |= (lo..=hi).contains(&0x20),
+            _ => return true,
+        }
+    }
+    any
+}
+
 /// Разобрать правила `@font-face` из таблицы стилей и загрузить шрифты.
 ///
 /// Путь в `url(...)` берётся как есть: страницу до движка доводит стенд, и
@@ -50,6 +108,7 @@ pub fn load_faces(css: &str) {
     // Имена семейств придумывает страница, и на соседней странице то же имя
     // значит другой файл — поэтому таблица подмены живёт РОВНО одну страницу.
     ALIASES.with(|a| a.borrow_mut().clear());
+    HAS_SPACE.with(|s| s.borrow_mut().clear());
     load_faces_into(css);
 }
 
@@ -84,10 +143,16 @@ fn load_faces_into(css: &str) {
             eprintln!("FONT_DBG face family={family:?} src={src:?} real={real:?}");
         }
         if let Some(real) = real {
-            ALIASES.with(|a| {
-                a.borrow_mut()
-                    .insert(family.trim_matches(is_quote).to_ascii_lowercase(), real)
+            let name = family.trim_matches(is_quote).to_ascii_lowercase();
+            // Правил на одно семейство бывает много: пробел у семейства есть,
+            // если его несёт хоть одно из них.
+            let space = range_has_space(declaration(&block, "unicode-range").as_deref());
+            HAS_SPACE.with(|s| {
+                let mut s = s.borrow_mut();
+                let seen = s.entry(name.clone()).or_insert(false);
+                *seen |= space;
             });
+            ALIASES.with(|a| a.borrow_mut().insert(name, real));
         }
     }
 }
@@ -401,5 +466,24 @@ mod tests {
             declaration(&block[0], "font-family").as_deref(),
             Some("'да'")
         );
+    }
+
+    #[test]
+    fn space_decides_the_first_available_font() {
+        // Дескриптора нет — покрыт весь набор знаков.
+        assert!(range_has_space(None));
+        // Одиночный знак и отрезок.
+        assert!(range_has_space(Some("U+20")));
+        assert!(!range_has_space(Some("U+0061")));
+        assert!(range_has_space(Some("U+0-7F")));
+        assert!(!range_has_space(Some("U+0021-00FF")));
+        // Несколько кусков: хватает одного.
+        assert!(range_has_space(Some("U+20,U+41-5A")));
+        assert!(!range_has_space(Some("U+0061, U+0062")));
+        // Маска.
+        assert!(range_has_space(Some("U+00??")));
+        assert!(!range_has_space(Some("U+04??")));
+        // Негодная запись — дескриптор недействителен, умолчание покрывает всё.
+        assert!(range_has_space(Some("мусор")));
     }
 }

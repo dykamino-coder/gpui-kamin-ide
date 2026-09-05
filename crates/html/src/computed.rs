@@ -3317,8 +3317,20 @@ impl Computed {
                 // при НЕГОДНОМ `woff2` обязан взять второе имя, а вместо
                 // этого отдавал системе первое, которого нет, — и весь набор
                 // WOFF2 держался на случайном совпадении подмен.
-                let available =
-                    |f: &str| crate::metrics::font_installed(f) || crate::fonts::alias(f).is_some();
+                // Мало ИМЕТЬ шрифт: «первым доступным» (css-fonts-4
+                // §first-available-font) семейство становится, только если в
+                // нём есть знак U+0020 — от первого доступного считаются
+                // метрики строки, `line-height: normal`, `ch` и `ex`.
+                // Правило `@font-face` с `unicode-range` без пробела обязано
+                // быть ПРОПУЩЕНО: `font-family: 'A-no-space', 'B'` меряется
+                // по `B`, а не по первому имени списка. Прежде подмена от
+                // такого правила проходила как доступная, и после `7dbbfd2`
+                // (замер по настоящему имени) доли кегля брались с ЧУЖОГО
+                // файла — `first-available-font-002/007`, `ex-unit-004`.
+                let available = |f: &str| {
+                    (crate::metrics::font_installed(f) || crate::fonts::alias(f).is_some())
+                        && crate::fonts::covers_space(f)
+                };
                 let installed = v
                     .split(',')
                     .map(|f| norm(f.trim().trim_matches(is_quote)))
