@@ -604,6 +604,15 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
         || c.contain_layout == Some(true)
 }
 
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): `zoom` (css-viewport-1) как домножение
+// использованных длин здесь, в `inherit`, плюс `zoom`/`zoom_eff` и `scale_px`
+// в `Computed`. Срез 6315 пар (css-viewport + все пары с `zoom:` + весь
+// CSS2): 5722 -> 4918, то есть **+354/-1158**. Потери — сплошь CSS2
+// `background-*` (0.00 -> 8.3), таблицы, абсолюты; «приобретения» ложные:
+// позеленели JS-тесты `insert-block-in-inlines-*`, у которых обе стороны
+// сломались одинаково. Гейт `zoom_eff != 1.0` не удержал: домножение
+// задело общий путь длин. Возвращаться только через отдельный проход после
+// каскада, а не через самую горячую функцию крейта.
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
