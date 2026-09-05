@@ -137,7 +137,6 @@ head, title, meta, link { display: none }
     figure { margin: 8px 0 }
     figcaption { font-size: 11px; color: #9aa0b4; margin: 4px 0 0 }
     caption { font-weight: 600; margin: 0 0 4px }
-    canvas { background: #2a2b36; border: 1px dashed #4a4a5a }
     i, em { font-style: italic }
     u { text-decoration: underline }
     s, del { text-decoration: line-through }

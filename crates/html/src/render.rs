@@ -5112,9 +5112,16 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // абзаца нужен контр-поворот (см. atom-ветку ниже).
         horizontal.rotated_line = Some(true);
         // `vertical-lr`: колонки идут слева направо — строки подаются снизу
-        // вверх, чтобы после поворота первая оказалась левой (у vertical-rl
-        // порядок родной: первая строка правой колонкой).
-        if inherited.vertical_rl != Some(true) {
+        // вверх, чтобы после поворота ПО ЧАСОВОЙ первая оказалась левой (у
+        // vertical-rl порядок родной: первая строка правой колонкой).
+        //
+        // `sideways-lr` вертится ПРОТИВ часовой (css-writing-modes-4,
+        // Abstract-Physical Mapping: line-left = низ, over = лево), и после
+        // такого поворота первая горизонтальная строка САМА оказывается левой
+        // колонкой. Подавать строки снизу вверх тут — второй разворот,
+        // ровно он и давал 180° (`block-flow-direction-slr-043` 32.20).
+        let ccw_line = inherited.sideways == Some(true) && inherited.vertical_rl != Some(true);
+        if inherited.vertical_rl != Some(true) && !ccw_line {
             horizontal.lines_reversed = Some(true);
         }
         // Поворот — приём отрисовки ТЕКСТА. Замещаемое содержимое (картинка,
@@ -5204,9 +5211,11 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // §7.3) и только при ПОЛНОМ зажиме — иначе коробка без высоты
         // схлопывалась в ноль (даже фон пропадал), а заявка без зажима
         // делала её бесконечной (замерено: wm 118 → 104).
-        let vt = crate::interact::VerticalText::new(inner).keyed(crate::interact::vt_seq_key(
-            text_id(&plain) ^ opts.doc_salt ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9),
-        ));
+        let vt = crate::interact::VerticalText::new(inner)
+            .counter_clockwise(ccw_line)
+            .keyed(crate::interact::vt_seq_key(
+                text_id(&plain) ^ opts.doc_salt ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9),
+            ));
         // Настоящий предел от родителя (ортогональная ячейка): строка,
         // которая уже влезает, заявляет высоту честно — без неё гибкая
         // ячейка мерила коробку нулём и justify уводил глиф из виду.
@@ -8900,18 +8909,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 };
                 // `sideways-lr`: строка идёт снизу вверх — начало строчной
                 // оси у НИЖНЕГО края (css-writing-modes-4 §block-flow).
-                // Только ГЛАВНОЕ письмо страницы: у вложенных контейнеров
-                // строчную ось ведёт абзац, и прижим коробки к низу расходился
-                // с ним (abs-pos-border-offset-002).
-                // Прижим — на ТЕЛЕ: у `<html>` бывают свои `::before`/`::after`
-                // с собственным письмом, и прижим корня уводил их вниз
-                // (wm-propagation-body-047).
-                if merged.sideways == Some(true)
-                    && merged.vertical_rl != Some(true)
-                    && e.tag == "body"
-                {
-                    d = d.items_end();
-                }
+                // Прижим коробки к низу — ЗАПЛАТКА того времени, когда абзац
+                // вертелся по часовой и его содержимое росло от верха.
+                // С поворотом против часовой (`VerticalText::ccw`) строка сама
+                // начинается у нижнего края, и второй прижим снова уводит
+                // рисунок. Снимать ВМЕСТЕ с патчем поворота и мерить
+                // `wm-propagation-body-047`, `abs-pos-border-offset-002` —
+                // ровно те две пары, ради которых заплатка ставилась.
                 if e.style.width.is_none() {
                     d = d.flex_shrink_0();
                 }

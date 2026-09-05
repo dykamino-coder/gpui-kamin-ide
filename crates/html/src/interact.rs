@@ -2395,6 +2395,13 @@ pub struct VerticalText {
     /// заявляется честно — иначе гибкая ячейка считает коробку нулевой и
     /// `justify-content` уводит рисунок из виду (table-cell-align-005).
     fit_limit: Option<Pixels>,
+    /// `writing-mode: sideways-lr` — поворот ПРОТИВ часовой стрелки.
+    /// css-writing-modes-4, таблица Abstract-Physical Mapping: у `sideways-lr`
+    /// line-left = НИЗ, line-right = ВЕРХ, over = ЛЕВО (у всех остальных
+    /// вертикальных письмён line-left = верх, over = право). Blink различает
+    /// эти два случая ровно так же — `paint/line_relative_rect.cc:69-75`:
+    /// `AffineTransform(0, 1, -1, 0, …)` против `AffineTransform(0, -1, 1, 0, …)`.
+    ccw: bool,
 }
 
 impl VerticalText {
@@ -2405,7 +2412,14 @@ impl VerticalText {
             fit_limit: None,
             claim_cap: None,
             key: None,
+            ccw: false,
         }
+    }
+
+    /// Поворот против часовой стрелки (`sideways-lr`).
+    pub fn counter_clockwise(mut self, on: bool) -> Self {
+        self.ccw = on;
+        self
     }
 
     /// Включить двухкадровый замер: заявка ширины уточняется фактом
@@ -2556,9 +2570,13 @@ impl Element for VerticalText {
                 });
             }
         }
+        // Щупу статической позиции нужна и СТОРОНА поворота: отображение
+        // до-поворотной точки в экранную у `sideways-lr` зеркально (см. `vt_map`).
+        let prev_ccw = VT_CCW.with(|c| c.replace(self.ccw));
         let prev = VT_FRAME.with(|c| c.replace(Some(bounds)));
         child.prepaint_at(bounds.origin, window, cx);
         VT_FRAME.with(|c| c.set(prev));
+        VT_CCW.with(|c| c.set(prev_ccw));
     }
 
     fn paint(
@@ -2591,12 +2609,34 @@ impl Element for VerticalText {
         // Поворот на четверть по часовой стрелке вокруг левого верхнего угла
         // уводит содержимое влево от коробки; сдвиг на её ширину возвращает
         // его на место.
+        //
+        // `sideways-lr` (css-writing-modes-4, Abstract-Physical Mapping):
+        // строчная ось идёт СНИЗУ ВВЕРХ, ascender смотрит ВЛЕВО — значит
+        // поворот ПРОТИВ часовой. Он уводит содержимое ВВЕРХ от коробки,
+        // поэтому возвращает его сдвиг на ВЫСОТУ, а не на ширину.
+        // После такого поворота первая горизонтальная строка сама оказывается
+        // ЛЕВОЙ колонкой, а её начало — у нижнего края: подача строк снизу
+        // вверх (`lines_reversed`) больше не нужна, см. `render.rs`.
+        let (shift, angle) = if self.ccw {
+            (
+                gpui::point(
+                    dev(bounds.origin.x),
+                    dev(bounds.origin.y + bounds.size.height),
+                ),
+                -std::f32::consts::FRAC_PI_2,
+            )
+        } else {
+            (
+                gpui::point(
+                    dev(bounds.origin.x + bounds.size.width),
+                    dev(bounds.origin.y),
+                ),
+                std::f32::consts::FRAC_PI_2,
+            )
+        };
         let matrix = gpui::TransformationMatrix::unit()
-            .translate(gpui::point(
-                dev(bounds.origin.x + bounds.size.width),
-                dev(bounds.origin.y),
-            ))
-            .rotate(gpui::Radians(std::f32::consts::FRAC_PI_2))
+            .translate(shift)
+            .rotate(gpui::Radians(angle))
             .translate(gpui::point(dev(-bounds.origin.x), dev(-bounds.origin.y)));
         let child = self.child.as_mut().unwrap();
         // Свой слой с ПОСЛЕ-поворотными границами: порядок отрисовки сцена
@@ -2732,6 +2772,8 @@ thread_local! {
     /// до-поворотную точку как экранную, и коробка уезжает на колонку.
     static VT_FRAME: std::cell::Cell<Option<Bounds<Pixels>>> =
         const { std::cell::Cell::new(None) };
+    /// Сторона поворота этой рамки: `sideways-lr` вертится против часовой.
+    static VT_CCW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Экранная точка для до-поворотной, если мы внутри повёрнутого абзаца.
@@ -2746,6 +2788,19 @@ fn vt_map(hole: Bounds<Pixels>, thickness: Pixels) -> Bounds<Pixels> {
     };
     let pre_x = hole.origin.x - vt.origin.x;
     let pre_y = hole.origin.y - vt.origin.y;
+    // `sideways-lr` вертится ПРОТИВ часовой (см. `VerticalText::paint`):
+    // до-поворотная `(px, py)` от угла рамки становится экранной
+    // `(x + py, y + h - px - thickness)` — зеркало обычного случая по обеим
+    // осям (css-writing-modes-4: строчная ось снизу вверх, over слева).
+    if VT_CCW.with(|c| c.get()) {
+        return Bounds {
+            origin: gpui::point(
+                vt.origin.x + pre_y,
+                vt.origin.y + vt.size.height - pre_x - thickness,
+            ),
+            size: hole.size,
+        };
+    }
     Bounds {
         origin: gpui::point(
             vt.origin.x + vt.size.width - pre_y - thickness,
