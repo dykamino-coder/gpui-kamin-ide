@@ -9280,6 +9280,14 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 || e.tag == "fieldset";
             let _bfc_guard = (!is_clamp && makes_bfc && crate::interact::clamp_context().is_some())
                 .then(crate::interact::ClampGuard::enter_bfc);
+            // Проба элемента сетки/гибкого контейнера: пишет свои разложенные
+            // границы в буфер родителя. Ставится ДО clamp-пробы, чтобы её
+            // ранний `return` не съел запись.
+            if let Some(key) = crate::interact::gap_context() {
+                kids.push(crate::interact::gap_item_probe(
+                    crate::interact::gap_items_for(key),
+                ));
+            }
             if let Some((key, skip)) = crate::interact::clamp_context() {
                 // Строки дают пробы абзацев (paragraph_probed); здесь — только
                 // коробка с краской: блок прячется целиком, если срез внутри.
@@ -9300,9 +9308,68 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if cb_layer {
                 crate::interact::cb_open();
             }
+            // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
+            // задан стиль хотя бы одной линейки: начальное `none` (§1871)
+            // означает, что рисовать нечего, и ни одна старая пара сюда не
+            // попадает. Ширина — по тем же ключевым словам, что у
+            // многоколонника; цвет по умолчанию — `currentcolor`.
+            let gap_rules = matches!(
+                merged.display,
+                Some(Display::Flex)
+                    | Some(Display::InlineFlex)
+                    | Some(Display::Grid)
+                    | Some(Display::InlineGrid)
+                    | Some(Display::GridLanes)
+            )
+            .then(|| {
+                let size = match merged.font_size {
+                    Some(Len::Px(v)) => v,
+                    _ => opts.base_size(),
+                };
+                let w = |l: &Option<Len>| match l {
+                    Some(Len::Px(v)) => *v,
+                    Some(Len::Em(k)) => k * size,
+                    _ => 3.0,
+                };
+                let fallback = merged.color.unwrap_or(crate::value::Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                });
+                let col = (e.style.column_rule_visible == Some(true))
+                    .then(|| {
+                        (
+                            w(&e.style.column_rule_width),
+                            e.style.column_rule_color.unwrap_or(fallback),
+                        )
+                    })
+                    .filter(|(w, _)| *w > 0.0);
+                let row = (e.style.row_rule_visible == Some(true))
+                    .then(|| {
+                        (
+                            w(&e.style.row_rule_width),
+                            e.style.row_rule_color.unwrap_or(fallback),
+                        )
+                    })
+                    .filter(|(w, _)| *w > 0.0);
+                (col, row)
+            })
+            .filter(|(col, row)| col.is_some() || row.is_some());
+            let gap_buf = gap_rules
+                .is_some()
+                .then(|| crate::interact::gap_items_for(e.node_id ^ opts.doc_salt));
+            let _gap_guard = gap_buf
+                .as_ref()
+                .map(|_| crate::interact::GapGuard::enter(e.node_id ^ opts.doc_salt));
             kids.extend(blocks(&children, &merged, opts));
             if cb_layer {
                 kids.extend(crate::interact::cb_close());
+            }
+            if let (Some(buf), Some((col, row))) = (gap_buf, gap_rules) {
+                kids.push(
+                    crate::interact::GapRulePainter::new(buf, col, row).into_any_element(),
+                );
             }
             if is_clamp {
                 let max_h = match merged.max_height {

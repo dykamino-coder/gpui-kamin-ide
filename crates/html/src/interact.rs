@@ -1527,6 +1527,226 @@ pub struct EdgeCell {
 
 pub type CellEdges = std::rc::Rc<std::cell::RefCell<Vec<EdgeCell>>>;
 
+/// Прямоугольники элементов сетки/гибкого контейнера: их собирают пробы
+/// детей, а по ним слой-художник считает середины промежутков
+/// (css-gaps-1 §geometry: линейка идёт по ЦЕНТРАЛЬНОЙ ЛИНИИ промежутка).
+pub type GapItems = std::rc::Rc<std::cell::RefCell<Vec<Bounds<Pixels>>>>;
+
+thread_local! {
+    static GAP_ITEMS: std::cell::RefCell<std::collections::HashMap<u64, GapItems>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Стек контейнеров с линейками промежутков при ПОСТРОЕНИИ дерева.
+    /// Ровно как `CLAMP_STACK`: проба ставится только НЕПОСРЕДСТВЕННЫМ
+    /// детям, поэтому сторож кладёт ключ на время сборки детей.
+    static GAP_STACK: std::cell::RefCell<Vec<u64>> = std::cell::RefCell::new(Vec::new());
+}
+
+pub fn gap_items_for(key: u64) -> GapItems {
+    GAP_ITEMS.with(|m| m.borrow_mut().entry(key).or_default().clone())
+}
+
+pub fn forget_gap_buffers() {
+    GAP_ITEMS.with(|m| m.borrow_mut().clear());
+    GAP_STACK.with(|st| st.borrow_mut().clear());
+}
+
+/// Сторож стека линеек на время сборки ДЕТЕЙ контейнера.
+pub struct GapGuard(bool);
+
+impl GapGuard {
+    pub fn enter(key: u64) -> Self {
+        GAP_STACK.with(|st| st.borrow_mut().push(key));
+        GapGuard(true)
+    }
+}
+
+impl Drop for GapGuard {
+    fn drop(&mut self) {
+        if self.0 {
+            GAP_STACK.with(|st| {
+                st.borrow_mut().pop();
+            });
+        }
+    }
+}
+
+/// Ключ контейнера линеек, в котором строится текущий элемент.
+pub fn gap_context() -> Option<u64> {
+    GAP_STACK.with(|st| st.borrow().last().copied())
+}
+
+/// Проба элемента сетки: как `edge_probe`, но пишет только границы.
+pub fn gap_item_probe(items: GapItems) -> AnyElement {
+    gpui::canvas(
+        move |bounds: Bounds<Pixels>, _, _| items.borrow_mut().push(bounds),
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+    .into_any_element()
+}
+
+/// Слой линеек промежутков. Забирает буфер проб в `paint` (к этому моменту
+/// prepaint всех детей уже прошёл — так же работает `EdgePainter`), сводит
+/// прямоугольники элементов в границы дорожек и красит по центру каждого
+/// промежутка сплошную полосу во всю ширину/высоту контейнера.
+///
+/// Шаг 1 — непрерывная линейка. По css-gaps-1 §break начальное `normal` в
+/// СЕТКЕ проходит сквозь крестовые стыки, а спанов (значит, и T-стыков) в
+/// разбираемых тестах нет; во ФЛЕКСЕ `normal` тождественно `none`.
+pub struct GapRulePainter {
+    items: GapItems,
+    /// (ширина, цвет) продольной и поперечной линейки.
+    col: Option<(f32, crate::value::Color)>,
+    row: Option<(f32, crate::value::Color)>,
+}
+
+impl GapRulePainter {
+    pub fn new(
+        items: GapItems,
+        col: Option<(f32, crate::value::Color)>,
+        row: Option<(f32, crate::value::Color)>,
+    ) -> Self {
+        GapRulePainter { items, col, row }
+    }
+
+    /// Середины промежутков вдоль одной оси: соседние дорожки разделены
+    /// зазором, если конец одной строго меньше начала следующей.
+    fn centres(mut edges: Vec<(f32, f32)>) -> Vec<f32> {
+        edges.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut out: Vec<f32> = vec![];
+        let mut reach = f32::NEG_INFINITY;
+        for (lo, hi) in edges {
+            if reach > f32::NEG_INFINITY && lo - reach > 0.25 {
+                let c = (reach + lo) / 2.0;
+                if out.last().map_or(true, |p: &f32| (*p - c).abs() > 0.25) {
+                    out.push(c);
+                }
+            }
+            reach = reach.max(hi);
+        }
+        out
+    }
+}
+
+impl Element for GapRulePainter {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let mut style = gpui::Style::default();
+        style.position = gpui::Position::Absolute;
+        (window.request_layout(style, [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        _cx: &mut App,
+    ) {
+        let items = std::mem::take(&mut *self.items.borrow_mut());
+        if items.is_empty() {
+            return;
+        }
+        let x0 = items
+            .iter()
+            .map(|b| f32::from(b.origin.x))
+            .fold(f32::INFINITY, f32::min);
+        let y0 = items
+            .iter()
+            .map(|b| f32::from(b.origin.y))
+            .fold(f32::INFINITY, f32::min);
+        let x1 = items
+            .iter()
+            .map(|b| f32::from(b.origin.x + b.size.width))
+            .fold(f32::NEG_INFINITY, f32::max);
+        let y1 = items
+            .iter()
+            .map(|b| f32::from(b.origin.y + b.size.height))
+            .fold(f32::NEG_INFINITY, f32::max);
+        if let Some((w, colour)) = self.col {
+            let xs = Self::centres(
+                items
+                    .iter()
+                    .map(|b| {
+                        (
+                            f32::from(b.origin.x),
+                            f32::from(b.origin.x + b.size.width),
+                        )
+                    })
+                    .collect(),
+            );
+            for c in xs {
+                let rect = Bounds {
+                    origin: gpui::point(gpui::px(c - w / 2.0), gpui::px(y0)),
+                    size: gpui::size(gpui::px(w), gpui::px(y1 - y0)),
+                };
+                window.paint_quad(gpui::fill(rect, colour.to_hsla()));
+            }
+        }
+        if let Some((w, colour)) = self.row {
+            let ys = Self::centres(
+                items
+                    .iter()
+                    .map(|b| {
+                        (
+                            f32::from(b.origin.y),
+                            f32::from(b.origin.y + b.size.height),
+                        )
+                    })
+                    .collect(),
+            );
+            for c in ys {
+                let rect = Bounds {
+                    origin: gpui::point(gpui::px(x0), gpui::px(c - w / 2.0)),
+                    size: gpui::size(gpui::px(x1 - x0), gpui::px(w)),
+                };
+                window.paint_quad(gpui::fill(rect, colour.to_hsla()));
+            }
+        }
+    }
+}
+
+impl IntoElement for GapRulePainter {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
 thread_local! {
     static CELL_EDGES: std::cell::RefCell<std::collections::HashMap<u64, CellEdges>> =
         std::cell::RefCell::new(std::collections::HashMap::new());

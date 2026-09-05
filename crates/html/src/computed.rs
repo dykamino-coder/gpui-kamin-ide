@@ -1503,6 +1503,19 @@ pub struct Computed {
     pub column_rule_width: Option<Len>,
     pub column_rule_visible: Option<bool>,
     pub column_rule_color: Option<Color>,
+    /// `row-rule-*` (css-gaps-1 §color-style-width): линейка в ПОПЕРЕЧНОМ
+    /// промежутке сетки/гибкого контейнера. Начальные значения те же, что у
+    /// `column-rule-*`: `currentcolor`, `none`, `medium` — то есть без
+    /// заданного стиля линейки нет.
+    pub row_rule_width: Option<Len>,
+    pub row_rule_visible: Option<bool>,
+    pub row_rule_color: Option<Color>,
+    /// `column-rule-break`/`row-rule-break` (css-gaps-1 §break): 0 — `none`,
+    /// 1 — `normal` (начальное), 2 — `intersection`. Шаг 1 разбирает
+    /// значение, но рисует всегда непрерывно: в сетке БЕЗ спанов все стыки
+    /// крестовые, и `normal` по спеке проходит сквозь них.
+    pub column_rule_break: Option<u8>,
+    pub row_rule_break: Option<u8>,
     /// `shape-outside`: сырая запись формы обтекания плавающего блока.
     pub shape_outside: Option<String>,
     /// `shape-margin`: поле вокруг формы обтекания; доля — от ширины
@@ -5001,6 +5014,88 @@ impl Computed {
                 self.column_rule_visible = Some(!matches!(v.trim(), "none" | "hidden"));
             }
             "column-rule-color" => self.column_rule_color = Color::parse(v.trim()),
+            // Линейка поперечного промежутка. Разбор дословно повторяет
+            // `column-rule-*`: у css-gaps-1 §1930 те же ключевые слова
+            // ширины (`thin`/`medium`/`thick`) и тот же запрет отрицательной.
+            // Список значений через запятую (§lists-repeat) шаг 1 не берёт:
+            // до запятой значение читается, остаток отбрасывается.
+            "row-rule-width" => {
+                self.row_rule_width = match v.split(',').next().unwrap_or("").trim() {
+                    "thin" => Some(Len::Px(1.0)),
+                    "medium" => Some(Len::Px(3.0)),
+                    "thick" => Some(Len::Px(5.0)),
+                    t => match Len::parse(t) {
+                        Some(l) if !matches!(l, Len::Px(w) if w < 0.0) => Some(l),
+                        _ => self.row_rule_width,
+                    },
+                }
+            }
+            "row-rule-style" => {
+                self.row_rule_visible = Some(!matches!(
+                    v.split(',').next().unwrap_or("").trim(),
+                    "none" | "hidden" | ""
+                ));
+            }
+            "row-rule-color" => {
+                self.row_rule_color = Color::parse(v.split(',').next().unwrap_or("").trim())
+            }
+            "row-rule" => {
+                let mut vis = None;
+                let mut w = None;
+                let mut col = None;
+                let mut ok = true;
+                for token in v.split(',').next().unwrap_or("").split_whitespace() {
+                    match token {
+                        "none" | "hidden" => vis = Some(false),
+                        "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset"
+                        | "outset" => vis = Some(true),
+                        "thin" => w = Some(Len::Px(1.0)),
+                        "medium" => w = Some(Len::Px(3.0)),
+                        "thick" => w = Some(Len::Px(5.0)),
+                        t => {
+                            if let Some(l) = Len::parse(t) {
+                                if matches!(l, Len::Px(v) if v < 0.0) {
+                                    ok = false;
+                                } else {
+                                    w = Some(l);
+                                }
+                            } else if let Some(c) = Color::parse(t) {
+                                col = Some(c);
+                            } else {
+                                ok = false;
+                            }
+                        }
+                    }
+                }
+                if ok {
+                    if vis.is_some() {
+                        self.row_rule_visible = vis;
+                    }
+                    if w.is_some() {
+                        self.row_rule_width = w;
+                    }
+                    if col.is_some() {
+                        self.row_rule_color = col;
+                    }
+                }
+            }
+            // §break: `none` 0, `normal` 1, `intersection` 2.
+            "column-rule-break" | "row-rule-break" | "rule-break" => {
+                let code = match v.trim() {
+                    "none" => Some(0u8),
+                    "normal" => Some(1),
+                    "intersection" => Some(2),
+                    _ => None,
+                };
+                if let Some(code) = code {
+                    if key != "row-rule-break" {
+                        self.column_rule_break = Some(code);
+                    }
+                    if key != "column-rule-break" {
+                        self.row_rule_break = Some(code);
+                    }
+                }
+            }
             // §margin-trim: `none | block | [ block-start || block-end ]`.
             "margin-trim" => {
                 let mut bits = 0u8;
