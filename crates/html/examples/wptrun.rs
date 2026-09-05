@@ -734,6 +734,9 @@ fn resolve_links(html: &str, path: &str) -> String {
         tail = &rest[after_len..];
     }
     with_urls.push_str(tail);
+    // Подключения разворачиваются ПОСЛЕ разбора адресов: к этому мигу
+    // `@import url(...)` уже несёт разрешённый путь к файлу.
+    let with_urls = expand_style_imports(&with_urls);
     if std::env::var("WPT_HTML_DUMP").is_ok() {
         use std::io::Write as _;
         if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -746,6 +749,71 @@ fn resolve_links(html: &str, path: &str) -> String {
         }
     }
     with_urls
+}
+
+/// Развернуть `@import url(...)` ВНУТРИ `<style>` содержимым файла.
+///
+/// Страницу до движка доводит стенд, и подключений он не делает сам. Набор
+/// WOFF2 подключает свои опорные шрифты ТОЛЬКО через `@import`, и без
+/// разворачивания обе стороны каждой пары рисуются системной подменой.
+///
+/// Разворачивается лишь то, что лежит между `<style>` и `</style>`: первый
+/// заход правил весь документ и рвал разметку (css-text 992 → 930).
+/// Глубина ограничена: кольцо подключений иначе вешает стенд насмерть.
+fn expand_style_imports(html: &str) -> String {
+    fn expand(css: &str, depth: usize) -> String {
+        if depth == 0 {
+            return css.to_string();
+        }
+        let mut out = String::with_capacity(css.len());
+        let mut rest = css;
+        while let Some(at) = rest.to_ascii_lowercase().find("@import") {
+            let (head, tail) = rest.split_at(at);
+            out.push_str(head);
+            let Some(end) = tail.find(';') else {
+                out.push_str(tail);
+                return out;
+            };
+            let rule = &tail[..end];
+            // `@import url("…")` и `@import "…"` — одна и та же запись
+            // (§6.3): нужен только адрес.
+            let raw = match (rule.find('('), rule.rfind(')')) {
+                (Some(a), Some(b)) if a < b => rule[a + 1..b].trim(),
+                _ => rule["@import".len()..].trim(),
+            };
+            let name = raw
+                .trim_matches(|c| c == '\'' || c == '"')
+                .trim_start_matches("file:///");
+            let file = std::path::Path::new(name);
+            if file.exists() {
+                let css = read_stylesheet(file);
+                // Адреса подключённого файла считаются от ЕГО папки — тем же
+                // приёмом, что и у `<link rel=stylesheet>`.
+                let css = match file.parent() {
+                    Some(base) => rebase_css_urls(&css, base),
+                    None => css,
+                };
+                out.push_str(&expand(&css, depth - 1));
+            }
+            rest = &tail[end + 1..];
+        }
+        out.push_str(rest);
+        out
+    }
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.to_ascii_lowercase().find("<style") {
+        let Some(open) = rest[at..].find('>') else { break };
+        let body = at + open + 1;
+        out.push_str(&rest[..body]);
+        let Some(close) = rest[body..].to_ascii_lowercase().find("</style") else {
+            break;
+        };
+        out.push_str(&expand(&rest[body..body + close], 4));
+        rest = &rest[body + close..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Ближайшая запись `url(` без учёта регистра, включая экранированные формы

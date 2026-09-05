@@ -3303,14 +3303,26 @@ impl Computed {
                         && !is_generic(&lower)
                         && !matches!(lower.as_str(), "inherit" | "initial")
                 };
-                // Первое УСТАНОВЛЕННОЕ имя списка: браузер идёт по списку, пока
+                // Первое ДОСТУПНОЕ имя списка: браузер идёт по списку, пока
                 // не найдёт шрифт (§15.3). Прежде бралось первое подходящее по
                 // виду, и `font-family: Courier New, Ahem` при отсутствующем
                 // `Courier New` набиралось подменой вместо `Ahem`.
+                //
+                // Доступность даёт не только система. Список установленных —
+                // это снимок `all_font_names()`, снятый ОДИН РАЗ на старте
+                // (`metrics::use_text_system`), и шрифт, принесённый самой
+                // страницей через `@font-face`, в него не попадает никогда.
+                // Без учёта подмен список семейств не доходил до второго
+                // имени: `font-family: "WOFF Test", "WOFF Test CFF Fallback"`
+                // при НЕГОДНОМ `woff2` обязан взять второе имя, а вместо
+                // этого отдавал системе первое, которого нет, — и весь набор
+                // WOFF2 держался на случайном совпадении подмен.
+                let available =
+                    |f: &str| crate::metrics::font_installed(f) || crate::fonts::alias(f).is_some();
                 let installed = v
                     .split(',')
                     .map(|f| norm(f.trim().trim_matches(is_quote)))
-                    .find(|f| usable(f) && crate::metrics::font_installed(f));
+                    .find(|f| usable(f) && available(f));
                 if let Some(found) = installed {
                     self.font_family = Some(found);
                     return;
