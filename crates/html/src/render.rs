@@ -4779,15 +4779,23 @@ fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
     }
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
     let b = e.style.borders();
+    // §10.5: доля высоты при НЕОПРЕДЕЛЁННОМ содержащем блоке «computes to
+    // auto», а `auto` схлопыванию насквозь не мешает (§8.3.1). Прежде любая
+    // ненулевая доля закрывала ветку, и три пустых блока с полями 100 давали
+    // 200 вместо 100 (`margin-collapse-through-percentage-height-block`).
+    // Признак блока несёт сам стиль — `cb_height_def` ставит `inline::inherit`.
+    let height_is_auto = matches!(
+        e.style.height,
+        None | Some(Len::Auto) | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))
+    ) || matches!(e.style.height, Some(Len::Pct(_)) if !e.style.cb_height_def);
+    let min_height_is_zero = zero(e.style.min_height)
+        || matches!(e.style.min_height, Some(Len::Pct(_)) if !e.style.cb_height_def);
     if !zero(e.style.padding.top)
         || !zero(e.style.padding.bottom)
         || !zero(b.top)
         || !zero(b.bottom)
-        || !zero(e.style.min_height)
-        || !matches!(
-            e.style.height,
-            None | Some(Len::Auto) | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))
-        )
+        || !min_height_is_zero
+        || !height_is_auto
     {
         return None;
     }
@@ -7630,6 +7638,15 @@ fn transformed(el: AnyElement, c: &Computed) -> AnyElement {
     let Some(t) = c.transform else {
         return el;
     };
+    // Обратная сторона: элемент прячется, когда после поворота на него
+    // смотрят с изнанки — css-transforms-2 §backface-visibility, шаг 2:
+    // «if the computed value of backface-visibility is hidden and the
+    // used transform matrix has m33 < 0, the element is not rendered».
+    // `rotateY(180deg)` для нас — тот же `scaleX(-1)`, и по плоской матрице
+    // изнанку не отличить: её держит отдельно посчитанный m33.
+    if c.backface_hidden == Some(true) && t.m33 < 0.0 {
+        return div().into_any_element();
+    }
     let mut wrapper = crate::interact::Transformed::new(el);
     wrapper.rotate = t.rotate_rad;
     wrapper.skew = t.skew_rad;

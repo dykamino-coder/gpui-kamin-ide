@@ -579,6 +579,11 @@ pub struct Transform {
     /// проценты внутри цепочки складываются линейно и разрешаются при
     /// отрисовке.
     pub tr: [[f32; 3]; 2],
+    /// Элемент m33 накопленной 4x4-матрицы. Плоская отрисовка его не видит,
+    /// но `backface-visibility: hidden` прячет элемент ровно при m33 < 0
+    /// (css-transforms-2 §backface-visibility). У плоских функций m33 = 1,
+    /// поэтому множители перемножаются без потери точности.
+    pub m33: f32,
 }
 
 impl Default for Transform {
@@ -591,11 +596,36 @@ impl Default for Transform {
             translate_pct: (0.0, 0.0),
             lin: [[1.0, 0.0], [0.0, 1.0]],
             tr: [[0.0; 3]; 2],
+            m33: 1.0,
         }
     }
 }
 
 impl Transform {
+    /// Поворот вокруг произвольной оси, СПЛЮЩЕННЫЙ на плоскость экрана.
+    ///
+    /// Сплющивание (css-transforms-2 §3d-transform-rendering) — это
+    /// вычёркивание третьей строки и третьего столбца 4x4-матрицы, поэтому
+    /// плоская часть — ровно верхний 2x2 блок матрицы поворота Родрига, а
+    /// m33 = z²(1-cos a) + cos a нужен для `backface-visibility`.
+    /// Проверка: ось Z даёт обычный поворот, ось Y — diag(cos a, 1), ось X —
+    /// diag(1, cos a), то есть ровно `rotateZ`/`rotateY`/`rotateX`.
+    pub fn axis_rot(x: f32, y: f32, z: f32, a: f32) -> ([[f32; 2]; 2], f32) {
+        let len = (x * x + y * y + z * z).sqrt();
+        if len <= 0.0 {
+            return ([[1.0, 0.0], [0.0, 1.0]], 1.0);
+        }
+        let (x, y, z) = (x / len, y / len, z / len);
+        let (c, s) = (a.cos(), a.sin());
+        let k = 1.0 - c;
+        (
+            [
+                [x * x * k + c, x * y * k - z * s],
+                [y * x * k + z * s, y * y * k + c],
+            ],
+            z * z * k + c,
+        )
+    }
     /// Дописать функцию справа: `M := M · [l | v]`.
     fn push(&mut self, l: [[f32; 2]; 2], v: [[f32; 3]; 2]) {
         let m = self.lin;
@@ -1197,6 +1227,8 @@ pub struct Computed {
     pub resize: Option<(bool, bool)>,
     /// `transform`/`rotate`/`scale`: поворот в радианах и масштаб по осям.
     pub transform: Option<Transform>,
+    /// `backface-visibility: hidden`.
+    pub backface_hidden: Option<bool>,
     /// `transform-origin` в долях размера элемента.
     pub transform_origin: Option<(f32, f32)>,
     /// `transform`/`transform-origin` с длинами в единицах шрифта: запись
@@ -5233,6 +5265,20 @@ impl Computed {
                             t.skew_rad.1 += ay;
                             t.push([[1.0, angle.tan()], [ay.tan(), 1.0]], NO_SHIFT);
                         }
+                        // matrix3d(...16): 4x4 в СТОЛБЦОВОМ порядке
+                        // (css-transforms-2 §matrix3d). Сплющивание —
+                        // вычёркивание третьей строки и третьего столбца,
+                        // то есть ровно matrix(m11 m12 m21 m22 m41 m42) =
+                        // аргументы 1,2,5,6,13,14. Раньше вызов не подходил
+                        // под `nums.len() == 6` и молча пропадал целиком.
+                        "matrix3d" if nums.len() == 16 => {
+                            let (a, b, c2, d) = (nums[0], nums[1], nums[4], nums[5]);
+                            let (e2, f2) = (nums[12], nums[13]);
+                            t.translate.0 += e2;
+                            t.translate.1 += f2;
+                            t.m33 *= nums[10];
+                            t.push([[a, c2], [b, d]], [[e2, 0.0, 0.0], [f2, 0.0, 0.0]]);
+                        }
                         // matrix(a b c d e f): разложение на компоненты
                         // (перенос, поворот, масштаб, скос) — QR-подобное,
                         // как в css-transforms §16 (декомпозиция).
@@ -5279,49 +5325,52 @@ impl Computed {
                         // `perspective: none` так считает и браузер.
                         "rotatex" => {
                             t.scale.1 *= angle.cos();
+                            t.m33 *= angle.cos();
                             t.push(Transform::diag(1.0, angle.cos()), NO_SHIFT);
                         }
                         "rotatey" => {
                             t.scale.0 *= angle.cos();
+                            t.m33 *= angle.cos();
                             t.push(Transform::diag(angle.cos(), 1.0), NO_SHIFT);
                         }
-                        // Поворот вокруг произвольной оси: та же проекция, но
-                        // ось задана вектором. Ось экрана даёт обычный поворот,
-                        // остальные — сжатие поперёк себя.
+                        // Поворот вокруг произвольной оси, сплющенный на
+                        // плоскость экрана: это ТОЧНО верхний 2x2 блок
+                        // матрицы Родрига (css-transforms-2
+                        // §3d-transform-rendering — сплющивание вычёркивает
+                        // третью строку и третий столбец). Прежняя формула
+                        // `1 - |y|·(1 - cos a)` теряла внедиагональные члены
+                        // и для косой оси давала не поворот, а сжатие.
+                        // Единица угла берётся из САМОГО аргумента: `contains
+                        // ("rad")` срабатывал на «grad» и читал 100grad как
+                        // 100 радиан.
                         "rotate3d" => {
                             let (x, y, z) = (
                                 nums.first().copied().unwrap_or(0.0),
                                 nums.get(1).copied().unwrap_or(0.0),
                                 nums.get(2).copied().unwrap_or(0.0),
                             );
-                            let len = (x * x + y * y + z * z).sqrt();
-                            if len > 0.0 {
-                                let last = nums.get(3).copied().unwrap_or(0.0);
-                                let a = if arg.contains("rad") {
-                                    last
-                                } else {
-                                    last.to_radians()
-                                };
-                                let (x, y, z) = (x / len, y / len, z / len);
-                                let (kx, ky) = (
-                                    1.0 - y.abs() * (1.0 - a.cos()),
-                                    1.0 - x.abs() * (1.0 - a.cos()),
-                                );
-                                t.rotate_rad += a * z;
-                                t.scale.1 *= ky;
-                                t.scale.0 *= kx;
-                                t.push(Transform::rot(a * z), NO_SHIFT);
-                                t.push(Transform::diag(kx, ky), NO_SHIFT);
+                            if (x * x + y * y + z * z) > 0.0 {
+                                let a = angle_at(3);
+                                let (l, m33) = Transform::axis_rot(x, y, z, a);
+                                let len = (x * x + y * y + z * z).sqrt();
+                                t.rotate_rad += a * z / len;
+                                t.scale.0 *= l[0][0];
+                                t.scale.1 *= l[1][1];
+                                t.m33 *= m33;
+                                t.push(l, NO_SHIFT);
                             }
                         }
                         // Третья ось без перспективы ничего не меняет: смещение
                         // по ней не видно, а масштаб по ней не на что влиять.
                         "translatez" | "perspective" => {}
-                        "scalez" => {}
+                        // Масштаб по Z видом не правит, но участвует в m33
+                        // (обратная сторона) и обнуляет матрицу.
+                        "scalez" => t.m33 *= first,
                         "scale3d" => {
                             let sy = nums.get(1).copied().unwrap_or(1.0);
                             t.scale.0 *= first;
                             t.scale.1 *= sy;
+                            t.m33 *= nums.get(2).copied().unwrap_or(1.0);
                             t.push(Transform::diag(first, sy), NO_SHIFT);
                         }
                         "translate3d" => {
@@ -5391,6 +5440,19 @@ impl Computed {
                     self.transform = Some(t);
                 }
             }
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): доводить `rotate:`/`scale:` до
+            // матрицы отрисовки отдельными полями (`rotate_prop`/`scale_prop`)
+            // и прятать вырожденную матрицу. Срез 2327 пар
+            // (transforms/contain/overflow/masking/position): вместе с
+            // `backface-visibility` вышло 1563 -> 1571 (+14/-6), без него —
+            // 1563 -> 1575 (+13/-1). То есть сам этот рукав дал ОДНУ пару
+            // (`individual-transform-3`) против ШЕСТИ потерь, все —
+            // анимационные: `rotate-explicit-and-implicit-keyframes`,
+            // `scale-explicit-and-implicit-keyframes`,
+            // `scale-and-rotate-both-specified-on-animation-keyframes`,
+            // `change-rotate-property`, `change-scale-property`. Эталоны этих
+            // тестов ждут КОНЕЧНОЕ состояние анимации, а мы рисуем начальное:
+            // рукав вернётся вместе с проигрыванием ключевых кадров.
             "rotate" => {
                 let mut t = self.transform.unwrap_or_default();
                 let raw = v.trim();
@@ -5464,7 +5526,12 @@ impl Computed {
             }
             // Трёхмерной сцены нет: без объёмных преобразований перспектива
             // ничего не меняет, поэтому разбирается и не делает ничего.
-            "perspective" | "transform-style" | "backface-visibility" => {}
+            // Трёхмерной сцены нет, но обратная сторона видна и на плоской
+            // проекции: `rotateY(180deg)` — это scaleX(-1), и элемент с
+            // `backface-visibility: hidden` обязан исчезнуть
+            // (css-transforms-2 §backface-visibility, признак m33 < 0).
+            "backface-visibility" => self.backface_hidden = Some(v == "hidden"),
+            "perspective" | "transform-style" => {}
 
             // --- Обтекание и направление письма --------------------------------
             "float" => {
@@ -7444,12 +7511,18 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
         // `fit-content(N)` — дорожка по содержимому, но НЕ ШИРЕ N: раньше
         // сводилась к `Px(N)`, и потолок работал полом
         // (column-intrinsic-maximums).
+        // Аргумент — `<length-percentage>` (css-grid-1 §7.2.3), а не только
+        // точки: `fit-content(30%)` не разбирался и ронял `parse_tracks` на
+        // `None` для ВСЕГО списка (`out.push(one(&token)?)` ниже), после чего
+        // сетка сводилась к равным колонкам по `count_tracks`. Верхняя грань
+        // теперь идёт через `single`, который знает px, проценты и единицы
+        // шрифта; нераспознанный аргумент — это `auto`, а не потеря шаблона.
         if let Some(inner) = t
             .strip_prefix("fit-content(")
             .and_then(|r| r.strip_suffix(')'))
-            && let Some(Len::Px(px)) = Len::parse(inner.trim())
         {
-            return Some(TrackSize::MinMax(Track::Auto, Track::Px(px)));
+            let hi = single(inner).unwrap_or(Track::Auto);
+            return Some(TrackSize::MinMax(Track::Auto, hi));
         }
         single(t).map(TrackSize::Single)
     }

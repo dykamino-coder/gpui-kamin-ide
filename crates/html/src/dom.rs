@@ -1158,6 +1158,47 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
     {
         style.display = Some(Display::Block);
     }
+    // css-contain-2 §3.1/§3.2/§3.3, одинаковый список «has no effect if…»:
+    // обособление НЕ действует, если главная коробка — внутренняя руби-коробка
+    // или НЕАТОМАРНАЯ коробка строчного уровня. Blink держит то же самое
+    // виртуальным `IsEligibleForPaintOrLayoutContainment()`: `false` у всех, и
+    // `true` только у `LayoutBox` (`layout_box.h:1149`).
+    //
+    // Неатомарная строчная у нас — это либо дословный `display: inline`
+    // (пометка `inline_display`), либо тег строчного уровня без своего
+    // `display`. Замещаемые и виджеты формы — АТОМАРНЫЕ строчные: на них
+    // обособление действует (`contain-size-select-elem-*`,
+    // `contain-paint-023` на `inline-block`), поэтому они исключены.
+    // Вне потока коробка блокифицируется (§9.7) и перестаёт быть строчной —
+    // проверка `out_of_flow` обязана стоять здесь, до блокификации ниже.
+    let atomic_by_tag = matches!(
+        tag,
+        "img"
+            | "svg"
+            | "canvas"
+            | "video"
+            | "embed"
+            | "object"
+            | "iframe"
+            | "input"
+            | "select"
+            | "textarea"
+            | "button"
+            | "meter"
+            | "progress"
+    );
+    let non_atomic_inline = !out_of_flow
+        && !atomic_by_tag
+        && (style.inline_display == Some(true)
+            || (style.display.is_none() && !BLOCK_TAGS.contains(&tag)));
+    if non_atomic_inline {
+        // Гасим только обособление РАСКЛАДКИ и ОТРИСОВКИ: у Blink это одна
+        // «eligibility» (`ShouldApplyPaintContainment` / `…LayoutContainment`).
+        // Обособление размера у строчных трогаем отдельно — там завязаны
+        // виджеты формы, и цена ошибки выше.
+        style.contain_layout = None;
+        style.contain_paint = None;
+    }
     if style.inline_display != Some(true) {
         return;
     }
