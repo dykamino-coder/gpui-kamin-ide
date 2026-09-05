@@ -112,7 +112,20 @@ pub fn normal_line(family: &str) -> f32 {
 }
 
 /// Доли кегля для семейства: замер идёт один раз и запоминается.
+///
+/// Имя из разметки может быть ПРИДУМАННЫМ (`@font-face`): система шрифтов
+/// знает файл под его собственным именем из name-таблицы. Набор подмену уже
+/// делает (`inline::run_for`, `render::measure_font`), а замер — нет, и
+/// DirectWrite на неизвестное имя молча подставлял системный UI-шрифт
+/// (`direct_write.rs`, `select_font`): `line-height: normal` считался по
+/// ЧУЖИМ метрикам. Для `WOFF Test` это 1.33 вместо 1.0 — строка съезжала на
+/// полулидинг, 33 точки при кегле 200 (весь набор `css/WOFF2`).
+///
+/// Замер запоминается по НАСТОЯЩЕМУ имени: придуманное на соседней странице
+/// значит другой файл, а имя семейства в системе одно на всех.
 fn fractions(family: &str) -> (f32, f32, f32, f32) {
+    let real = crate::fonts::alias(family);
+    let family = real.as_deref().unwrap_or(family);
     if let Some(hit) = CACHE.with(|c| c.borrow().get(family).copied()) {
         return hit;
     }
