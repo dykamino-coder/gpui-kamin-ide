@@ -1487,6 +1487,10 @@ pub struct Computed {
     pub column_fill_auto: Option<bool>,
     /// `column-span: all` — блок растянут на все колонки.
     pub column_span: Option<bool>,
+    /// `page: <custom-ident>` — именованная страница (css-page-3 §"Using named
+    /// pages"). `auto` хранится отсутствием значения: используемое значение
+    /// берётся у ближайшего предка с именем (там же, шаг 1 алгоритма).
+    pub page: Option<String>,
     /// `break-inside: avoid*` — коробку нельзя разрывать между колонками и
     /// страницами (css-break-3 §4.1). Свойство не разбиралось вовсе, и
     /// отличить монолит от обычной коробки было нечем.
@@ -4975,6 +4979,14 @@ impl Computed {
                         self.column_width = Some(l);
                     }
                 }
+            }
+            // `page: auto | <custom-ident>` (css-page-3 §"Using named pages").
+            // Имя регистрозависимо; `auto` — ключевое слово без регистра и
+            // хранится отсутствием значения.
+            "page" => {
+                let t = v.trim();
+                self.page = (!t.is_empty() && !t.eq_ignore_ascii_case("auto"))
+                    .then(|| t.to_string());
             }
             // `column-fill`: балансировать ли колонки (дефолт balance).
             "column-fill" => self.column_fill_auto = Some(v.trim() == "auto"),

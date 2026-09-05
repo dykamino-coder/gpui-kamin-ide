@@ -40,8 +40,20 @@ impl Render for Page {
         // Печатная пара: страница WPT по умолчанию 5in x 3in = 480x288
         // точек; `@page` может задать size/margin/фон/рамку. Область
         // просмотра документа = page area (css-page-3 §page-model).
-        // Коробка страницы — ЗА ФЛАГОМ: первый заход уронил прогон
-        // (кроп по листу давал 197 HUNG) — доводится отдельно.
+        // Стопка страниц (css-page-3) — ПО ФЛАГУ `WPT_PAGE`: печатные пары
+        // сегодня зелены ложно (обе стороны рисуются непагинированным
+        // документом), и честная пагинация краснит их, пока не умеет того,
+        // чем пользуются эталоны. ★ ЗАМЕРЕНО (06.09), срез 1303 пары
+        // (css-page + все `-print` + css-break): шаг 1 без разрезов внутри
+        // детей 475 -> 443 (+2/-34); с разрезами класса A и маской по
+        // фрагменту 475 -> 435 (+9/-49). Потери — таблицы (разрыв между
+        // рядами, `table-fragmentation-*`, `*-page-break-inside-avoid-*`),
+        // `monolithic-overflow-*` (contain:size + vh), именованные страницы,
+        // `page-margin-006`. Включать по умолчанию после шагов 2-4 плана
+        // `target/scout-pagination-2026-09.md`. Прежние 197 HUNG давал не
+        // лист, а КРОП снимка: `ink()` при разной длине кадра и разделителя
+        // возвращал `usize::MAX`, вердикт умножал его на 8 — переполнение в
+        // debug-сборке роняло задачу стенда. Кропа больше нет.
         let page = (kamin_html::css::PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed)
             && std::env::var("WPT_PAGE").is_ok())
         .then(|| page_box(kamin_html::css::page_decls_snapshot()));
@@ -60,43 +72,38 @@ impl Render for Page {
         // (`top: 0; bottom: 0`), схлопывается в ноль — целые семейства
         // css-backgrounds и css-position выходили пустыми.
         if std::env::var("HTML_VIEWPORT").is_ok() {
-            eprintln!("VIEWPORT {:?}", opts.viewport);
+            eprintln!(
+                "VIEWPORT {:?} print={} page={:?}",
+                opts.viewport,
+                kamin_html::css::PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed),
+                page.as_ref().map(|p| (p.size, p.area, p.margin))
+            );
         }
-        let children = render(self.doc.nodes(), &opts);
-        if std::env::var("HTML_VIEWPORT").is_ok() {
-            eprintln!("BUILT {} детей", children.len());
-        }
-        *PAGE_CROP.lock().unwrap() = page.as_ref().map(|p| p.size);
         if let Some(p) = page {
-            // Лист страницы в левом-верхнем углу канваса: фон и рамка
-            // страницы, содержимое — со сдвигом на поля.
-            let mut sheet = div()
-                .absolute()
-                .left(px(0.))
-                .top(px(0.))
-                .w(px(p.size.0))
-                .h(px(p.size.1))
-                .bg(p.bg.map(|c| c.to_hsla()).unwrap_or(gpui::white()));
-            if p.border.0 > 0.0 {
-                sheet = sheet
-                    .border(px(p.border.0))
-                    .border_color(p.border.1.to_hsla());
-            }
-            let content = div()
-                .absolute()
-                .left(px(p.margin[3] + p.border.0))
-                .top(px(p.margin[0] + p.border.0))
-                .w(px(p.area.0))
-                .h(px(p.area.1))
-                .children(children);
+            // Печатная пара: стопка страниц (css-page-3) на всё окно —
+            // движок сам режет документ по page area, рисует листы и
+            // масштабирует их сеткой в окно. Сравнивается весь кадр.
+            let geom = kamin_html::flow::PageGeom {
+                size: p.size,
+                margin: p.margin,
+                border: (p.border.0, p.border.1.to_hsla()),
+                padding: [0.0; 4],
+                bg: p.bg.map(|c| c.to_hsla()).unwrap_or(gpui::white()),
+                canvas: None,
+                area: p.area,
+            };
+            let stack = kamin_html::render::render_paged(self.doc.nodes(), &opts, geom);
             return div()
                 .w(px(f32::from(window.viewport_size().width)))
                 .h(px(f32::from(window.viewport_size().height)))
                 .bg(rgb(0xffffff))
                 .text_size(px(16.))
-                .child(sheet)
-                .child(content)
+                .child(stack)
                 .into_any_element();
+        }
+        let children = render(self.doc.nodes(), &opts);
+        if std::env::var("HTML_VIEWPORT").is_ok() {
+            eprintln!("BUILT {} детей", children.len());
         }
         div()
             .w(px(opts.viewport.0))
@@ -108,10 +115,9 @@ impl Render for Page {
     }
 }
 
-/// Размер листа ТЕКУЩЕГО отрисованного документа: печатная пара
-/// сравнивается по области листа, а не по всему окну (фон эталона
-/// распространён на канвас, тест ограничен листом — page-box-001).
-static PAGE_CROP: std::sync::Mutex<Option<(f32, f32)>> = std::sync::Mutex::new(None);
+// Кропа по листу больше нет (см. комментарий у `WPT_NO_PAGE`): печатная пара
+// сравнивается по всему окну, как остальные, — стопка страниц рисует листы
+// сама и масштабирует их в окно.
 
 /// Прочитать подключённую таблицу стилей БАЙТАМИ, как это делает браузер
 /// с wpt-сервером.
@@ -1208,13 +1214,16 @@ fn main() {
                 // принимается по устаревшему снимку. В числах это скачок вида
                 // 17.45 % → 0.00 % между двумя одинаковыми прогонами.
                 let mut blank = None;
-                let mut page_sizes: Vec<Option<(f32, f32)>> = Vec::new();
                 for path in [test, reference] {
                     // Разделитель показывается перед КАЖДОЙ стороной, а не один
                     // раз на пару. Иначе эталон снимается, пока на экране ещё
                     // устоявшийся ТЕСТ: его кадр отличается от разделителя, а
                     // значит принимается за кадр эталона — и пара получает
                     // ложный ноль расхождения.
+                    // Разделитель — не печатная страница: флаг печати снимается, иначе
+                    // он рисуется стопкой листов, `flat()` его не узнаёт и `show`
+                    // выжидает все 400 шагов (по 6 с на каждый показ разделителя).
+                    kamin_html::css::PRINT_MEDIA.store(false, std::sync::atomic::Ordering::Relaxed);
                     blank = show(SEPARATOR.into(), None, true).await.map(|s| s.2);
                     // Печатные пары смотрят печатным носителем: `@media print`
                     // истинен, `screen` — ложен (background-image-only-for-print).
@@ -1248,20 +1257,6 @@ fn main() {
                         shot = show(html.clone(), blank.clone(), false).await;
                     }
                     shots.push(shot);
-                    page_sizes.push(PAGE_CROP.lock().unwrap().take());
-                }
-                // Печатная пара: сравнение по области листа (максимум двух
-                // сторон), остальное окно — не страница.
-                if std::env::var("CROP_DBG").is_ok() {
-                    eprintln!("CROP sizes={page_sizes:?}");
-                }
-                if let (Some(Some(a)), Some(Some(b))) = (page_sizes.first(), page_sizes.get(1)) {
-                    let area = (a.0.max(b.0), a.1.max(b.1));
-                    for shot in shots.iter_mut() {
-                        if let Some(s) = shot.take() {
-                            *shot = Some(crop_shot(s, (w, h), area));
-                        }
-                    }
                 }
                 // Тест сам сказал, чего быть не должно: «no red». Проверяем
                 // это ДО сравнения с эталоном — оно слепо к случаю, когда обе
@@ -1346,7 +1341,10 @@ fn main() {
                     (Some((_, _, a)), Some((_, _, b)))
                         if {
                             let (x, y) = (ink(a, blank.as_ref()), ink(b, blank.as_ref()));
-                            x.min(y) < INK_MIN || x.min(y) * 8 < x.max(y)
+                            // `ink` отдаёт `usize::MAX`, когда кадр и разделитель
+                            // разной длины: голое `* 8` переполнялось и роняло
+                            // задачу стенда (197 HUNG прошлого захода с листом).
+                            x.min(y) < INK_MIN || x.min(y).saturating_mul(8) < x.max(y)
                         } =>
                     {
                         format!(
@@ -1382,6 +1380,10 @@ fn main() {
                             &std::fs::read_to_string(other).unwrap_or_default(),
                             other,
                         );
+                        // Разделитель — не печатная страница: флаг печати снимается, иначе
+                        // он рисуется стопкой листов, `flat()` его не узнаёт и `show`
+                        // выжидает все 400 шагов (по 6 с на каждый показ разделителя).
+                        kamin_html::css::PRINT_MEDIA.store(false, std::sync::atomic::Ordering::Relaxed);
                         blank = show(SEPARATOR.into(), None, true).await.map(|s| s.2);
                         let Some(shot) = show(html, blank.clone(), false).await else {
                             continue;
@@ -1415,6 +1417,10 @@ fn main() {
                         if !std::path::Path::new(other).is_file() {
                             continue;
                         }
+                        // Разделитель — не печатная страница: флаг печати снимается, иначе
+                        // он рисуется стопкой листов, `flat()` его не узнаёт и `show`
+                        // выжидает все 400 шагов (по 6 с на каждый показ разделителя).
+                        kamin_html::css::PRINT_MEDIA.store(false, std::sync::atomic::Ordering::Relaxed);
                         blank = show(SEPARATOR.into(), None, true).await.map(|s| s.2);
                         let html = resolve_links(
                             &std::fs::read_to_string(other).unwrap_or_default(),

@@ -607,7 +607,17 @@ impl ColumnStack {
     /// ЗАКОННОЙ точке (класс A); без таких точек — по краю колонки, если
     /// он выше колонки, иначе уходит в следующую целиком; монолит режется
     /// никогда и с верха пустой колонки переполняет её (css-break-3 §4.1).
-    fn fill(kids: &[Kid], target: f32, limit: usize) -> (usize, f32, Vec<Frag>) {
+    /// `paged` — стопка СТРАНИЦ, а не колонок: монолит, переполнивший
+    /// страницу, занимает место и на следующих (Blink, crbug 1402540:
+    /// содержимое после него продолжается там, где кончилось переполнение,
+    /// а не с верха следующей страницы — `monolithic-overflow-001`, текст
+    /// «в середине второй страницы»). В колонках правило не действует.
+    pub(crate) fn fill(
+        kids: &[Kid],
+        target: f32,
+        limit: usize,
+        paged: bool,
+    ) -> (usize, f32, Vec<Frag>) {
         let mut col = 0usize;
         let mut y = 0.0f32;
         let mut prev_mb = 0.0f32;
@@ -681,7 +691,15 @@ impl ColumnStack {
                 // тогда разрыв уходит к началу этого диапазона. Точка класса A
                 // ровно на краю даёт усечение поля (`nf`).
                 let edge = from + room;
-                let cut = if k.monolith || room <= 0.01 {
+                // `break-inside: avoid` — пожелание (css-break-4 §4.4). Коробка
+                // ВЫШЕ целого фрагментаинера цельной быть не может: не с верха
+                // страницы она уходит на следующую как монолит (ветка
+                // `None if placed`), а с верха рвётся как обычная — по точкам
+                // класса A, иначе срезом по краю. Так делает Blink: сначала
+                // перенос, и только на пустой странице разрыв внутри
+                // (`block-page-break-inside-avoid-7/-15-print`).
+                let mono = k.monolith && !(paged && k.h > target + 0.01 && cur <= 0.01);
+                let cut = if mono || room <= 0.01 {
                     None
                 } else if let Some(&(a, _)) =
                     k.solid.iter().find(|&&(a, b)| a < edge - 0.01 && edge < b - 0.01)
@@ -720,11 +738,25 @@ impl ColumnStack {
                         out.push(Frag { kid, copy, col, y: cur, from, h: (need - from).max(0.0) });
                         from = nf;
                     }
-                    None if !k.monolith && k.cuts.is_empty() && rest > target + 0.01 && room > 0.01 => {
+                    None if !mono && k.cuts.is_empty() && rest > target + 0.01 && room > 0.01 => {
                         // Коробка без точек разреза выше колонки — вид
                         // `slice` по краю (css-break-3 §4).
                         out.push(Frag { kid, copy, col, y: cur, from, h: room });
                         from += room;
+                    }
+                    None if paged && placed && cur > target + 0.01 => {
+                        // Страницы: предыдущий монолит ушёл НИЖЕ края листа.
+                        // Его переполнение занимает место на следующих
+                        // страницах — ребёнок продолжает с той страницы и той
+                        // высоты, где переполнение кончилось (Blink,
+                        // crbug 1402540; `monolithic-overflow-001`: ref режет
+                        // блок 150vh на 1 + 0.5 страницы, тест с `contain:size`
+                        // обязан поставить текст в ту же середину 2-й страницы).
+                        let skip = (cur / target).floor();
+                        col += skip as usize;
+                        cur -= skip * target;
+                        placed = cur > 0.01;
+                        continue;
                     }
                     None if placed => {
                         // Из непустой колонки — в следующую целиком; поле на
@@ -734,7 +766,7 @@ impl ColumnStack {
                         placed = false;
                         continue;
                     }
-                    None if !k.monolith && rest > target + 0.01 && room > 0.01 => {
+                    None if !mono && rest > target + 0.01 && room > 0.01 => {
                         out.push(Frag { kid, copy, col, y: cur, from, h: room });
                         from += room;
                     }
@@ -768,7 +800,7 @@ impl ColumnStack {
     fn balance(&self, kids: &[Kid]) -> (f32, Vec<Frag>) {
         let limit = self.count;
         if let Some(h) = self.fixed_height {
-            let (_, _, slots) = Self::fill(kids, h, limit);
+            let (_, _, slots) = Self::fill(kids, h, limit, false);
             return (h, slots);
         }
         let total: f32 = kids.iter().map(|k| k.h).sum();
@@ -780,7 +812,7 @@ impl ColumnStack {
             .fold(0.0f32, |m, k| m.max(k.h));
         let mut target = (total / self.count as f32).max(tallest).max(1.0);
         for _ in 0..6 {
-            let (cols, shortage, slots) = Self::fill(kids, target, limit);
+            let (cols, shortage, slots) = Self::fill(kids, target, limit, false);
             if cols <= self.count {
                 return (target, slots);
             }
@@ -800,7 +832,7 @@ impl ColumnStack {
             // Как blink: расти ровно на минимально необходимое.
             target += if shortage > 0.0 { shortage } else { 1.0 };
         }
-        let (_, _, slots) = Self::fill(kids, target, limit);
+        let (_, _, slots) = Self::fill(kids, target, limit, false);
         (target, slots)
     }
 }
@@ -996,6 +1028,387 @@ impl Element for ColumnStack {
 }
 
 impl IntoElement for ColumnStack {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+/// Лист страницы (css-page-3 §page-model): полный размер, поля, рамка и
+/// отступы (верх/право/низ/лево), фон листа, канвас документа и page area —
+/// контентная область листа, она же фрагментаинер.
+#[derive(Clone, Copy, Debug)]
+pub struct PageGeom {
+    pub size: (f32, f32),
+    pub margin: [f32; 4],
+    pub border: (f32, gpui::Hsla),
+    pub padding: [f32; 4],
+    /// Фон листа — кроет ВЕСЬ лист вместе с полями (§painting, слой 1).
+    pub bg: gpui::Hsla,
+    /// Канвас документа — фон `html`/`body`; кроет border box листа (слой 2).
+    pub canvas: Option<gpui::Hsla>,
+    pub area: (f32, f32),
+}
+
+impl PageGeom {
+    /// Левый верх page area внутри листа.
+    fn area_origin(&self) -> (f32, f32) {
+        (
+            self.margin[3] + self.border.0 + self.padding[3],
+            self.margin[0] + self.border.0 + self.padding[0],
+        )
+    }
+}
+
+/// Блок верхнего уровня документа в стопке страниц. Высота заранее НЕ
+/// известна и меряется раскладкой (`layout_as_root`) в `prepaint` — так в
+/// стопку попадает и голый текст, которого укладка колонок не видит.
+pub struct PageKid {
+    pub el: AnyElement,
+    /// Копии на случай разреза между страницами (см. `StackChild::frags`).
+    pub frags: Vec<AnyElement>,
+    /// Монолит (css-break-4 §4.1 плюс `contain: size`, как Blink `IsMonolithic`).
+    pub monolith: bool,
+    /// Принудительный разрыв страницы перед/после (css-break-4 §3.1), включая
+    /// смену имени страницы (css-page-3 §"Using named pages", п. 4).
+    pub force_before: bool,
+    pub force_after: bool,
+    /// Мера поддерева от `render::shape_full` (css-break-4 §possible-breaks):
+    /// высота в точках, точки законного разреза `(need, from)`, смещения
+    /// принудительных разрывов и монолитные диапазоны — как у `StackChild`.
+    /// `None` — высота не известна заранее, берётся измеренная, разрезов
+    /// внутри нет.
+    pub shape: Option<(f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>,
+}
+
+/// Стопка страниц: page area каждой — фрагментаинер (css-break-4 §2). Листы
+/// раскладываются сеткой и МАСШТАБИРУЮТСЯ до вмещения в свою коробку: стенд
+/// сравнивает кадр целиком, а печатный эталон WPT тоже многостраничен, и
+/// сравнивать надо все страницы обеих сторон.
+pub struct PageStack {
+    kids: Vec<PageKid>,
+    geom: PageGeom,
+    /// Слой начального содержащего блока (внепоточные без позиционированного
+    /// предка). Пока рисуется один раз, на первой странице; повтор
+    /// `position: fixed` на каждой странице — шаг 3.
+    icb: Vec<AnyElement>,
+    plan: std::cell::RefCell<Vec<Frag>>,
+    pages: std::cell::Cell<usize>,
+    /// Листов в ряду и масштаб стопки.
+    grid: std::cell::Cell<(usize, f32)>,
+}
+
+impl PageStack {
+    pub fn new(kids: Vec<PageKid>, geom: PageGeom, icb: Vec<AnyElement>) -> Self {
+        PageStack {
+            kids,
+            geom,
+            icb,
+            plan: std::cell::RefCell::new(Vec::new()),
+            pages: std::cell::Cell::new(1),
+            grid: std::cell::Cell::new((1, 1.0)),
+        }
+    }
+
+    /// Левый верх листа `i` в НЕмасштабированных точках стопки.
+    fn sheet_origin(&self, i: usize) -> (f32, f32) {
+        let per_row = self.grid.get().0.max(1);
+        (
+            (i % per_row) as f32 * self.geom.size.0,
+            (i / per_row) as f32 * self.geom.size.1,
+        )
+    }
+
+    /// Прямоугольник page area листа `i` в ИТОГОВЫХ координатах окна (с
+    /// масштабом): шейдер режет по маске после преобразования
+    /// (`shaders.hlsl` `distance_from_clip_rect_transformed`).
+    fn area_mask(&self, bounds: Bounds<Pixels>, i: usize) -> gpui::ContentMask<Pixels> {
+        let s = self.grid.get().1;
+        let (sx, sy) = self.sheet_origin(i);
+        let (ax, ay) = self.geom.area_origin();
+        gpui::ContentMask {
+            bounds: Bounds {
+                origin: point(
+                    bounds.origin.x + px((sx + ax) * s),
+                    bounds.origin.y + px((sy + ay) * s),
+                ),
+                size: size(px(self.geom.area.0 * s), px(self.geom.area.1 * s)),
+            },
+        }
+    }
+}
+
+impl Element for PageStack {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        // Стопка занимает РОДИТЕЛЯ целиком (окно стенда): число страниц
+        // становится известно только после меры детей в `prepaint`, а размер
+        // листов подгоняется масштабом, не размером стопки. Измеряемая
+        // раскладка здесь не годится: блочный родитель не отдаёт ей
+        // определённой высоты, и стопка получала 800x0 — масштаб схлопывался
+        // в точку, кадр выходил пустым (первый заход, 06.09).
+        let mut style = gpui::Style::default();
+        style.size.width = gpui::relative(1.0).into();
+        style.size.height = gpui::relative(1.0).into();
+        let id = window.request_layout(style, [], cx);
+        (id, ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _state: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let g = self.geom;
+        let (aw, ah) = (g.area.0.max(1.0), g.area.1.max(1.0));
+        // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
+        //    уже внутри их коробок (обёртка `render_paged`), поэтому mt/mb = 0.
+        let kids: Vec<Kid> = self
+            .kids
+            .iter_mut()
+            .map(|k| {
+                let sz = k.el.layout_as_root(
+                    size(
+                        gpui::AvailableSpace::Definite(px(aw)),
+                        gpui::AvailableSpace::MaxContent,
+                    ),
+                    window,
+                    cx,
+                );
+                // Мера поддерева даёт точки разреза внутри ребёнка; без неё
+                // ребёнок — цельный кусок измеренной высоты.
+                let (h, cuts, forced, solid) = match &k.shape {
+                    Some((h, cuts, forced, solid)) => {
+                        (*h, cuts.clone(), forced.clone(), solid.clone())
+                    }
+                    None => (f32::from(sz.height), Vec::new(), Vec::new(), Vec::new()),
+                };
+                Kid {
+                    h,
+                    mt: 0.0,
+                    mb: 0.0,
+                    monolith: k.monolith,
+                    cuts,
+                    force_before: k.force_before,
+                    force_after: k.force_after,
+                    forced,
+                    solid,
+                }
+            })
+            .collect();
+        let limit = self
+            .kids
+            .iter()
+            .map(|k| k.frags.len() + 1)
+            .min()
+            .unwrap_or(1);
+        let (pages, _, plan) = ColumnStack::fill(&kids, ah, limit, true);
+        let pages = pages.max(1);
+        // 2. Сетка листов и масштаб до вмещения в коробку стопки.
+        let (ww, wh) = (
+            f32::from(bounds.size.width).max(1.0),
+            f32::from(bounds.size.height).max(1.0),
+        );
+        let (pw, ph) = (g.size.0.max(1.0), g.size.1.max(1.0));
+        let mut best = (1usize, 0.0f32);
+        for per_row in 1..=pages {
+            let rows = pages.div_ceil(per_row);
+            let s = (ww / (per_row as f32 * pw))
+                .min(wh / (rows as f32 * ph))
+                .min(1.0);
+            if s > best.1 {
+                best = (per_row, s);
+            }
+        }
+        self.grid.set(best);
+        self.pages.set(pages);
+        if std::env::var("HTML_VIEWPORT").is_ok() {
+            eprintln!(
+                "PAGESTACK bounds={:?} kids={} heights={:?} cuts={:?} shape/mono={:?} forced={:?} area={:?} size={:?} pages={} grid={:?} plan={}",
+                bounds,
+                kids.len(),
+                kids.iter().map(|k| k.h).collect::<Vec<_>>(),
+                kids.iter().map(|k| k.cuts.len()).collect::<Vec<_>>(),
+                self.kids.iter().map(|k| (k.shape.is_some(), k.monolith)).collect::<Vec<_>>(),
+                kids.iter().map(|k| k.forced.len()).collect::<Vec<_>>(),
+                g.area,
+                g.size,
+                pages,
+                best,
+                plan.len()
+            );
+        }
+        // 3. Копии раскладываются ЦЕЛИКОМ и поднимаются на срез — ровно как
+        //    в `ColumnStack::prepaint`; видимую часть делает маска.
+        let (ax, ay) = g.area_origin();
+        for f in &plan {
+            let (sx, sy) = self.sheet_origin(f.col);
+            let full_h = kids[f.kid].h;
+            let kid = &mut self.kids[f.kid];
+            let el = if f.copy == 0 {
+                &mut kid.el
+            } else {
+                match kid.frags.get_mut(f.copy - 1) {
+                    Some(e) => e,
+                    None => continue,
+                }
+            };
+            el.layout_as_root(
+                size(
+                    gpui::AvailableSpace::Definite(px(aw)),
+                    gpui::AvailableSpace::Definite(px(full_h)),
+                ),
+                window,
+                cx,
+            );
+            el.prepaint_at(
+                point(
+                    bounds.origin.x + px(sx + ax),
+                    bounds.origin.y + px(sy + ay + f.y - f.from),
+                ),
+                window,
+                cx,
+            );
+        }
+        // Слой ICB — на первой странице, в её page area.
+        let (sx, sy) = self.sheet_origin(0);
+        for el in &mut self.icb {
+            el.layout_as_root(
+                size(
+                    gpui::AvailableSpace::Definite(px(aw)),
+                    gpui::AvailableSpace::Definite(px(ah)),
+                ),
+                window,
+                cx,
+            );
+            el.prepaint_at(
+                point(bounds.origin.x + px(sx + ax), bounds.origin.y + px(sy + ay)),
+                window,
+                cx,
+            );
+        }
+        *self.plan.borrow_mut() = plan;
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let g = self.geom;
+        let s = self.grid.get().1;
+        let pages = self.pages.get();
+        // Масштаб вокруг левого верха стопки; матрица — в точках устройства,
+        // как у `interact::Transformed` (interact.rs:1152-1188).
+        let k = window.scale_factor();
+        let dev = |v: f32| px(v).scale(k);
+        let origin = point(dev(f32::from(bounds.origin.x)), dev(f32::from(bounds.origin.y)));
+        let back = point(dev(-f32::from(bounds.origin.x)), dev(-f32::from(bounds.origin.y)));
+        let matrix = gpui::TransformationMatrix::unit()
+            .translate(origin)
+            .compose(gpui::TransformationMatrix {
+                rotation_scale: [[s, 0.0], [0.0, s]],
+                translation: [0.0, 0.0],
+            })
+            .translate(back);
+        let plan = self.plan.borrow().clone();
+        let masks: Vec<gpui::ContentMask<Pixels>> =
+            (0..pages).map(|i| self.area_mask(bounds, i)).collect();
+        let rect = |x: f32, y: f32, w: f32, h: f32| Bounds {
+            origin: point(bounds.origin.x + px(x), bounds.origin.y + px(y)),
+            size: size(px(w), px(h)),
+        };
+        window.with_transformation(matrix, |window| {
+            // Порядок краски css-page-3 §painting: фон листа → канвас
+            // документа (border box листа) → рамки → содержимое.
+            for i in 0..pages {
+                let (sx, sy) = self.sheet_origin(i);
+                window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
+                let bx = sx + g.margin[3];
+                let by = sy + g.margin[0];
+                let bw = (g.size.0 - g.margin[1] - g.margin[3]).max(0.0);
+                let bh = (g.size.1 - g.margin[0] - g.margin[2]).max(0.0);
+                if let Some(c) = g.canvas {
+                    window.paint_quad(gpui::fill(rect(bx, by, bw, bh), c));
+                }
+                let (t, c) = g.border;
+                if t > 0.0 {
+                    for r in [
+                        (bx, by, bw, t),
+                        (bx, by + bh - t, bw, t),
+                        (bx, by, t, bh),
+                        (bx + bw - t, by, t, bh),
+                    ] {
+                        window.paint_quad(gpui::fill(rect(r.0, r.1, r.2, r.3), c));
+                    }
+                }
+            }
+            // Содержимое — под маской СВОЕГО ФРАГМЕНТА: копия нарисована во
+            // всю высоту, видна только полоса `[y, y + h)` этой страницы (вид
+            // `slice`, css-break-4 §4; ровно как у `ColumnStack`). Маска по
+            // целой page area оставляла на странице хвост следующего
+            // фрагмента до края листа (`block-page-break-inside-avoid-7`).
+            for f in plan {
+                let Some(page) = masks.get(f.col).cloned() else { continue };
+                let (sx, sy) = self.sheet_origin(f.col);
+                let (ax, ay) = g.area_origin();
+                let mask = gpui::ContentMask {
+                    bounds: Bounds {
+                        origin: point(
+                            bounds.origin.x + px((sx + ax) * s),
+                            bounds.origin.y + px((sy + ay + f.y) * s),
+                        ),
+                        size: size(px(g.area.0 * s), px(f.h * s)),
+                    }
+                    .intersect(&page.bounds),
+                };
+                let kid = &mut self.kids[f.kid];
+                let el = if f.copy == 0 {
+                    &mut kid.el
+                } else {
+                    match kid.frags.get_mut(f.copy - 1) {
+                        Some(e) => e,
+                        None => continue,
+                    }
+                };
+                window.with_content_mask(Some(mask), |window| el.paint(window, cx));
+            }
+            if let Some(mask) = masks.first().cloned() {
+                for el in &mut self.icb {
+                    window.with_content_mask(Some(mask.clone()), |window| el.paint(window, cx));
+                }
+            }
+        });
+    }
+}
+
+impl IntoElement for PageStack {
     type Element = Self;
 
     fn into_element(self) -> Self::Element {
