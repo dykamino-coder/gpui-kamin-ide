@@ -1540,6 +1540,12 @@ pub struct Computed {
     /// растеризатор круглит только окружностью — такой угол уходит
     /// альфа-маской буфера группы (`shape:rrect(...)`).
     pub radius_ell: Option<[Option<(f32, f32)>; 4]>,
+    /// Форма углов `corner-shape` (css-borders-4 §corner-shaping): параметр
+    /// суперэллипса K по углам tl/tr/br/bl — `round`=1, `squircle`=2,
+    /// `square`=+∞, `bevel`=0, `scoop`=−1, `notch`=−∞, `superellipse(K)`.
+    /// `None` — все углы круглые (начальное значение). Угол с K≠1 при
+    /// ненулевом радиусе рисуется растровой маской (`Computed::corner_shaped`).
+    pub corner_shape: Option<[f32; 4]>,
     /// `filter`: цветовые преобразования, применённые к собственным цветам.
     pub filter: Option<Filter>,
     /// `filter: url(#id)` — ссылка на SVG-`<filter>` документа; рисуется
@@ -2981,6 +2987,47 @@ impl Computed {
                 // Общий цвет остаётся у верхней стороны: его читают пути, не
                 // знающие о сторонах.
                 self.border_color = at(0);
+            }
+            // `corner-shape` (css-borders-4 §corner-shaping-shorthand): 1–4
+            // значения раскладываются по углам как `border-radius`.
+            "corner-shape" => {
+                if let Some(k) = corner_shape_shorthand(v) {
+                    self.corner_shape = Some(k);
+                }
+            }
+            // Боковые шортхенды (§corner-shaping-side-shorthands): 1–2 значения
+            // на два угла стороны.
+            "corner-top-shape" | "corner-bottom-shape" | "corner-left-shape" | "corner-right-shape" => {
+                let vals: Vec<f32> = v.split_whitespace().filter_map(corner_shape_param).collect();
+                if let Some(first) = vals.first().copied() {
+                    let second = vals.get(1).copied().unwrap_or(first);
+                    let mut k = self.corner_shape.unwrap_or([1.0; 4]);
+                    // Порядок пар — по часовой от первого угла стороны.
+                    let (a, b) = match key {
+                        "corner-top-shape" => (0, 1),
+                        "corner-right-shape" => (1, 2),
+                        "corner-bottom-shape" => (3, 2),
+                        _ => (0, 3),
+                    };
+                    k[a] = first;
+                    k[b] = second;
+                    self.corner_shape = Some(k);
+                }
+            }
+            "corner-top-left-shape"
+            | "corner-top-right-shape"
+            | "corner-bottom-right-shape"
+            | "corner-bottom-left-shape" => {
+                if let Some(val) = corner_shape_param(v) {
+                    let mut k = self.corner_shape.unwrap_or([1.0; 4]);
+                    k[match key {
+                        "corner-top-left-shape" => 0,
+                        "corner-top-right-shape" => 1,
+                        "corner-bottom-right-shape" => 2,
+                        _ => 3,
+                    }] = val;
+                    self.corner_shape = Some(k);
+                }
             }
             "border-radius" => {
                 // Эллиптические радиусы: `H / V` (css-backgrounds-3 §5.1) —
@@ -6451,14 +6498,35 @@ impl Computed {
             .filter(|_| self.clamp_legacy != Some(true) || legacy_ok)
     }
 
+    /// Есть ли угол с формой, отличной от круглой, при ненулевом радиусе
+    /// (css-borders-4 §corner-shaping: «if border-radius is 0, corner-shape
+    /// won't have any effect»). Такой угол уходит растровой маской контура,
+    /// а рамка красится кольцом по контуру (`render::decorations`).
+    pub fn corner_shaped(&self) -> bool {
+        let Some(k) = self.corner_shape else {
+            return false;
+        };
+        let radii = [self.radius.tl, self.radius.tr, self.radius.br, self.radius.bl];
+        k.iter().zip(radii).any(|(k, r)| {
+            let shaped = (*k - 1.0).abs() > 1e-3;
+            let has_radius = match r {
+                Some(Len::Px(v)) => v > 0.0,
+                Some(Len::Pct(p)) => p > 0.0,
+                _ => false,
+            };
+            shaped && has_radius
+        })
+    }
+
     /// Уходит ли скругление углов альфа-маской буфера группы.
     ///
     /// Растеризатор круглит только окружностью и жмёт каждый угол к половине
-    /// меньшей стороны; эллиптические углы (`H / V`) и большой НЕОДНОРОДНЫЙ
-    /// радиус (спека жмёт одним множителем от суммы смежных, §5.5) рисуются
-    /// точной растровой маской, а обычное скругление при этом снимается.
+    /// меньшей стороны; эллиптические углы (`H / V`), большой НЕОДНОРОДНЫЙ
+    /// радиус (спека жмёт одним множителем от суммы смежных, §5.5) и фигурные
+    /// углы (`corner-shape`) рисуются точной растровой маской, а обычное
+    /// скругление при этом снимается.
     pub fn radius_masked(&self) -> bool {
-        if self.radius_ell.is_some() {
+        if self.radius_ell.is_some() || self.corner_shaped() {
             return true;
         }
         let side = |l: Option<Len>| match l {
@@ -7222,6 +7290,47 @@ fn parse_overflow(v: &str) -> Option<Overflow> {
         "visible" => Some(Overflow::Visible),
         _ => None,
     }
+}
+
+/// Параметр суперэллипса из одного значения `<corner-shape-value>`
+/// (css-borders-4 §corner-shaping): ключевые слова — их числовые
+/// эквиваленты по спеке, `superellipse(<number> | infinity | -infinity)` —
+/// само число. `None` — не форма угла (запись отбрасывается).
+fn corner_shape_param(tok: &str) -> Option<f32> {
+    let t = tok.trim().to_ascii_lowercase();
+    Some(match t.as_str() {
+        "round" => 1.0,
+        "squircle" => 2.0,
+        "square" => f32::INFINITY,
+        "bevel" => 0.0,
+        "scoop" => -1.0,
+        "notch" => f32::NEG_INFINITY,
+        _ => {
+            let inner = t.strip_prefix("superellipse(")?.strip_suffix(')')?.trim();
+            match inner {
+                "infinity" => f32::INFINITY,
+                "-infinity" => f32::NEG_INFINITY,
+                n => n.parse::<f32>().ok()?,
+            }
+        }
+    })
+}
+
+/// `corner-shape: a [b [c [d]]]` → K по углам tl/tr/br/bl — раскладка та же,
+/// что у `border-radius` (§corner-shaping-shorthand). Функции со скобками
+/// внутри пробелов не содержат, поэтому режем по пробелам.
+fn corner_shape_shorthand(raw: &str) -> Option<[f32; 4]> {
+    let v: Vec<f32> = raw
+        .split_whitespace()
+        .map(corner_shape_param)
+        .collect::<Option<Vec<_>>>()?;
+    Some(match v.len() {
+        1 => [v[0]; 4],
+        2 => [v[0], v[1], v[0], v[1]],
+        3 => [v[0], v[1], v[2], v[1]],
+        4 => [v[0], v[1], v[2], v[3]],
+        _ => return None,
+    })
 }
 
 fn radius_shorthand(raw: &str) -> Corners {
@@ -8518,6 +8627,7 @@ fn initial_value(key: &str) -> Option<&'static str> {
     Some(match key {
         "border" => "0 none",
         "border-radius" => "0",
+        "corner-shape" => "round",
         "color" => "black",
         "margin" => "0",
         "padding" => "0",

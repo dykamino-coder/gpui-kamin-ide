@@ -336,6 +336,73 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         }
     }
 
+    // Рамка при фигурных углах (`corner-shape`, css-borders-4): внешний край
+    // — контур, внутренний — он же, сжатый на толщину сторон. Квад её не
+    // красит (`apply::apply_paint`); слой — цветной растр кольца в
+    // border-box, тем же растеризатором, что и маска группы, — контуры
+    // совпадают попиксельно. Разные цвета сторон остаются полосами ниже.
+    if c.corner_shaped() {
+        let sides: Vec<_> = c.border_colors.iter().flatten().collect();
+        let uniform = sides
+            .first()
+            .filter(|f| sides.iter().all(|s| s == *f))
+            .map(|f| **f);
+        let mixed = sides.len() > 1 && uniform.is_none();
+        let side_px = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let bw = c.borders();
+        let widths = [
+            side_px(bw.top),
+            side_px(bw.right),
+            side_px(bw.bottom),
+            side_px(bw.left),
+        ];
+        if !mixed && widths.iter().any(|w| *w > 0.0) {
+            // Без цвета рамка красится цветом текста, без него — чёрным
+            // (начальное `border-color: currentColor`).
+            let colour = uniform
+                .or(c.border_color)
+                .or(c.color)
+                .unwrap_or(crate::value::Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                });
+            let spec = crate::background::rrect_spec(c, Some(widths));
+            let [t, r, b, l] = widths;
+            out.push(
+                gpui::canvas(
+                    |_, _, _| {},
+                    move |bounds, _, window, _| {
+                        let sf = window.scale_factor();
+                        let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                        let (pw, ph) = (
+                            (w * sf).round().max(1.0) as u32,
+                            (h * sf).round().max(1.0) as u32,
+                        );
+                        let args = spec.trim_start_matches("rrect(").trim_end_matches(')');
+                        if let Some(img) =
+                            crate::background::rasterize_ring(args, pw, ph, sf, colour)
+                        {
+                            let _ = window.paint_image(bounds, gpui::Corners::default(), img, 0, false);
+                        }
+                    },
+                )
+                // Абсолютный ребёнок считается от padding-box — кольцо
+                // накрывает рамку отрицательными отступами (как полосы ниже).
+                .absolute()
+                .top(px(-t))
+                .left(px(-l))
+                .right(px(-r))
+                .bottom(px(-b))
+                .into_any_element(),
+            );
+        }
+    }
+
     // Рамка-картинка рисуется ПОВЕРХ фона и заменяет обычную рамку.
     if let Some(layer) = crate::border_image::layer(c) {
         out.push(layer);
@@ -8141,28 +8208,16 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         Some(Len::Px(v)) => v,
         _ => 0.0,
     };
-    let round = [
-        side(c.radius.tl),
-        side(c.radius.tr),
-        side(c.radius.br),
-        side(c.radius.bl),
-    ];
     // Большой НЕОДНОРОДНЫЙ круглый радиус — тоже маской: растеризатор жмёт
     // каждый угол к половине меньшей стороны, а спека — одним множителем от
     // суммы СМЕЖНЫХ радиусов (§5.5): `border-radius: 100px 100px 0 0` на
     // 200x100 — законный полукруг, растеризатор рисовал стадион
     // (clip-path-semicircle-ref). Однородные радиусы совпадают с растеризатором.
-    let rrect = if c.radius_masked() {
-        let ell = c.radius_ell.unwrap_or([None; 4]);
-        let r = |i: usize| ell[i].unwrap_or((round[i], round[i]));
-        let (tl, tr, br, bl) = (r(0), r(1), r(2), r(3));
-        Some(format!(
-            "shape:rrect({} {} {} {} {} {} {} {})",
-            tl.0, tl.1, tr.0, tr.1, br.0, br.1, bl.0, bl.1
-        ))
-    } else {
-        None
-    };
+    // Фигурные углы (`corner-shape`, css-borders-4) — той же маской: запись
+    // несёт радиусы (точки либо доли, резолв при растре) и параметр K по углам.
+    let rrect = c
+        .radius_masked()
+        .then(|| format!("shape:{}", crate::background::rrect_spec(c, None)));
     let mask = c
         .mask_image
         .clone()

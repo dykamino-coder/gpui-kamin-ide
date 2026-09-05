@@ -1320,8 +1320,13 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
             a: 1.0,
         })
     });
+    // Фигурные углы (`corner-shape`): рамку красит кольцевой слой по контуру
+    // (`render::decorations`), квад цвета не получает — иначе его прямой
+    // внутренний угол проступал бы из-под контура (corner-shape-bevel:
+    // красный треугольник ~240 px² на угол при допуске 200 px на пару).
     if !border_image_on
         && !mixed
+        && !c.corner_shaped()
         && let Some(bc) = uniform.copied().copied().or(c.border_color).or(current)
     {
         d = d.border_color(bc.to_hsla());
