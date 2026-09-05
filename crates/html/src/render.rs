@@ -9917,7 +9917,17 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .text_left()
                         .flex_shrink_0()
                         .min_w(px(14.))
-                        .child(SharedString::from(marker.trim_end().to_string()))
+                        // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
+                        // (обычный пробел после номера пункта). Авторская
+                        // строка `list-style-type: "..."` идёт дословно:
+                        // `trim_end` в Rust считает пробелом и U+00A0, а
+                        // неразрывный пробел в такой строке — ЗНАЧАЩИЙ.
+                        // Замер нейтрален (срез 2268 пар, +0/-0: у
+                        // `list-style-type-string-005a/b/-006` остаток не
+                        // здесь), но срезать значащий знак всё равно нельзя.
+                        .child(SharedString::from(
+                            marker.trim_end_matches(' ').to_string(),
+                        ))
                 }))
                 .child(
                     div()
