@@ -8953,6 +8953,16 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // Начало отсчёта пока общее на всю коробку,
                                     // а не своё на фрагмент, — для `translate`
                                     // это точно, для `rotate`/`scale` нет.
+                                    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): строить эту
+                                    // копию через общий `element()` вместо узкой
+                                    // ветки `styled_div_with`. Срез 3029 пар:
+                                    // 1900 -> 1902 (+14/-12), и семь потерь —
+                                    // грубые (99.00, страница разъезжается):
+                                    // `multi-line-column-flex-fragmentation-035`,
+                                    // `multi-line-row-flex-fragmentation-039/040/
+                                    // 059`, `multicol-nested-013/021`,
+                                    // `multicol-fill-balance-nested-000`. Тот же
+                                    // путь, на котором прежде мерился откат -52.
                                     transformed(
                                         styled_div_with(&copy, &inner)
                                             .children(blocks(&kids, &inner, opts))
