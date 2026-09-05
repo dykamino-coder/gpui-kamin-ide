@@ -1029,9 +1029,12 @@ fn supports_eval_term(term: &str) -> SupTri {
                 }
             }
             "font-tech" | "at-rule" => SupTri::False,
-            // `not(...)`/`or(...)` и прочие неизвестные функции —
-            // general-enclosed: «неизвестно».
-            _ => SupTri::Unknown,
+            // `not(...)`/`or(...)` и прочие неизвестные функции — это
+            // `<general-enclosed>`, а css-conditional-3 §4 говорит о нём
+            // дословно: «The result is false». Не «неизвестно»: иначе
+            // `not unknown()` остаётся неизвестным и на верхнем уровне
+            // ложным, тогда как обязан быть ИСТИНОЙ (`at-supports-046`).
+            _ => SupTri::False,
         };
     }
     let inner = &term[1..term.len() - 1];
@@ -1039,15 +1042,64 @@ fn supports_eval_term(term: &str) -> SupTri {
     if let Some(t) = supports_condition(inner) {
         return t;
     }
+    // Точка с запятой внутри скобок: `<declaration>` её не содержит
+    // (css-syntax-3 §5.4.4 — `<declaration-value>` не берёт `;` верхнего
+    // уровня), значит `(margin: 0;)` — не объявление, а `<general-enclosed>`,
+    // то есть ЛОЖЬ (`at-supports-038/039`).
+    if split_top_level(inner, ';').len() > 1 {
+        return SupTri::False;
+    }
     // Декларация: непустой разбор + дельта на чистом стиле.
-    if split_top_level(inner, ':').len() >= 2 {
+    let colons = split_top_level(inner, ':');
+    if colons.len() >= 2 {
+        // Пользовательское свойство поддержано всегда, если объявление
+        // разобралось (css-variables-1 §2: значением `--*` служит любой
+        // годный `<declaration-value>`). Оракул «дельта на чистом стиле» его
+        // не видит: `--foo` не пишет ни в одно поле (`at-supports-044`).
+        if colons[0].trim().to_ascii_lowercase().starts_with("--") {
+            return if parse_decls(inner).is_empty() {
+                SupTri::False
+            } else {
+                SupTri::True
+            };
+        }
+        // Второе двоеточие ВЕРХНЕГО уровня у обычного свойства значит, что в
+        // значение затесалось чужое объявление: `(margin: 0 or padding: 0)`
+        // и `(margin: 0 and padding: 0)` — мусор, а не «margin с довеском»
+        // (`at-supports-034..037`: каждое условие берётся в СВОИ скобки).
+        if colons.len() > 2 {
+            return SupTri::False;
+        }
         let decls = parse_decls(inner);
         if decls.is_empty() {
-            // Синтаксис объявления сломан (`!bogus`) — general-enclosed.
-            return SupTri::Unknown;
+            // Синтаксис объявления сломан (`!bogus`, `!important !important`,
+            // `!important green`) — `<general-enclosed>`, то есть ЛОЖЬ
+            // (`css-supports-043/044/045`).
+            return SupTri::False;
         }
+        // Пометка важности к ПОДДЕРЖКЕ отношения не имеет и обязана быть
+        // допустима (css-conditional-3 §4: «Property declarations in an
+        // @supports rule can have !important specified»). `parse_decls`
+        // оставляет её в значении для каскада — здесь она мешает разобрать
+        // само значение (`css-supports-004`, `at-supports-007`).
+        let clean: crate::css::Decls = decls
+            .iter()
+            .map(|(k, v)| {
+                if k == ORDER_KEY {
+                    return (k.clone(), v.clone());
+                }
+                let parts: Vec<&str> = v
+                    .split(DECL_SEP)
+                    .map(|part| match top_level_bang(part) {
+                        Some(at) => part[..at].trim(),
+                        None => part,
+                    })
+                    .collect();
+                (k.clone(), parts.join(&DECL_SEP.to_string()))
+            })
+            .collect();
         let mut c = crate::computed::Computed::default();
-        c.apply_decls(&decls);
+        c.apply_decls(&clean);
         // Счётчик порядка объявлений и номера сторон — БУХГАЛТЕРИЯ каскада, а
         // не значения свойств: они меняются у любого объявления, и без
         // обнуления «поддержанным» выходило всё подряд, включая
@@ -1060,7 +1112,9 @@ fn supports_eval_term(term: &str) -> SupTri {
             SupTri::False
         };
     }
-    SupTri::Unknown
+    // Скобка без двоеточия и без условия — тоже `<general-enclosed>`: ЛОЖЬ
+    // (`css-supports-032/033/034/040`).
+    SupTri::False
 }
 
 /// Имя без экранирования (CSS Syntax §4.3.7).

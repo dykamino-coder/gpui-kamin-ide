@@ -3504,7 +3504,15 @@ impl Computed {
                         && t.ends_with(char::from(39))
                         && t.len() >= 2)
                 {
-                    self.marker_text = Some(t[1..t.len() - 1].to_string());
+                    // Экранирование снимает ТОКЕНИЗАЦИЯ (css-syntax-3 §4.3.7):
+                    // `\A0` — неразрывный пробел, `\9` — табуляция; до
+                    // свойства должны доезжать сами знаки, а не обратные
+                    // косые. Разрывы сегмента внутри строки сворачиваются в
+                    // пробел (css-text-3 §4.1.2) — ровно как в строке
+                    // `text-overflow` выше по этому же файлу.
+                    self.marker_text = Some(collapse_segment_breaks(&unescape_content(
+                        &t[1..t.len() - 1],
+                    )));
                     self.no_marker = Some(false);
                     return;
                 }
