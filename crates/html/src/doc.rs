@@ -245,12 +245,19 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
             )
         };
         if html.tag != "html" {
-            if html.tag == "body" && has_bg(html) && boxed(html) && html.style.contain_paint != Some(true) {
+            // css-contain-2 §2.1: распространение свойств тела в область
+            // просмотра и на канвас глушит ЛЮБОЕ обособление на `html` или
+            // `body`, а не только `paint`. Узкая проверка оставляла зелёной
+            // одну `contain-{body,html}-bg-002`, где написан именно
+            // `contain: paint`; `layout`, `size` и `style` пролезали.
+            if html.tag == "body" && has_bg(html) && boxed(html) && !any_containment(html) {
                 html.style.canvas_bg = true;
             }
             continue;
         }
-        if html.style.contain_paint == Some(true) {
+        // Обособление на КОРНЕ рвёт ту же цепочку: значение тела уезжает во
+        // вьюпорт ЧЕРЕЗ корень (`contain-html-bg-001/003/004`).
+        if any_containment(html) {
             continue;
         }
         if has_bg(html) && boxed(html) {
@@ -264,7 +271,10 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
         let mut moved: Option<crate::computed::Computed> = None;
         for c in html.children.iter_mut() {
             let Node::Element(body) = c else { continue };
-            if body.tag == "body" && has_bg(body) && boxed(body) && body.style.contain_paint != Some(true) {
+            // Переезд фона тела НА КОРЕНЬ — это и есть распространение
+            // (CSS 2.1 §14.2, «treated as if they were specified on the root
+            // element»). Любое обособление тела его отменяет.
+            if body.tag == "body" && has_bg(body) && boxed(body) && !any_containment(body) {
                 let s = &mut body.style;
                 let mut take = crate::computed::Computed::default();
                 take.background = s.background.take();

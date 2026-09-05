@@ -776,8 +776,21 @@ impl ColumnStack {
             if cols <= self.count {
                 return (target, slots);
             }
+            // Недолаза не было ни у одной коробки: `shortage` так и остался
+            // сторожевым `f32::MAX`. Значит лишние колонки родились
+            // ПРИНУДИТЕЛЬНЫМИ разрывами, и растягивать нечего —
+            // css-multicol-1 §7: «minimize variations in column height, while
+            // honoring forced breaks»; Blink: `if (used_column_count_ <=
+            // forced_break_count + 1) break;`.
+            // Прежняя строка спрашивала `shortage.is_finite()`, а `f32::MAX` —
+            // КОНЕЧНОЕ число: `target += f32::MAX` уводил высоту колонки в
+            // `f32::MAX`, затем в бесконечность (`multicol-fill-balance-002`,
+            // «Don't overstretch»).
+            if shortage >= f32::MAX {
+                return (target, slots);
+            }
             // Как blink: расти ровно на минимально необходимое.
-            target += if shortage.is_finite() { shortage } else { 1.0 };
+            target += if shortage > 0.0 { shortage } else { 1.0 };
         }
         let (_, _, slots) = Self::fill(kids, target, limit);
         (target, slots)

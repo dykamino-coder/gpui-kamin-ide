@@ -7648,8 +7648,20 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
             }
         }
     }
-    if raw.len() < 2 {
+    // css-images-4 §3.4.1 «Color Stop Lists»: список из ОДНОГО и более
+    // стопов законен, и градиент из одного стопа красит этим цветом всю
+    // картинку. Разворачиваем в пару одинаковых стопов на краях линии:
+    // ниже `last = raw.len() - 1` при одном стопе давал 0/0 = NaN, а
+    // `return None` гасил фон вовсе (`gradient-single-stop-001/-002/-004`).
+    if raw.is_empty() {
         return None;
+    }
+    if raw.len() == 1 {
+        let (colour, _) = raw[0];
+        raw = vec![(colour, Some(0.0)), (colour, Some(1.0))];
+        // Точечный список остаётся ПУСТЫМ: у сплошного цвета полос в точках
+        // нет, а `stops_px` собирается только когда позиция есть у всех.
+        raw_px = vec![(colour, None), (colour, None)];
     }
     // Стопы без позиции распределяются равномерно — так же, как в CSS.
     let last = raw.len() - 1;
