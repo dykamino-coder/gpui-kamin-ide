@@ -8201,7 +8201,15 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         None
     };
     match e.tag.as_str() {
-        "img" => image(&pct_height_to_px(e, inherited)),
+        // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4): слитый стиль
+        // его уже несёт, а копия для замещаемой коробки — нет. Без переноса
+        // блочная картинка под `body { image-orientation: none }` всё равно
+        // разворачивалась по метке EXIF.
+        "img" => {
+            let mut copy = pct_height_to_px(e, inherited);
+            copy.style.image_orient_none = merged.image_orient_none;
+            image(&copy)
+        }
         // Замещаемые с картинкой-источником рисуются как <img>: embed через
         // src, object через data, video через poster (css-images §5:
         // object-fit/-position действуют на всех замещаемых).
@@ -9204,15 +9212,24 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
 /// точку вместо 50 (`units-003`: оранжевый квадрат не совпадал с навесными
 /// прямоугольниками).
 fn with_inherited_font(e: &Element, inherited: &Computed) -> Element {
-    if e.style.font_family.is_some() && e.style.monospace.is_some() {
-        return e.clone();
-    }
     let mut copy = e.clone();
     if copy.style.font_family.is_none() {
         copy.style.font_family = inherited.font_family.clone();
     }
     if copy.style.monospace.is_none() {
         copy.style.monospace = inherited.monospace;
+    }
+    // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4, «Inherited: yes»),
+    // а копия несёт только собственный стиль элемента. Замещаемая коробка
+    // строится ИМЕННО ИЗ НЕЁ: и растр (`background::key(src, &e.style)`), и
+    // собственный фон (`styled_div` -> `background::layer(&e.style)`) читают
+    // стиль копии, поэтому без переноса `image-orientation: none`, заданный
+    // на предке, до картинки не доезжает и EXIF-разворот применяется всё
+    // равно (`image-orientation-none`, `-none-content-images`).
+    // Ранний возврат снят намеренно: он экономил только клон, а перенос
+    // обязан идти и у элемента со своим шрифтом.
+    if copy.style.image_orient_none.is_none() {
+        copy.style.image_orient_none = inherited.image_orient_none;
     }
     copy
 }
@@ -9442,6 +9459,10 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             bgc.bg_image = Some(local.unwrap_or(src).to_string());
             bgc.bg_repeat = Some(crate::computed::BgRepeat::NoRepeat);
             bgc.bg_pos = pos;
+            // Стиль трубы собран с нуля, и отказ от EXIF-разворота в него надо
+            // положить руками: иначе `image-orientation: none` вместе с
+            // `object-fit`/`object-position` уходил бы мимо ключа источника.
+            bgc.image_orient_none = e.style.image_orient_none;
             bgc.bg_size = match e.style.object_fit.as_deref() {
                 Some("contain") => BgSize::Contain,
                 Some("cover") => BgSize::Cover,

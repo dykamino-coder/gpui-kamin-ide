@@ -35,11 +35,15 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
         px_of(border.left),
     ];
     let outset = image.outset;
+    // `image-orientation` действует и на рамку-картинку (css-images-3 §5.4,
+    // «Applies to: all elements»). Ключ строится ДО замыкания: в него уезжает
+    // готовая строка, а не стиль.
+    let src = crate::background::key_exif(&image.src, c);
     Some(
         gpui::canvas(
             |_, _, _| {},
             move |bounds: Bounds<Pixels>, _, window, _| {
-                let Some(found) = crate::background::source(&image.src) else {
+                let Some(found) = crate::background::source(&src) else {
                     return;
                 };
                 let area = Bounds {

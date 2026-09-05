@@ -613,12 +613,16 @@ pub fn rasterize_ellipse_px(
 /// размер, и кэш обязан различать развёрнутый растр и сырой. Отдельного
 /// параметра у `source` нет намеренно: кэш ключуется строкой, и приставка
 /// ключа дешевле, чем переписывание тринадцати мест вызова.
-pub fn key(src: &str, c: &crate::computed::Computed) -> String {
+pub fn key_exif(src: &str, c: &crate::computed::Computed) -> String {
     if c.image_orient_none == Some(true) {
         format!("exif-none|{src}")
     } else {
         src.to_string()
     }
+}
+
+pub fn key(src: &str, c: &crate::computed::Computed) -> String {
+    key_exif(src, c)
 }
 
 /// Разобрать ссылку в источник картинки; результат запоминается.
@@ -1982,7 +1986,14 @@ pub fn paint_tiles(
         Some(Len::Px(v)) => v,
         _ => 0.0,
     };
-    let Some(found) = source(&src) else { return };
+    // `image-orientation` действует и на ФОНОВУЮ картинку (css-images-3 §5.4,
+    // «Applies to: all elements»): развёрнутый и сырой растр — разные
+    // картинки с разным природным размером, и ключ обязан их различать
+    // (`image-orientation-none-content-images`: четыре `<img>` с
+    // `background-image` под `image-orientation: none`).
+    let Some(found) = source(&key_exif(&src, c)) else {
+        return;
+    };
     // Область ПОКРАСКИ (`background-clip`, css-backgrounds-3 §3.7): плитки
     // меряются областью позиционирования, а кладутся по всей краске —
     // border-box по умолчанию заходит под рамку, content-box режется полем
