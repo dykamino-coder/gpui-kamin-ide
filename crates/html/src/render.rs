@@ -8551,9 +8551,25 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 | Some(Display::TableRow)
                                 | Some(Display::TableRowGroup)
                         );
-                        // (высота, поля, точки, forced, монолиты, force_before, force_after)
-                        type KidShape =
-                            (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>, bool, bool);
+                        // (высота, поля, точки, forced, монолиты, force_before,
+                        //  force_after, ДОТЯГ внепоточного)
+                        // Дотяг — насколько ниже собственного верха ребёнка
+                        // уходит низ его внепоточного потомка. В поток он не
+                        // добавляется (абсолют соседей не двигает), но
+                        // фрагментация обязана его видеть: css-position-3
+                        // §abspos-breaking — «The box may subsequently be
+                        // broken over several fragmentation containers».
+                        type KidShape = (
+                            f32,
+                            f32,
+                            f32,
+                            Vec<(f32, f32)>,
+                            Vec<f32>,
+                            Vec<(f32, f32)>,
+                            bool,
+                            bool,
+                            f32,
+                        );
                         let inner: Option<Vec<KidShape>> = if depth == 0 || no_descent {
                             None
                         } else {
@@ -8562,17 +8578,59 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // Абсолют высоты стопке не даёт и разреза
                                     // не мешает: нулевая запись, а не отказ
                                     // от всей укладки (`out-of-flow-in-
-                                    // multicolumn-*`, корень A2).
-                                    Node::Element(k) if out_of_flow(&k.style) => Some((
-                                        0.0,
-                                        0.0,
-                                        0.0,
-                                        Vec::new(),
-                                        Vec::new(),
-                                        Vec::new(),
-                                        false,
-                                        false,
-                                    )),
+                                    // multicolumn-*`, корень A2). Но НУЛЬ в
+                                    // девятом поле означал бы, что его вовсе
+                                    // нет во фрагментации, а css-position-3
+                                    // §abspos-breaking требует обратного: «an
+                                    // absolutely positioned box is positioned
+                                    // relative to its containing block ignoring
+                                    // any fragmentation breaks (as if the flow
+                                    // were continuous). The box may
+                                    // subsequently be broken over several
+                                    // fragmentation containers». Значит
+                                    // содержащий блок обязан ДОТЯНУТЬСЯ до его
+                                    // низа — иначе колонок под него не
+                                    // родится (Blink
+                                    // `column_layout_algorithm.cc:1125`:
+                                    // `actual_column_count +=
+                                    // column_balancing_info.num_new_columns`).
+                                    // Плавающий сюда не входит: он не
+                                    // позиционированный, и содержащего блока
+                                    // собой не задаёт.
+                                    Node::Element(k) if out_of_flow(&k.style) => {
+                                        let abs = matches!(
+                                            k.style.position,
+                                            Some(crate::computed::Position::Absolute)
+                                        );
+                                        let reach = if abs {
+                                            let top = match k.style.inset.top {
+                                                Some(Len::Px(v)) => v,
+                                                _ => 0.0,
+                                            };
+                                            // Собственная высота абсолюта — той
+                                            // же мерой: она уже включает дотяг
+                                            // ЕГО внепоточных потомков, и
+                                            // цепочка `abs > abs` складывается
+                                            // сама (`out-of-flow-in-multicolumn-
+                                            // 022/025`).
+                                            let own =
+                                                shape_full(k, depth - 1).map(|s| s.0).unwrap_or(0.0);
+                                            (top + own).max(0.0)
+                                        } else {
+                                            0.0
+                                        };
+                                        Some((
+                                            0.0,
+                                            0.0,
+                                            0.0,
+                                            Vec::new(),
+                                            Vec::new(),
+                                            Vec::new(),
+                                            false,
+                                            false,
+                                            reach,
+                                        ))
+                                    }
                                     Node::Element(k)
                                         if !k.inline
                                             && (k.style.position.is_none()
@@ -8599,6 +8657,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                                     solid,
                                                     k.style.break_before_force,
                                                     k.style.break_after_force,
+                                                    // Дотяг внепоточных ЭТОГО потомка в
+                                                    // поток родителя не переходит: у
+                                                    // него свой содержащий блок.
+                                                    0.0,
                                                 )
                                             },
                                         )
@@ -8618,6 +8680,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         // Стек вложенных: конец, поле первого, схлопнувшееся
                         // сквозь верх без отбивки, поле последнего.
                         let mut stacked: Option<(f32, f32, f32)> = None;
+                        // Самый нижний край внепоточных потомков, отсчитанный
+                        // от верха ЭТОЙ коробки. В поток не входит, высоту
+                        // соседей не двигает — нужен только фрагментации.
+                        let mut oof_reach = 0.0f32;
                         if let Some(kids) = inner.filter(|k| !k.is_empty()) {
                             let inner_h: Vec<f32> = kids.iter().map(|k| k.0).collect();
                             // Ряд flex БЕЗ переноса: дети стоят бок о бок, и
@@ -8650,7 +8716,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             let mut through = 0.0f32;
                             let mut first = true;
                             let mut force_next = false;
-                            for (h, kmt, kmb, kcuts, kforced, ksolid, fb, fa) in kids {
+                            for (h, kmt, kmb, kcuts, kforced, ksolid, fb, fa, kreach) in kids {
                                 let lead = if first {
                                     if top == 0.0 {
                                         through = kmt;
@@ -8679,6 +8745,11 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 for (a, b) in ksolid {
                                     solid.push((start + a, start + b));
                                 }
+                                // Дотяг ребёнка — от ЕГО верха; переводим в
+                                // координаты этой коробки. `y` он не двигает:
+                                // внепоточный соседей не сдвигает
+                                // (CSS 2.1 §9.3.1).
+                                oof_reach = oof_reach.max(start + kreach);
                                 y = start + h;
                                 prev_mb = kmb;
                                 first = false;
@@ -8715,6 +8786,20 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 },
                             },
                             Some(_) => return None,
+                        };
+                        // Содержащий блок обязан дотянуться до низа своих
+                        // внепоточных потомков — только тогда фрагментация
+                        // родит под них колонки, а балансировка их посчитает
+                        // (css-position-3 §abspos-breaking; Blink
+                        // `column_layout_algorithm.cc:1092-1131` прогоняет
+                        // `OutOfFlowLayoutPart` внутри цикла балансировки
+                        // именно ради этого). Если коробка содержащим блоком
+                        // НЕ является, дотяг принадлежит кому-то выше и здесь
+                        // не учитывается — он всплывёт там.
+                        let h = if crate::inline::establishes_cb(&c.style) {
+                            h.max(oof_reach + bot)
+                        } else {
+                            h
                         };
                         cuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
                         forced.retain(|&f| f > 0.01 && f < h - 0.01);
@@ -8811,7 +8896,46 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // красное: общий путь элемента кладёт слои и
                                 // выносит абсолюты иначе, чем ждёт стопка.
                                 // Возвращать узкой веткой только для сетки.
-                                let build = || {
+                                /// css-position-3 §abspos-breaking: «User
+                                /// agents must not paginate the content of
+                                /// fixed-positioned boxes». Копия фрагмента —
+                                /// ПОЛНЫЙ клон поддерева, и `position: fixed`
+                                /// внутри неё уезжает в слой ICB из КАЖДОЙ
+                                /// копии (`render.rs:1790` -> `:1823` ->
+                                /// `icb_push`). Слой лежит вне коробки
+                                /// многоколоночника, маска колонки
+                                /// (`flow.rs:998`) его не режет — на экране
+                                /// вышло бы столько зелёных коробок, сколько
+                                /// колонок. Оставляем фиксированного потомка
+                                /// только в ПЕРВОЙ копии: там же, где стоит
+                                /// его щуп статической позиции.
+                                /// Blink делает это тем же разделением —
+                                /// `out_of_flow_layout_part.cc:1607`: «This
+                                /// does not include repeated fixed-positioned
+                                /// elements».
+                                fn drop_fixed(n: &Node) -> Option<Node> {
+                                    match n {
+                                        Node::Element(k)
+                                            if k.style.position
+                                                == Some(crate::computed::Position::Fixed) =>
+                                        {
+                                            None
+                                        }
+                                        Node::Element(k) => {
+                                            let mut c = k.clone();
+                                            c.children =
+                                                k.children.iter().filter_map(drop_fixed).collect();
+                                            Some(Node::Element(c))
+                                        }
+                                        other => Some(other.clone()),
+                                    }
+                                }
+                                let build = |first: bool| {
+                                    let kids: Vec<Node> = if first {
+                                        copy.children.clone()
+                                    } else {
+                                        copy.children.iter().filter_map(drop_fixed).collect()
+                                    };
                                     // css-break-3 §5.5: «Fragmentation … occurs
                                     // before relative positioning, transforms,
                                     // and any other graphical effects. Such
@@ -8831,7 +8955,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // это точно, для `rotate`/`scale` нет.
                                     transformed(
                                         styled_div_with(&copy, &inner)
-                                            .children(blocks(&copy.children, &inner, opts))
+                                            .children(blocks(&kids, &inner, opts))
                                             .into_any_element(),
                                         &inner,
                                     )
@@ -8892,8 +9016,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     || (copy.children.iter().any(|n| !is_blank(n))
                                         && !copy.children.iter().any(block_kid));
                                 crate::flow::StackChild {
-                                    el: build(),
-                                    frags: (1..cols.max(1)).map(|_| build()).collect(),
+                                    el: build(true),
+                                    frags: (1..cols.max(1)).map(|_| build(false)).collect(),
                                     monolith,
                                     cuts,
                                     force_before: copy.style.break_before_force,
