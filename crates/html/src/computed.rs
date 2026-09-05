@@ -1495,6 +1495,10 @@ pub struct Computed {
     /// колонки/страницы перед или после коробки.
     pub break_before_force: bool,
     pub break_after_force: bool,
+    /// `margin-trim` (css-box-4 §margin-trim): биты обрезаемых краёв,
+    /// 1 — `block-start`, 2 — `block-end`. `block` — оба. Начальное `none`
+    /// (0). Инлайновые значения старой редакции спеки не берём.
+    pub margin_trim: u8,
     /// `column-rule-*`: линейка между колонками.
     pub column_rule_width: Option<Len>,
     pub column_rule_visible: Option<bool>,
@@ -4997,6 +5001,26 @@ impl Computed {
                 self.column_rule_visible = Some(!matches!(v.trim(), "none" | "hidden"));
             }
             "column-rule-color" => self.column_rule_color = Color::parse(v.trim()),
+            // §margin-trim: `none | block | [ block-start || block-end ]`.
+            "margin-trim" => {
+                let mut bits = 0u8;
+                let mut ok = true;
+                for token in v.split_whitespace() {
+                    match token {
+                        "none" => {}
+                        "block" => bits |= 3,
+                        "block-start" => bits |= 1,
+                        "block-end" => bits |= 2,
+                        // Инлайновые значения старой редакции: объявление
+                        // действительно, но шаг 1 их не исполняет.
+                        "inline" | "inline-start" | "inline-end" => {}
+                        _ => ok = false,
+                    }
+                }
+                if ok {
+                    self.margin_trim = bits;
+                }
+            }
             "column-rule" => {
                 // Сокращение: ширина, стиль, цвет в любом порядке. Незнакомый
                 // токен делает недействительным ВСЁ объявление (CSS 2.1

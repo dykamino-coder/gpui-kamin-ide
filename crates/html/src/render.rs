@@ -4221,6 +4221,30 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         // Отсечка по ЗНАЧЕНИЮ, а не по «свойство написано»: `padding: 0` и
         // `border: 0` схлопыванию не мешают (CSS 2.1 §8.3.1).
         let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
+        // `margin-trim` (css-box-4 §margin-trim-block): поле первого/последнего
+        // ребёнка у ВНУТРЕННЕГО края контейнера обнуляется вместе со всем,
+        // что с ним схлопнулось. Идёт ДО гейта схлопывания: обрезка работает
+        // и когда край закрыт рамкой или внутренним отступом — там поле
+        // наружу не уходит, но обрезать его всё равно надо.
+        // Собственное поле контейнера не трогается («but not its own»).
+        if e.style.margin_trim & 1 != 0 {
+            let mut path: Vec<usize> = vec![];
+            let mut eat: Vec<(Vec<usize>, bool)> = vec![];
+            if leading_chain(&e.children, &mut path, &mut eat).is_some() {
+                for (p, deep) in &eat {
+                    zero_at(&mut e.children, p, true, *deep);
+                }
+            }
+        }
+        if e.style.margin_trim & 2 != 0 {
+            let mut path: Vec<usize> = vec![];
+            let mut eat: Vec<(Vec<usize>, bool)> = vec![];
+            if trailing_chain(&e.children, &mut path, &mut eat).is_some() {
+                for (p, deep) in &eat {
+                    zero_at(&mut e.children, p, false, *deep);
+                }
+            }
+        }
         // Поля КОРНЯ ни с чем не схлопываются (§8.3.1).
         if e.tag == "html" || !top_edge_open(e) {
             continue;
@@ -4888,6 +4912,60 @@ fn leading_chain(
         eat.push((path.clone(), false));
         if top_edge_open(ch) {
             s = adjoin(s, leading_chain(&ch.children, path, eat)?);
+        }
+        path.pop();
+        return Some(s);
+    }
+    Some(s)
+}
+
+/// Хвостовая цепочка примыкающих НИЖНИХ полей — зеркало `leading_chain`.
+///
+/// В схлопывании она НЕ участвует: попытка поднимать её наружу замерена и
+/// откачена (см. комментарий в `collapse_margins`, CSS2 4684 -> 4594) —
+/// вглубь подъём уходил мимо ещё неизвестной высоты родителя. Для
+/// `margin-trim: block-end` этой опасности нет: наружу ничего не поднимается,
+/// поля только гасятся, и цепочка ограничена последним ребёнком в потоке.
+fn trailing_chain(
+    children: &[Node],
+    path: &mut Vec<usize>,
+    eat: &mut Vec<(Vec<usize>, bool)>,
+) -> Option<Strut> {
+    let mut s = strut_of(0.0);
+    for (i, c) in children.iter().enumerate().rev() {
+        let ch = match c {
+            Node::Text(t) if blank_text(t) => continue,
+            Node::Text(_) => return Some(s),
+            Node::Element(ch) => ch,
+        };
+        if ch.inline {
+            if ch.children.is_empty() && !replaced_inline(&ch.tag) {
+                continue;
+            }
+            return Some(s);
+        }
+        if atomic_inline(&ch.style) {
+            return Some(s);
+        }
+        if !in_flow(&ch.style) {
+            continue;
+        }
+        s = adjoin(
+            s,
+            strut_of(margin_or_bail(ch.style.margin.bottom, &ch.style)?),
+        );
+        path.push(i);
+        if let Some(t) = through_strut(ch) {
+            s = adjoin(s, t);
+            eat.push((path.clone(), true));
+            path.pop();
+            continue;
+        }
+        eat.push((path.clone(), false));
+        // Заданная высота или нижняя рамка/отступ отрезают цепочку: поле
+        // внука к краю контейнера уже не примыкает.
+        if ch.style.height.is_none() && top_edge_open(ch) {
+            s = adjoin(s, trailing_chain(&ch.children, path, eat)?);
         }
         path.pop();
         return Some(s);
