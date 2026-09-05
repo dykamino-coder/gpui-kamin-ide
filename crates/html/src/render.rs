@@ -8796,9 +8796,29 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // выносит абсолюты иначе, чем ждёт стопка.
                                 // Возвращать узкой веткой только для сетки.
                                 let build = || {
-                                    styled_div_with(&copy, &inner)
-                                        .children(blocks(&copy.children, &inner, opts))
-                                        .into_any_element()
+                                    // css-break-3 §5.5: «Fragmentation … occurs
+                                    // before relative positioning, transforms,
+                                    // and any other graphical effects. Such
+                                    // effects are applied per fragment». Разрезы
+                                    // трансформ не двигают (`shape_full` его и не
+                                    // читает), но САМ трансформ обязан быть на
+                                    // каждом фрагменте. Общий путь вешает его
+                                    // через `transformed()` (render.rs:1719,
+                                    // :5938, :8185); узкая ветка копии шла мимо
+                                    // всех трёх, и `transform` у ребёнка
+                                    // многоколоночника пропадал целиком
+                                    // (`transform-000…005`: `translateX(60px)`
+                                    // контейнера гасил `left:-60px` потомков, а
+                                    // без него содержимое уезжало из колонки).
+                                    // Начало отсчёта пока общее на всю коробку,
+                                    // а не своё на фрагмент, — для `translate`
+                                    // это точно, для `rotate`/`scale` нет.
+                                    transformed(
+                                        styled_div_with(&copy, &inner)
+                                            .children(blocks(&copy.children, &inner, opts))
+                                            .into_any_element(),
+                                        &inner,
+                                    )
                                 };
                                 // Монолиты (css-break-3 §4.1) — их разрыв
                                 // запрещён, и в следующую колонку они уходят

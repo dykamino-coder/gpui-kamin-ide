@@ -627,6 +627,14 @@ impl ColumnStack {
                 first = true;
             }
             force_next = k.force_after;
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): схлопывание пары полей по
+            // CSS 2.1 §8.3.1 «max положительных + min отрицательных» вместо
+            // голого `max`. Срез 3029 пар (css-break/multicol/поля/флоаты
+            // CSS2): +0 приобретений, потеря `multi-line-column-flex-
+            // fragmentation-032` (0.00 -> 99.00 — страница разъехалась).
+            // Правило верное, но в стопке колонок `prev_mb`/`k.mt` уже несут
+            // РЕЗУЛЬТАТ схлопывания уровнем выше, и второе применение
+            // вычитает отрицательное поле дважды.
             let lead = if first { k.mt } else { prev_mb.max(k.mt) };
             let mut cur = y + lead;
             let mut from = 0.0f32;
