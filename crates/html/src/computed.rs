@@ -3173,6 +3173,19 @@ impl Computed {
             // Отсюда условие `l.len() > 1` ниже — оно не заплатка, а граница
             // между двумя честными путями счёта повторов.
             "grid-template-columns" if v.contains("auto-fill") || v.contains("auto-fit") => {
+                // css-grid-1 `<auto-track-list>`: ВОКРУГ авто-повтора допустим
+                // только `<fixed-size>`. css-grid-3 §7.2.1 ослабила запись
+                // ВНУТРИ `repeat()`, снаружи всё по-прежнему — голая
+                // интрин-дорожка делает объявление негодным, и оно целиком
+                // падает в `none`. Сами тесты пишут это комментарием: «This is
+                // not currently a valid track definition and will fall back to
+                // none». Перепись корпуса
+                // (`target/scout-lanes-9e-invalid.txt`): таких объявлений 14,
+                // шесть из них — законные `minmax(…)`, которых правило не
+                // касается; остаются ровно восемь целевых файлов.
+                if auto_repeat_outside_intrinsic(v) {
+                    return;
+                }
                 self.grid_auto_fill_min = auto_fill_min(v);
                 self.grid_auto_fill_tracks = auto_fill_tracks(v);
                 // Список пишется и при авто-повторе: дорожки ДО и ПОСЛЕ него
@@ -3199,6 +3212,11 @@ impl Computed {
             // То же по РЯДАМ: у раскладки лунками дорожки задают ряды, когда
             // `grid-lanes-direction: row` (`row-auto-repeat-001`).
             "grid-template-rows" if v.contains("auto-fill") || v.contains("auto-fit") => {
+                // Та же негодность по РЯДАМ (`row-auto-repeat-auto-005`,
+                // `row-auto-repeat-{fit,max,min}-content-003`).
+                if auto_repeat_outside_intrinsic(v) {
+                    return;
+                }
                 self.grid_auto_fill_row = auto_fill_min(v);
                 // Только когда вокруг повтора ЕСТЬ свои дорожки: одинокий
                 // повтор целиком ведёт прежний путь раскладки, он считает
@@ -9104,6 +9122,34 @@ pub(crate) fn auto_fill_fit_px(v: &str) -> Option<f32> {
         Some(Len::Px(px)) => Some(px),
         _ => None,
     }
+}
+
+/// Голая интрин-дорожка СНАРУЖИ `repeat(auto-fill | auto-fit, …)`.
+///
+/// css-grid-1 `<auto-track-list>` разрешает вокруг авто-повтора только
+/// `<fixed-size>`; css-grid-3 §7.2.1 ослабила запись лишь ВНУТРИ `repeat()`.
+/// `minmax()` снаружи законен в обе стороны (`minmax(<fixed-breadth>,
+/// <track-breadth>)` и `minmax(<inflexible-breadth>, <fixed-breadth>)`) и сюда
+/// НЕ попадает: иначе под нож ушли бы валидные
+/// `css-grid/grid-definition/grid-auto-fill-columns-001` и родня, а также
+/// `grid-lanes/invalidation/grid-lanes-change-intrinsic-size-with-auto-repeat-tracks-001`
+/// (`repeat(auto-fill, 20px) minmax(min-content, 40px)`).
+/// Имена линий в скобках размера не несут и негодности не создают.
+fn auto_repeat_outside_intrinsic(v: &str) -> bool {
+    let toks = tokenize_tracks(v);
+    if !toks
+        .iter()
+        .any(|t| t.starts_with("repeat(") && (t.contains("auto-fill") || t.contains("auto-fit")))
+    {
+        return false;
+    }
+    toks.iter().any(|t| {
+        let t = t.trim();
+        if t.starts_with("repeat(") || (t.starts_with('[') && t.ends_with(']')) {
+            return false;
+        }
+        t == "auto" || t == "min-content" || t == "max-content" || t.starts_with("fit-content(")
+    })
 }
 
 /// Дорожка повтора задана ПО СОДЕРЖИМОМУ: `repeat(auto-fill, max-content)`

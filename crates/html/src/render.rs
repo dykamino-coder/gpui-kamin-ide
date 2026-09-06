@@ -1129,6 +1129,67 @@ fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
     out
 }
 
+/// Сетка, которую фрагментация вправе спускать СТОПКОЙ: одна колонка, ряды
+/// по содержимому, дети без явного размещения. Тогда ряд — ровно один
+/// ребёнок, высота ряда равна мере ребёнка (css-grid-1 §11.8: дорожка
+/// `auto` — по max-content), а порядок рядов равен порядку детей (§8.5
+/// auto-placement при `grid-auto-flow: row`). Поля рядов НЕ схлопываются
+/// (§6.1: «margins of grid items do not collapse»), между рядами стоит
+/// `row-gap`.
+///
+/// Отказ (прежний путь — `grid_rows_px`, чаще всего `None`): явные дорожки
+/// рядов не все `auto` (px/`fr`/`minmax` — размер ряда не равен мере
+/// ребёнка), колонок больше одной (дети параллельны, а не стопкой),
+/// именованные области, поток по колонкам или `dense`, неявные ряды
+/// заданного размера, распределяющий `align-content` (двигает ряды внутри
+/// заданной высоты), зазор не в точках, явное размещение у любого ребёнка
+/// (`grid-row`/`grid-column`/`grid-area`). `display: grid-lanes` не
+/// проходит никогда — у полос своя укладка.
+fn grid_stack(c: &Element) -> bool {
+    use crate::computed::{AutoFlow, Track, TrackSize};
+    let s = &c.style;
+    if !matches!(s.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
+        return false;
+    }
+    if s.grid_cols.unwrap_or(1) > 1
+        || s.grid_tracks.as_ref().is_some_and(|t| t.len() > 1)
+        || s.grid_areas.is_some()
+    {
+        return false;
+    }
+    if let Some(rows) = s.grid_rows.as_ref() {
+        if !rows
+            .iter()
+            .all(|t| matches!(t, TrackSize::Single(Track::Auto)))
+        {
+            return false;
+        }
+    }
+    if !matches!(
+        s.grid_auto_rows,
+        None | Some(TrackSize::Single(Track::Auto))
+    ) || !s.grid_auto_rows_list.is_empty()
+        || matches!(
+            s.grid_auto_flow,
+            Some(AutoFlow::Col) | Some(AutoFlow::ColDense) | Some(AutoFlow::RowDense)
+        )
+        || s.align_content.is_some()
+    {
+        return false;
+    }
+    if !matches!(s.gap, None | Some((None, _)) | Some((Some(Len::Px(_)), _))) {
+        return false;
+    }
+    !c.children.iter().any(|n| match n {
+        Node::Element(k) => {
+            k.style.grid_row.is_some()
+                || k.style.grid_col.is_some()
+                || k.style.grid_area_name.is_some()
+        }
+        _ => false,
+    })
+}
+
 /// `contain: size` — монолит везде, где есть фрагментация (Blink
 /// `LayoutBox::IsMonolithic`, `layout_box.cc`: `ShouldApplySizeContainment()`
 /// = `StyleRef().ContainsSize() && IsEligibleForSizeContainment()`; обе оси —
@@ -1283,8 +1344,25 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         )
         && c.style.flex_wrap != Some(true)
         && c.style.webkit_box_vertical != Some(true);
+    // Сетка в одну колонку с рядами по содержимому — стопка (`grid_stack`):
+    // ряд равен одному ребёнку. Без спуска её мера уходила в `grid_rows_px`
+    // и почти всегда возвращала `None`, а `None` означает отказ от укладки:
+    // многоколоночник с такой сеткой внутри не фрагментировался ВОВСЕ —
+    // колонка 1 переполнена, остальные пусты (`scout-break-2026-09f.md` §1;
+    // пробы `target/probe-9f/p-grid-item-fragmentation-043.html` и
+    // `p-grid-container-fragmentation-009.html` = 0.00 при подмене на блок).
+    let grid_rows_stack = grid_stack(c);
+    // Зазор рядов такой сетки: `grid_stack` ручается, что он в точках.
+    let row_gap = if grid_rows_stack {
+        match c.style.gap {
+            Some((Some(Len::Px(v)), _)) => v,
+            _ => 0.0,
+        }
+    } else {
+        0.0
+    };
     // Ряд/группа рядов ВНЕ таблицы (тегом или `display`) — не стопка блоков.
-    let no_descent = matches!(
+    let no_descent = (matches!(
         c.style.display,
         Some(Display::Grid)
             | Some(Display::InlineGrid)
@@ -1293,7 +1371,8 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             | Some(Display::InlineTable)
             | Some(Display::TableRow)
             | Some(Display::TableRowGroup)
-    ) || matches!(c.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot");
+    ) && !grid_rows_stack)
+        || matches!(c.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot");
     // (высота, поля, точки, forced, монолиты, force_before,
     //  force_after, ДОТЯГ внепоточного)
     // Дотяг — насколько ниже собственного верха ребёнка
@@ -1464,7 +1543,19 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         let mut first = true;
         let mut force_next = false;
         for (h, kmt, kmb, kcuts, kforced, ksolid, fb, fa, kreach) in kids {
-            let lead = if first {
+            // Сетка: поля рядов не схлопываются ни между собой, ни сквозь
+            // верх контейнера (css-grid-1 §6.1), между рядами — `row-gap`.
+            // Точка класса A ставится там же, где у блочной стопки, а
+            // `cuts` с `nf` за концом зазора продолжает копию с начала
+            // следующего ряда — зазор на разрыве пропадает
+            // (css-gaps-1 §fragmentation, как в `grid_row_gaps`).
+            let lead = if grid_rows_stack {
+                if first {
+                    kmt
+                } else {
+                    prev_mb + row_gap + kmt
+                }
+            } else if first {
                 if top == 0.0 {
                     through = kmt;
                     0.0
@@ -1500,6 +1591,12 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             y = start + h;
             prev_mb = kmb;
             first = false;
+        }
+        // Нижнее поле последнего ряда наружу не схлопывается и входит в
+        // высоту сетки (css-grid-1 §6.1).
+        if grid_rows_stack {
+            y += prev_mb;
+            prev_mb = 0.0;
         }
         stacked = Some((y, through, prev_mb));
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): ряд flex С ПЕРЕНОСОМ
@@ -1540,6 +1637,19 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 None => return None,
             },
         },
+    };
+    // `min-height` в точках — ПОЛ меры (CSS 2.1 §10.7). Прежде он не
+    // читался вовсе, и сетка с единственным рядом `min-height: 200px`
+    // мерилась содержимым, то есть нулём (`grid-item-fragmentation-001`;
+    // проба `target/probe-9f/p2-grid-item-fragmentation-001.html` = 0.00
+    // после подмены `min-height` на `height`). Прочие единицы, как и
+    // прежде, игнорируются — отказываться от всей укладки из-за них
+    // дороже, чем недомерить. Обрезающий потолок `max-height` ниже
+    // остаётся главнее: это не размер, а правило фрагментации Blink
+    // `kDisableFragmentation`.
+    let h = match &c.style.min_height {
+        Some(Len::Px(m)) => h.max(*m + top + bot),
+        _ => h,
     };
     // Содержащий блок обязан дотянуться до низа своих
     // внепоточных потомков — только тогда фрагментация
@@ -1625,7 +1735,19 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     if table_box(c) {
         return pushed_cell_at(c, a, depth);
     }
-    if matches!(
+    // Сетка-стопка спускается ровно как в `shape_full` — иначе распорка
+    // роста (`705fd58`) до ряда сетки не добирается, отдаёт `None`, и фон
+    // коробки не дотягивается до низа колонки.
+    let grid_rows_stack = grid_stack(c);
+    let row_gap = if grid_rows_stack {
+        match c.style.gap {
+            Some((Some(Len::Px(v)), _)) => v,
+            _ => 0.0,
+        }
+    } else {
+        0.0
+    };
+    if (matches!(
         c.style.display,
         Some(Display::Grid)
             | Some(Display::InlineGrid)
@@ -1634,7 +1756,8 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             | Some(Display::InlineTable)
             | Some(Display::TableRow)
             | Some(Display::TableRowGroup)
-    ) || matches!(c.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
+    ) && !grid_rows_stack)
+        || matches!(c.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
     {
         return None;
     }
@@ -1687,7 +1810,15 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             }
             continue;
         }
-        let lead = if first {
+        // Та же арифметика, что в `shape_full`: у сетки поля не
+        // схлопываются, между рядами — `row-gap`.
+        let lead = if grid_rows_stack {
+            if first {
+                kmt
+            } else {
+                prev_mb + row_gap + kmt
+            }
+        } else if first {
             if top == 0.0 {
                 0.0
             } else {
@@ -16242,6 +16373,13 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         px_of(merged.width)
     };
     let mut tracks = tracks;
+    // Какие дорожки ПОРОЖДЕНЫ авто-повтором. `auto-fit` схлопывает пустые
+    // только из этого куска (css-grid-2 §7.2.3.2), а §12.8 растягивает
+    // остатком только те из них, чьё тело было `auto`. Начальное
+    // `0..usize::MAX` — прежнее поведение: пока диапазон не сужен, схлопывание
+    // работает как раньше.
+    let mut fit_span: std::ops::Range<usize> = 0..usize::MAX;
+    let mut stretch_ix: Vec<usize> = Vec::new();
     // Повтор «сколько влезет» ВНУТРИ непустого списка разворачивается НА
     // МЕСТЕ: `max-content repeat(auto-fill, max-content) max-content` — это
     // крайние дорожки плюс столько повторов, сколько влезет между ними.
@@ -16274,16 +16412,48 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 let свободно = (room - края - cross_gap * tracks.len() as f32).max(0.0);
                 (((свободно + cross_gap) / (шаг + cross_gap)).floor() as usize).max(1)
             }
-            // Тело по СОДЕРЖИМОМУ (`max-content`) или место неизвестно: один
-            // повтор — столько, сколько точно законно (§7.2.3.2: при
-            // неопределённом месте `auto-fill` даёт одну итерацию).
+            // Тело ПО СОДЕРЖИМОМУ: точечного шага у него нет, и прежняя ветка
+            // давала ОДИН повтор. css-grid-3 §7.2.1 «Intrinsic Tracks and
+            // repeat()» (`csswg-drafts/css-grid-3/Overview.bs:447-481`; Blink
+            // `grid_lanes_layout_algorithm.cc:2999
+            // GridLanesLayoutAlgorithm::ComputeAutomaticRepetitions`) требует
+            // развернуть тело `2 + (наибольший спан − 2) / (дорожек в теле)`
+            // раз, вниз до целого и не меньше двух.
+            // Один повтор ломал `repeat(2, 50px) repeat(auto-fill, auto)`:
+            // эталон `column-auto-repeat-auto-029-ref` — это `repeat(2, 50px)
+            // repeat(2, auto)`, а на нашем снимке была ОДНА дорожка и справа
+            // пустой серый.
+            (Some(_), false) => {
+                let спан = e
+                    .children
+                    .iter()
+                    .filter_map(|nd| match nd {
+                        Node::Element(item) => {
+                            let (_, span) = lane_span(item, usize::MAX, row_dir);
+                            (span < 1000).then_some(span)
+                        }
+                        _ => None,
+                    })
+                    .max()
+                    .unwrap_or(1);
+                2 + спан.saturating_sub(2) / тело.len().max(1)
+            }
+            // Место неизвестно — одна итерация (§7.2.3.2).
             _ => 1,
         };
         let mut раскрыт: Vec<TrackSize> = Vec::with_capacity(tracks.len() + n * тело.len());
         раскрыт.extend_from_slice(&tracks[..at]);
         for _ in 0..n {
-            раскрыт.extend(тело.iter().cloned());
+            for t in тело.iter() {
+                // Растягивается остатком только `auto` (css-grid-2 §12.8):
+                // `max-content`/`min-content`/`fit-content()` — нет.
+                if matches!(t, TrackSize::Single(Track::Auto)) {
+                    stretch_ix.push(раскрыт.len());
+                }
+                раскрыт.push(t.clone());
+            }
         }
+        fit_span = at..раскрыт.len();
         раскрыт.extend_from_slice(&tracks[at + 1..]);
         tracks = раскрыт;
     }
@@ -16480,6 +16650,10 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 .filter(|v| *v < 1000)
                 .max()
                 .unwrap_or(0);
+            // Схлопывать `auto-fit` можно только дорожки САМОГО повтора.
+            // Дорожки, добавленные ради явных линий (`need` выше), — неявные
+            // (css-grid-2 §8.5) и не схлопываются никогда.
+            fit_span = 0..n;
             let n = n.max(need);
             tracks = match repeat.track {
                 Some(px) => vec![TrackSize::Single(Track::Px(px)); n],
@@ -16678,6 +16852,38 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 _ => {}
             }
         }
+        // css-grid-2 §12.8 «Stretch auto Tracks»: при `justify-content:
+        // normal` свободное место раздаётся ПОРОВНУ дорожкам с интрин-
+        // максимумом `auto`. Растягиваем только дорожки САМОГО авто-повтора
+        // (`stretch_ix`): рукописный список `auto auto auto` живёт прежним
+        // путём — его эталоны (`column-auto-repeat-auto-023/025/026-ref`)
+        // набраны без растяжки, и трогать их можно только отдельным замером.
+        // Числа взяты из эталонов: `column-auto-repeat-auto-029-ref` при 505 —
+        // вклады 150 и 120, свободно 135, поровну по 67.5, дорожки 217.5 и
+        // 187.5; `column-auto-repeat-mixed-intrinsic-004-ref` при 580 —
+        // `265px 50px 265px`, то есть 135 содержимого плюс 130 остатка.
+        if let Some(room) = room
+            && !stretch_ix.is_empty()
+        {
+            let px = |t: &TrackSize| match t {
+                TrackSize::Single(Track::Px(v)) => *v,
+                _ => 0.0,
+            };
+            let занято: f32 = tracks.iter().map(px).sum::<f32>()
+                + cross_gap * tracks.len().saturating_sub(1) as f32;
+            let доля = (room - занято) / stretch_ix.len() as f32;
+            if доля > 0.0 {
+                let цели: Vec<usize> = stretch_ix
+                    .iter()
+                    .copied()
+                    .filter(|i| *i < tracks.len())
+                    .collect();
+                for i in цели {
+                    let было = px(&tracks[i]);
+                    tracks[i] = TrackSize::Single(Track::Px(было + доля));
+                }
+            }
+        }
         // fr при НЕОПРЕДЕЛЁННОМ контейнере (css-grid-2 §11.8): свободного
         // места нет, и доля ведёт себя как max-content — единый коэффициент
         // = max(вклад/долю), дорожка = f * коэффициент.
@@ -16725,6 +16931,18 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 && n > 1
             {
                 implicit = implicit.max(n as usize - 1);
+            }
+            // Неявная сетка расширяется и под СПАН авто-размещаемого
+            // (css-grid-2 §8.5, шаг 1.2): `grid-column: span 2` без шаблона
+            // требует ДВУХ лунок. Прежде считались только явные линии, и
+            // объявление, упавшее в `none` (хунки 6-8), давало одну лунку
+            // вместо двух: снимок
+            // `column-auto-repeat-max-content-003--ref.png` показывает у
+            // эталона ровно две колонки, вторую рождает `grid-column: span 2`
+            // у `Number 6`.
+            let (fixed, span) = lane_span(item, usize::MAX, row_dir);
+            if span < 1000 {
+                implicit = implicit.max(fixed.unwrap_or(0).saturating_add(span));
             }
         }
         let fallback = if row_dir {
