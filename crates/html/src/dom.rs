@@ -637,6 +637,18 @@ fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     el.style.grid_tracks.clone()
                 }
                 .unwrap_or_default();
+                // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v125/v126,
+                // `scout-subgrid-2026-09.md` шаг 1): расширить гейт с «все
+                // дорожки `Px`» до «все нарезаемы» (симметрично здесь и в
+                // `render.rs`). Срез css-grid+css-gaps+css-contain 2123 общих:
+                // +11/−8 с `fr` и +9/−7 без `fr`, причём потери грубые
+                // (`subgrid-gap-decorations-003` 0.00 → 99.00 с `fr`,
+                // `auto-track-sizing-001` → 12.78,
+                // `row-subgrid-orthogonal-writing-mode-002` → 11.38). Сначала
+                // нужен шаг 2 отчёта — снять фазовый разрыв между лунками и
+                // обычной сеткой: в `grid-subgridded-to-grid-lanes/**` тест и
+                // эталон отличаются одним словом разметки и идут разными
+                // путями, поэтому односторонняя правка разводит пару.
                 if tracks.is_empty()
                     || !tracks.iter().all(|t| {
                         matches!(
