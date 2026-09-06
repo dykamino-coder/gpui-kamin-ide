@@ -2780,6 +2780,12 @@ impl Window {
         transformation: TransformationMatrix,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v122, `scout-transforms-2026-09d.md`
+        // шаг 3): порядок `outer·inner` вместо `inner·outer`. css-transforms
+        // +2/−1 (`transform-compound-001`, `transform3d-sorting-002`), но
+        // css-writing-modes −9: весь `text-combine-upright-*` (вертикальный
+        // текст рисуется вложенными `with_transformation`, и наш порядок
+        // подобран под них). Менять только вместе с `lines.rs`/`flow.rs`.
         let combined = transformation.compose(self.current_transformation());
         self.transformation_stack.push(combined);
         let result = f(self);
