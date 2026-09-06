@@ -425,9 +425,11 @@ fn known_pseudo(name: &str) -> bool {
 }
 
 /// ПсевдоЭЛЕМЕНТ (а не псевдокласс): после него составная часть кончается.
+/// Имя может нести аргумент (`scroll-button(block-end)`) — сравнивается голова.
 fn is_pseudo_element(name: &str) -> bool {
+    let head = name.split_once('(').map_or(name, |(h, _)| h);
     matches!(
-        name,
+        head,
         "before"
             | "after"
             | "first-line"
@@ -437,6 +439,10 @@ fn is_pseudo_element(name: &str) -> bool {
             | "selection"
             | "backdrop"
             | "file-selector-button"
+            // css-overflow-5: коробки собирает `dom.rs::scroll_marker_pass`.
+            | "scroll-marker"
+            | "scroll-marker-group"
+            | "scroll-button"
     )
 }
 
@@ -652,14 +658,44 @@ pub static PRINT_MEDIA: std::sync::atomic::AtomicBool = std::sync::atomic::Atomi
 /// листов, забирается сборщиком документа (`take_page_decls`).
 pub static PAGE_DECLS: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
 
+/// Именные правила `@page <имя> { … }` — `(имя, объявления)` в порядке
+/// появления; псевдоклассы (`:first`, `:left`…) по-прежнему отрезаются.
+/// Применяет стенд, когда имя одно на весь документ
+/// (`render::uniform_page_name`).
+pub static PAGE_NAMED_DECLS: std::sync::Mutex<Vec<(String, Vec<(String, String)>)>> =
+    std::sync::Mutex::new(Vec::new());
+
+
 pub fn take_page_decls() -> Vec<(String, String)> {
+    PAGE_NAMED_DECLS.lock().unwrap().clear();
     std::mem::take(&mut PAGE_DECLS.lock().unwrap())
+}
+
+/// Правила `@position-try <dashed-ident> { … }` документа (css-anchor-position-1
+/// §fallback-rule): имя → объявления. Тот же пул, что `PAGE_DECLS`: копится
+/// при разборе листов, чистится на разборе следующего документа
+/// (`take_try_rules`), читается на сборке кадра (`anchor::place`). Повтор
+/// имени перекрывает — «the last one in document order wins».
+pub static TRY_RULES: std::sync::Mutex<Option<HashMap<String, Decls>>> =
+    std::sync::Mutex::new(None);
+
+pub fn take_try_rules() -> HashMap<String, Decls> {
+    TRY_RULES.lock().unwrap().take().unwrap_or_default()
+}
+
+/// Объявления правила `@position-try` по имени (`--x`), копией.
+pub fn try_rule(name: &str) -> Option<Decls> {
+    TRY_RULES.lock().unwrap().as_ref()?.get(name).cloned()
 }
 
 /// Снимок без очистки: рендер зовётся на каждом кадре, а правила должны
 /// пережить все кадры документа (очистка — на разборе следующего).
 pub fn page_decls_snapshot() -> Vec<(String, String)> {
     PAGE_DECLS.lock().unwrap().clone()
+}
+
+pub fn page_named_decls_snapshot() -> Vec<(String, Vec<(String, String)>)> {
+    PAGE_NAMED_DECLS.lock().unwrap().clone()
 }
 
 /// Срезать вложенные at-блоки из тела `@page`: остаются только объявления.
@@ -1222,18 +1258,53 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
             let inner = if name.starts_with("@media") {
                 media.matches(&name)
             } else if name.starts_with("@page") {
-                // Пока применяется только БЕЗЫМЯННОЕ универсальное правило:
-                // именные и :first/:left ушли бы в общий пул и красили
-                // страницы, к которым не относятся (page-name-*).
-                if !name[5..].trim().is_empty() {
+                // Безымянное правило — общий пул; именное (`@page square`) —
+                // именной пул, стенд берёт его, когда имя у всех страниц одно
+                // (`render::uniform_page_name`; `page-name-table-001`,
+                // `page-name-001`). Псевдоклассы `:first/:left/:right/:blank`
+                // по-прежнему выбрасываются: они красили бы не свои страницы.
+                // Имя регистрозависимо (css-page-3 §using-named-pages) — из
+                // ОРИГИНАЛА головы, не из `name`.
+                let selector = head[5..].trim();
+                let named = !selector.is_empty();
+                if named
+                    && !selector
+                        .chars()
+                        .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
+                {
                     continue;
                 }
                 let flat = strip_nested_blocks(body);
                 let decls = parse_decls(&flat);
                 if !decls.is_empty() {
-                    let mut pool = PAGE_DECLS.lock().unwrap();
-                    for (k, v) in decls {
-                        pool.push((k, v));
+                    if named {
+                        let list: Vec<(String, String)> = decls.into_iter().collect();
+                        PAGE_NAMED_DECLS
+                            .lock()
+                            .unwrap()
+                            .push((selector.to_string(), list));
+                    } else {
+                        let mut pool = PAGE_DECLS.lock().unwrap();
+                        for (k, v) in decls {
+                            pool.push((k, v));
+                        }
+                    }
+                }
+                false
+            } else if name.starts_with("@position-try") {
+                // §fallback-rule: тело — обычные объявления (только вставки,
+                // поля, размеры, самовыравнивание, `position-anchor`,
+                // `position-area`; лишние здесь безвредны — накладываются на
+                // копию стиля кандидата). Имя — с оригинальным регистром.
+                let ident = head["@position-try".len()..].trim();
+                if ident.starts_with("--") {
+                    let decls = parse_decls(body);
+                    if !decls.is_empty() {
+                        TRY_RULES
+                            .lock()
+                            .unwrap()
+                            .get_or_insert_with(HashMap::new)
+                            .insert(ident.to_string(), decls);
                     }
                 }
                 false

@@ -29,19 +29,44 @@ use gpui::{
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use crate::computed::{Align, Computed, Position, PositionAnchor};
 use crate::dom::Node;
 use crate::value::{AnchorFn, AnchorSide, AnchorSize, Len, anchor_get};
 
+/// Запись якоря в реестре кадра: рамка (border box), маска обрезки в точке
+/// пробы и `visibility: hidden` (§position-visibility: anchor-visible), свой
+/// `node_id` и ближайший содержащий блок (приемлемость якоря, §target).
+#[derive(Clone, Copy, Debug)]
+pub struct AnchorRec {
+    pub rect: Bounds<Pixels>,
+    pub clip: Bounds<Pixels>,
+    pub hidden: bool,
+    pub id: u64,
+    pub cb: u64,
+}
+
+/// Итог размещения кандидата на подготовке кадра: сдвиг коробки, переполнил
+/// ли край коробки полей inset-modified containing block (§fallback,
+/// `position-visibility: no-overflow`) и размер IMCB по осям
+/// (`position-try-order`).
+#[derive(Clone, Copy, Debug)]
+struct Placement {
+    dx: f32,
+    dy: f32,
+    overflow: bool,
+    imcb: (f32, f32),
+}
+
 thread_local! {
-    /// Именованные якоря кадра: имя → рамка (border box). Повтор имени
+    /// Именованные якоря кадра: имя → запись. Повтор имени
     /// перезаписывает — «the last element in tree order» (§target anchor
     /// element, п.3); «ближайший предок» пока не отличается.
-    static NAMED: RefCell<HashMap<String, Bounds<Pixels>>> = RefCell::new(HashMap::new());
-    /// Неявные якоря: `node_id` порождающего элемента → его рамка (для
+    static NAMED: RefCell<HashMap<String, AnchorRec>> = RefCell::new(HashMap::new());
+    /// Неявные якоря: `node_id` порождающего элемента → его запись (для
     /// псевдоэлементов с `position-anchor: auto`, §implicit).
-    static IMPLICIT: RefCell<HashMap<u64, Bounds<Pixels>>> = RefCell::new(HashMap::new());
+    static IMPLICIT: RefCell<HashMap<u64, AnchorRec>> = RefCell::new(HashMap::new());
     /// Те же именованные пробы кадра С ПОРЯДКОМ СБОРКИ (`Computed::anchor_seq`):
     /// на следующем кадре станут `LAST_NAMED`, и размер по `anchor-size()`
     /// возьмёт «последний якорь с этим именем раньше меня по дереву».
@@ -61,6 +86,15 @@ thread_local! {
     static AREA_LAST: RefCell<HashMap<u64, (f32, f32)>> = RefCell::new(HashMap::new());
     /// Счётчик порядка сборки элементов в кадре (`next_seq`).
     static SEQ: Cell<u32> = const { Cell::new(0) };
+    /// Цепочка содержащих блоков: `node_id` блока → `node_id` его ближайшего
+    /// содержащего блока (0 — начальный). Нужна приемлемости якоря (§target:
+    /// содержащий блок коробки должен быть в цепочке содержащих блоков якоря).
+    static CB_PARENT: RefCell<HashMap<u64, u64>> = RefCell::new(HashMap::new());
+    /// Последний удачный вариант `position-try-fallbacks` по ключу коробки
+    /// (§fallback: «the element keeps those styles until it overflows again»):
+    /// 0 — базовые стили, k — k-й элемент списка. Живёт между кадрами,
+    /// чистится на сборке документа (`settle_static`).
+    static CHOSEN: RefCell<HashMap<u64, usize>> = RefCell::new(HashMap::new());
 }
 
 /// Расходник кадра — чистится в `interact::frame_sanitize`. Реестры текущего
@@ -70,8 +104,11 @@ pub fn reset() {
     let named = NAMED_SEQ.with(|v| std::mem::take(&mut *v.borrow_mut()));
     LAST_NAMED.with(|v| *v.borrow_mut() = named);
     let implicit = IMPLICIT.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    LAST_IMPLICIT.with(|m| *m.borrow_mut() = implicit);
+    LAST_IMPLICIT.with(|m| {
+        *m.borrow_mut() = implicit.into_iter().map(|(k, r)| (k, r.rect)).collect();
+    });
     CB.with(|m| m.borrow_mut().clear());
+    CB_PARENT.with(|m| m.borrow_mut().clear());
     let area = AREA_NOW.with(|m| std::mem::take(&mut *m.borrow_mut()));
     AREA_LAST.with(|m| *m.borrow_mut() = area);
     SEQ.with(|s| s.set(0));
@@ -111,20 +148,23 @@ fn wants_implicit(c: &Computed) -> bool {
 /// Проба якоря для коробки `e`: нужна, когда у неё есть `anchor-name` или
 /// её псевдоэлемент ссылается на неё как на неявный якорь. Канвас во всю
 /// коробку (`absolute` + `size_full`) — та же форма, что у `edge_probe`.
-pub fn probe_for(e: &crate::dom::Element, c: &Computed) -> Option<AnyElement> {
+/// `hidden` — `visibility: hidden` коробки (§position-visibility).
+pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<AnyElement> {
     let names: Vec<String> = e.style.anchor_name.clone().unwrap_or_default();
     let implicit = e.node_id != 0
         && e.children.iter().any(|n| {
             matches!(n, Node::Element(k) if k.tag.starts_with("::") && wants_implicit(&k.style))
         });
     // Содержащий блок абсолюта — каждая коробка с `establishes_cb`: её
-    // padding box читает сетка `position-area` (§position-area-grid-resolution).
+    // padding box читает сетка `position-area` (§position-area-grid-resolution),
+    // связь с её собственным содержащим блоком — приемлемость якоря (§target).
     let cb = e.node_id != 0 && crate::inline::establishes_cb(&e.style);
     if names.is_empty() && !implicit && !cb {
         return None;
     }
     let id = e.node_id;
     let seq = c.anchor_seq;
+    let own_cb = c.cb_node;
     // Рамка якоря по спеке — BORDER box (§determining), а абсолютный канвас
     // с нулевыми вставками раскладка ставит в PADDING box (taffy: «insets
     // are resolved against the container size minus border»). Расширяем на
@@ -137,9 +177,10 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed) -> Option<AnyElement> {
     let border = [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)];
     Some(
         gpui::canvas(
-            move |bounds: Bounds<Pixels>, _, _| {
+            move |bounds: Bounds<Pixels>, window: &mut Window, _: &mut App| {
                 if cb {
                     CB.with(|m| m.borrow_mut().insert(id, bounds));
+                    CB_PARENT.with(|m| m.borrow_mut().insert(id, own_cb));
                 }
                 if names.is_empty() && !implicit {
                     return;
@@ -154,10 +195,20 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed) -> Option<AnyElement> {
                         bounds.size.height + px(border[0] + border[2]),
                     ),
                 };
+                // Маска обрезки в точке пробы — пересечение `overflow`-обрезок
+                // всех предков: по ней `AnchorPlace` решает, обрезан ли якорь
+                // промежуточными коробками (§position-visibility).
+                let rec = AnchorRec {
+                    rect: outer,
+                    clip: window.content_mask().bounds,
+                    hidden,
+                    id,
+                    cb: own_cb,
+                };
                 NAMED.with(|m| {
                     let mut m = m.borrow_mut();
                     for n in &names {
-                        m.insert(n.clone(), outer);
+                        m.insert(n.clone(), rec);
                     }
                 });
                 NAMED_SEQ.with(|v| {
@@ -167,7 +218,7 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed) -> Option<AnyElement> {
                     }
                 });
                 if implicit {
-                    IMPLICIT.with(|m| m.borrow_mut().insert(id, outer));
+                    IMPLICIT.with(|m| m.borrow_mut().insert(id, rec));
                 }
             },
             |_, _, _, _| {},
@@ -211,25 +262,16 @@ pub fn settle_static(nodes: &mut [Node]) {
                 }
                 _ => false,
             };
-            // Список запасных позиций без самого перебора: коробка застряла бы
-            // в первом варианте, даже когда спека велит его заменить за
-            // переполнение (`position-try-fallbacks-001`: `bottom:
-            // anchor(outside)` + `flip-block` — коробка над якорем, за верхом
-            // содержащего блока). Пока перебора нет — как до шага 1: `anchor()`
-            // неразрешима, вставка падает в запасное значение или в `auto`.
-            let empty = HashSet::new();
-            let (has_default, known_here) = if e.style.position_try {
-                (false, &empty)
-            } else {
-                (has_default, known)
-            };
             let s = &mut e.style.inset;
             for slot in [&mut s.top, &mut s.right, &mut s.bottom, &mut s.left] {
-                *slot = settle_len(*slot, has_default, known_here);
+                *slot = settle_len(*slot, has_default, known);
             }
             settle(&mut e.children, known);
         }
     }
+    // Новый документ: выбор `position-try` прошлого документа с теми же
+    // `node_id` не должен пережить сборку.
+    CHOSEN.with(|m| m.borrow_mut().clear());
     let mut known = HashSet::new();
     names(nodes, &mut known);
     settle(nodes, &known);
@@ -393,6 +435,92 @@ pub fn parse_area(v: &str) -> Option<PositionArea> {
     Some(PositionArea(a, b))
 }
 
+/// Один вариант `position-try-fallbacks` (§position-try-fallbacks): имя
+/// `@position-try`-правила и/или тактика (биты `FLIP_*`), либо готовая
+/// `<position-area>`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TryFallback {
+    pub name: Option<String>,
+    pub tactics: u8,
+    pub area: Option<PositionArea>,
+}
+
+pub const FLIP_BLOCK: u8 = 1;
+pub const FLIP_INLINE: u8 = 2;
+pub const FLIP_START: u8 = 4;
+
+/// `none | [ [<dashed-ident> || <try-tactic>] | <position-area> ]#`;
+/// негодный элемент списка отбрасывается, `flip-x`/`flip-y` (физические)
+/// пока не поддерживаются.
+pub fn parse_try_fallbacks(v: &str) -> Vec<TryFallback> {
+    let v = v.trim();
+    if v.is_empty() || v.eq_ignore_ascii_case("none") {
+        return Vec::new();
+    }
+    v.split(',')
+        .filter_map(|item| {
+            let item = item.trim();
+            let mut name = None;
+            let mut tactics = 0u8;
+            let mut plain = true;
+            for w in item.split_whitespace() {
+                match w.to_ascii_lowercase().as_str() {
+                    "flip-block" => tactics |= FLIP_BLOCK,
+                    "flip-inline" => tactics |= FLIP_INLINE,
+                    "flip-start" => tactics |= FLIP_START,
+                    _ if w.starts_with("--") && name.is_none() => name = Some(w.to_string()),
+                    _ => plain = false,
+                }
+            }
+            if plain && (name.is_some() || tactics != 0) {
+                return Some(TryFallback {
+                    name,
+                    tactics,
+                    area: None,
+                });
+            }
+            parse_area(item).map(|area| TryFallback {
+                name: None,
+                tactics: 0,
+                area: Some(area),
+            })
+        })
+        .collect()
+}
+
+/// `position-try-order`: 0 normal, 1 most-width, 2 most-height,
+/// 3 most-block-size, 4 most-inline-size; прочее — негодно.
+pub fn parse_try_order(w: &str) -> Option<u8> {
+    Some(match w.to_ascii_lowercase().as_str() {
+        "normal" => 0,
+        "most-width" => 1,
+        "most-height" => 2,
+        "most-block-size" => 3,
+        "most-inline-size" => 4,
+        _ => return None,
+    })
+}
+
+pub const VIS_VALID: u8 = 1;
+pub const VIS_VISIBLE: u8 = 2;
+pub const VIS_NO_OVERFLOW: u8 = 4;
+
+/// `position-visibility`: `always | [anchor-valid || anchor-visible ||
+/// no-overflow]`; легаси `anchors-*` — псевдонимы (§position-visibility).
+pub fn parse_visibility(v: &str) -> u8 {
+    let mut bits = 0u8;
+    for w in v.split_whitespace() {
+        bits |= match w.to_ascii_lowercase().as_str() {
+            "always" => return 0,
+            "anchor-valid" | "anchors-valid" => VIS_VALID,
+            "anchor-visible" | "anchors-visible" => VIS_VISIBLE,
+            "no-overflow" => VIS_NO_OVERFLOW,
+            _ => return 0,
+        };
+    }
+    bits
+}
+
 /// Линии сетки 3×3 по одной физической оси: 0 — начало содержащего блока,
 /// 1 — начало якоря, 2 — конец якоря, 3 — конец содержащего блока; уже в
 /// физическом порядке (`lo` левее/выше).
@@ -515,12 +643,18 @@ pub struct AnchorPlan {
     margin: [f32; 4],
     align_self: Option<Align>,
     justify_self: Option<Align>,
+    /// Приставка `safe` у `align-self`/`justify-self` (css-align §overflow-values).
+    safe_align: bool,
+    safe_justify: bool,
     cb_vertical: bool,
     /// Содержащий блок: `node_id` в реестре `CB`; 0 или `fixed` — окно.
     cb_node: u64,
     fixed: bool,
     /// Ключ в `AREA_NOW` (размер клетки для растяжки на следующем кадре).
     key: u64,
+    /// Ссылается ли коробка на якорь по умолчанию — `position-area`,
+    /// `anchor()` без имени, `anchor-center` (§position-visibility: anchor-valid).
+    refs_default: bool,
 }
 
 /// Как `IsFlippedX`/`IsFlippedY` у Blink: x перевёрнут при горизонтальном
@@ -533,8 +667,10 @@ fn flipped(c: &Computed) -> (bool, bool) {
 }
 
 impl AnchorPlan {
-    /// План есть у абсолюта хотя бы с одной `anchor()`-вставкой или с
-    /// `position-area` при якоре по умолчанию.
+    /// План есть у абсолюта хотя бы с одной `anchor()`-вставкой, с
+    /// `position-area` или `anchor-center` при якоре по умолчанию, со
+    /// списком `position-try-fallbacks` либо с `position-visibility`
+    /// (проверка переполнения нужна и без якоря — `no-overflow`).
     fn of(own: &Computed, inherited: &Computed) -> Option<AnchorPlan> {
         if !matches!(own.position, Some(Position::Absolute) | Some(Position::Fixed)) {
             return None;
@@ -570,7 +706,17 @@ impl AnchorPlan {
             .position_area
             .filter(|_| default_anchor.is_some())
             .map(|a| physical_area(a, inherited, own));
-        if sides.iter().all(Option::is_none) && area.is_none() {
+        let anchor_center = own.align_self == Some(Align::AnchorCenter)
+            || own.justify_self == Some(Align::AnchorCenter);
+        let refs_default = area.is_some()
+            || anchor_center
+            || sides.iter().flatten().any(|s| s.f.name.is_none());
+        if sides.iter().all(Option::is_none)
+            && area.is_none()
+            && !(anchor_center && default_anchor.is_some())
+            && own.position_try_fallbacks.is_empty()
+            && own.position_visibility == 0
+        {
             return None;
         }
         Some(AnchorPlan {
@@ -583,16 +729,20 @@ impl AnchorPlan {
             margin,
             align_self: own.align_self,
             justify_self: own.justify_self,
+            safe_align: own.align_self_safe,
+            safe_justify: own.justify_self_safe,
             cb_vertical: inherited.vertical == Some(true),
             cb_node: own.cb_node,
             fixed: own.position == Some(Position::Fixed)
                 && !(inherited.transform_ancestor || inherited.transform.is_some()),
             key: own.anchor_key,
+            refs_default,
         })
     }
 
-    fn lookup(&self, name: Option<&str>) -> Option<Bounds<Pixels>> {
-        match name {
+    /// Запись якоря по имени (или якоря по умолчанию) — только приемлемого.
+    fn rec(&self, name: Option<&str>) -> Option<AnchorRec> {
+        let r = match name {
             Some(n) => NAMED.with(|m| m.borrow().get(n).copied()),
             None => match &self.default_anchor {
                 Some(DefaultAnchor::Named(n)) => {
@@ -603,7 +753,39 @@ impl AnchorPlan {
                 }
                 None => None,
             },
+        }?;
+        self.acceptable(&r).then_some(r)
+    }
+
+    /// §target, acceptable anchor element: «same original containing block»
+    /// либо элемент, порождающий содержащий блок якоря, сам приемлем — то
+    /// есть содержащий блок коробки лежит в цепочке содержащих блоков
+    /// якоря (или сам является якорем: неявный якорь позиционированного
+    /// хозяина). Начальный содержащий блок (окно, `fixed`) принимает всех;
+    /// звено без пробы (строчный или атомарный содержащий блок) — цепочка
+    /// неизвестна, якорь не отвергается (`no-anchor-anchor-center`).
+    fn acceptable(&self, r: &AnchorRec) -> bool {
+        if self.fixed || self.cb_node == 0 || r.id == self.cb_node {
+            return true;
         }
+        let mut n = r.cb;
+        for _ in 0..64 {
+            if n == self.cb_node {
+                return true;
+            }
+            if n == 0 {
+                return false;
+            }
+            match CB_PARENT.with(|m| m.borrow().get(&n).copied()) {
+                Some(p) => n = p,
+                None => return true,
+            }
+        }
+        true
+    }
+
+    fn lookup(&self, name: Option<&str>) -> Option<Bounds<Pixels>> {
+        self.rec(name).map(|r| r.rect)
     }
 
     /// Доля [0;1] вдоль физической оси от её начала, куда указывает
@@ -724,26 +906,27 @@ impl AnchorPlan {
         }
     }
 
-    /// Выравнивание в оси и нужен ли сдвиг в исходный содержащий блок
-    /// (§position-area-alignment; Blink `ComputeAlignment`): явное значение;
-    /// иначе `normal` — к единственной не-`auto` вставке оси (unsafe), иначе
-    /// умолчание области.
-    fn align_for(&self, x_axis: bool, t: Tracks) -> (Al, bool) {
+    /// Выравнивание в оси, нужен ли сдвиг при переполнении и задано ли
+    /// `safe` (§position-area-alignment; Blink `ComputeAlignment`): явное
+    /// значение; иначе `normal` — к единственной не-`auto` вставке оси
+    /// (unsafe), иначе умолчание области.
+    fn align_for(&self, x_axis: bool, t: Tracks) -> (Al, bool, bool) {
         // css-align: `align-self` — блочная ось СОДЕРЖАЩЕГО БЛОКА,
         // `justify-self` — строчная.
-        let explicit = if x_axis == self.cb_vertical {
-            self.align_self
+        let (explicit, safe) = if x_axis == self.cb_vertical {
+            (self.align_self, self.safe_align)
         } else {
-            self.justify_self
+            (self.justify_self, self.safe_justify)
         };
         if let Some(a) = explicit {
             let al = match a {
                 Align::Center => Al::Center,
+                Align::AnchorCenter => Al::AnchorCenter,
                 Align::End => Al::End,
                 Align::Stretch => Al::Stretch,
                 Align::Start | Align::Baseline => Al::Start,
             };
-            return (al, true);
+            return (al, true, safe);
         }
         let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         let (s_set, e_set) = if x_axis {
@@ -752,9 +935,9 @@ impl AnchorPlan {
             (set(self.inset[0]), set(self.inset[2]))
         };
         match (s_set, e_set) {
-            (true, false) => (Al::Start, false),
-            (false, true) => (Al::End, false),
-            _ => (default_al(t), true),
+            (true, false) => (Al::Start, false, false),
+            (false, true) => (Al::End, false, false),
+            _ => (default_al(t), true, false),
         }
     }
 
@@ -772,7 +955,9 @@ impl AnchorPlan {
     }
 
     /// Одна ось области: сетка → клетка → inset-modified containing block →
-    /// выравнивание → сдвиг границы коробки и длина IMCB (для растяжки).
+    /// выравнивание → зажим (`settle_axis`). Возвращает сдвиг границы
+    /// коробки, длину IMCB (для растяжки и `position-try-order`) и признак
+    /// переполнения IMCB коробкой полей.
     fn axis_place(
         &self,
         x: bool,
@@ -780,7 +965,7 @@ impl AnchorPlan {
         a: Bounds<Pixels>,
         cb: Bounds<Pixels>,
         own: Bounds<Pixels>,
-    ) -> (f32, f32) {
+    ) -> (f32, f32, bool) {
         let f = f32::from;
         let (cs, ce, as_, ae, os, olen) = if x {
             (
@@ -811,31 +996,185 @@ impl AnchorPlan {
         let (m_s, m_e) = (self.margin[k_start], self.margin[k_end]);
         // Выравнивается коробка ПОЛЕЙ (`auto`-поля уже нули: `m` в `of`).
         let mbox = olen + m_s + m_e;
-        let (al, shift_in) = self.align_for(x, t);
-        let mut pos = match al {
+        let (al, shift_in, safe) = self.align_for(x, t);
+        let pos = match al {
             Al::Start | Al::Stretch => is,
             Al::End => ie - mbox,
             Al::Center => (is + ie - mbox) / 2.0,
             Al::AnchorCenter => (as_ + ae - mbox) / 2.0,
         };
-        // Умолчание css-align для абсолюта: переполнил IMCB, но влезает в
-        // исходный содержащий блок — «shift … to stay within».
-        if shift_in && mbox <= ce - cs {
-            pos = pos.clamp(cs, ce - mbox);
-        }
-        (pos + m_s - os, (ie - is).max(0.0))
+        let start_bias = !if x { self.cb_flipped.0 } else { self.cb_flipped.1 };
+        let pos = settle_axis(
+            pos,
+            mbox,
+            is,
+            ie,
+            cs,
+            ce,
+            shift_in,
+            start_bias,
+            safe,
+            al == Al::AnchorCenter,
+        );
+        (pos + m_s - os, (ie - is).max(0.0), overflows(pos, mbox, is, ie))
     }
 
-    /// Сдвиг коробки в клетку `position-area`; `None` — области нет или
+    /// Ось без `position-area`: IMCB — содержащий блок, срезанный авторскими
+    /// вставками (`auto` → край блока: для `anchor-center` так велит
+    /// §anchor-center, для проверки переполнения — как Blink при `auto`-конце,
+    /// «растёт к краю»); `anchor-center` центрирует по якорю и зажимает
+    /// (`settle_axis`), иначе коробка стоит там, куда её довезли
+    /// `anchor()`-вставки (`shift`). Без рамки содержащего блока — только сдвиг.
+    fn free_axis(&self, x: bool, cb: Option<Bounds<Pixels>>, own: Bounds<Pixels>) -> (f32, f32, bool) {
+        let f = f32::from;
+        let (k_start, k_end) = if x { (3usize, 1usize) } else { (0, 2) };
+        let (os, olen) = if x {
+            (f(own.origin.x), f(own.size.width))
+        } else {
+            (f(own.origin.y), f(own.size.height))
+        };
+        let (m_s, m_e) = (self.margin[k_start], self.margin[k_end]);
+        let mbox = olen + m_s + m_e;
+        // Без области по оси побеждает начальная сторона: `left` при
+        // заданных `left` и `right`.
+        let plain = if self.sides[k_start].is_some() {
+            self.shift(k_start, own)
+        } else {
+            self.shift(k_end, own)
+        };
+        let Some(cb) = cb else {
+            return (plain, 0.0, false);
+        };
+        let (cs, ce) = if x {
+            (f(cb.origin.x), f(cb.origin.x) + f(cb.size.width))
+        } else {
+            (f(cb.origin.y), f(cb.origin.y) + f(cb.size.height))
+        };
+        let is = self.imcb_edge(k_start, cs, ce - cs);
+        let ie = self.imcb_edge(k_end, ce, ce - cs);
+        let (explicit, safe) = if x == self.cb_vertical {
+            (self.align_self, self.safe_align)
+        } else {
+            (self.justify_self, self.safe_justify)
+        };
+        let anchor = if explicit == Some(Align::AnchorCenter) {
+            self.lookup(None)
+        } else {
+            None
+        };
+        let pos = match anchor {
+            Some(a) => {
+                let (as_, ae) = if x {
+                    (f(a.origin.x), f(a.origin.x) + f(a.size.width))
+                } else {
+                    (f(a.origin.y), f(a.origin.y) + f(a.size.height))
+                };
+                let start_bias = !if x { self.cb_flipped.0 } else { self.cb_flipped.1 };
+                settle_axis((as_ + ae - mbox) / 2.0, mbox, is, ie, cs, ce, true, start_bias, safe, true)
+            }
+            None => os - m_s + plain,
+        };
+        (pos + m_s - os, (ie - is).max(0.0), overflows(pos, mbox, is, ie))
+    }
+
+    /// Размещение коробки по плану: клетка `position-area`, а без области
+    /// (или без якоря/содержащего блока для неё) — обе оси по вставкам.
+    fn compute(&self, own: Bounds<Pixels>, window: &Window) -> Placement {
+        if let Some(p) = self.area_place(own, window) {
+            return p;
+        }
+        let cb = self.cb_bounds(window);
+        let (dx, w, ox) = self.free_axis(true, cb, own);
+        let (dy, h, oy) = self.free_axis(false, cb, own);
+        Placement {
+            dx,
+            dy,
+            overflow: ox || oy,
+            imcb: (w, h),
+        }
+    }
+
+    /// Размещение в клетке `position-area`; `None` — области нет или
     /// якорь/содержащий блок не найдены (тогда — обычные `anchor()`-вставки).
-    fn area_place(&self, own: Bounds<Pixels>, window: &Window) -> Option<(f32, f32)> {
+    fn area_place(&self, own: Bounds<Pixels>, window: &Window) -> Option<Placement> {
         let (tx, ty) = self.area?;
         let a = self.lookup(None)?;
         let cb = self.cb_bounds(window)?;
-        let (dx, w) = self.axis_place(true, tx, a, cb, own);
-        let (dy, h) = self.axis_place(false, ty, a, cb, own);
-        AREA_NOW.with(|m| m.borrow_mut().insert(self.key, (w, h)));
-        Some((dx, dy))
+        let (dx, w, ox) = self.axis_place(true, tx, a, cb, own);
+        let (dy, h, oy) = self.axis_place(false, ty, a, cb, own);
+        Some(Placement {
+            dx,
+            dy,
+            overflow: ox || oy,
+            imcb: (w, h),
+        })
+    }
+
+    /// Тактика §position-try-fallbacks на готовом плане: `flip-block`/
+    /// `flip-inline` — зеркало по оси письма СОДЕРЖАЩЕГО блока («Logical
+    /// directions are resolved against the writing mode of the containing
+    /// block»): вставки, поля, стороны `anchor()`, дорожки области,
+    /// `start`/`end` выравнивания; `flip-start` — транспонирование осей
+    /// (диагональ start-start → end-end; для письма с началом не в
+    /// левом-верхнем углу — приближение). Составные тактики — по порядку бит.
+    fn apply_tactics(&mut self, t: u8) {
+        if t & FLIP_BLOCK != 0 {
+            self.flip_axis(!self.cb_vertical);
+        }
+        if t & FLIP_INLINE != 0 {
+            self.flip_axis(self.cb_vertical);
+        }
+        if t & FLIP_START != 0 {
+            self.transpose();
+        }
+    }
+
+    fn flip_axis(&mut self, y: bool) {
+        let (k1, k2) = if y { (0usize, 2usize) } else { (3, 1) };
+        self.sides.swap(k1, k2);
+        self.inset.swap(k1, k2);
+        self.margin.swap(k1, k2);
+        for k in [k1, k2] {
+            if let Some(sp) = self.sides[k].as_mut() {
+                sp.f.side = mirror_side(sp.f.side, y);
+            }
+        }
+        if let Some((tx, ty)) = self.area.as_mut() {
+            let t = if y { ty } else { tx };
+            *t = Tracks {
+                lo: 3 - t.hi,
+                hi: 3 - t.lo,
+            };
+        }
+        // Та же раздача осей, что в `align_for`: `align-self` — блочная ось
+        // содержащего блока.
+        let slot = if y != self.cb_vertical {
+            &mut self.align_self
+        } else {
+            &mut self.justify_self
+        };
+        *slot = match *slot {
+            Some(Align::Start) => Some(Align::End),
+            Some(Align::End) => Some(Align::Start),
+            other => other,
+        };
+    }
+
+    fn transpose(&mut self) {
+        self.sides.swap(0, 3);
+        self.sides.swap(2, 1);
+        self.inset.swap(0, 3);
+        self.inset.swap(2, 1);
+        self.margin.swap(0, 3);
+        self.margin.swap(2, 1);
+        for sp in self.sides.iter_mut().flatten() {
+            sp.f.side = transpose_side(sp.f.side);
+        }
+        if let Some((tx, ty)) = self.area.as_mut() {
+            std::mem::swap(tx, ty);
+        }
+        std::mem::swap(&mut self.align_self, &mut self.justify_self);
+        std::mem::swap(&mut self.safe_align, &mut self.safe_justify);
     }
 }
 
@@ -846,16 +1185,126 @@ enum Edge {
     None,
 }
 
-/// Обернуть готовую коробку сдвигом к якорю; без `anchor()`-вставок — как есть.
-pub fn place(el: AnyElement, own: &Computed, inherited: &Computed) -> AnyElement {
-    match AnchorPlan::of(own, inherited) {
-        Some(plan) => AnchorPlace {
-            child: Some(el),
-            plan,
-        }
-        .into_any_element(),
-        None => el,
+/// Зажим коробки полей по оси — хвост Blink `ComputeInsets`
+/// (`absolute_utils.cc`): при `safe` переполнение прижимает к безопасному
+/// краю (начало содержащего блока; у `anchor-center` — только когда центр по
+/// якорю выходит за ЭТОТ край, `half_size = c − imcb_start`); иначе при
+/// умолчальном переполнении css-align (`shift_in`) коробка сдвигается внутрь
+/// IMCB, если в него влезает, иначе внутрь объединения IMCB с содержащим
+/// блоком; при нехватке места побеждает край начала
+/// (`adjust_end(); adjust_start()`).
+#[allow(clippy::too_many_arguments)]
+fn settle_axis(
+    pos: f32,
+    mbox: f32,
+    is: f32,
+    ie: f32,
+    cs: f32,
+    ce: f32,
+    shift_in: bool,
+    start_bias: bool,
+    safe: bool,
+    anchor_center: bool,
+) -> f32 {
+    if safe {
+        let over = if anchor_center {
+            if start_bias { pos < is } else { pos + mbox > ie }
+        } else {
+            mbox > ie - is
+        };
+        return if !over {
+            pos
+        } else if start_bias {
+            is
+        } else {
+            ie - mbox
+        };
     }
+    if !shift_in {
+        return pos;
+    }
+    let (lo, hi) = if mbox <= ie - is {
+        (is, ie - mbox)
+    } else {
+        (is.min(cs), ie.max(ce) - mbox)
+    };
+    if start_bias { pos.min(hi).max(lo) } else { pos.max(lo).min(hi) }
+}
+
+/// Переполняет ли коробка полей `[pos, pos+mbox]` IMCB `[is, ie]` (Blink
+/// `CalculateNonOverflowingRangeInOneAxis`: любой край за краем IMCB).
+fn overflows(pos: f32, mbox: f32, is: f32, ie: f32) -> bool {
+    pos < is - 0.01 || pos + mbox > ie + 0.01
+}
+
+/// Зеркало `<anchor-side>` по оси тактики (§fallback, execute a try-tactic):
+/// физические стороны оси, `start`↔`end`, `self-start`↔`self-end`,
+/// `<pct>` → `100% − <pct>`; `inside`/`outside` относительны и не меняются.
+fn mirror_side(s: AnchorSide, y: bool) -> AnchorSide {
+    match s {
+        AnchorSide::Top if y => AnchorSide::Bottom,
+        AnchorSide::Bottom if y => AnchorSide::Top,
+        AnchorSide::Left if !y => AnchorSide::Right,
+        AnchorSide::Right if !y => AnchorSide::Left,
+        AnchorSide::Start => AnchorSide::End,
+        AnchorSide::End => AnchorSide::Start,
+        AnchorSide::SelfStart => AnchorSide::SelfEnd,
+        AnchorSide::SelfEnd => AnchorSide::SelfStart,
+        AnchorSide::Pct(p) => AnchorSide::Pct(1.0 - p),
+        other => other,
+    }
+}
+
+/// `flip-start`: физические стороны меняются осями, логические остаются.
+fn transpose_side(s: AnchorSide) -> AnchorSide {
+    match s {
+        AnchorSide::Top => AnchorSide::Left,
+        AnchorSide::Left => AnchorSide::Top,
+        AnchorSide::Bottom => AnchorSide::Right,
+        AnchorSide::Right => AnchorSide::Bottom,
+        other => other,
+    }
+}
+
+/// Обернуть готовую коробку заместителем; без `anchor()`-вставок, области,
+/// `anchor-center`, списка вариантов и `position-visibility` — как есть.
+///
+/// Кандидаты §fallback строятся от БАЗОВЫХ стилей (`try_base` — стиль до
+/// наложения выбранного варианта, `apply_chosen`): [0] — база, дальше по
+/// одному на элемент списка: правило `@position-try` накладывается на копию
+/// базы, `<position-area>` подменяет область, тактика переворачивает
+/// готовый план. Правило без определения — «does nothing»: варианта нет.
+pub fn place(el: AnyElement, own: &Computed, inherited: &Computed) -> AnyElement {
+    let base = own.try_base.as_deref().unwrap_or(own);
+    let Some(first) = AnchorPlan::of(base, inherited) else {
+        return el;
+    };
+    let mut plans = vec![first];
+    for fb in &base.position_try_fallbacks {
+        let mut c = base.clone();
+        if let Some(n) = &fb.name {
+            let Some(decls) = crate::css::try_rule(n) else {
+                continue;
+            };
+            c.apply_decls(&decls);
+        }
+        if let Some(area) = fb.area {
+            c.position_area = Some(area);
+        }
+        let Some(mut p) = AnchorPlan::of(&c, inherited) else {
+            continue;
+        };
+        p.apply_tactics(fb.tactics);
+        plans.push(p);
+    }
+    AnchorPlace {
+        child: Some(el),
+        plans,
+        order: base.position_try_order,
+        key: own.anchor_key,
+        visibility: own.position_visibility,
+    }
+    .into_any_element()
 }
 
 /// Заместитель абсолютной коробки с якорными вставками: своей коробки не
@@ -863,12 +1312,61 @@ pub fn place(el: AnyElement, own: &Computed, inherited: &Computed) -> AnyElement
 /// подготовке кадра — к этому моменту якори раньше по дереву уже в реестре.
 pub struct AnchorPlace {
     child: Option<AnyElement>,
-    plan: AnchorPlan,
+    /// Кандидаты: [0] — базовые стили, дальше — `position-try-fallbacks`.
+    plans: Vec<AnchorPlan>,
+    order: u8,
+    key: u64,
+    visibility: u8,
+}
+
+impl AnchorPlace {
+    /// Выбор варианта (§fallback; Blink `OutOfFlowLayoutPart`, цикл
+    /// `TryCalculateOffset`): сперва последний удачный (`CHOSEN`), пока он
+    /// не переполняет; иначе первый непереполняющий по порядку списка, а при
+    /// `position-try-order` — с наибольшим IMCB по заданной оси в письме
+    /// СОДЕРЖАЩЕГО блока (устойчивая сортировка); ни один не влез — база с
+    /// пометкой переполнения. Размер коробки у всех кандидатов — текущий:
+    /// правило, меняющее размер, довозит его следующей сборкой.
+    fn choose(&self, own: Bounds<Pixels>, window: &Window) -> (usize, Placement) {
+        let places: Vec<Placement> = self.plans.iter().map(|p| p.compute(own, window)).collect();
+        if places.len() == 1 {
+            return (0, places[0]);
+        }
+        if let Some(k) = CHOSEN.with(|m| m.borrow().get(&self.key).copied())
+            && k < places.len()
+            && !places[k].overflow
+        {
+            return (k, places[k]);
+        }
+        let mut fit: Vec<usize> = (0..places.len()).filter(|i| !places[*i].overflow).collect();
+        let cb_vertical = self.plans[0].cb_vertical;
+        let size = |i: usize| -> f32 {
+            let (w, h) = places[i].imcb;
+            match self.order {
+                1 => w,
+                2 => h,
+                3 => {
+                    if cb_vertical { w } else { h }
+                }
+                4 => {
+                    if cb_vertical { h } else { w }
+                }
+                _ => 0.0,
+            }
+        };
+        if self.order != 0 {
+            fit.sort_by(|a, b| size(*b).total_cmp(&size(*a)));
+        }
+        let k = fit.first().copied().unwrap_or(0);
+        (k, places[k])
+    }
 }
 
 impl Element for AnchorPlace {
     type RequestLayoutState = ();
-    type PrepaintState = ();
+    /// Спрятана ли коробка по `position-visibility`: `paint` пропускает
+    /// всё поддерево (`force-hidden`; Blink — слой и потомки не рисуются).
+    type PrepaintState = bool;
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -896,30 +1394,45 @@ impl Element for AnchorPlace {
         _state: &mut (),
         window: &mut Window,
         cx: &mut App,
-    ) {
-        // `position-area` считает обе оси сама (вставки там — края клетки).
-        // Без области по оси побеждает начальная сторона: `left` при
-        // заданных `left` и `right` (растяжка между двумя якорями меняет
-        // РАЗМЕР — отдельный шаг).
-        let (dx, dy) = match self.plan.area_place(bounds, window) {
-            Some(d) => d,
-            None => (
-                if self.plan.sides[3].is_some() {
-                    self.plan.shift(3, bounds)
-                } else {
-                    self.plan.shift(1, bounds)
-                },
-                if self.plan.sides[0].is_some() {
-                    self.plan.shift(0, bounds)
-                } else {
-                    self.plan.shift(2, bounds)
-                },
-            ),
-        };
+    ) -> bool {
+        let (k, p) = self.choose(bounds, window);
+        let plan = &self.plans[k];
+        if plan.area.is_some() {
+            AREA_NOW.with(|m| m.borrow_mut().insert(self.key, p.imcb));
+        }
+        if self.plans.len() > 1 {
+            let prev = CHOSEN.with(|m| m.borrow_mut().insert(self.key, k));
+            // Объявления выбранного правила лягут в стиль на следующей
+            // сборке (`apply_chosen`) — попросить её.
+            if prev != Some(k) {
+                window.refresh();
+            }
+        }
+        let mut hidden = false;
+        // §position-visibility. anchor-valid: якорь по умолчанию нужен, но не
+        // разрешается. anchor-visible: якорь невидим либо целиком обрезан
+        // промежуточной коробкой — его маска его не пересекает, а маска самой
+        // коробки (обрезки содержащего блока и выше) пересекает. no-overflow:
+        // выбранный вариант всё равно переполняет IMCB.
+        if self.visibility & VIS_VALID != 0 && plan.refs_default && plan.rec(None).is_none() {
+            hidden = true;
+        }
+        if self.visibility & VIS_VISIBLE != 0
+            && let Some(r) = plan.rec(None)
+        {
+            let own_clip = window.content_mask().bounds;
+            if r.hidden || (!r.rect.intersects(&r.clip) && r.rect.intersects(&own_clip)) {
+                hidden = true;
+            }
+        }
+        if self.visibility & VIS_NO_OVERFLOW != 0 && p.overflow {
+            hidden = true;
+        }
         let child = self.child.as_mut().unwrap();
-        window.with_element_offset(gpui::point(px(dx), px(dy)), |window| {
+        window.with_element_offset(gpui::point(px(p.dx), px(p.dy)), |window| {
             child.prepaint(window, cx)
         });
+        hidden
     }
 
     fn paint(
@@ -928,11 +1441,13 @@ impl Element for AnchorPlace {
         _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
         _request: &mut (),
-        _prepaint: &mut (),
+        hidden: &mut bool,
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.child.as_mut().unwrap().paint(window, cx);
+        if !*hidden {
+            self.child.as_mut().unwrap().paint(window, cx);
+        }
     }
 }
 
@@ -942,6 +1457,35 @@ impl IntoElement for AnchorPlace {
     fn into_element(self) -> Self {
         self
     }
+}
+
+/// Выбранный на прошлом кадре вариант `position-try-fallbacks` (`CHOSEN`) —
+/// в стиль ДО раскладки (зовёт `render::element` сразу после ключей):
+/// объявления его `@position-try`-правила (размеры, вставки) и
+/// `<position-area>` накладываются на `Computed`, база уезжает в `try_base`
+/// для сборки остальных кандидатов (`place`). Тактики раскладке не нужны:
+/// сдвиг считается абсолютно на подготовке.
+pub fn apply_chosen(c: &mut Computed) {
+    if c.position_try_fallbacks.is_empty()
+        || !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed))
+    {
+        return;
+    }
+    let base = Rc::new(c.clone());
+    let chosen = CHOSEN.with(|m| m.borrow().get(&c.anchor_key).copied()).unwrap_or(0);
+    if chosen > 0
+        && let Some(fb) = base.position_try_fallbacks.get(chosen - 1)
+    {
+        if let Some(n) = &fb.name
+            && let Some(decls) = crate::css::try_rule(n)
+        {
+            c.apply_decls(&decls);
+        }
+        if let Some(area) = fb.area {
+            c.position_area = Some(area);
+        }
+    }
+    c.try_base = Some(base);
 }
 
 /// Якорь из реестра ПРОШЛОГО кадра: по имени — последняя запись с этим

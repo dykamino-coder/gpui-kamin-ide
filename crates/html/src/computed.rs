@@ -257,6 +257,10 @@ pub enum Align {
     End,
     Stretch,
     Baseline,
+    /// css-anchor-position-1 §anchor-center: центр по якорю по умолчанию в
+    /// пределах inset-modified containing block; без якоря или не у
+    /// абсолюта — как `center` (так его и видит раскладка, `apply::to_items`).
+    AnchorCenter,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1220,12 +1224,22 @@ pub struct Computed {
     /// `position-area` (§position-area): два слова области, разбор и смысл —
     /// `anchor::parse_area`. `none`/не задано — `None`.
     pub position_area: Option<crate::anchor::PositionArea>,
-    /// `position-try-fallbacks`/`position-try` не `none`. Перебора запасных
-    /// позиций нет, поэтому `anchor()` такой коробки считается неразрешимой
-    /// (`anchor::settle_static`): иначе первый вариант, который спека велела
-    /// бы заменить за переполнение, остаётся навсегда
-    /// (`position-try-fallbacks-001`).
-    pub position_try: bool,
+    /// `position-try-fallbacks` (§position-try-fallbacks): варианты позиции —
+    /// имя `@position-try`-правила и/или тактика, либо `<position-area>`.
+    /// Перебор — `anchor::AnchorPlace` на подготовке кадра, выбранный
+    /// вариант накладывается на стиль следующей сборки (`anchor::apply_chosen`).
+    pub position_try_fallbacks: Vec<crate::anchor::TryFallback>,
+    /// `position-try-order` (§position-try-order-property): 0 normal,
+    /// 1 most-width, 2 most-height, 3 most-block-size, 4 most-inline-size.
+    pub position_try_order: u8,
+    /// `position-visibility` (§position-visibility), биты `anchor::VIS_*`:
+    /// 1 anchor-valid, 2 anchor-visible, 4 no-overflow; 0 — `always`
+    /// (начальное значение Blink; спека просит `anchor-visible`, но без
+    /// явного свойства гасить коробки по обрезке якоря слишком дорого).
+    pub position_visibility: u8,
+    /// Стиль ДО наложения выбранного варианта `position-try` — из него
+    /// `anchor::place` строит остальные кандидаты. Ставит `anchor::apply_chosen`.
+    pub try_base: Option<std::rc::Rc<Computed>>,
     /// Служебные поля якорного шага, ставит `render::element`: свой `node_id`
     /// (ключ реестра содержащих блоков `anchor::CB`), `node_id` ближайшего
     /// содержащего блока абсолюта (`inline::inherit`; 0 — начальный, окно),
@@ -1843,6 +1857,10 @@ pub struct Computed {
     pub clip_xywh: Option<[Len; 4]>,
     /// `column-fill: auto` — колонки заполняются по очереди, без баланса.
     pub column_fill_auto: Option<bool>,
+    /// `scroll-marker-group` (css-overflow-5): `Some(true)` — группа маркеров
+    /// ПЕРЕД скроллером (`before`), `Some(false)` — после (`after`), `None` —
+    /// `none`. Не наследуется.
+    pub scroll_marker_group: Option<bool>,
     /// `column-span: all` — блок растянут на все колонки.
     pub column_span: Option<bool>,
     /// `page: <custom-ident>` — именованная страница (css-page-3 §"Using named
@@ -3539,10 +3557,36 @@ impl Computed {
             "position-area" => {
                 self.position_area = crate::anchor::parse_area(v);
             }
-            // §position-try-fallbacks (и сокращение `position-try`): самого
-            // перебора нет, хранится лишь факт непустого списка.
-            "position-try-fallbacks" | "position-try" => {
-                self.position_try = v.trim() != "none";
+            // §position-try-fallbacks: список вариантов, разбор — в `anchor`.
+            "position-try-fallbacks" => {
+                self.position_try_fallbacks = crate::anchor::parse_try_fallbacks(v);
+            }
+            // §position-try-order-property.
+            "position-try-order" => {
+                if let Some(o) = crate::anchor::parse_try_order(v.trim()) {
+                    self.position_try_order = o;
+                }
+            }
+            // Сокращение `position-try: <order>? <fallbacks>` (§position-try-prop):
+            // опущенный порядок — `normal`.
+            "position-try" => {
+                let v = v.trim();
+                let (order, rest) = match v.split_once(char::is_whitespace) {
+                    Some((a, b)) if crate::anchor::parse_try_order(a).is_some() => {
+                        (crate::anchor::parse_try_order(a).unwrap_or(0), b.trim())
+                    }
+                    None if crate::anchor::parse_try_order(v).is_some() => {
+                        (crate::anchor::parse_try_order(v).unwrap_or(0), "none")
+                    }
+                    _ => (0, v),
+                };
+                self.position_try_order = order;
+                self.position_try_fallbacks = crate::anchor::parse_try_fallbacks(rest);
+            }
+            // §position-visibility; легаси `anchors-valid`/`anchors-visible` —
+            // псевдонимы (спека разрешает их узнавать).
+            "position-visibility" => {
+                self.position_visibility = crate::anchor::parse_visibility(v);
             }
             "top" => {
                 self.inset_inherit[0] = v == "inherit";
@@ -5566,6 +5610,18 @@ impl Computed {
             }
             // `column-fill`: балансировать ли колонки (дефолт balance).
             "column-fill" => self.column_fill_auto = Some(v.trim() == "auto"),
+            // `scroll-marker-group: none | [before|after] || [links|tabs]`
+            // (css-overflow-5): нужна только сторона, `links`/`tabs` — роль.
+            "scroll-marker-group" => {
+                let words: Vec<&str> = v.split_whitespace().collect();
+                self.scroll_marker_group = if words.contains(&"before") {
+                    Some(true)
+                } else if words.contains(&"after") {
+                    Some(false)
+                } else {
+                    None
+                };
+            }
             // `column-span: all` — растяжка на все колонки.
             "column-span" => self.column_span = Some(v.trim() == "all"),
             // `avoid`, `avoid-column`, `avoid-page`, `avoid-region` — все
@@ -7585,6 +7641,9 @@ fn align_keyword(v: &str) -> Result<Option<Align>, ()> {
     }
     Ok(match word {
         "center" => Some(Align::Center),
+        // §anchor-center (только `align-self`/`justify-self`; у `*-items`
+        // значение отброшено спекой — `apply` его там игнорирует).
+        "anchor-center" => Some(Align::AnchorCenter),
         // `self-start`/`self-end` считаются по письму САМОГО элемента,
         // `start`/`end` — по письму контейнера. Пока обе оси физические, это
         // одно и то же.

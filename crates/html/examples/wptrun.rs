@@ -56,7 +56,39 @@ impl Render for Page {
         // debug-сборке роняло задачу стенда. Кропа больше нет.
         let page = (kamin_html::css::PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed)
             && std::env::var("WPT_PAGE").is_ok())
-        .then(|| page_box(kamin_html::css::page_decls_snapshot()));
+        .then(|| {
+            // Именованная страница — когда имя одно на весь документ; её
+            // объявления идут ПОСЛЕ безымянных (специфичность (1,0,0),
+            // css-page-3 §cascading-and-page-context). `margin: inherit` —
+            // от корневого элемента (§page-properties: «The page context
+            // inherits from the root element»; `page-margin-006`).
+            let mut decls = kamin_html::css::page_decls_snapshot();
+            if let Some(name) = kamin_html::render::uniform_page_name(self.doc.nodes()) {
+                for (n, d) in kamin_html::css::page_named_decls_snapshot() {
+                    if n == name {
+                        decls.extend(d);
+                    }
+                }
+            }
+            let root_margin = self
+                .doc
+                .nodes()
+                .iter()
+                .find_map(|n| match n {
+                    kamin_html::dom::Node::Element(e) if e.tag == "html" => Some(e),
+                    _ => None,
+                })
+                .map(|e| {
+                    let px = |l: &Option<kamin_html::value::Len>| match l {
+                        Some(kamin_html::value::Len::Px(v)) => *v,
+                        _ => 0.0,
+                    };
+                    let m = &e.style.margin;
+                    [px(&m.top), px(&m.right), px(&m.bottom), px(&m.left)]
+                })
+                .unwrap_or([0.0; 4]);
+            page_box(decls, root_margin)
+        });
         let opts = RenderOpts {
             viewport: page.as_ref().map(|p| (p.area.0, p.area.1)).unwrap_or((
                 f32::from(window.viewport_size().width),
@@ -187,7 +219,7 @@ struct PageBox {
     border: (f32, kamin_html::value::Color),
 }
 
-fn page_box(decls: Vec<(String, String)>) -> PageBox {
+fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4]) -> PageBox {
     use kamin_html::value::{Color, Len};
     let (mut w, mut h) = (480.0f32, 288.0f32);
     // Поля листа по умолчанию — ЗАМЕР отдельным прогоном: WPT их не
@@ -259,6 +291,11 @@ fn page_box(decls: Vec<(String, String)>) -> PageBox {
     };
     for (k, v) in &decls {
         match k.as_str() {
+            "margin" if v.trim() == "inherit" => {
+                // `page-margin-006`: `margin: 13px; margin: inherit` → поля
+                // корневого элемента (0.5in), не 13px.
+                margin = root_margin;
+            }
             "margin" => {
                 let vals: Vec<&str> = v.split_whitespace().collect();
                 let side = |i: usize| vals.get(i).copied().unwrap_or("0");
@@ -1267,8 +1304,13 @@ fn main() {
                     blank = show(SEPARATOR.into(), None, true).await.map(|s| s.2);
                     // Печатные пары смотрят печатным носителем: `@media print`
                     // истинен, `screen` — ложен (background-image-only-for-print).
+                    // Печатность — свойство ПАРЫ (WPT: `-print` в имени ТЕСТА,
+                    // эталон печатается тем же носителем): `page-name-001-print`
+                    // против `page-name-001-ref.html` иначе сравнивал стопку
+                    // листов с экранным документом.
+                    let print = |p: &str| p.contains("-print.") || p.contains("-print-ref");
                     kamin_html::css::PRINT_MEDIA.store(
-                        path.contains("-print.") || path.contains("-print-ref"),
+                        print(test) || print(path),
                         std::sync::atomic::Ordering::Relaxed,
                     );
                     let html =

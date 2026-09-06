@@ -150,7 +150,9 @@ fn to_content(j: Justify) -> gpui::AlignContent {
 
 fn to_items(a: Align) -> gpui::AlignItems {
     match a {
-        Align::Center => gpui::AlignItems::Center,
+        // §anchor-center вне абсолюта с якорем «behaves as center»; у
+        // абсолюта с якорем сдвиг довозит `anchor::AnchorPlace` поверх.
+        Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
         Align::Start => gpui::AlignItems::FlexStart,
         Align::End => gpui::AlignItems::FlexEnd,
         Align::Stretch => gpui::AlignItems::Stretch,
@@ -592,7 +594,8 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         Some(Align::Start) => d = d.items_start(),
         Some(Align::End) => d = d.items_end(),
         Some(Align::Baseline) => d = d.items_baseline(),
-        Some(Align::Stretch) | None => {}
+        // `anchor-center` у `align-items` спекой не предусмотрен — как не задано.
+        Some(Align::Stretch) | Some(Align::AnchorCenter) | None => {}
     }
     // Приставка `safe` (css-align-3 §4.4): при переполнении области
     // выравнивание падает к началу, иначе содержимое уезжает за край и
@@ -615,7 +618,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // писались в одно поле, и элемент выравнивал содержимое вместо себя.
     if let Some(a) = c.align_self {
         d.style().align_self = Some(match a {
-            Align::Center => gpui::AlignItems::Center,
+            Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
             Align::Start => gpui::AlignItems::FlexStart,
             Align::End => gpui::AlignItems::FlexEnd,
             Align::Baseline => gpui::AlignItems::Baseline,

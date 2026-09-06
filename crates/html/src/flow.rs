@@ -699,30 +699,56 @@ impl ColumnStack {
                 // перенос, и только на пустой странице разрыв внутри
                 // (`block-page-break-inside-avoid-7/-15-print`).
                 let mono = k.monolith && !(paged && k.h > target + 0.01 && cur <= 0.01);
-                let cut = if mono || room <= 0.01 {
-                    None
-                } else if let Some(&(a, _)) =
-                    k.solid.iter().find(|&&(a, b)| a < edge - 0.01 && edge < b - 0.01)
-                {
-                    if a > from + 0.01 {
-                        let nf = k
-                            .cuts
-                            .iter()
-                            .find(|&&(need, _)| (need - a).abs() < 0.01)
-                            .map(|&(_, nf)| nf)
-                            .unwrap_or(a);
-                        Some((a, nf))
-                    } else {
-                        None
-                    }
-                } else {
+                // Точка разреза `a` с усечением поля по классу A (`nf`).
+                let at = |a: f32| -> (f32, f32) {
                     let nf = k
                         .cuts
                         .iter()
-                        .find(|&&(need, _)| (need - edge).abs() < 0.01)
+                        .find(|&&(need, _)| (need - a).abs() < 0.01)
                         .map(|&(_, nf)| nf)
-                        .unwrap_or(edge);
-                    Some((edge, nf))
+                        .unwrap_or(a);
+                    (a, nf)
+                };
+                let holds = |a: f32, b: f32| a < edge - 0.01 && edge < b - 0.01;
+                let cut = if mono || room <= 0.01 {
+                    None
+                } else if paged && k.solid.iter().any(|&(a, b)| holds(a, b)) {
+                    // Страницы: край внутри монолитных диапазонов, а они бывают
+                    // ВЛОЖЕНЫ (`avoid` ряда/группы объемлет монолиты ячеек,
+                    // `table_shape`). Беречь — самый внешний из тех, что
+                    // начинаются ниже `from`. Если и внешний уже начат
+                    // (`a <= from`), его не сберечь: с непустой страницы —
+                    // перенос целиком (`None if placed`), с верха пустой —
+                    // ближайшая внутренняя точка, а не срез по краю (Blink
+                    // `FinishFragmentation`: срез = `kBreakAppealLastResort`,
+                    // `HasEarlyBreak` → `kNeedsEarlierBreak`; css-break-4
+                    // §unforced-breaks: «the UA may use the avoids … to weigh
+                    // the appropriateness of the new breakpoints»;
+                    // `row-page-break-inside-avoid-1`: «3» на третьем листе в
+                    // обеих сторонах пары).
+                    let outer = k
+                        .solid
+                        .iter()
+                        .filter(|&&(a, b)| holds(a, b))
+                        .map(|&(a, _)| a)
+                        .fold(f32::MAX, f32::min);
+                    if outer > from + 0.01 {
+                        Some(at(outer))
+                    } else if placed {
+                        None
+                    } else {
+                        k.solid
+                            .iter()
+                            .filter(|&&(a, b)| holds(a, b) && a > from + 0.01)
+                            .map(|&(a, _)| a)
+                            .fold(None::<f32>, |m, a| Some(m.map_or(a, |x| x.min(a))))
+                            .map(at)
+                    }
+                } else if let Some(&(a, _)) = k.solid.iter().find(|&&(a, b)| holds(a, b)) {
+                    // Колонки — как прежде: первый содержащий диапазон.
+                    if a > from + 0.01 { Some(at(a)) } else { None }
+                } else {
+                    Some(at(edge))
                 };
                 // Недолаз: на сколько не хватило колонки до ближайшего
                 // разреза (или до конца ребёнка).
@@ -1101,6 +1127,11 @@ pub struct PageStack {
     /// монолитов, как Blink `ReserveSpaceForMonolithicOverflow`): листов не
     /// меньше, чем нужно, чтобы её показать.
     icb_reach: f32,
+    /// Слой `position: fixed` — по копии на страницу БЕЗ сдвига: содержащий
+    /// блок фиксированного — page area каждого листа (Blink `IsMonolithic`:
+    /// «IsFixedPositioned() && GetDocument().Printing()» — монолит, повторяемый
+    /// на каждой странице; `fixedpos-007..009`).
+    fixed: Vec<Vec<AnyElement>>,
     plan: std::cell::RefCell<Vec<Frag>>,
     pages: std::cell::Cell<usize>,
     /// Листов в ряду и масштаб стопки.
@@ -1113,12 +1144,14 @@ impl PageStack {
         geom: PageGeom,
         icb: Vec<Vec<AnyElement>>,
         icb_reach: f32,
+        fixed: Vec<Vec<AnyElement>>,
     ) -> Self {
         PageStack {
             kids,
             geom,
             icb,
             icb_reach,
+            fixed,
             plan: std::cell::RefCell::new(Vec::new()),
             pages: std::cell::Cell::new(1),
             grid: std::cell::Cell::new((1, 1.0)),
@@ -1337,6 +1370,26 @@ impl Element for PageStack {
                 );
             }
         }
+        // Слой `fixed` — копия `p` на листе `p` без сдвига: page area каждого
+        // листа — его содержащий блок.
+        for p in 0..pages.min(self.fixed.len()) {
+            let (sx, sy) = self.sheet_origin(p);
+            for el in &mut self.fixed[p] {
+                el.layout_as_root(
+                    size(
+                        gpui::AvailableSpace::Definite(px(aw)),
+                        gpui::AvailableSpace::Definite(px(ah)),
+                    ),
+                    window,
+                    cx,
+                );
+                el.prepaint_at(
+                    point(bounds.origin.x + px(sx + ax), bounds.origin.y + px(sy + ay)),
+                    window,
+                    cx,
+                );
+            }
+        }
         *self.plan.borrow_mut() = plan;
     }
 
@@ -1436,6 +1489,14 @@ impl Element for PageStack {
             for p in 0..pages.min(self.icb.len()) {
                 let Some(mask) = masks.get(p).cloned() else { continue };
                 for el in &mut self.icb[p] {
+                    window.with_content_mask(Some(mask.clone()), |window| {
+                        window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
+                    });
+                }
+            }
+            for p in 0..pages.min(self.fixed.len()) {
+                let Some(mask) = masks.get(p).cloned() else { continue };
+                for el in &mut self.fixed[p] {
                     window.with_content_mask(Some(mask.clone()), |window| {
                         window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
                     });

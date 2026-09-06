@@ -3,7 +3,9 @@
 # параллельно, затем склеивает отчёты. Использование:
 #   bash scripts/wpt-shard.sh target/all-nojs.txt 6
 # Результат: target/wpt-report-merged.txt + счёт зелёных.
-# ВАЖНО: бинарь должен быть уже собран (cargo build --example wptrun -p kamin-html);
+# ВАЖНО: бинарь должен быть уже собран (cargo build --example wptrun — БЕЗ `-p kamin-html`:
+# с `-p` gpui собирается с фичами одного крейта, бинарь на 1,5 МБ легче и
+# line-clamp ведёт себя иначе — line-clamp-auto-036 0.00 → 5.23 при том же коде);
 # скрипт НЕ вызывает cargo, чтобы шарды не дрались за target-lock.
 #
 # ЧИСЛО ШАРДОВ: 16 на этой машине ЗАМЕРЕНО как ненадёжное — свод css3 выдал
@@ -19,7 +21,7 @@ LIST="${1:?список пар}"
 N="${2:-6}"
 STALL="${WPT_STALL_SECS:-90}"
 BIN="${WPT_BIN:-target/debug/examples/wptrun.exe}"
-[ -x "$BIN" ] || { echo "нет бинаря $BIN — сначала cargo build --example wptrun -p kamin-html"; exit 1; }
+[ -x "$BIN" ] || { echo "нет бинаря $BIN — сначала cargo build --example wptrun (без -p)"; exit 1; }
 total=$(grep -c '|' "$LIST")
 per=$(( (total + N - 1) / N ))
 # СВОЙ каталог на прогон: имена шардов были общими на всю машину, и два
