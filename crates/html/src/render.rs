@@ -347,6 +347,45 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         }
     }
 
+    // Рамка ПОВЕРХ слоя картинки (css-backgrounds-3 §3.7, прим.: «The
+    // background is always drawn behind the border»; CSS 2.2 Прил. E; Blink
+    // `PaintFillLayers` → `PaintBorder`). Квад рисует рамку ДО детей, а слой
+    // плиток — ребёнок, и полупрозрачная/пунктирная рамка оказывалась ПОД
+    // картинкой (`origin-border-box` 6.15, `css3-background-origin-*` 0.83).
+    // Квад цвета не получает (`apply::apply_paint`); слой повторяет толщины,
+    // стиль и скругление рамки и вынесен на толщину сторон — абсолютный
+    // ребёнок отсчитывается от padding-box (как полосы сторон ниже).
+    if let Some((colour, [t, r, b, l])) = crate::apply::border_layer(c) {
+        let mut layer = div()
+            .absolute()
+            .top(px(-t))
+            .left(px(-l))
+            .right(px(-r))
+            .bottom(px(-b))
+            .border_t(px(t))
+            .border_r(px(r))
+            .border_b(px(b))
+            .border_l(px(l))
+            .border_color(colour.to_hsla());
+        if c.border_dashed == Some(true) {
+            layer = layer.border_dashed();
+        }
+        if c.border_dotted == Some(true) {
+            layer.style().border_style = Some(gpui::BorderStyle::Dotted);
+        }
+        // Скругление — как у квада (`apply::apply_radius`): при маске группы
+        // или `border-shape` квад углов не получает, и слой тоже.
+        if !c.radius_masked() && c.border_shape.is_none() {
+            let rad = |l: Option<Len>| crate::apply::radius_px(c, l).unwrap_or(0.0);
+            layer = layer
+                .rounded_tl(px(rad(c.radius.tl)))
+                .rounded_tr(px(rad(c.radius.tr)))
+                .rounded_br(px(rad(c.radius.br)))
+                .rounded_bl(px(rad(c.radius.bl)));
+        }
+        out.push(layer.into_any_element());
+    }
+
     // Рамка при фигурных углах (`corner-shape`, css-borders-4): внешний край
     // — контур, внутренний — он же, сжатый на толщину сторон. Квад её не
     // красит (`apply::apply_paint`); слой — цветной растр кольца в

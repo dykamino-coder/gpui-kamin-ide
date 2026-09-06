@@ -1282,6 +1282,68 @@ fn apply_radius(mut d: Div, c: &Computed) -> Div {
     d
 }
 
+/// Рамка ПОВЕРХ слоя картинки: цвет и толщины сторон, если рамку надо
+/// рисовать отдельным слоем после плиток фона, а не квадом коробки.
+///
+/// Квад красит фон и рамку одним примитивом ДО детей, а слой плиток —
+/// ребёнок (`render::decorations`), поэтому полупрозрачная или пунктирная
+/// рамка оказывалась ПОД картинкой (`origin-border-box`: голубая rgba-рамка
+/// накрыта жёлтой плиткой; `css3-background-origin-*`: зелёный квадрат
+/// поверх пунктира). css-backgrounds-3 §3.7, прим.: «The background is
+/// always drawn behind the border»; Blink `box_fragment_painter.cc`:
+/// `PaintFillLayers` → `PaintBorder`. Сплошную непрозрачную рамку
+/// `paint_tiles` и раньше обходил ужатием области краски — слой делает то же
+/// для любой рамки. `None` — рисовать по-старому.
+pub(crate) fn border_layer(c: &Computed) -> Option<(crate::value::Color, [f32; 4])> {
+    // Слой картинки бывает только у этих двух (см. `render::decorations`).
+    if c.bg_image.is_none() && !c.gradient_as_tile() {
+        return None;
+    }
+    // Особые рамки несут свои слои, разные цвета сторон — полосы поверх:
+    // всё это уже лежит над плитками (`apply_paint` о них знает).
+    if c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty())
+        || c.corner_shaped()
+        || c.border_shape.is_some()
+    {
+        return None;
+    }
+    // Обрезка содержимого срезала бы и слой: он лежит В коробке, на
+    // отрицательных отступах (`css3-background-size-contain`: пунктирная
+    // рамка исчезала при `overflow: hidden`). Такие коробки красит квад.
+    if !matches!(c.overflow_x, None | Some(crate::computed::Overflow::Visible))
+        || !matches!(c.overflow_y, None | Some(crate::computed::Overflow::Visible))
+    {
+        return None;
+    }
+    let sides: Vec<_> = c.border_colors.iter().flatten().collect();
+    let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
+    if sides.len() > 1 && uniform.is_none() {
+        return None;
+    }
+    let w = c.borders();
+    let side_px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let widths = [side_px(w.top), side_px(w.right), side_px(w.bottom), side_px(w.left)];
+    if !widths.iter().any(|v| *v > 0.0) {
+        return None;
+    }
+    // Без цвета — цвет текста, без него чёрный (как у квада).
+    let colour = uniform
+        .copied()
+        .copied()
+        .or(c.border_color)
+        .or(c.color)
+        .unwrap_or(crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
+    Some((colour, widths))
+}
+
 fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // Смешивание больше не живёт на заливке: раньше блендер знал четыре
     // формулы и красил только фон узла, а CSS смешивает ВСЁ поддерево целиком.
@@ -1342,10 +1404,14 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // красный треугольник ~240 px² на угол при допуске 200 px на пару).
     // `border-shape`: рамку целиком рисует слой контура (`render::decorations`),
     // прямоугольная рамка квада проступала бы из-под фигуры.
+    // Рамка над слоем картинки — отдельным слоем (`border_layer`,
+    // `render::decorations`): квад цвета не получает, иначе рамка легла бы
+    // ПОД плитки, а слой — второй раз поверх (полупрозрачная потемнела бы).
     if !border_image_on
         && !mixed
         && !c.corner_shaped()
         && c.border_shape.is_none()
+        && border_layer(c).is_none()
         && let Some(bc) = uniform.copied().copied().or(c.border_color).or(current)
     {
         d = d.border_color(bc.to_hsla());
