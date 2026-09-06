@@ -488,6 +488,10 @@ pub struct StackChild {
     pub h: f32,
     pub mt: f32,
     pub mb: f32,
+    /// `column-span: all` (css-multicol-1 §6): кладётся во всю ширину между
+    /// линиями колонок; в стопке с рядами — по курсору Blink
+    /// `LayoutSpanner` (не влез в остаток ряда — со следующего ряда).
+    pub span: bool,
 }
 
 /// Мера ребёнка для укладки колонок.
@@ -502,6 +506,7 @@ pub struct Kid {
     pub force_after: bool,
     pub forced: Vec<f32>,
     pub solid: Vec<(f32, f32)>,
+    pub span: bool,
 }
 
 /// Кусок ребёнка в колонке: чей он, какая по счёту копия, в какой колонке
@@ -587,6 +592,35 @@ pub struct Rows {
     pub wrap: bool,
 }
 
+thread_local! {
+    /// Глубина построения копий детей стопки (`render.rs`, `StackChild`).
+    static STACK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Сторож «строится копия ребёнка стопки». Многоколоночник со спаннером
+/// внутри другой стопки остаётся на сегментном пути: единой стопке нужен
+/// перенос ряда/спаннера во ВНЕШНЮЮ колонку (Blink `LayoutSpanner`: «The new
+/// row doesn't fit in the outer fragmentainer»), которого нет
+/// (`column-height-029`, `target/scout-columnwrap-2026-09b.md` §2.3).
+pub struct StackScope;
+
+impl StackScope {
+    pub fn enter() -> Self {
+        STACK_DEPTH.with(|d| d.set(d.get() + 1));
+        StackScope
+    }
+}
+
+impl Drop for StackScope {
+    fn drop(&mut self) {
+        STACK_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+    }
+}
+
+pub fn in_stack() -> bool {
+    STACK_DEPTH.with(|d| d.get() > 0)
+}
+
 pub struct ColumnStack {
     children: Vec<StackChild>,
     count: usize,
@@ -599,10 +633,18 @@ pub struct ColumnStack {
     rows: Option<Rows>,
     /// Сколько копий у ребёнка (= сколько колонок он может занять).
     copies: usize,
+    /// Буфер границ колонок и спаннеров для `GapRulePainter` (css-gaps-1
+    /// §gap-multicol): колонки линии — элементы строки, спаннер — элемент во
+    /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
+    gap_items: Option<crate::interact::GapItems>,
     plan: std::cell::RefCell<Vec<Frag>>,
     col_w: std::cell::Cell<f32>,
-    /// Ряды после укладки: `(y, высота)` каждого — линейкам и смещениям.
-    rows_plan: std::cell::RefCell<Vec<(f32, f32)>>,
+    /// Линии колонок после укладки: `(y, высота)` каждой — линейкам и
+    /// смещениям. Колонка `col` стоит в линии `col / count`. Без спаннеров
+    /// линия = ряд; спаннер режет ряд на линии (Blink `LayoutLine`).
+    lines_plan: std::cell::RefCell<Vec<(f32, f32)>>,
+    /// Спаннеры после укладки: `(ребёнок, y)`.
+    spans_plan: std::cell::RefCell<Vec<(usize, f32)>>,
 }
 
 impl ColumnStack {
@@ -613,6 +655,7 @@ impl ColumnStack {
         fixed_height: Option<f32>,
         rule: Option<(f32, gpui::Hsla)>,
         rows: Option<Rows>,
+        gap_items: Option<crate::interact::GapItems>,
     ) -> Self {
         // Без рядов копий ровно столько, сколько колонок (как прежде); с
         // рядами — сколько построил `render.rs`: ребёнок может занять
@@ -629,19 +672,21 @@ impl ColumnStack {
             rule,
             rows,
             copies,
+            gap_items,
             plan: std::cell::RefCell::new(Vec::new()),
             col_w: std::cell::Cell::new(0.0),
-            rows_plan: std::cell::RefCell::new(Vec::new()),
+            lines_plan: std::cell::RefCell::new(Vec::new()),
+            spans_plan: std::cell::RefCell::new(Vec::new()),
         }
     }
 
-    /// Где стоит колонка `col`: номер в ряду и смещение ряда. Без рядов и
+    /// Где стоит колонка `col`: номер в линии и смещение линии. Без рядов и
     /// при `nowrap` колонки идут вбок сплошь (переполняющие — за край).
     fn place(&self, col: usize) -> (usize, f32) {
         match self.rows {
             Some(r) if r.wrap => {
-                let rows = self.rows_plan.borrow();
-                (col % self.count, rows.get(col / self.count).map_or(0.0, |r| r.0))
+                let lines = self.lines_plan.borrow();
+                (col % self.count, lines.get(col / self.count).map_or(0.0, |l| l.0))
             }
             _ => (col, 0.0),
         }
@@ -882,13 +927,14 @@ impl ColumnStack {
         (col + 1, shortage, out)
     }
 
-    /// Укладка стопки: её высота, ряды `(y, высота)` и план кусков. Без
-    /// рядов — одна линия, как в css-multicol-1 (прежний `balance`).
-    fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Vec<Frag>) {
+    /// Укладка стопки: её высота, линии колонок `(y, высота)`, план кусков и
+    /// спаннеры `(ребёнок, y)`. Без рядов — одна линия, как в css-multicol-1
+    /// (прежний `balance`).
+    fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Vec<Frag>, Vec<(usize, f32)>) {
         let count = self.count;
         let Some(rows) = self.rows else {
             let (h, plan) = self.balance_line(kids, count, None);
-            return (h, vec![(0.0, h)], plan);
+            return (h, vec![(0.0, h)], plan, Vec::new());
         };
         let limit = self.copies;
         let Some(h) = rows.h else {
@@ -909,7 +955,7 @@ impl ColumnStack {
                 out.push((y, rh));
                 y += rh + if r + 1 < n { rows.gap } else { 0.0 };
             }
-            return (y, out, plan);
+            return (y, out, plan, Vec::new());
         };
         // Blink `ClampedToValidFragmentainerCapacity`: нулевая колонка всё
         // равно вмещает 1px, иначе укладка не сдвинется с места
@@ -925,21 +971,90 @@ impl ColumnStack {
                 None => self.balance_line(kids, limit, Some(cap)).0,
             };
             let (_, _, plan) = Self::fill(kids, target, limit, false);
-            return (h, vec![(0.0, h)], plan);
+            return (h, vec![(0.0, h)], plan, Vec::new());
         }
-        let (cols, _, plan) = Self::fill(kids, cap, limit, false);
-        let n = cols.div_ceil(count).max(1);
-        let full = (n - 1) * count;
-        let plan = match self.fixed_height {
-            Some(_) => plan,
-            None => self.balance_tail(kids, plan, cap, full, limit),
-        };
+        // Курсор по коробке (Blink `intrinsic_block_size_`): сетка рядов с
+        // шагом `h + row-gap`; фаза курсора — смещение в текущем ряду
+        // (`OffsetInCurrentRow`), остаток ряда `h − фаза` (отрицателен в
+        // зазоре). Дети идут ПРОБЕГАМИ: линии колонок между спаннерами и сами
+        // спаннеры (`LayoutChildren` → `LayoutFragmentationContext` /
+        // `LayoutSpanner`). Без спаннеров — один пробег, план шага 1.
         let stride = h + rows.gap;
-        let out: Vec<(f32, f32)> = (0..n).map(|r| (r as f32 * stride, h)).collect();
+        let phase = |y: f32| if stride > 0.0 { y % stride } else { 0.0 };
+        // `OffsetToNextRow`: остаток ряда + зазор; ровно с начала ряда — один
+        // зазор (так у Blink; на практике сюда не попадаем).
+        let next_row = |y: f32| {
+            let p = phase(y);
+            if p > 0.01 { y - p + stride } else { y + rows.gap }
+        };
+        let mut y = 0.0f32;
+        let mut lines: Vec<(f32, f32)> = Vec::new();
+        let mut plan: Vec<Frag> = Vec::new();
+        let mut spans: Vec<(usize, f32)> = Vec::new();
+        let mut i = 0usize;
+        while i < kids.len() {
+            if kids[i].span {
+                // Спаннер (§ch: выше ряда — переполняет в следующий, «crossing
+                // any row-gap»). Не с начала ряда и не влезает в остаток —
+                // со следующего ряда (`LayoutSpanner`: «Not enough room for
+                // the spanner in the current row, and we're not at the
+                // beginning of the row. Try at the next row»). Поля спаннера —
+                // без схлопывания с соседями (упрощение; в тестах кластера
+                // нулевые).
+                let k = &kids[i];
+                let mut at = y + k.mt;
+                let p = phase(at);
+                if p > 0.01 && h - p < k.h - 0.01 {
+                    at = next_row(at);
+                }
+                spans.push((i, at));
+                y = at + k.h + k.mb;
+                i += 1;
+                continue;
+            }
+            let j = kids[i..].iter().position(|k| k.span).map_or(kids.len(), |p| i + p);
+            // Первая линия пробега — в остаток текущего ряда; остатка нет
+            // (курсор в зазоре после спаннера) — со следующего ряда
+            // (`LayoutFragmentationContext`: «if there's no room in the
+            // current row (because of a preceding spanner, typically)»;
+            // нулевой ряд — исключение, `RowHeight() > LayoutUnit()`).
+            let mut p = phase(y);
+            if h > 0.0 && h - p <= 0.01 {
+                y = next_row(y);
+                p = 0.0;
+            }
+            let first = (h - p).max(1.0);
+            let row_start = y - p;
+            // Линия перед спаннером балансируется всегда, даже при
+            // `column-fill: auto` (Blink `:1070`: «We always have to balance
+            // columns preceding a spanner»; css-gaps `multicol-gap-
+            // decorations-011`: 120px в трёх колонках по 40, а не 60 + 60).
+            let balance_last = self.fixed_height.is_none() || j < kids.len();
+            let base = lines.len() * count;
+            let (n, frags, tail) = self.balance_run(&kids[i..j], first, cap, balance_last);
+            for f in frags {
+                plan.push(Frag { kid: f.kid + i, col: f.col + base, ..f });
+            }
+            for l in 0..n {
+                let ly = if l == 0 { y } else { row_start + l as f32 * stride };
+                let lh = if l + 1 == n { tail } else if l == 0 { first } else { cap };
+                lines.push((ly, lh));
+            }
+            // Курсор — за последней линией: сбалансированная короче ряда, и
+            // следующий спаннер ложится прямо за ней (Blink `:1249`).
+            y = lines.last().map_or(y, |&(ly, lh)| ly + lh);
+            i = j;
+        }
         // Последний ряд занимает всю `column-height`, даже если содержимое
         // короче (§ch: «empty space is left»; Blink `Layout()`: «Use all of
-        // column-height on the last row as well»).
-        (n as f32 * h + (n as f32 - 1.0) * rows.gap, out, plan)
+        // column-height on the last row as well» — прибавляется и
+        // отрицательный остаток: `columns: 2 / 0` даёт `(n − 1) · gap`, как в
+        // шаге 1).
+        let p = phase(y);
+        if p > 0.01 {
+            y += h - p;
+        }
+        (y, lines, plan, spans)
     }
 
     /// Одна линия колонок: высота заданная (fill:auto) либо баланс «оценка +
@@ -985,20 +1100,30 @@ impl ColumnStack {
         (target, slots)
     }
 
-    /// Хвостовой ряд при `column-fill: balance`: Blink балансирует КАЖДУЮ
-    /// линию колонок и режет её высоту остатком ряда, так что полные ряды
-    /// выходят ровно в `column-height`, а последний — по содержимому
-    /// (`column-height-003`: 80px остатка в двух колонках по 40, а не
-    /// 50 + 30). Полные колонки (`col < full`) стоят в `cap`, хвост — в `t`.
-    fn balance_tail(
+    /// Пробег линий колонок между спаннерами: первая линия высотой `first`
+    /// (остаток текущего ряда), остальные — `cap`; последняя при
+    /// `balance_last` балансируется (Blink балансирует КАЖДУЮ линию и режет
+    /// её остатком ряда, так что полные ряды выходят ровно в `column-height`,
+    /// а последняя — по содержимому: `column-height-003` — 80px остатка в
+    /// двух колонках по 40, а не 50 + 30). Возвращает число линий, план
+    /// (колонки от нуля, дети от нуля) и высоту последней линии.
+    fn balance_run(
         &self,
         kids: &[Kid],
-        plan: Vec<Frag>,
+        first: f32,
         cap: f32,
-        full: usize,
-        limit: usize,
-    ) -> Vec<Frag> {
+        balance_last: bool,
+    ) -> (usize, Vec<Frag>, f32) {
         let count = self.count;
+        let limit = self.copies;
+        let line_h = |l: usize| if l == 0 { first } else { cap };
+        let (cols, _, plan) = Self::fill_at(kids, &|c| line_h(c / count), limit, false);
+        let n = cols.div_ceil(count).max(1);
+        let last = line_h(n - 1);
+        if !balance_last {
+            return (n, plan, last);
+        }
+        let full = (n - 1) * count;
         let rem: f32 = plan.iter().filter(|f| f.col >= full).map(|f| f.h).sum();
         let tallest = plan
             .iter()
@@ -1006,24 +1131,24 @@ impl ColumnStack {
             .map(|f| f.h)
             .fold(0.0f32, f32::max);
         let mut t = (rem / count as f32).ceil().max(tallest).max(1.0);
-        if t >= cap {
-            return plan;
+        if t >= last {
+            return (n, plan, last);
         }
         for _ in 0..6 {
-            let at = |c: usize| if c < full { cap } else { t };
+            let at = |c: usize| if c < full { line_h(c / count) } else { t };
             let (cols, shortage, slots) = Self::fill_at(kids, &at, limit, false);
             if cols <= full + count {
-                return slots;
+                return (n, slots, t);
             }
             if shortage >= f32::MAX {
                 break;
             }
             t += if shortage > 0.0 { shortage } else { 1.0 };
-            if t >= cap {
+            if t >= last {
                 break;
             }
         }
-        plan
+        (n, plan, last)
     }
 }
 
@@ -1059,6 +1184,7 @@ impl Element for ColumnStack {
                 force_after: c.force_after,
                 forced: c.forced.clone(),
                 solid: c.solid.clone(),
+                span: c.span,
             })
             .collect();
         let count = self.count;
@@ -1085,11 +1211,13 @@ impl Element for ColumnStack {
                     rule: None,
                     rows,
                     copies,
+                    gap_items: None,
                     plan: std::cell::RefCell::new(Vec::new()),
                     col_w: std::cell::Cell::new(0.0),
-                    rows_plan: std::cell::RefCell::new(Vec::new()),
+                    lines_plan: std::cell::RefCell::new(Vec::new()),
+                    spans_plan: std::cell::RefCell::new(Vec::new()),
                 };
-                let (height, _, _) = probe.balance(&heights);
+                let (height, _, _, _) = probe.balance(&heights);
                 size(px(w), px(height))
             },
         );
@@ -1120,11 +1248,12 @@ impl Element for ColumnStack {
                 force_after: c.force_after,
                 forced: c.forced.clone(),
                 solid: c.solid.clone(),
+                span: c.span,
             })
             .collect();
-        let (_, rows, plan) = self.balance(&heights);
+        let (_, lines, plan, spans) = self.balance(&heights);
         self.col_w.set(col_w);
-        *self.rows_plan.borrow_mut() = rows;
+        *self.lines_plan.borrow_mut() = lines;
         let step = col_w + self.gap;
         for f in &plan {
             let full_h = self.children[f.kid].h;
@@ -1154,7 +1283,51 @@ impl Element for ColumnStack {
             );
             el.prepaint_at(point(x, y - px(f.from)), window, cx);
         }
+        // Спаннер — во всю ширину коробки, первой копией (запасных у него
+        // нет: между колонками он не режется).
+        for &(kid, sy) in &spans {
+            let kid = &mut self.children[kid];
+            let h = kid.h;
+            kid.el.layout_as_root(
+                size(
+                    gpui::AvailableSpace::Definite(bounds.size.width),
+                    gpui::AvailableSpace::Definite(px(h)),
+                ),
+                window,
+                cx,
+            );
+            kid.el.prepaint_at(point(bounds.origin.x, bounds.origin.y + px(sy)), window, cx);
+        }
+        // Границы для линеек промежутков (css-gaps-1 §gap-multicol): коробки
+        // ЗАНЯТЫХ колонок каждой линии (как Blink `AddCrossGap` на колонку
+        // ряда; в третьем ряду `column-height-009` линейка одна) и спаннеры
+        // во всю ширину — они обрывают линейки колонок.
+        if let Some(items) = &self.gap_items {
+            let lines = self.lines_plan.borrow();
+            let mut used = vec![0usize; lines.len()];
+            for f in &plan {
+                if let Some(u) = used.get_mut(f.col / self.count) {
+                    *u = (*u).max(f.col % self.count + 1);
+                }
+            }
+            let mut items = items.borrow_mut();
+            for (l, &(ly, lh)) in lines.iter().enumerate() {
+                for c in 0..used[l].max(1) {
+                    items.push(Bounds {
+                        origin: point(bounds.origin.x + px(c as f32 * step), bounds.origin.y + px(ly)),
+                        size: size(px(col_w), px(lh)),
+                    });
+                }
+            }
+            for &(kid, sy) in &spans {
+                items.push(Bounds {
+                    origin: point(bounds.origin.x, bounds.origin.y + px(sy)),
+                    size: size(bounds.size.width, px(self.children[kid].h)),
+                });
+            }
+        }
         *self.plan.borrow_mut() = plan;
+        *self.spans_plan.borrow_mut() = spans;
     }
 
     fn paint(
@@ -1167,11 +1340,13 @@ impl Element for ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) {
-        // Линейки — по центрам промежутков, высотой в колонку, в каждом ряду
-        // (css-multicol-2 §rg: линейка между рядами — `row-rule`, её нет).
+        // Линейки — по центрам промежутков, высотой в колонку, в каждой линии.
+        // Это простая `column-rule` без рядов; при рядах `render.rs` отдаёт
+        // линейки (в том числе `row-rule`, css-multicol-2 §rg) художнику
+        // `GapRulePainter` по буферу `gap_items`, и `rule` здесь `None`.
         if let Some((rw, color)) = self.rule {
             let col_w = self.col_w.get();
-            let rows = self.rows_plan.borrow().clone();
+            let rows = self.lines_plan.borrow().clone();
             for &(ry, rh) in &rows {
                 for i in 1..self.count {
                     let cx_ = i as f32 * (col_w + self.gap) - self.gap * 0.5;
@@ -1226,6 +1401,10 @@ impl Element for ColumnStack {
             } else {
                 el.paint(window, cx);
             }
+        }
+        let spans = self.spans_plan.borrow().clone();
+        for (kid, _) in spans {
+            self.children[kid].el.paint(window, cx);
         }
     }
 }
@@ -1438,6 +1617,7 @@ impl Element for PageStack {
                     force_after: k.force_after,
                     forced,
                     solid,
+                    span: false,
                 }
             })
             .collect();

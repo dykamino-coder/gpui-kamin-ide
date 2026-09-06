@@ -1769,6 +1769,10 @@ pub struct GapRuleSpec {
     /// Зазоры в точках между x-дорожками и между y-дорожками, если известны.
     pub gap_x: Option<f32>,
     pub gap_y: Option<f32>,
+    /// `direction: rtl` контейнера: втяжки `*-inset-start/end` вдоль
+    /// строчной оси считаются от правого края (css-gaps-1 §insets-start-end;
+    /// `multicol-gap-decorations-direction-inset`, вторая половина).
+    pub rtl: bool,
 }
 
 /// Допуск сравнения координат раскладки.
@@ -1994,7 +1998,7 @@ fn inset_px(
 /// перекрытые спанами; при `intersection` — ещё пересекающие зазоры с видимым
 /// пересечением. Концы, попавшие в зазор, отступают к его границе, затем
 /// прикладывается втяжка; отрезки без длины выпадают (`flex-055`).
-fn segments(run: &GapRun, rule: &GapAxisRule, main_like: bool) -> Vec<(f32, f32)> {
+fn segments(run: &GapRun, rule: &GapAxisRule, main_like: bool, flip: bool) -> Vec<(f32, f32)> {
     let mut parts = vec![(run.r0, run.r1)];
     for &c in &run.hidden {
         parts = subtract(parts, c);
@@ -2009,12 +2013,15 @@ fn segments(run: &GapRun, rule: &GapAxisRule, main_like: bool) -> Vec<(f32, f32)
             parts = subtract(parts, (c.lo, c.hi));
         }
     }
+    // `flip` — линейка вдоль строчной оси при `direction: rtl`: левый конец
+    // отрезка — это END-сторона, правый — START (§insets-start-end).
+    let (lo_cap, lo_join, hi_cap, hi_join) = if flip { (1, 3, 0, 2) } else { (0, 2, 1, 3) };
     let mut out = vec![];
     for (s, e) in parts {
         let (s, s_cw, s_join, s_dw) = run.edge(s, true);
         let (e, e_cw, e_join, e_dw) = run.edge(e, false);
-        let s2 = s + inset_px(rule.inset[if s_join { 2 } else { 0 }], s_cw, s_join, s_dw, main_like);
-        let e2 = e - inset_px(rule.inset[if e_join { 3 } else { 1 }], e_cw, e_join, e_dw, main_like);
+        let s2 = s + inset_px(rule.inset[if s_join { lo_join } else { lo_cap }], s_cw, s_join, s_dw, main_like);
+        let e2 = e - inset_px(rule.inset[if e_join { hi_join } else { hi_cap }], e_cw, e_join, e_dw, main_like);
         if e2 - s2 > 0.05 {
             out.push((s2, e2));
         }
@@ -2105,6 +2112,12 @@ fn grid_runs(
 /// соседних строк (окна перекрытия Blink); поперечные — между соседними
 /// элементами строки, протяжённостью в пределах строки, со стыками на её
 /// краях. Значения списков: главные — по строкам, поперечные — сквозной счёт.
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v98, `scout-columnwrap-2026-09b.md` I1):
+/// считать главный промежуток УЖЕ `gap` не зазором, а стык без промежутка —
+/// не junction (под ряды многоколонника). css-gaps 349: +12/−19 —
+/// `flex-gap-decorations-001/019` 99.00, `-025/031/032/035/065…067`,
+/// `column-gap-decorations-001/003/014/016/019`, `row-gap-decorations-003/010`.
+/// Ряды многоколонника обходятся без него (v99: +11/−0).
 fn line_runs(
     items: &[GapItem],
     gap_a: Option<f32>,
@@ -2320,7 +2333,10 @@ impl Element for GapRulePainter {
                 return;
             };
             let c = (run.g0 + run.g1) / 2.0;
-            for (s, e) in segments(run, rule, main_like) {
+            // Отрезок вдоль строчной оси (горизонтальный в горизонтальном
+            // письме) при `rtl` считает start/end от правого края.
+            let flip = spec.rtl && !spec.vertical && !gap_on_x;
+            for (s, e) in segments(run, rule, main_like, flip) {
                 let rect = if gap_on_x {
                     Bounds {
                         origin: gpui::point(gpui::px(c - w / 2.0), gpui::px(s)),

@@ -5670,10 +5670,52 @@ fn gap_rule_spec(
         row,
         kind,
         vertical,
+        rtl: merged.rtl == Some(true),
         column_over_row: s.rule_column_over_row == Some(true),
         gap_x,
         gap_y,
     })
+}
+
+/// Линейки промежутков многоколоночника с рядами (css-gaps-1 §gap-multicol:
+/// «A column gap is the gutter between adjacent column boxes … A row gap is
+/// the gutter between the rows of column boxes established by
+/// column-height»; «column gaps in multicol containers do not overlap row
+/// gaps, similar to flex»). Геометрия — строки гибкого контейнера: колонки
+/// ряда — элементы строки, ряды разделены сквозным `row-gap`; сами
+/// прямоугольники кладёт `ColumnStack::prepaint`. `gap_rule_spec` гейтится
+/// `display`, поэтому стиль линеек берётся через пробу с `display: flex`:
+/// правила осей общие, а вид укладки и зазоры задаются здесь.
+/// `column-rule-break: normal` у multicol = `intersection`, `row-rule-break:
+/// normal` = `none` (§break) — колонки рвутся в зазоре ряда, ряды идут
+/// сквозь (эталоны `multicol-gap-decorations-001/024`).
+fn multicol_gap_rule_spec(
+    e: &Element,
+    merged: &Computed,
+    opts: &RenderOpts,
+    column_gap: f32,
+    row_gap: f32,
+) -> Option<crate::interact::GapRuleSpec> {
+    let mut probe = merged.clone();
+    probe.display = Some(Display::Flex);
+    let mut spec = gap_rule_spec(e, &probe, opts)?;
+    let vertical = spec.vertical;
+    spec.kind = crate::interact::GapLayout::Lines {
+        stacked_vertically: !vertical,
+    };
+    if let Some(c) = spec.col.as_mut()
+        && c.brk == 1
+    {
+        c.brk = 2;
+    }
+    if let Some(r) = spec.row.as_mut()
+        && r.brk == 1
+    {
+        r.brk = 0;
+    }
+    spec.gap_x = Some(if vertical { row_gap } else { column_gap });
+    spec.gap_y = Some(if vertical { column_gap } else { row_gap });
+    Some(spec)
 }
 
 /// Многоколоночный контейнер: `column-*` применяются только к блочным
@@ -10583,14 +10625,53 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     _ => None,
                 };
                 let want = (cols > 0).then_some(cols as usize);
+                // Ряды колонок (css-multicol-2 §ch, §cwr): высота ряда —
+                // `column-height`, а при `column-wrap: wrap` без него —
+                // высота коробки (Blink `RowHeight()`:
+                // `remaining_content_block_size_`, issue 11754 вариант 2);
+                // `column-wrap: auto` = `wrap` при заданном
+                // `column-height`. `row-gap: normal` в колонках — 1em (§rg).
+                let col_h = match e.style.column_height {
+                    Some(Len::Px(h)) if h >= 0.0 => Some(h),
+                    _ => None,
+                };
+                let box_h = match e.style.height {
+                    Some(Len::Px(h)) if h > 0.0 => Some(h),
+                    _ => None,
+                };
+                let wrap = e.style.column_wrap.unwrap_or(col_h.is_some());
+                let em = match e.style.font_size {
+                    Some(Len::Px(size)) => size,
+                    _ => opts.base_size(),
+                };
+                let row_gap = match e.style.gap.and_then(|g| g.0) {
+                    Some(Len::Px(v)) => v.max(0.0),
+                    Some(Len::Em(k)) => k * em,
+                    _ => em,
+                };
+                let rows = (col_h.is_some() || wrap).then_some(crate::flow::Rows {
+                    h: col_h.or(if wrap { box_h } else { None }),
+                    gap: row_gap,
+                    wrap,
+                });
                 // Спаннер среди инлайнового потока: режем детей на сегменты,
                 // каждый сегмент — свой поток колонок, спаннер — блок между
-                // ними (css-multicol §6).
+                // ними (css-multicol §6). С рядами (`column-wrap: wrap` +
+                // `column-height`) сегменты не годятся: у каждого свои ряды от
+                // нуля, а Blink ведёт ОДИН курсор по коробке
+                // (`column_layout_algorithm.cc` `intrinsic_block_size_`,
+                // `LayoutSpanner`: спаннер, не влезший в остаток ряда, — со
+                // следующего ряда; `column-height-006/013/017…020`). Такой
+                // многоколоночник идёт единой стопкой, спаннер — её ребёнком
+                // (`StackChild::span`). Внутри копии другой стопки — по-прежнему
+                // сегментами: перенос ряда во внешнюю колонку не написан
+                // (`column-height-029`, scout-columnwrap-2026-09b.md §2.3).
                 let is_span = |n: &Node| {
                     matches!(n, Node::Element(c)
                         if c.style.column_span == Some(true) && !c.inline)
                 };
-                if e.children.iter().any(&is_span) {
+                let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !crate::flow::in_stack();
+                if e.children.iter().any(&is_span) && !unified {
                     for chunk in e.children.split_inclusive(&is_span) {
                         let (body, span) = match chunk.split_last() {
                             Some((last, head)) if is_span(last) => (head, Some(last)),
@@ -10682,43 +10763,18 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         })
                         .collect();
                     if let Some(kids) = stackable.filter(|k| !k.is_empty()) {
-                        // Ряды колонок (css-multicol-2 §ch, §cwr): высота ряда —
-                        // `column-height`, а при `column-wrap: wrap` без него —
-                        // высота коробки (Blink `RowHeight()`:
-                        // `remaining_content_block_size_`, issue 11754 вариант 2);
-                        // `column-wrap: auto` = `wrap` при заданном
-                        // `column-height`. `row-gap: normal` в колонках — 1em (§rg).
-                        let col_h = match e.style.column_height {
-                            Some(Len::Px(h)) if h >= 0.0 => Some(h),
-                            _ => None,
-                        };
-                        let box_h = match e.style.height {
-                            Some(Len::Px(h)) if h > 0.0 => Some(h),
-                            _ => None,
-                        };
-                        let wrap = e.style.column_wrap.unwrap_or(col_h.is_some());
-                        let em = match e.style.font_size {
-                            Some(Len::Px(size)) => size,
-                            _ => opts.base_size(),
-                        };
-                        let row_gap = match e.style.gap.and_then(|g| g.0) {
-                            Some(Len::Px(v)) => v.max(0.0),
-                            Some(Len::Em(k)) => k * em,
-                            _ => em,
-                        };
-                        let rows = (col_h.is_some() || wrap).then_some(crate::flow::Rows {
-                            h: col_h.or(if wrap { box_h } else { None }),
-                            gap: row_gap,
-                            wrap,
-                        });
                         // Копий у ребёнка — сколько колонок он может занять: без
                         // рядов ровно `cols` (как прежде), с рядами — по своей
                         // высоте против высоты ряда, с запасом на поля и срезы.
+                        // Спаннер между колонками не режется — копий ему не
+                        // надо, и в счёт он не входит (`column-height-019`:
+                        // спаннер 85px при ряде 5px).
                         let copies = match rows {
                             Some(r) => {
                                 let per = r.h.unwrap_or(f32::MAX).max(1.0);
                                 let span = kids
                                     .iter()
+                                    .filter(|(c, _)| c.style.column_span != Some(true))
                                     .map(|(_, s)| (s.0 / per).ceil() as usize)
                                     .max()
                                     .unwrap_or(0);
@@ -10763,6 +10819,19 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         } else {
                             None
                         };
+                        // С рядами линейки (`column-rule` со втяжкой/разрывом,
+                        // `row-rule` — css-multicol-2 §rg/§crc → css-gaps-1)
+                        // красит `GapRulePainter` по границам колонок и
+                        // спаннеров из стопки (`ColumnStack::gap_items`);
+                        // простая полоса `rule` тогда не рисуется. Без рядов —
+                        // как прежде (`multicol-rule-*` не трогаются).
+                        let gap_spec = rows
+                            .filter(|r| r.wrap)
+                            .and_then(|_| multicol_gap_rule_spec(e, &merged, opts, used_gap, row_gap));
+                        let gap_items = gap_spec
+                            .as_ref()
+                            .map(|_| crate::interact::gap_items_for(e.node_id ^ opts.doc_salt ^ 0x4D43_4F4C));
+                        let rule = rule.filter(|_| gap_spec.is_none());
                         let children: Vec<crate::flow::StackChild> = kids
                             .into_iter()
                             .map(|(c, (h, mt, mb, cuts, forced, solid))| {
@@ -10974,9 +11043,18 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // высоте (css-break-4 §4.2; корень A3).
                                     || (copy.children.iter().any(|n| !is_blank(n))
                                         && !copy.children.iter().any(block_kid));
+                                // Пока строятся копии — «внутри стопки»: вложенный
+                                // многоколоночник со спаннером остаётся на
+                                // сегментном пути (см. `unified` выше).
+                                let _nested = crate::flow::StackScope::enter();
+                                let span = copy.style.column_span == Some(true) && !copy.inline;
                                 crate::flow::StackChild {
                                     el: build(true),
-                                    frags: (1..copies).map(|_| build(false)).collect(),
+                                    frags: if span {
+                                        Vec::new()
+                                    } else {
+                                        (1..copies).map(|_| build(false)).collect()
+                                    },
                                     monolith,
                                     cuts,
                                     force_before: copy.style.break_before_force,
@@ -10986,6 +11064,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     h,
                                     mt,
                                     mb,
+                                    span,
                                 }
                             })
                             .collect();
@@ -10996,9 +11075,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             fixed,
                             rule,
                             rows,
+                            gap_items.clone(),
                         ));
                         for oof in &direct_oof {
                             d = d.child(element(oof, &merged, opts));
+                        }
+                        if let (Some(buf), Some(spec)) = (gap_items, gap_spec) {
+                            d = d.child(crate::interact::GapRulePainter::new(buf, spec).into_any_element());
                         }
                         return d.into_any_element();
                     }
