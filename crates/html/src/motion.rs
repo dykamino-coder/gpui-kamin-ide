@@ -29,9 +29,11 @@ pub fn apply_offset_transform(c: &mut Computed) {
 
 fn offset_transform_css(c: &Computed) -> Option<String> {
     let raw = c.offset_path.as_deref()?;
-    // Первый заход — только `path('…')`: его координаты уже в пикселях
-    // системы координат коробки, опорная коробка не нужна. `ray()` и
-    // `<basic-shape>` подключаются отдельными рукавами (см. кластер B).
+    // Луч — не контур, а отрезок из точки отсчёта: ломаную по нему строить
+    // нечем, длина зависит от содержащего блока. Отдельная ветка.
+    if let Some(args) = raw.strip_prefix("ray(") {
+        return ray_css(c, args.trim_end_matches(')'));
+    }
     let inner = raw.strip_prefix("path(")?.trim_end_matches(')').trim();
     let d = inner.trim_matches('\'').trim_matches('"');
     let poly = flatten(d)?;
@@ -87,6 +89,35 @@ fn origin_shift(c: &Computed, p: (f32, f32), rot: f32) -> String {
     }
     css.push_str(&format!(" rotate({}rad)", rot));
     css
+}
+
+/// `ray(<angle> && <ray-size>? && contain? && [at <position>]?)`.
+///
+/// Размер луча (`closest-side` и родня) нужен ТОЛЬКО долевому
+/// `offset-distance`: при длине в пикселях он не считается вовсе. Первый
+/// заход поддерживает именно пиксельный случай; долевой ждёт прокидывания
+/// размера содержащего блока — в стиле его сегодня нет (есть лишь два бита:
+/// `computed.rs:962 cb_rtl` и `computed.rs:1376 cb_height_def`).
+fn ray_css(c: &Computed, args: &str) -> Option<String> {
+    let toks: Vec<&str> = args.split_whitespace().collect();
+    let bearing = toks.iter().find_map(|t| angle_rad(t))?;
+    // Компасный угол: 0deg смотрит ВВЕРХ, положительные — по часовой.
+    // В экранных осях (x вправо, y вниз) это (sin a, -cos a).
+    let dir = (bearing.sin(), -bearing.cos());
+    let len = match c.offset_distance {
+        Some(Len::Px(v)) => v,
+        // Доля требует длины луча, а та — опорной коробки: пока пропускаем,
+        // чтобы не рисовать заведомо неверное место.
+        Some(Len::Pct(_)) => return None,
+        _ => 0.0,
+    };
+    let p = (dir.0 * len, dir.1 * len);
+    let rot = match c.offset_rotate.as_deref().map(str::trim) {
+        None | Some("auto") => bearing - std::f32::consts::FRAC_PI_2,
+        Some("reverse") => bearing + std::f32::consts::FRAC_PI_2,
+        Some(other) => angle_rad(other).unwrap_or(0.0),
+    };
+    Some(origin_shift(c, p, rot))
 }
 
 fn angle_rad(t: &str) -> Option<f32> {
