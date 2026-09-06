@@ -2453,6 +2453,7 @@ fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> 
                 line_height_px(inherited, opts),
                 skip,
                 false,
+                0.0,
             ))
             .into_any_element()
     } else {
@@ -11917,11 +11918,20 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // Строки дают пробы абзацев (paragraph_probed); здесь — только
                 // коробка с краской: блок прячется целиком, если срез внутри.
                 if !is_clamp && has_box_style_probe(&e.style) {
+                    // Нижние рамка и паддинг фрагментированной коробки
+                    // остаются в потоке (css-overflow-4 §5.3): проба несёт
+                    // их вместе с границами паддинг-бокса.
+                    let side = |l: Option<Len>| match l {
+                        Some(Len::Px(v)) => v,
+                        _ => 0.0,
+                    };
+                    let bp_after = side(e.style.borders().bottom) + side(e.style.padding.bottom);
                     kids.push(crate::interact::clamp_probe(
                         crate::interact::clamp_lines_for(key),
                         0.0,
                         skip,
                         e.style.height.is_some() || e.style.min_height.is_some(),
+                        bp_after,
                     ));
                 }
             }

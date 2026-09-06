@@ -2745,6 +2745,11 @@ pub struct ClampEntry {
     /// Коробка с ЗАДАННОЙ высотой: фрагментировать нечего, пересечённая
     /// точкой среза она прячется целиком.
     pub fixed_height: bool,
+    /// Нижние рамка и паддинг коробки в точках. Проба меряет ПАДДИНГ-БОКС,
+    /// а фрагментированная коробка своих нижних рамки и паддинга не теряет
+    /// (css-overflow-4 §5.3): на них укорачивается бюджет строк и на них же
+    /// удлиняется итоговый срез. Для строчных проб — ноль.
+    pub bp_after: f32,
 }
 
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
@@ -2824,6 +2829,7 @@ pub fn clamp_probe(
     line: f32,
     skip_count: bool,
     fixed_height: bool,
+    bp_after: f32,
 ) -> AnyElement {
     gpui::canvas(
         move |bounds: Bounds<Pixels>, _, _| {
@@ -2832,6 +2838,7 @@ pub fn clamp_probe(
                 line,
                 skip_count,
                 fixed_height,
+                bp_after,
             });
         },
         |_, _, _, _| {},
@@ -2919,7 +2926,8 @@ impl Element for ClampCut {
         let top = f32::from(bounds.origin.y);
         // Строки: у текстового вклада их bounds.height / line штук.
         let mut rows: Vec<(f32, f32, bool)> = vec![]; // (верх, низ, считается)
-        let mut blocks: Vec<(f32, f32, bool)> = vec![];
+        // (верх, низ, заданная высота, нижние рамка+паддинг)
+        let mut blocks: Vec<(f32, f32, bool, f32)> = vec![];
         for e in &entries {
             let y0 = f32::from(e.bounds.origin.y);
             let h = f32::from(e.bounds.size.height);
@@ -2934,7 +2942,7 @@ impl Element for ClampCut {
                     ));
                 }
             } else if h > 0.0 {
-                blocks.push((y0, y0 + h, e.fixed_height));
+                blocks.push((y0, y0 + h, e.fixed_height, e.bp_after));
             }
         }
         rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -2962,22 +2970,31 @@ impl Element for ClampCut {
         // Строка, пересечённая точкой, не показывается половинкой:
         // срез поднимается к её верху.
         if let Some(c) = cut {
+            // Коробка с ЗАДАННОЙ высотой не фрагментируется: пересечённая
+            // точкой среза, она прячется целиком (css-overflow-4 §5.3).
             let mut c2 = c;
-            for (y0, y1, _) in &blocks {
-                if *y0 < c2 && c2 < *y1 {
-                    // Крашеная коробка, пересечённая точкой среза, прячется
-                    // целиком. Замерено: точечные исключения (заданная
-                    // высота, влезающие строки) дают 154/153 против 158 —
-                    // безусловное правило ближе к эталонам семейства.
+            for (y0, y1, fixed, _) in &blocks {
+                if *fixed && *y0 < c2 && c2 < *y1 {
                     c2 = *y0;
                 }
             }
+            // Коробка БЕЗ заданной высоты фрагментируется по последней
+            // влезающей строке, но нижние рамку и паддинг с собой уносит:
+            // бюджет строк на них укорачивается, а итоговый срез — на
+            // столько же удлиняется (`line-clamp-auto-019`: 2+14+4×32+14+2
+            // = 160 = ровно потолок `max-height: 5lh`).
+            let bp: f32 = blocks
+                .iter()
+                .filter(|(y0, y1, fixed, _)| !*fixed && *y0 < c2 && c2 < *y1)
+                .map(|(_, _, _, bp)| *bp)
+                .sum();
+            c2 -= bp;
             for (y0, y1, _) in &rows {
                 if *y0 < c2 && c2 < *y1 - 0.5 {
                     c2 = *y0;
                 }
             }
-            cut = Some(c2);
+            cut = Some(c2 + bp);
         }
         let rel = cut.map(|c| (c - top).max(0.0));
         if {
