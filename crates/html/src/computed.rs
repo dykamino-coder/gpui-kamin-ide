@@ -812,6 +812,26 @@ impl Transform {
         ]
     }
 
+    /// Домножить СПРАВА на уже накопленную матрицу другого объявления.
+    ///
+    /// Нужно слоению motion-1: offset-трансформ идёт ПЕРЕД авторским
+    /// `transform`, а разбор авторского уже сложил свою матрицу — её
+    /// приходится приставлять целиком, а не по одной функции.
+    pub fn then(mut self, other: &Transform) -> Transform {
+        self.push(other.lin, other.tr);
+        self.rotate_rad += other.rotate_rad;
+        self.skew_rad.0 += other.skew_rad.0;
+        self.skew_rad.1 += other.skew_rad.1;
+        self.scale.0 *= other.scale.0;
+        self.scale.1 *= other.scale.1;
+        self.translate.0 += other.translate.0;
+        self.translate.1 += other.translate.1;
+        self.translate_pct.0 += other.translate_pct.0;
+        self.translate_pct.1 += other.translate_pct.1;
+        self.m33 *= other.m33;
+        self
+    }
+
     fn rot(a: f32) -> [[f32; 2]; 2] {
         [[a.cos(), -a.sin()], [a.sin(), a.cos()]]
     }
@@ -1407,6 +1427,18 @@ pub struct Computed {
     pub resize: Option<(bool, bool)>,
     /// `transform`/`rotate`/`scale`: поворот в радианах и масштаб по осям.
     pub transform: Option<Transform>,
+    /// `offset-path` как записано (motion-1 §offset-path): `path('…')`,
+    /// `ray(…)`, `<basic-shape>` или `url(#id)`. Разбирается не здесь:
+    /// сэмплеру нужны все остальные `offset-*`, а каскад сводит их вразнобой.
+    pub offset_path: Option<String>,
+    /// `offset-distance`: длина или доля ДЛИНЫ ПУТИ (а не коробки).
+    pub offset_distance: Option<Len>,
+    /// `offset-rotate` как записано: `auto | reverse | <angle> | auto <angle>`.
+    pub offset_rotate: Option<String>,
+    /// `offset-anchor` как записано; `auto` — это точка `transform-origin`.
+    pub offset_anchor: Option<String>,
+    /// `offset-position` как записано: `normal | auto | <position>`.
+    pub offset_position: Option<String>,
     /// `backface-visibility: hidden`.
     pub backface_hidden: Option<bool>,
     /// `transform-origin` в долях размера элемента.
@@ -2427,7 +2459,9 @@ impl Computed {
         }
     }
 
-    fn apply_one(&mut self, key: &str, val: &str) {
+    // `pub(crate)`: `motion` синтезирует строку `transform` и кормит её тем же
+    // разборщиком — отдельного конвейера под offset-трансформ нет.
+    pub(crate) fn apply_one(&mut self, key: &str, val: &str) {
         self.decl_seq += 1;
         let v = val.trim();
         // Общие для всех свойств слова `initial`/`unset`/`revert`. Для
@@ -5593,6 +5627,14 @@ impl Computed {
             }
 
             // --- Преобразования -----------------------------------------------
+            // motion-1 §2: свойства пути хранятся СЫРЫМИ. Сэмплер зовётся
+            // после каскада (`dom::walk`), когда известны и путь, и точка
+            // отсчёта, и авторский `transform` — раньше собрать нечего.
+            "offset-path" => self.offset_path = (v.trim() != "none").then(|| v.trim().to_string()),
+            "offset-distance" => self.offset_distance = Len::parse(v.trim()),
+            "offset-rotate" => self.offset_rotate = Some(v.trim().to_string()),
+            "offset-anchor" => self.offset_anchor = Some(v.trim().to_string()),
+            "offset-position" => self.offset_position = Some(v.trim().to_string()),
             "transform" if v.trim() == "inherit" => self.inherit_bits |= inh::TRANSFORM,
             "transform-origin" if v.trim() == "inherit" => {
                 self.inherit_bits |= inh::TRANSFORM_ORIGIN

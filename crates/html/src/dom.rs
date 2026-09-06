@@ -2143,6 +2143,10 @@ fn walk(
             apply_presentational_size(&mut style, &tag, &attrs);
             apply_presentational_colors(&mut style, &tag, &attrs);
             finish_inline_display(&mut style, &tag);
+            // motion-1: offset-трансформ слоится ПОСЛЕ отдельных свойств
+            // преобразования и ПЕРЕД `transform` — то есть после того, как
+            // каскад свёл все `offset-*` и авторский `transform` в один стиль.
+            crate::motion::apply_offset_transform(&mut style);
             // Язык — свойство узла, а не CSS: по нему выбираются образцы
             // слогораздела (`hyphens: auto`).
             if let Some((_, v)) = attrs.iter().find(|(k, _)| k == "lang") {
