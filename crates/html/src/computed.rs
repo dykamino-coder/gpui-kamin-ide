@@ -6556,14 +6556,17 @@ impl Computed {
                         "right" | "bottom" => 1.0,
                         other => match Len::parse(other) {
                             Some(Len::Pct(p)) => p,
-                            _ => default,
+                            // Точки заданы — доля НОЛЬ, а не центр: отрисовка
+                            // складывает долю с точками (css-transforms-1 §5.2).
+                            Some(Len::Px(_)) => 0.0,
+                            _ => pct_px_pair(other).map_or(default, |(p, _)| p),
                         },
                     }
                 };
                 let px_axis = |t: &str| -> Option<f32> {
                     match Len::parse(t) {
                         Some(Len::Px(v)) => Some(v),
-                        _ => None,
+                        _ => pct_px_pair(t).map(|(_, x)| x),
                     }
                 };
                 // Ключевые слова несут СВОЮ ось (css-transforms-1 §5.2):
@@ -6571,10 +6574,13 @@ impl Computed {
                 let mut xs: Option<&str> = None;
                 let mut ys: Option<&str> = None;
                 let mut free: Vec<&str> = vec![];
-                for t in v.split_whitespace() {
-                    match t {
-                        "left" | "right" => xs = Some(t),
-                        "top" | "bottom" => ys = Some(t),
+                // Резать вне скобок: `calc(50px + 50%)` — одно значение,
+                // а `split_whitespace` рассыпал его на три слова.
+                let parts = split_outside_parens(v);
+                for t in &parts {
+                    match t.as_str() {
+                        "left" | "right" => xs = Some(t.as_str()),
+                        "top" | "bottom" => ys = Some(t.as_str()),
                         other => free.push(other),
                     }
                 }

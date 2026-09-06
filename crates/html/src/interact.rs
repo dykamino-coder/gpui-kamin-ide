@@ -1259,14 +1259,10 @@ impl Element for Transformed {
         // Точка отсчёта — в устройстве, от неё и разворачиваем. Записанная
         // длиной, она сильнее доли: `transform-origin: 0 0` — левый верх, а
         // не центр (доля из длины считается только здесь, где размер известен).
-        let ox = self
-            .origin_px
-            .0
-            .unwrap_or(f32::from(bounds.size.width) * self.origin.0);
-        let oy = self
-            .origin_px
-            .1
-            .unwrap_or(f32::from(bounds.size.height) * self.origin.1);
+        // Доля × размер ПЛЮС точки: `calc(50% + 10px)` — смесь, и доля у
+        // чистых точек равна нулю (css-transforms-1 §5.2).
+        let ox = f32::from(bounds.size.width) * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
+        let oy = f32::from(bounds.size.height) * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
         let origin = gpui::point(
             dev(f32::from(bounds.origin.x) + ox),
             dev(f32::from(bounds.origin.y) + oy),
