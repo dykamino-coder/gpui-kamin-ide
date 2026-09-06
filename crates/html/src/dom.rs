@@ -65,8 +65,10 @@ impl Element {
 /// Теги, которые в HTML участвуют в строке текста, а не разрывают её.
 pub(crate) const INLINE_TAGS: &[&str] = &[
     "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark",
-    "q", "rp", "rt", "ruby", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u",
-    "var", "wbr", "img", "svg",
+    // Все руби-теги — строчные (css-ruby-1 §2.1.1: контейнер и внутренние
+    // коробки руби неатомарны и строчного уровня).
+    "q", "rb", "rbc", "rp", "rt", "rtc", "ruby", "s", "samp", "small", "span", "strong", "sub",
+    "sup", "time", "u", "var", "wbr", "img", "svg",
     // Правки текста: без них `~~зачёркнутое~~` из markdown разрывало абзац.
     "del", "ins",
     // Управление формой стоит В СТРОКЕ: иначе «Согласен» уезжает под флажок,
@@ -158,6 +160,14 @@ head, title, meta, link, template { display: none }
     th { font-weight: 700; padding: 4px 8px; text-align: left }
     td { padding: 4px 8px }
     button { padding: 4px 10px; border-radius: 4px }
+    /* Руби (css-ruby-1, Appendix A.1): скобки `rp` — только для движков без
+       руби; аннотация вполовину кегля, одной строкой, без знака акцента.
+       Пара правил равносильна спековому `rtc, :not(rtc) > rt { font-size: 50% }`.
+       `unicode-bidi: isolate` пока не ставится — мерить отдельно (`ruby-bidi-001`). */
+    rp { display: none }
+    rb, rt, rtc { white-space: nowrap }
+    rt, rtc { font-size: 50%; line-height: 1; text-emphasis: none }
+    rtc > rt { font-size: 100% }
     "#
 }
 
@@ -1440,6 +1450,55 @@ fn apply_presentational_colors(style: &mut Computed, tag: &str, attrs: &[(String
     }
 }
 
+/// css-ruby-1 §2.2 п.1 «Inlinify block-level boxes».
+///
+/// Коробка блочного УРОВНЯ в потоке, лежащая внутри руби-коробки (контейнер,
+/// `rb`, `rt`, `rbc`, `rtc`), получает строчный аналог: `block`/`list-item`
+/// -> `inline-block`, `table` -> `inline-table`, `flex` -> `inline-flex`,
+/// `grid` -> `inline-grid`; блочный ПО ТЕГУ элемент без своего `display`
+/// (`<div>`, `<p>`, `<li>`) — `inline-block`. Внутренние табличные виды не
+/// трогаются: их по спеке заворачивает АНОНИМНАЯ строчная таблица, которой у
+/// нас нет (`ruby-inlinize-blocks-003` этим рукавом не берётся). Правило
+/// проходит сквозь неатомарные строчные звенья (`<b>` внутри `<ruby>`), но не
+/// сквозь блок или атом: те начинают свой поток.
+///
+/// `ancestors` — цепочка предков от БЛИЖАЙШЕГО. Руби узнаётся по имени тега:
+/// `display: ruby*` пока не разбирается, а разметка набора пишется тегами.
+fn inlinify_in_ruby<'a>(
+    style: &mut Computed,
+    tag: &str,
+    ancestors: impl Iterator<Item = &'a Ancestor>,
+) {
+    // Вне потока коробка блокифицируется (§9.7) и инлайнизации не подлежит.
+    if style.float.is_some_and(|f| f != 0)
+        || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed))
+    {
+        return;
+    }
+    let mut inside = false;
+    for a in ancestors {
+        if matches!(a.tag.as_str(), "ruby" | "rb" | "rt" | "rbc" | "rtc") {
+            inside = true;
+            break;
+        }
+        if !INLINE_TAGS.contains(&a.tag.as_str()) {
+            break;
+        }
+    }
+    if !inside {
+        return;
+    }
+    style.display = match style.display {
+        Some(Display::Block) | Some(Display::ListItem) => Some(Display::InlineBlock),
+        Some(Display::Table) => Some(Display::InlineTable),
+        Some(Display::Flex) => Some(Display::InlineFlex),
+        Some(Display::Grid) => Some(Display::InlineGrid),
+        None if tag == "table" => Some(Display::InlineTable),
+        None if BLOCK_TAGS.contains(&tag) => Some(Display::InlineBlock),
+        other => other,
+    };
+}
+
 fn finish_inline_display(style: &mut Computed, tag: &str) {
     use crate::computed::Display;
     let out_of_flow = style.float.is_some()
@@ -2143,6 +2202,7 @@ fn walk(
             apply_presentational_size(&mut style, &tag, &attrs);
             apply_presentational_colors(&mut style, &tag, &attrs);
             finish_inline_display(&mut style, &tag);
+            inlinify_in_ruby(&mut style, &tag, path.iter().rev());
             // motion-1: offset-трансформ слоится ПОСЛЕ отдельных свойств
             // преобразования и ПЕРЕД `transform` — то есть после того, как
             // каскад свёл все `offset-*` и авторский `transform` в один стиль.
@@ -2611,7 +2671,11 @@ fn pseudo_box(
     if matched.is_empty() {
         return None;
     }
-    let style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
+    let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
+    // Псевдоэлемент — ребёнок хозяина: блочный `::before` внутри руби
+    // инлайнизируется так же, как элемент (css-ruby-1 §2.2 п.1,
+    // `ruby-inlinize-blocks-005`). Ближайший предок — сам хозяин.
+    inlinify_in_ruby(&mut style, "", std::iter::once(me).chain(path.iter().rev()));
     // Нет содержимого или коробки — нет и псевдоэлемента: его директивы
     // счётчиков тогда не действуют вовсе (у него нет объекта раскладки).
     let list = style.content.clone()?;

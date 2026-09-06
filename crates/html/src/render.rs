@@ -7188,6 +7188,233 @@ fn inline_level(e: &Element) -> bool {
     }
 }
 
+/// Единица руби (css-ruby-1 §2.3.2): содержимое одной базы или одной
+/// аннотации. Пустой вектор — анонимная пустая единица, добавленная спариванием.
+type RubyUnit = Vec<Node>;
+
+/// Уровень аннотаций сегмента: `<rtc>` или ряд `<rt>` прямо в контейнере
+/// (анонимный контейнер аннотаций, css-ruby-1 §2.2 п.8).
+struct RubyLevel {
+    units: Vec<RubyUnit>,
+    /// `<rtc>` без `<rt>` внутри — одна анонимная аннотация, накрывающая ВСЕ
+    /// базы сегмента (§2.3.2 «spanning annotation»).
+    spanning: bool,
+    /// Стиль самого `<rtc>`: его аннотации наследуют от него (в том числе
+    /// половинный кегль из листа агента).
+    container: Option<Computed>,
+}
+
+/// Сегмент руби (css-ruby-1 §2.3.1): ряд баз и уровни аннотаций к нему.
+struct RubySegment {
+    bases: Vec<RubyUnit>,
+    levels: Vec<RubyLevel>,
+}
+
+/// Пуста ли единица: только схлопываемые пробелы и руби-теги без содержимого.
+/// Любой другой элемент — содержимое, даже пустой `<div>` с шириной
+/// (`ruby-align-001`: `rt > div { width: 160px }`).
+fn ruby_unit_blank(unit: &[Node]) -> bool {
+    unit.iter().all(|n| match n {
+        Node::Text(t) => blank_text(t),
+        Node::Element(k) if matches!(k.tag.as_str(), "rt" | "rb" | "rtc" | "rbc") => {
+            ruby_unit_blank(&k.children)
+        }
+        Node::Element(_) => false,
+    })
+}
+
+/// Разрезать детей `<ruby>` на сегменты и единицы (css-ruby-1 §2.2 п.3-8, §2.3).
+///
+/// База после аннотации открывает новый сегмент. Пробелы между руби-коробками
+/// решаются по соседям (§2.2 п.4-6): краевые и межуровневые (база →
+/// аннотация) выбрасываются; между двумя `<rb>` — своя база, между двумя
+/// `<rt>` — своя аннотация; аннотация → база — межсегментный, свой сегмент из
+/// одной анонимной базы (так его рисуют эталоны `ruby-box-generation-*`).
+/// Прочий строчный контент образует анонимную базу (п.3). `<rp>` не
+/// показывается (A.1). Аннотации внутри `<rbc>` (неправильно вложенные, п.2)
+/// пока идут содержимым базы — анонимный руби-контейнер для них: шаг 3.
+fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Kind {
+        Text,
+        Rb,
+        Rbc,
+        Rt,
+        Rtc,
+        Blank,
+        Drop,
+    }
+    let kind_of = |n: &Node| match n {
+        Node::Text(t) if blank_text(t) => Kind::Blank,
+        Node::Text(_) => Kind::Text,
+        Node::Element(k) => match k.tag.as_str() {
+            "rb" => Kind::Rb,
+            "rbc" => Kind::Rbc,
+            "rt" => Kind::Rt,
+            "rtc" => Kind::Rtc,
+            "rp" => Kind::Drop,
+            _ => Kind::Text,
+        },
+    };
+    let base_kind = |k: Kind| matches!(k, Kind::Text | Kind::Rb | Kind::Rbc);
+    let ann_kind = |k: Kind| matches!(k, Kind::Rt | Kind::Rtc);
+    let kinds: Vec<Kind> = children.iter().map(kind_of).collect();
+    // Ближайший непробельный сосед слева (`-1`) или справа (`1`).
+    let neighbour = |from: usize, step: isize| -> Option<Kind> {
+        let mut i = from as isize + step;
+        while i >= 0 && (i as usize) < kinds.len() {
+            let k = kinds[i as usize];
+            if !matches!(k, Kind::Blank | Kind::Drop) {
+                return Some(k);
+            }
+            i += step;
+        }
+        None
+    };
+    fn fresh() -> RubySegment {
+        RubySegment { bases: Vec::new(), levels: Vec::new() }
+    }
+    fn flush_run(run: &mut RubyUnit, cur: &mut RubySegment) {
+        if !run.is_empty() {
+            cur.bases.push(std::mem::take(run));
+        }
+    }
+    fn close_segment(cur: &mut RubySegment, out: &mut Vec<RubySegment>) {
+        if !cur.bases.is_empty() || !cur.levels.is_empty() {
+            out.push(std::mem::replace(cur, fresh()));
+        }
+    }
+    // База после аннотаций — новый сегмент (§2.3.1).
+    fn base_starts(cur: &mut RubySegment, out: &mut Vec<RubySegment>, loose_level: &mut bool) {
+        if !cur.levels.is_empty() {
+            close_segment(cur, out);
+            *loose_level = false;
+        }
+    }
+    let mut out: Vec<RubySegment> = Vec::new();
+    let mut cur = fresh();
+    // Анонимная база из текста и строчных элементов (§2.2 п.3).
+    let mut run: RubyUnit = Vec::new();
+    // Открыт ли анонимный уровень из `<rt>` прямо в контейнере.
+    let mut loose_level = false;
+    for (i, node) in children.iter().enumerate() {
+        match kinds[i] {
+            Kind::Drop => {}
+            Kind::Text => {
+                base_starts(&mut cur, &mut out, &mut loose_level);
+                run.push(node.clone());
+            }
+            Kind::Rb => {
+                base_starts(&mut cur, &mut out, &mut loose_level);
+                flush_run(&mut run, &mut cur);
+                cur.bases.push(vec![node.clone()]);
+            }
+            Kind::Rbc => {
+                base_starts(&mut cur, &mut out, &mut loose_level);
+                flush_run(&mut run, &mut cur);
+                let Node::Element(k) = node else { continue };
+                // Внутри `<rbc>`: каждый `<rb>` — база, пробел между двумя
+                // `<rb>` — своя база, краевые пробелы — вон, прочее —
+                // анонимная база.
+                let kids: Vec<Kind> = k.children.iter().map(kind_of).collect();
+                let mut inner: RubyUnit = Vec::new();
+                for (j, c) in k.children.iter().enumerate() {
+                    match kids[j] {
+                        Kind::Rb => {
+                            if !inner.is_empty() {
+                                cur.bases.push(std::mem::take(&mut inner));
+                            }
+                            cur.bases.push(vec![c.clone()]);
+                        }
+                        Kind::Blank => {
+                            let prev = kids[..j].iter().rev().copied().find(|k| *k != Kind::Blank);
+                            let next = kids[j + 1..].iter().copied().find(|k| *k != Kind::Blank);
+                            match (prev, next) {
+                                (Some(Kind::Rb), Some(Kind::Rb)) => cur.bases.push(vec![c.clone()]),
+                                (Some(Kind::Text), Some(_)) | (Some(_), Some(Kind::Text)) => {
+                                    inner.push(c.clone())
+                                }
+                                _ => {}
+                            }
+                        }
+                        Kind::Drop => {}
+                        _ => inner.push(c.clone()),
+                    }
+                }
+                if !inner.is_empty() {
+                    cur.bases.push(inner);
+                }
+            }
+            Kind::Rt => {
+                flush_run(&mut run, &mut cur);
+                if !loose_level {
+                    cur.levels.push(RubyLevel { units: Vec::new(), spanning: false, container: None });
+                    loose_level = true;
+                }
+                cur.levels.last_mut().expect("уровень только что открыт").units.push(vec![node.clone()]);
+            }
+            Kind::Rtc => {
+                flush_run(&mut run, &mut cur);
+                loose_level = false;
+                let Node::Element(k) = node else { continue };
+                let rts: Vec<RubyUnit> = k
+                    .children
+                    .iter()
+                    .filter(|c| matches!(c, Node::Element(r) if r.tag == "rt"))
+                    .map(|c| vec![c.clone()])
+                    .collect();
+                let spanning = rts.is_empty();
+                let units = if spanning {
+                    // Одна анонимная аннотация из всего содержимого, без
+                    // краевых пробелов (§2.2 п.4).
+                    let mut all: Vec<Node> = k.children.clone();
+                    while matches!(all.first(), Some(Node::Text(t)) if blank_text(t)) {
+                        all.remove(0);
+                    }
+                    while matches!(all.last(), Some(Node::Text(t)) if blank_text(t)) {
+                        all.pop();
+                    }
+                    vec![all]
+                } else {
+                    rts
+                };
+                cur.levels.push(RubyLevel { units, spanning, container: Some(k.style.clone()) });
+            }
+            Kind::Blank => match (neighbour(i, -1), neighbour(i, 1)) {
+                // Краевой пробел контейнера (п.4).
+                (None, _) | (_, None) => {}
+                // Межуровневый: база → аннотация (п.5).
+                (Some(p), Some(n)) if base_kind(p) && ann_kind(n) => {}
+                // Межбазовый (п.6): своя единица, спаривается по порядку.
+                (Some(Kind::Rb | Kind::Rbc), Some(Kind::Rb | Kind::Rbc)) => {
+                    base_starts(&mut cur, &mut out, &mut loose_level);
+                    flush_run(&mut run, &mut cur);
+                    cur.bases.push(vec![node.clone()]);
+                }
+                // Пробел внутри анонимной базы.
+                (Some(p), Some(n)) if base_kind(p) && base_kind(n) => {
+                    base_starts(&mut cur, &mut out, &mut loose_level);
+                    run.push(node.clone());
+                }
+                // Межаннотационный (п.6) — только между двумя `<rt>` контейнера.
+                (Some(Kind::Rt), Some(Kind::Rt)) if loose_level => {
+                    cur.levels.last_mut().expect("уровень открыт").units.push(vec![node.clone()]);
+                }
+                // Межсегментный (п.6): аннотация → база — свой сегмент.
+                (Some(p), Some(n)) if ann_kind(p) && base_kind(n) => {
+                    close_segment(&mut cur, &mut out);
+                    loose_level = false;
+                    out.push(RubySegment { bases: vec![vec![node.clone()]], levels: Vec::new() });
+                }
+                _ => {}
+            },
+        }
+    }
+    flush_run(&mut run, &mut cur);
+    close_segment(&mut cur, &mut out);
+    out
+}
+
 /// Не-текстовые инлайн-элементы, которые в поток встроить нельзя.
 fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     // Элементу формы нужен СЛИТЫЙ стиль: в своём у него единицы шрифта ещё не
@@ -7709,55 +7936,106 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 &e.style,
             ))
         }
-        // `<ruby>` — база с НАДСТРОЧНОЙ аннотацией (css-ruby-1 §2): `<rt>`
-        // рисуется над своей базой кеглем в половину, `<rp>` — только для
-        // движков без поддержки руби и не показывается. Собирается атомом:
-        // колонка «аннотация над базой», выключенная по центру. Строка
-        // растёт сама — атом выше её обычной высоты.
+        // `<ruby>` — контейнер руби (css-ruby-1 §2.1). Дети режутся на
+        // сегменты и единицы (`ruby_segments`, §2.2-§2.3); база и её
+        // аннотации стоят колонкой, колонки сегмента — рядом по базовой
+        // линии, распорная аннотация (`<rtc>` без `<rt>`) накрывает весь
+        // сегмент, уровни идут стопкой наружу (§3.1.2).
+        //
+        // Колонка для `over` собирается гибкой колонкой С ОБРАТНЫМ порядком:
+        // первым ребёнком идёт БАЗА. Базовую линию гибкой колонки taffy берёт
+        // у первого ребёнка (`flexbox.rs:404`), и атом встаёт на базовую
+        // линию строки своей базой, а аннотация визуально ложится над ней.
+        // Прежняя колонка «аннотация, база» отдавала строке базовую линию
+        // АННОТАЦИИ, и база проваливалась под соседний текст
+        // (`rbc-rtc-basic-001`). `ruby-position: under` — прямой порядок.
+        //
+        // Кегль, `nowrap` и `text-emphasis: none` аннотации даёт лист агента
+        // (A.1: `rt, rtc { font-size: 50% }`), поэтому авторский
+        // `rt { font-size }` теперь действует (`ruby-base-different-size`).
+        // Коробки базы и аннотации — блочные: они тянутся на ширину колонки
+        // (align-items: stretch), а содержимое выключается `text-align`
+        // из `ruby-align` (§4.3); `items_center` абзац не центрировал.
         "ruby" => {
+            use crate::computed::{RubyAlign, TextAlign};
             let mut merged = inline::inherit(inherited, &e.style);
-            // Внутри руби знак акцента больше не разворачивается: сам знак
-            // — уже надпись, и рекурсия ушла бы в бесконечность.
+            // Внутри руби знак акцента не разворачивается (как прежде).
             merged.text_emphasis = None;
-            let mut base: Vec<Node> = Vec::new();
-            let mut over: Vec<Node> = Vec::new();
-            for c in &e.children {
-                match c {
-                    Node::Element(k) if k.tag == "rt" => over.push(c.clone()),
-                    Node::Element(k) if k.tag == "rp" => {}
-                    other => base.push(other.clone()),
-                }
-            }
-            if over.is_empty() {
+            let segments = ruby_segments(&e.children);
+            // Без хотя бы одной непустой аннотации руби — обычный строчный
+            // (`ruby-line-breaking-001`: `<rtc><rt>` пустой; `ruby-intrinsic-isize-*`).
+            if !segments
+                .iter()
+                .any(|s| s.levels.iter().any(|l| l.units.iter().any(|u| !ruby_unit_blank(u))))
+            {
                 return None;
             }
-            let mut ann = merged.clone();
-            // Кегль аннотации — половина базового (умолчание браузеров).
-            let font = match merged.font_size {
-                Some(Len::Px(v)) => v,
-                _ => opts.base_size(),
+            // `ruby-align`: `space-around` (начальное) и `center` — по центру
+            // (у латиницы точек выключки нет, §4.3); `space-between` —
+            // выключка обоих краёв; `start` — к началу.
+            match merged.ruby_align {
+                Some(RubyAlign::Start) => merged.text_align = Some(TextAlign::Start),
+                Some(RubyAlign::SpaceBetween) => {
+                    merged.text_align = Some(TextAlign::Justify);
+                    merged.text_align_last = Some(TextAlign::Justify);
+                }
+                _ => merged.text_align = Some(TextAlign::Center),
+            }
+            let under = merged.ruby_under == Some(true);
+            let stack = || {
+                if under {
+                    div().flex().flex_col()
+                } else {
+                    div().flex().flex_col_reverse()
+                }
             };
-            ann.font_size = Some(Len::Px(font * 0.5));
-            ann.line_height = Some(Len::Px(font * 0.5));
-            let ann_el = div()
-                .flex()
-                .flex_row()
-                .children(blocks(&over, &ann, opts))
-                .into_any_element();
-            let base_el = div()
-                .flex()
-                .flex_row()
-                .children(blocks(&base, &merged, opts))
-                .into_any_element();
-            let col = div().flex().flex_col().items_center().flex_shrink_0();
-            // `ruby-position: under` и знак акцента снизу ставят надпись ПОД
-            // базой (css-ruby-1 §4.1, css-text-decor-3 §5.2).
-            let col = if merged.emphasis_under {
-                col.child(base_el).child(ann_el)
-            } else {
-                col.child(ann_el).child(base_el)
+            let unit_box = |nodes: &[Node], style: &Computed| -> AnyElement {
+                div().children(blocks(nodes, style, opts)).into_any_element()
             };
-            Some(col.into_any_element())
+            let empty: RubyUnit = Vec::new();
+            let mut row = div().flex().flex_row().items_baseline().flex_shrink_0();
+            for seg in &segments {
+                // Стиль уровня: аннотации внутри `<rtc>` наследуют от него.
+                let level_style: Vec<Computed> = seg
+                    .levels
+                    .iter()
+                    .map(|l| match &l.container {
+                        Some(c) => inline::inherit(&merged, c),
+                        None => merged.clone(),
+                    })
+                    .collect();
+                // Колонок столько, сколько баз или аннотаций самого длинного
+                // нераспорного уровня; нехватка — пустые анонимные (§2.3.2).
+                let columns = seg.bases.len().max(
+                    seg.levels
+                        .iter()
+                        .filter(|l| !l.spanning)
+                        .map(|l| l.units.len())
+                        .max()
+                        .unwrap_or(0),
+                );
+                let mut cols = div().flex().flex_row().items_baseline();
+                for i in 0..columns {
+                    let mut col = stack().child(unit_box(seg.bases.get(i).unwrap_or(&empty), &merged));
+                    for (l, style) in seg.levels.iter().zip(&level_style) {
+                        if !l.spanning {
+                            col = col.child(unit_box(l.units.get(i).unwrap_or(&empty), style));
+                        }
+                    }
+                    cols = cols.child(col);
+                }
+                let mut seg_el = cols.into_any_element();
+                for (l, style) in seg.levels.iter().zip(&level_style) {
+                    if l.spanning {
+                        seg_el = stack()
+                            .child(seg_el)
+                            .child(unit_box(l.units.first().unwrap_or(&empty), style))
+                            .into_any_element();
+                    }
+                }
+                row = row.child(seg_el);
+            }
+            Some(row.into_any_element())
         }
         // `<canvas>` — замещаемый элемент с собственными размерами 300x150
         // по умолчанию (HTML §4.12.5); рисовать в нём нечего, но место он

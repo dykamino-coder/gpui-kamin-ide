@@ -315,6 +315,18 @@ pub struct Hanging {
     pub allow_end: bool,
 }
 
+/// `ruby-align` (css-ruby-1 §4.3): выключка содержимого руби-коробки, когда
+/// оно уже своей колонки.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RubyAlign {
+    Start,
+    Center,
+    SpaceBetween,
+    /// Начальное значение: как `space-between`, плюс по половине зазора с
+    /// краёв; без точек выключки (латиница) — по центру.
+    SpaceAround,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TextAlign {
     Left,
@@ -1841,9 +1853,15 @@ pub struct Computed {
     /// Знак акцента (`text-emphasis-style`, css-text-decor-3 §5): рисуется
     /// над каждым знаком базы, как надстрочная аннотация руби.
     pub text_emphasis: Option<String>,
-    /// Акцент СНИЗУ (`text-emphasis-position: under`), а также надпись руби
-    /// под базой (`ruby-position: under`).
+    /// Акцент СНИЗУ (`text-emphasis-position: under`).
     pub emphasis_under: bool,
+    /// `ruby-position` (css-ruby-1 §4.1): `Some(true)` — аннотация ПОД базой
+    /// (`under`), `Some(false)` — над (`over`/`alternate`/`inter-character`),
+    /// `None` — не задано. Наследуется (`inline::inherit`). Прежде делил флаг
+    /// с акцентом, и `text-emphasis-position: under` переворачивал руби.
+    pub ruby_under: Option<bool>,
+    /// `ruby-align` (css-ruby-1 §4.3); `None` — начальное `space-around`.
+    pub ruby_align: Option<RubyAlign>,
     /// `caret-color` поля ввода.
     pub caret_color: Option<Color>,
     /// `accent-color` флажков и переключателей.
@@ -5221,7 +5239,19 @@ impl Computed {
                 self.text_emphasis = Some(mark.to_string());
             }
             "ruby-position" => {
-                self.emphasis_under = v.split_whitespace().any(|w| w == "under");
+                // css-ruby-1 §4.1: `under` — под базой; `over`, `alternate`
+                // (первый уровень) и `inter-character` (в горизонтали — пока
+                // как `over`) — над ней.
+                self.ruby_under = Some(v.split_whitespace().any(|w| w == "under"));
+            }
+            "ruby-align" => {
+                self.ruby_align = match v.trim() {
+                    "start" => Some(RubyAlign::Start),
+                    "center" => Some(RubyAlign::Center),
+                    "space-between" => Some(RubyAlign::SpaceBetween),
+                    "space-around" => Some(RubyAlign::SpaceAround),
+                    _ => self.ruby_align,
+                };
             }
             "font-kerning" => {
                 // css-fonts-4 §6.4: `none` гасит кернинг, `normal` включает,

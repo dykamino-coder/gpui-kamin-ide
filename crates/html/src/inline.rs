@@ -1015,6 +1015,9 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     }
     c.text_emphasis = own.text_emphasis.clone().or(parent.text_emphasis.clone());
     c.emphasis_under = own.emphasis_under || parent.emphasis_under;
+    // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
+    c.ruby_under = own.ruby_under.or(parent.ruby_under);
+    c.ruby_align = own.ruby_align.or(parent.ruby_align);
     // `image-orientation` наследуется (css-images-3 §5.4, «Inherited: yes»):
     // в наборе его ставят на `body`, а действует он на каждой картинке.
     c.image_orient_none = own.image_orient_none.or(parent.image_orient_none);
