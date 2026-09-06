@@ -3009,52 +3009,71 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // последнем ребёнке: коробка ужимается ровно на срез, а содержимое
     // остаётся на месте.
     //
-    // Спека прямо оговаривает: «If there is no such line, or if there is
-    // intervening non-zero padding or borders, there is no effect» — поэтому
-    // при своих отступах и рамке контейнера срез не применяется.
-    if (inherited.text_box_trim_start || inherited.text_box_trim_end) && !out.is_empty() {
-        let size = match inherited.font_size {
-            Some(Len::Px(v)) => v,
-            _ => opts.base_size(),
+    // Строку ищет `text_box_line_style` по css-pseudo-4: у контейнера с
+    // блочным содержимым это первая строка ПЕРВОГО in-flow блочного ребёнка,
+    // и если у того строки нет (пустой `<div>`, пустая анонимная коробка) —
+    // срезать нечего (`half-leading-block-box-001/003`). «Intervening
+    // non-zero padding or borders» — отступы и рамки ПОТОМКОВ между
+    // контейнером и строкой (`-004/-005`), а не самого контейнера: его
+    // собственный отступ срезу не мешает (`-006`). Метрики — от корневой
+    // строчной коробки найденной строки, то есть от стиля её блока.
+    if (inherited.text_box_trim_start || inherited.text_box_trim_end)
+        && !out.is_empty()
+        && !ordered_context
+    {
+        // Срез с одной стороны: полулидинг строки плюс расстояние от
+        // подъёма/спуска до заданной метрики края (`text` — ноль, `cap`/`ex`
+        // — остаток над прописной/строчной, `alphabetic` — весь спуск).
+        let trim_for = |line_style: &Computed, start: bool| -> f32 {
+            let size = match line_style.font_size {
+                Some(Len::Px(v)) => v,
+                _ => opts.base_size(),
+            };
+            let family = line_style.font_family.clone().unwrap_or_default();
+            let (ascent, descent, cap) = crate::metrics::vmetrics_px(&family, size);
+            let line = match line_style.line_height {
+                Some(Len::Px(v)) => v,
+                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+                _ => ascent + descent,
+            };
+            // Полулидинг — половина разницы между высотой строки и метрикой
+            // содержимого (CSS 2.1 §10.8.1).
+            let half = (line - (ascent + descent)) / 2.0;
+            // `text-box-edge` наследуется, но `inherit()` его не несёт: край
+            // берётся у блока строки, если он там задан, иначе у контейнера.
+            let pick = |own: crate::computed::TextEdge, up: crate::computed::TextEdge| {
+                if own != crate::computed::TextEdge::Text { own } else { up }
+            };
+            if start {
+                let over = match pick(line_style.text_box_over, inherited.text_box_over) {
+                    crate::computed::TextEdge::Cap => ascent - cap,
+                    crate::computed::TextEdge::Ex => {
+                        ascent - crate::metrics::ch_ex_px(&family, size).1
+                    }
+                    _ => 0.0,
+                };
+                half + over
+            } else {
+                let under = match pick(line_style.text_box_under, inherited.text_box_under) {
+                    crate::computed::TextEdge::Alphabetic => descent,
+                    _ => 0.0,
+                };
+                half + under
+            }
         };
-        let family = inherited.font_family.clone().unwrap_or_default();
-        let (ascent, descent, cap) = crate::metrics::vmetrics_px(&family, size);
-        let line = match inherited.line_height {
-            Some(Len::Px(v)) => v,
-            Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-            _ => ascent + descent,
-        };
-        // Полулидинг — половина разницы между высотой строки и метрикой
-        // содержимого (CSS 2.1 §10.8.1).
-        let half = (line - (ascent + descent)) / 2.0;
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
-        let bs = inherited.borders();
-        let clean_top = px_of(inherited.padding.top) == 0.0 && px_of(bs.top) == 0.0;
-        let clean_bottom = px_of(inherited.padding.bottom) == 0.0 && px_of(bs.bottom) == 0.0;
-        // Верхний край: полулидинг плюс расстояние от подъёма до заданной
-        // метрики (`text` — ноль, `cap`/`ex` — остаток над прописной/строчной).
-        let over = match inherited.text_box_over {
-            crate::computed::TextEdge::Cap => ascent - cap,
-            crate::computed::TextEdge::Ex => ascent - crate::metrics::ch_ex_px(&family, size).1,
-            _ => 0.0,
-        };
-        // Нижний край: `alphabetic` срезает весь спуск, `text` — ничего.
-        let under = match inherited.text_box_under {
-            crate::computed::TextEdge::Alphabetic => descent,
-            _ => 0.0,
-        };
-        if inherited.text_box_trim_start && clean_top {
-            let trim = half + over;
+        if inherited.text_box_trim_start
+            && let Some(line_style) = text_box_line_style(nodes, inherited, true)
+        {
+            let trim = trim_for(&line_style, true);
             if trim > 0.0 {
                 let first = out.remove(0);
                 out.insert(0, div().mt(px(-trim)).child(first).into_any_element());
             }
         }
-        if inherited.text_box_trim_end && clean_bottom {
-            let trim = half + under;
+        if inherited.text_box_trim_end
+            && let Some(line_style) = text_box_line_style(nodes, inherited, false)
+        {
+            let trim = trim_for(&line_style, false);
             if trim > 0.0 {
                 let last = out.pop().expect("список не пуст");
                 out.push(div().mb(px(-trim)).child(last).into_any_element());
@@ -5046,6 +5065,89 @@ fn multicol_container(c: &Computed) -> bool {
 
 fn is_blank(n: &Node) -> bool {
     matches!(n, Node::Text(t) if blank_text(t))
+}
+
+/// Стиль блока, которому принадлежит первая (`start`) или последняя
+/// отформатированная строка контейнера — для `text-box-trim`
+/// (css-inline-3 §4.2, css-pseudo-4 «first formatted line»).
+///
+/// `None` — такой строки нет или до неё стоит отступ либо рамка: срезать
+/// нечего. Контейнер со строчным содержимым отдаёт СВОЙ стиль; с блочным —
+/// спускается в первый/последний in-flow блочный ребёнок (плавающие и
+/// абсолютные в потоке не участвуют, пробельные узлы пропускаются). Пустой
+/// блок, пустая анонимная коробка (пробельный `<span>` среди блоков —
+/// `half-leading-block-box-001/003`), гибкий, сеточный и табличный контекст
+/// обрывают поиск; отступ и рамка ПОТОМКА на срезаемой стороне — тоже
+/// (`-004/-005`). Строчный элемент с блоком внутри (блок-в-строчном)
+/// прозрачен: строка — в его блоке (`block-in-inline-*`).
+fn text_box_line_style(nodes: &[Node], inherited: &Computed, start: bool) -> Option<Computed> {
+    let has_block = nodes.iter().any(breaks_inline);
+    let order: Vec<&Node> = if start {
+        nodes.iter().collect()
+    } else {
+        nodes.iter().rev().collect()
+    };
+    for (i, n) in order.iter().enumerate() {
+        let e = match n {
+            Node::Text(t) if blank_text(t) => continue,
+            // Непробельный текст — строка в этом контейнере.
+            Node::Text(_) => return Some(inherited.clone()),
+            Node::Element(e) => e,
+        };
+        if e.style.display == Some(Display::None) || out_of_flow(&e.style) {
+            continue;
+        }
+        if e.style.display == Some(Display::Contents) {
+            return text_box_line_style(&e.children, &inline::inherit(inherited, &e.style), start);
+        }
+        if breaks_inline(n) {
+            // Через гибкий, сеточный и табличный контекст свойство не
+            // распространяется (css-inline-3 §4.2, примечание).
+            if matches!(
+                e.style.display,
+                Some(Display::Flex)
+                    | Some(Display::Grid)
+                    | Some(Display::Table)
+                    | Some(Display::GridLanes)
+            ) {
+                return None;
+            }
+            let merged = inline::inherit(inherited, &e.style);
+            let px_of = |l: Option<Len>| match l {
+                Some(Len::Px(v)) => v,
+                _ => 0.0,
+            };
+            let bs = merged.borders();
+            let blocked = if start {
+                px_of(merged.padding.top) != 0.0 || px_of(bs.top) != 0.0
+            } else {
+                px_of(merged.padding.bottom) != 0.0 || px_of(bs.bottom) != 0.0
+            };
+            if blocked {
+                return None;
+            }
+            return text_box_line_style(&e.children, &merged, start);
+        }
+        // Блок-в-строчном: оболочка прозрачна, строка — внутри блока.
+        if real_inline(e) && contains_block(&e.children) {
+            return text_box_line_style(&e.children, inherited, start);
+        }
+        // Строчное содержимое. Без блочных братьев это весь контекст
+        // форматирования; с ними — анонимная коробка из прогона до блока,
+        // и пустая (только пробелы и пустые спаны) строки не имеет.
+        let has_line = if has_block {
+            let run: Vec<Node> = order[i..]
+                .iter()
+                .take_while(|m| !breaks_inline(m))
+                .map(|m| (*m).clone())
+                .collect();
+            holds_line_box(&run)
+        } else {
+            holds_line_box(nodes)
+        };
+        return has_line.then(|| inherited.clone());
+    }
+    None
 }
 
 /// Порядок наложения внутри одного родителя.

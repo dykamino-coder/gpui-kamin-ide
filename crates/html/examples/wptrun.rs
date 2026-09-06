@@ -1221,6 +1221,31 @@ fn main() {
             let mut timing_lines = 0usize;
             for (test, reference) in &pairs {
                 let started = std::time::Instant::now();
+                // Тест, которому нужен JavaScript, стенд исполнить не может.
+                // `<meta name="variant">` применяется скриптом
+                // (`support/variant-class.js` читает `location.search` и вешает
+                // класс на `<html>`); без класса тест и эталон рисуют дефолт, и
+                // пара сходится, не проверив ничего (`dominant-baseline-auto`:
+                // снимки побайтово равны). Хуже: `text-box-trim-start-001` был
+                // 0.00, пока трима не было, и стал 25.62, когда трим появился —
+                // эталон без класса остаётся нетримленным. Такая пара — вне
+                // цели, а не зелёная и не красная; рисовать её незачем.
+                let head = std::fs::read_to_string(test).unwrap_or_default();
+                let head_lower = head.to_ascii_lowercase();
+                let out_of_scope = if head_lower.contains("name=\"variant\"")
+                    || head_lower.contains("name='variant'")
+                {
+                    Some("вне цели: вариант")
+                } else if head_lower.contains("<script") {
+                    Some("вне цели: скрипт")
+                } else {
+                    None
+                };
+                if let Some(why) = out_of_scope {
+                    report.push_str(&format!("{test}|{reference}|{why}\n"));
+                    let _ = std::fs::write(report_path.as_str(), &report);
+                    continue;
+                }
                 let mut shots = vec![];
                 // Разделитель между страницами: без него «тест совпал с
                 // эталоном» неотличимо от «ни один не перерисовался».
