@@ -3002,6 +3002,64 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     if !pending.is_empty() {
         out.push(paragraph_probed(&pending, inherited, opts));
     }
+    // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера срезается
+    // блочно-начальная сторона ПЕРВОЙ отформатированной строки и
+    // блочно-конечная — ПОСЛЕДНЕЙ. Выражается отрицательным полем на первом и
+    // последнем ребёнке: коробка ужимается ровно на срез, а содержимое
+    // остаётся на месте.
+    //
+    // Спека прямо оговаривает: «If there is no such line, or if there is
+    // intervening non-zero padding or borders, there is no effect» — поэтому
+    // при своих отступах и рамке контейнера срез не применяется.
+    if (inherited.text_box_trim_start || inherited.text_box_trim_end) && !out.is_empty() {
+        let size = match inherited.font_size {
+            Some(Len::Px(v)) => v,
+            _ => opts.base_size(),
+        };
+        let family = inherited.font_family.clone().unwrap_or_default();
+        let (ascent, descent, cap) = crate::metrics::vmetrics_px(&family, size);
+        let line = match inherited.line_height {
+            Some(Len::Px(v)) => v,
+            Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+            _ => ascent + descent,
+        };
+        // Полулидинг — половина разницы между высотой строки и метрикой
+        // содержимого (CSS 2.1 §10.8.1).
+        let half = (line - (ascent + descent)) / 2.0;
+        let px_of = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let bs = inherited.borders();
+        let clean_top = px_of(inherited.padding.top) == 0.0 && px_of(bs.top) == 0.0;
+        let clean_bottom = px_of(inherited.padding.bottom) == 0.0 && px_of(bs.bottom) == 0.0;
+        // Верхний край: полулидинг плюс расстояние от подъёма до заданной
+        // метрики (`text` — ноль, `cap`/`ex` — остаток над прописной/строчной).
+        let over = match inherited.text_box_over {
+            crate::computed::TextEdge::Cap => ascent - cap,
+            crate::computed::TextEdge::Ex => ascent - crate::metrics::ch_ex_px(&family, size).1,
+            _ => 0.0,
+        };
+        // Нижний край: `alphabetic` срезает весь спуск, `text` — ничего.
+        let under = match inherited.text_box_under {
+            crate::computed::TextEdge::Alphabetic => descent,
+            _ => 0.0,
+        };
+        if inherited.text_box_trim_start && clean_top {
+            let trim = half + over;
+            if trim > 0.0 {
+                let first = out.remove(0);
+                out.insert(0, div().mt(px(-trim)).child(first).into_any_element());
+            }
+        }
+        if inherited.text_box_trim_end && clean_bottom {
+            let trim = half + under;
+            if trim > 0.0 {
+                let last = out.pop().expect("список не пуст");
+                out.push(div().mb(px(-trim)).child(last).into_any_element());
+            }
+        }
+    }
     // Верхний слой: то, что обязано рисоваться поверх соседей, идёт последним
     // и возвращается на своё место замеренным сдвигом.
     out.extend(crate::interact::late_close());

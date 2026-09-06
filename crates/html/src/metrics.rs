@@ -15,6 +15,18 @@ use std::collections::HashMap;
 /// Щуп: по имени семейства и кеглю отдаёт ширину нуля и высоту строчной.
 type Probe = Box<dyn Fn(&str, f32) -> (f32, f32, f32, f32)>;
 
+/// Щуп ВЕРТИКАЛЬНЫХ метрик: подъём, спуск и высота прописной в долях кегля.
+///
+/// Отдельно от `Probe`, потому что нужен только `text-box-trim`
+/// (css-inline-3 §4.2 и §4.3): у краёв `text`, `cap` и `ex` разные метрики,
+/// а сумма «подъём + спуск», которую уже отдаёт `Probe`, ни одну из них не
+/// восстанавливает.
+type VProbe = Box<dyn Fn(&str, f32) -> (f32, f32, f32)>;
+
+/// Доли кегля, когда щуп вертикальных метрик не поставлен: подъём 0.8,
+/// спуск 0.2, прописная 0.7 — обычные значения текстового шрифта.
+const V_FALLBACK: (f32, f32, f32) = (0.8, 0.2, 0.7);
+
 /// Кегль, на котором меряются метрики. Метрики линейны по кеглю, поэтому
 /// хватает одного замера на семейство: остальное — умножение.
 const PROBE_SIZE: f32 = 100.0;
@@ -32,6 +44,34 @@ thread_local! {
     static PROBE: RefCell<Option<Probe>> = const { RefCell::new(None) };
     static CACHE: RefCell<HashMap<String, (f32, f32, f32, f32)>> = RefCell::new(HashMap::new());
     static MONO: RefCell<&'static str> = const { RefCell::new(MONO_FAMILIES[0]) };
+    static VPROBE: RefCell<Option<VProbe>> = const { RefCell::new(None) };
+    static VCACHE: RefCell<HashMap<String, (f32, f32, f32)>> = RefCell::new(HashMap::new());
+}
+
+/// Поставить щуп вертикальных метрик. Зовётся оттуда же, откуда `install_probe`.
+pub fn install_vprobe(probe: impl Fn(&str, f32) -> (f32, f32, f32) + 'static) {
+    VPROBE.with(|p| *p.borrow_mut() = Some(Box::new(probe)));
+    VCACHE.with(|c| c.borrow_mut().clear());
+}
+
+/// Подъём, спуск и высота прописной в ТОЧКАХ для семейства и кегля.
+///
+/// Метрики линейны по кеглю, поэтому замер идёт один раз на семейство
+/// (`PROBE_SIZE`), а дальше — умножение.
+pub fn vmetrics_px(family: &str, size_px: f32) -> (f32, f32, f32) {
+    let key = family.to_ascii_lowercase();
+    if let Some(hit) = VCACHE.with(|c| c.borrow().get(&key).copied()) {
+        return (hit.0 * size_px, hit.1 * size_px, hit.2 * size_px);
+    }
+    let got = VPROBE.with(|p| {
+        p.borrow()
+            .as_ref()
+            .map(|probe| probe(family, PROBE_SIZE))
+            .map(|(a, d, c)| (a / PROBE_SIZE, d / PROBE_SIZE, c / PROBE_SIZE))
+    });
+    let f = got.unwrap_or(V_FALLBACK);
+    VCACHE.with(|c| c.borrow_mut().insert(key, f));
+    (f.0 * size_px, f.1 * size_px, f.2 * size_px)
 }
 
 /// Семейство за родовое `monospace`.
@@ -194,6 +234,9 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
     {
         MONO.with(|m| *m.borrow_mut() = found);
     }
+    // Второму щупу (вертикальные метрики) нужен свой владелец `Arc`:
+    // первый забирает `text_system` в замыкание целиком.
+    let text_system2 = text_system.clone();
     install_probe(move |family, size| {
         // Родовое имя системе шрифтов отдавать нельзя: `sans-serif` — это не
         // шрифт, а разряд, и поиск по нему кончается ничем. Подставляется то
@@ -223,6 +266,23 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
             .map(|a| f32::from(a.width))
             .unwrap_or(0.0);
         (ch, f32::from(text_system.x_height(id, size)), line, ic)
+    });
+    // Вертикальные метрики того же семейства: подъём и спуск ПОРОЗНЬ (в GPUI
+    // спуск отрицателен) плюс высота прописной — по ним `text-box-trim`
+    // считает срез (css-inline-3 §4.2).
+    install_vprobe(move |family, size| {
+        let name: gpui::SharedString = if family.is_empty() {
+            crate::computed::GENERIC_SANS.into()
+        } else {
+            family.to_string().into()
+        };
+        let id = text_system2.resolve_font(&gpui::font(name));
+        let size = gpui::px(size);
+        (
+            f32::from(text_system2.ascent(id, size)),
+            -f32::from(text_system2.descent(id, size)),
+            f32::from(text_system2.cap_height(id, size)),
+        )
     });
 }
 

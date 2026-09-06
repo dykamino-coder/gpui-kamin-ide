@@ -999,6 +999,20 @@ pub struct SideSeq {
     pub inset: [u32; 4],
 }
 
+/// Метрика края текста (`<text-edge>`, css-inline-3 §4.3).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum TextEdge {
+    /// Подъём/спуск шрифта — начальное значение.
+    #[default]
+    Text,
+    /// Высота прописной (только верхний край).
+    Cap,
+    /// Высота строчной (только верхний край).
+    Ex,
+    /// Алфавитная базовая линия (только нижний край).
+    Alphabetic,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
     /// Счётчик объявлений этого узла: порядок каскада между логическими и
@@ -1179,6 +1193,12 @@ pub struct Computed {
     /// `text-justify: none` — выключка запрещена, строка идёт как `start`.
     pub no_justify: Option<bool>,
     /// `hanging-punctuation` — какая пунктуация выходит за край строки.
+    /// `text-box-trim` — срезать полулидинг первой/последней строки блока.
+    pub text_box_trim_start: bool,
+    pub text_box_trim_end: bool,
+    /// `text-box-edge` — метрики верхнего и нижнего краёв среза.
+    pub text_box_over: TextEdge,
+    pub text_box_under: TextEdge,
     pub hanging: Option<Hanging>,
     pub nowrap: Option<bool>,
     /// Переводы строк значимы (`white-space: pre*`).
@@ -4633,6 +4653,59 @@ impl Computed {
                 }
                 self.text_indent_each_line = each.then_some(true);
                 self.text_indent_hanging = hang.then_some(true);
+            }
+            // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера
+            // срезается ПОЛУЛИДИНГ первой и/или последней строки, чтобы край
+            // содержимого сел на метрику текста. Свойство НЕ наследуется.
+            "text-box-trim" => {
+                self.text_box_trim_start = matches!(v, "trim-start" | "trim-both");
+                self.text_box_trim_end = matches!(v, "trim-end" | "trim-both");
+            }
+            // `text-box-edge` (css-inline-3 §4.3): по какой метрике срезать.
+            // Первое слово — верхний край, второе — нижний; при одном слове
+            // второй край берёт то же значение, а если оно ему не подходит —
+            // `text` (спека: «else 'text' is assumed as the missing value»).
+            // `auto` = `text` (начальное `line-fit-edge: leading` читается
+            // как `text`).
+            "text-box-edge" => {
+                let mut it = v.split_ascii_whitespace();
+                let over = it.next().unwrap_or("auto");
+                let under = it.next().unwrap_or(over);
+                self.text_box_over = match over {
+                    "cap" => TextEdge::Cap,
+                    "ex" => TextEdge::Ex,
+                    _ => TextEdge::Text,
+                };
+                self.text_box_under = match under {
+                    "alphabetic" => TextEdge::Alphabetic,
+                    _ => TextEdge::Text,
+                };
+            }
+            // Сокращение `text-box` (css-inline-3 §4.1): без `text-box-trim`
+            // подразумевается `trim-both` (НЕ начальное значение), без
+            // `text-box-edge` — `auto`. `normal` гасит оба.
+            "text-box" => {
+                if v == "normal" {
+                    self.text_box_trim_start = false;
+                    self.text_box_trim_end = false;
+                    self.text_box_over = TextEdge::Text;
+                    self.text_box_under = TextEdge::Text;
+                } else {
+                    let trim = v
+                        .split_ascii_whitespace()
+                        .find(|w| w.starts_with("trim-"))
+                        .unwrap_or("trim-both");
+                    self.text_box_trim_start = matches!(trim, "trim-start" | "trim-both");
+                    self.text_box_trim_end = matches!(trim, "trim-end" | "trim-both");
+                    let edge: String = v
+                        .split_ascii_whitespace()
+                        .filter(|w| !w.starts_with("trim-"))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if !edge.is_empty() {
+                        self.apply_one("text-box-edge", &edge);
+                    }
+                }
             }
             // Свисающая пунктуация: знак выходит ЗА край коробки, чтобы край
             // текста читался ровным. Значения складываются: `first last`.
