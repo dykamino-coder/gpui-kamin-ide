@@ -1521,6 +1521,190 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     Some((h, mt, mb, cuts, forced, solid))
 }
 
+/// Самая внешняя коробка, начинающаяся ровно в `a` от верха `c`, — перед
+/// ней встаёт распорка роста (`grow_pushed`). Смещения детей — той же
+/// арифметикой, что в `shape_full`: `lead` = схлопнутое поле, у первого
+/// без отбивки поле уходит сквозь верх, внепоточный — нулевая запись, ряд
+/// flex без переноса — все дети с верха. Сетка, таблица, ряды — без
+/// спуска, как там; таблица по тегу меряется `table_shape` — распорка в
+/// неё не ставится (шаг 2). Текст или строчный среди детей — у `shape_full`
+/// отказ от спуска, и здесь тоже.
+fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
+    if depth == 0 || table_box(c) {
+        return None;
+    }
+    if matches!(
+        c.style.display,
+        Some(Display::Grid)
+            | Some(Display::InlineGrid)
+            | Some(Display::GridLanes)
+            | Some(Display::Table)
+            | Some(Display::InlineTable)
+            | Some(Display::TableRow)
+            | Some(Display::TableRowGroup)
+    ) || matches!(c.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
+    {
+        return None;
+    }
+    let px = |l: &Option<Len>| match l {
+        Some(Len::Px(v)) => *v,
+        _ => 0.0,
+    };
+    let b = c.style.borders();
+    let top = px(&c.style.padding.top) + px(&b.top);
+    let is_flex = matches!(
+        c.style.display,
+        Some(Display::Flex) | Some(Display::InlineFlex)
+    ) || c.style.webkit_box == Some(true);
+    let row_nowrap = is_flex
+        && matches!(
+            c.style.flex_dir,
+            None
+                | Some(crate::computed::FlexDir::Row)
+                | Some(crate::computed::FlexDir::RowReverse)
+        )
+        && c.style.flex_wrap != Some(true)
+        && c.style.webkit_box_vertical != Some(true);
+    let mut y = top;
+    let mut prev_mb = 0.0f32;
+    let mut first = true;
+    for n in c.children.iter().filter(|n| !is_blank(n)) {
+        let Node::Element(k) = n else {
+            return None;
+        };
+        let oof = out_of_flow(&k.style);
+        let (h, kmt, kmb) = if oof {
+            (0.0, 0.0, 0.0)
+        } else if !k.inline
+            && (k.style.position.is_none()
+                || k.style.position == Some(crate::computed::Position::Relative))
+            && k.style.float.unwrap_or(0) == 0
+        {
+            let (h, mt, mb, ..) = shape_full(k, depth - 1, ShapeCx::COLUMNS)?;
+            (h, mt, mb)
+        } else {
+            return None;
+        };
+        if row_nowrap {
+            // Элементы ряда стоят бок о бок с верха; точка внутри одного
+            // из них — его собственная (объединение точек, `shape_full`).
+            if !oof && a > top + 0.01 && a < top + h - 0.01 {
+                if let Some(id) = pushed_box_at(k, a - top, depth - 1) {
+                    return Some(id);
+                }
+            }
+            continue;
+        }
+        let lead = if first {
+            if top == 0.0 {
+                0.0
+            } else {
+                kmt
+            }
+        } else {
+            prev_mb.max(kmt)
+        };
+        let start = y + lead;
+        if !oof && (start - a).abs() < 0.01 {
+            return Some(k.node_id);
+        }
+        if !oof && start < a && a < start + h - 0.01 {
+            return pushed_box_at(k, a - start, depth - 1);
+        }
+        y = start + h;
+        prev_mb = kmb;
+        first = false;
+    }
+    None
+}
+
+/// Распорка роста: `margin-top += grow` у потомка `id`. Поле ложится в
+/// `lead` меры (`shape_full`) и в раскладку копии одинаково; недобор от
+/// схлопывания с большим нижним полем соседа добирает следующий заход
+/// `grow_pushed`.
+fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
+    for n in c.children.iter_mut() {
+        let Node::Element(k) = n else {
+            continue;
+        };
+        if k.node_id == id {
+            let old = match &k.style.margin.top {
+                Some(Len::Px(v)) => *v,
+                _ => 0.0,
+            };
+            k.style.margin.top = Some(Len::Px(old + grow));
+            return true;
+        }
+        if grow_before(k, id, grow) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Рост коробки от вытолкнутого монолита (Blink `FinishFragmentation`,
+/// `fragmentation_utils.cc:641-656`: у НЕпоследнего фрагмента
+/// `final_block_size = space_left`; css-flexbox-1 §fragmentation: «A forced
+/// break inside a flex item effectively increases the size of its
+/// contents»). Укладка режет ребёнка стопки в НАЧАЛЕ монолитного диапазона
+/// `a` (`flow.rs` `fill_at`: `holds` → `at(a)`): в колонке остаётся
+/// `a − from` содержимого при остатке `room`, и коробки, где лежит монолит,
+/// обязаны дотянуться до низа, а всё после него — сдвинуться на
+/// `grow = room − (a − from)`. Копия одна на все колонки, и сдвиг в ней
+/// делает распорка — `margin-top += grow` у самой внешней коробки,
+/// начинающейся ровно в `a` (`pushed_box_at`). После неё монолит стоит на
+/// краю колонки, мера выросла на `grow`, и срез по краю совпадает с Blink:
+/// колонка 1 — `room`, следующая копия — с `from + room`. План зависит
+/// только от мер (`ColumnStack::growths`), поэтому распорки ставятся ДО
+/// сборки копий, до неподвижной точки (≤ 6 заходов; обычно один). Проба
+/// устройства руками — `target/probe-9d/*.html`: SLC-007/009/010/011 и
+/// `table-cell-expansion-001` 0.00 (`scout-break-2026-09d.md` §3.3).
+fn grow_pushed(
+    mut kids: Vec<(Element, Shape)>,
+    count: usize,
+    fixed: Option<f32>,
+    rows: Option<crate::flow::Rows>,
+    copies: usize,
+) -> Vec<(Element, Shape)> {
+    for _ in 0..6 {
+        let probe: Vec<crate::flow::Kid> = kids
+            .iter()
+            .map(|(c, s)| crate::flow::Kid {
+                h: s.0,
+                mt: s.1,
+                mb: s.2,
+                // Тот же предикат, что у `StackChild` в сборке стопки.
+                monolith: solid_box(c, false),
+                cuts: s.3.clone(),
+                force_before: c.style.break_before_force,
+                force_after: c.style.break_after_force,
+                forced: s.4.clone(),
+                solid: s.5.clone(),
+                span: c.style.column_span == Some(true) && !c.inline,
+            })
+            .collect();
+        let grows = crate::flow::ColumnStack::growths(&probe, count, fixed, rows, copies);
+        let mut changed = false;
+        for (kid, at, grow) in grows {
+            let c = &mut kids[kid].0;
+            let Some(id) = pushed_box_at(c, at, 4) else {
+                continue;
+            };
+            if !grow_before(c, id, grow) {
+                continue;
+            }
+            if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS) {
+                kids[kid].1 = s;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    kids
+}
+
 /// Коробка, дающая точку разрыва класса A (css-break-4 §possible-breaks):
 /// блочная, в потоке, не плавающая. `Element.inline` ставится по ТЕГУ
 /// (`dom.rs` `INLINE_TAGS`), поэтому `<img style="display: block; page: b">`
@@ -10814,6 +10998,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         } else {
                             None
                         };
+                        // Рост от вытолкнутых монолитов — распорки в
+                        // DOM-клонах до сборки копий (`grow_pushed`).
+                        let kids = grow_pushed(kids, cols as usize, fixed, rows, copies);
                         let rule = if e.style.column_rule_visible == Some(true) {
                             Some((
                                 match e.style.column_rule_width {

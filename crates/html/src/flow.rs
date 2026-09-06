@@ -1057,6 +1057,63 @@ impl ColumnStack {
         (y, lines, plan, spans)
     }
 
+    /// Точки роста от вытолкнутых монолитов (Blink `FinishFragmentation`,
+    /// `fragmentation_utils.cc:641-656`: непоследний фрагмент коробки =
+    /// `space_left`; css-flexbox-1 §fragmentation: «A forced break inside a
+    /// flex item effectively increases the size of its contents»). Для
+    /// каждого куска плана, у которого есть продолжение и который кончается
+    /// ровно в НАЧАЛЕ монолитного диапазона (`fill_at`: `holds` → `at(a)`),
+    /// а не на принудительном разрыве, — `(ребёнок, смещение разреза,
+    /// недобор до низа колонки)`. Только меры, без ширины: `render.rs`
+    /// ставит по ним распорки в копии ДО сборки (`grow_pushed`), после чего
+    /// монолит стоит ровно на краю и рост здесь выходит нулевым.
+    pub(crate) fn growths(
+        kids: &[Kid],
+        count: usize,
+        fixed_height: Option<f32>,
+        rows: Option<Rows>,
+        copies: usize,
+    ) -> Vec<(usize, f32, f32)> {
+        let probe = ColumnStack {
+            children: Vec::new(),
+            count: count.max(1),
+            gap: 0.0,
+            fixed_height,
+            rule: None,
+            rows,
+            copies: copies.max(1),
+            gap_items: None,
+            plan: std::cell::RefCell::new(Vec::new()),
+            col_w: std::cell::Cell::new(0.0),
+            lines_plan: std::cell::RefCell::new(Vec::new()),
+            spans_plan: std::cell::RefCell::new(Vec::new()),
+        };
+        let (_, lines, plan, _) = probe.balance(kids);
+        let count = probe.count;
+        let mut out = Vec::new();
+        for f in &plan {
+            let k = &kids[f.kid];
+            let end = f.from + f.h;
+            if !plan.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1) {
+                continue;
+            }
+            if !k.solid.iter().any(|&(a, _)| (a - end).abs() < 0.01) {
+                continue;
+            }
+            if k.forced.iter().any(|&x| (x - end).abs() < 0.01) {
+                continue;
+            }
+            let Some(&(_, line_h)) = lines.get(f.col / count) else {
+                continue;
+            };
+            let grow = line_h - f.y - f.h;
+            if grow > 0.01 {
+                out.push((f.kid, end, grow));
+            }
+        }
+        out
+    }
+
     /// Одна линия колонок: высота заданная (fill:auto) либо баланс «оценка +
     /// добавка на минимальный недолаз» (blink `ResolveColumnAutoBlockSize`);
     /// `cap` — потолок баланса (`ConstrainColumnBlockSize`).
