@@ -7795,11 +7795,34 @@ struct RubySegment {
 fn ruby_unit_blank(unit: &[Node]) -> bool {
     unit.iter().all(|n| match n {
         Node::Text(t) => blank_text(t),
-        Node::Element(k) if matches!(k.tag.as_str(), "rt" | "rb" | "rtc" | "rbc") => {
+        Node::Element(k) if ruby_role(k).is_some_and(|r| r != crate::computed::RubyRole::Container) => {
             ruby_unit_blank(&k.children)
         }
         Node::Element(_) => false,
     })
+}
+
+/// Роль элемента в руби (css-ruby-1 §2.1): своё `display: ruby*`, иначе —
+/// тег (A.1: `ruby/rb/rt/rbc/rtc`). Авторский `display` на руби-теге роль
+/// СНИМАЕТ (`display: block` на `<rt>` — обычный блок, как в Blink, где
+/// `IsInlineRubyText` смотрит на `Display()`, а не на тег): роль по тегу
+/// действует только без своего `display`.
+fn ruby_role(e: &Element) -> Option<crate::computed::RubyRole> {
+    use crate::computed::RubyRole;
+    if let Some(role) = e.style.ruby_role {
+        return Some(role);
+    }
+    if e.style.display.is_some() {
+        return None;
+    }
+    match e.tag.as_str() {
+        "ruby" => Some(RubyRole::Container),
+        "rb" => Some(RubyRole::Base),
+        "rt" => Some(RubyRole::Text),
+        "rbc" => Some(RubyRole::BaseContainer),
+        "rtc" => Some(RubyRole::TextContainer),
+        _ => None,
+    }
 }
 
 /// Разрезать детей `<ruby>` на сегменты и единицы (css-ruby-1 §2.2 п.3-8, §2.3).
@@ -7823,15 +7846,18 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
         Blank,
         Drop,
     }
+    // Вид — по РОЛИ (тег или `display: ruby*`, `ruby_role`): `span.rt
+    // { display: ruby-text }` — аннотация (`rt-display-001`), `span#rbc
+    // { display: ruby-base-container }` — контейнер баз (`rbc-rtc-basic-001`).
     let kind_of = |n: &Node| match n {
         Node::Text(t) if blank_text(t) => Kind::Blank,
         Node::Text(_) => Kind::Text,
-        Node::Element(k) => match k.tag.as_str() {
-            "rb" => Kind::Rb,
-            "rbc" => Kind::Rbc,
-            "rt" => Kind::Rt,
-            "rtc" => Kind::Rtc,
-            "rp" => Kind::Drop,
+        Node::Element(k) if k.tag == "rp" => Kind::Drop,
+        Node::Element(k) => match ruby_role(k) {
+            Some(crate::computed::RubyRole::Base) => Kind::Rb,
+            Some(crate::computed::RubyRole::BaseContainer) => Kind::Rbc,
+            Some(crate::computed::RubyRole::Text) => Kind::Rt,
+            Some(crate::computed::RubyRole::TextContainer) => Kind::Rtc,
             _ => Kind::Text,
         },
     };
@@ -7939,7 +7965,10 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                 let rts: Vec<RubyUnit> = k
                     .children
                     .iter()
-                    .filter(|c| matches!(c, Node::Element(r) if r.tag == "rt"))
+                    .filter(|c| {
+                        matches!(c, Node::Element(r)
+                            if ruby_role(r) == Some(crate::computed::RubyRole::Text))
+                    })
                     .map(|c| vec![c.clone()])
                     .collect();
                 let spanning = rts.is_empty();
@@ -8535,7 +8564,13 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // Коробки базы и аннотации — блочные: они тянутся на ширину колонки
         // (align-items: stretch), а содержимое выключается `text-align`
         // из `ruby-align` (§4.3); `items_center` абзац не центрировал.
-        "ruby" => {
+        // Контейнер узнаётся по РОЛИ: тег `<ruby>` без своего `display` или
+        // `display: ruby` на любом строчном (`ruby-box-model-001`:
+        // `span.r`). `inline::collect` зовёт `atom` для КАЖДОГО элемента до
+        // спуска в детей (`inline.rs:156`), так что сюда доходит и `<span>`.
+        // Главная коробка `block ruby` сюда не попадает: она блок, а
+        // строчный контейнер внутри неё — синтетический `<ruby>` (`dom.rs`).
+        _ if ruby_role(e) == Some(crate::computed::RubyRole::Container) => {
             use crate::computed::{RubyAlign, TextAlign};
             let mut merged = inline::inherit(inherited, &e.style);
             // Внутри руби знак акцента не разворачивается (как прежде).

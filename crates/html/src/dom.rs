@@ -2205,6 +2205,21 @@ fn walk(
             apply_presentational_colors(&mut style, &tag, &attrs);
             finish_inline_display(&mut style, &tag);
             inlinify_in_ruby(&mut style, &tag, path.iter().rev());
+            // css-ruby-1 §3.3: «Neither the margin, padding, and border
+            // properties … apply to base containers or annotation containers»
+            // (`ruby-box-model-001`: `.rbc.pv { padding: 100px }` не должен
+            // отодвигать аннотацию от базы). Контейнер — по тегу или по роли.
+            if matches!(tag.as_str(), "rbc" | "rtc")
+                || matches!(
+                    style.ruby_role,
+                    Some(crate::computed::RubyRole::BaseContainer)
+                        | Some(crate::computed::RubyRole::TextContainer)
+                )
+            {
+                style.margin = crate::computed::Sides::default();
+                style.padding = crate::computed::Sides::default();
+                style.border_width = crate::computed::Sides::default();
+            }
             // motion-1: offset-трансформ слоится ПОСЛЕ отдельных свойств
             // преобразования и ПЕРЕД `transform` — то есть после того, как
             // каскад свёл все `offset-*` и авторский `transform` в один стиль.
@@ -2564,6 +2579,32 @@ fn walk(
             } else if let Some(g) = sp.group_before.take() {
                 out.push(Node::Element(g));
             }
+            // css-ruby-1 §2.1.2 «Non-Inline Ruby»: `display: block ruby` даёт
+            // ДВЕ коробки — главную блочную и строчный контейнер руби внутри
+            // (Blink `LayoutRubyAsBlock::AddChild`: первый ребёнок — анонимный
+            // `LayoutInline` с `display: ruby`, все дети идут в него). Свойства
+            // элемента — на главной коробке; наследуемые доходят до контейнера
+            // обычным `inline::inherit` (стиль контейнера пуст). Тег `ruby` у
+            // синтетического узла — роль контейнера по тегу (`block-ruby-001`).
+            let children = if style.display == Some(Display::Block)
+                && style.ruby_role == Some(crate::computed::RubyRole::Container)
+            {
+                vec![Node::Element(Element {
+                    list_item: None,
+                    node_id: 0,
+                    anim: None,
+                    inline: true,
+                    tag: "ruby".to_string(),
+                    style: Computed::default(),
+                    hover: None,
+                    first_letter: None,
+                    first_line: None,
+                    children,
+                    attrs: vec![],
+                })]
+            } else {
+                children
+            };
             out.push(Node::Element(Element {
                 list_item,
                 node_id: *counter,

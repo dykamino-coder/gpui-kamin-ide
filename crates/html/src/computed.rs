@@ -400,6 +400,20 @@ pub struct Hanging {
     pub allow_end: bool,
 }
 
+/// Роль коробки в руби по `display` (css-ruby-1 §2.1, `ruby | ruby-base |
+/// ruby-text | ruby-base-container | ruby-text-container`, а также `block
+/// ruby`). Роль по ТЕГУ (`ruby/rb/rt/rbc/rtc`) сюда не пишется — её даёт
+/// `render::ruby_role`, чтобы авторский `display: block` на `<rt>` роль
+/// снимал, а не дописывал.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RubyRole {
+    Container,
+    Base,
+    Text,
+    BaseContainer,
+    TextContainer,
+}
+
 /// `ruby-align` (css-ruby-1 §4.3): выключка содержимого руби-коробки, когда
 /// оно уже своей колонки.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2001,6 +2015,11 @@ pub struct Computed {
     pub ruby_under: Option<bool>,
     /// `ruby-align` (css-ruby-1 §4.3); `None` — начальное `space-around`.
     pub ruby_align: Option<RubyAlign>,
+    /// Роль руби-коробки из `display: ruby*` (css-ruby-1 §2.1). Не
+    /// наследуется. `display` при этом остаётся строчным (`InlineBlock` +
+    /// `inline_display`), у `block ruby` — `Block`: все `match` по `Display`
+    /// остаются как есть, роль читается отдельно.
+    pub ruby_role: Option<RubyRole>,
     /// `caret-color` поля ввода.
     pub caret_color: Option<Color>,
     /// `accent-color` флажков и переключателей.
@@ -2713,6 +2732,9 @@ impl Computed {
                 // обычный блок: метка рода не переживает своё значение.
                 self.row_group_kind = None;
                 self.col_role = None;
+                // Роль руби живёт вместе со значением `display`: более
+                // важное `display: block` на `span.rt` снимает её.
+                self.ruby_role = None;
                 // Запись из ДВУХ слов (CSS Display 3): `inline grid-lanes`,
                 // `block flow` и родня — внешний вид и внутренний.
                 //
@@ -2783,6 +2805,29 @@ impl Computed {
                     "table" => Some(Display::Table),
                     // Таблица, стоящая В СТРОКЕ, как inline-block.
                     "inline-table" => Some(Display::InlineTable),
+                    // css-ruby-1 §2.1: руби-виды. Контейнер и внутренние
+                    // коробки — настоящие строчные (как `display: inline`),
+                    // роль хранится отдельно (`ruby_role`); `block ruby`
+                    // (§2.1.2) — блок с ролью контейнера, строчный контейнер
+                    // внутри него синтезирует `dom::walk`. Blink знает только
+                    // `ruby`, `block ruby` и `ruby-text` (`css_value_keywords`),
+                    // остальные роли — по спеке и A.1.
+                    "ruby" | "inline ruby" | "ruby-base" | "ruby-text" | "ruby-base-container"
+                    | "ruby-text-container" => {
+                        self.ruby_role = Some(match v {
+                            "ruby-base" => RubyRole::Base,
+                            "ruby-text" => RubyRole::Text,
+                            "ruby-base-container" => RubyRole::BaseContainer,
+                            "ruby-text-container" => RubyRole::TextContainer,
+                            _ => RubyRole::Container,
+                        });
+                        self.inline_display = Some(true);
+                        Some(Display::InlineBlock)
+                    }
+                    "block ruby" => {
+                        self.ruby_role = Some(RubyRole::Container);
+                        Some(Display::Block)
+                    }
                     "table-row-group" | "table-header-group" | "table-footer-group" => {
                         self.row_group_kind = Some(match v {
                             "table-header-group" => 0,
