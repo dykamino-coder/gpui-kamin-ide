@@ -8182,6 +8182,17 @@ fn paragraph_pieces(
             return para.into_any_element();
         }
     }
+    // Ряд из слов и атом сходятся по базовой линии по РАЗНЫМ правилам: GPUI
+    // базовой линии текста в taffy не отдаёт вовсе (`vendor/gpui`), и для
+    // куска текста taffy берёт НИЖНИЙ край коробки
+    // (`vendor/taffy/src/compute/flexbox.rs:1704`, `height + margin.bottom`),
+    // а вложенный атом свою первую базовую линию пропагирует
+    // (`flexbox.rs:405`). Кусок заявляет 1.0em, атом — 0.8em: атом тонет на
+    // спуск шрифта, а короб строки растёт до 1.2em вместо `line-height`
+    // (§10.8). Замерено зондом `target/probe/atom-probe2.html`: при
+    // `font: 100px/1 Ahem` короб 120, атом на +20.
+    let has_atom = pieces.iter().any(|p| matches!(p, inline::Piece::Atom(_)));
+    let em_base = opts.base_size();
     let mut render_text = |t: String, style: &Computed| -> AnyElement {
         if {
             static ON: std::sync::LazyLock<bool> =
@@ -8217,9 +8228,38 @@ fn paragraph_pieces(
         };
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
-        let d = apply(div(), &style.text_only())
+        let mut d = apply(div(), &style.text_only())
             .max_w_full()
             .child(SharedString::from(t.clone()));
+        // Нижний край куска сажается на его БАЗОВУЮ ЛИНИЮ: отрицательное поле
+        // ровно в «полулидинг + спуск» (§10.8: полулидинг =
+        // (line-height − подъём − спуск) / 2). Тогда `height + margin.bottom`
+        // у taffy совпадает с базовой линией, которую заявляет атом, короб
+        // строки становится равен `line-height`, и атом садится на 0.
+        // ★ ЗАМЕРЕНО (06.09, v130): +19/−5 на срезе css-text+css-images+CSS2
+        // 7572 общих. Пять потерь: `table-vertical-align-baseline-009`,
+        // `line-breaking-031`, `line-breaking-atomic-008` («красное видно» —
+        // полоска в 10 точек снизу: короб строки на эту долю короче эталона),
+        // `units-003` (0.09 → 1.12), `c43-rpl-ibx-000` (0.31 → 0.56). Лечится
+        // настоящей базовой линией куска от gpui, а не полем.
+        if has_atom {
+            let size = match style.font_size {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) | Some(Len::Pct(k)) => k * em_base,
+                _ => em_base,
+            };
+            let family = style.font_family.clone().unwrap_or_default();
+            let (ascent, descent, _) = crate::metrics::vmetrics_px(&family, size);
+            let line = match style.line_height {
+                Some(Len::Px(v)) => v,
+                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+                _ => ascent + descent,
+            };
+            let below = (line - ascent - descent) / 2.0 + descent;
+            if below > 0.0 {
+                d = d.mb(px(-below));
+            }
+        }
         if {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok());
