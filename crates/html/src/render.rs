@@ -8184,6 +8184,7 @@ fn paragraph_pieces(
             .overflow_marker(
                 inherited.overflow_marker.clone(),
                 Some(measure_font(inherited, opts)),
+                Some(gpui::px(own_size(inherited, opts))),
             )
             .text_fit(inherited.text_fit)
             .fit_parts(

@@ -103,6 +103,12 @@ pub struct Paragraph {
     /// (css-overflow-4 §5) — иначе «123» набиралось Ahem-квадратами
     /// шрифта обрезанного куска.
     marker_font: Option<gpui::Font>,
+    /// Кегль маркера: тоже БЛОЧНЫЙ. Базовый кегль абзаца — это `biggest`,
+    /// кегль САМОГО КРУПНОГО куска; снятие собственного кегля прогона
+    /// (`run.font_size = None`) отдаёт маркеру именно его, а не кегль
+    /// блока, и строка-замена внутри `<span style="font-size:30px">`
+    /// мерилась втрое шире нужного (`text-overflow-string-003…026`).
+    marker_size: Option<Pixels>,
     /// `text-fit`: подбор кегля под ширину коробки.
     fit: Option<crate::computed::TextFit>,
     /// Масштабируемые части подбора кегля (css-text-5 §text-fit): интервалы
@@ -255,6 +261,7 @@ impl Paragraph {
             text_overflow: false,
             overflow_marker: None,
             marker_font: None,
+            marker_size: None,
             fit: None,
             fit_spacing_scalable: true,
             fit_line_height_fixed: false,
@@ -635,6 +642,9 @@ impl Paragraph {
         self.clamp.hash(&mut h);
         self.text_overflow.hash(&mut h);
         self.overflow_marker.hash(&mut h);
+        self.marker_size
+            .map(|s| f32::from(s).to_bits())
+            .hash(&mut h);
         self.hyphen.hash(&mut h);
         self.spacers.hash(&mut h);
         for (r, v) in self.word_spans.iter().chain(&self.letter_spans) {
@@ -988,10 +998,17 @@ impl Paragraph {
         self
     }
 
-    /// Маркер обрезки: строка из `text-overflow: <string>` и шрифт блока.
-    pub fn overflow_marker(mut self, mark: Option<String>, font: Option<gpui::Font>) -> Self {
+    /// Маркер обрезки: строка из `text-overflow: <string>`, шрифт И КЕГЛЬ
+    /// блока (css-overflow-4 §5 — маркер оформлен как блок).
+    pub fn overflow_marker(
+        mut self,
+        mark: Option<String>,
+        font: Option<gpui::Font>,
+        size: Option<Pixels>,
+    ) -> Self {
         self.overflow_marker = mark;
         self.marker_font = font;
+        self.marker_size = size;
         self
     }
 
@@ -2856,6 +2873,7 @@ impl Paragraph {
             text_overflow: false,
             overflow_marker: None,
             marker_font: None,
+            marker_size: None,
             fit: self.fit,
             tab_stop: self.tab_stop,
             hyphen: self.hyphen.clone(),
@@ -2983,8 +3001,21 @@ impl Paragraph {
             // конец строки; при письме справа налево контейнер режет левый
             // край, то есть логическое НАЧАЛО — знак идёт префиксом
             // первого прогона.
+            // Строка-замена (`text-overflow: "…"`) рисуется ОТДЕЛЬНЫМ
+            // набором — как и при письме справа налево, и как это уже
+            // делает `paint_justified`. Вплетение её в набор последнего
+            // прогона (`shape` приклеивает суффикс к последнему куску)
+            // отдавало ей шрифт И кегль обрезанного куска: эмодзи-маркер в
+            // Ahem не рисовался вовсе (`text-overflow-string-003`), а
+            // «你好 🟢» выходил кеглем 30px (`-013`). Многоточие и знак
+            // переноса остаются вплетёнными: они обязаны сесть на базовую
+            // линию строки (`hyphens-manual-011`).
+            let own_mark =
+                !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix);
             let (tail, at_start) = if self.wrap.rtl {
                 (if run.start == range.start { suffix } else { "" }, true)
+            } else if own_mark {
+                ("", false)
             } else {
                 (if run.end == range.end { suffix } else { "" }, false)
             };
@@ -3006,6 +3037,14 @@ impl Paragraph {
             let _ = shaped.paint_background(point(x, at.y), self.line_height, window, cx);
             let _ = shaped.paint(point(x, at.y), self.line_height, window, cx);
             x += width;
+        }
+        // Строка-замена — за текстом строки, своим шрифтом и кеглем.
+        if !self.wrap.rtl
+            && !suffix.is_empty()
+            && self.overflow_marker.as_deref() == Some(suffix)
+        {
+            let anchor = range.end.saturating_sub(1).max(range.start);
+            self.paint_suffix(suffix, anchor, point(x, at.y), window, cx);
         }
     }
 
@@ -3051,6 +3090,11 @@ impl Paragraph {
             && mark == m
         {
             run.font = f.clone();
+            // Кегль СТРОКИ-ЗАМЕНЫ — блочный, а не базовый кегль абзаца:
+            // базовый равен `biggest`, и внутри `<span>` крупнее блока
+            // маркер выходил втрое шире (`text-overflow-string-*`: под
+            // строку резервировалось ~90 точек вместо 20).
+            run.font_size = self.marker_size;
         }
     }
 

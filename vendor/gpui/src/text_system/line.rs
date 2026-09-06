@@ -596,6 +596,14 @@ fn paint_line_background(
         // коробки: место под своё поле и отступ она держит знаком-распоркой, а
         // ширину распорке даёт трекинг (§8.4 — боковые поля, рамки и отступы
         // строчной коробки занимают место в строке и красятся).
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v138, `scout-ui-2026-09.md` план K2):
+        // заводить полосу прогона не только от фона, но и от
+        // `background_border` (контур/рамка строчной коробки без заливки).
+        // Срез css-ui+css-overflow+css-backgrounds+css-text+CSS2 8331: +2
+        // (`outline-004`, `inlines-002`) при −15 — вся семья `CSS2/bidi/
+        // bidi-00*` (0.26…0.42 → 0.52…1.02), `split-inline-borders`,
+        // `inlines-017`, `clip-border-area-box-decoration-break`: обычная
+        // рамка строчной коробки начинает рисоваться дважды.
         if layout.runs.iter().all(|r| r.glyphs.is_empty())
             && let Some(style_run) = all_style_runs
                 .iter()
