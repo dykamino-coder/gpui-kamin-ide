@@ -1567,6 +1567,13 @@ pub struct Computed {
     pub column_count: Option<u16>,
     /// `column-width` — минимальная ширина колонки.
     pub column_width: Option<Len>,
+    /// `column-height` (css-multicol-2 §ch) — заданная высота колонки;
+    /// `auto` хранится отсутствием значения.
+    pub column_height: Option<Len>,
+    /// `column-wrap` (css-multicol-2 §cwr): `Some(true)` — `wrap`, лишние
+    /// колонки уходят в новый ряд; `Some(false)` — `nowrap`, вбок; `None` —
+    /// `auto`: как `wrap` при заданном `column-height`, иначе `nowrap`.
+    pub column_wrap: Option<bool>,
     /// `column-gap` — зазор между колонками многоколоночного потока.
     /// Умолчание CSS — `normal`, то есть один кегль.
     pub column_gap: Option<Len>,
@@ -2389,6 +2396,7 @@ impl Computed {
             &mut self.text_indent,
             &mut self.line_height,
             &mut self.column_width,
+            &mut self.column_height,
             &mut self.column_gap,
         ] {
             fix(l);
@@ -2969,6 +2977,15 @@ impl Computed {
                     2 => Some((parts[0], parts[1])),
                     _ => self.gap,
                 };
+                // Короткая форма задаёт и `column-gap` многоколоночника
+                // (css-align-3 §8.3: `gap` = `row-gap` + `column-gap`).
+                // Колонки читают только `column_gap` (`render.rs` `used_gap`,
+                // `column_flow`), и `gap: 20px 0` прежде оставлял кегль —
+                // `column-wrap-no-constraints-001`, красная полоса между
+                // колонками.
+                if parts.len() == 1 || parts.len() == 2 {
+                    self.column_gap = parts[parts.len() - 1];
+                }
             }
             "row-gap" => self.gap = Some((Len::parse(v), self.gap.and_then(|g| g.1))),
             // Одно свойство служит двум раскладкам: в сетке и гибкой строке
@@ -5600,6 +5617,28 @@ impl Computed {
                     }
                 }
             }
+            // `column-height: auto | <length [0,∞]>` (css-multicol-2 §ch):
+            // отрицательная невалидна и не затирает прежнее; ноль — законная
+            // высота (`columns: 2 / 0`, `column-height-021…023`).
+            "column-height" => {
+                if v.trim() == "auto" {
+                    self.column_height = None;
+                } else if let Some(l) = Len::parse(v.trim())
+                    && !matches!(l, Len::Px(h) if h < 0.0)
+                {
+                    self.column_height = Some(l);
+                }
+            }
+            // `column-wrap: auto | nowrap | wrap` (css-multicol-2 §cwr);
+            // `auto` — отсутствие значения, решается в укладке по
+            // `column-height`.
+            "column-wrap" => {
+                self.column_wrap = match v.trim() {
+                    "wrap" => Some(true),
+                    "nowrap" => Some(false),
+                    _ => None,
+                };
+            }
             // `page: auto | <custom-ident>` (css-page-3 §"Using named pages").
             // Имя регистрозависимо; `auto` — ключевое слово без регистра и
             // хранится отсутствием значения.
@@ -5791,9 +5830,19 @@ impl Computed {
             // (`rgba(0, 0, 255, 0.5)`) больше не рвутся.
             "column-rule" | "row-rule" | "rule" => self.gap_rule_shorthand(key, v),
             "columns" => {
-                // `columns: <ширина> <число>` в любом порядке; `auto` оставляет
-                // сторону нерешённой (не затирать уже разобранную ширину).
-                for token in v.split_whitespace() {
+                // `columns: [<ширина> || <число>] [/ <column-height>]?`
+                // (css-multicol-2 §columns): ширина и число в любом порядке;
+                // `auto` оставляет сторону нерешённой (не затирать уже
+                // разобранную ширину). Короткая форма сбрасывает
+                // `column-height` и `column-wrap` в начальные
+                // (`columns-shorthand-reset-wrap`, `columns: 2 / 0`).
+                let (head, tail) = v.split_once('/').map_or((v, None), |(a, b)| (a, Some(b)));
+                self.column_height = None;
+                self.column_wrap = None;
+                if let Some(t) = tail {
+                    self.apply_one("column-height", t.trim());
+                }
+                for token in head.split_whitespace() {
                     if token == "auto" {
                         continue;
                     }

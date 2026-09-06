@@ -5611,7 +5611,10 @@ fn gap_rule_spec(
 /// становятся (`grid-multicol-001`,
 /// `column-property-should-not-apply-on-grid-container-001`).
 fn multicol_container(c: &Computed) -> bool {
-    (c.column_count.is_some() || c.column_width.is_some())
+    // Заданный `column-height` тоже делает коробку многоколоночной
+    // (css-multicol-2 §multi-column-model: «whose column-width, column-count,
+    // or column-height property is not auto»; `column-height-012`).
+    (c.column_count.is_some() || c.column_width.is_some() || c.column_height.is_some())
         && !matches!(
             c.display,
             Some(Display::Grid)
@@ -10399,7 +10402,16 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             let width_driven = column_count.is_none()
                 && count_from_width.is_none()
                 && matches!(column_width, Some(Len::Px(w)) if w > 0.0);
-            if let Some(cols) = used_count.filter(|n| *n > 1).or(width_driven.then_some(0)) {
+            // Заданный `column-height` без числа колонок — одна колонка, но с
+            // рядами (`column-height-012`: `column-height:40px` и 80px
+            // содержимого — два ряда по 40).
+            let height_driven =
+                e.style.column_height.is_some() && used_count.is_none_or(|n| n <= 1);
+            if let Some(cols) = used_count
+                .filter(|n| *n > 1)
+                .or(width_driven.then_some(0))
+                .or(height_driven.then_some(1))
+            {
                 // Сплошной текст режется на колонки по строкам, а не по детям:
                 // один длинный абзац иначе оставался в первой колонке целиком.
                 // `columns: auto <w>` без ширины коробки решается в замере —
@@ -10508,11 +10520,58 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         })
                         .collect();
                     if let Some(kids) = stackable.filter(|k| !k.is_empty()) {
+                        // Ряды колонок (css-multicol-2 §ch, §cwr): высота ряда —
+                        // `column-height`, а при `column-wrap: wrap` без него —
+                        // высота коробки (Blink `RowHeight()`:
+                        // `remaining_content_block_size_`, issue 11754 вариант 2);
+                        // `column-wrap: auto` = `wrap` при заданном
+                        // `column-height`. `row-gap: normal` в колонках — 1em (§rg).
+                        let col_h = match e.style.column_height {
+                            Some(Len::Px(h)) if h >= 0.0 => Some(h),
+                            _ => None,
+                        };
+                        let box_h = match e.style.height {
+                            Some(Len::Px(h)) if h > 0.0 => Some(h),
+                            _ => None,
+                        };
+                        let wrap = e.style.column_wrap.unwrap_or(col_h.is_some());
+                        let em = match e.style.font_size {
+                            Some(Len::Px(size)) => size,
+                            _ => opts.base_size(),
+                        };
+                        let row_gap = match e.style.gap.and_then(|g| g.0) {
+                            Some(Len::Px(v)) => v.max(0.0),
+                            Some(Len::Em(k)) => k * em,
+                            _ => em,
+                        };
+                        let rows = (col_h.is_some() || wrap).then_some(crate::flow::Rows {
+                            h: col_h.or(if wrap { box_h } else { None }),
+                            gap: row_gap,
+                            wrap,
+                        });
+                        // Копий у ребёнка — сколько колонок он может занять: без
+                        // рядов ровно `cols` (как прежде), с рядами — по своей
+                        // высоте против высоты ряда, с запасом на поля и срезы.
+                        let copies = match rows {
+                            Some(r) => {
+                                let per = r.h.unwrap_or(f32::MAX).max(1.0);
+                                let span = kids
+                                    .iter()
+                                    .map(|(_, s)| (s.0 / per).ceil() as usize)
+                                    .max()
+                                    .unwrap_or(0);
+                                (span + 2).max(cols as usize).min(48)
+                            }
+                            None => cols.max(1) as usize,
+                        };
+                        // `column-fill: auto`: колонки заполняются подряд до
+                        // `column-height`, а без него — до высоты коробки
+                        // (css-multicol-1 §3.3, как прежде).
                         let fixed = if e.style.column_fill_auto == Some(true) {
-                            match e.style.height {
+                            col_h.or(match e.style.height {
                                 Some(Len::Px(h)) => Some(h),
                                 _ => None,
-                            }
+                            })
                         } else {
                             None
                         };
@@ -10694,7 +10753,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                         && !copy.children.iter().any(block_kid));
                                 crate::flow::StackChild {
                                     el: build(true),
-                                    frags: (1..cols.max(1)).map(|_| build(false)).collect(),
+                                    frags: (1..copies).map(|_| build(false)).collect(),
                                     monolith,
                                     cuts,
                                     force_before: copy.style.break_before_force,
@@ -10713,6 +10772,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             used_gap,
                             fixed,
                             rule,
+                            rows,
                         ));
                         for oof in &direct_oof {
                             d = d.child(element(oof, &merged, opts));
