@@ -469,15 +469,31 @@ impl GridItem {
         let padding_border_size = (padding + border).sum_axes();
         let box_sizing_adjustment =
             if self.box_sizing == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
+        // KaminIDE patch (css-grid-2 §12.5 «minimum contribution», css-sizing-3
+        // §5.2.1 «cyclic percentage»): процент у `width`/`height` элемента
+        // считается от ГРИД-ОБЛАСТИ, а в размеряемой оси она ещё не известна —
+        // такой размер «depends on the size of its containing block» и ведёт
+        // себя как `auto`: вклад берётся из минимального размера. Раньше доля
+        // резолвилась против `inner_node_size` — размера всего КОНТЕЙНЕРА, и
+        // `width: 100%` в трёх auto-дорожках давал три дорожки по ширине
+        // контейнера (grid-item-percentage-sizes-001, fr-unit, эталоны
+        // column-auto-repeat-021/022). Базис — `known_dimensions`: в нём
+        // размеряемая ось `None`, другая — оценка дорожек (как в
+        // `min_content_contribution`; Blink `CreateConstraintSpaceForMeasure`).
+        // Для `min-*` циклическая доля резолвится против нуля (§5.2.1 (d)).
+        let mut pct_basis = known_dimensions;
+        pct_basis.set(axis, None);
+        let mut min_basis = known_dimensions;
+        min_basis.set(axis, Some(0.0));
         let size = self
             .size
-            .maybe_resolve(inner_node_size, |val, basis| tree.calc(val, basis))
+            .maybe_resolve(pct_basis, |val, basis| tree.calc(val, basis))
             .maybe_apply_aspect_ratio(self.aspect_ratio)
             .maybe_add(box_sizing_adjustment)
             .get(axis)
             .or_else(|| {
                 self.min_size
-                    .maybe_resolve(inner_node_size, |val, basis| tree.calc(val, basis))
+                    .maybe_resolve(min_basis, |val, basis| tree.calc(val, basis))
                     .maybe_apply_aspect_ratio(self.aspect_ratio)
                     .maybe_add(box_sizing_adjustment)
                     .get(axis)

@@ -1125,6 +1125,10 @@ impl ColumnStack {
         let total: f32 = kids.iter().map(|k| k.h).sum();
         // Разрезаемая коробка потолка колонке не задаёт: её высоту держит
         // только сумма. Потолок нужен монолитам — они остаются целыми.
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v103, `scout-break-2026-09d.md` F2):
+        // баланс не короче самого длинного `solid`-диапазона внутри (Blink
+        // `ConstrainColumnBlockSize`). Срез css-break+CSS2+multicol 2874: +0/−1
+        // (`multicol-overflow-clip` 0.00 → 5.22).
         let tallest = kids
             .iter()
             .filter(|k| k.monolith)
