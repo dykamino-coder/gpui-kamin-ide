@@ -1317,7 +1317,16 @@ pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
                 // разница в приоритете, которого у нас пока нет. Отбрасывая
                 // блок целиком, мы теряли всю разметку современных наборов
                 // стилей — они целиком лежат в `@layer`.
-                name.starts_with("@layer")
+                //
+                // `@scope` БЕЗ прелюдии — тоже прозрачная обёртка: корнем
+                // области служит РОДИТЕЛЬ владельца таблицы (css-cascade-6
+                // §3.1 — «If the <scope-start> is omitted, the scoping root is
+                // the parent element of the owner node»), предела нет, и
+                // селекторы внутри остаются обычными. Форма с прелюдией
+                // (`@scope (.a) to (.b)`) по-прежнему выбрасывается: ей нужен
+                // перенос корня области в сам селектор, иначе правило
+                // расползётся за свою область.
+                name.starts_with("@layer") || name == "@scope"
             };
             if inner {
                 for r in parse_stylesheet_media(body, media) {

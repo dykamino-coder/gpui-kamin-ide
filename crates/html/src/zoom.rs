@@ -26,8 +26,10 @@
 //!   `eff_родителя`) × `own`, флаг снимается, слияние ничего не копирует.
 //!
 //! Что остаётся шагу 2: природный размер картинок (`render.rs`,
-//! `natural_ratio`), `vw`/`vh` (`Computed::resolve_viewport`), сдвиги
-//! `transform`, px внутри `shape-outside`/`clip-path`, `Calc(i)`, SVG.
+//! `natural_ratio`), `vw`/`vh` (`Computed::resolve_viewport`), px внутри
+//! `shape-outside`/`clip-path`, `Calc(i)`, SVG, а также ЯВНОЕ наследование
+//! `transform: inherit` / `perspective: inherit` — флагов `*_inherit` для
+//! них в `Computed` пока нет, и `explicit` их не видит.
 
 use crate::computed::{Computed, Shadow, Sides};
 use crate::dom::Node;
@@ -157,6 +159,34 @@ fn scale_own(c: &mut Computed, k: f32) {
             }
         }
     }
+    // Длины ВНУТРИ `transform` (css-viewport-1 §493: домножается
+    // ИСПОЛЬЗОВАННОЕ значение любого свойства, а сдвиг матрицы — длина).
+    // Домножается только столбец сдвига и его плоский двойник `tr[i][0]`:
+    // линейная часть (`lin`, поворот, масштаб, скос) безразмерна, а доли
+    // собственного размера (`translate_pct`, `m4_pct`) уже считаются от
+    // домноженной коробки — их множитель лёг бы вторым.
+    if let Some(t) = c.transform.as_mut() {
+        t.translate.0 *= k;
+        t.translate.1 *= k;
+        for row in t.tr.iter_mut() {
+            row[0] *= k;
+        }
+        for row in t.m4.iter_mut().take(3) {
+            row[3] *= k;
+        }
+        // `perspective(d)` живёт одной ячейкой m34 = −1/d
+        // (`Computed::perspective4`): расстояние домножается — ячейка делится.
+        if t.m4[3][2] != 0.0 {
+            t.m4[3][2] /= k;
+        }
+    }
+    // `perspective` и точки отсчёта преобразования — тоже длины.
+    c.perspective = c.perspective.map(|d| d * k);
+    c.transform_origin_px.0 = c.transform_origin_px.0.map(|v| v * k);
+    c.transform_origin_px.1 = c.transform_origin_px.1.map(|v| v * k);
+    c.transform_origin_z = c.transform_origin_z.map(|v| v * k);
+    c.perspective_origin_px.0 = c.perspective_origin_px.0.map(|v| v * k);
+    c.perspective_origin_px.1 = c.perspective_origin_px.1.map(|v| v * k);
     for sh in c
         .shadows
         .iter_mut()

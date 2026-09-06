@@ -3169,10 +3169,31 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             let canvas_paint = e.style.canvas_bg;
             let canvas_stripped;
             let e = if canvas_paint {
+                // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
+                // §pagebackdrop): фильтр корня красит и его. Слой лежит
+                // СОСЕДОМ коробки корня, поэтому единственная точка окраски
+                // фильтром (`inline::inherit`) до него не доходит — красим
+                // здесь, от СОБСТВЕННОГО фильтра корня.
+                let root_filter = e.style.filter;
                 let mut layer = div().absolute().top_0().left_0().right_0().bottom_0();
                 if let Some(g) = &e.style.gradient {
-                    layer = layer.bg(crate::apply::fill(g));
+                    let mut g = g.clone();
+                    if let Some(f) = root_filter {
+                        g.from = f.apply(g.from);
+                        g.to = f.apply(g.to);
+                        for stop in g.stops.iter_mut() {
+                            stop.0 = f.apply(stop.0);
+                        }
+                        for stop in g.stops_px.iter_mut() {
+                            stop.0 = f.apply(stop.0);
+                        }
+                        for stop in g.stops_raw.iter_mut() {
+                            stop.0 = f.apply(stop.0);
+                        }
+                    }
+                    layer = layer.bg(crate::apply::fill(&g));
                 } else if let Some(bg) = e.style.background {
+                    let bg = root_filter.map_or(bg, |f| f.apply(bg));
                     layer = layer.bg(bg.to_hsla());
                 }
                 // Фон-КАРТИНКА канваса красит всю область просмотра тем же
@@ -3284,6 +3305,22 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                         .bottom_0()
                         .child(layer)
                         .child(band.child(tiles))
+                        .into_any_element();
+                }
+                // Прозрачность корня — на ГОТОВЫЙ слой холста целиком, вместе
+                // с плиткой фона-картинки: погаси их порознь, и цвет с плиткой
+                // сложились бы с двойной альфой. Коробка корня свою
+                // прозрачность получает отдельно (`apply::style`), но краска с
+                // неё уже снята, так что перекрытия групп нет.
+                if let Some(o) = e.style.opacity.filter(|o| *o < 1.0) {
+                    layer = div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .opacity(o)
+                        .child(layer)
                         .into_any_element();
                 }
                 out.push(layer);

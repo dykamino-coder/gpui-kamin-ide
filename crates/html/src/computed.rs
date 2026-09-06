@@ -2745,10 +2745,28 @@ impl Computed {
             if k.starts_with("--") || k.as_str() == crate::css::ORDER_KEY {
                 continue;
             }
-            for part in v.split(crate::css::DECL_SEP) {
-                if is_important(part) != important {
-                    continue;
-                }
+            // `revert`/`revert-layer` — не ЗНАЧЕНИЕ, а откат каскада
+            // (css-cascade-5 §7.2, §7.3): объявление отменяет всё, что этот же
+            // блок сказал о свойстве в ту же важность, — блок целиком лежит в
+            // одном слое и одном происхождении, откатывать внутри него некуда.
+            // Пока слово уезжало в разбор значения, оно там не читалось,
+            // объявление выходило негодным (§4.1.7) — и прежнее `red` из того
+            // же блока переживало откат (`revert-layer-001`: сплошной красный
+            // квадрат вместо зелёного).
+            let parts: Vec<&str> = v
+                .split(crate::css::DECL_SEP)
+                .filter(|part| is_important(part) == important)
+                .collect();
+            // САМО слово откатa по-прежнему уходит в `apply_one`: для 33
+            // свойств из `initial_value()` он значит сброс к начальному, и
+            // трогать это поведение здесь незачем.
+            let from = parts
+                .iter()
+                .rposition(|part| {
+                    matches!(strip_important(part).trim(), "revert" | "revert-layer")
+                })
+                .unwrap_or(0);
+            for part in parts[from..].iter().copied() {
                 let resolved = resolve_vars(strip_important(part), vars);
                 self.apply_one(k, &resolved);
             }
