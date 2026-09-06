@@ -600,21 +600,27 @@ pub struct BgPos {
 /// же. Длины и `center` ложатся по порядку в свободные оси; одно значение
 /// задаёт свою ось, вторая — по центру.
 pub fn parse_pos_words(v: &str) -> BgPos {
+    // Процентная смесь `calc(50px + 50%)` доживает до растра: смещение
+    // плитки складывает `доля × свободное место + точки` (`background::origin`,
+    // css-values-4 §10.9 — именно `background-position` спека приводит
+    // примером «preserves the percentage in a calc()»).
     let word = |t: &str| -> Option<Len> {
         match t {
             "left" | "top" => Some(Len::Pct(0.0)),
             "center" => Some(Len::Pct(0.5)),
             "right" | "bottom" => Some(Len::Pct(1.0)),
-            other => Len::parse(other),
+            other => Len::parse_mixed(other),
         }
     };
     let mut x: Option<Len> = None;
     let mut y: Option<Len> = None;
     let mut free: Vec<Option<Len>> = vec![];
-    for t in v.split_whitespace() {
-        match t {
-            "left" | "right" => x = word(t),
-            "top" | "bottom" => y = word(t),
+    // Резка ВНЕ скобок: по пробелам `calc(50px + 50%)` рассыпался на три
+    // слова, и позиция падала в центр.
+    for t in split_outside_parens(v) {
+        match t.as_str() {
+            "left" | "right" => x = word(&t),
+            "top" | "bottom" => y = word(&t),
             other => free.push(word(other)),
         }
     }
@@ -2417,12 +2423,21 @@ impl Computed {
             // и метрики известны; остаток сворачивается заново.
             Some(Len::Calc(i)) => {
                 let mut s = crate::value::calc_get(i);
-                s.px += s.em * base + s.ch * ch + s.ex * ex + s.ic * ic;
-                s.em = 0.0;
-                s.ch = 0.0;
-                s.ex = 0.0;
-                s.ic = 0.0;
-                *l = s.collapse();
+                // Без шрифтовых слагаемых складывать нечего — индекс остаётся
+                // прежним: арена append-only, а `resolve_em` идёт на каждом
+                // наследовании, и повторное хранение раздувало бы её впустую.
+                if s.em != 0.0 || s.ch != 0.0 || s.ex != 0.0 || s.ic != 0.0 {
+                    s.px += s.em * base + s.ch * ch + s.ex * ex + s.ic * ic;
+                    s.em = 0.0;
+                    s.ch = 0.0;
+                    s.ex = 0.0;
+                    s.ic = 0.0;
+                    // Процентная смесь обязана ДОЖИТЬ: `collapse` вернул бы
+                    // `None` и стёр `text-indent: calc(1em + 50%)`. Для всего,
+                    // что пришло из `Len::parse`, `pct == 0`, и обе свёртки
+                    // совпадают.
+                    *l = s.collapse_mixed();
+                }
             }
             _ => {}
         };
@@ -4998,11 +5013,16 @@ impl Computed {
             // Порядок слов свободный, поэтому значение разбирается по словам.
             "text-indent" => {
                 let (mut each, mut hang) = (false, false);
-                for word in v.split_ascii_whitespace() {
+                // Резка ВНЕ скобок: `calc(50% - 3px)` — одно слово, а не три
+                // (по пробелам объявление роняли целиком). Процентная смесь
+                // доживает до раскладки строк: `Indent { px, pct }` складывает
+                // обе части сам (css-text-3 §2.1: доля — от ширины
+                // содержащего блока, она известна только на строке).
+                for word in split_outside_parens(v) {
                     match word.to_ascii_lowercase().as_str() {
                         "each-line" => each = true,
                         "hanging" => hang = true,
-                        len => self.text_indent = Len::parse(len).or(self.text_indent),
+                        len => self.text_indent = Len::parse_mixed(len).or(self.text_indent),
                     }
                 }
                 self.text_indent_each_line = each.then_some(true);
@@ -5392,9 +5412,14 @@ impl Computed {
                         // Отрицательная длина делает декларацию невалидной
                         // целиком (css-backgrounds-3 §3.9) — размер не трогать.
                         let neg = |l: &Option<Len>| matches!(l, Some(Len::Px(v) | Len::Pct(v)) if *v < 0.0);
-                        let mut it = v.split_whitespace();
-                        let w = it.next().and_then(Len::parse);
-                        let h = it.next().and_then(Len::parse);
+                        // Резка вне скобок и процентная смесь: `calc(50px +
+                        // 50%) calc(100% - 30px)` — две длины, а не шесть слов;
+                        // `background::len_px` в растре складывает доли с
+                        // точками сам (css-values-4 §10.9).
+                        let words = split_outside_parens(v);
+                        let mut it = words.iter().map(String::as_str);
+                        let w = it.next().and_then(Len::parse_mixed);
+                        let h = it.next().and_then(Len::parse_mixed);
                         if neg(&w) || neg(&h) {
                             return;
                         }
@@ -8261,6 +8286,17 @@ pub(crate) fn split_outside_parens(v: &str) -> Vec<String> {
     out
 }
 
+/// Процентная смесь `calc(A% ± Bpx)` парой (доля, точки) — для свойств,
+/// которые доли решают САМИ при отрисовке, зная размер коробки
+/// (css-values-4 §10.9). Любая другая природа в сумме (`ch`, `vw`, `em`…) —
+/// `None`: её здесь сложить не с чем, и запись, как прежде, не применяется.
+fn pct_px_pair(t: &str) -> Option<(f32, f32)> {
+    match Len::parse_mixed(t)? {
+        Len::Calc(i) => crate::value::calc_get(i).pct_px(),
+        _ => None,
+    }
+}
+
 /// Кавычка вокруг имени шрифта: `font-family: "Segoe UI", sans-serif`.
 fn is_quote(c: char) -> bool {
     c == '"' || c == '\''
@@ -9242,6 +9278,15 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
                 // только при отрисовке. Хранится своим списком.
                 raw.push((colour, None));
                 raw_px.push((colour, Some(v)));
+            } else if let Some((pct, px)) = pct_px_pair(t) {
+                // `calc(100% - 10px)` (css-images-4 §3.4.1: `<color-stop-length>`
+                // = `<length-percentage>{1,2}`): доля и точки едут ПАРОЙ в
+                // `stops_raw`, растр сложит их по длине оси. Прежде такой стоп
+                // отбрасывался целиком, а градиент из одних `calc`-стопов
+                // (`#five` в calc-background-linear-gradient-1) гас вовсе.
+                any_pct = true;
+                raw.push((colour, Some(pct)));
+                raw_px.push((colour, Some(px)));
             } else if !t.trim().is_empty()
                 && Len::parse(t).is_none()
                 && t.trim().parse::<f32>().is_err()

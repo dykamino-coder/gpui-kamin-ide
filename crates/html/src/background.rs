@@ -1658,10 +1658,21 @@ fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
         // (css-images-3 §3.4.1: проекция коробки на ось).
         let stops = if g.stops_raw.iter().any(|(_, _, p)| p.is_some()) {
             let axis = (w as f32 * dx).abs() + (h as f32 * dy).abs();
+            // Доля и точки у ОДНОГО стопа складываются: `calc(100% - 10px)`
+            // приехал парой (1.0, −10) — css-values-4 §10.9, доля стопа
+            // решается только по длине оси. У стопов из `%` либо из точек
+            // вторая половина пуста, и `or` даёт прежний результат.
             let raw: Vec<(crate::value::Color, Option<f32>)> = g
                 .stops_raw
                 .iter()
-                .map(|(c, f, p)| (*c, f.or(p.map(|v| if axis > 0.0 { v / axis } else { 0.0 }))))
+                .map(|(c, f, p)| {
+                    let px = p.map(|v| if axis > 0.0 { v / axis } else { 0.0 });
+                    let at = match (f, px) {
+                        (Some(f), Some(px)) => Some(f + px),
+                        (f, px) => f.or(px),
+                    };
+                    (*c, at)
+                })
                 .collect();
             place_stops(raw)
         } else {
@@ -2203,6 +2214,12 @@ fn origin(pos: BgPos, box_size: (f32, f32), tile: (f32, f32)) -> (f32, f32) {
         match l {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(v)) => (box_len - tile_len) * v,
+            // `calc(50px + 50%)`: доля — от свободного места, как у чистой
+            // доли (css-backgrounds-3 §3.6), точки — как есть. Смесь с
+            // третьей природой парой не отдаётся и, как прежде, идёт нулём.
+            Some(Len::Calc(i)) => crate::value::calc_get(i)
+                .pct_px()
+                .map_or(0.0, |(pct, px)| (box_len - tile_len) * pct + px),
             _ => 0.0,
         }
     };

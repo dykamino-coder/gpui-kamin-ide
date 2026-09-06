@@ -272,6 +272,22 @@ impl Len {
         }
         Len::parse(s)
     }
+
+    /// Разбор для свойств, которые доли решают САМИ при отрисовке, зная
+    /// размер коробки: стопы градиента, `background-position/size`,
+    /// `text-indent`. У них процентная смесь `calc(100% - 10px)` ДОЖИВАЕТ
+    /// как `Len::Calc` — css-values-4 §10.9: «`background-position`
+    /// computation preserves the percentage in a `calc()`», доля решается в
+    /// used-value time. Раскладка (taffy) этим разбором НЕ пользуется:
+    /// туда смесь по-прежнему не попадает (замерено `gap-003-ltr`,
+    /// см. `Sum::collapse`).
+    pub fn parse_mixed(raw: &str) -> Option<Self> {
+        let s = raw.trim();
+        if let Some(inner) = s.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')) {
+            return eval_calc(inner)?.collapse_mixed();
+        }
+        Len::parse(s)
+    }
 }
 
 /// Цвет в формате GPUI (`Rgba` → `Hsla` конвертируется на месте применения).
@@ -1024,13 +1040,37 @@ impl Sum {
             // Смесь природ живёт дальше НЕсвёрнутой: шрифтовые единицы
             // сложит каскад (`resolve_em`), окно — сборщик дерева, а
             // проценты с точками — раскладка (css-values-4 §10.9).
-            // Процентная смесь по-прежнему отбрасывается: раскладке её
-            // отдать нечем (gpui знает «px ИЛИ доля»), а замена на одну из
-            // половин ЗАМЕРЕНА в минус (gap-003-ltr 0.00 -> 4.12 на
-            // width: calc(50% - 10px)) — честный путь ждёт таффи-calc.
+            // Процентная смесь для РАСКЛАДКИ по-прежнему отбрасывается:
+            // taffy через gpui её отдать нечем (gpui знает «px ИЛИ доля»), а
+            // замена на одну из половин ЗАМЕРЕНА в минус (gap-003-ltr 0.00 ->
+            // 4.12 на width: calc(50% - 10px)) — честный путь ждёт таффи-calc.
+            // Отрисовка движка (стопы, фон, text-indent) просит смесь явно —
+            // `collapse_mixed` через `Len::parse_mixed`.
             _ if self.pct == 0.0 => Some(Len::Calc(calc_store(self))),
             _ => None,
         }
+    }
+
+    /// Свёртка, при которой процентная смесь ДОЖИВАЕТ индексом в арене —
+    /// для потребителей с известным размером коробки (`Len::parse_mixed`).
+    /// `collapse` отдаёт `None` ровно в одном случае — доля вместе с другой
+    /// природой, — и только он сюда и попадает.
+    pub fn collapse_mixed(self) -> Option<Len> {
+        self.collapse().or_else(|| Some(Len::Calc(calc_store(self))))
+    }
+
+    /// Смесь ТОЛЬКО долей и точек — парой `(доля, точки)`. Любая другая живая
+    /// природа (`ch`, `vw`, `em`…) даёт `None`: складывать её на отрисовке
+    /// не с чем, и запись, как прежде, не применяется. Чистые точки и чистая
+    /// доля до `Calc` не доживают (их сворачивает `collapse`), поэтому
+    /// `pct != 0` здесь — признак смеси, а не пустой суммы.
+    pub fn pct_px(self) -> Option<(f32, f32)> {
+        let rest = Sum {
+            px: 0.0,
+            pct: 0.0,
+            ..self
+        };
+        (self.pct != 0.0 && rest == Sum::default()).then_some((self.pct, self.px))
     }
 
     /// Свёртка для межбуквенного и межсловного интервала: там и доля, и `em`
@@ -1176,6 +1216,27 @@ mod calc_tests {
         };
         let s = calc_get(idx);
         assert_eq!((s.px, s.ch), (120.0, 3.1));
+    }
+
+    #[test]
+    fn mixed_calc_survives_for_paint_consumers() {
+        // Потребители с известным размером коробки просят смесь ЯВНО.
+        let Some(Len::Calc(idx)) = Len::parse_mixed("calc(100% - 24px)") else {
+            panic!("процентная смесь обязана дожить как Calc для parse_mixed");
+        };
+        assert_eq!(calc_get(idx).pct_px(), Some((1.0, -24.0)));
+        // Однородные записи сворачиваются как и прежде.
+        assert_eq!(Len::parse_mixed("calc(25% + 25%)"), Some(Len::Pct(0.5)));
+        let pair = Len::parse_mixed("calc(200% / 2 - 40px)").and_then(|l| match l {
+            Len::Calc(i) => calc_get(i).pct_px(),
+            _ => None,
+        });
+        assert_eq!(pair, Some((1.0, -40.0)));
+        // Третья природа в смеси парой не отдаётся.
+        let Some(Len::Calc(idx)) = Len::parse_mixed("calc(50% + 1vw)") else {
+            panic!("смесь с vw обязана дожить как Calc");
+        };
+        assert_eq!(calc_get(idx).pct_px(), None);
     }
 
     #[test]

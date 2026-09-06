@@ -7970,14 +7970,20 @@ fn paragraph_pieces(
     // Отступ первой строки. Абсолютную часть разбор уже свёл к точкам, доля
     // же берётся от ширины содержащего блока и здесь ещё неизвестна — её
     // считает раскладка строк, когда ширина решена.
+    // `calc(50% - 3px)` несёт обе части разом: `Paragraph` складывает
+    // `px + pct × ширина строки` сам (`lines.rs`, css-text-3 §2.1).
+    let mixed = match inherited.text_indent {
+        Some(Len::Calc(i)) => crate::value::calc_get(i).pct_px(),
+        _ => None,
+    };
     let indent = crate::lines::Indent {
         px: match inherited.text_indent {
             Some(Len::Px(v)) => v,
-            _ => 0.0,
+            _ => mixed.map_or(0.0, |(_, px)| px),
         },
         pct: match inherited.text_indent {
             Some(Len::Pct(k)) => k,
-            _ => 0.0,
+            _ => mixed.map_or(0.0, |(pct, _)| pct),
         },
         each_line: inherited.text_indent_each_line == Some(true),
         hanging: inherited.text_indent_hanging == Some(true),
@@ -8248,6 +8254,9 @@ fn paragraph_pieces(
         Some(align),
         match inherited.text_indent {
             Some(Len::Px(v)) => v,
+            // Ряд из слов долю и прежде не применял (`Pct` идёт нулём); у
+            // смеси берутся хотя бы точки — как у чистых точек.
+            Some(Len::Calc(i)) => crate::value::calc_get(i).pct_px().map_or(0.0, |(_, px)| px),
             _ => 0.0,
         },
         inherited.nowrap == Some(true),
