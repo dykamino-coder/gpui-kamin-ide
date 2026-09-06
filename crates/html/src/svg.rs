@@ -329,6 +329,36 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         escape_attr(fill, out);
         out.push('"');
     }
+    // Обводка и геометрия из КАСКАДА: правило `rect.frame { x: -0.5px;
+    // stroke: black }` живёт в `<style>` с селектором, в разметке фигуры его
+    // нет, а растеризатор видит только разметку. Разметка сильнее: свой
+    // атрибут не перебиваем — как у `fill` выше.
+    if let Some(stroke) = &e.style.svg_stroke
+        && !has("stroke")
+    {
+        out.push_str(" stroke=\"");
+        escape_attr(stroke, out);
+        out.push('"');
+    }
+    if let Some(w) = &e.style.svg_stroke_width
+        && !has("stroke-width")
+    {
+        out.push_str(" stroke-width=\"");
+        escape_attr(w, out);
+        out.push('"');
+    }
+    if e.tag != "svg" {
+        if let Some(crate::value::Len::Px(x)) = e.style.svg_x
+            && !has("x")
+        {
+            out.push_str(&format!(" x=\"{x}\""));
+        }
+        if let Some(crate::value::Len::Px(y)) = e.style.svg_y
+            && !has("y")
+        {
+            out.push_str(&format!(" y=\"{y}\""));
+        }
+    }
     if e.children.is_empty() {
         out.push_str("/>");
         return;

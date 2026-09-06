@@ -3614,6 +3614,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     vertical: inherited.vertical == Some(true),
                     vertical_rl: inherited.vertical_rl == Some(true),
                     own_vertical: e.style.vertical == Some(true),
+                    line_align: static_line_align(e, inherited),
                     ..Default::default()
                 });
                 let probe = crate::interact::spot_probe(spot.clone(), true);
@@ -8232,16 +8233,16 @@ fn paragraph_pieces(
             .max_w_full()
             .child(SharedString::from(t.clone()));
         // Нижний край куска сажается на его БАЗОВУЮ ЛИНИЮ: отрицательное поле
-        // ровно в «полулидинг + спуск» (§10.8: полулидинг =
-        // (line-height − подъём − спуск) / 2). Тогда `height + margin.bottom`
-        // у taffy совпадает с базовой линией, которую заявляет атом, короб
-        // строки становится равен `line-height`, и атом садится на 0.
-        // ★ ЗАМЕРЕНО (06.09, v130): +19/−5 на срезе css-text+css-images+CSS2
-        // 7572 общих. Пять потерь: `table-vertical-align-baseline-009`,
-        // `line-breaking-031`, `line-breaking-atomic-008` («красное видно» —
-        // полоска в 10 точек снизу: короб строки на эту долю короче эталона),
-        // `units-003` (0.09 → 1.12), `c43-rpl-ibx-000` (0.31 → 0.56). Лечится
-        // настоящей базовой линией куска от gpui, а не полем.
+        // ровно в «полулидинг + спуск» (CSS2 §10.8). Тогда `height + margin.bottom`
+        // у taffy совпадает с базовой линией, которую заявляет атом, короб строки
+        // становится равен `line-height`, и атом садится на 0.
+        // ★ ЗАМЕРЕНО (06.09, свод v131 против v30): +19/−9 по всему корпусу.
+        // Потери: `css-position/static-position/htb-{ltr,rtl}-{ltr,rtl}` ×4
+        // (0.16 → «красное видно»), `line-breaking-031`,
+        // `line-breaking-atomic-008`, `table-vertical-align-baseline-009`,
+        // `units-003`, `c43-rpl-ibx-000` — короб строки на полулидинг короче
+        // эталона. Настоящее лечение — базовая линия куска от gpui
+        // (`first_baselines` в taffy), тогда поле не нужно вовсе.
         if has_atom {
             let size = match style.font_size {
                 Some(Len::Px(v)) => v,
@@ -9510,6 +9511,33 @@ fn content_sized(el: AnyElement, c: &Computed) -> AnyElement {
 /// Такой элемент по CSS остаётся на статической позиции — той, что была бы у
 /// него в обычном потоке. Как только задан хотя бы один край, отсчёт идёт от
 /// содержащего блока, и пустышка в строке уже не нужна.
+/// Доля вдоль строки для статической точки СТРОЧНОГО абсолюта.
+///
+/// Гипотетическая коробка считается при `position: static` (CSS 2.1 §10.3.7),
+/// а там `display: inline` остаётся строчным — значит коробка лежит в строке и
+/// едет вместе с её выключкой. У БЛОЧНОГО абсолюта гипотетическая коробка —
+/// блок, `text-align` его не двигает, поэтому гейт по `inline_display`:
+/// метку «настоящий строчный» ставит каскад (`computed.rs`), и блокификация
+/// под `position: absolute` (§9.7, `dom::finish_inline_display`) её НЕ снимает.
+/// `None` при выключке по началу строки — прежний ход без изменений.
+fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32> {
+    if e.style.inline_display != Some(true) {
+        return None;
+    }
+    let rtl = inherited.rtl == Some(true);
+    match inherited
+        .text_align
+        .unwrap_or(crate::computed::TextAlign::Start)
+        .physical(rtl)
+    {
+        crate::computed::TextAlign::Center => Some(0.5),
+        crate::computed::TextAlign::Left => Some(0.0),
+        crate::computed::TextAlign::Right => Some(1.0),
+        // Выключка по ширине пустую строку не двигает — она как `start`.
+        _ => None,
+    }
+}
+
 fn at_static_position(c: &Computed) -> bool {
     // Доля считается от СОДЕРЖАЩЕГО БЛОКА, а пустышка нулевая: элемент с
     // `height: 100%` внутри неё схлопнулся бы в ноль. Такому оставляем прежнее

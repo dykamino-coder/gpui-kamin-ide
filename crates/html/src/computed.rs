@@ -1587,6 +1587,15 @@ pub struct Computed {
     pub clamp_auto: Option<bool>,
     /// `fill` для SVG-фигур (CSS-презентация, SVG 2).
     pub svg_fill: Option<String>,
+    /// `stroke` и `stroke-width` фигуры (SVG 2 §presentation attributes):
+    /// правила из `<style>` с селекторами до растеризатора иначе не доедут —
+    /// он видит только сериализованную разметку.
+    pub svg_stroke: Option<String>,
+    pub svg_stroke_width: Option<String>,
+    /// CSS-геометрия фигуры (SVG 2 §Geometry properties): `x` и `y`.
+    /// Ширина и высота уже живут в `width`/`height`.
+    pub svg_x: Option<Len>,
+    pub svg_y: Option<Len>,
     pub webkit_box: Option<bool>,
     pub webkit_box_vertical: Option<bool>,
     /// `text-fit` — подбор кегля под ширину коробки.
@@ -2531,6 +2540,10 @@ impl Computed {
             clamp_legacy: self.clamp_legacy,
             clamp_auto: self.clamp_auto,
             svg_fill: self.svg_fill.clone(),
+            // `stroke` и `stroke-width` в SVG НАСЛЕДУЮТСЯ (SVG 2 §Painting),
+            // как и `fill`. Геометрия (`x`, `y`) — нет, её здесь нет намеренно.
+            svg_stroke: self.svg_stroke.clone(),
+            svg_stroke_width: self.svg_stroke_width.clone(),
             webkit_box: self.webkit_box,
             webkit_box_vertical: self.webkit_box_vertical,
             // Сдвиг от базовой линии — свойство ТЕКСТА: без него строчный
@@ -4182,6 +4195,15 @@ impl Computed {
             // Заливка SVG-геометрии: свойство презентации доезжает до
             // разметки при растеризации (SVG 2 §presentation attributes).
             "fill" => self.svg_fill = Some(v.to_string()),
+            // Обводка — то же семейство. Значение уходит в разметку как есть:
+            // разбирать цвет здесь незачем, его знает usvg.
+            "stroke" => self.svg_stroke = Some(v.to_string()),
+            "stroke-width" => self.svg_stroke_width = Some(v.to_string()),
+            // `x`/`y` — геометрические СВОЙСТВА фигуры (SVG 2 §Geometry).
+            // У HTML-коробки таких свойств нет, поэтому имена свободны, а в
+            // разметку они уходят только внутри SVG-поддерева (гейт в svg.rs).
+            "x" => self.svg_x = crate::value::Len::parse(v),
+            "y" => self.svg_y = crate::value::Len::parse(v),
             "caption-side" => self.caption_bottom = Some(v.eq_ignore_ascii_case("bottom")),
             "visibility" => {
                 self.hidden = Some(v == "hidden" || v == "collapse");

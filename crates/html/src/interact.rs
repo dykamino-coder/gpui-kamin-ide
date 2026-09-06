@@ -3758,6 +3758,13 @@ pub struct Spot {
     /// Поле по СВОБОДНОЙ оси, в точках. Базовый сдвиг ставит коробку ровно в
     /// дырку, а по CSS от статической позиции её отодвигает собственное поле.
     pub free_margin: (f32, f32),
+    /// Доля вдоль СТРОЧНОЙ оси, где стоит статическая точка: 0 — начало
+    /// строки, 0.5 — середина, 1 — конец. Её задаёт `text-align` содержащего
+    /// блока: гипотетическая коробка строчного абсолюта лежит в строке и
+    /// выравнивается вместе с ней (CSS 2.1 §10.3.7 «где коробка была бы при
+    /// `position: static`», css-align-3 §abspos). `None` — прежний ход:
+    /// начало строки по `direction` (0 при ltr, 1 при rtl).
+    pub line_align: Option<f32>,
 }
 
 pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;
@@ -4107,7 +4114,9 @@ impl Element for LatePlace {
             ),
             (Some(hole), None) if now.rotated => hole.origin - bounds.origin,
             (Some(hole), None) if now.rtl && hole.size.width > px(0.0) => gpui::point(
-                hole.origin.x + hole.size.width - bounds.size.width - bounds.origin.x,
+                hole.origin.x + hole.size.width * now.line_align.unwrap_or(1.0)
+                    - bounds.size.width
+                    - bounds.origin.x,
                 hole.origin.y - bounds.origin.y,
             ),
             (Some(hole), None) if now.rtl => gpui::point(
@@ -4132,7 +4141,13 @@ impl Element for LatePlace {
                     hole.origin.y - bounds.origin.y,
                 )
             }
-            (Some(hole), None) => hole.origin - bounds.origin,
+            // Строка выровнена не по началу: статическая точка едет вдоль неё
+            // на долю `line_align` (ltr вешает на неё ЛЕВЫЙ край коробки).
+            (Some(hole), None) => gpui::point(
+                hole.origin.x + hole.size.width * now.line_align.unwrap_or(0.0)
+                    - bounds.origin.x,
+                hole.origin.y - bounds.origin.y,
+            ),
             (None, _) => gpui::point(px(0.0), px(0.0)),
         };
         // Ось, которую задал содержащий блок, раскладка уже разрешила — щуп
