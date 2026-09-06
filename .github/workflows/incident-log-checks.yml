@@ -1,0 +1,54 @@
+name: incident log filesystem checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/incident-log-checks.yml
+      - package.json
+      - package-lock.json
+      - vitest.config.ts
+      - src/kamin-host/rolling-log.ts
+      - src/kamin-host/rolling-log.test.ts
+      - src/kamin-host/incident-log.ts
+      - src/kamin-host/incident-log.test.ts
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/incident-log-checks.yml
+      - package.json
+      - package-lock.json
+      - vitest.config.ts
+      - src/kamin-host/rolling-log.ts
+      - src/kamin-host/rolling-log.test.ts
+      - src/kamin-host/incident-log.ts
+      - src/kamin-host/incident-log.test.ts
+
+concurrency:
+  group: incident-log-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-filesystem:
+    name: incident log Windows filesystem
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # These tests use real temporary files and do not load PTY/native UI code.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test -- src/kamin-host/incident-log.test.ts src/kamin-host/rolling-log.test.ts
