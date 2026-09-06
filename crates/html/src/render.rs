@@ -8595,16 +8595,57 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 }
                 _ => merged.text_align = Some(TextAlign::Center),
             }
-            let under = merged.ruby_under == Some(true);
-            let stack = || {
+            // `ruby-position` уровня k (css-ruby-1 §4.1): явное `over`/`under`
+            // — для всех уровней; начальное `alternate` (`None`) — первый
+            // уровень над базой, следующий под, и так далее. `alternate
+            // under` пока не различается (первый уровень над).
+            let level_under = |k: usize| match merged.ruby_under {
+                Some(under) => under,
+                None => k % 2 == 1,
+            };
+            // Стопка «база, уровни наружу»: над базой — гибкая колонка с
+            // ОБРАТНЫМ порядком (база — первый DOM-ребёнок, см. выше), под
+            // базой — прямая.
+            let stack = |under: bool| {
                 if under {
-                    div().flex().flex_col()
+                    div().flex().flex_col().flex_shrink_0()
                 } else {
-                    div().flex().flex_col_reverse()
+                    div().flex().flex_col_reverse().flex_shrink_0()
                 }
             };
+            // Единица из ОДНОГО `<rb>`/`<rt>` (или элемента с ролью базы /
+            // аннотации по `display`) рисуется его собственной БЛОЧНОЙ
+            // коробкой: распорка строки — от его кегля и `line-height` (UA
+            // `rt { font-size: 50%; line-height: 1 }`), а не от контейнера
+            // руби. Прежде коробка аннотации носила строку контейнера, и при
+            // разном кегле контейнера в тесте и эталоне
+            // (`ruby-base-different-size`: 16px против 32px) аннотации
+            // вставали на разной высоте; в `nested-ruby-pairing-001` уровень
+            // `<rt>` (стиль контейнера) выходил выше уровня `<rtc>`. Поля,
+            // рамка и фон единицы действуют (§3.3: базы и аннотации —
+            // строчные коробки, все их свойства применяются). Анонимная
+            // единица (текст) — по-прежнему абзац со стилем уровня.
+            // Содержимое единицы не рвётся: разрыв внутри базы — только
+            // вынужденный (§3.5.2), а атом монолитен; без `nowrap` анонимная
+            // база `あい` рвалась внутри колонки (эталон `rbc-rtc-basic-001`).
             let unit_box = |nodes: &[Node], style: &Computed| -> AnyElement {
-                div().children(blocks(nodes, style, opts)).into_any_element()
+                let mut style = style.clone();
+                style.nowrap = Some(true);
+                if let [Node::Element(k)] = nodes
+                    && matches!(
+                        ruby_role(k),
+                        Some(crate::computed::RubyRole::Base) | Some(crate::computed::RubyRole::Text)
+                    )
+                {
+                    let mut block = k.clone();
+                    block.style.display = Some(Display::Block);
+                    block.style.inline_display = None;
+                    block.style.ruby_role = None;
+                    return div()
+                        .children(blocks(&[Node::Element(block)], &style, opts))
+                        .into_any_element();
+                }
+                div().children(blocks(nodes, &style, opts)).into_any_element()
             };
             let empty: RubyUnit = Vec::new();
             let mut row = div().flex().flex_row().items_baseline().flex_shrink_0();
@@ -8628,20 +8669,36 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                         .max()
                         .unwrap_or(0),
                 );
-                let mut cols = div().flex().flex_row().items_baseline();
+                // Колонки не сжимаются: ширина колонки — по самому широкому
+                // из базы и аннотаций (§3.1.1), а не по остатку строки.
+                let mut cols = div().flex().flex_row().items_baseline().flex_shrink_0();
                 for i in 0..columns {
-                    let mut col = stack().child(unit_box(seg.bases.get(i).unwrap_or(&empty), &merged));
-                    for (l, style) in seg.levels.iter().zip(&level_style) {
-                        if !l.spanning {
-                            col = col.child(unit_box(l.units.get(i).unwrap_or(&empty), style));
+                    // Уровни над базой — в обратную стопку вместе с базой,
+                    // уровни под ней — прямой стопкой снаружи.
+                    let mut over = stack(false).child(unit_box(seg.bases.get(i).unwrap_or(&empty), &merged));
+                    let mut under: Vec<AnyElement> = Vec::new();
+                    for (k, (l, style)) in seg.levels.iter().zip(&level_style).enumerate() {
+                        if l.spanning {
+                            continue;
+                        }
+                        let ann = unit_box(l.units.get(i).unwrap_or(&empty), style);
+                        if level_under(k) {
+                            under.push(ann);
+                        } else {
+                            over = over.child(ann);
                         }
                     }
+                    let col = if under.is_empty() {
+                        over.into_any_element()
+                    } else {
+                        stack(true).child(over).children(under).into_any_element()
+                    };
                     cols = cols.child(col);
                 }
                 let mut seg_el = cols.into_any_element();
-                for (l, style) in seg.levels.iter().zip(&level_style) {
+                for (k, (l, style)) in seg.levels.iter().zip(&level_style).enumerate() {
                     if l.spanning {
-                        seg_el = stack()
+                        seg_el = stack(level_under(k))
                             .child(seg_el)
                             .child(unit_box(l.units.first().unwrap_or(&empty), style))
                             .into_any_element();
