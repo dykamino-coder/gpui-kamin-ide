@@ -1729,46 +1729,483 @@ pub fn gap_item_probe(items: GapItems) -> AnyElement {
     .into_any_element()
 }
 
+/// Правила линеек одной оси (css-gaps-1), уже в точках.
+#[derive(Clone, Debug)]
+pub struct GapAxisRule {
+    /// Ширина, цвет и видимость стиля — по промежуткам (§lists).
+    pub widths: crate::computed::GapList<f32>,
+    pub colors: crate::computed::GapList<crate::value::Color>,
+    pub styles: crate::computed::GapList<bool>,
+    /// §break: 0 `none`, 1 `normal`, 2 `intersection`.
+    pub brk: u8,
+    /// §inset: [cap-start, cap-end, junction-start, junction-end].
+    pub inset: [crate::computed::GapInset; 4],
+    /// §visibility-items: 0 `normal`, 1 `all`, 2 `around`, 3 `between`.
+    pub visibility: u8,
+}
+
+/// Устройство контейнера для геометрии промежутков.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum GapLayout {
+    /// Решётка: дорожки общие для всех элементов, спаны перекрывают промежутки.
+    Grid,
+    /// Строки гибкого контейнера или ленты: у каждой строки СВОИ промежутки
+    /// между элементами. `stacked_vertically` — строки уложены сверху вниз
+    /// (гибкая строка, ленты-ряды), иначе слева направо (гибкая колонка,
+    /// ленты-колонки).
+    Lines { stacked_vertically: bool },
+}
+
+/// Что и как рисовать в промежутках контейнера.
+#[derive(Clone, Debug)]
+pub struct GapRuleSpec {
+    pub col: Option<GapAxisRule>,
+    pub row: Option<GapAxisRule>,
+    pub kind: GapLayout,
+    /// Вертикальное письмо: промежутки колонок — горизонтальные полосы.
+    pub vertical: bool,
+    /// `rule-overlap: column-over-row`.
+    pub column_over_row: bool,
+    /// Зазоры в точках между x-дорожками и между y-дорожками, если известны.
+    pub gap_x: Option<f32>,
+    pub gap_y: Option<f32>,
+}
+
+/// Допуск сравнения координат раскладки.
+const GAP_EPS: f32 = 0.35;
+
+/// Элемент в осях `a` — поперёк промежутка, `b` — вдоль линейки.
+#[derive(Clone, Copy, Debug)]
+struct GapItem {
+    a0: f32,
+    a1: f32,
+    b0: f32,
+    b1: f32,
+}
+
+impl GapItem {
+    fn from_bounds(b: &Bounds<Pixels>, gap_on_x: bool) -> Self {
+        let x0 = f32::from(b.origin.x);
+        let y0 = f32::from(b.origin.y);
+        let x1 = x0 + f32::from(b.size.width);
+        let y1 = y0 + f32::from(b.size.height);
+        if gap_on_x {
+            GapItem { a0: x0, a1: x1, b0: y0, b1: y1 }
+        } else {
+            GapItem { a0: y0, a1: y1, b0: x0, b1: x1 }
+        }
+    }
+
+    fn flipped(&self) -> Self {
+        GapItem { a0: self.b0, a1: self.b1, b0: self.a0, b1: self.a1 }
+    }
+
+    /// Заходит ли элемент в участок `[lo, hi]` вдоль линейки.
+    fn covers_b(&self, lo: f32, hi: f32) -> bool {
+        self.b0 < hi - GAP_EPS && self.b1 > lo + GAP_EPS
+    }
+
+    /// Перекрывает ли элемент промежуток `[g0, g1]` (спан через него).
+    fn spans_a(&self, g0: f32, g1: f32) -> bool {
+        self.a0 <= g0 + GAP_EPS && self.a1 >= g1 - GAP_EPS
+    }
+}
+
+/// Пересекающий зазор на пути линейки: интервал вдоль `b`; рвёт ли он
+/// линейку при `intersection` (видимое пересечение); есть ли в нём поперечная
+/// линейка (стык, а не cap) и её ширина.
+#[derive(Clone, Copy, Debug)]
+struct Crossing {
+    lo: f32,
+    hi: f32,
+    breaks: bool,
+    joins: bool,
+    cross_w: f32,
+}
+
+/// Линейка одного промежутка: интервал промежутка `[g0, g1]`, протяжённость
+/// `[r0, r1]`, пересечения, перекрытия спанами, скрытые по visibility участки
+/// и характер концов протяжённости — стык (ширина зазора, есть ли линейка,
+/// её ширина) или край контейнера (`None`).
+#[derive(Clone, Debug)]
+struct GapRun {
+    g0: f32,
+    g1: f32,
+    r0: f32,
+    r1: f32,
+    crossings: Vec<Crossing>,
+    blocked: Vec<(f32, f32)>,
+    hidden: Vec<(f32, f32)>,
+    start_edge: Option<(f32, bool, f32)>,
+    end_edge: Option<(f32, bool, f32)>,
+    index: usize,
+    count: usize,
+}
+
+impl GapRun {
+    /// Конец отрезка: положение после отступа из пересекающего зазора к его
+    /// границе, ширина зазора (0 у края и у «висячего» конца без поперечной
+    /// линейки — так считает Blink `GetMaxInsetWidth`), есть ли стык и ширина
+    /// поперечной линейки.
+    fn edge(&self, pos: f32, is_start: bool) -> (f32, f32, bool, f32) {
+        if is_start && (pos - self.r0).abs() <= GAP_EPS {
+            return match self.start_edge {
+                Some((cw, joins, dw)) => (self.r0, if joins { cw } else { 0.0 }, joins, dw),
+                None => (self.r0, 0.0, false, 0.0),
+            };
+        }
+        if !is_start && (pos - self.r1).abs() <= GAP_EPS {
+            return match self.end_edge {
+                Some((cw, joins, dw)) => (self.r1, if joins { cw } else { 0.0 }, joins, dw),
+                None => (self.r1, 0.0, false, 0.0),
+            };
+        }
+        if let Some(c) = self
+            .crossings
+            .iter()
+            .find(|c| c.lo - GAP_EPS <= pos && pos <= c.hi + GAP_EPS)
+        {
+            let at = if is_start { c.hi } else { c.lo };
+            return (at, if c.joins { c.hi - c.lo } else { 0.0 }, c.joins, c.cross_w);
+        }
+        (pos, 0.0, false, 0.0)
+    }
+}
+
+fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
+    v.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+    v.dedup_by(|x, y| (*x - *y).abs() <= GAP_EPS);
+    v
+}
+
+/// Дорожки по оси `a`: начало — уникальные ближние края элементов, конец —
+/// дальний край элемента, начатого в дорожке и не заходящего в следующую;
+/// когда такого нет (все — спаны), начало следующей минус зазор.
+fn tracks_a(items: &[GapItem], gap: Option<f32>) -> Vec<(f32, f32)> {
+    let st = uniq_sorted(items.iter().map(|i| i.a0).collect());
+    (0..st.len())
+        .map(|k| {
+            let next = st.get(k + 1).copied();
+            let end = items
+                .iter()
+                .filter(|i| {
+                    (i.a0 - st[k]).abs() <= GAP_EPS && next.is_none_or(|nx| i.a1 <= nx + GAP_EPS)
+                })
+                .map(|i| i.a1)
+                .fold(f32::NEG_INFINITY, f32::max);
+            let end = if end.is_finite() {
+                end
+            } else {
+                match (next, gap) {
+                    (Some(nx), Some(g)) => nx - g,
+                    (Some(nx), None) => nx,
+                    (None, _) => st[k],
+                }
+            };
+            (st[k], end)
+        })
+        .collect()
+}
+
+/// Промежутки между соседними дорожками; нулевой зазор — тоже промежуток
+/// (`flex-gap-decorations-033`).
+fn gaps_of(tracks: &[(f32, f32)]) -> Vec<(f32, f32)> {
+    tracks
+        .windows(2)
+        .filter(|w| w[1].0 - w[0].1 >= -GAP_EPS)
+        .map(|w| (w[0].1.min(w[1].0), w[1].0))
+        .collect()
+}
+
+fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+    v.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut out: Vec<(f32, f32)> = vec![];
+    for (lo, hi) in v {
+        match out.last_mut() {
+            Some(last) if lo <= last.1 + GAP_EPS => last.1 = last.1.max(hi),
+            _ => out.push((lo, hi)),
+        }
+    }
+    out
+}
+
+fn subtract(parts: Vec<(f32, f32)>, (lo, hi): (f32, f32)) -> Vec<(f32, f32)> {
+    let mut out = vec![];
+    for (s, e) in parts {
+        if hi <= s + GAP_EPS || lo >= e - GAP_EPS {
+            out.push((s, e));
+            continue;
+        }
+        if lo > s + GAP_EPS {
+            out.push((s, lo));
+        }
+        if hi < e - GAP_EPS {
+            out.push((hi, e));
+        }
+    }
+    out
+}
+
+/// §visibility-items: заняты ли области по сторонам промежутка `[g0, g1]` в
+/// пределах участка `[lo, hi]` вдоль линейки. Спан через промежуток занимает
+/// обе стороны.
+fn occupied(items: &[GapItem], g0: f32, g1: f32, lo: f32, hi: f32, visibility: u8) -> bool {
+    if visibility < 2 {
+        return true;
+    }
+    let near = 2.0 * GAP_EPS;
+    let before = items
+        .iter()
+        .any(|i| i.covers_b(lo, hi) && ((i.a1 - g0).abs() <= near || i.spans_a(g0, g1)));
+    let after = items
+        .iter()
+        .any(|i| i.covers_b(lo, hi) && ((i.a0 - g1).abs() <= near || i.spans_a(g0, g1)));
+    if visibility == 2 {
+        before || after
+    } else {
+        before && after
+    }
+}
+
+/// Втяжка конца в точках: положительная укорачивает, отрицательная тянет
+/// наружу. Доля — от ширины пересекающего зазора (0 у cap). `overlap-join`
+/// (§inset) — до дальнего края поперечной линейки: половина зазора и половина
+/// её ширины; у главных промежутков строк — только половина зазора (Blink,
+/// `ComputeOverlapJoinInset`).
+fn inset_px(
+    inset: crate::computed::GapInset,
+    cw: f32,
+    joins: bool,
+    cross_w: f32,
+    main_like: bool,
+) -> f32 {
+    use crate::computed::GapInset;
+    use crate::value::Len;
+    match inset {
+        GapInset::Len(Len::Px(v)) => v,
+        GapInset::Len(Len::Pct(k)) => k * cw,
+        GapInset::Len(_) => 0.0,
+        GapInset::OverlapJoin if joins => -(cw / 2.0) - if main_like { 0.0 } else { cross_w / 2.0 },
+        GapInset::OverlapJoin => 0.0,
+    }
+}
+
+/// Отрезки линейки по протяжённости: вычесть скрытые участки и (кроме `none`)
+/// перекрытые спанами; при `intersection` — ещё пересекающие зазоры с видимым
+/// пересечением. Концы, попавшие в зазор, отступают к его границе, затем
+/// прикладывается втяжка; отрезки без длины выпадают (`flex-055`).
+fn segments(run: &GapRun, rule: &GapAxisRule, main_like: bool) -> Vec<(f32, f32)> {
+    let mut parts = vec![(run.r0, run.r1)];
+    for &c in &run.hidden {
+        parts = subtract(parts, c);
+    }
+    if rule.brk != 0 {
+        for &c in &run.blocked {
+            parts = subtract(parts, c);
+        }
+    }
+    if rule.brk == 2 {
+        for c in run.crossings.iter().filter(|c| c.breaks) {
+            parts = subtract(parts, (c.lo, c.hi));
+        }
+    }
+    let mut out = vec![];
+    for (s, e) in parts {
+        let (s, s_cw, s_join, s_dw) = run.edge(s, true);
+        let (e, e_cw, e_join, e_dw) = run.edge(e, false);
+        let s2 = s + inset_px(rule.inset[if s_join { 2 } else { 0 }], s_cw, s_join, s_dw, main_like);
+        let e2 = e - inset_px(rule.inset[if e_join { 3 } else { 1 }], e_cw, e_join, e_dw, main_like);
+        if e2 - s2 > 0.05 {
+            out.push((s2, e2));
+        }
+    }
+    out
+}
+
+/// Решётка: линейки промежутков оси `a`. Пересекающие зазоры — промежутки
+/// оси `b`; пересечение видимо (`breaks`), если хотя бы с одной стороны
+/// поперечный зазор не перекрыт спаном (Blink: `kIntersection` идёт дальше
+/// только при blocked-before И blocked-after); стык (`joins`) — если там есть
+/// видимая поперечная линейка.
+fn grid_runs(
+    items: &[GapItem],
+    gap_a: Option<f32>,
+    gap_b: Option<f32>,
+    rule: &GapAxisRule,
+    cross: Option<&GapAxisRule>,
+) -> Vec<GapRun> {
+    let flipped: Vec<GapItem> = items.iter().map(GapItem::flipped).collect();
+    let ta = tracks_a(items, gap_a);
+    let tb = tracks_a(&flipped, gap_b);
+    let ga = gaps_of(&ta);
+    let gb = gaps_of(&tb);
+    let r0 = tb.first().map_or(0.0, |t| t.0);
+    let r1 = tb.last().map_or(0.0, |t| t.1);
+    let n = ga.len();
+    ga.iter()
+        .enumerate()
+        .map(|(k, &(g0, g1))| {
+            let blocked = merge(
+                items
+                    .iter()
+                    .filter(|i| i.spans_a(g0, g1))
+                    .map(|i| (i.b0, i.b1))
+                    .collect(),
+            );
+            let hidden = tb
+                .iter()
+                .copied()
+                .filter(|&(lo, hi)| !occupied(items, g0, g1, lo, hi, rule.visibility))
+                .collect();
+            let sides = [ta.get(k).copied(), ta.get(k + 1).copied()];
+            let crossings = gb
+                .iter()
+                .enumerate()
+                .map(|(j, &(lo, hi))| {
+                    let mut breaks = false;
+                    let mut joins = false;
+                    for side in sides.iter().flatten() {
+                        let blocked_here = flipped.iter().any(|i| {
+                            i.spans_a(lo, hi) && i.covers_b(side.0, side.1)
+                        });
+                        if !blocked_here {
+                            breaks = true;
+                        }
+                        if let Some(c) = cross
+                            && !blocked_here
+                            && c.styles.at(j, gb.len()).unwrap_or(false)
+                            && occupied(&flipped, lo, hi, side.0, side.1, c.visibility)
+                        {
+                            joins = true;
+                        }
+                    }
+                    let cross_w = cross.and_then(|c| c.widths.at(j, gb.len())).unwrap_or(0.0);
+                    Crossing { lo, hi, breaks, joins, cross_w }
+                })
+                .collect();
+            GapRun {
+                g0,
+                g1,
+                r0,
+                r1,
+                crossings,
+                blocked,
+                hidden,
+                start_edge: None,
+                end_edge: None,
+                index: k,
+                count: n,
+            }
+        })
+        .collect()
+}
+
+/// Строки/ленты: `a` — ось укладки строк, `b` — ось элементов строки. Главные
+/// промежутки — между строками, их пересекающие зазоры — ОБЪЕДИНЕНИЕ зазоров
+/// соседних строк (окна перекрытия Blink); поперечные — между соседними
+/// элементами строки, протяжённостью в пределах строки, со стыками на её
+/// краях. Значения списков: главные — по строкам, поперечные — сквозной счёт.
+fn line_runs(
+    items: &[GapItem],
+    gap_a: Option<f32>,
+    main: Option<&GapAxisRule>,
+    cross: Option<&GapAxisRule>,
+) -> (Vec<GapRun>, Vec<GapRun>) {
+    let lines = tracks_a(items, gap_a);
+    let r0 = items.iter().map(|i| i.b0).fold(f32::INFINITY, f32::min);
+    let r1 = items.iter().map(|i| i.b1).fold(f32::NEG_INFINITY, f32::max);
+    let inner: Vec<Vec<(f32, f32)>> = lines
+        .iter()
+        .map(|&(s, _)| {
+            let mut row: Vec<&GapItem> =
+                items.iter().filter(|i| (i.a0 - s).abs() <= GAP_EPS).collect();
+            row.sort_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
+            row.windows(2)
+                .filter(|w| w[1].b0 - w[0].b1 >= -GAP_EPS)
+                .map(|w| (w[0].b1.min(w[1].b0), w[1].b0))
+                .collect()
+        })
+        .collect();
+    let cross_total: usize = inner.iter().map(Vec::len).sum();
+    let main_count = lines.len().saturating_sub(1);
+    let main_w = main.and_then(|m| m.widths.first()).unwrap_or(0.0);
+    let cross_w = cross.and_then(|c| c.widths.first()).unwrap_or(0.0);
+    let mut mains = vec![];
+    for k in 0..main_count {
+        let (g0, g1) = (lines[k].1, lines[k + 1].0);
+        if g1 - g0 < -GAP_EPS {
+            continue;
+        }
+        let g0 = g0.min(g1);
+        let blocked = merge(
+            items
+                .iter()
+                .filter(|i| i.spans_a(g0, g1))
+                .map(|i| (i.b0, i.b1))
+                .collect(),
+        );
+        let windows = merge(inner[k].iter().chain(inner[k + 1].iter()).copied().collect());
+        let crossings = windows
+            .iter()
+            .map(|&(lo, hi)| Crossing {
+                lo,
+                hi,
+                breaks: true,
+                joins: cross.is_some(),
+                cross_w,
+            })
+            .collect();
+        mains.push(GapRun {
+            g0,
+            g1,
+            r0,
+            r1,
+            crossings,
+            blocked,
+            hidden: vec![],
+            start_edge: None,
+            end_edge: None,
+            index: k,
+            count: main_count,
+        });
+    }
+    let mut crosses = vec![];
+    let mut ix = 0usize;
+    for (k, &(s, e)) in lines.iter().enumerate() {
+        let before = (k > 0).then(|| (s - lines[k - 1].1, main.is_some(), main_w));
+        let after = (k + 1 < lines.len()).then(|| (lines[k + 1].0 - e, main.is_some(), main_w));
+        for &(lo, hi) in &inner[k] {
+            crosses.push(GapRun {
+                g0: lo,
+                g1: hi,
+                r0: s,
+                r1: e,
+                crossings: vec![],
+                blocked: vec![],
+                hidden: vec![],
+                start_edge: before,
+                end_edge: after,
+                index: ix,
+                count: cross_total.max(1),
+            });
+            ix += 1;
+        }
+    }
+    (mains, crosses)
+}
+
 /// Слой линеек промежутков. Забирает буфер проб в `paint` (к этому моменту
-/// prepaint всех детей уже прошёл — так же работает `EdgePainter`), сводит
-/// прямоугольники элементов в границы дорожек и красит по центру каждого
-/// промежутка сплошную полосу во всю ширину/высоту контейнера.
-///
-/// Шаг 1 — непрерывная линейка. По css-gaps-1 §break начальное `normal` в
-/// СЕТКЕ проходит сквозь крестовые стыки, а спанов (значит, и T-стыков) в
-/// разбираемых тестах нет; во ФЛЕКСЕ `normal` тождественно `none`.
+/// prepaint всех детей уже прошёл — так же работает `EdgePainter`), строит
+/// геометрию промежутков по границам элементов и красит отрезки линеек
+/// (css-gaps-1 §geometry, §break, §inset, §visibility-items, §lists).
 pub struct GapRulePainter {
     items: GapItems,
-    /// (ширина, цвет) продольной и поперечной линейки.
-    col: Option<(f32, crate::value::Color)>,
-    row: Option<(f32, crate::value::Color)>,
+    spec: GapRuleSpec,
 }
 
 impl GapRulePainter {
-    pub fn new(
-        items: GapItems,
-        col: Option<(f32, crate::value::Color)>,
-        row: Option<(f32, crate::value::Color)>,
-    ) -> Self {
-        GapRulePainter { items, col, row }
-    }
-
-    /// Середины промежутков вдоль одной оси: соседние дорожки разделены
-    /// зазором, если конец одной строго меньше начала следующей.
-    fn centres(mut edges: Vec<(f32, f32)>) -> Vec<f32> {
-        edges.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        let mut out: Vec<f32> = vec![];
-        let mut reach = f32::NEG_INFINITY;
-        for (lo, hi) in edges {
-            if reach > f32::NEG_INFINITY && lo - reach > 0.25 {
-                let c = (reach + lo) / 2.0;
-                if out.last().map_or(true, |p: &f32| (*p - c).abs() > 0.25) {
-                    out.push(c);
-                }
-            }
-            reach = reach.max(hi);
-        }
-        out
+    pub fn new(items: GapItems, spec: GapRuleSpec) -> Self {
+        GapRulePainter { items, spec }
     }
 }
 
@@ -1821,60 +2258,88 @@ impl Element for GapRulePainter {
         if items.is_empty() {
             return;
         }
-        let x0 = items
-            .iter()
-            .map(|b| f32::from(b.origin.x))
-            .fold(f32::INFINITY, f32::min);
-        let y0 = items
-            .iter()
-            .map(|b| f32::from(b.origin.y))
-            .fold(f32::INFINITY, f32::min);
-        let x1 = items
-            .iter()
-            .map(|b| f32::from(b.origin.x + b.size.width))
-            .fold(f32::NEG_INFINITY, f32::max);
-        let y1 = items
-            .iter()
-            .map(|b| f32::from(b.origin.y + b.size.height))
-            .fold(f32::NEG_INFINITY, f32::max);
-        if let Some((w, colour)) = self.col {
-            let xs = Self::centres(
-                items
+        let spec = &self.spec;
+        // Физические семейства: промежутки, лежащие по x (линейки
+        // вертикальные), и по y. `column-rule` — колонки; в вертикальном
+        // письме колонки идут по y.
+        let (on_x, on_y) = if spec.vertical {
+            (spec.row.as_ref(), spec.col.as_ref())
+        } else {
+            (spec.col.as_ref(), spec.row.as_ref())
+        };
+        // (промежуток по x?, линейка, правило, главный промежуток строк?)
+        let mut layers: Vec<(bool, GapRun, &GapAxisRule, bool)> = vec![];
+        match spec.kind {
+            GapLayout::Grid => {
+                let ix: Vec<GapItem> = items.iter().map(|b| GapItem::from_bounds(b, true)).collect();
+                let iy: Vec<GapItem> = items.iter().map(|b| GapItem::from_bounds(b, false)).collect();
+                if let Some(r) = on_x {
+                    for run in grid_runs(&ix, spec.gap_x, spec.gap_y, r, on_y) {
+                        layers.push((true, run, r, false));
+                    }
+                }
+                if let Some(r) = on_y {
+                    for run in grid_runs(&iy, spec.gap_y, spec.gap_x, r, on_x) {
+                        layers.push((false, run, r, false));
+                    }
+                }
+            }
+            GapLayout::Lines { stacked_vertically } => {
+                // Ось укладки строк — `a`: главные промежутки лежат по ней.
+                let it: Vec<GapItem> = items
                     .iter()
-                    .map(|b| {
-                        (
-                            f32::from(b.origin.x),
-                            f32::from(b.origin.x + b.size.width),
-                        )
-                    })
-                    .collect(),
-            );
-            for c in xs {
-                let rect = Bounds {
-                    origin: gpui::point(gpui::px(c - w / 2.0), gpui::px(y0)),
-                    size: gpui::size(gpui::px(w), gpui::px(y1 - y0)),
+                    .map(|b| GapItem::from_bounds(b, !stacked_vertically))
+                    .collect();
+                let (main, cross) = if stacked_vertically { (on_y, on_x) } else { (on_x, on_y) };
+                let gap_a = if stacked_vertically { spec.gap_y } else { spec.gap_x };
+                let (mains, crosses) = line_runs(&it, gap_a, main, cross);
+                if let Some(r) = main {
+                    for run in mains {
+                        layers.push((!stacked_vertically, run, r, true));
+                    }
+                }
+                if let Some(r) = cross {
+                    for run in crosses {
+                        layers.push((stacked_vertically, run, r, false));
+                    }
+                }
+            }
+        }
+        // §overlap: по умолчанию ряды поверх колонок — колонки красятся первыми.
+        let col_on_x = !spec.vertical;
+        let first_on_x = if spec.column_over_row { !col_on_x } else { col_on_x };
+        let draw = |window: &mut Window, gap_on_x: bool, run: &GapRun, rule: &GapAxisRule, main_like: bool| {
+            if !rule.styles.at(run.index, run.count).unwrap_or(false) {
+                return;
+            }
+            let w = rule.widths.at(run.index, run.count).unwrap_or(0.0);
+            if w <= 0.0 {
+                return;
+            }
+            let Some(colour) = rule.colors.at(run.index, run.count) else {
+                return;
+            };
+            let c = (run.g0 + run.g1) / 2.0;
+            for (s, e) in segments(run, rule, main_like) {
+                let rect = if gap_on_x {
+                    Bounds {
+                        origin: gpui::point(gpui::px(c - w / 2.0), gpui::px(s)),
+                        size: gpui::size(gpui::px(w), gpui::px(e - s)),
+                    }
+                } else {
+                    Bounds {
+                        origin: gpui::point(gpui::px(s), gpui::px(c - w / 2.0)),
+                        size: gpui::size(gpui::px(e - s), gpui::px(w)),
+                    }
                 };
                 window.paint_quad(gpui::fill(rect, colour.to_hsla()));
             }
-        }
-        if let Some((w, colour)) = self.row {
-            let ys = Self::centres(
-                items
-                    .iter()
-                    .map(|b| {
-                        (
-                            f32::from(b.origin.y),
-                            f32::from(b.origin.y + b.size.height),
-                        )
-                    })
-                    .collect(),
-            );
-            for c in ys {
-                let rect = Bounds {
-                    origin: gpui::point(gpui::px(x0), gpui::px(c - w / 2.0)),
-                    size: gpui::size(gpui::px(x1 - x0), gpui::px(w)),
-                };
-                window.paint_quad(gpui::fill(rect, colour.to_hsla()));
+        };
+        for pass in [true, false] {
+            for (on_x, run, rule, main_like) in &layers {
+                if (*on_x == first_on_x) == pass {
+                    draw(window, *on_x, run, rule, *main_like);
+                }
             }
         }
     }

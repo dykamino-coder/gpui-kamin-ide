@@ -5107,6 +5107,152 @@ fn apply_margin(d: gpui::Div, c: &Computed) -> gpui::Div {
 }
 
 /// Пробельный текстовый узел: в подсчёте детей он не участвует.
+/// Правила линеек промежутков (css-gaps-1) контейнера — `None`, когда ни
+/// одна линейка не задана. Длины (`em`) сводятся в точки здесь: слой знает
+/// только геометрию. Цвет по умолчанию — `currentcolor`, ширина — `medium`.
+fn gap_rule_spec(
+    e: &Element,
+    merged: &Computed,
+    opts: &RenderOpts,
+) -> Option<crate::interact::GapRuleSpec> {
+    use crate::computed::{FlexDir, GapInset, GapList};
+    use crate::interact::{GapAxisRule, GapLayout};
+    if !matches!(
+        merged.display,
+        Some(Display::Flex)
+            | Some(Display::InlineFlex)
+            | Some(Display::Grid)
+            | Some(Display::InlineGrid)
+            | Some(Display::GridLanes)
+    ) {
+        return None;
+    }
+    let size = match merged.font_size {
+        Some(Len::Px(v)) => v,
+        _ => opts.base_size(),
+    };
+    let px = |l: &Len| match l {
+        Len::Px(v) => *v,
+        Len::Em(k) => k * size,
+        _ => 3.0,
+    };
+    let fallback = merged.color.unwrap_or(crate::value::Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    });
+    let s = &e.style;
+    let axis = |column: bool| -> Option<GapAxisRule> {
+        let (vis, w, c, ws, ss, cs, brk, inset, visibility) = if column {
+            (
+                s.column_rule_visible,
+                &s.column_rule_width,
+                s.column_rule_color,
+                &s.column_rule_widths,
+                &s.column_rule_styles,
+                &s.column_rule_colors,
+                s.column_rule_break,
+                s.column_rule_inset,
+                s.column_rule_visibility,
+            )
+        } else {
+            (
+                s.row_rule_visible,
+                &s.row_rule_width,
+                s.row_rule_color,
+                &s.row_rule_widths,
+                &s.row_rule_styles,
+                &s.row_rule_colors,
+                s.row_rule_break,
+                s.row_rule_inset,
+                s.row_rule_visibility,
+            )
+        };
+        let styles = ss
+            .clone()
+            .unwrap_or_else(|| GapList::single(vis == Some(true)));
+        if !styles.any(|v| *v) {
+            return None;
+        }
+        let widths = ws
+            .as_ref()
+            .map(|l| l.map(px))
+            .unwrap_or_else(|| GapList::single(w.as_ref().map(px).unwrap_or(3.0)));
+        let colors = cs
+            .as_ref()
+            .map(|l| l.map(|c| c.unwrap_or(fallback)))
+            .unwrap_or_else(|| GapList::single(c.unwrap_or(fallback)));
+        let inset = inset
+            .unwrap_or([GapInset::Len(Len::Px(0.0)); 4])
+            .map(|i| match i {
+                GapInset::Len(Len::Em(k)) => GapInset::Len(Len::Px(k * size)),
+                other => other,
+            });
+        Some(GapAxisRule {
+            widths,
+            colors,
+            styles,
+            brk: brk.unwrap_or(1),
+            inset,
+            visibility: visibility.unwrap_or(0),
+        })
+    };
+    let col = axis(true);
+    let row = axis(false);
+    if col.is_none() && row.is_none() {
+        return None;
+    }
+    let vertical = merged.vertical == Some(true);
+    let kind = match merged.display {
+        Some(Display::Grid) | Some(Display::InlineGrid) => GapLayout::Grid,
+        Some(Display::GridLanes) => {
+            // Направление лент — как в `lanes()`: явное или по той оси, где
+            // объявлены дорожки.
+            let row_tracks = merged.grid_rows.is_some()
+                || merged.auto_repeat_rows.is_some()
+                || merged.grid_auto_fill_row.is_some();
+            let col_tracks = merged.grid_tracks.is_some()
+                || merged.auto_repeat_cols.is_some()
+                || merged.grid_auto_fill_min.is_some();
+            GapLayout::Lines {
+                stacked_vertically: merged.lanes_row.unwrap_or(row_tracks && !col_tracks),
+            }
+        }
+        _ => {
+            // Строки гибкого контейнера уложены поперёк главной оси; в
+            // вертикальном письме `row` идёт по вертикали.
+            let row_dir = !matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
+            GapLayout::Lines {
+                stacked_vertically: row_dir != vertical,
+            }
+        }
+    };
+    let gap_px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => Some(v),
+        Some(Len::Em(k)) => Some(k * size),
+        _ => None,
+    };
+    let (row_gap, col_gap) = match s.gap {
+        Some((r, c)) => (gap_px(r), gap_px(c)),
+        None => (None, None),
+    };
+    let (gap_x, gap_y) = if vertical {
+        (row_gap, col_gap)
+    } else {
+        (col_gap, row_gap)
+    };
+    Some(crate::interact::GapRuleSpec {
+        col,
+        row,
+        kind,
+        vertical,
+        column_over_row: s.rule_column_over_row == Some(true),
+        gap_x,
+        gap_y,
+    })
+}
+
 /// Многоколоночный контейнер: `column-*` применяются только к блочным
 /// контейнерам (css-multicol-1 §2), сетка и гибкий контейнер ими не
 /// становятся (`grid-multicol-001`,
@@ -10361,8 +10507,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 .then(crate::interact::ClampGuard::enter_bfc);
             // Проба элемента сетки/гибкого контейнера: пишет свои разложенные
             // границы в буфер родителя. Ставится ДО clamp-пробы, чтобы её
-            // ранний `return` не съел запись.
-            if let Some(key) = crate::interact::gap_context() {
+            // ранний `return` не съел запись. Абсолютные дети дорожек не
+            // занимают (css-grid-1 §9), а пустой анонимный блок — это
+            // распорка лент (`spacer()`), не элемент.
+            if let Some(key) = crate::interact::gap_context()
+                && !matches!(
+                    e.style.position,
+                    Some(crate::computed::Position::Absolute)
+                        | Some(crate::computed::Position::Fixed)
+                )
+                && !(e.node_id == 0 && e.children.is_empty())
+            {
                 kids.push(crate::interact::gap_item_probe(
                     crate::interact::gap_items_for(key),
                 ));
@@ -10388,53 +10543,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 crate::interact::cb_open();
             }
             // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
-            // задан стиль хотя бы одной линейки: начальное `none` (§1871)
-            // означает, что рисовать нечего, и ни одна старая пара сюда не
-            // попадает. Ширина — по тем же ключевым словам, что у
-            // многоколонника; цвет по умолчанию — `currentcolor`.
-            let gap_rules = matches!(
-                merged.display,
-                Some(Display::Flex)
-                    | Some(Display::InlineFlex)
-                    | Some(Display::Grid)
-                    | Some(Display::InlineGrid)
-                    | Some(Display::GridLanes)
-            )
-            .then(|| {
-                let size = match merged.font_size {
-                    Some(Len::Px(v)) => v,
-                    _ => opts.base_size(),
-                };
-                let w = |l: &Option<Len>| match l {
-                    Some(Len::Px(v)) => *v,
-                    Some(Len::Em(k)) => k * size,
-                    _ => 3.0,
-                };
-                let fallback = merged.color.unwrap_or(crate::value::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                });
-                let col = (e.style.column_rule_visible == Some(true))
-                    .then(|| {
-                        (
-                            w(&e.style.column_rule_width),
-                            e.style.column_rule_color.unwrap_or(fallback),
-                        )
-                    })
-                    .filter(|(w, _)| *w > 0.0);
-                let row = (e.style.row_rule_visible == Some(true))
-                    .then(|| {
-                        (
-                            w(&e.style.row_rule_width),
-                            e.style.row_rule_color.unwrap_or(fallback),
-                        )
-                    })
-                    .filter(|(w, _)| *w > 0.0);
-                (col, row)
-            })
-            .filter(|(col, row)| col.is_some() || row.is_some());
+            // задан стиль хотя бы одной линейки: начальное `none` означает,
+            // что рисовать нечего, и ни одна старая пара сюда не попадает
+            // (см. `gap_rule_spec`).
+            let gap_rules = gap_rule_spec(e, &merged, opts);
             let gap_buf = gap_rules
                 .is_some()
                 .then(|| crate::interact::gap_items_for(e.node_id ^ opts.doc_salt));
@@ -10445,10 +10557,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if cb_layer {
                 kids.extend(crate::interact::cb_close());
             }
-            if let (Some(buf), Some((col, row))) = (gap_buf, gap_rules) {
-                kids.push(
-                    crate::interact::GapRulePainter::new(buf, col, row).into_any_element(),
-                );
+            if let (Some(buf), Some(spec)) = (gap_buf, gap_rules) {
+                kids.push(crate::interact::GapRulePainter::new(buf, spec).into_any_element());
             }
             if is_clamp {
                 let max_h = match merged.max_height {
@@ -15765,6 +15875,17 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     }
     // После auto-fit-схлопывания список дорожек другой — размеры заново.
     let used_sizes = lane_used_sizes(&tracks);
+    // Линейки промежутков лент (css-gaps-1): `element()` уходит сюда раньше
+    // общего слоя, поэтому сторож проб и слой ставятся на месте. Распорки
+    // (`spacer()`) пробу не получают — см. фильтр пробы в `element()`.
+    let gap_rules = gap_rule_spec(e, merged, opts);
+    let gap_key = e.node_id ^ opts.doc_salt;
+    let gap_buf = gap_rules
+        .is_some()
+        .then(|| crate::interact::gap_items_for(gap_key));
+    let _gap_guard = gap_buf
+        .as_ref()
+        .map(|_| crate::interact::GapGuard::enter(gap_key));
     let mut row = styled_div_with(e, merged).flex();
     row = if row_dir {
         row.flex_col().gap_y(gpui::px(cross_gap))
@@ -15920,6 +16041,9 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         let mut ctx = merged.clone();
         ctx.display = Some(Display::Block);
         row = row.children(blocks(&extras, &ctx, opts));
+    }
+    if let (Some(buf), Some(spec)) = (gap_buf, gap_rules) {
+        row = row.child(crate::interact::GapRulePainter::new(buf, spec).into_any_element());
     }
     row.into_any_element()
 }
