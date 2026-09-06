@@ -1112,6 +1112,24 @@ pub struct Computed {
     /// (§implicit: «The implicit anchor element of a pseudo-element is its
     /// originating element»). Ставит `dom::walk` после обхода детей.
     pub implicit_anchor: Option<u64>,
+    /// `position-area` (§position-area): два слова области, разбор и смысл —
+    /// `anchor::parse_area`. `none`/не задано — `None`.
+    pub position_area: Option<crate::anchor::PositionArea>,
+    /// `position-try-fallbacks`/`position-try` не `none`. Перебора запасных
+    /// позиций нет, поэтому `anchor()` такой коробки считается неразрешимой
+    /// (`anchor::settle_static`): иначе первый вариант, который спека велела
+    /// бы заменить за переполнение, остаётся навсегда
+    /// (`position-try-fallbacks-001`).
+    pub position_try: bool,
+    /// Служебные поля якорного шага, ставит `render::element`: свой `node_id`
+    /// (ключ реестра содержащих блоков `anchor::CB`), `node_id` ближайшего
+    /// содержащего блока абсолюта (`inline::inherit`; 0 — начальный, окно),
+    /// порядковый номер сборки в кадре («последний якорь раньше по дереву» в
+    /// реестре прошлого кадра) и ключ коробки в реестре размеров клетки.
+    pub self_node: u64,
+    pub cb_node: u64,
+    pub anchor_seq: u32,
+    pub anchor_key: u64,
     pub overflow_x: Option<Overflow>,
     /// Внутренняя копия прокручиваемой коробки (`render` снимает с неё
     /// `overflow`, чтобы обёртка `ScrollArea` резала сама): по спеке она
@@ -3355,6 +3373,16 @@ impl Computed {
                     name if name.starts_with("--") => PositionAnchor::Named(name.to_string()),
                     _ => return,
                 });
+            }
+            // §position-area: сетка 3×3 от якоря и содержащего блока; разбор
+            // и физическое разрешение — в `anchor`.
+            "position-area" => {
+                self.position_area = crate::anchor::parse_area(v);
+            }
+            // §position-try-fallbacks (и сокращение `position-try`): самого
+            // перебора нет, хранится лишь факт непустого списка.
+            "position-try-fallbacks" | "position-try" => {
+                self.position_try = v.trim() != "none";
             }
             "top" => {
                 self.inset_inherit[0] = v == "inherit";

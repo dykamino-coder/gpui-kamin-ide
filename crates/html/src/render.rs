@@ -159,12 +159,13 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         style
     };
     let mut d = apply(div(), c);
-    // Проба якоря (css-anchor-position-1 §anchor-name): канвас во всю
-    // коробку пишет её рамку в реестр кадра на подготовке — позже по дереву
-    // её прочтёт `anchor::AnchorPlace` позиционированной коробки. Ставится
-    // здесь, потому что через `styled_div_with` проходят и блоки, и атомы
-    // строки (`inline-block` из `anchor-position-005`), и держатели.
-    if let Some(probe) = crate::anchor::probe_for(e) {
+    // Проба якоря (css-anchor-position-1 §anchor-name) и содержащего блока
+    // (§position-area): канвас во всю коробку пишет её рамку в реестр кадра
+    // на подготовке — позже по дереву её прочтёт `anchor::AnchorPlace`
+    // позиционированной коробки. Ставится здесь, потому что через
+    // `styled_div_with` проходят и блоки, и атомы строки (`inline-block` из
+    // `anchor-position-005`), и держатели.
+    if let Some(probe) = crate::anchor::probe_for(e, c) {
         d = d.child(probe);
     }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
@@ -9180,6 +9181,14 @@ fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement 
 /// Блочный элемент.
 fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let mut merged = inline::inherit(inherited, &e.style);
+    // Якорный шаг: ключи реестров кадра (свой `node_id` для содержащего
+    // блока детей, порядок сборки, ключ клетки) и размеры от якоря —
+    // `anchor-size()`, растяжка в клетке `position-area` — из реестра
+    // ПРОШЛОГО кадра, до раскладки.
+    merged.self_node = e.node_id;
+    merged.anchor_seq = crate::anchor::next_seq();
+    merged.anchor_key = crate::anchor::key_of(e);
+    crate::anchor::resolve_sizes(&mut merged, inherited);
     // `dir="auto"` — сторона письма по ПЕРВОМУ СИЛЬНОМУ знаку содержимого.
     // Разбор двунаправленности выберет её сам при наборе, но выключка и
     // прижим текста читают `rtl` из стиля, и без этого шага блок с арабским
@@ -10808,6 +10817,15 @@ fn shrink0(d: gpui::Div, li: &Element, list: &Element) -> gpui::Div {
         d
     }
 }
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): пункт с `display: list-item` вне `<ul>/<ol>`
+// заводить в `list()` через анонимный `<ul>` (как анонимная таблица для
+// ячейки), а `pseudo_box` — не выбрасывать флаг пункта. Срез 1055 пар
+// (lists/pseudo/content/counter-styles): 848 -> 837, **+0/-11**
+// (`list-style-position-applies-to-008/009/015/016/017`,
+// `change-list-style-position-002/003`, `list-style-020` и др.). Анонимный
+// `<ul>` тащит UA-отступы и `list-style-position` списка поверх собственных у
+// пункта. Патч — `target/scout-markers-2026-09.md` П2; маркер надо выносить
+// из `list()` в общий путь блока, а не заворачивать блок в список.
 fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let ordered = e.tag == "ol";
     let mut rows = vec![];

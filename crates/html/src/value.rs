@@ -185,9 +185,15 @@ impl Len {
         // статическую позицию. Имя якоря чувствительно к регистру
         // (`--myAnchor`), поэтому режется `s`, а не `lower`.
         if lower.starts_with("anchor(") && s.ends_with(')') {
-            return parse_anchor(&s[7..s.len() - 1], 0.0);
+            return parse_anchor(&s[7..s.len() - 1], 0.0, false);
         }
-        if lower.starts_with("calc(") && lower.contains("anchor(") {
+        // `anchor-size()` (§anchor-size-fn) — та же арена, `AnchorFn::size`
+        // задан. В размер попадает уже точками: `anchor::resolve_sizes`
+        // решает её ДО раскладки из реестра прошлого кадра.
+        if lower.starts_with("anchor-size(") && s.ends_with(')') {
+            return parse_anchor(&s[12..s.len() - 1], 0.0, true);
+        }
+        if lower.starts_with("calc(") && (lower.contains("anchor(") || lower.contains("anchor-size(")) {
             return parse_anchor_calc(s);
         }
         if let Some(inner) = s.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')) {
@@ -771,13 +777,28 @@ pub enum AnchorSide {
     Pct(f32),
 }
 
-/// Разобранная `anchor()`: имя (нет — якорь по умолчанию из
-/// `position-anchor`), сторона, запасное значение и довесок в точках из
-/// `calc(anchor(…) + 10px)`.
+/// Мера якоря в `anchor-size()` (css-anchor-position-1 §anchor-size-fn);
+/// `Implicit` — ключевое слово опущено: берётся ось свойства.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AnchorSize {
+    Implicit,
+    Width,
+    Height,
+    Block,
+    Inline,
+    SelfBlock,
+    SelfInline,
+}
+
+/// Разобранная `anchor()` или `anchor-size()`: имя (нет — якорь по умолчанию
+/// из `position-anchor`), сторона, запасное значение и довесок в точках из
+/// `calc(anchor(…) + 10px)`. `size` задан — это `anchor-size()`, `side` тогда
+/// не читается.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AnchorFn {
     pub name: Option<String>,
     pub side: AnchorSide,
+    pub size: Option<AnchorSize>,
     pub fallback: Option<Len>,
     pub add: f32,
 }
@@ -799,7 +820,7 @@ pub fn anchor_get(i: u32) -> Option<AnchorFn> {
 /// Тело `anchor(...)` без скобок: `[<name> || <side>] , <fallback>?`.
 /// Запятая ищется на верхнем уровне — запасным значением бывает вложенный
 /// `anchor(--a1 bottom)` (`position-anchor-none-pseudo-element-named`).
-fn parse_anchor(inner: &str, add: f32) -> Option<Len> {
+fn parse_anchor(inner: &str, add: f32, size_fn: bool) -> Option<Len> {
     let mut depth = 0i32;
     let mut cut = None;
     for (i, ch) in inner.char_indices() {
@@ -819,12 +840,26 @@ fn parse_anchor(inner: &str, add: f32) -> Option<Len> {
     };
     let mut name = None;
     let mut side = None;
+    let mut size = None;
     for tok in head.split_whitespace() {
         if tok.starts_with("--") {
             name = Some(tok.to_string());
             continue;
         }
         let t = tok.to_ascii_lowercase();
+        // `anchor-size()`: вместо стороны — мера (§anchor-size-fn).
+        if size_fn {
+            size = Some(match t.as_str() {
+                "width" => AnchorSize::Width,
+                "height" => AnchorSize::Height,
+                "block" => AnchorSize::Block,
+                "inline" => AnchorSize::Inline,
+                "self-block" => AnchorSize::SelfBlock,
+                "self-inline" => AnchorSize::SelfInline,
+                _ => return None,
+            });
+            continue;
+        }
         side = Some(match t.as_str() {
             "inside" => AnchorSide::Inside,
             "outside" => AnchorSide::Outside,
@@ -846,7 +881,8 @@ fn parse_anchor(inner: &str, add: f32) -> Option<Len> {
     };
     Some(Len::Anchor(anchor_store(AnchorFn {
         name,
-        side: side?,
+        side: if size_fn { AnchorSide::Inside } else { side? },
+        size: size_fn.then(|| size.unwrap_or(AnchorSize::Implicit)),
         fallback,
         add,
     })))
@@ -857,7 +893,11 @@ fn parse_anchor(inner: &str, add: f32) -> Option<Len> {
 /// шрифтовая единица рядом с якорем честно не разбирается (запись падает).
 fn parse_anchor_calc(s: &str) -> Option<Len> {
     let lower = s.to_ascii_lowercase();
-    let at = lower.find("anchor(")?;
+    // `anchor-size(` не содержит подстроки `anchor(` — ветки не путаются.
+    let (at, head, size_fn) = match lower.find("anchor-size(") {
+        Some(i) => (i, 12, true),
+        None => (lower.find("anchor(")?, 7, false),
+    };
     let mut depth = 0i32;
     let mut end = None;
     for (i, ch) in s[at..].char_indices() {
@@ -874,13 +914,13 @@ fn parse_anchor_calc(s: &str) -> Option<Len> {
         }
     }
     let end = end?;
-    let body = &s[at + 7..end];
+    let body = &s[at + head..end];
     let rest = format!("{}0px{}", &s[..at], &s[end + 1..]);
     let add = match Len::parse(&rest)? {
         Len::Px(v) => v,
         _ => return None,
     };
-    parse_anchor(body, add)
+    parse_anchor(body, add, size_fn)
 }
 
 /// Операнд выражения: голое число участвует только в умножении и делении.

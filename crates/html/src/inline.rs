@@ -616,6 +616,14 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
+    // Ближайший содержащий блок абсолюта по `node_id` — ключ реестра рамок
+    // `anchor::CB` (нужен `position-area`); корень даёт 0 = начальный
+    // содержащий блок, окно.
+    c.cb_node = if establishes_cb(parent) {
+        parent.self_node
+    } else {
+        parent.cb_node
+    };
     // Барьер содержащего блока для `position: fixed` — не только трансформ.
     // css-contain-1 §containment-layout п.1: обособление раскладки делает
     // элемент содержащим блоком для потомков и с `absolute`, И С `fixed`;
