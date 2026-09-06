@@ -983,6 +983,14 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.caption_bottom = own.caption_bottom.or(parent.caption_bottom);
     c.text_transform = own.text_transform.or(parent.text_transform);
     c.text_indent = own.text_indent.or(parent.text_indent);
+    // `text-box-edge` наследуется (css-inline-3 §text-box-edge, Inherited:
+    // yes); срез берёт край у корневой строчной коробки СТРОКИ, то есть у
+    // блока, которому она принадлежит (`text-box-trim-accumulation-001…003`).
+    if !own.text_box_edge_set {
+        c.text_box_over = parent.text_box_over;
+        c.text_box_under = parent.text_box_under;
+        c.text_box_edge_set = parent.text_box_edge_set;
+    }
     c.text_indent_each_line = own.text_indent_each_line.or(parent.text_indent_each_line);
     c.text_indent_hanging = own.text_indent_hanging.or(parent.text_indent_hanging);
     c.break_anywhere = own.break_anywhere.or(parent.break_anywhere);

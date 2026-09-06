@@ -1364,6 +1364,11 @@ pub struct Computed {
     /// `text-box-edge` — метрики верхнего и нижнего краёв среза.
     pub text_box_over: TextEdge,
     pub text_box_under: TextEdge,
+    /// `text-box-edge` задан явно (в т.ч. `auto`/`text`): свойство
+    /// наследуемое, и явное значение перекрывает унаследованное, а начальное
+    /// `Text` от него неотличимо без флага
+    /// (`text-box-trim-not-ignore-nested-text-box-edge`).
+    pub text_box_edge_set: bool,
     pub hanging: Option<Hanging>,
     pub nowrap: Option<bool>,
     /// Переводы строк значимы (`white-space: pre*`).
@@ -5017,6 +5022,7 @@ impl Computed {
             // `auto` = `text` (начальное `line-fit-edge: leading` читается
             // как `text`).
             "text-box-edge" => {
+                self.text_box_edge_set = true;
                 let mut it = v.split_ascii_whitespace();
                 let over = it.next().unwrap_or("auto");
                 let under = it.next().unwrap_or(over);
@@ -5039,7 +5045,12 @@ impl Computed {
                     self.text_box_trim_end = false;
                     self.text_box_over = TextEdge::Text;
                     self.text_box_under = TextEdge::Text;
+                    self.text_box_edge_set = true;
                 } else {
+                    // Без края сокращение ставит `auto` (§4.1) — явно.
+                    self.text_box_over = TextEdge::Text;
+                    self.text_box_under = TextEdge::Text;
+                    self.text_box_edge_set = true;
                     let trim = v
                         .split_ascii_whitespace()
                         .find(|w| w.starts_with("trim-"))

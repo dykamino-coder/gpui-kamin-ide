@@ -3574,13 +3574,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Полулидинг — половина разницы между высотой строки и метрикой
             // содержимого (CSS 2.1 §10.8.1).
             let half = (line - (ascent + descent)) / 2.0;
-            // `text-box-edge` наследуется, но `inherit()` его не несёт: край
-            // берётся у блока строки, если он там задан, иначе у контейнера.
-            let pick = |own: crate::computed::TextEdge, up: crate::computed::TextEdge| {
-                if own != crate::computed::TextEdge::Text { own } else { up }
-            };
+            // Край — у КОРНЕВОЙ СТРОЧНОЙ КОРОБКИ найденной строки (css-inline-3
+            // §text-box-trim: «to the specified metric of its root inline
+            // box»): `text-box-edge` наследуемое, `inline::inherit` его несёт,
+            // а явное `auto` на блоке строки перекрывает `ex` контейнера
+            // (`not-ignore-nested-text-box-edge`; Blink `AdjustEdges`:
+            // kAuto = kText).
             if start {
-                let over = match pick(line_style.text_box_over, inherited.text_box_over) {
+                let over = match line_style.text_box_over {
                     crate::computed::TextEdge::Cap => ascent - cap,
                     crate::computed::TextEdge::Ex => {
                         ascent - crate::metrics::ch_ex_px(&family, size).1
@@ -3589,7 +3590,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 };
                 half + over
             } else {
-                let under = match pick(line_style.text_box_under, inherited.text_box_under) {
+                let under = match line_style.text_box_under {
                     crate::computed::TextEdge::Alphabetic => descent,
                     _ => 0.0,
                 };
