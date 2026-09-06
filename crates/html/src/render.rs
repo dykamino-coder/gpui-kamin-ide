@@ -2170,6 +2170,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         collapsed
     };
     let flex_ctx = matches!(inherited.display, Some(Display::Flex) | Some(Display::InlineFlex));
+    // Буквица `initial-letter` расшивается в плавающий узел ДО обтекания —
+    // дальше её ведёт `wrap_floats` наравне с авторскими флоатами. В гибком
+    // контейнере и сетке `::first-letter` не действует — там не трогаем.
+    let collapsed = if ordered_context {
+        collapsed
+    } else {
+        initial_letter_float(collapsed, inherited, opts)
+    };
     let collapsed = by_layer(wrap_floats(collapsed, inherited.width, inherited.clear), flex_ctx);
     // Блок мы изображаем гибкой колонкой, а её дети по умолчанию сжимаются —
     // в обычном потоке этого нет: ребёнок выше родителя обязан вылезти, а не
@@ -3813,6 +3821,151 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
     // `inline-box-001`, `abspos-029`, `text-indent-014` не сдвинул НИ ОДНОЙ:
     // `blocks()` и без склейки собирает такой прогон одним абзацем. Разница
     // эталонов лежит не в числе анонимных коробок.
+    out
+}
+
+/// `initial-letter` (css-inline-3 §initial-letter): буквица — не кусок
+/// текста, а коробка В НАЧАЛЕ БЛОКА, которую строки обтекают. Эталоны WPT
+/// пишут её плавающим блоком (`initial-letter-drop-initial-ref`: `float:
+/// left; width: 80px; height: 80px; margin-top: 2px` при `font: 20px/24px
+/// Ahem` и `initial-letter: 3`), и наше обтекание (`wrap_floats` →
+/// `kamin-float` → `float_flow`) такой узел уже ведёт — поэтому буквица
+/// расшивается в синтетический флоат ДО `wrap_floats`, и обе стороны пары
+/// идут одним путём.
+///
+/// Числа (§sizing-initial-letter; Blink `ComputeInitialLetterFont` и
+/// `initial_letter_utils.cc::ComputeInitialLetterBoxBlockOffset`):
+/// * прописная буквицы C = (N − 1)·line-height + cap(абзаца);
+/// * кегль F = C / доля прописной шрифта буквицы (Ahem: 64 / 0.8 = 80);
+/// * коробка высотой ascent(F) + descent(F), строка той же высоты;
+/// * верх коробки = N·line-height − ascent(F) − (descent(абзаца) +
+///   полулидинг) — у Ahem/20/24/3 ровно 2;
+/// * осадка M < N: строки под буквицей уходят на (N − M) строк вниз — как
+///   `<br>` перед текстом в эталонах `raise`/`sunk`.
+///
+/// Собственные `font-size` и `line-height` слоя НЕ действуют
+/// (§initial-letter-properties). Шаг 1: горизонтальное письмо, буква —
+/// первый текстовый узел блока (перед ним допустимы только флоаты и пустой
+/// текст), ширина коробки — продвижение нуля семейства (у Ahem равно
+/// кеглю; текстовым шрифтам нужен щуп продвижения знака — шаг 2).
+fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpts) -> Vec<Node> {
+    let Some(first) = inherited.first_letter.as_deref() else {
+        return nodes;
+    };
+    let Some((size_lines, sink)) = first.initial_letter else {
+        return nodes;
+    };
+    if inherited.vertical == Some(true) {
+        return nodes;
+    }
+    let at = nodes.iter().position(|n| match n {
+        Node::Text(t) => !blank_text(t),
+        Node::Element(e) => !e.style.float.is_some_and(|f| f != 0),
+    });
+    let Some(at) = at else {
+        return nodes;
+    };
+    let Node::Text(text) = &nodes[at] else {
+        return nodes;
+    };
+    let Some((pos, ch)) = text.char_indices().find(|(_, c)| !c.is_whitespace()) else {
+        return nodes;
+    };
+    let end = pos + ch.len_utf8();
+    let font_px = match inherited.font_size {
+        Some(Len::Px(v)) => v,
+        _ => opts.base_size(),
+    };
+    let family = inherited.font_family.clone().unwrap_or_default();
+    let (asc, desc, cap) = crate::metrics::vmetrics_px(&family, font_px);
+    let line = match inherited.line_height {
+        Some(Len::Px(v)) => v,
+        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font_px,
+        _ => font_px * normal_fraction(inherited, opts),
+    };
+    // Доля прописной — у шрифта БУКВИЦЫ: слой может сменить семейство.
+    let letter_family = first.font_family.clone().unwrap_or_else(|| family.clone());
+    let (_, _, cap_frac) = crate::metrics::vmetrics_px(&letter_family, 1.0);
+    if cap_frac <= 0.0 || line <= 0.0 {
+        return nodes;
+    }
+    let want_cap = (size_lines - 1.0) * line + cap;
+    let letter_px = want_cap / cap_frac;
+    let (l_asc, l_desc, _) = crate::metrics::vmetrics_px(&letter_family, letter_px);
+    let box_h = l_asc + l_desc;
+    let half_leading = (line - (asc + desc)) / 2.0;
+    // Размер меньше осадки (`3 5`) — выравнивание по верху
+    // (§initial-letter-block-position): коробка опускается на sink строк.
+    let rows = size_lines.ceil() as u32;
+    let top = if rows < sink {
+        line * sink as f32 - box_h
+    } else {
+        size_lines * line - l_asc - (desc + half_leading)
+    };
+    let shift = rows.saturating_sub(sink);
+    // Слой — копия стиля блока плюс объявления `::first-letter`, поэтому
+    // «своё» у слоя — то, что отличается от блока: поля, цвет, фон.
+    let own = |layer: Option<Len>, base: Option<Len>| match layer {
+        Some(Len::Px(v)) if layer != base => v,
+        _ => 0.0,
+    };
+    let color = match first.color {
+        Some(c) if Some(c) != inherited.color => Some(c),
+        // `::first-letter` наследует у `::first-line`
+        // (`initial-letter-with-first-line`: `color: inherit` → цвет строки).
+        _ => inherited
+            .first_line
+            .as_deref()
+            .and_then(|l| l.color)
+            .or(inherited.color),
+    };
+    let mut style = Computed {
+        // Сторона — начало строки: rtl отправляет буквицу вправо.
+        float: Some(if inherited.rtl == Some(true) { 1 } else { -1 }),
+        // Оба размера в точках: без них `float_flow` откатывается на плоский
+        // ряд, и строки под буквицей не возвращаются к левому краю.
+        width: Some(Len::Px(crate::metrics::ch_ex_px(&letter_family, letter_px).0)),
+        height: Some(Len::Px(box_h)),
+        font_size: Some(Len::Px(letter_px)),
+        line_height: Some(Len::Px(box_h)),
+        font_family: Some(letter_family),
+        font_weight: first.font_weight,
+        italic: first.italic,
+        color,
+        background: (first.background != inherited.background)
+            .then_some(first.background)
+            .flatten(),
+        ..Computed::default()
+    };
+    style.margin.top = Some(Len::Px(top + own(first.margin.top, inherited.margin.top)));
+    style.margin.bottom = Some(Len::Px(own(first.margin.bottom, inherited.margin.bottom)));
+    style.margin.left = Some(Len::Px(own(first.margin.left, inherited.margin.left)));
+    style.margin.right = Some(Len::Px(own(first.margin.right, inherited.margin.right)));
+    let synthetic = |tag: &str, style: Computed, children: Vec<Node>, inline: bool| {
+        Node::Element(Element {
+            list_item: None,
+            node_id: 0,
+            anim: None,
+            tag: tag.into(),
+            style,
+            hover: None,
+            first_letter: None,
+            first_line: None,
+            children,
+            attrs: vec![],
+            inline,
+        })
+    };
+    let mut out: Vec<Node> = Vec::with_capacity(nodes.len() + 2 + shift as usize);
+    out.extend(nodes[..at].iter().cloned());
+    out.push(synthetic("div", style, vec![Node::Text(text[pos..end].to_string())], false));
+    for _ in 0..shift {
+        out.push(synthetic("br", Computed::default(), vec![], true));
+    }
+    if end < text.len() {
+        out.push(Node::Text(text[end..].to_string()));
+    }
+    out.extend(nodes[at + 1..].iter().cloned());
     out
 }
 
@@ -7001,7 +7154,14 @@ fn paragraph_pieces(
     }
     // Буквица: первая буква абзаца — свой кусок со своим стилем. Кегль куска
     // доезжает до прогона (патч GPUI), поэтому она может быть крупнее строки.
-    if let Some(first) = inherited.first_letter.as_deref() {
+    // Слой с `initial-letter` сюда не доходит: такая буквица уже ушла
+    // плавающим узлом (`initial_letter_float`), и следующая буква абзаца не
+    // должна стать второй буквицей с кеглем слоя.
+    if let Some(first) = inherited
+        .first_letter
+        .as_deref()
+        .filter(|f| f.initial_letter.is_none())
+    {
         pieces = inline::split_first_letter(pieces, first);
     }
     if first_line_at > 0 {

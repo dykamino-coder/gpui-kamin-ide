@@ -1693,6 +1693,10 @@ pub struct Computed {
     pub first_letter: Option<Box<Computed>>,
     /// Стиль первой строки абзаца (`::first-line`).
     pub first_line: Option<Box<Computed>>,
+    /// `initial-letter` (css-inline-3 §initial-letter): размер буквицы в
+    /// строках и её осадка (sink) — на базовой какой строки она стоит.
+    /// `None` — `normal`, обычная буква. Живёт в слое `::first-letter`.
+    pub initial_letter: Option<(f32, u32)>,
     /// Фон строчного бокса: `<span style="background">` внутри абзаца.
     ///
     /// Обычный фон принадлежит коробке, а у строчного бокса коробки нет — он
@@ -6350,6 +6354,36 @@ impl Computed {
             "perspective" | "transform-style" => {}
 
             // --- Обтекание и направление письма --------------------------------
+            // `initial-letter: normal | <size> [<sink> | drop | raise]`
+            // (css-inline-3 §initial-letter). Число — высота буквицы в
+            // строках (не меньше 1); целое — осадка; `raise` = 1; `drop` и
+            // умолчание — осадка равна размеру, округлённому вниз. Порядок
+            // слов свободный (`drop 3`). Кегль и строку буквицы считает
+            // раскладка (`render::initial_letter_float`).
+            "initial-letter" => {
+                self.initial_letter = None;
+                if v != "normal" {
+                    let mut size: Option<f32> = None;
+                    let mut sink: Option<u32> = None;
+                    for word in v.split_ascii_whitespace() {
+                        match word {
+                            "drop" => sink = Some(0),
+                            "raise" => sink = Some(1),
+                            w if size.is_none() => {
+                                size = w.parse::<f32>().ok().filter(|n| *n >= 1.0);
+                            }
+                            w => sink = w.parse::<u32>().ok().filter(|n| *n >= 1),
+                        }
+                    }
+                    if let Some(size) = size {
+                        let sink = match sink {
+                            Some(0) | None => (size.floor() as u32).max(1),
+                            Some(n) => n,
+                        };
+                        self.initial_letter = Some((size, sink));
+                    }
+                }
+            }
             "float" => {
                 self.float = match v {
                     "left" => Some(-1),
