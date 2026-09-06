@@ -12542,10 +12542,18 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     for child in &e.children {
         let Node::Element(li) = child else { continue };
         if li.tag != "li" {
-            // ★ ЗАМЕРЕНО И ОТКАЧЕНО: рисовать не-`li` ребёнка списка обычным
-            // потоком (эталон `flexbox_direction-row-reverse-ref` — `<ul>` из
-            // `<span>` пуст). Срез списков+выключки 383 пары: приобретено 0,
-            // потеряно 2 (`foo-counter-reversed-007a/b` 0.38 -> 0.53).
+            // Не-`li` ребёнок списка — обычный блок потока (html §4.4.5:
+            // пунктом становится только `<li>`, остальное `<ol>` просто
+            // содержит). Эталоны семьи Ishida в css-counter-styles (~150 пар
+            // `css3-counter-styles-NNN-ref`) — это `<ol><div><bdi>x. </bdi>x
+            // </div></ol>`, и с голым `continue` они рендерились ПУСТОЙ
+            // страницей: правильные римские `-020` были красными, а пустые
+            // таблицы знаков — «зелёными» (`target/scout-counterstyles-2026-09.md`).
+            // Псевдоэлементы (`ol::before`) по-прежнему мимо: прошлый замер
+            // терял именно на них `foo-counter-reversed-007a/b` (0.38 -> 0.53).
+            if !li.tag.starts_with("::") {
+                rows.extend(blocks(std::slice::from_ref(child), inherited, opts));
+            }
             continue;
         }
         // Номер пункта считает ОБЩИЙ счётчик `list-item` (css-lists-3

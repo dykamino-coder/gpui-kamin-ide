@@ -1,11 +1,9 @@
-//! ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): таблицы «простых числовых» систем,
-//! `cjk-decimal`, кана, циклы, `lower-armenian` и восточноазиатский суффикс
-//! по отчёту `target/scout-newdirs-2026-09.md`. Срез 904 пары
-//! (counter-styles/lists/content/generated-content/pseudo): 698 -> 695,
-//! +0/-3 — ухудшились околопороговые `css3-counter-styles-146` (0.46 ->
-//! 0.62), `-204` (0.49 -> 0.66) и `disclosure-styles` (0.19 -> 0.62).
-//! Таблицы сняты с самих тестов верно, но выбор системы и резерв надо
-//! мерить по одной, а не всей пачкой.
+//! ★ ЗАМЕР 05.09 (+0/−3) БЫЛ ЛОЖНЫМ: эталоны семьи `css3-counter-styles-*`
+//! рисовались ПУСТЫМИ (не-`li` дети `<ol>` выбрасывались в `render.rs::list`),
+//! и таблицы знаков было не с чем сравнивать. После починки эталона (06.09)
+//! те же таблицы дали +48/−11 на срезе 501 пары — см. `scout-counterstyles-
+//! 2026-09.md`. Оставшиеся 11 — позиционные CJK (шаг 3), они были
+//! «зелёными» пустотой.
 //! Представление счётчика знаками: `counter(n, lower-roman)`, маркеры
 //! списков, `counters()`.
 //!
@@ -68,6 +66,75 @@ fn lower_greek(n: usize) -> String {
     }
     out.iter().rev().collect()
 }
+
+/// Числовая система (css-counter-styles-3 §numeric): запись цифрами своего
+/// набора по основанию, равному его длине. Ноль — нулевая цифра, знак минус
+/// идёт впереди.
+fn numeric(value: i32, digits: &[char]) -> String {
+    let base = digits.len();
+    let mut n = value.unsigned_abs() as usize;
+    if n == 0 {
+        return digits[0].to_string();
+    }
+    let mut out = vec![];
+    while n > 0 {
+        out.push(digits[n % base]);
+        n /= base;
+    }
+    if value < 0 {
+        out.push('-');
+    }
+    out.iter().rev().collect()
+}
+
+/// Алфавитная система по ПРОИЗВОЛЬНОМУ набору знаков
+/// (css-counter-styles-3 §alphabetic): 1 — первый знак, len+1 — «первый
+/// первый» (`hiragana` на 49 даёт `ああ` — `css3-counter-styles-031`).
+fn alphabetic_of(mut n: usize, letters: &[char]) -> String {
+    let base = letters.len();
+    let mut out = vec![];
+    while n > 0 {
+        out.push(letters[(n - 1) % base]);
+        n = (n - 1) / base;
+    }
+    out.iter().rev().collect()
+}
+
+/// Нулевая цифра «простых числовых» систем (css-counter-styles-3 §6.1).
+/// Блоки цифр в Unicode непрерывны, поэтому хранится ОДИН код. Коды сняты с
+/// тестов набора (`css3-counter-styles-101…155`).
+const NUMERIC_ZERO: &[(&str, char)] = &[
+    ("arabic-indic", '\u{0660}'),
+    ("bengali", '\u{09E6}'),
+    ("cambodian", '\u{17E0}'),
+    ("devanagari", '\u{0966}'),
+    ("gujarati", '\u{0AE6}'),
+    ("gurmukhi", '\u{0A66}'),
+    ("kannada", '\u{0CE6}'),
+    ("khmer", '\u{17E0}'),
+    ("lao", '\u{0ED0}'),
+    ("malayalam", '\u{0D66}'),
+    ("mongolian", '\u{1810}'),
+    ("myanmar", '\u{1040}'),
+    ("oriya", '\u{0B66}'),
+    ("persian", '\u{06F0}'),
+    ("tamil", '\u{0BE6}'),
+    ("telugu", '\u{0C66}'),
+    ("thai", '\u{0E50}'),
+    ("tibetan", '\u{0F20}'),
+];
+
+/// `cjk-decimal` — тоже числовая система, но её ноль стоит отдельно от цифр.
+const CJK_DIGITS: [char; 10] = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+
+/// Кана и циклы (css-counter-styles-3 §6.2, §6.3). Порядок сверен с тестами
+/// `css3-counter-styles-030/033/036/039/201/204`.
+const HIRAGANA: &str = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわゐゑをん";
+const HIRAGANA_IROHA: &str = "いろはにほへとちりぬるをわかよたれそつねならむうゐのおくやまけふこえてあさきゆめみしゑひもせす";
+const KATAKANA: &str = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヰヱヲン";
+const KATAKANA_IROHA: &str = "イロハニホヘトチリヌルヲワカヨタレソツネナラムウヰノオクヤマケフコエテアサキユメミシヱヒモセス";
+const EARTHLY_BRANCH: &str = "子丑寅卯辰巳午未申酉戌亥";
+const HEAVENLY_STEM: &str = "甲乙丙丁戊己庚辛壬癸";
 
 /// Аддитивная система (css-counter-styles-3 §additive): значение
 /// набирается из наибольших подходящих знаков подряд.
@@ -185,8 +252,15 @@ pub fn repr(value: i32, style: &str) -> String {
                 format!("{sign}{abs}")
             }
         }
-        "lower-roman" => positive.map_or_else(|| value.to_string(), roman),
-        "upper-roman" => positive.map_or_else(|| value.to_string(), |n| roman(n).to_uppercase()),
+        // Римские — аддитивные с диапазоном 1..3999 (css-counter-styles-3
+        // §6.1: `range: 1 3999`): 4000 пишется десятичным резервом, а не
+        // `mmmm` (`css3-counter-styles-021/025`, `-020b` «straddling range»).
+        "lower-roman" => positive
+            .filter(|n| *n <= 3999)
+            .map_or_else(|| value.to_string(), roman),
+        "upper-roman" => positive
+            .filter(|n| *n <= 3999)
+            .map_or_else(|| value.to_string(), |n| roman(n).to_uppercase()),
         "lower-alpha" | "lower-latin" => {
             positive.map_or_else(|| value.to_string(), |n| alphabetic(n, b'a'))
         }
@@ -194,6 +268,48 @@ pub fn repr(value: i32, style: &str) -> String {
             positive.map_or_else(|| value.to_string(), |n| alphabetic(n, b'A'))
         }
         "lower-greek" => positive.map_or_else(|| value.to_string(), lower_greek),
+        // Простые числовые: цифры своего набора, основание десять. Ноль и
+        // отрицательные пишутся так же, как десятичным (§numeric), поэтому
+        // фильтра диапазона здесь нет.
+        name if NUMERIC_ZERO.iter().any(|(k, _)| *k == name) => {
+            let zero = NUMERIC_ZERO
+                .iter()
+                .find(|(k, _)| *k == name)
+                .map_or('0', |(_, c)| *c) as u32;
+            let digits: Vec<char> = (0..10).filter_map(|d| char::from_u32(zero + d)).collect();
+            numeric(value, &digits)
+        }
+        "cjk-decimal" => numeric(value, &CJK_DIGITS),
+        // Кана: алфавитные системы, за концом набора запись удлиняется.
+        "hiragana" | "hiragana-iroha" | "katakana" | "katakana-iroha" => {
+            let letters: Vec<char> = match style {
+                "hiragana" => HIRAGANA,
+                "hiragana-iroha" => HIRAGANA_IROHA,
+                "katakana" => KATAKANA,
+                _ => KATAKANA_IROHA,
+            }
+            .chars()
+            .collect();
+            positive.map_or_else(|| value.to_string(), |n| alphabetic_of(n, &letters))
+        }
+        // Циклы: за пределом цикла резерв НЕ десятичный, а `cjk-decimal`
+        // (`css3-counter-styles-202`: 13 -> `一三`, не `13`).
+        "cjk-earthly-branch" | "cjk-heavenly-stem" => {
+            let letters: Vec<char> = if style == "cjk-earthly-branch" {
+                EARTHLY_BRANCH
+            } else {
+                HEAVENLY_STEM
+            }
+            .chars()
+            .collect();
+            positive
+                .filter(|n| *n <= letters.len())
+                .map_or_else(|| numeric(value, &CJK_DIGITS), |n| letters[n - 1].to_string())
+        }
+        // Строчная армянская — тот же аддитивный набор в нижнем регистре.
+        "lower-armenian" => positive
+            .filter(|n| *n <= 9999)
+            .map_or_else(|| value.to_string(), |n| additive(n, ARMENIAN).to_lowercase()),
         // Диапазон стиля — часть его определения: вне его берётся
         // десятичный резерв (css-counter-styles-3 §counter-style-range).
         "armenian" | "upper-armenian" => positive
@@ -211,6 +327,17 @@ pub fn repr(value: i32, style: &str) -> String {
 pub fn suffix(style: &str) -> &'static str {
     match style {
         "disc" | "circle" | "square" | "disclosure-open" | "disclosure-closed" | "none" => " ",
+        // Восточноазиатские стили ставят идеографическую запятую и БЕЗ
+        // пробела (css-counter-styles-3 §6.2/§6.3; сверено с тестами
+        // `css3-counter-styles-005/032/035/038/041/203/206`).
+        "cjk-decimal" | "hiragana" | "hiragana-iroha" | "katakana" | "katakana-iroha"
+        | "cjk-earthly-branch" | "cjk-heavenly-stem" | "japanese-formal"
+        | "japanese-informal" | "simp-chinese-formal" | "simp-chinese-informal"
+        | "trad-chinese-formal" | "trad-chinese-informal" => "、",
+        // Корейские — запятая с пробелом (css-counter-styles-3 §6.3
+        // `suffix: ', '`; Blink `ua_counter_style_map.cc`, эталон
+        // `counter-suffix-ref`: «일, »).
+        "korean-hangul-formal" | "korean-hanja-formal" | "korean-hanja-informal" => ", ",
         _ => ". ",
     }
 }
