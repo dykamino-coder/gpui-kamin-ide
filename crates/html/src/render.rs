@@ -8651,10 +8651,23 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),
         )),
+        // `<object>` с ДОКУМЕНТОМ в `data` (HTML §4.8.7: `type` text/html
+        // или адрес .html/.htm/.xht/.xhtml) — вложенный контекст, как
+        // `<iframe>`: та же коробка, тот же разбор, тот же размер (CSS сильнее
+        // атрибутов, умолчание 300×150). Картинка в `data` идёт прежним путём.
+        // Без файла (или глубже `IFRAME_DEPTH`) — `None`: кусок строится из
+        // детей, то есть из запасного содержимого объекта (§4.8.7
+        // «represents the element's children»), а не пустой коробкой.
+        // Единицы шрифта разрешаются как у картинки (`image_with`): `iframe()`
+        // читает только `Len::Px`, и `width: 10em` иначе падал бы в умолчание.
         "object" if e.attr("data").is_some() => {
             let mut copy = e.clone();
             let url = e.attr("data").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
+            if object_is_document(e) {
+                copy.style.resolve_em(atom_base_font(inherited, opts));
+                return iframe(&copy, opts);
+            }
             Some(image_with(
                 &with_inherited_font(&copy, inherited),
                 Some(atom_base_font(inherited, opts)),
@@ -10741,6 +10754,16 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Неразобранная рамка по-прежнему падает в общий рукав.
     let mut built_iframe = if e.tag == "iframe" {
         iframe(e, opts)
+    } else if e.tag == "object" && object_is_document(e) {
+        // `<object data="….html">` — тот же вложенный документ, что и рамка
+        // (HTML §4.8.7): адрес переносится из `data` в `src`, размеры берутся
+        // уже разрешёнными (`10em` в собственном стиле — ещё `Len::Em`).
+        let mut copy = e.clone();
+        let url = e.attr("data").unwrap_or_default().to_string();
+        copy.attrs.push(("src".to_string(), url));
+        copy.style.width = merged.width;
+        copy.style.height = merged.height;
+        iframe(&copy, opts)
     } else {
         None
     };
@@ -10758,7 +10781,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // src, object через data, video через poster (css-images §5:
         // object-fit/-position действуют на всех замещаемых).
         "embed" if e.attr("src").is_some() => image(e),
-        "object" if e.attr("data").is_some() => {
+        // Вложенный документ (`<iframe>` и `<object>` с документом в `data`)
+        // построен выше; рукав стоит ПЕРЕД картиночным `object`, иначе
+        // документ уходил в `image()` пустой коробкой. Объект с документом,
+        // который не прочитался, в картинку не превращается — падает в общий
+        // рукав и показывает запасное содержимое (HTML §4.8.7).
+        "iframe" | "object" if built_iframe.is_some() => built_iframe.take().unwrap(),
+        "object" if e.attr("data").is_some() && !object_is_document(e) => {
             let mut copy = e.clone();
             let url = e.attr("data").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
@@ -10770,7 +10799,6 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             copy.attrs.push(("src".to_string(), url));
             image(&copy)
         }
-        "iframe" if built_iframe.is_some() => built_iframe.take().unwrap(),
         // ЗАМЕРЕНО И ОТКАЧЕНО: давать рамке БЕЗ адреса резервную ширину 300
         // точек при `display: block` (§10.3.4 -> §10.3.2). Замерено по срезу
         // из 416 пар семей *image*/*replaced*: приобретено 0, потеряно 1 —
@@ -11681,6 +11709,32 @@ thread_local! {
 /// `<iframe>`: вложенный документ со своими стилями и областью просмотра
 /// размером с коробку. Содержимое читается с диска (стенд переписывает
 /// `src` в `file:///...`); без файла остаётся запасной текст тега.
+/// `<object>`, чей `data` — ДОКУМЕНТ, а не картинка (HTML §4.8.7: сначала
+/// атрибут `type`, иначе по расширению адреса). Гейт нарочно узкий: `.svg`,
+/// `image/*` и растры остаются на пути картинки (css-images
+/// `object-fit-*-svg-*o` — 32 зелёных пары, `object-fit-*-png-*o` — 12).
+/// Запрос и якорь адреса отрезаются до проверки расширения.
+fn object_is_document(e: &Element) -> bool {
+    if let Some(t) = e.attr("type") {
+        let t = t.trim().to_ascii_lowercase();
+        if t.starts_with("text/html") || t.starts_with("application/xhtml+xml") {
+            return true;
+        }
+        if t.starts_with("image/") {
+            return false;
+        }
+    }
+    let url = e.attr("data").unwrap_or_default();
+    let path = url
+        .split(|c| c == '?' || c == '#')
+        .next()
+        .unwrap_or(url)
+        .to_ascii_lowercase();
+    [".html", ".htm", ".xht", ".xhtml"]
+        .iter()
+        .any(|ext| path.ends_with(ext))
+}
+
 fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let src = e.attr("src")?;
     let path = src
@@ -11715,7 +11769,14 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     sub.viewport = (w, h);
     sub.doc_salt = salt;
     IFRAME_DEPTH.with(|d| d.set(d.get() + 1));
-    let kids = blocks(&nodes, &sub.root_style(), &sub);
+    // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
+    // предка держатся ЕГО начального содержащего блока — области просмотра
+    // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;
+    // `abs-pos-non-replaced-icb-*`: коробка с `right: 80%` улетала в левый
+    // верхний угол внешнего документа).
+    crate::interact::icb_open();
+    let mut kids = blocks(&nodes, &sub.root_style(), &sub);
+    kids.extend(crate::interact::icb_close());
     IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
     Some(
         styled_div(e)
