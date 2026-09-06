@@ -8380,15 +8380,6 @@ fn transformed(el: AnyElement, c: &Computed) -> AnyElement {
     let Some(t) = c.transform else {
         return el;
     };
-    // Обратная сторона: элемент прячется, когда после поворота на него
-    // смотрят с изнанки — css-transforms-2 §backface-visibility, шаг 2:
-    // «if the computed value of backface-visibility is hidden and the
-    // used transform matrix has m33 < 0, the element is not rendered».
-    // `rotateY(180deg)` для нас — тот же `scaleX(-1)`, и по плоской матрице
-    // изнанку не отличить: её держит отдельно посчитанный m33.
-    if c.backface_hidden == Some(true) && t.m33 < 0.0 {
-        return div().into_any_element();
-    }
     let mut wrapper = crate::interact::Transformed::new(el);
     wrapper.rotate = t.rotate_rad;
     wrapper.skew = t.skew_rad;
@@ -8397,10 +8388,20 @@ fn transformed(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.translate_pct = t.translate_pct;
     wrapper.lin = t.lin;
     wrapper.tr = t.tr;
+    wrapper.m4 = t.m4;
+    wrapper.m4_pct = t.m4_pct;
+    wrapper.has_3d = t.has_3d;
+    // Обратная сторона (css-transforms-2 §backface-visibility, «m33 < 0 →
+    // the element is not rendered») решается на отрисовке по собственной
+    // 4×4: раньше здесь подменяли элемент пустым `div()`, и коробка теряла
+    // место в раскладке (backface-visibility-hidden-002: эталон держит
+    // пустые 100px; -child-translate: высота обёртки от скрытого ребёнка).
+    wrapper.backface_hidden = c.backface_hidden == Some(true);
     if let Some(o) = c.transform_origin {
         wrapper.origin = o;
     }
     wrapper.origin_px = c.transform_origin_px;
+    wrapper.origin_z = c.transform_origin_z;
     wrapper.into_any_element()
 }
 

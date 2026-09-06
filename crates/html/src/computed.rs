@@ -585,6 +585,13 @@ impl BgRepeat {
 // целиком, а не сдвигается. Возвращаться по одному рукаву: сначала
 // `matrix3d`/`perspective()` внутри ОДНОГО элемента без стека, затем стек.
 // План и патч — `target/scout-3d-2026-09.md` §7.
+// Корень провала нашёл второй заход (`scout-3d-2026-09b.md`): хунк 7.18
+// домножал на масштаб устройства весь столбец сдвига, включая m44
+// (1 -> 1.25), а сплющивание делило на него всю матрицу — каждая коробка
+// на объёмном пути сжималась в 0.8 вокруг transform-origin (0.75 % = ровно
+// 125² − 100²). Узкий шаг 1' — 4x4 внутри ОДНОГО элемента, без стека и без
+// обёртки элементов без `transform`, свёртка `S·M·S⁻¹` с нетронутым m44 —
+// на том же срезе дал +14/-1 и внесён ниже.
 pub struct Transform {
     pub rotate_rad: f32,
     /// Скос по осям в радианах (`skew`, `skewX`, `skewY`).
@@ -610,6 +617,61 @@ pub struct Transform {
     /// (css-transforms-2 §backface-visibility). У плоских функций m33 = 1,
     /// поэтому множители перемножаются без потери точности.
     pub m33: f32,
+    /// Полная 4×4 ОДНОГО элемента (css-transforms-2 §3d-transform-rendering),
+    /// `m4[строка][столбец]`, столбец 3 — сдвиг в css-точках. Плоские функции
+    /// вкладываются как есть, объёмные (`rotateX/Y/3d`, `translateZ`,
+    /// `scaleZ`, `perspective()`, `matrix3d`) живут только здесь;
+    /// `lin`/`tr` остаются для SVG, клипа и плоского пути отрисовки.
+    pub m4: [[f32; 4]; 4],
+    /// Доли СОБСТВЕННОГО размера в столбце сдвига: `m4_pct[строка] =
+    /// [доля ширины, доля высоты]` (как `tr[i][1..3]`).
+    pub m4_pct: [[f32; 2]; 4],
+    /// Встретилась действительно объёмная функция: отрисовка идёт по `m4`,
+    /// иначе — прежний плоский путь по `lin`/`tr`.
+    pub has_3d: bool,
+}
+
+/// Единичная 4×4.
+pub const IDENTITY4: [[f32; 4]; 4] = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+];
+
+/// Произведение 4×4: `a · b`.
+pub fn mul4(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+    let mut r = [[0.0f32; 4]; 4];
+    for i in 0..4 {
+        for j in 0..4 {
+            r[i][j] = (0..4).map(|k| a[i][k] * b[k][j]).sum();
+        }
+    }
+    r
+}
+
+/// Определитель 4×4 (разложение по первой строке через миноры 3×3).
+pub fn det4(m: &[[f32; 4]; 4]) -> f32 {
+    let minor = |r: [usize; 3], c: [usize; 3]| -> f32 {
+        let a = |i: usize, j: usize| m[r[i]][c[j]];
+        a(0, 0) * (a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1))
+            - a(0, 1) * (a(1, 0) * a(2, 2) - a(1, 2) * a(2, 0))
+            + a(0, 2) * (a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0))
+    };
+    m[0][0] * minor([1, 2, 3], [1, 2, 3]) - m[0][1] * minor([1, 2, 3], [0, 2, 3])
+        + m[0][2] * minor([1, 2, 3], [0, 1, 3])
+        - m[0][3] * minor([1, 2, 3], [0, 1, 2])
+}
+
+/// Гомография плоскости z=0 → экран: строки/столбцы 0,1,3 полной матрицы.
+/// Её вырождение — плоскость видна ребром (`rotateX(90deg)`), даже когда
+/// сама 4×4 обратима.
+pub fn det3_plane(m: &[[f32; 4]; 4]) -> f32 {
+    let idx = [0usize, 1, 3];
+    let a = |i: usize, j: usize| m[idx[i]][idx[j]];
+    a(0, 0) * (a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1))
+        - a(0, 1) * (a(1, 0) * a(2, 2) - a(1, 2) * a(2, 0))
+        + a(0, 2) * (a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0))
 }
 
 impl Default for Transform {
@@ -623,6 +685,9 @@ impl Default for Transform {
             lin: [[1.0, 0.0], [0.0, 1.0]],
             tr: [[0.0; 3]; 2],
             m33: 1.0,
+            m4: IDENTITY4,
+            m4_pct: [[0.0; 2]; 4],
+            has_3d: false,
         }
     }
 }
@@ -652,8 +717,23 @@ impl Transform {
             z * z * k + c,
         )
     }
-    /// Дописать функцию справа: `M := M · [l | v]`.
+    /// Дописать плоскую функцию справа в ОБЕ матрицы: `M := M · [l | v]`.
     fn push(&mut self, l: [[f32; 2]; 2], v: [[f32; 3]; 2]) {
+        self.push2(l, v);
+        let mut f = IDENTITY4;
+        f[0][0] = l[0][0];
+        f[0][1] = l[0][1];
+        f[1][0] = l[1][0];
+        f[1][1] = l[1][1];
+        f[0][3] = v[0][0];
+        f[1][3] = v[1][0];
+        let pct = [[v[0][1], v[0][2]], [v[1][1], v[1][2]], [0.0, 0.0], [0.0, 0.0]];
+        self.push4(f, pct);
+    }
+
+    /// Только плоская 2×3 (`lin`/`tr`) — для объёмных функций, чья
+    /// сплющенная тень нужна SVG и клипу.
+    fn push2(&mut self, l: [[f32; 2]; 2], v: [[f32; 3]; 2]) {
         let m = self.lin;
         self.lin = [
             [
@@ -670,6 +750,66 @@ impl Transform {
                 self.tr[i][k] += m[i][0] * v[0][k] + m[i][1] * v[1][k];
             }
         }
+    }
+
+    /// Дописать 4×4 справа: `M4 := M4 · f`. Столбец сдвига несёт доли размера:
+    /// `(M·F)[i][3] = Σ_k M[i][k]·F[k][3]`, где `F[k][3]` для k<3 — «точки +
+    /// доля», а `F[3][3]` домножает уже накопленные доли самой `M`.
+    fn push4(&mut self, f: [[f32; 4]; 4], pct: [[f32; 2]; 4]) {
+        let m = self.m4;
+        let mut p = [[0.0f32; 2]; 4];
+        for i in 0..4 {
+            for a in 0..2 {
+                p[i][a] = self.m4_pct[i][a] * f[3][3]
+                    + (0..3).map(|k| m[i][k] * pct[k][a]).sum::<f32>();
+            }
+        }
+        self.m4 = mul4(m, f);
+        self.m4_pct = p;
+    }
+
+    /// `translate3d(x, y, z)` в точках.
+    pub fn translate4(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
+        let mut m = IDENTITY4;
+        m[0][3] = x;
+        m[1][3] = y;
+        m[2][3] = z;
+        m
+    }
+
+    /// `scale3d(x, y, z)`.
+    pub fn scale4(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
+        let mut m = IDENTITY4;
+        m[0][0] = x;
+        m[1][1] = y;
+        m[2][2] = z;
+        m
+    }
+
+    /// `perspective(d)`: m34 = −1/d (css-transforms-2 §perspective()); d уже
+    /// не меньше 1px — clamp делает вызывающий.
+    pub fn perspective4(d: f32) -> [[f32; 4]; 4] {
+        let mut m = IDENTITY4;
+        m[3][2] = -1.0 / d;
+        m
+    }
+
+    /// `rotate3d(x, y, z, a)`: R = cos·I + sin·[u]× + (1−cos)·u·uᵀ — верхний
+    /// 2×2 блок и m33 ровно те же, что в `axis_rot`.
+    pub fn rot4(x: f32, y: f32, z: f32, a: f32) -> [[f32; 4]; 4] {
+        let len = (x * x + y * y + z * z).sqrt();
+        if len <= 0.0 {
+            return IDENTITY4;
+        }
+        let (x, y, z) = (x / len, y / len, z / len);
+        let (c, s) = (a.cos(), a.sin());
+        let k = 1.0 - c;
+        [
+            [x * x * k + c, x * y * k - z * s, x * z * k + y * s, 0.0],
+            [y * x * k + z * s, y * y * k + c, y * z * k - x * s, 0.0],
+            [z * x * k - y * s, z * y * k + x * s, z * z * k + c, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
     }
 
     fn rot(a: f32) -> [[f32; 2]; 2] {
@@ -1283,6 +1423,9 @@ pub struct Computed {
     /// Точка отсчёта преобразования В ТОЧКАХ по осям — когда записана длиной,
     /// а не долей. Долю из неё делает отрисовка: размер коробки известен там.
     pub transform_origin_px: (Option<f32>, Option<f32>),
+    /// Третья координата `transform-origin` в точках (css-transforms-2);
+    /// на плоскую матрицу не влияет, на 4×4 — `T(o)·M·T(−o)` по трём осям.
+    pub transform_origin_z: Option<f32>,
     /// `float`: -1 — влево, 1 — вправо, 0 — не обтекается.
     pub float: Option<i8>,
     /// `clear: inherit` — сторону берёт родитель. Своего наследования у
@@ -5556,7 +5699,29 @@ impl Computed {
                             t.translate.0 += e2;
                             t.translate.1 += f2;
                             t.m33 *= nums[10];
-                            t.push([[a, c2], [b, d]], [[e2, 0.0, 0.0], [f2, 0.0, 0.0]]);
+                            // Плоское вложение (третья строка/столбец и строка w
+                            // единичные) остаётся на 2D-пути; иначе — полная
+                            // 4×4 в СТОЛБЦОВОМ порядке аргументов:
+                            // m4[строка][столбец] = nums[столбец·4 + строка]
+                            // (m14/m24 = nums[3]/nums[7] — перспективная
+                            // строка, transform3d-matrix3d-003/-004; m44 =
+                            // nums[15] ≠ 1 — деление на w, -005).
+                            let flat2d = [2usize, 3, 6, 7, 8, 9, 11, 14].iter().all(|&i| nums[i] == 0.0)
+                                && nums[10] == 1.0
+                                && nums[15] == 1.0;
+                            if flat2d {
+                                t.push([[a, c2], [b, d]], [[e2, 0.0, 0.0], [f2, 0.0, 0.0]]);
+                            } else {
+                                t.push2([[a, c2], [b, d]], [[e2, 0.0, 0.0], [f2, 0.0, 0.0]]);
+                                let mut f = [[0.0f32; 4]; 4];
+                                for col in 0..4 {
+                                    for row in 0..4 {
+                                        f[row][col] = nums[col * 4 + row];
+                                    }
+                                }
+                                t.has_3d = true;
+                                t.push4(f, [[0.0; 2]; 4]);
+                            }
                         }
                         // matrix(a b c d e f): разложение на компоненты
                         // (перенос, поворот, масштаб, скос) — QR-подобное,
@@ -5605,12 +5770,16 @@ impl Computed {
                         "rotatex" => {
                             t.scale.1 *= angle.cos();
                             t.m33 *= angle.cos();
-                            t.push(Transform::diag(1.0, angle.cos()), NO_SHIFT);
+                            t.push2(Transform::diag(1.0, angle.cos()), NO_SHIFT);
+                            t.has_3d = true;
+                            t.push4(Transform::rot4(1.0, 0.0, 0.0, angle), [[0.0; 2]; 4]);
                         }
                         "rotatey" => {
                             t.scale.0 *= angle.cos();
                             t.m33 *= angle.cos();
-                            t.push(Transform::diag(angle.cos(), 1.0), NO_SHIFT);
+                            t.push2(Transform::diag(angle.cos(), 1.0), NO_SHIFT);
+                            t.has_3d = true;
+                            t.push4(Transform::rot4(0.0, 1.0, 0.0, angle), [[0.0; 2]; 4]);
                         }
                         // Поворот вокруг произвольной оси, сплющенный на
                         // плоскость экрана: это ТОЧНО верхний 2x2 блок
@@ -5636,21 +5805,57 @@ impl Computed {
                                 t.scale.0 *= l[0][0];
                                 t.scale.1 *= l[1][1];
                                 t.m33 *= m33;
-                                t.push(l, NO_SHIFT);
+                                // Ось строго Z — обычный `rotate`, остаётся на
+                                // 2D-пути (css-transform-3d-rotate3d-Z-*).
+                                if x == 0.0 && y == 0.0 {
+                                    t.push(l, NO_SHIFT);
+                                } else {
+                                    t.push2(l, NO_SHIFT);
+                                    t.has_3d = true;
+                                    t.push4(Transform::rot4(x, y, z, a), [[0.0; 2]; 4]);
+                                }
                             }
                         }
-                        // Третья ось без перспективы ничего не меняет: смещение
-                        // по ней не видно, а масштаб по ней не на что влиять.
-                        "translatez" | "perspective" => {}
+                        // Третья ось видна только через `perspective()` в том
+                        // же списке — копится в 4×4; `translateZ(0)` остаётся
+                        // на 2D-пути (GPU-подсказка, не геометрия).
+                        "translatez" => {
+                            if first != 0.0 {
+                                t.has_3d = true;
+                                t.push4(Transform::translate4(0.0, 0.0, first), [[0.0; 2]; 4]);
+                            }
+                        }
+                        // perspective(d): m34 = −1/d; d < 1px считается 1px
+                        // (css-transforms-2 §perspective(): «treated as 1px»;
+                        // perspective-zero, -zero-point-five).
+                        "perspective" => {
+                            if !nums.is_empty() {
+                                t.has_3d = true;
+                                t.push4(Transform::perspective4(first.max(1.0)), [[0.0; 2]; 4]);
+                            }
+                        }
                         // Масштаб по Z видом не правит, но участвует в m33
-                        // (обратная сторона) и обнуляет матрицу.
-                        "scalez" => t.m33 *= first,
+                        // (обратная сторона) и вырождает 4×4 при нуле.
+                        "scalez" => {
+                            t.m33 *= first;
+                            if first != 1.0 {
+                                t.has_3d = true;
+                                t.push4(Transform::scale4(1.0, 1.0, first), [[0.0; 2]; 4]);
+                            }
+                        }
                         "scale3d" => {
                             let sy = nums.get(1).copied().unwrap_or(1.0);
+                            let sz = nums.get(2).copied().unwrap_or(1.0);
                             t.scale.0 *= first;
                             t.scale.1 *= sy;
-                            t.m33 *= nums.get(2).copied().unwrap_or(1.0);
-                            t.push(Transform::diag(first, sy), NO_SHIFT);
+                            t.m33 *= sz;
+                            if sz == 1.0 {
+                                t.push(Transform::diag(first, sy), NO_SHIFT);
+                            } else {
+                                t.push2(Transform::diag(first, sy), NO_SHIFT);
+                                t.has_3d = true;
+                                t.push4(Transform::scale4(first, sy, sz), [[0.0; 2]; 4]);
+                            }
                         }
                         "translate3d" => {
                             let parts: Vec<&str> = arg.split(',').map(str::trim).collect();
@@ -5665,7 +5870,17 @@ impl Computed {
                                     v[i][0] = d;
                                 }
                             }
-                            t.push(Transform::diag(1.0, 1.0), v);
+                            let z = parts
+                                .get(2)
+                                .and_then(|raw| raw.trim_end_matches("px").parse::<f32>().ok())
+                                .unwrap_or(0.0);
+                            if z == 0.0 {
+                                t.push(Transform::diag(1.0, 1.0), v);
+                            } else {
+                                t.push2(Transform::diag(1.0, 1.0), v);
+                                t.has_3d = true;
+                                t.push4(Transform::translate4(v[0][0], v[1][0], z), [[0.0; 2]; 4]);
+                            }
                         }
                         // Проценты в сдвиге считаются от СВОЕГО размера —
                         // на этом стоит типовое центрирование
@@ -5802,6 +6017,11 @@ impl Computed {
                 let second = ys.or_else(|| free.next()).unwrap_or("center");
                 self.transform_origin_px = (px_axis(first), px_axis(second));
                 self.transform_origin = Some((axis(first, 0.5), axis(second, 0.5)));
+                // Третье значение — только <length>, z точки отсчёта
+                // (css-transforms-2 §transform-origin); видна лишь объёмному
+                // пути (transform3d-translate3d-001: `0 0 0` против эталона
+                // `10px 30px -10px`).
+                self.transform_origin_z = free.next().and_then(px_axis);
             }
             // Трёхмерной сцены нет: без объёмных преобразований перспектива
             // ничего не меняет, поэтому разбирается и не делает ничего.

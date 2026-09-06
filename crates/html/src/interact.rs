@@ -1085,6 +1085,56 @@ pub struct Transformed {
     pub lin: [[f32; 2]; 2],
     /// Сдвиг: пиксели, доля ширины, доля высоты.
     pub tr: [[f32; 3]; 2],
+    /// Полная 4×4 элемента и доли размера в её столбце сдвига
+    /// (`computed::Transform::m4`/`m4_pct`); `has_3d` — идти по ней.
+    pub m4: [[f32; 4]; 4],
+    pub m4_pct: [[f32; 2]; 4],
+    pub has_3d: bool,
+    /// `backface-visibility: hidden` — решается по `m4[2][2]` на отрисовке,
+    /// коробка держит место.
+    pub backface_hidden: bool,
+    /// Третья координата `transform-origin` в css-точках.
+    pub origin_z: Option<f32>,
+}
+
+/// Сплющивание плоскости z=0 в аффинную матрицу экрана
+/// (css-transforms-2 §3d-transform-rendering).
+///
+/// Точка плоскости (x, y, 0, 1) уходит в (F0·p, F1·p, ·, F3·p); экран —
+/// деление на w = F3·p. Если w не зависит от x и y (строка 3 без x/y —
+/// весь класс `translateZ` + `perspective()`), результат ТОЧНО аффинный.
+/// Иначе (rotateX/Y под `perspective()` — трапеция, которую квад gpui не
+/// рисует) берём касательную аффинную карту в центре коробки:
+/// детерминированно и одинаково для теста и эталона с той же гомографией
+/// (transform3d-matrix3d-003/-004). `None` — плоскость за глазом или ребром.
+fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
+    const EPS: f32 = 1e-5;
+    if crate::computed::det3_plane(f).abs() < EPS {
+        return None;
+    }
+    let (cx, cy) = center;
+    if f[3][0].abs() < 1e-9 && f[3][1].abs() < 1e-9 {
+        let w = f[3][3];
+        if w <= 1e-9 {
+            return None;
+        }
+        return Some(gpui::TransformationMatrix {
+            rotation_scale: [[f[0][0] / w, f[0][1] / w], [f[1][0] / w, f[1][1] / w]],
+            translation: [f[0][3] / w, f[1][3] / w],
+        });
+    }
+    let wc = f[3][0] * cx + f[3][1] * cy + f[3][3];
+    if wc <= 1e-6 {
+        return None;
+    }
+    let x = (f[0][0] * cx + f[0][1] * cy + f[0][3]) / wc;
+    let y = (f[1][0] * cx + f[1][1] * cy + f[1][3]) / wc;
+    let j = |i: usize, k: usize, v: f32| (f[i][k] - v * f[3][k]) / wc;
+    let rs = [[j(0, 0, x), j(0, 1, x)], [j(1, 0, y), j(1, 1, y)]];
+    Some(gpui::TransformationMatrix {
+        rotation_scale: rs,
+        translation: [x - rs[0][0] * cx - rs[0][1] * cy, y - rs[1][0] * cx - rs[1][1] * cy],
+    })
 }
 
 impl Transformed {
@@ -1100,6 +1150,11 @@ impl Transformed {
             origin_px: (None, None),
             lin: [[1.0, 0.0], [0.0, 1.0]],
             tr: [[0.0; 3]; 2],
+            m4: crate::computed::IDENTITY4,
+            m4_pct: [[0.0; 2]; 4],
+            has_3d: false,
+            backface_hidden: false,
+            origin_z: None,
         }
     }
 }
@@ -1177,15 +1232,67 @@ impl Element for Transformed {
         // он известен только здесь, на отрисовке.
         let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
         let shift = |row: [f32; 3]| (row[0] + w * row[1] + h * row[2]) * scale_factor;
-        let matrix = gpui::TransformationMatrix::unit()
-            .translate(origin)
-            .compose(gpui::TransformationMatrix {
-                rotation_scale: self.lin,
-                translation: [shift(self.tr[0]), shift(self.tr[1])],
-            })
-            .translate(back);
+        // Изнанка (css-transforms-2 §backface-visibility): элемент разложен и
+        // держит место, но не рисуется. m33 — из полной 4×4 самого элемента;
+        // у плоских функций он равен 1, так что 2D-путь сюда не попадает.
+        if self.backface_hidden && self.m4[2][2] < 0.0 {
+            return;
+        }
+        if !self.has_3d {
+            // Плоский путь — прежний, байт в байт.
+            let matrix = gpui::TransformationMatrix::unit()
+                .translate(origin)
+                .compose(gpui::TransformationMatrix {
+                    rotation_scale: self.lin,
+                    translation: [shift(self.tr[0]), shift(self.tr[1])],
+                })
+                .translate(back);
+            let child = self.child.as_mut().unwrap();
+            window.with_transformation(matrix, |window| child.paint(window, cx));
+            return;
+        }
+        // --- Объёмный путь: одна 4×4 ОДНОГО элемента, сплющенная на экран ---
+        use crate::computed::{det4, mul4, Transform};
+        let sf = scale_factor;
+        // Из css-точек в точки устройства — подобие S·M·S⁻¹, S = diag(sf, sf,
+        // sf, 1): столбец сдвига строк 0..2 умножается на sf, строка w
+        // столбцов 0..2 делится на sf, m44 НЕ трогается. (В шаге 1 цикл `0..4`
+        // домножал и m44 — `flatten_plane` делила на него всю матрицу, и
+        // каждый объёмный элемент сжимался в 1/sf; scout-3d-2026-09b.md §1.)
+        let mut own = self.m4;
+        for i in 0..3 {
+            own[i][3] = (own[i][3] + w * self.m4_pct[i][0] + h * self.m4_pct[i][1]) * sf;
+        }
+        for j in 0..3 {
+            own[3][j] /= sf;
+        }
+        // Точка отсчёта по трём осям, в точках устройства: T(o)·M·T(−o).
+        // `ox`/`oy` посчитаны выше в css-точках; `ScaledPixels.0` — pub(crate)
+        // в gpui, поэтому `origin.x.0` отсюда не читается.
+        let oz = self.origin_z.unwrap_or(0.0) * sf;
+        let (ox_d, oy_d) = (
+            (f32::from(bounds.origin.x) + ox) * sf,
+            (f32::from(bounds.origin.y) + oy) * sf,
+        );
+        let own = mul4(
+            mul4(Transform::translate4(ox_d, oy_d, oz), own),
+            Transform::translate4(-ox_d, -oy_d, -oz),
+        );
+        // Вырожденная 4×4 (`scale3d(2, 2, 0)`, transform3d-scale-004:
+        // «singular, causes the contents not to display»).
+        if det4(&own).abs() < 1e-9 {
+            return;
+        }
+        let center = (
+            (f32::from(bounds.origin.x) + w * 0.5) * sf,
+            (f32::from(bounds.origin.y) + h * 0.5) * sf,
+        );
+        // Ребро (`rotateX(90deg)`) — не рисуется, как и прежняя нулевая высота.
+        let Some(flat) = flatten_plane(&own, center) else {
+            return;
+        };
         let child = self.child.as_mut().unwrap();
-        window.with_transformation(matrix, |window| child.paint(window, cx));
+        window.with_transformation(flat, |window| child.paint(window, cx));
     }
 }
 

@@ -837,6 +837,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         if on(inh::TRANSFORM_ORIGIN) {
             c.transform_origin = parent.transform_origin;
             c.transform_origin_px = parent.transform_origin_px;
+            c.transform_origin_z = parent.transform_origin_z;
         }
     }
     for (i, on) in own.margin_inherit.iter().enumerate() {
