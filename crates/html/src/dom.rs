@@ -14,6 +14,7 @@ use crate::value::Len;
 use html5ever::tendril::TendrilSink;
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Узел документа: либо текст, либо элемент со своими детьми.
 #[derive(Clone, Debug)]
@@ -120,7 +121,8 @@ fn local_name(name: &str) -> String {
 /// Красное в этих семьях держит что-то другое.
 fn user_agent_css() -> &'static str {
     r#"
-head, title, meta, link { display: none }
+head, title, meta, link, template { display: none }
+    slot { display: contents }
     h1 { font-size: 24px; font-weight: 700; margin: 12px 0 6px }
     h2 { font-size: 20px; font-weight: 700; margin: 10px 0 5px }
     h3 { font-size: 17px; font-weight: 600; margin: 9px 0 4px }
@@ -288,6 +290,10 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
             ..r
         });
     }
+    // Лист агента и тема — общие для ВСЕХ областей дерева: каждая тень
+    // получает их копию, а правила документа в тень не попадают
+    // (css-shadow-1 §3.2: селекторы сопоставляются в своей области).
+    let agent_rules = rules.clone();
     // Каждый `<style>` — ОТДЕЛЬНАЯ таблица: конец каждой закрывает свои
     // незакрытые конструкции (CSS 2.1 §4.2, `uri-017`). В склейке незакрытая
     // запись первой таблицы съедала правила второй.
@@ -317,6 +323,10 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // Наборы кадров собираются из тех же источников, что и правила.
     let mut frames = parse_keyframes(&user_agent_css());
     frames.extend(parse_keyframes(extra_css));
+    let agent = Scope {
+        rules: agent_rules,
+        frames: frames.clone(),
+    };
     for css in &sheets {
         frames.extend(parse_keyframes(css));
     }
@@ -333,15 +343,27 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     if !has_args.is_empty() {
         mark_has(&dom.document, &has_args, &mut vec![]);
     }
+    // Тени (`<template shadowrootmode>`): области стилей и распределение
+    // слотов считаются ДО обхода, как отметки `:has`; обход читает их по
+    // адресу узла. Документ без теней предпроход не платит.
+    SHADOWS.with(|m| m.borrow_mut().clear());
+    SLOTS.with(|m| m.borrow_mut().clear());
+    let doc = Rc::new(Scope { rules, frames });
+    if html.contains("shadowrootmode") {
+        let mut drafts: HashMap<usize, SlotInfo> = HashMap::new();
+        let top: Vec<Handle> = dom.document.children.borrow().clone();
+        scan_shadows(&top, &mut vec![], &doc, &agent, media, &mut drafts);
+        finish_slots(drafts);
+    }
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.
     let mut counters = crate::counters::Counters::default();
     walk_children(
         &dom.document,
-        &rules,
+        &doc.rules,
         &vars,
-        &frames,
+        &doc.frames,
         &mut counter,
         &mut counters,
         &[],
@@ -948,6 +970,13 @@ pub(crate) struct Ancestor {
     /// Отметки `:has()`: хеши аргументов, для которых узел — якорь с
     /// совпадением. Считаются отдельным проходом до обхода (см. `mark_has`).
     has_marks: Vec<u64>,
+    /// Хост, увиденный ИЗНУТРИ своей тени: безликий (css-shadow-1 §3.1 —
+    /// «the shadow host is featureless»), с ним совпадает только компаунд из
+    /// `:host`/`:host()`. `Some` несёт цепочку предков хоста в его СВЕТЛОМ
+    /// контексте — ею проверяется аргумент `:host(S)`.
+    featureless: Option<Rc<Vec<Ancestor>>>,
+    /// Слот дерева теней: его распределение (см. `SLOTS`).
+    slot: Option<Rc<SlotInfo>>,
 }
 
 /// Отметки `:has()` текущего документа: адрес узла - хеши аргументов.
@@ -971,6 +1000,375 @@ fn has_id(arg: &str) -> u64 {
 fn has_marks_of(handle: &Handle) -> Vec<u64> {
     let key = std::rc::Rc::as_ptr(handle) as usize;
     HAS_MARKS.with(|m| m.borrow().get(&key).cloned().unwrap_or_default())
+}
+
+/// Таблицы одной области дерева — документа или тени: правила и кадры.
+pub(crate) struct Scope {
+    rules: Vec<Rule>,
+    frames: HashMap<String, Keyframes>,
+}
+
+/// Дерево теней хоста (HTML §4.12.3, `<template shadowrootmode>`).
+///
+/// html5ever тень к хосту не крепит (`attach_declarative_shadow` у `RcDom`
+/// возвращает false) и по HTML §13.2.6.4.4 шаг 8.1.1 оставляет обычный
+/// `<template>` ребёнком хоста, а разметку тени — в его `template_contents`.
+/// Здесь это и есть корень тени.
+struct Shadow {
+    root: Handle,
+    /// Таблицы тени: лист агента + `<style>` тени. Правила документа сюда
+    /// не попадают, правила тени — наружу (css-shadow-1 §3.2).
+    scope: Rc<Scope>,
+    /// Паспорт хоста глазами тени — безликий, с цепочкой светлых предков.
+    marker: Ancestor,
+}
+
+/// Узел, распределённый в слот, и его место среди СВЕТЛЫХ детей хоста.
+struct Slotted {
+    node: Handle,
+    /// Номер в списке светлых детей (без шаблона тени).
+    light_idx: usize,
+    /// Сколько элементов стоит ДО узла; для элемента `light_all[elem_pos]` —
+    /// он сам (соглашение `Sibs`).
+    elem_pos: usize,
+    /// Паспорт элемента; None — текст.
+    anc: Option<Ancestor>,
+}
+
+/// Плоский распределённый элемент со светлым контекстом сопоставления —
+/// для аргумента `:has-slotted(S)`.
+struct FlatCtx {
+    anc: Ancestor,
+    path: Rc<Vec<Ancestor>>,
+    all: Rc<Vec<Ancestor>>,
+    pos: usize,
+}
+
+/// Слот дерева теней: что в него распределено и чем это стилизовать.
+struct SlotInfo {
+    slot: Handle,
+    /// Распределённые (DOM §4.2.2.4 «find slottables»); пусто — рисуется
+    /// fallback, то есть собственные дети слота.
+    assigned: Vec<Slotted>,
+    /// Область ХОСТА: распределённые дети стилизуются её таблицами.
+    outer: Rc<Scope>,
+    /// Цепочка предков распределённого: предки хоста + сам хост.
+    host_path: Rc<Vec<Ancestor>>,
+    /// Светлые дети хоста без шаблона тени, их места и паспорта.
+    light: Vec<Handle>,
+    light_spots: Vec<Spot>,
+    light_all: Rc<Vec<Ancestor>>,
+    /// Плоские распределённые (DOM «find flattened slottables»): текст —
+    /// None, но в счёте участвует (`has-slotted-001` зелёная от пробелов).
+    flattened: Vec<Option<FlatCtx>>,
+}
+
+thread_local! {
+    /// Тени документа: адрес хоста → тень.
+    static SHADOWS: std::cell::RefCell<HashMap<usize, Rc<Shadow>>> =
+        std::cell::RefCell::new(HashMap::new());
+    /// Слоты теней документа: адрес слота → распределение.
+    static SLOTS: std::cell::RefCell<HashMap<usize, Rc<SlotInfo>>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+fn node_key(handle: &Handle) -> usize {
+    Rc::as_ptr(handle) as usize
+}
+
+fn shadow_of(handle: &Handle) -> Option<Rc<Shadow>> {
+    SHADOWS.with(|m| m.borrow().get(&node_key(handle)).cloned())
+}
+
+fn slot_of(handle: &Handle) -> Option<Rc<SlotInfo>> {
+    SLOTS.with(|m| m.borrow().get(&node_key(handle)).cloned())
+}
+
+fn is_slot(handle: &Handle) -> bool {
+    matches!(&handle.data, NodeData::Element { name, .. } if local_name(&name.local) == "slot")
+}
+
+fn attr_of(handle: &Handle, key: &str) -> Option<String> {
+    let NodeData::Element { attrs, .. } = &handle.data else {
+        return None;
+    };
+    attrs
+        .borrow()
+        .iter()
+        .find(|a| a.name.local.as_ref() == key)
+        .map(|a| a.value.to_string())
+}
+
+/// Шаблон объявленной тени среди детей хоста: ПЕРВЫЙ `<template
+/// shadowrootmode="open|closed">` (HTML §13.2.6.4.4: второй такой шаблон к
+/// хосту не крепится и остаётся обычным `<template>`). Возвращает сам
+/// шаблон (его надо вычесть из светлых детей) и содержимое — корень тени.
+fn declarative_shadow(host: &Handle) -> Option<(Handle, Handle)> {
+    host.children.borrow().iter().find_map(|child| {
+        let NodeData::Element {
+            name,
+            template_contents,
+            ..
+        } = &child.data
+        else {
+            return None;
+        };
+        if local_name(&name.local) != "template" {
+            return None;
+        }
+        let mode = attr_of(child, "shadowrootmode")?.to_ascii_lowercase();
+        if mode != "open" && mode != "closed" {
+            return None;
+        }
+        let root = template_contents.borrow().clone()?;
+        Some((child.clone(), root))
+    })
+}
+
+/// Таблицы тени: копия листа агента + каждый `<style>` тени отдельной
+/// таблицей происхождения документа. Возвращает область и аргументы её
+/// `:has()` — отметки для них ставятся по дереву тени.
+fn shadow_scope(root: &Handle, agent: &Scope, media: Media) -> (Rc<Scope>, Vec<HasArg>) {
+    let mut rules = agent.rules.clone();
+    let mut frames = agent.frames.clone();
+    let mut sheets: Vec<String> = vec![];
+    collect_style_tags(root, &mut sheets);
+    for css in &sheets {
+        let base = rules.len();
+        for (i, r) in parse_stylesheet_media(css, media).into_iter().enumerate() {
+            rules.push(Rule {
+                order: base + i,
+                origin: 1,
+                ..r
+            });
+        }
+        frames.extend(parse_keyframes(css));
+    }
+    let mut raw: Vec<String> = vec![];
+    rules.retain(|r| collect_has_args(&r.sel, &mut raw));
+    let args = raw.iter().filter_map(|a| parse_has_arg(a)).collect();
+    (Rc::new(Scope { rules, frames }), args)
+}
+
+/// Все `<slot>` дерева тени в порядке дерева. Вложенные тени лежат в
+/// `template_contents`, а не в `children`, поэтому сюда не попадают; светлые
+/// дети вложенных хостов — попадают, они в этом же дереве.
+fn collect_slots(handle: &Handle, out: &mut Vec<Handle>) {
+    for child in handle.children.borrow().iter() {
+        if is_slot(child) {
+            out.push(child.clone());
+        }
+        collect_slots(child, out);
+    }
+}
+
+/// Распределение по слотам (DOM §4.2.2.4 «find a slot»): каждый светлый
+/// ребёнок хоста — элемент или ТЕКСТ — уходит в первый слот тени с его
+/// именем (`slot=""` элемента; у текста и без атрибута — пустое). Ребёнок без
+/// подходящего слота не рисуется вовсе.
+fn assign_slots(
+    root: &Handle,
+    light: &[Handle],
+    outer: &Rc<Scope>,
+    host_path: &Rc<Vec<Ancestor>>,
+    drafts: &mut HashMap<usize, SlotInfo>,
+) {
+    let mut slots: Vec<Handle> = vec![];
+    collect_slots(root, &mut slots);
+    if slots.is_empty() {
+        return;
+    }
+    let (spots, all) = census_of(light);
+    let light_all = Rc::new(all);
+    let mut assigned: HashMap<usize, Vec<Slotted>> = HashMap::new();
+    let mut pos = 0usize;
+    for (idx, node) in light.iter().enumerate() {
+        let (name, anc, elem_pos) = match &node.data {
+            NodeData::Element { .. } => {
+                let anc = light_all[pos].clone();
+                pos += 1;
+                let name = anc
+                    .attrs
+                    .iter()
+                    .find(|(k, _)| k == "slot")
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                (name, Some(anc), pos - 1)
+            }
+            NodeData::Text { .. } => (String::new(), None, pos),
+            _ => continue,
+        };
+        let Some(slot) = slots
+            .iter()
+            .find(|s| attr_of(s, "name").unwrap_or_default() == name)
+        else {
+            continue;
+        };
+        assigned.entry(node_key(slot)).or_default().push(Slotted {
+            node: node.clone(),
+            light_idx: idx,
+            elem_pos,
+            anc,
+        });
+    }
+    for slot in slots {
+        let key = node_key(&slot);
+        drafts.insert(
+            key,
+            SlotInfo {
+                slot,
+                assigned: assigned.remove(&key).unwrap_or_default(),
+                outer: outer.clone(),
+                host_path: host_path.clone(),
+                light: light.to_vec(),
+                light_spots: spots.clone(),
+                light_all: light_all.clone(),
+                flattened: vec![],
+            },
+        );
+    }
+}
+
+/// Предпроход по теням в порядке дерева. На хосте: область стилей тени,
+/// отметки `:has` по тени, распределение слотов; дальше — в тень с цепочкой
+/// из одного безликого хоста (css-shadow-1 §3.1: «the selector match list is
+/// initially the shadow host, followed by all children of the shadow root»)
+/// и в светлых детей — в текущей области.
+fn scan_shadows(
+    children: &[Handle],
+    path: &mut Vec<Ancestor>,
+    scope: &Rc<Scope>,
+    agent: &Scope,
+    media: Media,
+    drafts: &mut HashMap<usize, SlotInfo>,
+) {
+    let (_, all) = census_of(children);
+    let mut pos = 0usize;
+    for child in children {
+        if !matches!(&child.data, NodeData::Element { .. }) {
+            continue;
+        }
+        let me = all[pos].clone();
+        pos += 1;
+        if let Some((template, root)) = declarative_shadow(child) {
+            let (inner, args) = shadow_scope(&root, agent, media);
+            if !args.is_empty() {
+                mark_has(&root, &args, &mut vec![]);
+            }
+            let host_path: Rc<Vec<Ancestor>> = Rc::new(
+                path.iter()
+                    .cloned()
+                    .chain(std::iter::once(me.clone()))
+                    .collect(),
+            );
+            let light: Vec<Handle> = child
+                .children
+                .borrow()
+                .iter()
+                .filter(|c| !Rc::ptr_eq(c, &template))
+                .cloned()
+                .collect();
+            assign_slots(&root, &light, scope, &host_path, drafts);
+            let marker = Ancestor {
+                featureless: Some(Rc::new(path.clone())),
+                ..me.clone()
+            };
+            SHADOWS.with(|m| {
+                m.borrow_mut().insert(
+                    node_key(child),
+                    Rc::new(Shadow {
+                        root: root.clone(),
+                        scope: inner.clone(),
+                        marker: marker.clone(),
+                    }),
+                )
+            });
+            let shadow_kids: Vec<Handle> = root.children.borrow().clone();
+            scan_shadows(&shadow_kids, &mut vec![marker], &inner, agent, media, drafts);
+            path.push(me);
+            scan_shadows(&light, path, scope, agent, media, drafts);
+            path.pop();
+        } else {
+            let kids: Vec<Handle> = child.children.borrow().clone();
+            path.push(me);
+            scan_shadows(&kids, path, scope, agent, media, drafts);
+            path.pop();
+        }
+    }
+}
+
+/// Плоские распределённые слота (DOM «find flattened slottables»):
+/// распределённые, иначе fallback-дети; слот среди них раскрывается
+/// рекурсивно. Глубина ограничена: цикла распределений в дереве быть не
+/// может, но стража дешевле доказательства.
+fn flatten_slot(
+    key: usize,
+    drafts: &HashMap<usize, SlotInfo>,
+    depth: usize,
+    out: &mut Vec<Option<FlatCtx>>,
+) {
+    let Some(info) = drafts.get(&key) else { return };
+    if depth > 32 {
+        return;
+    }
+    if !info.assigned.is_empty() {
+        for s in &info.assigned {
+            if is_slot(&s.node) && drafts.contains_key(&node_key(&s.node)) {
+                flatten_slot(node_key(&s.node), drafts, depth + 1, out);
+            } else {
+                out.push(s.anc.clone().map(|anc| FlatCtx {
+                    anc,
+                    path: info.host_path.clone(),
+                    all: info.light_all.clone(),
+                    pos: s.elem_pos,
+                }));
+            }
+        }
+        return;
+    }
+    let kids: Vec<Handle> = info.slot.children.borrow().clone();
+    let (_, all) = census_of(&kids);
+    let all = Rc::new(all);
+    let mut pos = 0usize;
+    for kid in &kids {
+        match &kid.data {
+            NodeData::Element { .. } => {
+                if is_slot(kid) && drafts.contains_key(&node_key(kid)) {
+                    flatten_slot(node_key(kid), drafts, depth + 1, out);
+                } else {
+                    out.push(Some(FlatCtx {
+                        anc: all[pos].clone(),
+                        path: Rc::new(vec![]),
+                        all: all.clone(),
+                        pos,
+                    }));
+                }
+                pos += 1;
+            }
+            NodeData::Text { .. } => out.push(None),
+            _ => {}
+        }
+    }
+}
+
+/// Досчитать плоские списки и выложить слоты на склад.
+fn finish_slots(mut drafts: HashMap<usize, SlotInfo>) {
+    let keys: Vec<usize> = drafts.keys().copied().collect();
+    let mut flats: HashMap<usize, Vec<Option<FlatCtx>>> = HashMap::new();
+    for key in &keys {
+        let mut flat = vec![];
+        flatten_slot(*key, &drafts, 0, &mut flat);
+        flats.insert(*key, flat);
+    }
+    SLOTS.with(|m| {
+        let mut m = m.borrow_mut();
+        for key in keys {
+            if let Some(mut info) = drafts.remove(&key) {
+                info.flattened = flats.remove(&key).unwrap_or_default();
+                m.insert(key, Rc::new(info));
+            }
+        }
+    });
 }
 
 /// Направление письма, заданное АТРИБУТОМ: `<div dir="rtl">`.
@@ -1350,6 +1748,8 @@ pub(crate) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
             _ => None,
         }),
         has_marks: has_marks_of(child),
+        featureless: None,
+        slot: slot_of(child),
     })
 }
 
@@ -1688,6 +2088,8 @@ fn walk(
                     }
                 }),
                 has_marks: has_marks_of(handle),
+                featureless: None,
+                slot: slot_of(handle),
             };
 
             let inline_decls: Decls = attrs
@@ -1699,6 +2101,19 @@ fn walk(
                 .iter()
                 .filter(|r| matches(&r.sel, &me, path, sibs))
                 .collect();
+            // Правила `:host`/`:host(S)` из ТЕНИ хоста ложатся на сам хост
+            // (css-shadow-1 §3.1; Blink `MatchHostRules`). Хост для них
+            // безлик: совпадает только `:host`-компаунд без предков и братьев.
+            let shadow = shadow_of(handle);
+            if let Some(shadow) = &shadow {
+                matched.extend(
+                    shadow
+                        .scope
+                        .rules
+                        .iter()
+                        .filter(|r| matches(&r.sel, &shadow.marker, &[], Sibs::EMPTY)),
+                );
+            }
             // Свои переменные: родительские, поверх них объявления
             // совпавших правил в порядке каскада, поверх — свои же в
             // атрибуте. Пока словарь был один на документ, `:root{--c:red}`
@@ -1894,17 +2309,57 @@ fn walk(
             ) {
                 children.push(Node::Element(el));
             }
-            walk_children(
-                handle,
-                rules,
-                vars,
-                frames,
-                counter,
-                counters,
-                &path2,
-                style.preserve_newlines.unwrap_or(preserve),
-                &mut children,
-            );
+            let keep = style.preserve_newlines.unwrap_or(preserve);
+            if let Some(shadow) = &shadow {
+                // Плоское дерево (css-shadow-1 §3.3): хост наполняется детьми
+                // корня тени вместо светлых — в области стилей тени и с
+                // цепочкой предков из одного безликого хоста. Светлые дети
+                // попадут в вывод только через `<slot>`.
+                walk_children(
+                    &shadow.root,
+                    &shadow.scope.rules,
+                    vars,
+                    &shadow.scope.frames,
+                    counter,
+                    counters,
+                    std::slice::from_ref(&shadow.marker),
+                    keep,
+                    &mut children,
+                );
+            } else if let Some(slot) = slot_of(handle).filter(|s| !s.assigned.is_empty()) {
+                // Слот показывает распределённые узлы, fallback — только без
+                // них (HTML §4.12.4). Распределённый ребёнок стилизуется
+                // таблицами ОБЛАСТИ ХОСТА и сопоставляется в светлом контексте
+                // (предки хоста + хост, светлые братья), а наследует — от
+                // слота, своего родителя в плоском дереве (`vars`, `keep`).
+                for s in &slot.assigned {
+                    let sibs = Sibs {
+                        all: &slot.light_all[..],
+                        pos: s.elem_pos,
+                        is_elem: s.anc.is_some(),
+                    };
+                    walk(
+                        &s.node,
+                        &slot.outer.rules,
+                        vars,
+                        &slot.outer.frames,
+                        counter,
+                        counters,
+                        &slot.host_path[..],
+                        slot.light_spots[s.light_idx],
+                        keep,
+                        sibs,
+                        &slot.light,
+                        &slot.light_spots,
+                        s.light_idx,
+                        &mut children,
+                    );
+                }
+            } else {
+                walk_children(
+                    handle, rules, vars, frames, counter, counters, &path2, keep, &mut children,
+                );
+            }
             if let Some(el) = pseudo_box(
                 rules,
                 vars,
@@ -2113,6 +2568,16 @@ fn apply_counter_decls(
 /// В CSS это настоящий потомок с собственным стилем; так его и собираем —
 /// обычным инлайновым элементом с текстовым содержимым. `attr(имя)`
 /// подставляется значением атрибута хозяина.
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): отдельный слой `::marker` (правила
+// `::marker` собирались в `Computed::marker_layer` только из объявлений
+// правил, свёртка `content`/`none` по css-lists-3 §content-property, стиль
+// слоя на маркер снаружи и внутри). Срез 1055 пар (lists/pseudo/content/
+// counter-styles/CSS2 lists): 848 -> 847, +3/-4 (`marker-content-008/018/
+// 021` против `disclosure-styles`, `marker-counter`, `marker-content-020`
+// 0.00 -> 2.41, `marker-text-transform-default`). Патч — `target/scout-
+// markers-2026-09.md` П1; возвращаться после того, как маркер выйдет из
+// `list()` в общий путь `display: list-item` (П2), иначе слой стилизует
+// не тот маркер.
 fn pseudo_box(
     rules: &[Rule],
     vars: &Decls,
@@ -2204,7 +2669,22 @@ fn pseudo_box(
 /// `sibs` — предыдущие соседи-элементы узла в порядке разметки: по ним
 /// решаются соседние комбинаторы `+` и `~`.
 pub(crate) fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
+    // Безликий хост (изнутри своей тени): предков и братьев у него в этой
+    // области нет, совпадает лишь `:host`-компаунд (см. `matches_compound`).
+    if me.featureless.is_some() {
+        return sel.ancestor.is_none() && sel.prev.is_none() && matches_compound(sel, me);
+    }
     if let Some(pseudo) = &sel.pseudo {
+        // `:host` вне тени «matches nothing» (css-shadow-1 §3.1).
+        if is_host_pseudo(pseudo) {
+            return false;
+        }
+        if pseudo.starts_with("has-slotted") {
+            if !has_slotted_holds(pseudo, me) {
+                return false;
+            }
+            return matches_ignoring_pseudo(sel, me, path, sibs);
+        }
         // `:not(...)` — отрицание вложенного селектора. Разбирается здесь, а
         // не среди структурных: внутри скобок может стоять тег или класс, а им
         // нужен сам узел, а не только его место среди соседей.
@@ -2388,6 +2868,9 @@ fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> b
     if pseudo == "root" {
         return me.tag == "html";
     }
+    if pseudo.starts_with("has-slotted") {
+        return has_slotted_holds(pseudo, me);
+    }
     if let Some(want) = pseudo
         .strip_prefix("lang(")
         .and_then(|r| r.strip_suffix(')'))
@@ -2404,6 +2887,62 @@ fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> b
         return ok;
     }
     structural(pseudo, me.spot).unwrap_or(false)
+}
+
+fn is_host_pseudo(pseudo: &str) -> bool {
+    pseudo == "host" || pseudo.starts_with("host(")
+}
+
+/// `:host` / `:host(S)` на безликом хосте: голый совпадает всегда, с
+/// аргументом — если хост В СВОЁМ СВЕТЛОМ КОНТЕКСТЕ совпадает с S
+/// (css-shadow-1 §3.1 «in its normal context»; Blink `CheckPseudoHost`
+/// сопоставляет в `element->GetTreeScope()`). Светлых братьев здесь нет:
+/// `:first-child` в аргументе решается по `spot`, of-форма и `+`/`~` — нет.
+fn host_holds(pseudo: &str, node: &Ancestor) -> bool {
+    if pseudo == "host" {
+        return true;
+    }
+    let (Some(arg), Some(light)) = (
+        pseudo.strip_prefix("host(").and_then(|r| r.strip_suffix(')')),
+        &node.featureless,
+    ) else {
+        return false;
+    };
+    let Some(arg) = Selector::parse(arg) else {
+        return false;
+    };
+    let real = Ancestor {
+        featureless: None,
+        ..node.clone()
+    };
+    matches(&arg, &real, &light[..], Sibs::EMPTY)
+}
+
+/// `:has-slotted` — у слота непуст список ПЛОСКИХ распределённых, включая
+/// текст (`has-slotted-001` зелёная от одних пробелов); `:has-slotted(S)` —
+/// среди них есть ЭЛЕМЕНТ, совпадающий с S в своём светлом контексте
+/// (`functional-007`: `div + div` смотрит на светлых братьев). Не слот или
+/// слот вне тени — не совпадает.
+fn has_slotted_holds(pseudo: &str, me: &Ancestor) -> bool {
+    let Some(slot) = &me.slot else { return false };
+    let Some(arg) = pseudo
+        .strip_prefix("has-slotted(")
+        .and_then(|r| r.strip_suffix(')'))
+    else {
+        return !slot.flattened.is_empty();
+    };
+    let list: Vec<Selector> = crate::css::split_selector_list(arg)
+        .into_iter()
+        .filter_map(Selector::parse)
+        .collect();
+    slot.flattened.iter().flatten().any(|c| {
+        let sibs = Sibs {
+            all: &c.all[..],
+            pos: c.pos,
+            is_elem: true,
+        };
+        list.iter().any(|s| matches(s, &c.anc, &c.path[..], sibs))
+    })
 }
 
 /// Структурные псевдоклассы: место узла среди соседей.
@@ -2567,6 +3106,19 @@ fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
 }
 
 fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
+    // Безликий хост: ни тег, ни `*`, ни класс, ни атрибут его не берут —
+    // только `:host`/`:host(S)`, и все псевдоклассы компаунда обязаны быть
+    // такими (`:host:host` — да, `div:host`, `:host.host` — нет;
+    // `selectors/featureless-002`).
+    if node.featureless.is_some() {
+        let bare = sel.tag.is_none()
+            && sel.id.is_none()
+            && sel.classes.is_empty()
+            && sel.attrs.is_empty();
+        return bare
+            && sel.pseudo.as_deref().is_some_and(|p| host_holds(p, node))
+            && sel.also.iter().all(|p| host_holds(p, node));
+    }
     if let Some(t) = &sel.tag
         && t != &node.tag
     {
@@ -2899,6 +3451,31 @@ mod tests {
         let p = first_element(&nodes);
         assert_eq!(p.tag, "p");
         assert!(matches!(p.children.first(), Some(Node::Text(t)) if t == "текст"));
+    }
+
+    #[test]
+    fn declarative_shadow_scopes_styles_and_slots() {
+        let red = crate::value::Color::parse("red");
+        let green = crate::value::Color::parse("green");
+        // Плоские дети хоста: `b` тени (её правило, не документное) и слот
+        // (правило тени). Документное `b { red }` в тень не протекает.
+        let colors = child_colors(
+            "<style>b { color: red } slot { color: green }</style>             <div id=\"box\"><template shadowrootmode=\"open\"><style>b { color: green } slot { color: red }</style>             <b></b><slot></slot></template><i></i></div>",
+        );
+        assert_eq!(colors, vec![green, red]);
+        // Распределённый ребёнок стилизуется таблицей ДОКУМЕНТА, не тени.
+        let colors = child_colors(
+            "<style>i { color: green }</style>             <div><template shadowrootmode=\"open\"><style>i { color: red }</style>             <slot id=\"box\"></slot></template><i></i></div>",
+        );
+        assert_eq!(colors, vec![green]);
+        // `:host` красит хост, `:has-slotted` — слот с распределёнными.
+        let colors = child_colors(
+            "<div id=\"box\"><div><template shadowrootmode=\"open\"><style>:host { color: green } slot { color: red } :has-slotted { color: green }</style>             <slot></slot></template><i></i></div></div>",
+        );
+        assert_eq!(colors, vec![green]);
+        // Обычный `<template>` как прежде не рисуется.
+        let colors = child_colors("<div id=\"box\"><template><b></b></template><i></i></div>");
+        assert_eq!(colors, vec![None]);
     }
 
     #[test]

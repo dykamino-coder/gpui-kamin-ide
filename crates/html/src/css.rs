@@ -399,6 +399,8 @@ fn known_pseudo(name: &str) -> bool {
                 | "picture-in-picture"
                 | "defined"
                 | "host"
+                | "host-context"
+                | "has-slotted"
                 | "first-child"
                 | "last-child"
                 | "only-child"
