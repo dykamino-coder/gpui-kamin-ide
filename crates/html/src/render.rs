@@ -3606,7 +3606,17 @@ fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Ve
     out
 }
 
-fn collapse_flow_margins(children: Vec<Node>, reverse: bool) -> Vec<Node> {
+/// `lead` — собственное поле КОНТЕЙНЕРА по ведущей стороне оси потока
+/// (`margin-left` при `vertical-lr`, `margin-right` при `vertical-rl`), если
+/// эта сторона открыта — без рамки и внутреннего отступа. CSS 2.1 §8.3.1:
+/// «The top margin of an in-flow block element collapses with its first
+/// in-flow block-level child's top margin if the element has no top border,
+/// no top padding»; css-writing-modes-4 §7.1 переносит это на `margin-left`
+/// / `margin-right` в вертикальном письме («in a vertical-rl writing mode it
+/// takes part in margin collapsing in place of margin-bottom»).
+/// `None` — сторона запечатана либо контейнер — корень (§8.3.1: поля корня
+/// не схлопываются).
+fn collapse_flow_margins(children: Vec<Node>, reverse: bool, lead: Option<f32>) -> Vec<Node> {
     // Поле контейнера схлопывается С КРАЙНИМ flow-ребёнком через пустую
     // границу (CSS 2.1 §8.3.1): у `<body>` без рамки и паддинга хвостовое
     // поле — max(своё, block-end последнего ребёнка), рекурсивно. Без этого
@@ -3684,12 +3694,23 @@ fn collapse_flow_margins(children: Vec<Node>, reverse: bool) -> Vec<Node> {
         }
     }
     let mut out = children;
-    let mut trailing: Option<f32> = None;
+    // Ведущее поле ПЕРВОГО ребёнка схлопывается с полем контейнера так же,
+    // как поля братьев между собой (§8.3.1, первый in-flow ребёнок): в
+    // `prev` кладётся поле контейнера, и ребёнку остаётся разница.
+    // `body { margin: 8px }` + `p { margin-block: 1em }` при `html
+    // { writing-mode: vertical-lr }` дают 16 от края окна, а не 24 — ровно
+    // на эти 8 CSS px уезжала ВСЯ страница (`abs-pos-non-replaced-vlr-007`
+    // 1.09, `text-indent-vlr-011` 1.09, `clip-rect-vlr-011` 1.00: снимок
+    // сдвинут на 10 px при масштабе 1.25, эталон `…-vlr-007-ref` считает
+    // «80px + p's margin-left (1em)» от `margin-left: 0.5em` + `body` 8).
+    // Отрицательное поле контейнера в схлопывание не вступает (иначе
+    // `kept` росло бы на его модуль).
+    // Прежний замер «available-size-022/023 0.00 -> 2.66» относился к детям
+    // КОРНЯ — у `html` поля не схлопываются, вызов передаёт `None`.
+    let mut trailing: Option<f32> = lead.filter(|m| *m >= 0.0);
     for node in out.iter_mut() {
         let Node::Element(child) = node else { continue };
-        // В обратном потоке ведущая сторона — правая. Ведущий край НЕ
-        // поглощается: замерено — available-size-022/023 0.00 -> 2.66 при
-        // нуле выигрышей; хватает хвостового (042/049/054).
+        // В обратном потоке ведущая сторона — правая.
         let lead = if reverse {
             child.style.margin.right
         } else {
@@ -11191,8 +11212,47 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // это ГОРИЗОНТАЛЬНЫЕ отступы соседей. В Chrome три полосы с
             // `margin: 0 16px` стоят через 16, а не через 32.
             let children = if merged.vertical == Some(true) {
+                // Поле самого контейнера по ведущей стороне оси потока —
+                // для схлопывания с первым ребёнком (§8.3.1). Ведущая
+                // сторона: левая у `vertical-lr`/`sideways-*`, правая у
+                // `vertical-rl`. Открыта, если там нет ни рамки, ни
+                // внутреннего отступа; у корня поля не схлопываются вовсе.
+                let reverse = merged.vertical_rl == Some(true);
+                let lead_margin = if e.tag == "html" {
+                    None
+                } else {
+                    let b = e.style.borders();
+                    let (border, pad, own) = if reverse {
+                        (b.right, e.style.padding.right, e.style.margin.right)
+                    } else {
+                        (b.left, e.style.padding.left, e.style.margin.left)
+                    };
+                    // Независимый контекст форматирования (overflow не
+                    // `visible`, флоат, `display: flow-root`, `contain`) не
+                    // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
+                    // modes-4 §7.4): `margin-collapse-vlr-017`/`vrl-016`
+                    // (`overflow: hidden`, v100: 0.00 → «красное видно»).
+                    let bfc = !matches!(
+                        e.style.overflow_x,
+                        None | Some(crate::computed::Overflow::Visible)
+                    ) || !matches!(
+                        e.style.overflow_y,
+                        None | Some(crate::computed::Overflow::Visible)
+                    ) || e.style.float.is_some()
+                        || e.style.flow_root == Some(true)
+                        || e.style.contain_layout == Some(true)
+                        || e.style.contain_paint == Some(true);
+                    let sealed = bfc
+                        || margin_px(border, &e.style).unwrap_or(0.0) > 0.0
+                        || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
+                    if sealed {
+                        None
+                    } else {
+                        Some(margin_px(own, &e.style).unwrap_or(0.0))
+                    }
+                };
                 orthogonal_children(
-                    collapse_flow_margins(children, merged.vertical_rl == Some(true)),
+                    collapse_flow_margins(children, reverse, lead_margin),
                     &merged,
                     opts.viewport.0,
                 )
