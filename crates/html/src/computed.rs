@@ -1669,6 +1669,10 @@ pub struct Computed {
     /// осям, когда записан длиной — как `transform_origin`/`_px`.
     pub perspective_origin: Option<(f32, f32)>,
     pub perspective_origin_px: (Option<f32>, Option<f32>),
+    /// `transform-box: fill-box` у SVG-фигуры (css-transforms-1
+    /// §transform-box): длины `transform-origin` отсчитываются от рамки
+    /// фигуры, а не от вьюпорта.
+    pub transform_box_fill: Option<bool>,
     /// Ячейка матрицы перспективы (см. `PerspectiveFrame`); один и тот же
     /// `Rc` у `e.style` родителя, его `merged` и `inherited` детей.
     pub perspective_frame: Option<PerspectiveFrame>,
@@ -6645,6 +6649,12 @@ impl Computed {
                 self.perspective_origin = Some((axis(first, 0.5), axis(second, 0.5)));
             }
             "transform-style" => {}
+            // css-transforms-1 §transform-box: `fill-box` переносит опорную
+            // коробку и НАЧАЛО отсчёта на bounding box фигуры; по умолчанию
+            // (`view-box`) длины в `transform-origin` считаются от вьюпорта.
+            "transform-box" => {
+                self.transform_box_fill = Some(v.trim() == "fill-box");
+            }
 
             // --- Обтекание и направление письма --------------------------------
             // `initial-letter: normal | <size> [<sink> | drop | raise]`

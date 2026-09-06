@@ -185,7 +185,16 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
                     } else {
                         (t, 1.0)
                     };
-                    num.trim().parse::<f32>().ok()? * k
+                    // Длина от рамки фигуры — только при
+                    // `transform-box: fill-box`; по умолчанию (`view-box`)
+                    // отсчёт от вьюпорта, то есть без сдвига на `off`
+                    // (`svg-origin-length-*` зелены именно так).
+                    let v = num.trim().parse::<f32>().ok()? * k;
+                    return Some(if e.style.transform_box_fill == Some(true) {
+                        off + v
+                    } else {
+                        v
+                    });
                 }
             })
         };
@@ -200,6 +209,13 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         let (ox, oy) = match toks.as_slice() {
             [a] if vert_only(a) => (fx + fw * 0.5, side(a, fh, fy)?),
             [a] => (side(a, fw, fx)?, fy + fh * 0.5),
+            // Пара слов ОДНОЙ оси невалидна (css-transforms-1 §transform-origin):
+            // `top bottom`, `left right` — объявление отбрасывается целиком.
+            [a, b]
+                if (vert_only(a) && vert_only(b)) || (horiz_only(a) && horiz_only(b)) =>
+            {
+                return None;
+            }
             [a, b] if vert_only(a) || horiz_only(b) => {
                 // Обратный порядок допустим только у ПАРЫ ключевых слов.
                 if keyword(a) && keyword(b) {
