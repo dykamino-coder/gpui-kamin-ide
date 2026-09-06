@@ -6716,6 +6716,43 @@ fn atomic_inline(c: &Computed) -> bool {
         )
 }
 
+/// Блочная коробка со строчной ПОМЕТКОЙ: псевдоэлемент (`::before`/`::after`
+/// помечается строчным независимо от `display`, `dom.rs`) или строчный тег с
+/// блочным `display`. Раскладка (`breaks_inline`) кладёт такую коробку
+/// блоком, а цепочки схлопывания полей пропускали её как строчную — и
+/// `::after { display: flow-root; margin-top: 200px }` оставлял поле внутри
+/// родителя вместо примыкания к его верху (`phantom-line-boxes-001…006`).
+fn inline_marked_block(e: &Element) -> bool {
+    e.inline
+        && e.style.inline_display != Some(true)
+        && matches!(
+            e.style.display,
+            Some(Display::Block)
+                | Some(Display::ListItem)
+                | Some(Display::Flex)
+                | Some(Display::Grid)
+                | Some(Display::Table)
+        )
+}
+
+/// Ненулевые поля, отступы или рамки строчной коробки по СТРОЧНОЙ оси.
+/// Такая коробка не даёт строке стать фантомной (css-inline-3
+/// §invisible-line-boxes: «no inline boxes with non-zero inline-axis margins,
+/// padding, or borders»); блочная ось (`padding-top`, `margin-bottom`) в счёт
+/// не идёт, а отрицательное поле — тоже ненулевое (`phantom-line-boxes-004`).
+/// Оси физические: в вертикальном письме строчная ось — `top`/`bottom`, там
+/// правило пока не различает (тестов нет).
+fn inline_axis_edges(c: &Computed) -> bool {
+    let nonzero = |l: Option<Len>| matches!(l, Some(Len::Px(v) | Len::Pct(v) | Len::Em(v)) if v != 0.0);
+    let b = c.borders();
+    nonzero(c.margin.left)
+        || nonzero(c.margin.right)
+        || nonzero(c.padding.left)
+        || nonzero(c.padding.right)
+        || nonzero(b.left)
+        || nonzero(b.right)
+}
+
 /// Содержит ли коробка строчную коробку (§8.3.1, «does not contain a line
 /// box»; нулевые строчные коробки §9.4.2 не в счёт).
 ///
@@ -6754,7 +6791,18 @@ fn holds_line_box(children: &[Node]) -> bool {
             // `<div style="display:inline">` считался блочным ребёнком и
             // строки «не рождал», хотя текст внутри него её рождает.
             if ch.inline || ch.style.inline_display == Some(true) {
-                return replaced_inline(&ch.tag) || holds_line_box(&ch.children);
+                // Блочный псевдоэлемент — блочный ребёнок: строки родителю
+                // не рождает, его содержимое разбирает `through_strut`.
+                if inline_marked_block(ch) {
+                    return false;
+                }
+                // Пустой строчный с ненулевым полем/отступом/рамкой по
+                // строчной оси — не фантом (css-inline-3
+                // §invisible-line-boxes): строка есть, схлопывание насквозь
+                // закрыто (`phantom-line-boxes-001…006`).
+                return replaced_inline(&ch.tag)
+                    || inline_axis_edges(&ch.style)
+                    || holds_line_box(&ch.children);
             }
             // Блочный ребёнок строки не рождает: его содержимое разбирает
             // рекурсия `through_strut`.
@@ -6792,7 +6840,8 @@ fn through_strut_no_clear(e: &Element) -> Option<Strut> {
 }
 
 fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
-    if e.inline || !in_flow(&e.style) || own_context(e) {
+    // Строчная пометка у блочной коробки (псевдоэлемент) — не строчный.
+    if (e.inline && !inline_marked_block(e)) || !in_flow(&e.style) || own_context(e) {
         return None;
     }
     // Поля КОРНЯ ни с чем не схлопываются (§8.3.1).
@@ -6857,7 +6906,7 @@ fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
         if in_flow(&ch.style) && ch.style.clear.is_some() {
             return None;
         }
-        if ch.inline
+        if (ch.inline && !inline_marked_block(ch))
             || ch.style.display == Some(Display::None)
             || ch.style.display == Some(Display::Contents)
             || !in_flow(&ch.style)
@@ -6891,9 +6940,16 @@ fn leading_chain(
             Node::Text(_) => return Some(s),
             Node::Element(ch) => ch,
         };
-        if ch.inline {
-            // Пустой `<span>` прозрачен, замещаемый атом рождает строку.
-            if ch.children.is_empty() && !replaced_inline(&ch.tag) {
+        // Блочный псевдоэлемент (`::after { display: flow-root }`) —
+        // блочный ребёнок, его поле примыкает; см. `inline_marked_block`.
+        if ch.inline && !inline_marked_block(ch) {
+            // Пустой `<span>` прозрачен, замещаемый атом рождает строку;
+            // пустой строчный с полем/отступом/рамкой по строчной оси — не
+            // фантом, строка есть (css-inline-3 §invisible-line-boxes).
+            if ch.children.is_empty()
+                && !replaced_inline(&ch.tag)
+                && !inline_axis_edges(&ch.style)
+            {
                 continue;
             }
             return Some(s);
@@ -6951,8 +7007,11 @@ fn trailing_chain(
             Node::Text(_) => return Some(s),
             Node::Element(ch) => ch,
         };
-        if ch.inline {
-            if ch.children.is_empty() && !replaced_inline(&ch.tag) {
+        if ch.inline && !inline_marked_block(ch) {
+            if ch.children.is_empty()
+                && !replaced_inline(&ch.tag)
+                && !inline_axis_edges(&ch.style)
+            {
                 continue;
             }
             return Some(s);
