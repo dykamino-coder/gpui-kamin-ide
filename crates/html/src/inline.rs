@@ -2503,8 +2503,9 @@ fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     // Названное семейство сильнее родового: подстановкой занимается система.
     if let Some(family) = &style.font_family {
         // Имя из разметки может быть придуманным (`@font-face`) — система
-        // шрифтов знает файл под его собственным именем.
-        font.family = crate::fonts::alias(family)
+        // шрифтов знает файл под его собственным именем. Лиц у имени бывает
+        // несколько, и нужное выбирает ширина начертания (§font-matching).
+        font.family = crate::fonts::alias_stretch(family, style.font_stretch)
             .unwrap_or_else(|| family.clone())
             .into();
     } else if style.monospace == Some(true) {

@@ -1546,7 +1546,10 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
         // имя, под которым файл знает система шрифтов. Без подмены весь
         // текст, идущий гpui-раскладкой (не резчиком), набирался подменным
         // системным шрифтом.
-        d = d.font_family(crate::fonts::alias(family).unwrap_or_else(|| family.clone()));
+        d = d.font_family(
+            crate::fonts::alias_stretch(family, c.font_stretch)
+                .unwrap_or_else(|| family.clone()),
+        );
     }
     if let Some(pct) = c.font_stretch {
         d.style()

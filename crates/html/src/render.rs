@@ -5511,7 +5511,7 @@ fn band_host(
 fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     let mut font = opts.text.font();
     if let Some(family) = &c.font_family {
-        font.family = crate::fonts::alias(family)
+        font.family = crate::fonts::alias_stretch(family, c.font_stretch)
             .unwrap_or_else(|| family.clone())
             .into();
     } else if c.monospace == Some(true) {
@@ -9207,6 +9207,33 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                     div().flex().flex_col_reverse().flex_shrink_0()
                 }
             };
+            // Уровни аннотаций уходят из БЛОЧНОГО потока колонки (css-ruby-1
+            // §3.4: «ordinarily, ruby annotation containers and ruby
+            // annotation boxes do not contribute to the measured height of a
+            // line's inline contents»). Обёртка нулевой ГЛАВНОЙ высоты:
+            // `h_0` задаёт основу, `min_h_0` снимает автоминимум гибкого
+            // элемента (`vendor/taffy/src/compute/flexbox.rs:824-827`: иначе
+            // `min-height: auto` вернёт высоту содержимого). Над базой
+            // содержимое прижато к главному концу — свободное место
+            // отрицательное, и `FlexEnd` отдаёт его целиком
+            // (`compute/common/alignment.rs:61-67`), уровни встают НАД нулём;
+            // под базой обычный `flex-start` свисает вниз.
+            //
+            // Зачем: первую базовую линию гибкой КОЛОНКИ taffy берёт у
+            // первого DOM-ребёнка (`flexbox.rs:405-419`), а `child.baseline`
+            // колонки (`:2152`) содержит `total_offset_main`, который в
+            // `column-reverse` равен ВЫСОТЕ аннотаций. Пока уровни лежали в
+            // самой колонке, атом отдавал строке базовую линию на H(ann)
+            // ниже: замерено `target/ruby-probe/probe-c.html` (Ahem 64px) —
+            // 88 dev вместо 104/144/184 при `line-height` 1/2/3, и
+            // `probe-d.html` — 128 вместо 144 при `rt { font-size: 64px }`,
+            // 56 вместо 72 при `rb { font-size: 32px }`. На живой паре
+            // `text-box-trim-ruby-start-001` (Ahem 40px, H(ann) = 25 dev) это
+            // давало строку на 15 dev ниже эталона и базу на 25 dev ниже.
+            let level_wrap = |under: bool| {
+                let w = div().flex().flex_col().flex_shrink_0().h_0().min_h_0();
+                if under { w } else { w.justify_end() }
+            };
             // Единица из ОДНОГО `<rb>`/`<rt>` (или элемента с ролью базы /
             // аннотации по `display`) рисуется его собственной БЛОЧНОЙ
             // коробкой: распорка строки — от его кегля и `line-height` (UA
@@ -9269,7 +9296,7 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 for i in 0..columns {
                     // Уровни над базой — в обратную стопку вместе с базой,
                     // уровни под ней — прямой стопкой снаружи.
-                    let mut over = stack(false).child(unit_box(seg.bases.get(i).unwrap_or(&empty), &merged));
+                    let mut over_anns: Vec<AnyElement> = Vec::new();
                     let mut under: Vec<AnyElement> = Vec::new();
                     for (k, (l, style)) in seg.levels.iter().zip(&level_style).enumerate() {
                         if l.spanning {
@@ -9279,13 +9306,24 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                         if level_under(k) {
                             under.push(ann);
                         } else {
-                            over = over.child(ann);
+                            over_anns.push(ann);
                         }
+                    }
+                    // База — ПЕРВЫЙ DOM-ребёнок колонки, обёртка уровней идёт
+                    // после неё: в `column-reverse` она встаёт над базой, а
+                    // `offset_main` базы остаётся нулём. Внутри обёртки уровни
+                    // в обратном порядке: нулевой (ближний к базе) — внизу.
+                    let mut over = stack(false).child(unit_box(seg.bases.get(i).unwrap_or(&empty), &merged));
+                    if !over_anns.is_empty() {
+                        over = over.child(level_wrap(false).children(over_anns.into_iter().rev()));
                     }
                     let col = if under.is_empty() {
                         over.into_any_element()
                     } else {
-                        stack(true).child(over).children(under).into_any_element()
+                        stack(true)
+                            .child(over)
+                            .child(level_wrap(true).children(under))
+                            .into_any_element()
                     };
                     cols = cols.child(col);
                 }
@@ -9294,7 +9332,10 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                     if l.spanning {
                         seg_el = stack(level_under(k))
                             .child(seg_el)
-                            .child(unit_box(l.units.first().unwrap_or(&empty), style))
+                            .child(
+                                level_wrap(level_under(k))
+                                    .child(unit_box(l.units.first().unwrap_or(&empty), style)),
+                            )
                             .into_any_element();
                     }
                 }
@@ -14838,6 +14879,15 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // остаток обязан достаться безвысотным рядам.
     let table_tall = matches!(e.style.height, Some(Len::Px(_)))
         || matches!(e.style.min_height, Some(Len::Px(_)));
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v135, `scout-fonts-tables-2026-09.md`
+            // план 2): строить дорожки рядов и без `table_tall`. Срез 8557 общих:
+            // +3 (`table-as-item-cell-percentage-001/003/004`) при −18 —
+            // `margin-applies-to-001…007` (0.00 → 1.00),
+            // `margin-bottom-applies-to-001…007` (0.03 → 3.00),
+            // `table-cell-overflow-explicit-height-001/002` (0.00 → 8.77),
+            // `percentage-sizing-of-table-cell-children-004` («красное видно»),
+            // `subpixel-table-cell-height-001`. Ряд без заданной высоты обязан
+            // остаться авто-дорожкой ТОЛЬКО в контексте, где стол не растянут.
     let row_tracks: Option<Vec<gpui::GridTrack>> = match table_tall {
         true if e.style.vertical != Some(true) => Some(
             row_elements
