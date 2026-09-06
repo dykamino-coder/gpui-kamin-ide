@@ -9975,12 +9975,22 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // (`floats-014`).
         copy.style.margin = crate::computed::Sides::default();
         merged.margin = crate::computed::Sides::default();
+        // Маска и обрезка формой живут в буфере группы (`grouped`): у флоата
+        // с `shape-outside` этот путь был не пройден вовсе, и `clip-path`
+        // на нём не резал НИЧЕГО — коробка рисовалась целым прямоугольником,
+        // тогда как эталон (тот же флоат без `shape-outside`) идёт обычным
+        // путём и маску получает. Стиль берётся с самой коробки (`copy.style`,
+        // поля уже сняты выше — их несёт держатель), как на пути замещаемых
+        // и внепоточных (`:7718`, `:7722`).
         let built = if copy.tag == "img" {
-            image(&copy)
+            grouped(image(&copy), &copy.style)
         } else {
-            styled_div_with(&copy, &merged)
-                .children(blocks(&copy.children, &merged, opts))
-                .into_any_element()
+            grouped(
+                styled_div_with(&copy, &merged)
+                    .children(blocks(&copy.children, &merged, opts))
+                    .into_any_element(),
+                &copy.style,
+            )
         };
         let holder = if inherited.vertical_rl == Some(true) {
             // Вертикальное письмо: блок-старт — ПРАВЫЙ край, колонки

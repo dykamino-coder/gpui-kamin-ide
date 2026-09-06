@@ -7132,19 +7132,19 @@ impl Computed {
                         self.clip_polygon_evenodd = rule == "evenodd";
                     }
                 } else if v.starts_with("circle(") || v.starts_with("ellipse(") {
-                    // Форма с параметрами (радиусы, `at`, ключевые стороны)
-                    // растрируется маской: радиус и центр считаются от
-                    // размеров коробки при отрисовке. Скруглённая коробка
-                    // остаётся запасным путём для формы без аргументов.
-                    let args = v
-                        .split_once('(')
-                        .map(|(_, r)| r.trim_end_matches(')').trim())
-                        .unwrap_or("");
-                    if args.is_empty() {
-                        self.clip_round = Some(0.5);
-                    } else {
-                        self.clip_shape = Some(format!("shape:{}", v.trim()));
-                    }
+                    // Форма растрируется маской: радиус и центр считаются от
+                    // размеров коробки при отрисовке.
+                    //
+                    // Голая `circle()`/`ellipse()` шла запасным путём
+                    // скруглённой коробки, где радиус — половина МЕНЬШЕЙ из
+                    // заданных `width`/`height`. При `box-sizing: content-box`
+                    // это содержимое, а не опорная коробка: у 40×40 с
+                    // отбивкой 20 и рамкой 20 выходило 20 вместо 60, и
+                    // `circle()` рисовалась слегка скруглённым прямоугольником
+                    // вместо вписанного круга. `shape_params` с пустым списком
+                    // радиусов даёт ровно `closest-side` (css-shapes-1
+                    // §3.1.1.3) от border-box — то, что и требуется.
+                    self.clip_shape = Some(format!("shape:{}", v.trim()));
                 } else if let Some(rest) = v.strip_prefix("rect(") {
                     // Края видимой области (css-shapes-1 §basic-shape):
                     // top/right/bottom/left от верхнего-левого угла, auto —
