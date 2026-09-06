@@ -559,6 +559,20 @@ impl BgRepeat {
 /// Сдвиг хранится вместе с поворотом: в CSS `translate()` внутри `transform`
 /// и отдельное свойство `translate` складываются.
 #[derive(Clone, Copy, Debug, PartialEq)]
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): шаг 1 объёмных трансформаций
+// (css-transforms-2) — полная накопленная 4x4 `m4`/`m4_pct`/`has_3d` рядом с
+// плоской 2x3, `perspective`/`perspective-origin`/`transform-style`,
+// `translateZ`/`scaleZ`/`rotateX|Y|3d`/`matrix3d` целиком, `preserve-3d`
+// через потоко-локальный стек накопленных матриц и сплющивание плоскости
+// z=0 на отрисовке (`interact::Transformed`), обёртка `transformed()` и без
+// собственного `transform`. Срез 3029 пар (transforms/contain/overflow/
+// masking/position/backgrounds): 2102 -> 2053, **+11/-60**; из потерь
+// одиннадцать — 99.00 (`css-rotate-2d-3d-001`, `rotate3d-Z-*`,
+// `css3-transform-rotateY`, `perspective-children-only-*`,
+// `preserve3d-and-flattening-z-order-001/002`): страница разъезжается
+// целиком, а не сдвигается. Возвращаться по одному рукаву: сначала
+// `matrix3d`/`perspective()` внутри ОДНОГО элемента без стека, затем стек.
+// План и патч — `target/scout-3d-2026-09.md` §7.
 pub struct Transform {
     pub rotate_rad: f32,
     /// Скос по осям в радианах (`skew`, `skewX`, `skewY`).

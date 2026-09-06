@@ -1271,10 +1271,12 @@ impl DirectXRenderer {
                 _pad: 0,
             }],
         )?;
+        // KaminIDE patch: цель — текущая (`current_target`): внутри группы это
+        // её буфер, и примитивы, идущие после пачки Surfaces, остаются в ней.
         unsafe {
             self.devices
                 .device_context
-                .OMSetRenderTargets(Some(&self.resources.render_target_view), None);
+                .OMSetRenderTargets(Some(self.current_target()), None);
             self.devices
                 .device_context
                 .RSSetViewports(Some(&self.resources.viewport));
@@ -1514,8 +1516,12 @@ impl DirectXRenderer {
         self.pipelines
             .blur_pipeline
             .update_buffer(&device, &dc, &[quad])?;
+        // KaminIDE patch: вложенная группа (`clip-path` у потомка внутри
+        // `clip-path` предка) композитится в буфер ОБЪЕМЛЮЩЕЙ группы, а не в
+        // кадр: `render_groups` идёт до отрисовки кадра, и уложенный в
+        // бэкбуфер результат закрашивал фон страницы (corner-shape-bevel-ref).
         unsafe {
-            dc.OMSetRenderTargets(Some(&self.resources.render_target_view), None);
+            dc.OMSetRenderTargets(Some(self.current_target()), None);
         }
         // Смешанный цвет шейдер считает целиком, вместе с прозрачностью —
         // блендеру тут делать нечего, результат пишется поверх.
