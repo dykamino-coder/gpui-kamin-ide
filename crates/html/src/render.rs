@@ -1035,6 +1035,61 @@ fn grid_rows_px(c: &Computed) -> Option<f32> {
     Some(total + gap * (rows.len() as f32 - 1.0))
 }
 
+/// Зазоры между ЯВНЫМИ рядами сетки от верха содержимого: `(начало, конец)`.
+/// Ряды — в точках либо доли `fr` при заданной в точках высоте коробки
+/// (остаток после точечных рядов и зазоров делится по долям, css-grid-1
+/// §12.7). Иначе — пусто: дорожек не знаем, точек не даём.
+fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
+    use crate::computed::{Track, TrackSize};
+    if !matches!(
+        c.display,
+        Some(Display::Grid) | Some(Display::InlineGrid)
+    ) {
+        return Vec::new();
+    }
+    let Some(rows) = c.grid_rows.as_ref() else {
+        return Vec::new();
+    };
+    let gap = match c.gap {
+        Some((Some(Len::Px(v)), _)) => v,
+        _ => 0.0,
+    };
+    if rows.len() < 2 || gap <= 0.0 {
+        return Vec::new();
+    }
+    let mut fixed = 0.0f32;
+    let mut fr = 0.0f32;
+    for t in rows {
+        match t {
+            TrackSize::Single(Track::Px(v)) => fixed += v,
+            TrackSize::Single(Track::Fr(k)) => fr += k,
+            _ => return Vec::new(),
+        }
+    }
+    let per_fr = if fr > 0.0 {
+        if !matches!(c.height, Some(Len::Px(_))) {
+            return Vec::new();
+        }
+        (inner_h - fixed - gap * (rows.len() as f32 - 1.0)).max(0.0) / fr
+    } else {
+        0.0
+    };
+    let mut out = Vec::new();
+    let mut y = 0.0f32;
+    for (i, t) in rows.iter().enumerate() {
+        y += match t {
+            TrackSize::Single(Track::Px(v)) => *v,
+            TrackSize::Single(Track::Fr(k)) => k * per_fr,
+            _ => 0.0,
+        };
+        if i + 1 < rows.len() {
+            out.push((y, y + gap));
+            y += gap;
+        }
+    }
+    out
+}
+
 /// Монолит по css-break-4 §4.1 (Blink `IsMonolithic`): замещаемый,
 /// атомарный строчный, прокручиваемый, `break-inside: avoid`,
 /// строчное содержимое (строк укладка не видит) — пустая
@@ -1443,6 +1498,21 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     } else {
         h
     };
+    // css-gaps-1 §fragmentation / css-align-3 §column-row-gap: «the gap
+    // disappears when it coincides with a fragmentation break»; Blink
+    // `GridLayoutAlgorithm` `MaybeSuppressLastGap`: зазор рядов, в который
+    // попал край фрагментаинера (внутрь, на начало или на конец), снимается —
+    // следующий ряд начинается с верха следующего фрагмента, линейка в таком
+    // зазоре не рисуется (`grid-gap-decorations-fragmentation-001…010`).
+    // В стопке колонок это точка класса A с усечением: край внутри
+    // `solid`-диапазона зазора уводит разрез к его началу (`fill`, `at(a)`),
+    // а `cuts` с тем же `need` продолжает копию с КОНЦА зазора. Допуск 0.05
+    // ловит край ровно на границе зазора — Blink подавляет и его
+    // (`last_gap_end_offset >= fragmentainer_space`).
+    for (a, b) in grid_row_gaps(&c.style, h - top - bot) {
+        cuts.push((top + a - 0.05, top + b));
+        solid.push((top + a - 0.05, top + b + 0.05));
+    }
     cuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
     forced.retain(|&f| f > 0.01 && f < h - 0.01);
     if bot > 0.0 {
@@ -10656,12 +10726,34 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                         other => Some(other.clone()),
                                     }
                                 }
+                                // Линейки промежутков (css-gaps-1) у копии
+                                // фрагмента: слой строится ТОЛЬКО при заданном
+                                // стиле линейки (`gap_rule_spec`), как в
+                                // `element()`, — ни одна старая пара сюда не
+                                // попадает. Буфер проб — СВОЙ на копию: пробы
+                                // всех копий одного узла иначе сливаются в один
+                                // буфер, первая копия забирает всё (`take`) и
+                                // строит дорожки по смеси поднятых на `from`
+                                // копий. Отрезки красятся в координатах полной
+                                // раскладки копии, маска колонки (`flow.rs`,
+                                // `with_content_mask`) режет их вместе с
+                                // содержимым — вид `slice` css-break-3 §4.
+                                let copy_ix = std::cell::Cell::new(0usize);
                                 let build = |first: bool| {
                                     let kids: Vec<Node> = if first {
                                         copy.children.clone()
                                     } else {
                                         copy.children.iter().filter_map(drop_fixed).collect()
                                     };
+                                    let frag_gap_rules = gap_rule_spec(&copy, &inner, opts);
+                                    let frag_gap_key = frag_gap_rules.as_ref().map(|_| {
+                                        let ix = copy_ix.get();
+                                        copy_ix.set(ix + 1);
+                                        (copy.node_id ^ opts.doc_salt)
+                                            ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+                                    });
+                                    let frag_gap_guard =
+                                        frag_gap_key.map(crate::interact::GapGuard::enter);
                                     // css-break-3 §5.5: «Fragmentation … occurs
                                     // before relative positioning, transforms,
                                     // and any other graphical effects. Such
@@ -10689,12 +10781,51 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // 059`, `multicol-nested-013/021`,
                                     // `multicol-fill-balance-nested-000`. Тот же
                                     // путь, на котором прежде мерился откат -52.
-                                    transformed(
-                                        styled_div_with(&copy, &inner)
-                                            .children(blocks(&kids, &inner, opts))
+                                    let mut body = blocks(&kids, &inner, opts);
+                                    drop(frag_gap_guard);
+                                    let mut d = styled_div_with(&copy, &inner);
+                                    // Для ЛЮБОЙ flex/grid-копии, не только с линейками:
+                                    // эталоны css-gaps (`…-fragmentation-008-ref`) кладут
+                                    // ту же сетку без правил, и с гейтом «только с
+                                    // линейками» тест рисовал сетку, а эталон — нет
+                                    // (v93: 008 3.75, 009 5.18, 010 4.50).
+                                    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v94): то же для
+                                    // flex-копий. css-break 2874: +26/−15, и девять потерь
+                                    // — 99.00 (`multi-line-row-flex-fragmentation-084…090`,
+                                    // `multi-line-column-flex-fragmentation-056/057`:
+                                    // страница разъезжается), ещё 065–071 на 1.5–13.
+                                    // Сетка даёт +17 в css-break без потерь.
+                                    if matches!(copy.style.width, None | Some(Len::Auto))
+                                        && matches!(
+                                            copy.style.display,
+                                            Some(Display::Grid) | Some(Display::InlineGrid)
+                                        )
+                                    {
+                                        d = d.w_full();
+                                    }
+                                    if let (Some(key), Some(spec)) = (frag_gap_key, frag_gap_rules) {
+                                        // Копия кладётся `layout_as_root(Definite(col_w), …)`
+                                        // (`flow.rs` `ColumnStack::prepaint`), а taffy у
+                                        // flex/grid-КОРНЯ с `width: auto` берёт размер
+                                        // содержимого, не доступное место
+                                        // (`vendor/taffy/src/compute/flexbox.rs`
+                                        // `determine_container_main_size`, ветвь
+                                        // `Definite` → `longest_line_length`): дорожки
+                                        // `1fr` выходили нулевыми, и вся сетка была
+                                        // невидима (`grid-gap-decorations-fragmentation-
+                                        // 008/010/016`: только серый фон). Блок
+                                        // растягивается сам; flex/grid получают 100% —
+                                        // корень разрешает долю против `available_space`
+                                        // (`taffy/src/compute/mod.rs` `compute_root_layout`).
+                                        body.push(
+                                            crate::interact::GapRulePainter::new(
+                                                crate::interact::gap_items_for(key),
+                                                spec,
+                                            )
                                             .into_any_element(),
-                                        &inner,
-                                    )
+                                        );
+                                    }
+                                    transformed(d.children(body).into_any_element(), &inner)
                                 };
                                 // Монолиты (css-break-3 §4.1) — их разрыв
                                 // запрещён, и в следующую колонку они уходят
