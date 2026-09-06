@@ -3811,9 +3811,11 @@ impl Computed {
                         "padding-box" => bx = Some(1),
                         "content-box" => bx = Some(0),
                         t => {
-                            if let Some(Len::Px(px)) = Len::parse(t)
-                                && px >= 0.0
-                            {
+                            // Отрицательная длина — ВТЯЖКА внутрь коробки
+                            // (css-overflow-4 §overflow-clip-margin:
+                            // «Negative values indicate insets»), а не
+                            // негодное объявление.
+                            if let Some(Len::Px(px)) = Len::parse(t) {
                                 margin = Some(px);
                             }
                         }
@@ -6822,6 +6824,68 @@ impl Computed {
                 self.contain_layout = Some(bits.1);
                 self.contain_paint = Some(bits.2);
                 self.contain_style = Some(bits.3);
+            }
+            "container-type" => {
+                // css-conditional-5 §container-type:
+                // `normal | [ [ size | inline-size ] || scroll-state ]`.
+                // `size` — «Applies style containment and size containment to
+                // the principal box»; `inline-size` — то же, но обособление
+                // одной строчной оси. Обособления РАСКЛАДКИ в этом списке НЕТ,
+                // и ставить его нельзя: у нас `contain_layout` делает элемент
+                // содержащим блоком для `absolute` и `fixed`
+                // (`inline::establishes_cb`, `inline::inherit`), а корпус
+                // требует обратного — `no-layout-containment-abspos`,
+                // `-fixedpos`, `-baseline` (все 0.00) проверяют, что абсолют,
+                // `fixed` и базовая линия проходят СКВОЗЬ контейнер.
+                //
+                // Правило `@container` этим шагом ещё не разбирается: здесь
+                // только побочное действие свойства. Оно само по себе отвечает
+                // за `contain-size-014` (коробка с `container-type: size`
+                // обязана мериться пустой, а росла по `<img height=200>`) и
+                // делает истинным `@supports (container-type: …)`, на котором
+                // висят `chrome-legacy-skip-recalc` и обе
+                // `svg-*-no-size-container`.
+                let mut size = false;
+                let mut inline = false;
+                let mut known = false;
+                for w in v.split_whitespace() {
+                    match w {
+                        "size" => {
+                            size = true;
+                            known = true;
+                        }
+                        "inline-size" => {
+                            inline = true;
+                            known = true;
+                        }
+                        // `scroll-state` — контейнер по состоянию прокрутки, к
+                        // размеру отношения не имеет; `normal` — начальное
+                        // значение. Оба грамматически годны и не делают ничего.
+                        "scroll-state" | "normal" => known = true,
+                        // Слово вне грамматики (например `anchored` из
+                        // css-anchor-position-2) делает объявление негодным
+                        // ЦЕЛИКОМ (CSS 2.1 §4.1.7), а не «частично годным»:
+                        // `anchored-fallback-style-containment` (0.01) обязана
+                        // остаться нетронутой.
+                        _ => return,
+                    }
+                }
+                if !known {
+                    return;
+                }
+                // Только ВЗВОД: `container-type: normal` не имеет права снять
+                // обособление, объявленное в том же блоке через `contain`, —
+                // это разные свойства, и начальное значение одного ничего не
+                // отменяет у другого.
+                if size {
+                    self.contain_size = Some(true);
+                }
+                if inline {
+                    self.contain_inline_size = Some(true);
+                }
+                if size || inline {
+                    self.contain_style = Some(true);
+                }
             }
             "content-visibility" => {
                 // `hidden` = size+layout+paint containment, содержимое

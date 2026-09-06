@@ -267,6 +267,11 @@ pub const PROPERTIES: &[Prop] = &[
         "paint",
         "`paint` и `strict` обрезают содержимое; `size` и `layout` на пересчёт          не влияют — он и так по узлу",
     ),
+    part(
+        "container-type",
+        "size",
+        "включает обособление размера и стиля, как велит css-conditional-5          §container-type; самого правила `@container` движок пока не разбирает",
+    ),
     m("isolation", "isolate"),
     no(
         "appearance",
