@@ -571,6 +571,21 @@ impl Element for Grouped {
         // (clip-path-circle-closest-corner). Область композита расширяется
         // до объединения коробки с рамкой формы.
         let shape_ext = self.mask.as_deref().and_then(|src| {
+            // `border-shape`: вынос области записан в спеке маски
+            // (`render::grouped` ← `Computed::border_shape_ext`): половина
+            // обводки наружу, margin-box, запас под митры. Порядок в записи
+            // t r b l, здесь — l t r b.
+            if let Some(spec) = src.strip_prefix("bordershape:") {
+                let head = spec.split_once(':')?.0;
+                let v: Vec<f32> = head
+                    .split_whitespace()
+                    .filter_map(|t| t.parse::<f32>().ok())
+                    .collect();
+                if v.len() != 9 {
+                    return None;
+                }
+                return Some((v[8], v[5], v[6], v[7]));
+            }
             let raw = src.strip_prefix("shape:")?;
             if raw.starts_with("rrect(") {
                 return None;
@@ -663,6 +678,25 @@ impl Element for Grouped {
         };
         let polygon = if poly_mask.is_some() { Vec::new() } else { polygon };
         let mask = self.mask.as_deref().or(poly_mask.as_deref()).and_then(|src| {
+            // `border-shape` (css-borders-4): маска — внешний контур рамки,
+            // SVG-растр на РАСШИРЕННУЮ область (обводка выходит за
+            // border-box), одной плиткой без мощения; альфа = покрытие.
+            if let Some(spec) = src.strip_prefix("bordershape:") {
+                let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                let (aw, ah) = (bw + sl + sr, bh + st + sb);
+                let markup =
+                    crate::background::border_shape_mask_svg(spec, bw, bh, sl, st, aw, ah)?;
+                let img = crate::svg::rasterize(&markup, aw, ah)?;
+                return Some((
+                    img,
+                    Bounds {
+                        origin: gpui::point(bounds.origin.x - px(sl), bounds.origin.y - px(st)),
+                        size: gpui::size(px(aw), px(ah)),
+                    },
+                    // Одна плитка: за пределами области пусто.
+                    3,
+                ));
+            }
             // Слои: `url(a), url(b)` — полотно, собранное по mask-composite;
             // одиночный слой идёт плиткой прямо в композит.
             let layers: Vec<String> = if src.starts_with("shape:") {

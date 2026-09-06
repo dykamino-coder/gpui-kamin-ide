@@ -1013,6 +1013,18 @@ pub enum TextEdge {
     Alphabetic,
 }
 
+/// `border-shape` (css-borders-4 §border-shape): одна фигура — рамка
+/// обводкой по её контуру толщиной «relevant side»; две — заливка между
+/// внешней и внутренней. Текст фигуры хранится как есть, доли резолвит
+/// отрисовка от опорной коробки (`geometry-box`: 0 border, 1 margin,
+/// 2 padding, 3 content, 4 half-border-box).
+#[derive(Clone, Debug, PartialEq)]
+pub struct BorderShape {
+    pub outer: String,
+    pub outer_box: u8,
+    pub inner: Option<(String, u8)>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
     /// Счётчик объявлений этого узла: порядок каскада между логическими и
@@ -1795,6 +1807,10 @@ pub struct Computed {
     /// `None` — все углы круглые (начальное значение). Угол с K≠1 при
     /// ненулевом радиусе рисуется растровой маской (`Computed::corner_shaped`).
     pub corner_shape: Option<[f32; 4]>,
+    /// `border-shape` (css-borders-4 §border-shape); `None` — начальное `none`.
+    /// Контур режет буфер группы (`render::grouped`), рамку красит слой
+    /// (`render::decorations`), `border-radius` при этом игнорируется.
+    pub border_shape: Option<BorderShape>,
     /// `filter`: цветовые преобразования, применённые к собственным цветам.
     pub filter: Option<Filter>,
     /// `filter: url(#id)` — ссылка на SVG-`<filter>` документа; рисуется
@@ -3241,6 +3257,18 @@ impl Computed {
                 // Общий цвет остаётся у верхней стороны: его читают пути, не
                 // знающие о сторонах.
                 self.border_color = at(0);
+            }
+            // `border-shape` (css-borders-4 §border-shape): `none` либо одна-две
+            // базовые фигуры, каждая с необязательной опорной коробкой ПОСЛЕ
+            // неё. Дефолты — как в Blink `ConvertBorderShape`: одна фигура →
+            // half-border-box, две → border-box и padding-box. Неразобранное
+            // значение — объявление отбрасывается (прежнее остаётся).
+            "border-shape" => {
+                if v.eq_ignore_ascii_case("none") {
+                    self.border_shape = None;
+                } else if let Some(bs) = parse_border_shape(v) {
+                    self.border_shape = Some(bs);
+                }
             }
             // `corner-shape` (css-borders-4 §corner-shaping-shorthand): 1–4
             // значения раскладываются по углам как `border-radius`.
@@ -6923,6 +6951,109 @@ impl Computed {
             .filter(|_| self.clamp_legacy != Some(true) || legacy_ok)
     }
 
+    /// Обводка `border-shape` по «relevant side» (css-borders-4
+    /// §border-shape-relevant-side): первая сторона в порядке block-start,
+    /// inline-start, block-end, inline-end со стилем не `none`, иначе
+    /// block-start; берутся её толщина и цвет (Blink
+    /// `RelevantSideForBorderShape`). Физические индексы t/r/b/l = 0..3;
+    /// без цвета — цвет текста, без него чёрный (`currentColor`).
+    pub fn border_shape_stroke(&self) -> (f32, Color) {
+        let vertical = self.vertical == Some(true);
+        let rl = self.vertical_rl == Some(true);
+        let rtl = self.rtl == Some(true);
+        let (block_start, block_end) = match (vertical, rl) {
+            (false, _) => (0usize, 2usize),
+            (true, true) => (1, 3),
+            (true, false) => (3, 1),
+        };
+        let (inline_start, inline_end) = match (vertical, rtl) {
+            (false, false) => (3usize, 1usize),
+            (false, true) => (1, 3),
+            (true, false) => (0, 2),
+            (true, true) => (2, 0),
+        };
+        let order = [block_start, inline_start, block_end, inline_end];
+        let side = order
+            .iter()
+            .copied()
+            .find(|i| self.border_visible[*i] == Some(true))
+            .unwrap_or(block_start);
+        let w = self.borders();
+        let width = match [w.top, w.right, w.bottom, w.left][side] {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let colour = self.border_colors[side]
+            .or(self.border_color)
+            .or(self.color)
+            .unwrap_or(Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            });
+        (width, colour)
+    }
+
+    /// Края опорной коробки `<geometry-box>` относительно border-box, t/r/b/l,
+    /// наружу положительные: margin-box шире на поля, padding-box уже на
+    /// рамку, content-box — на рамку и отбивку, half-border-box — на половину
+    /// рамки (Blink `GeometryBoxUtils::ReferenceBoxBorderBoxOutsets`).
+    pub fn geometry_outsets(&self, kind: u8) -> [f32; 4] {
+        let px = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let b = self.borders();
+        let bw = [px(b.top), px(b.right), px(b.bottom), px(b.left)];
+        let pd = [
+            px(self.padding.top),
+            px(self.padding.right),
+            px(self.padding.bottom),
+            px(self.padding.left),
+        ];
+        let mg = [
+            px(self.margin.top),
+            px(self.margin.right),
+            px(self.margin.bottom),
+            px(self.margin.left),
+        ];
+        let mut out = [0.0f32; 4];
+        for i in 0..4 {
+            out[i] = match kind {
+                1 => mg[i],
+                2 => -bw[i],
+                3 => -(bw[i] + pd[i]),
+                4 => -bw[i] / 2.0,
+                _ => 0.0,
+            };
+        }
+        out
+    }
+
+    /// Вынос слоёв `border-shape` за border-box (t/r/b/l): половина обводки
+    /// наружу у одной фигуры, опорная коробка шире border-box (margin-box) и
+    /// запас под митры прямолинейного контура — Blink держит предел митры 1e10
+    /// у polygon, шип длиной w/sin(θ/2); 5w покрывает углы от ~23°
+    /// (border-shape-polygon-miter-limit: шип ~80 px при w=20).
+    pub fn border_shape_ext(&self) -> [f32; 4] {
+        let Some(bs) = &self.border_shape else {
+            return [0.0; 4];
+        };
+        let out = self.geometry_outsets(bs.outer_box);
+        let stroke = if bs.inner.is_some() {
+            0.0
+        } else {
+            self.border_shape_stroke().0
+        };
+        let spike = if stroke > 0.0 && crate::background::shape_is_linear(&bs.outer) {
+            stroke * 5.0
+        } else {
+            0.0
+        };
+        out.map(|o| o.max(0.0) + stroke / 2.0 + spike)
+    }
+
     /// Есть ли угол с формой, отличной от круглой, при ненулевом радиусе
     /// (css-borders-4 §corner-shaping: «if border-radius is 0, corner-shape
     /// won't have any effect»). Такой угол уходит растровой маской контура,
@@ -7723,6 +7854,74 @@ fn parse_overflow(v: &str) -> Option<Overflow> {
         "visible" => Some(Overflow::Visible),
         _ => None,
     }
+}
+
+/// Опорная коробка `<geometry-box>` (css-masking-1 §1.3.1.1 плюс
+/// `half-border-box` css-borders-4): 0 border, 1 margin, 2 padding,
+/// 3 content, 4 half-border. У элемента с CSS-коробкой `fill-box` =
+/// content-box, `stroke-box`/`view-box` = border-box.
+fn geometry_box_kind(word: &str) -> Option<u8> {
+    Some(match word.trim().to_ascii_lowercase().as_str() {
+        "border-box" | "stroke-box" | "view-box" => 0,
+        "margin-box" => 1,
+        "padding-box" => 2,
+        "content-box" | "fill-box" => 3,
+        "half-border-box" => 4,
+        _ => return None,
+    })
+}
+
+/// `border-shape: [ <basic-shape> <geometry-box>? ]{1,2}`. Фигура — функция
+/// со скобками, режется по ПАРНОЙ закрывающей (внутри `polygon(...)`
+/// запятые, внутри `path('...')` — что угодно); слово коробки — следом за
+/// ней. Хвост, не разобранный в две фигуры, делает значение недействительным.
+fn parse_border_shape(v: &str) -> Option<BorderShape> {
+    let mut items: Vec<(String, Option<u8>)> = Vec::new();
+    let mut rest = v.trim();
+    while !rest.is_empty() && items.len() < 2 {
+        let open = rest.find('(')?;
+        let mut depth = 0usize;
+        let mut close = None;
+        for (i, ch) in rest[open..].char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth = depth.checked_sub(1)?;
+                    if depth == 0 {
+                        close = Some(open + i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let close = close?;
+        let shape = rest[..=close].trim().to_string();
+        rest = rest[close + 1..].trim_start();
+        let word_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        let bx = geometry_box_kind(&rest[..word_end]);
+        if bx.is_some() {
+            rest = rest[word_end..].trim_start();
+        }
+        items.push((shape, bx));
+    }
+    if !rest.is_empty() {
+        return None;
+    }
+    let mut it = items.into_iter();
+    let (outer, outer_box) = it.next()?;
+    Some(match it.next() {
+        Some((inner, inner_box)) => BorderShape {
+            outer,
+            outer_box: outer_box.unwrap_or(0),
+            inner: Some((inner, inner_box.unwrap_or(2))),
+        },
+        None => BorderShape {
+            outer,
+            outer_box: outer_box.unwrap_or(4),
+            inner: None,
+        },
+    })
 }
 
 /// Параметр суперэллипса из одного значения `<corner-shape-value>`
@@ -9061,6 +9260,7 @@ fn initial_value(key: &str) -> Option<&'static str> {
         "border" => "0 none",
         "border-radius" => "0",
         "corner-shape" => "round",
+        "border-shape" => "none",
         "color" => "black",
         "margin" => "0",
         "padding" => "0",

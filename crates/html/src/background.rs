@@ -271,6 +271,229 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
     (!d.is_empty()).then(|| d.trim_end().to_string())
 }
 
+/// Контур `border-shape` состоит только из прямых (polygon, `path()`/`shape()`
+/// без кривых)? У таких Blink держит предел митры 1e10 — острые углы уходят
+/// шипами; у кривых — 4.0 по умолчанию (`border_shape_painter.cc`).
+pub fn shape_is_linear(raw: &str) -> bool {
+    let raw = raw.trim();
+    if raw.starts_with("polygon(") {
+        return true;
+    }
+    if let Some(d) = raw.strip_prefix("path(") {
+        return !d.contains(|c: char| {
+            matches!(c, 'C' | 'c' | 'S' | 's' | 'Q' | 'q' | 'T' | 't' | 'A' | 'a')
+        });
+    }
+    if raw.starts_with("shape(") {
+        return !(raw.contains("arc") || raw.contains("curve") || raw.contains("smooth"));
+    }
+    false
+}
+
+/// Предел митры обводки `border-shape`: у прямолинейного контура 1000 (эталоны
+/// WPT ставят ровно столько; Blink — 1e10), у кривых — 4 по умолчанию SVG.
+fn miter_limit(raw: &str) -> f32 {
+    if shape_is_linear(raw) { 1000.0 } else { 4.0 }
+}
+
+/// Скруглённый прямоугольник → контур `d` дугами; радиусы жмутся одним
+/// множителем (css-backgrounds-3 §5.5), как в `rrect_mask`. Вырожденный
+/// прямоугольник — пустой контур.
+fn rrect_d((x0, y0, w, h): (f32, f32, f32, f32), radii: [(f32, f32); 4]) -> String {
+    if w <= 0.0 || h <= 0.0 {
+        return String::new();
+    }
+    let sum = |a: f32, c: f32, side: f32| {
+        if a + c > side && a + c > 0.0 {
+            side / (a + c)
+        } else {
+            1.0
+        }
+    };
+    let k = 1.0f32
+        .min(sum(radii[0].0, radii[1].0, w))
+        .min(sum(radii[3].0, radii[2].0, w))
+        .min(sum(radii[0].1, radii[3].1, h))
+        .min(sum(radii[1].1, radii[2].1, h));
+    let r: Vec<(f32, f32)> = radii.iter().map(|(a, c)| (a * k, c * k)).collect();
+    let (x1, y1) = (x0 + w, y0 + h);
+    let arc = |rx: f32, ry: f32, x: f32, y: f32| {
+        if rx > 0.0 && ry > 0.0 {
+            format!("A{rx} {ry} 0 0 1 {x} {y} ")
+        } else {
+            format!("L{x} {y} ")
+        }
+    };
+    let mut d = format!("M{} {} L{} {} ", x0 + r[0].0, y0, x1 - r[1].0, y0);
+    d.push_str(&arc(r[1].0, r[1].1, x1, y0 + r[1].1));
+    d.push_str(&format!("L{} {} ", x1, y1 - r[2].1));
+    d.push_str(&arc(r[2].0, r[2].1, x1 - r[2].0, y1));
+    d.push_str(&format!("L{} {} ", x0 + r[3].0, y1));
+    d.push_str(&arc(r[3].0, r[3].1, x0, y1 - r[3].1));
+    d.push_str(&format!("L{} {} ", x0, y0 + r[0].1));
+    d.push_str(&arc(r[0].0, r[0].1, x0 + r[0].0, y0));
+    d.push('Z');
+    d
+}
+
+/// Контур базовой фигуры `border-shape` в системе ОПОРНОЙ коробки (начало в
+/// её углу, размер rw×rh): `d` для SVG и правило намотки. Circle/ellipse —
+/// через `shape_params` (все ключи extent), inset/rect/xywh — `rrect_of`,
+/// polygon/path/shape — `svg_path_of` (те же функции, что у `shape-outside`).
+/// Пустой `d` — вырожденная фигура (`circle(0%)`, `inset(100px)` шире
+/// коробки): не видно ничего, как в Blink
+/// (border-shape-collapsed-shape-clips-background).
+pub fn border_shape_path(raw: &str, rw: f32, rh: f32) -> Option<(String, &'static str)> {
+    let raw = raw.trim();
+    if raw.starts_with("circle(") || raw.starts_with("ellipse(") {
+        let (cx, cy, rx, ry) = shape_params(raw, rw, rh, 1.0)?;
+        if rx <= 0.0 || ry <= 0.0 {
+            return Some((String::new(), "nonzero"));
+        }
+        return Some((
+            format!(
+                "M{} {} A{rx} {ry} 0 1 0 {} {} A{rx} {ry} 0 1 0 {} {} Z",
+                cx - rx,
+                cy,
+                cx + rx,
+                cy,
+                cx - rx,
+                cy
+            ),
+            "nonzero",
+        ));
+    }
+    let b = ShapeBox {
+        mw: rw,
+        mh: rh,
+        rx: 0.0,
+        ry: 0.0,
+        rw,
+        rh,
+        cx: 0.0,
+        cy: 0.0,
+        cw: rw,
+        ch: rh,
+        radius: [(0.0, 0.0); 4],
+        threshold: 0.0,
+    };
+    if let Some((rect, radii)) = rrect_of(raw, &b) {
+        return Some((rrect_d(rect, radii), "nonzero"));
+    }
+    svg_path_of(raw, &b)
+}
+
+/// Разметка маски буфера группы под `border-shape`: холст cw×ch — область
+/// композита, border-box в нём начинается в (dx, dy) и имеет размер bw×bh.
+/// Запись `spec`: `t r b l` края опорной коробки от border-box (наружу
+/// положительные), толщина обводки, `t r b l` выноса области, `:` и текст
+/// фигуры. Одна фигура — контур ПЛЮС его обводка толщиной рамки (Blink
+/// `BorderShapePainter::OuterPath` = shape ∪ stroke: фон и содержимое видны
+/// под всем кольцом); две — внешняя фигура как есть (обводка 0).
+pub fn border_shape_mask_svg(
+    spec: &str,
+    bw: f32,
+    bh: f32,
+    dx: f32,
+    dy: f32,
+    cw: f32,
+    ch: f32,
+) -> Option<String> {
+    let (head, raw) = spec.split_once(':')?;
+    let v: Vec<f32> = head
+        .split_whitespace()
+        .filter_map(|t| t.parse::<f32>().ok())
+        .collect();
+    if v.len() != 9 {
+        return None;
+    }
+    let (ot, or_, ob, ol, stroke) = (v[0], v[1], v[2], v[3], v[4]);
+    let (rw, rh) = ((bw + ol + or_).max(0.0), (bh + ot + ob).max(0.0));
+    let (d, rule) = border_shape_path(raw, rw, rh)?;
+    let path = if d.is_empty() {
+        String::new()
+    } else {
+        let stroke_attr = if stroke > 0.0 {
+            format!(
+                r##" stroke="#ffffff" stroke-width="{stroke}" stroke-miterlimit="{}""##,
+                miter_limit(raw)
+            )
+        } else {
+            String::new()
+        };
+        format!(r##"<path d="{d}" fill="#ffffff" fill-rule="{rule}"{stroke_attr}/>"##)
+    };
+    Some(format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cw}" height="{ch}"><g transform="translate({} {})">{path}</g></svg>"##,
+        dx - ol,
+        dy - ot
+    ))
+}
+
+/// Разметка кольца рамки `border-shape` цветом `colour` (холст и border-box —
+/// как у `border_shape_mask_svg`; `outer`/`inner` — текст фигуры и края её
+/// опорной коробки от border-box). Одна фигура — SVG-обводка толщиной
+/// `stroke` по центру контура (half-border-box: поровну внутрь и наружу);
+/// две — «внешняя минус внутренняя» через `<mask>` (не evenodd: внутренняя
+/// может выходить за внешнюю, Blink берёт разность путей). `None` — рисовать
+/// нечего.
+pub fn border_shape_ring_svg(
+    outer: (&str, [f32; 4]),
+    inner: Option<(&str, [f32; 4])>,
+    stroke: f32,
+    colour: crate::value::Color,
+    bw: f32,
+    bh: f32,
+    dx: f32,
+    dy: f32,
+    cw: f32,
+    ch: f32,
+) -> Option<String> {
+    let rgb = format!(
+        "rgb({},{},{})",
+        (colour.r * 255.0).round(),
+        (colour.g * 255.0).round(),
+        (colour.b * 255.0).round()
+    );
+    let place = |(raw, [t, r, b, l]): (&str, [f32; 4])| -> Option<(String, String, &'static str)> {
+        let (d, rule) = border_shape_path(raw, (bw + l + r).max(0.0), (bh + t + b).max(0.0))?;
+        Some((format!("translate({} {})", dx - l, dy - t), d, rule))
+    };
+    let (tr_o, d_o, rule_o) = place(outer)?;
+    if d_o.is_empty() {
+        return None;
+    }
+    let body = match inner {
+        None => {
+            if stroke <= 0.0 {
+                return None;
+            }
+            format!(
+                r##"<g transform="{tr_o}"><path d="{d_o}" fill="none" fill-rule="{rule_o}" stroke="{rgb}" stroke-opacity="{}" stroke-width="{stroke}" stroke-miterlimit="{}"/></g>"##,
+                colour.a,
+                miter_limit(outer.0)
+            )
+        }
+        Some(inner) => {
+            let (tr_i, d_i, rule_i) = place(inner)?;
+            let hole = if d_i.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    r##"<g transform="{tr_i}"><path d="{d_i}" fill="#000000" fill-rule="{rule_i}"/></g>"##
+                )
+            };
+            format!(
+                r##"<mask id="ring" maskUnits="userSpaceOnUse" x="0" y="0" width="{cw}" height="{ch}"><g transform="{tr_o}"><path d="{d_o}" fill="#ffffff" fill-rule="{rule_o}"/></g>{hole}</mask><rect width="{cw}" height="{ch}" fill="{rgb}" fill-opacity="{}" mask="url(#ring)"/>"##,
+                colour.a
+            )
+        }
+    };
+    Some(format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cw}" height="{ch}">{body}</svg>"##
+    ))
+}
+
 /// Слой готового полотна маски: растр плитки и её укладка в device px.
 pub struct MaskLayer {
     pub image: Arc<RenderImage>,

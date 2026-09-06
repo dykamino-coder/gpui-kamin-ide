@@ -412,6 +412,64 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         }
     }
 
+    // Рамка `border-shape` (css-borders-4 §border-shape): одна фигура — SVG-
+    // обводка толщиной «relevant side» по центру контура, две — заливка между
+    // внешней и внутренней. Квад цвета не получает (`apply::apply_paint`),
+    // полосы разных сторон не рисуются (ниже). Слой — растр `svg::rasterize`
+    // на border-box плюс вынос (`Computed::border_shape_ext`) — тот же
+    // контур, что у маски группы (`background::border_shape_path`).
+    if let Some(bs) = c.border_shape.clone() {
+        let (stroke, colour) = c.border_shape_stroke();
+        let outer_out = c.geometry_outsets(bs.outer_box);
+        let inner = bs
+            .inner
+            .clone()
+            .map(|(s, k)| (s, c.geometry_outsets(k)));
+        let ext = c.border_shape_ext();
+        let side_px = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let w = c.borders();
+        let [t, r, b, l] = [side_px(w.top), side_px(w.right), side_px(w.bottom), side_px(w.left)];
+        if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
+            out.push(
+                gpui::canvas(
+                    |_, _, _| {},
+                    move |bounds, _, window, _| {
+                        let (cw, ch) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                        let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
+                        let markup = crate::background::border_shape_ring_svg(
+                            (bs.outer.as_str(), outer_out),
+                            inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
+                            stroke,
+                            colour,
+                            bw,
+                            bh,
+                            ext[3],
+                            ext[0],
+                            cw,
+                            ch,
+                        );
+                        if let Some(markup) = markup
+                            && let Some(img) = crate::svg::rasterize(&markup, cw, ch)
+                        {
+                            let _ = window.paint_image(bounds, gpui::Corners::default(), img, 0, false);
+                        }
+                    },
+                )
+                // Абсолютный ребёнок считается от padding-box — слой накрывает
+                // рамку и вынос отрицательными отступами.
+                .absolute()
+                .top(px(-(t + ext[0])))
+                .left(px(-(l + ext[3])))
+                .right(px(-(r + ext[1])))
+                .bottom(px(-(b + ext[2])))
+                .into_any_element(),
+            );
+        }
+    }
+
     // Рамка-картинка рисуется ПОВЕРХ фона и заменяет обычную рамку.
     if let Some(layer) = crate::border_image::layer(c) {
         out.push(layer);
@@ -640,7 +698,9 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // несовпадающие стороны дорисовываются полосами поверх.
     let sides: Vec<_> = c.border_colors.iter().flatten().collect();
     let uniform = sides.len() == 4 && sides.iter().all(|s| *s == sides[0]);
-    if !sides.is_empty() && !uniform {
+    // При `border-shape` рамка — один слой цветом relevant side (спека:
+    // stroke-from-border), прямоугольные полосы сторон ей не нужны.
+    if !sides.is_empty() && !uniform && c.border_shape.is_none() {
         let side_px = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,
             _ => 0.0,
@@ -8679,10 +8739,29 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     let rrect = c
         .radius_masked()
         .then(|| format!("shape:{}", crate::background::rrect_spec(c, None)));
+    // `border-shape` (css-borders-4): фон и содержимое режутся ВНЕШНИМ
+    // контуром рамки (Blink клипует фон внешней фигурой, у двух фигур —
+    // внутренней; кольцо у нас лежит непрозрачным слоем сверху, итог тот же).
+    // Две фигуры при ПРОЗРАЧНОЙ рамке: кольца не видно, а фон обязан
+    // исчезнуть вместе с внутренней фигурой — маска берёт её
+    // (border-shape-collapsed-shape-clips-background, t3). Запись:
+    // `t r b l` опорной коробки, обводка, `t r b l` выноса, `:`, фигура.
+    let bshape = c.border_shape.as_ref().map(|bs| {
+        let (stroke, colour) = c.border_shape_stroke();
+        let (shape, kind, stroke) = match &bs.inner {
+            Some((inner, k)) if colour.a <= 0.0 => (inner.as_str(), *k, 0.0),
+            Some(_) => (bs.outer.as_str(), bs.outer_box, 0.0),
+            None => (bs.outer.as_str(), bs.outer_box, stroke),
+        };
+        let [ot, or_, ob, ol] = c.geometry_outsets(kind);
+        let [et, er, eb, el] = c.border_shape_ext();
+        format!("bordershape:{ot} {or_} {ob} {ol} {stroke} {et} {er} {eb} {el}:{shape}")
+    });
     let mask = c
         .mask_image
         .clone()
         .or_else(|| c.clip_shape.clone())
+        .or(bshape)
         .or(rrect)
         .map(|m| resolve_mask_refs(&m));
     // `clip: rect()` действует только на абсолютный элемент (CSS 2.1).

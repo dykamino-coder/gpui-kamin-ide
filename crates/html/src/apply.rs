@@ -1254,7 +1254,9 @@ fn apply_radius(mut d: Div, c: &Computed) -> Div {
     // Эллиптические углы и большой неоднородный радиус режет альфа-маска
     // буфера группы; круглое скругление сверху обрезало бы форму вторым
     // лезвием (см. `Computed::radius_masked`).
-    if c.radius_masked() {
+    // `border-shape` не совместим с `border-radius`: радиус — «as if it was
+    // set to 0» (css-borders-4 §border-shape-radius-interaction).
+    if c.radius_masked() || c.border_shape.is_some() {
         return d;
     }
     let r = &c.radius;
@@ -1329,9 +1331,12 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // (`render::decorations`), квад цвета не получает — иначе его прямой
     // внутренний угол проступал бы из-под контура (corner-shape-bevel:
     // красный треугольник ~240 px² на угол при допуске 200 px на пару).
+    // `border-shape`: рамку целиком рисует слой контура (`render::decorations`),
+    // прямоугольная рамка квада проступала бы из-под фигуры.
     if !border_image_on
         && !mixed
         && !c.corner_shaped()
+        && c.border_shape.is_none()
         && let Some(bc) = uniform.copied().copied().or(c.border_color).or(current)
     {
         d = d.border_color(bc.to_hsla());
