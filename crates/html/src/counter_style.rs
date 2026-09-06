@@ -2,8 +2,18 @@
 //! рисовались ПУСТЫМИ (не-`li` дети `<ol>` выбрасывались в `render.rs::list`),
 //! и таблицы знаков было не с чем сравнивать. После починки эталона (06.09)
 //! те же таблицы дали +48/−11 на срезе 501 пары — см. `scout-counterstyles-
-//! 2026-09.md`. Оставшиеся 11 — позиционные CJK (шаг 3), они были
-//! «зелёными» пустотой.
+//! 2026-09.md`. Все 11 потерь были позиционными CJK; их закрывает
+//! `cjk_positional` ниже (`scout-counterstyles-2026-09b.md`).
+//!
+//! ★ ДИАПАЗОНЫ ВЗЯТЫ ОБЯЗАТЕЛЬНЫЕ, А НЕ РАСШИРЕННЫЕ. Восточноазиатские —
+//! −9999..9999 (css-counter-styles-3 §6.4 «Limited-range Implementation
+//! (required)»), иврит — 1..10999 (§hebrew). Необязательное расширение
+//! (§extended-range-optional до 10^16, иврит до 999999, как в Blink)
+//! ПРОВАЛИВАЕТ эталоны `css3-counter-styles-044/049/054/059/064/073/078/
+//! 083/088/016a`, которые ждут именно резерва; расширенные эталоны лежат
+//! рядом в НЕиспользуемых базой `*-alt-ref.html`. Второе препятствие:
+//! значение счётчика в крейте — `i32` (`counters.rs`), а расширенные тесты
+//! набирают 10^12..10^16.
 //! Представление счётчика знаками: `counter(n, lower-roman)`, маркеры
 //! списков, `counters()`.
 //!
@@ -149,6 +159,19 @@ fn additive(mut n: usize, table: &[(usize, char)]) -> String {
     out
 }
 
+/// То же, но знак веса набран из НЕСКОЛЬКИХ букв: у иврита тысяча пишется
+/// буквой с герешем (`1000` — `א׳`), а 15 и 16 — особыми парами.
+fn additive_str(mut n: usize, table: &[(usize, &str)]) -> String {
+    let mut out = String::new();
+    for (weight, sign) in table {
+        while n >= *weight {
+            out.push_str(sign);
+            n -= weight;
+        }
+    }
+    out
+}
+
 /// Армянская запись, 1..9999 (css-counter-styles-3 §armenian).
 const ARMENIAN: &[(usize, char)] = &[
     (9000, 'Ք'),
@@ -229,6 +252,303 @@ const GEORGIAN: &[(usize, char)] = &[
     (2, 'ბ'),
     (1, 'ა'),
 ];
+
+/// Иврит, 1..10999 (css-counter-styles-3 §hebrew). 15 и 16 записаны
+/// отдельными парами `טו`/`טז`: обычное сложение дало бы сочетание, слишком
+/// похожее на тетраграмматон. Тысячи — буква с герешем `׳` U+05F3
+/// (`1000` — `א׳`, `9999` — `ט׳תתקצט`).
+const HEBREW: &[(usize, &str)] = &[
+    (10000, "י׳"),
+    (9000, "ט׳"),
+    (8000, "ח׳"),
+    (7000, "ז׳"),
+    (6000, "ו׳"),
+    (5000, "ה׳"),
+    (4000, "ד׳"),
+    (3000, "ג׳"),
+    (2000, "ב׳"),
+    (1000, "א׳"),
+    (400, "ת"),
+    (300, "ש"),
+    (200, "ר"),
+    (100, "ק"),
+    (90, "צ"),
+    (80, "פ"),
+    (70, "ע"),
+    (60, "ס"),
+    (50, "נ"),
+    (40, "מ"),
+    (30, "ל"),
+    (20, "כ"),
+    (19, "יט"),
+    (18, "יח"),
+    (17, "יז"),
+    (16, "טז"),
+    (15, "טו"),
+    (10, "י"),
+    (9, "ט"),
+    (8, "ח"),
+    (7, "ז"),
+    (6, "ו"),
+    (5, "ה"),
+    (4, "ד"),
+    (3, "ג"),
+    (2, "ב"),
+    (1, "א"),
+];
+
+/// Эфиопские цифры единиц (1..9) и десятков (10..90).
+const ETHIOPIC_UNITS: [char; 9] = ['፩', '፪', '፫', '፬', '፭', '፮', '፯', '፰', '፱'];
+const ETHIOPIC_TENS: [char; 9] = ['፲', '፳', '፴', '፵', '፶', '፷', '፸', '፹', '፺'];
+
+/// `ethiopic-numeric` (css-counter-styles-3 §ethiopic-numeric): число делится
+/// на группы по ДВЕ цифры, чётные группы отделяются `፼` U+137C, нечётные —
+/// `፻` U+137B. Цифры группы не пишутся, если группа нулевая, если она старшая
+/// и равна единице или если она нечётная и равна единице (`100` — `፻`, а не
+/// `፩፻`). Разделитель нулевой группы приписывается безусловно и снимается в
+/// конце.
+fn ethiopic(mut n: usize) -> String {
+    if n < 10 {
+        return ETHIOPIC_UNITS[n - 1].to_string();
+    }
+    let mut rev = Vec::new();
+    let mut odd = false;
+    while n > 0 {
+        let group = n % 100;
+        n /= 100;
+        if odd {
+            if group != 0 {
+                rev.push('፻');
+            }
+        } else {
+            rev.push('፼');
+        }
+        let bare = group == 0 || (group == 1 && (n == 0 || odd));
+        if !bare {
+            if group % 10 != 0 {
+                rev.push(ETHIOPIC_UNITS[group % 10 - 1]);
+            }
+            if group / 10 != 0 {
+                rev.push(ETHIOPIC_TENS[group / 10 - 1]);
+            }
+        }
+        odd = !odd;
+    }
+    rev.reverse();
+    rev.pop();
+    rev.into_iter().collect()
+}
+
+/// Позиционный («длинный») восточноазиатский стиль (css-counter-styles-3
+/// §6.4): десять цифр, маркеры разрядов десятков/сотен/тысяч и строка знака
+/// минуса. Групповые маркеры 万/億/兆 сюда не входят: обязательный диапазон
+/// стиля — −9999..9999, а всё сверх него уходит в резерв (см. шапку файла).
+struct Cjk {
+    digits: [char; 10],
+    /// Маркеры десятков, сотен и тысяч.
+    markers: [char; 3],
+    negative: &'static str,
+    /// Единица перед маркером разряда не пишется — японский и корейский
+    /// неформальные (`100` — `百`, `1000` — `千`).
+    drop_one: bool,
+    /// Только китайские неформальные: у 10..19 пропадает цифра десятков, а
+    /// маркер остаётся (`11` — `十一`), но `100` — всё равно `一百`.
+    drop_teen: bool,
+    /// Китайские пишут внутренний ноль знаком нуля и схлопывают подряд
+    /// идущие (`1001` — `一千零一`); японские и корейские просто выбрасывают
+    /// (`101` — `百一`).
+    inner_zero: bool,
+    /// Вне диапазона японские и китайские падают на `cjk-decimal` (эталоны
+    /// `css3-counter-styles-044/049/073/078/083/088`: `一〇〇〇〇`),
+    /// корейские — на десятичный (`-054/-059/-064`: `10000, `).
+    fallback_cjk: bool,
+}
+
+/// Девять позиционных стилей §6.4. Цифры и маркеры сверены со сводной
+/// таблицей спеки (0, 1, 2, 3, 10, 11, 99, 100, 101, 6001) и с эталонами
+/// `css3-counter-styles-042…089`.
+const CJK_STYLES: &[(&str, Cjk)] = &[
+    (
+        "japanese-informal",
+        Cjk {
+            digits: ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'],
+            markers: ['十', '百', '千'],
+            negative: "マイナス",
+            drop_one: true,
+            drop_teen: false,
+            inner_zero: false,
+            fallback_cjk: true,
+        },
+    ),
+    (
+        "japanese-formal",
+        Cjk {
+            digits: ['零', '壱', '弐', '参', '四', '伍', '六', '七', '八', '九'],
+            markers: ['拾', '百', '阡'],
+            negative: "マイナス",
+            drop_one: false,
+            drop_teen: false,
+            inner_zero: false,
+            fallback_cjk: true,
+        },
+    ),
+    (
+        "korean-hangul-formal",
+        Cjk {
+            digits: ['영', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'],
+            markers: ['십', '백', '천'],
+            negative: "마이너스 ",
+            drop_one: false,
+            drop_teen: false,
+            inner_zero: false,
+            fallback_cjk: false,
+        },
+    ),
+    (
+        "korean-hanja-informal",
+        Cjk {
+            digits: ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'],
+            markers: ['十', '百', '千'],
+            negative: "마이너스 ",
+            drop_one: true,
+            drop_teen: false,
+            inner_zero: false,
+            fallback_cjk: false,
+        },
+    ),
+    (
+        "korean-hanja-formal",
+        Cjk {
+            digits: ['零', '壹', '貳', '參', '四', '五', '六', '七', '八', '九'],
+            markers: ['拾', '百', '仟'],
+            negative: "마이너스 ",
+            drop_one: false,
+            drop_teen: false,
+            inner_zero: false,
+            fallback_cjk: false,
+        },
+    ),
+    (
+        "simp-chinese-informal",
+        Cjk {
+            digits: ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'],
+            markers: ['十', '百', '千'],
+            negative: "负",
+            drop_one: false,
+            drop_teen: true,
+            inner_zero: true,
+            fallback_cjk: true,
+        },
+    ),
+    (
+        "simp-chinese-formal",
+        Cjk {
+            digits: ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖'],
+            markers: ['拾', '佰', '仟'],
+            negative: "负",
+            drop_one: false,
+            drop_teen: false,
+            inner_zero: true,
+            fallback_cjk: true,
+        },
+    ),
+    (
+        "trad-chinese-informal",
+        Cjk {
+            digits: ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'],
+            markers: ['十', '百', '千'],
+            negative: "負",
+            drop_one: false,
+            drop_teen: true,
+            inner_zero: true,
+            fallback_cjk: true,
+        },
+    ),
+    (
+        "trad-chinese-formal",
+        Cjk {
+            digits: ['零', '壹', '貳', '參', '肆', '伍', '陸', '柒', '捌', '玖'],
+            markers: ['拾', '佰', '仟'],
+            negative: "負",
+            drop_one: false,
+            drop_teen: false,
+            inner_zero: true,
+            fallback_cjk: true,
+        },
+    ),
+];
+
+/// Позиционная запись 0..9999 знаками стиля (css-counter-styles-3
+/// §limited-chinese; аддитивные таблицы японских и корейских стилей §6.4 в
+/// этом диапазоне дают ровно то же самое, поэтому алгоритм один на всех).
+///
+/// Слоты записи фиксированы: цифра тысяч, маркер тысяч, цифра сотен, маркер
+/// сотен, цифра десятков, маркер десятков, цифра единиц. Разряд заполняется,
+/// только если число до него дотянулось (шаг 3 алгоритма), после чего
+/// действуют «сброс единицы» и «сброс нулей» своего стиля (шаги 4-5).
+fn cjk_positional(n: usize, t: &Cjk) -> String {
+    if n == 0 {
+        return t.digits[0].to_string();
+    }
+    let mut slot: [Option<char>; 7] = [None; 7];
+    let ones = n % 10;
+    if ones != 0 {
+        slot[6] = Some(t.digits[ones]);
+    }
+    // Ноль пишется знаком нуля только ВНУТРИ числа: пока справа одни нули,
+    // писать нечего («drop any trailing zeros»).
+    let mut trailing_zero = ones == 0;
+    let mut div = 10;
+    for (step, threshold) in [9usize, 99, 999].into_iter().enumerate() {
+        if n <= threshold {
+            break;
+        }
+        let digit = n / div % 10;
+        div *= 10;
+        let at = 4 - step * 2;
+        if digit == 0 {
+            if t.inner_zero && !trailing_zero {
+                slot[at] = Some(t.digits[0]);
+            }
+        } else {
+            if !(t.drop_one && digit == 1) {
+                slot[at] = Some(t.digits[digit]);
+            }
+            slot[at + 1] = Some(t.markers[step]);
+        }
+        trailing_zero &= digit == 0;
+    }
+    if t.drop_teen && n < 20 {
+        slot[4] = None;
+    }
+    // Подряд идущие нули схлопываются в один. Хвостового нуля тут быть не
+    // может: знак нуля ставится, лишь когда правее уже есть ненулевая цифра.
+    let mut out = String::new();
+    let mut was_zero = false;
+    for sign in slot.into_iter().flatten() {
+        let zero = sign == t.digits[0];
+        if !(zero && was_zero) {
+            out.push(sign);
+        }
+        was_zero = zero;
+    }
+    out
+}
+
+/// Позиционный стиль целиком: знак минуса своей строкой (`negative` §6.4) и
+/// обязательный диапазон −9999..9999, вне которого берётся резерв стиля.
+fn cjk_repr(value: i32, t: &Cjk) -> String {
+    match value {
+        0..=9999 => cjk_positional(value.unsigned_abs() as usize, t),
+        -9999..=-1 => format!(
+            "{}{}",
+            t.negative,
+            cjk_positional(value.unsigned_abs() as usize, t)
+        ),
+        _ if t.fallback_cjk => numeric(value, &CJK_DIGITS),
+        _ => value.to_string(),
+    }
+}
 
 /// Значение счётчика знаками названного стиля.
 ///
@@ -318,7 +638,24 @@ pub fn repr(value: i32, style: &str) -> String {
         "georgian" => positive
             .filter(|n| *n <= 19999)
             .map_or_else(|| value.to_string(), |n| additive(n, GEORGIAN)),
-        _ => value.to_string(),
+        // Иврит — аддитив с диапазоном 1..10999 (§hebrew). Расширение до
+        // 999999, как в Blink, ПРОВАЛИВАЕТ `css3-counter-styles-016a`: её
+        // эталон ждёт на 11000 десятичный резерв (расширенный вариант лежит
+        // в неиспользуемом базой `-016a-alt-ref.html`).
+        "hebrew" => positive
+            .filter(|n| *n <= 10999)
+            .map_or_else(|| value.to_string(), |n| additive_str(n, HEBREW)),
+        // Эфиопский определён для всех положительных; ноль и отрицательные —
+        // десятичным (`counter-ethiopic-numeric`: `0`, `-1`).
+        "ethiopic-numeric" => positive.map_or_else(|| value.to_string(), ethiopic),
+        // Позиционные восточноазиатские (§6.4). `cjk-ideographic` спека
+        // объявляет тождественным `trad-chinese-informal` («It exists for
+        // legacy reasons»).
+        "cjk-ideographic" => cjk_repr(value, &CJK_STYLES[7].1),
+        name => CJK_STYLES
+            .iter()
+            .find(|(k, _)| *k == name)
+            .map_or_else(|| value.to_string(), |(_, t)| cjk_repr(value, t)),
     }
 }
 
@@ -338,6 +675,12 @@ pub fn suffix(style: &str) -> &'static str {
         // `suffix: ', '`; Blink `ua_counter_style_map.cc`, эталон
         // `counter-suffix-ref`: «일, »).
         "korean-hangul-formal" | "korean-hanja-formal" | "korean-hanja-informal" => ", ",
+        // `cjk-ideographic` — тот же `trad-chinese-informal`, значит и суффикс
+        // его (§cjk-ideographic).
+        "cjk-ideographic" => "、",
+        // Эфиопский ставит косую с пробелом (§ethiopic-numeric `suffix: "/ "`,
+        // Blink `ua_counter_style_map.cc:424`).
+        "ethiopic-numeric" => "/ ",
         _ => ". ",
     }
 }
@@ -380,7 +723,76 @@ mod tests {
         assert_eq!(repr(19999, "georgian"), "ჵჰშჟთ");
         assert_eq!(repr(20000, "georgian"), "20000");
         // Незнакомое имя ведёт себя как decimal.
-        assert_eq!(repr(5, "cjk-ideographic"), "5");
+        assert_eq!(repr(5, "no-such-style"), "5");
         assert_eq!(repr(5, "none"), "");
+    }
+
+    #[test]
+    fn hebrew_and_ethiopic_follow_spec() {
+        // 15 и 16 — особые пары, тысячи — с герешем
+        // (`css3-counter-styles-016`).
+        assert_eq!(repr(15, "hebrew"), "טו");
+        assert_eq!(repr(16, "hebrew"), "טז");
+        assert_eq!(repr(11, "hebrew"), "יא");
+        assert_eq!(repr(997, "hebrew"), "תתקצז");
+        assert_eq!(repr(1000, "hebrew"), "א׳");
+        assert_eq!(repr(3256, "hebrew"), "ג׳רנו");
+        assert_eq!(repr(9999, "hebrew"), "ט׳תתקצט");
+        assert_eq!(repr(10997, "hebrew"), "י׳תתקצז");
+        assert_eq!(repr(11000, "hebrew"), "11000", "range: 1 10999");
+        // `counter-ethiopic-numeric` (все значения его эталона).
+        assert_eq!(repr(1, "ethiopic-numeric"), "፩");
+        assert_eq!(repr(10, "ethiopic-numeric"), "፲");
+        assert_eq!(repr(11, "ethiopic-numeric"), "፲፩");
+        assert_eq!(repr(100, "ethiopic-numeric"), "፻");
+        assert_eq!(repr(1005, "ethiopic-numeric"), "፲፻፭");
+        assert_eq!(repr(1800, "ethiopic-numeric"), "፲፰፻");
+        assert_eq!(repr(9999, "ethiopic-numeric"), "፺፱፻፺፱");
+        assert_eq!(repr(10000, "ethiopic-numeric"), "፼");
+        assert_eq!(repr(1000001, "ethiopic-numeric"), "፻፼፩");
+        assert_eq!(repr(78010092, "ethiopic-numeric"), "፸፰፻፩፼፺፪");
+        assert_eq!(repr(0, "ethiopic-numeric"), "0");
+    }
+
+    #[test]
+    fn cjk_positional_follows_spec() {
+        // Сводная таблица §6.4 (0, 1, 10, 11, 99, 100, 101, 6001).
+        assert_eq!(repr(0, "japanese-informal"), "〇");
+        assert_eq!(repr(10, "japanese-informal"), "十");
+        assert_eq!(repr(100, "japanese-informal"), "百");
+        assert_eq!(repr(101, "japanese-informal"), "百一");
+        assert_eq!(repr(6001, "japanese-informal"), "六千一");
+        assert_eq!(repr(0, "japanese-formal"), "零");
+        assert_eq!(repr(10, "japanese-formal"), "壱拾");
+        assert_eq!(repr(101, "japanese-formal"), "壱百壱");
+        assert_eq!(repr(6001, "japanese-formal"), "六阡壱");
+        assert_eq!(repr(10, "korean-hangul-formal"), "일십");
+        assert_eq!(repr(101, "korean-hangul-formal"), "일백일");
+        assert_eq!(repr(6001, "korean-hangul-formal"), "육천일");
+        assert_eq!(repr(101, "korean-hanja-informal"), "百一");
+        assert_eq!(repr(6001, "korean-hanja-formal"), "六仟壹");
+        // Китайские: единица перед маркером остаётся, зато 10..19 без неё, а
+        // внутренние нули пишутся знаком нуля и схлопываются.
+        assert_eq!(repr(10, "simp-chinese-informal"), "十");
+        assert_eq!(repr(11, "simp-chinese-informal"), "十一");
+        assert_eq!(repr(20, "simp-chinese-informal"), "二十");
+        assert_eq!(repr(100, "simp-chinese-informal"), "一百");
+        assert_eq!(repr(101, "simp-chinese-informal"), "一百零一");
+        assert_eq!(repr(6001, "simp-chinese-informal"), "六千零一");
+        assert_eq!(repr(1001, "trad-chinese-informal"), "一千零一");
+        assert_eq!(repr(11, "simp-chinese-formal"), "壹拾壹");
+        assert_eq!(repr(99, "trad-chinese-formal"), "玖拾玖");
+        assert_eq!(repr(6001, "trad-chinese-formal"), "陸仟零壹");
+        // Знак минуса — своей строкой (`css3-counter-styles-045/055/084`).
+        assert_eq!(repr(-11, "japanese-informal"), "マイナス十一");
+        assert_eq!(repr(-11, "korean-hangul-formal"), "마이너스 일십일");
+        assert_eq!(repr(-11, "trad-chinese-informal"), "負十一");
+        // Вне −9999..9999: японские и китайские — `cjk-decimal`, корейские —
+        // десятичный (`-049/-073` против `-054/-059/-064`).
+        assert_eq!(repr(10000, "japanese-formal"), "一〇〇〇〇");
+        assert_eq!(repr(10001, "simp-chinese-informal"), "一〇〇〇一");
+        assert_eq!(repr(10000, "korean-hangul-formal"), "10000");
+        // Наследный синоним.
+        assert_eq!(repr(11, "cjk-ideographic"), "十一");
     }
 }
