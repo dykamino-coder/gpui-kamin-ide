@@ -742,6 +742,14 @@ pub struct Transform {
     pub has_3d: bool,
 }
 
+/// Ячейка матрицы перспективы элемента в точках устройства
+/// (css-transforms-2 §perspective-matrix-computation): заводится при
+/// разборе `perspective`, наполняется его `Transformed::paint`, читается
+/// объёмным путём ПРЯМЫХ детей. Разделяемая ячейка, а не стек кадра:
+/// абсолютный ребёнок с `z-index`/`fixed` рисуется отложенным слоем
+/// (`defers`), когда `paint` родителя уже вышел; ячейка переживает кадр.
+pub type PerspectiveFrame = std::rc::Rc<std::cell::Cell<Option<[[f32; 4]; 4]>>>;
+
 /// Единичная 4×4.
 pub const IDENTITY4: [[f32; 4]; 4] = [
     [1.0, 0.0, 0.0, 0.0],
@@ -1642,6 +1650,17 @@ pub struct Computed {
     /// Третья координата `transform-origin` в точках (css-transforms-2);
     /// на плоскую матрицу не влияет, на 4×4 — `T(o)·M·T(−o)` по трём осям.
     pub transform_origin_z: Option<f32>,
+    /// `perspective` (css-transforms-2 §perspective-property) — расстояние
+    /// до глаза в css-точках для ОБЪЁМНЫХ ДЕТЕЙ, уже не меньше 1px («values
+    /// less than 1px must be treated as 1px»); `none` = None.
+    pub perspective: Option<f32>,
+    /// `perspective-origin` долями коробки (умолчание 50% 50%) и в точках по
+    /// осям, когда записан длиной — как `transform_origin`/`_px`.
+    pub perspective_origin: Option<(f32, f32)>,
+    pub perspective_origin_px: (Option<f32>, Option<f32>),
+    /// Ячейка матрицы перспективы (см. `PerspectiveFrame`); один и тот же
+    /// `Rc` у `e.style` родителя, его `merged` и `inherited` детей.
+    pub perspective_frame: Option<PerspectiveFrame>,
     /// `float`: -1 — влево, 1 — вправо, 0 — не обтекается.
     pub float: Option<i8>,
     /// `clear: inherit` — сторону берёт родитель. Своего наследования у
@@ -6537,7 +6556,59 @@ impl Computed {
             // `backface-visibility: hidden` обязан исчезнуть
             // (css-transforms-2 §backface-visibility, признак m33 < 0).
             "backface-visibility" => self.backface_hidden = Some(v == "hidden"),
-            "perspective" | "transform-style" => {}
+            // `perspective` (css-transforms-2 §perspective-property): длина в
+            // точках, «values less than 1px must be treated as 1px» — так и
+            // `perspective: 0` (perspective-zero-2/-3, transform3d-
+            // perspective-005). `none`, `inherit` и относительные единицы
+            // сюда не доезжают (None). Ячейка заводится здесь, при разборе:
+            // у родителя и его детей будет один и тот же Rc.
+            "perspective" => {
+                self.perspective = match Len::parse(v) {
+                    Some(Len::Px(d)) => Some(d.max(1.0)),
+                    _ => None,
+                };
+                self.perspective_frame = self.perspective.map(|_| PerspectiveFrame::default());
+            }
+            // `perspective-origin` (§perspective-origin-property) — та же
+            // грамматика <position>, что у `transform-origin` двумя осями:
+            // ключевые слова несут свою ось, длина остаётся точками до
+            // отрисовки, доля — от коробки самого элемента (она же — коробка
+            // родителя для его детей).
+            "perspective-origin" => {
+                let axis = |t: &str, default: f32| -> f32 {
+                    match t {
+                        "left" | "top" => 0.0,
+                        "center" => 0.5,
+                        "right" | "bottom" => 1.0,
+                        other => match Len::parse(other) {
+                            Some(Len::Pct(p)) => p,
+                            _ => default,
+                        },
+                    }
+                };
+                let px_axis = |t: &str| -> Option<f32> {
+                    match Len::parse(t) {
+                        Some(Len::Px(v)) => Some(v),
+                        _ => None,
+                    }
+                };
+                let mut xs: Option<&str> = None;
+                let mut ys: Option<&str> = None;
+                let mut free: Vec<&str> = vec![];
+                for t in v.split_whitespace() {
+                    match t {
+                        "left" | "right" => xs = Some(t),
+                        "top" | "bottom" => ys = Some(t),
+                        other => free.push(other),
+                    }
+                }
+                let mut free = free.into_iter();
+                let first = xs.or_else(|| free.next()).unwrap_or("center");
+                let second = ys.or_else(|| free.next()).unwrap_or("center");
+                self.perspective_origin_px = (px_axis(first), px_axis(second));
+                self.perspective_origin = Some((axis(first, 0.5), axis(second, 0.5)));
+            }
+            "transform-style" => {}
 
             // --- Обтекание и направление письма --------------------------------
             // `initial-letter: normal | <size> [<sink> | drop | raise]`

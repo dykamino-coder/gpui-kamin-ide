@@ -3200,7 +3200,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     .into_any_element()
             } else {
                 grouped(
-                    transformed(animated(e, inherited, opts), &e.style),
+                    transformed(animated(e, inherited, opts), &e.style, inherited),
                     &e.style,
                 )
             };
@@ -8291,7 +8291,7 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
     if let Some(el) = crate::forms::element(e, &inline::inherit(inherited, &e.style), opts) {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
-        return Some(transformed(el, &e.style));
+        return Some(transformed(el, &e.style, inherited));
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама
@@ -10187,11 +10187,32 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.into_any_element()
 }
 
-fn transformed(el: AnyElement, c: &Computed) -> AnyElement {
-    let Some(t) = c.transform else {
+fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
+    if c.transform.is_none() && c.perspective.is_none() {
         return el;
-    };
+    }
     let mut wrapper = crate::interact::Transformed::new(el);
+    // Перспектива РОДИТЕЛЯ читается объёмным путём (css-transforms-2
+    // §3d-transform-rendering п.3 — только прямого родителя, внукам не
+    // достаётся: perspective-children-only-*); своя — наполняет ячейку для
+    // детей. Элементу с `perspective` без `transform` обёртка тоже нужна —
+    // ради ячейки; сам он идёт плоским путём с единичной матрицей.
+    // ★ ЗАМЕРЕНО (06.09, v110, +13/−2): две потери остаются.
+    // `perspective-children-only-inline` — блок внутри `display: inline`
+    // выносится расщеплением строчного (block-in-inline) и становится прямым
+    // ребёнком в дереве отрисовки, поэтому берёт перспективу, хотя по DOM он
+    // внук. `overflow-perspective-001` (0.00 → 2.92) — прокручиваемая коробка:
+    // начало перспективы считается от коробки, а не от области прокрутки.
+    wrapper.under_perspective = parent.perspective_frame.clone();
+    wrapper.perspective = c.perspective;
+    wrapper.perspective_frame = c.perspective_frame.clone();
+    if let Some(o) = c.perspective_origin {
+        wrapper.perspective_origin = o;
+    }
+    wrapper.perspective_origin_px = c.perspective_origin_px;
+    let Some(t) = c.transform else {
+        return wrapper.into_any_element();
+    };
     wrapper.rotate = t.rotate_rad;
     wrapper.skew = t.skew_rad;
     wrapper.scale = t.scale;
@@ -10747,7 +10768,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::forms::element(e, &merged, opts) {
-        return transformed(el, &merged);
+        return transformed(el, &merged, inherited);
     }
     // Рамка строится ОДИН раз до match: прежний `is_some() => unwrap()`
     // читал файл с диска и разбирал вложенный документ дважды за кадр.
@@ -11300,7 +11321,11 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                             .into_any_element(),
                                         );
                                     }
-                                    transformed(d.children(body).into_any_element(), &inner)
+                                    transformed(
+                                        d.children(body).into_any_element(),
+                                        &inner,
+                                        &merged,
+                                    )
                                 };
                                 // Монолиты (css-break-3 §4.1) — их разрыв
                                 // запрещён, и в следующую колонку они уходят

@@ -1129,6 +1129,16 @@ pub struct Transformed {
     pub backface_hidden: bool,
     /// Третья координата `transform-origin` в css-точках.
     pub origin_z: Option<f32>,
+    /// Своя `perspective` (css-точки, ≥ 1px), её точка отсчёта долями и
+    /// точками по осям, и ячейка, куда `paint` кладёт T(po)·P(d)·T(−po) в
+    /// точках устройства — для объёмных детей.
+    pub perspective: Option<f32>,
+    pub perspective_origin: (f32, f32),
+    pub perspective_origin_px: (Option<f32>, Option<f32>),
+    pub perspective_frame: Option<crate::computed::PerspectiveFrame>,
+    /// Ячейка ПРЯМОГО родителя: объёмный путь домножает на неё слева
+    /// (css-transforms-2 §3d-transform-rendering, п.3).
+    pub under_perspective: Option<crate::computed::PerspectiveFrame>,
 }
 
 /// Сплющивание плоскости z=0 в аффинную матрицу экрана
@@ -1189,6 +1199,11 @@ impl Transformed {
             has_3d: false,
             backface_hidden: false,
             origin_z: None,
+            perspective: None,
+            perspective_origin: (0.5, 0.5),
+            perspective_origin_px: (None, None),
+            perspective_frame: None,
+            under_perspective: None,
         }
     }
 }
@@ -1272,6 +1287,34 @@ impl Element for Transformed {
         if self.backface_hidden && self.m4[2][2] < 0.0 {
             return;
         }
+        // Своя `perspective` (css-transforms-2 §perspective-matrix-computation):
+        // T(po)·P(d)·T(−po) в точках устройства — в ячейку для детей ДО их
+        // отрисовки, на обоих путях. Свёртка та же, что у объёмного пути ниже:
+        // сдвиги ×sf, m34 = −1/(d·sf). Сам элемент перспективой не трогается
+        // (она действует только на детей) и идёт своим путём как прежде.
+        if let (Some(d), Some(frame)) = (self.perspective, self.perspective_frame.as_ref()) {
+            use crate::computed::{mul4, Transform};
+            let px = self
+                .perspective_origin_px
+                .0
+                .unwrap_or(w * self.perspective_origin.0);
+            let py = self
+                .perspective_origin_px
+                .1
+                .unwrap_or(h * self.perspective_origin.1);
+            let (px_d, py_d) = (
+                (f32::from(bounds.origin.x) + px) * scale_factor,
+                (f32::from(bounds.origin.y) + py) * scale_factor,
+            );
+            let p = mul4(
+                mul4(
+                    Transform::translate4(px_d, py_d, 0.0),
+                    Transform::perspective4(d * scale_factor),
+                ),
+                Transform::translate4(-px_d, -py_d, 0.0),
+            );
+            frame.set(Some(p));
+        }
         if !self.has_3d {
             // Плоский путь — прежний, байт в байт.
             let matrix = gpui::TransformationMatrix::unit()
@@ -1312,6 +1355,17 @@ impl Element for Transformed {
             mul4(Transform::translate4(ox_d, oy_d, oz), own),
             Transform::translate4(-ox_d, -oy_d, -oz),
         );
+        // Перспектива ПРЯМОГО родителя (§3d-transform-rendering, п.3:
+        // «pre-multiply the parent element's perspective matrix»); стека
+        // preserve-3d здесь ещё нет — внукам не достаётся
+        // (perspective-children-only-*). Ячейку наполнил `paint` родителя в
+        // этом же кадре (или прошлом — она переживает кадр), поэтому её видит
+        // и отложенный слой абсолюта. Плоский ребёнок (z = 0) под
+        // перспективой не меняется — потому только объёмный путь.
+        let own = match self.under_perspective.as_ref().and_then(|f| f.get()) {
+            Some(p) => mul4(p, own),
+            None => own,
+        };
         // Вырожденная 4×4 (`scale3d(2, 2, 0)`, transform3d-scale-004:
         // «singular, causes the contents not to display»).
         if det4(&own).abs() < 1e-9 {
