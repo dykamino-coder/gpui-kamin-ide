@@ -539,6 +539,12 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         if (c.flex_wrap_reverse == Some(true)) != flip {
             d.style().flex_wrap = Some(gpui::FlexWrap::WrapReverse);
         }
+        // `flex-wrap: balance` — балансировщик строк в раскладке;
+        // `flex-line-count` (умолчание 1) — минимум строк. У legacy
+        // `-webkit-box` balance не действует (Blink `IsDeprecatedFlexbox`).
+        if c.flex_balance == Some(true) && c.webkit_box != Some(true) {
+            d.style().flex_balance_lines = Some(c.flex_line_count.unwrap_or(1).max(1));
+        }
     }
     if c.grid_col.is_some() || c.grid_row.is_some() {
         let span = |p: Option<(Placement, Placement)>| {

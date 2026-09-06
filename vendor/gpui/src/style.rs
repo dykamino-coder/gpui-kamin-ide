@@ -243,6 +243,9 @@ pub struct Style {
     pub flex_direction: FlexDirection,
     /// Should elements wrap, or stay in a single line?
     pub flex_wrap: FlexWrap,
+    /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
+    /// балансировка строк с минимумом N строк (`flex-line-count`).
+    pub flex_balance_lines: u16,
     /// Sets the initial main axis size of the item
     pub flex_basis: Length,
     /// The relative rate at which this item grows when it is expanding to fill space, 0.0 is the default value, and this value must be positive.
@@ -892,6 +895,7 @@ impl Default for Style {
             // Flexbox
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::NoWrap,
+            flex_balance_lines: 0,
             flex_grow: 0.0,
             flex_shrink: 1.0,
             flex_basis: Length::Auto,

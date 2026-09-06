@@ -494,6 +494,8 @@ impl ToTaffy<taffy::style::Style> for Style {
             gap: self.gap.to_taffy(rem_size, scale_factor),
             flex_direction: self.flex_direction.into(),
             flex_wrap: self.flex_wrap.into(),
+            // KaminIDE patch: `flex-wrap: balance` + `flex-line-count`.
+            flex_balance_lines: self.flex_balance_lines,
             flex_basis: self.flex_basis.to_taffy(rem_size, scale_factor),
             flex_grow: self.flex_grow,
             flex_shrink: self.flex_shrink,

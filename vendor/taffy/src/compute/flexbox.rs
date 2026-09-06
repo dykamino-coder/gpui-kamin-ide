@@ -129,6 +129,9 @@ struct AlgoConstants {
     is_wrap: bool,
     /// Is the wrap direction inverted
     is_wrap_reverse: bool,
+    /// KaminIDE patch: `flex-wrap: balance` — 0 = жадный перенос,
+    /// N ≥ 1 = балансировщик строк с минимумом N строк.
+    balance_lines: u16,
 
     /// The item's min_size style
     min_size: Size<Option<f32>>,
@@ -435,6 +438,9 @@ fn compute_constants(
     let is_column = dir.is_column();
     let is_wrap = matches!(style.flex_wrap(), FlexWrap::Wrap | FlexWrap::WrapReverse);
     let is_wrap_reverse = style.flex_wrap() == FlexWrap::WrapReverse;
+    // KaminIDE patch: balance действует только у многострочного контейнера
+    // (css-flexbox-2 §5.3: у `nowrap` `flex-line-count` не имеет эффекта).
+    let balance_lines = if is_wrap { style.flex_balance_lines() } else { 0 };
 
     let aspect_ratio = style.aspect_ratio();
     let margin = style.margin().resolve_or_zero(parent_size.width, |val, basis| tree.calc(val, basis));
@@ -473,6 +479,7 @@ fn compute_constants(
         is_column,
         is_wrap,
         is_wrap_reverse,
+        balance_lines,
         min_size: style
             .min_size()
             .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
@@ -894,6 +901,27 @@ fn collect_flex_lines<'a>(
             // If we're sizing under a max-content constraint then the flex items will never wrap
             // (at least for now - future extensions to the CSS spec may add provisions for forced wrap points)
             AvailableSpace::MaxContent => {
+                // KaminIDE patch: balance с `flex-line-count` ≥ 2 режет строки
+                // и под max-content: Blink подаёт в разбиватель
+                // `LayoutUnit::Max()`, и бисекция под минимум строк сама
+                // находит конечную ширину разрыва; max-content контейнера
+                // ниже (`determine_container_main_size`) — самая длинная
+                // строка (`balance-line-count-intrinsic-001..007`).
+                if constants.balance_lines > 1 && flex_items.len() > 1 {
+                    let sizes: Vec<f32> =
+                        flex_items.iter().map(|child| child.hypothetical_outer_size.main(constants.dir)).collect();
+                    let min_lines = (constants.balance_lines as usize).min(sizes.len());
+                    let counts =
+                        balance_line_counts(&sizes, constants.gap.main(constants.dir), f32::INFINITY, min_lines);
+                    let mut lines = new_vec_with_capacity(counts.len());
+                    let mut flex_items = &mut flex_items[..];
+                    for count in counts {
+                        let (items, rest) = flex_items.split_at_mut(count);
+                        lines.push(FlexLine { items, cross_size: 0.0, offset_cross: 0.0 });
+                        flex_items = rest;
+                    }
+                    return lines;
+                }
                 let mut lines = new_vec_with_capacity(1);
                 lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0 });
                 lines
@@ -914,6 +942,20 @@ fn collect_flex_lines<'a>(
                 let mut lines = new_vec_with_capacity(1);
                 let mut flex_items = &mut flex_items[..];
                 let main_axis_gap = constants.gap.main(constants.dir);
+
+                // KaminIDE patch: `flex-wrap: balance` — строки режет
+                // балансировщик (css-flexbox-2 §9.3.1), а не жадный перенос.
+                if constants.balance_lines > 0 && !flex_items.is_empty() {
+                    let sizes: Vec<f32> =
+                        flex_items.iter().map(|child| child.hypothetical_outer_size.main(constants.dir)).collect();
+                    let min_lines = (constants.balance_lines as usize).min(sizes.len());
+                    for count in balance_line_counts(&sizes, main_axis_gap, main_axis_available_space, min_lines) {
+                        let (items, rest) = flex_items.split_at_mut(count);
+                        lines.push(FlexLine { items, cross_size: 0.0, offset_cross: 0.0 });
+                        flex_items = rest;
+                    }
+                    return lines;
+                }
 
                 while !flex_items.is_empty() {
                     // Find index of the first item in the next line
@@ -940,6 +982,154 @@ fn collect_flex_lines<'a>(
             }
         }
     }
+}
+
+/// KaminIDE patch: `flex-wrap: balance` (css-flexbox-2 §9.3.1 «Balancing
+/// Flex Items»): элементы режутся на строки так, чтобы сумма КВАДРАТОВ
+/// недобора каждой строки до ширины разрыва была наименьшей; при равенстве
+/// — больше элементов в первой строке, потом во второй и т.д. Порт Blink
+/// `flex_line_breaker.cc` (`BalanceBreakFlexItemsIntoLines`): минимум строк
+/// `min_lines` (`flex-line-count`, уже зажатый числом элементов) достигается
+/// БИСЕКЦИЕЙ ширины разрыва (`ApplyMinLineCount`), и ошибка меряется против
+/// найденной ширины, а не против ширины контейнера — ровно так рисует
+/// Chrome, с которого сняты эталоны `balance-min-line-count-00x`.
+/// `sizes` — внешние гипотетические главные размеры (отрицательные поля
+/// зажимаются нулём, как велит спека), `limit` бывает бесконечным
+/// (max-content). Возвращает число элементов в каждой строке.
+fn balance_line_counts(sizes: &[f32], gap: f32, limit: f32, min_lines: usize) -> Vec<usize> {
+    let n = sizes.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let gap = f64::from(gap);
+    // Префиксные суммы «размер + зазор»: длина строки [i..=j] равна
+    // sums[j] - sums[i-1] - gap (зазоров на один меньше, чем элементов).
+    let mut sums: Vec<f64> = Vec::with_capacity(n);
+    let mut acc = 0.0f64;
+    for &s in sizes {
+        acc += f64::from(s.max(0.0)) + gap;
+        sums.push(acc);
+    }
+    let length = |sums: &[f64], i: usize, j: usize| -> f64 { sums[j] - if i == 0 { 0.0 } else { sums[i - 1] } - gap };
+    // Жадный перенос (как `wrap`): число строк и длина самой длинной.
+    let greedy = |sums: &[f64], limit: f64| -> (usize, f64) {
+        let (mut count, mut longest, mut start, mut j) = (1usize, 0.0f64, 0usize, 0usize);
+        while j < n {
+            if j > start && length(sums, start, j) > limit {
+                longest = longest.max(length(sums, start, j - 1));
+                count += 1;
+                start = j;
+            } else {
+                j += 1;
+            }
+        }
+        (count, longest.max(length(sums, start, n - 1)))
+    };
+    let mut limit = f64::from(limit);
+    if greedy(&sums, limit).0 < min_lines {
+        // Бисекция: наименьшая ширина разрыва, при которой жадный перенос
+        // даёт не больше `min_lines` строк. Порог — длина одной из строк,
+        // поэтому после схождения ширина ПРИЩЁЛКИВАЕТСЯ к самой длинной
+        // строке жадной раскладки (иначе точные вписывания ниже не найдутся).
+        let mut low = 0.0f64;
+        let mut high = limit.min(sums[n - 1] - gap);
+        for _ in 0..64 {
+            let mid = low + (high - low) / 2.0;
+            if mid <= low || mid >= high {
+                break;
+            }
+            if greedy(&sums, mid).0 > min_lines {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+        let (mut count, longest) = greedy(&sums, high);
+        limit = longest;
+        if count < min_lines {
+            // Ширины, дающей ровно `min_lines`, может не быть (4 равных
+            // элемента и 3 строки): элементы, вписанные в строку ТОЧНО, с
+            // конца «раздуваются» на 1/64 px (Blink: `perfect_fit_indices`,
+            // +1 LayoutUnit), пока строк не станет достаточно.
+            let mut perfect: Vec<usize> = Vec::new();
+            let mut previous = 0.0f64;
+            let mut has_content = false;
+            for i in 0..n {
+                let line_size = sums[i] - previous - gap;
+                if (line_size - limit).abs() < 1e-6 {
+                    perfect.push(i);
+                }
+                if line_size > limit {
+                    previous = if has_content { sums[i - 1] } else { sums[i] };
+                    has_content = false;
+                    continue;
+                }
+                has_content = true;
+            }
+            for &index in perfect.iter().rev() {
+                for s in &mut sums[index..] {
+                    *s += 1.0 / 64.0;
+                }
+                count = greedy(&sums, limit).0;
+                if count >= min_lines {
+                    break;
+                }
+            }
+        }
+    }
+    if !limit.is_finite() {
+        return vec![n];
+    }
+    // Самое раннее начало строки, кончающейся на j (Blink `initial_start`):
+    // одиночный переполняющий элемент стоит один, следующая строка
+    // начинается ПОСЛЕ него.
+    let mut initial_start = vec![0usize; n];
+    let mut i = 0usize;
+    for j in 0..n {
+        while i < j && length(&sums, i, j) > limit {
+            i += 1;
+        }
+        initial_start[j] = i;
+        if i == j && length(&sums, i, j) > limit {
+            i += 1;
+        }
+    }
+    // best[j] — наименьшая сумма квадратов недобора для префикса ..=j,
+    // brk[j] — последний элемент предыдущей строки. Перебор начала строки
+    // идёт от самого раннего (недобор растёт монотонно — обрыв, когда он
+    // хуже лучшего); нестрогое `<=` отдаёт ничью более позднему началу —
+    // это и есть «больше элементов в первых строках».
+    let mut best = vec![f64::INFINITY; n];
+    let mut brk: Vec<Option<usize>> = vec![None; n];
+    for j in 0..n {
+        let mut best_score = f64::INFINITY;
+        let mut best_break = None;
+        for start in initial_start[j]..=j {
+            let len = length(&sums, start, j);
+            let line_score = if len > limit { 0.0 } else { (limit - len) * (limit - len) };
+            if line_score > best_score {
+                break;
+            }
+            let score = line_score + if start == 0 { 0.0 } else { best[start - 1] };
+            if score <= best_score {
+                best_score = score;
+                best_break = if start == 0 { None } else { Some(start - 1) };
+            }
+        }
+        best[j] = best_score;
+        brk[j] = best_break;
+    }
+    let mut counts = Vec::with_capacity(min_lines.max(1));
+    let mut prev = n - 1;
+    let mut idx = brk[prev];
+    while let Some(b) = idx {
+        counts.push(prev - b);
+        prev = b;
+        idx = brk[b];
+    }
+    counts.push(prev + 1);
+    counts.reverse();
+    counts
 }
 
 /// Determine the container's main size (if not already known)

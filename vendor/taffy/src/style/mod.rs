@@ -463,6 +463,10 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     #[cfg(any(feature = "flexbox", feature = "grid"))]
     #[cfg_attr(feature = "serde", serde(default = "style_helpers::zero"))]
     pub gap: Size<LengthPercentage>,
+    /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
+    /// балансировка строк с минимумом N строк (`flex-line-count`).
+    #[cfg(feature = "flexbox")]
+    pub flex_balance_lines: u16,
 
     // Block container properties
     /// How items elements should aligned in the inline axis
@@ -572,6 +576,8 @@ impl<S: CheapCloneStr> Style<S> {
         flex_direction: FlexDirection::Row,
         #[cfg(feature = "flexbox")]
         flex_wrap: FlexWrap::NoWrap,
+        #[cfg(feature = "flexbox")]
+        flex_balance_lines: 0,
         #[cfg(feature = "flexbox")]
         flex_grow: 0.0,
         #[cfg(feature = "flexbox")]
@@ -793,6 +799,10 @@ impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
         self.flex_wrap
     }
     #[inline(always)]
+    fn flex_balance_lines(&self) -> u16 {
+        self.flex_balance_lines
+    }
+    #[inline(always)]
     fn gap(&self) -> Size<LengthPercentage> {
         self.gap
     }
@@ -819,6 +829,10 @@ impl<T: FlexboxContainerStyle> FlexboxContainerStyle for &'_ T {
     #[inline(always)]
     fn flex_wrap(&self) -> FlexWrap {
         (*self).flex_wrap()
+    }
+    #[inline(always)]
+    fn flex_balance_lines(&self) -> u16 {
+        (*self).flex_balance_lines()
     }
     #[inline(always)]
     fn gap(&self) -> Size<LengthPercentage> {

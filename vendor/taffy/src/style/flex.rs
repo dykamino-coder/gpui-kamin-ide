@@ -14,6 +14,13 @@ pub trait FlexboxContainerStyle: CoreStyle {
     fn flex_wrap(&self) -> FlexWrap {
         Style::<Self::CustomIdent>::DEFAULT.flex_wrap
     }
+    /// KaminIDE patch: `flex-wrap: balance` (css-flexbox-2 §5.2) — 0 =
+    /// обычный перенос; N ≥ 1 = балансировка строк с минимумом N строк
+    /// (`flex-line-count`). Ортогонально режиму `flex_wrap`, как в Blink.
+    #[inline(always)]
+    fn flex_balance_lines(&self) -> u16 {
+        Style::<Self::CustomIdent>::DEFAULT.flex_balance_lines
+    }
 
     /// How large should the gaps between items in a grid or flex container be?
     #[inline(always)]

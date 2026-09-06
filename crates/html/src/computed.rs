@@ -1149,6 +1149,12 @@ pub struct Computed {
     pub flex_wrap: Option<bool>,
     /// `wrap-reverse` — строки укладываются с противоположного края.
     pub flex_wrap_reverse: Option<bool>,
+    /// `flex-wrap: balance` (css-flexbox-2 §5.2) — строки режет
+    /// балансировщик; ортогонально `wrap`/`wrap-reverse`.
+    pub flex_balance: Option<bool>,
+    /// `flex-line-count` (css-flexbox-2 §5.3) — минимум строк у balance;
+    /// умолчание 1.
+    pub flex_line_count: Option<u16>,
     pub flex_grow: Option<f32>,
     pub flex_shrink: Option<f32>,
     /// `flex-basis: content` — основа берётся ПО СОДЕРЖИМОМУ, и заданный
@@ -2892,10 +2898,40 @@ impl Computed {
                 }
             }
             "flex-wrap" => {
-                self.flex_wrap = Some(v == "wrap" || v == "wrap-reverse");
-                // Обратный перенос кладёт строки с другого края: одна строка
-                // в контейнере уезжает вниз, а не остаётся вверху.
-                self.flex_wrap_reverse = Some(v == "wrap-reverse");
+                // css-flexbox-2 §5.2: `nowrap | [ wrap | wrap-reverse ] || balance`;
+                // `balance` без `wrap*` ведёт себя как `wrap`. Невалидное
+                // сочетание (`nowrap balance`, два режима) отбрасывается.
+                let (mut wrap, mut reverse, mut balance, mut nowrap, mut modes, mut valid) =
+                    (false, false, 0u8, false, 0u8, true);
+                for word in v.split_ascii_whitespace() {
+                    match word {
+                        "wrap" => modes += 1,
+                        "wrap-reverse" => {
+                            modes += 1;
+                            reverse = true;
+                        }
+                        "balance" => balance += 1,
+                        "nowrap" => nowrap = true,
+                        _ => valid = false,
+                    }
+                }
+                wrap |= modes > 0 || balance > 0;
+                if valid && modes <= 1 && balance <= 1 && (!nowrap || (modes == 0 && balance == 0)) {
+                    self.flex_wrap = Some(wrap);
+                    // Обратный перенос кладёт строки с другого края: одна строка
+                    // в контейнере уезжает вниз, а не остаётся вверху.
+                    self.flex_wrap_reverse = Some(reverse);
+                    self.flex_balance = Some(balance > 0);
+                }
+            }
+            "flex-line-count" => {
+                // css-flexbox-2 §5.3: `<integer [1,∞]>`; действует только у
+                // balance (как в Blink — `balance-min-line-count-007/008`).
+                if let Ok(n) = v.trim().parse::<u32>()
+                    && n >= 1
+                {
+                    self.flex_line_count = Some(n.min(u32::from(u16::MAX)) as u16);
+                }
             }
             // Отрицательные значения невалидны (css-flexbox-1 §7.2: «Negative
             // values are not allowed») — объявление отбрасывается целиком
