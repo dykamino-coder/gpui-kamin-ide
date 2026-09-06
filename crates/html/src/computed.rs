@@ -1857,6 +1857,18 @@ pub struct Computed {
     /// 1 — `block-start`, 2 — `block-end`. `block` — оба. Начальное `none`
     /// (0). Инлайновые значения старой редакции спеки не берём.
     pub margin_trim: u8,
+    /// `zoom` (css-viewport-1 §zoom-property): СВОЙ множитель элемента, как
+    /// написан; `None` — не задан. `0`/`0%` по спеке читаются единицей.
+    /// Читает его ТОЛЬКО проход `zoom::resolve` после каскада.
+    pub zoom: Option<f32>,
+    /// Действующий зум («effective zoom», §599): произведение по цепочке
+    /// предков вместе со своим. `None` ≡ 1 — выведенный `Default`
+    /// тождество, и страница без `zoom` не несёт ни множителя, ни ветки.
+    /// Ставится проходом `zoom::resolve` на каждый элемент под зумом; в
+    /// слитый стиль попадает через `own.clone()` в `inline::inherit` —
+    /// своей строки там не имеет. Читатели шага 2: природный размер
+    /// картинки, `resolve_viewport`.
+    pub zoom_eff: Option<f32>,
     /// `column-rule-*`: линейка между колонками.
     pub column_rule_width: Option<Len>,
     pub column_rule_visible: Option<bool>,
@@ -4881,6 +4893,23 @@ impl Computed {
             }
             // Свисающая пунктуация: знак выходит ЗА край коробки, чтобы край
             // текста читался ровным. Значения складываются: `first last`.
+            // `zoom` (css-viewport-1 §zoom-property): число или доля, ноль
+            // читается единицей («A 0 value is treated as if it was 1»),
+            // отрицательное недействительно. `normal`/`reset` — старые слова
+            // IE/WebKit, равны единице. Здесь ТОЛЬКО запись поля: применяет
+            // его проход `zoom::resolve`, слияние стилей поля не читает.
+            "zoom" => {
+                let k = match v {
+                    "normal" | "reset" => Some(1.0),
+                    _ => match v.strip_suffix('%') {
+                        Some(p) => p.trim().parse::<f32>().ok().map(|p| p / 100.0),
+                        None => v.parse::<f32>().ok(),
+                    },
+                };
+                if let Some(k) = k.filter(|k| k.is_finite() && *k >= 0.0) {
+                    self.zoom = Some(if k == 0.0 { 1.0 } else { k });
+                }
+            }
             "hanging-punctuation" => {
                 let mut h = Hanging::default();
                 for word in v.split_ascii_whitespace() {

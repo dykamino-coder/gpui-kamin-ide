@@ -43,6 +43,7 @@ pub mod select;
 pub mod svg;
 pub mod transition;
 pub mod value;
+pub mod zoom;
 
 /// Умолчания тегов, как в браузере, — для тех, кто рисует СТРАНИЦУ.
 ///

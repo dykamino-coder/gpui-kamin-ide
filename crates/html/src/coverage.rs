@@ -341,6 +341,7 @@ pub const PROPERTIES: &[Prop] = &[
     m("columns", "200px 3"),
     m("column-count", "3"),
     m("column-width", "200px"),
+    m("zoom", "2"),
     part(
         "writing-mode",
         "vertical-rl",
