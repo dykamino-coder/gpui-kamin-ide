@@ -1129,11 +1129,30 @@ fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
     out
 }
 
+/// `contain: size` — монолит везде, где есть фрагментация (Blink
+/// `LayoutBox::IsMonolithic`, `layout_box.cc`: `ShouldApplySizeContainment()`
+/// = `StyleRef().ContainsSize() && IsEligibleForSizeContainment()`; обе оси —
+/// `size`/`strict`, не `inline-size`; `contain-intrinsic-size` не участвует;
+/// таблица, группа, ряд и ячейка не годны — `layout_table*.h`
+/// `IsEligibleForSizeContainment() … return false`). `content-visibility:
+/// hidden` ставит тот же `contain_size`.
+fn size_monolith(k: &Element) -> bool {
+    k.style.contains_block_size()
+        && !matches!(
+            k.style.display,
+            Some(Display::TableCell) | Some(Display::TableRow) | Some(Display::TableRowGroup)
+        )
+        && !matches!(
+            k.tag.as_str(),
+            "td" | "th" | "tr" | "thead" | "tbody" | "tfoot"
+        )
+}
+
 /// Монолит по css-break-4 §4.1 (Blink `IsMonolithic`): замещаемый,
 /// атомарный строчный, прокручиваемый, `break-inside: avoid`,
 /// строчное содержимое (строк укладка не видит) — пустая
 /// коробка монолитом НЕ является.
-fn solid_box(k: &Element, paged: bool) -> bool {
+fn solid_box(k: &Element) -> bool {
     let scrolls = |o: Option<crate::computed::Overflow>| {
         matches!(o, Some(crate::computed::Overflow::Scroll))
     };
@@ -1141,19 +1160,18 @@ fn solid_box(k: &Element, paged: bool) -> bool {
         matches!(n, Node::Element(x)
             if !x.inline || x.style.display == Some(Display::Block))
     };
-    // Для СТРАНИЦ `contain: size` — монолит (Blink `IsMonolithic`:
-    // `ShouldApplySizeContainment`; `monolithic-overflow-018`: блок с таким
-    // ребёнком уходит на следующую страницу целиком). Откат −5 выше — про
-    // колонки, там `paged` ложен.
-    (paged && k.style.contain_size == Some(true))
+    // `contain: size` — монолит и у страниц, и в колонках (`size_monolith`).
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): то же БЕЗ роста коробки от
+    // вытолкнутого монолита (`705fd58`) и без правил параллельного потока
+    // в `shape_full` (диапазоны за заданной высотой; `max-height` у
+    // обрезающей коробки). Срез css-break + css-multicol 1495 пар:
+    // 472 -> 467, потеряно 5 (`single-line-{column,row}-flex-fragmentation-
+    // 010/011/051/063`, `overflow-clip-012` 0.00 -> 0.52): монолит в
+    // переполняющем ребёнке выталкивал коробку с ЗАДАННОЙ высотой целиком,
+    // а лишняя мера обрезающей коробки рожала колонку. С тремя правилами
+    // вместе — замер `scout-break-2026-09e.md` §6.
+    size_monolith(k)
         || k.style.break_inside_avoid
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): считать монолитом
-        // и `contain: size` (css-contain-2 §size
-        // containment). Срез css-break + css-multicol
-        // 1495 пар: 472 -> 467, приобретено 0, потеряно 5
-        // (`single-line-{column,row}-flex-fragmentation-
-        // 010/011/051/063` в «красное видно»,
-        // `overflow-clip-012` 0.00 -> 0.52).
         || scrolls(k.style.overflow_x)
         || scrolls(k.style.overflow_y)
         || matches!(
@@ -1368,7 +1386,7 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                             // Монолит-потомок — весь диапазон
                             // его высоты; иначе — его собственные
                             // монолиты.
-                            let solid = if solid_box(k, cx.paged) {
+                            let solid = if solid_box(k) {
                                 vec![(0.0, h)]
                             } else {
                                 solid
@@ -1537,6 +1555,22 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     } else {
         h
     };
+    // Коробка, ОБРЕЗАЮЩАЯ переполнение по блочной оси, выше `max-height` не
+    // растёт и фрагментов за ним не родит (Blink `FinishFragmentation`,
+    // `fragmentation_utils.cc`: «We have reached the end of a fragmentable
+    // node that clips overflow in the block direction … relayout without
+    // fragmentation» → `kDisableFragmentation`); мера от содержимого давала
+    // ей лишнюю колонку (`overflow-clip-012`: fieldset `overflow: clip;
+    // max-height: 200px`, с распоркой роста — 250). Видимое переполнение не
+    // трогается: его хвост — параллельный поток, и он пока не рисуется
+    // (`fieldset-007`, `block-max-height-*`).
+    let h = match (&c.style.max_height, c.style.overflow_y) {
+        (
+            Some(Len::Px(m)),
+            Some(crate::computed::Overflow::Hidden) | Some(crate::computed::Overflow::Clip),
+        ) => h.min(*m + top + bot),
+        _ => h,
+    };
     // css-gaps-1 §fragmentation / css-align-3 §column-row-gap: «the gap
     // disappears when it coincides with a fragmentation break»; Blink
     // `GridLayoutAlgorithm` `MaybeSuppressLastGap`: зазор рядов, в который
@@ -1554,6 +1588,22 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     }
     cuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
     forced.retain(|&f| f > 0.01 && f < h - 0.01);
+    // Монолит ребёнка за ЗАДАННОЙ высотой коробки — параллельный поток, а
+    // не запрет разреза в её потоке (css-break-4 §parallel-flows; Blink
+    // `FinishFragmentation`, `fragmentation_utils.cc`: «If the block-size is
+    // constrained / fixed … we know that we're at the end» — сосед
+    // продолжает в той же колонке; `BoxFragmentBuilder::
+    // MustStayInCurrentFragmentainer`: «any first piece of child content
+    // also needs to stay in the current fragmentainer, even if this causes
+    // fragmentainer overflow»). Начатый ниже низа — вычёркивается, начатый
+    // выше — бережётся лишь до низа. Без этого `contain: size` в
+    // переполняющем ребёнке выталкивал коробку целиком (`single-line-
+    // column-flex-fragmentation-051`, `tall-content-inside-constrained-
+    // block-*`). У коробки с высотой auto диапазоны и так внутри `h`.
+    solid.retain(|&(a, _)| a < h - 0.01);
+    for r in solid.iter_mut() {
+        r.1 = r.1.min(h);
+    }
     if bot > 0.0 {
         solid.push((h - bot, h));
     }
@@ -1565,12 +1615,15 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
 /// арифметикой, что в `shape_full`: `lead` = схлопнутое поле, у первого
 /// без отбивки поле уходит сквозь верх, внепоточный — нулевая запись, ряд
 /// flex без переноса — все дети с верха. Сетка, таблица, ряды — без
-/// спуска, как там; таблица по тегу меряется `table_shape` — распорка в
-/// неё не ставится (шаг 2). Текст или строчный среди детей — у `shape_full`
+/// спуска, как там; таблица по тегу — рядами `table_shape`
+/// (`pushed_cell_at`). Текст или строчный среди детей — у `shape_full`
 /// отказ от спуска, и здесь тоже.
 fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
-    if depth == 0 || table_box(c) {
+    if depth == 0 {
         return None;
+    }
+    if table_box(c) {
+        return pushed_cell_at(c, a, depth);
     }
     if matches!(
         c.style.display,
@@ -1657,6 +1710,114 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     None
 }
 
+/// Распорка в таблице по тегу: та же арифметика рядов, что у `table_shape`
+/// (порядок групп `thead`/…/`tfoot`, `border-spacing`, презентационные
+/// `cellspacing`/`cellpadding`, высота ряда — наибольшая мера ячейки), без
+/// `avoid` и разрывов; у ряда, накрывающего `a`, — первая ячейка, в которой
+/// нашлась коробка. Точка ровно на верху ряда — первый ребёнок ячейки
+/// (ячейка — свой контекст, поле сквозь её верх не уходит; в мере
+/// `shape_full(cell)` распорка ложится в `lead`). Что `table_shape` не
+/// меряет (`rowspan`, подпись, сросшиеся рамки, заданная высота), здесь
+/// тоже `None` — распорки нет, поведение прежнее.
+fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
+    if depth == 0
+        || c.style.vertical == Some(true)
+        || c.style.border_collapse == Some(true)
+        || c.style.height.is_some()
+        || c.style.min_height.is_some()
+    {
+        return None;
+    }
+    let px_of = |l: &Option<Len>| match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(*v),
+        _ => None,
+    };
+    let top = px_of(&c.style.padding.top)? + px_of(&c.style.borders().top)?;
+    let attr_px = |name: &str| {
+        c.attr(name)
+            .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
+    };
+    let ua_default = matches!(
+        c.style.border_spacing,
+        Some((Some(Len::Px(2.0)), Some(Len::Px(2.0))))
+    );
+    let spacing = match (attr_px("cellspacing"), ua_default, &c.style.border_spacing) {
+        (Some(v), true, _) | (Some(v), _, None) => v,
+        (_, _, Some((_, y))) => px_of(y)?,
+        _ => 0.0,
+    };
+    let cell_cx = ShapeCx {
+        cell_pad: attr_px("cellpadding"),
+        ..ShapeCx::COLUMNS
+    };
+    let is_row = |e: &Element| e.tag == "tr" || e.style.display == Some(Display::TableRow);
+    let is_group = |e: &Element| {
+        matches!(e.tag.as_str(), "thead" | "tbody" | "tfoot")
+            || e.style.display == Some(Display::TableRowGroup)
+            || e.style.row_group_kind.is_some()
+    };
+    let mut parts: Vec<(u8, &Element)> = Vec::new();
+    let (mut head, mut foot) = (false, false);
+    for n in c.children.iter().filter(|n| !is_blank(n)) {
+        let Node::Element(e) = n else { return None };
+        let role = match e.tag.as_str() {
+            "thead" => Some(0u8),
+            "tbody" => Some(1),
+            "tfoot" => Some(2),
+            _ => e.style.row_group_kind,
+        };
+        let kind = match role {
+            Some(0) if !head => {
+                head = true;
+                0
+            }
+            Some(2) if !foot => {
+                foot = true;
+                2
+            }
+            _ if is_row(e) || is_group(e) => 1,
+            _ => return None,
+        };
+        parts.push((kind, e));
+    }
+    parts.sort_by_key(|p| p.0);
+    let mut rows: Vec<&Element> = Vec::new();
+    for (_, e) in &parts {
+        if is_row(e) {
+            rows.push(e);
+            continue;
+        }
+        for n in e.children.iter().filter(|n| !is_blank(n)) {
+            match n {
+                Node::Element(r) if is_row(r) => rows.push(r),
+                _ => return None,
+            }
+        }
+    }
+    let mut y = top;
+    for r in rows {
+        let start = y + spacing;
+        let mut h = px_of(&r.style.height)?;
+        let mut cells: Vec<&Element> = Vec::new();
+        for n in r.children.iter().filter(|n| !is_blank(n)) {
+            let Node::Element(cell) = n else { return None };
+            if !is_cell(cell) || cell.attr("rowspan").is_some_and(|v| v.trim() != "1") {
+                return None;
+            }
+            h = h.max(shape_full(cell, depth - 1, cell_cx)?.0);
+            cells.push(cell);
+        }
+        if a > start - 0.01 && a < start + h - 0.01 {
+            return cells
+                .iter()
+                .find_map(|cell| pushed_box_at(cell, a - start, depth - 1));
+        }
+        y = start + h;
+    }
+    None
+}
+
 /// Распорка роста: `margin-top += grow` у потомка `id`. Поле ложится в
 /// `lead` меры (`shape_full`) и в раскладку копии одинаково; недобор от
 /// схлопывания с большим нижним полем соседа добирает следующий заход
@@ -1713,7 +1874,7 @@ fn grow_pushed(
                 mt: s.1,
                 mb: s.2,
                 // Тот же предикат, что у `StackChild` в сборке стопки.
-                monolith: solid_box(c, false),
+                monolith: solid_box(c),
                 cuts: s.3.clone(),
                 force_before: c.style.break_before_force,
                 force_after: c.style.break_after_force,
@@ -11452,7 +11613,11 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // 469 -> 467 (+1/−3): `single-line-column-flex-
                                 // fragmentation-051/063` режутся у Blink иначе (рост
                                 // элемента от фрагментации, корень R5 скаута).
-                                let monolith = copy.style.break_inside_avoid
+                                // Рост лёг `705fd58`; `contain: size` — `size_monolith`,
+                                // тот же предикат, что у `solid_box` в мере и пробе
+                                // `grow_pushed` (`scout-break-2026-09e.md`).
+                                let monolith = size_monolith(&copy)
+                                    || copy.style.break_inside_avoid
                                     || scrolls(copy.style.overflow_x)
                                     || scrolls(copy.style.overflow_y)
                                     || matches!(
