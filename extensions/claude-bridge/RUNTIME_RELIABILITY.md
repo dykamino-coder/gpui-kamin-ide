@@ -1171,6 +1171,14 @@ rotation boundary внутри ASCII и multibyte records, поколения ч
 Windows smoke проверяет только запись и чтение логов и не требует доступа к
 корпоративному marketplace.
 
+Остаток приёмки PR #31: отдельный Windows smoke не выполнялся, как явно
+указано в его PR body. Workflow `incident-log-checks.yml` запускает существующие
+`incident-log.test.ts` и `rolling-log.test.ts` на Windows runner: реальные
+временные файлы, rotation/restart, чтение каждого поколения, ASCII/UTF-8 и
+oversized marker. Результат exact PR candidate и последующего `main` run
+нужен для закрытия этого остатка. Этот gate не запускает UI, не требует
+учётной записи Claude и не подтверждает BR-02 memory envelope.
+
 `RollingLogWriter.write()` строго заполняет оставшиеся байты текущего файла и
 только затем выполняет rotation. Для raw `host.log` это ожидаемый bounded
 streaming contract, но все writers `incident.log` передают целую строку
