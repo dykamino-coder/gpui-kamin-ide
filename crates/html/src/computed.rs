@@ -2061,6 +2061,9 @@ impl Computed {
         }
         sides(&mut self.padding);
         sides(&mut self.margin);
+        // Толщина рамки в единицах окна (`border-bottom: 50vh solid`,
+        // `monolithic-overflow-021`): без перевода рамка выходила нулевой.
+        sides(&mut self.border_width);
         sides(&mut self.inset);
         if let Some((row, col)) = self.gap.as_mut() {
             fix(row);
@@ -7332,6 +7335,14 @@ fn split_font(v: &str) -> (&str, &str) {
 /// `None` — запись негодна целиком: неизвестная функция, лишний или
 /// недостающий аргумент, незакрытая кавычка. Такое объявление применять
 /// нельзя, иначе его остатки печатаются литеральным текстом.
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): `content: url()`/`image-set()` как
+// замещаемый строчный атом (`ContentItem::Image`, картинка через
+// `background::source`; патч `target/scout-content-2026-09.md` §6). Срез 1509
+// пар (lists/pseudo/content/counter-styles/images): 1192 -> 1190, +0/-2 —
+// `cross-fade-natural-size` 0.00 -> 38.95, `disclosure-styles` 0.19 -> 0.62;
+// ни одна из ожидаемых `element-replacement*` не позеленела. Картинка в
+// `content` требует природного размера ДО раскладки строки (`cross-fade` —
+// от двух источников), а атом меряется после.
 pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
     let bytes = raw.as_bytes();
     let mut at = 0usize;

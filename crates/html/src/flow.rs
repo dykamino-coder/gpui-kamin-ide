@@ -1090,9 +1090,17 @@ pub struct PageStack {
     kids: Vec<PageKid>,
     geom: PageGeom,
     /// Слой начального содержащего блока (внепоточные без позиционированного
-    /// предка). Пока рисуется один раз, на первой странице; повтор
-    /// `position: fixed` на каждой странице — шаг 3.
-    icb: Vec<AnyElement>,
+    /// предка) — по КОПИИ на страницу: `icb[p]` рисуется на листе `p` со
+    /// сдвигом на `p` page area вверх, то есть абсолют раскладывается «как
+    /// непрерывный поток» и режется страницами (css-position-3
+    /// §abspos-breaking; `monolithic-overflow-013`: текст после монолита
+    /// 350vh — в середине четвёртой страницы). Повтор `position: fixed` на
+    /// каждой странице без сдвига — шаг 3.
+    icb: Vec<Vec<AnyElement>>,
+    /// Досягаемость абсолютов корня — низ самого дальнего (с переполнением
+    /// монолитов, как Blink `ReserveSpaceForMonolithicOverflow`): листов не
+    /// меньше, чем нужно, чтобы её показать.
+    icb_reach: f32,
     plan: std::cell::RefCell<Vec<Frag>>,
     pages: std::cell::Cell<usize>,
     /// Листов в ряду и масштаб стопки.
@@ -1100,11 +1108,17 @@ pub struct PageStack {
 }
 
 impl PageStack {
-    pub fn new(kids: Vec<PageKid>, geom: PageGeom, icb: Vec<AnyElement>) -> Self {
+    pub fn new(
+        kids: Vec<PageKid>,
+        geom: PageGeom,
+        icb: Vec<Vec<AnyElement>>,
+        icb_reach: f32,
+    ) -> Self {
         PageStack {
             kids,
             geom,
             icb,
+            icb_reach,
             plan: std::cell::RefCell::new(Vec::new()),
             pages: std::cell::Cell::new(1),
             grid: std::cell::Cell::new((1, 1.0)),
@@ -1224,7 +1238,15 @@ impl Element for PageStack {
             .min()
             .unwrap_or(1);
         let (pages, _, plan) = ColumnStack::fill(&kids, ah, limit, true);
-        let pages = pages.max(1);
+        // Абсолюты корня добавляют листы, пока не кончится их досягаемость
+        // (Blink: «If overflowed by monolithic overflow, we need more pages»,
+        // box_fragment_builder.h). Потолок — число копий слоя.
+        let icb_pages = if self.icb.is_empty() {
+            0
+        } else {
+            ((self.icb_reach / ah).ceil().max(0.0) as usize).min(self.icb.len())
+        };
+        let pages = pages.max(icb_pages).max(1);
         // 2. Сетка листов и масштаб до вмещения в коробку стопки.
         let (ww, wh) = (
             f32::from(bounds.size.width).max(1.0),
@@ -1291,22 +1313,29 @@ impl Element for PageStack {
                 cx,
             );
         }
-        // Слой ICB — на первой странице, в её page area.
-        let (sx, sy) = self.sheet_origin(0);
-        for el in &mut self.icb {
-            el.layout_as_root(
-                size(
-                    gpui::AvailableSpace::Definite(px(aw)),
-                    gpui::AvailableSpace::Definite(px(ah)),
-                ),
-                window,
-                cx,
-            );
-            el.prepaint_at(
-                point(bounds.origin.x + px(sx + ax), bounds.origin.y + px(sy + ay)),
-                window,
-                cx,
-            );
+        // Слой ICB — копия `p` на листе `p`, в его page area, поднятая на `p`
+        // высот area: непрерывный поток абсолютов, разрезанный страницами.
+        for p in 0..pages.min(self.icb.len()) {
+            let (sx, sy) = self.sheet_origin(p);
+            let lift = p as f32 * ah;
+            for el in &mut self.icb[p] {
+                el.layout_as_root(
+                    size(
+                        gpui::AvailableSpace::Definite(px(aw)),
+                        gpui::AvailableSpace::Definite(px(ah)),
+                    ),
+                    window,
+                    cx,
+                );
+                el.prepaint_at(
+                    point(
+                        bounds.origin.x + px(sx + ax),
+                        bounds.origin.y + px(sy + ay - lift),
+                    ),
+                    window,
+                    cx,
+                );
+            }
         }
         *self.plan.borrow_mut() = plan;
     }
@@ -1397,11 +1426,19 @@ impl Element for PageStack {
                         None => continue,
                     }
                 };
-                window.with_content_mask(Some(mask), |window| el.paint(window, cx));
+                // Маски детей (overflow ячеек, полосы таблиц, срезы) заданы в
+                // немасштабированных точках — под матрицей стопки они обязаны
+                // пройти то же подобие (`Window::with_mask_scale`).
+                window.with_content_mask(Some(mask), |window| {
+                    window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
+                });
             }
-            if let Some(mask) = masks.first().cloned() {
-                for el in &mut self.icb {
-                    window.with_content_mask(Some(mask.clone()), |window| el.paint(window, cx));
+            for p in 0..pages.min(self.icb.len()) {
+                let Some(mask) = masks.get(p).cloned() else { continue };
+                for el in &mut self.icb[p] {
+                    window.with_content_mask(Some(mask.clone()), |window| {
+                        window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
+                    });
                 }
             }
         });

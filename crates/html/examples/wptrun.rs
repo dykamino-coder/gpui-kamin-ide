@@ -190,7 +190,19 @@ struct PageBox {
 fn page_box(decls: Vec<(String, String)>) -> PageBox {
     use kamin_html::value::{Color, Len};
     let (mut w, mut h) = (480.0f32, 288.0f32);
-    let mut margin = [0.0f32; 4];
+    // Поля листа по умолчанию — ЗАМЕР отдельным прогоном: WPT их не
+    // оговаривает, но `monolithic-overflow-027/-028/-029` сходятся с эталоном
+    // только при page area 2in (5in x 3in при полях 0.5in = 48px, wpt#40788;
+    // `media-queries-001`: «WPT tests that assume that there's a half-inch
+    // margin on each side»). `WPT_PAGE_MARGIN=48` против нуля.
+    let default_margin: f32 = std::env::var("WPT_PAGE_MARGIN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.0);
+    let mut margin = [default_margin; 4];
+    // `width`/`height` листа — размер PAGE AREA, не листа (css-page-3
+    // §page-model); применяются после полей, см. ниже.
+    let (mut explicit_w, mut explicit_h): (Option<f32>, Option<f32>) = (None, None);
     let mut bg: Option<Color> = None;
     let mut border = (
         0.0f32,
@@ -230,16 +242,8 @@ fn page_box(decls: Vec<(String, String)>) -> PageBox {
                     _ => {}
                 }
             }
-            "width" => {
-                if let Some(v) = px_abs(v) {
-                    w = v;
-                }
-            }
-            "height" => {
-                if let Some(v) = px_abs(v) {
-                    h = v;
-                }
-            }
+            "width" => explicit_w = px_abs(v).or(explicit_w),
+            "height" => explicit_h = px_abs(v).or(explicit_h),
             _ => {}
         }
     }
@@ -295,6 +299,17 @@ fn page_box(decls: Vec<(String, String)>) -> PageBox {
             }
             _ => {}
         }
+    }
+    // css-page-3 §page-model: при переопределении «instead of ignoring any
+    // margins, the containing block is resized to coincide with the margin
+    // edges of the page box» (Blink `ResolvePageBoxGeometry`);
+    // `page-size-013`: size 500px, margin 50px, width 200px, height 300px →
+    // лист 300x400 (эталон `size: 300px 400px; margin: 50px`).
+    if let Some(x) = explicit_w {
+        w = x + margin[1] + margin[3] + border.0 * 2.0;
+    }
+    if let Some(y) = explicit_h {
+        h = y + margin[0] + margin[2] + border.0 * 2.0;
     }
     let area = (
         (w - margin[1] - margin[3] - border.0 * 2.0).max(0.0),

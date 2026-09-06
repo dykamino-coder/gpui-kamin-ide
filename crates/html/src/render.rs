@@ -727,6 +727,17 @@ pub fn render_paged(
         if !matches!(e.tag.as_str(), "html" | "body") {
             break;
         }
+        // Корень без коробки: один пустой лист, и свойства `@page` к нему не
+        // применяются (Blink `StyleForPage`: «The root is display:none. One
+        // page box will still be created, but no properties should apply»;
+        // `root-element-display-none-print` против `blank-print-ref`).
+        if matches!(e.style.display, Some(Display::None)) {
+            geom.bg = gpui::white();
+            geom.border.0 = 0.0;
+            geom.canvas = None;
+            nodes = Vec::new();
+            break;
+        }
         let e = (*e).clone();
         let side = |l: &Option<Len>| match l {
             Some(Len::Px(v)) => *v,
@@ -745,7 +756,17 @@ pub fn render_paged(
         root = inline::inherit(&root, &e.style);
         nodes = e.children;
     }
-    crate::interact::icb_open();
+    // Мера для страниц: `contain: size` — монолит (как в `page_monolith`),
+    // `vh`/`vw` — от page area (в сыром `e.style` они ещё не разрешены:
+    // `resolve_viewport` работает на копии внутри `element()`).
+    let shape_cx = ShapeCx {
+        paged: true,
+        viewport: Some(opts.viewport),
+    };
+    // Слой ICB — по КОПИИ на страницу: каждая сборка ребёнка рождает свои
+    // `LatePlace` абсолютов, копия `c` уходит на лист `c` (`PageStack.icb`).
+    let mut icb_copies: Vec<Vec<AnyElement>> = (0..PAGE_COPIES).map(|_| Vec::new()).collect();
+    let mut icb_reach = 0.0f32;
     let mut kids: Vec<crate::flow::PageKid> = Vec::new();
     let mut prev_end: Option<String> = None;
     let mut first = true;
@@ -755,18 +776,28 @@ pub fn render_paged(
         {
             continue;
         }
+        if let Node::Element(e) = n
+            && out_of_flow(&e.style)
+        {
+            icb_reach = icb_reach.max(oof_reach(e, shape_cx));
+        }
         let pad_top = if first { top } else { 0.0 };
         first = false;
-        let build = || {
-            div()
+        let build = |slot: &mut Vec<AnyElement>| {
+            crate::interact::icb_open();
+            let el = div()
                 .pl(px(left))
                 .pr(px(right))
                 .pt(px(pad_top))
                 .children(blocks(std::slice::from_ref(n), &root, opts))
-                .into_any_element()
+                .into_any_element();
+            slot.extend(crate::interact::icb_close());
+            el
         };
-        let el = build();
-        let frags: Vec<AnyElement> = (1..PAGE_COPIES).map(|_| build()).collect();
+        let el = build(&mut icb_copies[0]);
+        let frags: Vec<AnyElement> = (1..PAGE_COPIES)
+            .map(|i| build(&mut icb_copies[i]))
+            .collect();
         // Анонимный блок вокруг текста/строчного — коробка в потоке со
         // значением `page` родителя; флоат и внепоточный в сравнении имён
         // не участвуют (свойство к ним не применяется, §named pages п.2).
@@ -796,7 +827,7 @@ pub fn render_paged(
         // первого ребёнка несёт отбивку корня сверху (`pad_top`): все
         // смещения меры сдвигаются на неё, а высота растёт.
         let shape = match n {
-            Node::Element(e) if !e.inline => shape_full(e, 4).map(
+            Node::Element(e) if !e.inline => shape_full(e, 4, shape_cx).map(
                 |(h, _mt, _mb, mut cuts, mut forced, mut solid)| {
                     if pad_top > 0.0 {
                         for c in cuts.iter_mut() {
@@ -828,8 +859,7 @@ pub fn render_paged(
             shape,
         });
     }
-    let icb = crate::interact::icb_close();
-    crate::flow::PageStack::new(kids, geom, icb).into_any_element()
+    crate::flow::PageStack::new(kids, geom, icb_copies, icb_reach).into_any_element()
 }
 
 // Мера блочного поддерева для укладки по фрагментаинерам — колонкам и
@@ -855,7 +885,7 @@ fn has_float(n: &Element, depth: u8) -> bool {
 /// §8.3.1); строчное содержимое высоты не даёт — такой
 /// ребёнок мерить нечем, и весь стек идёт другим путём.
 fn shape(c: &Element, depth: u8) -> Option<(f32, f32, f32, Vec<(f32, f32)>)> {
-    shape_full(c, depth).map(|s| (s.0, s.1, s.2, s.3))
+    shape_full(c, depth, ShapeCx::COLUMNS).map(|s| (s.0, s.1, s.2, s.3))
 }
 /// Высота сетки по ЯВНЫМ дорожкам рядов: все дорожки в
 /// точках, плюс зазоры между ними. `None` — дорожки
@@ -890,7 +920,7 @@ fn grid_rows_px(c: &Computed) -> Option<f32> {
 /// атомарный строчный, прокручиваемый, `break-inside: avoid`,
 /// строчное содержимое (строк укладка не видит) — пустая
 /// коробка монолитом НЕ является.
-fn solid_box(k: &Element) -> bool {
+fn solid_box(k: &Element, paged: bool) -> bool {
     let scrolls = |o: Option<crate::computed::Overflow>| {
         matches!(o, Some(crate::computed::Overflow::Scroll))
     };
@@ -898,7 +928,12 @@ fn solid_box(k: &Element) -> bool {
         matches!(n, Node::Element(x)
             if !x.inline || x.style.display == Some(Display::Block))
     };
-    k.style.break_inside_avoid
+    // Для СТРАНИЦ `contain: size` — монолит (Blink `IsMonolithic`:
+    // `ShouldApplySizeContainment`; `monolithic-overflow-018`: блок с таким
+    // ребёнком уходит на следующую страницу целиком). Откат −5 выше — про
+    // колонки, там `paged` ложен.
+    (paged && k.style.contain_size == Some(true))
+        || k.style.break_inside_avoid
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): считать монолитом
         // и `contain: size` (css-contain-2 §size
         // containment). Срез css-break + css-multicol
@@ -928,15 +963,40 @@ fn solid_box(k: &Element) -> bool {
 /// То же плюс смещения принудительных разрывов и диапазоны
 /// монолитов внутри.
 type Shape = (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>);
-fn shape_full(c: &Element, depth: u8) -> Option<Shape> {
+
+/// Условия меры: `paged` — стопка страниц (монолитом считается и
+/// `contain: size`, см. `solid_box`); `viewport` — размер области просмотра
+/// для `vh`/`vw`: у страниц это page area, у колонок единицы окна остаются
+/// неразрешёнными (`None` → отказ от меры, прежнее поведение).
+#[derive(Clone, Copy)]
+struct ShapeCx {
+    paged: bool,
+    viewport: Option<(f32, f32)>,
+}
+
+impl ShapeCx {
+    const COLUMNS: ShapeCx = ShapeCx {
+        paged: false,
+        viewport: None,
+    };
+}
+
+fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     let px_or = |l: &Option<Len>, strict: bool| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
+        Some(Len::Vw(k)) if cx.viewport.is_some() => Some(*k * cx.viewport.unwrap().0),
+        Some(Len::Vh(k)) if cx.viewport.is_some() => Some(*k * cx.viewport.unwrap().1),
         Some(_) if !strict => Some(0.0),
         _ => None,
     };
     if has_float(c, 3) {
         return None;
+    }
+    // Таблица — своя мера: ряды стопкой, зазоры `border-spacing`, точки
+    // класса A между рядами (css-break-4 §possible-breaks).
+    if table_box(c) {
+        return table_shape(c, depth, cx);
     }
     let b = c.style.borders();
     let mt = px_or(&c.style.margin.top, false)?;
@@ -965,6 +1025,7 @@ fn shape_full(c: &Element, depth: u8) -> Option<Shape> {
         )
         && c.style.flex_wrap != Some(true)
         && c.style.webkit_box_vertical != Some(true);
+    // Ряд/группа рядов ВНЕ таблицы (тегом или `display`) — не стопка блоков.
     let no_descent = matches!(
         c.style.display,
         Some(Display::Grid)
@@ -974,7 +1035,7 @@ fn shape_full(c: &Element, depth: u8) -> Option<Shape> {
             | Some(Display::InlineTable)
             | Some(Display::TableRow)
             | Some(Display::TableRowGroup)
-    );
+    ) || matches!(c.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot");
     // (высота, поля, точки, forced, монолиты, force_before,
     //  force_after, ДОТЯГ внепоточного)
     // Дотяг — насколько ниже собственного верха ребёнка
@@ -1038,7 +1099,7 @@ fn shape_full(c: &Element, depth: u8) -> Option<Shape> {
                         // сама (`out-of-flow-in-multicolumn-
                         // 022/025`).
                         let own =
-                            shape_full(k, depth - 1).map(|s| s.0).unwrap_or(0.0);
+                            shape_full(k, depth - 1, cx).map(|s| s.0).unwrap_or(0.0);
                         (top + own).max(0.0)
                     } else {
                         0.0
@@ -1062,12 +1123,12 @@ fn shape_full(c: &Element, depth: u8) -> Option<Shape> {
                                 == Some(crate::computed::Position::Relative))
                         && k.style.float.unwrap_or(0) == 0 =>
                 {
-                    shape_full(k, depth - 1).map(
+                    shape_full(k, depth - 1, cx).map(
                         |(h, mt, mb, cuts, forced, solid)| {
                             // Монолит-потомок — весь диапазон
                             // его высоты; иначе — его собственные
                             // монолиты.
-                            let solid = if solid_box(k) {
+                            let solid = if solid_box(k, cx.paged) {
                                 vec![(0.0, h)]
                             } else {
                                 solid
@@ -1188,8 +1249,10 @@ fn shape_full(c: &Element, depth: u8) -> Option<Shape> {
         // раскладки, а не из стиля (корень R4 scout-flexfrag).
         }
     }
-    let (h, mt, mb) = match c.style.height {
-        Some(Len::Px(v)) => (v + top + bot, mt, mb),
+    // Заданная высота — в точках или (для страниц) в единицах окна.
+    let (h, mt, mb) = match c.style.height.as_ref().map(|_| px_or(&c.style.height, true)) {
+        Some(Some(v)) => (v + top + bot, mt, mb),
+        Some(None) => return None,
         None => match stacked {
             Some((end, through, last_mb)) => (
                 end + bot,
@@ -1209,7 +1272,6 @@ fn shape_full(c: &Element, depth: u8) -> Option<Shape> {
                 None => return None,
             },
         },
-        Some(_) => return None,
     };
     // Содержащий блок обязан дотянуться до низа своих
     // внепоточных потомков — только тогда фрагментация
@@ -1234,15 +1296,245 @@ fn shape_full(c: &Element, depth: u8) -> Option<Shape> {
 }
 
 /// Коробка, дающая точку разрыва класса A (css-break-4 §possible-breaks):
-/// блочная, в потоке, не плавающая.
+/// блочная, в потоке, не плавающая. `Element.inline` ставится по ТЕГУ
+/// (`dom.rs` `INLINE_TAGS`), поэтому `<img style="display: block; page: b">`
+/// блочным тут признаётся по `display` (`page-name-img-004`: иначе картинка
+/// шла анонимным блоком с именем корня и рвала страницу).
 fn class_a_box(e: &Element) -> bool {
-    !e.inline
+    let blocky = !e.inline
+        || matches!(
+            e.style.display,
+            Some(Display::Block)
+                | Some(Display::Flex)
+                | Some(Display::Grid)
+                | Some(Display::Table)
+                | Some(Display::ListItem)
+        );
+    blocky
         && !out_of_flow(&e.style)
         && e.style.float.unwrap_or(0) == 0
         && !matches!(
             e.style.display,
             Some(Display::None) | Some(Display::Contents)
         )
+}
+
+/// Табличная коробка — по тегу или по `display`.
+fn table_box(c: &Element) -> bool {
+    c.tag == "table"
+        || matches!(
+            c.style.display,
+            Some(Display::Table) | Some(Display::InlineTable)
+        )
+}
+
+/// Мера таблицы для укладки по фрагментаинерам (css-break-4
+/// §possible-breaks, класс A: «table row group boxes, table row boxes»;
+/// css-tables-3 §fragmentation). Ряды — стопка: высота ряда — наибольшая
+/// из мер его ячеек (ячейка — обычная блочная мера с рамкой и отбивкой),
+/// между рядами и вокруг них — `border-spacing`, снаружи — отступ и рамка
+/// таблицы. `break-inside: avoid` ряда или группы — монолитный диапазон
+/// (css-break-4 §breaking-rules, Rule 2), `break-before/after` ряда или
+/// группы — принудительный разрыв на границе ряда. `thead` встаёт первым,
+/// `tfoot` — последним, как в `table()`. Подпись, `rowspan`, сросшиеся
+/// рамки, вертикальное письмо, заданная высота (раздача `row_tracks` — иной
+/// путь раскладки) и неизмеримая ячейка — `None`: таблица идёт цельным
+/// куском измеренной высоты без точек, как прежде.
+fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+    let px_of = |l: &Option<Len>| match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(*v),
+        _ => None,
+    };
+    if depth == 0
+        || c.style.vertical == Some(true)
+        || c.style.border_collapse == Some(true)
+        || c.style.height.is_some()
+        || c.style.min_height.is_some()
+    {
+        return None;
+    }
+    let b = c.style.borders();
+    let mt = px_of(&c.style.margin.top).unwrap_or(0.0);
+    let mb = px_of(&c.style.margin.bottom).unwrap_or(0.0);
+    let top = px_of(&c.style.padding.top)? + px_of(&b.top)?;
+    let bot = px_of(&c.style.padding.bottom)? + px_of(&b.bottom)?;
+    // Умолчание тега `<table>` (2px) приходит каскадом; у `display: table`
+    // зазора нет (см. `table()`). Атрибут `cellspacing` мера не знает. ⚠
+    let spacing = match &c.style.border_spacing {
+        Some((_, y)) => px_of(y)?,
+        None => 0.0,
+    };
+    let is_row = |e: &Element| e.tag == "tr" || e.style.display == Some(Display::TableRow);
+    let is_group = |e: &Element| {
+        matches!(e.tag.as_str(), "thead" | "tbody" | "tfoot")
+            || e.style.display == Some(Display::TableRowGroup)
+            || e.style.row_group_kind.is_some()
+    };
+    // Части в порядке отрисовки: первая заголовочная группа — вперёд,
+    // первая подвальная — назад, остальное как в разметке (`table()`).
+    let mut parts: Vec<(u8, &Element)> = Vec::new();
+    let (mut head, mut foot) = (false, false);
+    for n in c.children.iter().filter(|n| !is_blank(n)) {
+        let Node::Element(e) = n else { return None };
+        let role = match e.tag.as_str() {
+            "thead" => Some(0u8),
+            "tbody" => Some(1),
+            "tfoot" => Some(2),
+            _ => e.style.row_group_kind,
+        };
+        let kind = match role {
+            Some(0) if !head => {
+                head = true;
+                0
+            }
+            Some(2) if !foot => {
+                foot = true;
+                2
+            }
+            _ if is_row(e) || is_group(e) => 1,
+            _ => return None,
+        };
+        parts.push((kind, e));
+    }
+    parts.sort_by_key(|p| p.0);
+    // Плоский список рядов: ряд, № группы, avoid группы, разрывы (свои и
+    // группы — на первом/последнем её ряду).
+    struct RowRef<'a> {
+        row: &'a Element,
+        group: usize,
+        avoid: bool,
+        fb: bool,
+        fa: bool,
+    }
+    let mut rows: Vec<RowRef> = Vec::new();
+    for (gi, (_, e)) in parts.iter().enumerate() {
+        if is_row(e) {
+            rows.push(RowRef {
+                row: e,
+                group: gi,
+                avoid: false,
+                fb: e.style.break_before_force,
+                fa: e.style.break_after_force,
+            });
+            continue;
+        }
+        let inner: Vec<&Element> = e
+            .children
+            .iter()
+            .filter(|n| !is_blank(n))
+            .map(|n| match n {
+                Node::Element(r) if is_row(r) => Some(r),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let last = inner.len().saturating_sub(1);
+        for (i, r) in inner.iter().enumerate() {
+            rows.push(RowRef {
+                row: r,
+                group: gi,
+                avoid: e.style.break_inside_avoid,
+                fb: r.style.break_before_force || (i == 0 && e.style.break_before_force),
+                fa: r.style.break_after_force || (i == last && e.style.break_after_force),
+            });
+        }
+    }
+    if rows.is_empty() {
+        return None;
+    }
+    let mut cuts: Vec<(f32, f32)> = Vec::new();
+    let mut forced: Vec<f32> = Vec::new();
+    let mut solid: Vec<(f32, f32)> = Vec::new();
+    if top > 0.0 {
+        solid.push((0.0, top));
+    }
+    let mut y = top;
+    let mut group_open: Option<(usize, f32)> = None;
+    let mut force_next = false;
+    for (i, r) in rows.iter().enumerate() {
+        let start = y + spacing;
+        let mut h = px_of(&r.row.style.height)?;
+        for n in r.row.children.iter().filter(|n| !is_blank(n)) {
+            let Node::Element(cell) = n else { return None };
+            if !is_cell(cell) || cell.attr("rowspan").is_some_and(|v| v.trim() != "1") {
+                return None;
+            }
+            let (ch, _, _, kcuts, kforced, ksolid) = shape_full(cell, depth - 1, cx)?;
+            h = h.max(ch);
+            // Точки и монолиты ячеек — объединением, как у ряда flex без
+            // переноса: рвать нельзя там, где не даёт хоть одна ячейка.
+            cuts.extend(kcuts.into_iter().map(|(a, b)| (start + a, start + b)));
+            forced.extend(kforced.into_iter().map(|f| start + f));
+            solid.extend(ksolid.into_iter().map(|(a, b)| (start + a, start + b)));
+        }
+        if i > 0 {
+            // Класс A между рядами: разрез по концу предыдущего ряда,
+            // продолжение с начала этого (зазор остаётся на новой странице —
+            // копия разложена целиком, геометрия сходится).
+            cuts.push((y, start));
+            if r.fb || force_next {
+                forced.push(y);
+            }
+        }
+        force_next = r.fa;
+        if r.row.style.break_inside_avoid {
+            solid.push((start, start + h));
+        }
+        if let Some((g, gs)) = group_open
+            && g != r.group
+        {
+            solid.push((gs, y));
+            group_open = None;
+        }
+        if r.avoid && group_open.is_none() {
+            group_open = Some((r.group, start));
+        }
+        y = start + h;
+    }
+    if let Some((_, gs)) = group_open {
+        solid.push((gs, y));
+    }
+    let h = y + spacing + bot;
+    cuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
+    forced.retain(|&f| f > 0.01 && f < h - 0.01);
+    if bot > 0.0 {
+        solid.push((h - bot, h));
+    }
+    Some((h, mt, mb, cuts, forced, solid))
+}
+
+/// Досягаемость внепоточного корня стопки страниц: низ его коробки, а при
+/// видимом переполнении — низ стопки его блочных детей (Blink копит
+/// переполнение монолита в `BlockBreakToken::monolithic_overflow_` и
+/// добавляет страницы, пока оно не кончится, crbug 1402540;
+/// `monolithic-overflow-027`: абсолют `contain:size` 4in с ребёнком 8in —
+/// «four green pages»). Обрезка `overflow-y` переполнение гасит (`-028`).
+fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
+    let top = match e.style.inset.top {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let own = shape_full(e, 4, cx).map(|s| s.0).unwrap_or(0.0);
+    let clipped = matches!(
+        e.style.overflow_y,
+        Some(crate::computed::Overflow::Hidden)
+            | Some(crate::computed::Overflow::Clip)
+            | Some(crate::computed::Overflow::Scroll)
+    );
+    let inner: f32 = if clipped {
+        0.0
+    } else {
+        e.children
+            .iter()
+            .filter_map(|n| match n {
+                Node::Element(k) if !k.inline && !out_of_flow(&k.style) => {
+                    shape_full(k, 3, cx).map(|s| s.0 + s.1 + s.2)
+                }
+                _ => None,
+            })
+            .sum()
+    };
+    top + own.max(inner)
 }
 
 /// Монолит стопки страниц (css-break-4 §4.1; Blink `IsMonolithic`):
@@ -9174,7 +9466,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                             == Some(crate::computed::Position::Relative))
                                     && c.style.float.unwrap_or(0) == 0 =>
                             {
-                                shape_full(c, 4).map(|h| ((*c).clone(), h))
+                                shape_full(c, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h))
                             }
                             _ => None,
                         })

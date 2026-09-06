@@ -844,6 +844,12 @@ pub struct Window {
     /// текст и картинки. Раскладка её не видит — элемент занимает своё место,
     /// а рисуется преобразованным, ровно как в CSS.
     transformation_stack: Vec<TransformationMatrix>,
+    /// KaminIDE patch: подобие для масок содержимого — `(начало, коэффициент)`.
+    /// Шейдер сравнивает маску с УЖЕ преобразованной позицией
+    /// (`shaders.hlsl` `distance_from_clip_rect_transformed`), поэтому маска,
+    /// заданная ребёнком в немасштабированных точках под масштабом стопки
+    /// страниц, обязана быть переведена в итоговые координаты окна.
+    mask_scale: Option<(Point<Pixels>, f32)>,
     pub(crate) element_opacity: f32,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
@@ -1243,6 +1249,7 @@ impl Window {
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
             transformation_stack: Vec::new(),
+            mask_scale: None,
             content_mask_stack: Vec::new(),
             element_opacity: 1.0,
             requested_autoscroll: None,
@@ -2558,7 +2565,7 @@ impl Window {
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
         if let Some(mask) = mask {
-            let mask = mask.intersect(&self.content_mask());
+            let mask = self.scaled_mask(mask).intersect(&self.content_mask());
             self.content_mask_stack.push(mask);
             let result = f(self);
             self.content_mask_stack.pop();
@@ -2579,9 +2586,47 @@ impl Window {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
+        let mask = self.scaled_mask(mask);
         self.content_mask_stack.push(mask);
         let result = f(self);
         self.content_mask_stack.pop();
+        result
+    }
+
+    /// KaminIDE patch: перевести маску ребёнка в итоговые координаты окна,
+    /// когда стопка страниц рисует под масштабом (`with_mask_scale`). Вне
+    /// стопки — тождество.
+    fn scaled_mask(&self, mask: ContentMask<Pixels>) -> ContentMask<Pixels> {
+        let Some((o, s)) = self.mask_scale else {
+            return mask;
+        };
+        let b = mask.bounds;
+        ContentMask {
+            bounds: Bounds {
+                origin: Point::new(
+                    Pixels(o.x.0 + (b.origin.x.0 - o.x.0) * s),
+                    Pixels(o.y.0 + (b.origin.y.0 - o.y.0) * s),
+                ),
+                size: Size {
+                    width: Pixels(b.size.width.0 * s),
+                    height: Pixels(b.size.height.0 * s),
+                },
+            },
+        }
+    }
+
+    /// KaminIDE patch: на время `f` маски детей отображаются тем же подобием
+    /// (центр `origin`, коэффициент `scale`), которым матрица
+    /// `with_transformation` стопки страниц преобразует их квады.
+    pub fn with_mask_scale<R>(
+        &mut self,
+        origin: Point<Pixels>,
+        scale: f32,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let prev = self.mask_scale.replace((origin, scale));
+        let result = f(self);
+        self.mask_scale = prev;
         result
     }
 
