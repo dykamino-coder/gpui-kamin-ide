@@ -2918,6 +2918,19 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 out.extend(blocks(&e.children, &merged, opts));
                 continue;
             }
+            // Ключевое слово содержимого в `min-width`/`max-width` при
+            // ширине в точках (css-sizing-3 §4.1, зажим §5.1): used =
+            // max(W, kw) либо min(W, kw) — то же самое, что `width: kw` с
+            // пределом W. Перестановка отдаёт ключевое слово обёртке-сетке
+            // (`content_sized`), а точки — пределу в раскладке (`apply`);
+            // блочная ось решается в `apply` (`min-height: max-content`).
+            let swapped;
+            let e = if let Some(copy) = content_limit_swapped(e) {
+                swapped = copy;
+                &swapped
+            } else {
+                e
+            };
             // Обёртка `content_sized` — сетка, а дорожка сетки НЕ считает
             // боковые поля ребёнка: коробка `width: max-content` с полем
             // теряла его и уезжала (`pre-wrap-017`: зелёный блок пропадал
@@ -8999,6 +9012,52 @@ fn replaced_tag(e: &Element) -> bool {
         e.tag.as_str(),
         "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input"
     )
+}
+
+/// Ключевое слово содержимого в `min-width`/`max-width` при `width` в точках.
+///
+/// css-sizing-3 §4.1 даёт `min-content`/`max-content`/`fit-content` и
+/// минимуму, и максимуму, а used size — зажим предпочтительного размера
+/// пределами (§5.1; CSS 2.1 §10.4): `width: W; min-width: kw` = max(W, kw)
+/// = `width: kw; min-width: W`, `width: W; max-width: kw` = min(W, kw) =
+/// `width: kw; max-width: W`. Ключевое слово переезжает в `width`, где его
+/// знает обёртка-сетка (`content_sized`), а точки — в предел, который
+/// раскладке отдаёт `apply` (`min-content-min-width-000`,
+/// `shrink-to-fit-sizing-max-width-min-content`, `fit-content-{min,max}-
+/// inline-size`, `block-size-with-min-or-max-content-6/7`).
+///
+/// Второй предел обязан быть пуст: с ним порядок зажима (минимум сильнее
+/// максимума) одной перестановкой не выражается. Таблица считает пределы
+/// сама (`min_fix`), замещаемый — в `image_with`; их не трогаем.
+fn content_limit_swapped(e: &Element) -> Option<Element> {
+    let kw = |l: Option<Len>| {
+        matches!(
+            l,
+            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+        )
+    };
+    let unset = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
+    let c = &e.style;
+    let Some(w @ Len::Px(_)) = c.width else {
+        return None;
+    };
+    if replaced_tag(e)
+        || e.tag == "table"
+        || matches!(c.display, Some(Display::Table) | Some(Display::InlineTable))
+    {
+        return None;
+    }
+    let mut copy = e.clone();
+    if kw(c.min_width) && unset(c.max_width) {
+        copy.style.width = c.min_width;
+        copy.style.min_width = Some(w);
+    } else if kw(c.max_width) && unset(c.min_width) {
+        copy.style.width = c.max_width;
+        copy.style.max_width = Some(w);
+    } else {
+        return None;
+    }
+    Some(copy)
 }
 
 fn content_sized_wraps(c: &Computed) -> bool {
