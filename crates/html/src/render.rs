@@ -8684,12 +8684,22 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             }
             None
         }
-        "svg" => crate::svg::element(e).or_else(|| {
-            Some(image_with(
-                &with_inherited_font(e, inherited),
-                Some(atom_base_font(inherited, opts)),
-            ))
-        }),
+        "svg" => {
+            // Рисунок без собственного размера — stretch-fit от содержащего
+            // блока (`svg::stretch_fit`): ширина родителя, когда она в
+            // точках, иначе ближайшая известная (`CB_WIDTH` — та же, что у
+            // картинки с одним соотношением в `image_with`).
+            let cb_w = match inherited.width {
+                Some(Len::Px(v)) if v > 0.0 => Some(v),
+                _ => CB_WIDTH.get().filter(|v| *v > 0.0),
+            };
+            crate::svg::element(&crate::svg::stretch_fit(e, cb_w)).or_else(|| {
+                Some(image_with(
+                    &with_inherited_font(e, inherited),
+                    Some(atom_base_font(inherited, opts)),
+                ))
+            })
+        }
         // Свой бокс (фон, рамка, отступы) означает, что кусок не может быть
         // прогоном текста: прогон не умеет рисовать вокруг себя рамку.
         _ if has_own_box(
@@ -10768,11 +10778,20 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // заход на резервный размер бесадресной рамки; первый (коробка
         // 300×150 целиком) стоил 13 пар, запись выше.
         // Рисунок не разобрался — показываем запасной текст, а не пустоту.
-        "svg" => crate::svg::element(e).unwrap_or_else(|| {
-            styled_div_with(e, &merged)
-                .child(SharedString::from("[рисунок]"))
-                .into_any_element()
-        }),
+        "svg" => {
+            // Тот же stretch-fit, что у строчного атома (`atom_element`).
+            // Содержащий блок — `inherited` (родитель), а не `merged`: это
+            // уже собственный стиль рисунка.
+            let cb_w = match inherited.width {
+                Some(Len::Px(v)) if v > 0.0 => Some(v),
+                _ => CB_WIDTH.get().filter(|v| *v > 0.0),
+            };
+            crate::svg::element(&crate::svg::stretch_fit(e, cb_w)).unwrap_or_else(|| {
+                styled_div_with(e, &merged)
+                    .child(SharedString::from("[рисунок]"))
+                    .into_any_element()
+            })
+        }
         "hr" => styled_div_with(e, &merged).w_full().into_any_element(),
         // Синтетический узел обтекания формой (см. wrap_floats).
         "shape-flow" => shape_flow(e, &merged, opts),
