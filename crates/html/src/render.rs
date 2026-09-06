@@ -159,6 +159,14 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         style
     };
     let mut d = apply(div(), c);
+    // Проба якоря (css-anchor-position-1 §anchor-name): канвас во всю
+    // коробку пишет её рамку в реестр кадра на подготовке — позже по дереву
+    // её прочтёт `anchor::AnchorPlace` позиционированной коробки. Ставится
+    // здесь, потому что через `styled_div_with` проходят и блоки, и атомы
+    // строки (`inline-block` из `anchor-position-005`), и держатели.
+    if let Some(probe) = crate::anchor::probe_for(e) {
+        d = d.child(probe);
+    }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
     // наведения к нему не применяется.
     if c.pointer_events_none != Some(true) {
@@ -9638,7 +9646,11 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     .into_any_element(),
                 );
             }
-            d.children(kids).into_any_element()
+            // Абсолют с `anchor()`-вставками: раскладка поставила его к краю
+            // содержащего блока (нулевая вставка), сдвиг до края якоря
+            // считает заместитель на подготовке кадра. Без якорных вставок
+            // коробка возвращается как есть.
+            crate::anchor::place(d.children(kids).into_any_element(), &merged, inherited)
         }
     }
 }

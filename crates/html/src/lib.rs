@@ -13,6 +13,7 @@
 //! `z-index`, переходы и анимации — не переносятся, потому что примитивов под
 //! них в GPUI нет.
 
+pub mod anchor;
 pub mod apply;
 pub mod background;
 pub mod bands;

@@ -54,6 +54,12 @@ pub enum Len {
     /// `5lh` — доля ВЫСОТЫ СТРОКИ (CSS Values §6.1.2): она известна только
     /// после каскада, единица доживает до слияния стилей.
     Lh(f32),
+    /// `anchor(<name>? <side>, <fallback>?)` (css-anchor-position-1
+    /// §anchor-fn) — ИНДЕКС в арене `anchor_store`, как у `Calc`. Раскладке
+    /// такая вставка уходит нулём (`apply::len_to_gpui`), а сдвиг до края
+    /// якоря считает `anchor::AnchorPlace` на подготовке кадра. Законна
+    /// только во вставках абсолюта; в размерах разбор её не порождает.
+    Anchor(u32),
     /// `auto`
     Auto,
 }
@@ -174,6 +180,16 @@ impl Len {
         // хватает на `calc(100% - 24px)` только когда обе части одной природы,
         // поэтому смешанные записи честно не разбираются — приблизительная
         // длина хуже отсутствующей, её не видно в тесте.
+        // `anchor()` и `calc(anchor(…) + 10px)` (css-anchor-position-1
+        // §anchor-fn). Прежде запись выбрасывалась целиком, и абсолют падал на
+        // статическую позицию. Имя якоря чувствительно к регистру
+        // (`--myAnchor`), поэтому режется `s`, а не `lower`.
+        if lower.starts_with("anchor(") && s.ends_with(')') {
+            return parse_anchor(&s[7..s.len() - 1], 0.0);
+        }
+        if lower.starts_with("calc(") && lower.contains("anchor(") {
+            return parse_anchor_calc(s);
+        }
         if let Some(inner) = s.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')) {
             return parse_calc(inner);
         }
@@ -738,6 +754,135 @@ pub fn calc_reset() {
     CALC_POOL.lock().unwrap().clear();
 }
 
+/// Сторона якоря в `anchor()` (css-anchor-position-1 §anchor-fn);
+/// `center` разбирается как `Pct(0.5)` — спека так и определяет.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AnchorSide {
+    Inside,
+    Outside,
+    Top,
+    Right,
+    Bottom,
+    Left,
+    Start,
+    End,
+    SelfStart,
+    SelfEnd,
+    Pct(f32),
+}
+
+/// Разобранная `anchor()`: имя (нет — якорь по умолчанию из
+/// `position-anchor`), сторона, запасное значение и довесок в точках из
+/// `calc(anchor(…) + 10px)`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnchorFn {
+    pub name: Option<String>,
+    pub side: AnchorSide,
+    pub fallback: Option<Len>,
+    pub add: f32,
+}
+
+/// Арена `anchor()` — тем же порядком, что `CALC_POOL`: append-only, `Len`
+/// несёт индекс, тело живёт здесь.
+static ANCHOR_POOL: std::sync::Mutex<Vec<AnchorFn>> = std::sync::Mutex::new(Vec::new());
+
+pub fn anchor_store(f: AnchorFn) -> u32 {
+    let mut pool = ANCHOR_POOL.lock().unwrap();
+    pool.push(f);
+    (pool.len() - 1) as u32
+}
+
+pub fn anchor_get(i: u32) -> Option<AnchorFn> {
+    ANCHOR_POOL.lock().unwrap().get(i as usize).cloned()
+}
+
+/// Тело `anchor(...)` без скобок: `[<name> || <side>] , <fallback>?`.
+/// Запятая ищется на верхнем уровне — запасным значением бывает вложенный
+/// `anchor(--a1 bottom)` (`position-anchor-none-pseudo-element-named`).
+fn parse_anchor(inner: &str, add: f32) -> Option<Len> {
+    let mut depth = 0i32;
+    let mut cut = None;
+    for (i, ch) in inner.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => {
+                cut = Some(i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let (head, tail) = match cut {
+        Some(i) => (&inner[..i], Some(inner[i + 1..].trim())),
+        None => (inner, None),
+    };
+    let mut name = None;
+    let mut side = None;
+    for tok in head.split_whitespace() {
+        if tok.starts_with("--") {
+            name = Some(tok.to_string());
+            continue;
+        }
+        let t = tok.to_ascii_lowercase();
+        side = Some(match t.as_str() {
+            "inside" => AnchorSide::Inside,
+            "outside" => AnchorSide::Outside,
+            "top" => AnchorSide::Top,
+            "right" => AnchorSide::Right,
+            "bottom" => AnchorSide::Bottom,
+            "left" => AnchorSide::Left,
+            "start" => AnchorSide::Start,
+            "end" => AnchorSide::End,
+            "self-start" => AnchorSide::SelfStart,
+            "self-end" => AnchorSide::SelfEnd,
+            "center" => AnchorSide::Pct(0.5),
+            _ => AnchorSide::Pct(css_number(t.strip_suffix('%')?)? / 100.0),
+        });
+    }
+    let fallback = match tail {
+        Some(t) if !t.is_empty() => Some(Len::parse(t)?),
+        _ => None,
+    };
+    Some(Len::Anchor(anchor_store(AnchorFn {
+        name,
+        side: side?,
+        fallback,
+        add,
+    })))
+}
+
+/// `calc(anchor(…) ± <length>)`: функция вырезается и заменяется нулём,
+/// остаток обязан свернуться в точки — он и становится довеском. Доля или
+/// шрифтовая единица рядом с якорем честно не разбирается (запись падает).
+fn parse_anchor_calc(s: &str) -> Option<Len> {
+    let lower = s.to_ascii_lowercase();
+    let at = lower.find("anchor(")?;
+    let mut depth = 0i32;
+    let mut end = None;
+    for (i, ch) in s[at..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(at + i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let end = end?;
+    let body = &s[at + 7..end];
+    let rest = format!("{}0px{}", &s[..at], &s[end + 1..]);
+    let add = match Len::parse(&rest)? {
+        Len::Px(v) => v,
+        _ => return None,
+    };
+    parse_anchor(body, add)
+}
+
 /// Операнд выражения: голое число участвует только в умножении и делении.
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Val {
@@ -767,7 +912,11 @@ impl Sum {
             Len::Vh(v) => s.vh = v,
             Len::Vw(v) => s.vw = v,
             Len::Calc(i) => s = calc_get(i),
-            Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => return None,
+            // Якорная вставка в арифметику не входит: её довесок уже внутри
+            // `AnchorFn::add`, а сама она решается на подготовке кадра.
+            Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => {
+                return None;
+            }
         }
         Some(s)
     }

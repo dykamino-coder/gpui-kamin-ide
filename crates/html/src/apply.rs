@@ -45,6 +45,11 @@ fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         // ограничения, а не значение; вызывающий такие поля не применяет.
         // Размер по содержимому — то же самое: его ставит обёртка-сетка
         // (`render::content_sized`), а не длина.
+        // `anchor()` во вставке: раскладке отдаётся НОЛЬ — коробка встаёт к
+        // краю содержащего блока, а сдвиг до края якоря считает
+        // `anchor::AnchorPlace` на подготовке кадра; там же от этого нуля
+        // отсчитывается и запасное значение `anchor(left, 20px)`.
+        Len::Anchor(_) => px(0.0).into(),
         Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => relative(1.0),
     }
 }
@@ -1499,7 +1504,14 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
             )),
             Len::Lh(k) | Len::LhPx(k, _) => d.line_height(relative(k)),
             Len::Vw(k) | Len::Vh(k) => d.line_height(relative(k)),
-            Len::Calc(_) | Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => d,
+            // `anchor()` в `line-height` не бывает (css-anchor-position-1 §anchor-fn:
+            // только вставки) — как незнакомая длина, без сдвига.
+            Len::Calc(_)
+            | Len::Auto
+            | Len::MinContent
+            | Len::MaxContent
+            | Len::FitContent
+            | Len::Anchor(_) => d,
         };
     }
     if c.nowrap == Some(true) {

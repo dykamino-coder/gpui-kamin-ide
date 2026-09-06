@@ -352,6 +352,18 @@ pub enum Position {
     Sticky,
 }
 
+/// `position-anchor` (css-anchor-position-1 §position-anchor): якорь по
+/// умолчанию для `anchor()` без имени. `normal` без `position-area` ведёт
+/// себя как `none`; `match-parent` пока не решается (нет пар).
+#[derive(Clone, Debug, PartialEq)]
+pub enum PositionAnchor {
+    Normal,
+    None,
+    Auto,
+    Named(String),
+    MatchParent,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Overflow {
     Visible,
@@ -916,6 +928,16 @@ pub struct Computed {
 
     pub position: Option<Position>,
     pub inset: Sides,
+    /// `anchor-name` (css-anchor-position-1 §anchor-name): имена якоря,
+    /// `none` — отсутствие. Коробка с именем получает пробу
+    /// (`anchor::probe_for`), пишущую её рамку в реестр кадра.
+    pub anchor_name: Option<Vec<String>>,
+    /// `position-anchor`; начальное `normal`.
+    pub position_anchor: Option<PositionAnchor>,
+    /// Неявный якорь псевдоэлемента — `node_id` порождающего элемента
+    /// (§implicit: «The implicit anchor element of a pseudo-element is its
+    /// originating element»). Ставит `dom::walk` после обхода детей.
+    pub implicit_anchor: Option<u64>,
     pub overflow_x: Option<Overflow>,
     /// Внутренняя копия прокручиваемой коробки (`render` снимает с неё
     /// `overflow`, чтобы обёртка `ScrollArea` резала сама): по спеке она
@@ -3110,6 +3132,29 @@ impl Computed {
                     "sticky" | "-webkit-sticky" => Some(Position::Sticky),
                     _ => self.position,
                 }
+            }
+            // css-anchor-position-1 §anchor-name: `none | <dashed-ident>#`.
+            "anchor-name" => {
+                self.anchor_name = (v != "none")
+                    .then(|| {
+                        v.split(',')
+                            .map(|n| n.trim().to_string())
+                            .filter(|n| n.starts_with("--"))
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|names| !names.is_empty());
+            }
+            // §position-anchor: значение хранится как есть, решается при
+            // сборке (`anchor::AnchorPlan::of`) и в `anchor::settle_static`.
+            "position-anchor" => {
+                self.position_anchor = Some(match v {
+                    "normal" => PositionAnchor::Normal,
+                    "none" => PositionAnchor::None,
+                    "auto" => PositionAnchor::Auto,
+                    "match-parent" => PositionAnchor::MatchParent,
+                    name if name.starts_with("--") => PositionAnchor::Named(name.to_string()),
+                    _ => return,
+                });
             }
             "top" => {
                 self.inset_inherit[0] = v == "inherit";
@@ -6307,7 +6352,7 @@ impl Computed {
                             | Len::Ex(_)
                             | Len::Lh(_)
                             | Len::LhPx(..)) => crate::metrics::fallback_len_px(l, "", 16.0),
-                            Len::Vw(_) | Len::Vh(_) | Len::Calc(_) => None,
+                            Len::Vw(_) | Len::Vh(_) | Len::Calc(_) | Len::Anchor(_) => None,
                             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
                         });
                     self.clip_round = Some(radius.unwrap_or(0.0));

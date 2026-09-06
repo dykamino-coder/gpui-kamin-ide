@@ -1970,7 +1970,7 @@ fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
         | Len::Lh(_)
         | Len::LhPx(..)) => crate::metrics::fallback_len_px(l, "", 16.0),
         Len::Vw(_) | Len::Vh(_) => None,
-        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
+        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => None,
     }
 }
 

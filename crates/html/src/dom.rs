@@ -2399,6 +2399,17 @@ fn walk(
             }
 
             *counter += 1;
+            // Неявный якорь псевдоэлемента — порождающий элемент
+            // (css-anchor-position-1 §implicit); его `node_id` известен
+            // только здесь, после обхода детей: `::before` собран до них,
+            // `::after` — после, а номер хозяину даёт этот же счётчик.
+            for kid in children.iter_mut() {
+                if let Node::Element(c) = kid
+                    && c.tag.starts_with("::")
+                {
+                    c.style.implicit_anchor = Some(*counter);
+                }
+            }
             // Кадры разрешаются здесь же: к моменту отрисовки таблицы стилей
             // уже нет, а интерполировать нужно готовые стили, а не текст.
             let anim = style.animation.as_ref().and_then(|a| {
