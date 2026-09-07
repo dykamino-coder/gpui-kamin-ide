@@ -492,6 +492,13 @@ pub struct StackChild {
     /// линиями колонок; в стопке с рядами — по курсору Blink
     /// `LayoutSpanner` (не влез в остаток ряда — со следующего ряда).
     pub span: bool,
+    /// Общий сдвиг `position: relative`, снятый с копии (`hoist_relative`).
+    /// css-break-3 §5.5: «Fragmentation occurs before relative positioning …
+    /// Such effects are applied per fragment» — сдвиг накладывается НА
+    /// фрагмент, а значит двигает и его срез. Внутри копии он бы уехал из
+    /// маски колонки и погас (`out-of-flow-in-multicolumn-042/045`), а у
+    /// КОРНЯ копии `layout_as_root` его и вовсе не читает (проба `pm1`).
+    pub rel: (f32, f32),
 }
 
 /// Мера ребёнка для укладки колонок.
@@ -1351,8 +1358,11 @@ impl Element for ColumnStack {
             let full_h = self.children[f.kid].h;
             // Колонка в своём ряду: `x` по номеру в ряду, `y` от верха ряда.
             let (c, ry) = self.place(f.col);
-            let x = bounds.origin.x + px(c as f32 * step);
-            let y = bounds.origin.y + px(ry + f.y);
+            // Сдвиг фрагмента (css-break-3 §5.5) — здесь, а не внутри копии:
+            // `layout_as_root` края её КОРНЯ не читает (проба `pm1`).
+            let rel = self.children[f.kid].rel;
+            let x = bounds.origin.x + px(c as f32 * step + rel.0);
+            let y = bounds.origin.y + px(ry + f.y + rel.1);
             let kid = &mut self.children[f.kid];
             let el = if f.copy == 0 {
                 &mut kid.el
@@ -1468,8 +1478,12 @@ impl Element for ColumnStack {
         }
         for f in plan {
             let (c, ry) = self.place(f.col);
-            let x = bounds.origin.x + px(c as f32 * step);
-            let y = bounds.origin.y + px(ry + f.y);
+            // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):
+            // маска, оставленная на месте колонки, съедала его целиком
+            // (`out-of-flow-in-multicolumn-042/045`, проба `pm3`).
+            let rel = self.children[f.kid].rel;
+            let x = bounds.origin.x + px(c as f32 * step + rel.0);
+            let y = bounds.origin.y + px(ry + f.y + rel.1);
             let split = parts[f.kid] > 1;
             let mask = gpui::ContentMask {
                 bounds: Bounds {

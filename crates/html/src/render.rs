@@ -1897,9 +1897,14 @@ fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             || e.style.display == Some(Display::TableRowGroup)
             || e.style.row_group_kind.is_some()
     };
+    // Щуп разреза ходит по ТОМУ ЖЕ дереву, что мера (Х2) и рисование: иначе
+    // `table_shape` посчитает точки по анонимным рядам, а `pushed_cell_at` на
+    // тех же детях вернёт `None`, и распорка роста (`grow_pushed`) не найдёт
+    // коробку, которую надо дотянуть до низа колонки.
+    let fixed = fixup_table_children(&c.children);
     let mut parts: Vec<(u8, &Element)> = Vec::new();
     let (mut head, mut foot) = (false, false);
-    for n in c.children.iter().filter(|n| !is_blank(n)) {
+    for n in fixed.iter().filter(|n| !is_blank(n)) {
         let Node::Element(e) = n else { return None };
         let role = match e.tag.as_str() {
             "thead" => Some(0u8),
@@ -2242,11 +2247,23 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             || e.style.display == Some(Display::TableRowGroup)
             || e.style.row_group_kind.is_some()
     };
+    // Дети чинятся ТЕМ ЖЕ `fixup_table_children`, которым их чинит рисователь
+    // `table()` (render.rs:13551; css-tables-3 §3 fixup): бесхозная ячейка,
+    // блок или текст прямо в таблице получают анонимный ряд, не-ячейка внутри
+    // ряда — анонимную ячейку, `display: contents` растворяется, а ряды внутри
+    // групп чинит рекурсивный заход. Прежде мера шла по СЫРОМУ дереву, и любой
+    // ребёнок, которому нужна анонимная коробка, отдавал `None`; у колонок
+    // `None` — отказ от укладки целиком, и многоколоночник не фрагментировался
+    // вовсе: первая колонка переполнялась, остальные пустовали
+    // (`table-border-000` 6.25 — зелёное до y=566 при коробке до y=191,
+    // `table-cell-border-001` 2.08, `overflow-scroll-row`).
+    // `fixed` объявлен ДО `parts`: `parts` держит ссылки внутрь него.
+    let fixed = fixup_table_children(&c.children);
     // Части в порядке отрисовки: первая заголовочная группа — вперёд,
     // первая подвальная — назад, остальное как в разметке (`table()`).
     let mut parts: Vec<(u8, &Element)> = Vec::new();
     let (mut head, mut foot) = (false, false);
-    for n in c.children.iter().filter(|n| !is_blank(n)) {
+    for n in fixed.iter().filter(|n| !is_blank(n)) {
         let Node::Element(e) = n else { return None };
         let role = match e.tag.as_str() {
             "thead" => Some(0u8),
@@ -2486,7 +2503,22 @@ fn edge_break(e: &Element, last: bool) -> bool {
         )
         && e.style.flex_wrap != Some(true)
         && e.style.webkit_box_vertical != Some(true);
-    if row_nowrap {
+    // Ячейки одного ряда стоят бок о бок ровно как элементы ряда `flex` без
+    // переноса: в блочном направлении «первой» и «последней» служит КАЖДАЯ
+    // (css-break-4 §break-propagation вместе с css-tables-3 §fragmentation;
+    // Blink рвёт весь ряд, если разрыв стоит в любой его ячейке). Пока мерка
+    // молчала, `break-after` ПЕРВОЙ из двух ячеек терялся, и пары спасал
+    // только отказ меры на таблице с голыми ячейками — это записано в
+    // комментарии `shape_full` перед `table_box(c)`: «сквозной путь по тегу
+    // хранит перенос принудительного разрыва ячейки на таблицу
+    // (`break-after-table-cell`, `-child`: 0.00 → 2.08 без гейта)». Х2 этот
+    // отказ снимает, значит перенос обязан жить здесь.
+    let cells_abreast = e
+        .children
+        .iter()
+        .filter(|n| !is_blank(n))
+        .any(|n| matches!(n, Node::Element(k) if is_cell(k)));
+    if row_nowrap || cells_abreast {
         return live.any(|n| matches!(n, Node::Element(k) if class_a_box(k) && edge_break(k, last)));
     }
     let edge = if last { live.next_back() } else { live.next() };
@@ -11935,6 +11967,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // Поля кладёт укладка колонок, не коробка.
                                 copy.style.margin.top = None;
                                 copy.style.margin.bottom = None;
+                                // Относительный сдвиг — не коробке, а фрагменту
+                                // (css-break-3 §5.5): его кладёт `ColumnStack`
+                                // вместе со срезом.
+                                let rel = hoist_relative(&mut copy);
                                 let inner = inline::inherit(&merged, &copy.style);
                                 // Копии на случай разреза между колонками:
                                 // элемент GPUI рисуется один раз, а фрагмент
@@ -12038,6 +12074,42 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // 059`, `multicol-nested-013/021`,
                                     // `multicol-fill-balance-nested-000`. Тот же
                                     // путь, на котором прежде мерился откат -52.
+                                    // Копия ТАБЛИЦЫ — своим рисователем.
+                                    // `styled_div_with` + `blocks` кладут детей
+                                    // таблицы обычными блоками, и `element()`
+                                    // заворачивает КАЖДЫЙ ряд в СВОЮ анонимную
+                                    // таблицу (ветка `TableRowGroup | TableRow |
+                                    // TableCell`, render.rs:11622): дорожки
+                                    // считаются по одному ряду, ячейка сжимается
+                                    // по содержимому, а фон ряда и ячейки
+                                    // теряется вовсе. Фрагментация идёт ДО
+                                    // графических эффектов и применяется к
+                                    // каждому фрагменту (css-break-3 §5.5), но
+                                    // РАСКЛАДКА фрагмента — та же табличная
+                                    // (css-tables-3 §fragmentation).
+                                    // ЗАМЕРЕНО пробами (`target/probe-bt/`,
+                                    // стенд v150): фон САМОЙ таблицы рисуется
+                                    // (`p4-2col-bgtbl` 0.00) и блок с шириной в
+                                    // точках рисуется (`p5-b-w100-div50` 0.00), а
+                                    // фон ячейки (`p6-td-bg`), фон ряда
+                                    // (`p6-tr-bg`), `width: auto`
+                                    // (`p5-c-w100-divauto`) и `width: 100%`
+                                    // (`p6-div-w100pct`) не рисуются НИЧЕМ —
+                                    // 15625 красных точек из 15625.
+                                    // `transformed` — как в общей ветке ниже:
+                                    // `table()` его не вешает (в `element()`
+                                    // таблица идёт мимо него), а копия обязана
+                                    // нести трансформ на каждом фрагменте.
+                                    if table_box(&copy) {
+                                        let mut tc = copy.clone();
+                                        tc.children = kids;
+                                        drop(frag_gap_guard);
+                                        return transformed(
+                                            table(&tc, &inner, opts),
+                                            &inner,
+                                            &merged,
+                                        );
+                                    }
                                     let mut body = blocks(&kids, &inner, opts);
                                     drop(frag_gap_guard);
                                     let mut d = styled_div_with(&copy, &inner);
@@ -12172,6 +12244,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     mt,
                                     mb,
                                     span,
+                                    rel,
                                 }
                             })
                             .collect();
@@ -15693,6 +15766,62 @@ fn relative_shift(e: &Element) -> (f32, f32) {
         side(e.style.inset.left, e.style.inset.right),
         side(e.style.inset.top, e.style.inset.bottom),
     )
+}
+
+/// Снять с копии фрагмента ОБЩИЙ относительный сдвиг.
+///
+/// css-break-3 §5.5: «Fragmentation occurs before relative positioning,
+/// transforms, and any other graphical effects. Such effects are applied per
+/// fragment». У нас фрагмент — полная копия, обрезанная маской колонки, и
+/// сдвиг внутри копии уезжает из маски: содержимое гаснет целиком
+/// (`out-of-flow-in-multicolumn-042/045/060/061`; пробы `pm3`, `p042b` —
+/// пустой кадр, а `p042` без сдвигов = 0.00). Поэтому сдвиг переносится на
+/// ПОСТАНОВКУ фрагмента: и содержимое, и срез едут вместе.
+///
+/// Спускаемся ПОКА у коробки ровно один непустой ребёнок: только тогда сдвиг
+/// заведомо общий для всего, что фрагмент рисует. Складываются лишь точечные
+/// края (`Len::Px`) — процентный край остаётся коробке, иначе он пропал бы.
+fn hoist_relative(e: &mut Element) -> (f32, f32) {
+    let (mut dx, mut dy) = (0.0f32, 0.0f32);
+    let mut cur = e;
+    loop {
+        if cur.style.position == Some(crate::computed::Position::Relative) {
+            let px_side = |a: Option<Len>, b: Option<Len>| match (a, b) {
+                (Some(Len::Px(v)), _) => Some(v),
+                (_, Some(Len::Px(v))) => Some(-v),
+                _ => None,
+            };
+            let hx = px_side(cur.style.inset.left, cur.style.inset.right);
+            let hy = px_side(cur.style.inset.top, cur.style.inset.bottom);
+            if let Some(v) = hx {
+                dx += v;
+                cur.style.inset.left = None;
+                cur.style.inset.right = None;
+            }
+            if let Some(v) = hy {
+                dy += v;
+                cur.style.inset.top = None;
+                cur.style.inset.bottom = None;
+            }
+        }
+        let mut live = cur.children.iter().enumerate().filter(|(_, n)| !is_blank(n));
+        let i = match (live.next(), live.next()) {
+            (Some((i, Node::Element(k))), None)
+                if !k.inline
+                    && matches!(
+                        k.style.position,
+                        None | Some(crate::computed::Position::Relative)
+                    ) =>
+            {
+                i
+            }
+            _ => return (dx, dy),
+        };
+        match &mut cur.children[i] {
+            Node::Element(k) => cur = k,
+            _ => return (dx, dy),
+        }
+    }
 }
 
 /// Сдвиг, фон и СТИЛЬ ГРУППЫ строк: письмо/шрифт с `<tbody>` наследуются в
