@@ -39,7 +39,11 @@ extensions/claude-bridge/server/installer/
 
 # ── Логи и дампы ─────────────────────────────────────────────
 *.log
+*.log.[0-9]*
 /logs/
+# Diagnostic intake belongs outside public worktrees (CONTRIBUTING.md).
+/crash-logs/
+/crsh-logs/
 *.dmp
 *.heapsnapshot
 *.cpuprofile

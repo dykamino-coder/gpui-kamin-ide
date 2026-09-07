@@ -98,6 +98,12 @@ Change/Fix. Если Release PR содержит функциональный к
 
 ## 3. Privacy preflight
 
+Локальные материалы принимаются по
+[порядку приёма диагностики](../CONTRIBUTING.md#diagnostic-intake) с первого
+получения, включая новые файлы во время review. Maintainer не просит положить
+raw evidence в public checkout и не создаёт там extracts или полный analysis;
+использует внешнюю private inbox либо проверенный private evidence checkout.
+
 До чтения реализации и merge агент проверяет public diff и PR body:
 
 - raw corporate logs, prompts, internal repository contents, user paths и
