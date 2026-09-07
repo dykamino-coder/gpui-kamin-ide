@@ -1139,6 +1139,12 @@ pub struct Transformed {
     /// Ячейка ПРЯМОГО родителя: объёмный путь домножает на неё слева
     /// (css-transforms-2 §3d-transform-rendering, п.3).
     pub under_perspective: Option<crate::computed::PerspectiveFrame>,
+    /// Своя ячейка объёмного контекста (`transform-style: preserve-3d`):
+    /// `paint` кладёт в неё накопленную 4×4 и свою аффинную долю ДО детей.
+    pub frame_3d: Option<crate::computed::Frame3d>,
+    /// Ячейка объёмного контекста ПРЯМОГО родителя: своя матрица копится
+    /// поверх неё, изнанка решается по накопленной, доля родителя снимается.
+    pub under_3d: Option<crate::computed::Frame3d>,
 }
 
 /// Сплющивание плоскости z=0 в аффинную матрицу экрана
@@ -1181,6 +1187,25 @@ fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::Transfor
     })
 }
 
+/// Обратная аффинная `[[a, b, tx], [c, d, ty]]`.
+///
+/// Нужна ровно затем, чтобы снять долю родителя: gpui складывает вложенные
+/// `with_transformation` как `inner∘outer` (`window.rs:2789`; обратный
+/// порядок замерен и откачен), поэтому ребёнок объёмного контекста, желая
+/// оказаться на абсолютной `G`, обязан втолкнуть `G ∘ F_родителя⁻¹`.
+fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
+    let (a, b, tx) = (m[0][0], m[0][1], m[0][2]);
+    let (c, d, ty) = (m[1][0], m[1][1], m[1][2]);
+    let det = a * d - b * c;
+    if det.abs() < 1e-9 {
+        return None;
+    }
+    Some(gpui::TransformationMatrix {
+        rotation_scale: [[d / det, -b / det], [-c / det, a / det]],
+        translation: [(b * ty - d * tx) / det, (c * tx - a * ty) / det],
+    })
+}
+
 impl Transformed {
     pub fn new(child: AnyElement) -> Self {
         Transformed {
@@ -1204,6 +1229,8 @@ impl Transformed {
             perspective_origin_px: (None, None),
             perspective_frame: None,
             under_perspective: None,
+            frame_3d: None,
+            under_3d: None,
         }
     }
 }
@@ -1280,7 +1307,21 @@ impl Element for Transformed {
         // Изнанка (css-transforms-2 §backface-visibility): элемент разложен и
         // держит место, но не рисуется. m33 — из полной 4×4 самого элемента;
         // у плоских функций он равен 1, так что 2D-путь сюда не попадает.
-        if self.backface_hidden && self.m4[2][2] < 0.0 {
+        // …и по НАКОПЛЕННОЙ, когда элемент внутри объёмного контекста
+        // (css-transforms-2 §backface-visibility, «m33 < 0 → not rendered»,
+        // где m33 — от накопленной: transform3d-backface-visibility-004/006,
+        // backface-visibility-hidden-004, backface-visibility-with-sibling-001).
+        // `m33` не зависит ни от сдвигов, ни от свёртки `S·M·S⁻¹`, поэтому
+        // считается прямо здесь, до перевода в точки устройства.
+        let accum33 = match self.under_3d.as_ref().and_then(|f| f.get()) {
+            Some((a, _)) => crate::computed::mul4(a, self.m4)[2][2],
+            None => self.m4[2][2],
+        };
+        // Владелец `preserve-3d` изнанкой уносит только СЕБЯ: его дети —
+        // отдельные плоскости того же контекста и решают свою видимость сами
+        // (composited-under-rotateY-180deg-preserve-3d: зелёный ребёнок под
+        // `backface-visibility: hidden; rotateY(180deg); preserve-3d`).
+        if self.backface_hidden && accum33 < 0.0 && self.frame_3d.is_none() {
             return;
         }
         // Своя `perspective` (css-transforms-2 §perspective-matrix-computation):
@@ -1311,7 +1352,13 @@ impl Element for Transformed {
             );
             frame.set(Some(p));
         }
-        if !self.has_3d {
+        // Плоский путь годится, только когда объёмного контекста рядом нет:
+        // и владелец `preserve-3d`, и его ребёнок идут по 4×4, даже когда
+        // своих объёмных функций у них нет — `m4` держит и плоские функции
+        // (`computed::Transform::m4`, «плоские вкладываются как есть»).
+        let in_3d =
+            self.frame_3d.is_some() || self.under_3d.as_ref().and_then(|f| f.get()).is_some();
+        if !self.has_3d && !in_3d {
             // Плоский путь — прежний, байт в байт.
             let matrix = gpui::TransformationMatrix::unit()
                 .translate(origin)
@@ -1367,13 +1414,61 @@ impl Element for Transformed {
         if det4(&own).abs() < 1e-9 {
             return;
         }
+        // Накопленная матрица объёмного контекста (css-transforms-2
+        // §accumulated-3d-transformation-matrix): A(родителя) · P(его
+        // перспектива — домножена выше) · C(своя). Обе уже в точках
+        // устройства, второй свёртки `S·M·S⁻¹` не возникает — ровно из-за
+        // неё «3D full» терял −60 (computed.rs:691).
+        let under = self.under_3d.as_ref().and_then(|f| f.get());
+        let full = match under {
+            Some((a, _)) => mul4(a, own),
+            None => own,
+        };
         let center = (
             (f32::from(bounds.origin.x) + w * 0.5) * sf,
             (f32::from(bounds.origin.y) + h * 0.5) * sf,
         );
-        // Ребро (`rotateX(90deg)`) — не рисуется, как и прежняя нулевая высота.
-        let Some(flat) = flatten_plane(&own, center) else {
+        let flat = flatten_plane(&full, center);
+        // Ячейка для СВОИХ детей — накопленная и своя аффинная доля;
+        // наполняется ДО отрисовки детей, как у перспективы (и ради
+        // отложенных слоёв абсолютов).
+        if let Some(frame) = self.frame_3d.as_ref() {
+            let share = flat.map_or([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], |m| {
+                [
+                    [
+                        m.rotation_scale[0][0],
+                        m.rotation_scale[0][1],
+                        m.translation[0],
+                    ],
+                    [
+                        m.rotation_scale[1][0],
+                        m.rotation_scale[1][1],
+                        m.translation[1],
+                    ],
+                ]
+            });
+            frame.set(Some((full, share)));
+        }
+        // Ребро (`rotateX(90deg)`) — не рисуется, как и прежняя нулевая
+        // высота. Но в объёмном контексте ПОТОМКИ ребром не становятся
+        // (transform3d-preserve3d-011: `rotateX(90)` над `rotateX(90)` =
+        // 180°): краска идёт под единичной долей, а место каждый потомок
+        // назначает себе сам по накопленной.
+        let Some(flat) = flat else {
+            if self.frame_3d.is_some() {
+                let child = self.child.as_mut().unwrap();
+                window.with_transformation(gpui::TransformationMatrix::unit(), |window| {
+                    child.paint(window, cx)
+                });
+            }
             return;
+        };
+        // Своя доля для gpui: родитель УЖЕ втолкнул `F_P`, а вложения
+        // складываются как `inner∘outer` (`window.rs:2789`, порядок замерен и
+        // оставлен) — значит втолкнуть надо `G ∘ F_P⁻¹`.
+        let flat = match under.and_then(|(_, fp)| invert_affine(fp)) {
+            Some(inv) => flat.compose(inv),
+            None => flat,
         };
         let child = self.child.as_mut().unwrap();
         window.with_transformation(flat, |window| child.paint(window, cx));

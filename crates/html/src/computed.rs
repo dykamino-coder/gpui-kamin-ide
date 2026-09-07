@@ -756,6 +756,18 @@ pub struct Transform {
 /// (`defers`), когда `paint` родителя уже вышел; ячейка переживает кадр.
 pub type PerspectiveFrame = std::rc::Rc<std::cell::Cell<Option<[[f32; 4]; 4]>>>;
 
+/// Ячейка объёмного контекста `transform-style: preserve-3d`
+/// (css-transforms-2 §accumulated-3d-transformation-matrix): накопленная
+/// 4×4 в точках устройства И собственная аффинная доля
+/// `[[a, b, tx], [c, d, ty]]`, которую владелец уже втолкнул в gpui.
+/// Ребёнок кладёт себя по `flatten(A · C)`, а родительскую долю обязан
+/// снять сам: `with_transformation` складывает вложения как `inner∘outer`
+/// (`vendor/gpui/src/window.rs:2789`; обратный порядок ЗАМЕРЕН И ОТКАЧЕН —
+/// css-writing-modes −9). Ячейка, а не стек кадра, — по той же причине,
+/// что у перспективы: абсолютный ребёнок с `z-index`/`fixed` рисуется
+/// отложенным слоем, когда `paint` владельца уже вышел.
+pub type Frame3d = std::rc::Rc<std::cell::Cell<Option<([[f32; 4]; 4], [[f32; 3]; 2])>>>;
+
 /// Единичная 4×4.
 pub const IDENTITY4: [[f32; 4]; 4] = [
     [1.0, 0.0, 0.0, 0.0],
@@ -1685,6 +1697,15 @@ pub struct Computed {
     /// Ячейка матрицы перспективы (см. `PerspectiveFrame`); один и тот же
     /// `Rc` у `e.style` родителя, его `merged` и `inherited` детей.
     pub perspective_frame: Option<PerspectiveFrame>,
+    /// `transform-style: preserve-3d` — элемент образует объёмный контекст
+    /// (css-transforms-2 §transform-style-property). ИСПОЛЬЗУЕМОЕ значение
+    /// гасят «групповые» свойства — это решает `render::flattens_3d`,
+    /// потому что они могут быть записаны в блоке ПОСЛЕ `transform-style`.
+    pub preserve_3d: Option<bool>,
+    /// Ячейка накопленной 4×4 (см. `Frame3d`): заводится при разборе
+    /// `transform-style`, наполняется `Transformed::paint` владельца,
+    /// читается объёмным путём ПРЯМЫХ детей.
+    pub frame_3d: Option<Frame3d>,
     /// `float`: -1 — влево, 1 — вправо, 0 — не обтекается.
     pub float: Option<i8>,
     /// `clear: inherit` — сторону берёт родитель. Своего наследования у
@@ -6723,7 +6744,20 @@ impl Computed {
                 self.perspective_origin_px = (px_axis(first), px_axis(second));
                 self.perspective_origin = Some((axis(first, 0.5), axis(second, 0.5)));
             }
-            "transform-style" => {}
+            // `transform-style` (css-transforms-2 §transform-style-property):
+            // `preserve-3d` держит детей в одном объёмном контексте с собой.
+            // Ячейка заводится здесь, при разборе, — тогда у `e.style`
+            // владельца, у его `merged` и у `inherited` детей один и тот же
+            // `Rc`, а `inline::inherit` начинает с `own.clone()`, поэтому
+            // внукам ячейка не достаётся: плоский ребёнок обрывает контекст
+            // (css-transforms-2 §3d-rendering-context, лист контекста).
+            "transform-style" => {
+                self.preserve_3d = Some(v.trim() == "preserve-3d");
+                self.frame_3d = match self.preserve_3d {
+                    Some(true) => Some(Frame3d::default()),
+                    _ => None,
+                };
+            }
             // css-transforms-1 §transform-box: `fill-box` переносит опорную
             // коробку и НАЧАЛО отсчёта на bounding box фигуры; по умолчанию
             // (`view-box`) длины в `transform-origin` считаются от вьюпорта.

@@ -3246,7 +3246,17 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // `display: contents` — своей коробки у элемента нет: дети
             // становятся детьми родителя, и стиль самого элемента исчезает.
             if e.style.display == Some(Display::Contents) {
-                let merged = inline::inherit(inherited, &e.style);
+                let mut merged = inline::inherit(inherited, &e.style);
+                // Своей коробки нет — значит и объёмный контекст она не
+                // обрывает: дети берут ячейки ДЕДА (css-display-3
+                // §box-generation; transform3d-preserve3d-014 — `rotateX(90)`
+                // над `display: contents` над `rotateX(90) scale(2)`).
+                if merged.frame_3d.is_none() {
+                    merged.frame_3d = inherited.frame_3d.clone();
+                }
+                if merged.perspective_frame.is_none() {
+                    merged.perspective_frame = inherited.perspective_frame.clone();
+                }
                 out.extend(blocks(&e.children, &merged, opts));
                 continue;
             }
@@ -8584,6 +8594,15 @@ fn ruby_role(e: &Element) -> Option<crate::computed::RubyRole> {
 /// Прочий строчный контент образует анонимную базу (п.3). `<rp>` не
 /// показывается (A.1). Аннотации внутри `<rbc>` (неправильно вложенные, п.2)
 /// пока идут содержимым базы — анонимный руби-контейнер для них: шаг 3.
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v146, `scout-ruby-2026-09d.md` шаг 4):
+/// дополнительный лидинг §3.4 полем на атом руби (`ruby_leading` +
+/// `row.mt/mb`). Срез css-ruby+css-transforms+css-masking+filter-effects+
+/// css-writing-modes+css-inline+css-overflow+css-break 3936: −7 —
+/// `ruby-align-001/001a/space-around` (0.05…0.08 → 0.69…1.01),
+/// `rt-display-001` (0.01 → 0.62), `ruby-lang-specific-style-001`,
+/// `ruby-overhang-none`, `ruby-tab-in-base-002`; обещанных плюсов срез
+/// не показал. Поле на атоме растит короб строки, но и сдвигает базу
+/// относительно соседей — нужен настоящий лидинг строки, а не поле.
 fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
     #[derive(Clone, Copy, PartialEq)]
     enum Kind {
@@ -10754,11 +10773,44 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.into_any_element()
 }
 
+/// css-transforms-2 §grouping-property-values: «групповые» свойства делают
+/// из элемента группу, и ИСПОЛЬЗУЕМОЕ значение `transform-style` у него —
+/// `flat`, чем бы ни было записано. Без гейта зелёные
+/// `preserve3d-and-filter-no-perspective` (filter),
+/// `transform3d-preserve3d-009` (overflow),
+/// `mix-blend-mode-with-transform-and-preserve-3D` (blend),
+/// `clip-not-absolute-positioned-003`, `corner-shape-bevel-overflow-composite`
+/// и `view-transition-name-is-grouping` уходят в красное.
+fn flattens_3d(c: &Computed) -> bool {
+    use crate::computed::Overflow;
+    let clipped = |o: Option<Overflow>| matches!(o, Some(o) if o != Overflow::Visible);
+    c.opacity.is_some_and(|o| o < 1.0)
+        || c.filter.is_some()
+        || c.filter_ref.is_some()
+        || c.backdrop_blur.is_some()
+        || clipped(c.overflow_x)
+        || clipped(c.overflow_y)
+        || c.mask_image.is_some()
+        || c.clip_ref.is_some()
+        || c.blend.is_some_and(|b| b != 0)
+        || c.isolate == Some(true)
+        || c.contain_paint == Some(true)
+        || c.contain_layout == Some(true)
+}
+
 fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
-    if c.transform.is_none() && c.perspective.is_none() {
+    // Объёмный контекст: своя ячейка нужна владельцу `preserve-3d`, чужая —
+    // КАЖДОМУ его прямому ребёнку, даже без собственного `transform`:
+    // изнанка решается по НАКОПЛЕННОЙ матрице (`backface-visibility-hidden-004`
+    // — у `.card.front` своего преобразования нет вовсе).
+    let keeps_3d = c.preserve_3d == Some(true) && !flattens_3d(c);
+    let under_3d = parent.frame_3d.clone();
+    if c.transform.is_none() && c.perspective.is_none() && !keeps_3d && under_3d.is_none() {
         return el;
     }
     let mut wrapper = crate::interact::Transformed::new(el);
+    wrapper.under_3d = under_3d;
+    wrapper.frame_3d = if keeps_3d { c.frame_3d.clone() } else { None };
     // Перспектива РОДИТЕЛЯ читается объёмным путём (css-transforms-2
     // §3d-transform-rendering п.3 — только прямого родителя, внукам не
     // достаётся: perspective-children-only-*); своя — наполняет ячейку для
