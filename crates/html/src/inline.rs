@@ -1944,6 +1944,16 @@ pub fn trim_edge_spaces(pieces: &mut [Piece]) {
 /// Один край строки: куски идут от него внутрь, коробки пропускаются.
 fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool) {
     for piece in pieces {
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v155, `scout-emphasis-2026-09.md`):
+    // отрисовка `text-emphasis` (11 хунков) вместе с правкой `trim_edge`
+    // (`Piece::Atom` перестаёт быть прозрачным для среза краевого пробела).
+    // Срез css-text-decor+css-pseudo+css-lists+css-counter-styles+css-ruby+
+    // css-text+css-inline+CSS2 8145: +4/−8 у этой части —
+    // `inline-block-baseline-015/016` 0.00 → 99.00,
+    // `vertical-align-117a/118a` 0.11 → 6.84, `inline-formatting-context-013`,
+    // `line-breaking-030/032`, `inline-block-replaced-width-003`.
+    // Срез краевого пробела после атома трогает всю строчную раскладку —
+    // мерить отдельно и сначала только его.
         match piece {
             // Коробка без текста для ряда пробелов прозрачна.
             Piece::Atom(_) | Piece::Overlay(_) => continue,

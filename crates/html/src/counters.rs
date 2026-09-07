@@ -15,6 +15,9 @@
 
 use std::collections::HashMap;
 
+/// Сегмент пути для `::marker`: маркер — ПЕРВЫЙ ребёнок пункта, до
+/// `::before` (css-lists-3 §marker-pseudo), поэтому его номер меньше.
+const PSEUDO_MARKER: u32 = u32::MAX - 2;
 /// Сегмент пути для `::before` — больше любого настоящего номера ребёнка.
 const PSEUDO_BEFORE: u32 = u32::MAX - 1;
 /// Сегмент пути для `::after`.
@@ -89,6 +92,15 @@ impl Counters {
     pub fn enter_pseudo(&mut self, before: bool) {
         self.path
             .push(if before { PSEUDO_BEFORE } else { PSEUDO_AFTER });
+        self.next.push(0);
+    }
+
+    /// Войти в `::marker`: он первый ребёнок пункта, раньше `::before`
+    /// (css-lists-3 §marker-pseudo). Своя область нужна затем, чтобы
+    /// `counter-reset` на маркере вкладывался, а не заменял счётчик пункта:
+    /// `marker-counter` ждёт от шестого пункта цепочку `12:1`.
+    pub fn enter_marker(&mut self) {
+        self.path.push(PSEUDO_MARKER);
         self.next.push(0);
     }
 

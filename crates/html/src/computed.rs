@@ -1443,6 +1443,21 @@ pub struct Computed {
     pub list_style_inside: Option<bool>,
     /// Строковый маркер: `list-style-type: "→ "` (css-lists-3 §3).
     pub marker_text: Option<String>,
+    /// Слой `::marker` (css-lists-3 §marker-properties): ТОЛЬКО объявления
+    /// самих правил `::marker` поверх таблицы агента, без копии стиля
+    /// хозяина — при отрисовке накладывается на стиль пункта через
+    /// `inline::inherit`. Копия стиля пункта сюда не годится: она утянула бы
+    /// в маркер рамку, поля и размеры самого `<li>`. Blink делает то же —
+    /// текст маркера набирается стилем САМОГО `::marker`
+    /// (`CreateAnonymousStyleWithDisplay(marker.StyleRef(), …)`,
+    /// `list_marker.cc:267-336`). Не наследуется.
+    pub marker_layer: Option<Box<Computed>>,
+    /// `content: none` против `content: normal`. У `::before`/`::after`
+    /// разницы нет — коробки нет в обоих случаях, — а у `::marker` `none`
+    /// гасит маркер, `normal` возвращает к `list-style-*` (css-lists-3
+    /// §content-property). Оба сбрасывают `content` в None, поэтому нужна
+    /// отдельная метка.
+    pub content_none: Option<bool>,
     pub object_fit: Option<String>,
     /// `image-orientation: none` (css-images-3 §5.4) — НЕ разворачивать растр
     /// по метке EXIF. Начальное значение свойства — `from-image`, поэтому
@@ -5600,7 +5615,10 @@ impl Computed {
                     // этом стоит целый приём эталонов WPT — `::after` с
                     // `content: ""` и `inset: 0` накрывает красное зелёным
                     // (`overflow-wrap-anywhere-001` и родня).
-                    "none" | "normal" => self.content = None,
+                    "none" | "normal" => {
+                        self.content = None;
+                        self.content_none = Some(v == "none");
+                    }
                     // Негодная запись НЕ применяется вовсе, прежнее значение
                     // остаётся (CSS 2.1 §4.1.8): иначе мусор вроде
                     // `counter(a,b,c)` печатался литералом и `counters-002`

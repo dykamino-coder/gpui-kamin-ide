@@ -13435,9 +13435,32 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             crate::counter_style::marker_repr(idx, &name)
         };
         // `list-style: none` — на списках верстают навигацию и наборы чипов,
-        // и точки там лишние.
-        let no_marker = e.style.no_marker == Some(true) || li.style.no_marker == Some(true);
+        // и точки там лишние. Своё слово пункта старше слова списка:
+        // `list-style-type` наследуемое, и `<ul style="list-style-type:
+        // none">` не гасит `li::marker { content }` (`marker-content-012`).
+        //
+        // Чужой `display` на пункте снимает с него признак пункта, а с ним и
+        // маркер (css-display-3: `list-item` есть только у `display:
+        // list-item`; css-pseudo-4 §marker-pseudo: «the computed value of
+        // 'display' on ::marker always loses any list-item aspect» — обратное
+        // верно тем более). Без этого эталон `marker-content-019-ref`
+        // (`li { display: block }`) рисовал у нас полный набор `1. 2. 3. 4.`,
+        // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
+        let no_marker = li.style.no_marker.or(e.style.no_marker) == Some(true)
+            || !matches!(li.style.display, None | Some(Display::ListItem));
         let merged = inline::inherit(inherited, &li.style);
+        // Слой `::marker` поверх стиля пункта — им набирается сам маркер
+        // (css-lists-3 §marker-properties: «All properties can be set on a
+        // ::marker … and will have a computed value which will then inherit
+        // to its text content»). Коробочные свойства слоя (`padding`,
+        // `width`, `background`) на маркер не идут — `apply_text` их не
+        // читает, и это ровно то, чего требует «only the following CSS
+        // properties actually apply to a marker box».
+        let marker_style = li
+            .style
+            .marker_layer
+            .as_deref()
+            .map(|m| inline::inherit(&merged, m));
         // `inside`: маркер — ПЕРВЫЙ инлайновый кусок содержимого пункта
         // (css-lists-3 §4), поэтому он просто дописывается текстом в начало.
         // Своей колонки при этом нет, и текст пункта начинается там же, где
@@ -13446,7 +13469,28 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         if inside {
             let mut kids: Vec<Node> = Vec::with_capacity(li.children.len() + 1);
             if !no_marker {
-                kids.push(Node::Text(marker));
+                // Со слоем `::marker` знаки идут анонимным строчным куском
+                // со стилем слоя: голым текстом они брали бы у пункта и
+                // регистр, и разрядку, и цвет. Внутри маркер — именно
+                // строчная коробка перед содержимым (css-lists-3
+                // §list-style-position, `inside`), и эталон
+                // `marker-unicode-bidi-default-ref` собран буквально так —
+                // `<span class="marker">` перед текстом пункта.
+                // Без слоя — голым текстом, как прежде.
+                kids.push(match &marker_style {
+                    Some(ms) => {
+                        let mut span = anon_element("::marker", vec![Node::Text(marker)]);
+                        span.inline = true;
+                        span.style = ms.clone();
+                        // Содержимое уже свёрнуто в текст: сам кусок — не
+                        // носитель `content`, иначе `pseudo_box` собрал бы
+                        // его второй раз.
+                        span.style.content = None;
+                        span.style.marker_layer = None;
+                        Node::Element(span)
+                    }
+                    None => Node::Text(marker),
+                });
             }
             kids.extend(li.children.iter().cloned());
             rows.push(
@@ -13470,8 +13514,11 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     // и маркер выходил чужой гарнитурой и кеглем. Выключка
                     // текста на него НЕ переносится: маркер стоит у своего
                     // края колонки, куда бы ни равнялся текст пункта
-                    // (`list-style-position-018`).
-                    crate::apply::apply_text(div(), &merged)
+                    // (`list-style-position-018`). Со слоем `::marker` —
+                    // стилем слоя: разрядка, межсловный пробел, шрифт и цвет
+                    // маркера объявлены на нём (css-lists-3
+                    // §marker-properties).
+                    crate::apply::apply_text(div(), marker_style.as_ref().unwrap_or(&merged))
                         .text_left()
                         .flex_shrink_0()
                         .min_w(px(14.))

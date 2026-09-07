@@ -2280,6 +2280,37 @@ fn walk(
             };
             let first_letter = layer("first-letter");
             let first_line = layer("first-line");
+            // `::marker` — НЕ копией стиля хозяина, как первая буква, а
+            // ТОЛЬКО своими объявлениями поверх таблицы агента: копия
+            // протащила бы в маркер рамку, поля и размеры самого `<li>`.
+            // Основание слоя — таблица агента css-lists-3
+            // §marker-properties (Blink `core/css/marker.css`): у нас есть
+            // поля лишь под два её объявления из четырёх, остальные два
+            // (`font-variant-numeric: tabular-nums`, `white-space: pre`)
+            // свойств в `Computed` не имеют. `text-transform: none` тут
+            // ключевой: без него `li { text-transform: uppercase }`
+            // поднимал маркер в верхний регистр
+            // (`marker-text-transform-default`, снимок — §4 отчёта).
+            // Сворачивается ниже, ПОСЛЕ снятия номера пункта:
+            // `counter(list-item)` в его `content` обязан видеть своё
+            // значение.
+            let marker_layer = {
+                let mut found: Vec<&Rule> = rules
+                    .iter()
+                    .filter(|r| r.sel.pseudo.as_deref() == Some("marker"))
+                    .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
+                    .collect();
+                found.sort_by_key(|r| (r.sel.specificity(), r.order));
+                (!found.is_empty()).then(|| {
+                    let mut m = Computed::default();
+                    m.text_transform = Some(crate::computed::TextTransform::None);
+                    m.bidi_isolate = Some(true);
+                    for rule in found.iter() {
+                        m.apply_decls_with_vars(&rule.decls, vars);
+                    }
+                    m
+                })
+            };
 
             if style.display == Some(Display::None) {
                 // Колонка — единственный `display: none`, который таблице
@@ -2381,6 +2412,36 @@ fn walk(
             // Номер пункта снимается СРАЗУ после своих директив — до
             // псевдоэлементов и детей, которые счётчик двигают дальше.
             let list_item = is_list_item.then(|| counters.value_of("list-item"));
+            // Содержимое маркера — по первому верному условию css-lists-3
+            // §content-property: `content` на `::marker` не `normal` →
+            // «exactly as for ::before»; `none` → коробки нет; иначе
+            // прежний путь `list-style-*`. Blink делает ту же отсечку
+            // первой строкой `ListMarker::MarkerText`:
+            // `if (!marker.StyleRef().ContentBehavesAsNormal()) return
+            // kNotText;` (`list_marker.cc:159`).
+            //
+            // Своей коробки у маркера в дереве нет — его рисует
+            // `render::list` по `marker_text`/`no_marker`, поэтому
+            // содержимое сворачивается в эти поля, а прочие свойства слоя
+            // (цвет, шрифт, разрядка) едут в `marker_layer`.
+            //
+            // Маркер — ПЕРВЫЙ ребёнок пункта, до `::before` (§marker-pseudo),
+            // и `counter-*`, объявленные на `::marker`, обязаны сработать
+            // именно на этом месте: без них `::marker { counter-increment: c;
+            // content: counters(c, ":") }` читал бы нетронутый счётчик и
+            // ставил ноль во все пункты (`marker-counter`).
+            if let Some(m) = marker_layer {
+                counters.enter_marker();
+                apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
+                if let Some(items) = m.content.as_ref() {
+                    style.marker_text = Some(content_text(items, counters, &attrs));
+                    style.no_marker = Some(false);
+                } else if m.content_none == Some(true) {
+                    style.no_marker = Some(true);
+                }
+                counters.leave();
+                style.marker_layer = Some(Box::new(m));
+            }
 
             let mut path2 = path.to_vec();
             path2.push(me.clone());
@@ -2977,16 +3038,53 @@ fn collect_scroll_markers(
 /// В CSS это настоящий потомок с собственным стилем; так его и собираем —
 /// обычным инлайновым элементом с текстовым содержимым. `attr(имя)`
 /// подставляется значением атрибута хозяина.
-// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): отдельный слой `::marker` (правила
-// `::marker` собирались в `Computed::marker_layer` только из объявлений
-// правил, свёртка `content`/`none` по css-lists-3 §content-property, стиль
-// слоя на маркер снаружи и внутри). Срез 1055 пар (lists/pseudo/content/
-// counter-styles/CSS2 lists): 848 -> 847, +3/-4 (`marker-content-008/018/
-// 021` против `disclosure-styles`, `marker-counter`, `marker-content-020`
-// 0.00 -> 2.41, `marker-text-transform-default`). Патч — `target/scout-
-// markers-2026-09.md` П1; возвращаться после того, как маркер выйдет из
-// `list()` в общий путь `display: list-item` (П2), иначе слой стилизует
-// не тот маркер.
+// ★ Прошлый заход (06.09) на слой `::marker` был откачен «848 -> 847,
+// +3/-4»: терялись `disclosure-styles`, `marker-counter`,
+// `marker-content-020`, `marker-text-transform-default`. Три корня потерь
+// названы и закрыты здесь же: таблица агента маркера (`text-transform:
+// none`, `unicode-bidi: isolate` — css-lists-3 §marker-properties),
+// исполнение `counter-*` слоя в собственном сегменте маркера и снятие
+// маркера у пункта с чужим `display`. Разбор — `target/scout-markers-
+// 2026-09b.md` §1.
+/// Текст из составляющих `content` (css-content-3 §2): строки как есть,
+/// счётчики — знаками своего стиля, `attr()` — значением атрибута хозяина.
+///
+/// Общий для `::before`/`::after` и для `::marker { content }`: по
+/// css-lists-3 §content-property содержимое маркера строится «exactly as for
+/// ::before».
+fn content_text(
+    items: &[crate::computed::ContentItem],
+    counters: &mut crate::counters::Counters,
+    attrs: &[(String, String)],
+) -> String {
+    let mut text = String::new();
+    for item in items {
+        match item {
+            crate::computed::ContentItem::Str(sv) => text.push_str(sv),
+            crate::computed::ContentItem::Counter(name, style_name) => {
+                let value = counters.value_of(name);
+                text.push_str(&crate::counter_style::repr(value, style_name));
+            }
+            crate::computed::ContentItem::Counters(name, sep, style_name) => {
+                // Вся цепочка области — от внешнего счётчика к внутреннему,
+                // склеенная разделителем (css-lists-3 §counters).
+                let chain: Vec<String> = counters
+                    .chain_of(name)
+                    .into_iter()
+                    .map(|v| crate::counter_style::repr(v, style_name))
+                    .collect();
+                text.push_str(&chain.join(sep));
+            }
+            crate::computed::ContentItem::Attr(name) => {
+                if let Some((_, v)) = attrs.iter().find(|(k, _)| k == name) {
+                    text.push_str(v);
+                }
+            }
+        }
+    }
+    text
+}
+
 fn pseudo_box(
     rules: &[Rule],
     vars: &Decls,
@@ -3063,31 +3161,7 @@ fn pseudo_box_named(
     );
     // Составляющие склеиваются по порядку (css-content-3 §2): строки как
     // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
-    let mut text = String::new();
-    for item in &list {
-        match item {
-            crate::computed::ContentItem::Str(sv) => text.push_str(sv),
-            crate::computed::ContentItem::Counter(name, style_name) => {
-                let value = counters.value_of(name);
-                text.push_str(&crate::counter_style::repr(value, style_name));
-            }
-            crate::computed::ContentItem::Counters(name, sep, style_name) => {
-                // Вся цепочка области — от внешнего счётчика к внутреннему,
-                // склеенная разделителем (css-lists-3 §counters).
-                let chain: Vec<String> = counters
-                    .chain_of(name)
-                    .into_iter()
-                    .map(|v| crate::counter_style::repr(v, style_name))
-                    .collect();
-                text.push_str(&chain.join(sep));
-            }
-            crate::computed::ContentItem::Attr(name) => {
-                if let Some((_, v)) = attrs.iter().find(|(k, _)| k == name) {
-                    text.push_str(v);
-                }
-            }
-        }
-    }
+    let text = content_text(&list, counters, attrs);
     counters.leave();
     Some(Element {
         list_item: None,
