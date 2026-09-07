@@ -1092,10 +1092,30 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     }
     // Края двигают только позиционированный элемент. У обычного (`static`)
     // браузер их игнорирует, а мы сдвигали — блок с `top` в потоке уезжал.
+    // `translate` (css-transforms-2 §individual-transforms) действует и на
+    // СТАТИКЕ: он визуальный, как `transform`, и от `position` не зависит.
+    // Ранний выход стоял ПЕРЕД блоком сдвига, поэтому ветка
+    // `if c.position.is_none() { d.relative() }` была недостижима.
     if !matches!(
         c.position,
         Some(Position::Relative) | Some(Position::Absolute) | Some(Position::Fixed)
     ) {
+        if let Some((x, y)) = c.translate {
+            let px_of = |l: Len| match l {
+                Len::Px(v) => v,
+                _ => 0.0,
+            };
+            let (dx, dy) = (px_of(x), px_of(y));
+            if dx != 0.0 || dy != 0.0 {
+                d = d.relative();
+                if dx != 0.0 {
+                    d = d.left(gpui::px(dx));
+                }
+                if dy != 0.0 {
+                    d = d.top(gpui::px(dy));
+                }
+            }
+        }
         return d;
     }
     // §9.4.3: у относительно сдвинутой коробки с ОБОИМИ горизонтальными
