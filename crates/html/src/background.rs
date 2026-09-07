@@ -162,6 +162,31 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
         let (a, b) = if vert(a) || horiz(b) { (b, a) } else { (a, b) };
         Some((val(a, bw)?, val(b, bh)?))
     };
+    // Опорная точка КОНТРОЛЬНОЙ точки (css-shapes-2 §2.4.5:
+    // `<control-point> = <position> | <coordinate-pair> from [start|end|origin]`).
+    // Со словом `from` пара — СМЕЩЕНИЕ от названного якоря; без него точка
+    // читается так же, как конец сегмента: у `to` — точка опорной коробки,
+    // у `by` — смещение от начала сегмента. Возвращаем ВСЕГДА абсолют,
+    // приведение обратно делает сама команда.
+    let ctl = |toks: &[&str], i: usize, rel: bool, cur: (f32, f32), end: (f32, f32)| {
+        let (dx, dy) = pair(toks.get(i)?, toks.get(i + 1)?)?;
+        let anchor = match (toks.get(i + 2).copied(), toks.get(i + 3).copied()) {
+            (Some("from"), Some("start")) => Some(cur),
+            (Some("from"), Some("end")) => Some(end),
+            // Начало опорной коробки — это и есть (0,0) нашей системы.
+            (Some("from"), Some("origin")) => Some((0.0, 0.0)),
+            _ if rel => Some(cur),
+            _ => None,
+        };
+        Some(match anchor {
+            Some((ax, ay)) => (ax + dx, ay + dy),
+            None => (dx, dy),
+        })
+    };
+    // Текущая точка контура и начало подконтура (куда возвращает `close`):
+    // без них якоря `end` и `origin` посчитать нечем.
+    let mut cur = (0.0f32, 0.0f32);
+    let mut sub = cur;
     for cmd in args.split(';') {
         let toks: Vec<&str> = cmd.split_whitespace().collect();
         if toks.is_empty() {
@@ -173,38 +198,50 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                 let rel = toks.get(1) == Some(&"by");
                 let (x, y) = pair(toks.get(base)?, toks.get(base + 1)?)?;
                 d.push_str(&format!("{}{} {} ", if rel { 'm' } else { 'M' }, x, y));
+                cur = if rel { (cur.0 + x, cur.1 + y) } else { (x, y) };
+                sub = cur;
             }
             "line" => {
                 let rel = toks.get(1) == Some(&"by");
                 let (x, y) = pair(toks.get(2)?, toks.get(3)?)?;
                 d.push_str(&format!("{}{} {} ", if rel { 'l' } else { 'L' }, x, y));
+                cur = if rel { (cur.0 + x, cur.1 + y) } else { (x, y) };
             }
             "hline" => {
                 let rel = toks.get(1) == Some(&"by");
                 let x = val(toks.get(2)?, bw)?;
                 d.push_str(&format!("{}{} ", if rel { 'h' } else { 'H' }, x));
+                cur.0 = if rel { cur.0 + x } else { x };
             }
             "vline" => {
                 let rel = toks.get(1) == Some(&"by");
                 let y = val(toks.get(2)?, bh)?;
                 d.push_str(&format!("{}{} ", if rel { 'v' } else { 'V' }, y));
+                cur.1 = if rel { cur.1 + y } else { y };
             }
             "curve" => {
-                // curve to X Y with C1x C1y [/ C2x C2y]
+                // curve [to X Y | by dX dY] with C1 [/ C2]; у контрольной
+                // точки может стоять свой якорь (`from start|end|origin`).
                 let rel = toks.get(1) == Some(&"by");
                 let (x, y) = pair(toks.get(2)?, toks.get(3)?)?;
+                let end = if rel { (cur.0 + x, cur.1 + y) } else { (x, y) };
+                // Печатаем в системе САМОЙ команды: у `by` (строчная буква)
+                // отсчёт от текущей точки, у `to` — от начала коробки.
+                // Без слова `from` это возвращает ровно старую пару, поэтому
+                // строка для сегодняшних зелёных не меняется.
+                let base = if rel { cur } else { (0.0, 0.0) };
                 let with_at = toks.iter().position(|t| *t == "with")?;
-                let c1 = pair(toks.get(with_at + 1)?, toks.get(with_at + 2)?)?;
+                let c1 = ctl(&toks[..], with_at + 1, rel, cur, end)?;
                 let slash = toks.iter().position(|t| *t == "/");
                 if let Some(sl) = slash {
-                    let c2 = pair(toks.get(sl + 1)?, toks.get(sl + 2)?)?;
+                    let c2 = ctl(&toks[..], sl + 1, rel, cur, end)?;
                     d.push_str(&format!(
                         "{}{} {} {} {} {} {} ",
                         if rel { 'c' } else { 'C' },
-                        c1.0,
-                        c1.1,
-                        c2.0,
-                        c2.1,
+                        c1.0 - base.0,
+                        c1.1 - base.1,
+                        c2.0 - base.0,
+                        c2.1 - base.1,
                         x,
                         y
                     ));
@@ -212,30 +249,35 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                     d.push_str(&format!(
                         "{}{} {} {} {} ",
                         if rel { 'q' } else { 'Q' },
-                        c1.0,
-                        c1.1,
+                        c1.0 - base.0,
+                        c1.1 - base.1,
                         x,
                         y
                     ));
                 }
+                cur = end;
             }
             "smooth" => {
                 // smooth to X Y [with Cx Cy]: с точкой — кубик S, без — T.
+                // Якорь контрольной точки — тот же, что у `curve`.
                 let rel = toks.get(1) == Some(&"by");
                 let (x, y) = pair(toks.get(2)?, toks.get(3)?)?;
+                let end = if rel { (cur.0 + x, cur.1 + y) } else { (x, y) };
+                let base = if rel { cur } else { (0.0, 0.0) };
                 if let Some(with_at) = toks.iter().position(|t| *t == "with") {
-                    let c = pair(toks.get(with_at + 1)?, toks.get(with_at + 2)?)?;
+                    let c = ctl(&toks[..], with_at + 1, rel, cur, end)?;
                     d.push_str(&format!(
                         "{}{} {} {} {} ",
                         if rel { 's' } else { 'S' },
-                        c.0,
-                        c.1,
+                        c.0 - base.0,
+                        c.1 - base.1,
                         x,
                         y
                     ));
                 } else {
                     d.push_str(&format!("{}{} {} ", if rel { 't' } else { 'T' }, x, y));
                 }
+                cur = end;
             }
             "arc" => {
                 // arc to X Y of RX [RY] [cw|ccw] [large|small] [rotate A]
@@ -263,8 +305,14 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                     x,
                     y
                 ));
+                cur = if rel { (cur.0 + x, cur.1 + y) } else { (x, y) };
             }
-            "close" => d.push_str("Z "),
+            // `close` возвращает перо в начало подконтура — следующий
+            // сегмент считает свой якорь `start` уже оттуда.
+            "close" => {
+                d.push_str("Z ");
+                cur = sub;
+            }
             _ => return None,
         }
     }
