@@ -1472,6 +1472,15 @@ pub struct Computed {
     /// знает, поэтому детей переставляет сам сборщик дерева.
     pub order: Option<i32>,
     pub align_content: Option<Justify>,
+    /// Задано ли `align-content` значением, ОТЛИЧНЫМ от `normal`
+    /// (css-align-3 §align-block). Отдельно от `align_content`, потому что
+    /// `parse_justify` роняет в `None` два разных случая: `normal`
+    /// (выравнивания нет — и контекста тоже) и `baseline`/`first`/`last`
+    /// (выравнивание есть, раскладка его пока не знает, но КОНТЕКСТ по спеке
+    /// заводится). На блочном контейнере флаг делает коробку корнем блочного
+    /// контекста форматирования; у флекса и сетки он безразличен — они и так
+    /// заводят свой контекст первой же веткой `own_context`.
+    pub align_content_block: bool,
     /// `justify-items`/`justify-self` — поперечная ось В СЕТКЕ.
     pub justify_items: Option<Align>,
     /// Модификатор `safe` у выравниваний (css-align §5.3): при переполнении
@@ -4514,6 +4523,17 @@ impl Computed {
             "align-content" => {
                 self.align_content = parse_justify(v);
                 self.align_content_safe = is_safe(v);
+                // css-align-3 §align-block: ЛЮБОЕ не-`normal` значение делает
+                // блочный контейнер корнем блочного контекста форматирования.
+                // `parse_justify` этого не покажет: `baseline`/`first`/`last`
+                // дают `None` так же, как `normal`. Приставка `safe`/`unsafe`
+                // снимается — она про переполнение, а не про значение.
+                let word = v
+                    .split_whitespace()
+                    .find(|w| !matches!(*w, "safe" | "unsafe"))
+                    .unwrap_or("");
+                self.align_content_block =
+                    self.align_content.is_some() || matches!(word, "baseline" | "first" | "last");
             }
             "justify-items" => {
                 self.justify_items = parse_align(v);

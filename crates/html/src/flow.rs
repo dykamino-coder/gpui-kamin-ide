@@ -1067,13 +1067,20 @@ impl ColumnStack {
     /// недобор до низа колонки)`. Только меры, без ширины: `render.rs`
     /// ставит по ним распорки в копии ДО сборки (`grow_pushed`), после чего
     /// монолит стоит ровно на краю и рост здесь выходит нулевым.
+    /// Четвёртое поле — «разрыв принудительный»: там распорка обязана быть
+    /// ОТДЕЛЬНОЙ КОРОБКОЙ, а не полем. Точка `forced` в мере стоит ПЕРЕД
+    /// схлопнутым полем (`shape_full`: `cuts.push((y, y + lead))`, следом
+    /// `forced.push(y)`), и рост поля её не двигает — проба
+    /// `target/probe-9g/p-single-line-column-flex-fragmentation-022.html`
+    /// осталась красной тем же прямоугольником, а `p2-…` с коробкой-распоркой
+    /// дала 0.00.
     pub(crate) fn growths(
         kids: &[Kid],
         count: usize,
         fixed_height: Option<f32>,
         rows: Option<Rows>,
         copies: usize,
-    ) -> Vec<(usize, f32, f32)> {
+    ) -> Vec<(usize, f32, f32, bool)> {
         let probe = ColumnStack {
             children: Vec::new(),
             count: count.max(1),
@@ -1097,10 +1104,18 @@ impl ColumnStack {
             if !plan.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1) {
                 continue;
             }
-            if !k.solid.iter().any(|&(a, _)| (a - end).abs() < 0.01) {
-                continue;
-            }
-            if k.forced.iter().any(|&x| (x - end).abs() < 0.01) {
+            // Принудительный разрыв внутри коробки — такой же НЕпоследний
+            // фрагмент, как выталкивание монолита: Blink
+            // `fragmentation_utils.cc` `FinishFragmentation` даёт ему
+            // `min(desired, space_left)`, то есть остаток фрагментаинера
+            // целиком (css-flexbox-1 §pagination: «A forced break inside a
+            // flex item effectively increases the size of its contents»).
+            // Прежде принудительные разрывы отвергались, и фон коробки
+            // обрывался на точке разрыва (`single-line-column-flex-
+            // fragmentation-022`: колонка 1 красная 50..100).
+            let at_solid = k.solid.iter().any(|&(a, _)| (a - end).abs() < 0.01);
+            let at_forced = k.forced.iter().any(|&x| (x - end).abs() < 0.01);
+            if !at_solid && !at_forced {
                 continue;
             }
             let Some(&(_, line_h)) = lines.get(f.col / count) else {
@@ -1108,7 +1123,23 @@ impl ColumnStack {
             };
             let grow = line_h - f.y - f.h;
             if grow > 0.01 {
-                out.push((f.kid, end, grow));
+                // Монолит растёт от НАЧАЛА своего диапазона; принудительный
+                // разрыв стоит ПЕРЕД полем следующей коробки, и распорку надо
+                // ставить перед самой коробкой — её верх это `nf` из `cuts`
+                // (то же продолжение, что берёт `fill_at`). Парная запись
+                // `cuts` у такой точки есть всегда: `shape_full` кладёт
+                // `cuts.push((y, y + lead))` и `forced.push(y)` в одном
+                // блоке `if !first`.
+                let at = if at_solid {
+                    end
+                } else {
+                    k.cuts
+                        .iter()
+                        .find(|&&(need, _)| (need - end).abs() < 0.01)
+                        .map(|&(_, nf)| nf)
+                        .unwrap_or(end)
+                };
+                out.push((f.kid, at, grow, at_forced && !at_solid));
             }
         }
         out

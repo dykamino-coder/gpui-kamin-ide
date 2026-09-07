@@ -1481,8 +1481,17 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                                 // передаётся коробке (css-break-4
                                 // §break-propagation) — у страниц; колонки
                                 // не трогаются (отдельный замер).
-                                if cx.paged { edge_break(k, false) } else { k.style.break_before_force },
-                                if cx.paged { edge_break(k, true) } else { k.style.break_after_force },
+                                // Разрыв ПЕРВОГО/ПОСЛЕДНЕГО поточного ребёнка
+                                // передаётся коробке (css-break-3 §5.1
+                                // break-propagation; Blink `InitialBreakBefore`)
+                                // одинаково у страниц и у колонок: правило не
+                                // про вид фрагментаинера. Гейт `cx.paged` был
+                                // «пока не замерено» — `single-line-row-flex-
+                                // fragmentation-016` с разрывом на внуке стоит
+                                // красной ровно из-за него (проба
+                                // `target/probe-9g/p-…-016.html` = 0.00).
+                                edge_break(k, false),
+                                edge_break(k, true),
                                 // Дотяг внепоточных ЭТОГО потомка в
                                 // поток родителя не переходит: у
                                 // него свой содержащий блок.
@@ -1973,6 +1982,103 @@ fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
     false
 }
 
+/// Распорка-КОРОБКА перед коробкой `id`: пустой блок высотой `grow`.
+/// Нужна принудительному разрыву. Точка `forced` в мере стоит ПЕРЕД
+/// схлопнутым полем (`shape_full`: `cuts.push((y, y + lead))`, потом
+/// `forced.push(y)`), поэтому `margin-top` её не сдвигает — сдвигает только
+/// новый поточный сосед.
+fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
+    // Сетка-стопка: между рядами стоит `row-gap` (`shape_full`:
+    // `lead = prev_mb + row_gap + kmt`), и вставка ряда добавляет ЛИШНИЙ
+    // зазор. Ряд flex без переноса: высота ряда — `tallest` по детям, а
+    // распорка встала бы соседом БОК О БОК и подняла бы весь ряд. Оба
+    // случая забирает подъём разрыва (Х5-Х8), а не рост.
+    let is_flex = matches!(
+        c.style.display,
+        Some(Display::Flex) | Some(Display::InlineFlex)
+    ) || c.style.webkit_box == Some(true);
+    let row_nowrap = is_flex
+        && matches!(
+            c.style.flex_dir,
+            None | Some(crate::computed::FlexDir::Row) | Some(crate::computed::FlexDir::RowReverse)
+        )
+        && c.style.flex_wrap != Some(true)
+        && c.style.webkit_box_vertical != Some(true);
+    let at = if grid_stack(c) || row_nowrap {
+        None
+    } else {
+        c.children
+            .iter()
+            .position(|n| matches!(n, Node::Element(k) if k.node_id == id))
+    };
+    if let Some(i) = at {
+        // Распорка двигает только разрыв ПЕРЕД коробкой. Разрыв ПОСЛЕ
+        // предыдущего соседа несёт `force_next`, и `forced.push(y)`
+        // сработает на границе самой распорки: точка не сдвинется, а у
+        // коробки исчезнет вовсе — распорка уедет в следующую колонку
+        // вместе с ней. 11 пар из 51 в корзине D держатся только на
+        // `break-after`; их забирает подъём (Х5-Х8).
+        if !matches!(&c.children[i], Node::Element(k) if edge_break(k, false)) {
+            return false;
+        }
+        // Нижнее поле предыдущего соседа переносится на распорку. Иначе
+        // `lead` схлопывается ДВАЖДЫ — перед распоркой (`prev_mb.max(0)`) и
+        // перед коробкой (`0.max(kmt)`), — и точка разрыва уезжает на
+        // `prev_mb` НИЖЕ края колонки (`trailing-child-margin-000`, `-002`:
+        // `margin-bottom: 50px`, обе зелёные).
+        let pi = c.children[..i].iter().rposition(|n| !is_blank(n));
+        let prev_mb = match pi.map(|j| &c.children[j]) {
+            Some(Node::Element(k)) => k.style.margin.bottom.clone(),
+            _ => None,
+        };
+        if prev_mb.is_some() {
+            if let Some(Node::Element(k)) = pi.map(|j| &mut c.children[j]) {
+                k.style.margin.bottom = None;
+            }
+        }
+        let mut style = crate::computed::Computed::default();
+        style.height = Some(Len::Px(grow));
+        style.margin.bottom = prev_mb;
+        c.children.insert(
+            i,
+            Node::Element(Element {
+                list_item: None,
+                // Свой устойчивый номер: анимации у распорки нет, но номер
+                // обязан быть уникальным — иначе GPUI склеит её состояние с
+                // коробкой, перед которой она стоит.
+                node_id: id ^ 0x5350_4143_4552_0001,
+                anim: None,
+                tag: "div".to_string(),
+                style,
+                hover: None,
+                first_letter: None,
+                first_line: None,
+                children: Vec::new(),
+                attrs: Vec::new(),
+                inline: false,
+            }),
+        );
+        // Заданная высота хозяина СТАРШЕ содержимого (`shape_full`: ветка
+        // `c.style.height` возвращает `v + top + bot`), и распорка внутри неё
+        // меры не меняет — `changed` не взводится, цикл `grow_pushed` встаёт
+        // на первом заходе. Проба `p2-single-line-column-flex-fragmentation-
+        // 037` осталась красной именно поэтому, а `p3-…` с высотой 100 → 150
+        // сняла 4/5 площади (3906 → 756 точек).
+        if let Some(Len::Px(h)) = c.style.height {
+            c.style.height = Some(Len::Px(h + grow));
+        }
+        return true;
+    }
+    for n in c.children.iter_mut() {
+        if let Node::Element(k) = n {
+            if spacer_before(k, id, grow) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Рост коробки от вытолкнутого монолита (Blink `FinishFragmentation`,
 /// `fragmentation_utils.cc:641-656`: у НЕпоследнего фрагмента
 /// `final_block_size = space_left`; css-flexbox-1 §fragmentation: «A forced
@@ -2007,8 +2113,10 @@ fn grow_pushed(
                 // Тот же предикат, что у `StackChild` в сборке стопки.
                 monolith: solid_box(c),
                 cuts: s.3.clone(),
-                force_before: c.style.break_before_force,
-                force_after: c.style.break_after_force,
+                // Щуп обязан видеть ровно то же, что стопка (Х6), иначе
+                // распорки лягут по другому плану, чем укладка.
+                force_before: edge_break(c, false),
+                force_after: edge_break(c, true),
                 forced: s.4.clone(),
                 solid: s.5.clone(),
                 span: c.style.column_span == Some(true) && !c.inline,
@@ -2016,12 +2124,18 @@ fn grow_pushed(
             .collect();
         let grows = crate::flow::ColumnStack::growths(&probe, count, fixed, rows, copies);
         let mut changed = false;
-        for (kid, at, grow) in grows {
+        for (kid, at, grow, forced) in grows {
             let c = &mut kids[kid].0;
             let Some(id) = pushed_box_at(c, at, 4) else {
                 continue;
             };
-            if !grow_before(c, id, grow) {
+            // Монолит двигает поле, принудительный разрыв — коробка (Х3).
+            let moved = if forced {
+                spacer_before(c, id, grow)
+            } else {
+                grow_before(c, id, grow)
+            };
+            if !moved {
                 continue;
             }
             if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS) {
@@ -2352,6 +2466,29 @@ fn edge_break(e: &Element, last: bool) -> bool {
         .iter()
         .filter(|n| !is_blank(n))
         .filter(|n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))));
+    // Ряд flex БЕЗ переноса: элементы стоят бок о бок и НАЧИНАЮТСЯ с верха
+    // ряда — в блочном направлении «первый» и «последний» это каждый из них
+    // (css-flexbox-1 §pagination: принудительный разрыв элемента поднимается
+    // на контейнер; Blink `flex_layout_algorithm.cc` — разрыв элемента рвёт
+    // весь ряд). Мерка ряда — та же, что в `shape_full` и `pushed_box_at`.
+    // Проба `target/probe-9g/p-single-line-row-flex-fragmentation-018.html`
+    // (`break-after: column` со ВТОРОГО элемента, поднят на `#flex`) = 0.00.
+    // ВНИМАНИЕ: `edge_break` зовут и СТРАНИЦЫ (`render_paged`, строки
+    // 956-963) — контроль обязан включать `single-line-row-flex-
+    // fragmentation-046-print`.
+    let row_nowrap = (matches!(
+        e.style.display,
+        Some(Display::Flex) | Some(Display::InlineFlex)
+    ) || e.style.webkit_box == Some(true))
+        && matches!(
+            e.style.flex_dir,
+            None | Some(crate::computed::FlexDir::Row) | Some(crate::computed::FlexDir::RowReverse)
+        )
+        && e.style.flex_wrap != Some(true)
+        && e.style.webkit_box_vertical != Some(true);
+    if row_nowrap {
+        return live.any(|n| matches!(n, Node::Element(k) if class_a_box(k) && edge_break(k, last)));
+    }
     let edge = if last { live.next_back() } else { live.next() };
     matches!(edge, Some(Node::Element(k)) if class_a_box(k) && edge_break(k, last))
 }
@@ -7034,6 +7171,11 @@ fn own_context(e: &Element) -> bool {
         || e.style.contain_layout == Some(true)
         || e.style.contain_size == Some(true)
         || e.style.flow_root == Some(true)
+        // css-align-3 §align-block: не-`normal` `align-content` на блочном
+        // контейнере — тот же `display: flow-root`, что пишет эталон
+        // `align-content-block-001-ref`. Через край такой коробки поля не
+        // схлопываются ни с детьми, ни насквозь.
+        || e.style.align_content_block
         || matches!(e.style.display, Some(Display::TableCell))
         || e.style.column_count.is_some()
         || e.style.column_width.is_some()
@@ -12019,8 +12161,11 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     },
                                     monolith,
                                     cuts,
-                                    force_before: copy.style.break_before_force,
-                                    force_after: copy.style.break_after_force,
+                                    // Тот же подъём, что в мере (Х5): иначе
+                                    // укладка колонок не увидит разрыва,
+                                    // который мера уже посчитала.
+                                    force_before: edge_break(&copy, false),
+                                    force_after: edge_break(&copy, true),
                                     forced,
                                     solid,
                                     h,
@@ -12181,6 +12326,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         None | Some(crate::computed::Overflow::Visible)
                     ) || e.style.float.is_some()
                         || e.style.flow_root == Some(true)
+                        // css-align-3 §align-block — тот же список, что и в
+                        // `own_context`: своё поле такая коробка с полем
+                        // первого ребёнка не схлопывает.
+                        || e.style.align_content_block
                         || e.style.contain_layout == Some(true)
                         || e.style.contain_paint == Some(true);
                     let sealed = bfc
