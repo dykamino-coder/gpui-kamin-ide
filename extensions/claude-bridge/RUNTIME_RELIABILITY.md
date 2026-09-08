@@ -411,7 +411,7 @@ Do not conflate this per-invocation CLI prompt with BR-10's review of a plugin h
 
 After classification, a bounded child may cover same-session single response, pending/answered/cancelled/disconnected states, replay/reconnect and background-tab routing. If only a Console handoff is supportable, document that limitation and route visibility through BR-07. Preserve BR-11 investigation, BR-07 prerequisite and BR-10 verification; this observation does not claim either acceptance passed.
 
-Private evidence: [INC-2026-0035](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/ed547d7ff879e6be76decf39353ab1bd3777b0c2/incidents/INC-2026-0035) (storage ID for this existing BR; not a second task). Registration author: @dvpetrochenko. Evidence supplement PR: registration in progress. Next step: research under BR-11 — Classify the supplied native hook confirmation and its supported response protocol before designing a widget.
+Private evidence: [INC-2026-0035](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/49d1bf90dc038a3eedc7f1b26012c49b44b85643/incidents/INC-2026-0035) (storage ID for this existing BR; not a second task). Registration author: @dvpetrochenko. Evidence supplement PR: [#83](https://github.com/dykamino-coder/gpui-kamin-ide/pull/83). Next step: research under BR-11 — Classify the supplied native hook confirmation and its supported response protocol before designing a widget.
 
 
 **Close-out audit 2026-09-06:** Versioned blocker inventory ещё отсутствует. Нужен
