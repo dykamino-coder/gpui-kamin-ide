@@ -1504,6 +1504,11 @@ pub struct Computed {
     pub justify_self_safe: bool,
     pub justify_items_safe: bool,
     pub align_self_safe: bool,
+    /// `align-self: self-start`/`self-end` — начало и конец берутся по письму
+    /// САМОГО элемента, а не контейнера (css-align-3 §6.2). Значение при этом
+    /// остаётся физическим, а «мерить по себе» помнится здесь: зеркалит его
+    /// `inline::inherit`, где известны письмо элемента И письмо родителя.
+    pub align_self_own_axis: bool,
     pub align_items_safe: bool,
     pub justify_content_safe: bool,
     pub align_content_safe: bool,
@@ -3163,6 +3168,10 @@ impl Computed {
                     self.align_self = a;
                     self.align_self_safe = is_safe(v);
                     self.align_self_normal = v.trim() == "normal";
+                    self.align_self_own_axis = matches!(
+                        v.split_whitespace().last(),
+                        Some("self-start") | Some("self-end")
+                    );
                 }
             }
             "align-items" => {
@@ -8117,10 +8126,17 @@ fn align_keyword(v: &str) -> Result<Option<Align>, ()> {
         // значение отброшено спекой — `apply` его там игнорирует).
         "anchor-center" => Some(Align::AnchorCenter),
         // `self-start`/`self-end` считаются по письму САМОГО элемента,
-        // `start`/`end` — по письму контейнера. Пока обе оси физические, это
-        // одно и то же.
-        "start" | "flex-start" | "self-start" | "left" => Some(Align::Start),
-        "end" | "flex-end" | "self-end" | "right" => Some(Align::End),
+        // `start`/`end` — по письму контейнера (css-align-3 §6.2). Разница
+        // видна, как только элемент несёт своё `direction`/`writing-mode`:
+        // `flexbox-align-self-vert-002` ждёт `self-start` СПРАВА у элемента
+        // с `direction: rtl`. Само значение остаётся физическим, а «мерить
+        // по себе» помнится отдельным флагом `align_self_own_axis` — его
+        // зеркалит `inline::inherit`, где известны письмо элемента И письмо
+        // родителя.
+        "start" | "flex-start" | "left" => Some(Align::Start),
+        "end" | "flex-end" | "right" => Some(Align::End),
+        "self-start" => Some(Align::Start),
+        "self-end" => Some(Align::End),
         "stretch" => Some(Align::Stretch),
         // `first baseline` — обычное выравнивание по базовой линии. `last`
         // честно раскладке неизвестен, но для ОДНОСТРОЧНЫХ участников первая

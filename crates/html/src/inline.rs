@@ -1021,6 +1021,20 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     {
         c.align_self = Some(crate::computed::Align::Stretch);
     }
+    // `self-start`/`self-end` меряются по письму САМОГО элемента (css-align-3
+    // §6.2). Значение уже физическое (начало = левый край при ltr), поэтому
+    // зеркалим ровно тогда, когда строчная ось элемента смотрит в другую
+    // сторону, чем у родителя: `flexbox-align-self-vert-002` даёт элементам
+    // `direction: rtl` внутри ltr-колонки и ждёт `self-start` СПРАВА.
+    // Вертикальное письмо здесь НЕ зеркалим намеренно: там ось строки уже
+    // переставлена поворотом — это территория wm-скаута.
+    if own.align_self_own_axis && own.rtl.unwrap_or(false) != parent.rtl.unwrap_or(false) {
+        c.align_self = match c.align_self {
+            Some(crate::computed::Align::Start) => Some(crate::computed::Align::End),
+            Some(crate::computed::Align::End) => Some(crate::computed::Align::Start),
+            other => other,
+        };
+    }
     c.text_emphasis = own.text_emphasis.clone().or(parent.text_emphasis.clone());
     c.emphasis_under = own.emphasis_under || parent.emphasis_under;
     // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
@@ -1926,6 +1940,13 @@ pub fn uniform_border(c: &Computed, font_px: f32) -> Option<(Color, f32)> {
     Some((color, t))
 }
 
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v158→v162, `scout-trimedge-2026-09.md` Х1):
+/// узкий гейт «атом обрывает ВЕДУЩИЙ срез, если за рядом пробелов текст»
+/// (`trim_edge` на срезе + `text_after_spaces`). Обещание 0/0 с восьмёркой
+/// контроля — восьмёрка устояла, но `baseline-inline-non-replaced-004`
+/// 0.40 → «красное видно»; без гейта (v162) снова 0.40. Плюсов ноль. Пробел
+/// за атомом остаётся прозрачным; эталоны `text-emphasis` по-прежнему ждут
+/// другой раскладки — искать её в `as_wrapped_row`, а не в срезе краёв.
 /// Пробелы по КРАЯМ строки, сквозь ПУСТУЮ строчную коробку.
 ///
 /// По css-text-3 §4.1.3 схлопываемые пробелы в конце строки удаляются. Пустая
@@ -2590,6 +2611,14 @@ pub fn highlight_for(style: &Computed) -> HighlightStyle {
     }
 }
 
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v158, `scout-wm-2026-09f.md` K1): переворот
+/// гибкого ряда из атомов при `direction: rtl` (`flex_row_reverse` + зеркало
+/// `justify_start/end`, гейт «только атомы, без знаков и `<br>`»). Обещание
+/// +24/−0 на `abs-pos-non-replaced-vrl-*`. Полный свод против v35: +0/−4
+/// (`abs-pos-non-replaced-icb-vlr-005/-013`, `-vrl-004/-012` 0.00 → 1.16),
+/// рядом `ruby-bidi-002` 0.16 → 0.72. Гейт `!hard_break` семью `icb-*` не
+/// защитил. Чинить порядок атомов надо в bidi-порядке кусков (`lines.rs`),
+/// а не разворотом ряда.
 /// Запасная ветка: гибкая строка из отдельных СЛОВ.
 ///
 /// Сюда абзац попадает, когда единым текстовым блоком его не собрать: разные

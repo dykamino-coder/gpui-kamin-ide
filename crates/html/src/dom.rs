@@ -2232,10 +2232,13 @@ fn walk(
                 style.padding = crate::computed::Sides::default();
                 style.border_width = crate::computed::Sides::default();
             }
-            // motion-1: offset-трансформ слоится ПОСЛЕ отдельных свойств
-            // преобразования и ПЕРЕД `transform` — то есть после того, как
-            // каскад свёл все `offset-*` и авторский `transform` в один стиль.
-            crate::motion::apply_offset_transform(&mut style);
+            // motion-1: offset-трансформ считается НЕ здесь, а вторым проходом
+            // по дереву коробок (`motion::settle`, зовётся из `doc.rs`).
+            // §offset-path: «In CSS contexts, the boxes being referenced are
+            // from the element that establishes the containing block for this
+            // element» — опорная коробка `<coord-box>`, длина `ray()` и начало
+            // `at <position>` берутся у СОДЕРЖАЩЕГО БЛОКА, а на разборе стиля
+            // родителя нет вовсе: сюда доезжает только собственный каскад.
             // Язык — свойство узла, а не CSS: по нему выбираются образцы
             // слогораздела (`hyphens: auto`).
             if let Some((_, v)) = attrs.iter().find(|(k, _)| k == "lang") {

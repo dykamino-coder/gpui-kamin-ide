@@ -384,6 +384,38 @@ fn rrect_d((x0, y0, w, h): (f32, f32, f32, f32), radii: [(f32, f32); 4]) -> Stri
     d
 }
 
+/// Контур `<basic-shape>` для ОФСЕТ-ПУТИ (motion-1 §«Equivalent Paths For
+/// `<basic-shape>`») в системе опорной коробки w×h с началом в её углу.
+///
+/// Разборщики те же, что у `shape-outside`/`border-shape` — `rrect_of`
+/// (inset/rect/xywh и голое слово-коробка вместе с её радиусами) и
+/// `svg_path_of` (polygon, `path()`, `shape()`), — а вот круг и эллипс
+/// строит сам вызывающий: у офсет-пути своё начало обхода (самая правая
+/// точка) и своё направление (по часовой), а `border_shape_path` пишет их
+/// от левой точки против часовой. Прямоугольникам менять нечего:
+/// `rrect_d` уже начинает с левого конца верхней стороны и идёт по часовой —
+/// ровно как требует §paths.
+pub fn motion_shape_d(raw: &str, w: f32, h: f32, radius: [(f32, f32); 4]) -> Option<String> {
+    let b = ShapeBox {
+        mw: w,
+        mh: h,
+        rx: 0.0,
+        ry: 0.0,
+        rw: w,
+        rh: h,
+        cx: 0.0,
+        cy: 0.0,
+        cw: w,
+        ch: h,
+        radius,
+        threshold: 0.0,
+    };
+    if let Some((rect, radii)) = rrect_of(raw, &b) {
+        return Some(rrect_d(rect, radii));
+    }
+    svg_path_of(raw, &b).map(|(d, _)| d)
+}
+
 /// Контур базовой фигуры `border-shape` в системе ОПОРНОЙ коробки (начало в
 /// её углу, размер rw×rh): `d` для SVG и правило намотки. Circle/ellipse —
 /// через `shape_params` (все ключи extent), inset/rect/xywh — `rrect_of`,
