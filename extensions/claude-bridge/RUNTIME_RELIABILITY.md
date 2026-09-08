@@ -937,7 +937,7 @@ The images do not locate a fetch, transport, predicate or vnode failure and are 
 
 Keep the current investigation state, BR-16 prerequisite and all acceptance gates. This is additional owner evidence, not a completed classification, fix or verification result.
 
-Private evidence: [INC-2026-0030](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/88f69110b8e85336867606c14de8c480abfd1298/incidents/INC-2026-0030) (storage ID for this existing BR; not a second task). Registration author: @dvpetrochenko. Evidence supplement PR: registration in progress. Next step: research under BR-22 — Obtain paired drawable-window diagnostics for the supplied existing-session scenarios.
+Private evidence: [INC-2026-0030](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/aec3801df1f00e6c7cf458847de6967f51ab4d9e/incidents/INC-2026-0030) (storage ID for this existing BR; not a second task). Registration author: @dvpetrochenko. Evidence supplement PR: [#78](https://github.com/dykamino-coder/gpui-kamin-ide/pull/78). Next step: research under BR-22 — Obtain paired drawable-window diagnostics for the supplied existing-session scenarios.
 
 
 **Close-out audit 2026-09-06:** Нужны парные private dumps одного расходящегося drawable
