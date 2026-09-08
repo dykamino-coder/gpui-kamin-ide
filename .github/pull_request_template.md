@@ -1,6 +1,7 @@
 ## Тип PR
 
-- [ ] Diagnostic PR: постановка и private evidence без functional fix
+- [ ] Diagnostic PR: регистрация/уточнение открытой задачи самим автором
+- [ ] Diagnostic PR: результат research/verification для приёмки мейнтейнером
 - [ ] Change/Fix PR: функциональные изменения без повышения release-версий
 - [ ] Release PR: подготовлен мейнтейнером, функционального кода нет
 
@@ -9,10 +10,18 @@
 <!-- Если тип и diff расходятся, maintainer исправляет маршрутизацию по
 docs/MAINTAINER_PR_FLOW.md. -->
 
+- Execution role: <!-- author / implementer / maintainer; может быть совмещение -->
+- Authorized scope: <!-- поручение владельца, task/batch ID, ограничения -->
+
+<!-- Роль следует из поручения, а не из заполненного поля или GitHub account.
+Для нового maintainer child укажите исходную задачу и coordination PR. -->
+
 ## Инцидент и private evidence
 
 - Incident ID: <!-- `INC-YYYY-NNNN` или `not applicable` -->
 - Public task card: <!-- path или `not applicable` -->
+- Registration author: <!-- для постановки: автор, завершающий регистрацию -->
+- Next step: <!-- research/change/verify, bounded результат и владелец -->
 - Private evidence: <!-- полный URL или объяснение `not required` -->
 
 - [ ] Public diff/body не содержит raw corporate logs, prompts, user paths,
@@ -59,10 +68,14 @@ docs/MAINTAINER_PR_FLOW.md. -->
 
 <!-- Что было запущено? Что невозможно было запустить и почему? -->
 
-Diagnostic outcome:
+Diagnostic stage / outcome:
 
-<!-- `confirmed and converted to fix`, `separate fix required`,
-`needs evidence`, `duplicate/not reproduced/invalid` или `not applicable`. -->
+<!-- Регистрация автором: `author registration`, открытый статус и следующий
+шаг; после merge/fetch привести ссылку на карточку в main.
+Приёмка результата мейнтейнером: `research complete, change required`,
+`verification passed`, `needs evidence / verification failed`,
+`duplicate/not reproduced/invalid` или `not applicable`.
+Регистрация не принимает functional fix и не закрывает задачу. -->
 
 ## Ограничения доступа
 

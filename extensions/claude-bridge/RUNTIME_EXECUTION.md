@@ -5,6 +5,13 @@
 [`runtime-issues/INC-*.md`](runtime-issues/). Подробные факты, причины,
 ограничения и acceptance остаются в исходных карточках и здесь не дублируются.
 
+Полный принятый runtime backlog в `origin/main` состоит из BR-реестра ниже и
+всех незакрытых INC-карточек, включая ещё не выбранные в пачку. Автор задачи
+сам завершает её [регистрацию](../../CONTRIBUTING.md#task-registration) через
+merge Diagnostic PR. Отсутствие PR реализации или строки INC в текущей пачке
+не означает отсутствие задачи. Открытый PR только с постановкой — ещё не
+завершённая автором регистрация; он не заменяет карточку в `main`.
+
 ## Значения полей
 
 - `ready` — следующий artifact можно делать от свежего `origin/main`;
@@ -136,17 +143,24 @@ production-run требует repository secrets и отдельный след�
 | [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation) | done | none | diagnostics | none | PR #31 + #47; Windows 12/12 на main 686cc92; BR-02 разблокирован |
 | [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | ready | change | CEF/webview delivery | none | Следующая пачка: event-driven pull wake (INC-2026-0002) |
 
-## Очередь отдельных incidents
+## Зарегистрированные incidents вне BR-реестра
 
-Входящая очередь определяется файлами `runtime-issues/INC-*.md` с незакрытым
-статусом (`reported`, `confirmed`, `investigation` или `blocked`). Создание или
-уточнение одной карточки не требует правки этого файла: один Diagnostic PR
-меняет один уникальный incident path и может выполняться параллельно с другими.
+Очередь определяется файлами `runtime-issues/INC-*.md` в `origin/main` с
+незакрытым статусом (`reported`, `confirmed`, `investigation` или `blocked`).
+Автор сам проверяет и мержит регистрацию своей открытой карточки. Создание или
+уточнение карточки не требует правки этого файла: один Diagnostic PR меняет
+один уникальный incident path; merge регистраций выполняется последовательно.
+Неизвестная причина остаётся задачей на research; готовое решение получает
+отдельный связанный PR и проходит maintainer acceptance.
 
 Этот файл меняется отдельным coordination PR только при продвижении выбранных
 ID в текущую или планируемую пачку. Maintainer фиксирует snapshot ID в начале
-запуска; более новые карточки остаются во входящей очереди до следующего
-запуска. `INC-2026-0001` уже продвинут в планируемую пачку C ниже.
+запуска; входящие карточки после snapshot остаются в backlog до следующего
+запуска. Собственный новый child внутри порученного scope можно включить
+отдельным coordination PR по
+[maintainer flow](../../docs/MAINTAINER_PR_FLOW.md#задача-обнаруженная-мейнтейнером).
+Ограничения текущей verification-пачки при этом сохраняются.
+`INC-2026-0001` уже продвинут в планируемую пачку C ниже.
 
 ## Декомпозиция BR-21
 
