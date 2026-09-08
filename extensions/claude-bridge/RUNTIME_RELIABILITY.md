@@ -1012,7 +1012,7 @@ The still image establishes the stack, not its duration or whether repeated labe
 
 Keep the confirmed source-defect status and all automated/Windows gates. No new root cause, fix or verification result is claimed by this evidence supplement.
 
-Private evidence: [INC-2026-0036](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/979b902c3949a5b95056bfb0b35a7f9c466b9145/incidents/INC-2026-0036) (storage ID for this existing BR; not a second task). Registration author: @dvpetrochenko. Evidence supplement PR: registration in progress. Next step: change under BR-23 — Use the additional stack example in the existing transient and turn-scoped notification acceptance.
+Private evidence: [INC-2026-0036](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/43e0423311312f04242e1c8d8da2078f005cf88d/incidents/INC-2026-0036) (storage ID for this existing BR; not a second task). Registration author: @dvpetrochenko. Evidence supplement PR: [#84](https://github.com/dykamino-coder/gpui-kamin-ide/pull/84). Next step: change under BR-23 — Use the additional stack example in the existing transient and turn-scoped notification acceptance.
 
 
 **Close-out audit 2026-09-06:** Reconnect/idle suppression уже частично существует, но
