@@ -405,6 +405,15 @@ approve/reject сохраняются.
 
 ### BR-11 — Inventory native CLI-only blocking states
 
+**Owner evidence intake (2026-09-08, TASK-008):** A September 2 screenshot labeled 1.0.53 shows a native CLI `PreToolUse` confirmation with Yes/No in Console while central Chat contains ordinary conversation and no matching interaction. Add this concrete case to the versioned CLI-only blocker inventory; no duplicate incident task is created.
+
+Do not conflate this per-invocation CLI prompt with BR-10's review of a plugin hook declaration. Determine whether the pinned CLI exposes a structured event/response channel and whether Bridge receives it. Classify blocking state, prompt ownership and lifecycle before proposing a supported Chat interaction. ANSI/TUI text scraping and bypassing the approval are not substitutes for the protocol decision.
+
+After classification, a bounded child may cover same-session single response, pending/answered/cancelled/disconnected states, replay/reconnect and background-tab routing. If only a Console handoff is supportable, document that limitation and route visibility through BR-07. Preserve BR-11 investigation, BR-07 prerequisite and BR-10 verification; this observation does not claim either acceptance passed.
+
+Private evidence: [INC-2026-0035](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/49d1bf90dc038a3eedc7f1b26012c49b44b85643/incidents/INC-2026-0035) (storage ID for this existing BR; not a second task). Registration author: @dvpetrochenko. Evidence supplement PR: [#83](https://github.com/dykamino-coder/gpui-kamin-ide/pull/83). Next step: research under BR-11 — Classify the supplied native hook confirmation and its supported response protocol before designing a widget.
+
+
 **Close-out audit 2026-09-06:** Versioned blocker inventory ещё отсутствует. Нужен
 Diagnostic/decision PR по фактическому поведению закреплённого CLI, с разделением
 blocking/nonblocking и доступного protocol; существующие AskUserQuestion/plan widgets не
