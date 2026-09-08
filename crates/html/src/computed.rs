@@ -522,6 +522,36 @@ pub struct Gradient {
     /// точечная позиция теряется и стоп встаёт «поровну» (blue 170px в
     /// 50px-градиенте красил край синим вместо интерполяции).
     pub stops_raw: Vec<(Color, Option<f32>, Option<f32>)>,
+    /// Пространство, в котором смешиваются цвета (css-color-4 §12.2).
+    pub space: GradSpace,
+    /// Дуга тона для полярных пространств: 0 shorter (умолчание), 1 longer,
+    /// 2 increasing, 3 decreasing (css-color-4 §12.4).
+    pub hue: u8,
+}
+
+/// Пространство интерполяции цвета градиента (css-color-4 §12.2).
+///
+/// Умолчание решается СОСТАВОМ стопов, а не записью: пока все цвета заданы
+/// устаревшими формами sRGB (имя, `#hex`, `rgb()`, `rgba()`, `hsl()`,
+/// `hsla()`, `hwb()`), смешение обязано идти в гамма-кодированном sRGB — этим
+/// спека держит совместимость с вебом. Стоит хоть одному цвету быть записанным
+/// современной формой — умолчанием становится OKLab.
+///
+/// `Linear` — любое пространство, линейное по свету (`srgb-linear`, `xyz`,
+/// `xyz-d50`, `xyz-d65`, `display-p3-linear`, `rec2020-linear`): они связаны
+/// ЛИНЕЙНЫМ преобразованием, а линейная интерполяция с ним коммутирует, так
+/// что результат у них общий (набор и держит на них один эталон).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GradSpace {
+    #[default]
+    Srgb,
+    Linear,
+    Oklab,
+    Oklch,
+    Lab,
+    Lch,
+    Hsl,
+    Hwb,
 }
 
 /// `border-image`: картинка вместо рамки (css-backgrounds-3 §6).
@@ -1859,6 +1889,18 @@ pub struct Computed {
     /// Узел, чей фон красит КАНВАС (CSS 2.2 §14.2): корневой html, а без
     /// его фона — body. Ставится сборкой документа, не каскадом.
     pub(crate) canvas_bg: bool,
+    /// Письмо `<body>` НЕ стало письмом области просмотра: обособление есть
+    /// либо на `<html>`, либо на самом `<body>`, и распространение свойств
+    /// тела наружу выключено (css-contain-2 §containment-types: «when any
+    /// containments are active on either the HTML html or body elements,
+    /// propagation of properties from the body element to the initial
+    /// containing block, the viewport, or the canvas background, is
+    /// disabled»). Вычисленное письмо тела при этом остаётся при нём
+    /// (css-writing-modes §3.1 — распространяется только used корневой
+    /// коробки), поэтому отличить главный поток по одному лишь письму тела
+    /// нельзя, и признак приходится нести пометкой. Ставится сборкой
+    /// документа, не каскадом.
+    pub(crate) wm_contained: bool,
     /// Коробка КОРНЯ документа: её содержащий блок — начальный, и высота его
     /// определена всегда (§10.5). Ставится вместе с пометкой канваса, чтобы
     /// снимаемая обёртка уносила признак с собой.
@@ -2149,6 +2191,16 @@ impl Computed {
                 || self.bg_pos.x.is_some()
                 || self.bg_pos.y.is_some()
                 || self.bg_origin.is_some()
+                // Пространство смешения, которого GPU-путь не выражает
+                // (всё, кроме гамма-sRGB и OKLab — css-color-4 §12.2):
+                // цвет обязан считаться на точку, иначе полярную дугу и
+                // линейный свет пришлось бы изображать полосами, а
+                // квантование полос уже замерено в минус (см. `HSL_ARC`).
+                || !matches!(
+                    self.gradient.as_ref().map(|g| g.space),
+                    None | Some(crate::computed::GradSpace::Srgb)
+                        | Some(crate::computed::GradSpace::Oklab)
+                )
                 // Цвет фона лежит ПОД всеми слоями (css-backgrounds-3 §3.1):
                 // у заливки коробки место одно, поэтому цвет — ей, градиент —
                 // слоем сверху (`bg-color-with-gradient`).
@@ -3987,8 +4039,16 @@ impl Computed {
                     }
                     return;
                 }
+                // Сокращение принимает ЛЮБОЙ `<image>` (css-backgrounds-3
+                // §3.10), в том числе конический и повторяющиеся: длинное
+                // свойство их уже отдаёт растровой плиткой, а тут запись
+                // молча падала в разбор слов и терялась целиком — оттого
+                // эталоны `image-set-*-gradient-rendering-ref` выходили
+                // ПУСТЫМИ и сходились с пустым же тестом.
                 let v = top;
-                if let Some(url) = parse_url(v) {
+                if gradient_as_raster(v) {
+                    self.bg_image = Some(v.to_string());
+                } else if let Some(url) = parse_url(v) {
                     self.bg_image = Some(url);
                 }
                 // Значение режется по пробелам ВНЕ скобок: иначе
@@ -4921,9 +4981,12 @@ impl Computed {
                         // пока не доносим; сама картинка лучше, чем ничего.
                         self.bg_image = Some(img.to_string());
                     }
-                } else if v.starts_with("conic-gradient(") {
-                    // Конический GPU-путь не умеет — сразу растровой плиткой
-                    // (css-images-4 §2.3; растеризатор уже есть).
+                } else if gradient_as_raster(v) {
+                    // Конический и ПОВТОРЯЮЩИЕСЯ GPU-путь не выражает — они
+                    // идут растровой плиткой (css-images-3 §3.6,
+                    // css-images-4 §2.3; растеризатор уже есть, а
+                    // `background::source` эти записи опознаёт с самого
+                    // начала — до `Computed` они просто не доезжали).
                     self.bg_image = Some(v.to_string());
                 } else if let Some(rest) = v.strip_prefix("image(") {
                     // `image(<url>? , <color>?)` (css-images-4 §2.4): цвет —
@@ -9437,12 +9500,43 @@ fn count_tracks(v: &str) -> Option<u16> {
     (n > 0).then_some(n as u16)
 }
 
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v168, `scout-bgimg-2026-09.md` §4
+/// IMG-IMAGE-SET, 2 хунка): выбор кандидата `image-set()` по спеке — отсев по
+/// MIME, дублям разрешения и «кандидатов не осталось ⇒ негодная картинка».
+/// Обещание +13. Полный свод против v37: **+9/−17**. Плюсы — семья, где
+/// кандидат ДОЛЖЕН быть отвергнут (`image-set-type-unsupported-*`,
+/// `-zero-resolution-*`, `-negative-resolution-*`, градиенты). Минусы — 17
+/// пар с единственным годным кандидатом (`image-set-rendering`, `-dpi-*`,
+/// `-dppx-*`, `-calc-x-*`, `-no-res-*`, `-type-*`), все ровно 2.08: картинка
+/// встала не на место. Отбор верен, теряется адрес выбранного кандидата —
+/// возвращать вместе с разбором `<string>` как адреса (стенд `wptrun.rs:704`
+/// перебазирует только `url(...)`).
+/// Записи `<gradient>`, которых GPU-путь не выражает: коническая (обход по
+/// углу) и все повторяющиеся (узор стопов мостится вдоль линии —
+/// css-images-3 §3.6). Такие рисуются растровой плиткой — тем же путём,
+/// которым уже ходит `conic-gradient()`.
+fn gradient_as_raster(v: &str) -> bool {
+    v.starts_with("conic-gradient(")
+        || v.starts_with("repeating-linear-gradient(")
+        || v.starts_with("repeating-radial-gradient(")
+        || v.starts_with("repeating-conic-gradient(")
+}
+
+
 /// `linear-gradient(90deg, #000, #fff)`. Направления словами приводим к углу.
 /// `linear-gradient(...)` и `radial-gradient(...)`.
 ///
 /// Позиции стопов сохраняются: без них полосы не расставить, а именно они
 /// задают, где цвет меняется.
 pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
+    // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
+    // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
+    // повторение делает растеризатор, заворачивая долю точки.
+    let v = v.strip_prefix("repeating-").unwrap_or(v);
+    // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
+    // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
+    // повторение делает растеризатор, заворачивая долю точки.
+    let v = v.strip_prefix("repeating-").unwrap_or(v);
     let radial = v.starts_with("radial-gradient(");
     let inner = v
         .strip_prefix(if radial {
@@ -9485,6 +9579,43 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
                 0
             }
         });
+    // Дуга тона нужна ЛЮБОМУ полярному пространству, не только `hsl`
+    // (css-color-4 §12.4); умолчание — shorter.
+    let hue_arc: u8 = interp.map_or(0, |i| {
+        if i.contains("longer") {
+            1
+        } else if i.contains("increasing") {
+            2
+        } else if i.contains("decreasing") {
+            3
+        } else {
+            0
+        }
+    });
+    // Пространство смешения: явное из записи, иначе решается ниже по составу
+    // стопов (css-color-4 §12.2).
+    let named_space: Option<GradSpace> =
+        interp
+            .and_then(|i| i.split_whitespace().next())
+            .and_then(|s| match s {
+                "srgb" => Some(GradSpace::Srgb),
+                "srgb-linear" | "xyz" | "xyz-d50" | "xyz-d65" | "display-p3-linear"
+                | "rec2020-linear" | "a98-rgb-linear" | "prophoto-rgb-linear" => {
+                    Some(GradSpace::Linear)
+                }
+                "oklab" => Some(GradSpace::Oklab),
+                "oklch" => Some(GradSpace::Oklch),
+                "lab" => Some(GradSpace::Lab),
+                "lch" => Some(GradSpace::Lch),
+                "hsl" => Some(GradSpace::Hsl),
+                "hwb" => Some(GradSpace::Hwb),
+                // Пространства с собственным охватом (`display-p3`, `a98-rgb`,
+                // `rec2020`, `prophoto-rgb`) гамма-кодированы, и для цветов
+                // ВНУТРИ охвата sRGB смешение в них от sRGB не отличается:
+                // кривая одна и та же, а матрица первичных с интерполяцией
+                // коммутирует. Заводить их отдельно нечем.
+                _ => None,
+            });
     if interp.is_some() && head.is_empty() {
         idx = 1;
     }
@@ -9534,11 +9665,16 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     let mut raw: Vec<(Color, Option<f32>)> = vec![];
     let mut raw_px: Vec<(Color, Option<f32>)> = vec![];
     let mut any_pct = false;
+    // Умолчание пространства держится на ЗАПИСИ цветов, а не на их значениях
+    // (css-color-4 §12.2), поэтому решается прямо здесь, пока текст стопа
+    // ещё под рукой.
+    let mut all_legacy = true;
     for p in &parts[idx..] {
         let words = split_outside_parens(p);
         let Some(colour) = words.first().and_then(|w| Color::parse(w)) else {
             continue;
         };
+        all_legacy &= legacy_srgb_color(words[0].as_str());
         if words.len() == 1 {
             raw.push((colour, None));
             raw_px.push((colour, None));
@@ -9678,7 +9814,31 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         stops,
         stops_px,
         stops_raw,
+        // §12.2: без записи — sRGB, пока ВСЕ цвета устаревших форм, иначе
+        // OKLab. Именно эта оговорка и держит совместимость: почти весь набор
+        // пишет градиенты именами, `#hex` и `rgb()`, и остаётся в sRGB.
+        space: named_space.unwrap_or(if all_legacy {
+            GradSpace::Srgb
+        } else {
+            GradSpace::Oklab
+        }),
+        hue: hue_arc,
     })
+}
+
+/// Записан ли цвет УСТАРЕВШЕЙ формой sRGB: имя, `#hex`, `rgb()`, `rgba()`,
+/// `hsl()`, `hsla()`, `hwb()` и их формы с прозрачностью (css-color-4 §12.2).
+/// От ответа зависит пространство интерполяции по умолчанию.
+fn legacy_srgb_color(token: &str) -> bool {
+    let t = token.trim().to_ascii_lowercase();
+    if t.starts_with('#') {
+        return true;
+    }
+    match t.split_once('(') {
+        Some((name, _)) => matches!(name.trim(), "rgb" | "rgba" | "hsl" | "hsla" | "hwb"),
+        // Имя цвета, `transparent` и `currentcolor` — тоже устаревшие формы.
+        None => true,
+    }
 }
 /// Стиль обводки: 0 = не рисуется (none/hidden), 1 = рисуется.
 fn outline_style_of(v: &str) -> Option<u8> {

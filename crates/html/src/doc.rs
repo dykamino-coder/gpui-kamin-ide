@@ -350,6 +350,19 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     // Ограничение на корне гасит распространение: корень с ним — сам себе
     // область, и наружу его письмо не выходит.
     if any_containment(html) {
+        // Тело своё письмо СОХРАНЯЕТ — гасится распространение, а не
+        // вычисленное значение (css-writing-modes §3.1). Значит главным
+        // потоком тело не стало, и полагающийся главному потоку прижим к
+        // краю окна ему не положен. Рисователь обособления КОРНЯ уже не
+        // видит, поэтому пометку ставим здесь
+        // (contain-html-w-m-001..004).
+        for n in html.children.iter_mut() {
+            if let Node::Element(b) = n
+                && b.tag == "body"
+            {
+                b.style.wm_contained = true;
+            }
+        }
         return nodes;
     }
     // `html::before`/`::after` — СОСЕДИ body в потоке страницы: растяжка
@@ -379,7 +392,8 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     };
     // Ограничение на теле оставляет письмо ему: наверх идёт только
     // собственное письмо корня (contain-body-{w-m,t-o}-001..004).
-    let taken = if any_containment(body) {
+    let body_contained = any_containment(body);
+    let taken = if body_contained {
         (
             html.style.vertical,
             html.style.vertical_rl,
@@ -394,6 +408,20 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
             body.style.sideways.or(html.style.sideways),
         )
     };
+    // Та же пометка, что и при обособлении корня: письмо тела осталось при
+    // теле, область просмотра его не приняла (css-contain-2
+    // §containment-types), и тело — обычный блок в потоке корня. Ставится
+    // ПОСЛЕ вычисления `taken`, чтобы неизменяемый заём `body` уже кончился
+    // (contain-body-w-m-001..004).
+    if body_contained {
+        for n in html.children.iter_mut() {
+            if let Node::Element(b) = n
+                && b.tag == "body"
+            {
+                b.style.wm_contained = true;
+            }
+        }
+    }
     let own = (
         html.style.vertical,
         html.style.vertical_rl,

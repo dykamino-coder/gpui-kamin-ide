@@ -248,14 +248,51 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
             t.lin[0][0], t.lin[1][0], t.lin[0][1], t.lin[1][1], tx, ty
         )
     });
+    // Отдельное свойство `translate` (css-transforms-2 §individual-transforms)
+    // действует и на SVG-фигуре — она transformable element
+    // (css-transforms-1 §transformable-element), — но до растеризатора не
+    // доезжало: матрица выше собирается из `lin`/`tr` свойства `transform`, а
+    // `translate:` живёт отдельным полем `Computed::translate`, и его
+    // единственный потребитель `apply.rs` двигает CSS-КОРОБКУ, внутрь `<svg>`
+    // не заходя. Оттого `<rect style="translate: 100px 100px">` стоял на
+    // месте: наш зелёный — (10,67)-(134,191) точек устройства, эталонный —
+    // (135,192)-(259,316), ровно 100 css-точек по обеим осям, и накрываемый
+    // красный оставался виден (`translate/translate-in-svg`).
+    //
+    // Порядок сборки — css-transforms-2 §ctm: «translate, then rotate, then
+    // scale, then transform», то есть сдвиг стоит СЛЕВА и от матрицы свойства
+    // `transform`, и от презентационного атрибута `transform=` (тот
+    // отображается в то же свойство — css-transforms-1 §svg-transform).
+    // Доли — от опорной коробки (§transform-box; здесь fill-box по атрибутам
+    // фигуры, как и у процентов сдвига выше).
+    //
+    // Корневой `<svg>` исключён: он обычная CSS-коробка, и `translate:` ему
+    // уже сдвигает `apply.rs` — иначе сдвиг лёг бы дважды.
+    let ind_t = e.style.translate.filter(|_| e.tag != "svg").and_then(|(x, y)| {
+        let axis = |l: crate::value::Len, base: f32| match l {
+            crate::value::Len::Px(v) => v,
+            crate::value::Len::Pct(k) => k * base,
+            _ => 0.0,
+        };
+        let (dx, dy) = (axis(x, fw), axis(y, fh));
+        (dx != 0.0 || dy != 0.0).then_some((dx, dy))
+    });
     let attr_t = attr_of("transform").map(str::to_string);
-    let transform = style_t.filter(|t| !t.is_empty()).or(attr_t);
+    let base_t = style_t.filter(|t| !t.is_empty()).or(attr_t);
+    let transform = match (ind_t, base_t) {
+        (Some((dx, dy)), Some(t)) => Some(format!("translate({dx} {dy}) {t}")),
+        (Some((dx, dy)), None) => Some(format!("translate({dx} {dy})")),
+        (None, t) => t,
+    };
     let combined = match (origin, transform) {
         (Some((ox, oy)), Some(t)) => Some(format!(
             "translate({ox} {oy}) {t} translate({} {})",
             -ox, -oy
         )),
-        (None, Some(t)) if e.style.transform.is_some() => Some(t),
+        // Сдвиг от `translate:` — такой же повод перебить презентационный
+        // атрибут, как и своё свойство `transform`: без этой ветки собранная
+        // строка терялась, а в разметку уходил нетронутый атрибут.
+        (None, Some(t)) if e.style.transform.is_some() || ind_t.is_some() => Some(t),
         _ => None,
     };
     for (k, v) in &e.attrs {

@@ -1914,6 +1914,16 @@ pub struct GapRuleSpec {
     /// Зазоры в точках между x-дорожками и между y-дорожками, если известны.
     pub gap_x: Option<f32>,
     pub gap_y: Option<f32>,
+    /// Размеры дорожек ШАБЛОНА в точках вдоль x и вдоль y, если весь список
+    /// точечный. css-gaps-1 §gap-grid: «Row gap and column gap, in the
+    /// context of a grid container, refer to the gutters between grid rows
+    /// and grid columns» — промежуток задан ДОРОЖКАМИ, а не коробками
+    /// элементов, и пустая дорожка остаётся дорожкой. Blink строит ту же
+    /// геометрию из коллекции дорожек (`grid_layout_utils.cc`
+    /// `BuildGridTrackGapData`: `LayoutGrid::ComputeExpandedPositions`), а
+    /// элементы дают только занятость клетки по ИНДЕКСУ дорожки.
+    pub tracks_x: Option<Vec<f32>>,
+    pub tracks_y: Option<Vec<f32>>,
     /// `direction: rtl` контейнера: втяжки `*-inset-start/end` вдоль
     /// строчной оси считаются от правого края (css-gaps-1 §insets-start-end;
     /// `multicol-gap-decorations-direction-inset`, вторая половина).
@@ -2056,6 +2066,63 @@ fn tracks_a(items: &[GapItem], gap: Option<f32>) -> Vec<(f32, f32)> {
         .collect()
 }
 
+/// Дорожки по ШАБЛОНУ контейнера, привязанные к наблюдённым краям элементов.
+///
+/// `tracks_a` знает только границы коробок, поэтому дорожка без элементов
+/// пропадает: два промежутка вокруг неё сливаются в один широкий, а
+/// `§visibility-items: between/around` не может спрятать линейку над пустой
+/// областью — хотя спека написана именно про неё («whether a gap decoration
+/// segment is painted in portions of gaps adjacent to empty areas»,
+/// css-gaps-1 §visibility-items).
+///
+/// Шаблон даёт РАЗМЕРЫ дорожек, но не их начало на экране; начало ищется
+/// перебором: первый наблюдённый край элемента — это начало какой-то из
+/// дорожек. Годной считается только та привязка, при которой КАЖДЫЙ элемент
+/// стоит краями на линиях сетки. Проверка отсекает поля и выравнивание
+/// элемента внутри дорожки, неявные дорожки авто-размещения и
+/// нерасшифрованные доли `fr`: там возвращается `None` и работает прежний
+/// счёт по элементам. Элемент-спан проверку проходит: его начало — начало
+/// первой дорожки пролёта, конец — конец последней.
+///
+/// Ограничение: сетка, у которой пуста ВСЯ первая дорожка оси, привяжется со
+/// сдвигом на дорожку — перебор идёт от нулевого смещения. В своде такой пары
+/// нет (у всех 44 разрежённых первая строка и первая колонка заняты).
+fn template_tracks(
+    sizes: &[f32],
+    gap: Option<f32>,
+    items: &[GapItem],
+) -> Option<Vec<(f32, f32)>> {
+    let g = gap?;
+    if sizes.len() < 2 {
+        return None;
+    }
+    let mut off = Vec::with_capacity(sizes.len());
+    let mut y = 0.0f32;
+    for w in sizes {
+        off.push(y);
+        y += w + g;
+    }
+    let first = uniq_sorted(items.iter().map(|i| i.a0).collect())
+        .first()
+        .copied()?;
+    for shift in &off {
+        let base = first - shift;
+        let out: Vec<(f32, f32)> = sizes
+            .iter()
+            .zip(&off)
+            .map(|(w, o)| (base + o, base + o + w))
+            .collect();
+        let fits = items.iter().all(|i| {
+            out.iter().any(|t| (t.0 - i.a0).abs() <= GAP_EPS)
+                && out.iter().any(|t| (t.1 - i.a1).abs() <= GAP_EPS)
+        });
+        if fits {
+            return Some(out);
+        }
+    }
+    None
+}
+
 /// Промежутки между соседними дорожками; нулевой зазор — тоже промежуток
 /// (`flex-gap-decorations-033`).
 fn gaps_of(tracks: &[(f32, f32)]) -> Vec<(f32, f32)> {
@@ -2185,10 +2252,20 @@ fn grid_runs(
     gap_b: Option<f32>,
     rule: &GapAxisRule,
     cross: Option<&GapAxisRule>,
+    tpl_a: Option<&[f32]>,
+    tpl_b: Option<&[f32]>,
 ) -> Vec<GapRun> {
     let flipped: Vec<GapItem> = items.iter().map(GapItem::flipped).collect();
-    let ta = tracks_a(items, gap_a);
-    let tb = tracks_a(&flipped, gap_b);
+    // Дорожки шаблона сильнее выведенных из коробок (css-gaps-1 §gap-grid;
+    // Blink `BuildGridTrackGapData` строит геометрию из коллекции дорожек).
+    // Привязка не сошлась — остаётся прежний счёт по элементам, картинка не
+    // меняется.
+    let ta = tpl_a
+        .and_then(|t| template_tracks(t, gap_a, items))
+        .unwrap_or_else(|| tracks_a(items, gap_a));
+    let tb = tpl_b
+        .and_then(|t| template_tracks(t, gap_b, &flipped))
+        .unwrap_or_else(|| tracks_a(&flipped, gap_b));
     let ga = gaps_of(&ta);
     let gb = gaps_of(&tb);
     let r0 = tb.first().map_or(0.0, |t| t.0);
@@ -2431,13 +2508,17 @@ impl Element for GapRulePainter {
             GapLayout::Grid => {
                 let ix: Vec<GapItem> = items.iter().map(|b| GapItem::from_bounds(b, true)).collect();
                 let iy: Vec<GapItem> = items.iter().map(|b| GapItem::from_bounds(b, false)).collect();
+                // Ось `a` прогона — та, ПОПЕРЁК которой лежит промежуток: у
+                // линеек, стоящих в промежутках по x, дорожки `a` идут по x, а
+                // поперечные `b` — по y; у линеек по y — наоборот.
+                let (tx, ty) = (spec.tracks_x.as_deref(), spec.tracks_y.as_deref());
                 if let Some(r) = on_x {
-                    for run in grid_runs(&ix, spec.gap_x, spec.gap_y, r, on_y) {
+                    for run in grid_runs(&ix, spec.gap_x, spec.gap_y, r, on_y, tx, ty) {
                         layers.push((true, run, r, false));
                     }
                 }
                 if let Some(r) = on_y {
-                    for run in grid_runs(&iy, spec.gap_y, spec.gap_x, r, on_x) {
+                    for run in grid_runs(&iy, spec.gap_y, spec.gap_x, r, on_x, ty, tx) {
                         layers.push((false, run, r, false));
                     }
                 }

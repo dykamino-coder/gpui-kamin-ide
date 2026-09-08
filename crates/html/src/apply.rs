@@ -187,6 +187,14 @@ pub fn fill(g: &Gradient) -> gpui::Background {
     } else {
         gpui::linear_gradient(g.angle_deg, from, to)
     };
+    // Пространство смешения (css-color-4 §12.2). GPU-путь выражает два:
+    // гамма-sRGB и OKLab — шейдер переводит цвета в вершинном и обратно
+    // после смешения. Прочие пространства сюда не доходят: `gradient_as_tile`
+    // уводит их на растровый путь, где цвет считается на точку.
+    let base = match g.space {
+        crate::computed::GradSpace::Oklab => base.color_space(gpui::ColorSpace::Oklab),
+        _ => base,
+    };
     // Промежуточные цвета: до четырёх стопов заливка несёт сама (патч GPUI),
     // сверх того сборщик дерева по-прежнему кладёт полосы.
     if g.stops.len() > 2 {

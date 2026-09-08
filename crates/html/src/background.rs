@@ -1208,9 +1208,83 @@ pub fn shape_profile(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Option<Vec<
     )
 }
 
+/// Экстенты обтекания вдоль БЛОК-оси вертикального письма.
+///
+/// В вертикали строки набора — это колонки: блок-ось горизонтальна и идёт
+/// от правого края (`vertical-rl`, `sideways-rl`), инлайн-ось вертикальна,
+/// а line-left = верх, line-right = низ (css-writing-modes-4 §6.3, таблица
+/// logical-to-physical). Поэтому ту же маску формы надо резать СТОЛБЦАМИ, а
+/// экстент мерить вдоль физической вертикали. Индекс результата —
+/// расстояние от блок-старта margin-box, значение — экстент от своей
+/// line-стороны; ровно в этих осях работает `FlowRow::vertical_rl`.
+///
+/// Раздутие `shape-margin` — тот же диск Минковского (css-shapes-1 §2.2),
+/// что и у строчного профиля: `dilate` не знает, какая ось «длинная», ей
+/// достаточно поменять местами два размера.
+pub fn shape_profile_block(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Option<Vec<f32>> {
+    let rows = b.mh.ceil().max(1.0) as usize;
+    let cols = b.mw.ceil().max(1.0) as usize;
+    let mask = shape_mask(raw, b, cols, rows)?;
+    let t = (b.threshold.clamp(0.0, 1.0) * 255.0) as u8;
+    let mut iv: Vec<Option<(i32, i32)>> = (0..cols)
+        .map(|x| {
+            let first = (0..rows).find(|&y| mask[y * cols + x] > t)?;
+            let last = (0..rows).rev().find(|&y| mask[y * cols + x] > t)?;
+            Some((first as i32, last as i32 + 1))
+        })
+        .collect();
+    dilate(&mut iv, sm, rows, cols);
+    Some(
+        (0..cols)
+            .rev()
+            .map(|x| match iv[x] {
+                None => 0.0,
+                Some((y1, y2)) => {
+                    if side < 0 {
+                        (y2 as f32).clamp(0.0, b.mh)
+                    } else {
+                        b.mh - (y1 as f32).clamp(0.0, b.mh)
+                    }
+                }
+            })
+            .collect(),
+    )
+}
+
 /// Альфа-маска формы в холсте margin-box.
 fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> Option<Vec<u8>> {
     let raw = raw.trim();
+    // Круг и эллипс: вписанный эллипс опорной коробки (css-shapes-1 §3.1.1).
+    // Горизонтальный путь сюда с ними не приходит — там они уходят в
+    // `FloatShape::Ellipse` раньше; маска нужна вертикали, где форма
+    // адресуется по блок-оси и аналитическим эллипсом не выражается.
+    // Ветка стоит ПЕРВОЙ намеренно: `rrect_of` узнаёт слово-коробку, и
+    // запись `circle(50% at left 40px top 40px) border-box` иначе стала бы
+    // прямоугольником.
+    if raw.contains("circle(") || raw.contains("ellipse(") {
+        let at = raw.find("circle(").or_else(|| raw.find("ellipse("))?;
+        let head = &raw[at..];
+        let head = match head.find(')') {
+            Some(end) => &head[..=end],
+            None => head,
+        };
+        let (cx, cy, rx, ry) = shape_params(head, b.rw, b.rh, 1.0)?;
+        let (cx, cy) = (cx + b.rx, cy + b.ry);
+        if rx <= 0.0 || ry <= 0.0 {
+            return Some(vec![0u8; cols * rows]);
+        }
+        let mut out = vec![0u8; cols * rows];
+        for y in 0..rows {
+            let dy = (y as f32 + 0.5 - cy) / ry;
+            for x in 0..cols {
+                let dx = (x as f32 + 0.5 - cx) / rx;
+                if dx * dx + dy * dy <= 1.0 {
+                    out[y * cols + x] = 255;
+                }
+            }
+        }
+        return Some(out);
+    }
     // Скруглённый прямоугольник: inset/rect/xywh (+round) и слово-коробка
     // с её радиусами.
     if let Some(rect) = rrect_of(raw, b) {
@@ -1457,15 +1531,23 @@ fn svg_path_of(raw: &str, b: &ShapeBox) -> Option<(String, &'static str)> {
             .map(|(a, _)| a)
             .unwrap_or(&raw[at + 5..]);
         {
-            let d = inner
-                .trim()
-                .trim_matches('"')
-                .trim_matches('\'')
-                .to_string();
+            // `path( [<fill-rule>,]? <string> )` — css-shapes-1 §3.1:
+            // правило намотки стоит ПЕРЕД строкой контура и отделено
+            // запятой. Оно не отрезалось, и слово `evenodd` вместе с
+            // запятой уезжало в атрибут `d` — контур не разбирался вовсе.
+            let mut rule = "nonzero";
+            let mut body = inner.trim();
+            if let Some(rest) = body.strip_prefix("evenodd") {
+                rule = "evenodd";
+                body = rest.trim_start().trim_start_matches(',').trim_start();
+            } else if let Some(rest) = body.strip_prefix("nonzero") {
+                body = rest.trim_start().trim_start_matches(',').trim_start();
+            }
+            let d = body.trim_matches('"').trim_matches('\'').to_string();
             if d.is_empty() {
                 return None;
             }
-            return Some((d, "nonzero"));
+            return Some((d, rule));
         }
     }
     if let Some(at) = raw.find("shape(") {
@@ -1690,7 +1772,15 @@ fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
         /// Оборот вокруг середины от верха по часовой (css-images-4 §2.3).
         Sweep { from: f32 },
     }
-    let (mode, stops) = if let Some(inner) = src
+    // Повторение — не отдельная запись, а замощение узора стопов вдоль линии
+    // (css-images-3 §3.6): приставка снимается здесь, а доля точки
+    // заворачивается по диапазону стопов ниже.
+    // Повторение — не отдельная запись, а замощение узора стопов вдоль линии
+    // (css-images-3 §3.6): приставка снимается здесь, а доля точки
+    // заворачивается по диапазону стопов ниже.
+    let repeating = src.starts_with("repeating-");
+    let src = src.strip_prefix("repeating-").unwrap_or(src);
+    let (mode, stops, space, hue) = if let Some(inner) = src
         .strip_prefix("conic-gradient(")
         .and_then(|t| t.strip_suffix(')'))
     {
@@ -1728,7 +1818,14 @@ fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
         if raw.is_empty() {
             return None;
         }
-        (Mode::Sweep { from }, place_stops(raw))
+        // Разбор конического живёт здесь и суффикс `in <space>` пока не
+        // читает: смешение остаётся в гамма-sRGB, как было.
+        (
+            Mode::Sweep { from },
+            place_stops(raw),
+            crate::computed::GradSpace::Srgb,
+            0u8,
+        )
     } else {
         let g = crate::computed::parse_gradient(src)?;
         let angle = g.angle_deg.to_radians();
@@ -1758,7 +1855,7 @@ fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
         } else {
             g.stops.clone()
         };
-        (Mode::Axis { dx, dy }, stops)
+        (Mode::Axis { dx, dy }, stops, g.space, g.hue)
     };
 
     let mut bytes = Vec::with_capacity((w * h * 4) as usize);
@@ -1775,7 +1872,8 @@ fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
                     (turn - from).rem_euclid(1.0)
                 }
             };
-            let colour = colour_at(&stops, t);
+            let t = if repeating { wrap_repeat(t, &stops) } else { t };
+            let colour = colour_at(&stops, t, space, hue);
             // Порядок BGRA, премультипликация по прозрачности.
             bytes.push((colour.b * colour.a * 255.0) as u8);
             bytes.push((colour.g * colour.a * 255.0) as u8);
@@ -1839,8 +1937,29 @@ fn place_stops(raw: Vec<(crate::value::Color, Option<f32>)>) -> Vec<(crate::valu
     out
 }
 
+/// Доля точки в ПОВТОРЯЮЩЕМСЯ градиенте (css-images-3 §3.6): узор стопов
+/// повторяется бесконечно в обе стороны со сдвигом на разность позиций
+/// последнего и первого стопа. Нулевая разность повторять нечем — спека
+/// объявляет такой градиент вырожденным, и точка остаётся как есть.
+fn wrap_repeat(t: f32, stops: &[(crate::value::Color, f32)]) -> f32 {
+    let (Some(first), Some(last)) = (stops.first(), stops.last()) else {
+        return t;
+    };
+    let span = last.1 - first.1;
+    if span <= 0.0 {
+        return t;
+    }
+    first.1 + (t - first.1).rem_euclid(span)
+}
+
+
 /// Цвет градиента в точке `t` (0..1) по расставленным стопам.
-fn colour_at(stops: &[(crate::value::Color, f32)], t: f32) -> crate::value::Color {
+fn colour_at(
+    stops: &[(crate::value::Color, f32)],
+    t: f32,
+    space: crate::computed::GradSpace,
+    hue: u8,
+) -> crate::value::Color {
     let Some(first) = stops.first() else {
         return crate::value::Color {
             r: 0.0,
@@ -1860,10 +1979,15 @@ fn colour_at(stops: &[(crate::value::Color, f32)], t: f32) -> crate::value::Colo
             } else {
                 1.0
             };
+            // Цвета смешиваются УЖЕ в пространстве интерполяции
+            // (css-color-4 §12.2): перевод туда, покомпонентная доля,
+            // перевод обратно. Прозрачность живёт отдельно от осей цвета
+            // и всегда линейна.
+            let (r, g, bl) = crate::color_space::mix_in(space, hue, a.0, b.0, k);
             return crate::value::Color {
-                r: a.0.r + (b.0.r - a.0.r) * k,
-                g: a.0.g + (b.0.g - a.0.g) * k,
-                b: a.0.b + (b.0.b - a.0.b) * k,
+                r,
+                g,
+                b: bl,
                 a: a.0.a + (b.0.a - a.0.a) * k,
             };
         }

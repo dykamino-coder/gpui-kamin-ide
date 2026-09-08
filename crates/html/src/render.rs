@@ -573,6 +573,9 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                     stops: vec![(from, 0.0), (to, 1.0)],
                     stops_px: vec![],
                     stops_raw: vec![],
+                    // Полоса наследует пространство интерполяции исходного градиента.
+                    space: g.space,
+                    hue: g.hue,
                 };
                 let layer = div().absolute().bg(crate::apply::fill(&band));
                 bands.push(
@@ -627,6 +630,9 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                     stops: vec![(from, 0.0), (to, 1.0)],
                     stops_px: vec![],
                     stops_raw: vec![],
+                    // Полоса наследует пространство интерполяции исходного градиента.
+                    space: g.space,
+                    hue: g.hue,
                 };
                 let mut layer = div().absolute().bg(crate::apply::fill(&band));
                 // «Первая» полоса по направлению отрисовки, а не по списку:
@@ -3413,14 +3419,14 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Слой разрешён, только если ни один предок сам не отложен:
             // вложенная отложенная отрисовка в GPUI запрещена.
             let layer_ok = !inside_deferred();
-            let _deferred_guard = DeferGuard::enter(defers(&e.style, under_tf));
+            let _deferred_guard = DeferGuard::enter(defers(&e.style, inherited, under_tf));
             // Ряд обтекания: текст рядом с плавающим блоком и остаток под ним.
             if e.tag == "kamin-float" {
                 out.push(float_flow(e, inherited, opts));
                 continue;
             }
             if let Some(el) = scrollable(e, inherited, opts) {
-                out.push(layered(el, &e.style, layer_ok, under_tf));
+                out.push(layered(el, &e.style, inherited, layer_ok, under_tf));
                 continue;
             }
             if let Some(el) = resizable(e, inherited, opts) {
@@ -3430,7 +3436,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             if let Some(el) = transitioned(e, inherited, opts) {
                 // Наложение считается и для узла с переходом: раньше ветка
                 // уходила мимо, и `z-index` у него пропадал.
-                out.push(layered(el, &e.style, layer_ok, under_tf));
+                out.push(layered(el, &e.style, inherited, layer_ok, under_tf));
                 continue;
             }
             // `display: contents` — своей коробки у элемента нет: дети
@@ -4051,7 +4057,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             let _ = hoist_margins;
             // Замещаемому дорожка по содержимому не нужна: его размер по
             // ключевому слову — природный, считается в `image_with`.
-            let layered_built = layered(built, &e.style, layer_ok, under_tf);
+            let layered_built = layered(built, &e.style, inherited, layer_ok, under_tf);
             let mut done = if replaced_tag(e) {
                 layered_built
             } else {
@@ -4060,7 +4066,17 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
             // flow): свой анкор-ряд вокруг ОДНОГО узла — соседей не трогает.
             // Корню с фоном-картинкой не ставится (гасил canvas-слой).
-            if matches!(e.tag.as_str(), "html" | "body") && e.style.vertical_rl == Some(true) {
+            // Прижим — свойство ГЛАВНОГО потока, а он на документ один. Если
+            // обособление на `html` или на `body` погасило распространение
+            // письма тела в область просмотра (css-contain-2
+            // §containment-types), главным потоком тело не стало: оно
+            // остаётся обычным блоком в потоке горизонтального корня и к
+            // правому краю окна не жмётся
+            // (contain-body-w-m-001..004, contain-html-w-m-001..004).
+            if matches!(e.tag.as_str(), "html" | "body")
+                && e.style.vertical_rl == Some(true)
+                && !e.style.wm_contained
+            {
                 if e.style.bg_image.is_none() {
                     done = div()
                         .w_full()
@@ -4581,13 +4597,46 @@ fn stacking_context(c: &Computed) -> bool {
             ))
 }
 
+/// Действует ли `z-index` на этой коробке.
+///
+/// CSS 2.1 §9.9.1 у `z-index` записано «Applies to: positioned elements»: у
+/// непозиционированной коробки объявление есть, но силы не имеет. Мы же
+/// откладывали ЛЮБУЮ коробку с `z-index > 0`, и она всплывала над всем
+/// документом: в `z-index-does-not-apply` красный `#a` (`z-index: 2`,
+/// `transform: translateX(0)`, БЕЗ `position`) закрывал зелёного брата — тот
+/// же квадрат 125×125 точек в (10,10)-(134,134), у нас красный, у эталона
+/// зелёный.
+///
+/// Исключение — элемент гибкого контейнера или сетки: css-flexbox-1 §5.4
+/// («z-index values other than auto create a stacking context even if
+/// position is static») и css-grid-2 §6.2 распространяют `z-index` на них
+/// БЕЗ `position`. Вид родителя известен из наследуемого стиля.
+///
+/// Соседний `stacking_context()` этот гейт по `position` держал и раньше —
+/// правка убирает расхождение двух мест одного файла.
+fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
+    matches!(
+        c.position,
+        Some(crate::computed::Position::Relative)
+            | Some(crate::computed::Position::Absolute)
+            | Some(crate::computed::Position::Fixed)
+            | Some(crate::computed::Position::Sticky)
+    ) || matches!(
+        parent.display,
+        Some(Display::Flex)
+            | Some(Display::InlineFlex)
+            | Some(Display::Grid)
+            | Some(Display::InlineGrid)
+    )
+}
+
 /// Будет ли элемент с таким стилем отложен.
-fn defers(c: &Computed, under_tf: bool) -> bool {
+fn defers(c: &Computed, parent: &Computed, under_tf: bool) -> bool {
     // `fixed` под трансформированным предком — абсолют в его блоке, а не
     // слой окна (css-transforms-1 §transform-rendering).
     (c.position == Some(crate::computed::Position::Fixed) && !under_tf)
         || c.position == Some(crate::computed::Position::Sticky)
-        || c.z_index.is_some_and(|z| z > 0)
+        || (c.z_index.is_some_and(|z| z > 0) && z_index_applies(c, parent))
 }
 
 /// Счётчик глубины на время построения детей элемента.
@@ -4642,7 +4691,13 @@ impl Drop for DepthScope {
 /// выражается, поэтому применяем только положительный.
 ///
 /// `allowed` — снаружи ли мы отложенного поддерева: внутри откладывать нельзя.
-fn layered(el: AnyElement, c: &Computed, allowed: bool, under_tf: bool) -> AnyElement {
+fn layered(
+    el: AnyElement,
+    c: &Computed,
+    parent: &Computed,
+    allowed: bool,
+    under_tf: bool,
+) -> AnyElement {
     let fixed_to_window = c.position == Some(crate::computed::Position::Fixed) && !under_tf;
     if !allowed {
         // Внутри отложенного поддерева `position: fixed` отсчитывается от
@@ -4670,7 +4725,9 @@ fn layered(el: AnyElement, c: &Computed, allowed: bool, under_tf: bool) -> AnyEl
     match c.z_index {
         // Отложенный слой рисуется вне масок дерева — маску обрезающего
         // предка ему передаёт пара обёрток (`interact::MaskKeep/MaskUse`).
-        Some(z) if z > 0 => {
+        // Гейт `z_index_applies` — CSS 2.1 §9.9.1 «Applies to: positioned
+        // elements» (плюс элементы flex/grid по css-flexbox-1 §5.4).
+        Some(z) if z > 0 && z_index_applies(c, parent) => {
             let cell: crate::interact::MaskCell = Default::default();
             let inner = crate::interact::MaskUse { cell: cell.clone(), child: el };
             let deferred = gpui::deferred(inner)
@@ -6463,6 +6520,38 @@ fn gap_rule_spec(
     } else {
         (col_gap, row_gap)
     };
+    // Дорожки шаблона в точках. Берётся ТОЛЬКО целиком точечный список: доли
+    // `fr`, проценты и дорожки по содержимому разрешает раскладка, а здесь
+    // использованного размера контейнера ещё нет. Строки и ленты
+    // (`GapLayout::Lines`) шаблона не имеют вовсе: у каждой строки свои
+    // промежутки между элементами (css-gaps-1 §gap-flex).
+    let track_px = |list: Option<&Vec<crate::computed::TrackSize>>| -> Option<Vec<f32>> {
+        use crate::computed::{Track, TrackSize};
+        let list = list?;
+        if list.len() < 2 {
+            return None;
+        }
+        list.iter()
+            .map(|t| match t {
+                TrackSize::Single(Track::Px(v)) => Some(*v),
+                _ => None,
+            })
+            .collect()
+    };
+    let (tpl_rows, tpl_cols) = match kind {
+        GapLayout::Grid => (
+            track_px(merged.grid_rows.as_ref()),
+            track_px(merged.grid_tracks.as_ref()),
+        ),
+        GapLayout::Lines { .. } => (None, None),
+    };
+    // В вертикальном письме колонки сетки идут по y — тем же поворотом, что и
+    // `gap_x`/`gap_y` строкой выше.
+    let (tracks_x, tracks_y) = if vertical {
+        (tpl_rows, tpl_cols)
+    } else {
+        (tpl_cols, tpl_rows)
+    };
     Some(crate::interact::GapRuleSpec {
         col,
         row,
@@ -6472,6 +6561,8 @@ fn gap_rule_spec(
         column_over_row: s.rule_column_over_row == Some(true),
         gap_x,
         gap_y,
+        tracks_x,
+        tracks_y,
     })
 }
 
@@ -6514,6 +6605,290 @@ fn multicol_gap_rule_spec(
     spec.gap_x = Some(if vertical { row_gap } else { column_gap });
     spec.gap_y = Some(if vertical { column_gap } else { row_gap });
     Some(spec)
+}
+
+/// Кусок содержимого предка спаннера: обычный поток или сам спаннер.
+/// css-multicol-1 §column-span (`Overview.bs:1353-1355`): спаннер «forces a
+/// column break and is taken out of flow to span across all columns of the
+/// nearest multicol ancestor», то есть режет содержимое предка на «до»,
+/// «спаннер» и «после».
+enum SpanPart {
+    Body(Vec<Node>),
+    Span(Node),
+}
+
+/// Коробка со спаннером: `column-span: all` применяется только к
+/// внутрипоточным блочным элементам (css-multicol-1 §column-span,
+/// «Applies to: in-flow block-level elements»; Blink
+/// `LayoutBox::IsSelfValidColumnSpanner`). Признак ровно тот же, что у
+/// прямых детей в `element()`, — поведение прямого спаннера не меняется.
+fn spanner_box(c: &Element) -> bool {
+    c.style.column_span == Some(true) && !c.inline
+}
+
+/// Пропускает ли предок спаннера его наружу, к многоколоночнику.
+///
+/// Спека (css-multicol-1 §column-span, `Overview.bs:1497-1499`): «A spanning
+/// element may be lower than the first level of descendants as long as they
+/// are part of the same formatting context, and there is nothing between the
+/// spanning element and multicol container that establishes a containing
+/// block for fixed position descendants».
+///
+/// Blink проверяет то же в `LayoutBox::DoesAncestryAllowColumnSpanner` →
+/// `ShouldPreventColumnSpannerDescendants` (`layout_box.cc:2860-2900`):
+/// предок обязан быть блочным контейнером потока (`LayoutBlockFlow`), не
+/// монолитом, не порождать своего контекста форматирования
+/// (`CreatesNewFormattingContext`) и не быть содержащим блоком для
+/// фиксированных потомков (`CanContainFixedPositionObjects`); спаннер
+/// внутри спаннера тоже запрещён.
+fn passes_spanner(c: &Element) -> bool {
+    // «No spanners inside spanners in the same multicol context».
+    if spanner_box(c) {
+        return false;
+    }
+    // Строчная коробка — не блочный контейнер потока: спаннер внутри
+    // `<span>` живёт в анонимной коробке блок-в-строчном, и вынуть его
+    // отсюда, не разобрав саму анонимную коробку, нечем.
+    if c.inline {
+        return false;
+    }
+    if !matches!(
+        c.style.display,
+        None | Some(Display::Block) | Some(Display::ListItem)
+    ) {
+        return false;
+    }
+    // Свой многоколоночник: спаннер принадлежит БЛИЖАЙШЕМУ предку-
+    // многоколоночнику, а не нашему (§column-span: «the nearest multicol
+    // ancestor in the same block formatting context»).
+    if multicol_container(&c.style) {
+        return false;
+    }
+    // Внепоточный и плавающий предок — свой контекст форматирования.
+    if out_of_flow(&c.style) {
+        return false;
+    }
+    if c.style.flow_root == Some(true) {
+        return false;
+    }
+    if !matches!(
+        c.style.overflow_x,
+        None | Some(crate::computed::Overflow::Visible)
+    ) || !matches!(
+        c.style.overflow_y,
+        None | Some(crate::computed::Overflow::Visible)
+    ) {
+        return false;
+    }
+    // Содержащий блок для фиксированных потомков (§column-span, пример с
+    // `transform: rotate(90deg)`: «The transform establishes a containing
+    // block for fixed position descendents, therefore a spanner will not be
+    // created»). На этом запрете стоят зелёные `multicol-span-all-010`
+    // (`transform`, `filter`, `contain: paint|layout|content|strict`) и
+    // `multicol-span-all-017` (`transform: scale(1)`).
+    if c.style.transform.is_some()
+        || c.style.filter.is_some()
+        || c.style.perspective.is_some()
+        || c.style.contain_layout == Some(true)
+        || c.style.contain_paint == Some(true)
+    {
+        return false;
+    }
+    true
+}
+
+/// Есть ли в поддереве спаннер, достижимый через проходимых предков.
+fn has_deep_spanner(c: &Element) -> bool {
+    c.children.iter().any(|n| match n {
+        Node::Element(k) if spanner_box(k) => true,
+        Node::Element(k) if passes_spanner(k) => has_deep_spanner(k),
+        _ => false,
+    })
+}
+
+/// Кромка коробки на стороне разреза: есть ли что показывать ПУСТОМУ
+/// фрагменту. `Len::Px(0)` кромкой не считается.
+fn spanner_edge(l: &Option<Len>) -> bool {
+    !matches!(l, None | Some(Len::Px(0.0)))
+}
+
+/// Виден ли фрагмент предка: непустое содержимое или кромка коробки на
+/// своей стороне разреза. Пустой фрагмент с кромкой обязателен —
+/// css-multicol-1 §column-span, `Overview.bs:1540-1541`: «If the fragment
+/// before the spanner is empty, nothing special happens; the top
+/// margin/border/padding is above the spanning element, as an empty
+/// fragment».
+fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last: bool) -> bool {
+    if kids.iter().any(|n| !is_blank(n)) {
+        return true;
+    }
+    let b = &c.style.border_width;
+    (first
+        && (spanner_edge(&c.style.margin.top)
+            || spanner_edge(&c.style.padding.top)
+            || spanner_edge(&b.top)))
+        || (last
+            && (spanner_edge(&c.style.margin.bottom)
+                || spanner_edge(&c.style.padding.bottom)
+                || spanner_edge(&b.bottom)))
+}
+
+/// Фрагмент предка спаннера. css-break-3 §4.3 (вид `slice`, умолчание
+/// `box-decoration-break`): верхние поле/рамка/отбивка — только у первого
+/// фрагмента, нижние — только у последнего.
+///
+/// `keep_size` — отдать фрагменту ЗАДАННУЮ блочную высоту предка. Она
+/// принадлежит коробке ЦЕЛИКОМ и расходуется фрагментами по очереди (Blink
+/// `fragmentation_utils.cc`: остаток блочного размера считается от уже
+/// уложенных фрагментов). Разложить остаток по фрагментам на уровне дерева
+/// нечем — геометрия колонок здесь ещё не известна, — поэтому высота
+/// ставится ТОЛЬКО когда предок на деле не разошёлся: видимый фрагмент
+/// один. Разошёлся на несколько — каждый меряется по содержимому, а не
+/// повторяет `height` предка целиком (иначе `height: 200px` удвоилась бы:
+/// `non-adjacent-spanners-001`).
+fn spanner_fragment(
+    c: &Element,
+    kids: Vec<Node>,
+    first: bool,
+    last: bool,
+    keep_size: bool,
+    ix: usize,
+) -> Element {
+    let mut f = c.clone();
+    f.children = kids;
+    if !first {
+        f.style.margin.top = None;
+        f.style.padding.top = None;
+        f.style.border_width.top = None;
+        // Устойчивый номер узла у продолжения свой: по нему GPUI хранит
+        // состояние (анимация, буферы линеек промежутков), и два фрагмента
+        // с одним номером слились бы в один.
+        f.node_id = c.node_id ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    }
+    if !last {
+        f.style.margin.bottom = None;
+        f.style.padding.bottom = None;
+        f.style.border_width.bottom = None;
+    }
+    if !keep_size {
+        f.style.height = None;
+        f.style.min_height = None;
+    }
+    f
+}
+
+/// Разложить содержимое предка на чередование «кусок обычного потока» —
+/// «спаннер», рекурсивно вынимая спаннеров из проходимых потомков. Список
+/// всегда начинается и кончается куском потока (возможно пустым).
+fn spanner_parts(kids: &[Node]) -> Vec<SpanPart> {
+    let mut out: Vec<SpanPart> = Vec::new();
+    let mut body: Vec<Node> = Vec::new();
+    for n in kids {
+        match n {
+            Node::Element(c) if spanner_box(c) => {
+                out.push(SpanPart::Body(std::mem::take(&mut body)));
+                out.push(SpanPart::Span(n.clone()));
+            }
+            Node::Element(c) if passes_spanner(c) && has_deep_spanner(c) => {
+                let inner = spanner_parts(&c.children);
+                let bodies: Vec<Vec<Node>> = inner
+                    .iter()
+                    .filter_map(|p| match p {
+                        SpanPart::Body(b) => Some(b.clone()),
+                        SpanPart::Span(_) => None,
+                    })
+                    .collect();
+                let n_b = bodies.len();
+                let shown = bodies
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, b)| spanner_frag_visible(c, b, *i == 0, *i + 1 == n_b))
+                    .count();
+                let mut bi = 0usize;
+                for p in inner {
+                    match p {
+                        SpanPart::Body(b) => {
+                            let first = bi == 0;
+                            let last = bi + 1 == n_b;
+                            // Заданную высоту берёт только НЕ разошедшийся
+                            // предок (см. `spanner_fragment`); пустой
+                            // фрагмент без кромки и без такой высоты
+                            // показывать нечем — он просто исчезает.
+                            let keep = first && shown <= 1;
+                            if spanner_frag_visible(c, &b, first, last)
+                                || (keep && c.style.height.is_some())
+                                || (keep && c.style.min_height.is_some())
+                            {
+                                body.push(Node::Element(spanner_fragment(
+                                    c, b, first, last, keep, bi,
+                                )));
+                            }
+                            bi += 1;
+                        }
+                        SpanPart::Span(s) => {
+                            // Спаннер потомка поднимается на НАШ уровень и
+                            // режет уже наш поток: предки разрезаются вместе
+                            // с ним (§column-span). Прозрачность предка при
+                            // этом остаётся на спаннере: «Although the
+                            // spanner is taken out-of-flow, this does not
+                            // affect the painting order of the spanning
+                            // element» (`Overview.bs:1471-1472`), а группа
+                            // прозрачности — часть отрисовки
+                            // (`spanner-in-opacity`). Трансформ и фильтр
+                            // сюда не попадают вовсе: они барьер
+                            // (`passes_spanner`).
+                            let s = match (c.style.opacity, &s) {
+                                (Some(o), Node::Element(sp)) if o < 1.0 => {
+                                    let mut sp = sp.clone();
+                                    sp.style.opacity =
+                                        Some(sp.style.opacity.unwrap_or(1.0) * o);
+                                    Node::Element(sp)
+                                }
+                                _ => s,
+                            };
+                            out.push(SpanPart::Body(std::mem::take(&mut body)));
+                            out.push(SpanPart::Span(s));
+                        }
+                    }
+                }
+            }
+            other => body.push(other.clone()),
+        }
+    }
+    out.push(SpanPart::Body(body));
+    out
+}
+
+/// Поднять спаннеров-потомков к прямым детям многоколоночника, разрезав их
+/// предков (css-multicol-1 §column-span, `Overview.bs:1497-1499`). `None` —
+/// поднимать нечего, дерево не трогаем.
+///
+/// Blink держит для этого отдельный путь `ColumnSpannerPath`
+/// (`column_spanner_path.h`: «A path from the multicol container and down to
+/// a column spanner, each container represented as a step on the path») и
+/// ведёт раскладку предков по нему: `BlockLayoutAlgorithm` на шаге пути
+/// обрывает свой фрагмент перед спаннером
+/// (`block_layout_algorithm.cc:1052-1058`), а `ColumnLayoutAlgorithm`
+/// достаёт сам спаннер (`GetSpannerFromPath`,
+/// `column_layout_algorithm.cc:224`) и кладёт его между линиями колонок. У
+/// нас раскладка колонок принимает спаннера ТОЛЬКО прямым ребёнком
+/// (`render.rs` `is_span`, `StackChild::span`), поэтому тот же разрез
+/// делается в дереве до неё.
+fn hoist_spanners(kids: &[Node]) -> Option<Vec<Node>> {
+    if !kids
+        .iter()
+        .any(|n| matches!(n, Node::Element(c) if passes_spanner(c) && has_deep_spanner(c)))
+    {
+        return None;
+    }
+    let mut out: Vec<Node> = Vec::with_capacity(kids.len() + 2);
+    for p in spanner_parts(kids) {
+        match p {
+            SpanPart::Body(b) => out.extend(b),
+            SpanPart::Span(s) => out.push(s),
+        }
+    }
+    Some(out)
 }
 
 /// Многоколоночный контейнер: `column-*` применяются только к блочным
@@ -7198,6 +7573,15 @@ thread_local! {
     static COLLAPSE_CB_WIDTH_PX: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
 }
 
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v168, `scout-clamp-2026-09g.md` CLAMP-BFC,
+/// 1 хунк): контейнер `line-clamp` заводит свой контекст форматирования
+/// (css-overflow-4 §5.3). Обещание +7. Замер срезом 113 пар вместе с
+/// MC-OOF-COPIES: снятие обоих убрало −5 (`flex-container-fragmentation-010/011`,
+/// `single-line-column-flex-fragmentation-029`, `grid-item-oof-009/010` →
+/// «красное видно») при −2 плюсах. Обособление контекста у клэмпа рушит
+/// фрагментацию гибкого контейнера: у копии фрагмента появляется свой
+/// контекст, и внепоточные теряют содержащий блок. Возвращать вместе с
+/// FRAG-OOF (внепоточные при фрагментации).
 /// Заводит ли коробка СВОЙ блочный контекст форматирования: через её край
 /// поля не схлопываются ни с детьми, ни насквозь (CSS 2.1 §8.3.1).
 fn own_context(e: &Element) -> bool {
@@ -8612,38 +8996,9 @@ fn paragraph_pieces(
         };
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
-        let mut d = apply(div(), &style.text_only())
+        let d = apply(div(), &style.text_only())
             .max_w_full()
             .child(SharedString::from(t.clone()));
-        // Нижний край куска сажается на его БАЗОВУЮ ЛИНИЮ: отрицательное поле
-        // ровно в «полулидинг + спуск» (CSS2 §10.8). Тогда `height + margin.bottom`
-        // у taffy совпадает с базовой линией, которую заявляет атом, короб строки
-        // становится равен `line-height`, и атом садится на 0.
-        // ★ ЗАМЕРЕНО (06.09, свод v131 против v30): +19/−9 по всему корпусу.
-        // Потери: `css-position/static-position/htb-{ltr,rtl}-{ltr,rtl}` ×4
-        // (0.16 → «красное видно»), `line-breaking-031`,
-        // `line-breaking-atomic-008`, `table-vertical-align-baseline-009`,
-        // `units-003`, `c43-rpl-ibx-000` — короб строки на полулидинг короче
-        // эталона. Настоящее лечение — базовая линия куска от gpui
-        // (`first_baselines` в taffy), тогда поле не нужно вовсе.
-        if has_atom {
-            let size = match style.font_size {
-                Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) | Some(Len::Pct(k)) => k * em_base,
-                _ => em_base,
-            };
-            let family = style.font_family.clone().unwrap_or_default();
-            let (ascent, descent, _) = crate::metrics::vmetrics_px(&family, size);
-            let line = match style.line_height {
-                Some(Len::Px(v)) => v,
-                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                _ => ascent + descent,
-            };
-            let below = (line - ascent - descent) / 2.0 + descent;
-            if below > 0.0 {
-                d = d.mb(px(-below));
-            }
-        }
         if {
             static ON: std::sync::LazyLock<bool> =
                 std::sync::LazyLock::new(|| std::env::var("RT_DBG").is_ok());
@@ -10406,7 +10761,16 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
             Some(Len::Pct(p)) => p * cb_w,
             _ => 0.0,
         };
-        let shape = if let Some(at) = raw.find("circle(").or_else(|| raw.find("ellipse(")) {
+        // Вертикальное письмо (`vertical-rl`, `sideways-rl`): форма обтекания
+        // адресуется в ЛОГИЧЕСКИХ осях — блок-ось горизонтальна и идёт от
+        // правого края, инлайн-ось вертикальна, line-left = верх,
+        // line-right = низ (css-writing-modes-4 §6.3). Ни `FloatShape::
+        // Ellipse`, ни строчный `Profile` этого не выражают, поэтому здесь
+        // ВСЕ фигуры идут одним растровым путём и режутся столбцами.
+        let vert_rl = inherited.vertical_rl == Some(true);
+        let shape = if !vert_rl
+            && let Some(at) = raw.find("circle(").or_else(|| raw.find("ellipse("))
+        {
             let inner = &raw[at..];
             let inner = match inner.find(')') {
                 Some(end) => &inner[..=end],
@@ -10466,15 +10830,33 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 ],
                 threshold: f.style.shape_threshold.unwrap_or(0.0),
             };
-            match crate::background::shape_profile(&raw, &sb, sm.max(0.0), side) {
+            // Ось разреза маски выбирается письмом. Сдвиг `off` кладётся
+            // только в горизонтали: в вертикали флоат стоит у инлайн-начала
+            // хоста, а `off` живёт в полосах, чья стенка там заведомо
+            // недостижима (`NO_WALL`) и смысла не имеет.
+            let profile = if vert_rl {
+                crate::background::shape_profile_block(&raw, &sb, sm.max(0.0), side)
+            } else {
+                crate::background::shape_profile(&raw, &sb, sm.max(0.0), side)
+            };
+            match profile {
                 Some(ext) => crate::flow::FloatShape::Profile {
                     top: 0.0,
                     ext: std::sync::Arc::new(
                         ext.into_iter()
-                            .map(|v| if v > 0.0 { off + v } else { 0.0 })
+                            .map(|v| if v > 0.0 && !vert_rl { off + v } else { v })
                             .collect(),
                     ),
                 },
+                None if vert_rl => {
+                    // Непонятная запись в вертикали: занята вся блок-ось
+                    // margin-box на всю его инлайн-ось.
+                    crate::flow::FloatShape::Band {
+                        top: 0.0,
+                        h: mw,
+                        w: mh,
+                    }
+                }
                 None => {
                     // Непонятная запись: прямоугольник опорной коробки со
                     // стороны текста.
@@ -10614,12 +10996,39 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 y += mh;
                 continue;
             }
-            let (l, top, _avail) = bands.place_among(mw, mh, y);
-            y = top + mh;
-            let (ml, mt) = (
+            let (ml, mr, mt, mb) = (
                 px_margin(&c.style.margin.left).unwrap_or(0.0),
+                px_margin(&c.style.margin.right).unwrap_or(0.0),
                 px_margin(&c.style.margin.top).unwrap_or(0.0),
+                px_margin(&c.style.margin.bottom).unwrap_or(0.0),
             );
+            // §9.5, последний абзац, дословно: «The border box of a table, a
+            // block-level replaced element, or an element in the normal flow
+            // that establishes a new block formatting context … must not
+            // overlap the margin box of any floats». Требование стоит на
+            // BORDER-box коробки; её собственные поля в перечень не входят
+            // ВООБЩЕ. Поэтому окно ищется под border-box, а поля работают
+            // только по блочной оси: верхнее опускает потолок поиска, нижнее
+            // задаёт потолок следующего куска.
+            //
+            // Так же у Blink (`block_layout_algorithm.cc:2164-2172`):
+            // «Margins are applied from the content-box, not the layout
+            // opportunity area», и проверка влезания там идёт по
+            // `fragment.InlineSize()` / `fragment.BlockSize()` (`:2206`,
+            // `:2283`) — то есть по border-box фрагмента.
+            //
+            // Отпечаток числа (`new-fc-beside-float-with-margin`): коробка
+            // 50 точек с `margin-right: 1px` рядом с флоатом 50 в блоке 100.
+            // margin-box 51 в окно 50 не влезал, и коробка уезжала на y=100
+            // под флоат; border-box 50 влезает ровно, и она встаёт на y=0
+            // сбоку — как и требует `meta assert` теста.
+            //
+            // border-box выводится вычитанием полей из уже посчитанного
+            // margin-box: `px_margin_box` складывает width + padding + border
+            // + margin теми же `px_margin`, поэтому разность точна.
+            let (bw, bh) = (mw - ml - mr, mh - mt - mb);
+            let (l, top, _avail) = bands.place_among(bw, bh, y + mt);
+            y = top + bh + mb;
             // Коробка прижимается к инлайн-НАЧАЛУ полосы. `margin: auto`
             // прижимом не считается СОЗНАТЕЛЬНО: эталоны `-001r` выравнивают
             // свои коробки `text-align: right`, о котором `FlowRow` не знает
@@ -10637,7 +11046,7 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                 div()
                     .absolute()
                     .left(px(l + ml))
-                    .top(px(top + mt))
+                    .top(px(top))
                     .child(built),
             );
         }
@@ -10722,67 +11131,28 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
     }
     if atoms_ok && !atoms.is_empty() {
         let rtl = inherited.rtl == Some(true);
-        // Вертикальное письмо (vertical-rl): раскладка идёт в
-        // транспонированном мире — формы переводятся туда же (инлайн-ось =
-        // физическая вертикаль, блок-старт = правый край).
+        // Вертикальное письмо (`vertical-rl`, `sideways-rl`): формы уже
+        // построены в осях письма (`background::shape_profile_block`) —
+        // индекс равен расстоянию от блок-старта (правого края), значение —
+        // экстенту вдоль физической вертикали от своей line-стороны.
+        // Транспонировать их второй раз нечего.
+        //
+        // Прежний `transpose` схлопывал `Profile` в полосу максимального
+        // экстента (`w: max(ext)`) — то есть терял форму целиком, а её несут
+        // ВСЕ произвольные фигуры: `inset` с `round`, `polygon`, `path()`,
+        // `shape()`, слово-коробка с `border-radius`, картинка, градиент.
+        // У `Band` он вдобавок не менял оси местами: `h` брался из высоты
+        // margin-box, хотя по блок-оси лежит его ШИРИНА.
+        //
+        // Сторона сохраняется отдельными списками: `float: left` — line-left
+        // = верх, `float: right` — line-right = низ (css-writing-modes-4
+        // §6.3), и от `direction` это не зависит. А `direction: rtl`
+        // разворачивает инлайн-ось, и коробки идут от НИЖНЕГО края — эталоны
+        // семейства (`shape-outside-inset-023-ref` и родня) меряют свой
+        // `inset-inline-start` именно снизу.
         if inherited.vertical_rl == Some(true) {
-            let transpose = |v: &Vec<crate::flow::FloatShape>| -> Vec<crate::flow::FloatShape> {
-                v.iter()
-                    .map(|f| match f.clone() {
-                        crate::flow::FloatShape::Band { top, h, w } => {
-                            // Полоса блок-прогресса: top/h — вдоль X справа.
-                            crate::flow::FloatShape::Band { top, h, w }
-                        }
-                        crate::flow::FloatShape::Circle { top, cx, cy, r } => {
-                            crate::flow::FloatShape::Ellipse {
-                                top,
-                                cx: cy,
-                                cy: cx,
-                                rx: r,
-                                ry: r,
-                            }
-                        }
-                        crate::flow::FloatShape::Ellipse {
-                            top,
-                            cx,
-                            cy,
-                            rx,
-                            ry,
-                        } => crate::flow::FloatShape::Ellipse {
-                            top,
-                            cx: cy,
-                            cy: cx,
-                            rx: ry,
-                            ry: rx,
-                        },
-                        crate::flow::FloatShape::Poly { top, pts } => {
-                            crate::flow::FloatShape::Poly {
-                                top,
-                                pts: std::sync::Arc::new(
-                                    pts.iter().map(|&(x, y)| (y, x)).collect(),
-                                ),
-                            }
-                        }
-                        // Профиль не транспонируется профилем — полосой.
-                        crate::flow::FloatShape::Profile { top, ext } => {
-                            crate::flow::FloatShape::Band {
-                                top,
-                                h: ext.len() as f32,
-                                w: ext.iter().fold(0.0f32, |m, &v| m.max(v)),
-                            }
-                        }
-                    })
-                    .collect()
-            };
-            let t_shapes = std::sync::Arc::new((
-                transpose(&shapes.0)
-                    .into_iter()
-                    .chain(transpose(&shapes.1))
-                    .collect(),
-                Vec::new(),
-            ));
             return host
-                .child(crate::flow::FlowRow::new(atoms, t_shapes, false).vertical_rl())
+                .child(crate::flow::FlowRow::new(atoms, shapes, rtl).vertical_rl())
                 .into_any_element();
         }
         return host
@@ -11847,6 +12217,31 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // (`StackChild::span`). Внутри копии другой стопки — по-прежнему
                 // сегментами: перенос ряда во внешнюю колонку не написан
                 // (`column-height-029`, scout-columnwrap-2026-09b.md §2.3).
+                // Спаннер бывает НЕ прямым ребёнком: css-multicol-1
+                // §column-span (`Overview.bs:1497-1499`) — «A spanning element
+                // may be lower than the first level of descendants as long as
+                // they are part of the same formatting context, and there is
+                // nothing between the spanning element and multicol container
+                // that establishes a containing block for fixed position
+                // descendants». Спаннер выносится ИЗ ПОТОКА и режет
+                // многоколоночник на «до», «спаннер во всю ширину» и «после»,
+                // а его предки внутри многоколоночника разрезаются вместе с
+                // ним. Поднимаем таких потомков к прямым детям ОДИН раз, до
+                // всех решений ниже: дальше и сегментный путь, и единая
+                // стопка, и текстовый `column_flow` видят спаннер прямым
+                // ребёнком. Blink ведёт для этого путь `ColumnSpannerPath`
+                // (`column_spanner_path.h`), у нас пути нет — предки режутся
+                // прямо в дереве (`hoist_spanners`).
+                let hoisted;
+                let e = match hoist_spanners(&e.children) {
+                    Some(kids) => {
+                        let mut c = e.clone();
+                        c.children = kids;
+                        hoisted = c;
+                        &hoisted
+                    }
+                    None => e,
+                };
                 let is_span = |n: &Node| {
                     matches!(n, Node::Element(c)
                         if c.style.column_span == Some(true) && !c.inline)

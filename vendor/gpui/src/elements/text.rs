@@ -340,7 +340,14 @@ impl TextLayout {
             vec![text_style.to_run(text.len())]
         };
 
-        window.request_measured_layout(Default::default(), {
+        // KaminIDE patch: лист текста отдаёт замеру ещё и ПЕРВУЮ БАЗОВУЮ
+        // ЛИНИЮ. Без неё taffy берёт базовой линией нижний край margin-бокса
+        // (`compute/flexbox.rs:1756`, `height + margin.bottom`), и строка,
+        // выровненная `align-items: baseline`, теряет всё, что лежит НИЖЕ
+        // базовой: css-inline-3 §3 «Line Box Sizing» требует, чтобы короб
+        // строки вмещал ОБЕ половины (A′ над базовой и D′ под ней,
+        // §Calculating the Logical Height Contributions).
+        window.request_measured_layout_with_baseline(Default::default(), {
             let element_state = self.clone();
 
             move |known_dimensions, available_space, window, cx| {
@@ -396,7 +403,15 @@ impl TextLayout {
                     && text_layout.size.is_some()
                     && wrap_width == text_layout.wrap_width
                 {
-                    return text_layout.size.unwrap();
+                    // KaminIDE patch: базовая линия готового замера считается
+                    // ТОЙ ЖЕ формулой, что и на отрисовке
+                    // (`text_system/line.rs:274`, `padding_top + ascent`),
+                    // иначе раскладка и краска разъедутся.
+                    let baseline = text_layout.lines.first().map(|line| {
+                        (text_layout.line_height - line.ascent() - line.descent()) / 2.
+                            + line.ascent()
+                    });
+                    return (text_layout.size.unwrap(), baseline);
                 }
 
                 let mut line_wrapper = cx.text_system().line_wrapper(text_style.font(), font_size);
@@ -434,7 +449,7 @@ impl TextLayout {
                         size: Some(Size::default()),
                         bounds: None,
                     });
-                    return Size::default();
+                    return (Size::default(), None);
                 };
 
                 let mut size: Size<Pixels> = Size::default();
@@ -443,6 +458,16 @@ impl TextLayout {
                     size.height += line_size.height;
                     size.width = size.width.max(line_size.width).ceil();
                 }
+
+                // KaminIDE patch: базовая линия ПЕРВОЙ строки от верха коробки
+                // содержимого — полулидинг плюс подъём (css-inline-3
+                // §Calculating the Logical Height Contributions:
+                // A′ = A + L/2, где L = line-height − (A + D); L бывает
+                // отрицательным, поэтому величину НЕ зажимаем). Формула ровно
+                // та же, что у отрисовки в `text_system/line.rs:274`.
+                let baseline = lines
+                    .first()
+                    .map(|line| (line_height - line.ascent() - line.descent()) / 2. + line.ascent());
 
                 let measured = TextLayoutInner {
                     lines,
@@ -462,11 +487,11 @@ impl TextLayout {
                     if slot.is_none() {
                         slot.replace(measured);
                     }
-                    return size;
+                    return (size, baseline);
                 }
                 element_state.0.borrow_mut().replace(measured);
 
-                size
+                (size, baseline)
             }
         })
     }
