@@ -613,6 +613,16 @@ pub(crate) fn subgrid_gap_slice(
     }
 }
 
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v164/v165, `scout-grid-2026-09g.md`, 6 хунков):
+/// поосевые признаки `subgrid_rows`/`subgrid_cols` в `Computed`/`dom.rs`/
+/// `render.rs` + мост `TaffyLayoutEngine::grid_track_sizes` (KaminIDE patch).
+/// Обещание +2…+4. Срез из 63 пар (v165, только этот патч и `<canvas>`):
+/// +2 (`column-line-names-014`, `row-line-names-014`) / −3
+/// (`column-auto-placed-subgrid-inherited-tracks-001` и
+/// `-nested-subgrid-inherited-tracks-001` → «красное видно»,
+/// `-inherited-tracks-003` 0.00 → 2.08). Поосевой признак без второго прохода
+/// по разрешённым дорожкам ломает наследование дорожек у авто-размещённой
+/// подсетки. Возвращать только вместе со вторым проходом (GRID-SUBGRID-TRACKS).
 /// Дорожки родительской сетки — вниз, в ПОДСЕТКУ (css-grid-2 §subgrids).
 ///
 /// Своих дорожек в подсеточной оси у подсетки нет: она берёт СРЕЗ
@@ -1724,6 +1734,14 @@ fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, 
         }
         return;
     }
+    // Оба атрибута объявлены разметкой — только тогда природное соотношение
+    // сторон холста известно точно. При одном объявленном вторая сторона
+    // берётся из умолчания 300/150 ниже, и «соотношением» она быть не может:
+    // на заданной атрибутом стороне стоит `flex-basis: content`
+    // (`flexbox-flex-basis-content-001a`: `<canvas width="20"
+    // style="height: 8px">`).
+    let natural_pair =
+        tag == "canvas" && style.attr_width.is_some() && style.attr_height.is_some();
     if tag == "canvas" {
         style.attr_width = style.attr_width.or(Some(Len::Px(300.0)));
         style.attr_height = style.attr_height.or(Some(Len::Px(150.0)));
@@ -1735,6 +1753,35 @@ fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, 
     if style.height.is_none() {
         style.height = style.attr_height;
         style.attr_sized.1 = tag == "canvas" && style.attr_height.is_some();
+    }
+    // Атрибуты холста — ПРИРОДНЫЙ размер, а не заданный автором: HTML §4.12.5
+    // («the intrinsic dimensions of the canvas element equal the size of the
+    // coordinate space»), и в списке «dimension attributes» HTML Rendering
+    // §15.3.10 холста нет. Значит, как только автор назвал в CSS хоть одну
+    // ось, оставшаяся обязана прийти из соотношения, а не из атрибута —
+    // css-sizing-4 §4.1 «Min/Max Size Transfers» и пример там же: у
+    // `<div style="height:100px;float:left"><canvas style="height:100%">`
+    // ширина холста и ВКЛАД во внутренний размер равны 100 точкам. Пока
+    // атрибут занимал `style.width`, вклад был равен атрибуту, и флоат
+    // выходил 10 точек вместо 100 (`intrinsic-percent-replaced-001`).
+    // Когда обе оси пришли от атрибутов, это и есть природный размер — там
+    // ничего не меняется, и `flex-basis: content`, `contain: size` и спаннер
+    // многоколоночника, читающие `attr_width`/`attr_height` отдельно
+    // (`render.rs:3140`, `:16979`), работают как прежде.
+    if natural_pair && !(style.attr_sized.0 && style.attr_sized.1) {
+        if let (Some(Len::Px(w)), Some(Len::Px(h))) = (style.attr_width, style.attr_height)
+            && w > 0.0
+            && h > 0.0
+            && style.aspect_ratio.is_none()
+        {
+            style.aspect_ratio = Some(w / h);
+        }
+        if style.attr_sized.0 {
+            style.width = None;
+        }
+        if style.attr_sized.1 {
+            style.height = None;
+        }
     }
 }
 

@@ -1278,6 +1278,17 @@ impl ShapeCx {
     };
 }
 
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v164, `scout-breakcore-2026-09.md` FRAG-FLEX-WRAP,
+/// 11 хунков): сбор строк гибкого контейнера с `flex-wrap` при фрагментации
+/// (`flex_lines`/`flex_item_main_w`, `ShapeCx::col_w`, `wrap_end`, ветка
+/// «колонка = параллельные потоки, ряд = стопка строк», `max(высота, низ
+/// содержимого)`). Обещание +2…+9. Полный свод против v36: +4
+/// (`multi-line-row-flex-fragmentation-083a…d`) / −15 (`multi-line-column-
+/// flex-fragmentation-009/012/014/038`, `multi-line-row-flex-fragmentation-
+/// 007/011/018/020/022/023/029` → «красное видно», `-035/-039/-040/-059`).
+/// Строки собираются, но контейнер с переносом теряет высоту фрагмента: пары,
+/// которые держались стопкой детей, разваливаются. Половинить нельзя (это и
+/// есть откат 04.09); брать заново только с мерой по строкам (FRAG-LINES).
 fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     let px_or = |l: &Option<Len>, strict: bool| match l {
         None => Some(0.0),
@@ -9744,7 +9755,42 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         // возвращать вместе с ними.
         "canvas" => {
             let merged = inline::inherit(inherited, &e.style);
-            Some(styled_div_with(e, &merged).flex_shrink_0().into_any_element())
+            let d = styled_div_with(e, &merged).flex_shrink_0();
+            // Перенос размера через соотношение сторон (css-sizing-4 §4.1)
+            // у АТОМАРНОЙ строчной коробки срабатывает лишь тогда, когда
+            // соотношение несёт ВНУТРЕННЯЯ коробка, заполняющая названную
+            // автором ось: ровно так собран `<img>` (`image_with`,
+            // `render.rs:13221-13225`), и ровно поэтому
+            // `<img style="height:100%">` во флоате определённой высоты
+            // выходит квадратом, а холст — полоской. Соотношение на самой
+            // коробке этого не даёт (проба `target/probe/r4-canvas-ib.html`:
+            // 2.08 против 0.00 у той же коробки с `display: block`).
+            // Наполнитель ставится только при ОДНОЙ названной оси: при обеих
+            // названных соотношение по спеке не действует вовсе
+            // (css-sizing-4 §4.1, замечание про automatic size).
+            // Под обособлением размера холст меряется как пустой
+            // (css-contain-2 §size containment) — там наполнителя быть не
+            // должно, иначе он вернул бы размер, который обособление сняло.
+            let ratio = e
+                .style
+                .aspect_ratio
+                .filter(|r| r.is_finite() && *r > 0.0 && !e.style.contains_width() && !e.style.contains_height());
+            let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
+            let named = |l: Option<Len>| matches!(l, Some(Len::Px(_)) | Some(Len::Pct(_)));
+            let d = match ratio {
+                Some(r) if auto(e.style.width) && named(e.style.height) => {
+                    let mut fill = div().h(gpui::relative(1.0));
+                    fill.style().aspect_ratio = Some(r);
+                    d.child(fill)
+                }
+                Some(r) if auto(e.style.height) && named(e.style.width) => {
+                    let mut fill = div().w(gpui::relative(1.0));
+                    fill.style().aspect_ratio = Some(r);
+                    d.child(fill)
+                }
+                _ => d,
+            };
+            Some(d.into_any_element())
         }
         _ => None,
     }

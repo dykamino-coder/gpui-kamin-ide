@@ -436,6 +436,19 @@ impl ColumnFlow {
 
 /// Места разрезов на колонки и высота потока при заданной ширине.
 #[allow(clippy::too_many_arguments)]
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v164, `scout-multicol-2026-09.md` MC-BALANCE-CAP,
+/// 18 хунков в `flow.rs`/`float.rs`/`render.rs`): заданная блочная высота
+/// многоколоночника как потолок высоты КОЛОНКИ (`cap_height` здесь,
+/// `balance_line(kids, count, cap)` в `ColumnStack`), чтобы рождались
+/// переполняющие колонки по css-multicol-1 §Overflow. Обещание 4…11. Полный
+/// свод против v36: +3 (`multicol-fill-balance-041`,
+/// `multicol-gap-decorations-005`, `out-of-flow-in-multicolumn-003/007/082`)
+/// / −9 (`column-height-025/026/027`, `multicol-fill-balance-003/030`,
+/// `-nested-000`, `multicol-nested-021/031`,
+/// `fixed-in-nested-multicol-with-viewport-container` → «красное видно»).
+/// Потолок ломает вложенные многоколоночники: внешняя высота режет
+/// ВНУТРЕННИЙ, у которого своя балансировка. Возвращать только вместе с
+/// MC-NESTED (фрагментация вложенного многоколоночника внешним).
 fn measure_columns(
     text: &str,
     count: Option<usize>,
@@ -544,6 +557,8 @@ impl Element for ColumnFlow {
         let line_height = self.line_height;
         let cuts = self.cuts.clone();
         let fill_height = self.fill_height;
+        // css-multicol-1 §Overflow: заданная блочная высота ограничивает высоту
+        // КОЛОНКИ, а не всей стопки — с ней рождаются переполняющие колонки.
         let layout_id = window.request_measured_layout(
             Style::default(),
             move |known, available, window, _cx| {
