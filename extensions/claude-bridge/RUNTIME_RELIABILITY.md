@@ -1006,6 +1006,15 @@ switch/reconnect и pointer activity, а текущий incident возника�
 
 ### BR-23 — Make session-complete notifications transient and turn-scoped
 
+**Owner evidence intake (2026-09-08, TASK-009):** An August 21 screenshot shows at least five `Session finished` notifications with Open/dismiss actions; one tab label appears repeatedly. The owner reports that they do not disappear automatically. This is the existing BR-23 problem, so no duplicate INC task is created.
+
+The still image establishes the stack, not its duration or whether repeated labels belong to one turn. Retain the existing transient/countdown contract, turn identity, suppression and sticky approval/elicitation exceptions. Include the supplied stack as a historical acceptance case alongside timer/hover-pause, Open/dismiss/timeout, repeated-event and multiple-turn scenarios.
+
+Keep the confirmed source-defect status and all automated/Windows gates. No new root cause, fix or verification result is claimed by this evidence supplement.
+
+Private evidence: [INC-2026-0036](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/979b902c3949a5b95056bfb0b35a7f9c466b9145/incidents/INC-2026-0036) (storage ID for this existing BR; not a second task). Registration author: @dvpetrochenko. Evidence supplement PR: registration in progress. Next step: change under BR-23 — Use the additional stack example in the existing transient and turn-scoped notification acceptance.
+
+
 **Close-out audit 2026-09-06:** Reconnect/idle suppression уже частично существует, но
 полного turn-scoped transient notification contract ещё нет. Следующий implementation PR
 должен закрыть весь перечисленный duration/countdown/dedup lifecycle и Windows toast gate,
