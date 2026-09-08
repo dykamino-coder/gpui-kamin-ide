@@ -931,6 +931,15 @@ join without mutating data.
 
 ### BR-22 — Keep live chat render window populated by drawable rows
 
+**Owner evidence intake (2026-09-08, TASK-003):** Two additional screenshots dated September 2 and 4 show an empty central Chat with `122` and `110 earlier messages` respectively while Console contains conversation text; visible versions are 1.0.53 and 1.0.55. These fit this task's existing empty drawable-window symptom and do not justify a duplicate INC task.
+
+The images do not locate a fetch, transport, predicate or vnode failure and are not the paired runtime dumps required above. Extend the existing capture matrix to opening an existing session as well as the active-session case. Collect empty and recovered snapshots of the same session, with retained entries, visible/render window, DOM/viewport metadata, build/CLI versions and switch/reconnect/compaction context. Compare BR-06/31 only after an event trace; Console text alone does not prove the source of the divergence.
+
+Keep the current investigation state, BR-16 prerequisite and all acceptance gates. This is additional owner evidence, not a completed classification, fix or verification result.
+
+Private evidence: [INC-2026-0030](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/88f69110b8e85336867606c14de8c480abfd1298/incidents/INC-2026-0030) (storage ID for this existing BR; not a second task). Registration author: @dvpetrochenko. Evidence supplement PR: registration in progress. Next step: research under BR-22 — Obtain paired drawable-window diagnostics for the supplied existing-session scenarios.
+
+
 **Close-out audit 2026-09-06:** Нужны парные private dumps одного расходящегося drawable
 path: retained entries, render window и DOM/viewport metadata. Без этого источник empty
 window не классифицирован. Владелец воспроизводящего окружения собирает evidence; BR-16
