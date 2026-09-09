@@ -590,7 +590,8 @@ Retain the existing downward-scroll, bottom-pin, streaming, tab-memory and
 resident-memory regression gates.
 
 **Evidence and next step:** registration author @dvpetrochenko; Diagnostic PR:
-registration in progress. This supplement uses only the owner's sanitized text
+[PR #93](https://github.com/dykamino-coder/gpui-kamin-ide/pull/93).
+This supplement uses only the owner's sanitized text
 report; no private evidence upload is needed because no logs, screenshots or
 message contents were supplied. Build/CLI versions, exact message dimensions and
 a measured runtime trace remain missing. The maintainer classifies this case
