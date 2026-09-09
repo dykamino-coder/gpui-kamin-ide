@@ -658,7 +658,9 @@ memory and the 2 px reading-point tolerance after accounting for user input.
 Add regression coverage exercising the real hook/event ordering, plus the
 existing Windows CEF runtime gate; a copied predicate alone is insufficient.
 
-**Evidence and next step:** sanitized owner text only; no logs, screenshots or
+**Evidence and next step:** registration author @dvpetrochenko; Diagnostic PR:
+[PR #98](https://github.com/dykamino-coder/gpui-kamin-ide/pull/98).
+Sanitized owner text only; no logs, screenshots or
 message bodies were supplied, so no private evidence upload is needed. Exact
 installed build, input device, stream cadence and a Windows CEF event/geometry
 trace remain unknown. The maintainer validates the candidate paths and their
