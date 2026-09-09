@@ -3324,6 +3324,7 @@ impl Computed {
                 self.auto_repeat_cols = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_min,
+                    body: auto_fill_body(v),
                     track_pct: auto_fill_pct(v),
                     intrinsic: auto_fill_intrinsic(v),
                     intrinsic_min: auto_fill_intrinsic(v) && v.contains("min-content"),
@@ -3351,6 +3352,7 @@ impl Computed {
                 self.auto_repeat_rows = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_row,
+                    body: auto_fill_body(v),
                     track_pct: auto_fill_pct(v),
                     intrinsic: auto_fill_intrinsic(v),
                     intrinsic_min: auto_fill_intrinsic(v) && v.contains("min-content"),
@@ -9191,6 +9193,25 @@ pub struct AutoRepeat {
     pub max_auto: bool,
     /// Максимум `minmax(N, k fr)`: доля остатка.
     pub max_fr: Option<f32>,
+    /// Сколько дорожек в ТЕЛЕ повтора: `repeat(auto-fill, fit-content(100px)
+    /// fit-content(100px))` — две. Число повторов делит место на ВСЁ тело
+    /// (css-grid-2 §7.2.3.2; Blink `CalculateAutomaticRepetitions`,
+    /// `repeater_size`), а скалярная ветка раскладки видела одну дорожку.
+    pub body: usize,
+}
+
+/// Длина тела авто-повтора в дорожках (1, если тело не разобралось).
+fn auto_fill_body(v: &str) -> usize {
+    parse_tracks(v)
+        .as_deref()
+        .and_then(|l| {
+            l.iter().find_map(|t| match t {
+                TrackSize::AutoRepeat { tracks, .. } => Some(tracks.len()),
+                _ => None,
+            })
+        })
+        .unwrap_or(1)
+        .max(1)
 }
 
 /// Максимум `minmax(lo, hi)` в авто-повторе: `auto` или доля `fr`.

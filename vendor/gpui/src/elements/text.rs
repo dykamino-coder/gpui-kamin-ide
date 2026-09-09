@@ -403,14 +403,20 @@ impl TextLayout {
                     && text_layout.size.is_some()
                     && wrap_width == text_layout.wrap_width
                 {
-                    // KaminIDE patch: базовая линия готового замера считается
-                    // ТОЙ ЖЕ формулой, что и на отрисовке
-                    // (`text_system/line.rs:274`, `padding_top + ascent`),
-                    // иначе раскладка и краска разъедутся.
-                    let baseline = text_layout.lines.first().map(|line| {
-                        (text_layout.line_height - line.ascent() - line.descent()) / 2.
-                            + line.ascent()
-                    });
+                    // KaminIDE patch: базовая линия готового замера — по
+                    // ПЕРВОМУ ДОСТУПНОМУ шрифту стиля, той же формулой, что и
+                    // в свежем замере ниже. Метрики набранной строки сюда не
+                    // годятся: запасной шрифт под отсутствующий знак поднимал
+                    // бы базовую линию куска над базовой линией атома
+                    // (`line-breaking-atomic-004/015/019/021/023/025/027`).
+                    let ts = cx.text_system().clone();
+                    let fid = ts.resolve_font(&text_style.font());
+                    let (asc, desc) =
+                        (ts.ascent(fid, font_size), ts.descent(fid, font_size).abs());
+                    let baseline = text_layout
+                        .lines
+                        .first()
+                        .map(|_| (text_layout.line_height - asc - desc) / 2. + asc);
                     return (text_layout.size.unwrap(), baseline);
                 }
 
@@ -463,11 +469,34 @@ impl TextLayout {
                 // содержимого — полулидинг плюс подъём (css-inline-3
                 // §Calculating the Logical Height Contributions:
                 // A′ = A + L/2, где L = line-height − (A + D); L бывает
-                // отрицательным, поэтому величину НЕ зажимаем). Формула ровно
-                // та же, что у отрисовки в `text_system/line.rs:274`.
-                let baseline = lines
-                    .first()
-                    .map(|line| (line_height - line.ascent() - line.descent()) / 2. + line.ascent());
+                // отрицательным, поэтому величину НЕ зажимаем).
+                //
+                // A и D берутся у ПЕРВОГО ДОСТУПНОГО шрифта стиля, а НЕ у
+                // набранной строки. Запасной шрифт, подставленный
+                // DirectWrite под отсутствующий в основном шрифте знак,
+                // короб строки не поднимает: CSS 2.1 §10.8 считает полулидинг
+                // от шрифта КОРОБКИ, а Blink объединяет метрики
+                // использованных шрифтов только при `line-height: normal`
+                // (`inline_box_state.cc:164`,
+                // `include_used_fonts = styleref.LineHeight().IsAuto()`;
+                // объединение — `AccumulateUsedFonts` :250-265, вызов под
+                // гейтом в `logical_line_builder.cc:239`), тогда как
+                // `ComputeTextMetrics` (:121-131) всегда читает
+                // `PrimaryFont()->GetFontMetrics()`.
+                //
+                // `DWRITE_LINE_METRICS::baseline` (`direct_write.rs:811`) —
+                // как раз объединённая величина, из-за неё кусок текста с
+                // тибетским или пробельным знаком отдавал базовую линию ниже
+                // атома, атом тонул в ряду `items_baseline`, и короб строки
+                // рос выше `line-height`
+                // (`line-breaking-atomic-004/015/019/021/023/025/027`).
+                //
+                // `FontMetrics::descent` в gpui знаковый (DirectWrite отдаёт
+                // его со знаком минус, `direct_write.rs:897`) — берём модуль.
+                let ts = cx.text_system().clone();
+                let fid = ts.resolve_font(&text_style.font());
+                let (asc, desc) = (ts.ascent(fid, font_size), ts.descent(fid, font_size).abs());
+                let baseline = lines.first().map(|_| (line_height - asc - desc) / 2. + asc);
 
                 let measured = TextLayoutInner {
                     lines,
