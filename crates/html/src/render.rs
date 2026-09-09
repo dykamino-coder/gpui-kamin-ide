@@ -2316,6 +2316,11 @@ fn grow_pushed(
                 // распорки лягут по другому плану, чем укладка.
                 force_before: edge_break(c, false),
                 force_after: edge_break(c, true),
+                // Щуп обязан видеть ровно то же, что стопка (Х6): без
+                // запретов `growths` считал бы распорки по ДРУГОМУ плану,
+                // чем укладка после отступа.
+                avoid_before: edge_avoid(c, false),
+                avoid_after: edge_avoid(c, true),
                 forced: s.4.clone(),
                 solid: s.5.clone(),
                 span: c.style.column_span == Some(true) && !c.inline,
@@ -2847,6 +2852,39 @@ fn page_monolith(e: &Element) -> bool {
             e.style.display,
             Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
         )
+}
+
+/// Запрет разрыва на краю коробки: свой `break-before: avoid*` /
+/// `break-after: avoid*` либо такой же у ПЕРВОГО/ПОСЛЕДНЕГО поточного
+/// блочного ребёнка, рекурсивно (css-break-4 §break-propagation — та же
+/// строка спеки, что и у `edge_break` ниже). Зеркало `edge_break`, только
+/// для запрещающих значений.
+///
+/// Ветки «бок о бок» (ряд `flex` без переноса, ячейки одного ряда, один ряд
+/// сетки) сюда НЕ перенесены НАМЕРЕННО. Они переносят значение с ЛЮБОГО
+/// ребёнка, а не только с крайнего, и на `avoid` это сразу ломает зелёные:
+/// в `grid-item-fragmentation-032` запрет стоит на ВТОРОМ элементе сетки
+/// рядом с `break-before: column` на третьем, в
+/// `single-line-column-flex-fragmentation-016` — на ТРЕТЬЕМ элементе
+/// колоночного флекса. Через крайнего ребёнка ни тот, ни другой не проходит,
+/// и обе пары остаются нетронутыми. Перенос «бок о бок» для запретов —
+/// отдельный шаг с отдельным замером.
+fn edge_avoid(e: &Element, last: bool) -> bool {
+    let own = if last {
+        e.style.break_after_avoid
+    } else {
+        e.style.break_before_avoid
+    };
+    if own {
+        return true;
+    }
+    let mut live = e
+        .children
+        .iter()
+        .filter(|n| !is_blank(n))
+        .filter(|n| !matches!(n, Node::Element(k) if matches!(k.style.display, Some(Display::None))));
+    let edge = if last { live.next_back() } else { live.next() };
+    matches!(edge, Some(Node::Element(k)) if class_a_box(k) && edge_avoid(k, last))
 }
 
 /// Принудительный разрыв на краю коробки: свой `break-before`/`break-after`
@@ -13504,6 +13542,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // который мера уже посчитала.
                                     force_before: edge_break(&copy, false),
                                     force_after: edge_break(&copy, true),
+                                    avoid_before: edge_avoid(&copy, false),
+                                    avoid_after: edge_avoid(&copy, true),
                                     forced,
                                     solid,
                                     h,

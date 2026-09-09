@@ -2065,6 +2065,14 @@ pub struct Computed {
     /// колонки/страницы перед или после коробки.
     pub break_before_force: bool,
     pub break_after_force: bool,
+    /// Те же свойства со ЗАПРЕЩАЮЩИМИ значениями — css-break-4 §3.1 «avoid
+    /// break values»: `avoid`, `avoid-page`, `avoid-column`, `avoid-region`.
+    /// Правило 1 §4.3: «A fragmented flow may break at a class A break point
+    /// only if all the break-after and break-before values applicable to this
+    /// break point allow it». Разбирались ТОЛЬКО принудительные значения, и
+    /// сообщить движку запрет разрыва МЕЖДУ соседями было нечем.
+    pub break_before_avoid: bool,
+    pub break_after_avoid: bool,
     /// `margin-trim` (css-box-4 §margin-trim): биты обрезаемых краёв,
     /// 1 — `block-start`, 2 — `block-end`. `block` — оба. Начальное `none`
     /// (0). Инлайновые значения старой редакции спеки не берём.
@@ -6098,12 +6106,20 @@ impl Computed {
                     v.trim(),
                     "column" | "page" | "always" | "left" | "right" | "recto" | "verso" | "region"
                 );
+                // css-break-4 §3.1 «avoid break values». Тип фрагментации не
+                // различаем — ровно как уже написанный `break_inside_avoid`
+                // (`starts_with("avoid")`). Blink здесь строже
+                // (`fragmentation_utils.cc:108-121 IsAvoidBreakValue`:
+                // `avoid-page` в колонках не действует); упрощение осознанное
+                // и безопасное, пока страницы вне зоны патча (§2 отчёта).
+                self.break_before_avoid = v.trim().starts_with("avoid");
             }
             "break-after" | "page-break-after" => {
                 self.break_after_force = matches!(
                     v.trim(),
                     "column" | "page" | "always" | "left" | "right" | "recto" | "verso" | "region"
                 );
+                self.break_after_avoid = v.trim().starts_with("avoid");
             }
             // Лонгхенды линеек промежутков (css-gaps-1 §color-style-width):
             // список через запятую с `repeat()`, `rule-*` ставит обе оси.

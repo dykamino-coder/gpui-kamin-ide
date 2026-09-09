@@ -481,6 +481,14 @@ pub struct StackChild {
     /// блочных детей требуют новой колонки.
     pub force_before: bool,
     pub force_after: bool,
+    /// Запрет разрыва на ГРАНИЦЕ с соседом (css-break-4 §4.3, правило 1):
+    /// `break-before: avoid*` этой коробки и `break-after: avoid*`
+    /// предыдущей запрещают разрез ровно в этой точке — но не внутри самих
+    /// коробок (это `monolith`). С переносом по §break-propagation:
+    /// значение снимается `render::edge_avoid`, как принудительное —
+    /// `edge_break`.
+    pub avoid_before: bool,
+    pub avoid_after: bool,
     pub forced: Vec<f32>,
     /// Диапазоны, внутри которых разрыв запрещён (css-break-4 §4.1 —
     /// монолиты-потомки; рамка и отбивка самой коробки): `[a, b)` от верха.
@@ -511,6 +519,10 @@ pub struct Kid {
     pub cuts: Vec<(f32, f32)>,
     pub force_before: bool,
     pub force_after: bool,
+    /// css-break-4 §4.3 правило 1 — см. `StackChild::avoid_before`. Стопка
+    /// СТРАНИЦ ставит сюда `false`: правило 1 в печати пока не применяется.
+    pub avoid_before: bool,
+    pub avoid_after: bool,
     pub forced: Vec<f32>,
     pub solid: Vec<(f32, f32)>,
     pub span: bool,
@@ -934,6 +946,111 @@ impl ColumnStack {
         (col + 1, shortage, out)
     }
 
+    /// Первая граница плана, нарушающая правило 1 css-break-4 §4.3: коробка
+    /// `i` начинает НЕ ту колонку, где кончилась `i-1`, хотя разрыв между
+    /// ними запрещён (`break-before: avoid*` у неё либо `break-after:
+    /// avoid*` у предыдущей). Возвращает `i`; `None` — нарушений нет.
+    ///
+    /// Принудительный разрыв сильнее запрета («at least one of them forces a
+    /// break»), поэтому такие пары пропускаются — на этом стоят зелёные
+    /// `break-between-avoid-005/006`, `break-after-table-cell`,
+    /// `grid-item-fragmentation-032/044`, где рядом с `avoid` написан
+    /// `break-*: column`. Пропускается и разрезанная предыдущая коробка:
+    /// разрыв всё равно внутри неё.
+    fn first_avoid_violation(kids: &[Kid], plan: &[Frag]) -> Option<usize> {
+        for i in 1..kids.len() {
+            if !(kids[i].avoid_before || kids[i - 1].avoid_after) {
+                continue;
+            }
+            if kids[i].force_before || kids[i - 1].force_after {
+                continue;
+            }
+            let prev: Vec<usize> = plan.iter().filter(|f| f.kid == i - 1).map(|f| f.col).collect();
+            let cur: Vec<usize> = plan.iter().filter(|f| f.kid == i).map(|f| f.col).collect();
+            let (Some(&prev_start), Some(&prev_end), Some(&cur_start)) =
+                (prev.iter().min(), prev.iter().max(), cur.iter().min())
+            else {
+                continue;
+            };
+            // Разрыва на этой границе нет — правило не нарушено.
+            if cur_start == prev_end {
+                continue;
+            }
+            // Предыдущая сама разрезана: разрыв внутри неё, отступать некуда.
+            if prev_start != prev_end {
+                continue;
+            }
+            return Some(i);
+        }
+        None
+    }
+
+    /// Ближайшая ВЫШЕ разрешённая граница для отступа от нарушения на `bad`:
+    /// наибольшее `j` из `1..bad`, где ни `break-before` коробки `j`, ни
+    /// `break-after` коробки `j-1` разрыв не запрещают. `None` — разрешённых
+    /// границ нет вовсе, и по css-break-4 §4.3 правило 1 снимается («rules 1,
+    /// 2 and 4 are dropped in order to find additional breakpoints»): план
+    /// остаётся жадным.
+    ///
+    /// Ради этой проверки патч и переписан. Без неё отступ уводил в третью
+    /// колонку двухколоночный `break-between-avoid-002` (ЧЕТЫРЕ коробки с
+    /// `break-before: avoid; break-after: avoid` подряд — запрещены ВСЕ
+    /// границы, отступать некуда), то есть ронял зелёную пару. А обход
+    /// границ подряд, а не одной, берёт `break-between-avoid-014`: там
+    /// граница перед третьей коробкой тоже запрещена, и разрыв обязан
+    /// уехать сразу на вторую.
+    fn retreat_to(kids: &[Kid], bad: usize) -> Option<usize> {
+        (1..bad)
+            .rev()
+            .find(|&j| !kids[j].avoid_before && !kids[j - 1].avoid_after)
+    }
+
+    /// `fill_at` с соблюдением правила 1 css-break-4 §4.3: пока план рвёт
+    /// запрещённую границу, разрыв ПЕРЕНОСИТСЯ на ближайшую разрешённую выше
+    /// — коробке там ставится принудительный разрыв перед собой, и укладка
+    /// повторяется. Это ручная запись blink-овского `early_break_`
+    /// (`block_layout_algorithm.cc:1086`, `fragmentation_utils.cc:1250
+    /// UpdateEarlyBreakAtBlockChild`): там алгоритм помнит лучшую точку и
+    /// переукладывает поддерево, здесь — плоский повтор по списку.
+    ///
+    /// Метка ОДНА и только двигается назад (`next < m`), а не копится:
+    /// накопленные `force_before` ставились разом на двух соседей и разводили
+    /// по колонкам ровно ту пару, которую запрет велит держать вместе
+    /// (`break-between-avoid-014`: выходило `A | B` `C+D`, а надо `A | B+C+D`).
+    ///
+    /// Быстрый выход: если запретов нет ни у кого — ровно прежний `fill_at`,
+    /// без единой лишней копии `Kid`. Запреты написаны в 101 паре свода из
+    /// 23108, у остальных арифметика тождественна прежней.
+    fn fill_avoiding(
+        kids: &[Kid],
+        target_at: &dyn Fn(usize) -> f32,
+        limit: usize,
+        paged: bool,
+    ) -> (usize, f32, Vec<Frag>) {
+        if !kids.iter().any(|k| k.avoid_before || k.avoid_after) {
+            return Self::fill_at(kids, target_at, limit, paged);
+        }
+        let mut best = Self::fill_at(kids, target_at, limit, paged);
+        let mut mark: Option<usize> = None;
+        for _ in 0..kids.len().min(8) {
+            let Some(bad) = Self::first_avoid_violation(kids, &best.2) else {
+                return best;
+            };
+            let Some(next) = Self::retreat_to(kids, bad) else {
+                return best;
+            };
+            // Метка только назад — иначе цикл вечен, а план качается.
+            if mark.is_some_and(|m| next >= m) {
+                return best;
+            }
+            mark = Some(next);
+            let mut work: Vec<Kid> = kids.to_vec();
+            work[next].force_before = true;
+            best = Self::fill_at(&work, target_at, limit, paged);
+        }
+        best
+    }
+
     /// Укладка стопки: её высота, линии колонок `(y, высота)`, план кусков и
     /// спаннеры `(ребёнок, y)`. Без рядов — одна линия, как в css-multicol-1
     /// (прежний `balance`).
@@ -1157,7 +1274,16 @@ impl ColumnStack {
     /// `cap` — потолок баланса (`ConstrainColumnBlockSize`).
     fn balance_line(&self, kids: &[Kid], limit: usize, cap: Option<f32>) -> (f32, Vec<Frag>) {
         if let Some(h) = self.fixed_height {
-            let (_, _, slots) = Self::fill(kids, h, limit, false);
+            // Правило 1 css-break-4 §4.3 применяется ТОЛЬКО здесь —
+            // `column-fill: auto` с заданной высотой колонки. Балансировку
+            // (`ResolveColumnAutoBlockSize` ниже) и пробег рядов
+            // (`balance_run`) отступ не трогает НАМЕРЕННО: там лишняя колонка
+            // от отступа растит `target` на весь недолаз и МЕНЯЕТ высоту
+            // многоколоночника. Считано руками на `balance-break-avoidance-002`
+            // (сегодня 0.53): баланс уходит 75 -> 125 при верных 100 — то есть
+            // в балансе отступ мало поставить, надо ещё выбрать высоту, а это
+            // отдельный шаг с отдельным замером.
+            let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, limit, false);
             return (h, slots);
         }
         let total: f32 = kids.iter().map(|k| k.h).sum();
@@ -1281,6 +1407,8 @@ impl Element for ColumnStack {
                 cuts: c.cuts.clone(),
                 force_before: c.force_before,
                 force_after: c.force_after,
+                avoid_before: c.avoid_before,
+                avoid_after: c.avoid_after,
                 forced: c.forced.clone(),
                 solid: c.solid.clone(),
                 span: c.span,
@@ -1345,6 +1473,8 @@ impl Element for ColumnStack {
                 cuts: c.cuts.clone(),
                 force_before: c.force_before,
                 force_after: c.force_after,
+                avoid_before: c.avoid_before,
+                avoid_after: c.avoid_after,
                 forced: c.forced.clone(),
                 solid: c.solid.clone(),
                 span: c.span,
@@ -1721,6 +1851,12 @@ impl Element for PageStack {
                     cuts,
                     force_before: k.force_before,
                     force_after: k.force_after,
+                    // Правило 1 §4.3 в ПЕЧАТИ пока не применяется (§2 отчёта):
+                    // `PageKid` запретов не носит, а `false` в обоих полях
+                    // включает быстрый выход `fill_avoiding` — путь страниц
+                    // остаётся байт-в-байт прежним.
+                    avoid_before: false,
+                    avoid_after: false,
                     forced,
                     solid,
                     span: false,
