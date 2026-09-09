@@ -7012,6 +7012,19 @@ impl Computed {
                     _ => Some(0),
                 }
             }
+            // css-rhythm-1 §2: «A value other than `none` … causes the box to
+            // establish an independent formatting context». Сам шаг ритма мы
+            // не считаем, но ПРИЗНАК контекста нужен и без него: без него
+            // `block-step-size-establishes-*` неотличимы от обычного блока, и
+            // сосед флоата (`covered_flow_tail`, `render.rs`) накрывает их
+            // вместо того, чтобы встать сбоку. Проба
+            // (`target/scout-floatplace-2026-09.md` §5.3): с контекстом обе
+            // пары и обе их `-list-item`-разновидности дают 0.00.
+            "block-step-size" => {
+                if v != "none" && v != "auto" {
+                    self.flow_root = Some(true);
+                }
+            }
             "clear" => {
                 self.clear_inherit = v == "inherit";
                 self.clear = match v {

@@ -5831,6 +5831,78 @@ fn inline_float_host(e: &Element) -> Option<Element> {
     inline_float_host(inner)
 }
 
+/// Пустой блок потока, который флоат обязан НАКРЫТЬ (§9.5).
+///
+/// §9.5 перечисляет ЗАКРЫТЫМ списком, чей border box флоат перекрывать не
+/// смеет: таблица, блочный замещаемый элемент и коробка, образующая свой
+/// контекст форматирования. Обычный блок потока в список не входит — его
+/// коробка стоит там же, где стояла бы без флоата, а сужаются только её
+/// СТРОКИ. Приложение E кладёт флоаты (шаг 5) поверх фонов блоков потока
+/// (шаг 4), поэтому накрытая часть блока не видна.
+///
+/// Сегодня `wrap_floats` уводит такую пару на флекс-ряд, и блок встаёт СБОКУ
+/// от флоата: в `clear-004` красный квадрат 100×100 выезжает на x = 100 и
+/// виден целиком («красное видно» при эталоне «голый зелёный квадрат»).
+///
+/// Гейт узкий нарочно — берётся ровно тот случай, где итог считается
+/// арифметикой, а не раскладкой: у соседа НЕТ строк (внутри только пустой
+/// текст), его border box известен точками и ЦЕЛИКОМ ложится внутрь margin
+/// box флоата. Тогда после правки на экране остаётся один флоат, и терять
+/// нечего. Шире — конвейер F1-F9 (`bands.rs` плюс правила 3 и 7), там уже
+/// откачены две лобовые правки (`render.rs:6301`, `:6434`).
+///
+/// Возвращает `((ширина, высота) margin box флоата, (ширина, высота) border
+/// box соседа)`.
+///
+/// Проба (`target/scout-floatplace-2026-09.md` §5.1): деревья ПОСЛЕ правки
+/// для `clear-004`, `block-formatting-contexts-016`, `floats-135` и
+/// `floats-008` сведены с НАСТОЯЩИМИ эталонами корпуса и дали 0.00 все
+/// четыре; обратный порядок (сосед поверх флоата) даёт «красное видно».
+fn covered_flow_tail(floater: &Element, tail: &Element) -> Option<((f32, f32), (f32, f32))> {
+    let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
+    let no_margins = |c: &Computed| {
+        zero(&c.margin.top)
+            && zero(&c.margin.right)
+            && zero(&c.margin.bottom)
+            && zero(&c.margin.left)
+    };
+    // Флоат: размер числом и никаких своих полей — в поля ляжет подъём
+    // соседа. Позиционированный флоат и флоат с формой обтекания идут
+    // прежним путём: у первого своя ось (`block-step-size-none-does-not-
+    // establish-*`: `position: relative; z-index: -1`), у второго вырезы
+    // считает `shape-flow`.
+    if !no_margins(&floater.style)
+        || floater.style.position.is_some()
+        || floater.style.shape_outside.is_some()
+    {
+        return None;
+    }
+    let (fw, fh) = px_margin_box(&floater.style)?;
+    // Сосед: обычный блок потока — не свой контекст, не замещаемый, не
+    // элемент списка, без `clear`, без позиционирования, без своих полей и
+    // без стилей `:hover`/`::first-letter`/`::first-line`.
+    if !matches!(tail.style.display, None | Some(Display::Block))
+        || own_context(tail)
+        || replaced_inline(&tail.tag)
+        || tail.list_item.is_some()
+        || tail.style.clear.is_some()
+        || tail.style.position.is_some()
+        || !no_margins(&tail.style)
+        || tail.hover.is_some()
+        || tail.first_letter.is_some()
+        || tail.first_line.is_some()
+    {
+        return None;
+    }
+    // Строк у соседа быть не должно: их §9.5 СУЖАЕТ, а не накрывает.
+    if !tail.children.iter().all(is_blank) {
+        return None;
+    }
+    let (tw, th) = px_margin_box(&tail.style)?;
+    // Накрыт ЦЕЛИКОМ — только тогда итог правки известен заранее.
+    (tw <= fw && th <= fh).then_some(((fw, fh), (tw, th)))
+}
+
 fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>) -> Vec<Node> {
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
@@ -6052,6 +6124,17 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
         // `-142` 2.47 → «красное видно». Значит распорка держит положение, и
         // чинить надо не её удаление, а канал «поле участвует в схлопывании,
         // не двигая коробку».
+        // Распорка — ПРОТЕЗ §9.5.2, а не коробка разметки: она ничего не
+        // красит, и накрывать её флоатом (`covered_flow_tail` ниже) нечего.
+        // Зато наложение снимает с флоата плавающую природу, и очищающая
+        // коробка, ради которой распорка и поставлена, теряет тот нижний
+        // край флоата, от которого считает зазор. Флаг гасит наложение
+        // ровно на этом случае (проба §2.2: `margin-collapse-clear-003`,
+        // `-009` и `nested-clearance-new-formatting-context` — все три
+        // потери держит распорка `0 × остаток поля`, прошедшая гейт
+        // `covered_flow_tail`, потому что ширины у неё нет, а
+        // `px_of2(None) = 0`).
+        let mut clearance_strut = false;
         if laid_out
             && let Some(Node::Element(next)) = nodes.get(j)
             && clears_side(next.style.clear, side)
@@ -6077,6 +6160,7 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
             if let Some(Node::Element(next)) = nodes.get_mut(j) {
                 next.style.margin.top = Some(Len::Px(0.0));
             }
+            clearance_strut = true;
         }
         // Плавающий блок, рядом с которым НЕЧЕМУ обтекать, рядом не нуждается:
         // он остаётся обычным блоком потока. Ряд в этом случае только вредил —
@@ -6296,6 +6380,62 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
             host.children.extend(rest);
             out.push(Node::Element(host));
             out.extend(out_of_flow);
+            i = j;
+            continue;
+        }
+        // §9.5: обычный блок потока флоат ПЕРЕКРЫВАЕТ — обходят только его
+        // строки, а Приложение E кладёт флоат (шаг 5) поверх фонов потока
+        // (шаг 4). Флекс-ряд наложения не выражает вовсе и ставит блок СБОКУ.
+        //
+        // Берётся ровно тот случай, где итог считается арифметикой: ОДИН
+        // ЛЕВЫЙ флоат с margin box в точках и хвост из ОДНОГО пустого блока
+        // потока, border box которого целиком ложится внутрь этого margin
+        // box (гейт — `covered_flow_tail`). Наложение выражается двумя
+        // ОБЫЧНЫМИ блоками потока: сосед, а следом флоат с подъёмом на
+        // высоту соседа. Порядок обязателен — флоат ВТОРЫМ, иначе он ляжет
+        // ПОД соседа (проба §5.1: «красное видно»). Поле снизу возвращает
+        // поток на НИЗ СОСЕДА: §10.6.3 — флоат высоты родителя не растит
+        // (проба §5.2: 0.00 на случае, где флоат выше соседа).
+        //
+        // Прогон текста ПЕРЕД флоатом правку отменяет: там правило 6 §9.5.1
+        // держит верх флоата на верху текущей строки, а этого канала здесь
+        // нет.
+        let covered = {
+            let mut only: Option<&Element> = None;
+            let mut single = true;
+            for n in &rest {
+                match n {
+                    Node::Text(t) if blank_text(t) => {}
+                    Node::Element(e) if only.is_none() => only = Some(e),
+                    _ => single = false,
+                }
+            }
+            let run_before = out.iter().rev().find(|n| !is_blank(n)).is_some_and(|n| match n {
+                Node::Element(e) => inline_level_box(e),
+                Node::Text(_) => true,
+            });
+            match (single && !run_before, only, floaters.first()) {
+                (true, Some(tail), Some(f)) => covered_flow_tail(f, tail),
+                _ => None,
+            }
+        };
+        if side < 0
+            && floaters.len() == 1
+            && out_of_flow.is_empty()
+            // Хвост из одной распорки клиренса наложением не выражается:
+            // §9.5.2 держит зазор следующей коробки от НИЗА ФЛОАТА, а
+            // конструкция ниже флоат из потока убирает.
+            && !clearance_strut
+            && let Some(((_, fh), (_, th))) = covered
+        {
+            let mut lone = floaters.remove(0);
+            // Ряда нет — сжатие плавающего куска, заданное подготовкой выше,
+            // здесь не при чём.
+            lone.style.flex_shrink = None;
+            lone.style.margin.top = Some(Len::Px(-th));
+            lone.style.margin.bottom = Some(Len::Px(th - fh));
+            out.extend(rest);
+            out.push(Node::Element(lone));
             i = j;
             continue;
         }
