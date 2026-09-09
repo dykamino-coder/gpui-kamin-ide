@@ -11976,9 +11976,11 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.mask_size = c.mask_size;
     wrapper.mask_fit = c.mask_fit.unwrap_or(0);
     wrapper.mask_no_repeat = c.mask_no_repeat.unwrap_or((false, false));
+    wrapper.mask_repeat_list = c.mask_repeat_list.clone().unwrap_or_default();
     wrapper.mask_luminance = c.mask_luminance == Some(true);
     wrapper.mask_pos = c.mask_pos;
     wrapper.mask_pos_far = c.mask_pos_far;
+    wrapper.mask_pos_list = c.mask_pos_list.clone().unwrap_or_default();
     // Коробки маски (css-masking §7.10-7.11): сдвиги краёв от border-box
     // внутрь — рамка (padding-box) либо рамка+отступ (content-box).
     let box_off = |kind: Option<u8>| -> [f32; 4] {

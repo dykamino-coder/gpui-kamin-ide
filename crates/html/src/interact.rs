@@ -392,14 +392,19 @@ pub struct Grouped {
     pub mask_size: Option<(crate::value::Len, crate::value::Len)>,
     /// `mask-size: contain|cover` (1|2) — вписывание по интринзику.
     pub mask_fit: u8,
-    /// `mask-repeat`: пооосный запрет мощения (no-x, no-y).
+    /// `mask-repeat`: пооосный запрет мощения (no-x, no-y) — первого слоя.
     pub mask_no_repeat: (bool, bool),
+    /// `mask-repeat` ПО СЛОЯМ (css-masking-1 §7.6); пусто — берётся скаляр.
+    pub mask_repeat_list: Vec<(bool, bool)>,
     /// `mask-mode: luminance` — гасит светимостью, а не альфой.
     pub mask_luminance: bool,
     /// `mask-position`: смещение плитки; доля — от свободного места.
     pub mask_pos: Option<(crate::value::Len, crate::value::Len)>,
     /// Смещение от правого/нижнего края (`right 30px bottom 25px`).
     pub mask_pos_far: (bool, bool),
+    /// `mask-position` ПО СЛОЯМ (css-masking-1 §7.7): `(x, y, справа, снизу)`;
+    /// пусто — берётся скаляр.
+    pub mask_pos_list: Vec<(crate::value::Len, crate::value::Len, bool, bool)>,
     /// Края коробки укладки (`mask-origin`) от border-box внутрь: t/r/b/l.
     pub mask_origin_off: [f32; 4],
     /// Края коробки окраски (`mask-clip`); None — border-box/no-clip.
@@ -430,8 +435,10 @@ impl Grouped {
             mask_size: None,
             mask_fit: 0,
             mask_no_repeat: (false, false),
+            mask_repeat_list: Vec::new(),
             mask_luminance: false,
             mask_pos_far: (false, false),
+            mask_pos_list: Vec::new(),
             mask_origin_off: [0.0; 4],
             mask_clip_off: None,
             clip_rect: None,
@@ -737,6 +744,40 @@ impl Element for Grouped {
                     (bw * sf).round().max(1.0) as u32,
                     (bh * sf).round().max(1.0) as u32,
                 );
+                // Укладка СВОЕГО слоя (css-masking-1 §7.6-7.7). Список короче
+                // набора слоёв повторяется (css-backgrounds-3 §2.2); пустой —
+                // старое поведение, одно значение на все слои.
+                let repeat_of = |i: usize| -> (bool, bool) {
+                    let v = &self.mask_repeat_list;
+                    if v.is_empty() {
+                        self.mask_no_repeat
+                    } else {
+                        v[i % v.len()]
+                    }
+                };
+                // Точка укладки слоя: доля — от СВОБОДНОГО места (коробка
+                // минус плитка), `right`/`bottom` зеркалят отсчёт — та же
+                // арифметика, что на однослойном пути ниже.
+                let pos_of = |i: usize, tw: f32, th: f32| -> (f32, f32) {
+                    let v = &self.mask_pos_list;
+                    let pick = if v.is_empty() {
+                        self.mask_pos
+                            .map(|(x, y)| (x, y, self.mask_pos_far.0, self.mask_pos_far.1))
+                    } else {
+                        Some(v[i % v.len()])
+                    };
+                    let Some((x, y, fx, fy)) = pick else {
+                        return (0.0, 0.0);
+                    };
+                    let one = |l: crate::value::Len, free: f32, far: bool| {
+                        let val = match l {
+                            crate::value::Len::Pct(p) => p * free,
+                            l => len(l, free, 0.0),
+                        };
+                        if far { free - val } else { val }
+                    };
+                    (one(x, bw - tw, fx), one(y, bh - th, fy))
+                };
                 let built: Vec<crate::background::MaskLayer> = layers
                     .iter()
                     .enumerate()
@@ -807,17 +848,34 @@ impl Element for Grouped {
                             let source = crate::background::source(l)?;
                             let intr = source.intrinsic();
                             let (tw, th) = (intr.w.unwrap_or(bw), intr.h.unwrap_or(bh));
+                            // Плитка кладётся не в угол, а в точку СВОЕГО
+                            // слоя: без этого `mask-position: top, bottom`
+                            // сваливал оба слоя в (0,0) (mask-position-5).
+                            let (ox, oy) = pos_of(i, tw, th);
                             (
                                 source.raster((tw, th))?,
-                                [0.0, 0.0, tw * sf, th * sf],
+                                [ox * sf, oy * sf, tw * sf, th * sf],
                                 false,
                             )
                         };
                         Some(crate::background::MaskLayer {
                             image,
                             tile,
-                            no_repeat: self.mask_no_repeat,
-                            op: self.mask_composite.get(i).copied().unwrap_or(0),
+                            no_repeat: repeat_of(i),
+                            // Список операторов КОРОЧЕ набора слоёв
+                            // повторяется (css-masking-1 §7.12 ->
+                            // css-backgrounds-3 §2.2): прежде слоям сверх
+                            // длины доставался `add`, и `mask-composite:
+                            // subtract` из трёх слоёв считался только на
+                            // верхнем (mask-composite-1d 3.17). При ДВУХ
+                            // слоях итог не меняется: оператор нижнего слоя
+                            // не читается вовсе (ветка `first` в
+                            // `compose_mask_layers`).
+                            op: if self.mask_composite.is_empty() {
+                                0
+                            } else {
+                                self.mask_composite[i % self.mask_composite.len()]
+                            },
                             luminance: lum || self.mask_luminance,
                         })
                     })

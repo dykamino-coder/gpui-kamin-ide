@@ -2006,8 +2006,12 @@ pub struct Computed {
     pub clip_shape: Option<String>,
     /// `mask-size`: размер плитки маски; None — auto (интринзик картинки).
     pub mask_size: Option<(Len, Len)>,
-    /// `mask-repeat`: пооосный запрет мощения (no-x, no-y).
+    /// `mask-repeat`: пооосный запрет мощения (no-x, no-y) — ПЕРВОГО слоя.
     pub mask_no_repeat: Option<(bool, bool)>,
+    /// То же ПО СЛОЯМ (css-masking-1 §7.6, `<repeat-style>#`): запись
+    /// `no-repeat, repeat` задаёт свою укладку каждому слою. Список короче
+    /// набора слоёв повторяется (css-backgrounds-3 §2.2).
+    pub mask_repeat_list: Option<Vec<(bool, bool)>>,
     /// `mask-size: contain|cover` (1|2): вписывание по интринзику.
     pub mask_fit: Option<u8>,
     /// `mask-mode: luminance` — маскирует светимость, а не альфа.
@@ -2127,6 +2131,10 @@ pub struct Computed {
     pub mask_pos: Option<(Len, Len)>,
     /// Смещение отсчитано от ПРАВОГО/НИЖНЕГО края (`right 30px bottom 25px`).
     pub mask_pos_far: (bool, bool),
+    /// `mask-position` ПО СЛОЯМ (css-masking-1 §7.7, `<position>#`):
+    /// `(x, y, от правого края, от нижнего края)`. Список короче набора
+    /// слоёв повторяется (css-backgrounds-3 §2.2).
+    pub mask_pos_list: Option<Vec<(Len, Len, bool, bool)>>,
     /// Эллиптические радиусы углов (`border-radius: H / V`), tl/tr/br/bl:
     /// растеризатор круглит только окружностью — такой угол уходит
     /// альфа-маской буфера группы (`shape:rrect(...)`).
@@ -7324,14 +7332,28 @@ impl Computed {
             "mask-repeat" | "-webkit-mask-repeat" => {
                 // Пооосно (css-backgrounds §3.4): `repeat-x` = repeat по x,
                 // одна плитка по y; два слова — оси по порядку.
-                let t: Vec<&str> = v.split_whitespace().collect();
-                self.mask_no_repeat = Some(match t.as_slice() {
-                    ["repeat-x"] => (false, true),
-                    ["repeat-y"] => (true, false),
-                    [a] => (*a == "no-repeat", *a == "no-repeat"),
-                    [a, b] => (*a == "no-repeat", *b == "no-repeat"),
-                    _ => (false, false),
-                });
+                //
+                // Запись — СПИСОК по слоям (css-masking-1 §7.6:
+                // `<repeat-style>#`). Прежде строка резалась только по
+                // пробелам, и запятая уезжала внутрь самого слова
+                // (`"no-repeat,"` не равно `"no-repeat"`): весь список
+                // `no-repeat, repeat` читался как `repeat` по обеим осям, и
+                // плитка первого слоя мостила всю коробку
+                // (mask-image-3b/3e 1.27, mask-position-5 1.25).
+                let one = |layer: &str| {
+                    let t: Vec<&str> = layer.split_whitespace().collect();
+                    match t.as_slice() {
+                        ["repeat-x"] => (false, true),
+                        ["repeat-y"] => (true, false),
+                        [a] => (*a == "no-repeat", *a == "no-repeat"),
+                        [a, b] => (*a == "no-repeat", *b == "no-repeat"),
+                        _ => (false, false),
+                    }
+                };
+                let list: Vec<(bool, bool)> =
+                    crate::css::split_args(v).iter().map(|l| one(l)).collect();
+                self.mask_no_repeat = Some(list.first().copied().unwrap_or((false, false)));
+                self.mask_repeat_list = (!list.is_empty()).then_some(list);
             }
             "mask-position" | "-webkit-mask-position" => {
                 let word = |t: &str| match t {
@@ -7340,29 +7362,51 @@ impl Computed {
                     "right" | "bottom" => Some(Len::Pct(1.0)),
                     _ => Len::parse(t),
                 };
-                let toks: Vec<&str> = v.split_whitespace().collect();
-                // Четырёхзначная запись — пары «край смещение»: `left 40%
-                // bottom 60%` (css-backgrounds-3 §3.6); от правого/нижнего
-                // края доля зеркалится.
-                if toks.len() == 4 {
-                    let pair = |edge: &str, off: &str| -> Option<(Len, bool)> {
-                        let l = Len::parse(off)?;
-                        Some((l, matches!(edge, "right" | "bottom")))
-                    };
-                    let horiz = matches!(toks[0], "left" | "right");
-                    let (xe, xo, ye, yo) = if horiz {
-                        (toks[0], toks[1], toks[2], toks[3])
-                    } else {
-                        (toks[2], toks[3], toks[0], toks[1])
-                    };
-                    if let (Some((x, fx)), Some((y, fy))) = (pair(xe, xo), pair(ye, yo)) {
-                        self.mask_pos = Some((x, y));
-                        self.mask_pos_far = (fx, fy);
+                // Запись — СПИСОК по слоям (css-masking-1 §7.7:
+                // `<position>#`): `top, bottom` — своя точка у каждого слоя.
+                let one = |layer: &str| -> Option<(Len, Len, bool, bool)> {
+                    let toks: Vec<&str> = layer.split_whitespace().collect();
+                    // Четырёхзначная запись — пары «край смещение»: `left 40%
+                    // bottom 60%` (css-backgrounds-3 §3.6); от правого/нижнего
+                    // края доля зеркалится.
+                    if toks.len() == 4 {
+                        let pair = |edge: &str, off: &str| -> Option<(Len, bool)> {
+                            let l = Len::parse(off)?;
+                            Some((l, matches!(edge, "right" | "bottom")))
+                        };
+                        let horiz = matches!(toks[0], "left" | "right");
+                        let (xe, xo, ye, yo) = if horiz {
+                            (toks[0], toks[1], toks[2], toks[3])
+                        } else {
+                            (toks[2], toks[3], toks[0], toks[1])
+                        };
+                        let ((x, fx), (y, fy)) = (pair(xe, xo)?, pair(ye, yo)?);
+                        return Some((x, y, fx, fy));
                     }
-                } else if let Some(x) = toks.first().and_then(|t| word(t)) {
-                    let y = toks.get(1).and_then(|t| word(t)).unwrap_or(Len::Pct(0.5));
+                    let first = toks.first().and_then(|t| word(t))?;
+                    // ОДИНОЧНОЕ слово осевое (css-backgrounds-3 §3.6):
+                    // `top` — это `center top`, а не `top center`. Прежде оно
+                    // уходило в ось X, и плитка вставала в (0, середина)
+                    // вместо (середина, 0) — проба `target/probe/pmask-axis.html`
+                    // против эталона корпуса даёт 1.71 против 0.03 у `center top`.
+                    let (x, y) = match (toks.len(), toks.get(1).and_then(|t| word(t))) {
+                        (_, Some(second)) => (first, second),
+                        (1, None) if matches!(toks[0], "top" | "bottom") => {
+                            (Len::Pct(0.5), first)
+                        }
+                        (_, None) => (first, Len::Pct(0.5)),
+                    };
+                    Some((x, y, false, false))
+                };
+                let list: Vec<(Len, Len, bool, bool)> = crate::css::split_args(v)
+                    .iter()
+                    .filter_map(|l| one(l))
+                    .collect();
+                if let Some((x, y, fx, fy)) = list.first().copied() {
                     self.mask_pos = Some((x, y));
+                    self.mask_pos_far = (fx, fy);
                 }
+                self.mask_pos_list = (!list.is_empty()).then_some(list);
             }
             "user-select" | "-webkit-user-select" => self.no_select = Some(matches!(v, "none")),
             "clip-path" | "mask" | "mask-image" => {
