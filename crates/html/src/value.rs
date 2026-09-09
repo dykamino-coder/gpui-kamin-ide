@@ -118,10 +118,45 @@ fn css_number(s: &str) -> Option<f32> {
     s.parse::<f32>().ok()
 }
 
+thread_local! {
+    /// Кегль КОРНЕВОГО элемента: база единицы `rem` (css-values-4 §6.1.4 —
+    /// «the computed value of the em unit on the root element»). Постоянные
+    /// 16 врали на любом документе, где корню задан свой кегль:
+    /// `:root { font-size: 25% }` делает `25rem` сотней точек, а у нас
+    /// выходило 400 (`percentage-rem-low`, снимок 500×500 против 125×125).
+    ///
+    /// Слот, а не поле: разбор длины живёт далеко от дерева, а корень всё
+    /// равно разбирается ПЕРВЫМ в порядке документа — к моменту, когда
+    /// разбирается объявление любого потомка, значение уже верное.
+    static ROOT_FONT_PX: std::cell::Cell<f32> = const { std::cell::Cell::new(16.0) };
+    /// Высота строки корня: база единицы `rlh` (§6.1.4).
+    static ROOT_LINE_PX: std::cell::Cell<f32> = const { std::cell::Cell::new(19.2) };
+}
+
+/// Записать корневые метрики. Зовётся разбором дерева на элементе `html`
+/// (`dom::walk`); сбрасывается на входе разбора (`dom::parse_media`):
+/// вложенный документ рамки имеет СВОЙ корень.
+pub fn set_root_metrics(font_px: f32, line_px: f32) {
+    ROOT_FONT_PX.with(|c| c.set(if font_px > 0.0 { font_px } else { 16.0 }));
+    ROOT_LINE_PX.with(|c| c.set(if line_px > 0.0 { line_px } else { 19.2 }));
+}
+
+/// Корневые метрики к умолчанию: документ без своего кегля на корне обязан
+/// считать `rem` ровно как раньше — иначе правка была бы не про корень, а
+/// про все страницы сразу.
+pub fn reset_root_metrics() {
+    set_root_metrics(16.0, 19.2);
+}
+
+pub fn root_font_px() -> f32 {
+    ROOT_FONT_PX.with(|c| c.get())
+}
+
+pub fn root_line_px() -> f32 {
+    ROOT_LINE_PX.with(|c| c.get())
+}
+
 impl Len {
-    /// `1rem` = 16px, как в браузере по умолчанию. Свой базовый размер шрифта
-    /// мы не задаём: документ рисуется внутри чата, где размер уже выбран.
-    const REM_PX: f32 = 16.0;
 
     pub fn parse(raw: &str) -> Option<Self> {
         let s = raw.trim();
@@ -222,11 +257,31 @@ impl Len {
         if let Some(num) = s.strip_suffix("ex") {
             return css_number(num).map(Len::Ex);
         }
+        // `cap` — высота ПРОПИСНОЙ первого доступного шрифта (css-values-4
+        // §6.1.4). Метрика известна только после наследования (семейство плюс
+        // кегль), поэтому единица доживает СУММОЙ в арене `calc`, а не своим
+        // вариантом `Len`: `Len` разбирается полусотней `match` по крейту, и
+        // новый вариант потянул бы правку каждого из них.
+        if let Some(num) = s.strip_suffix("cap") {
+            return css_number(num).map(|v| {
+                Len::Calc(calc_store(Sum {
+                    cap: v,
+                    ..Sum::default()
+                }))
+            });
+        }
+        // `rem` — кегль КОРНЯ, а не постоянные 16 (§6.1.4).
         if let Some(num) = s.strip_suffix("rem") {
-            return css_number(num).map(|v| Len::Px(v * Self::REM_PX));
+            return css_number(num).map(|v| Len::Px(v * root_font_px()));
         }
         if let Some(num) = s.strip_suffix("em") {
             return css_number(num).map(Len::Em);
+        }
+        // `rlh` разбирается ДО `lh`: иначе `"1rlh".strip_suffix("lh")` даёт
+        // `"1r"`, число не читается, и объявление роняется целиком
+        // (`rlh-unit-001`: `inline-size: calc(1rlh - 1rlh)`).
+        if let Some(num) = s.strip_suffix("rlh") {
+            return css_number(num).map(|v| Len::Px(v * root_line_px()));
         }
         if let Some(num) = s.strip_suffix("lh") {
             return css_number(num).map(Len::Lh);
@@ -748,6 +803,10 @@ pub struct Sum {
     pub ch: f32,
     pub ex: f32,
     pub ic: f32,
+    /// Высота прописной — единица `cap`. Своего варианта `Len` у неё нет:
+    /// природа живёт только в сумме и сворачивается в точки там же, где
+    /// `em`/`ch`/`ex`/`ic` (`Computed::resolve_em`).
+    pub cap: f32,
     pub vh: f32,
     pub vw: f32,
 }
@@ -986,6 +1045,7 @@ impl Sum {
             ch: self.ch * k,
             ic: self.ic * k,
             ex: self.ex * k,
+            cap: self.cap * k,
             vh: self.vh * k,
             vw: self.vw * k,
         }
@@ -1000,6 +1060,7 @@ impl Sum {
             ch: self.ch + sign * other.ch,
             ic: self.ic + sign * other.ic,
             ex: self.ex + sign * other.ex,
+            cap: self.cap + sign * other.cap,
             vh: self.vh + sign * other.vh,
             vw: self.vw + sign * other.vw,
         }
@@ -1009,6 +1070,14 @@ impl Sum {
     /// `calc(100% + 6em + 50%*4 - 12em/2)` даёт чистые 300 % — `em` в нём
     /// взаимно уничтожаются.
     pub fn collapse(self) -> Option<Len> {
+        // Живая `cap` своего варианта `Len` не имеет — сумма доживает
+        // индексом и сворачивается в `resolve_em`, где известны семейство и
+        // кегль. Ранний возврат, а НЕ правка веток ниже: те ветки замерены
+        // (★ `gap-003-ltr` 0.00 → 4.12), и трогать их из-за новой природы
+        // нельзя.
+        if self.cap != 0.0 && self.pct == 0.0 {
+            return Some(Len::Calc(calc_store(self)));
+        }
         let rel = [
             (self.pct, Len::Pct as fn(f32) -> Len),
             (self.em, Len::Em as fn(f32) -> Len),

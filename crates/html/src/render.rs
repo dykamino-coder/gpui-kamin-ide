@@ -1030,13 +1030,31 @@ pub fn render_paged(
 // страницам: высота, поля, точки законного разреза, принудительные разрывы
 // и монолиты. Раньше жила внутри `element()`; локальных переменных не
 // захватывала, вынесена ради `render_paged`.
+/// Флоат ВО ВСЮ ШИРИНУ содержащего блока в блочной оси неотличим от блока:
+/// рядом с ним поместиться нечему — следующий флоат встаёт ПОД ним, строка
+/// сдвигается ПОД него (CSS 2.1 §9.5). Значит укладка по фрагментаинерам
+/// может вести его обычным ребёнком стопки, и css-break-4 §3.1 прямо этого
+/// требует: «User agents should also apply these properties to floated boxes
+/// whose containing block is in the normal flow of the root fragmented
+/// element». Узкий флоат (`width: 60%`, `auto`) — параллельный поток, стопкой
+/// его не выразить, и он по-прежнему гейт (FRAG-PARALLEL-FLOW).
+/// ВНИМАНИЕ: `Len::Pct` — ДОЛЯ, а не проценты (`value.rs:175`
+/// `Len::Pct(v / 100.0)`, то есть `100%` хранится как `Pct(1.0)`), сравнение
+/// идёт с единицей.
+/// Отрисовку это не меняет: `apply()` читает `float` ровно в одном месте
+/// (`apply.rs:924`, предикат `shrink_to_fit`) и только при `width: None|Auto`,
+/// а здесь ширина задана явно.
+fn block_like_float(c: &Computed) -> bool {
+    c.float.unwrap_or(0) != 0 && matches!(c.width, Some(Len::Pct(p)) if p >= 0.9999)
+}
 fn has_float(n: &Element, depth: u8) -> bool {
     if depth == 0 {
         return false;
     }
     n.children.iter().any(|k| match k {
         Node::Element(e) => {
-            e.style.float.unwrap_or(0) != 0 || has_float(e, depth - 1)
+            (e.style.float.unwrap_or(0) != 0 && !block_like_float(&e.style))
+                || has_float(e, depth - 1)
         }
         _ => false,
     })
@@ -1610,7 +1628,8 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                         && (k.style.position.is_none()
                             || k.style.position
                                 == Some(crate::computed::Position::Relative))
-                        && k.style.float.unwrap_or(0) == 0 =>
+                        && (k.style.float.unwrap_or(0) == 0
+                            || block_like_float(&k.style)) =>
                 {
                     shape_full(k, depth - 1, cx).map(
                         |(h, mt, mb, cuts, forced, solid)| {
@@ -8719,7 +8738,18 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // Значит предел ICB как таковой верен, но коробке нужен НЕ он, а
         // ближайший определённый scrollport (§7.3.1 п.2), которого у нас нет;
         // возвращать вместе с ним.
-        let inner = if free_inline {
+        // Ячейка вертикальной таблицы: предел строки — мера её КОЛОНКИ, а не
+        // инлайн-размер всего стола. Колонку решает решётка (дорожка
+        // `MinMax(MinContent, Auto)` = «наибольший min-content ячеек
+        // колонки», css-tables-3 §computing-column-measures), но для этого ей
+        // нужен вклад ячейки по МИНИМАЛЬНОМУ содержимому — а жёсткая ширина
+        // до поворота делает `natural.width` тождественно равной пределу, и
+        // вклад выходит равен всему столу: у `row-progression-vrl-002` все
+        // три дорожки становились 140 и каждая ячейка рвала строку по
+        // 7 знаков вместо 3/2/2. Потолок при этом остаётся: колонка не шире
+        // инлайн-размера стола.
+        let col_min = inherited.ortho_col && inherited.ortho_limit.is_some();
+        let inner = if free_inline || col_min {
             div().max_w(px(limit)).child(inner).into_any_element()
         } else {
             div().w(px(limit)).child(inner).into_any_element()
@@ -8730,6 +8760,12 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // делала её бесконечной (замерено: wm 118 → 104).
         let vt = crate::interact::VerticalText::new(inner)
             .counter_clockwise(ccw_line)
+            // Замер по МИНИМАЛЬНОМУ содержимому: заявленная высота повёрнутой
+            // коробки становится вкладом ячейки в дорожку её колонки
+            // (см. `col_min` выше). Ниже `fit_within` заявит эту же величину
+            // высотой — предел (мера стола) её не режет, потому что
+            // min-content колонки заведомо не больше него.
+            .column_min(col_min)
             .keyed(crate::interact::vt_seq_key(
                 text_id(&plain) ^ opts.doc_salt ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9),
             ));
@@ -12762,7 +12798,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     && (c.style.position.is_none()
                                         || c.style.position
                                             == Some(crate::computed::Position::Relative))
-                                    && c.style.float.unwrap_or(0) == 0 =>
+                                    && (c.style.float.unwrap_or(0) == 0
+                                        || block_like_float(&c.style)) =>
                             {
                                 shape_full(c, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h))
                             }
@@ -13081,7 +13118,60 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                             &merged,
                                         );
                                     }
+                                    // Абсолютный потомок ищет ближайшего
+                                    // позиционированного предка (CSS 2.1
+                                    // §10.1), а раскладка под нами знает только
+                                    // непосредственного родителя: коробка, чей
+                                    // родитель содержащим блоком НЕ является,
+                                    // уезжает в слой (`cb_push`,
+                                    // render.rs:4230 `to_cb`). Общий путь
+                                    // `element()` слой заводит
+                                    // (render.rs:13511-13529), а узкая ветка
+                                    // копии фрагмента возвращается из
+                                    // `element()` раньше
+                                    // (`return d.into_any_element()`,
+                                    // render.rs:13274) — и до сих пор такая
+                                    // коробка либо всплывала в ЧУЖОЙ внешний
+                                    // слой (позиционированный предок ВЫШЕ
+                                    // многоколоночника), либо, слоя нет,
+                                    // рисовалась на месте: от края случайного
+                                    // родителя вместо содержащего блока.
+                                    //
+                                    // css-position-3 §abspos-breaking: «In a
+                                    // fragmented flow, an absolutely positioned
+                                    // box is positioned relative to its
+                                    // containing block ignoring any
+                                    // fragmentation breaks (as if the flow were
+                                    // continuous). The box may subsequently be
+                                    // broken over several fragmentation
+                                    // containers». Копия и есть этот
+                                    // непрерывный поток: `flow.rs` `prepaint`
+                                    // кладёт её `layout_as_root(Definite(col_w),
+                                    // Definite(full_h))` во всю высоту и
+                                    // поднимает на срез, а колонку вырезает
+                                    // маска — коробке, попавшей в слой КОРНЯ
+                                    // КОПИИ, фрагментация достаётся даром. То же
+                                    // деление у Blink: кандидат, чей содержащий
+                                    // блок внутри контекста, идёт
+                                    // `LayoutFragmentainerDescendants`
+                                    // (`out_of_flow_layout_part.cc:1498`).
+                                    //
+                                    // Предикат — тот же `establishes_cb`, что в
+                                    // `element()`, и по стилю КОПИИ:
+                                    // `hoist_relative` выше снимает только
+                                    // ВСТАВКИ, сам `position: relative` (как и
+                                    // `transform`/`contain`) на копии остаётся.
+                                    // Прямые дети копии ничего не меняют: у них
+                                    // `establishes_cb(inherited)` истинно, они и
+                                    // раньше рисовались на месте.
+                                    let frag_cb_layer = crate::inline::establishes_cb(&inner);
+                                    if frag_cb_layer {
+                                        crate::interact::cb_open();
+                                    }
                                     let mut body = blocks(&kids, &inner, opts);
+                                    if frag_cb_layer {
+                                        body.extend(crate::interact::cb_close());
+                                    }
                                     drop(frag_gap_guard);
                                     let mut d = styled_div_with(&copy, &inner);
                                     // Для ЛЮБОЙ flex/grid-копии, не только с линейками:
@@ -15308,6 +15398,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             {
                 cm.ortho_limit = Some(h);
             }
+            // Ячейка ПАРАЛЛЕЛЬНОЙ таблицы (письмо вертикально у самого стола,
+            // ячейка его наследует): её инлайн-мера — дорожка КОЛОНКИ, а не
+            // инлайн-размер всего стола. Предел, приехавший сверху
+            // наследованием, тут запасной по §7.3, а запас ставится ТОЛЬКО на
+            // место неопределённого инлайн-места — у ячейки оно определённое
+            // (css-tables-3 §computing-column-measures). Blink тем же
+            // условием: `space_utils.h:36` выходит при
+            // `IsParallelWritingMode(таблица, ячейка)`, а
+            // `table_layout_utils.cc:1363` даёт ячейке место из
+            // `column_locations`. Пометка не гасит предел (он ещё нужен
+            // потолком: колонка не шире стола), а меняет способ замера —
+            // см. `col_min` в `paragraph()`.
+            //
+            // Гейт узкий намеренно: письмо должно стоять на САМОМ столе
+            // (`e.style.vertical`, тот же гейт, что у транспонирования
+            // решётки и `spacing_phys`), и предел должен уже быть — иначе
+            // ничего не меняется. У анонимной обёртки `display: table-cell`
+            // (`anon_element("table", …)`, стиль `Computed::default()`)
+            // `e.style.vertical` пуст, поэтому семья `line-box-direction-*`
+            // гейтом не задевается.
+            if e.style.vertical == Some(true) && cm.ortho_limit.is_some() {
+                cm.ortho_col = true;
+            }
             // Объединение ячеек: без него ячейка занимала одну дорожку, и всё
             // правее неё съезжало на колонку влево.
             let span_cols: u16 = cell
@@ -16494,6 +16607,34 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         c.min_width = min_w;
         if table_border_box {
             c.border_box = Some(true);
+            // Вертикальное письмо: `height` — это ИНЛАЙН-размер стола
+            // (Blink: `ComputeTableInlineSize` читает `style.LogicalWidth()`,
+            // а при `vertical-*` это физическое `height`), и наш конвейер УЖЕ
+            // потратил её как КОНТЕНТНУЮ величину: предел ортогонального
+            // потока сеется из `e.style.height` без вычета краёв (блок
+            // `merged.ortho_limit` выше), и повёрнутый абзац рвёт строку
+            // ровно по нему. Значит второй раз, коробкой, та же величина
+            // обязана лечь по content-box, иначе краи вычитаются дважды и
+            // стол выходит короче содержимого на свои рамки
+            // (`row-progression-vrl-002`: 140.0 вместо 180.0 при неизменной
+            // туши). Флаг `border_box` один на обе оси, поэтому его НЕ
+            // снимаем — иначе content-box получила бы и `width`, то есть
+            // БЛОЧНАЯ ось, где border-box верен; вместо этого краи инлайн-оси
+            // добавляются к самой величине. Гейт тот же, что у
+            // транспонирования решётки и у `spacing_phys`.
+            if e.style.vertical == Some(true)
+                && let Some(Len::Px(h)) = c.height
+            {
+                // Сросшийся стол несёт свои краи не рамкой, а паддингом в
+                // половину победившей кромки (см. ветку `collapse` выше) —
+                // берём ровно то, что легло в коробку.
+                let inline_edges = if collapse {
+                    (outer_win[0] + outer_win[2]) / 2.0
+                } else {
+                    bw[0] + bw[2] + pad_px[0] + pad_px[2]
+                };
+                c.height = Some(Len::Px(h + inline_edges));
+            }
         }
         host_style = c;
         styled_div_with(e, &host_style).flex().flex_col()
@@ -16504,7 +16645,14 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // на родителя (CSS 2.1 §17.5.2, shrink-to-fit). Пока она растягивалась,
     // две короткие колонки разъезжались к противоположным краям — видно на
     // `shaping-tatweel-002`, где одинаковые знаки стояли по краям окна.
-    if e.style.width.is_none() {
+    //
+    // Заданный `align-self` приём отменяет: у элемента СЕТКИ эта ось —
+    // блочная (css-align-3 §6.2, `taffy: grid/alignment.rs:145`), сжатие по
+    // строчной оси ведёт `justify-self`, и прижим к началу здесь только
+    // отбирал у стола высоту дорожки. Метку ставит
+    // `dom::grid_table_items_keep_stretch`; авторский `align-self` она же и
+    // пропускает вперёд.
+    if e.style.width.is_none() && e.style.align_self.is_none() {
         outer.style().align_self = Some(gpui::AlignItems::FlexStart);
     }
     // КОРНЕВОЙ стол (`<html display: table>`): родитель — блок стенда, где

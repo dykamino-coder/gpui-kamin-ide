@@ -1485,10 +1485,24 @@ impl Element for ColumnStack {
             let x = bounds.origin.x + px(c as f32 * step + rel.0);
             let y = bounds.origin.y + px(ry + f.y + rel.1);
             let split = parts[f.kid] > 1;
+            // css-multicol-1 §overflow-inside-multicol-elements: «Except for
+            // cases where this would cause a column break, content that extends
+            // outside column boxes visibly overflows and is not clipped to the
+            // column box». По блочной оси переполнение «fragments and continues
+            // in the next column box» (§The Multi-column Model) — это и есть
+            // срез фрагмента. По СТРОЧНОЙ оси резать нечем: маска шириной
+            // `col_w` съедала половину коробки, которая по спеке обязана видимо
+            // переполнять колонку (`flex-container-fragmentation-008/009`:
+            // абсолют 100px в колонке 50px). Обрезку по краю САМОГО
+            // многоколоночника решает его `overflow`
+            // (§pagination-and-overflow-outside-multicol), и её кладёт внешняя
+            // маска: `with_content_mask` маски ПЕРЕСЕКАЕТ, раскрытие строчной
+            // оси её не отменяет.
+            const INLINE_OPEN: f32 = 1.0e5;
             let mask = gpui::ContentMask {
                 bounds: Bounds {
-                    origin: point(x, y),
-                    size: size(px(col_w), px(f.h)),
+                    origin: point(x - px(INLINE_OPEN), y),
+                    size: size(px(INLINE_OPEN * 2.0), px(f.h)),
                 },
             };
             let kid = &mut self.children[f.kid];

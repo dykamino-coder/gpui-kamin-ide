@@ -3490,6 +3490,12 @@ pub struct VerticalText {
     /// эти два случая ровно так же — `paint/line_relative_rect.cc:69-75`:
     /// `AffineTransform(0, 1, -1, 0, …)` против `AffineTransform(0, -1, 1, 0, …)`.
     ccw: bool,
+    /// Ячейка вертикальной таблицы: мерить содержимое по МИНИМАЛЬНОМУ
+    /// вдоль строки, а не по максимальному. Тогда заявленная высота
+    /// повёрнутой коробки — вклад ячейки в меру её КОЛОНКИ (css-tables-3
+    /// §computing-column-measures), и дорожку считает решётка, а не
+    /// инлайн-размер всего стола. Ставится из `render.rs` (`col_min`).
+    col_min: bool,
 }
 
 impl VerticalText {
@@ -3501,6 +3507,7 @@ impl VerticalText {
             claim_cap: None,
             key: None,
             ccw: false,
+            col_min: false,
         }
     }
 
@@ -3530,6 +3537,12 @@ impl VerticalText {
     /// честным для гибких родителей.
     pub fn fit_within(mut self, limit: Pixels) -> Self {
         self.fit_limit = Some(limit);
+        self
+    }
+
+    /// Мерить содержимое по МИНИМАЛЬНОМУ вдоль строки (см. поле `col_min`).
+    pub fn column_min(mut self, on: bool) -> Self {
+        self.col_min = on;
         self
     }
 }
@@ -3563,8 +3576,24 @@ impl Element for VerticalText {
         // внутри чужого замера, и вызов падает на `layout_engine.unwrap()`
         // (vendor/gpui/src/window.rs). Ограничение придётся доводить другим
         // путём — например, осью потока в самом стиле.
+        //
+        // Ячейка вертикальной таблицы меряется по МИНИМАЛЬНОМУ содержимому
+        // вдоль строки: её вклад в дорожку колонки — это min-content
+        // («the outer min-content width of each cell that spans the column»,
+        // css-tables-3 §computing-column-measures), а не длина всей строки.
+        // Обёртка до поворота стоит при этом БЕЗ жёсткой ширины
+        // (`render.rs`, `col_min`), поэтому запрос доходит до самого абзаца:
+        // `Paragraph` на `AvailableSpace::MinContent` отвечает
+        // `probe.min_content(window)` (`lines.rs`). Дальше `natural.width` —
+        // инлайн-мера колонки (её заявит высотой `fit_within`), а
+        // `natural.height` — число строк при этой мере, то есть блочная
+        // толщина ряда.
         let space = gpui::size(
-            gpui::AvailableSpace::MaxContent,
+            if self.col_min {
+                gpui::AvailableSpace::MinContent
+            } else {
+                gpui::AvailableSpace::MaxContent
+            },
             gpui::AvailableSpace::MaxContent,
         );
         self.natural = self

@@ -282,6 +282,10 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // пул и та же чистка.
     let _ = crate::css::take_page_decls();
     let _ = crate::css::take_try_rules();
+    // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
+    // и у страницы свой корень, и чужие четыре точки на кегль испортили бы
+    // весь разбор. Пишет их `walk` ниже, на элементе `html`.
+    crate::value::reset_root_metrics();
     let html = expand_xhtml_self_closing(html);
     let dom = html5ever::parse_document(RcDom::default(), Default::default())
         .from_utf8()
@@ -385,6 +389,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     hoist_grid_abspos(&mut out);
     content_box_static_position(&mut out);
     flex_items_lose_float(&mut out);
+    grid_table_items_keep_stretch(&mut out);
     subgrid_takes_parent_tracks(&mut out);
     filter_ref_only_empty(&mut out);
     fold_run_ins(&mut out, None);
@@ -816,6 +821,58 @@ fn flex_items_lose_float(nodes: &mut [Node]) {
             }
             child.style.float = None;
             child.style.clear = None;
+        }
+    }
+}
+
+/// Стол — элемент СЕТКИ: растяжка по дорожке остаётся за ним.
+///
+/// css-align-3 §6.2: начальное `align-self: normal` у элемента сетки
+/// «behaves as stretch», и растянутый элемент получает размер ОБЛАСТИ.
+/// Сжатие стола по содержимому (CSS 2.1 §17.5.2.2) у нас выражено
+/// `align_self = FlexStart` (`render.rs: table`), а у элемента сетки эта ось —
+/// БЛОЧНАЯ: стол переставал расти до дорожки (пустой стол выходил нулевой
+/// высоты и ронял базовую линию контейнера — `grid-container-baseline-
+/// synthesized-001…004`), а сжатия по строчной оси приём там и не давал:
+/// её ведёт `justify-self`. Явная растяжка на самом элементе снимает приём
+/// ровно в сетке и нигде больше.
+///
+/// Гейты: только обычная сетка (у лунок свой проход дорожек), только
+/// потоковый ребёнок (внепоточный элементом сетки не является,
+/// css-grid-1 §9), только когда контейнер не задал своего `align-items`
+/// и автор не задал `align-self` — чужое выравнивание не перебиваем.
+fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
+    for node in nodes.iter_mut() {
+        let Node::Element(el) = node else { continue };
+        grid_table_items_keep_stretch(&mut el.children);
+        if !matches!(
+            el.style.display,
+            Some(Display::Grid) | Some(Display::InlineGrid)
+        ) {
+            continue;
+        }
+        if !matches!(
+            el.style.align_items,
+            None | Some(crate::computed::Align::Stretch)
+        ) {
+            continue;
+        }
+        for child in el.children.iter_mut() {
+            let Node::Element(child) = child else { continue };
+            if matches!(
+                child.style.position,
+                Some(Position::Absolute) | Some(Position::Fixed)
+            ) {
+                continue;
+            }
+            let is_table = child.tag == "table"
+                || matches!(
+                    child.style.display,
+                    Some(Display::Table) | Some(Display::InlineTable)
+                );
+            if is_table && child.style.align_self.is_none() {
+                child.style.align_self = Some(crate::computed::Align::Stretch);
+            }
         }
     }
 }
@@ -2260,6 +2317,30 @@ fn walk(
             };
             let vars = &own_vars;
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+            // Корневые метрики для `rem`/`rlh` (css-values-4 §6.1.4).
+            // Записываются ЗДЕСЬ, а не в наследовании: `Len::parse` работает
+            // на разборе объявлений, а `walk` идёт в порядке документа —
+            // корень разбирается раньше любого потомка, и его `25rem` уже
+            // читается верно. Собственные объявления корня успевают
+            // разобраться по прежней базе; на самом корне `rem` по спеке и
+            // так меряется РОДИТЕЛЬСКИМИ (начальными) метриками.
+            if tag == "html" {
+                let font = match style.font_size {
+                    Some(crate::value::Len::Px(v)) => v,
+                    Some(crate::value::Len::Em(k)) | Some(crate::value::Len::Pct(k)) => k * 16.0,
+                    _ => 16.0,
+                };
+                let family = style.font_family.clone().unwrap_or_default();
+                let line = match style.line_height {
+                    Some(crate::value::Len::Px(v)) => v,
+                    Some(crate::value::Len::Em(k)) | Some(crate::value::Len::Pct(k)) => k * font,
+                    _ => {
+                        let f = crate::metrics::normal_line(&family);
+                        if f > 0.0 { f * font } else { 1.2 * font }
+                    }
+                };
+                crate::value::set_root_metrics(font, line);
+            }
             apply_presentational_size(&mut style, &tag, &attrs);
             apply_presentational_colors(&mut style, &tag, &attrs);
             finish_inline_display(&mut style, &tag);

@@ -1796,6 +1796,22 @@ pub struct Computed {
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
     /// момент раскладки ребёнка предков уже не видно.
     pub ortho_limit: Option<f32>,
+    /// Ячейка таблицы, ПАРАЛЛЕЛЬНОЙ своему письму: доступное инлайн-место у
+    /// неё ОПРЕДЕЛЕНО — это мера её КОЛОНКИ (css-tables-3
+    /// §computing-column-measures), — и запасной предел §7.3
+    /// (`ortho_limit`) применять нельзя: тот стоит на месте НЕОПРЕДЕЛЁННОГО
+    /// инлайн-места (css-writing-modes-4 §7.3.1, «an additional constraint is
+    /// used as a fallback in place of the available inline space»). Blink
+    /// делит эти случаи ровно так же: `space_utils.h:36
+    /// SetOrthogonalFallbackInlineSizeIfNeeded` выходит НЕ СДЕЛАВ НИЧЕГО при
+    /// `IsParallelWritingMode(таблица, ячейка)`, а
+    /// `table_layout_utils.cc:1363 SetupTableCellConstraintSpaceBuilder`
+    /// кладёт ячейке `SetAvailableSize({cell_inline_size, …})`, где
+    /// `cell_inline_size` собран из `column_locations` — то есть из дорожки.
+    /// Флаг ставит `table()` своим ячейкам; ГЛУБЖЕ НЕ НАСЛЕДУЕТСЯ (как
+    /// `hug_inline`): `inline::inherit` начинает с `own.clone()`, а у
+    /// вложенного элемента поле пусто.
+    pub ortho_col: bool,
     /// Повёрнутый абзац `vertical-lr`: строки-колонки идут слева направо —
     /// подача строк снизу вверх (см. `Paragraph::reversed_lines`).
     pub lines_reversed: Option<bool>,
@@ -2536,6 +2552,10 @@ impl Computed {
         }
         // `ic` меряется по тому же семейству и тем же шагом, что `ch` и `ex`.
         let ic = crate::metrics::ic_px(&family, base);
+        // `cap` — высота прописной того же лица (css-values-4 §6.1.4). Щуп
+        // вертикальных метрик её уже отдаёт третьим числом (по нему
+        // `text-box-trim` считает срез `cap`), своего замера не нужно.
+        let cap = crate::metrics::vmetrics_px(&family, base).2;
         let to_px = move |l: &mut Option<Len>| match *l {
             Some(Len::Em(k)) => *l = Some(Len::Px(k * base)),
             Some(Len::EmPx(k, add)) => *l = Some(Len::Px(k * base + add)),
@@ -2549,12 +2569,13 @@ impl Computed {
                 // Без шрифтовых слагаемых складывать нечего — индекс остаётся
                 // прежним: арена append-only, а `resolve_em` идёт на каждом
                 // наследовании, и повторное хранение раздувало бы её впустую.
-                if s.em != 0.0 || s.ch != 0.0 || s.ex != 0.0 || s.ic != 0.0 {
-                    s.px += s.em * base + s.ch * ch + s.ex * ex + s.ic * ic;
+                if s.em != 0.0 || s.ch != 0.0 || s.ex != 0.0 || s.ic != 0.0 || s.cap != 0.0 {
+                    s.px += s.em * base + s.ch * ch + s.ex * ex + s.ic * ic + s.cap * cap;
                     s.em = 0.0;
                     s.ch = 0.0;
                     s.ex = 0.0;
                     s.ic = 0.0;
+                    s.cap = 0.0;
                     // Процентная смесь обязана ДОЖИТЬ: `collapse` вернул бы
                     // `None` и стёр `text-indent: calc(1em + 50%)`. Для всего,
                     // что пришло из `Len::parse`, `pct == 0`, и обе свёртки
@@ -4137,8 +4158,32 @@ impl Computed {
                             if *v < 0.0
                     )
                 };
-                // Слово (`medium`, `larger`) как и прежде даёт `None`: его
-                // разбирают другие пути. Держится только отрицательная длина.
+                // Абсолютные и относительные СЛОВА кегля (CSS 2.1 §15.7,
+                // css-fonts-4 §absolute-size). Раньше слово давало `None`, а
+                // `None` в модели значит «не задано», то есть наследование.
+                // Из-за этого `font-size: initial` (через `initial_value` —
+                // `medium`) не сбрасывал кегль корня, и абзац
+                // `percentage-rem-low` набирался четырьмя точками вместо
+                // шестнадцати. Таблица — та же, что у Chrome при базовом 16.
+                let word = match v.to_ascii_lowercase().as_str() {
+                    "xx-small" => Some(Len::Px(9.0)),
+                    "x-small" => Some(Len::Px(10.0)),
+                    "small" => Some(Len::Px(13.0)),
+                    "medium" => Some(Len::Px(16.0)),
+                    "large" => Some(Len::Px(18.0)),
+                    "x-large" => Some(Len::Px(24.0)),
+                    "xx-large" => Some(Len::Px(32.0)),
+                    "xxx-large" => Some(Len::Px(48.0)),
+                    // Относительные — доли РОДИТЕЛЬСКОГО кегля: их сводит к
+                    // точкам `resolve_em`, как обычный `em`.
+                    "smaller" => Some(Len::Em(5.0 / 6.0)),
+                    "larger" => Some(Len::Em(1.2)),
+                    _ => None,
+                };
+                if let Some(l) = word {
+                    self.font_size = Some(l);
+                    return;
+                }
                 self.font_size = match Len::parse(v) {
                     Some(l) if neg(&l) => self.font_size,
                     other => other,
@@ -4298,6 +4343,18 @@ impl Computed {
                 // его кегль (`c548-ln-ht-003` против зелёной `-004` — та же
                 // разметка, разная запись). `Len::Em` сводится к точкам до
                 // наследования, поэтому доля тегируется им.
+                // `normal` — ЗАДАННОЕ значение, а не «не задано»: незаданное
+                // поле у нас берётся от родителя, и `p { line-height: normal }`
+                // молча наследовал `:root { line-height: 50px }` — документ
+                // уезжал вниз на полулидинг (`rlh-unit-001`: зелёный квадрат
+                // ниже эталона на 30 точек). Меткой служит `Len::Auto`: у всех
+                // потребителей высоты строки уже есть для неё запасная ветка
+                // «по метрикам шрифта» (`inline.rs:719`, `:1529`, `:2445`), а
+                // `apply.rs:1618` на `Len::Auto` явно ничего не задаёт.
+                if v.eq_ignore_ascii_case("normal") {
+                    self.line_height = Some(Len::Auto);
+                    return;
+                }
                 let parsed = match v.parse::<f32>() {
                     Ok(mult) if !v.ends_with("px") => Some(Len::Pct(mult)),
                     _ => match Len::parse(v) {
