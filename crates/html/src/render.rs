@@ -885,6 +885,7 @@ pub fn render_paged(
         paged: true,
         viewport: Some(opts.viewport),
         cell_pad: None,
+        unclamped: false,
     };
     // Слой ICB — по КОПИИ на страницу: каждая сборка ребёнка рождает свои
     // `LatePlace` абсолютов, копия `c` уходит на лист `c` (`PageStack.icb`).
@@ -1044,8 +1045,55 @@ pub fn render_paged(
 /// Отрисовку это не меняет: `apply()` читает `float` ровно в одном месте
 /// (`apply.rs:924`, предикат `shrink_to_fit`) и только при `width: None|Auto`,
 /// а здесь ширина задана явно.
+/// Коробка своё переполнение ПОКАЗЫВАЕТ. Обрезающая (`hidden`/`clip`) и
+/// прокручиваемая (`scroll`) коробка параллельного потока не рождает
+/// вовсе: за её низом ничего не видно, и повторить её содержимое в
+/// следующей колонке значило бы нарисовать то, что браузер прячет
+/// (css-overflow-3 §3; css-break-3 §4.1 — прокручиваемая коробка ещё и
+/// монолит). У всех девяти приобретений корня `overflow` не задан, так что
+/// ворота им ничего не стоят, а зелёные с обрезкой (`overflow-clip-*`)
+/// закрывают.
+fn visible_overflow(c: &Computed) -> bool {
+    let ok = |o: Option<crate::computed::Overflow>| {
+        matches!(o, None | Some(crate::computed::Overflow::Visible))
+    };
+    ok(c.overflow_x) && ok(c.overflow_y)
+}
 fn block_like_float(c: &Computed) -> bool {
     c.float.unwrap_or(0) != 0 && matches!(c.width, Some(Len::Pct(p)) if p >= 0.9999)
+}
+/// Коробка и всё её поддерево — ОБЫЧНЫЕ блоки: ни гибкого контейнера, ни
+/// сетки, ни таблицы, ни вложенного многоколоночника. Только у такого
+/// поддерева мера `shape_full` совпадает с тем, что рисует движок: у гибкого
+/// контейнера с переносом она складывает элементы стопкой (`shape_full`,
+/// ветка без `row_nowrap`), у вложенного многоколоночника — не знает про его
+/// собственные колонки. Протяжённость параллельного потока, снятая с такого
+/// приближения, была бы выдуманной, и зелёные `multicol-nested-026`,
+/// `single-line-row-flex-fragmentation-039`,
+/// `multi-line-row-flex-fragmentation-093`,
+/// `single-line-column-flex-fragmentation-043/058` разъехались бы
+/// (`target/scout-fragparallel-2026-09.md` §5). `display: flow-root` сюда
+/// входит: он сводится к `Block` (`computed.rs:3057`).
+fn plain_block_tree(c: &Element, depth: u8) -> bool {
+    if c.style.column_count.is_some() || c.style.column_width.is_some() {
+        return false;
+    }
+    if c.style.webkit_box == Some(true) {
+        return false;
+    }
+    if !matches!(
+        c.style.display,
+        None | Some(Display::Block) | Some(Display::ListItem)
+    ) {
+        return false;
+    }
+    if depth == 0 {
+        return true;
+    }
+    c.children.iter().all(|n| match n {
+        Node::Element(k) => k.inline || plain_block_tree(k, depth - 1),
+        _ => true,
+    })
 }
 fn has_float(n: &Element, depth: u8) -> bool {
     if depth == 0 {
@@ -1427,6 +1475,19 @@ struct ShapeCx {
     /// умолчания `td { padding: 1px }` (как в `table()`); потомкам не
     /// передаётся.
     cell_pad: Option<f32>,
+    /// Мера ПОТОКА, а не коробки: заданная высота не обрезает ни высоту, ни
+    /// точки разреза, ни монолитные диапазоны. Переполнение коробки с
+    /// заданной высотой — параллельный поток (css-break-3 §3), и укладке
+    /// колонок нужна его протяжённость ОТДЕЛЬНО от высоты коробки.
+    /// Бюджет ОДИН на путь: флаг гаснет на первой же коробке с заданной
+    /// высотой (`shape_full`, перепривязка `cx`). Вложенная ограниченная
+    /// коробка заводит СВОЙ параллельный поток, в поток предка он не
+    /// входит, а модель несёт один `over` на ребёнка стопки — второго
+    /// потока ей выразить нечем. Через коробки с высотой `auto` флаг идёт
+    /// насквозь: там своей ограниченности нет
+    /// (`overflowed-block-with-room-after-003` — обёртка `auto` над
+    /// коробкой 70).
+    unclamped: bool,
 }
 
 impl ShapeCx {
@@ -1434,6 +1495,7 @@ impl ShapeCx {
         paged: false,
         viewport: None,
         cell_pad: None,
+        unclamped: false,
     };
 }
 
@@ -1482,8 +1544,26 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     let mb = px_or(&c.style.margin.bottom, false)?;
     // `cellpadding` — только этой коробке (её кладёт `table_shape`).
     let cell_pad = cx.cell_pad;
+    // Бюджет разжатия — ОДИН на путь. Мера потока снимает обрезку заданной
+    // высотой только у ВЕРХНЕЙ ограниченной коробки: по css-break-3 §3
+    // вложенная ограниченная коробка заводит СВОЙ параллельный поток, и её
+    // переполнение в поток предка не входит. Модель несёт один `over` на
+    // ребёнка стопки — второй поток ей выразить нечем, значит и мерить его
+    // нельзя.
+    // ЗАМЕРЕНО (10.09, `target/scout-fragparallel-2026-09b.md`): без бюджета
+    // мера ЭТАЛОНА `flex-item-content-overflow-001-ref` (коробка 70 >
+    // элемент 50 > внук 140) росла 70 -> 170, эталон разъезжался по двум
+    // колонкам, и четыре пары `flex-item-content-overflow-001a/001b/002a/
+    // 002b` уходили 0.00 -> 0.81. С бюджетом та же мера даёт ровно 70:
+    // `over == h`, ветка потока не включается, `StackChild` байт-в-байт
+    // прежний.
+    // Приобретения целы: у них ограниченная коробка на пути ОДНА, а её
+    // ребёнок задаёт высоту сам и в неё умещается
+    // (`overflowed-block-with-room-after-000`: 70 > 200 > 70+60+70).
+    let unclamp = cx.unclamped;
     let cx = ShapeCx {
         cell_pad: None,
+        unclamped: cx.unclamped && c.style.height.is_none(),
         ..cx
     };
     let pad = |l: &Option<Len>| match cell_pad {
@@ -1790,7 +1870,23 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     }
     // Заданная высота — в точках или (для страниц) в единицах окна.
     let (h, mt, mb) = match c.style.height.as_ref().map(|_| px_or(&c.style.height, true)) {
-        Some(Some(v)) => (v + top + bot, mt, mb),
+        // Мера потока (`unclamp`) заданной высотой не обрезается:
+        // css-break-3 §3 «parallel flows» — переполнение продолжается в
+        // следующем фрагментаинере само по себе, и его протяжённость нужна
+        // укладке колонок. Высота КОРОБКИ при этом не меняется: её даёт
+        // обычная мера (`unclamped: false`), и именно она остаётся шагом для
+        // соседа. Ниже по функции тем же `h` усекаются `cuts`/`forced`/
+        // `solid` — в мере потока они остаются полными, и это ровно то, что
+        // нужно: точки разреза и монолиты хвоста.
+        Some(Some(v)) => (
+            if unclamp {
+                (v + top + bot).max(stacked.map_or(0.0, |s| s.0) + bot)
+            } else {
+                v + top + bot
+            },
+            mt,
+            mb,
+        ),
         Some(None) => return None,
         None => match stacked {
             Some((end, through, last_mb)) => (
@@ -2324,6 +2420,12 @@ fn grow_pushed(
                 forced: s.4.clone(),
                 solid: s.5.clone(),
                 span: c.style.column_span == Some(true) && !c.inline,
+                // Щуп роста параллельного потока не знает: распорка
+                // (`spacer_before`) — про в-поточную высоту, а поток высоты
+                // не даёт (css-break-3 §3). Раздвинуть коробку им значило бы
+                // вернуть переполнение в поток. `over == 0.0` при `h >= 0`
+                // выключает поток в `fill_at` тождественно.
+                over: 0.0,
             })
             .collect();
         let grows = crate::flow::ColumnStack::growths(&probe, count, fixed, rows, copies);
@@ -13129,6 +13231,49 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // Поля кладёт укладка колонок, не коробка.
                                 copy.style.margin.top = None;
                                 copy.style.margin.bottom = None;
+                                // Параллельный поток (css-break-3 §3):
+                                // содержимое, переполняющее коробку с заданной
+                                // высотой, продолжается в следующей колонке
+                                // САМО ПО СЕБЕ, а сосед встаёт сразу под
+                                // коробкой. Протяжённость потока — та же мера
+                                // без обрезки высотой; вместе с ней берём её
+                                // НЕусечённые точки разреза и монолитные
+                                // диапазоны (в пределах `h` они совпадают с
+                                // обычными: усечение только отбрасывает записи
+                                // ниже `h`).
+                                // ТРОЕ ворот, все замерены:
+                                //  1) `column-fill: auto` — иначе поток уходит
+                                //     в балансировку и меняет высоту колонки
+                                //     (`single-line-column-flex-
+                                //     fragmentation-051`);
+                                //  2) поддерево обычных блоков — иначе мера
+                                //     `shape_full` приближённая и
+                                //     протяжённость выдуманная;
+                                //  3) коробка своё переполнение показывает —
+                                //     у обрезающей и прокручиваемой потока нет.
+                                // Четвёртые ворота — внутри меры: бюджет
+                                // разжатия ОДИН на путь (`ShapeCx::unclamped`,
+                                // перепривязка `cx` в `shape_full`). Без него
+                                // разъезжался ЭТАЛОН четырёх пар
+                                // `flex-item-content-overflow-*`.
+                                let (over, cuts, forced, solid) = match shape_full(
+                                    &copy,
+                                    4,
+                                    ShapeCx {
+                                        unclamped: true,
+                                        ..ShapeCx::COLUMNS
+                                    },
+                                )
+                                .filter(|_| {
+                                    fixed.is_some()
+                                        && plain_block_tree(&copy, 4)
+                                        && visible_overflow(&copy.style)
+                                })
+                                .filter(|s| s.0 > h + 0.01)
+                                {
+                                    Some(s) => (s.0, s.3, s.4, s.5),
+                                    None => (h, cuts, forced, solid),
+                                };
                                 // Относительный сдвиг — не коробке, а фрагменту
                                 // (css-break-3 §5.5): его кладёт `ColumnStack`
                                 // вместе со срезом.
@@ -13550,6 +13695,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     mt,
                                     mb,
                                     span,
+                                    over,
                                     rel,
                                 }
                             })

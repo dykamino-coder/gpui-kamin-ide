@@ -500,6 +500,11 @@ pub struct StackChild {
     /// линиями колонок; в стопке с рядами — по курсору Blink
     /// `LayoutSpanner` (не влез в остаток ряда — со следующего ряда).
     pub span: bool,
+    /// Низ ПАРАЛЛЕЛЬНОГО потока (css-break-3 §3) от верха коробки:
+    /// содержимое, переполняющее заданную высоту, продолжается в следующем
+    /// фрагментаинере само по себе. Равен `h`, когда потока нет. Поток
+    /// режется по нему, а шагом для СОСЕДА остаётся `h`.
+    pub over: f32,
     /// Общий сдвиг `position: relative`, снятый с копии (`hoist_relative`).
     /// css-break-3 §5.5: «Fragmentation occurs before relative positioning …
     /// Such effects are applied per fragment» — сдвиг накладывается НА
@@ -526,6 +531,9 @@ pub struct Kid {
     pub forced: Vec<f32>,
     pub solid: Vec<(f32, f32)>,
     pub span: bool,
+    /// Низ параллельного потока от верха коробки (`StackChild::over`); `h`,
+    /// когда потока нет.
+    pub over: f32,
 }
 
 /// Кусок ребёнка в колонке: чей он, какая по счёту копия, в какой колонке
@@ -772,17 +780,32 @@ impl ColumnStack {
             let mut cur = y + lead;
             let mut from = 0.0f32;
             let mut copy = 0usize;
+            // Параллельный поток (css-break-3 §3 «parallel flows»):
+            // содержимое, переполняющее коробку с ЗАДАННОЙ высотой,
+            // продолжается в следующем фрагментаинере само по себе, а
+            // следующий СОСЕД встаёт сразу под коробкой, в той же колонке
+            // (Blink `fragmentation_utils.cc`: «If the block-size is
+            // constrained / fixed … we know that we're at the end»). Значит
+            // режем по `flow`, а курсор соседа откатываем на конец коробки
+            // (ниже, перед `prev_mb = k.mb`). Монолит не трогаем: его
+            // переполнение по css-break-3 §4.1 остаётся в своей колонке
+            // целиком.
+            let flow = if k.over > k.h + 0.01 && !k.monolith {
+                k.over
+            } else {
+                k.h
+            };
             loop {
                 let target = target_at(col);
                 let room = target - cur;
-                let rest = k.h - from;
+                let rest = flow - from;
                 // Принудительный разрыв ВНУТРИ коробки раньше её конца и раньше
                 // края колонки — режем ровно там.
                 let forced = k
                     .forced
                     .iter()
                     .copied()
-                    .find(|&f| f > from + 0.01 && f < k.h - 0.01 && f - from <= room + 0.01);
+                    .find(|&f| f > from + 0.01 && f < flow - 0.01 && f - from <= room + 0.01);
                 if let Some(f) = forced {
                     let nf = k
                         .cuts
@@ -822,7 +845,7 @@ impl ColumnStack {
                 // класса A, иначе срезом по краю. Так делает Blink: сначала
                 // перенос, и только на пустой странице разрыв внутри
                 // (`block-page-break-inside-avoid-7/-15-print`).
-                let mono = k.monolith && !(paged && k.h > target + 0.01 && cur <= 0.01);
+                let mono = k.monolith && !(paged && flow > target + 0.01 && cur <= 0.01);
                 // Точка разреза `a` с усечением поля по классу A (`nf`).
                 let at = |a: f32| -> (f32, f32) {
                     let nf = k
@@ -940,10 +963,32 @@ impl ColumnStack {
                 cur = 0.0;
                 placed = false;
             }
+            // Откат курсора на конец КОРОБКИ: параллельный поток уехал
+            // дальше, но сосед по css-break-3 §3 продолжается там, где
+            // кончилась коробка. Ищем кусок ЭТОГО ЖЕ ребёнка, внутрь
+            // которого попал `k.h`; если поток оборвался раньше (кончились
+            // копии), курсор остаётся где был.
+            if flow > k.h + 0.01 {
+                if let Some(f) = out
+                    .iter()
+                    .rev()
+                    .take_while(|f| f.kid == kid)
+                    .find(|f| f.from <= k.h + 0.01 && k.h <= f.from + f.h + 0.01)
+                {
+                    col = f.col;
+                    y = f.y + (k.h - f.from);
+                    placed = true;
+                }
+            }
             prev_mb = k.mb;
             first = false;
         }
-        (col + 1, shortage, out)
+        // Курсор мог быть откачен назад параллельным потоком: колонок нужно
+        // столько, сколько занял самый дальний КУСОК, а не сколько прошёл
+        // курсор. Без потока значение тождественно прежнему: курсор всегда
+        // не меньше любого `f.col`.
+        let last = out.iter().map(|f| f.col).fold(col, usize::max);
+        (last + 1, shortage, out)
     }
 
     /// Первая граница плана, нарушающая правило 1 css-break-4 §4.3: коробка
@@ -965,7 +1010,24 @@ impl ColumnStack {
             if kids[i].force_before || kids[i - 1].force_after {
                 continue;
             }
-            let prev: Vec<usize> = plan.iter().filter(|f| f.kid == i - 1).map(|f| f.col).collect();
+            // Граница класса A между соседями стоит на низу КОРОБКИ, а не
+            // на конце её параллельного потока (css-break-3 §3): куски за
+            // `k.h` — уже отдельный поток, и колонку границы они не задают.
+            // Без отсечки разрезанный ПОТОК выглядел как разрезанная
+            // коробка, проверка «предыдущая сама разрезана» глушила
+            // нарушение, и отступ не срабатывал вовсе — так терялись
+            // `break-between-avoid-013/014` (поток 60 и 40 не влезал в
+            // остаток колонки), тогда как `-011` уцелела: там поток 40 в
+            // остаток 50 влезал и коробка оставалась целой.
+            // Без потока условие тождественно прежнему: кусок пушится,
+            // только пока `from < k.h` (`rest = flow - from > 0`), а нулевая
+            // коробка проходит вторым слагаемым.
+            let box_h = kids[i - 1].h;
+            let prev: Vec<usize> = plan
+                .iter()
+                .filter(|f| f.kid == i - 1 && (f.from < box_h - 0.01 || f.from <= 0.01))
+                .map(|f| f.col)
+                .collect();
             let cur: Vec<usize> = plan.iter().filter(|f| f.kid == i).map(|f| f.col).collect();
             let (Some(&prev_start), Some(&prev_end), Some(&cur_start)) =
                 (prev.iter().min(), prev.iter().max(), cur.iter().min())
@@ -1412,6 +1474,7 @@ impl Element for ColumnStack {
                 forced: c.forced.clone(),
                 solid: c.solid.clone(),
                 span: c.span,
+                over: c.over,
             })
             .collect();
         let count = self.count;
@@ -1478,6 +1541,7 @@ impl Element for ColumnStack {
                 forced: c.forced.clone(),
                 solid: c.solid.clone(),
                 span: c.span,
+                over: c.over,
             })
             .collect();
         let (_, lines, plan, spans) = self.balance(&heights);
@@ -1860,6 +1924,12 @@ impl Element for PageStack {
                     forced,
                     solid,
                     span: false,
+                    // Страницы параллельный поток пока не берут: у них своё
+                    // правило переполнения монолита (`fill_at`, ветка
+                    // `paged && placed && cur > target`, crbug 1402540), и
+                    // мешать их без отдельного замера печатного среза нельзя.
+                    // `over == h` — поток выключен.
+                    over: h,
                 }
             })
             .collect();
