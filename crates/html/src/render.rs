@@ -1135,6 +1135,141 @@ fn grid_row_gaps(c: &Computed, inner_h: f32) -> Vec<(f32, f32)> {
     out
 }
 
+/// Полосы ЯВНЫХ рядов сетки, когда все дорожки и зазор — в точках:
+/// `(начало, конец)` каждого ряда от верха содержимого. Тот же путь, что
+/// даёт высоту в `grid_rows_px`, только развёрнутый по рядам: границы рядов
+/// — точки разреза класса A (css-grid-2 §Fragmenting Grid Layout: «Class A
+/// break opportunities occur between rows or columns»). `None` — дорожек
+/// нет, они не все в точках или зазор задан не в точках: границ мы не знаем
+/// и точек не даём. Строже, чем `grid_rows_px` (тот считает незнакомый
+/// зазор нулём) — неверная граница ряда хуже отсутствующей.
+fn grid_px_row_bands(c: &Computed) -> Option<Vec<(f32, f32)>> {
+    use crate::computed::{Track, TrackSize};
+    if !matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
+        return None;
+    }
+    let rows = c.grid_rows.as_ref()?;
+    if rows.is_empty() {
+        return None;
+    }
+    let gap = match c.gap {
+        None | Some((None, _)) => 0.0,
+        Some((Some(Len::Px(v)), _)) => v,
+        _ => return None,
+    };
+    let mut out = Vec::with_capacity(rows.len());
+    let mut y = 0.0f32;
+    for t in rows {
+        let TrackSize::Single(Track::Px(v)) = t else {
+            return None;
+        };
+        out.push((y, y + v));
+        y += v + gap;
+    }
+    Some(out)
+}
+
+/// Принудительные разрывы, перенесённые с ЭЛЕМЕНТОВ сетки на границы РЯДОВ
+/// (css-grid-2 §Fragmenting Grid Layout: «The 'break-before' and
+/// 'break-after' properties on grid items are propagated to their grid
+/// row»). Blink `grid_layout_algorithm.cc:1846-1857`:
+/// `row_break_between[set_indices.begin] |= item_break_before`,
+/// `[set_indices.end] |= item_break_after`, причём оба значения берутся
+/// через `InitialBreakBefore`/`FinalBreakAfter` — то есть С ПОТОМКОВ, что у
+/// нас делает `edge_break`. Смещения — от верха СОДЕРЖИМОГО коробки и всегда
+/// на НАЧАЛЕ ряда, с которого продолжится следующий фрагмент: зазор перед
+/// ним съедается разрывом (css-gaps-1 §fragmentation).
+///
+/// Разрыв перед ПЕРВЫМ рядом и после ПОСЛЕДНЕГО сюда не попадает: спека
+/// отдаёт его контейнеру, и его переносит `edge_break`.
+///
+/// Размещение элементов по рядам считается только там, где оно однозначно
+/// (css-grid-1 §8.5, поток `row` без `dense`): именованных областей нет,
+/// `grid-row`/`grid-area` у детей нет, число колонок известно. Курсор идёт
+/// по колонкам, `grid-column: N / span M` занимает M колонок и при
+/// необходимости пинает курсор вперёд; не влезающий в остаток ряда элемент
+/// начинает новый ряд. Любая непонятная форма — пустой список, а не догадка.
+fn grid_row_forced(c: &Element) -> Vec<f32> {
+    use crate::computed::{AutoFlow, Placement};
+    let s = &c.style;
+    if s.grid_areas.is_some()
+        || matches!(
+            s.grid_auto_flow,
+            Some(AutoFlow::Col) | Some(AutoFlow::ColDense) | Some(AutoFlow::RowDense)
+        )
+    {
+        return Vec::new();
+    }
+    let Some(bands) = grid_px_row_bands(s) else {
+        return Vec::new();
+    };
+    let cols = s
+        .grid_cols
+        .map(|n| n.max(1) as usize)
+        .or_else(|| s.grid_tracks.as_ref().map(|t| t.len().max(1)))
+        .unwrap_or(1);
+    let mut out: Vec<f32> = Vec::new();
+    let mut row = 0usize;
+    let mut col = 0usize;
+    for n in c.children.iter().filter(|n| !is_blank(n)) {
+        let Node::Element(k) = n else {
+            return Vec::new();
+        };
+        if matches!(k.style.display, Some(Display::None)) || out_of_flow(&k.style) {
+            continue;
+        }
+        if k.style.grid_row.is_some() || k.style.grid_area_name.is_some() {
+            return Vec::new();
+        }
+        let (line, span) = match k.style.grid_col {
+            None | Some((Placement::Auto, Placement::Auto)) => (None, 1usize),
+            Some((Placement::Span(m), Placement::Auto)) => (None, m.max(1) as usize),
+            Some((Placement::Line(a), Placement::Span(m))) => (Some(a), m.max(1) as usize),
+            Some((Placement::Line(a), Placement::Auto)) => (Some(a), 1usize),
+            Some((Placement::Line(a), Placement::Line(b))) => {
+                (Some(a.min(b)), (b - a).unsigned_abs().max(1) as usize)
+            }
+            _ => return Vec::new(),
+        };
+        if span > cols {
+            return Vec::new();
+        }
+        if let Some(a) = line {
+            if a < 1 {
+                return Vec::new();
+            }
+            let want = (a - 1) as usize;
+            if want + span > cols {
+                return Vec::new();
+            }
+            if want < col {
+                row += 1;
+            }
+            col = want;
+        } else if col + span > cols {
+            row += 1;
+            col = 0;
+        }
+        if row >= bands.len() {
+            break;
+        }
+        if row > 0 && edge_break(k, false) {
+            out.push(bands[row].0);
+        }
+        if row + 1 < bands.len() && edge_break(k, true) {
+            out.push(bands[row + 1].0);
+        }
+        col += span;
+        if col >= cols {
+            row += 1;
+            col = 0;
+        }
+    }
+    out.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
+    out.dedup_by(|a, b| (*a - *b).abs() < 0.01);
+    out
+}
+
 /// Сетка, которую фрагментация вправе спускать СТОПКОЙ: одна колонка, ряды
 /// по содержимому, дети без явного размещения. Тогда ряд — ровно один
 /// ребёнок, высота ряда равна мере ребёнка (css-grid-1 §11.8: дорожка
@@ -1650,7 +1785,6 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 mt.max(through),
                 if bot == 0.0 { mb.max(last_mb) } else { mb },
             ),
-            None if kids.is_empty() => (top + bot, mt, mb),
             // Сетка без заданной высоты: её высоту знают
             // ЯВНЫЕ дорожки рядов (`grid-template-rows:
             // 200px`) с зазорами между ними. Без этой
@@ -1658,8 +1792,19 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             // коробки, и многоколоночник с сеткой внутри
             // уходил в запасную сетку целиком
             // (`scout-break-2026-09b.md`, корень C1).
+            // Дорожки идут ПЕРЕД пустотой: у сетки БЕЗ детей высота всё
+            // равно есть — её задают дорожки (css-grid-1 §7.1: дорожка
+            // существует независимо от того, занята ли она). Прежде
+            // `kids.is_empty()` заслонял эту ветку, и
+            // `grid-container-fragmentation-002` (`grid-template-rows:
+            // 200px`, детей нет) мерился нулём: квадрат 100×100 красен
+            // ЦЕЛИКОМ (снимок `target/wpt-shots/_fg-grid-container-
+            // fragmentation-002.png`, `x 10..134, y 67..191`). Проба
+            // `target/probe-fg/p-fg-002.html` (та же сетка блоком 200px)
+            // = 0.00.
             None => match grid_rows_px(&c.style) {
                 Some(v) => (v + top + bot, mt, mb),
+                None if kids.is_empty() => (top + bot, mt, mb),
                 None => return None,
             },
         },
@@ -1721,6 +1866,19 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     for (a, b) in grid_row_gaps(&c.style, h - top - bot) {
         cuts.push((top + a - 0.05, top + b));
         solid.push((top + a - 0.05, top + b + 0.05));
+    }
+    // Принудительный разрыв элемента сетки — на границу его РЯДА
+    // (css-grid-2 §Fragmenting Grid Layout; Blink `grid_layout_algorithm.cc`
+    // `row_break_between`). Сетка без `grid_stack` спуска не знает, и до
+    // этого места её `forced` был пуст ВСЕГДА: разрез шёл по краю колонки
+    // (`flow.rs: fill_at`, ветка `Some(at(edge))`) —
+    // `grid-item-fragmentation-044` резался на 100 при границе ряда 50
+    // (снимок `target/wpt-shots/_fg-grid-item-fragmentation-044.png`:
+    // красный прямоугольник `x 73..134, y 129..191`). Проба
+    // `target/probe-fg/p-fg-044.html` (та же геометрия блоками, разрыв на
+    // границе ряда) = 0.00.
+    for f in grid_row_forced(c) {
+        forced.push(top + f);
     }
     cuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
     forced.retain(|&f| f > 0.01 && f < h - 0.01);
@@ -2653,7 +2811,46 @@ fn edge_break(e: &Element, last: bool) -> bool {
         .iter()
         .filter(|n| !is_blank(n))
         .any(|n| matches!(n, Node::Element(k) if is_cell(k)));
-    if row_nowrap || cells_abreast {
+    // Элементы ОДНОГО ряда сетки стоят бок о бок ровно как ячейки: в
+    // блочном направлении «первым» и «последним» служит КАЖДЫЙ из них
+    // (css-grid-2 §Fragmenting Grid Layout: «The 'break-before' property on
+    // the first row and the 'break-after' property on the last row are
+    // propagated to the grid container»; Blink `grid_layout_algorithm.cc`
+    // берёт `InitialBreakBefore`/`FinalBreakAfter` у КАЖДОГО элемента ряда).
+    // Берётся только однозначный случай — сетка, у которой ряд ровно ОДИН:
+    // колонок больше одной, явных дорожек рядов нет, областей нет, у детей
+    // нет `grid-row`/`grid-area`, а поточных детей не больше, чем колонок.
+    // Одноколоночная сетка сюда не попадает НАМЕРЕННО: там у каждого
+    // ребёнка свой ряд, и первым/последним остаётся ровно первый/последний,
+    // как и было (`grid-item-fragmentation-042` — зелёная, гейт её не
+    // пускает: `grid-template-columns: 25px`, одна колонка).
+    let grid_one_row = matches!(
+        e.style.display,
+        Some(Display::Grid) | Some(Display::InlineGrid)
+    ) && e.style.grid_rows.is_none()
+        && e.style.grid_areas.is_none()
+        && !matches!(
+            e.style.grid_auto_flow,
+            Some(crate::computed::AutoFlow::Col) | Some(crate::computed::AutoFlow::ColDense)
+        )
+        && !e.children.iter().any(|n| matches!(n, Node::Element(k)
+            if k.style.grid_row.is_some() || k.style.grid_area_name.is_some()))
+        && e.style
+            .grid_cols
+            .map(|n| n as usize)
+            .or_else(|| e.style.grid_tracks.as_ref().map(|t| t.len()))
+            .is_some_and(|cols| {
+                cols > 1
+                    && e.children
+                        .iter()
+                        .filter(|n| !is_blank(n))
+                        .filter(|n| matches!(n, Node::Element(k)
+                            if !out_of_flow(&k.style)
+                                && !matches!(k.style.display, Some(Display::None))))
+                        .count()
+                        <= cols
+            });
+    if row_nowrap || cells_abreast || grid_one_row {
         return live.any(|n| matches!(n, Node::Element(k) if class_a_box(k) && edge_break(k, last)));
     }
     let edge = if last { live.next_back() } else { live.next() };
@@ -16314,18 +16511,34 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // `align-self` не работает, и стол растягивался на всё окно. Гибкая
     // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
     let root_table = matches!(e.tag.as_str(), "html" | "body") && e.style.width.is_none();
+    // `border-spacing` задан по ЛОГИЧЕСКИМ осям таблицы: первое значение —
+    // зазор между КОЛОНКАМИ (инлайн-ось), второе — между РЯДАМИ (блочная
+    // ось). css-writing-modes-3 §7.2 «Dimension Mapping» переносит их на
+    // физические оси письмом ТАБЛИЦЫ: в вертикальном письме инлайн-ось
+    // вертикальна, поэтому первое значение становится физическим
+    // ВЕРТИКАЛЬНЫМ зазором, второе — горизонтальным. Решётка выше уже
+    // транспонирована (`grid_box`: дорожки колонок легли в
+    // `grid_template_rows`, ряды пошли колонками), а зазоры оставались
+    // физическими — стол выходил перекошенным зеркально
+    // (`border-spacing-vrl-002`: 160.0×70.0 вместо 100×100). Гейт — тот же
+    // `e.style.vertical`, что и у решётки: иначе они разъедутся.
+    let spacing_phys = if e.style.vertical == Some(true) {
+        (spacing.1, spacing.0)
+    } else {
+        spacing
+    };
     let mut outer = outer.child(
         grid_box
             // `border-spacing: 2px` — умолчание браузера для таблицы с
             // раздельными рамками. Без него строки идут плотнее, и
             // расхождение копится вниз по таблице.
-            .gap_x(px(spacing.0))
-            .gap_y(px(spacing.1))
+            .gap_x(px(spacing_phys.0))
+            .gap_y(px(spacing_phys.1))
             // Зазор действует и МЕЖДУ краем таблицы и крайними ячейками
             // (CSS 2.1 §17.6.1), не только между ячейками. Эталоны
             // гасят его отрицательным полем на таблице.
-            .px(px(spacing.0))
-            .py(px(spacing.1))
+            .px(px(spacing_phys.0))
+            .py(px(spacing_phys.1))
             .children(cells)
             .into_any_element(),
     );

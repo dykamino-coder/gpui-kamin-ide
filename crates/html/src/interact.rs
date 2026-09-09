@@ -4295,6 +4295,37 @@ impl Element for LatePlace {
                     - bounds.origin.x,
                 hole.origin.y - bounds.origin.y,
             ),
+            // Статическая позиция по СВОБОДНОЙ строчной оси при `direction:
+            // rtl` содержащего блока: §10.3.7 вешает на точку не `left`, а
+            // `right`, то есть коробка стоит на ней ПРАВЫМ краем и растёт
+            // назад (Blink: `static_position.h: ConvertToLogical` даёт
+            // `kInlineEnd`, `absolute_utils.cc: GetStaticPositionInsetBias`
+            // переводит его в `InsetBias::kEnd`).
+            //
+            // Гейт — набор осей, а не одно `now.rtl`. `(false, true)` ставят
+            // РОВНО две ветки `atom_element` с `x_set != y_set`
+            // (замещаемая и незамещаемая коробка с заданным только `top`
+            // и/или `bottom`), и обе уходят `Piece::Overlay`: абзац остаётся
+            // ТЕКСТОВЫМ, а дырку щупу даёт `lines.rs: point_of`. Замер по
+            // снимкам всех двенадцати боевых пар
+            // `abs-pos-non-replaced-v{lr,rl}-{128,129,160,161,176,177,192,
+            // 193,208,209,224,225}`: зелёный квадрат стоит на x 168.0..248.0
+            // при эталонных 88.0..168.0 — расхождение РОВНО в свою ширину 80
+            // и ни в чём больше (вне двух квадратов разошедшихся точек 0).
+            //
+            // Чисто статическая коробка `(false, false)` сюда НЕ пускается
+            // намеренно: её абзац уходит `Piece::Atom` в гибкий ряд
+            // (`inline.rs: as_wrapped_row`), ряд при `rtl` не разворачивается,
+            // и щуп садится в его конец — замер тех же снимков даёт x = 328.0
+            // (правый край содержащего блока) при верных 168.0. Вычитание
+            // своей ширины там сложило бы вторую ошибку с первой — это и есть
+            // откат 08-19 из комментария выше. Блочный щуп во всю ширину
+            // забирает рукав ВЫШЕ (`hole.size.width > 0`), поэтому семья
+            // `css-position/static-position/htb-*` не задета.
+            (Some(hole), None) if now.rtl && now.fixed_axes == (false, true) => gpui::point(
+                hole.origin.x - bounds.size.width - bounds.origin.x,
+                hole.origin.y - bounds.origin.y,
+            ),
             (Some(hole), None) if now.rtl => gpui::point(
                 hole.origin.x - bounds.origin.x,
                 hole.origin.y - bounds.origin.y,
