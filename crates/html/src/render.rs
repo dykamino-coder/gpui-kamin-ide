@@ -5503,6 +5503,84 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
     out
 }
 
+/// Флоат, ради которого строчная коробка и существует, — и ничего кроме него.
+///
+/// Содержащий блок флоата — ближайший БЛОЧНЫЙ предок (§10.1: «the containing
+/// block is formed by the content edge of the nearest block container ancestor
+/// box»), а не строчная коробка, внутри которой он записан. Правило 1 §9.5.1
+/// держит его внешний край у края СОДЕРЖАЩЕГО БЛОКА, поэтому отбивка, рамка и
+/// поле `<span>` флоат не двигают ни на точку. Сегодня двигают: `wrap_floats`
+/// смотрит только на список братьев (проверка `floated` ниже не рекурсивная),
+/// а разделение на строчное и блочное (`:3742`) исключает из прогона лишь
+/// ПРЯМОГО плавающего ребёнка. Завёрнутый в `<span>` флоат уезжает в абзац и
+/// встаёт от содержательного края строчной коробки — в `float-in-inline-001`
+/// это ровно 30 + 30 + 40 = 100 точек вправо и вниз.
+///
+/// Возвращается сам флоат; строчная обёртка выбрасывается. Терять с ней
+/// нечего: своего содержимого у неё нет, а рамку и отбивку строчной коробки
+/// БЕЗ фона мы и так не рисуем (корень `INLINE-BOX-PAINT`) — поэтому гейт
+/// требует отсутствия фона.
+///
+/// Проба (`target/scout-floatline-2026-09.md` §5.4): дерево ПОСЛЕ снятия
+/// обёртки сходится с настоящими эталонами `ref-filled-green-200px-square` и
+/// `ref-filled-green-100px-square` в 0.00 на всех трёх парах подкорня.
+///
+/// Гейт узкий нарочно: обёртка — НАСТОЯЩАЯ строчная (`display: inline` либо
+/// строчный по тегу и без своего `display`), не позиционированная, без
+/// `clear`, ничего не красящая и не образующая ГРУППУ, без стилей
+/// `:hover`/`::first-letter`/`::first-line`, а внутри неё — только пустой
+/// текст и РОВНО ОДИН элемент: флоат либо такая же обёртка
+/// (`float-in-inline-002`: `<span><span><span style="float:left">`).
+fn inline_float_host(e: &Element) -> Option<Element> {
+    // `display: inline` после каскада — это `InlineBlock` с пометкой
+    // `inline_display` (`computed.rs`), поэтому одного взгляда на `display`
+    // мало; тег без своего `display` даёт строчность через `e.inline`.
+    let genuine_inline =
+        (e.inline && e.style.display.is_none()) || e.style.inline_display == Some(true);
+    if !genuine_inline
+        || e.style.float.is_some_and(|f| f != 0)
+        || e.style.clear.is_some()
+        || e.style.position.is_some()
+        || e.hover.is_some()
+        || e.first_letter.is_some()
+        || e.first_line.is_some()
+        // Обёртка КРАСИТ: фон, картинка и градиент ушли бы вместе с ней.
+        || e.style.background.is_some()
+        || e.style.bg_image.is_some()
+        || e.style.gradient.is_some()
+        // Обёртка образует ГРУППУ: прозрачность, фильтр, трансформ,
+        // смешивание, обрезка и маска действуют на плавающего ребёнка ЧЕРЕЗ
+        // неё. `css-color/inline-opacity-float-child` (зелёная, 0.00) держится
+        // ровно на этом: `opacity: 0` на `<span>` гасит красный флоат внутри,
+        // и снятая обёртка проявила бы красное.
+        || e.style.opacity.is_some()
+        || e.style.filter.is_some()
+        || e.style.transform.is_some()
+        || e.style.blend.is_some()
+        || e.style.clip_polygon.is_some()
+        || e.style.mask_image.is_some()
+    {
+        return None;
+    }
+    // Ровно один элемент и сколько угодно пустого текста. Непустой текст,
+    // второй элемент, `<br>` — обёртка несёт СВОЁ содержимое, снимать её
+    // нельзя: строчный прогон разъедется. Этим же условием из-под патча
+    // выведены `below-float`, `float-nowrap-3/9` и `block-in-inline-margins-004`.
+    let mut only: Option<&Element> = None;
+    for n in &e.children {
+        match n {
+            Node::Text(t) if blank_text(t) => {}
+            Node::Element(c) if only.is_none() => only = Some(c),
+            _ => return None,
+        }
+    }
+    let inner = only?;
+    if inner.style.float.is_some_and(|f| f != 0) {
+        return Some(inner.clone());
+    }
+    inline_float_host(inner)
+}
+
 fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>) -> Vec<Node> {
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
@@ -5516,6 +5594,21 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
                 Node::Element(e)
             }
             other => other,
+        })
+        .collect();
+    // Флоат, записанный ВНУТРИ строчной коробки, принадлежит не ей, а
+    // ближайшему блочному предку (§10.1, §9.5.1 п.1). Строчная обёртка, в
+    // которой кроме флоата ничего нет, снимается ЗДЕСЬ — ДО проверки
+    // `floated`: иначе `wrap_floats` про такой флоат не узнает вовсе и выйдет
+    // первой же строкой, а флоат уедет в абзац вместе с обвязкой `<span>`.
+    let nodes: Vec<Node> = nodes
+        .into_iter()
+        .map(|n| {
+            let hoisted = match &n {
+                Node::Element(e) => inline_float_host(e),
+                Node::Text(_) => None,
+            };
+            hoisted.map_or(n, Node::Element)
         })
         .collect();
     let floated = nodes.iter().any(|n| match n {
