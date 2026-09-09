@@ -558,6 +558,48 @@ scroll-up через несколько 400-row boundaries и фиксирует
 до/после каждого prepend; выбранный anchor не должен сдвигаться больше чем на
 2 px, а scroll вниз и live streaming остаются плавными.
 
+**Owner report (2026-09-09): tall-message lazy-load jump.** While scrolling
+Cloud Bridge Chat upward toward older messages (direction explicitly confirmed
+by the owner), reaching one very long user or assistant message and loading
+another entry makes the viewport jump abruptly upward. The reading position is
+lost and portions of messages are skipped. Register this as an additional BR-16
+scenario, not a new INC or a claim that the task is fixed. The report concerns
+the CEF Chat transcript, not the native Projects sidebar.
+
+The observed correlation does not establish which stage moved the viewport.
+Distinguish mounting more resident rows, fetching/prepending an older page, and
+deferred layout of an already mounted tall row, including a height change with
+no new request or DOM insertion. The existing anchor logic in
+`webview/src/components/jsonl-viewer/useChatScrollPin.ts`, window growth in
+`JsonlViewer.tsx`, and `content-visibility`/estimated heights in
+`JsonlViewer.module.css` and `webview/src/theme/legacy-global.css` are bounded
+entry points. Their presence does not prove the cause of this occurrence.
+
+Extend the maintainer reproduction matrix with a single synthetic user message
+and, separately, an assistant message several viewport heights tall, surrounded
+by short entries. Scroll upward through the tall message and older-history
+boundaries with slow wheel input and repeated input during loading. Capture the
+same identifiable text point inside the message before/after each transition,
+its pixel offset, row bounds, `scrollTop`/`scrollHeight`, window/page generation
+and the timing of user input, layout and programmatic position corrections.
+Repeat with already resident history and an older-page fetch, and check delayed
+height changes after the first restoration. After accounting for deliberate
+user scrolling, retain the reading point within the existing 2 px tolerance;
+preserving only the message ID while skipping paragraphs is not acceptance.
+Retain the existing downward-scroll, bottom-pin, streaming, tab-memory and
+resident-memory regression gates.
+
+**Evidence and next step:** registration author @dvpetrochenko; Diagnostic PR:
+[PR #93](https://github.com/dykamino-coder/gpui-kamin-ide/pull/93).
+This supplement uses only the owner's sanitized text
+report; no private evidence upload is needed because no logs, screenshots or
+message contents were supplied. Build/CLI versions, exact message dimensions and
+a measured runtime trace remain missing. The maintainer classifies this case
+within BR-16 and records those measurements when scheduled. Preserve the current
+open status, BR-22 classification prerequisite and automated + Windows CEF
+acceptance; this observation does not satisfy that prerequisite or authorize an
+implementation, closure or execution-batch change.
+
 ### BR-17 — Persist privacy-safe Bridge server logs
 
 **Close-out audit 2026-09-06:** `server/src/core/logger.ts` пишет в console; требуемые
