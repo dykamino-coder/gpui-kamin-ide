@@ -791,25 +791,52 @@ impl DirectWriteState {
                 text_layout.SetTypography(&font_info.features, text_range)?;
             }
 
-            // KaminIDE patch: подъём и спуск строки считаются, когда все
-            // прогоны уже расставлены: кусок крупнее поднимает всю строку,
-            // как и в браузере. Раньше метрики снимались по первому прогону,
-            // и высокий кусок вылезал за строку.
-            let mut metrics = vec![DWRITE_LINE_METRICS::default(); 4];
-            let mut line_count = 0u32;
-            // KaminIDE patch: буфер на 4 строки — при большем числе строк
-            // вызов возвращал ошибку, и строка МОЛЧА пропадала (log_err у
-            // вызывающего); второй заход берёт фактическое число.
-            if text_layout
-                .GetLineMetrics(Some(&mut metrics), &mut line_count as _)
-                .is_err()
-                && line_count as usize > metrics.len()
-            {
-                metrics = vec![DWRITE_LINE_METRICS::default(); line_count as usize];
-                text_layout.GetLineMetrics(Some(&mut metrics), &mut line_count as _)?;
+            // KaminIDE patch: подъём и спуск строки — от ПЕРВОГО ДОСТУПНОГО
+            // шрифта каждого прогона (`FontRun.font_id` кладёт туда
+            // `resolve_font`), а НЕ от набранной строки. Максимум по прогонам
+            // сохраняет прежнее свойство: кусок крупнее поднимает всю строку,
+            // как и в браузере.
+            //
+            // `DWRITE_LINE_METRICS` описывает строку ПОСЛЕ подстановки: в неё
+            // входят метрики запасного шрифта, взятого DirectWrite под знак,
+            // которого в основном шрифте нет. css-inline-3 §3 дословно: «When
+            // its computed 'line-height' is not ''normal'', its layout bounds
+            // are derived solely from metrics of its first available font
+            // (ignoring glyphs from other fonts)»; заметка там же — «Metrics
+            // from fonts other than the first available font only impact the
+            // layout bounds of an inline box with ''line-height: normal''».
+            // Blink так и делает: `ComputeTextMetrics` всегда читает
+            // `PrimaryFont()->GetFontMetrics()` (`inline_box_state.cc:121-131`),
+            // а объединение использованных шрифтов (`AccumulateUsedFonts`
+            // :250-266) стоит под гейтом `include_used_fonts =
+            // styleref.LineHeight().IsAuto()` (:164).
+            //
+            // Замер листа текста (`elements/text.rs:495-499`) уже считает
+            // базовую линию по этому же шрифту, а отрисовка
+            // (`text_system/line.rs:274`) — по `layout.ascent/descent`:
+            // `A&#x2007;<span>B</span>` при `font: 100px/1 Ahem` рисовало
+            // зелёный квадрат на 11.4 точки ниже короба, и сверху оставалась
+            // красная полоса (`line-breaking-atomic-003/014/018`, снимки
+            // `target/wpt-shots/q4,q5,q6,p5.png`).
+            //
+            // Зазор строк (`line_gap`) сюда не входит: css-inline-3 разрешает
+            // подмешивать его в A и D только при `line-height: normal`, а сам
+            // `normal` наш движок и так считает как A+D первого доступного
+            // шрифта (`crates/html/src/metrics.rs:261`).
+            //
+            // `FontMetrics::descent` знаковый (DirectWrite отдаёт со знаком
+            // минус, `direct_write.rs:897`) — берём модуль.
+            let (mut ascent, mut descent) = (px(0.), px(0.));
+            for run in font_runs {
+                let m = self.font_metrics(run.font_id);
+                let size = if run.font_size > px(0.) {
+                    run.font_size
+                } else {
+                    font_size
+                };
+                ascent = ascent.max(m.ascent(size));
+                descent = descent.max(m.descent(size).abs());
             }
-            let ascent = px(metrics[0].baseline);
-            let descent = px(metrics[0].height - metrics[0].baseline);
 
             let mut runs = Vec::new();
             // KaminIDE patch: контекст ОБЯЗАН быть &mut с рождения — колбэк

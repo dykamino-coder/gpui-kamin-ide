@@ -9448,6 +9448,18 @@ fn auto_fill_pct(v: &str) -> Option<f32> {
     pct_of(inner.split(',').nth(1)?)
 }
 
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v197, `scout-gridoof-2026-09.md` жила И1,
+/// 8 хунков): `fit-content(N)` теряет функцию дорожки в переводе CSS→gpui и
+/// доезжает как `minmax(auto, N)` — ЗАКРЕПЛЕНИЕ вместо ПОТОЛКА; патч заводил
+/// грани `Track::FitPx/FitPct`, вариант `GridTrack::FitContent` в
+/// `vendor/gpui/src/geometry.rs` и ветки в `vendor/gpui/src/taffy.rs`.
+/// Обещание +0…+2. Срез 1481 пара: **+27/−337**. Падение не логическое —
+/// целые семейства ушли в «красное видно»: `block-aspect-ratio-*`,
+/// `flex-aspect-ratio-*`, `grid-aspect-ratio-*`, `intrinsic-size-*`,
+/// `multicol-rule-*`, таблицы, `hanging-punctuation-*`, `boundary-shaping-*`.
+/// Новый вариант перечисления в вендорном `GridTrack` меняет раскладку далеко
+/// за пределами сетки: под него идут ВСЕ дорожечные размеры gpui. Возвращать
+/// только вместе с полным перебором потребителей `GridTrack` и своим сводом.
 fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
     fn single(t: &str) -> Option<Track> {
         let t = t.trim();

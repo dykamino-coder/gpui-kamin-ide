@@ -2390,10 +2390,13 @@ fn table_box(c: &Element) -> bool {
 /// таблицы. `break-inside: avoid` ряда или группы — монолитный диапазон
 /// (css-break-4 §breaking-rules, Rule 2), `break-before/after` ряда или
 /// группы — принудительный разрыв на границе ряда. `thead` встаёт первым,
-/// `tfoot` — последним, как в `table()`. Подпись, `rowspan`, сросшиеся
-/// рамки, вертикальное письмо, заданная высота (раздача `row_tracks` — иной
-/// путь раскладки) и неизмеримая ячейка — `None`: таблица идёт цельным
-/// куском измеренной высоты без точек, как прежде.
+/// `tfoot` — последним, как в `table()`. Заданная высота — ПОЛ коробки рядов
+/// (CSS 2.1 §17.5.3, css-tables-3 §terminology: `height` относится к table
+/// grid box, обёртка лишь несёт подписи); растянутая коробка раздаёт остаток
+/// рядам и потому идёт сплошным блоком без внутренних точек. `rowspan`,
+/// сросшиеся рамки, вертикальное письмо, монолит внутри при заданной высоте
+/// и неизмеримая ячейка — `None`: таблица идёт цельным куском измеренной
+/// высоты без точек, как прежде.
 fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
@@ -2403,11 +2406,28 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     if depth == 0
         || c.style.vertical == Some(true)
         || c.style.border_collapse == Some(true)
-        || c.style.height.is_some()
-        || c.style.min_height.is_some()
     {
         return None;
     }
+    // Заданная высота таблицы БОЛЬШЕ не повод отказаться от меры: она просто
+    // ПОЛ коробки рядов (CSS 2.1 §17.5.3 — используемая высота есть большая
+    // из заданной и суммы рядов; css-tables-3 §terminology кладёт `height` на
+    // table grid box, а §style-overrides отдаёт обёртке только `position`,
+    // `float`, `margin`-* и края — `height` среди них НЕТ). Пока отказ стоял,
+    // многоколоночник с такой таблицей не фрагментировался ВОВСЕ: снимок
+    // `specified-block-size-002` — зелёное (10,67)..(134,566), то есть 403 css
+    // высоты во всю ширину при эталоне (10,67)..(134,191); снимок
+    // `specified-block-size-003` — колонки 2-4 пусты, 11750 точек красного
+    // фона многоколоночника.
+    // Проценты и прочие единицы, как и прежде, — отказ от меры целиком:
+    // разрешать их некому, а недомер увёл бы разрез не туда.
+    let spec_of = |l: &Option<Len>| match l {
+        None => Some(None),
+        Some(Len::Px(v)) => Some(Some(*v)),
+        _ => None,
+    };
+    let spec_h = spec_of(&c.style.height)?;
+    let spec_min_h = spec_of(&c.style.min_height)?;
     let b = c.style.borders();
     let mt = px_of(&c.style.margin.top).unwrap_or(0.0);
     let mb = px_of(&c.style.margin.bottom).unwrap_or(0.0);
@@ -2551,7 +2571,17 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // рамка и отбивка), но обёртка несёт подписи и их точки разреза.
     // `table-border-004`: подпись 110 + пустая коробка `border-width:20px 0`
     // (20 + 20) + подпись 250 = 400 = ровно четыре колонки по 100.
-    if rows.is_empty() && caps_top.is_empty() && caps_bot.is_empty() {
+    // Таблица ИЗ ОДНОЙ ЗАДАННОЙ ВЫСОТЫ мерится так же, как из одних подписей:
+    // рядов нет, но коробка есть и её высоту знает стиль
+    // (`specified-block-size-002`: пустая `display: table; height: 400px` =
+    // ровно 4 колонки по 100; `table-border-007`: рамка 10 + 180 + 10 = 200 =
+    // две колонки по 100 — проба `p-tb-007` = 0.00).
+    if rows.is_empty()
+        && caps_top.is_empty()
+        && caps_bot.is_empty()
+        && spec_h.is_none()
+        && spec_min_h.is_none()
+    {
         return None;
     }
     let mut cuts: Vec<(f32, f32)> = Vec::new();
@@ -2612,7 +2642,52 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     if let Some((_, gs)) = group_open {
         solid.push((gs, y));
     }
-    let h_box = y + spacing + bot;
+    // Монолит ВНУТРИ коробки рядов (ячейка с `contain: size`, `break-inside:
+    // avoid` ряда или группы) вместе с заданной высотой — прежний отказ.
+    // Устройства «монолит переполняет колонку» у стопки колонок нет:
+    // `flow.rs:826` при `holds(a, b)` и `a <= from` разреза не берёт, а
+    // следующая ветка режет по краю колонки прямо сквозь монолит. Проба
+    // `target/probe-ftb/p-mo-003.html` — та же геометрия ОДНИМИ блоками
+    // (коробка 200 с двумя `contain: size` по 100 в колонках по 60) — даёт
+    // «красное видно», то есть даже верная мера рисунка не спасает, а
+    // `monolithic-overflow-003` сегодня 2.08: мера сделала бы ЕЙ ХУЖЕ.
+    // Единственный диапазон, которого гейт не считает, — верхняя рамка
+    // (0, top): её положили ДО цикла рядов.
+    let mono_inside = solid.iter().any(|&(a, b)| a > 0.01 || b > top + 0.01);
+    if mono_inside && (spec_h.is_some() || spec_min_h.is_some()) {
+        return None;
+    }
+    // Заданная высота — ПОЛ коробки рядов. `box-sizing` — та же мерка, что в
+    // рисователе (`table()`, `table_border_box`): у ТЕГА `<table>` высота по
+    // border-box (UA-правило css-tables-3 `table { box-sizing: border-box }`),
+    // у `display: table` на прочих тегах — контентная. `min-height` мерится
+    // ПОЛНОЙ коробкой ВСЕГДА — так его кладёт `min_fix` в `table()`
+    // (css-tables-3 §computing-the-table-height, CSSWG #5336).
+    let content_h = y + spacing + bot;
+    let edges = top + bot;
+    let border_box =
+        c.style.border_box == Some(true) || (c.tag == "table" && c.style.border_box.is_none());
+    let floor_h = spec_h
+        .map(|v| if border_box { v.max(edges) } else { v + edges })
+        .into_iter()
+        .chain(spec_min_h.map(|v| v.max(edges)))
+        .fold(0.0f32, f32::max);
+    let h_box = content_h.max(floor_h);
+    // Растянутая коробка раздаёт остаток РЯДАМ (CSS 2.1 §17.5.3; css-tables-3
+    // §height-distribution-algorithm), и границы рядов уезжают с измеренных
+    // мест: точки класса A между ними больше не верны. Такая коробка идёт
+    // сплошным блоком — срез по краю колонки есть правило, а не исключение
+    // (css-break-4 §4 «slice»). Снимок `specified-block-size-007`: жёлтый ряд
+    // (10,67)..(172,316), голубой (10,317)..(172,566) — раздача у нас РОВНАЯ
+    // (200/200) при содержимом 1 и 3, и точки на 1 и 4 были бы ложью.
+    if h_box > content_h + 0.01 {
+        cuts.clear();
+        forced.clear();
+        solid.clear();
+        if top > 0.0 {
+            solid.push((0.0, top));
+        }
+    }
     if bot > 0.0 {
         solid.push((h_box - bot, h_box));
     }
@@ -5389,9 +5464,23 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
     let Some((size_lines, sink)) = first.initial_letter else {
         return nodes;
     };
-    if inherited.vertical == Some(true) {
-        return nodes;
-    }
+    // Вертикальное письмо больше НЕ отсекается. Эталоны семейства пишут в
+    // вертикали ту же плавающую коробку 80×80 с тем же `float: left`
+    // (`initial-letter-drop-initial-vrl-ref` и ещё пятнадцать), меняются
+    // ровно две вещи: поле сдвига стоит на БЛОК-СТАРТЕ (`margin-right` при
+    // `*-rl`, `margin-left` при `*-lr` — css-writing-modes-4 §6.3, строка
+    // `block-start`), а величина сдвига у `vertical-*` считается
+    // центрированием, а не по алфавитной базовой.
+    let vert = inherited.vertical == Some(true);
+    // `sideways-*` типографски ГОРИЗОНТАЛЕН: у него алфавитная базовая и та
+    // же формула, что в горизонтали. Blink `initial_letter_utils.cc:81-83`
+    // разводит ветки условием
+    // `IsHorizontalTypographicMode() || text-orientation: sideways`, а
+    // `sideways-rl`/`sideways-lr` попадают во вторую половину этого «или».
+    let sideways = inherited.sideways == Some(true);
+    // Блок-старт вертикали: правый край при `vertical-rl`/`sideways-rl`,
+    // левый при `vertical-lr`/`sideways-lr`.
+    let block_rl = inherited.vertical_rl == Some(true);
     let at = nodes.iter().position(|n| match n {
         Node::Text(t) => !blank_text(t),
         Node::Element(e) => !e.style.float.is_some_and(|f| f != 0),
@@ -5433,6 +5522,17 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
     let rows = size_lines.ceil() as u32;
     let top = if rows < sink {
         line * sink as f32 - box_h
+    } else if vert && !sideways {
+        // Вертикальное письмо со СМЕШАННОЙ ориентацией: базовая линия
+        // центральная, и коробка выравнивается по центру строки. Blink
+        // `initial_letter_utils.cc:99-101` дословно:
+        //   // In vertical writing mode, `block_offset` will be physical
+        //   // offset x. Align initial letter box in center.
+        //   return (line_height * size - block_size) / 2;
+        // Ahem 20px/24px и `initial-letter: 3`: (3·24 − 80)/2 = −4 — ровно
+        // `margin-right: -4px` эталона `initial-letter-drop-initial-vrl-ref`
+        // и `margin-left: -4px` эталона `-vlr-ref`.
+        (size_lines * line - box_h) / 2.0
     } else {
         size_lines * line - l_asc - (desc + half_leading)
     };
@@ -5471,10 +5571,20 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
             .flatten(),
         ..Computed::default()
     };
-    style.margin.top = Some(Len::Px(top + own(first.margin.top, inherited.margin.top)));
+    // Сдвиг ложится на поле БЛОК-СТАРТА и СКЛАДЫВАЕТСЯ с полем слоя — ровно
+    // так же, как в эталонах: `block-position-margins-vrl` задаёт слою
+    // `margin-right: 45px`, а его эталон пишет `margin-right: 41px`
+    // = 45 + (−4); у `-vlr` то же на левом краю — `margin-left: 11px`
+    // = 15 + (−4).
+    let (mt, ml, mr) = (
+        own(first.margin.top, inherited.margin.top),
+        own(first.margin.left, inherited.margin.left),
+        own(first.margin.right, inherited.margin.right),
+    );
+    style.margin.top = Some(Len::Px(if vert { mt } else { mt + top }));
     style.margin.bottom = Some(Len::Px(own(first.margin.bottom, inherited.margin.bottom)));
-    style.margin.left = Some(Len::Px(own(first.margin.left, inherited.margin.left)));
-    style.margin.right = Some(Len::Px(own(first.margin.right, inherited.margin.right)));
+    style.margin.left = Some(Len::Px(if vert && !block_rl { ml + top } else { ml }));
+    style.margin.right = Some(Len::Px(if vert && block_rl { mr + top } else { mr }));
     let synthetic = |tag: &str, style: Computed, children: Vec<Node>, inline: bool| {
         Node::Element(Element {
             list_item: None,
@@ -16818,6 +16928,24 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         let side_style =
             |i: usize| e.style.border_side_styles[i].unwrap_or(if bw[i] > 0.0 { 9 } else { 0 });
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
+        // Линия рамки СТОЛА — та же ЛИНИЯ СЕТКИ, на которой стоят кромки
+        // краевых ячеек (§17.6.2: «borders are centered on the grid lines»).
+        // Коробка стола вжата внутрь на ПОЛОВИНУ ПОБЕДИВШЕЙ кромки — ровно
+        // `outer_win/2` лёг выше в её паддинг, — поэтому и проба вжимается на
+        // неё, а не на собственную толщину `bw`. Прежний вжим на `bw` разводил
+        // кромку стола и кромки ячеек по РАЗНЫМ группам линий (при
+        // `outer_win == bw` — ровно на `bw/2`, то есть на любой рамке от 1.5
+        // точек), и разбор конфликта §17.6.2.1 между ними не применялся ни
+        // разу: полосы совпадали на экране, а цвет решал порядок рисования —
+        // ячейка красилась поверх стола. Снимок `border-conflict-resolution`:
+        // нижняя полоса y 191..196 приборных у нас `G67@13 R232@80 G1@312`
+        // при `G300@13` у эталона, и 3278 + 1392 = 4670 — смещённых точек нет.
+        let half = [
+            outer_win[0] / 2.0,
+            outer_win[1] / 2.0,
+            outer_win[2] / 2.0,
+            outer_win[3] / 2.0,
+        ];
         outer = outer.child(crate::interact::edge_probe(
             table_edges.clone(),
             bw,
@@ -16825,7 +16953,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             styles,
             0,
             e.node_id as u32,
-            bw,
+            half,
         ));
     }
     let outer = outer;
