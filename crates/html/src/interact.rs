@@ -2996,6 +2996,18 @@ pub struct ClampEntry {
     /// (css-overflow-4 §5.3): на них укорачивается бюджет строк и на них же
     /// удлиняется итоговый срез. Для строчных проб — ноль.
     pub bp_after: f32,
+    /// Порядковый номер абзаца ВНУТРИ клэмп-контейнера, выданный при
+    /// построении. `None` — проба коробки, а не абзаца: знак обрыва на
+    /// неё не садится. Номер, а не совпадение по геометрии, потому что
+    /// сопоставлять надо КАДРЫ: срез считается по прошлому кадру, а
+    /// применяется на следующем.
+    pub seq: Option<u32>,
+    /// Сколько строк этому абзацу оставлено УЖЕ на этом кадре. Признак
+    /// того, что абзац укорочен нами: его собственный низ за срез больше
+    /// не выходит, и без этой защёлки «что-то срезано» пропало бы, а
+    /// кадр запросил бы себя заново (css-overflow-4 §5.3: вставка знака
+    /// «must not cause a reevaluation of the effects of `continue`»).
+    pub clamped: Option<usize>,
 }
 
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
@@ -3010,20 +3022,51 @@ thread_local! {
     /// (ключ, граница BFC уже пройдена).
     static CLAMP_STACK: std::cell::RefCell<Vec<(u64, bool)>> =
         std::cell::RefCell::new(Vec::new());
+    /// Знак обрыва АВТО-режима, посчитанный на прошлом кадре:
+    /// ключ контейнера → (номер абзаца, сколько его строк остаётся).
+    /// Абзац в контейнере ровно один — тот, на чьей последней строке
+    /// перед точкой среза стоит знак (css-overflow-4 §5.3).
+    static CLAMP_PARA: std::cell::RefCell<std::collections::HashMap<u64, (u32, usize)>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Счётчик абзацев контейнера при ПОСТРОЕНИИ поддерева.
+    static CLAMP_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 pub fn clamp_lines_for(key: u64) -> ClampLines {
     CLAMP_LINES.with(|m| m.borrow_mut().entry(key).or_default().clone())
 }
 
+/// Выдать следующему абзацу клэмп-контейнера его номер. Счётчик сбрасывает
+/// вход в сам контейнер (`ClampGuard::enter`), поэтому нумерация одна и та
+/// же на каждом кадре, пока не меняется дерево.
+pub fn clamp_next_seq(key: u64) -> u32 {
+    CLAMP_SEQ.with(|m| {
+        let mut m = m.borrow_mut();
+        let n = m.entry(key).or_insert(0);
+        let v = *n;
+        *n += 1;
+        v
+    })
+}
+
 pub fn clamp_cut(key: u64) -> Option<f32> {
     CLAMP_CUTS.with(|m| m.borrow().get(&key).copied())
+}
+
+/// Бюджет строк абзаца со знаком обрыва: (номер абзаца, сколько строк
+/// оставить). Считает `ClampCut::paint` прошлого кадра.
+pub fn clamp_para(key: u64) -> Option<(u32, usize)> {
+    CLAMP_PARA.with(|m| m.borrow().get(&key).copied())
 }
 
 pub fn forget_clamp_buffers() {
     CLAMP_LINES.with(|m| m.borrow_mut().clear());
     CLAMP_CUTS.with(|m| m.borrow_mut().clear());
     CLAMP_STACK.with(|st| st.borrow_mut().clear());
+    CLAMP_PARA.with(|m| m.borrow_mut().clear());
+    CLAMP_SEQ.with(|m| m.borrow_mut().clear());
+    PARA_BUDGET.with(|c| c.set(None));
 }
 
 /// Сторож стека clamp-контекста на время построения поддерева.
@@ -3033,6 +3076,12 @@ impl ClampGuard {
     /// Вход в сам clamp-контейнер.
     pub fn enter(key: u64) -> Self {
         CLAMP_STACK.with(|st| st.borrow_mut().push((key, false)));
+        // Нумерация абзацев контейнера начинается заново на каждом кадре:
+        // иначе номер рос бы от кадра к кадру и бюджет прошлого кадра
+        // никогда не находил бы своего абзаца.
+        CLAMP_SEQ.with(|m| {
+            m.borrow_mut().insert(key, 0);
+        });
         ClampGuard(true)
     }
 
@@ -3068,6 +3117,23 @@ pub fn clamp_context() -> Option<(u64, bool)> {
     CLAMP_STACK.with(|st| st.borrow().last().copied())
 }
 
+thread_local! {
+    /// Бюджет строк ТЕКУЩЕГО собираемого абзаца (только авто-режим).
+    static PARA_BUDGET: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+/// Положить бюджет строк для абзаца, который сейчас будет собран.
+pub fn set_para_budget(v: Option<usize>) {
+    PARA_BUDGET.with(|c| c.set(v));
+}
+
+/// Забрать бюджет (и опустошить ячейку). Опустошение обязательно: куски
+/// абзаца строят вложенные абзацы (`inline-block`), и им чужой бюджет
+/// доставаться не должен.
+pub fn take_para_budget() -> Option<usize> {
+    PARA_BUDGET.with(|c| c.take())
+}
+
 /// Проба строк: канвас в элементе с текстом (или блоке), пишет границы и
 /// высоту строки в prepaint своего кадра.
 pub fn clamp_probe(
@@ -3076,6 +3142,8 @@ pub fn clamp_probe(
     skip_count: bool,
     fixed_height: bool,
     bp_after: f32,
+    seq: Option<u32>,
+    clamped: Option<usize>,
 ) -> AnyElement {
     gpui::canvas(
         move |bounds: Bounds<Pixels>, _, _| {
@@ -3085,6 +3153,8 @@ pub fn clamp_probe(
                 skip_count,
                 fixed_height,
                 bp_after,
+                seq,
+                clamped,
             });
         },
         |_, _, _, _| {},
@@ -3241,6 +3311,86 @@ impl Element for ClampCut {
                 }
             }
             cut = Some(c2 + bp);
+        }
+        // ★ ЗАМЕРЕНО (10.09, `scout-clampmarker-2026-09c.md`, 21 хунк):
+        // срез 416 пар (семья `line-clamp` + схлопывание полей) 259 ->
+        // 260. Взяты `line-clamp-auto-003` 1.82 -> 0.00 и `-047`
+        // 1.62 -> 0.12; четвёрка `-018`…`-021` стояла на 0.39-0.40 и
+        // встала РОВНО на 0.00 — знак наконец в конце текста строки.
+        // Потеря одна: `-022` 0.39 -> 2.61 — тот же тест, что `-021`,
+        // но `max-height: 5.5lh` вместо `5lh` при том же эталоне;
+        // полстроки сверх бюджета у нас пускают лишнюю строку. Долг
+        // отдельным подкорнем CLAMP-HALF-LINE.
+        // Знак обрыва в АВТО-режиме (`limit == None`). Рисует его НЕ этот
+        // слой: сюда возвращается только БЮДЖЕТ строк — номер абзаца в
+        // контейнере и сколько его строк остаётся выше среза, — а «…»
+        // ставит уже проверенный `lines::clamp_lines`/`paint_line`: в
+        // конце ТЕКСТА строки, с выключкой и направлением письма
+        // (css-overflow-4: знак «is placed at the end of the line box
+        // reducing the space available to the other contents of the
+        // line», а для bidi — анонимный строчный с уровнем bidi-абзаца).
+        // Так же развязан и Blink: блочный слой отдаёт признак
+        // `IsAtClampPoint`, а ширину знака получает разрыватель строк
+        // (`inline_layout_algorithm.cc:1247` `SetupLineClampEllipsis` →
+        // `SetLineClampEllipsisWidth`). Прежний набросок рисовал знак у
+        // ПРАВОГО края коробки — мимо конца текста, мимо выключки и
+        // мимо rtl.
+        let para = cut.filter(|_| self.limit.is_none()).and_then(|c| {
+            // Есть ли что резать. Как только бюджет применён, абзац УЖЕ
+            // укорочен и сам за срез не выходит — признак защёлкивается
+            // применённым бюджетом, иначе кадры зациклились бы:
+            // обрезали → влезло → сняли → снова не влезло.
+            let overflow = entries.iter().any(|e| e.clamped.is_some())
+                || entries.iter().any(|e| {
+                    f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height) > c + 0.5
+                });
+            if !overflow {
+                return None;
+            }
+            // Знак садится на ПОСЛЕДНЮЮ строку перед точкой среза — в том
+            // числе когда точка стоит МЕЖДУ блоками и сам абзац видим
+            // целиком. Абзацы в своём контексте форматирования
+            // пропускаются: точкой среза их строки быть не могут.
+            entries
+                .iter()
+                .filter(|e| e.line > 0.0 && !e.skip_count)
+                .filter_map(|e| {
+                    let seq = e.seq?;
+                    let y0 = f32::from(e.bounds.origin.y);
+                    let h = f32::from(e.bounds.size.height);
+                    if h <= 0.0 {
+                        return None;
+                    }
+                    let n = (h / e.line).round().max(1.0) as usize;
+                    let step = h / n as f32;
+                    let k = (1..=n).filter(|i| y0 + *i as f32 * step <= c + 0.5).count();
+                    (k >= 1).then_some((y0 + k as f32 * step, seq, k))
+                })
+                .max_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, seq, k)| (seq, k))
+        });
+        // Бюджет одного и того же абзаца только УЖИМАЕТСЯ: рост числа
+        // строк на следующем кадре — это отражение нашей же правки, а не
+        // новое измерение. Правило конечно (бюджет строго убывает и не
+        // меньше единицы), поэтому кадр не может просить себя без конца.
+        let prev_para = clamp_para(self.key);
+        let para = match (prev_para, para) {
+            (Some((ps, pk)), Some((s, k))) if ps == s && k > pk => Some((ps, pk)),
+            (_, v) => v,
+        };
+        if prev_para != para {
+            CLAMP_PARA.with(|m| {
+                let mut m = m.borrow_mut();
+                match para {
+                    Some(v) => {
+                        m.insert(self.key, v);
+                    }
+                    None => {
+                        m.remove(&self.key);
+                    }
+                }
+            });
+            window.request_animation_frame();
         }
         let rel = cut.map(|c| (c - top).max(0.0));
         if {

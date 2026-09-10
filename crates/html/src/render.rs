@@ -3308,9 +3308,31 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
 /// Абзац с пробой бюджета строк: если строится внутри clamp-контейнера,
 /// рядом с абзацем едет проба его границ и высоты строки.
 fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    // Знак обрыва АВТО-режима: бюджет строк ИМЕННО ЭТОГО абзаца посчитал
+    // `ClampCut` прошлого кадра. Кладём его ДО сборки абзаца — многоточие
+    // нарисует строчный слой (`lines::clamp_lines` → `paint_line`), тот
+    // самый, что уже зелен на `webkit-line-clamp-014` (bidi) 0.00,
+    // `block-ellipsis-bidi-001/002` 0.00, `block-ellipsis-028/031` 0.19.
+    // Номер абзаца выдаётся в порядке ПОСТРОЕНИЯ и уезжает в пробу,
+    // поэтому сопоставление кадров не зависит от порядка обхода на
+    // отрисовке.
+    let ctx = crate::interact::clamp_context();
+    let seq = ctx.map(|(key, _)| crate::interact::clamp_next_seq(key));
+    let budget = match (ctx, seq) {
+        (Some((key, _)), Some(s)) => match crate::interact::clamp_para(key) {
+            Some((ps, k)) if ps == s => Some(k),
+            _ => None,
+        },
+        _ => None,
+    };
+    crate::interact::set_para_budget(budget);
     let para = paragraph(taken, inherited, opts);
+    // Ячейку обязательно опустошить и когда абзац её не забрал
+    // (вертикальное письмо уходит из `paragraph` раньше): иначе бюджет
+    // достался бы СЛЕДУЮЩЕМУ абзацу.
+    crate::interact::set_para_budget(None);
     let para = with_text_shadow(para, inherited, taken);
-    if let Some((key, skip)) = crate::interact::clamp_context() {
+    if let Some((key, skip)) = ctx {
         div()
             .relative()
             .child(para)
@@ -3320,6 +3342,8 @@ fn paragraph_probed(taken: &[Node], inherited: &Computed, opts: &RenderOpts) -> 
                 skip,
                 false,
                 0.0,
+                seq,
+                budget,
             ))
             .into_any_element()
     } else {
@@ -9389,6 +9413,10 @@ fn paragraph_pieces(
     first_line_at: usize,
     first_line: &Computed,
 ) -> AnyElement {
+    // Бюджет строк знака обрыва (авто-режим) забирается РАЗОМ, до сборки
+    // кусков: куски строят вложенные абзацы (`inline-block`, `<svg>`), и
+    // чужой бюджет им доставаться не должен.
+    let clamp_budget = crate::interact::take_para_budget();
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО: брать поперечное выравнивание ряда с самих
     // кусков, когда абзац своего не задал (`vertical-align: bottom` у
     // картинки). Ни это, ни `align-self` на самой картинке высоту строки не
@@ -9851,7 +9879,10 @@ fn paragraph_pieces(
                     .clone()
                     .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new()))),
             )
-            .line_clamp(inherited.clamp_lines().map(|n| n as usize))
+            // Счётный режим (`line-clamp: <N>`) берёт предел из стиля;
+            // авто-режим — из бюджета, посчитанного по точке среза.
+            .line_clamp(clamp_budget.or_else(|| inherited.clamp_lines().map(|n| n as usize)))
+            .clamp_marked(clamp_budget.is_some())
             .text_ellipsis(
                 inherited.ellipsis == Some(true)
                     && inherited
@@ -11939,6 +11970,21 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
         // потоке (шаг F6 из `target/scout-float-bands-design.md`).
         // §10.6.7: хост обязан охватить флоаты высотой — здесь они
         // абсолютные и сами её не растят.
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (10.09, `scout-floatover-2026-09.md`, 9
+        // хунков): отрицательное `margin-top` у блочного ребёнка обнуляет
+        // авто-высоту родителя (шесть проб `k1`-`k6`: верные 100/120/150/
+        // 130/100/140, у нас 0.8 во всех шести — места детей при этом
+        // верны, ломается только §10.6.7). Скаут закрывал это ОБЁРТКОЙ
+        // заданной высоты и замерил ей восемь своих проб в 0.00.
+        // Срез 3018 пар (флоаты + clamp + 700 текстовых): 2264 -> 2265,
+        // и вся прибавка — от ДРУГОГО патча в пачке. Своё: `floats-135`
+        // 0.00 взята, `margin-collapse-158` 0.06 -> 1.13 потеряна.
+        // Бисект однозначен: тот же corpus без этого патча оставляет
+        // `margin-collapse-158` = 0.06. Обёртка заданной высоты рвёт
+        // §8.3.1 — сквозь неё перестают схлопываться поля. Находку
+        // (обнуление высоты) держать, лечение искать без обёртки:
+        // §10.6.7 считает низ содержимого от КРАЁВ детей с учётом
+        // отрицательных полей, а не от суммы высот.
         div().relative().w_full().min_h(px(bands.bottom(None)))
     } else {
         div().relative().w_full()
@@ -14157,6 +14203,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         skip,
                         e.style.height.is_some() || e.style.min_height.is_some(),
                         bp_after,
+                        // Коробка — не абзац: знак обрыва на неё не садится
+                        // (он всегда в конце строки, css-overflow-4 §5.3).
+                        None,
+                        None,
                     ));
                 }
             }

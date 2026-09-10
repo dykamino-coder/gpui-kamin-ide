@@ -95,6 +95,11 @@ pub struct Paragraph {
     lines_reversed: bool,
     /// `line-clamp`: сколько строк показывать, остальные обрываются.
     clamp: Option<usize>,
+    /// Знак обрыва положен, даже если абзац влез в предел целиком: точка
+    /// среза стоит СРАЗУ ЗА ним, между блоками (css-overflow-4 §5.3 —
+    /// знак привязан к точке среза, а не к тому, что абзац не поместился).
+    /// Только авто-режим; счётный путь сюда не заходит.
+    clamp_force: bool,
     /// `text-overflow: ellipsis` контейнера с обрезкой.
     text_overflow: bool,
     /// Маркер обрезки вместо многоточия (`text-overflow: <string>`).
@@ -258,6 +263,7 @@ impl Paragraph {
             rel_spans: Vec::new(),
             lines: Vec::new(),
             clamp: None,
+            clamp_force: false,
             text_overflow: false,
             overflow_marker: None,
             marker_font: None,
@@ -640,6 +646,7 @@ impl Paragraph {
         let hg = &self.hanging;
         [hg.first, hg.last, hg.force_end, hg.allow_end].hash(&mut h);
         self.clamp.hash(&mut h);
+        self.clamp_force.hash(&mut h);
         self.text_overflow.hash(&mut h);
         self.overflow_marker.hash(&mut h);
         self.marker_size
@@ -947,7 +954,12 @@ impl Paragraph {
         let Some(max) = self.clamp.filter(|n| *n > 0) else {
             return lines;
         };
-        if lines.len() <= max {
+        // Обрывать нечего — знака нет. Исключение — авто-режим, где точка
+        // среза бывает МЕЖДУ блоками: абзац видим целиком, а знак ему всё
+        // равно положен, потому что за ним обрывается содержимое
+        // контейнера (`line-clamp-auto-024`: срез между вторым и третьим
+        // блоком, а «…» — на «Line 6»).
+        if lines.len() <= max && !self.clamp_force {
             return lines;
         }
         lines.truncate(max);
@@ -988,6 +1000,13 @@ impl Paragraph {
     /// `line-clamp`: сколько строк оставить.
     pub fn line_clamp(mut self, lines: Option<usize>) -> Self {
         self.clamp = lines;
+        self
+    }
+
+    /// Ставить знак обрыва и тогда, когда абзац влез целиком: точка среза
+    /// стоит сразу за ним (авто-режим, css-overflow-4 §5.3).
+    pub fn clamp_marked(mut self, on: bool) -> Self {
+        self.clamp_force = on;
         self
     }
 
@@ -2286,6 +2305,7 @@ impl Element for Paragraph {
         // считается по ПОЛНОМУ числу строк, а рисуются обрезанные, и рамка
         // выходит выше текста (`text-wrap-balance-line-clamp-004`).
         let clamp = self.clamp;
+        let clamp_force = self.clamp_force;
         let fit = self.fit;
         let tab_stop = self.tab_stop;
         // Отступ первой строки решает и число строк, и ширину коробки —
@@ -2313,6 +2333,7 @@ impl Element for Paragraph {
                 probe.shift_spans = shift_spans.clone();
                 probe.lh_spans = lh_spans.clone();
                 probe.clamp = clamp;
+                probe.clamp_force = clamp_force;
                 probe.fit = fit;
                 probe.tab_stop = tab_stop;
                 probe.indent = indent;
@@ -2868,6 +2889,7 @@ impl Paragraph {
             wrap: self.wrap,
             lines: self.lines.clone(),
             clamp: self.clamp,
+            clamp_force: self.clamp_force,
             fit_spacing_scalable: self.fit_spacing_scalable,
             fit_line_height_fixed: self.fit_line_height_fixed,
             text_overflow: false,
