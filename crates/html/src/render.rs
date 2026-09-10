@@ -14439,10 +14439,21 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // становился рядом — `line-box-direction-vrl-019/vlr-020`
             // 6.58 -> 12.55).
             } else if merged.vertical == Some(true)
-                && matches!(
+                // `display: table-caption` — это `Display::Block` С МЕТКОЙ
+                // (`computed.rs:3125`), и голый `Some(Block)` сюда пускать
+                // нельзя (замеренный откат выше). Метку же ставит ТОЛЬКО
+                // само объявление `display: table-caption`, тег `<caption>`
+                // её не несёт, а подпись ВНУТРИ стола сюда не приходит вовсе
+                // — её строит `table()`. Письмо применяется к подписи
+                // (css-writing-modes-4 §3.1, «Applies to: all elements
+                // except table row groups, column groups, rows, columns»),
+                // значит ось её блочного потока задаёт письмо, а не `display`.
+                // Blink: `table_layout_algorithm.cc:67`
+                // `ConstraintSpaceBuilder(space, caption.Style().GetWritingDirection(), true)`.
+                && (matches!(
                     e.style.display,
                     None | Some(Display::InlineBlock) | Some(Display::TableCell)
-                )
+                ) || e.style.is_caption == Some(true))
             {
                 // Вертикальное письмо: ось блочного потока — горизонтальная.
                 // Дети идут слева направо (`vertical-lr`) или справа налево
@@ -16963,8 +16974,30 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             // Умолчание браузера для ячейки — `vertical-align: middle`: без
             // него полоса высотой 10px в строке 22px стояла на 6 точек выше.
-            let mut d = d.flex().flex_col();
-            if cm.vertical == Some(true) && e.style.vertical != Some(true) {
+            // Ортогональная ячейка заводит СВОЙ контекст форматирования и
+            // раскладывает содержимое в СВОЁМ письме (css-writing-modes-4
+            // §3.1: `writing-mode` применяется к `table-cell`; §7.1: правила
+            // горизонтальной оси переходят на вертикальную). Значит ось
+            // блочного потока внутри неё ГОРИЗОНТАЛЬНА: дети идут справа
+            // налево у `vertical-rl`/`sideways-rl` и слева направо у
+            // `vertical-lr`/`sideways-lr`, а не столбиком. Тот же приём, что
+            // у голого блока в `element()` (:14320). Blink строит место
+            // ячейки её собственным письмом —
+            // `table_layout_utils.cc:218`:
+            // `ConstraintSpaceBuilder(table_writing_direction.GetWritingMode(),
+            //                         cell_writing_direction, /* is_new_fc */ true)`.
+            let ortho_cell = cm.vertical == Some(true) && e.style.vertical != Some(true);
+            let mut d = if ortho_cell {
+                let d = d.flex();
+                if cm.vertical_rl == Some(true) {
+                    d.flex_row_reverse()
+                } else {
+                    d.flex_row()
+                }
+            } else {
+                d.flex().flex_col()
+            };
+            if ortho_cell {
                 // ОРТОГОНАЛЬНАЯ ячейка (вертикальный контент в горизонтальной
                 // таблице): строчная ось вертикальна — `text-align` правит
                 // ВЕРТИКАЛЬНОЕ положение строки (line-left = верх), а
@@ -16975,11 +17008,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // сверху вниз, `dir=rtl` разворачивает её снизу вверх.
                 let rtl = cm.rtl == Some(true);
                 d = match cm.text_align {
-                    Some(TextAlign::Right) => d.justify_end(),
-                    Some(TextAlign::Center) => d.justify_center(),
-                    Some(TextAlign::End) if !rtl => d.justify_end(),
-                    Some(TextAlign::Start) if rtl => d.justify_end(),
-                    _ => d.justify_start(),
+                    Some(TextAlign::Right) => d.items_end(),
+                    Some(TextAlign::Center) => d.items_center(),
+                    Some(TextAlign::End) if !rtl => d.items_end(),
+                    Some(TextAlign::Start) if rtl => d.items_end(),
+                    _ => d.items_start(),
                 };
                 // Начальное значение `vertical-align` — `baseline` (§17.5.3),
                 // и у одиночного ряда это ВЕРХ ячейки, а не середина. Пока
@@ -16987,9 +17020,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // полразницы высот (`direction-applies-to-005`: квадрат на
                 // 30 точек ниже эталона).
                 d = match cm.vertical_align {
-                    Some(Align::End) => d.items_end(),
-                    Some(Align::Center) => d.items_center(),
-                    _ => d.items_start(),
+                    Some(Align::End) => d.justify_end(),
+                    Some(Align::Center) => d.justify_center(),
+                    _ => d.justify_start(),
                 };
             } else {
                 d = match cm.vertical_align {
@@ -17911,6 +17944,31 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             div().flex().flex_col()
         };
         wrap.style().align_self = Some(gpui::AlignItems::FlexStart);
+        // Инлайн-размер ОБЁРТКИ — инлайн-размер САМОГО стола, а не наоборот.
+        // CSS 2.1 §17.4: «The width of the table wrapper box is the border-edge
+        // width of the table grid box inside it … Percentages on 'width' and
+        // 'height' on the table are relative to the table wrapper box's
+        // containing block, NOT the table wrapper box itself» (то же
+        // css-tables-3 §fixup-algorithm). Доля коробки рядов опиралась на
+        // обёртку, а обёртка — гибкий КОРЕНЬ копии фрагмента
+        // (`flow.rs` `layout_as_root`), и taffy тянет по доступному месту
+        // только БЛОЧНЫЙ корень (`vendor/taffy/src/compute/mod.rs:68`
+        // `if style.is_block()`): стол с `inline-size: 100%` и подписью
+        // схлопывался до ширины содержимого — 20 css у
+        // `table-grid-paint-htb-ltr` (две рамки) и 34.4 у `table-row-paint-htb-ltr`
+        // (один `border-spacing`). Blink держит один размер на стол и обёртку:
+        // `table_layout_algorithm.cc:139` `available_size = {table_inline_size,
+        // kIndefiniteSize}` и `:71` `builder.SetAvailableSize(available_size)`.
+        // Берём только точки и долю: `em`/`ch` у обёртки считались бы по ЧУЖОМУ
+        // шрифту (`apply::len_to_gpui` ветка запасных величин), а стол с
+        // `width: auto` обязан остаться сжатым по содержимому (§17.5.2).
+        match if vertical { e.style.height } else { e.style.width } {
+            Some(Len::Px(v)) if vertical => wrap = wrap.h(px(v)),
+            Some(Len::Px(v)) => wrap = wrap.w(px(v)),
+            Some(Len::Pct(v)) if vertical => wrap = wrap.h(gpui::relative(v)),
+            Some(Len::Pct(v)) => wrap = wrap.w(gpui::relative(v)),
+            _ => {}
+        }
         // В ряду второй ребёнок сжимался в ноль — каждому своя ширина.
         let own_width = |x: AnyElement| -> AnyElement {
             if vertical {
@@ -21005,6 +21063,17 @@ fn lane_span(e: &Element, count: usize, row_dir: bool) -> (Option<usize>, usize)
             (Some(line(b).saturating_sub(k as usize)), k as usize)
         }
         Some((Placement::Span(k), _)) => (None, k as usize),
+        // `auto / span 3` — спан на КОНЕЧНОЙ грани, начало авто. Пролёт берётся
+        // из любой из двух граней: «If it has an explicit `span` value, its grid
+        // span is explicit» (css-grid-2 §8.1, `Overview.bs:2887-2889`), а
+        // «Auto-placement can be combined with an explicit span» (§8.5, `:3064`).
+        // Blink считает так же — `grid_line_resolver.cc:729`:
+        // `initial_position.IsSpan() ? initial_position : final_position`.
+        // Разбор кладёт запись в (Auto, Span), и она проваливалась в хвостовое
+        // `_`: подсетка на N лунок вставала в ОДНУ и получала срез из одной
+        // дорожки. Обычная сетка ту же форму понимает (`dom.rs:581`), оттого
+        // тест на лунках и эталон на `display: grid` и расходились.
+        Some((Placement::Auto, Placement::Span(k))) => (None, k as usize),
         _ => (None, 1),
     }
 }
