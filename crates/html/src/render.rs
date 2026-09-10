@@ -3769,6 +3769,45 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     {
                         e.style.align_self = Some(Align::End);
                     }
+                    // `sideways-lr` — единственное письмо, где строчная ось
+                    // идёт СНИЗУ ВВЕРХ: таблица Abstract-Physical Mapping
+                    // (css-writing-modes-4, Overview.bs:1795-1830) даёт ему
+                    // `line-left` = НИЗ, всем прочим вертикальным — верх.
+                    // Значит начало строчной оси содержащего блока — его
+                    // нижний край, и ребёнок с ОПРЕДЕЛЁННЫМ поперечным
+                    // (физически вертикальным) размером стоит там:
+                    // `body { height: 9em }` под корнем `sideways-lr` прижат
+                    // к низу окна (`block-flow-direction-043-ref`: стол
+                    // y 412…591 из 600), квадрат `height: 100px` — в НИЖНЕМ
+                    // левом углу (`wm-propagation-body-035-ref`: y 492…592).
+                    // Растянутого ребёнка правило не касается: `align-self`
+                    // без определённого поперечного размера снимает растяжку.
+                    // ★ ЗАМЕРЕНО: срез всего вертикального письма
+                    // (`target/L-wm-wide.txt`, 1798 пар) 1335 -> 1354,
+                    // +20/−1. Единственная потеря — `abs-pos-border-
+                    // offset-002` 0.45 -> 2.22: там 68 коробок всех
+                    // сочетаний письма и направления, и порог она
+                    // держала не правотой, а усреднением; статическое
+                    // место абсолюта при `sideways-lr` остаётся долгом
+                    // корня WM-OVERCONSTRAINED-AXIS.
+                    if inherited.vertical == Some(true)
+                        && inherited.sideways == Some(true)
+                        && inherited.vertical_rl != Some(true)
+                        && matches!(
+                            e.style.height,
+                            Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Pct(_))
+                        )
+                        && e.style.align_self.is_none()
+                        && !e.inline
+                        && matches!(e.style.display, None | Some(Display::Block))
+                        && !matches!(
+                            e.style.position,
+                            Some(crate::computed::Position::Absolute)
+                                | Some(crate::computed::Position::Fixed)
+                        )
+                    {
+                        e.style.align_self = Some(Align::End);
+                    }
                     // Коробка с `aspect-ratio` при auto-ширине и определённой
                     // высоте — fit-content, а не растяжка (css-sizing-4 §5.1:
                     // «automatic sizes are calculated the same as for a replaced
@@ -12892,6 +12931,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         let h = px_of(e.style.height);
         let min_h = px_of(e.style.min_height);
         let max_h = px_of(e.style.max_height);
+        // Предел, поставленный СВОЕЙ высотой, уже содержимый (box-sizing по
+        // умолчанию content-box) — вычитать из него нечего. Вычет нужен
+        // только УНАСЛЕДОВАННОМУ пределу, см. хунк ниже.
+        let mut own_limit = false;
         if h.is_some() || min_h.is_some() || max_h.is_some() {
             // Клэмп как у CSS-высоты: max режет, min ПЕРЕБИВАЕТ max; без
             // своей высоты базой служит НАЧАЛЬНЫЙ содержащий блок, и он же —
@@ -12909,6 +12952,35 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // (table-cell-002: max-height ячейки).
             if e.style.vertical != Some(true) || merged.ortho_limit.is_none() {
                 merged.ortho_limit = Some(avail);
+                own_limit = true;
+            }
+        }
+        // Свои рамки и отбивки вдоль СТРОЧНОЙ оси (при вертикальном письме —
+        // физически верх и низ) съедают предел, который блок передаёт детям:
+        // §7.3.1 берёт запасной предел от ВНУТРЕННЕГО размера содержащего
+        // блока («the containing block's **inner** max size»,
+        // css-writing-modes-4 Overview.bs:2141), то есть от content-box.
+        // Blink делает тот же вычет явно — `space_utils.cc:59-72`
+        // `SetOrthogonalFallbackInlineSize`, комментарий «Calculate the
+        // content-box size»; он берёт предел у НЕПОСРЕДСТВЕННОГО родителя, а
+        // у нас предел несётся вниз наследуемым полем (`inline.rs:1012`),
+        // поэтому вычет обязан идти на КАЖДОМ уровне.
+        // Видно это только у `sideways-lr`: там строка начинается у
+        // ПРОТИВОПОЛОЖНОГО края коробки (`VerticalText::ccw`), и лишняя
+        // высота уводит весь рисунок; у письма по часовой она свисает
+        // пустым хвостом (`block-flow-direction-vlr-010`, `vrl-009`,
+        // `srl-049` зелены при том же дефекте).
+        if !own_limit
+            && merged.vertical == Some(true)
+            && let Some(l) = merged.ortho_limit
+        {
+            let b = e.style.borders();
+            let edges = px_of(b.top).unwrap_or(0.0)
+                + px_of(b.bottom).unwrap_or(0.0)
+                + px_of(e.style.padding.top).unwrap_or(0.0)
+                + px_of(e.style.padding.bottom).unwrap_or(0.0);
+            if edges > 0.0 {
+                merged.ortho_limit = Some((l - edges).max(0.0));
             }
         }
     }
