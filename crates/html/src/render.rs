@@ -1235,6 +1235,174 @@ fn grid_px_row_bands(c: &Computed) -> Option<Vec<(f32, f32)>> {
     Some(out)
 }
 
+/// Полосы рядов сетки, когда `grid_rows_px` бессилен: колонок больше одной,
+/// ряд `auto` или ряд вовсе неявный. `(начало, конец)` каждого ряда от верха
+/// содержимого; последний конец — высота сетки.
+///
+/// css-grid-2 §Fragmenting Grid Layout, «Sample Fragmentation Algorithm»
+/// шаг 4: «If the grid height is ''auto'', the height of the grid should be
+/// the sum of the final row sizes». Blink считает ровно это —
+/// `grid_layout_algorithm.cc:370` `CalculateIntrinsicBlockSize`:
+/// `layout_data.Rows().CalculateSetSpanSize() + border_scrollbar_padding
+/// .BlockSum()`, без всякого условия «дорожки в точках».
+///
+/// Размер ряда: явная дорожка `Px` — как есть; `auto` и неявный ряд — по
+/// НАИБОЛЬШЕМУ элементу ряда (css-grid-1 §12.5: `auto` как максимум —
+/// max-content вклада), с полями: поля элементов сетки не схлопываются
+/// (§6.1). Размещение — css-grid-1 §8.5: сперва элементы с ЯВНОЙ линией
+/// ряда (шаг 2), затем курсор по рядам (шаг 4).
+///
+/// Отказ (`None`) — на всём, где догадка была бы неверной: `fr`, проценты,
+/// `minmax`, `min-content`, `subgrid`, `repeat(auto-fill …)` в дорожках;
+/// `grid-template-areas`; `grid-auto-flow` по колонкам или `dense`;
+/// `grid-auto-rows` заданного размера; распределяющий `align-content`;
+/// зазор не в точках; явная КОЛОНКА или охват рядов у ребёнка; ребёнок,
+/// который сам себя измерить не даёт. Отказ = прежнее поведение, поэтому
+/// ни одна пара, что мерится сегодня, этой функции не видит: она стоит
+/// ПОСЛЕ `grid_rows_px` в той же ветке.
+///
+/// Точек разреза функция НЕ даёт нарочно. Класс A между рядами
+/// (css-grid-2 §Fragmenting Grid Layout) — возможность, а не предпочтение:
+/// Blink переносит ряд в следующий фрагментаинер только при принудительном
+/// разрыве (`grid_layout_algorithm.cc:2161-2167`) или при отказе
+/// `MovePastBreakpoint` (:2178), а обычный ряд режет по краю. Точка класса A
+/// на каждой границе ряда увела бы разрез у зелёных
+/// `grid-item-oof-002/003` (ряды `50px 150px`, край колонки на 100 внутри
+/// второго ряда) с края на 50 и потеряла бы половину колонки.
+fn grid_auto_row_bands(c: &Element, depth: u8, cx: ShapeCx) -> Option<Vec<(f32, f32)>> {
+    use crate::computed::{AutoFlow, Placement, Track, TrackSize};
+    let s = &c.style;
+    if depth == 0 || !matches!(s.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
+        return None;
+    }
+    if s.grid_areas.is_some()
+        || s.align_content.is_some()
+        || matches!(
+            s.grid_auto_flow,
+            Some(AutoFlow::Col) | Some(AutoFlow::ColDense) | Some(AutoFlow::RowDense)
+        )
+        || !matches!(s.grid_auto_rows, None | Some(TrackSize::Single(Track::Auto)))
+        || !s.grid_auto_rows_list.is_empty()
+    {
+        return None;
+    }
+    let gap = match s.gap {
+        None | Some((None, _)) => 0.0,
+        Some((Some(Len::Px(v)), _)) => v,
+        _ => return None,
+    };
+    // Явные дорожки рядов: `Some(px)` — размер известен, `None` — ряд `auto`
+    // и меряется содержимым. Всё прочее — отказ.
+    let mut track: Vec<Option<f32>> = Vec::new();
+    if let Some(rows) = s.grid_rows.as_ref() {
+        for t in rows {
+            match t {
+                TrackSize::Single(Track::Px(v)) => track.push(Some(*v)),
+                TrackSize::Single(Track::Auto) => track.push(None),
+                _ => return None,
+            }
+        }
+    }
+    // Колонки: `grid-template-columns` перечислимым списком либо его нет —
+    // тогда неявная колонка ровно одна.
+    let cols = match (s.grid_cols, s.grid_tracks.as_ref()) {
+        (Some(n), _) => n.max(1) as usize,
+        (None, Some(t)) => {
+            if t.iter().any(|x| matches!(x, TrackSize::AutoRepeat { .. })) {
+                return None;
+            }
+            t.len().max(1)
+        }
+        (None, None) => 1,
+    };
+    // `used[ряд][колонка]` — занятость, `fill[ряд]` — содержимое ряда.
+    let mut used: Vec<Vec<bool>> = Vec::new();
+    let mut fill: Vec<f32> = Vec::new();
+    for pass in 0..2u8 {
+        let mut cur_row = 0usize;
+        let mut cur_col = 0usize;
+        for n in c.children.iter().filter(|n| !is_blank(n)) {
+            let Node::Element(k) = n else {
+                return None;
+            };
+            if matches!(k.style.display, Some(Display::None)) || out_of_flow(&k.style) {
+                continue;
+            }
+            // Явная КОЛОНКА и именованная область — не наш случай: там
+            // размещение решают правила, которых здесь нет.
+            if k.style.grid_area_name.is_some() || k.style.grid_col.is_some() {
+                return None;
+            }
+            // Ряд — только ОДИНОЧНАЯ явная линия: элемент, растянутый на
+            // несколько рядов, сам меняет размер дорожек (css-grid-1 §12.5),
+            // и отказ честнее догадки.
+            let line = match k.style.grid_row {
+                None | Some((Placement::Auto, Placement::Auto)) => None,
+                Some((Placement::Line(a), Placement::Auto)) if a >= 1 => Some((a - 1) as usize),
+                _ => return None,
+            };
+            // Проход 0 — «locked to a given row» (§8.5 шаг 2), проход 1 —
+            // курсор (§8.5 шаг 4). Мера ребёнка берётся ровно один раз.
+            if (pass == 0) != line.is_some() {
+                continue;
+            }
+            let h = shape_full(k, depth - 1, cx).map(|x| x.0 + x.1 + x.2)?;
+            let (row, col) = match line {
+                Some(r) => {
+                    // «the earliest line index that ensures this item's grid
+                    // area will not overlap any occupied grid cells».
+                    let mut cc = 0usize;
+                    while cc + 1 < cols && used.get(r).is_some_and(|v| v[cc]) {
+                        cc += 1;
+                    }
+                    (r, cc)
+                }
+                None => {
+                    let mut rr = cur_row;
+                    let mut cc = cur_col;
+                    while used.get(rr).is_some_and(|v| v[cc]) {
+                        cc += 1;
+                        if cc >= cols {
+                            cc = 0;
+                            rr += 1;
+                        }
+                    }
+                    (rr, cc)
+                }
+            };
+            while used.len() <= row {
+                used.push(vec![false; cols]);
+                fill.push(0.0);
+            }
+            used[row][col] = true;
+            fill[row] = fill[row].max(h);
+            if line.is_none() {
+                cur_row = row;
+                cur_col = col + 1;
+                if cur_col >= cols {
+                    cur_col = 0;
+                    cur_row += 1;
+                }
+            }
+        }
+    }
+    let rows_n = track.len().max(used.len());
+    if rows_n == 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(rows_n);
+    let mut y = 0.0f32;
+    for i in 0..rows_n {
+        let h = match track.get(i) {
+            Some(Some(v)) => *v,
+            _ => fill.get(i).copied().unwrap_or(0.0),
+        };
+        out.push((y, y + h));
+        y += h + gap;
+    }
+    Some(out)
+}
+
 /// Принудительные разрывы, перенесённые с ЭЛЕМЕНТОВ сетки на границы РЯДОВ
 /// (css-grid-2 §Fragmenting Grid Layout: «The 'break-before' and
 /// 'break-after' properties on grid items are propagated to their grid
@@ -1919,8 +2087,26 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             // = 0.00.
             None => match grid_rows_px(&c.style) {
                 Some(v) => (v + top + bot, mt, mb),
-                None if kids.is_empty() => (top + bot, mt, mb),
-                None => return None,
+                // Сетка, у которой дорожки рядов НЕ все в точках (несколько
+                // колонок, ряд `auto`, неявный ряд), до сих пор отдавала
+                // `return None`. `None` тут стоит дорого: в `blocks()`
+                // (:13391) `stackable` собирается через
+                // `collect::<Option<Vec<_>>>()`, и одна неизмеримая сетка
+                // отменяет укладку колонок ВСЕГО многоколоночника вместе с
+                // её соседями — колонка 1 переполнена, остальные пусты
+                // (`grid-item-fragmentation-003`: сетка `auto auto` с
+                // элементом 200px, ряд 200, ничего не фрагментируется).
+                // Высота сетки с `height: auto` — сумма размеров дорожек
+                // рядов (css-grid-2 §Fragmenting Grid Layout, шаг 4
+                // «Sample Fragmentation Algorithm»; Blink
+                // `grid_layout_algorithm.cc:370`
+                // `Rows().CalculateSetSpanSize()`). Точек разреза эта ветка
+                // не добавляет — см. `grid_auto_row_bands`.
+                None => match grid_auto_row_bands(c, depth, cx) {
+                    Some(b) => (b.last().map_or(0.0, |r| r.1) + top + bot, mt, mb),
+                    None if kids.is_empty() => (top + bot, mt, mb),
+                    None => return None,
+                },
             },
         },
     };
@@ -2633,14 +2819,35 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         parts.push((kind, e));
     }
     parts.sort_by_key(|p| p.0);
+    // `break-before`/`break-after: avoid*` РЯДА — не только своё значение.
+    // css-break-4 §break-propagation переносит `break-before` ПЕРВОГО поточного
+    // ребёнка на контейнер («a 'break-before' value on a first in-flow child box
+    // is propagated to its container. Likewise a 'break-after' value on a last
+    // in-flow child box»), а для «parallel layout» разрешает более частное
+    // правило — ячейки ряда как раз параллельные потоки. Частное правило берём у
+    // эталона: Blink СЛИВАЕТ значения ВСЕХ ячеек ряда в значение ряда,
+    // `table_row_layout_algorithm.cc:169-177` (`row_break_before =
+    // JoinFragmentainerBreakValues(row_break_before, cell_break_before)` и та же
+    // строка для `break-after`), и отдаёт результат наружу на `:255-257`.
+    // `edge_avoid` уже делает перенос с КРАЙНЕГО ребёнка ячейки — это Blink'овы
+    // `InitialBreakBefore`/`FinalBreakAfter`; остаётся объединение по всем ячейкам.
+    fn row_avoid(row: &Element, last: bool) -> bool {
+        edge_avoid(row, last)
+            || row.children.iter().filter(|n| !is_blank(n)).any(|n| {
+                matches!(n, Node::Element(cell) if is_cell(cell) && edge_avoid(cell, last))
+            })
+    }
     // Плоский список рядов: ряд, № группы, avoid группы, разрывы (свои и
-    // группы — на первом/последнем её ряду).
+    // группы — на первом/последнем её ряду), запреты разрыва на КРАЯХ ряда
+    // (`ab`/`aa` — свои, ячеек и краёв группы).
     struct RowRef<'a> {
         row: &'a Element,
         group: usize,
         avoid: bool,
         fb: bool,
         fa: bool,
+        ab: bool,
+        aa: bool,
     }
     let mut rows: Vec<RowRef> = Vec::new();
     for (gi, (_, e)) in parts.iter().enumerate() {
@@ -2651,6 +2858,8 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 avoid: false,
                 fb: e.style.break_before_force,
                 fa: e.style.break_after_force,
+                ab: row_avoid(e, false),
+                aa: row_avoid(e, true),
             });
             continue;
         }
@@ -2671,6 +2880,12 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 avoid: e.style.break_inside_avoid,
                 fb: r.style.break_before_force || (i == 0 && e.style.break_before_force),
                 fa: r.style.break_after_force || (i == last && e.style.break_after_force),
+                // Край ГРУППЫ — тот же перенос, что у принудительных выше:
+                // `break-before: avoid` группы действует на её ПЕРВОМ ряду,
+                // `break-after: avoid` — на ПОСЛЕДНЕМ (css-break-4 §break-between,
+                // «Applies to: … table row groups, table rows»).
+                ab: row_avoid(r, false) || (i == 0 && e.style.break_before_avoid),
+                aa: row_avoid(r, true) || (i == last && e.style.break_after_avoid),
             });
         }
     }
@@ -2699,6 +2914,11 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     }
     let mut y = top;
     let mut group_open: Option<(usize, f32)> = None;
+    // Сцепка рядов, скованных `break-before/after: avoid*`: начало открытого
+    // диапазона, `open` предыдущего ряда и его `break-after: avoid*`.
+    let mut avoid_run: Option<f32> = None;
+    let mut prev_open = 0.0f32;
+    let mut prev_aa = false;
     let mut force_next = false;
     for (i, r) in rows.iter().enumerate() {
         let start = y + spacing;
@@ -2716,11 +2936,25 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             forced.extend(kforced.into_iter().map(|f| start + f));
             solid.extend(ksolid.into_iter().map(|(a, b)| (start + a, start + b)));
         }
+        // css-break-4 §unforced-breaks Rule 1: «may break at a class A break point
+        // only if all the 'break-after' and 'break-before' values applicable to
+        // this break point allow it, which is when at least one of them forces a
+        // break or when none of them forbid it». Значит запрет с ЛЮБОЙ из двух
+        // сторон границу закрывает, а принудительный разрыв её открывает обратно
+        // (§forced-breaks: «a forced break value effectively overrides any avoid
+        // break value that also applies at that break point»). До сих пор мера не
+        // читала запреты вовсе: точка класса A ставилась между любой парой рядов,
+        // и разрез садился между вторым и третьим рядом `break-avoidance-001…006`
+        // вместо первого и второго.
+        let joined = i > 0 && (prev_aa || r.ab) && !(r.fb || force_next);
         if i > 0 {
             // Класс A между рядами: разрез по концу предыдущего ряда,
             // продолжение с начала этого (зазор остаётся на новой странице —
-            // копия разложена целиком, геометрия сходится).
-            cuts.push((y, start));
+            // копия разложена целиком, геометрия сходится). На запрещённой
+            // границе точки нет.
+            if !joined {
+                cuts.push((y, start));
+            }
             if r.fb || force_next {
                 forced.push(y);
             }
@@ -2732,6 +2966,25 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         // `FinishFragmentation`: «Avoid breaking inside block-start border …
         // No valid breakpoints there»; `rowgroup-page-break-inside-avoid-1`).
         let open = if i == 0 { 0.0 } else { y };
+        // Одного отсутствия точки класса A мало: `fill_at` (flow.rs) режет ПО
+        // КРАЮ КОЛОНКИ (`else { Some(at(edge)) }`), а `cuts` читает только на
+        // точное совпадение с краем — они дают усечение поля, а не запрет.
+        // Разрез останавливает единственная вещь — сплошной диапазон: ветка
+        // `k.solid.iter().find(|&&(a, b)| holds(a, b))` уводит срез к НАЧАЛУ
+        // диапазона, накрывшего край. Поэтому сцепка скованных рядов идёт ОДНИМ
+        // диапазоном, и открывается он на `open` ПРЕДЫДУЩЕГО ряда: разрыв обязан
+        // уйти к разрешённой границе ПЕРЕД ним (`break-avoidance-001`: сцепка
+        // (50, 150), срез уходит на 50 — css-tables-3 §breaking-rules «insert some
+        // vertical gap between the rows located before and at the overflow point»).
+        // Вложенность с `break-inside: avoid` ряда и группы законна: `fill_at` на
+        // страницах берёт САМЫЙ ВНЕШНИЙ из накрывших край диапазонов.
+        if joined {
+            if avoid_run.is_none() {
+                avoid_run = Some(prev_open);
+            }
+        } else if let Some(s) = avoid_run.take() {
+            solid.push((s, y));
+        }
         if r.row.style.break_inside_avoid {
             solid.push((open, start + h));
         }
@@ -2744,7 +2997,13 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         if r.avoid && group_open.is_none() {
             group_open = Some((r.group, open));
         }
+        prev_open = open;
+        prev_aa = r.aa;
         y = start + h;
+    }
+    // Сцепка, дожившая до конца коробки рядов, закрывается её низом.
+    if let Some(s) = avoid_run {
+        solid.push((s, y));
     }
     if let Some((_, gs)) = group_open {
         solid.push((gs, y));
@@ -14560,8 +14819,37 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             Some(Len::Px(v)) => v,
             _ => ci.unwrap_or(0.0),
         };
-        let cw = used(e.style.width, e.style.contain_intrinsic.0);
-        let ch = used(e.style.height, e.style.contain_intrinsic.1);
+        // Обособление снимает ПРИРОДНОЕ соотношение, но не ЗАЯВЛЕННОЕ:
+        // css-contain-2 §size containment, «Size containment only suppresses
+        // the natural aspect ratio, so properties like 'aspect-ratio' which
+        // affect that preferred aspect ratio directly are honored»
+        // (Overview.bs:659-662), и пример там же (:737-752):
+        // `img{width:100px;aspect-ratio:1/1;contain:size}` = 100×100, а без
+        // объявленного соотношения — 100×0. Пара атрибутов `width`/`height`
+        // разметки — это `aspect-ratio: auto <ratio>` (HTML Rendering
+        // §attributes for embedded content): природная его половина снята,
+        // заявленная осталась. Blink делает ровно так —
+        // `BlockNode::GetReplacedAspectRatio` (`block_node.cc:1328`):
+        // заявленное отдаётся ДО проверки обособления, гейт
+        // `ShouldApplyAnySizeContainment` стоит только вокруг природного.
+        let ratio = e
+            .style
+            .aspect_ratio
+            .filter(|r| r.is_finite() && *r > 0.0)
+            .or_else(|| match (e.style.attr_width, e.style.attr_height) {
+                (Some(Len::Px(aw)), Some(Len::Px(ah))) if aw > 0.0 && ah > 0.0 => Some(aw / ah),
+                _ => None,
+            });
+        let named = |l: Option<Len>| matches!(l, Some(Len::Px(_)));
+        let (nw, nh) = (named(e.style.width), named(e.style.height));
+        let cw = match ratio {
+            Some(r) if !nw && nh => used(e.style.height, e.style.contain_intrinsic.1) * r,
+            _ => used(e.style.width, e.style.contain_intrinsic.0),
+        };
+        let ch = match ratio {
+            Some(r) if nw && !nh => used(e.style.width, e.style.contain_intrinsic.0) / r,
+            _ => used(e.style.height, e.style.contain_intrinsic.1),
+        };
         let mut d = d;
         if e.style.contains_width() && matches!(e.style.width, None | Some(Len::Auto)) {
             d = d.w(px(cw + pad_x));
@@ -14590,6 +14878,30 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 None => gpui::img(SharedString::from(src.to_string())),
             },
         };
+        // Подгонка содержимого замещаемой коробки считается от ПРИРОДНОГО
+        // размера картинки, который у самой картинки никуда не делся:
+        // обособление меняет коробку, а не объект. У Blink это два разных
+        // входа — раскладочный `LayoutReplaced::ComputeNaturalSizingInfo`
+        // начинается с `DCHECK(!ShouldApplySizeContainment())`
+        // (`layout_replaced.cc:509`), а рисовательный
+        // `LayoutReplaced::ReplacedContentRectFrom` берёт
+        // `GetNaturalDimensions()` БЕЗ всякого гейта (`:497`), и уже от него
+        // `ComputeObjectFitAndPositionRect` (`:426`) считает `object-fit`.
+        // Поэтому коробку домеряем здесь, а рисуем ОБЫЧНЫМ путём: клон с уже
+        // посчитанными сторонами содержимого и снятым обособлением — это и
+        // есть второй такт, «laying out in-place» (css-contain-2
+        // Overview.bs:702-707).
+        if e.style.object_fit.is_some() || e.style.object_position.is_some() {
+            let mut fitted = e.clone();
+            fitted.style.width = Some(Len::Px(cw));
+            fitted.style.height = Some(Len::Px(ch));
+            // `cw`/`ch` — размер СОДЕРЖИМОГО по построению, поэтому клон
+            // меряется по содержимому независимо от `box-sizing` документа.
+            fitted.style.border_box = Some(false);
+            fitted.style.contain_size = Some(false);
+            fitted.style.contain_inline_size = Some(false);
+            return image_with(&fitted, base_font);
+        }
         image = image.w(px(cw)).h(px(ch)).object_fit(gpui::ObjectFit::Fill);
         return d.child(image).into_any_element();
     }
@@ -18582,6 +18894,13 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     } else {
         merged.auto_repeat_cols
     };
+    // Тело авто-повтора ДОРОЖКА ЗА ДОРОЖКОЙ (css-grid-3 §7.2.1). Скалярный
+    // `AutoRepeat` знает только ДЛИНУ тела и ОДИН размер на все его дорожки.
+    let body_tracks = if row_dir {
+        merged.auto_repeat_body_rows.as_deref()
+    } else {
+        merged.auto_repeat_body_cols.as_deref()
+    };
     let room = if row_dir {
         px_of(merged.height)
     } else {
@@ -18717,10 +19036,12 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // Доля дорожки считается от места контейнера: `repeat(auto-fill,
         // 25%)` в трёхстах точках — это четыре дорожки по 75
         // (`column-auto-repeat-002`).
-        let step = repeat
-            .track
-            .or_else(|| repeat.track_pct.map(|k| k * room))
-            .unwrap_or_else(|| {
+        // Вклад содержимого в дорожку, замеренный ПО ЕЁ ФУНКЦИИ: `min-content`
+        // — самое узкое место, `max-content`/`auto` — вся строка (css-grid-2
+        // §11.5). Прежде замер был ОДИН на всё тело повтора, и
+        // `repeat(auto-fill, max-content min-content)` считался двумя
+        // одинаковыми дорожками самого узкого места.
+        let content_step = |min_content: bool| -> f32 {
                 e.children
                     .iter()
                     .filter_map(|n| match n {
@@ -18833,7 +19154,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // строку в обоих случаях, и число повторов у
                                 // `repeat(auto-fill, min-content)` совпадало с
                                 // `max-content` до сотых.
-                                let total = if repeat.intrinsic_min {
+                                let total = if min_content {
                                     ws.iter().copied().max().unwrap_or(0)
                                 } else {
                                     ws.iter().sum::<usize>() + ws.len().saturating_sub(1)
@@ -18869,7 +19190,14 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                         _ => None,
                     })
                     .fold(0.0f32, f32::max)
-            });
+        };
+        // Скалярный `step` остаётся ровно прежним: точка, доля, иначе вклад
+        // содержимого по флагу `intrinsic_min`. Он ведёт все тела, для которых
+        // списка нет.
+        let step = repeat
+            .track
+            .or_else(|| repeat.track_pct.map(|k| k * room))
+            .unwrap_or_else(|| content_step(repeat.intrinsic_min));
         if step > 0.0 {
             // Число повторов считается по ДОРОЖКЕ, а не по содержимому:
             // css-grid-2 §7.2.3.2 берёт «max track sizing function if that is
@@ -18888,8 +19216,53 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 Some(cap) if repeat.intrinsic => step.min(cap),
                 _ => step,
             };
-            let body = if repeat.intrinsic { repeat.body.max(1) } else { 1 };
-            let unit = step * body as f32 + cross_gap * (body as f32 - 1.0);
+            // Гипотетический размер КАЖДОЙ дорожки тела (css-grid-3 §7.2.1:
+            // «The hypothetical size of each track in the repeat() listing is
+            // given by the largest track corresponding to that entry (by
+            // index)»). Blink `grid/grid_layout_utils.cc:309
+            // CalculateAutomaticRepetitions` складывает `repeater_size` из
+            // вкладов ОТДЕЛЬНЫХ дорожек тела с зазорами, а вклад
+            // интрин-дорожки берёт из `intrinsic_repeat_track_sizes`, где ключ
+            // — сама ФУНКЦИЯ дорожки (`grid_lanes_layout_algorithm.cc:2938
+            // CalculateIntrinsicTrackSizes`).
+            //
+            // Гейт `repeat.intrinsic` держит границу: `auto`-тело и точечные
+            // дорожки остаются на прежнем скалярном пути — там счёт по
+            // элементам и `Fr`-дорожки, и это отдельная жила, ЗАМЕРЕННАЯ И
+            // ОТКАЧЕННАЯ (патч II 07.09, v143).
+            let hypo = |t: &TrackSize| -> f32 {
+                // `auto` в МИНИМУМЕ — минимальный вклад (css-grid-2 §12.4,
+                // ≈ min-content), в МАКСИМУМЕ — max-content (§12.5).
+                let one = |tr: &Track, min_side: bool| match tr {
+                    Track::Px(v) => *v,
+                    Track::Pct(k) => k * room,
+                    Track::MinContent => content_step(true),
+                    Track::Auto if min_side => content_step(true),
+                    _ => content_step(false),
+                };
+                match t {
+                    TrackSize::Single(tr) => one(tr, false),
+                    // `fit-content(N)` разобран как `MinMax(Auto, Px(N))` и
+                    // даёт `min(max-content, N)` (css-grid-1 §7.2.3).
+                    TrackSize::MinMax(Track::Auto, Track::Px(cap)) => {
+                        content_step(false).min(*cap)
+                    }
+                    // Иначе счёт по МАКСИМАЛЬНОЙ функции, поднятой до
+                    // минимальной (css-grid-1 §7.2.3.2; Blink:
+                    // `std::max(fixed_max, fixed_min)`).
+                    TrackSize::MinMax(lo, hi) => one(hi, false).max(one(lo, true)),
+                    TrackSize::AutoRepeat { .. } => content_step(false),
+                }
+            };
+            let body_px: Vec<f32> = match body_tracks {
+                Some(list) if repeat.intrinsic && !list.is_empty() => {
+                    list.iter().map(&hypo).collect()
+                }
+                // Прежнее поведение слово в слово: одно число на всё тело.
+                _ => vec![step; if repeat.intrinsic { repeat.body.max(1) } else { 1 }],
+            };
+            let body = body_px.len().max(1);
+            let unit = body_px.iter().sum::<f32>() + cross_gap * (body as f32 - 1.0);
             let n = (((room + cross_gap) / (unit + cross_gap)).floor() as usize).max(1) * body;
             // Явные линии тянут повторы ДАЛЬШЕ места: `grid-row: 9 / span 2`
             // требует десяти рядов, лишние пустые схлопнет auto-fit
@@ -18937,11 +19310,17 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     // `min-content` и `max-content` — одна и та же высота
                     // содержимого при его ширине (css-grid-2 §11.5), поэтому
                     // отдельной ветки `intrinsic_min` рядам не нужно.
-                    let w = match repeat.fit_px {
-                        Some(cap) => step.min(cap),
-                        None => step,
-                    };
-                    vec![TrackSize::Single(Track::Px(w)); n]
+                    // Размер лунки берётся из ЕЁ записи в теле повтора, а не
+                    // один на всех: `repeat(auto-fill, max-content
+                    // min-content)` в 675 точках — это чередование 135/90
+                    // (эталон `repeat(3, 135px 90px)`), а не шесть дорожек по
+                    // 90. Потолок `fit-content(N)` уже наложен в `hypo`; когда
+                    // списка тела нет, `body_px` состоит из прежнего
+                    // скалярного `step`, и ветка возвращает ровно то же, что
+                    // возвращала.
+                    (0..n)
+                        .map(|i| TrackSize::Single(Track::Px(body_px[i % body])))
+                        .collect()
                 }
                 // Дорожка по содержимому делит место поровну: свой размер ей
                 // назначать нельзя, иначе `auto-fit` не сможет отдать место
@@ -19484,6 +19863,53 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
     }
     let mut slots: Vec<Vec<SlotNode>> = (0..count).map(|_| vec![]).collect();
     let used_sizes = lane_used_sizes(&tracks);
+    // Дорожки лежат в СОДЕРЖИМОМ контейнера, а инсет абсолютной обёртки
+    // раскладка считает от ПАДДИНГ-бокса: `vendor/taffy/src/compute/flexbox.rs:2472`
+    // — `offset_main = start + constants.border.main_start(dir) + …`, прибавляется
+    // только рамка. Разница — ведущий паддинг плюс сдвиг РАЗДАЧИ дорожек
+    // (`align-content` в рядах, `justify-content` в колонках), тот самый, что ниже
+    // по функции уходит на `row.style().justify_content`.
+    // ★ Прежний откат (запись в блоке обёртки) прибавлял паддинг ВСЕМ ЧЕТЫРЁМ
+    // сторонам. По оси УКЛАДКИ обёртка обязана остаться на паддинг-боксе: там
+    // `auto`-линии, а «an `auto` value for a grid-placement property contributes a
+    // special line … that of the corresponding padding edge of the grid container»
+    // (css-grid-2 §9.1). Поэтому поправка идёт ТОЛЬКО в `off`.
+    let across_dist = {
+        use crate::computed::Justify;
+        let total = used_sizes
+            .iter()
+            .copied()
+            .collect::<Option<Vec<f32>>>()
+            .map(|v| v.iter().sum::<f32>() + cross_gap * v.len().saturating_sub(1) as f32);
+        let room = if row_dir { box_h } else { box_w };
+        match (total, room) {
+            (Some(t), Some(r)) => {
+                let free = r - t;
+                let n = used_sizes.len().max(1) as f32;
+                match if row_dir {
+                    merged.align_content
+                } else {
+                    merged.justify_content
+                } {
+                    Some(Justify::Center) => free / 2.0,
+                    Some(Justify::End) => free,
+                    Some(Justify::Around) => free / (2.0 * n),
+                    Some(Justify::Evenly) => free / (n + 1.0),
+                    _ => 0.0,
+                }
+            }
+            _ => 0.0,
+        }
+    };
+    // Ведущий паддинг контейнера по оси ДОРОЖЕК.
+    let pad_lead = match if row_dir {
+        merged.padding.top
+    } else {
+        merged.padding.left
+    } {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
     // Позиционированные — вне потока: в конец первой лунки, без падов.
     let mut extras: Vec<Node> = vec![];
     // Курсор авто-размещения основного прохода (зеркало probe).
@@ -19502,15 +19928,21 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
         ) {
             let wrapped = (|| -> Option<Node> {
-                // Свои инсеты сильнее дорожек — обёртка их не перекрывает.
+                // Область дорожек — СОДЕРЖАЩИЙ БЛОК абсолюта, и свои края он
+                // отсчитывает уже от неё: «the containing block corresponds to the
+                // grid area determined by its grid-placement properties. The offset
+                // properties then indicate offsets inwards from the corresponding
+                // edges of this containing block, as normal» (css-grid-2 §9.1).
+                // Blink считает прямоугольник ВСЕГДА и сдвигает только те края, где
+                // размещение определённо (`grid_lanes_layout_algorithm.cc:3314-3341`).
+                // Прежде любой заданный край — даже по ДРУГОЙ оси — выбрасывал
+                // размещение целиком, и `grid-row: 4/5; top: 10px` вставало на 10px
+                // от паддинг-бокса вместо 10px от четвёртой дорожки.
                 let ins = item.style.inset;
-                if ins.top.is_some()
+                let has_own_insets = ins.top.is_some()
                     || ins.bottom.is_some()
                     || ins.left.is_some()
-                    || ins.right.is_some()
-                {
-                    return None;
-                }
+                    || ins.right.is_some();
                 let (fixed, span) = lane_span(item, count, row_dir);
                 let a = fixed?;
                 let span = span.clamp(1, count);
@@ -19524,7 +19956,7 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     Some(TrackSize::Single(Track::Px(w))) => Some(*w),
                     _ => None,
                 };
-                let mut off = 0.0f32;
+                let mut off = pad_lead + across_dist;
                 for i in 0..a {
                     off += px_of(tracks.get(i))? + cross_gap;
                 }
@@ -19579,8 +20011,53 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                     Some(a @ (Align::End | Align::Center | Align::Stretch)) => a,
                     _ => Align::Start,
                 });
+                // css-align-3 §5.3: «If the size of the alignment subject overflows
+                // the alignment container, the alignment subject is instead aligned
+                // as if the alignment mode were flex-start». Зона известна только по
+                // ОСИ ДОРОЖЕК — обёртка ровно её размера (`size`), там и глушим;
+                // поточные элементы лунок так уже умеют (`cross_safe` ниже по
+                // `fn lanes`). Через раскладку это не пройдёт: `apply.rs:622` не
+                // отдаёт флаги контейнеру лунок, а `safe_align_self` в taffy
+                // объявлен и не используется.
+                let own_safe = if row_dir {
+                    if item.style.align_self.is_some() {
+                        item.style.align_self_safe
+                    } else {
+                        merged.align_items_safe
+                    }
+                } else if item.style.justify_self.is_some() {
+                    item.style.justify_self_safe
+                } else {
+                    merged.justify_items_safe
+                };
+                let extent = if row_dir {
+                    item_height(item, merged, opts)
+                } else {
+                    item_width(item)
+                };
+                if own_safe && size > 0.0 && extent > size + 0.01 {
+                    if row_dir {
+                        style.align_items = Some(Align::Start);
+                    } else {
+                        style.justify_content =
+                            Some(if flip { Justify::End } else { Justify::Start });
+                    }
+                }
                 let mut freed = item.clone();
-                freed.style.position = None;
+                // Коробка со своими краями остаётся АБСОЛЮТНОЙ внутри обёртки:
+                // обёртка и есть её область дорожек, а по пустой оси место решает
+                // раздача обёртки (taffy `flexbox.rs:2472-2512`: пустая сторона
+                // падает на `justify_content` / `align_self`).
+                // Без краёв коробка — поточный ребёнок обёртки и НЕ ужимается:
+                // элемент шире дорожки честно вылезает за неё
+                // (`column-grid-lanes-alignment-positioned-items-002`: 120px в
+                // дорожке 80px усаживался до 80).
+                if has_own_insets {
+                    freed.style.position = Some(Position::Absolute);
+                } else {
+                    freed.style.position = None;
+                    freed.style.flex_shrink = Some(0.0);
+                }
                 Some(Node::Element(Element {
                     list_item: None,
                     node_id: 0,
@@ -19700,7 +20177,16 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
         // `contain: layout|paint` и внепоточности. Полный свод CSS3: 0 и 0 —
         // `container-type` движок не разбирает вовсе, а по двум оставшимся
         // признакам ни одна пара свода не проходит.
-        if item.style.subgrid {
+        // css-grid-2 §subgrid-listing — и в лунках тоже: Blink оговаривает
+        // лунки ВНУТРИ того же условия годности (`grid_item.cc:200-208`).
+        if item.style.subgrid && crate::dom::subgrid_inhibited(&item.style) {
+            if row_dir {
+                item.style.grid_rows = None;
+            } else {
+                item.style.grid_tracks = None;
+                item.style.grid_cols = None;
+            }
+        } else if item.style.subgrid {
             let slice: Vec<TrackSize> = (at..at + span)
                 .filter_map(|i| tracks.get(i).cloned())
                 .collect();
@@ -19766,13 +20252,35 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 // В сабгридной оси SELF-выравнивание НЕ действует: субгрид
                 // держит ВСЮ дорожку (все четыре js/je/jc/jb варианта
                 // subgrid-alignment-in-subgridded-axis-001 обязаны совпасть).
+                // css-grid-2 §subgrid-box-alignment: свой размер подсетки в
+                // подсеточной оси игнорируется, растяжка безусловна. Без этого
+                // блок «Размер по числу занятых лунок» ниже видит
+                // `own.is_some()` и уводит подсетку на ОБЁРТОЧНЫЙ путь
+                // (`span_area`), где она выравнивается ВНУТРИ своей области
+                // собственным размером; а при `span == 1` размер не назначает
+                // никто, и `width: 50px` доживает до раскладки
+                // (`column-subgrid-ignores-width-001`).
+                let parallel = item.style.vertical.unwrap_or(false)
+                    == merged.vertical.unwrap_or(false);
                 if row_dir {
                     item.style.grid_rows = Some(slice);
                     item.style.align_self = None;
+                    if parallel && item.style.subgrid_rows {
+                        item.style.height = None;
+                        item.style.max_height = None;
+                        item.style.min_height = Some(Len::Px(0.0));
+                        item.style.align_self = Some(Align::Stretch);
+                    }
                 } else {
                     item.style.grid_tracks = Some(slice);
                     item.style.grid_cols = Some(span as u16);
                     item.style.justify_self = None;
+                    if parallel && item.style.subgrid_cols {
+                        item.style.width = None;
+                        item.style.max_width = None;
+                        item.style.min_width = Some(Len::Px(0.0));
+                        item.style.justify_self = Some(Align::Stretch);
+                    }
                 }
             }
         }
@@ -20063,7 +20571,34 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 i += 1;
                 k
             });
-            buckets.retain(|b| !b.is_empty());
+            // Лунки снимаются ТОЙ ЖЕ маской `keep`, что и дорожки. Прежде
+            // здесь отбрасывались все ПУСТЫЕ лунки подряд, включая те, чья
+            // дорожка осталась: явную дорожку вокруг повтора и неявную от
+            // `need` маска сохраняет (css-grid-3 §7.3 снимает только дорожки
+            // САМОГО повтора — «any empty REPEATED tracks are collapsed»;
+            // Blink держит для этого `auto_fit_span`). Списки дорожек и лунок
+            // расходились по длине, и содержимое съезжало влево на столько
+            // дорожек, сколько пустых лунок сняли левее: `100px
+            // repeat(auto-fit, 100px)` с элементами в третьей колонке рисовал
+            // их в первой (снимок
+            // `target/wpt-shots/column-auto-repeat-023.png` против
+            // `column-auto-repeat-023--ref.png`).
+            let mut i = 0;
+            buckets.retain(|_| {
+                let k = keep.get(i).copied().unwrap_or(true);
+                i += 1;
+                k
+            });
+            // Протяжённости лунок читаются ПО ПОСЛЕ-СХЛОПЫВАТЕЛЬНОМУ индексу
+            // (`lane_extents.get(i)` ниже по `fn lanes`), значит снимаются той
+            // же маской — иначе `safe`-раздача content-выравнивания смотрит на
+            // чужую лунку.
+            let mut i = 0;
+            lane_extents.retain(|_| {
+                let k = keep.get(i).copied().unwrap_or(true);
+                i += 1;
+                k
+            });
         }
     }
     // После auto-fit-схлопывания список дорожек другой — размеры заново.

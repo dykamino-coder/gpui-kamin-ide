@@ -2648,8 +2648,13 @@ impl Element for Paragraph {
             // выключку считается уже без него. Правый вырез обтекания
             // (`shape-outside`) — тоже: прижатая вправо строка упирается в
             // форму, а не в край коробки (circle-024: text-align right).
-            let free = bounds.size.width - line.width - line.indent - px(self.flow_cut(i).1);
-            let free = if free < px(0.) { px(0.) } else { free };
+            let free_raw = bounds.size.width - line.width - line.indent - px(self.flow_cut(i).1);
+            // Обрезание отрицательного остатка нужно только РАЗДАЧЕ
+            // (`Justify`): растягивать переполненную строку нечем. Сдвиг по
+            // `text-align` берёт остаток СО ЗНАКОМ — иначе широкая строка
+            // всегда вылезает вправо, то есть по-ltr при любом письме
+            // (см. `line_offset`).
+            let free = if free_raw < px(0.) { px(0.) } else { free_raw };
             // Свисающий открывающий знак уходит ЗА край: строка сдвигается
             // влево на его ширину. Считается до выбора пути отрисовки —
             // выключенная строка свисает так же, как обычная.
@@ -2689,11 +2694,7 @@ impl Element for Paragraph {
                 let (free, dx) = if align == Align::Justify {
                     (free, lead)
                 } else {
-                    let dx = match align {
-                        Align::Center => free / 2.,
-                        Align::Right => free,
-                        _ => px(0.),
-                    };
+                    let dx = line_offset(align, self.wrap.rtl, free_raw);
                     (px(0.), dx + lead)
                 };
                 // Набор строки опускается на её верхнюю надбавку: поднятый
@@ -2727,11 +2728,7 @@ impl Element for Paragraph {
                 };
                 continue;
             }
-            let dx = match align {
-                Align::Center => free / 2.,
-                Align::Right => free,
-                _ => px(0.),
-            } + lead;
+            let dx = line_offset(align, self.wrap.rtl, free_raw) + lead;
             if {
                 static ON: std::sync::LazyLock<bool> =
                     std::sync::LazyLock::new(|| std::env::var("TCA_DBG").is_ok());
@@ -3594,6 +3591,42 @@ impl IntoElement for Paragraph {
 /// своя раскладка нужна, а кому нет» отсюда снят.
 pub fn rules(c: &crate::computed::Computed) -> Option<Wrap> {
     Some(wrap_of(c))
+}
+
+/// Сдвиг строки вдоль коробки по `text-align` — с УЧЁТОМ ЗНАКА остатка.
+///
+/// Дословный перенос Blink `length_utils.cc:1607 LineOffsetForTextAlign`.
+/// Смысл в том, что обрезание отрицательного остатка зависит от СТОРОНЫ
+/// ПИСЬМА БЛОКА, а не от значения `text-align`:
+///
+/// * ltr — отрицательный остаток гасится всегда: «Wide lines spill out of the
+///   block based off direction. So even if text-align is right, if direction
+///   is LTR, wide lines should overflow out of the right side of the block»
+///   (`length_utils.cc:1634-1636`);
+/// * rtl — не гасится никогда: «The direction of the block should determine
+///   what happens with wide lines. In particular with RTL blocks, wide lines
+///   should still spill out to the left» (`length_utils.cc:1620-1622`).
+///
+/// По спеке это css-text-4 §7.1 (`right` — «Inline-level content is aligned to
+/// the line-right edge of the line box», без оговорки на переполнение) вместе
+/// с CSS 2.1 §16.2 (начальное значение `text-align` в rtl действует как
+/// `right`) и §9.4.2 («then the inline box overflows the line box»).
+///
+/// `Justify` сюда не заходит: раздача остатка идёт своим путём и берёт
+/// остаток УЖЕ обрезанным — растягивать переполненную строку нечем.
+fn line_offset(align: Align, rtl: bool, free: Pixels) -> Pixels {
+    let zero = px(0.);
+    match align {
+        Align::Right if rtl => free,
+        Align::Right => free.max(zero),
+        Align::Left if rtl => free.min(zero),
+        Align::Left => zero,
+        // При rtl и положительном остатке — та же половина, что и при ltr;
+        // при отрицательном строка держится правого края целиком.
+        Align::Center if rtl && free <= zero => free,
+        Align::Center => (free / 2.).max(zero),
+        Align::Justify => zero,
+    }
 }
 
 /// Выключка из стиля.

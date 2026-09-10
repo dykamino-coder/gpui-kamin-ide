@@ -638,6 +638,35 @@ pub(crate) fn subgrid_gap_slice(
 ///
 /// Обход СВЕРХУ ВНИЗ: вложенная подсетка обязана увидеть уже проставленные
 /// дорожки внешней.
+/// Подсеточность ЗАПРЕЩЕНА независимым контекстом форматирования.
+///
+/// css-grid-2 §subgrid-listing: «If there is no parent grid, or if the grid
+/// container is otherwise forced to establish an independent formatting
+/// context (for example, due to layout containment [CSS-CONTAIN-2] or
+/// absolute positioning [CSS-POSITION-3]), the used value is the initial
+/// value, `none`, and the grid container is not a subgrid.»
+///
+/// Список ровно тот же, что у Blink (`chromium-blink/third_party/blink/
+/// renderer/core/layout/grid/grid_item.cc:189-191`): обособление РАСКЛАДКИ,
+/// обособление ОТРИСОВКИ и контейнер запросов размера — плюс внепоточность.
+/// `contain: strict` и `contain: content` сюда попадают сами: разбор
+/// `computed.rs` раскрывает их в `layout`+`paint`.
+///
+/// Чего в списке НЕТ и быть не должно:
+/// * `overflow: hidden|scroll` — css-grid-2 §subgrid-overflow прямо разрешает
+///   прокручиваемую подсетку (`overflow-hidden-does-not-prohibit-subgrid`,
+///   две пары корпуса);
+/// * `contain: size` и `contain: style` в одиночку — случаи 8 и 9
+///   `independent-formatting-context.html` требуют, чтобы подсетка ОСТАЛАСЬ;
+/// * `<fieldset>` и `<button>` — `independent-formatting-context-fieldset`
+///   (0.00) проверяет, что они ГОДНЫЕ подсетки.
+pub(crate) fn subgrid_inhibited(style: &Computed) -> bool {
+    style.contain_layout == Some(true)
+        || style.contain_paint == Some(true)
+        || style.container_size_query
+        || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed))
+}
+
 fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
@@ -703,6 +732,20 @@ fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                         }
                     };
                     if !child.style.subgrid {
+                        continue;
+                    }
+                    // css-grid-2 §subgrid-listing: использованное значение у
+                    // такого элемента — НАЧАЛЬНОЕ `none`, то есть не «срез не
+                    // выдали», а «явных дорожек нет вовсе». Иначе слово
+                    // `subgrid` доживает до раскладки счётной дорожкой:
+                    // `count_tracks` считает его за одну.
+                    if subgrid_inhibited(&child.style) {
+                        if row_dir {
+                            child.style.grid_rows = None;
+                        } else {
+                            child.style.grid_tracks = None;
+                            child.style.grid_cols = None;
+                        }
                         continue;
                     }
                     let Some((at, span)) = slot else {
@@ -783,13 +826,46 @@ fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     subgrid_gap_slice(&mut slice, par, own);
                     // В подсеточной оси SELF-выравнивание не действует:
                     // подсетка держит всю дорожку.
+                    // css-grid-2 §subgrid-box-alignment: «The subgrid is
+                    // always stretched in its subgridded dimension(s): the
+                    // align-self/justify-self properties on it are ignored,
+                    // as are any specified width/height constraints.»
+                    //
+                    // Гейт ПООСЕВОЙ (`subgrid_rows`/`subgrid_cols`), потому
+                    // что срез приходит в ОБЕ оси, а гасить размер положено
+                    // только в той, где вправду написано `subgrid`: иначе
+                    // уходят пять зелёных `standalone-axis-size-*`.
+                    //
+                    // Ортогональную подсетку правило пропускает: `grid-template-
+                    // rows` у неё — ось СВОЯ, и физическое свойство другое.
+                    // Это отдельный корень (`scout-subgrid-orthogonal-2026-09`),
+                    // трогать его здесь нельзя — три зелёных
+                    // `row-subgrid-orthogonal-writing-mode-001/002/003`.
+                    let parallel = child.style.vertical.unwrap_or(false)
+                        == el.style.vertical.unwrap_or(false);
                     if row_dir {
                         child.style.grid_rows = Some(slice);
                         child.style.align_self = None;
+                        if parallel && child.style.subgrid_rows {
+                            child.style.height = None;
+                            child.style.max_height = None;
+                            // Не `None`, а НОЛЬ: `None` вернул бы автоминимум
+                            // элемента сетки, и подсетка раздулась бы шире
+                            // своей области. Спека требует «размер
+                            // игнорируется», а не «минимум по содержимому».
+                            child.style.min_height = Some(Len::Px(0.0));
+                            child.style.align_self = Some(crate::computed::Align::Stretch);
+                        }
                     } else {
                         child.style.grid_tracks = Some(slice);
                         child.style.grid_cols = Some(span as u16);
                         child.style.justify_self = None;
+                        if parallel && child.style.subgrid_cols {
+                            child.style.width = None;
+                            child.style.max_width = None;
+                            child.style.min_width = Some(Len::Px(0.0));
+                            child.style.justify_self = Some(crate::computed::Align::Stretch);
+                        }
                     }
                 }
             }

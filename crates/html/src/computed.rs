@@ -1269,8 +1269,37 @@ pub struct Computed {
     /// Своей раскладки подсетки нет, но знать о ней надо: абсолютных потомков
     /// она размещает по СВОИМ линиям, а не по линиям внешней сетки.
     pub subgrid: bool,
+    /// Подсеточность ПООСЕВАЯ: `grid-template-columns: subgrid` и
+    /// `grid-template-rows: subgrid` — разные объявления, и правило
+    /// css-grid-2 §subgrid-box-alignment («в подсеточной оси свой размер и
+    /// self-выравнивание игнорируются») действует ровно в СВОЕЙ оси.
+    /// Скалярный `subgrid` этого не выражает: у пяти зелёных
+    /// `standalone-axis-size-*` подсеточны РЯДЫ, а размер задан по КОЛОНКАМ,
+    /// и гасить его нельзя.
+    ///
+    /// ВАЖНО: маршрут СРЕЗА дорожек эти поля не меняют — срез по-прежнему на
+    /// скалярном `subgrid`. Перевод среза на поосевые признаки замерен и
+    /// откачен (шапка `dom.rs: subgrid_takes_parent_tracks`, +2/−3).
+    pub subgrid_cols: bool,
+    pub subgrid_rows: bool,
+    /// `container-type: size | inline-size` — элемент стал контейнером
+    /// запросов размера и подсеткой быть не может (css-grid-2
+    /// §subgrid-listing). Отдельным полем, а НЕ через `contain_size`: голое
+    /// `contain: size` подсетку не отменяет — это отдельно проверяют случаи
+    /// 8 и 9 `independent-formatting-context.html`.
+    pub container_size_query: bool,
     pub auto_repeat_cols: Option<AutoRepeat>,
     pub auto_repeat_rows: Option<AutoRepeat>,
+    /// Тело авто-повтора ДОРОЖКА ЗА ДОРОЖКОЙ: `repeat(auto-fill, max-content
+    /// min-content)` — это два РАЗНЫХ размера, а не два одинаковых.
+    /// css-grid-3 §7.2.1 («The hypothetical size of each track in the repeat()
+    /// listing is given by the largest track corresponding to that entry (by
+    /// index)», `csswg-drafts/css-grid-3/Overview.bs:469-471`) требует считать
+    /// каждую запись тела по ЕЁ функции; скалярные `track`/`intrinsic_min`
+    /// этого не выражают. Пишется РЯДОМ с `AutoRepeat` и `grid_tracks` не
+    /// трогает: тот путь замерен и откачен (патч II 07.09, v143).
+    pub auto_repeat_body_cols: Option<Vec<TrackSize>>,
+    pub auto_repeat_body_rows: Option<Vec<TrackSize>>,
 
     pub width: Option<Len>,
     pub height: Option<Len>,
@@ -2332,9 +2361,24 @@ impl Computed {
                 *slot = val;
             }
         };
-        if vertical {
+        // `contain-intrinsic-*-size` переставляется по СВОЕМУ письму, а не по
+        // общему гейту `vertical` (тот требует ещё и вертикального родителя).
+        // Причина: читается пара через `contains_width()`/`contains_height()`,
+        // а те смотрят ТОЛЬКО на `self.vertical`. У ортогонального узла
+        // (письмо объявлено на нём, родитель горизонтален) условия расходились,
+        // и `contain-intrinsic-inline-size` приезжал поперёк — так падали
+        // `contain-intrinsic-size-logical-002` и
+        // `grid-lanes-contain-intrinsic-size-logical-001`. Размеры и стороны
+        // ниже остаются на прежнем гейте: их перестановку у ортогонального
+        // узла делает код ниже по течению (замер описан выше по функции).
+        if side_vertical {
             set_ci(&mut self.contain_intrinsic.1, logical.ci_inline);
             set_ci(&mut self.contain_intrinsic.0, logical.ci_block);
+        } else {
+            set_ci(&mut self.contain_intrinsic.0, logical.ci_inline);
+            set_ci(&mut self.contain_intrinsic.1, logical.ci_block);
+        }
+        if vertical {
             set(&mut self.height, logical.inline_size);
             set(&mut self.width, logical.block_size);
             set(&mut self.min_height, logical.min_inline);
@@ -2342,8 +2386,6 @@ impl Computed {
             set(&mut self.max_height, logical.max_inline);
             set(&mut self.max_width, logical.max_block);
         } else {
-            set_ci(&mut self.contain_intrinsic.0, logical.ci_inline);
-            set_ci(&mut self.contain_intrinsic.1, logical.ci_block);
             if self.vertical == Some(true) && logical.inline_size.is_some() {
                 self.width_from_inline = true;
             }
@@ -3339,6 +3381,7 @@ impl Computed {
                 }
                 self.grid_auto_fill_min = auto_fill_min(v);
                 self.grid_auto_fill_tracks = auto_fill_tracks(v);
+                self.auto_repeat_body_cols = auto_fill_body_tracks(v);
                 // Список пишется и при авто-повторе: дорожки ДО и ПОСЛЕ него
                 // (`max-content repeat(auto-fill, max-content) max-content`)
                 // иначе теряются целиком. Разворот самого повтора при
@@ -3379,6 +3422,7 @@ impl Computed {
                     return;
                 }
                 self.grid_auto_fill_row = auto_fill_min(v);
+                self.auto_repeat_body_rows = auto_fill_body_tracks(v);
                 // Только когда вокруг повтора ЕСТЬ свои дорожки: одинокий
                 // повтор целиком ведёт прежний путь раскладки, он считает
                 // число повторов точнее (доли, содержимое, `fit-content`).
@@ -3418,6 +3462,7 @@ impl Computed {
             // линии 3..5) остаётся на 0.52. Возвращать вместе с шагами B и C.
             "grid-template-columns" => {
                 self.subgrid |= v.contains("subgrid");
+                self.subgrid_cols |= v.contains("subgrid");
                 self.grid_cols = count_tracks(v);
                 self.grid_tracks = parse_tracks(v);
             }
@@ -3428,6 +3473,12 @@ impl Computed {
             "grid" | "grid-template" => {
                 self.subgrid |= v.contains("subgrid");
                 let (rows, cols) = split_slash(v);
+                // `grid: subgrid / subgrid`, `grid-template: subgrid / 20% 30%`
+                // — слово стоит на СВОЕЙ стороне косой черты, и ось у него
+                // своя. Без косой черты `split_slash` кладёт всё в `rows`, что
+                // и верно: сокращение начинается с рядов.
+                self.subgrid_rows |= rows.contains("subgrid");
+                self.subgrid_cols |= cols.contains("subgrid");
                 match (rows.contains("auto-flow"), cols.contains("auto-flow")) {
                     (true, _) => {
                         self.grid_auto_flow = Some(if rows.contains("dense") {
@@ -4752,6 +4803,7 @@ impl Computed {
             "grid-column-gap" => self.apply_one("column-gap", v),
             "grid-template-rows" => {
                 self.subgrid |= v.contains("subgrid");
+                self.subgrid_rows |= v.contains("subgrid");
                 self.grid_rows = parse_tracks(v);
             }
             "grid-auto-columns" => {
@@ -7168,6 +7220,15 @@ impl Computed {
                 }
                 if size || inline {
                     self.contain_style = Some(true);
+                    // css-conditional-5 §container-type: `size`/`inline-size`
+                    // делают элемент контейнером запросов размера. Такой
+                    // элемент обособлен, и css-grid-2 §subgrid-listing лишает
+                    // его подсеточности. Признак ОТДЕЛЬНЫЙ от `contain_size`,
+                    // потому что `contain: size` подсетку не отменяет; и
+                    // отдельный от `contain_layout`, который у нас делает
+                    // элемент содержащим блоком для абсолюта, а корпус требует
+                    // обратного (`no-layout-containment-abspos` и родня).
+                    self.container_size_query = true;
                 }
             }
             "content-visibility" => {
@@ -9328,6 +9389,22 @@ pub struct AutoRepeat {
     /// (css-grid-2 §7.2.3.2; Blink `CalculateAutomaticRepetitions`,
     /// `repeater_size`), а скалярная ветка раскладки видела одну дорожку.
     pub body: usize,
+}
+
+/// Тело авто-повтора СПИСКОМ дорожек: `repeat(auto-fill, max-content
+/// min-content)` → `[Single(MaxContent), Single(MinContent)]`.
+///
+/// Нужно, чтобы раскладка считала гипотетический размер КАЖДОЙ записи тела по
+/// её собственной функции (css-grid-3 §7.2.1). `parse_tracks` уже знает и
+/// `minmax()`, и `fit-content(N)` (последний как `MinMax(Auto, hi)`), поэтому
+/// своего разбора здесь нет.
+fn auto_fill_body_tracks(v: &str) -> Option<Vec<TrackSize>> {
+    parse_tracks(v).as_deref().and_then(|l| {
+        l.iter().find_map(|t| match t {
+            TrackSize::AutoRepeat { tracks, .. } => Some(tracks.clone()),
+            _ => None,
+        })
+    })
 }
 
 /// Длина тела авто-повтора в дорожках (1, если тело не разобралось).

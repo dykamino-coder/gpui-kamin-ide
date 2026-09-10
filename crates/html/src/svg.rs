@@ -439,12 +439,6 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     // Обособление размера: рисунок меряется как пустой, величину задаёт
     // `contain-intrinsic-size` (css-contain-2 §size containment) — ни
     // атрибуты, ни `viewBox` не смотрим.
-    if e.style.contains_width() || e.style.contains_height() {
-        return (
-            e.style.contain_intrinsic.0.unwrap_or(0.0),
-            e.style.contain_intrinsic.1.unwrap_or(0.0),
-        );
-    }
     let num = |name: &str| -> Option<f32> {
         e.attr(name)
             .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
@@ -456,6 +450,26 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     };
     let given_w = css(e.style.width).or_else(|| num("width"));
     let given_h = css(e.style.height).or_else(|| num("height"));
+    // Обособление размера снимает у рисунка ПРИРОДНЫЕ стороны и природное
+    // соотношение (`viewBox`), но не написанные автором: «All CSS properties
+    // of the size containment box are taken into account as they would be
+    // when performing layout normally» (css-contain-2 Overview.bs:681-683).
+    // Ось без названного размера берёт `contain-intrinsic-*`, иначе ноль.
+    // Раньше выбрасывались ОБЕ стороны, и `<svg width="100" viewBox="0 0 50 50">`
+    // под `contain: size` выходил нулевой ширины.
+    if e.style.contains_width() || e.style.contains_height() {
+        let axis = |contained: bool, given: Option<f32>, ci: Option<f32>| {
+            if contained {
+                given.or(ci).unwrap_or(0.0)
+            } else {
+                given.unwrap_or(0.0)
+            }
+        };
+        return (
+            axis(e.style.contains_width(), given_w, e.style.contain_intrinsic.0),
+            axis(e.style.contains_height(), given_h, e.style.contain_intrinsic.1),
+        );
+    }
     if let (Some(w), Some(h)) = (given_w, given_h) {
         return (w, h);
     }

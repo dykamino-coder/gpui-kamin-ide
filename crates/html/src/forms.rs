@@ -126,6 +126,28 @@ fn select(e: &Element, style: &Computed) -> AnyElement {
         }
     }
     let text = chosen.or(first).unwrap_or_default();
+    // «Sizing as if empty»: под обособлением СТРОЧНОЙ оси коробка мерится
+    // так, будто содержимого нет вовсе — «not even through pseudo-elements»
+    // (css-contain-2 Overview.bs:627-630). Подпись выбранного пункта уходит в
+    // наложенный слой: мериться перестаёт, рисоваться продолжает — это второй
+    // такт, «laying out in-place» (там же, :702-707). Без этого
+    // `<select style="width:100px; contain:size">` растягивался по самому
+    // длинному `option`.
+    if style.contains_width() {
+        return field_box(style)
+            .relative()
+            .justify_between()
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .overflow_hidden()
+                    .child(SharedString::from(text)),
+            )
+            .child(div().text_color(rgb(MUTED)).child(SharedString::from("⌄")))
+            .into_any_element();
+    }
     field_box(style)
         .justify_between()
         .child(SharedString::from(text))
