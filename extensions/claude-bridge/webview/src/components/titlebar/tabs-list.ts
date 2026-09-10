@@ -35,6 +35,13 @@ export function buildActiveTabs(
         folderName: (g.cwd.split(/[\\/]/).filter(Boolean).pop() || 'session'),
         createdAt: '',
         status: 'disconnected' as const,
+        // Ghosts are renderer-only persisted rows, not live ConnectionManager
+        // snapshots. Give them a stable synthetic authority so the required
+        // ordering fields cannot be omitted from a future TabInfo producer.
+        connectionAuthority: `ghost:${g.id}`,
+        connectionAuthorityGeneration: 0,
+        connectionAuthoritySequence: 0,
+        connectionRevision: 0,
         conversationId: g.conversationId,
         sessionTitle: resolvedTitle || undefined,
         pinned: true,

@@ -19,6 +19,12 @@ export interface McpLogEntry {
   durationMs?: number
 }
 
+export interface SessionTeardown {
+  startedAt: number
+  timer: NodeJS.Timeout | null
+  finalized: boolean
+}
+
 export interface PtySession {
   id: string
   pty: ReturnType<typeof import('node-pty').spawn>
@@ -53,6 +59,12 @@ export interface PtySession {
   mcpLastError: string | null
   /** Secret token for MCP HTTP auth (per-session) */
   mcpToken: string
+  /** Open only between `destroySession()` and the finalizer. The CLI fires
+   *  `SessionEnd` while it is already exiting, so its relay call has to keep
+   *  resolving after the session stopped taking normal work; everything else
+   *  is refused for the same window. Closed by the first SessionEnd, by PTY
+   *  exit, or by a short timeout — whichever lands first. */
+  teardown?: SessionTeardown
   /** Accumulated PTY output lines (used by output debounce) */
   outputBuffer: string[]
   /** Running byte total of outputBuffer, maintained incrementally so the hot

@@ -1,0 +1,5 @@
+# Тот же toolchain, что у локальных прогонов: CI-job «Rust checks on Windows»
+# иначе берёт свежий stable с runner и падает на lint'ах, которых нет локально.
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]

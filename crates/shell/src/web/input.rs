@@ -172,9 +172,10 @@ pub(crate) fn wheel(id: &str, x: f32, y: f32, dx: f32, dy: f32, mods: u32) {
 /// Каждой клавише — ПОЛНАЯ пара RAWKEYDOWN/KEYUP с кодом Windows: страницы
 /// слушают keydown (xterm.js в консоли Bridge живёт только им), а Ctrl+C/V/X/A
 /// внутри Chromium срабатывают тоже по keydown с кодом буквы. Печатные символы
-/// вдобавок получают CHAR — он рождает keypress/input, и раскладка (кириллица)
-/// приходит символом как есть. С зажатым Ctrl/Alt CHAR не шлём: символа там
-/// нет, есть сочетание.
+/// вдобавок доставляются текстом: ASCII — событием CHAR (keypress/input),
+/// остальное — IME-композицией, потому что CEF выводит код клавиши CHAR из
+/// самого символа и для «Л» получает Escape (`typed.rs`). С зажатым Ctrl/Alt
+/// текст не шлём: символа там нет, есть сочетание.
 pub(crate) fn key(id: &str, keystroke: &gpui::Keystroke, up: bool) {
     use cef::sys::cef_key_event_type_t as T;
     use cef::{KeyEvent, KeyEventType};
@@ -223,19 +224,7 @@ pub(crate) fn key(id: &str, keystroke: &gpui::Keystroke, up: bool) {
         && let Some(ch) = typed_char
         && (!ch.is_control() || ch == '\r' || ch == '\t')
     {
-        let code = ch as u32 as u16;
-        let event = KeyEvent {
-            size: std::mem::size_of::<cef::sys::_cef_key_event_t>(),
-            type_: KeyEventType::from(T::KEYEVENT_CHAR),
-            modifiers: mods,
-            windows_key_code: code as i32,
-            native_key_code: 0,
-            is_system_key: 0,
-            character: code,
-            unmodified_character: code,
-            focus_on_editable_field: 0,
-        };
-        on_browser(id, move |host| host.send_key_event(Some(&event)));
+        super::typed::send(id, ch, mods);
     }
 }
 

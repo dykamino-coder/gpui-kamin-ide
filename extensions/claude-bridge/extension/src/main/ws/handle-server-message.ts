@@ -49,8 +49,9 @@ export interface HandlerCtx {
    *  round-trip; cleared on compaction (the file changed). */
   setSegmentIndex: (index: { boundaries: { ts: string }[]; counts: number[] } | null) => void
   isIntentionallyDisconnected: () => boolean
-  /** Текущий статус соединения (для авто-сброса не-фатального 'error', C16). */
-  getStatus: () => string
+  /** Fatal protocol/lifecycle failure: close the socket and reattach rather
+   *  than inventing an authenticated state locally. */
+  terminateSessionWithError: (error: string) => void
   /** Background (warm-pool) tab — live streaming has no render target. */
   isRendererMuted?: () => boolean
   notifyAuthenticated: () => void
@@ -143,16 +144,7 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       break
 
     case 'session:error':
-      // Не-фатальная серверная ошибка БЕЗ закрытия сокета красила статус в
-      // 'error' навсегда — красный дот жил до ручного реконнекта (аудит #70
-      // C16). Живой сокет = сессия работает: показываем ошибку и через 5с
-      // возвращаемся в 'connected', если ничего нового не случилось.
-      ctx.setState({ status: 'error', error: msg.error })
-      setTimeout(() => {
-        if (ctx.getStatus() === 'error' && !ctx.isIntentionallyDisconnected()) {
-          ctx.setState({ status: 'connected', error: undefined })
-        }
-      }, 5000)
+      ctx.terminateSessionWithError(msg.error)
       break
 
     case 'mcp:call':

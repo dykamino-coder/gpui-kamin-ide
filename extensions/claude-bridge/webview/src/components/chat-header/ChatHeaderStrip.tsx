@@ -39,7 +39,7 @@ export function ChatHeaderStrip(): JSX.Element | null {
       style="flex-direction:column;align-items:stretch;gap:5px;padding:6px 12px"
     >
       <div style="display:flex;align-items:center;gap:var(--space-2);min-width:0">
-        <ConnectionStatusBadge status={status} nextRetryAt={activeTab?.nextRetryAt} retryAttempt={activeTab?.retryAttempt} />
+        <ConnectionStatusBadge status={status} error={activeTab?.error} nextRetryAt={activeTab?.nextRetryAt} retryAttempt={activeTab?.retryAttempt} />
         {/* Session name next to the status dot. Falls back to the folder (then
             the "#1" label) until the CLI has generated a topic. Ellipsises so a
             long topic can never push the control buttons out of the row. */}

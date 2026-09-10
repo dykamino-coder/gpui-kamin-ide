@@ -16,13 +16,22 @@ import type {
 } from './types'
 import { registerSessionHooks } from './registry'
 
-export function buildHookCommandRelay(url: string, hookProxyToken: string): string {
+/** Env var the CLI process carries for us. The relay credential travels in
+ *  the session's own process environment, never in the command text: the
+ *  rewritten declaration is shown in Console, JSONL and the hooks panel, and a
+ *  Bearer value interpolated there would be readable in all three. Hook
+ *  children inherit the CLI's environment, so the relay still authenticates. */
+export const HOOK_RELAY_TOKEN_ENV = 'CLAUDE_BRIDGE_HOOK_TOKEN'
+
+export function buildHookCommandRelay(url: string): string {
   return [
     'let d="";',
     'process.stdin.setEncoding("utf8");',
     'process.stdin.on("data",c=>d+=c);',
     'process.stdin.on("end",async()=>{try{',
-    `const r=await fetch(${JSON.stringify(url)},{method:"POST",headers:{"Content-Type":"application/json","Authorization":${JSON.stringify(`Bearer ${hookProxyToken}`)},"X-Bridge-Hook-Relay":"command"},body:d});`,
+    `const k=process.env[${JSON.stringify(HOOK_RELAY_TOKEN_ENV)}];`,
+    'if(!k){process.stderr.write("Missing hook relay credential");process.exitCode=1;return}',
+    `const r=await fetch(${JSON.stringify(url)},{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+k,"X-Bridge-Hook-Relay":"command"},body:d});`,
     'const t=await r.text();',
     'if(!r.ok){if(t)process.stderr.write(t);process.exitCode=1;return}',
     'let j;try{j=JSON.parse(t)}catch{process.stderr.write("Invalid hook relay response");process.exitCode=1;return}',
@@ -45,7 +54,6 @@ export function rewriteHooksForCli(
   sessionId: string,
   hooks: HookSettings,
   sourceFn: HookSource | ((m: HookMatcher) => HookSource),
-  hookProxyToken: string,
 ): HookSettings {
   const annotated = registerSessionHooks(sessionId, hooks, sourceFn)
   const out: HookSettings = {}
@@ -73,7 +81,7 @@ export function rewriteHooksForCli(
         const relay: HookHandler = {
           type: 'command',
           command: 'node',
-          args: ['-e', buildHookCommandRelay(proxyUrl, hookProxyToken)],
+          args: ['-e', buildHookCommandRelay(proxyUrl)],
           timeout: h.timeout,
           if: h.if,
           statusMessage: h.statusMessage,

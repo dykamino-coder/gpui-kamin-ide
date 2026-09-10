@@ -257,6 +257,12 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
     return c.json(jsonRpcError(undefined, -32000, 'Unauthorized'), 401)
   }
 
+  // A session in its teardown window keeps answering only its own SessionEnd
+  // hook relay; tool calls would target a CLI that is already exiting.
+  if (session.teardown) {
+    return c.json(jsonRpcError(undefined, -32000, `Session ${sessionId} is shutting down`), 409)
+  }
+
   let body: JsonRpcRequest
   try {
     body = await c.req.json()

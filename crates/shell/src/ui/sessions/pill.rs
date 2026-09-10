@@ -15,31 +15,10 @@ use kamin_theme::Palette;
 use serde_json::json;
 use smol::channel::Sender;
 
-/// Якорь hovered-строки (лог. px) — overlay рисует пилюлю по нему.
-pub fn pill_anchor() -> &'static std::sync::Mutex<Option<[f32; 4]>> {
-    static S: std::sync::OnceLock<std::sync::Mutex<Option<[f32; 4]>>> = std::sync::OnceLock::new();
-    S.get_or_init(Default::default)
-}
-pub(crate) fn anchor_probe() -> impl gpui::IntoElement {
-    gpui::canvas(
-        |bounds, _, _| {
-            *pill_anchor().lock().unwrap() = Some([
-                f32::from(bounds.origin.x),
-                f32::from(bounds.origin.y),
-                f32::from(bounds.size.width),
-                f32::from(bounds.size.height),
-            ]);
-        },
-        |_, _, _, _| {},
-    )
-    // Инсеты вместо `size_full` — иначе канвас участвует в раскладке строки
-    // (см. `probe_registry::probe_area`)
-    .absolute()
-    .top_0()
-    .left_0()
-    .right_0()
-    .bottom_0()
-}
+// Якорь пилюли вынесен в `anchor.rs` (BR-29); пути через `pill::` сохранены.
+pub(crate) use super::anchor::anchor_probe;
+pub use super::anchor::{anchor_for, clear_pill_anchor};
+
 /// Инлайн-пин строки (fa-thumbtack 10px): по ховеру или всегда если pinned.
 pub(crate) fn pin_btn(
     s: &Session,

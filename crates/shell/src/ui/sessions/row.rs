@@ -212,7 +212,7 @@ pub(crate) fn session_row(
         .child(pin_btn(s, hover_group, tab_color, p))
         // Hover-пилюля рисуется в OVERLAY-окне (поверх вебвью) — здесь только
         // якорь позиции hovered-строки.
-        .when(hovered, |r| r.child(anchor_probe()));
+        .when(hovered, |r| r.child(anchor_probe(s.id.clone())));
     // Радиус кольца = радиусу САМОЙ строки (`.item { border-radius: 4 }`),
     // стояло 8 (ревью ц.35)
     crate::ui::focus_ring::focusable(

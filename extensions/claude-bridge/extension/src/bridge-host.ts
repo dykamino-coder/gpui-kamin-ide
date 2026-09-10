@@ -39,6 +39,7 @@ import { setHookEmitConfigStore } from "./main/hooks/emit-bridge-event"
 import { ConnectionManager } from "./main/ws/connection-manager"
 import { registerCoreIpc, wireConnectionCallbacks } from "./core-ipc"
 import { registerSyncIPC } from "./main/ipc/sync"
+import { installIncidentDiagnostics, recordBridgeOutbound } from "./incident-diagnostics"
 
 interface InboundMessage {
   kind: "invoke" | "send"
@@ -166,13 +167,19 @@ export class BridgeHost {
 
   constructor(context: vscode.ExtensionContext, opts?: { onOpenChat?: () => void }) {
     const webContents: WebContents = {
-      send: (channel, ...args) => this.post({ kind: "event", channel, args }),
+      send: (channel, ...args) => {
+        recordBridgeOutbound(channel, args)
+        this.post({ kind: "event", channel, args })
+      },
     }
     this.sink = { webContents, isDestroyed: () => this.disposed }
     this.event = { sender: webContents }
     // Let vendored code that broadcasts via BrowserWindow.getAllWindows()
     // (plugin-hook approval prompt) reach this host's webview fan-out.
     registerShimWindow(this.sink)
+    installIncidentDiagnostics(context.globalStorageUri.fsPath, (listener) => {
+      ipcMain.on("diag:renderer-sample", (_event, sample: unknown) => listener(sample))
+    })
 
     setPermissionStorageDir(context.globalStorageUri.fsPath)
     this.configStore = new ConfigStore(context.globalStorageUri.fsPath)

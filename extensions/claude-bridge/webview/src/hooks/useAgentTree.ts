@@ -3,18 +3,24 @@ import type { JsonlEntryData } from '../types/jsonl'
 import { tabAgentTrees, tabJsonlLive, recordAgentHistory, findAgentByName, type AgentInfo, type AgentTreeState } from '../signals/agents'
 import { sessionTree } from '../signals/tabs'
 
+/** A fresh, unpublished agent tree (replay staging builds into one of these
+ *  and publishes it whole — see signals/agent-replay.ts). */
+export function createAgentTree(): AgentTreeState {
+  return {
+    teams: new Map(),
+    standaloneAgents: new Map(),
+    pendingAgentCalls: new Map(),
+    teamNameAliases: new Map(),
+    taskIdToAgent: new Map(),
+    agentIdToAgent: new Map(),
+  }
+}
+
 function getOrCreateTree(tabId: string): AgentTreeState {
   const map = tabAgentTrees.value
   let tree = map.get(tabId)
   if (!tree) {
-    tree = {
-      teams: new Map(),
-      standaloneAgents: new Map(),
-      pendingAgentCalls: new Map(),
-      teamNameAliases: new Map(),
-      taskIdToAgent: new Map(),
-      agentIdToAgent: new Map(),
-    }
+    tree = createAgentTree()
     // Mutate the inner map — signal will be triggered by callers
     map.set(tabId, tree)
   }
@@ -31,6 +37,18 @@ function getOrCreateTree(tabId: string): AgentTreeState {
  *  мёртвом PTY — staleness-прунер (STALE_RUNNING_MS). */
 export function parseAgentEntries(tabId: string, entries: any[]): boolean {
   const tree = getOrCreateTree(tabId)
+  const changed = parseAgentEntriesInto(tree, entries)
+  if (changed) {
+    // Trigger signal update
+    tabAgentTrees.value = new Map(tabAgentTrees.value)
+  }
+  return changed
+}
+
+/** Parse entries into `tree` without touching any signal. Returns true if
+ *  anything changed. Used by the live path (through the wrapper above) and
+ *  by replay staging, which publishes the finished tree atomically. */
+export function parseAgentEntriesInto(tree: AgentTreeState, entries: any[]): boolean {
   let changed = false
 
   for (const entry of entries) {
@@ -92,6 +110,18 @@ export function parseAgentEntries(tabId: string, entries: any[]): boolean {
             messages: [],
             lastSeenAt: entry.timestamp,
           }
+          // Replay delivers the transcript newest-batch-first, so this teammate's
+          // idle/shutdown notification may already have materialized a synthetic
+          // standalone record (see the `<teammate-message>` branch). Fold that
+          // record in instead of overwriting it with a fresh `running` — the
+          // terminal status and messages are the newer facts (INC-2026-0002).
+          const prior = tree.standaloneAgents.get(agentName)
+          if (prior && prior.id.startsWith('synthetic-')) {
+            if (prior.status !== 'running') agent.status = prior.status
+            agent.messages = prior.messages
+            if (prior.agentId) agent.agentId = prior.agentId
+            if (prior.lastSeenAt && (!agent.lastSeenAt || prior.lastSeenAt > agent.lastSeenAt)) agent.lastSeenAt = prior.lastSeenAt
+          }
           tree.pendingAgentCalls.set(block.id, agent)
           if (teamName && tree.teams.has(teamName)) {
             tree.teams.get(teamName)!.agents.set(agentName, agent)
@@ -145,9 +175,12 @@ export function parseAgentEntries(tabId: string, entries: any[]): boolean {
       }
     }
 
-    if (entry.type === 'user') {
-      const content = entry.message?.content
-      if (!Array.isArray(content)) continue
+    // tool_result blocks live in ARRAY content. A `continue` here used to skip
+    // the rest of the loop body for STRING-content user entries — exactly the
+    // shape teammate idle notifications and background task notifications
+    // arrive in — so no teammate ever left `running` (INC-2026-0002).
+    if (entry.type === 'user' && Array.isArray(entry.message?.content)) {
+      const content = entry.message.content
       for (const block of content) {
         if (block.type === 'tool_result' && block.tool_use_id) {
           const pending = tree.pendingAgentCalls.get(block.tool_use_id)
@@ -348,10 +381,6 @@ export function parseAgentEntries(tabId: string, entries: any[]): boolean {
     }
   }
 
-  if (changed) {
-    // Trigger signal update
-    tabAgentTrees.value = new Map(tabAgentTrees.value)
-  }
   return changed
 }
 

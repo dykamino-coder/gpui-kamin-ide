@@ -206,7 +206,7 @@ cef::wrap_render_handler! {
                         .sum()
                 })
                 .unwrap_or(full);
-            let pct = if full > 0 { ((dirty * 100) / full).min(100) as u32 } else { 100 };
+            let pct = (dirty * 100).checked_div(full).map_or(100, |v| v.min(100) as u32);
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| (d.as_millis() & 0xffff_ffff) as u32)

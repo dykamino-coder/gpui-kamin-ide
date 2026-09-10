@@ -1,11 +1,13 @@
 import WebSocket from 'ws'
 import * as vscode from 'vscode'
+import { randomUUID } from 'node:crypto'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import type { ConnectionConfig, ConnectionState, PermissionDecision } from '../../shared/types'
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
 import { JsonlBatcher } from './jsonl-batcher'
 import { TranscriptMirror } from './transcript-mirror'
+import { toRendererConnectionState } from './connection-state'
 
 /** How much of the local copy is painted before the network answers. The chat
  *  windows ~150 rows and grows on scroll, so a couple of thousand records is
@@ -52,6 +54,7 @@ export interface ExtendedConnectionState {
    *  a delay that was already stale when it was written. */
   nextRetryAt?: number
   retryAttempt?: number
+  closeCode?: number
 }
 
 // Reconnect backoff constants
@@ -97,6 +100,15 @@ const MAX_RESUME_FAILURES_BEFORE_FRESH = 3
 // recover"). A separate counter that authenticated does NOT reset breaks it.
 const RESUME_LOOP_ALIVE_MS = 8000
 
+// The supervising kamin-host owns the cross-respawn generation and injects it
+// into every child. A local sequence orders replacement managers created inside
+// one healthy child without depending on wall-clock time.
+const parsedHostGeneration = Number.parseInt(process.env.KAMIN_EXTHOST_GENERATION ?? '0', 10)
+const CONNECTION_AUTHORITY_GENERATION = Number.isSafeInteger(parsedHostGeneration) && parsedHostGeneration >= 0
+  ? parsedHostGeneration
+  : 0
+let lastConnectionAuthoritySequence = 0
+
 export class ConnectionManager {
   // Shared cache of the last tree update (all connections share one tree per token)
   static lastTree: unknown[] | null = null
@@ -140,6 +152,11 @@ export class ConnectionManager {
 
   private ws: WebSocket | null = null
   private state: ExtendedConnectionState = { status: 'disconnected' }
+  private readonly stateAuthority = randomUUID()
+  private readonly stateAuthorityGeneration = CONNECTION_AUTHORITY_GENERATION
+  private readonly stateAuthoritySequence = ++lastConnectionAuthoritySequence
+  /** Orders every state publication for this tab across async WS callbacks. */
+  private stateRevision = 0
   private config: ConnectionConfig
   private window: BrowserWindow
 
@@ -374,6 +391,7 @@ export class ConnectionManager {
         this.setState({
           status: 'disconnected',
           error: reasonStr ? `Connection closed: ${code} ${reasonStr}` : undefined,
+          closeCode: code,
         })
         this.scheduleReconnect()
       } else {
@@ -586,14 +604,13 @@ export class ConnectionManager {
   /** Returns current connection state. Maps ExtendedConnectionState to
    *  ConnectionState for IPC compatibility. */
   getState(): ConnectionState {
-    return {
-      status: this.state.status === 'authenticated' ? 'connected'
-        : this.state.status === 'connecting' ? 'connecting'
-        : this.state.status === 'connected' ? 'connecting'
-        : this.state.status as ConnectionState['status'],
-      sessionId: this.state.sessionId,
-      error: this.state.error,
-    }
+    return toRendererConnectionState(
+      this.state,
+      this.stateAuthority,
+      this.stateAuthorityGeneration,
+      this.stateAuthoritySequence,
+      this.stateRevision,
+    )
   }
 
   /** Returns internal extended state (includes 'authenticated'). */
@@ -909,7 +926,7 @@ export class ConnectionManager {
       tabId: this.tabId,
       batcher: this.batcher,
       setState: (s) => this.setState(s),
-      getStatus: () => this.state.status,
+      terminateSessionWithError: (error) => this.terminateSessionWithError(error),
       setLastModel: (m) => { this.lastModel = m },
       setSettingsDir: (d) => { this.settingsDir = d },
       setConversationId: (id) => {
@@ -1086,17 +1103,24 @@ export class ConnectionManager {
   /** Update internal state and notify renderer via IPC. */
   private setState(state: ExtendedConnectionState): void {
     this.state = state
+    this.stateRevision++
     // Session confirmed — the establish watchdog did its job; disarm + reset.
     if (state.status === 'authenticated') { this.clearEstablishTimer(); this.establishFailures = 0 }
-    const rendererState: ConnectionState = {
-      status: state.status === 'authenticated' ? 'connected'
-        : state.status === 'connected' ? 'connecting'
-        : state.status as ConnectionState['status'],
-      sessionId: state.sessionId,
-      error: state.error,
-    }
+    const rendererState = this.getState()
     this.window.webContents.send('connection-state-changed', this.tabId, rendererState)
     ConnectionManager.onStatus?.(this.tabId, rendererState.status)
+  }
+
+  /** `session:error` is a fatal lifecycle/protocol failure. Close our socket as
+   * a safeguard even when connected to an older server that only sent the
+   * frame but forgot to close; the normal close path schedules reattach. */
+  private terminateSessionWithError(error: string): void {
+    this.setState({ ...this.state, status: 'error', error })
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      this.ws.close(1011, 'Session error')
+      return
+    }
+    this.scheduleReconnect()
   }
 
   /** Schedule reconnect with exponential backoff. 1s, 2s, 4s, 8s, 16s, 30s. */

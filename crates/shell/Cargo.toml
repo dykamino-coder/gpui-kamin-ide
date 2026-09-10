@@ -74,6 +74,10 @@ windows = { version = "0.62", features = [
   "Win32_System_Threading",          # текущий процесс для символов
   "Win32_System_LibraryLoader",      # имя модуля по адресу падения
   "Win32_Graphics_Dxgi_Common",
+  # Перечисление адаптеров: аппаратный рендер или WARP (`web/gpu_mode.rs`).
+  # Фича и раньше приезжала транзитивно из gpui (IDXGIKeyedMutex в copy_frame),
+  # но свой код на чужой список фич опираться не должен.
+  "Win32_Graphics_Dxgi",
 ] }
 
 [dev-dependencies]

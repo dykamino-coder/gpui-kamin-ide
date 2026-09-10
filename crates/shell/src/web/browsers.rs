@@ -141,15 +141,14 @@ cef::wrap_request_handler! {
             error_code: ::std::os::raw::c_int,
             error_string: Option<&CefString>,
         ) {
-            let reason = error_string.map(|s| s.to_string()).unwrap_or_default();
-            kamin_crash::note(&format!(
-                "[КРАХ] renderer вью «{}» умер: статус {:?}, код {error_code}, {reason}",
-                self.id,
-                *status.as_ref()
-            ));
+            // Не пишем error_string: Chromium может вернуть URL/путь. Для
+            // incident trail достаточно allowlisted status + opaque view ref.
+            let _ = error_string;
+            let status = format!("{:?}", *status.as_ref());
+            kamin_crash::note_renderer_termination(&self.id, &status, error_code);
             super::diag::renderer_died();
             if let Some(browser) = browser
-                && let Some(mut frame) = browser.main_frame()
+                && let Some(frame) = browser.main_frame()
             {
                 use cef::ImplFrame as _;
                 let url = CefStringUtf16::from(&frame.url());
@@ -170,9 +169,9 @@ cef::wrap_life_span_handler! {
         fn on_after_created(&self, browser: Option<&mut Browser>) {
             let Some(browser) = browser else { return };
             // В offscreen-режиме браузер считается скрытым, пока не сказано
-            // иначе: скрытый не рисует ни одного кадра.
+            // иначе. Говорим ФАКТ: пока шло создание, вью могло уйти с экрана.
             if let Some(host) = browser.host() {
-                host.was_hidden(0);
+                host.was_hidden(super::visibility::hidden_flag(&self.id));
             }
             if let Ok(mut map) = BROWSERS.lock() {
                 map.insert(self.id.clone(), browser.clone());

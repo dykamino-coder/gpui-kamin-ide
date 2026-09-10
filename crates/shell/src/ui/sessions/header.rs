@@ -79,7 +79,7 @@ pub(crate) fn project_header(
     // Якорь hover-пилюли: абсолютный ребёнок БЕЗ `deferred` — обёртка
     // участвовала в раскладке строки и уводила бейдж-счётчик от правого
     // края при сужении сайдбара (баг, пойман юзером)
-    let actions_pill = hovered.then(anchor_probe);
+    let actions_pill = hovered.then(|| anchor_probe(hover_key.clone()));
     div()
         .id(SharedString::from(format!("grp-{pid}")))
         .relative()

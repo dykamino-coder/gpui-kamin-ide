@@ -24,6 +24,9 @@ pub enum HostMode {
 
 pub struct HostConfig {
     pub mode: HostMode,
+    /// Версия native shell — единый build id для incident-записей Node host и
+    /// extension host. Передаётся env, пользовательские данные сюда не входят.
+    pub app_version: &'static str,
     /// НАШИ данные (не трогаем прод studio.dykamino.kaminide, пока живём рядом).
     pub data_dir: PathBuf,
     pub cache_dir: PathBuf,
@@ -88,6 +91,7 @@ pub fn run_once(
 
     command
         .env("KAMIN_HOST_TRANSPORT", "stdio")
+        .env("KAMIN_APP_VERSION", config.app_version)
         // Индекс-walker гигантского воркспейса сатурирует дефолтные 4 потока
         // libuv → fs-RPC (listDir/exists) голодают МИНУТАМИ (Q5-смежное,
         // диагностировано 2026-07-24). Расширение пула — митигация.

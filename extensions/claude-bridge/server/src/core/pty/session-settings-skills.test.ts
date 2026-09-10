@@ -20,7 +20,12 @@ vi.mock("../sync/routes", () => ({
   getProjectSyncDir: () => syncRoots.project,
 }));
 
-import { applySyncData } from "./session-settings";
+import { AGENT_TEAMS_REPORTING_CONTRACT } from "./bridge-default-claude-md";
+import {
+  applySyncData,
+  writeSessionClaudeMd,
+  writeSessionSettings,
+} from "./session-settings";
 
 const tempDirs: string[] = [];
 
@@ -95,5 +100,53 @@ describe("session settings skills integration", () => {
     expect(
       fs.readFileSync(path.join(destination, "shared/SKILL.md"), "utf-8"),
     ).toBe("user");
+  });
+
+  it("keeps the Bridge team contract once and before synced instructions", () => {
+    const settingsDir = path.join(tempDir(), "session");
+    fs.mkdirSync(settingsDir, { recursive: true });
+    writeSessionClaudeMd(settingsDir, "C:\\repo");
+    write(syncRoots.user, "CLAUDE.md", "USER RULE");
+    write(syncRoots.project, "CLAUDE.md", "PROJECT RULE");
+
+    applySyncData(settingsDir, "0123456789abcdef", "C:\\repo");
+    applySyncData(settingsDir, "0123456789abcdef", "C:\\repo");
+
+    const result = fs.readFileSync(
+      path.join(settingsDir, "CLAUDE.md"),
+      "utf-8",
+    );
+    expect(result.split("## Agent Teams delivery contract")).toHaveLength(2);
+    expect(result).toContain(AGENT_TEAMS_REPORTING_CONTRACT);
+    expect(result.indexOf("## Agent Teams delivery contract")).toBeLessThan(
+      result.indexOf("# User Instructions (synced)"),
+    );
+    expect(result.indexOf("# User Instructions (synced)")).toBeLessThan(
+      result.indexOf("# Project Instructions (synced)"),
+    );
+  });
+
+  it("keeps Agent Teams enabled and the native SendMessage tool available", () => {
+    const settingsDir = path.join(tempDir(), "session");
+    fs.mkdirSync(settingsDir, { recursive: true });
+    fs.mkdirSync(syncRoots.home, { recursive: true });
+
+    writeSessionSettings("session-id", settingsDir, "mcp-token");
+
+    const localSettings = JSON.parse(
+      fs.readFileSync(
+        path.join(settingsDir, ".claude", "settings.local.json"),
+        "utf-8",
+      ),
+    );
+    expect(localSettings.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe("1");
+
+    const settings = JSON.parse(
+      fs.readFileSync(
+        path.join(settingsDir, ".claude", "settings.json"),
+        "utf-8",
+      ),
+    );
+    expect(settings.permissions.deny).not.toContain("SendMessage");
   });
 });

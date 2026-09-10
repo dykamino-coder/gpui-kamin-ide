@@ -397,8 +397,10 @@ export function attachOutputDebounce(session: PtySession): void {
           void (async () => {
             try {
               const { getDb } = await import('../stats/database/lifecycle')
+              const { withStatsWrite } = await import('../stats/database/write-lock')
               const db = await getDb()
-              await db.run(`UPDATE session_tokens SET title = ? WHERE session_id = ?`, [titleSnapshot, convId])
+              // Same row the sweeper rewrites — one writer at a time (write-lock.ts).
+              await withStatsWrite(() => db.run(`UPDATE session_tokens SET title = ? WHERE session_id = ?`, [titleSnapshot, convId]))
             } catch { /* best-effort */ }
           })()
         }

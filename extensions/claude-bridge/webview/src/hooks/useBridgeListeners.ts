@@ -1,4 +1,4 @@
-import { useEffect } from 'preact/hooks'
+import { useEffect, useRef } from 'preact/hooks'
 
 import type { KaminBridgeApi } from '../../shared/types'
 import type { TabInfo, TreeNode } from '../../shared/types'
@@ -22,6 +22,7 @@ import { splitTrailingEscape, stripMouseTracking } from '../lib/strip-mouse-trac
 
 // Agent tree helpers
 import { parseAgentEntries, markAllAgentsExited, scheduleCleanup, mergeAgentTree, touchAgentAlive } from './useAgentTree'
+import { beginAgentReplay, stageAgentEntries, publishAgentReplay, abandonAgentReplay } from '../signals/agent-replay'
 
 // Queue: auto-send queued messages when CLI becomes idle
 import { appendJsonlEntries, applyStreamingEntry, applyStreamingDelta, clearJsonlEntries, jsonlEntriesByTab, replaceWindowWithSegment, setArchivedView } from '../signals/jsonl'
@@ -30,6 +31,15 @@ import { setReplayProgress } from '../signals/replay-progress'
 import { touchTab, sweepTabMemory, forgetTabRecency } from '../signals/jsonl-eviction'
 import { projectPlanTodoEntries } from '../signals/jsonl-project'
 import { recordToolUsage, resetToolUsage } from '../signals/tool-usage'
+import {
+  applyConnectionEvent,
+  ConnectionSnapshotRequestGate,
+  forgetTabConnection,
+  mergeReconnectTabSnapshot,
+  reconcilePromptReadiness,
+  reconcileCreatedTab,
+  reconcileTabSnapshot,
+} from '../signals/tab-connection-reconcile'
 
 /**
  * Sets up ALL bridge.onXxx event listeners and their cleanup.
@@ -81,7 +91,12 @@ export function useBridgeListeners(
   // Defaults to the chat panel.
   agentData: boolean = role === 'chat',
 ): void {
+  const reconnectSnapshotRequests = useRef(new ConnectionSnapshotRequestGate())
+
+    // Replay generation per tab (BR-26): the value handed to publishAgentReplay.
+  const replayGeneration = new Map<string, number>()
   useEffect(() => {
+    let reconnectSnapshotRequest: number | undefined
     // hookDrivenTabs / stuckIdleTimers живут на уровне модуля (см. выше):
     // Set табов с детерминированными lifecycle-хуками CLI (OSC-эвристика для
     // них лишь косметика) и дебаунс-страховка от потерянного Stop-хука.
@@ -99,7 +114,7 @@ export function useBridgeListeners(
     // Tab lifecycle
     const unsubTabCreated = bridge.onTabCreated((tab: TabInfo) => {
       if (!tabs.value.find(t => t.id === tab.id)) {
-        const decorated = { ...tab, pinned: pinnedTabs.value.has(tab.id) }
+        const decorated = { ...reconcileCreatedTab(tab), pinned: pinnedTabs.value.has(tab.id) }
         tabs.value = [...tabs.value, decorated]
         scheduleSaveTabsState()
       }
@@ -117,6 +132,7 @@ export function useBridgeListeners(
     })
 
     const unsubTabClosed = bridge.onTabClosed((tabId: string) => {
+      forgetTabConnection(tabId)
       const closedTab = tabs.value.find(t => t.id === tabId)
       const remaining = tabs.value.filter(t => t.id !== tabId)
       tabs.value = remaining
@@ -126,6 +142,8 @@ export function useBridgeListeners(
       // reachable forever. Only the SESSION that was closed is dropped.
       clearJsonlEntries(tabId)
       clearAgentTabState(tabId)
+      abandonAgentReplay(tabId)
+      replayGeneration.delete(tabId)
       forgetTabRecency(tabId)
       resetToolUsage(tabId)
       // Виджеты (permission/elicitation/askUser) закрытого таба — сироты:
@@ -179,7 +197,8 @@ export function useBridgeListeners(
 
     const unsubTabListChanged = bridge.onTabListChanged((newTabs: TabInfo[]) => {
       const pinSet = pinnedTabs.value
-      tabs.value = newTabs.map(t => ({ ...t, pinned: pinSet.has(t.id) }))
+      const reconciled = reconcileTabSnapshot(newTabs)
+      tabs.value = reconciled.map(t => ({ ...t, pinned: pinSet.has(t.id) }))
       // Sync model/effort for active tab
       const tid = activeTabId.value
       if (tid) {
@@ -195,32 +214,17 @@ export function useBridgeListeners(
       // Писать tabs ТОЛЬКО при фактическом изменении: безусловная замена
       // массива ререндерила всех подписчиков широкого сигнала (все баблы
       // ленты) на каждый флап соединения (аудит #70 D3).
-      const cur = tabs.value.find(t => t.id === tabId)
-      const dirty = !cur
-        || cur.status !== state.status
-        || cur.nextRetryAt !== state.nextRetryAt
-        || cur.retryAttempt !== state.retryAttempt
-      if (dirty) {
-        tabs.value = tabs.value.map(t =>
-          t.id === tabId
-            ? { ...t, status: state.status, nextRetryAt: state.nextRetryAt, retryAttempt: state.retryAttempt }
-            : t
-        )
-      }
+      const applied = applyConnectionEvent(tabs.value, tabId, state)
+      tabs.value = applied.tabs
+      // A stale state must not execute the promptReady side effect after its
+      // tab update was rejected by revision/authority ordering.
+      if (!applied.accepted) return
 
       // Once the tab reaches "connected", assume the CLI prompt is ready by
       // default. Otherwise we sit in isBusy until the ❯ glyph is spotted or
       // an OSC-based idle signal arrives, which can take ~30s on cold-start
       // and leaves the Stop button stuck in place.
-      if (state.status === 'connected') {
-        const next = new Map(tabPromptReady.value)
-        next.set(tabId, true)
-        tabPromptReady.value = next
-      } else if (state.status === 'disconnected' || state.status === 'error') {
-        const next = new Map(tabPromptReady.value)
-        next.set(tabId, false)
-        tabPromptReady.value = next
-      }
+      tabPromptReady.value = reconcilePromptReadiness(tabPromptReady.value, [{ id: tabId, status: state.status }])
     })
 
     // PTY output — accumulate chunks and flush at most once per animation
@@ -339,6 +343,10 @@ export function useBridgeListeners(
       // Agents section). On console/plan/todos it built a tree nobody shows —
       // pure waste, and it walked `entries` (the FULL batch, not the slim slice).
       if (agentData) {
+        // Mid-replay batches are STAGED and published as one snapshot on
+        // replayComplete (BR-26): the panel keeps its last consistent tree
+        // instead of flashing empty → partial → rebuilt.
+        if (stageAgentEntries(tabId, entries)) return
         const agentChanged = parseAgentEntries(tabId, entries)
         if (agentChanged && sessionTree.value) {
           sessionTree.value = mergeAgentTree(sessionTree.value)
@@ -382,9 +390,9 @@ export function useBridgeListeners(
     const unsubJsonlStatus = bridge.onJsonlStatus((tabId: string, status: any) => {
       if (status.status === 'watching' && !status.replayComplete) {
         tabJsonlLive.value = new Set([...tabJsonlLive.value].filter(id => id !== tabId))
-        const next = new Map(tabAgentTrees.value)
-        next.delete(tabId)
-        tabAgentTrees.value = next
+        // Open a replay generation: the published tree stays as it is until
+        // this generation completes; a newer replay supersedes it.
+        if (agentData) replayGeneration.set(tabId, beginAgentReplay(tabId))
         // Реплей начнётся с нуля — счётчики тулов тоже (дедуп по id их
         // восстановит без задвоения).
         resetToolUsage(tabId)
@@ -399,11 +407,18 @@ export function useBridgeListeners(
         // index so the segment strip can show every compact, not only the ones
         // that fit the resident window.
         if (role !== 'customize') bridge.requestBoundaries?.(tabId)
+        const generation = replayGeneration.get(tabId)
         setTimeout(() => {
           if (tabJsonlLive.value.has(tabId)) return
           const nextLive = new Set(tabJsonlLive.value)
           nextLive.add(tabId)
           tabJsonlLive.value = nextLive
+          // Publish the staged snapshot atomically (a stale generation is a
+          // no-op), then hand finished agents to history as before.
+          if (agentData && generation !== undefined && publishAgentReplay(tabId, generation)) {
+            replayGeneration.delete(tabId)
+            if (sessionTree.value) sessionTree.value = mergeAgentTree(sessionTree.value)
+          }
           const changed = markAllAgentsExited(tabId)
           if (changed && sessionTree.value) {
             sessionTree.value = mergeAgentTree(sessionTree.value)
@@ -727,7 +742,30 @@ export function useBridgeListeners(
       }
     }
 
+    // Re-subscription closes the event gap but cannot replay a state frame that
+    // was already missed. Pull one atomic, versioned snapshot after reconnect;
+    // reconciliation prevents this async response from rolling newer events
+    // back while refreshing every tab, including the active composer state.
+    if (reconnectNonce.peek() > 0) {
+      reconnectSnapshotRequest = reconnectSnapshotRequests.current.begin()
+      const reconnectSnapshotBaseline = new Set(tabs.peek().map(tab => tab.id))
+      bridge.listTabs().then((snapshot) => {
+        if (!reconnectSnapshotRequests.current.isCurrent(reconnectSnapshotRequest!)) return
+        const pinSet = pinnedTabs.peek()
+        // Preserve tabs/events created while listTabs was in flight and let the
+        // per-tab authority/revision reconciler reject stale connection slices.
+        const reconciled = mergeReconnectTabSnapshot(tabs.peek(), snapshot, reconnectSnapshotBaseline)
+        tabs.value = reconciled.map(tab => ({ ...tab, pinned: pinSet.has(tab.id) }))
+        tabPromptReady.value = reconcilePromptReadiness(tabPromptReady.value, reconciled)
+      }).catch((err) => {
+        console.warn('[bridge] reconnect state snapshot failed', err)
+      })
+    }
+
     return () => {
+      if (reconnectSnapshotRequest !== undefined) {
+        reconnectSnapshotRequests.current.invalidate(reconnectSnapshotRequest)
+      }
       unsubEditorSel()
       unsubTabCreated()
       unsubTabClosed()

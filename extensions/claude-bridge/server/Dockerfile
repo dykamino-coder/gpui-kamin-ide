@@ -15,20 +15,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-COPY src/ui/package.json src/ui/
+COPY src/ui/package.json src/ui/package-lock.json src/ui/
 
-RUN npm ci
-RUN cd src/ui && npm install
+RUN npm ci --no-audit --no-fund
+RUN npm --prefix src/ui ci --no-audit --no-fund
 
 COPY . .
 
-RUN npm run build:dashboard
+RUN npm --prefix src/ui run build
 
 # Drop dashboard node_modules — only the built dist/dashboard ships.
 RUN rm -rf src/ui/node_modules
 
 # Prune dev deps from server's node_modules.
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev --no-audit --no-fund
 
 # ---------- Stage 2: runtime -----------------------------------------------
 FROM node:22-bookworm-slim AS runtime

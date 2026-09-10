@@ -598,7 +598,9 @@ export function registerStatsRoutes(api: Hono): void {
     )).getRowObjects()[0] as { n: bigint | number } | undefined
     const matched = Number(beforeRow?.n ?? 0)
     if (matched > 0) {
-      await db.run(`UPDATE session_tokens SET deleted = 1 WHERE session_id = ?`, [sessionId])
+      const { withStatsWrite } = await import('../../stats/database/write-lock')
+      // The sweeper may be healing this very row — one writer at a time (write-lock.ts).
+      await withStatsWrite(() => db.run(`UPDATE session_tokens SET deleted = 1 WHERE session_id = ?`, [sessionId]))
     }
 
     let fileRemoved = false

@@ -18,7 +18,7 @@
 use html5ever::driver::ParseOpts;
 use html5ever::tendril::TendrilSink;
 use html5ever::tree_builder::TreeBuilderOpts;
-use html5ever::{QualName, local_name, namespace_url, ns, parse_document, parse_fragment};
+use html5ever::{QualName, ns, parse_document, parse_fragment};
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use std::path::{Path, PathBuf};
 
@@ -217,13 +217,6 @@ fn tree_of(case: &Case, scripting: bool) -> String {
         }
     }
     out
-}
-
-fn suite_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../vendor/html5lib-tests")
-        .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from("vendor/html5lib-tests"))
 }
 
 /// Каталог с деревьями разбора.

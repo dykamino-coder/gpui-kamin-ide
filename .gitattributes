@@ -1,0 +1,6 @@
+# The server image copies these scripts in and execs them under Linux. A
+# Windows checkout without this rule hands them CRLF, and the container dies at
+# start with `exec /app/docker-entrypoint.sh: No such file or directory` —
+# the shebang line ends in \r. Hit for real while building 6.3.131 on Windows.
+*.sh text eol=lf
+Dockerfile text eol=lf

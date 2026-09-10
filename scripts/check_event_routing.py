@@ -15,6 +15,9 @@
 import io
 import re
 import sys
+
+# Windows-runner печатает в cp1252 — русские сообщения иначе роняют скрипт.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 from pathlib import Path
 
 EVENTS = Path("crates/shell/src/state/events")
