@@ -4190,6 +4190,25 @@ pub struct Spot {
     /// `position: static`», css-align-3 §abspos). `None` — прежний ход:
     /// начало строки по `direction` (0 при ltr, 1 при rtl).
     pub line_align: Option<f32>,
+    /// Щуп — БЛОЧНАЯ распорка во всю ширину содержащего блока
+    /// (`spot_probe(_, true)`), а не точечный щуп в строке.
+    ///
+    /// Порода щупа решает, вешается ли коробка при `direction: rtl` на
+    /// статическую точку своим ПРАВЫМ краем (§10.3.7: «otherwise set 'right'
+    /// to the static position»). У распорки — да: её правый край и есть
+    /// правый край содержащего блока. У точечного щупа в строке — нет: точка
+    /// уже готова, а вычет своей ширины уводил бы коробку влево целиком
+    /// (откат `htb-rtl-*` 08-19).
+    ///
+    /// Прежде порода узнавалась косвенно, по `hole.size.width > 0`. Признак
+    /// ложен у распорки в содержащем блоке НУЛЕВОЙ ширины:
+    /// `containing-block-020/022` (`div{width:0; padding:1in}`) уезжали ровно
+    /// на свою ширину. Blink держит эти два шага раздельно: полосу
+    /// выравнивания прибавляет величиной
+    /// (`block_layout_algorithm.cc:1734-1745`, `available_inline_size` может
+    /// быть нулём), а сторону — отдельным `InsetBias::kEnd`
+    /// (`absolute_utils.cc:34`).
+    pub block_strut: bool,
 }
 
 pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;
@@ -4349,6 +4368,7 @@ pub fn spot_probe(spot: SpotCell, full: bool) -> AnyElement {
             move |bounds, _, _| {
                 let mut now = spot.get();
                 now.rotated = VT_FRAME.with(|c| c.get()).is_some();
+                now.block_strut = full;
                 now.hole = Some(vt_map(bounds, gpui::px(now.line_thickness)));
                 spot.set(now);
             },
@@ -4561,7 +4581,14 @@ impl Element for LatePlace {
                 hole.origin.y - bounds.size.height - bounds.origin.y,
             ),
             (Some(hole), None) if now.rotated => hole.origin - bounds.origin,
-            (Some(hole), None) if now.rtl && hole.size.width > px(0.0) => gpui::point(
+            // Гейт — ПОРОДА щупа, а не размер дырки. Полоса выравнивания
+            // может быть нулевой (содержащий блок нулевой ширины), но сторона
+            // отсчёта от этого не меняется: §10.3.7 при rtl вешает на
+            // статическую точку `right`, а не `left`. Blink разводит эти два
+            // шага явно — прибавка `available_inline_size` (может быть нулём,
+            // `block_layout_algorithm.cc:1740`) и `InsetBias::kEnd`
+            // (`absolute_utils.cc:34`).
+            (Some(hole), None) if now.rtl && now.block_strut => gpui::point(
                 hole.origin.x + hole.size.width * now.line_align.unwrap_or(1.0)
                     - bounds.size.width
                     - bounds.origin.x,

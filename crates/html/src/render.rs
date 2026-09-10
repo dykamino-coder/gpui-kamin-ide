@@ -3980,7 +3980,16 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     } else {
         initial_letter_float(collapsed, inherited, opts)
     };
-    let collapsed = by_layer(wrap_floats(collapsed, inherited.width, inherited.clear), flex_ctx);
+    // §8.3.1: поле первого ребёнка примыкает к верхнему полю содержащего
+    // блока, только если того не отделяют ни рамка, ни отбивка и он не
+    // заводит своего контекста форматирования.
+    let cb_top_open = !own_context_style(inherited)
+        && zero_len(inherited.padding.top)
+        && zero_len(inherited.borders().top);
+    let collapsed = by_layer(
+        wrap_floats(collapsed, inherited.width, inherited.clear, cb_top_open),
+        flex_ctx,
+    );
     // Блок мы изображаем гибкой колонкой, а её дети по умолчанию сжимаются —
     // в обычном потоке этого нет: ребёнок выше родителя обязан вылезти, а не
     // ужаться. Поэтому в потоке сжатие детям выключается, если разметка не
@@ -6225,7 +6234,16 @@ fn covered_flow_tail(floater: &Element, tail: &Element) -> Option<((f32, f32), (
     (tw <= fw && th <= fh).then_some(((fw, fh), (tw, th)))
 }
 
-fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>) -> Vec<Node> {
+fn wrap_floats(
+    nodes: Vec<Node>,
+    cb_width: Option<Len>,
+    parent_clear: Option<i8>,
+    // Открыт ли ВЕРХНИЙ край содержащего блока для схлопывания с полем
+    // первого ребёнка (§8.3.1). Только при открытом крае верхнее поле
+    // очищающей коробки увозит вниз сам содержащий блок, а вместе с ним —
+    // ПРИМЫКАЮЩИЙ флоат (Blink `block_layout_algorithm.cc:1796`).
+    cb_top_open: bool,
+) -> Vec<Node> {
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
@@ -6457,32 +6475,64 @@ fn wrap_floats(nodes: Vec<Node>, cb_width: Option<Len>, parent_clear: Option<i8>
         // `covered_flow_tail`, потому что ширины у неё нет, а
         // `px_of2(None) = 0`).
         let mut clearance_strut = false;
-        if laid_out
-            && let Some(Node::Element(next)) = nodes.get(j)
+        if let Some(Node::Element(next)) = nodes.get(j)
             && clears_side(next.style.clear, side)
             && let Some(top) = margin_px(next.style.margin.top, &next.style).filter(|v| *v > 0.0)
         {
-            rest.push(Node::Element(Element {
-                list_item: None,
-                node_id: 0,
-                anim: None,
-                tag: "div".into(),
-                style: Computed {
-                    display: Some(Display::Block),
-                    height: Some(Len::Px(top)),
-                    ..Computed::default()
-                },
-                hover: None,
-                first_letter: None,
-                first_line: None,
-                children: vec![],
-                attrs: vec![],
-                inline: false,
-            }));
-            if let Some(Node::Element(next)) = nodes.get_mut(j) {
-                next.style.margin.top = Some(Len::Px(0.0));
+            // §9.5.2 считает клиренс от ГИПОТЕТИЧЕСКОЙ позиции — «where the
+            // actual top border edge would have been if the element's 'clear'
+            // property had been none». Если пробег флоатов стоит в САМОМ
+            // НАЧАЛЕ блока с открытым верхним краем, такой позиции не
+            // существует: верхнее поле очищающей коробки схлопнулось бы с
+            // полем блока (§8.3.1, «top margin of an in-flow block element
+            // collapses with its first in-flow block-level child's top margin
+            // if the element has no top border, no top padding, and the child
+            // has no clearance») и увезло бы флоат ВНИЗ ВМЕСТЕ С СОБОЙ — то
+            // есть мимо флоата не прошло бы ни при каком поле.
+            //
+            // Blink зовёт это примыкающим флоатом и решает до раскладки:
+            // `block_layout_algorithm.cc:156-168`
+            // (`HasClearancePastAdjoiningFloats` — «floats that would
+            // otherwise (if 'clear' were 'none') be pulled down by the BFC
+            // block offset of the child… we know for sure that we get
+            // clearance, even before layout»), `:1796-1800` (флоат становится
+            // примыкающим ровно при неразрешённом `BfcBlockOffset()`) и
+            // `:2355-2367` («the child's margins won't have any effect»;
+            // позиция берётся из `ExclusionSpace::ClearanceOffset`, то есть =
+            // низ пробега).
+            //
+            // Низ пробега у нас и так даёт ряд обтекания, поэтому весь ответ —
+            // НЕ ставить распорку и погасить поле: коробка встанет ровно под
+            // рядом, каким бы большим поле ни было
+            // (`negative-clearance-after-adjoining-float`: поле 200 при
+            // флоате 50 — коробка обязана стоять на 50, а не на 200).
+            let adjoining =
+                cb_top_open && out.iter().all(is_blank) && rest.iter().all(is_blank);
+            if !adjoining && laid_out {
+                rest.push(Node::Element(Element {
+                    list_item: None,
+                    node_id: 0,
+                    anim: None,
+                    tag: "div".into(),
+                    style: Computed {
+                        display: Some(Display::Block),
+                        height: Some(Len::Px(top)),
+                        ..Computed::default()
+                    },
+                    hover: None,
+                    first_letter: None,
+                    first_line: None,
+                    children: vec![],
+                    attrs: vec![],
+                    inline: false,
+                }));
+                clearance_strut = true;
             }
-            clearance_strut = true;
+            if adjoining || clearance_strut {
+                if let Some(Node::Element(next)) = nodes.get_mut(j) {
+                    next.style.margin.top = Some(Len::Px(0.0));
+                }
+            }
         }
         // Плавающий блок, рядом с которым НЕЧЕМУ обтекать, рядом не нуждается:
         // он остаётся обычным блоком потока. Ряд в этом случае только вредил —
@@ -8799,14 +8849,20 @@ thread_local! {
 /// Заводит ли коробка СВОЙ блочный контекст форматирования: через её край
 /// поля не схлопываются ни с детьми, ни насквозь (CSS 2.1 §8.3.1).
 fn own_context(e: &Element) -> bool {
+    own_context_style(&e.style)
+}
+
+/// То же по ОДНОМУ СТИЛЮ, без узла: содержащий блок приходит в `blocks()`
+/// только своим `Computed`, а знать про его край надо и там.
+fn own_context_style(c: &Computed) -> bool {
     !matches!(
-        e.style.overflow_y,
+        c.overflow_y,
         None | Some(crate::computed::Overflow::Visible)
     ) || !matches!(
-        e.style.overflow_x,
+        c.overflow_x,
         None | Some(crate::computed::Overflow::Visible)
     ) || matches!(
-        e.style.display,
+        c.display,
         Some(Display::Flex)
             | Some(Display::InlineFlex)
             | Some(Display::Grid)
@@ -8815,21 +8871,21 @@ fn own_context(e: &Element) -> bool {
             | Some(Display::Table)
             | Some(Display::InlineTable)
     ) || matches!(
-        e.style.position,
+        c.position,
         Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
-    ) || e.style.float.is_some()
-        || e.style.contain_paint == Some(true)
-        || e.style.contain_layout == Some(true)
-        || e.style.contain_size == Some(true)
-        || e.style.flow_root == Some(true)
+    ) || c.float.is_some()
+        || c.contain_paint == Some(true)
+        || c.contain_layout == Some(true)
+        || c.contain_size == Some(true)
+        || c.flow_root == Some(true)
         // css-align-3 §align-block: не-`normal` `align-content` на блочном
         // контейнере — тот же `display: flow-root`, что пишет эталон
         // `align-content-block-001-ref`. Через край такой коробки поля не
         // схлопываются ни с детьми, ни насквозь.
-        || e.style.align_content_block
-        || matches!(e.style.display, Some(Display::TableCell))
-        || e.style.column_count.is_some()
-        || e.style.column_width.is_some()
+        || c.align_content_block
+        || matches!(c.display, Some(Display::TableCell))
+        || c.column_count.is_some()
+        || c.column_width.is_some()
 }
 
 /// Ноль по ЗНАЧЕНИЮ, а не по «свойство написано»: `padding: 0` и `border: 0`
