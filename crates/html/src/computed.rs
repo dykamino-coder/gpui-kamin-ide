@@ -2305,7 +2305,7 @@ impl Computed {
         c
     }
 
-    pub fn resolve_logical(&mut self, parent_vertical: Option<bool>) {
+    pub fn resolve_logical(&mut self, parent_vertical: Option<bool>, is_cell: bool) {
         let Some(logical) = self.logical.take() else {
             return;
         };
@@ -2334,7 +2334,29 @@ impl Computed {
         // (письмо объявлено на нём самом, родитель горизонтален) перестановку
         // ниже по течению делает табличный и блочный код, и вторая здесь
         // складывалась с ней в поворот на месте.
-        let vertical = self.vertical == Some(true) && parent_vertical == Some(true);
+        // РАЗМЕРЫ отображаются по СВОЕМУ письму, а не по письму родителя.
+        // Таблица Abstract-Physical Mapping (css-writing-modes-4,
+        // Overview.bs:1790-1827) даёт `block-size` -> width и
+        // `inline-size` -> height ВСЕМ вертикальным письмам, а колонку
+        // выбирает used-значение `writing-mode` САМОГО элемента: письма
+        // родителя в таблице нет. Blink делает ровно это одним предикатом —
+        // `computed_style.h:1270` `LogicalWidth() = IsHorizontalWritingMode()
+        // ? Width() : Height()` (и так же Logical{Min,Max}{Width,Height},
+        // строки 1275-1287).
+        // Нашей поворотной модели это не мешает: коробки физические на всех
+        // уровнях, вертикальный контейнер кладёт детей `flex_row`
+        // (`render.rs:14461`), поэтому у ортогонального узла (письмо
+        // объявлено на нём, родитель горизонтален) физическая ширина — его
+        // БЛОЧНАЯ ось, а высота — СТРОЧНАЯ, ровно как у унаследовавшего
+        // письмо. Стороны так считаются давно — `side_vertical` ниже.
+        // Ячейка таблицы — единственное исключение: у неё логический
+        // inline-size перекладывает в высоту сам табличный код
+        // (`render.rs:16790-16800` по флагу `width_from_inline`), и второй
+        // перевод здесь сложился бы с ним в поворот на месте
+        // (`table-cell-align-005`, `table-cell-valign-003` — замеренный
+        // откат в шапке функции).
+        let vertical =
+            self.vertical == Some(true) && (parent_vertical == Some(true) || !is_cell);
         let rtl = self.rtl == Some(true);
         // Стороны (поля/отступы/края) переставляются ПО-НАСТОЯЩЕМУ: блочный
         // поток вертикального письма собирается транспонированным рядом

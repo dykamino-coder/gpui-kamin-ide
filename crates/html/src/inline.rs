@@ -1545,6 +1545,18 @@ pub fn rel_spans(pieces: &[Piece]) -> Vec<(std::ops::Range<usize>, (f32, f32))> 
 ///
 /// `vertical-align: super`/`sub` поднимает и опускает кусок внутри строки.
 /// Доля кегля взята браузерная: треть вверх и пятая часть вниз.
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (11.09, `scout-centralbaseline-2026-09.md`,
+// 4 хунка): центральная доминантная базовая линия у повёрнутой строки
+// (css-writing-modes-4 §4.2: «the central baseline is used as the
+// dominant baseline when text-orientation is mixed or upright»,
+// величина по css-inline-3 A.2 = (ascent − descent)/2; Blink —
+// `computed_style.cc:2154`). Патч включал разделение `mixed` и
+// `sideways`, которые у нас хранятся одним булем.
+// Срез 1476 пар, база тем же списком: **+0 / −3**. Обещанные
+// `text-baseline-vrl-002` и `-vlr-003` НЕ позеленели, а ушли
+// `vertical-alignment-003` 0.39 → 0.61, `-009` 0.39 → 0.55,
+// `-vlr-025` 0.17 → 1.17. Возвращать только вместе с разбором того,
+// почему поправка не даёт нуля там, где арифметика скаута его даёт.
 pub fn shift_spans(
     pieces: &[Piece],
     base_size: f32,

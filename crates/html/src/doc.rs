@@ -536,7 +536,15 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
                     e.style.logical.as_ref().map(|l| l.border.clone())
                 );
             }
-            e.style.resolve_logical(mode.0);
+            // Табличность ячейки на этом шаге держится ТЕГОМ:
+            // `Display::TableCell` приходит только из авторского CSS
+            // (замеренный откат в шапке `resolve_logical`), поэтому
+            // проверяются оба признака.
+            e.style.resolve_logical(
+                mode.0,
+                matches!(e.tag.as_str(), "td" | "th")
+                    || e.style.display == Some(crate::computed::Display::TableCell),
+            );
             // Унаследованное обратно снимается: наследованием занимается
             // сборщик дерева, и оставленное здесь значение завело бы узлу
             // собственную коробку (см. `has_box_style`).
