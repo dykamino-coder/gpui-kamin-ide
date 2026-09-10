@@ -9720,6 +9720,27 @@ fn own_size(inherited: &Computed, opts: &RenderOpts) -> f32 {
     }
 }
 
+/// Есть ли в абзаце текст ПОМИМО внепоточных кусков.
+///
+/// Это ровно условие, при котором абзацу доступен ТЕКСТОВЫЙ путь: текст для
+/// него собирает `inline::text_and_runs` из кусков `Piece::Text`, а
+/// внепоточный кусок в него не входит (`inline.rs:2539`), и на пустом тексте
+/// путь закрыт (`inline.rs:2543`). Внепоточный — и абсолют на статической
+/// позиции, и абсолют с краями: оба уходят `Piece::Overlay`, оба своего
+/// текста в строку не отдают.
+fn has_flow_text(nodes: &[Node]) -> bool {
+    nodes.iter().any(|n| match n {
+        Node::Text(t) => !t.trim().is_empty(),
+        Node::Element(e) => {
+            !matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute)
+                    | Some(crate::computed::Position::Fixed)
+            ) && has_flow_text(&e.children)
+        }
+    })
+}
+
 /// Абзац с готовым разрезом первой строки: `at` — сколько байт в неё вошло.
 fn paragraph_pieces(
     nodes: &[Node],
@@ -9737,14 +9758,41 @@ fn paragraph_pieces(
     // картинки). Ни это, ни `align-self` на самой картинке высоту строки не
     // меняют — строка всё равно выходит около 90 точек вместо 60, и картинка
     // просто прижимается к её низу. Дело не в выравнивании.
+    // Текстовый путь абзаца — единственное место, где место куска вне потока
+    // считается ДВУНАПРАВЛЕННО: строку режет и переставляет разбор UAX#9
+    // внутри `lines.rs`, а `point_of` берёт продвижение от начала СВОЕЙ
+    // строки. Ряд из слов (`inline.rs: as_wrapped_row`) о направлении не
+    // знает вовсе — куски идут в ЛОГИЧЕСКОМ порядке, строка прижимается
+    // целиком, и щуп садится в НАЧАЛО rtl-строки (замер: x = 328 при верных
+    // 168, снимки `target/scoutrtlv/target/wpt-shots/`).
+    //
+    // Открыть текстовый путь при `direction: rtl` можно только абзацу, у
+    // которого этот путь ДОСТУПЕН: на пустом тексте `inline::text_and_runs`
+    // отдаёт `None` (`inline.rs:2543`), абзац всё равно сваливается в ряд, а
+    // там кусок вне потока заворачивается в `inline.rs: overlay_in_row` со
+    // СВОИМ, пустым `Spot` и теряет и `rtl`, и `next_line`. Ровно так устроена
+    // семья `css-position/static-position/inline-level-absolute-in-block-
+    // level-context-007..012` (rtl, абсолют `display: inline`, текста в абзаце
+    // НЕТ, все шесть 0.00) — гейт оставляет её на прежнем пути.
+    let flow_text = has_flow_text(nodes);
     let mut atom = |e: &Element| -> Option<inline::Piece> {
         // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
         // потока: место в строке он не занимает, поэтому абзац остаётся
         // текстовым и не теряет пробелы (`line-breaking-018`).
-        // Только для обычного письма слева направо: место знака в строке
-        // абзац отдаёт по ЛОГИЧЕСКОМУ порядку, а при RTL и вертикали оно
-        // считается по-другому — там работает прежний обход через распорку.
-        let plain_flow = inherited.rtl != Some(true) && inherited.vertical != Some(true);
+        // Вертикальное письмо сюда по-прежнему не пускается: там строчная ось
+        // вертикальна, `point_of` отдаёт ДО-поворотные координаты, и класс
+        // берётся отдельно (подкорень A3, три отката на `render.rs` «отдать
+        // ось строки самому абзацу»).
+        // ★ ЗАМЕРЕНО: без оговорки про вертикаль текстовый путь открывался
+        // и ГОРИЗОНТАЛЬНОМУ rtl, и две зелёные пары уходили в «красное
+        // видно» (`htb-rtl-ltr.tentative`, `htb-rtl-rtl` 0.16 -> 99.00) при
+        // 24 приобретениях. Все приобретения — вертикальные
+        // (`abs-pos-non-replaced-v{lr,rl}-*`), поэтому послабление
+        // ограничено абзацем, чей содержащий блок пишет вертикально —
+        // признак этого у нас `ortho_limit`, он ставится только внутри
+        // вертикального содержащего блока (`element()`, `inline.rs:1012`).
+        let plain_flow = inherited.vertical != Some(true)
+            && (inherited.rtl != Some(true) || (flow_text && inherited.ortho_limit.is_some()));
         // Статическая позиция считается для ГИПОТЕТИЧЕСКОГО статического
         // элемента (§10.3.7: «if position had been static») — блокификация
         // `display: inline` под absolute на неё не влияет, метка
@@ -9784,6 +9832,29 @@ fn paragraph_pieces(
                         .into_any_element(),
                     &e.style,
                 )
+            };
+            // Сторона, которой коробка вешается на статическую точку. При
+            // `direction: ltr` — левый край (текстовый путь так и кладёт,
+            // `lines.rs: prepaint_at(origin)`), при `rtl` — ПРАВЫЙ:
+            // css-position-3 §abs-non-replaced-width (строки 1035-1043,
+            // перепись CSS 2.1 §10.3.7) — «…if the 'direction' property of the
+            // element establishing the static-position containing block is
+            // 'ltr' set 'left' to the static position …; otherwise, set
+            // 'right' to the static-position». Точка у обеих сторон ОДНА И ТА
+            // ЖЕ: замер по снимкам — ltr-двойники `-v{lr,rl}-{004,005,028,029,
+            // 104,105,136,137}` ставят левый край ровно на 168.0 и все восемь
+            // 0.00, а эталон rtl-пар требует 88.0..168.0, то есть ту же 168.0
+            // правым краем.
+            //
+            // Blink разводит это на два шага: `geometry/static_position.h:86`
+            // даёт `kInlineEnd` при `!IsLtr()`, а `absolute_utils.cc:27-37`
+            // `GetStaticPositionInsetBias` переводит его в `InsetBias::kEnd`.
+            // Сторону задаёт направление СОДЕРЖАЩЕГО блока, а не собственное
+            // письмо коробки (css-writing-modes-4 §7.1, строки 1926-1931).
+            let inner = if inherited.rtl == Some(true) {
+                crate::interact::InlineStartHang::new(inner).into_any_element()
+            } else {
+                inner
             };
             return Some(inline::Piece::Overlay(inner));
         }
