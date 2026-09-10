@@ -13695,14 +13695,61 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     // содержащий блок — весь контейнер, рисуются его детьми
                     // рядом со стопкой (`out-of-flow-in-multicolumn-094…097`
                     // при нулевой записи в стопке уходили в колонку).
+                    // Статическая позиция (CSS 2.1 §10.6.4: «where the box
+                    // would have been if position were static»; §10.3.7 — то
+                    // же по строчной оси) — правило ПОЗИЦИОНИРОВАННОЙ
+                    // коробки. У плавающей своё место по §9.5, и щуп ей не
+                    // положен: нулевая запись в стопке меняет `kids.len()`, с
+                    // ним `balance_last` и весь план `fill_avoiding`
+                    // (`multicol-fill-balance-038` — монолитный флоат с
+                    // полями 40/70 при `margin-bottom: -30px` у соседа:
+                    // 0.32 -> «красное видно», замерено на v206). Blink
+                    // перебирает в `LayoutFragmentainerDescendants` только
+                    // `oof_positioned_candidates`; флоат идёт обычной
+                    // укладкой (`PositionFloat`).
+                    let positioned = |s: &Computed| {
+                        matches!(
+                            s.position,
+                            Some(crate::computed::Position::Absolute)
+                                | Some(crate::computed::Position::Fixed)
+                        )
+                    };
+                    // Плавающие прямые дети — как прежде: не в стопку,
+                    // рисуются её соседями.
                     let direct_oof: Vec<Element> = e
                         .children
                         .iter()
                         .filter_map(|n| match n {
-                            Node::Element(c) if out_of_flow(&c.style) => Some(c.clone()),
+                            Node::Element(c)
+                                if out_of_flow(&c.style) && !positioned(&c.style) =>
+                            {
+                                Some(c.clone())
+                            }
                             _ => None,
                         })
                         .collect();
+                    // Позиционированные прямые дети несут МЕСТО В ПОТОКЕ —
+                    // номер среди детей, ушедших в стопку: точка статической
+                    // позиции лежит В КОЛОНКЕ, а не под стопкой, и взять её
+                    // больше неоткуда — раскладка под нами про колонки не
+                    // знает. Счёт идёт по тем же детям, что отбирает
+                    // `stackable` ниже: непустые и не внепоточные.
+                    let oof_static: Vec<(usize, Element)> = {
+                        let mut at = 0usize;
+                        let mut out: Vec<(usize, Element)> = Vec::new();
+                        for n in e.children.iter().filter(|n| !is_blank(n)) {
+                            let Node::Element(c) = n else {
+                                at += 1;
+                                continue;
+                            };
+                            if positioned(&c.style) {
+                                out.push((at, c.clone()));
+                            } else if !out_of_flow(&c.style) {
+                                at += 1;
+                            }
+                        }
+                        out
+                    };
                     let stackable: Option<Vec<(Element, Shape)>> = e
                         .children
                         .iter()
@@ -14273,6 +14320,66 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 }
                             })
                             .collect();
+                        // Щуп статической позиции — НУЛЕВОЙ записью стопки на
+                        // месте позиционированного ребёнка: высоты нет, полей
+                        // нет, точек разреза нет, монолитных диапазонов нет —
+                        // план укладки от него не двигается (`fill_at`:
+                        // `rest = 0` всегда влезает в остаток колонки), а
+                        // холст `interact::spot_probe` запоминает экранную
+                        // дырку. Сама коробка в стопку НЕ идёт: она рисуется
+                        // после стопки заместителем `spot_place` и сдвигается
+                        // в эту дырку. Тем это отличается от прежней пробы
+                        // «нулевая запись в стопке», о которой говорит
+                        // комментарий у `direct_oof`: там в колонку уходил САМ
+                        // элемент, и его резала маска
+                        // (`out-of-flow-in-multicolumn-094…097`).
+                        //
+                        // Blink берёт статическую позицию оттуда же —
+                        // `out_of_flow_layout_part.cc`,
+                        // `LayoutFragmentainerDescendants`: позиция кандидата
+                        // считается относительно ФРАГМЕНТАИНЕРА.
+                        let mut children = children;
+                        let oof_spots: Vec<crate::interact::SpotCell> =
+                            oof_static.iter().map(|_| Default::default()).collect();
+                        for (i, (at, oof)) in oof_static.iter().enumerate().rev() {
+                            // Заданную ось считает раскладка от содержащего
+                            // блока, щуп правит только ПУСТУЮ (CSS 2.1
+                            // §10.3.7) — тот же гейт `fixed_axes`, что у слоёв
+                            // в `blocks()`.
+                            oof_spots[i].set(crate::interact::Spot {
+                                fixed_axes: (
+                                    edge_set(oof.style.inset.left)
+                                        || edge_set(oof.style.inset.right),
+                                    edge_set(oof.style.inset.top)
+                                        || edge_set(oof.style.inset.bottom),
+                                ),
+                                rtl: merged.rtl == Some(true),
+                                vertical: merged.vertical == Some(true),
+                                vertical_rl: merged.vertical_rl == Some(true),
+                                own_vertical: oof.style.vertical == Some(true),
+                                ..Default::default()
+                            });
+                            let probe = crate::flow::StackChild {
+                                el: crate::interact::spot_probe(oof_spots[i].clone(), true),
+                                frags: Vec::new(),
+                                monolith: false,
+                                cuts: Vec::new(),
+                                force_before: false,
+                                force_after: false,
+                                avoid_before: false,
+                                avoid_after: false,
+                                forced: Vec::new(),
+                                solid: Vec::new(),
+                                h: 0.0,
+                                mt: 0.0,
+                                mb: 0.0,
+                                span: false,
+                                over: 0.0,
+                                rel: (0.0, 0.0),
+                            };
+                            let at = (*at).min(children.len());
+                            children.insert(at, probe);
+                        }
                         let mut d = d.child(crate::flow::ColumnStack::new(
                             children,
                             cols as usize,
@@ -14282,8 +14389,22 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             rows,
                             gap_items.clone(),
                         ));
+                        // Флоаты — прежним ходом, соседями стопки.
                         for oof in &direct_oof {
                             d = d.child(element(oof, &merged, opts));
+                        }
+                        // Заместитель на месте щупа: рисуется ПОСЛЕ стопки и
+                        // после флоатов (позиционированная коробка выше и
+                        // поточного содержимого, и плавающих — CSS 2.1 §9.9,
+                        // шаг 8 против шагов 4 и 5; на этом держится
+                        // `abspos-after-spanner`, где под зеленью поточная
+                        // красная коробка), а встаёт туда, где щуп стоял в
+                        // колонке.
+                        for (i, (_, oof)) in oof_static.iter().enumerate() {
+                            d = d.child(crate::interact::spot_place(
+                                oof_spots[i].clone(),
+                                element(oof, &merged, opts),
+                            ));
                         }
                         if let (Some(buf), Some(spec)) = (gap_items, gap_spec) {
                             d = d.child(crate::interact::GapRulePainter::new(buf, spec).into_any_element());
