@@ -4799,6 +4799,10 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     vertical: inherited.vertical == Some(true),
                     vertical_rl: inherited.vertical_rl == Some(true),
                     own_vertical: e.style.vertical == Some(true),
+                    replaced: matches!(
+                        e.tag.as_str(),
+                        "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
+                    ),
                     ..Default::default()
                 });
                 let sent = if to_icb && fixed && PAGED.with(|p| p.get()) {
@@ -4873,6 +4877,10 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     vertical: inherited.vertical == Some(true),
                     vertical_rl: inherited.vertical_rl == Some(true),
                     own_vertical: e.style.vertical == Some(true),
+                    replaced: matches!(
+                        e.tag.as_str(),
+                        "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
+                    ),
                     line_align: static_line_align(e, inherited),
                     ..Default::default()
                 });
@@ -10949,6 +10957,10 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                     vertical: inherited.vertical == Some(true),
                     vertical_rl: inherited.vertical_rl == Some(true),
                     own_vertical: e.style.vertical == Some(true),
+                    replaced: matches!(
+                        e.tag.as_str(),
+                        "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
+                    ),
                     ..Default::default()
                 });
                 let probe = crate::interact::spot_probe(spot.clone(), false);
@@ -10973,6 +10985,10 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                     vertical: inherited.vertical == Some(true),
                     vertical_rl: inherited.vertical_rl == Some(true),
                     own_vertical: e.style.vertical == Some(true),
+                    replaced: matches!(
+                        e.tag.as_str(),
+                        "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
+                    ),
                     ..Default::default()
                 });
                 // Слоя нет — элемент возвращается назад, и рисуем его на
