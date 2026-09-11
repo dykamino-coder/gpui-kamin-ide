@@ -599,6 +599,12 @@ struct Frag {
 /// `target/scout-cssbreak-2026-09.md` и `target/scout-linefrag-2026-09.md`
 /// (второй пересчитал потолок построчной фрагментации: не 200 пар, а 40-52,
 /// зато «разрыв между блочными детьми РЕКУРСИВНО» — 183 пары).
+/// Ширина колонки для внутренних размеров многоколоночного контейнера:
+/// `Some(w)` — `column-width` в точках, `None` — `column-width: auto`.
+/// Само наличие значения означает «ширину коробки решает содержимое».
+#[derive(Clone, Copy)]
+pub struct Intrinsic(pub Option<f32>);
+
 /// Ряды колонок (css-multicol-2 §column-wrap, §column-height). Blink
 /// (`column_layout_algorithm.cc`): ряды — сетка с шагом `h + gap` по
 /// содержимому коробки; линия колонок ставится в текущий ряд, её высота —
@@ -660,6 +666,10 @@ pub struct ColumnStack {
     rows: Option<Rows>,
     /// Сколько копий у ребёнка (= сколько колонок он может занять).
     copies: usize,
+    /// Внутренние размеры контейнера, если его ширину решает СОДЕРЖИМОЕ.
+    /// `None` — ширину даёт родитель, и мерить детей незачем: лишний проход
+    /// раскладки стоит дороже, чем всё остальное в этом элементе.
+    intrinsic: Option<Intrinsic>,
     /// Буфер границ колонок и спаннеров для `GapRulePainter` (css-gaps-1
     /// §gap-multicol): колонки линии — элементы строки, спаннер — элемент во
     /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
@@ -683,6 +693,7 @@ impl ColumnStack {
         rule: Option<(f32, gpui::Hsla)>,
         rows: Option<Rows>,
         gap_items: Option<crate::interact::GapItems>,
+        intrinsic: Option<Intrinsic>,
     ) -> Self {
         // Без рядов копий ровно столько, сколько колонок (как прежде); с
         // рядами — сколько построил `render.rs`: ребёнок может занять
@@ -700,6 +711,7 @@ impl ColumnStack {
             rows,
             copies,
             gap_items,
+            intrinsic,
             plan: std::cell::RefCell::new(Vec::new()),
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),
@@ -1292,6 +1304,7 @@ impl ColumnStack {
             rows,
             copies: copies.max(1),
             gap_items: None,
+            intrinsic: None,
             plan: std::cell::RefCell::new(Vec::new()),
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),
@@ -1472,7 +1485,7 @@ impl Element for ColumnStack {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
-        _cx: &mut App,
+        cx: &mut App,
     ) -> (LayoutId, ()) {
         let heights: Vec<Kid> = self
             .children
@@ -1498,6 +1511,74 @@ impl Element for ColumnStack {
         let gap = self.gap;
         let rows = self.rows;
         let copies = self.copies;
+        // Внутренние размеры многоколоночного контейнера. Спека их не
+        // определяет (css-multicol-1 §3.4: «This specification does not
+        // define how U is calculated»), единственное письменное определение —
+        // css-sizing-4 `intrinsic-sizing-notes.bs` §multicol-intrinsic; его же
+        // держит Blink (`column_layout_algorithm.cc:433`
+        // `ComputeMinMaxSizes`). Прежде замер отдавал НОЛЬ, и всякий
+        // многоколоночник, чью ширину решает содержимое (плавающий, строчная
+        // коробка, элемент гибкого контейнера или сетки), схлопывался в
+        // отбивку: `intrinsic-size-001` — зелёная коробка 60×100 вместо
+        // 100×100, эталоны `column-grid-lanes-container-baseline-*` — полоса
+        // в 25 px вместо 320.
+        //
+        // Детей меряем ТОЛЬКО когда ширину решает содержимое: обычному
+        // блочному контейнеру её даёт родитель, и второй проход раскладки там
+        // ничего не даст, кроме времени.
+        let intrinsic = self.intrinsic.map(|Intrinsic(col_w)| {
+            let (mut kid_min, mut kid_max) = (0.0f32, 0.0f32);
+            let (mut span_min, mut span_max) = (0.0f32, 0.0f32);
+            for c in self.children.iter_mut() {
+                let mut measure = |el: &mut AnyElement, w: gpui::AvailableSpace| {
+                    f32::from(
+                        el.layout_as_root(
+                            size(w, gpui::AvailableSpace::MaxContent),
+                            window,
+                            cx,
+                        )
+                        .width,
+                    )
+                };
+                let mn = measure(&mut c.el, gpui::AvailableSpace::MinContent);
+                let mx = measure(&mut c.el, gpui::AvailableSpace::MaxContent);
+                // Спаннер идёт во всю ширину коробки: на число колонок он не
+                // умножается, а лишь ПОДНИМАЕТ итог — Blink
+                // `ComputeSpannersMinMaxSizes` (:523) через
+                // `MinMaxSizes::Encompass` (`min_max_sizes.h:26`, это `max`
+                // по обеим границам).
+                if c.span {
+                    span_min = span_min.max(mn);
+                    span_max = span_max.max(mx);
+                } else {
+                    kid_min = kid_min.max(mn);
+                    kid_max = kid_max.max(mx);
+                }
+            }
+            let n = count.max(1) as f32;
+            let gap_extra = gap * (n - 1.0);
+            let (mut mn, mut mx) = (kid_min, kid_max);
+            match col_w.filter(|w| *w > 0.0) {
+                // «The min-content inline size of a multi-column container
+                // with a computed column-width not auto is the smaller of its
+                // column-width and the largest min-content inline-size
+                // contribution of its contents.»
+                Some(w) => {
+                    mn = mn.min(w);
+                    mx = mx.max(w).max(mn);
+                }
+                // «…with a computed column-width of auto is the largest
+                // min-content inline-size contribution of its contents
+                // multiplied by its column-count …, plus its column-gap
+                // multiplied by column-count minus 1.» При ЗАДАННОЙ ширине
+                // колонки минимум на число колонок не умножается (Blink
+                // :482 — «column-count … is ignored in intrinsic min
+                // inline-size calculation, if column-width is specified»).
+                None => mn = mn * n + gap_extra,
+            }
+            mx = mx * n + gap_extra;
+            (mn.max(span_min), mx.max(span_max))
+        });
         let id = window.request_measured_layout(
             gpui::Style::default(),
             move |known, available, _window, _cx| {
@@ -1506,7 +1587,12 @@ impl Element for ColumnStack {
                     .map(f32::from)
                     .or(match available.width {
                         gpui::AvailableSpace::Definite(v) => Some(f32::from(v)),
-                        _ => None,
+                        gpui::AvailableSpace::MinContent => {
+                            intrinsic.map(|(mn, _)| mn)
+                        }
+                        gpui::AvailableSpace::MaxContent => {
+                            intrinsic.map(|(_, mx)| mx)
+                        }
                     })
                     .unwrap_or(0.0);
                 let probe = ColumnStack {
@@ -1518,6 +1604,7 @@ impl Element for ColumnStack {
                     rows,
                     copies,
                     gap_items: None,
+                    intrinsic: None,
                     plan: std::cell::RefCell::new(Vec::new()),
                     col_w: std::cell::Cell::new(0.0),
                     lines_plan: std::cell::RefCell::new(Vec::new()),

@@ -8159,6 +8159,46 @@ fn hoist_spanners(kids: &[Node]) -> Option<Vec<Node>> {
 /// контейнерам (css-multicol-1 §2), сетка и гибкий контейнер ими не
 /// становятся (`grid-multicol-001`,
 /// `column-property-should-not-apply-on-grid-container-001`).
+/// Решает ли ширину этой коробки её СОДЕРЖИМОЕ.
+///
+/// Ключевые слова `min-content`/`max-content`/`fit-content` требуют
+/// внутреннего размера прямо (css-sizing-3 §4.1); у плавающей, абсолютной и
+/// строчной коробки то же самое зовётся shrink-to-fit (CSS 2.1 §10.3.5) — тот
+/// же перечень, что у предиката `shrink_to_fit` в `apply.rs:940`. Элемент
+/// гибкого контейнера и сетки тоже меряется содержимым: его основа —
+/// `max-content` (css-flexbox-1 §9.2 п.3.A).
+fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {
+    if matches!(
+        c.width,
+        Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+    ) {
+        return true;
+    }
+    if !matches!(c.width, None | Some(Len::Auto)) {
+        return false;
+    }
+    c.float.unwrap_or(0) != 0
+        || matches!(
+            c.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        )
+        || matches!(
+            c.display,
+            Some(Display::InlineBlock)
+                | Some(Display::InlineFlex)
+                | Some(Display::InlineGrid)
+                | Some(Display::InlineTable)
+        )
+        || matches!(
+            parent.display,
+            Some(Display::Flex)
+                | Some(Display::InlineFlex)
+                | Some(Display::Grid)
+                | Some(Display::InlineGrid)
+                | Some(Display::GridLanes)
+        )
+}
+
 fn multicol_container(c: &Computed) -> bool {
     // Заданный `column-height` тоже делает коробку многоколоночной
     // (css-multicol-2 §multi-column-model: «whose column-width, column-count,
@@ -14459,6 +14499,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             rule,
                             rows,
                             gap_items.clone(),
+                            intrinsic_inline_size(&e.style, inherited).then(|| {
+                                crate::flow::Intrinsic(match column_width {
+                                    Some(Len::Px(w)) if w > 0.0 => Some(w),
+                                    _ => None,
+                                })
+                            }),
                         ));
                         // Флоаты — прежним ходом, соседями стопки.
                         for oof in &direct_oof {

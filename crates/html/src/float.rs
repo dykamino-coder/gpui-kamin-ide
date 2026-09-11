@@ -562,9 +562,25 @@ impl Element for ColumnFlow {
         let layout_id = window.request_measured_layout(
             Style::default(),
             move |known, available, window, _cx| {
+                // Под `min-content`/`max-content` доступного места НЕТ, и
+                // «ширина окна» здесь была выдумкой: `width: min-content` у
+                // многоколоночника не значил ничего, и коробка растягивалась
+                // на весь кадр (`multicol-width-004/005` — все четыре
+                // `<article>` во всю ширину). Считаем внутренний размер по
+                // css-sizing-4 §multicol-intrinsic, как Blink
+                // `column_layout_algorithm.cc:433`.
                 let width = known.width.unwrap_or(match available.width {
                     AvailableSpace::Definite(w) => w,
-                    _ => window.viewport_size().width,
+                    other => intrinsic_column_width(
+                        &text,
+                        count,
+                        col_w,
+                        gap,
+                        &font,
+                        font_size,
+                        matches!(other, AvailableSpace::MinContent),
+                        window,
+                    ),
                 });
                 let (at, used, height) = measure_columns(
                     &text,
@@ -649,4 +665,47 @@ impl IntoElement for ColumnFlow {
     fn into_element(self) -> Self::Element {
         self
     }
+}
+
+/// Внутренний размер многоколоночного контейнера с ТЕКСТОВЫМ потоком.
+///
+/// css-sizing-4 `intrinsic-sizing-notes.bs` §multicol-intrinsic — единственное
+/// письменное определение (css-multicol-1 §3.4 прямо отказывается его давать).
+/// Порядок действий — как в Blink `ColumnLayoutAlgorithm::ComputeMinMaxSizes`.
+/// Вклад содержимого у текста берут те же метрики, что и перенос
+/// (`LineWrapper::min_content_width` / `max_content_width`), иначе замер и
+/// перенос разойдутся между собой.
+#[allow(clippy::too_many_arguments)]
+fn intrinsic_column_width(
+    text: &str,
+    count: Option<usize>,
+    col_w: Option<f32>,
+    gap: f32,
+    font: &Font,
+    font_size: f32,
+    min: bool,
+    window: &mut Window,
+) -> Pixels {
+    let mut wrapper = window
+        .text_system()
+        .line_wrapper(font.clone(), px(font_size));
+    let (mut kid_min, mut kid_max) = (0.0f32, 0.0f32);
+    // Жёсткие разрывы приходят переводом строки: каждый сегмент — свой абзац,
+    // и вклад даёт самый широкий из них.
+    for seg in text.split('\n') {
+        kid_min = kid_min.max(f32::from(wrapper.min_content_width(seg)));
+        kid_max = kid_max.max(f32::from(wrapper.max_content_width(seg)));
+    }
+    let n = count.unwrap_or(1).max(1) as f32;
+    let gap_extra = gap * (n - 1.0);
+    let (mut mn, mut mx) = (kid_min, kid_max);
+    match col_w.filter(|w| *w > 0.0) {
+        Some(w) => {
+            mn = mn.min(w);
+            mx = mx.max(w).max(mn);
+        }
+        None => mn = mn * n + gap_extra,
+    }
+    mx = mx * n + gap_extra;
+    px(if min { mn } else { mx })
 }
