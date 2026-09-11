@@ -170,6 +170,17 @@ impl Cache {
                 let cache_slot = Self::compute_cache_slot(known_dimensions, available_space);
                 self.measure_entries[cache_slot] =
                     Some(CacheEntry { known_dimensions, available_space, content: layout_output.size });
+                // KaminIDE patch: ★ ЗАМЕРЕНО И ОТКАЧЕНО (11.09,
+                // `scout-mccolwidth-2026-09.md`). Гипотеза: щуп внутреннего
+                // размера переписывает `Layout` детям, поэтому при расхождении
+                // размера надо сбрасывать `final_layout_entry`, иначе
+                // многоколоночная стопка считает ширину колонки от коробки
+                // щупа (66.8 css вместо 319.6). Широкий срез 5609 пар,
+                // база тем же списком: 4294 -> 4294, **+0 / −0**. Сам скаут
+                // назвал этот исход признаком «корень другой»: вердикты
+                // семьи не сдвинулись ни на сотую. Возвращать только после
+                // печати `bounds.size.width` в `ColumnStack::prepaint` —
+                // если там придёт 320, гипотеза мертва.
             }
             RunMode::PerformHiddenLayout => {}
         }
