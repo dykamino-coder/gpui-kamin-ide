@@ -271,11 +271,10 @@ timer отсутствует; stale manager generation и `listTabs` не отк
 ### BR-06 — Webview update stalls until pointer activity
 
 **Close-out audit 2026-09-06:** BR-31 / INC-2026-0002 подтвердили один no-pointer
-starvation path. После его merge повторить оба исходных Chat сценария и добавленный ниже сценарий
-Plugins, сопоставив outbox/pump/replay trace; Agents R6 сам по себе их не покрывает.
+starvation path. После его merge повторить оба исходных Chat сценария и добавленный
+ниже сценарий Plugins, сопоставив outbox/pump/replay trace; Agents R6 сам по себе их не покрывает.
 При исчезновении всех проверяемых симптомов закрыть verification с evidence, при
-остатке завести bounded child. Отдельный
-speculative repaint fix не нужен.
+остатке завести bounded child. Отдельный speculative repaint fix не нужен.
 
 **Status:** waiting для повторной verification. **Dependency:** BR-31;
 BR-01 уже merged. **Acceptance будущего fix:** automated + Windows runtime
@@ -291,8 +290,8 @@ merge gate.
 а не две root-cause гипотезы.
 
 До правки нужно записать sequence tab/replay/connection events и CEF paint/frame
-invalidation. Windows acceptance выполняет оба Chat сценария и сценарий Plugins ниже без движения мыши,
-смены focus и ручного resize; loading обязан завершиться сам.
+invalidation. Windows acceptance выполняет оба Chat сценария и сценарий Plugins ниже
+без движения мыши, смены focus и ручного resize; loading обязан завершиться сам.
 
 **Owner follow-up (2026-09-11): manual plugin Update waits for pointer activity.**
 In Claude Bridge settings → Plugins → Active, the owner reports clicking a
@@ -301,7 +300,7 @@ version, then seeing completion/the next version only after moving the pointer
 around the card or settings area. The screenshot shows the recovered state on
 app 1.0.55, not the stalled interval. Backend completion time and the exact
 rendered loader were not captured. Registration author: @dvpetrochenko.
-Supplement PR: pending registration link. Private screenshot and report: [INC-2026-0044](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/5006bf2684eb3e6ec9cf86a900442ebef5fb7b33/incidents/INC-2026-0044).
+Supplement PR: [#102](https://github.com/dykamino-coder/gpui-kamin-ide/pull/102). Private screenshot and report: [INC-2026-0044](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/5006bf2684eb3e6ec9cf86a900442ebef5fb7b33/incidents/INC-2026-0044).
 
 Add this concrete settings scenario to BR-06's verification under its existing
 BR-31 dependency. Do not assume the old Chat/Agents wake defect explains it:
