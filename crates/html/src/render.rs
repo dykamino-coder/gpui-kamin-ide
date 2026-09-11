@@ -7224,6 +7224,16 @@ fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     font
 }
 
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (11.09, `scout-mctextflow-2026-09.md`, пакет A,
+// 3 хунка): рекурсия `column_flow` переносит `column-gap`/`column-fill`,
+// зазор и высоту заливки из `inherited`. Срез 659 пар многоколоночников,
+// база тем же списком: **+6 / −4**, и все четыре потери его —
+// `out-of-flow-in-multicolumn-052` 0.00 -> 99.00 (обвал в «красное
+// видно»), `block-max-height-004` 0.00 -> 1.23, `multicol-gap-negative-
+// 001` 0.00 -> 0.91, `multicol-height-001` 0.48 -> 0.64. Поверх пакета B
+// он стоит +7/−4 при чистых +6/−1 у одного B. Возвращать только с
+// разбором того, почему перенос зазора ломает внепоточные и
+// отрицательный зазор.
 fn column_flow(
     e: &Element,
     inherited: &Computed,
@@ -13624,9 +13634,16 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // (css-multicol-1 §7.3). Ширина коробки нужна заданная: без неё
             // считать не от чего, и остаётся прежняя дорожечная раскладка.
             // Умолчание `column-gap: normal` — один кегль (css-align §8.3).
-            let used_gap = match e.style.column_gap {
+            // Вычисленные значения, а не заданные: `resolve_em` живёт в
+            // `inline::inherit`, поэтому точки лежат в `merged`
+            // (`render.rs:13235`), а в `e.style` остаётся `Len::Em`. Кегль
+            // для `column-gap: normal` — СОБСТВЕННЫЙ кегль элемента
+            // (css-align §8.3; Blink `length_utils.cc:1356`
+            // `style.GetFontDescription().ComputedPixelSize()`), и он тоже
+            // разрешён только в `merged`.
+            let used_gap = match merged.column_gap {
                 Some(Len::Px(v)) => v,
-                _ => match e.style.font_size {
+                _ => match merged.font_size {
                     Some(Len::Px(size)) => size,
                     _ => opts.base_size(),
                 },
@@ -13634,9 +13651,21 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // `column-*` — только у блочных контейнеров (css-multicol-1 §2):
             // сетка ими не режется (`grid-multicol-001`).
             let multicol = multicol_container(&e.style);
-            let column_width = e.style.column_width.filter(|_| multicol);
-            let column_count = e.style.column_count.filter(|_| multicol);
-            let count_from_width = match (column_width, e.style.width) {
+            // css-multicol-1 §3.4 шаги (05)-(07): N считается по ВЫЧИСЛЕННЫМ
+            // 'column-width', 'column-gap' и используемой ширине коробки.
+            // Пока брались заданные значения, `column-width: 6em` не
+            // проходил гейт `Len::Px`, `count_from_width` был `None`,
+            // `width_driven` — ложью, и многоколоночник не включался вовсе:
+            // `multicol-width-001` рисовался одним абзацем в 30 знаков
+            // вместо пяти колонок по шесть (снимок обеих сторон в
+            // `target/scout-mctextflow-2026-09.md` §3.4). Blink
+            // абсолютизирует 'column-width' в `float` ещё на вычисленном
+            // значении (`css_properties.json5:7513`
+            // `ConvertComputedLength<float>`) и в `length_utils.cc:1311`
+            // `ResolveUsedColumnCount` читает уже точки.
+            let column_width = merged.column_width.filter(|_| multicol);
+            let column_count = merged.column_count.filter(|_| multicol);
+            let count_from_width = match (column_width, merged.width) {
                 (Some(Len::Px(w)), Some(Len::Px(box_w))) if w > 0.0 => {
                     Some((((box_w + used_gap) / (w + used_gap)).floor().max(1.0)) as u16)
                 }
