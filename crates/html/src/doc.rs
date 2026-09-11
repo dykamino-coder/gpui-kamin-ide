@@ -502,19 +502,36 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
 /// Проход идёт после каскада и после распространения письма с `<body>` —
 /// то есть в единственной точке, где письмо узла уже окончательно.
 fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
-    fn walk(nodes: &mut [Node], mode: (Option<bool>, Option<bool>, Option<bool>)) {
+    fn walk(
+        nodes: &mut [Node],
+        mode: (Option<bool>, Option<bool>, Option<bool>, Option<bool>),
+    ) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
             // Письмо и направление наследуются; свои значения сильнее.
+            // `sideways` — часть ЗНАЧЕНИЯ `writing-mode`, а оно наследуемое
+            // (css-writing-modes-4 §3.1, `Inherited: yes`). Без него потомок
+            // блока `sideways-lr`, у которого своего письма нет, разбирал
+            // логические стороны по строке `vertical-lr` таблицы
+            // §Abstract-Physical Mapping: `inline-start` уезжал с НИЖНЕГО
+            // края на верхний (эталон `initial-letter-block-position-
+            // margins-slr-ref` ставил `margin-inline-start: 15px` сверху).
             let own = (
                 e.style.vertical.or(mode.0),
                 e.style.vertical_rl.or(mode.1),
                 e.style.rtl.or(mode.2),
+                e.style.sideways.or(mode.3),
             );
-            let (was_v, was_rl, was_rtl) = (e.style.vertical, e.style.vertical_rl, e.style.rtl);
+            let (was_v, was_rl, was_rtl, was_sw) = (
+                e.style.vertical,
+                e.style.vertical_rl,
+                e.style.rtl,
+                e.style.sideways,
+            );
             e.style.vertical = own.0;
             e.style.vertical_rl = own.1;
             e.style.rtl = own.2;
+            e.style.sideways = own.3;
             if {
                 static ON: std::sync::LazyLock<bool> =
                     std::sync::LazyLock::new(|| std::env::var("LOG_DBG").is_ok());
@@ -540,21 +557,48 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             // `Display::TableCell` приходит только из авторского CSS
             // (замеренный откат в шапке `resolve_logical`), поэтому
             // проверяются оба признака.
-            e.style.resolve_logical(
-                mode.0,
-                matches!(e.tag.as_str(), "td" | "th")
-                    || e.style.display == Some(crate::computed::Display::TableCell),
-            );
+            let is_cell = matches!(e.tag.as_str(), "td" | "th")
+                || e.style.display == Some(crate::computed::Display::TableCell);
+            e.style.resolve_logical(mode.0, is_cell);
+            // Слои `:hover`, `::first-letter` и `::first-line` — ТЕМ ЖЕ
+            // проходом. Слой собирается копией стиля элемента ДО этого
+            // прохода (`dom.rs:2473 layer()`), поэтому логические стороны
+            // остаются у него в `Computed::logical` и на физические поля не
+            // ложатся НИКОГДА. Из-за этого `::first-letter
+            // { margin-block-start: 10px }` не доезжал до буквицы:
+            // `render::initial_letter_float` читает у слоя `margin.top` и
+            // родню, а там `None`.
+            for layer in [
+                e.hover.as_mut(),
+                e.first_letter.as_mut(),
+                e.first_line.as_mut(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let (lv, lrl, lrtl, lsw) =
+                    (layer.vertical, layer.vertical_rl, layer.rtl, layer.sideways);
+                layer.vertical = own.0;
+                layer.vertical_rl = own.1;
+                layer.rtl = own.2;
+                layer.sideways = own.3;
+                layer.resolve_logical(mode.0, is_cell);
+                layer.vertical = lv;
+                layer.vertical_rl = lrl;
+                layer.rtl = lrtl;
+                layer.sideways = lsw;
+            }
             // Унаследованное обратно снимается: наследованием занимается
             // сборщик дерева, и оставленное здесь значение завело бы узлу
             // собственную коробку (см. `has_box_style`).
             e.style.vertical = was_v;
             e.style.vertical_rl = was_rl;
             e.style.rtl = was_rtl;
+            e.style.sideways = was_sw;
             walk(&mut e.children, own);
         }
     }
-    walk(&mut nodes, (None, None, None));
+    walk(&mut nodes, (None, None, None, None));
     // `zoom` (css-viewport-1): длины под зумом домножаются ЗДЕСЬ, отдельным
     // проходом по собственным стилям — до слияния и до раскладки, а не в
     // `inline::inherit` (см. ★ перед ней). Идёт после `walk`: логические
