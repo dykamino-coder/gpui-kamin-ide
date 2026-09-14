@@ -331,6 +331,10 @@ Post-merge corporate observation не блокирует merge/release, если
 
 ## 7. Результат запуска
 
+Перед отчётом выполнить [финальную сверку связанных PR](../CLAUDE.md#завершение-поручения-и-связанные-pr),
+включая private evidence repository. Незавершённый вспомогательный PR должен
+попасть в отчёт с владельцем, blocker/review и условием продолжения.
+
 Итоговый отчёт кратко перечисляет:
 
 - merged, closed, replaced и blocked PR;
