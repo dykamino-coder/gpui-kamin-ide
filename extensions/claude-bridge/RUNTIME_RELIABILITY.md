@@ -271,10 +271,10 @@ timer отсутствует; stale manager generation и `listTabs` не отк
 ### BR-06 — Webview update stalls until pointer activity
 
 **Close-out audit 2026-09-06:** BR-31 / INC-2026-0002 подтвердили один no-pointer
-starvation path. После его merge повторить оба исходных Chat сценария и сопоставить
-outbox/pump/replay trace; Agents R6 сам по себе их не покрывает. При исчезновении обоих
-симптомов закрыть verification с evidence, при остатке завести bounded child. Отдельный
-speculative repaint fix не нужен.
+starvation path. После его merge повторить оба исходных Chat сценария и добавленный
+ниже сценарий Plugins, сопоставив outbox/pump/replay trace; Agents R6 сам по себе их не покрывает.
+При исчезновении всех проверяемых симптомов закрыть verification с evidence, при
+остатке завести bounded child. Отдельный speculative repaint fix не нужен.
 
 **Status:** waiting для повторной verification. **Dependency:** BR-31;
 BR-01 уже merged. **Acceptance будущего fix:** automated + Windows runtime
@@ -290,8 +290,57 @@ merge gate.
 а не две root-cause гипотезы.
 
 До правки нужно записать sequence tab/replay/connection events и CEF paint/frame
-invalidation. Windows acceptance выполняет оба сценария без движения мыши,
-смены focus и ручного resize; loading обязан завершиться сам.
+invalidation. Windows acceptance выполняет оба Chat сценария и сценарий Plugins ниже
+без движения мыши, смены focus и ручного resize; loading обязан завершиться сам.
+
+**Owner follow-up (2026-09-11): manual plugin Update waits for pointer activity.**
+In Claude Bridge settings → Plugins → Active, the owner reports clicking a
+plugin's Update button, observing a persistent loading indicator and the old
+version, then seeing completion/the next version only after moving the pointer
+around the card or settings area. The screenshot shows the recovered state on
+app 1.0.55, not the stalled interval. Backend completion time and the exact
+rendered loader were not captured. Registration author: @dvpetrochenko.
+Supplement PR: [#102](https://github.com/dykamino-coder/gpui-kamin-ide/pull/102). Private screenshot and report: [INC-2026-0044](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/5006bf2684eb3e6ec9cf86a900442ebef5fb7b33/incidents/INC-2026-0044).
+
+Add this concrete settings scenario to BR-06's verification under its existing
+BR-31 dependency. Do not assume the old Chat/Agents wake defect explains it:
+the owner reports that the spinner was animating while the result stayed stale.
+The code already clears the button's disabled state in `finally`; absence of a
+reset is not an established cause. In the inspected `PluginCardActions.tsx`,
+`cacheLabel` is assigned but not rendered by the Update button. Match the exact
+shipped webview/element before deriving a spinner explanation from source.
+
+Bounded source entry points at `158a28aa152c7be1ab1ec82cde06d59d42d03a5c`:
+`webview/src/components/customize/plugins/PluginCardActions.tsx:42` awaits
+`refreshPluginSource` or `syncPluginCache`, then calls `onRefresh`;
+`PluginsPanel.tsx:78` separately fetches/revalidates installed versions.
+`extension/src/main/ipc/plugins/handlers-source.ts:153` returns after the remote
+pull/cache and relevant runtime/dependency work. These paths are relative to
+`extensions/claude-bridge/`. Native `crates/shell/src/web/mod.rs::deliver` and
+`web/pump.rs::install` remain the existing delivery/wake entry points. Distinguish
+an actual unfinished backend operation from a held invoke reply, a later listing
+request, state/DOM changes and CEF/native presentation. A pointer-correlated
+update alone does not identify which boundary was blocked.
+
+The maintainer should use synthetic delayed success/failure operations, record
+backend completion → reply delivery → listing completion → state/DOM → paint,
+and keep the pointer, focus and window size unchanged through completion.
+Cover both Update paths, success/no-change/failure, an already-open settings
+panel, reopen/recreation and rapid repeated operations. The result and controls
+must settle without input assistance; preserve bounded resource use and ensure
+that real slow/failing operations are not reported as completed. Reuse BR-31's
+wake implementation if the trace identifies that defect; otherwise register a
+bounded child after classifying the residual. Existing automated and Windows
+acceptance gates and this task's waiting status remain unchanged.
+
+Also inspect analogous **MCP Servers Test/connect/status** handlers and their
+shared invoke/event delivery as coverage, not a confirmed second incident. The
+owner suggested this possibility without a concrete reproduction. Skills was
+withdrawn as an update example and is not an alleged failing Update action.
+Startup update eligibility/source/cache/list convergence is tracked separately
+in INC-2026-0044; existing INC-2026-0041/0042 retain their failure-reporting and
+runtime-catalog scopes. This supplement performs no fix or deep investigation
+and does not modify the execution batch.
 
 ### BR-07 — Surface native Claude attention in Chat
 
@@ -557,6 +606,117 @@ Automated tests моделируют variable-height rows, unrelated mutation д
 scroll-up через несколько 400-row boundaries и фиксирует viewport displacement
 до/после каждого prepend; выбранный anchor не должен сдвигаться больше чем на
 2 px, а scroll вниз и live streaming остаются плавными.
+
+**Owner report (2026-09-09): tall-message lazy-load jump.** While scrolling
+Cloud Bridge Chat upward toward older messages (direction explicitly confirmed
+by the owner), reaching one very long user or assistant message and loading
+another entry makes the viewport jump abruptly upward. The reading position is
+lost and portions of messages are skipped. Register this as an additional BR-16
+scenario, not a new INC or a claim that the task is fixed. The report concerns
+the CEF Chat transcript, not the native Projects sidebar.
+
+The observed correlation does not establish which stage moved the viewport.
+Distinguish mounting more resident rows, fetching/prepending an older page, and
+deferred layout of an already mounted tall row, including a height change with
+no new request or DOM insertion. The existing anchor logic in
+`webview/src/components/jsonl-viewer/useChatScrollPin.ts`, window growth in
+`JsonlViewer.tsx`, and `content-visibility`/estimated heights in
+`JsonlViewer.module.css` and `webview/src/theme/legacy-global.css` are bounded
+entry points. Their presence does not prove the cause of this occurrence.
+
+Extend the maintainer reproduction matrix with a single synthetic user message
+and, separately, an assistant message several viewport heights tall, surrounded
+by short entries. Scroll upward through the tall message and older-history
+boundaries with slow wheel input and repeated input during loading. Capture the
+same identifiable text point inside the message before/after each transition,
+its pixel offset, row bounds, `scrollTop`/`scrollHeight`, window/page generation
+and the timing of user input, layout and programmatic position corrections.
+Repeat with already resident history and an older-page fetch, and check delayed
+height changes after the first restoration. After accounting for deliberate
+user scrolling, retain the reading point within the existing 2 px tolerance;
+preserving only the message ID while skipping paragraphs is not acceptance.
+Retain the existing downward-scroll, bottom-pin, streaming, tab-memory and
+resident-memory regression gates.
+
+**Evidence and next step:** registration author @dvpetrochenko; Diagnostic PR:
+[PR #93](https://github.com/dykamino-coder/gpui-kamin-ide/pull/93).
+This supplement uses only the owner's sanitized text
+report; no private evidence upload is needed because no logs, screenshots or
+message contents were supplied. Build/CLI versions, exact message dimensions and
+a measured runtime trace remain missing. The maintainer classifies this case
+within BR-16 and records those measurements when scheduled. Preserve the current
+open status, BR-22 classification prerequisite and automated + Windows CEF
+acceptance; this observation does not satisfy that prerequisite or authorize an
+implementation, closure or execution-batch change.
+
+**Owner report (2026-09-09): streaming repeatedly pulls the reader down.**
+During a large, actively streaming assistant response in Cloud Bridge Chat,
+attempting to scroll upward toward older messages repeatedly returns the
+viewport to the live tail as new text appears. The owner cannot reliably leave
+the tail to read history until streaming subsides. This is a second BR-16
+scenario: follow-bottom during active output, distinct from the tall-message
+lazy-load jump above. A common runtime cause has not been established.
+
+**Bounded source review:** on `main`
+`4ce16cccae6a06458fae017b70c5b60f0c62f639`,
+`webview/src/components/jsonl-viewer/useChatScrollPin.ts` has these relevant
+paths:
+
+- `onScroll()` releases `stickRef` only when upward movement exceeds 1 px
+  and the remaining distance from the bottom is at least `AT_BOTTOM_PX = 80`.
+  Smaller upward movement within that band keeps/re-arms follow-bottom.
+  The hook listens to `scroll`, with no separate wheel/keyboard/drag intent
+  listener to distinguish deliberate upward input from layout jitter.
+- The `[entries]` effect and subtree `MutationObserver` request bottom snaps
+  during updates while pinned. `requestSnap()` schedules two animation-frame
+  passes. Each `snap()` rechecks `stickRef`, so a successfully released pin
+  does prevent those writes; this is not unconditional scrolling on every
+  token. If the pin remains armed, a later pass can undo a small upward move.
+- `snap()` and `restoreAnchor()` set a shared `programmaticRef` boolean;
+  the next scroll event consumes it and returns before evaluating direction
+  or updating pin/memory. Event ordering, including a no-op position write
+  followed by real user input, requires runtime verification. The source alone
+  does not prove that this ordering occurred in the owner's session.
+- `restoreAnchor()` also runs on streaming mutations; its stale/prepend
+  ownership problem is already described above. Reproduce follow-bottom with
+  no older-page load first, then combine streaming with history expansion to
+  distinguish the two paths.
+
+The explicit `ScrollDownPill.tsx` click intentionally re-arms following.
+`JsonlViewer.tsx` already passes `onlyIfPinned: true` on replay completion;
+do not attribute this report to a missing replay guard. The existing
+`scroll-pin-rule.test.ts` checks a local copy of that helper predicate, not
+the hook's input/scroll/observer/animation-frame ordering.
+
+**Maintainer reproduction and acceptance:** start pinned on a synthetic
+conversation with older readable entries and a long streaming assistant
+message. Test small upward wheel/trackpad increments within and across the
+80 px band, repeated input during frame updates, PageUp/keyboard and scrollbar
+drag. Repeat while already reading history, during older-page loading, across
+tab switch/restore, on stream completion and on replay completion. Record input,
+scroll events, programmatic-write reasons, pending frame callbacks, pin/guard
+state and the same visible text point's offset, without real message contents.
+Use both steady and bursty text growth, including unchanged entry count.
+
+Intentional upward navigation must let the reader leave the live tail and
+keep reading older messages while generation continues. Further output and
+completion must not re-enable following without a deliberate return to the
+bottom or the existing Scroll down action. Retain bottom-follow for a reader
+who stays at the tail, tolerate passive layout jitter, preserve per-tab scroll
+memory and the 2 px reading-point tolerance after accounting for user input.
+Add regression coverage exercising the real hook/event ordering, plus the
+existing Windows CEF runtime gate; a copied predicate alone is insufficient.
+
+**Evidence and next step:** registration author @dvpetrochenko; Diagnostic PR:
+[PR #98](https://github.com/dykamino-coder/gpui-kamin-ide/pull/98).
+Sanitized owner text only; no logs, screenshots or
+message bodies were supplied, so no private evidence upload is needed. Exact
+installed build, input device, stream cadence and a Windows CEF event/geometry
+trace remain unknown. The maintainer validates the candidate paths and their
+relation to prepend anchoring when BR-16 is scheduled. Preserve BR-16's open
+status, BR-22 prerequisite and existing gates; any independently executable
+child requires explicit decomposition/coordination, not silently dropping the
+dependency. This supplement does not implement or verify a fix.
 
 ### BR-17 — Persist privacy-safe Bridge server logs
 
