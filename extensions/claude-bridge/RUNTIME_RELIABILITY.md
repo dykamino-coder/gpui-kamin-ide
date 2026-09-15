@@ -1100,6 +1100,40 @@ join without mutating data.
 
 ### BR-22 — Keep live chat render window populated by drawable rows
 
+**Historical owner scenario supplement (2026-09-15):** Before the structured
+`Claude is asking` interaction appears, the last visible message block can
+disappear and later return with the question. Sometimes neither the last
+message nor the question appears. This is an old recollection without a fresh
+capture, exact CLI/build version or measured duration; it does not establish
+a current regression or a common cause with the existing screenshots.
+
+Add this precise transition to BR-22's research/acceptance matrix rather than
+creating another empty-chat incident. Correlate the last drawable rows and
+streaming/tool records before, during and after the question with the same
+request's server send, client receipt and widget state. Compare a short and a
+long history, normal completion, delayed transport, tab switch and reconnect.
+Keep preceding readable messages present while the question is pending, and
+require one answerable question in the intended session without a restart or
+pointer/focus workaround. Check answer, cancellation and neighboring session
+isolation in the eventual Windows acceptance.
+
+[INC-2026-0011](runtime-issues/INC-2026-0011.md) owns rejected interactive MCP
+transport delivery. Reuse its fix when that rejection is established; absence
+of a question alone does not prove that mechanism. If the request reaches the
+client but the history or widget disappears, classify the render/state boundary
+here. First distinguish structured AskUserQuestion from a native CLI-only
+prompt covered by BR-11. A server fix is not proof of this transition's UI
+acceptance. Preserve BR-22's investigation state and its coordination with
+BR-16; no acceptance is claimed completed.
+
+Supplement registration author: @dvpetrochenko. Diagnostic PR: pending.
+Next step: research under BR-22 with the transition above. Additional private
+evidence is not required for this sanitized historical recollection; the
+existing immutable evidence remains scoped to its original captures. New
+paired runtime dumps follow private intake. Missing old logs do not prevent a
+synthetic question/streaming reconstruction; record a precise missing trace
+and owner if that attempt cannot classify the case.
+
 **Owner evidence intake (2026-09-08, TASK-003):** Two additional screenshots dated September 2 and 4 show an empty central Chat with `122` and `110 earlier messages` respectively while Console contains conversation text; visible versions are 1.0.53 and 1.0.55. These fit this task's existing empty drawable-window symptom and do not justify a duplicate INC task.
 
 The images do not locate a fetch, transport, predicate or vnode failure and are not the paired runtime dumps required above. Extend the existing capture matrix to opening an existing session as well as the active-session case. Collect empty and recovered snapshots of the same session, with retained entries, visible/render window, DOM/viewport metadata, build/CLI versions and switch/reconnect/compaction context. Compare BR-06/31 only after an event trace; Console text alone does not prove the source of the divergence.
