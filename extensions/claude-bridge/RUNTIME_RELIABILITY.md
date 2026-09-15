@@ -1126,7 +1126,7 @@ prompt covered by BR-11. A server fix is not proof of this transition's UI
 acceptance. Preserve BR-22's investigation state and its coordination with
 BR-16; no acceptance is claimed completed.
 
-Supplement registration author: @dvpetrochenko. Diagnostic PR: pending.
+Supplement registration author: @dvpetrochenko. Diagnostic PR: [#111](https://github.com/dykamino-coder/gpui-kamin-ide/pull/111).
 Next step: research under BR-22 with the transition above. Additional private
 evidence is not required for this sanitized historical recollection; the
 existing immutable evidence remains scoped to its original captures. New
