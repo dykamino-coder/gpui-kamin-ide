@@ -13,6 +13,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod payload;
+mod shortcuts;
 mod steps;
 mod ui;
 
