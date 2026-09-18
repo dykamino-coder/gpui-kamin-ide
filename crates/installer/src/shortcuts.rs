@@ -95,11 +95,15 @@ mod tests {
             .map(str::trim)
             .filter(|line| !line.is_empty())
             .collect();
-        assert_eq!(
-            values[0],
-            install_dir.join("kaminide-gpui.exe").display().to_string()
-        );
-        assert_eq!(values[1], install_dir.display().to_string());
+        let actual_target = std::fs::canonicalize(values[0]).expect("canonicalize shortcut target");
+        let expected_target = std::fs::canonicalize(install_dir.join("kaminide-gpui.exe"))
+            .expect("canonicalize expected target");
+        let actual_working_directory =
+            std::fs::canonicalize(values[1]).expect("canonicalize shortcut working directory");
+        let expected_working_directory =
+            std::fs::canonicalize(&install_dir).expect("canonicalize expected working directory");
+        assert_eq!(actual_target, expected_target);
+        assert_eq!(actual_working_directory, expected_working_directory);
 
         std::fs::remove_dir_all(root).expect("remove test directory");
     }
