@@ -89,7 +89,8 @@ mod tests {
             .output()
             .expect("inspect shortcut");
         assert!(output.status.success());
-        let values: Vec<_> = String::from_utf8_lossy(&output.stdout)
+        let output_text = String::from_utf8_lossy(&output.stdout);
+        let values: Vec<_> = output_text
             .lines()
             .map(str::trim)
             .filter(|line| !line.is_empty())
