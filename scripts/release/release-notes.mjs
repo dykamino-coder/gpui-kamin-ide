@@ -7,7 +7,12 @@ import { fileURLToPath } from "node:url";
 
 const heading = /^## Release notes\s*$/gm;
 const shippedHeading = /^### Shipped changes\s*$/gm;
+const upgradeHeading = /^### Upgrade notes\s*$/gm;
+const knownIssuesHeading = /^### Known issues\s*$/gm;
 const verificationHeading = /^### Verification and limitations\s*$/gm;
+const sectionOrder = [
+  "Shipped changes", "Upgrade notes", "Known issues", "Verification and limitations",
+];
 
 function sectionBetween(body, startPattern, endPattern, label) {
   const starts = [...body.matchAll(startPattern)];
@@ -28,6 +33,15 @@ export function parseReleaseNotes(body, repository) {
   if (!notes || notes.length > 12_000 || notes.includes("<!--")) {
     throw new Error("Release notes must be filled in, without template comments");
   }
+  const sections = [...notes.matchAll(/^### (.+?)\s*$/gm)].map((match) => match[1]);
+  if (sections[0] !== "Shipped changes" ||
+      sections.at(-1) !== "Verification and limitations" ||
+      sections.length !== new Set(sections).size ||
+      sections.some((section) => !sectionOrder.includes(section)) ||
+      sections.some((section, index) => index > 0 &&
+        sectionOrder.indexOf(section) < sectionOrder.indexOf(sections[index - 1]))) {
+    throw new Error("Release notes sections must be ordered: Shipped changes, optional Upgrade notes, optional Known issues, Verification and limitations");
+  }
   const shipped = sectionBetween(
     notes,
     shippedHeading,
@@ -40,15 +54,28 @@ export function parseReleaseNotes(body, repository) {
     /^### /m,
     "Verification and limitations",
   );
-  if (notes.indexOf("### Shipped changes") > notes.indexOf("### Verification and limitations")) {
-    throw new Error("Shipped changes must precede verification and limitations");
-  }
+  const upgrade = sections.includes("Upgrade notes")
+    ? sectionBetween(notes, upgradeHeading, /^### /m, "Upgrade notes") : null;
+  const knownIssues = sections.includes("Known issues")
+    ? sectionBetween(notes, knownIssuesHeading, /^### /m, "Known issues") : null;
   const shippedBullets = shipped.split(/\r?\n/).filter((line) => /^- \S/.test(line));
   const verificationBullets = verification.split(/\r?\n/).filter((line) => /^- \S/.test(line));
   if (shippedBullets.length === 0 || verificationBullets.length === 0) {
     throw new Error("Release notes need shipped changes and verification bullets");
   }
+  if (upgrade !== null && !upgrade.split(/\r?\n/).some((line) => /^- \S/.test(line))) {
+    throw new Error("Upgrade notes need at least one bullet");
+  }
   const escapedRepository = repository.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (knownIssues !== null) {
+    const issueBullets = knownIssues.split(/\r?\n/).filter((line) => /^- \S/.test(line));
+    const publicTaskUrl = new RegExp(
+      `https://github\\.com/${escapedRepository}/(?:issues/\\d+|pull/\\d+|blob/[^\\s)]+)`,
+    );
+    if (issueBullets.length === 0 || issueBullets.some((bullet) => !publicTaskUrl.test(bullet))) {
+      throw new Error("Every known issue must link to a public task in this repository");
+    }
+  }
   const pullUrl = new RegExp(
     `https://github\\.com/${escapedRepository}/pull/(\\d+)\\b`,
     "g",

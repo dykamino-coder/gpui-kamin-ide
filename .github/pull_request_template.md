@@ -122,6 +122,8 @@ PAT, Windows Credentials или VPN. Он запускает доступные 
 - [ ] Release PR меняет только `Cargo.toml`, `Cargo.lock`, Bridge server
       `package.json` и его `package-lock.json`; release notes находятся в body
 - [ ] Для release PR раздел `## Release notes` заполнен по `CONTRIBUTING.md`:
-      только смерженные implementation PR, реальные проверки и ограничения
+      только смерженные implementation PR в `Shipped changes`, реальные проверки
+      и ограничения; `Upgrade notes`/`Known issues` добавлены при необходимости,
+      открытый статус и применимость известных проблем проверены вручную
 - [ ] Release PR не содержит вручную загруженных production assets; merge после
       приёмки разрешит exact-main automation из `CONTRIBUTING.md`

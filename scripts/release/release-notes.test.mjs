@@ -46,3 +46,33 @@ test("rejects an empty verification section", () => {
     /verification bullets/,
   );
 });
+
+test("keeps open diagnostic tasks separate from shipped implementation PRs", () => {
+  const withKnownIssue = body.replace("### Verification and limitations", `### Upgrade notes
+- Existing installations need no migration.
+
+### Known issues
+- After RDP reconnect, the app may stop responding; no workaround is confirmed ([task](https://github.com/${repository}/pull/113)).
+
+### Verification and limitations`);
+  const result = parseReleaseNotes(withKnownIssue, repository);
+  assert.match(result.markdown, /### Known issues/);
+  assert.deepEqual(result.pullNumbers, [117]);
+});
+
+test("rejects unlinked or empty known issues", () => {
+  const withKnownIssue = body.replace("### Verification and limitations", `### Known issues
+- RDP reconnect may hang the app.
+
+### Verification and limitations`);
+  assert.throws(() => parseReleaseNotes(withKnownIssue, repository), /public task/);
+  assert.throws(() => parseReleaseNotes(withKnownIssue.replace("- RDP reconnect may hang the app.", ""), repository), /public task/);
+});
+
+test("rejects unknown, duplicate, or misordered release note sections", () => {
+  const extra = "### Known issues\n- Tracked ([task](https://github.com/" + repository + "/pull/113)).\n\n";
+  const withKnownIssue = body.replace("### Verification and limitations", extra + "### Verification and limitations");
+  assert.throws(() => parseReleaseNotes(withKnownIssue.replace("### Known issues", "### Fixed"), repository), /sections must be ordered/);
+  assert.throws(() => parseReleaseNotes(body.replace("### Verification and limitations", extra + extra + "### Verification and limitations"), repository), /sections must be ordered/);
+  assert.throws(() => parseReleaseNotes(body.replace("### Shipped changes", extra + "### Shipped changes"), repository), /sections must be ordered/);
+});
