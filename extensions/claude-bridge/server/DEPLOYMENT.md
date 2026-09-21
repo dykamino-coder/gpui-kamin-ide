@@ -15,12 +15,12 @@ deployment-конфигурации. Публикация новой верси�
 
 ## Что сохранять
 
-| Путь в контейнере | Данные | Правило |
-| --- | --- | --- |
-| `/app/data` | DuckDB (`proxy.duckdb`), настройки, токены и новые sync snapshots (`bridge-sync/`) | Сохранять существующий named volume и делать согласованный backup при остановленном Bridge. |
-| `/home/bridge/.claude` | Claude credentials/config, JSONL истории в `projects/`, настройки Bridge-сессий в `bridge-sessions/` | Сохранять существующий named volume; считать его и backup секретными. |
-| `/home/bridge/.claude.json` | Claude onboarding/account metadata | **Не входит** в два volume выше. Entrypoint создаёт базовый файл заново; перед заменой сохраните его отдельно и проверьте auth после запуска. Полную сохранность этого файла текущая схема не гарантирует. |
-| `/home/bridge/bridge-sync` | Возможные legacy snapshots | Если путь смонтирован в действующем контейнере, сохранять mount и backup до подтверждённой миграции по [BR-13](../RUNTIME_RELIABILITY.md). |
+| Путь в контейнере           | Данные                                                                                               | Правило                                                                                                                                                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/app/data`                 | DuckDB (`proxy.duckdb`), настройки, токены и новые sync snapshots (`bridge-sync/`)                   | Сохранять существующий named volume и делать согласованный backup при остановленном Bridge.                                                                                                                |
+| `/home/bridge/.claude`      | Claude credentials/config, JSONL истории в `projects/`, настройки Bridge-сессий в `bridge-sessions/` | Сохранять существующий named volume; считать его и backup секретными.                                                                                                                                      |
+| `/home/bridge/.claude.json` | Claude onboarding/account metadata                                                                   | **Не входит** в два volume выше. Entrypoint создаёт базовый файл заново; перед заменой сохраните его отдельно и проверьте auth после запуска. Полную сохранность этого файла текущая схема не гарантирует. |
+| `/home/bridge/bridge-sync`  | Возможные legacy snapshots                                                                           | Если путь смонтирован в действующем контейнере, сохранять mount и backup до подтверждённой миграции по [BR-13](../RUNTIME_RELIABILITY.md).                                                                 |
 
 Содержимое `/app/installer` поставляется с versioned image. Не подменяйте его
 старым bind mount из локального compose: это может показать клиенту не тот
