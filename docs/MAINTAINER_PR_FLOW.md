@@ -320,8 +320,12 @@ Post-merge corporate observation не блокирует merge/release, если
 - В body release PR мейнтейнер пишет `## Release notes` по шаблону из
   `CONTRIBUTING.md`: только смерженные implementation PR с реально доставленными
   изменениями после предыдущего immutable release tag. Diagnostic/docs PR,
-  registry updates и version bump не объявляются исправлениями. Отдельно
-  указываются фактические проверки и ограничения; CI проверяет формат и ссылки.
+  registry updates и version bump не объявляются исправлениями. Мейнтейнер
+  проверяет необходимость `Upgrade notes` и `Known issues`: в последнем
+  перечисляет только существенные открытые проблемы этого release с public
+  task link, симптомом и workaround либо его отсутствием, не весь backlog.
+  Отдельно указываются фактические проверки и ограничения; CI проверяет формат
+  и ссылки, а открытый статус и применимость задач проверяет мейнтейнер.
 - До merge maintainer принимает настоящий Windows candidate из PR Actions
   artifact. Локальная сборка допустима для диагностики, но не является
   production source.
