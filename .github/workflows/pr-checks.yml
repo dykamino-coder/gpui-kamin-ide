@@ -3,6 +3,7 @@ name: pull request checks
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -13,6 +14,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   scope:
@@ -43,6 +45,7 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_NAME: ${{ github.event_name }}
           PUSH_BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -64,6 +67,26 @@ jobs:
             --changed-files "$changed_files")"
           release_candidate="$(jq -r '.release' <<< "$release_change")"
           echo "release_candidate=$release_candidate" >> "$GITHUB_OUTPUT"
+
+          if [[ "$EVENT_NAME" == "pull_request" && "$release_candidate" == "true" ]]; then
+            jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" \
+              > "$RUNNER_TEMP/release-pr-body.md"
+            node scripts/release/release-notes.mjs \
+              --body-file "$RUNNER_TEMP/release-pr-body.md" \
+              --repository "$GITHUB_REPOSITORY" \
+              --output "$RUNNER_TEMP/release-notes.md" \
+              --pulls-output "$RUNNER_TEMP/release-notes-prs.txt"
+            previous_tag="$(git tag -l 'kaminide-v[0-9]*' \
+              --sort=-version:refname | sed -n '1p')"
+            notes_args=()
+            if [[ -n "$previous_tag" ]]; then
+              notes_args+=(--previous-tag "$previous_tag")
+            fi
+            node scripts/release/verify-release-notes-prs.mjs \
+              --pulls-file "$RUNNER_TEMP/release-notes-prs.txt" \
+              --repository "$GITHUB_REPOSITORY" --head HEAD \
+              "${notes_args[@]}"
+          fi
 
           installer_candidate="$release_candidate"
           if grep -Eq '^(\.github/workflows/(docker|pr-checks)\.yml$|scripts/(build-runtime-payload|build_installer|build_setup_rust)\.mjs$|scripts/release/)' "$changed_files"; then

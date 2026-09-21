@@ -317,6 +317,11 @@ Post-merge corporate observation не блокирует merge/release, если
   release; отдельного release на каждую новую находку нет.
 - Release выполняется отдельной branch/PR строго по `CONTRIBUTING.md`; functional
   code в release PR не добавляется.
+- В body release PR мейнтейнер пишет `## Release notes` по шаблону из
+  `CONTRIBUTING.md`: только смерженные implementation PR с реально доставленными
+  изменениями после предыдущего immutable release tag. Diagnostic/docs PR,
+  registry updates и version bump не объявляются исправлениями. Отдельно
+  указываются фактические проверки и ограничения; CI проверяет формат и ссылки.
 - До merge maintainer принимает настоящий Windows candidate из PR Actions
   artifact. Локальная сборка допустима для диагностики, но не является
   production source.
