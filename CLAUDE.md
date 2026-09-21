@@ -248,6 +248,8 @@ merge` или `без release`. Тогда:
 - использовать отдельную release branch от свежего `origin/main`;
 - не добавлять функциональный код в release PR;
 - синхронно обновить все version sources из `CONTRIBUTING.md`;
+- заполнить `## Release notes` в release PR только подтверждёнными shipped
+  изменениями по `CONTRIBUTING.md`; диагностические карточки не считать fixes;
 - дождаться Windows candidate artifact и всех gates точного PR merge candidate;
 - локальную сборку использовать только для приёмки и диагностики, не как
   production artifact;

@@ -480,6 +480,44 @@ chore(release): KaminIDE 1.0.43 / server 6.3.118
 Фактические номера выбираются после последнего `fetch`; номера из примера не
 резервируются заранее.
 
+### Release notes для GitHub Release
+
+Раздел `## Release notes` в body release PR — источник опубликованного текста.
+GitHub `--generate-notes` не используется: он смешивает исправления с
+diagnostic/docs PR, где только заведены задачи, и может охватить старые релизы.
+Мейнтейнер составляет список из **уже смерженных** implementation PR после
+предыдущего immutable `kaminide-v<version>` tag. `kaminide-latest` — подвижный
+compatibility tag, его нельзя использовать как базу сравнения. Если предыдущего
+immutable tag нет, мейнтейнер явно фиксирует проверенную baseline-версию и не
+выдаёт всю историю репозитория за изменения одного релиза.
+
+В `Shipped changes` описываются только реально доставленные изменения продукта
+или release-инфраструктуры. Каждая строка ссылается на merged implementation PR
+в этом репозитории. Diagnostic incident cards, постановки задач, registry
+updates, закрытие карточек и version-bump PR не перечисляются как fixes. В
+`Verification and limitations` указываются реально пройденные проверки и
+существенные непроверенные сценарии. Корпоративные имена, raw logs и секреты
+в публичный текст не попадают. Пример точного формата body:
+
+```markdown
+## Release notes
+### Shipped changes
+- Installer shortcuts use the installation directory as their working directory ([#117](https://github.com/dykamino-coder/gpui-kamin-ide/pull/117)).
+
+### Verification and limitations
+- Windows CI built the installer and tested real shortcuts; manual Windows smoke testing was unavailable.
+```
+
+PR CI требует непустые оба подраздела, ссылку на merged main-branch PR с
+изменением вне одной документации в каждой строке `Shipped changes` и
+достижимость merge commit из проверяемой branch. PR, уже входящий в предыдущий
+immutable release tag, отвергается. Изменение body повторно
+запускает проверки. Production workflow сверяет hash просмотренного текста и
+публикует его вместе с Docker digest; при пустых/изменённых notes выпуск
+останавливается до Docker publication. Автоматическая проверка не определяет,
+правдиво ли описано поведение: мейнтейнер сверяет каждую строку с diff,
+результатом тестов и статусом задачи перед merge release PR.
+
 ## 7. Windows installer и приёмка release PR
 
 Workflow `pull request checks` распознаёт coordinated version bump и на
@@ -558,8 +596,8 @@ threads. Сам merge не переносит PR artifact в production.
    labels, provenance и SBOM;
 5. image запускается по digest, а `/health`, `/api/download/check`, updater
    manifest и SHA-256 выдаваемого installer проверяются до продвижения aliases;
-6. создаётся immutable GitHub Release `kaminide-v<app-version>` с installer и
-   provenance;
+6. создаётся immutable GitHub Release `kaminide-v<app-version>` с installer,
+   provenance и проверенными release notes из body release PR;
 7. только после успешных проверок текущего release commit обновляются Docker
    `latest`, assets и git-тег compatibility Release `kaminide-latest`, а также
    отметка Latest у versioned GitHub Release. Rolling tag разрешено передвигать
