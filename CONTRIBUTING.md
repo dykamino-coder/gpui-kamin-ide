@@ -632,7 +632,7 @@ threads. Сам merge не переносит PR artifact в production.
 Обычный change/docs/diagnostic merge не содержит coordinated version bump:
 release workflow завершается зелёным no-op и ничего не публикует.
 
-Для оператора внутреннего Linux-хоста порядок запуска опубликованного Bridge
+Для оператора Linux-хоста порядок запуска опубликованного Bridge
 image, сохранения volumes и обновления описан в
 [Bridge deployment runbook](extensions/claude-bridge/server/DEPLOYMENT.md).
 Этот документ не меняет автоматический GitHub Release/Docker publication flow.
