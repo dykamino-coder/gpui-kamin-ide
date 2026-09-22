@@ -449,7 +449,7 @@ export interface KaminBridgeApi {
   onPluginHooksAwaitingApproval(cb: (data: { pluginId: string; hooks: Array<{ event: string; matcher?: string; handler: Record<string, unknown>; hash: string }>; approvedHashes?: string[] }) => void): () => void
   openExternal(url: string): Promise<void>
 
-  // ─── Chrome mic proxy (bypasses corporate endpoint protection on Windows) ──
+  // ─── Chrome mic proxy (works around endpoint protection on Windows) ──
   micStart(): Promise<boolean>
   micStop(): Promise<boolean>
   micConnected(): Promise<boolean>
