@@ -74,7 +74,7 @@ export async function createSession(opts: PtyCreateOpts): Promise<string> {
     env: applyEnvCollections(process.env),
   }
   // Bundled ConPTY by default (instant on Win11); the app-pref flips to the
-  // Windows-signed system ConPTY for corp AppLocker setups that block the
+  // Windows-signed system ConPTY for AppLocker setups that block the
   // unsigned OpenConsole.exe. Re-open the terminal to apply.
   if (process.platform === "win32") ptyOpts.useConptyDll = getAppPrefs().useConptyDll
   const proc = pty.spawn(command, args, ptyOpts)

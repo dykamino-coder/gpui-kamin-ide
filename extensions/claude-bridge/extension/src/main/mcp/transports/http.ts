@@ -185,8 +185,8 @@ async function tryDiscoverOAuthFrom401(
     if (!Array.isArray(authServers) || authServers.length === 0) return null
     const asRaw = authServers[0]
     if (typeof asRaw !== 'string') return null
-    // Minimal safety: only accept well-formed http(s) URLs. Corporate
-    // networks legitimately use http:// internal hosts, so we don't block
+    // Minimal safety: only accept well-formed http(s) URLs. Private
+    // networks may use http:// internal hosts, so we don't block
     // those — but we do block file://, javascript:, data: and malformed
     // inputs that would crash `new URL()` downstream.
     let parsed: URL
@@ -240,13 +240,13 @@ async function httpFetch(url: string, headers: Record<string, string>, body: Rec
 function suggestFetchHint(cause: any, host: string): string | null {
   if (!cause) return null
   const code = cause?.code || cause?.cause?.code
-  if (code === 'ENOTFOUND') return `DNS lookup failed — is "${host}" reachable from this machine? (VPN/corporate DNS?)`
+  if (code === 'ENOTFOUND') return `DNS lookup failed — is "${host}" reachable from this machine? (VPN or private DNS?)`
   if (code === 'ECONNREFUSED') return `Nothing listening on ${host} — check the port and that the service is running.`
   if (code === 'ECONNRESET') return `Connection reset by ${host} — remote closed mid-handshake (TLS mismatch, firewall, service crashed).`
   if (code === 'CERT_HAS_EXPIRED' || code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || code === 'SELF_SIGNED_CERT_IN_CHAIN') {
-    return `TLS certificate problem (${code}) — for private endpoints set NODE_TLS_REJECT_UNAUTHORIZED=0 in the server env, or install the corp CA root.`
+    return `TLS certificate problem (${code}) — for private endpoints set NODE_TLS_REJECT_UNAUTHORIZED=0 in the server env, or install the private CA root.`
   }
   if (code === 'ETIMEDOUT') return `Connection to ${host} timed out — firewall or VPN may be blocking.`
-  if (String(code).startsWith('DEPTH_ZERO')) return `TLS chain validation failed — likely missing corp CA root.`
+  if (String(code).startsWith('DEPTH_ZERO')) return `TLS chain validation failed — likely missing private CA root.`
   return null
 }

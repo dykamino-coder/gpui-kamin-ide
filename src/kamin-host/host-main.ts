@@ -163,7 +163,7 @@ export async function runHost(endpoint: RpcEndpoint): Promise<void> {
 
   // Диагностика памяти (#74 RAM-диета): срез usage и heap-снапшоты ОБОИХ
   // node-процессов по запросу. Внешний инспектор (`process._debugProcess`)
-  // блокируется корпоративным DLP (OpenProcess errno 87) — единственный
+  // блокируется защитным ПО (OpenProcess errno 87) — единственный
   // надёжный путь к ретейнерам прогретого процесса — изнутри.
   methods.set("kamin:diag:memory", async () => ({
     host: {

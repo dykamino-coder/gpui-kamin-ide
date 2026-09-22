@@ -139,7 +139,7 @@ export async function bashExecute(input: Record<string, unknown>): Promise<McpRe
 
   // Shell snapshot — captured lazily on first call. Gives subsequent bash
   // invocations access to user aliases, functions, PATH tweaks from
-  // `.profile` / `.bashrc`. If capture failed (unusual corporate shells,
+  // `.profile` / `.bashrc`. If capture failed (unusual managed shells,
   // no `-i` support), fall back to a login shell flag so profile init
   // still runs, at the cost of re-sourcing per call.
   const snapshot = await getOrCreateSnapshot(shell)
