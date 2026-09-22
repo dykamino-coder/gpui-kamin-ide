@@ -25,7 +25,7 @@ docs/MAINTAINER_PR_FLOW.md. -->
 - Next step: <!-- research/change/verify, bounded результат и владелец -->
 - Private evidence: <!-- полный URL или объяснение `not required` -->
 
-- [ ] Public diff/body не содержит raw corporate logs, prompts, user paths,
+- [ ] Public diff/body не содержит raw private logs, prompts, user paths,
       internal repository contents или screenshots
 - [ ] PAT, passwords, cookies, authorization headers, private keys и credential
       exports отсутствуют в обоих репозиториях
@@ -80,15 +80,16 @@ Diagnostic stage / outcome:
 
 ## Ограничения доступа
 
-- [ ] Реальный corporate GitLab/private marketplace не требуется
-- [ ] Требуется owner-only corporate production observation после выпуска
+- [ ] Доступ к серверу развёртывания или закрытому marketplace не требуется
+- [ ] Требуется owner-only deployment observation после выпуска
 
-Maintainer-проверки, недоступный corporate-only сценарий, владелец и ожидаемое
+Maintainer-проверки, недоступный deployment-only сценарий, владелец и ожидаемое
 evidence:
 
-<!-- Maintainer agent не имеет доступа к corporate GitLab, marketplace/plugins,
-PAT, Windows Credentials или VPN. Он запускает доступные gates и не пытается
-выполнять недоступный сценарий. Не прикладывайте secrets или repository data. -->
+<!-- Maintainer agent не имеет доступа к серверу развёртывания, связанным
+закрытым Git-источникам, marketplace/plugins и чужим credentials или VPN.
+Он запускает доступные gates и не пытается выполнять недоступный сценарий.
+Не прикладывайте secrets или repository data. -->
 
 ## Класс приёмки
 
