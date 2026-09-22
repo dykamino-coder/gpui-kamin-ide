@@ -21,8 +21,8 @@ manifest, а номер версии всегда соответствует о�
 
 Новый runtime incident оформляется одним файлом
 `extensions/claude-bridge/runtime-issues/INC-YYYY-NNNN.md`. Raw logs,
-screenshots, prompts, корпоративные paths/hostnames и полный analysis хранятся в
-private repository `dykamino-coder/gpui-kamin-ide-priv-evidence`; public PR
+screenshots, prompts, пути и адреса закрытых окружений и полный analysis
+хранятся в private repository `dykamino-coder/gpui-kamin-ide-priv-evidence`; public PR
 содержит только sanitized symptom, проверенные факты, incident ID и private URL.
 
 Maintainer agent уже авторизован в обоих репозиториях и открывает evidence по
@@ -73,7 +73,7 @@ Diagnostic PR; отдельный maintainer review постановки не т
    о причине полевого сбоя.
 3. Применить [private intake](#diagnostic-intake). Проверить public diff/body и
    связанное private evidence: provenance, доступность URL, отсутствие secrets
-   и raw corporate data в public. Private evidence фиксируется immutable URL
+   и raw private data в public. Private evidence фиксируется immutable URL
    на commit либо явно указывается, почему оно не требуется. Разрешение на
    регистрацию не расширяет разрешение на публикацию raw evidence.
 4. Создать Diagnostic PR только со своей открытой карточкой. Указать
@@ -307,7 +307,7 @@ Workflow `.github/workflows/pr-checks.yml` автоматически выпол
 имя и проходит только когда все применимые Node, Bridge и Rust jobs успешны;
 docs-only PR ограничивается проверкой scope и whitespace. Workflow использует
 только read-only `GITHUB_TOKEN`, не получает production secrets и ничего не
-публикует. Ручные Windows и corporate-only gates ниже остаются отдельными и не
+публикует. Ручные Windows и deployment-only gates ниже остаются отдельными и не
 подменяются CI.
 
 Проверки независимых компонентов и Docker dry-run выполняются параллельно:
@@ -355,27 +355,27 @@ UX-исправления. Если Windows-проверка является me
 PR явно называет владельца наблюдения и не утверждает, что полевой дефект уже
 устранён.
 
-### Недоступный корпоративный контур
+### Недоступное окружение развёртывания
 
-Maintainer agent, который проверяет, сливает и выпускает проект, работает вне
-корпоративной сети и не имеет доступа к внутреннему GitLab, private/internal
-marketplaces и plugin repositories. Он не должен запрашивать или использовать
-корпоративный PAT, чужие Windows Credentials/VPN либо пытаться обходить это
-ограничение.
+Maintainer agent, который проверяет, сливает и выпускает проект, не имеет
+доступа к серверу, на котором развёрнут сервис, и к связанным с ним закрытым
+Git-источникам, marketplaces и plugin repositories. Он не должен запрашивать
+или использовать чужие токены, Windows Credentials или VPN либо пытаться
+обходить это ограничение.
 
 Если проверка требует именно такого доступа, PR обязан отдельно указать:
 
 - что maintainer проверяет до merge на automated tests, local fixtures и
   доступном Windows runtime;
-- какой corporate-only сценарий он намеренно пропускает;
-- владельца проверки внутри корпоративного контура, ожидаемый результат и
+- какой deployment-only сценарий он намеренно пропускает;
+- владельца проверки в окружении развёртывания, ожидаемый результат и
   evidence после обычной выкладки.
 
-Corporate-only проверка помечается как **post-merge production observation** и
-не блокирует merge/release. Недоступность GitLab для maintainer agent не
-считается падением теста. Это исключение не снимает остальные применимые merge
-gates и не позволяет объявлять корпоративную интеграцию проверенной до отчёта
-владельца.
+Deployment-only проверка помечается как **post-merge production observation** и
+не блокирует merge/release. Недоступность сервера или закрытого источника для
+maintainer agent не считается падением теста. Это исключение не снимает
+остальные применимые merge gates и не позволяет объявлять закрытую интеграцию
+проверенной до отчёта владельца.
 
 ## 5. Коммиты и PR
 
@@ -518,7 +518,7 @@ task card/issue/PR этого репозитория. Подтверждённы
 Разделы следуют в порядке `Shipped changes`, при необходимости `Upgrade notes`
 и `Known issues`, затем обязательный `Verification and limitations`. В последнем
 указываются реально пройденные проверки и существенные непроверенные сценарии.
-Корпоративные имена, raw logs и секреты в публичный текст не попадают. Полная
+Имена закрытых сервисов, raw logs и секреты в публичный текст не попадают. Полная
 техническая история остаётся доступной через сравнение immutable release tags;
 её не копируют в пункты release notes. Пример точного формата body:
 

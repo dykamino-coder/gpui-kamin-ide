@@ -230,7 +230,7 @@ raw evidence в public checkout и не создаёт там extracts или п
 
 До чтения реализации и merge агент проверяет public diff и PR body:
 
-- raw corporate logs, prompts, internal repository contents, user paths и
+- raw private logs, prompts, private repository contents, user paths и
   screenshots не должны находиться в public repository;
 - PAT, cookies, passwords, authorization headers, private keys и credential
   exports запрещены в обоих репозиториях;
@@ -240,7 +240,7 @@ raw evidence в public checkout и не создаёт там extracts или п
   не выполняются.
 
 При credential exposure агент не печатает значение, не продолжает merge и
-сообщает владельцу о необходимости удаления и ротации. При raw corporate data
+сообщает владельцу о необходимости удаления и ротации. При raw private data
 в public PR агент не мержит его: сохраняет допустимый материал в private repo,
 готовит sanitized summary и сообщает владельцу, что публичная история требует
 отдельной очистки.
@@ -292,11 +292,11 @@ Maintainer agent:
    `ours`/`theirs`;
 5. запускает применимые automated и Windows runtime gates на точном merge
    candidate;
-6. не выдаёт недоступную corporate-only проверку за пройденную;
+6. не выдаёт недоступную deployment-only проверку за пройденную;
 7. закрывает review threads, фиксирует ограничения и мержит через GitHub PR
    flow.
 
-Post-merge corporate observation не блокирует merge/release, если PR не
+Post-merge deployment observation не блокирует merge/release, если PR не
 заявляет этот недоступный сценарий проверенным и называет владельца наблюдения.
 
 ## 6. Один release на пачку
@@ -350,7 +350,7 @@ Post-merge corporate observation не блокирует merge/release, если
 - незавершённые регистрации с автором и blocker, открытые BR/INC без PR решения
   и причины, по которым они не входят в текущий snapshot;
 - проверки точных merge candidates;
-- недоступные corporate observations и их владельцев;
+- недоступные deployment observations и их владельцев;
 - release PR/version, Actions run, GitHub Release и Docker digest либо причину
   отсутствия/незавершённости release;
 - порядок оставшихся dependencies;
