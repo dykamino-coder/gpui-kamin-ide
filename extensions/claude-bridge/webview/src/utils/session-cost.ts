@@ -13,6 +13,7 @@ export interface CostTier {
 const TIER_3_15: CostTier = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }
 const TIER_15_75: CostTier = { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }
 const TIER_5_25: CostTier = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }
+const TIER_4_20: CostTier = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }
 const TIER_HAIKU: CostTier = { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 }
 
 /** Infer pricing tier from a model identifier. Falls back to Sonnet rate
@@ -21,7 +22,8 @@ const TIER_HAIKU: CostTier = { input: 1, output: 5, cacheWrite: 1.25, cacheRead:
 export function tierForModel(modelId: string | undefined | null): CostTier {
   const m = (modelId || '').toLowerCase()
   if (m.includes('haiku')) return TIER_HAIKU
-  // Opus 5 — текущий дефолт (тот же тариф, что и линейка 4.5+).
+  if (m.includes('opus-5-5')) return TIER_4_20
+  // Opus 5 and legacy 4.5+ use the previous rate.
   if (m.includes('opus-5')) return TIER_5_25
   if (m.includes('opus-4-1') || m.includes('opus-4-0') || m.includes('opus-4')) {
     // Ветка 4.x ЖИВА только для стоимости СТАРЫХ логов (4.8 и ранее из
@@ -39,10 +41,10 @@ export function contextLimitForModel(modelId: string | undefined | null): number
   const m = (modelId || '').toLowerCase()
   // Легаси-тег `[1m]` (эпоха Opus 4.x): старые сессии могли писать
   // `claude-opus-4-8[1m]` — уважаем при подсчёте их окна. Новых [1m]-id
-  // пикер не выдаёт: у Opus 5 миллион нативный.
+  // пикер не выдаёт: у Opus 5.x миллион нативный.
   if (m.includes('[1m]') || m.includes('1m')) return 1_000_000
   // Models whose window is 1M NATIVELY. There is no `[1m]` suffix for these
-  // because 1M is the base, not a beta — Opus 5, Fable 5, Mythos 5 and
+  // because 1M is the base, not a beta — Opus 5.x, Fable 5, Mythos 5 and
   // Sonnet 5 all ship at 1M by default. Without this branch they fell through
   // to 200K, so the usage bar read "full" at a fifth of the real window (the
   // Fable indicator the user flagged). Opus 4.x (200K base) and Haiku 4.5
@@ -175,8 +177,8 @@ export function computeContextStats(
   // тем, на чём сессия реально может работать сейчас.
   const tabLimit = tabModel ? contextLimitForModel(tabModel) : 0
   const jsonlLimit = useModel ? contextLimitForModel(useModel) : 0
-  const limit = Math.max(tabLimit, jsonlLimit) || contextLimitForModel('claude-opus-5')
-  const modelForLimit = (tabLimit >= jsonlLimit ? tabModel : useModel) ?? useModel ?? tabModel ?? 'claude-opus-5'
+  const limit = Math.max(tabLimit, jsonlLimit) || contextLimitForModel('claude-opus-5-5')
+  const modelForLimit = (tabLimit >= jsonlLimit ? tabModel : useModel) ?? useModel ?? tabModel ?? 'claude-opus-5-5'
   const used = useUsedTokens >= 0 ? useUsedTokens : effectiveInputTokens(useUsage)
   const pct = Math.min(100, Math.round((used / limit) * 100))
   return { pct, used, limit, cost: cumulativeCost, model: modelForLimit }

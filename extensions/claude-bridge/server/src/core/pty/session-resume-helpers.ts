@@ -332,6 +332,43 @@ export function repairTranscriptForResume(settingsDir: string, conversationId: s
   }
 }
 
+/** Read the most recent real assistant model without loading a large transcript.
+ * An explicit --model overrides Claude Code's restored model on --resume, so
+ * the server must recover it before applying a new-session default. */
+export function lastModelFromJsonlTail(jsonlPath: string): string | null {
+  let fd: number | undefined
+  try {
+    fd = fs.openSync(jsonlPath, 'r')
+    const size = fs.fstatSync(fd).size
+    const maxBytes = 8 * 1024 * 1024
+    const start = Math.max(0, size - maxBytes)
+    const buffer = Buffer.alloc(size - start)
+    let read = 0
+    while (read < buffer.length) {
+      const count = fs.readSync(fd, buffer, read, buffer.length - read, start + read)
+      if (count === 0) break
+      read += count
+    }
+    const text = buffer.subarray(0, read).toString('utf8')
+    const lines = text.slice(start === 0 ? 0 : text.indexOf('\n') + 1).split('\n')
+    for (let i = lines.length - 1; i >= 0; i--) {
+      let entry: { type?: string; model?: unknown; message?: { model?: unknown } }
+      try { entry = JSON.parse(lines[i]!) }
+      catch { continue }
+      if (entry.type !== 'assistant') continue
+      const model = entry.message?.model ?? entry.model
+      if (typeof model === 'string' && model && model !== '<synthetic>') return model
+    }
+  } catch { /* missing or unreadable transcript: let Claude Code restore it */ }
+  finally { if (fd !== undefined) fs.closeSync(fd) }
+  return null
+}
+
+export function lastModelForResume(settingsDir: string, conversationId: string): string | null {
+  const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
+  return lastModelFromJsonlTail(path.join(os.homedir(), '.claude', 'projects', slug, `${conversationId}.jsonl`))
+}
+
 /** True iff the JSONL line is an assistant entry that came from a real
  *  /v1/messages response that completed successfully. */
 function isCompletedRealAssistant(line: string): boolean {

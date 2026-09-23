@@ -49,6 +49,6 @@ export const SERVICE_NAME = "open-claude-bridge"
 
 // The model a fresh session launches with when the client picks nothing.
 // --resume'd sessions keep their own historical model; this only seeds
-// brand-new ones. Opus 5 ships a 1M context NATIVELY (like Fable 5) — the
+// brand-new ones. Opus 5.5 ships a 1M context NATIVELY (like Fable 5) — the
 // `[1m]` variant ids are gone; 4.8 is retired entirely (as 4.7 was before).
-export const DEFAULT_SESSION_MODEL = "claude-opus-5"
+export const DEFAULT_SESSION_MODEL = "claude-opus-5-5"

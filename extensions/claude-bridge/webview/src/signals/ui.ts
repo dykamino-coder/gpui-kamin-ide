@@ -14,9 +14,9 @@ export const sidebarMode = signal<SidebarMode>('sessions')
 export const activeCustomizePanel = signal<CustomizePanel>(null)
 export const currentEffort = signal('high')
 // Default model for fresh sessions (matches the server's DEFAULT_SESSION_MODEL).
-// Opus 5: 1M контекст нативно (как Fable 5) — [1m]-вариантов больше нет;
+// Opus 5.5: 1M контекст нативно (как Fable 5) — [1m]-вариантов больше нет;
 // 4.8 выпилен целиком (как раньше 4.7). См. contextLimitForModel.
-export const DEFAULT_MODEL_ID = 'claude-opus-5'
+export const DEFAULT_MODEL_ID = 'claude-opus-5-5'
 export const currentModel = signal(DEFAULT_MODEL_ID)
 export const currentPermission = signal('bypassPermissions')
 

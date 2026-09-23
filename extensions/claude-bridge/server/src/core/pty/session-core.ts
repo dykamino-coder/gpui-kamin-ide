@@ -33,7 +33,7 @@ import {
   writeSessionClaudeMd,
   applySyncData,
 } from './session-settings'
-import { findOrRecreateSettingsDir, xbasename, repairTranscriptForResume, resolveNewestInChain } from './session-resume-helpers'
+import { findOrRecreateSettingsDir, xbasename, repairTranscriptForResume, resolveNewestInChain, lastModelForResume } from './session-resume-helpers'
 import { handleJsonlUserEntry } from './session-stats-recorder'
 import { resetJsonlStats, accumulateJsonlStats } from './session-jsonl-stats'
 import {
@@ -153,6 +153,16 @@ export async function createSession(
       recordCompactLink(config.resumeConversationId, newest) // самолечение карты
       config.resumeConversationId = newest
       repairTranscriptForResume(settingsDir, newest) // ремонт по ФИНАЛЬНОМУ id
+    }
+  }
+
+  // --model wins over the model saved in a Claude Code transcript. Preserve a
+  // resumed conversation's last model before updating the default for fresh
+  // sessions; an explicit model change from the client still wins.
+  if (config.resumeConversationId && !config.model) {
+    const previousModel = lastModelForResume(settingsDir, config.resumeConversationId)
+    if (previousModel) {
+      config.model = /claude-opus-4(?:[.-]|$|\[)/.test(previousModel) ? DEFAULT_SESSION_MODEL : previousModel
     }
   }
 

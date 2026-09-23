@@ -13,11 +13,13 @@ interface CostTier { input: number; output: number; cacheWrite: number; cacheRea
 const TIER_3_15: CostTier = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }
 const TIER_15_75: CostTier = { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }
 const TIER_5_25: CostTier = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }
+const TIER_4_20: CostTier = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }
 const TIER_HAIKU: CostTier = { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 }
 function tierForModel(model: string | null | undefined): CostTier {
   const m = (model || '').toLowerCase()
   if (m.includes('haiku')) return TIER_HAIKU
-  // Opus 5 — текущий дефолт (тариф линейки 4.5+).
+  if (m.includes('opus-5-5')) return TIER_4_20
+  // Opus 5 and legacy 4.5+ use the previous rate.
   if (m.includes('opus-5')) return TIER_5_25
   if (m.includes('opus-4')) {
     // 4.x остаётся ТОЛЬКО для стоимости старых логов (из пикера выпилен).
