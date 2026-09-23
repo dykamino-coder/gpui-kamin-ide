@@ -611,6 +611,9 @@ threads. Сам merge не переносит PR artifact в production.
 
 После merge порядок полностью автоматический:
 
+Release workflow ставит runs в очередь: последующие merges не отменяют
+ожидающий выпуск. Очередь обрабатывается последовательно.
+
 1. `pull request checks` повторяет применимую матрицу на точном commit в `main`,
    заново собирает Windows installer и provenance и сохраняет artifact с SHA;
 2. workflow `release` запускается только после успешного gate этого же SHA и
