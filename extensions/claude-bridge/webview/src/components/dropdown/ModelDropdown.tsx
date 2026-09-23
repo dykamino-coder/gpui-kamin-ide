@@ -8,10 +8,10 @@ import { useBridge } from '../../hooks/useBridge'
 import { activeTabId, tabs } from '../../signals/tabs'
 
 const MODEL_OPTIONS = [
-  // Opus 5: 1M контекст НАТИВНО (как Fable 5) — отдельная [1m]-запись не
-  // нужна. 4.8 выпилен целиком (как раньше 4.7); cliName явный, не alias
-  // 'opus' — alias у старого CLI мог резолвиться в 4.8.
-  { value: 'claude-opus-5', cliName: 'claude-opus-5', icon: 'fa-gem', name: 'Opus 5', description: 'Most capable, 1M-token context' },
+  // Opus 5.x: 1M context is native. Use explicit model ids because the
+  // CLI's 'opus' alias changes when a newer Opus version is released.
+  { value: 'claude-opus-5-5', cliName: 'claude-opus-5-5', icon: 'fa-gem', name: 'Opus 5.5', description: 'Long-running coding, 1M-token context' },
+  { value: 'claude-opus-5', cliName: 'claude-opus-5', icon: 'fa-gem', name: 'Opus 5', description: 'Previous Opus version, 1M-token context' },
   { value: 'claude-sonnet-5', cliName: 'claude-sonnet-5', icon: 'fa-feather', name: 'Sonnet 5', description: 'Fast and balanced' },
   { value: 'claude-haiku-4-5', cliName: 'haiku', icon: 'fa-bolt', name: 'Haiku 4.5', description: 'Fastest, lightweight tasks' },
   { value: 'claude-fable-5', cliName: 'claude-fable-5', icon: 'fa-book-open', name: 'Fable 5', description: 'Expressive, creative writing' },

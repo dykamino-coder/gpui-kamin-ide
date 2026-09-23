@@ -33,7 +33,13 @@ import {
   writeSessionClaudeMd,
   applySyncData,
 } from './session-settings'
-import { findOrRecreateSettingsDir, xbasename, repairTranscriptForResume, resolveNewestInChain } from './session-resume-helpers'
+import {
+  findOrRecreateSettingsDir,
+  xbasename,
+  repairTranscriptForResume,
+  resolveNewestInChain,
+  lastModelForResume,
+} from './session-resume-helpers'
 import { handleJsonlUserEntry } from './session-stats-recorder'
 import { resetJsonlStats, accumulateJsonlStats } from './session-jsonl-stats'
 import {
@@ -80,7 +86,7 @@ export async function createSession(
   ws: WS,
   userName: string,
   tokenId: string,
-  config: SessionConfig = {}
+  config: SessionConfig = {},
 ): Promise<PtySession> {
   // Global backstop — reject BEFORE spawning anything. Reattach (resume of a
   // live PTY) never reaches here, so a reconnecting client is unaffected.
@@ -119,7 +125,10 @@ export async function createSession(
     const found = findOrRecreateSettingsDir(config.resumeConversationId, tokenId)
     if (found) {
       settingsDir = found
-      debugLog('Resume: using settingsDir for conversationId', { settingsDir, conversationId: config.resumeConversationId })
+      debugLog('Resume: using settingsDir for conversationId', {
+        settingsDir,
+        conversationId: config.resumeConversationId,
+      })
     } else {
       // The conversation JSONL exists in NO slug dir — it's gone (expired /
       // deleted / never on this server / different machine). Passing
@@ -131,7 +140,9 @@ export async function createSession(
       // client adopts it — the loop can't recur.
       const folderSuffix = config.cwd ? '-' + sanitizeDirName(config.cwd) : ''
       settingsDir = path.join(SESSIONS_BASE, tokenId + folderSuffix, sessionId)
-      warnLog('Resume: conversation not found anywhere — starting a FRESH session', { conversationId: config.resumeConversationId })
+      warnLog('Resume: conversation not found anywhere — starting a FRESH session', {
+        conversationId: config.resumeConversationId,
+      })
       config.resumeConversationId = undefined
       resumeNotFound = true
     }
@@ -153,6 +164,16 @@ export async function createSession(
       recordCompactLink(config.resumeConversationId, newest) // самолечение карты
       config.resumeConversationId = newest
       repairTranscriptForResume(settingsDir, newest) // ремонт по ФИНАЛЬНОМУ id
+    }
+  }
+
+  // --model wins over the model saved in a Claude Code transcript. Preserve a
+  // resumed conversation's last model before updating the default for fresh
+  // sessions; an explicit model change from the client still wins.
+  if (config.resumeConversationId && !config.model) {
+    const previousModel = lastModelForResume(settingsDir, config.resumeConversationId)
+    if (previousModel) {
+      config.model = /claude-opus-4(?:[.-]|$|\[)/.test(previousModel) ? DEFAULT_SESSION_MODEL : previousModel
     }
   }
 
@@ -203,18 +224,22 @@ export async function createSession(
       // Without this look-up, MITM tls.connect goes direct to api.anthropic.com
       // from inside a corp network → ECONNRESET / TLS RST.
       const { getSetting } = await import('../config/settings')
-      const upstream = getSetting('httpsProxy')
-        || getSetting('httpProxy')
-        || process.env.https_proxy || process.env.HTTPS_PROXY
-        || process.env.http_proxy || process.env.HTTP_PROXY
+      const upstream =
+        getSetting('httpsProxy') ||
+        getSetting('httpProxy') ||
+        process.env.https_proxy ||
+        process.env.HTTPS_PROXY ||
+        process.env.http_proxy ||
+        process.env.HTTP_PROXY
       // Per-user visibility filters, shared by the old-client (onEntryUpdate)
       // and new-client (onSnapshot) paths so both honor showSideQuests /
       // showThinkingStream identically.
       const suppressStreamEntry = (entry: any): boolean => {
         if (entry.isSidechain && !settings.showSideQuests) return true
         if (!settings.showThinkingStream) {
-          const onlyThinking = entry.message.content.length > 0
-            && entry.message.content.every((b: any) => b.type === 'thinking' || b.type === 'redacted_thinking')
+          const onlyThinking =
+            entry.message.content.length > 0 &&
+            entry.message.content.every((b: any) => b.type === 'thinking' || b.type === 'redacted_thinking')
           if (onlyThinking && entry.__streaming) return true
         }
         return false
@@ -260,8 +285,11 @@ export async function createSession(
           const c = (session as any)._wsPushCount as number
           if (entry.message.content.length === 0 || !entry.__streaming || c % 25 === 0) {
             infoLog('[streaming] WS push', {
-              sessionId, seq: c, messageId: entry.message.id,
-              streaming: entry.__streaming, contentLen: entry.message.content.length,
+              sessionId,
+              seq: c,
+              messageId: entry.message.id,
+              streaming: entry.__streaming,
+              contentLen: entry.message.content.length,
               sidechain: isSideQuest,
               firstTextLen: (entry.message.content.find((b: any) => b.type === 'text') as any)?.text?.length ?? 0,
             })
@@ -314,7 +342,15 @@ export async function createSession(
       // still routes through us.
       const lo = '127.0.0.1,localhost,::1'
       const parts = [env.NO_PROXY, env.no_proxy, lo].filter(Boolean)
-      const merged = [...new Set(parts.join(',').split(',').map(s => s.trim()).filter(Boolean))].join(',')
+      const merged = [
+        ...new Set(
+          parts
+            .join(',')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+        ),
+      ].join(',')
       env.NO_PROXY = merged
       env.no_proxy = merged
       infoLog('[streaming] proxy started', { sessionId, port: proxy.port, upstream: upstream || 'direct' })
@@ -347,7 +383,11 @@ export async function createSession(
     // proxy was started above and would otherwise leak its listening socket +
     // dispatcher; a freshly-created settingsDir would leak too. Clean both up
     // before propagating so a spawn failure can't accrete zombie proxies/dirs.
-    if (streamingProxy) { void streamingProxy.stop().catch(() => { /* swallow */ }) }
+    if (streamingProxy) {
+      void streamingProxy.stop().catch(() => {
+        /* swallow */
+      })
+    }
     if (!config.reuseSettingsDir) cleanupSessionDir(settingsDir)
     throw err
   }
@@ -417,7 +457,12 @@ export async function createSession(
     watcherStartTime,
     // `replay: true` — батч истории/превью вне файла-порядка: клиент не должен
     // двигать по нему курсор зеркала (прод-дыра «сообщение не отрисовалось»).
-    (entries, replay) => sendToClient(session.ws, { type: 'jsonl:entries', entries: leanEntries(entries), ...(replay ? { replay: true } : {}) }),
+    (entries, replay) =>
+      sendToClient(session.ws, {
+        type: 'jsonl:entries',
+        entries: leanEntries(entries),
+        ...(replay ? { replay: true } : {}),
+      }),
     (status) => sendToClient(session.ws, { type: 'jsonl:status', ...status }),
     (entry) => handleJsonlUserEntry(session, entry),
     settingsDir,
@@ -472,7 +517,8 @@ export async function createSession(
         }
       })()
     },
-    (agentName, entries, agentId) => sendToClient(session.ws, { type: 'jsonl:subagent-entries', agentName, agentId, entries: leanEntries(entries) }),
+    (agentName, entries, agentId) =>
+      sendToClient(session.ws, { type: 'jsonl:subagent-entries', agentName, agentId, entries: leanEntries(entries) }),
     () => resetJsonlStats(session),
     (entry) => accumulateJsonlStats(session, entry),
   )
@@ -532,15 +578,33 @@ const TEARDOWN_GRACE_MS = 5000
 function killPtyAndWait(session: PtySession): Promise<void> {
   return new Promise<void>((resolve) => {
     let settled = false
-    const finish = () => { if (!settled) { settled = true; clearTimeout(escalate); clearTimeout(hardStop); resolve() } }
-    const sub = session.pty.onExit(() => { sub.dispose(); finish() })
+    const finish = () => {
+      if (!settled) {
+        settled = true
+        clearTimeout(escalate)
+        clearTimeout(hardStop)
+        resolve()
+      }
+    }
+    const sub = session.pty.onExit(() => {
+      sub.dispose()
+      finish()
+    })
     const escalate = setTimeout(() => {
-      try { session.pty.kill('SIGKILL') } catch { /* already gone */ }
+      try {
+        session.pty.kill('SIGKILL')
+      } catch {
+        /* already gone */
+      }
     }, KILL_ESCALATE_MS)
     // SIGKILL cannot be ignored — if onExit still hasn't fired shortly after,
     // the process is gone and node-pty just lost the event; don't hang forever.
     const hardStop = setTimeout(finish, KILL_ESCALATE_MS + 1000)
-    try { session.pty.kill() } catch { finish() }
+    try {
+      session.pty.kill()
+    } catch {
+      finish()
+    }
   })
 }
 
@@ -552,7 +616,10 @@ function killPtyAndWait(session: PtySession): Promise<void> {
 export function detachSession(sessionId: string): void {
   const session = sessions.get(sessionId)
   if (!session) return
-  if (session.state !== 'running') { destroySession(sessionId); return }
+  if (session.state !== 'running') {
+    destroySession(sessionId)
+    return
+  }
   if (session.detachGraceTimer) return // already detached
 
   session.detachedAt = new Date()
@@ -562,7 +629,8 @@ export function detachSession(sessionId: string): void {
     destroySession(sessionId)
   }, DETACH_GRACE_MS)
   debugLog('Session detached (client WS closed), awaiting reattach', {
-    sessionId, graceMs: DETACH_GRACE_MS,
+    sessionId,
+    graceMs: DETACH_GRACE_MS,
   })
 }
 
@@ -608,9 +676,17 @@ export function reattachSession(session: PtySession, ws: WS): void {
     const { cols, rows } = session.pty
     if (cols > 2) {
       session.pty.resize(cols - 1, rows)
-      setTimeout(() => { try { session.pty.resize(cols, rows) } catch { /* exited */ } }, 150)
+      setTimeout(() => {
+        try {
+          session.pty.resize(cols, rows)
+        } catch {
+          /* exited */
+        }
+      }, 150)
     }
-  } catch { /* exited */ }
+  } catch {
+    /* exited */
+  }
 
   debugLog('Session reattached to new client WS', { sessionId: session.id })
 }
@@ -639,7 +715,11 @@ const COMPACT_LINKS_CAP = 500
 export function recordCompactLink(oldId: string, newId: string): void {
   try {
     let links: Record<string, string> = {}
-    try { links = JSON.parse(fs.readFileSync(COMPACT_LINKS_PATH, 'utf-8')) as Record<string, string> } catch { /* first write */ }
+    try {
+      links = JSON.parse(fs.readFileSync(COMPACT_LINKS_PATH, 'utf-8')) as Record<string, string>
+    } catch {
+      /* first write */
+    }
     links[oldId] = newId
     const keys = Object.keys(links)
     if (keys.length > COMPACT_LINKS_CAP) {
@@ -701,10 +781,16 @@ export function destroySession(sessionId: string): void {
   // Polite kill first; escalate to SIGKILL if the CLI hasn't exited in time
   // (it flushes its JSONL on the way out — a hard kill here is what used to
   // tear transcripts).
-  try { session.pty.kill() } catch {}
+  try {
+    session.pty.kill()
+  } catch {}
   setTimeout(() => {
     if (session.state !== 'exited') {
-      try { session.pty.kill('SIGKILL') } catch { /* already gone */ }
+      try {
+        session.pty.kill('SIGKILL')
+      } catch {
+        /* already gone */
+      }
     }
   }, KILL_ESCALATE_MS)
   // Watcher уже остановлен, а CLI на выходе мог финализировать НОВЫЙ файл
@@ -720,15 +806,14 @@ export function destroySession(sessionId: string): void {
           infoLog('Post-kill chain scan: recording missed edge', { from: chainBase, tip })
           recordCompactLink(chainBase, tip)
         }
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
     }, KILL_ESCALATE_MS + 2000)
   }
   // Backstop: a CLI that never fires SessionEnd (no hook, or it died first)
   // must not leave the registration alive.
-  session.teardown.timer = setTimeout(
-    () => finalizeTeardownFor(session, 'timeout', -1),
-    TEARDOWN_GRACE_MS,
-  )
+  session.teardown.timer = setTimeout(() => finalizeTeardownFor(session, 'timeout', -1), TEARDOWN_GRACE_MS)
 }
 
 /** True between `destroySession()` and the finalizer. Callers use it to refuse
@@ -932,8 +1017,12 @@ export function countUserSessions(tokenId: string): number {
 export function shutdownAll(): void {
   debugLog('Shutting down all PTY sessions', { count: sessions.size })
   for (const [id, session] of sessions) {
-    try { session.pty.kill() } catch {}
-    try { session.ws.close() } catch {}
+    try {
+      session.pty.kill()
+    } catch {}
+    try {
+      session.ws.close()
+    } catch {}
     clearSessionInputState(session)
     cleanupSessionDir(session.settingsDir)
   }
@@ -982,11 +1071,7 @@ export function resizeTerminal(sessionId: string, cols: number, rows: number): v
  * Send an MCP tool call to Electron via WebSocket. Resolves when Electron
  * responds (or rejects on timeout/denial).
  */
-export function sendMcpCall(
-  sessionId: string,
-  toolName: string,
-  input: Record<string, unknown>,
-): Promise<unknown> {
+export function sendMcpCall(sessionId: string, toolName: string, input: Record<string, unknown>): Promise<unknown> {
   const session = sessions.get(sessionId)
   if (!session) return Promise.reject(new Error(`Session ${sessionId} not found`))
   return sendMcpCallToSession(session, toolName, input)
@@ -995,7 +1080,6 @@ export function sendMcpCall(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
 
 function cleanupSession(sessionId: string): void {
   const session = sessions.get(sessionId)
@@ -1008,7 +1092,9 @@ function cleanupSession(sessionId: string): void {
   rejectPendingForSession(sessionId, 'Session destroyed')
   // Tear down the per-session MITM proxy (idempotent).
   if (session.streamingProxy) {
-    void session.streamingProxy.stop().catch(() => { /* swallow */ })
+    void session.streamingProxy.stop().catch(() => {
+      /* swallow */
+    })
     session.streamingProxy = undefined
   }
   sessions.delete(sessionId)
@@ -1043,7 +1129,7 @@ export function handleElicitationResponse(
   sessionId: string,
   requestId: string,
   action: 'accept' | 'deny' | 'dismiss',
-  content?: Record<string, unknown>
+  content?: Record<string, unknown>,
 ): void {
   const session = sessions.get(sessionId)
   if (!session) return
@@ -1062,7 +1148,7 @@ export function handleElicitationResponse(
     if (session.pty) {
       let text: string
       if (action === 'accept' && content) {
-        const parts = Object.values(content).filter(v => typeof v === 'string' && v.trim().length > 0) as string[]
+        const parts = Object.values(content).filter((v) => typeof v === 'string' && v.trim().length > 0) as string[]
         text = parts.length > 0 ? parts.join(' ') : JSON.stringify(content)
       } else if (action === 'dismiss' || action === 'deny') {
         text = `[User dismissed the question]`
@@ -1075,7 +1161,9 @@ export function handleElicitationResponse(
         submitTextToSession(session, text)
       } catch (err) {
         warnLog('Elicitation PTY write failed (session likely exited)', {
-          sessionId, requestId, error: err instanceof Error ? err.message : String(err),
+          sessionId,
+          requestId,
+          error: err instanceof Error ? err.message : String(err),
         })
       }
     }
@@ -1149,12 +1237,12 @@ export async function deleteSessionByConversationId(conversationId: string, user
  * Build the session tree for a token ID (for sidebar display).
  */
 export function getSessionTree(tokenId: string): import('./types').TreeNode[] {
-  const userSessions = [...sessions.values()].filter(s => s.tokenId === tokenId)
-  const roots = userSessions.filter(s => !s.parentSessionId)
+  const userSessions = [...sessions.values()].filter((s) => s.tokenId === tokenId)
+  const roots = userSessions.filter((s) => !s.parentSessionId)
 
   function buildNode(session: PtySession): import('./types').TreeNode {
     const children = session.childSessions
-      .map(id => sessions.get(id))
+      .map((id) => sessions.get(id))
       .filter((s): s is PtySession => !!s)
       .map(buildNode)
 

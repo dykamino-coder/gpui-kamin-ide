@@ -9,19 +9,27 @@ import { denyApiToken, denyForeignUser } from '../authz'
 
 // Anthropic per-1M-token rates by model family. Mirrors
 // the legacy standalone client's session-cost helper so server-side cost ≈ client.
-interface CostTier { input: number; output: number; cacheWrite: number; cacheRead: number }
+interface CostTier {
+  input: number
+  output: number
+  cacheWrite: number
+  cacheRead: number
+}
 const TIER_3_15: CostTier = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }
 const TIER_15_75: CostTier = { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }
 const TIER_5_25: CostTier = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }
+const TIER_4_20: CostTier = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }
 const TIER_HAIKU: CostTier = { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 }
 function tierForModel(model: string | null | undefined): CostTier {
   const m = (model || '').toLowerCase()
   if (m.includes('haiku')) return TIER_HAIKU
-  // Opus 5 — текущий дефолт (тариф линейки 4.5+).
+  if (m.includes('opus-5-5')) return TIER_4_20
+  // Opus 5 and legacy 4.5+ use the previous rate.
   if (m.includes('opus-5')) return TIER_5_25
   if (m.includes('opus-4')) {
     // 4.x остаётся ТОЛЬКО для стоимости старых логов (из пикера выпилен).
-    if (m.includes('opus-4-5') || m.includes('opus-4-6') || m.includes('opus-4-7') || m.includes('opus-4-8')) return TIER_5_25
+    if (m.includes('opus-4-5') || m.includes('opus-4-6') || m.includes('opus-4-7') || m.includes('opus-4-8'))
+      return TIER_5_25
     return TIER_15_75
   }
   if (m.includes('sonnet')) return TIER_3_15
@@ -37,11 +45,13 @@ export function registerUserRoutes(api: Hono): void {
   // unpopulated in PTY mode and were producing inconsistent numbers.
   api.get('/api/dashboard/users', async (c) => {
     // Cross-user roster — admin only; a per-user token can't enumerate everyone.
-    const denied = denyApiToken(c); if (denied) return denied
+    const denied = denyApiToken(c)
+    if (denied) return denied
     const db = await getDb()
 
     // Per-user totals (no model split needed for these sums).
-    const aggRowsRaw = (await db.runAndReadAll(`
+    const aggRowsRaw = (
+      await db.runAndReadAll(`
       SELECT
         st.user_name as user_name,
         COUNT(DISTINCT e.session_id) as sessions,
@@ -62,7 +72,8 @@ export function registerUserRoutes(api: Hono): void {
       WHERE st.user_name IS NOT NULL AND st.user_name != ''
         AND (e.model IS NULL OR e.model != '<synthetic>')
       GROUP BY st.user_name
-    `)).getRowObjects() as Array<{
+    `)
+    ).getRowObjects() as Array<{
       user_name: string
       sessions: bigint | number
       user_inputs: bigint | number
@@ -73,7 +84,7 @@ export function registerUserRoutes(api: Hono): void {
       first_seen: string | null
       last_seen: string | null
     }>
-    const aggRows = aggRowsRaw.map(r => ({
+    const aggRows = aggRowsRaw.map((r) => ({
       user_name: r.user_name,
       sessions: Number(r.sessions ?? 0),
       user_inputs: Number(r.user_inputs ?? 0),
@@ -85,11 +96,12 @@ export function registerUserRoutes(api: Hono): void {
       last_seen: r.last_seen,
     }))
 
-    const aggMap = new Map(aggRows.map(r => [r.user_name, r]))
+    const aggMap = new Map(aggRows.map((r) => [r.user_name, r]))
 
     // Per-(user, model) breakdown for cost computation — every model
     // family has its own per-1M-token rates.
-    const costRows = (await db.runAndReadAll(`
+    const costRows = (
+      await db.runAndReadAll(`
       SELECT
         st.user_name as user_name,
         e.model as model,
@@ -103,7 +115,8 @@ export function registerUserRoutes(api: Hono): void {
       WHERE st.user_name IS NOT NULL AND st.user_name != ''
         AND e.type = 'assistant' AND e.model IS NOT NULL AND e.model != '' AND e.model != '<synthetic>'
       GROUP BY st.user_name, e.model
-    `)).getRowObjects() as Array<{
+    `)
+    ).getRowObjects() as Array<{
       user_name: string
       model: string
       input_tokens: bigint | number
@@ -114,18 +127,19 @@ export function registerUserRoutes(api: Hono): void {
     const costByUser = new Map<string, number>()
     for (const r of costRows) {
       const tier = tierForModel(r.model)
-      const usd = (
-        Number(r.input_tokens ?? 0) * tier.input
-        + Number(r.output_tokens ?? 0) * tier.output
-        + Number(r.cache_read_tokens ?? 0) * tier.cacheRead
-        + Number(r.cache_write_tokens ?? 0) * tier.cacheWrite
-      ) / 1_000_000
+      const usd =
+        (Number(r.input_tokens ?? 0) * tier.input +
+          Number(r.output_tokens ?? 0) * tier.output +
+          Number(r.cache_read_tokens ?? 0) * tier.cacheRead +
+          Number(r.cache_write_tokens ?? 0) * tier.cacheWrite) /
+        1_000_000
       costByUser.set(r.user_name, (costByUser.get(r.user_name) ?? 0) + usd)
     }
 
     // Sum of per-session real-text Context (last-assistant effective
     // input). Matches the per-session Context column in Sessions modal.
-    const ctxRows = (await db.runAndReadAll(`
+    const ctxRows = (
+      await db.runAndReadAll(`
       SELECT st.user_name as user_name, SUM(last_ctx) as ctx
       FROM (
         SELECT
@@ -142,8 +156,9 @@ export function registerUserRoutes(api: Hono): void {
       INNER JOIN session_tokens st ON st.session_id = sessCtx.session_id AND st.deleted = 0
       WHERE st.user_name IS NOT NULL AND st.user_name != ''
       GROUP BY st.user_name
-    `)).getRowObjects() as Array<{ user_name: string; ctx: bigint | number | null }>
-    const ctxByUser = new Map(ctxRows.map(r => [r.user_name, Number(r.ctx ?? 0)]))
+    `)
+    ).getRowObjects() as Array<{ user_name: string; ctx: bigint | number | null }>
+    const ctxByUser = new Map(ctxRows.map((r) => [r.user_name, Number(r.ctx ?? 0)]))
 
     const ptySessions = getAllSessions()
     const activeSessionsByUser = new Map<string, number>()
@@ -155,30 +170,32 @@ export function registerUserRoutes(api: Hono): void {
     for (const r of aggRows) allUsers.add(r.user_name)
     for (const s of ptySessions) if (s.userName) allUsers.add(s.userName)
 
-    const users = [...allUsers].map((userName) => {
-      const r = aggMap.get(userName)
-      return {
-        userName,
-        activeSessions: activeSessionsByUser.get(userName) || 0,
-        totalInputs: r?.user_inputs ?? 0,
-        tokens: {
-          input: r?.input_uncached ?? 0,
-          output: r?.output_tokens ?? 0,
-          cacheRead: r?.cache_read ?? 0,
-          cacheCreation: r?.cache_creation ?? 0,
-        },
-        // Sum of per-session real-text Context (matches Sessions modal).
-        contextTokens: ctxByUser.get(userName) ?? 0,
-        // USD cost summed across model tiers.
-        cost: costByUser.get(userName) ?? 0,
-        firstSeen: r?.first_seen ?? null,
-        lastSeen: r?.last_seen ?? null,
-      }
-    }).sort((a, b) => {
-      if (a.activeSessions !== b.activeSessions) return b.activeSessions - a.activeSessions
-      if (a.lastSeen && b.lastSeen) return b.lastSeen.localeCompare(a.lastSeen)
-      return 0
-    })
+    const users = [...allUsers]
+      .map((userName) => {
+        const r = aggMap.get(userName)
+        return {
+          userName,
+          activeSessions: activeSessionsByUser.get(userName) || 0,
+          totalInputs: r?.user_inputs ?? 0,
+          tokens: {
+            input: r?.input_uncached ?? 0,
+            output: r?.output_tokens ?? 0,
+            cacheRead: r?.cache_read ?? 0,
+            cacheCreation: r?.cache_creation ?? 0,
+          },
+          // Sum of per-session real-text Context (matches Sessions modal).
+          contextTokens: ctxByUser.get(userName) ?? 0,
+          // USD cost summed across model tiers.
+          cost: costByUser.get(userName) ?? 0,
+          firstSeen: r?.first_seen ?? null,
+          lastSeen: r?.last_seen ?? null,
+        }
+      })
+      .sort((a, b) => {
+        if (a.activeSessions !== b.activeSessions) return b.activeSessions - a.activeSessions
+        if (a.lastSeen && b.lastSeen) return b.lastSeen.localeCompare(a.lastSeen)
+        return 0
+      })
 
     return c.json(users)
   })
@@ -186,16 +203,22 @@ export function registerUserRoutes(api: Hono): void {
   // GET /api/dashboard/users/:userName/requests — recent requests for a user
   api.get('/api/dashboard/users/:userName/requests', async (c) => {
     const userName = c.req.param('userName')
-    const denied = denyForeignUser(c, userName); if (denied) return denied
+    const denied = denyForeignUser(c, userName)
+    if (denied) return denied
     const limit = parseInt(c.req.query('limit') || '50', 10)
     const db = await getDb()
 
-    const rows = (await db.runAndReadAll(`
+    const rows = (
+      await db.runAndReadAll(
+        `
       SELECT * FROM requests
       WHERE user_name = ?
       ORDER BY timestamp DESC
       LIMIT ?
-    `, [userName, limit])).getRowObjects() as Array<Record<string, unknown>>
+    `,
+        [userName, limit],
+      )
+    ).getRowObjects() as Array<Record<string, unknown>>
 
     const entries = rows.map((row) => ({
       id: row.id,
@@ -224,5 +247,9 @@ export function registerUserRoutes(api: Hono): void {
 
 function safeParseArray(str: string | null | undefined): string[] {
   if (!str) return []
-  try { return JSON.parse(str) } catch { return [] }
+  try {
+    return JSON.parse(str)
+  } catch {
+    return []
+  }
 }
