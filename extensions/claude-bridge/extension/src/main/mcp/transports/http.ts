@@ -243,8 +243,9 @@ function suggestFetchHint(cause: any, host: string): string | null {
   if (code === 'ENOTFOUND') return `DNS lookup failed — is "${host}" reachable from this machine? (VPN or private DNS?)`
   if (code === 'ECONNREFUSED') return `Nothing listening on ${host} — check the port and that the service is running.`
   if (code === 'ECONNRESET') return `Connection reset by ${host} — remote closed mid-handshake (TLS mismatch, firewall, service crashed).`
-  if (code === 'CERT_HAS_EXPIRED' || code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || code === 'SELF_SIGNED_CERT_IN_CHAIN') {
-    return `TLS certificate problem (${code}) — for private endpoints set NODE_TLS_REJECT_UNAUTHORIZED=0 in the server env, or install the private CA root.`
+  if (code === 'CERT_HAS_EXPIRED') return `TLS certificate has expired for ${host} — renew the certificate.`
+  if (code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || code === 'SELF_SIGNED_CERT_IN_CHAIN') {
+    return `TLS certificate chain validation failed (${code}) — fix the server certificate chain or configure the issuing CA with NODE_EXTRA_CA_CERTS before starting the Bridge process.`
   }
   if (code === 'ETIMEDOUT') return `Connection to ${host} timed out — firewall or VPN may be blocking.`
   if (String(code).startsWith('DEPTH_ZERO')) return `TLS chain validation failed — likely missing private CA root.`

@@ -17,6 +17,7 @@ on:
 
 concurrency:
   group: docker-main
+  queue: max
   cancel-in-progress: false
 
 permissions:
@@ -45,7 +46,6 @@ jobs:
       release_sha: ${{ steps.release.outputs.release_sha }}
       app_version: ${{ steps.release.outputs.app_version }}
       server_version: ${{ steps.release.outputs.server_version }}
-      publish_latest: ${{ steps.release.outputs.publish_latest }}
       quality_run_id: ${{ steps.release.outputs.quality_run_id }}
       release_pr: ${{ steps.release.outputs.release_pr }}
       notes_sha256: ${{ steps.release.outputs.notes_sha256 }}
@@ -193,17 +193,11 @@ jobs:
               "${notes_args[@]}"
           fi
 
-          publish_latest=false
-          if [[ "$release_sha" == "$(git rev-parse origin/main)" ]]; then
-            publish_latest=true
-          fi
-
           {
             echo "publish=true"
             echo "release_sha=$release_sha"
             echo "app_version=$app_version"
             echo "server_version=$server_version"
-            echo "publish_latest=$publish_latest"
             echo "quality_run_id=$quality_run_id"
             echo "release_pr=$release_pr"
             echo "notes_sha256=$notes_sha256"
@@ -215,7 +209,6 @@ jobs:
             echo "- KaminIDE: \`$app_version\`"
             echo "- Bridge server: \`$server_version\`"
             echo "- quality run: \`$quality_run_id\`"
-            echo "- update latest: \`$publish_latest\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-push:
@@ -458,8 +451,37 @@ jobs:
               --notes-file "$notes_file"
           fi
 
+      - name: Check whether rolling aliases can advance
+        id: aliases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$RELEASE_SHA" origin/main; then
+            echo "Release commit is no longer reachable from main" >&2
+            exit 1
+          fi
+
+          current_alias_sha=""
+          alias_error="$RUNNER_TEMP/latest-alias-error.txt"
+          if current_alias_sha="$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/tags/kaminide-latest" --jq '.object.sha' 2>"$alias_error")"; then
+            :
+          elif grep -q 'HTTP 404' "$alias_error"; then
+            current_alias_sha=""
+          else
+            cat "$alias_error" >&2
+            exit 1
+          fi
+
+          promote="$(node scripts/release/latest-alias.mjs "$RELEASE_SHA" "$current_alias_sha")"
+          echo "promote=$promote" >> "$GITHUB_OUTPUT"
+          echo "- update latest: \`$promote\`" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Promote and verify Docker latest
-        if: needs.release-context.outputs.publish_latest == 'true'
+        if: steps.aliases.outputs.promote == 'true'
         env:
           VERSION: ${{ needs.release-context.outputs.server_version }}
           RELEASE_SHA: ${{ needs.release-context.outputs.release_sha }}
@@ -476,7 +498,7 @@ jobs:
             > "$RUNNER_TEMP/latest-image.json"
 
       - name: Refresh the rolling installer release
-        if: needs.release-context.outputs.publish_latest == 'true'
+        if: steps.aliases.outputs.promote == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           APP_VERSION: ${{ needs.release-context.outputs.app_version }}
@@ -548,7 +570,7 @@ jobs:
             --notes "Rolling compatibility assets; immutable release: kaminide-v${APP_VERSION}."
 
       - name: Mark the current immutable GitHub Release as latest
-        if: needs.release-context.outputs.publish_latest == 'true'
+        if: steps.aliases.outputs.promote == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           APP_VERSION: ${{ needs.release-context.outputs.app_version }}
