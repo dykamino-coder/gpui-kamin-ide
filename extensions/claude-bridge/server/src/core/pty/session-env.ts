@@ -30,10 +30,7 @@ export { buildSystemPrompt }
 // is already on (session-settings). Denying it just cut teammates off from the
 // team-lead — they could only return via final text. Allowed now.
 // ---------------------------------------------------------------------------
-export const EXTRA_NATIVE_DENY = [
-  'Monitor', 'CronCreate', 'CronDelete', 'CronList',
-  'RemoteTrigger',
-]
+export const EXTRA_NATIVE_DENY = ['Monitor', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger']
 // The old 'ListMcpResources'/'ReadMcpResource' entries were misspelled (the
 // real natives are ListMcpResourcesTool/ReadMcpResourceTool) so they never
 // denied anything. Dropped — the bridge now answers resources/list itself
@@ -152,7 +149,7 @@ export function buildSessionEnv(sessionId: string, userName: string, effort?: st
   // Still set defensively in case a future CLI version starts honouring
   // them for MCP — costs nothing if they're a no-op.
   env.BASH_DEFAULT_TIMEOUT_MS = '1500000' // 25 min default
-  env.BASH_MAX_TIMEOUT_MS = '1800000'     // 30 min ceiling
+  env.BASH_MAX_TIMEOUT_MS = '1800000' // 30 min ceiling
 
   // Anthropic API request timeout. CLI 2.1.101 fixed a hardcoded 5min cap
   // that was ignoring this var — extended thinking and slow gateways
@@ -191,9 +188,11 @@ export function buildSessionEnv(sessionId: string, userName: string, effort?: st
 
 export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readonly string[] = []): string[] {
   const args: string[] = [
-    '--disallowedTools', getDisallowedBuiltinTools().join(','),
+    '--disallowedTools',
+    getDisallowedBuiltinTools().join(','),
     '--dangerously-skip-permissions',
-    '--effort', sessionConfig.effort || 'high',
+    '--effort',
+    sessionConfig.effort || 'high',
   ]
 
   // --model overrides the transcript's model on --resume. createSession

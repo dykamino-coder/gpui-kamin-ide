@@ -31,12 +31,10 @@ describe('Claude CLI model selection', () => {
     const transcript = path.join(dir, 'session.jsonl')
     try {
       const line = (type: string, model?: string) => JSON.stringify({ type, message: { model } })
-      fs.writeFileSync(transcript, [
-        line('assistant', 'claude-opus-5'),
-        line('user'),
-        line('assistant', '<synthetic>'),
-        '',
-      ].join('\n'))
+      fs.writeFileSync(
+        transcript,
+        [line('assistant', 'claude-opus-5'), line('user'), line('assistant', '<synthetic>'), ''].join('\n'),
+      )
       expect(lastModelFromJsonlTail(transcript)).toBe('claude-opus-5')
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
