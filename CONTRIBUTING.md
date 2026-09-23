@@ -627,7 +627,9 @@ threads. Сам merge не переносит PR artifact в production.
 7. только после успешных проверок текущего release commit обновляются Docker
    `latest`, assets и git-тег compatibility Release `kaminide-latest`, а также
    отметка Latest у versioned GitHub Release. Rolling tag разрешено передвигать
-   только вперёд по истории `main`.
+   только вперёд по истории `main`: последующий docs/change merge не мешает
+   продвижению ещё не опубликованного release, но уже опубликованный более новый
+   release не может быть заменён старым retry.
 
 Обычный change/docs/diagnostic merge не содержит coordinated version bump:
 release workflow завершается зелёным no-op и ничего не публикует.
