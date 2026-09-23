@@ -611,6 +611,9 @@ threads. Сам merge не переносит PR artifact в production.
 
 После merge порядок полностью автоматический:
 
+Release workflow ставит runs в очередь: последующие merges не отменяют
+ожидающий выпуск. Очередь обрабатывается последовательно.
+
 1. `pull request checks` повторяет применимую матрицу на точном commit в `main`,
    заново собирает Windows installer и provenance и сохраняет artifact с SHA;
 2. workflow `release` запускается только после успешного gate этого же SHA и
@@ -627,7 +630,9 @@ threads. Сам merge не переносит PR artifact в production.
 7. только после успешных проверок текущего release commit обновляются Docker
    `latest`, assets и git-тег compatibility Release `kaminide-latest`, а также
    отметка Latest у versioned GitHub Release. Rolling tag разрешено передвигать
-   только вперёд по истории `main`.
+   только вперёд по истории `main`: последующий docs/change merge не мешает
+   продвижению ещё не опубликованного release, но уже опубликованный более новый
+   release не может быть заменён старым retry.
 
 Обычный change/docs/diagnostic merge не содержит coordinated version bump:
 release workflow завершается зелёным no-op и ничего не публикует.
