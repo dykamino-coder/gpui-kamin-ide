@@ -211,6 +211,7 @@ Checkbox автора помогает маршрутизации, но факт
 | Diagnostic PR: registration | открытая task card и private evidence; регистрацию завершает автор |
 | Diagnostic PR: research/verification result | evidence и outcome уже зарегистрированной задачи; приёмка у мейнтейнера |
 | Change/Fix PR | functional code, tests, fixtures или исправляющая документация без release bump |
+| Dependabot GitHub Actions PR | обновление workflow Action pins; приёмка по [CONTRIBUTING.md](../CONTRIBUTING.md#обновления-github-actions-от-dependabot), без BR/INC и без отдельного product release |
 | Release PR | в diff только versions и производные lockfiles; release notes находятся в PR body, binary artifacts создаёт CI |
 
 Если Diagnostic PR уже содержит functional fix, агент исправляет тип на
@@ -299,6 +300,12 @@ Maintainer agent:
 Post-merge deployment observation не блокирует merge/release, если PR не
 заявляет этот недоступный сценарий проверенным и называет владельца наблюдения.
 
+Dependabot PR для GitHub Actions из snapshot проходит тот же порядок обновления
+branch, проверки точного head и последовательного merge. Особая проверка
+workflow и исходы `merged`/`closed`/`blocked` описаны в `CONTRIBUTING.md`.
+При пересечении с другим PR, меняющим workflow, сначала принять зависимое
+изменение, затем заново проверить Dependabot PR от свежего `origin/main`.
+
 ## 6. Один release на пачку
 
 Ручная задача владельца «делай задачи», «обработай очередь PR по правилам
@@ -311,6 +318,7 @@ Post-merge deployment observation не блокирует merge/release, есл�
 - Если ни один Change/Fix PR не смержен, release не создаётся.
 - Diagnostic-only изменения release не вызывают.
 - Чистые docs/process изменения без product/runtime diff release не вызывают.
+- Обновления только GitHub Actions от Dependabot release не вызывают.
 - Если mergeable fix несколько, release выполняется один раз после последнего.
 - Входящий чужой PR после snapshot относится к следующему запуску. Принятый
   через coordination PR собственный child входит в текущую пачку и её один
