@@ -332,6 +332,9 @@ cache основной ветки. PR-run может читать cache свое
 полный Rust gate для Rust-изменений. Аналогично, Docker dry-run в PR может
 читать общий BuildKit cache, но обновляет его только trusted run в `main`,
 чтобы release workflow не потреблял cache из недоверенной PR-среды.
+Новый push в `main` не отменяет quality run предыдущего commit: каждый exact
+SHA должен получить собственный результат для возможного release. Для одного
+PR более старый run после нового push в его branch по-прежнему отменяется.
 
 Для UI-изменения дополнительно проверяются Windows runtime, hover/click,
 keyboard/focus, соседние элементы и визуальный результат. Незапущенная из-за
