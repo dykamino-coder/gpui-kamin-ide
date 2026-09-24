@@ -2,6 +2,10 @@
 # successful main quality run. Release PR artifacts are candidates for manual
 # acceptance only; production always consumes a fresh trusted-main artifact.
 name: release
+# workflow_run also fires after docs-only merges. Show the source commit in the
+# Actions list so an eligibility check is not mistaken for a published release.
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && format('Release check: retry {0}', inputs.release_sha) || format('Release check: {0}', github.event.workflow_run.display_title) }}
 
 on:
   workflow_run:
@@ -144,7 +148,11 @@ jobs:
               exit 1
             fi
             echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "No trusted release artifact; publication is not required." >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "### No release published"
+              echo
+              echo "The successful [main quality run #$quality_run_id](https://github.com/$GITHUB_REPOSITORY/actions/runs/$quality_run_id) for commit \`$release_sha\` produced no versioned release artifact. Publication was skipped."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -203,7 +211,7 @@ jobs:
             echo "notes_sha256=$notes_sha256"
           } >> "$GITHUB_OUTPUT"
           {
-            echo "### Docker release"
+            echo "### Release eligible for publication"
             echo
             echo "- commit: \`$release_sha\`"
             echo "- KaminIDE: \`$app_version\`"

@@ -665,7 +665,12 @@ Release workflow ставит runs в очередь: последующие mer
    release не может быть заменён старым retry.
 
 Обычный change/docs/diagnostic merge не содержит coordinated version bump:
-release workflow завершается зелёным no-op и ничего не публикует.
+release workflow завершается зелёным no-op и ничего не публикует. В списке
+Actions каждый запуск называется `Release check: <заголовок коммита>` (ручной
+retry показывает SHA); зелёный результат проверки сам по себе не означает
+релиз. Для no-op Summary содержит `No release published`, а в выпустившем
+версии запуске выполняется job `publish verified release`. Опубликованные
+версии проверяются по immutable тегу `kaminide-v<app-version>`.
 
 Для оператора Linux-хоста порядок запуска опубликованного Bridge
 image, сохранения volumes и обновления описан в
