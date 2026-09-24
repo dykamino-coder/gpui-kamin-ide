@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { buildClaudeArgs } from './session-env'
+import { buildClaudeArgs, modelForResume } from './session-env'
 import { lastModelFromJsonlTail } from './session-resume-helpers'
 import type { SessionConfig } from '../types/pty'
 
@@ -24,6 +24,26 @@ describe('Claude CLI model selection', () => {
     const args = buildClaudeArgs({ ...session(), resumeConversationId: 'old-conversation' })
     expect(args).toContain('--resume')
     expect(args).not.toContain('--model')
+  })
+
+  it('keeps old-client model choices and supports Fable 5.1 without changing the default', () => {
+    for (const model of [
+      'claude-opus-4-5-20251101',
+      'claude-opus-4-8',
+      'claude-opus-5',
+      'claude-haiku-4-5',
+      'claude-fable-5',
+      'claude-fable-5-1',
+    ]) {
+      const args = buildClaudeArgs({ ...session(model), resumeConversationId: 'existing-conversation' })
+      expect(args[args.indexOf('--model') + 1]).toBe(model)
+      expect(modelForResume(model)).toBe(model)
+    }
+  })
+
+  it('keeps the existing fallback only for retired Opus 4 and 4.1', () => {
+    expect(modelForResume('claude-opus-4-20250514')).toBe('claude-opus-5-5')
+    expect(modelForResume('claude-opus-4-1-20250805')).toBe('claude-opus-5-5')
   })
 
   it('recovers the last real model from a prior transcript', () => {

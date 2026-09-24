@@ -186,6 +186,14 @@ export function buildSessionEnv(sessionId: string, userName: string, effort?: st
   return env
 }
 
+/** Only the retired Opus 4/4.1 IDs get the legacy resume fallback. Newer
+ *  Opus 4.x models remain available and must keep an existing session's choice. */
+export function modelForResume(requestedModel: string): string {
+  return /^claude-opus-4(?:$|-20250514$|-(?:0|1)(?:$|[-\[]))/.test(requestedModel)
+    ? DEFAULT_SESSION_MODEL
+    : requestedModel
+}
+
 export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readonly string[] = []): string[] {
   const args: string[] = [
     '--disallowedTools',
@@ -200,9 +208,7 @@ export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readon
   // omit the flag and let Claude Code restore it itself.
   if (!sessionConfig.resumeConversationId || sessionConfig.model) {
     const requestedModel = sessionConfig.model || DEFAULT_SESSION_MODEL
-    // Opus 4.x is no longer offered by the picker; preserve the existing
-    // legacy remap without accidentally matching a hypothetical Opus 45.
-    const effectiveModel = /claude-opus-4(?:[.-]|$|\[)/.test(requestedModel) ? DEFAULT_SESSION_MODEL : requestedModel
+    const effectiveModel = modelForResume(requestedModel)
     args.push('--model', effectiveModel)
   }
 

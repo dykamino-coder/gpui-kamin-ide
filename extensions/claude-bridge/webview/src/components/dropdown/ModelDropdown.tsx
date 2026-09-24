@@ -6,16 +6,7 @@ import { DropdownOption } from './DropdownOption'
 import { currentModel, DEFAULT_MODEL_ID } from '../../signals/ui'
 import { useBridge } from '../../hooks/useBridge'
 import { activeTabId, tabs } from '../../signals/tabs'
-
-const MODEL_OPTIONS = [
-  // Opus 5.x: 1M context is native. Use explicit model ids because the
-  // CLI's 'opus' alias changes when a newer Opus version is released.
-  { value: 'claude-opus-5-5', cliName: 'claude-opus-5-5', icon: 'fa-gem', name: 'Opus 5.5', description: 'Long-running coding, 1M-token context' },
-  { value: 'claude-opus-5', cliName: 'claude-opus-5', icon: 'fa-gem', name: 'Opus 5', description: 'Previous Opus version, 1M-token context' },
-  { value: 'claude-sonnet-5', cliName: 'claude-sonnet-5', icon: 'fa-feather', name: 'Sonnet 5', description: 'Fast and balanced' },
-  { value: 'claude-haiku-4-5', cliName: 'haiku', icon: 'fa-bolt', name: 'Haiku 4.5', description: 'Fastest, lightweight tasks' },
-  { value: 'claude-fable-5', cliName: 'claude-fable-5', icon: 'fa-book-open', name: 'Fable 5', description: 'Expressive, creative writing' },
-] as const
+import { MODEL_OPTIONS, selectedModelOption } from '../../lib/model-options'
 
 export function ModelDropdown(): JSX.Element {
   const [open, setOpen] = useState(false)
@@ -28,19 +19,15 @@ export function ModelDropdown(): JSX.Element {
   // default is DEFAULT_MODEL_ID regardless of what the user last picked in a
   // different tab. `currentModel.value` is only consulted when there is no
   // active tab at all (e.g. landing screen).
-  const tabModelValue = activeTab?.model
-    ? (MODEL_OPTIONS.find(o => o.cliName === activeTab.model || o.value === activeTab.model)?.value ?? null)
-    : null
-  const model = tabModelValue ?? (activeTab ? DEFAULT_MODEL_ID : currentModel.value)
-
-  const current = MODEL_OPTIONS.find(o => o.value === model) ?? MODEL_OPTIONS[0]
+  const model = activeTab ? (activeTab.model || DEFAULT_MODEL_ID) : currentModel.value
+  const current = selectedModelOption(model)
+  const isOutsidePicker = !MODEL_OPTIONS.some(option => option.value === current.value)
 
   function handleSelect(value: string): void {
     currentModel.value = value
     setOpen(false)
     if (!tabId) return
-    const opt = MODEL_OPTIONS.find(o => o.value === value)
-    bridge.changeModel(tabId, opt?.cliName ?? value)
+    bridge.changeModel(tabId, value)
   }
 
   return (
@@ -56,6 +43,15 @@ export function ModelDropdown(): JSX.Element {
         />
       }
     >
+      {isOutsidePicker && (
+        <DropdownOption
+          icon={current.icon}
+          name={current.name}
+          description={current.description}
+          selected
+          onClick={() => setOpen(false)}
+        />
+      )}
       {MODEL_OPTIONS.map(opt => (
         <DropdownOption
           key={opt.value}
