@@ -24,7 +24,7 @@ import {
 } from './session-io'
 import { clearSessionInputState, notifySessionAttachmentChanged } from './session-input-coordinator'
 import { clearSession as clearHookSession, cancelSessionLocalExecs, HOOK_RELAY_TOKEN_ENV } from '../hooks'
-import { buildSessionEnv as buildEnv } from './session-env'
+import { buildSessionEnv as buildEnv, modelForResume } from './session-env'
 import { buildSessionClaudeArgs } from './session-plugin-args'
 import {
   SESSIONS_BASE,
@@ -173,7 +173,7 @@ export async function createSession(
   if (config.resumeConversationId && !config.model) {
     const previousModel = lastModelForResume(settingsDir, config.resumeConversationId)
     if (previousModel) {
-      config.model = /claude-opus-4(?:[.-]|$|\[)/.test(previousModel) ? DEFAULT_SESSION_MODEL : previousModel
+      config.model = modelForResume(previousModel)
     }
   }
 

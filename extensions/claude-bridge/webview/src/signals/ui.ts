@@ -1,5 +1,6 @@
 import { storage } from "@bridge/storage"
 import { computed, signal } from '@preact/signals'
+import { DEFAULT_MODEL_ID } from '../lib/model-options'
 
 export type SidebarMode = 'sessions' | 'customize'
 export type CustomizePanel = 'landing' | 'settings' | 'skills' | 'agents' | 'mcp' | 'plugins' | 'monitors' | 'sync' | 'logs' | 'hooks' | 'stats' | null
@@ -14,9 +15,9 @@ export const sidebarMode = signal<SidebarMode>('sessions')
 export const activeCustomizePanel = signal<CustomizePanel>(null)
 export const currentEffort = signal('high')
 // Default model for fresh sessions (matches the server's DEFAULT_SESSION_MODEL).
-// Opus 5.5: 1M контекст нативно (как Fable 5) — [1m]-вариантов больше нет;
-// 4.8 выпилен целиком (как раньше 4.7). См. contextLimitForModel.
-export const DEFAULT_MODEL_ID = 'claude-opus-5-5'
+// Opus 5.5: 1M контекст нативно (как Fable 5) — [1m]-вариантов больше нет.
+// Старые сессии сохраняют свою доступную модель, даже если её нет в picker.
+export { DEFAULT_MODEL_ID }
 export const currentModel = signal(DEFAULT_MODEL_ID)
 export const currentPermission = signal('bypassPermissions')
 

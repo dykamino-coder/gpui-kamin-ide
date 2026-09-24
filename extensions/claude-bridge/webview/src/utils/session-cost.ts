@@ -14,6 +14,7 @@ const TIER_3_15: CostTier = { input: 3, output: 15, cacheWrite: 3.75, cacheRead:
 const TIER_15_75: CostTier = { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }
 const TIER_5_25: CostTier = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }
 const TIER_4_20: CostTier = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }
+const TIER_FABLE_5_1: CostTier = { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 }
 const TIER_HAIKU: CostTier = { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 }
 
 /** Infer pricing tier from a model identifier. Falls back to Sonnet rate
@@ -22,6 +23,7 @@ const TIER_HAIKU: CostTier = { input: 1, output: 5, cacheWrite: 1.25, cacheRead:
 export function tierForModel(modelId: string | undefined | null): CostTier {
   const m = (modelId || '').toLowerCase()
   if (m.includes('haiku')) return TIER_HAIKU
+  if (m.includes('fable-5-1')) return TIER_FABLE_5_1
   if (m.includes('opus-5-5')) return TIER_4_20
   // Opus 5 and legacy 4.5+ use the previous rate.
   if (m.includes('opus-5')) return TIER_5_25

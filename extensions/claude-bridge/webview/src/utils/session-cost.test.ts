@@ -87,3 +87,10 @@ describe('Opus 5.5 estimates', () => {
     expect(contextLimitForModel('claude-opus-5-5')).toBe(1_000_000)
   })
 })
+
+describe('Fable 5.1 estimates', () => {
+  it('uses the published cache-read rate and native 1M window', () => {
+    expect(tierForModel('claude-fable-5-1')).toEqual({ input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 })
+    expect(contextLimitForModel('claude-fable-5-1')).toBe(1_000_000)
+  })
+})
