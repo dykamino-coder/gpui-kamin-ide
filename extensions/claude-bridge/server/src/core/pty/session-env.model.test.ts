@@ -27,7 +27,14 @@ describe('Claude CLI model selection', () => {
   })
 
   it('keeps old-client model choices and supports Fable 5.1 without changing the default', () => {
-    for (const model of ['claude-opus-4-5-20251101', 'claude-opus-4-8', 'claude-opus-5', 'claude-haiku-4-5', 'claude-fable-5', 'claude-fable-5-1']) {
+    for (const model of [
+      'claude-opus-4-5-20251101',
+      'claude-opus-4-8',
+      'claude-opus-5',
+      'claude-haiku-4-5',
+      'claude-fable-5',
+      'claude-fable-5-1',
+    ]) {
       const args = buildClaudeArgs({ ...session(model), resumeConversationId: 'existing-conversation' })
       expect(args[args.indexOf('--model') + 1]).toBe(model)
       expect(modelForResume(model)).toBe(model)
