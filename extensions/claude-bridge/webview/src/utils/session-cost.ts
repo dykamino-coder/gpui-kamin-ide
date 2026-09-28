@@ -1,6 +1,5 @@
-// Cost + context estimation. Constants mirror CLI `modelCost.ts` pricing
-// (tiers COST_TIER_3_15, COST_TIER_15_75, COST_TIER_5_25). If Anthropic
-// adjusts pricing, update these along with CLI's configs.js.
+// Cost + context estimation using Anthropic's published base API rates.
+// Keep this estimate aligned with server dashboard pricing when models change.
 //
 // Per-million-token rates in USD.
 export interface CostTier {
@@ -11,6 +10,7 @@ export interface CostTier {
 }
 
 const TIER_3_15: CostTier = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }
+const TIER_2_10: CostTier = { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 }
 const TIER_15_75: CostTier = { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }
 const TIER_5_25: CostTier = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }
 const TIER_4_20: CostTier = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }
@@ -33,6 +33,7 @@ export function tierForModel(modelId: string | undefined | null): CostTier {
     if (m.includes('opus-4-5') || m.includes('opus-4-6') || m.includes('opus-4-7') || m.includes('opus-4-8')) return TIER_5_25
     return TIER_15_75
   }
+  if (m.includes('sonnet-5')) return TIER_2_10
   return TIER_3_15
 }
 

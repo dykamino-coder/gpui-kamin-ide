@@ -7,8 +7,8 @@ import { getDb } from '../../stats/database/lifecycle'
 import { getAllSessions } from '../../pty/session-manager'
 import { denyApiToken, denyForeignUser } from '../authz'
 
-// Anthropic per-1M-token rates by model family. Mirrors
-// the legacy standalone client's session-cost helper so server-side cost ≈ client.
+// Anthropic published base rates per 1M tokens. Keep aligned with the
+// KaminIDE webview's session-cost helper so dashboard cost ≈ client.
 interface CostTier {
   input: number
   output: number
@@ -16,6 +16,7 @@ interface CostTier {
   cacheRead: number
 }
 const TIER_3_15: CostTier = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 }
+const TIER_2_10: CostTier = { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 }
 const TIER_15_75: CostTier = { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }
 const TIER_5_25: CostTier = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 }
 const TIER_4_20: CostTier = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }
@@ -34,7 +35,7 @@ export function tierForModel(model: string | null | undefined): CostTier {
       return TIER_5_25
     return TIER_15_75
   }
-  if (m.includes('sonnet')) return TIER_3_15
+  if (m.includes('sonnet-5')) return TIER_2_10
   return TIER_3_15
 }
 
