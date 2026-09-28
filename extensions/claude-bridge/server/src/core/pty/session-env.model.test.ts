@@ -12,11 +12,11 @@ const session = (model?: string): SessionConfig => ({ cwd: '/repo', model }) as 
 describe('Claude CLI model selection', () => {
   it('launches new sessions with Opus 5.5 and keeps an explicit user choice', () => {
     const defaultArgs = buildClaudeArgs(session())
-    const chosenArgs = buildClaudeArgs(session('claude-sonnet-5'))
+    const chosenArgs = buildClaudeArgs(session('claude-sonnet-5-5'))
     const oldOpusArgs = buildClaudeArgs(session('claude-opus-5'))
 
     expect(defaultArgs[defaultArgs.indexOf('--model') + 1]).toBe('claude-opus-5-5')
-    expect(chosenArgs[chosenArgs.indexOf('--model') + 1]).toBe('claude-sonnet-5')
+    expect(chosenArgs[chosenArgs.indexOf('--model') + 1]).toBe('claude-sonnet-5-5')
     expect(oldOpusArgs[oldOpusArgs.indexOf('--model') + 1]).toBe('claude-opus-5')
   })
 
@@ -32,6 +32,7 @@ describe('Claude CLI model selection', () => {
       'claude-opus-4-8',
       'claude-opus-5',
       'claude-haiku-4-5',
+      'claude-sonnet-5',
       'claude-fable-5',
       'claude-fable-5-1',
     ]) {

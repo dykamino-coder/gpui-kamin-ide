@@ -94,3 +94,15 @@ describe('Fable 5.1 estimates', () => {
     expect(contextLimitForModel('claude-fable-5-1')).toBe(1_000_000)
   })
 })
+
+describe('Sonnet 5.5 estimates', () => {
+  it('uses the published Sonnet 5 rates without repricing older Sonnet logs', () => {
+    expect(tierForModel('claude-sonnet-5-5')).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 })
+    expect(tierForModel('claude-sonnet-5')).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 })
+    expect(tierForModel('claude-sonnet-4-6')).toEqual({ input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 })
+  })
+
+  it('uses the native 1M context window for Sonnet 5.5', () => {
+    expect(contextLimitForModel('claude-sonnet-5-5')).toBe(1_000_000)
+  })
+})
