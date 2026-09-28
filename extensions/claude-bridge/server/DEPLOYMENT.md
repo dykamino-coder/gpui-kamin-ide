@@ -33,6 +33,16 @@ volumes и backup не применять. Имена volumes из `docker run` 
 различаться: перед обновлением источником истины является `docker inspect`
 действующего контейнера.
 
+`VOLUME` в Dockerfile объявляет только путь внутри image. Если не указать
+источник при запуске, Docker создаст **анонимный** volume: данные переживут
+удаление контейнера без `-v`, но следующий `docker run` не подключит этот volume
+автоматически. Поэтому оба пути выше всегда монтируйте явно, а перед заменой
+сверяйте `Type`, `Name`/`Source` и `Destination` в `docker inspect`. Volume —
+место хранения, а не бессрочный архив: очистка старых JSONL самим Claude Code
+или Bridge действует и внутри него. Для сохранения истории сверх срока очистки
+нужны отдельная настройка retention и проверенный backup; одно лишь повторное
+подключение того же volume удалённые файлы не вернёт.
+
 ## Перед первым запуском или заменой контейнера
 
 1. Уточните у владельца deployment нужные registry/image digest, способ
@@ -45,7 +55,7 @@ volumes и backup не применять. Имена volumes из `docker run` 
 
    ```bash
    sudo docker inspect open-claude-bridge \
-     --format 'image={{.Config.Image}} mounts={{range .Mounts}}{{.Name}}:{{.Destination}} {{end}} restart={{.HostConfig.RestartPolicy.Name}}'
+     --format 'image={{.Config.Image}} mounts={{range .Mounts}}{{.Type}}:{{.Name}}:{{.Source}}:{{.Destination}} {{end}} restart={{.HostConfig.RestartPolicy.Name}}'
    sudo docker volume inspect open-claude-bridge-data open-claude-bridge-claude
    ```
 
