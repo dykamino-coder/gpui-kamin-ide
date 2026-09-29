@@ -431,7 +431,6 @@ pub fn open(id: &str, url: &str, width: i32, height: i32, scale: f32) {
     browsers::open(id, url, width, height, scale);
 }
 
-
 #[cfg(test)]
 mod pump_wake_tests {
     //! BR-31: постановка вью в `PULL_PENDING` обязана будить насос САМА, без
@@ -455,7 +454,9 @@ mod pump_wake_tests {
             "насос не разбужен: страница заберёт пачку только со следующего чужого кадра",
         );
         assert!(
-            super::PULL_PENDING.lock().is_ok_and(|s| s.contains("test-view-wake")),
+            super::PULL_PENDING
+                .lock()
+                .is_ok_and(|s| s.contains("test-view-wake")),
             "вью не помечен непрочитанным",
         );
         // Заказ кадра на каждую пачку сообщений — прямой источник фризов на
