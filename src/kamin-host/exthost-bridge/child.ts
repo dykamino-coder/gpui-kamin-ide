@@ -8,13 +8,14 @@ import type { WatchEvent } from "../../exthost/host-services.js"
 import { startExtHost } from "../../exthost/index.js"
 import { reviveCommandArg } from "../mcp-uri.js"
 import { SHELL_OPEN_EXTERNAL, SHELL_READ_CLIPBOARD, SHELL_SHOW_INPUT_BOX, SHELL_SHOW_MESSAGE, SHELL_SHOW_OPEN_DIALOG, SHELL_SHOW_SAVE_DIALOG, SHELL_SHOW_QUICK_PICK } from "../protocol.js"
-import { isPeerDisconnected, type RpcEndpoint } from "../rpc.js"
+import type { RpcEndpoint } from "../rpc.js"
 import * as config from "../services/config.js"
 import * as storage from "../services/storage.js"
 import { setWorkspaceFolderMirror } from "../services/workspace.js"
 import { installChildCrashContainment } from "./child-crash.js"
 import { buildInvokeTable } from "./child-invoke.js"
 import { buildEnvHost, buildSessionsHost, buildStorageHost, buildWorkspaceHost, type ChildDeps } from "./child-proxies.js"
+import { dismissOnPeerDisconnect } from "./dismiss-on-disconnect.js"
 import {
   CHILD_INVOKE, CHILD_READY,
   type ExtHostSeed,
@@ -26,15 +27,11 @@ export async function runExtHostChild(endpoint: RpcEndpoint): Promise<void> {
   const call = <T,>(method: string, ...params: unknown[]): Promise<T> => endpoint.call<T>(method, ...params)
   const requestRenderer = <T,>(method: string, ...params: unknown[]): Promise<T> =>
     call<T>(HOST_REQUEST_RENDERER, method, params)
-  // Закрываемый диалог при разрыве соединения с оболочкой исчезает вместе с
-  // окном, и его контракт уже знает такой исход: `undefined` — «закрыт
-  // пользователем». Поэтому ожидаемая отмена завершает вызов штатно, а любая
-  // другая ошибка идёт дальше в сдерживание падений (BR-19).
+  // Закрываемый диалог при разрыве соединения исчезает вместе с окном
+  // оболочки; правило вынесено отдельным модулем, чтобы проверяться тестом
+  // на настоящем транспорте, а не только через живого ребёнка (BR-19).
   const requestDismissible = <T,>(dismissed: T, method: string, ...params: unknown[]): Promise<T> =>
-    requestRenderer<T>(method, ...params).catch((err: unknown) => {
-      if (isPeerDisconnected(err)) return dismissed
-      throw err
-    })
+    dismissOnPeerDisconnect(requestRenderer<T>(method, ...params), dismissed)
   const broadcast = (channel: string, payload: unknown): void => { endpoint.emit(HOST_BROADCAST, { channel, payload }) }
 
   const markBooted = installChildCrashContainment(broadcast)
