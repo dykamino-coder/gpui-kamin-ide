@@ -41189,6 +41189,7 @@ var import_path6 = __toESM(require("path"), 1);
 
 // src/main/ws/session-idle-tracker.ts
 var DEBOUNCE_MS = 500;
+var OSC_CONFIRM_MS = 4e3;
 var RECENT_WORK_WINDOW_MS = 6e4;
 var SETTLE_MS = 4e3;
 var SETTLE_HARD_CAP_MS = 6e4;
@@ -41203,8 +41204,10 @@ var SessionIdleTracker = class {
   wasWorking = false;
   settleUntil = 0;
   awaitingReplaySince = 0;
-  /** Сервер шлёт состояния жизненного цикла (`UserPromptSubmit`/`Stop`). Пока
-   *  их нет, трекер обязан работать как раньше — на эвристике заголовка OSC. */
+  /** Сервер шлёт состояния жизненного цикла (`UserPromptSubmit`/`Stop`).
+   *  Влияет ТОЛЬКО на то, сколько ждать подтверждения эвристического простоя:
+   *  считать, что раз пришёл хоть один хук, то придёт и хук завершения витка,
+   *  нельзя — в поле это неверно. */
   hookSeen = false;
   /** Call on every socket (re)open — starts a window during which an idle
    *  transition won't fire a toast (covers the attach-replay blip). */
@@ -41244,7 +41247,7 @@ var SessionIdleTracker = class {
       return;
     }
     if (!this.wasWorking) return;
-    if (this.hookSeen && !hookDriven) return;
+    const wait = this.hookSeen && !hookDriven ? OSC_CONFIRM_MS : DEBOUNCE_MS;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
@@ -41253,7 +41256,7 @@ var SessionIdleTracker = class {
       if (this.settleActive()) return;
       if (Date.now() - this.lastWorkingAt > RECENT_WORK_WINDOW_MS) return;
       this.onIdle(rawTitle ?? "");
-    }, DEBOUNCE_MS);
+    }, wait);
   }
   /** Снять висящий debounce при закрытии таба/сессии: иначе таймер стрелял
    *  тостом «Session finished» для уже закрытого таба (клик вёл в никуда). */
