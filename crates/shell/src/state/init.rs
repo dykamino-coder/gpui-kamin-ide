@@ -76,6 +76,7 @@ impl RootView {
             theme,
             theme_choice,
             file_sub_gen: 0,
+            locate_tries: 0,
             rename_sub: None,
             tree_synced_path: None,
             view_resolve_at: std::collections::HashMap::new(),
