@@ -16,6 +16,7 @@ import { SessionIdleTracker } from './session-idle-tracker'
  * плавающим.
  */
 const DEBOUNCE_MS = 500
+const OSC_CONFIRM_MS = 4_000
 
 function tracker(): { fired: string[]; track: SessionIdleTracker['track']; instance: SessionIdleTracker } {
   const fired: string[] = []
@@ -28,6 +29,11 @@ function tracker(): { fired: string[]; track: SessionIdleTracker['track']; insta
 /** Простой обязан ещё и отстояться: debounce гасит короткое «нырнул и вернулся». */
 function settleIdle(): void {
   vi.advanceTimersByTime(DEBOUNCE_MS + 1)
+}
+
+/** Подтверждение эвристического простоя на сервере с хуками. */
+function confirmOscIdle(): void {
+  vi.advanceTimersByTime(OSC_CONFIRM_MS + 1)
 }
 
 beforeEach(() => {
@@ -95,20 +101,43 @@ describe('BR-23: одно уведомление о завершении на в
     expect(t.fired).toEqual(['idle'])
   })
 
-  it('эвристический простой до первого хука виток ещё закрывает', () => {
+  it('эвристический простой до первого хука виток закрывает сразу', () => {
     // Пока сервер не показал, что умеет хуки, единственный источник — OSC.
     const t = tracker()
 
     t.track('working', true, false)
     t.track('idle', false, false)
     settleIdle()
-    expect(t.fired).toEqual(['idle'])
 
-    // А после первого хука — уже нет.
+    expect(t.fired).toEqual(['idle'])
+  })
+
+  it('эвристическое завершение витка уведомляет и на сервере с хуками', () => {
+    // РЕГРЕССИЯ 1.0.61: прежнее правило «раз есть хуки — закрывает только хук»
+    // глушило уведомление НАСОВСЕМ там, где хук завершения витка не приходит.
+    // Проверено A/B на живом приложении: на 1.0.60 тост есть, на 1.0.61 нет.
+    const t = tracker()
+
+    t.track('start', false, true) // SessionStart — хук виден, витка ещё нет
+    t.track('working', true, false)
+    t.track('done', false, false)
+    confirmOscIdle()
+
+    expect(t.fired).toEqual(['done'])
+  })
+
+  it('мигание, вернувшееся в работу раньше подтверждения, тоста не даёт', () => {
+    // Ровно то, ради чего правило и заводилось: внутри витка заголовок гаснет
+    // и возвращается за доли секунды, до порога подтверждения не доживая.
+    const t = tracker()
+
     t.track('p', true, true)
     t.track('blip', false, false)
-    settleIdle()
-    expect(t.fired).toEqual(['idle'])
+    vi.advanceTimersByTime(OSC_CONFIRM_MS - 500)
+    t.track('back', true, false)
+    confirmOscIdle()
+
+    expect(t.fired).toEqual([])
   })
 
   it('закрытие вкладки снимает висящий таймер', () => {
