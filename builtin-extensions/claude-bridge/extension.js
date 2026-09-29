@@ -44637,8 +44637,11 @@ function redactUrl(url) {
     if (u.password) u.password = "***";
     return u.toString();
   } catch {
-    return url.replace(/(https?:\/\/[^:/\s]+):([^@/\s]+)@/g, "$1:***@");
+    return redactUrlsInText(url);
   }
+}
+function redactUrlsInText(text) {
+  return text.replace(/(https?:\/\/)([^@\s/]*):([^@\s/]*)@/gi, "$1$2:***@");
 }
 
 // src/main/lib/git-async.ts
@@ -47300,7 +47303,7 @@ async function refreshMarketplaceOnce(name) {
     return { ok: true, lastUpdated: entry.lastUpdated, changed };
   } catch (err) {
     const stderrRaw = typeof err?.stderr === "string" ? err.stderr : err?.stderr?.toString() || "";
-    const stderr = redactUrl(stderrRaw).slice(0, 2e3);
+    const stderr = redactUrlsInText(stderrRaw).slice(0, 2e3);
     let hint = "";
     if (/authentication failed|could not read (Username|Password)|unable to access/i.test(stderrRaw)) {
       hint = "Authentication required. The stored URL probably lost its token \u2014 re-add the marketplace with a Personal Access Token.";
@@ -47310,7 +47313,7 @@ async function refreshMarketplaceOnce(name) {
       hint = "Git needs credentials but none are available. Re-add the marketplace with a token.";
     }
     const message = [
-      `git pull failed: ${err?.message || "unknown error"}`,
+      `git pull failed: ${redactUrlsInText(String(err?.message ?? err ?? "unknown error"))}`,
       hint && `Hint: ${hint}`,
       stderr && `--- git stderr ---
 ${stderr}`
@@ -47319,23 +47322,35 @@ ${stderr}`
   }
 }
 async function refreshAllMarketplaces(window9) {
-  if (!import_fs26.default.existsSync(knownMarketplacesPath())) return;
+  if (!import_fs26.default.existsSync(knownMarketplacesPath())) return { ok: true, results: [] };
   const known = readKnownMarketplaces();
   const names = Object.keys(known).filter((n) => known[n]?.autoUpdate !== false);
+  const results = [];
   for (const name of names) {
+    let outcome;
     try {
-      await refreshMarketplaceOnce(name);
-    } catch {
+      const result = await refreshMarketplaceOnce(name);
+      outcome = result.ok ? { name, ok: true, changed: result.changed } : { name, ok: false, error: result.error ?? "Update failed" };
+    } catch (err) {
+      outcome = { name, ok: false, error: redactUrlsInText(String(err?.message ?? err)) };
     }
+    if (!outcome.ok) console.warn(`[marketplaces] ${name}: refresh failed \u2014 ${outcome.error ?? ""}`);
+    results.push(outcome);
     if (window9 && !window9.isDestroyed()) {
-      window9.webContents.send("marketplaces:updated", { name });
+      window9.webContents.send("marketplaces:updated", {
+        name,
+        ok: outcome.ok,
+        ...outcome.error === void 0 ? {} : { error: outcome.error }
+      });
     }
+    if (!outcome.ok) continue;
     try {
       const { emitBridgeHookEvent: emitBridgeHookEvent2 } = await Promise.resolve().then(() => (init_emit_bridge_event(), emit_bridge_event_exports));
       emitBridgeHookEvent2("MarketplaceUpdated", { name });
     } catch {
     }
   }
+  return { ok: results.every((r) => r.ok), results };
 }
 
 // src/main/marketplace/auth.ts
@@ -47464,14 +47479,17 @@ function registerMarketplaceIPC(getMainWindow) {
     return await refreshMarketplaceOnce(name);
   });
   ipcMain.handle("plugins:refresh-all-marketplaces", async () => {
-    await refreshAllMarketplaces(getMainWindow() ?? void 0);
-    return { ok: true };
+    return await refreshAllMarketplaces(getMainWindow() ?? void 0);
   });
   ipcMain.handle("plugins:set-marketplace-autoupdate", (_event, name, autoUpdate) => {
     return setMarketplaceAutoUpdate(name, autoUpdate);
   });
   setTimeout(() => {
-    refreshAllMarketplaces(getMainWindow() ?? void 0).catch((err) => {
+    refreshAllMarketplaces(getMainWindow() ?? void 0).then((sweep) => {
+      for (const result of sweep.results) {
+        if (!result.ok) console.warn(`[marketplaces] auto-refresh failed for "${result.name}": ${result.error ?? ""}`);
+      }
+    }).catch((err) => {
       console.warn("[marketplaces] auto-refresh failed:", err instanceof Error ? err.message : err);
     });
   }, 8e3);
