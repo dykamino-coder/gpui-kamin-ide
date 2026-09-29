@@ -1,6 +1,7 @@
 import { signal } from '@preact/signals'
 import { useEffect, useRef } from 'preact/hooks'
 import { api } from '../../services/api-client'
+import { createRequestOwner } from '../../utils/latest-request'
 import { userColor } from '../../utils/user-colors'
 import styles from './UsageChart.module.css'
 
@@ -59,13 +60,28 @@ function apiParams(tab: Tab): { period: string; days: number } {
   }
 }
 
-async function fetchData(tab: Tab) {
+// Владение запросом: публикует только САМЫЙ ПОСЛЕДНИЙ. Раньше публиковался
+// КАЖДЫЙ ответ, и при быстром переключении периода ярлык «Yearly» вставал над
+// более старым дневным ответом, а индикатор загрузки гас при ещё идущем
+// запросе — порядок ответов сети не совпадает с порядком запросов
+// (INC-2026-0015).
+const requests = createRequestOwner()
+
+export async function fetchData(tab: Tab) {
+  const token = requests.begin()
   const { period, days } = apiParams(tab)
   loading.value = true
   try {
-    rawData.value = await api.getUserTimeSeries(period, days)
-  } catch { rawData.value = [] }
-  loading.value = false
+    const points = await api.getUserTimeSeries(period, days)
+    if (!requests.isCurrent(token)) return
+    rawData.value = points
+  } catch {
+    if (!requests.isCurrent(token)) return
+    rawData.value = []
+  }
+  // Гасить индикатор имеет право тоже только последний запрос: иначе ответ
+  // обогнавшего его прежнего запроса объявлял бы загрузку законченной.
+  if (requests.isCurrent(token)) loading.value = false
 }
 
 // ── Slot generation ────────────────────────────────────────────────────────
