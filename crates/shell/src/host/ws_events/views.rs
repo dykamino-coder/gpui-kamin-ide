@@ -29,6 +29,10 @@ pub(crate) fn handle(on_event_tx: &Sender<ShellEvent>, channel: &str, payload: &
                 resolved.clear();
             }
             request_status(on_event_tx.clone());
+            // Модели событие тоже нужно: у нового ребёнка пустые зеркала
+            // документов и редакторов, и повторный посев делает она — там
+            // лежат открытые табы с их текстом (BR-04).
+            let _ = on_event_tx.try_send(ShellEvent::HostEvent(channel.into(), payload.clone()));
             // Резолвим сразу, а не ждём `kamin:registry:update`: тот приходит
             // от активации расширений, а после перезапуска ребёнка встроенные
             // вью обязаны вернуться независимо от того, активировалось ли
@@ -218,6 +222,22 @@ mod respawn_tests {
         assert!(
             resolved_views().lock().unwrap().is_empty(),
             "отметки резолва не сняты: вью не вернутся до перезапуска приложения",
+        );
+
+        // Модель тоже обязана узнать о перезапуске: у нового ребёнка пустое
+        // зеркало документов, и засеять его может только она — разбор канала
+        // об открытых табах не знает (BR-04).
+        let mut forwarded = false;
+        while let Ok(event) = _rx.try_recv() {
+            if let crate::host_link::ShellEvent::HostEvent(channel, _) = event
+                && channel == "kamin:exthost:respawned"
+            {
+                forwarded = true;
+            }
+        }
+        assert!(
+            forwarded,
+            "событие перезапуска не дошло до модели: документы не засеются заново",
         );
     }
 }
