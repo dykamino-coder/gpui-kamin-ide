@@ -587,9 +587,11 @@ export interface KaminBridgeApi {
   onMonitorStatus(cb: (payload: { id: string; status: string; exitCode?: number | null }) => void): () => void
   listLspServers(): Promise<Array<{ id: string; pluginId: string; serverKey: string; extensions: string[]; initialized: boolean }>>
   restartLspServers(): Promise<{ ok: boolean }>
-  refreshAllMarketplaces(): Promise<{ ok: boolean }>
+  refreshAllMarketplaces(): Promise<{ ok: boolean; results?: Array<{ name: string; ok: boolean; changed?: boolean; error?: string }> }>
   setMarketplaceAutoUpdate(name: string, autoUpdate: boolean): Promise<{ ok: boolean; error?: string }>
-  onMarketplaceUpdated(cb: (payload: { name: string }) => void): () => void
+  /** Событие ЗАВЕРШЕНИЯ, не успеха: `ok` отсутствует у прежних отправителей,
+   *  поэтому его отсутствие читается как «исход неизвестен», а не как отказ. */
+  onMarketplaceUpdated(cb: (payload: { name: string; ok?: boolean; error?: string }) => void): () => void
 
   // ─── VS Code integration ──────────────────────────────────
   isVscodeAvailable(): Promise<boolean>
