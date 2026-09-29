@@ -185,7 +185,6 @@ fn warn_unknown_view_once(id: &str) {
     }
 }
 
-
 #[cfg(test)]
 mod respawn_tests {
     //! BR-04: после перезапуска ребёнка extension-host отметки «вью уже
@@ -210,7 +209,10 @@ mod respawn_tests {
             "отметки чужим каналом сниматься не должны",
         );
 
-        resolved_views().lock().unwrap().insert("kamin.console".into());
+        resolved_views()
+            .lock()
+            .unwrap()
+            .insert("kamin.console".into());
         let handled = super::handle(&tx, "kamin:exthost:respawned", &serde_json::Value::Null);
         assert!(handled, "канал перезапуска обязан обрабатываться здесь");
         assert!(
