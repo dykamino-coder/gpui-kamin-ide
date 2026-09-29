@@ -91,7 +91,10 @@ describe("BR-19: разрыв соединения — отмена жизнен
     const parent = new RpcEndpoint(parentSide)
     const toShell = new RpcEndpoint(parentToShell)
     const shell = new RpcEndpoint(shellSide)
-    shell.handle("showInputBox", () => new Promise(() => {})) // никогда не ответит
+    // Оболочка принимает вызов и НИКОГДА не отвечает: ответ придёт только
+    // разрывом соединения, который мы и проверяем.
+    const never = new Promise<never>(() => undefined)
+    shell.handle("showInputBox", () => never)
     parent.handle("host:requestRenderer", (method) => toShell.call(method as string))
 
     const pending = child.call("host:requestRenderer", "showInputBox")
