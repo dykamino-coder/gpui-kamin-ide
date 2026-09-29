@@ -12,6 +12,27 @@ use gpui::Context;
 
 use crate::root::{RootView, SUB_CLOSE_DELAY_MS};
 
+/// Потолок повторов Locate и номер попытки, на которой поднимается кап
+/// каталога. 16 попыток по 120 мс — около двух секунд ожидания листингов,
+/// вдвое больше исходного поллинга оригинала (50 мс ×60 = 3 с) по времени
+/// не превышая его.
+const LOCATE_MAX_TRIES: u32 = 16;
+const LOCATE_CAP_BUMP_AT: u32 = 8;
+
+/// Каталог, чей кап нужно поднять на следующей попытке, либо `None`, когда
+/// бюджет исчерпан и повторять бессмысленно.
+///
+/// Вынесено отдельной функцией ради теста: бесконечность повтора и была
+/// сутью INC-2026-0006.
+fn locate_retry_target(tries: u32, target: &str) -> Option<String> {
+    if tries >= LOCATE_MAX_TRIES {
+        return None;
+    }
+    std::path::Path::new(target)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
 impl RootView {
     /// Дерево файлов: листинг каталогов, раскрытие и сворачивание узлов.
     pub(crate) fn apply_tree_listing(&mut self, event: ShellEvent, cx: &mut Context<Self>) {
@@ -74,15 +95,44 @@ impl RootView {
                                 tree.scroll
                                     .set_offset(gpui::point(gpui::px(0.0), gpui::px(-y)));
                             });
-                        } else {
-                            // Листинги предков ещё не пришли — повторим, когда
-                            // они появятся (оригинал поллит `[data-tree-id]`
-                            // 50 мс ×60, `FileTreeHeader.tsx:85-98`)
+                            self.locate_tries = 0;
+                        } else if let Some(dir) = locate_retry_target(self.locate_tries, &target) {
+                            // Две разные причины промаха, и лечатся они
+                            // по-разному. Листинги предков могли не доехать —
+                            // тогда помогает повтор. Но цель может лежать ЗА
+                            // капом отрисовки каталога (100 строк), и её не
+                            // будет там никогда: прежний безусловный повтор
+                            // крутился вечно, каждые 120 мс создавая поток и
+                            // заново дёргая выделение и вспышку строки.
+                            //
+                            // Поэтому: бюджет попыток конечен, а на последней
+                            // поднимаем кап родителя — если дело было в капе,
+                            // строка появится, и следующий проход её найдёт.
+                            self.locate_tries += 1;
+                            if self.locate_tries >= LOCATE_CAP_BUMP_AT {
+                                self.tree_mut(cx, |tree| {
+                                    let cap = crate::ui::file_tree::model::cap_for(tree, &dir);
+                                    tree.child_cap.insert(
+                                        dir.clone(),
+                                        cap + crate::ui::file_tree::model::DIR_RENDER_STEP,
+                                    );
+                                });
+                            }
                             let tx = self.tx.clone();
                             std::thread::spawn(move || {
                                 std::thread::sleep(std::time::Duration::from_millis(120));
                                 let _ = tx.try_send(ShellEvent::Ed(EdEvent::LocateSelectedFile));
                             });
+                        } else {
+                            // Бюджет исчерпан: цель недостижима (удалена или
+                            // каталог не отдаёт её даже с поднятым капом).
+                            // Молча прекращаем, а не крутимся вечно.
+                            self.locate_tries = 0;
+                            self.push_syslog(
+                                "warning",
+                                "shell",
+                                &format!("Locate: target not reachable in the tree: {target}"),
+                            );
                         }
                     }
                 }
@@ -240,5 +290,54 @@ impl RootView {
             // Сюда диспетчер чужого не пришлёт
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod locate_tests {
+    //! INC-2026-0006: повтор Locate обязан быть КОНЕЧНЫМ. Цель за пределом
+    //! отрисованного среза каталога (кап 100) не появится никогда, а прежний
+    //! код повторял безусловно — поток каждые 120 мс, плюс перезапуск
+    //! выделения и вспышки строки на каждой попытке.
+
+    #[test]
+    fn бюджет_повторов_конечен() {
+        let target = r"C:\ws\dir\main.rs";
+        assert!(
+            super::locate_retry_target(0, target).is_some(),
+            "первая попытка обязана быть: листинги предков ещё едут",
+        );
+        assert!(
+            super::locate_retry_target(super::LOCATE_MAX_TRIES - 1, target).is_some(),
+            "последняя попытка бюджета ещё разрешена",
+        );
+        assert!(
+            super::locate_retry_target(super::LOCATE_MAX_TRIES, target).is_none(),
+            "бюджет исчерпан — повторять бессмысленно, цель недостижима",
+        );
+        assert!(
+            super::locate_retry_target(super::LOCATE_MAX_TRIES + 500, target).is_none(),
+            "за пределом бюджета повтор не возобновляется",
+        );
+    }
+
+    #[test]
+    fn для_подъёма_капа_возвращается_родительский_каталог() {
+        // Поднимать кап надо именно у каталога цели, иначе строка не
+        // появится и повтор останется бесполезным.
+        assert_eq!(
+            super::locate_retry_target(0, r"C:\ws\dir\main.rs").as_deref(),
+            Some(r"C:\ws\dir"),
+        );
+    }
+
+    #[test]
+    fn кап_поднимается_до_исчерпания_бюджета() {
+        // Подъём должен случиться РАНЬШЕ последней попытки: иначе поднятый
+        // кап уже некому будет использовать.
+        assert!(
+            super::LOCATE_CAP_BUMP_AT < super::LOCATE_MAX_TRIES,
+            "подъём капа обязан произойти до конца бюджета",
+        );
     }
 }
