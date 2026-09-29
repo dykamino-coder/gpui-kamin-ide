@@ -1673,9 +1673,17 @@ file overlap с уже открытыми branches.
 меняли этот path. Нужен отдельный event-driven implementation PR, unit wake test и Windows
 R6 ≤ 1 s; в этой ревизии functional code не пишется.
 
-**Status:** ready; подтверждён source defect (INC-2026-0002). **Dependency:**
-none; BR-25 completion зависит от него. **Acceptance:** automated test на
-wake без кадра + Windows CEF runtime gate (reveal без pointer).
+**Status:** implementation в Change/Fix PR (пачка `RV-2026-09-29`); Windows
+CEF runtime gate — обязательный CI job PR. Подтверждён source defect
+(INC-2026-0002). **Dependency:** none; BR-25 completion зависит от него.
+**Acceptance:** automated test на wake без кадра + Windows CEF runtime gate
+(reveal без pointer).
+
+**Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
+единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с
+пробуждением. `deliver()` зовёт её. Polling и таймеры не добавлены: путь
+остался событийным, а заказ кадра на каждую пачку сообщений не появился —
+это прямой источник фризов на RDP.
 
 `web::deliver()` в `crates/shell/src/web/mod.rs` кладёт кадр в per-view outbox
 и ставит id в `PULL_PENDING`, но пробуждение насоса (`WAKE`) происходит
