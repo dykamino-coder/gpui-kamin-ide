@@ -34,12 +34,13 @@ import {
   applySyncData,
 } from './session-settings'
 import { archiveTranscriptForSession, dropArchivedTranscript } from './transcript-archive'
+import { forgetModelSelection, modelForResumeWithSelection } from './model-selection'
 import {
   findOrRecreateSettingsDir,
   xbasename,
   repairTranscriptForResume,
   resolveNewestInChain,
-  lastModelForResume,
+  lastModelEntryForResume,
 } from './session-resume-helpers'
 import { handleJsonlUserEntry } from './session-stats-recorder'
 import { resetJsonlStats, accumulateJsonlStats } from './session-jsonl-stats'
@@ -172,7 +173,13 @@ export async function createSession(
   // resumed conversation's last model before updating the default for fresh
   // sessions; an explicit model change from the client still wins.
   if (config.resumeConversationId && !config.model) {
-    const previousModel = lastModelForResume(settingsDir, config.resumeConversationId)
+    // Выбор пользователя сильнее расшифровки, пока он СВЕЖЕЕ последнего
+    // ответа: горячая смена модели до первого ответа в JSONL не записывается,
+    // и без этого респаун молча возвращал прежнюю модель (INC-2026-0053).
+    const previousModel = modelForResumeWithSelection(
+      config.resumeConversationId,
+      lastModelEntryForResume(settingsDir, config.resumeConversationId),
+    )
     if (previousModel) {
       config.model = modelForResume(previousModel)
     }
@@ -1046,10 +1053,10 @@ export function shutdownAll(): void {
 /**
  * Write PTY stdin data.
  */
-export function writeInput(sessionId: string, data: string): void {
+export function writeInput(sessionId: string, data: string): boolean {
   const session = sessions.get(sessionId)
-  if (!session) return
-  writeInputToSession(session, data)
+  if (!session) return false
+  return writeInputToSession(session, data)
 }
 
 /**
@@ -1217,6 +1224,7 @@ export async function deleteSessionByConversationId(conversationId: string, user
   // early on the first match and would otherwise leave a resumable transcript
   // behind after the CLI expired the original (INC-2026-0054).
   dropArchivedTranscript(conversationId)
+  forgetModelSelection(conversationId)
 
   // 2. Scan SESSIONS_BASE for settingsDir containing this conversationId in its JSONL watcher config
   //    or find via findOrRecreateSettingsDir

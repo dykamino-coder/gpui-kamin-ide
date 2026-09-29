@@ -303,7 +303,10 @@ export function useBridgeListeners(
     // the tab so dropdowns show the session's actual settings.
     const unsubSessionRestarted = bridge.onSessionRestarted((tabId: string, data) => {
       const entry = terminalRegistry.get(tabId)
-      if (entry) entry.needsClear = true
+      // Горячая смена модели PTY не перезапускает: чистка выбрасывала живую
+      // прокрутку консоли ни за что (INC-2026-0053). Отсутствие признака —
+      // отправитель старого образца, то есть настоящий перезапуск.
+      if (entry && data?.inPlace !== true) entry.needsClear = true
       if (data && (data.effort || data.model)) {
         const cur = tabs.value.find(t => t.id === tabId)
         const nextEffort = data.effort ?? cur?.effort

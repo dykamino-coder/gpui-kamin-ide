@@ -403,6 +403,10 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
         sessionId: (msg as any).sessionId,
         effort: (msg as any).effort,
         model: (msg as any).model,
+        // PTY не перезапускался — консоль чистить нечего. Признак несёт
+        // сервер; его отсутствие (сервер старого образца) читается как
+        // настоящий перезапуск, то есть прежнее поведение (INC-2026-0053).
+        inPlace: (msg as any).inPlace === true,
       })
       ctx.notifySessionInfo((msg as any).effort, (msg as any).model)
       break
