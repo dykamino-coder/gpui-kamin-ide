@@ -41175,7 +41175,11 @@ function toRendererConnectionState(state, authority, authorityGeneration, author
     sessionId: state.sessionId,
     error: state.error,
     nextRetryAt: state.nextRetryAt,
-    retryAttempt: state.retryAttempt
+    retryAttempt: state.retryAttempt,
+    // Diagnostics classify a disconnect by this number when the server closed
+    // without a reason text — dropping it here turned every such close into an
+    // unknown cause downstream (INC-2026-0027).
+    closeCode: state.closeCode
   };
 }
 
