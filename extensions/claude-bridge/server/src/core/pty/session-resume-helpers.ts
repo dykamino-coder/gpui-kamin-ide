@@ -9,6 +9,7 @@ import path from 'path'
 import os from 'os'
 import { debugLog, warnLog } from '../logging'
 import { SESSIONS_BASE } from './session-settings'
+import { archiveTranscript, restoreArchivedTranscript } from './transcript-archive'
 
 /** Cross-platform basename: handles both / and \ separators (server may
  *  run on Linux with Windows paths inside JSONL). */
@@ -31,6 +32,18 @@ export function xbasename(p: string): string {
  */
 export function findOrRecreateSettingsDir(conversationId: string, _tokenId: string): string | null {
   const projectsDir = path.join(os.homedir(), '.claude', 'projects')
+  const found = locateSettingsDir(projectsDir, conversationId)
+  if (found) return found
+
+  // Nothing under projects/ holds this conversation. Claude Code sweeps that
+  // tree by `cleanupPeriodDays`, so an idle conversation Bridge still lists can
+  // simply have expired. Put our durable copy back and look once more — without
+  // it the only outcome is a fresh session and a lost history (INC-2026-0054).
+  if (restoreArchivedTranscript(projectsDir, conversationId) === null) return null
+  return locateSettingsDir(projectsDir, conversationId)
+}
+
+function locateSettingsDir(projectsDir: string, conversationId: string): string | null {
   const jsonlFilename = `${conversationId}.jsonl`
 
   try {
@@ -50,6 +63,8 @@ export function findOrRecreateSettingsDir(conversationId: string, _tokenId: stri
       } catch (e) {
         warnLog('repairJsonl failed', { jsonlPath, error: String(e) })
       }
+      // Archive AFTER the repair, so the durable copy is the resumable one.
+      archiveTranscript(jsonlPath, conversationId)
 
       const slug = slugDir.name
       const existing = scanForSettingsDirBySlug(slug)
@@ -359,7 +374,9 @@ export function repairTranscriptForResume(settingsDir: string, conversationId: s
   const jsonlPath = path.join(os.homedir(), '.claude', 'projects', slug, `${conversationId}.jsonl`)
   if (!fs.existsSync(jsonlPath)) return NO_REPAIR
   try {
-    return repairJsonl(jsonlPath)
+    const stats = repairJsonl(jsonlPath)
+    archiveTranscript(jsonlPath, conversationId)
+    return stats
   } catch (e) {
     warnLog('repairTranscriptForResume failed', { jsonlPath, error: String(e) })
     return NO_REPAIR

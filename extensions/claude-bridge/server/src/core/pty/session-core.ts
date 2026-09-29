@@ -33,6 +33,7 @@ import {
   writeSessionClaudeMd,
   applySyncData,
 } from './session-settings'
+import { archiveTranscriptForSession, dropArchivedTranscript } from './transcript-archive'
 import {
   findOrRecreateSettingsDir,
   xbasename,
@@ -855,6 +856,12 @@ function finalizeTeardownFor(
     }
     debugLog('Session teardown finalized', { sessionId, reason, waitedMs: Date.now() - teardown.startedAt })
   }
+  // Снимок расшифровки на выходе: беседу, которую больше не открывали, путь
+  // резюма не скопировал бы никогда, и уборка CLI унесла бы её вместе с
+  // возможностью резюма (INC-2026-0054).
+  if (session.cliConversationId) {
+    archiveTranscriptForSession(session.settingsDir, session.cliConversationId)
+  }
   cancelSessionLocalExecs(sessionId)
   clearHookSession(sessionId)
   cleanupSession(sessionId)
@@ -1204,6 +1211,12 @@ export async function deleteSessionByConversationId(conversationId: string, user
       throw new Error('Cannot delete an active session — close it first')
     }
   }
+
+  // Explicit deletion must also remove the durable Bridge copy, and it must
+  // happen even when the live JSONL is already gone — the scan below returns
+  // early on the first match and would otherwise leave a resumable transcript
+  // behind after the CLI expired the original (INC-2026-0054).
+  dropArchivedTranscript(conversationId)
 
   // 2. Scan SESSIONS_BASE for settingsDir containing this conversationId in its JSONL watcher config
   //    or find via findOrRecreateSettingsDir
