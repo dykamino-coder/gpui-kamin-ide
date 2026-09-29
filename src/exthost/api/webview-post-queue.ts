@@ -98,7 +98,18 @@ export class WebviewPostQueue {
     if (this.flushTimer) return
     this.flushTimer = setImmediate(() => {
       this.flushTimer = null
-      this.sendOneFrame()
+      try {
+        this.sendOneFrame()
+      } catch (err) {
+        // Запланированный сброс вызывающего не имеет: бросок отсюда уходил
+        // НЕОБРАБОТАННЫМ исключением процесса — по одному на каждый кадр при
+        // стоящем канале, то есть лавиной тостов «Extension crashed». Пачка уже
+        // завершена `false`; остаток очереди тоже получает исход, а отказ
+        // остаётся видимым в журнале (INC-2026-0055).
+        this.failQueued()
+        console.error('[webview] post delivery failed:', err instanceof Error ? err.message : err)
+        return
+      }
       if (this.queue.length > 0) this.schedule() // more pending → next tick
     })
   }
