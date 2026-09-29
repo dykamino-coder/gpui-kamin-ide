@@ -1062,7 +1062,7 @@ export class ConnectionManager {
         ConnectionManager.lastTree = tree
         this.window.webContents.send('tree-update', tree)
       },
-      trackActivityForIdle: (rawTitle, isWorking) => this.idleTracker.track(rawTitle, isWorking),
+      trackActivityForIdle: (rawTitle, isWorking, hookDriven) => this.idleTracker.track(rawTitle, isWorking, hookDriven),
       noteReplayCompleteForIdle: () => this.idleTracker.noteReplayComplete(),
       notifyActivity: (working, hookDriven) => ConnectionManager.onActivity?.(this.tabId, working, hookDriven),
       handleMcpCall: (m) => { void runMcpCall(this.mcpCallCtx(), m) },

@@ -143,6 +143,7 @@ impl RootView {
             | ShellEvent::ClosePalette
             | ShellEvent::PaletteGate { .. }
             | ShellEvent::Toast { .. }
+            | ShellEvent::ToastAction { .. }
             | ShellEvent::DismissToast { .. }
             | ShellEvent::ToastGone { .. }
             | ShellEvent::WebMenu { .. }

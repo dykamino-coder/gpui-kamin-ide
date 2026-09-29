@@ -190,6 +190,9 @@ pub struct RootView {
     /// Стек тостов (снизу-справа).
     pub toasts: Vec<crate::ui::toasts::Toast>,
     /// Живые таймеры тостов (каунтдаун/ховер-пауза/closing) по id.
+    /// Тосты `shellreq-N`, чей ожидающий запрос уже получил ответ кликом по
+    /// кнопке: второй ответ подменил бы выбор пользователя пустотой (BR-23).
+    pub answered_toasts: std::collections::HashSet<String>,
     pub toast_timers:
         std::collections::HashMap<String, std::sync::Arc<crate::ui::toasts::ToastTimer>>,
     /// Открытое контекст-меню веб-страницы (в теме, слой оверлеев).
