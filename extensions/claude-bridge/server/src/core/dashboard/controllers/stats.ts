@@ -8,13 +8,15 @@ import {
   getTokenUsageSummary,
   getCostSummary,
   getMetricsSummary,
-  getRecentEvents,
+  queryEvents,
   getEventById,
+  deleteEventById,
   clearOtelData,
   clearOtelDataForUser,
 } from '../../telemetry/store'
+import { parseDeleteFilter, parseListQuery, toRequestLogEntry } from './request-log'
 import { getUserTimeSeries } from '../../stats/database/aggregates'
-import { clearAll, deleteRequest, deleteRequestsByFilter } from '../../stats/database/crud'
+import { clearAll, deleteRequestsByFilter } from '../../stats/database/crud'
 import { getAllSessions } from '../../pty/session-manager'
 import { denyApiToken, denyForeignUser, denyForeignSubject } from '../authz'
 
@@ -23,10 +25,9 @@ import { denyApiToken, denyForeignUser, denyForeignSubject } from '../authz'
 async function sessionOwner(sessionId: string): Promise<string | undefined> {
   const { getDb } = await import('../../stats/database/lifecycle')
   const db = await getDb()
-  const row = (await db.runAndReadAll(
-    `SELECT user_name FROM session_tokens WHERE session_id = ? LIMIT 1`,
-    [sessionId],
-  )).getRowObjects()[0] as { user_name?: string } | undefined
+  const row = (
+    await db.runAndReadAll(`SELECT user_name FROM session_tokens WHERE session_id = ? LIMIT 1`, [sessionId])
+  ).getRowObjects()[0] as { user_name?: string } | undefined
   return row?.user_name
 }
 
@@ -50,14 +51,17 @@ function sweepThrottled(sweepAll: () => Promise<unknown>): void {
   const now = Date.now()
   if (now - lastRequestSweepAt < 60_000) return
   lastRequestSweepAt = now
-  sweepAll().catch(() => { /* fire-and-forget catch-up */ })
+  sweepAll().catch(() => {
+    /* fire-and-forget catch-up */
+  })
 }
 
 export function registerStatsRoutes(api: Hono): void {
   // GET /api/dashboard/stats -- OTel-based statistics. Admin-only: returns every
   // user's session cwd (absolute paths) + per-user token/model breakdown.
   api.get('/api/dashboard/stats', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied
+    const denied = denyApiToken(c)
+    if (denied) return denied
     const tokenUsage = await getTokenUsageSummary()
     const cost = await getCostSummary()
     const metrics = await getMetricsSummary()
@@ -81,9 +85,18 @@ export function registerStatsRoutes(api: Hono): void {
 
     // Build per-user token maps in the shape the frontend expects
     const userTokens: Record<string, { input: number; output: number }> = {}
-    const userModelTokens: Record<string, Record<string, {
-      input: number; output: number; cacheRead: number; cacheWrite: number
-    }>> = {}
+    const userModelTokens: Record<
+      string,
+      Record<
+        string,
+        {
+          input: number
+          output: number
+          cacheRead: number
+          cacheWrite: number
+        }
+      >
+    > = {}
 
     for (const [user, entry] of Object.entries(tokenUsage.byUser)) {
       userTokens[user] = {
@@ -138,42 +151,28 @@ export function registerStatsRoutes(api: Hono): void {
 
   // GET /api/dashboard/requests -- recent OTel events
   api.get('/api/dashboard/requests', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied
-    const limit = parseInt(c.req.query('limit') || '50')
-    const events = await getRecentEvents(limit)
-
-    // Map OTel events to a shape compatible with RequestLogEntry where possible
-    const entries = events.map((ev) => ({
-      id: String(ev.id ?? ''),
-      timestamp: ev.timestamp,
-      endpoint: 'anthropic' as const,
-      method: 'POST',
-      model: (ev.data.model as string) || 'unknown',
-      userName: ev.userName || undefined,
-      durationMs: (ev.data.durationMs as number) || 0,
-      inputTokens: (ev.data.inputTokens as number) || 0,
-      outputTokens: (ev.data.outputTokens as number) || 0,
-      cacheReadTokens: (ev.data.cacheReadTokens as number) || 0,
-      cacheWriteTokens: (ev.data.cacheWriteTokens as number) || 0,
-      toolsUsed: [] as string[],
-      status: 'success' as const,
-      statusCode: 200,
-      error: (ev.data.error as string) || undefined,
-      isUserRequest: false,
-      userMessage: undefined,
-      sessionKey: ev.sessionId || undefined,
-      // Preserve the original event for richer detail
-      eventName: ev.eventName,
-      eventData: ev.data,
-    }))
-
-    return c.json(entries)
+    const denied = denyApiToken(c)
+    if (denied) return denied
+    // Смещение и фильтры раньше молча игнорировались, и запрошенная страница
+    // подменялась первой. Непосильный для набора OTel фильтр теперь отвергается
+    // с причиной, а не исполняется наполовину (INC-2026-0016).
+    const parsed = parseListQuery({
+      limit: c.req.query('limit'),
+      offset: c.req.query('offset'),
+      userName: c.req.query('userName'),
+      status: c.req.query('status'),
+      endpoint: c.req.query('endpoint'),
+    })
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const events = await queryEvents(parsed.value)
+    return c.json(events.map(toRequestLogEntry))
   })
 
   // DELETE /api/dashboard/requests -- clear ALL history (requests + OTel) for
   // every user. Admin-only destructive op.
   api.delete('/api/dashboard/requests', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied
+    const denied = denyApiToken(c)
+    if (denied) return denied
     await clearAll()
     await clearOtelData()
     return c.json({ ok: true })
@@ -182,19 +181,30 @@ export function registerStatsRoutes(api: Hono): void {
   // DELETE /api/dashboard/requests/filter -- delete by filter. A per-user token
   // may only clear its OWN userName; admin may target anyone.
   api.delete('/api/dashboard/requests/filter', async (c) => {
-    const endpoint = c.req.query('endpoint') || undefined
-    const userName = c.req.query('userName') || undefined
-    const status = c.req.query('status') || undefined
-    const denied = denyForeignUser(c, userName); if (denied) return denied
-    const deleted = await deleteRequestsByFilter({ endpoint: endpoint as any, userName, status: status as any })
-    // Also clear OTel data for user if filtering by userName
-    if (userName) await clearOtelDataForUser(userName)
-    return c.json({ ok: true, deleted })
+    // Здесь и была потеря данных: фильтр «пользователь + ошибки» сужал только
+    // устаревшую таблицу, а затем стирал ВСЕ события и метрики пользователя.
+    // Набор OTel статус отдельным полем не хранит, поэтому такой фильтр
+    // отвергается — молча проигнорированный фильтр в запросе на УДАЛЕНИЕ и
+    // есть потеря данных (INC-2026-0016).
+    const parsed = parseDeleteFilter({
+      userName: c.req.query('userName'),
+      status: c.req.query('status'),
+      endpoint: c.req.query('endpoint'),
+    })
+    if (!parsed.ok) return c.json({ error: parsed.error }, 400)
+    const { userName } = parsed.value
+    const denied = denyForeignUser(c, userName)
+    if (denied) return denied
+    const legacy = await deleteRequestsByFilter({ userName })
+    const otel = await clearOtelDataForUser(userName)
+    // Счёт описывает то, что действительно удалено, по каждому набору.
+    return c.json({ ok: true, deleted: legacy + otel.events, events: otel.events, metrics: otel.metrics, legacy })
   })
 
   // GET /api/dashboard/requests/:id -- single event detail
   api.get('/api/dashboard/requests/:id', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied
+    const denied = denyApiToken(c)
+    if (denied) return denied
     const idParam = c.req.param('id')
     const numericId = parseInt(idParam, 10)
     if (isNaN(numericId)) return c.json({ error: 'Invalid ID' }, 400)
@@ -202,34 +212,19 @@ export function registerStatsRoutes(api: Hono): void {
     const event = await getEventById(numericId)
     if (!event) return c.json({ error: 'Request not found' }, 404)
 
-    return c.json({
-      id: String(event.id ?? ''),
-      timestamp: event.timestamp,
-      endpoint: 'anthropic',
-      method: 'POST',
-      model: (event.data.model as string) || 'unknown',
-      userName: event.userName || undefined,
-      durationMs: (event.data.durationMs as number) || 0,
-      inputTokens: (event.data.inputTokens as number) || 0,
-      outputTokens: (event.data.outputTokens as number) || 0,
-      cacheReadTokens: (event.data.cacheReadTokens as number) || 0,
-      cacheWriteTokens: (event.data.cacheWriteTokens as number) || 0,
-      toolsUsed: [],
-      status: 'success',
-      statusCode: 200,
-      error: (event.data.error as string) || undefined,
-      isUserRequest: false,
-      sessionKey: event.sessionId || undefined,
-      eventName: event.eventName,
-      eventData: event.data,
-    })
+    return c.json(toRequestLogEntry(event))
   })
 
   // DELETE /api/dashboard/requests/:id -- delete a single request
   api.delete('/api/dashboard/requests/:id', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied // was unguarded: cross-user row delete
-    const id = c.req.param('id')
-    const ok = await deleteRequest(id)
+    const denied = denyApiToken(c)
+    if (denied) return denied // was unguarded: cross-user row delete
+    // Удаляем из ТОГО ЖЕ набора, который отдаёт подробность выше. Раньше
+    // удаление ходило в устаревшую таблицу `requests`, и один идентификатор
+    // обозначал в двух API разные записи: GET отвечал 200, DELETE — 404.
+    const numericId = parseInt(c.req.param('id'), 10)
+    if (isNaN(numericId)) return c.json({ error: 'Invalid ID' }, 400)
+    const ok = await deleteEventById(numericId)
     return ok ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)
   })
 
@@ -241,7 +236,8 @@ export function registerStatsRoutes(api: Hono): void {
   // smooths out tab refreshes — the chart never needs to be second-by-
   // second precise.
   api.get('/api/dashboard/stats/timeseries', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied
+    const denied = denyApiToken(c)
+    if (denied) return denied
     const { sweepAll } = await import('../../stats/jsonl-sweeper')
     sweepThrottled(sweepAll)
     const period = (c.req.query('period') || 'day') as 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year'
@@ -292,9 +288,7 @@ export function registerStatsRoutes(api: Hono): void {
     const sinceDays = range === '7d' ? 7 : range === '30d' ? 30 : null
     // Range cutoff is timestamp-based (UTC ms), client decides what
     // "today" means for streaks.
-    const sinceIso = sinceDays
-      ? new Date(Date.now() - sinceDays * 86_400_000).toISOString()
-      : null
+    const sinceIso = sinceDays ? new Date(Date.now() - sinceDays * 86_400_000).toISOString() : null
 
     const cacheKey = `${range}|${tokenId ?? ''}|${compact ? 'hm' : 'v1'}|${tzOffsetMin}`
     const cachedOverview = overviewCache.get(cacheKey)
@@ -316,13 +310,15 @@ export function registerStatsRoutes(api: Hono): void {
 
     // Skalar aggregates — timezone-independent. We split user / assistant
     // message counts so the UI can show both ("12 user / 47 assistant").
-    const counters = (await db.runAndReadAll(`
+    const counters = (
+      await db.runAndReadAll(`
       SELECT
         COUNT(DISTINCT e.session_id) as sessions,
         SUM(CASE WHEN e.type = 'user' THEN 1 ELSE 0 END) as user_messages,
         SUM(CASE WHEN e.type = 'assistant' THEN 1 ELSE 0 END) as assistant_messages
       ${joinClause} ${where}
-    `)).getRowObjects()[0] as any
+    `)
+    ).getRowObjects()[0] as any
 
     // "Session tokens" = sum of each session's last-assistant effective
     // input (matches the per-session Context column in the sessions
@@ -330,7 +326,8 @@ export function registerStatsRoutes(api: Hono): void {
     // arg_max = "value at max(timestamp)" — one scan, instead of the old
     // correlated ORDER-BY-LIMIT-1 subquery that re-probed jsonl_events
     // once per session and dominated the endpoint on busy servers.
-    const sessionTokensRow = (await db.runAndReadAll(`
+    const sessionTokensRow = (
+      await db.runAndReadAll(`
       SELECT SUM(last_ctx) as total
       FROM (
         SELECT arg_max(
@@ -344,25 +341,28 @@ export function registerStatsRoutes(api: Hono): void {
           ${tokenId ? `AND st.user_name = '${tokenId.replace(/'/g, "''")}'` : ''}
         GROUP BY e.session_id
       )
-    `)).getRowObjects()[0] as { total: bigint | number | null } | undefined
+    `)
+    ).getRowObjects()[0] as { total: bigint | number | null } | undefined
     const sessionTokens = Number(sessionTokensRow?.total ?? 0)
 
     // Per-model totals — order matters for "favorite", but no time bucketing.
-    const modelTotalsRaw = (await db.runAndReadAll(`
+    const modelTotalsRaw = (
+      await db.runAndReadAll(`
       SELECT e.model as model,
         SUM(${TOKEN_SUM}) as in_tokens,
         SUM(COALESCE(e.output_tokens,0)) as out_tokens
       ${joinClause} ${where} AND e.type = 'assistant' AND e.model IS NOT NULL AND e.model != '' AND e.model != '<synthetic>'
       GROUP BY e.model
       ORDER BY (in_tokens + out_tokens) DESC
-    `)).getRowObjects() as Array<{ model: string; in_tokens: bigint | number; out_tokens: bigint | number }>
-    const modelTotals = modelTotalsRaw.map(r => ({
+    `)
+    ).getRowObjects() as Array<{ model: string; in_tokens: bigint | number; out_tokens: bigint | number }>
+    const modelTotals = modelTotalsRaw.map((r) => ({
       model: r.model,
       in_tokens: Number(r.in_tokens ?? 0),
       out_tokens: Number(r.out_tokens ?? 0),
     }))
     const modelsTotalAll = modelTotals.reduce((s, r) => s + r.in_tokens + r.out_tokens, 0)
-    const models = modelTotals.map(r => ({
+    const models = modelTotals.map((r) => ({
       name: r.model,
       in: r.in_tokens,
       out: r.out_tokens,
@@ -378,7 +378,8 @@ export function registerStatsRoutes(api: Hono): void {
     // compact mode groups by (hour, model) only — the per-session split
     // exists solely so the LEGACY client can count distinct sessions per
     // local day; compact clients get that from `dailySessions` below.
-    const hourly = (await db.runAndReadAll(`
+    const hourly = (
+      await db.runAndReadAll(`
       SELECT
         strftime(e.timestamp::TIMESTAMP, '%Y-%m-%dT%H') as utc_hour,
         e.model as model,
@@ -389,7 +390,8 @@ export function registerStatsRoutes(api: Hono): void {
       ${joinClause} ${where}
       GROUP BY utc_hour, e.model${compact ? '' : ', e.session_id'}
       ORDER BY utc_hour ASC
-    `)).getRowObjects() as Array<{
+    `)
+    ).getRowObjects() as Array<{
       utc_hour: string
       model: string | null
       session_id: string
@@ -403,15 +405,17 @@ export function registerStatsRoutes(api: Hono): void {
     // getTimezoneOffset() is UTC−local, so local = timestamp − offset.
     let dailySessions: Array<{ date: string; sessions: number }> | undefined
     if (compact) {
-      const dailyRows = (await db.runAndReadAll(`
+      const dailyRows = (
+        await db.runAndReadAll(`
         SELECT
           strftime(e.timestamp::TIMESTAMP - INTERVAL '${tzOffsetMin} minutes', '%Y-%m-%d') as local_day,
           COUNT(DISTINCT e.session_id) as sessions
         ${joinClause} ${where}
         GROUP BY local_day
         ORDER BY local_day ASC
-      `)).getRowObjects() as Array<{ local_day: string; sessions: bigint | number }>
-      dailySessions = dailyRows.map(r => ({ date: r.local_day, sessions: Number(r.sessions ?? 0) }))
+      `)
+      ).getRowObjects() as Array<{ local_day: string; sessions: bigint | number }>
+      dailySessions = dailyRows.map((r) => ({ date: r.local_day, sessions: Number(r.sessions ?? 0) }))
     }
 
     const payload = {
@@ -426,7 +430,7 @@ export function registerStatsRoutes(api: Hono): void {
       models,
       // Raw hourly buckets — client groups locally for heatmap (with rich
       // per-day tooltip), peak hour, streaks, daily models timeseries.
-      hourly: hourly.map(r => ({
+      hourly: hourly.map((r) => ({
         utcHour: r.utc_hour,
         model: r.model,
         ...(compact ? {} : { sessionId: r.session_id }),
@@ -448,7 +452,8 @@ export function registerStatsRoutes(api: Hono): void {
   //    (CLI's `summary` entry, or first user message), counts of user /
   //    assistant / compact (summary) entries, total tokens, model.
   api.get('/api/dashboard/tokens/:tokenId/sessions', async (c) => {
-    const denied = denyForeignSubject(c, c.req.param('tokenId')); if (denied) return denied
+    const denied = denyForeignSubject(c, c.req.param('tokenId'))
+    if (denied) return denied
     const { getDb } = await import('../../stats/database/lifecycle')
     const { sweepAll } = await import('../../stats/jsonl-sweeper')
     sweepThrottled(sweepAll)
@@ -461,7 +466,9 @@ export function registerStatsRoutes(api: Hono): void {
     for (const ps of getAllSessions()) {
       if (ps.cliConversationId && ps.cwd) liveCwdByConvId.set(ps.cliConversationId, ps.cwd)
     }
-    const rows = (await db.runAndReadAll(`
+    const rows = (
+      await db.runAndReadAll(
+        `
       SELECT
         e.session_id,
         st.cwd as session_cwd,
@@ -509,7 +516,10 @@ export function registerStatsRoutes(api: Hono): void {
       GROUP BY e.session_id, st.cwd, st.title, st.last_context,
                st.compact_boundaries, st.context_tokens, st.pre_boundary_snapshots
       ORDER BY last_activity_at DESC
-    `, [tokenId])).getRowObjects() as Array<any>
+    `,
+        [tokenId],
+      )
+    ).getRowObjects() as Array<any>
 
     // All metadata (title, compact_boundaries, last_context,
     // pre_boundary_snapshots, context_tokens) is persisted in
@@ -533,7 +543,7 @@ export function registerStatsRoutes(api: Hono): void {
       return tail || null
     }
 
-    const sessions = rows.map(r => ({
+    const sessions = rows.map((r) => ({
       sessionId: r.session_id,
       title: r.session_title,
       folder: r.session_cwd || liveCwdByConvId.get(r.session_id) || folderFromPath(r.file_path),
@@ -561,14 +571,16 @@ export function registerStatsRoutes(api: Hono): void {
   //    Stream the raw JSONL for a session if the file is still on disk.
   api.get('/api/dashboard/sessions/:sessionId/jsonl', async (c) => {
     const sessionId = c.req.param('sessionId')
-    const denied = denyForeignUser(c, await sessionOwner(sessionId)); if (denied) return denied
+    const denied = denyForeignUser(c, await sessionOwner(sessionId))
+    if (denied) return denied
     const { getDb } = await import('../../stats/database/lifecycle')
     const fs = await import('fs')
     const db = await getDb()
-    const row = (await db.runAndReadAll(
-      `SELECT file_path FROM jsonl_offsets WHERE file_path LIKE '%/' || ? || '.jsonl' LIMIT 1`,
-      [sessionId],
-    )).getRowObjects()[0] as { file_path: string } | undefined
+    const row = (
+      await db.runAndReadAll(`SELECT file_path FROM jsonl_offsets WHERE file_path LIKE '%/' || ? || '.jsonl' LIMIT 1`, [
+        sessionId,
+      ])
+    ).getRowObjects()[0] as { file_path: string } | undefined
     if (!row?.file_path || !fs.existsSync(row.file_path)) {
       return c.json({ error: 'JSONL not available — file deleted' }, 404)
     }
@@ -584,7 +596,8 @@ export function registerStatsRoutes(api: Hono): void {
   //    `?rmFile=1` also unlinks the underlying JSONL file from disk.
   api.delete('/api/dashboard/sessions/:sessionId', async (c) => {
     const sessionId = c.req.param('sessionId')
-    const denied = denyForeignUser(c, await sessionOwner(sessionId)); if (denied) return denied
+    const denied = denyForeignUser(c, await sessionOwner(sessionId))
+    if (denied) return denied
     const { getDb } = await import('../../stats/database/lifecycle')
     const fs = await import('fs')
     const db = await getDb()
@@ -592,10 +605,11 @@ export function registerStatsRoutes(api: Hono): void {
 
     // DuckDB run() doesn't return row counts — count first to detect
     // whether the soft-delete actually flipped anything.
-    const beforeRow = (await db.runAndReadAll(
-      `SELECT COUNT(*) AS n FROM session_tokens WHERE session_id = ? AND deleted = 0`,
-      [sessionId],
-    )).getRowObjects()[0] as { n: bigint | number } | undefined
+    const beforeRow = (
+      await db.runAndReadAll(`SELECT COUNT(*) AS n FROM session_tokens WHERE session_id = ? AND deleted = 0`, [
+        sessionId,
+      ])
+    ).getRowObjects()[0] as { n: bigint | number } | undefined
     const matched = Number(beforeRow?.n ?? 0)
     if (matched > 0) {
       const { withStatsWrite } = await import('../../stats/database/write-lock')
@@ -605,12 +619,19 @@ export function registerStatsRoutes(api: Hono): void {
 
     let fileRemoved = false
     if (rmFile) {
-      const row = (await db.runAndReadAll(
-        `SELECT file_path FROM jsonl_offsets WHERE file_path LIKE '%/' || ? || '.jsonl' LIMIT 1`,
-        [sessionId],
-      )).getRowObjects()[0] as { file_path: string } | undefined
+      const row = (
+        await db.runAndReadAll(
+          `SELECT file_path FROM jsonl_offsets WHERE file_path LIKE '%/' || ? || '.jsonl' LIMIT 1`,
+          [sessionId],
+        )
+      ).getRowObjects()[0] as { file_path: string } | undefined
       if (row?.file_path && fs.existsSync(row.file_path)) {
-        try { fs.unlinkSync(row.file_path); fileRemoved = true } catch { /* ignore */ }
+        try {
+          fs.unlinkSync(row.file_path)
+          fileRemoved = true
+        } catch {
+          /* ignore */
+        }
       }
     }
     return c.json({ ok: true, softDeleted: matched > 0, fileRemoved })
@@ -618,18 +639,21 @@ export function registerStatsRoutes(api: Hono): void {
 
   // ── GET /api/dashboard/errors/count — total + last 24h count
   api.get('/api/dashboard/errors/count', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied
+    const denied = denyApiToken(c)
+    if (denied) return denied
     const { getDb } = await import('../../stats/database/lifecycle')
     const db = await getDb()
     const since = new Date(Date.now() - 86_400_000).toISOString()
-    const row = (await db.runAndReadAll(
-      `SELECT
+    const row = (
+      await db.runAndReadAll(
+        `SELECT
          COUNT(*) AS total,
          SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) AS last24h,
          MAX(timestamp) AS last_at
        FROM api_errors`,
-      [since],
-    )).getRowObjects()[0] as any
+        [since],
+      )
+    ).getRowObjects()[0] as any
     return c.json({
       total: Number(row?.total ?? 0),
       last24h: Number(row?.last24h ?? 0),
@@ -642,17 +666,20 @@ export function registerStatsRoutes(api: Hono): void {
   // Same shape as /stats/timeseries but no per-user split — just count
   // bucketed by UTC hour/day so the client can re-bucket into local TZ.
   api.get('/api/dashboard/errors/timeseries', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied
+    const denied = denyApiToken(c)
+    if (denied) return denied
     const { getDb } = await import('../../stats/database/lifecycle')
     const db = await getDb()
     const period = (c.req.query('period') || 'day') as 'hour' | 'day'
     const days = parseInt(c.req.query('days') || '7', 10)
     const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString()
-    const groupCol = period === 'hour'
-      ? `strftime(timestamp::TIMESTAMP, '%Y-%m-%d') || ' ' || strftime(timestamp::TIMESTAMP, '%H')`
-      : `strftime(timestamp::TIMESTAMP, '%Y-%m-%d')`
-    const rows = (await db.runAndReadAll(
-      `SELECT ${groupCol} AS period, COUNT(*) AS cnt,
+    const groupCol =
+      period === 'hour'
+        ? `strftime(timestamp::TIMESTAMP, '%Y-%m-%d') || ' ' || strftime(timestamp::TIMESTAMP, '%H')`
+        : `strftime(timestamp::TIMESTAMP, '%Y-%m-%d')`
+    const rows = (
+      await db.runAndReadAll(
+        `SELECT ${groupCol} AS period, COUNT(*) AS cnt,
         SUM(CASE WHEN error_type = 'ConnectionRefused' THEN 1 ELSE 0 END) AS connection_refused,
         SUM(CASE WHEN error_type LIKE '%timeout%' OR error_type LIKE '%Timeout%' THEN 1 ELSE 0 END) AS timeouts,
         SUM(CASE WHEN error_type IN ('429') OR error_type LIKE '%rate%' THEN 1 ELSE 0 END) AS rate_limited
@@ -660,39 +687,47 @@ export function registerStatsRoutes(api: Hono): void {
        WHERE timestamp >= ?
        GROUP BY period
        ORDER BY period ASC`,
-      [sinceIso],
-    )).getRowObjects() as any[]
-    return c.json(rows.map(r => ({
-      period: String(r.period),
-      count: Number(r.cnt ?? 0),
-      connectionRefused: Number(r.connection_refused ?? 0),
-      timeouts: Number(r.timeouts ?? 0),
-      rateLimited: Number(r.rate_limited ?? 0),
-    })))
+        [sinceIso],
+      )
+    ).getRowObjects() as any[]
+    return c.json(
+      rows.map((r) => ({
+        period: String(r.period),
+        count: Number(r.cnt ?? 0),
+        connectionRefused: Number(r.connection_refused ?? 0),
+        timeouts: Number(r.timeouts ?? 0),
+        rateLimited: Number(r.rate_limited ?? 0),
+      })),
+    )
   })
 
   // ── GET /api/dashboard/errors/recent?limit=50 — most recent errors
   api.get('/api/dashboard/errors/recent', async (c) => {
-    const denied = denyApiToken(c); if (denied) return denied
+    const denied = denyApiToken(c)
+    if (denied) return denied
     const { getDb } = await import('../../stats/database/lifecycle')
     const db = await getDb()
     const limit = Math.min(500, parseInt(c.req.query('limit') || '50', 10))
-    const rows = (await db.runAndReadAll(
-      `SELECT timestamp, session_id, user_name, error_type, url, attempt, max_attempts, retry_ms, raw
+    const rows = (
+      await db.runAndReadAll(
+        `SELECT timestamp, session_id, user_name, error_type, url, attempt, max_attempts, retry_ms, raw
        FROM api_errors
        ORDER BY timestamp DESC LIMIT ?`,
-      [limit],
-    )).getRowObjects() as any[]
-    return c.json(rows.map(r => ({
-      timestamp: String(r.timestamp),
-      sessionId: r.session_id,
-      userName: r.user_name,
-      errorType: r.error_type,
-      url: r.url,
-      attempt: Number(r.attempt ?? 0),
-      maxAttempts: Number(r.max_attempts ?? 0),
-      retryMs: Number(r.retry_ms ?? 0),
-      raw: r.raw,
-    })))
+        [limit],
+      )
+    ).getRowObjects() as any[]
+    return c.json(
+      rows.map((r) => ({
+        timestamp: String(r.timestamp),
+        sessionId: r.session_id,
+        userName: r.user_name,
+        errorType: r.error_type,
+        url: r.url,
+        attempt: Number(r.attempt ?? 0),
+        maxAttempts: Number(r.max_attempts ?? 0),
+        retryMs: Number(r.retry_ms ?? 0),
+        raw: r.raw,
+      })),
+    )
   })
 }
