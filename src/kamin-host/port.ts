@@ -62,7 +62,16 @@ export function openChildPort(): MessagePortLike {
   }
   if (typeof process.send === "function") {
     return {
-      post: (frame) => { process.send?.(frame) },
+      // Обратный вызов обязателен. Без него отказ канала IPC всплывает
+      // НЕОБРАБОТАННОЙ ошибкой процесса, а с ним — приходит сюда (INC-2026-0055:
+      // пять стеков `write UNKNOWN` из `process.send`). Синхронный бросок
+      // по-прежнему идёт вызывающему: очередь вебвью на нём завершает свою
+      // пачку как недоставленную, и молчаливой потери кадра больше нет.
+      post: (frame) => {
+        process.send?.(frame, undefined, undefined, (err) => {
+          if (err) console.warn(`kamin-host: IPC send failed — ${err.message}`)
+        })
+      },
       onFrame: (fn) => {
         process.on("message", (msg: unknown) => { if (isRpcFrame(msg)) fn(msg) })
       },
