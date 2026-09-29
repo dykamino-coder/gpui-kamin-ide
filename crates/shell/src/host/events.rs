@@ -208,6 +208,10 @@ pub enum ShellEvent {
     /// Выполнить команду по id (из палитры).
     RunCommand(String),
     Toast(crate::ui::toasts::Toast),
+    /// Нажата кнопка тоста (id, метка). Ответ хосту даёт СОСТОЯНИЕ — единая
+    /// точка, иначе ответ либо уходит дважды, либо теряется вовсе при снятии
+    /// тоста не из карточки (BR-23).
+    ToastAction(String, String),
     /// Убрать тост по id (auto/manual) — фаза 1: closing + slide-out.
     DismissToast(String),
     /// Фаза 2 Dismiss: удалить карту после slide-out.

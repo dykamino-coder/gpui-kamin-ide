@@ -164,19 +164,10 @@ fn toast_card(
                     .on_mouse_down(gpui::MouseButton::Left, {
                         let label = label.clone();
                         move |_, _, _| {
-                            // shell.showMessage-тост (id «shellreq-N») ждёт
-                            // ВЫБОР — отвечаем хосту выбранным item
-                            if let Some(req) = id.strip_prefix("shellreq-")
-                                && let Ok(req_id) = req.parse::<u64>()
-                            {
-                                let label = label.clone();
-                                std::thread::spawn(move || {
-                                    if let Some(c) = crate::host_link::client() {
-                                        c.respond(req_id, Ok(serde_json::json!(label)));
-                                    }
-                                });
-                            }
-                            let _ = tx.try_send(ShellEvent::DismissToast(id.clone()));
+                            // Ответ хосту даёт состояние: карточка лишь
+                            // сообщает выбор. Так ответ не уходит дважды и не
+                            // теряется, если тост сняли не отсюда (BR-23).
+                            let _ = tx.try_send(ShellEvent::ToastAction(id.clone(), label.clone()));
                         }
                     })
                     .child(label.clone()),
@@ -248,16 +239,8 @@ fn toast_card(
                 .cursor_pointer()
                 .hover(|s| s.text_color(rgba(p.text_primary)))
                 .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| {
-                    // Dismiss ожидающего showMessage-тоста = ответ null хосту
-                    if let Some(req) = id.strip_prefix("shellreq-")
-                        && let Ok(req_id) = req.parse::<u64>()
-                    {
-                        std::thread::spawn(move || {
-                            if let Some(c) = crate::host_link::client() {
-                                c.respond(req_id, Ok(serde_json::Value::Null));
-                            }
-                        });
-                    }
+                    // Ответ `null` ожидающему showMessage-тосту даёт состояние
+                    // при окончательном снятии — любым путём, не только этим.
                     let _ = tx_dismiss.try_send(ShellEvent::DismissToast(id.clone()));
                 })
                 // `.dismiss{font-size:fs-xs}` стоит на КНОПКЕ, а глиф —

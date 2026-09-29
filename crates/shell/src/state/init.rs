@@ -187,6 +187,7 @@ impl RootView {
             commands: Vec::new(),
             status_counts: crate::ui::status_bar::StatusCounts::default(),
             toasts: Vec::new(),
+            answered_toasts: std::collections::HashSet::new(),
             toast_timers: std::collections::HashMap::new(),
             web_menu: None,
             hover_pill: None,

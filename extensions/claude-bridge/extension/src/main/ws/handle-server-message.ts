@@ -60,7 +60,7 @@ export interface HandlerCtx {
   notifyConversationId: (id: string) => void
   notifySessionInfo: (effort?: string, model?: string) => void
   notifyTreeUpdate: (tree: any[]) => void
-  trackActivityForIdle: (rawTitle: string | undefined, isWorking: boolean) => void
+  trackActivityForIdle: (rawTitle: string | undefined, isWorking: boolean, hookDriven: boolean) => void
   /** Реплей закрыт — снять settle-окно idle-трекера (C17). */
   noteReplayCompleteForIdle: () => void
   notifyActivity: (working: boolean, hookDriven: boolean) => void
@@ -391,7 +391,7 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
         ...(typeof m.waiting === 'boolean' ? { waiting: m.waiting } : {}),
         ...(typeof m.lastMessage === 'string' ? { lastMessage: m.lastMessage } : {}),
       })
-      ctx.trackActivityForIdle(rawTitle, isWorking)
+      ctx.trackActivityForIdle(rawTitle, isWorking, hookDriven)
       ctx.notifyActivity(isWorking, hookDriven)
       break
     }

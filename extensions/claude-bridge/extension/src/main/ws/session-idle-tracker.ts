@@ -27,6 +27,9 @@ export class SessionIdleTracker {
   private wasWorking = false
   private settleUntil = 0
   private awaitingReplaySince = 0
+  /** Сервер шлёт состояния жизненного цикла (`UserPromptSubmit`/`Stop`). Пока
+   *  их нет, трекер обязан работать как раньше — на эвристике заголовка OSC. */
+  private hookSeen = false
 
   constructor(private onIdle: (rawTitle: string) => void) {}
 
@@ -51,7 +54,19 @@ export class SessionIdleTracker {
     )
   }
 
-  track(rawTitle: string | undefined, isWorking: boolean): void {
+  /**
+   *  `hookDriven` — состояние пришло из хука жизненного цикла CLI, а не из
+   *  эвристики заголовка OSC.
+   *
+   *  BR-23: оба вида состояний шли сюда неразличимо, а трекер не знает границ
+   *  витка. Простой OSC-мигание «работает → простаивает» посреди оркестрации
+   *  Agent Teams снова разрешало тост, и до ЕДИНСТВЕННОГО `Stop` главного витка
+   *  успевало накопиться несколько «Session finished». Поэтому как только
+   *  сервер показал, что умеет хуки, виток закрывает ТОЛЬКО хук: эвристический
+   *  простой по-прежнему отслеживается, но тоста не даёт.
+   */
+  track(rawTitle: string | undefined, isWorking: boolean, hookDriven = false): void {
+    if (hookDriven) this.hookSeen = true
     if (isWorking) {
       this.lastWorkingAt = Date.now()
       this.wasWorking = true
@@ -59,6 +74,7 @@ export class SessionIdleTracker {
       return
     }
     if (!this.wasWorking) return
+    if (this.hookSeen && !hookDriven) return
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null

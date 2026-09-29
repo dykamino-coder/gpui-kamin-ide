@@ -174,6 +174,13 @@ impl RootView {
                 self.toasts.retain(|x| x.id != t.id);
                 self.toasts.push(t);
             }
+            ShellEvent::ToastAction(id, label) => {
+                if let Some(req_id) = pending_shell_reply(&id, false) {
+                    self.answered_toasts.insert(id.clone());
+                    respond_to_host(req_id, serde_json::json!(label));
+                }
+                let _ = self.tx.try_send(ShellEvent::DismissToast(id));
+            }
             ShellEvent::DismissToast(id) => {
                 // Двухфазно: closing → slide-out (toast_card) → ToastGone
                 // удаляет. Повторный Dismiss во время slide-out глушится swap'ом.
@@ -191,12 +198,12 @@ impl RootView {
                         });
                     }
                 } else {
-                    self.toasts.retain(|x| x.id != id);
+                    self.finish_toast(&id);
                 }
             }
             ShellEvent::ToastGone(id) => {
                 self.toast_timers.remove(&id);
-                self.toasts.retain(|x| x.id != id);
+                self.finish_toast(&id);
             }
             ShellEvent::WebMenu(menu) => {
                 crate::web::set_menu_open(menu.is_some());
@@ -255,5 +262,65 @@ impl RootView {
             // Сюда диспетчер чужого не пришлёт
             _ => {}
         }
+    }
+
+    /// Окончательно снять тост: убрать карточку и — если это `shell.showMessage`
+    /// с кнопками, чей ответ ещё не ушёл, — завершить ожидающий запрос хоста.
+    fn finish_toast(&mut self, id: &str) {
+        let answered = self.answered_toasts.remove(id);
+        if let Some(req_id) = pending_shell_reply(id, answered) {
+            respond_to_host(req_id, serde_json::Value::Null);
+        }
+        self.toasts.retain(|x| x.id != id);
+    }
+}
+
+/// Какой запрос хоста остался без ответа к моменту ОКОНЧАТЕЛЬНОГО снятия тоста.
+///
+/// `shell.showMessage` с кнопками откладывает ответ и ждёт выбора. Отвечала
+/// раньше только сама карточка — клик по кнопке и по крестику. Тост, снятый
+/// любым другим путём, оставлял запрос висеть навсегда: у расширения обещание
+/// `showInformationMessage` не завершалось никогда (BR-23).
+pub(crate) fn pending_shell_reply(id: &str, answered: bool) -> Option<u64> {
+    if answered {
+        return None;
+    }
+    id.strip_prefix("shellreq-")?.parse::<u64>().ok()
+}
+
+fn respond_to_host(req_id: u64, value: serde_json::Value) {
+    std::thread::spawn(move || {
+        if let Some(c) = crate::host_link::client() {
+            c.respond(req_id, Ok(value));
+        }
+    });
+}
+
+#[cfg(test)]
+mod toast_reply_tests {
+    use super::pending_shell_reply;
+
+    #[test]
+    fn неотвеченный_запрос_получает_ответ_при_снятии() {
+        assert_eq!(pending_shell_reply("shellreq-7", false), Some(7));
+    }
+
+    #[test]
+    fn уже_отвеченный_запрос_второй_раз_не_отвечается() {
+        // Клик по кнопке уже отдал выбранный пункт; ответ `null` поверх него
+        // подменил бы выбор пользователя пустотой.
+        assert_eq!(pending_shell_reply("shellreq-7", true), None);
+    }
+
+    #[test]
+    fn тост_без_ожидающего_запроса_ответа_не_требует() {
+        assert_eq!(pending_shell_reply("shellmsg-info-привет", false), None);
+        assert_eq!(pending_shell_reply("toast-12345", false), None);
+    }
+
+    #[test]
+    fn нечисловой_идентификатор_запроса_отбрасывается() {
+        assert_eq!(pending_shell_reply("shellreq-", false), None);
+        assert_eq!(pending_shell_reply("shellreq-abc", false), None);
     }
 }
