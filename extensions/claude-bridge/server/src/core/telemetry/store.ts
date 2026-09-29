@@ -85,13 +85,7 @@ export async function recordEvent(event: TelemetryEvent): Promise<void> {
     await d.run(
       `INSERT INTO otel_events (session_id, user_name, event_name, data, timestamp)
        VALUES (?, ?, ?, ?, ?)`,
-      [
-        event.sessionId || null,
-        event.userName || null,
-        event.eventName,
-        JSON.stringify(event.data),
-        event.timestamp,
-      ],
+      [event.sessionId || null, event.userName || null, event.eventName, JSON.stringify(event.data), event.timestamp],
     )
   } catch (err) {
     warnLog('[telemetry] Failed to record event', { event: event.eventName, err: String(err) })
@@ -104,30 +98,30 @@ export async function recordEvent(event: TelemetryEvent): Promise<void> {
 
 export async function getMetricsBySession(sessionId: string): Promise<TelemetryRecord[]> {
   const d = await getDb()
-  const rows = (await d.runAndReadAll(
-    'SELECT * FROM otel_metrics WHERE session_id = ? ORDER BY timestamp DESC',
-    [sessionId],
-  )).getRowObjects() as Array<Record<string, unknown>>
+  const rows = (
+    await d.runAndReadAll('SELECT * FROM otel_metrics WHERE session_id = ? ORDER BY timestamp DESC', [sessionId])
+  ).getRowObjects() as Array<Record<string, unknown>>
   return rows.map(rowToMetric)
 }
 
 export async function getMetricsByUser(userName: string): Promise<TelemetryRecord[]> {
   const d = await getDb()
-  const rows = (await d.runAndReadAll(
-    'SELECT * FROM otel_metrics WHERE user_name = ? ORDER BY timestamp DESC',
-    [userName],
-  )).getRowObjects() as Array<Record<string, unknown>>
+  const rows = (
+    await d.runAndReadAll('SELECT * FROM otel_metrics WHERE user_name = ? ORDER BY timestamp DESC', [userName])
+  ).getRowObjects() as Array<Record<string, unknown>>
   return rows.map(rowToMetric)
 }
 
 export async function getTokenUsageSummary(): Promise<TokenUsageSummary> {
   const d = await getDb()
-  const rows = (await d.runAndReadAll(`
+  const rows = (
+    await d.runAndReadAll(`
     SELECT user_name, model, attributes, SUM(value) as total_value
     FROM otel_metrics
     WHERE metric_name = 'claude_code.token.usage'
     GROUP BY user_name, model, attributes
-  `)).getRowObjects() as Array<Record<string, unknown>>
+  `)
+  ).getRowObjects() as Array<Record<string, unknown>>
 
   const byUser: Record<string, TokenUsageEntry> = {}
   const byModel: Record<string, TokenUsageEntry> = {}
@@ -161,12 +155,14 @@ export async function getCostSummary(): Promise<CostSummary> {
   const byModel: Record<string, number> = {}
   let total = 0
 
-  const rows = (await d.runAndReadAll(`
+  const rows = (
+    await d.runAndReadAll(`
     SELECT user_name, session_id, model, SUM(value) as total_value
     FROM otel_metrics
     WHERE metric_name = 'claude_code.cost.usage'
     GROUP BY user_name, session_id, model
-  `)).getRowObjects() as Array<Record<string, unknown>>
+  `)
+  ).getRowObjects() as Array<Record<string, unknown>>
 
   for (const row of rows) {
     const user = (row.user_name as string) || 'unknown'
@@ -189,28 +185,50 @@ export async function getCostSummary(): Promise<CostSummary> {
 
 export async function getRecentEvents(limit = 100): Promise<TelemetryEvent[]> {
   const d = await getDb()
-  const rows = (await d.runAndReadAll(
-    'SELECT * FROM otel_events ORDER BY timestamp DESC LIMIT ?',
-    [limit],
-  )).getRowObjects() as Array<Record<string, unknown>>
+  const rows = (
+    await d.runAndReadAll('SELECT * FROM otel_events ORDER BY timestamp DESC LIMIT ?', [limit])
+  ).getRowObjects() as Array<Record<string, unknown>>
+  return rows.map(rowToEvent)
+}
+
+/** Выборка событий с постраничностью и сужением по пользователю.
+ *
+ *  `getRecentEvents` брала только предел и игнорировала смещение и фильтры —
+ *  запрошенная страница молча подменялась первой (INC-2026-0016). Статуса и
+ *  конечной точки у набора нет отдельными полями, поэтому такие фильтры
+ *  маршрут отвергает, а не исполняет наполовину. */
+export async function queryEvents(q: {
+  limit?: number
+  offset?: number
+  userName?: string
+}): Promise<TelemetryEvent[]> {
+  const d = await getDb()
+  const limit = q.limit ?? 100
+  const offset = q.offset ?? 0
+  const where = q.userName === undefined ? '' : 'WHERE user_name = ?'
+  const values: unknown[] = q.userName === undefined ? [limit, offset] : [q.userName, limit, offset]
+  const rows = (
+    await d.runAndReadAll(
+      `SELECT * FROM otel_events ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
+      values as never[],
+    )
+  ).getRowObjects() as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
 }
 
 export async function getEventsBySession(sessionId: string): Promise<TelemetryEvent[]> {
   const d = await getDb()
-  const rows = (await d.runAndReadAll(
-    'SELECT * FROM otel_events WHERE session_id = ? ORDER BY timestamp DESC',
-    [sessionId],
-  )).getRowObjects() as Array<Record<string, unknown>>
+  const rows = (
+    await d.runAndReadAll('SELECT * FROM otel_events WHERE session_id = ? ORDER BY timestamp DESC', [sessionId])
+  ).getRowObjects() as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
 }
 
 export async function getEventById(id: number): Promise<TelemetryEvent | undefined> {
   const d = await getDb()
-  const rows = (await d.runAndReadAll(
-    'SELECT * FROM otel_events WHERE id = ?',
-    [id],
-  )).getRowObjects() as Array<Record<string, unknown>>
+  const rows = (await d.runAndReadAll('SELECT * FROM otel_events WHERE id = ?', [id])).getRowObjects() as Array<
+    Record<string, unknown>
+  >
   const row = rows[0]
   return row ? rowToEvent(row) : undefined
 }
@@ -227,10 +245,18 @@ export async function getMetricsSummary(): Promise<{
 }> {
   const d = await getDb()
 
-  const metricsRow = (await d.runAndReadAll('SELECT COUNT(*) as cnt FROM otel_metrics')).getRowObjects()[0] as Record<string, unknown> | undefined
-  const eventsRow = (await d.runAndReadAll('SELECT COUNT(*) as cnt FROM otel_events')).getRowObjects()[0] as Record<string, unknown> | undefined
-  const sessionsRow = (await d.runAndReadAll('SELECT COUNT(DISTINCT session_id) as cnt FROM otel_metrics WHERE session_id IS NOT NULL')).getRowObjects()[0] as Record<string, unknown> | undefined
-  const usersRow = (await d.runAndReadAll('SELECT COUNT(DISTINCT user_name) as cnt FROM otel_metrics WHERE user_name IS NOT NULL')).getRowObjects()[0] as Record<string, unknown> | undefined
+  const metricsRow = (await d.runAndReadAll('SELECT COUNT(*) as cnt FROM otel_metrics')).getRowObjects()[0] as
+    | Record<string, unknown>
+    | undefined
+  const eventsRow = (await d.runAndReadAll('SELECT COUNT(*) as cnt FROM otel_events')).getRowObjects()[0] as
+    | Record<string, unknown>
+    | undefined
+  const sessionsRow = (
+    await d.runAndReadAll('SELECT COUNT(DISTINCT session_id) as cnt FROM otel_metrics WHERE session_id IS NOT NULL')
+  ).getRowObjects()[0] as Record<string, unknown> | undefined
+  const usersRow = (
+    await d.runAndReadAll('SELECT COUNT(DISTINCT user_name) as cnt FROM otel_metrics WHERE user_name IS NOT NULL')
+  ).getRowObjects()[0] as Record<string, unknown> | undefined
 
   return {
     totalMetrics: Number(metricsRow?.cnt ?? 0),
@@ -248,10 +274,34 @@ export async function clearOtelData(): Promise<void> {
 }
 
 /** Clear OTel data for a specific user. */
-export async function clearOtelDataForUser(userName: string): Promise<void> {
+export async function clearOtelDataForUser(userName: string): Promise<{ events: number; metrics: number }> {
   const d = await getDb()
+  const count = async (table: string): Promise<number> => {
+    const row = (
+      await d.runAndReadAll(`SELECT COUNT(*) AS n FROM ${table} WHERE user_name = ?`, [userName])
+    ).getRowObjects()[0] as Record<string, unknown> | undefined
+    return Number(row?.n ?? 0)
+  }
+  // Счёт снимается ДО удаления: вызывающий обязан сообщить, сколько записей
+  // действительно исчезло, а не «ok» без числа (INC-2026-0016).
+  const metrics = await count('otel_metrics')
+  const events = await count('otel_events')
   await d.run('DELETE FROM otel_metrics WHERE user_name = ?', [userName])
   await d.run('DELETE FROM otel_events WHERE user_name = ?', [userName])
+  return { events, metrics }
+}
+
+/** Удалить ОДНО событие по идентификатору — из того же набора, который отдаёт
+ *  подробность. Раньше удаление ходило в устаревшую таблицу `requests`, и один
+ *  и тот же идентификатор обозначал в двух API РАЗНЫЕ записи. */
+export async function deleteEventById(id: number): Promise<boolean> {
+  const d = await getDb()
+  const row = (await d.runAndReadAll('SELECT COUNT(*) AS n FROM otel_events WHERE id = ?', [id])).getRowObjects()[0] as
+    | Record<string, unknown>
+    | undefined
+  if (Number(row?.n ?? 0) === 0) return false
+  await d.run('DELETE FROM otel_events WHERE id = ?', [id])
+  return true
 }
 
 // ---------------------------------------------------------------------------
@@ -293,10 +343,17 @@ function safeParseJson(str: string | null | undefined): Record<string, string> {
 
 function tokenTypeToField(type: string): keyof TokenUsageEntry | null {
   switch (type) {
-    case 'input': return 'input'
-    case 'output': return 'output'
-    case 'cacheRead': case 'cache_read': return 'cacheRead'
-    case 'cacheCreation': case 'cache_creation': return 'cacheCreation'
-    default: return null
+    case 'input':
+      return 'input'
+    case 'output':
+      return 'output'
+    case 'cacheRead':
+    case 'cache_read':
+      return 'cacheRead'
+    case 'cacheCreation':
+    case 'cache_creation':
+      return 'cacheCreation'
+    default:
+      return null
   }
 }
