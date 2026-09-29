@@ -15,6 +15,40 @@ use crate::host_link::{ShellEvent, client, resolved_views, t0};
 /// перенесены дословно. `true` — канал обработан здесь.
 pub(crate) fn handle(on_event_tx: &Sender<ShellEvent>, channel: &str, payload: &Value) -> bool {
     match channel {
+        // Ребёнок extension-host перезапустился: его реестр и провайдеры вью
+        // начались с нуля, а у нас вью числятся резолвнутыми — и фильтр
+        // `!resolved_views().contains(id)` ниже навсегда пропускал бы их.
+        // Отсюда «панели пустые до полного перезапуска приложения» (BR-04).
+        //
+        // Снимаем отметки и просим реестр заново; сам resolve пойдёт веткой
+        // `kamin:registry:update`, когда новый ребёнок пришлёт список. Своих
+        // слушателей здесь не заводится, поэтому повторный respawn дубликатов
+        // не создаёт, а события прежнего поколения уже отброшены родителем.
+        "kamin:exthost:respawned" => {
+            if let Ok(mut resolved) = resolved_views().lock() {
+                resolved.clear();
+            }
+            request_status(on_event_tx.clone());
+            // Резолвим сразу, а не ждём `kamin:registry:update`: тот приходит
+            // от активации расширений, а после перезапуска ребёнка встроенные
+            // вью обязаны вернуться независимо от того, активировалось ли
+            // хоть одно contributed-расширение.
+            std::thread::spawn(|| {
+                if let Some(client) = client() {
+                    let dynamic: Vec<String> =
+                        dynamic_webviews().lock().unwrap().iter().cloned().collect();
+                    let ids = KNOWN_WEBVIEWS
+                        .iter()
+                        .map(|s| (*s).to_string())
+                        .chain(dynamic)
+                        .filter(|id| !resolved_views().lock().unwrap().contains(id));
+                    for id in ids {
+                        let _ = client
+                            .request("kamin:webviewView:resolve", vec![serde_json::json!(id)]);
+                    }
+                }
+            });
+        }
         "kamin:registry:update" | "kamin:extensions:changed" => {
             // Хост присылает САМ СПИСОК вместе с событием — берём его
             // напрямую, без ответного RPC (он шёл 12-13 с, и «4 active»
@@ -148,5 +182,42 @@ fn warn_unknown_view_once(id: &str) {
     let seen = SEEN.get_or_init(Default::default);
     if seen.lock().unwrap().insert(id.to_string()) {
         eprintln!("[wv:drop] сообщения вью {id} отброшены: id вне реестра webview_known");
+    }
+}
+
+#[cfg(test)]
+mod respawn_tests {
+    //! BR-04: после перезапуска ребёнка extension-host отметки «вью уже
+    //! резолвнуто» обязаны сниматься, иначе фильтр в ветке реестра навсегда
+    //! пропускает эти вью и панели остаются пустыми до полного перезапуска
+    //! приложения.
+    //!
+    //! Проверки идут ОДНИМ тестом: набор отметок глобальный, и параллельные
+    //! тесты чистили бы состояние друг друга.
+
+    use crate::host_link::resolved_views;
+
+    #[test]
+    fn respawn_снимает_отметки_резолва_и_чужой_канал_нет() {
+        let (tx, _rx) = smol::channel::unbounded();
+
+        resolved_views().lock().unwrap().insert("kamin.chat".into());
+        let other = super::handle(&tx, "kamin:unrelated:event", &serde_json::Value::Null);
+        assert!(!other, "чужой канал не должен считаться обработанным");
+        assert!(
+            resolved_views().lock().unwrap().contains("kamin.chat"),
+            "отметки чужим каналом сниматься не должны",
+        );
+
+        resolved_views()
+            .lock()
+            .unwrap()
+            .insert("kamin.console".into());
+        let handled = super::handle(&tx, "kamin:exthost:respawned", &serde_json::Value::Null);
+        assert!(handled, "канал перезапуска обязан обрабатываться здесь");
+        assert!(
+            resolved_views().lock().unwrap().is_empty(),
+            "отметки резолва не сняты: вью не вернутся до перезапуска приложения",
+        );
     }
 }

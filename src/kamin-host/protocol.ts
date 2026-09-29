@@ -21,7 +21,15 @@ export interface RpcResponse {
   ok: boolean
   value?: unknown
   error?: string
+  /** Машинный вид ошибки. Сообщение человекочитаемо и меняется, поэтому
+   *  классификация на стороне получателя идёт по коду, а не по тексту. */
+  code?: string
 }
+
+/** Вызов отменён разрывом соединения с пиром, а не ошибкой обработчика.
+ *  Пересекает границу RPC отдельным полем `code`, чтобы получатель отличал
+ *  ожидаемую отмену жизненного цикла от настоящего сбоя расширения. */
+export const RPC_PEER_DISCONNECTED = "rpc/peer-disconnected"
 
 export interface RpcEvent {
   kind: "evt"

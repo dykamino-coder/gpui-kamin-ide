@@ -8,7 +8,25 @@
 // commands. Liveness is handled at the process level (exit listener +
 // restart in the shell), not per-call.
 import type { MessagePortLike } from "./port.js"
-import type { RpcFrame, RpcRequest, RpcResponse } from "./protocol.js"
+import { RPC_PEER_DISCONNECTED, type RpcFrame, type RpcRequest, type RpcResponse } from "./protocol.js"
+
+/** Отмена вызова разрывом соединения с пиром. Отдельный тип, а не текст: по
+ *  нему получатель отличает ожидаемую отмену жизненного цикла от настоящей
+ *  ошибки расширения (BR-19). */
+export class RpcPeerDisconnectedError extends Error {
+  readonly code = RPC_PEER_DISCONNECTED
+  constructor(reason: string) {
+    super(reason)
+    this.name = "RpcPeerDisconnectedError"
+  }
+}
+
+/** Проверка по коду, а не по `instanceof`: ошибка пересекает границу процесса
+ *  и восстанавливается на другой стороне как новый объект. */
+export function isPeerDisconnected(err: unknown): boolean {
+  return typeof err === "object" && err !== null
+    && (err as { code?: unknown }).code === RPC_PEER_DISCONNECTED
+}
 
 type Handler = (...params: unknown[]) => unknown
 type EventListener = (channel: string, payload: unknown) => void
@@ -44,9 +62,16 @@ export class RpcEndpoint {
     return () => { this.eventListeners.delete(fn) }
   }
 
-  /** Reject every in-flight call — the peer process died. */
+  /** Reject every in-flight call — the peer process died.
+   *
+   *  Отклонение обязательно: иначе `showQuickPick`, правки редактора и
+   *  передача секретов ждали бы вечно, а запись очереди утекала. Но это
+   *  отмена жизненного цикла, а не сбой, поэтому тип отдельный: точка
+   *  сдерживания падений в ребёнке пропускает именно его. Область отмены —
+   *  этот endpoint, то есть одно поколение клиента: вызов, принадлежащий
+   *  новому соединению, живёт в своей карте и отменён быть не может. */
   failAll(reason: string): void {
-    for (const [, p] of this.pending) p.reject(new Error(reason))
+    for (const [, p] of this.pending) p.reject(new RpcPeerDisconnectedError(reason))
     this.pending.clear()
   }
 
@@ -67,7 +92,11 @@ export class RpcEndpoint {
       this.port.post({ kind: "res", id: req.id, ok: true, value })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      this.port.post({ kind: "res", id: req.id, ok: false, error: message })
+      // Код переносит классификацию через границу процесса: обработчик мог
+      // ждать ответа от третьей стороны, чьё соединение и оборвалось.
+      this.port.post(isPeerDisconnected(err)
+        ? { kind: "res", id: req.id, ok: false, error: message, code: RPC_PEER_DISCONNECTED }
+        : { kind: "res", id: req.id, ok: false, error: message })
     }
   }
 
@@ -75,7 +104,9 @@ export class RpcEndpoint {
     const p = this.pending.get(res.id)
     if (!p) return
     this.pending.delete(res.id)
-    if (res.ok) p.resolve(res.value)
-    else p.reject(new Error(res.error ?? "rpc: remote error"))
+    if (res.ok) { p.resolve(res.value); return }
+    p.reject(res.code === RPC_PEER_DISCONNECTED
+      ? new RpcPeerDisconnectedError(res.error ?? "rpc: peer disconnected")
+      : new Error(res.error ?? "rpc: remote error"))
   }
 }

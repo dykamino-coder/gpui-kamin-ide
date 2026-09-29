@@ -228,8 +228,20 @@ respawn уже отправляется; полноценного shell recovery
 providers/state нет. BR-05 connection recovery не закрывает этот более широкий контракт.
 Нужен отдельный implementation PR и Windows gate; в этой ревизии код не дописывается.
 
-**Status:** ready. **Dependency:** none. **Acceptance:** automated + Windows
-runtime merge gate.
+**Status:** implementation в Change/Fix PR (пачка `RV-2026-09-29`); Windows
+runtime gate — обязательный CI job PR. **Dependency:** none.
+**Acceptance:** automated + Windows runtime merge gate.
+
+**Реализовано:** оболочка обрабатывает `kamin:exthost:respawned` в
+`ws_events/views.rs`: снимает отметки `resolved_views()` и сразу
+перерезолвливает встроенные и динамические вью, не дожидаясь
+`kamin:registry:update` (тот приходит от активации расширений, а вернуться
+вью обязаны и без неё). Заодно перезапрашивается статус со списком
+расширений. Своих слушателей обработчик не заводит, поэтому повторный
+respawn дубликатов не создаёт.
+
+**Остаток корня:** повторный посев open documents, active editor, selections
+и LSP state в нового ребёнка этим PR не покрыт — это отдельный child.
 
 Shell должен обработать `kamin:exthost:respawned`, заново получить contributions
 и восстановить view providers/state без полного restart приложения. Нужны tests
@@ -898,9 +910,21 @@ call count. Требуется отличить ожидаемую отмену 
 как crash. Typed generation-scoped cancellation ещё нужна; это не завершённый BR-18
 teardown fix.
 
-**Status:** ready. **Dependency:** none; start from fresh `origin/main`.
-The former draft PR chain is merged; BR-17 evidence is not a prerequisite.
-**Acceptance:** automated + Windows runtime merge gate.
+**Status:** implementation в Change/Fix PR (пачка `RV-2026-09-29`); Windows
+runtime gate — обязательный CI job PR. **Dependency:** none; start from fresh
+`origin/main`. The former draft PR chain is merged; BR-17 evidence is not a
+prerequisite. **Acceptance:** automated + Windows runtime merge gate.
+
+**Реализовано:** типизированная отмена `RpcPeerDisconnectedError` с кодом
+`rpc/peer-disconnected` в кадре ответа (`protocol.ts`), `failAll` отклоняет
+именно ею, код переносится через границу процесса в обе стороны
+(`rpc.ts`). Сдерживание падений в `child-crash.ts` пропускает такую отмену по
+КОДУ и по-прежнему ловит любой другой отказ. Закрываемые диалоги
+(`showMessage`/`showInputBox`/`showQuickPick`/`showOpenDialog`/
+`showSaveDialog`) завершаются штатным значением «закрыт пользователем»
+вместо отказа. Область отмены — endpoint одного соединения, поэтому вызов
+нового поколения клиента отменить нельзя. `unhandledRejection` глобально не
+глушится, текст ошибки не сопоставляется.
 
 Source chain reproduces the screenshot text exactly:
 
@@ -1673,9 +1697,17 @@ file overlap с уже открытыми branches.
 меняли этот path. Нужен отдельный event-driven implementation PR, unit wake test и Windows
 R6 ≤ 1 s; в этой ревизии functional code не пишется.
 
-**Status:** ready; подтверждён source defect (INC-2026-0002). **Dependency:**
-none; BR-25 completion зависит от него. **Acceptance:** automated test на
-wake без кадра + Windows CEF runtime gate (reveal без pointer).
+**Status:** implementation в Change/Fix PR (пачка `RV-2026-09-29`); Windows
+CEF runtime gate — обязательный CI job PR. Подтверждён source defect
+(INC-2026-0002). **Dependency:** none; BR-25 completion зависит от него.
+**Acceptance:** automated test на wake без кадра + Windows CEF runtime gate
+(reveal без pointer).
+
+**Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
+единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с
+пробуждением. `deliver()` зовёт её. Polling и таймеры не добавлены: путь
+остался событийным, а заказ кадра на каждую пачку сообщений не появился —
+это прямой источник фризов на RDP.
 
 `web::deliver()` в `crates/shell/src/web/mod.rs` кладёт кадр в per-view outbox
 и ставит id в `PULL_PENDING`, но пробуждение насоса (`WAKE`) происходит

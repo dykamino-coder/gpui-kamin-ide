@@ -5,6 +5,8 @@
 // error or a rapid crash-loop is genuine instability: exit so the PARENT's
 // supervisor respawns a clean child (native segfaults bypass this entirely and
 // are caught by the parent as an unexpected child exit).
+import { isPeerDisconnected } from "../rpc.js"
+
 const CRASH_WINDOW_MS = 10_000
 const CRASH_LIMIT = 5
 
@@ -17,6 +19,15 @@ export function installChildCrashContainment(
   let crashTimes: number[] = []
 
   const onUncaught = (err: unknown, kind: string): void => {
+    // Разрыв соединения с оболочкой отменяет незавершённые вызовы — это
+    // жизненный цикл, а не сбой расширения (BR-19). Проверка идёт по коду
+    // ошибки: сопоставлять человекочитаемый текст нельзя, а глушить
+    // `unhandledRejection` целиком — тем более, иначе настоящие ошибки
+    // расширений перестанут доходить до сдерживания.
+    if (isPeerDisconnected(err)) {
+      console.error(`exthost-child: ${kind} ignored, peer disconnected`)
+      return
+    }
     const message = err instanceof Error ? err.message : String(err)
     console.error(`exthost-child: ${kind}`, err)
     const now = Date.now()
