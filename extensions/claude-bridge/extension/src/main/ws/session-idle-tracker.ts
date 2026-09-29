@@ -7,6 +7,17 @@
 // initial idle on connection would spam toasts.
 
 const DEBOUNCE_MS = 500
+/** Сколько простой обязан продержаться, чтобы ЭВРИСТИЧЕСКИЙ простой закрыл
+ *  виток на сервере, который умеет хуки.
+ *
+ *  Прежняя правка BR-23 просто запрещала таким простоям закрывать виток — и
+ *  на связке, где завершение витка приезжает только эвристикой, уведомление
+ *  о завершении пропало целиком (проверено A/B на живом приложении: на 1.0.60
+ *  тост есть, на 1.0.61 его нет). Источник состояния больше не решает, будет
+ *  уведомление или нет; он решает лишь, СКОЛЬКО ждать подтверждения. Мигания
+ *  во время оркестрации возвращаются в работу за доли секунды и до этого
+ *  порога не доживают, а настоящий конец витка — доживает. */
+const OSC_CONFIRM_MS = 4_000
 const RECENT_WORK_WINDOW_MS = 60_000
 // After a (re)connect the server replays cached status, which can include a
 // stale `isWorking:true` for an already-idle session; the immediate working→idle
@@ -27,8 +38,10 @@ export class SessionIdleTracker {
   private wasWorking = false
   private settleUntil = 0
   private awaitingReplaySince = 0
-  /** Сервер шлёт состояния жизненного цикла (`UserPromptSubmit`/`Stop`). Пока
-   *  их нет, трекер обязан работать как раньше — на эвристике заголовка OSC. */
+  /** Сервер шлёт состояния жизненного цикла (`UserPromptSubmit`/`Stop`).
+   *  Влияет ТОЛЬКО на то, сколько ждать подтверждения эвристического простоя:
+   *  считать, что раз пришёл хоть один хук, то придёт и хук завершения витка,
+   *  нельзя — в поле это неверно. */
   private hookSeen = false
 
   constructor(private onIdle: (rawTitle: string) => void) {}
@@ -74,7 +87,10 @@ export class SessionIdleTracker {
       return
     }
     if (!this.wasWorking) return
-    if (this.hookSeen && !hookDriven) return
+    // Хук завершения авторитетен — ждём обычный debounce. Эвристический простой
+    // на сервере с хуками обязан ПОДТВЕРДИТЬСЯ: любое возвращение в работу
+    // сбрасывает таймер выше, поэтому мигание внутри витка тоста не даёт.
+    const wait = this.hookSeen && !hookDriven ? OSC_CONFIRM_MS : DEBOUNCE_MS
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null
@@ -83,7 +99,7 @@ export class SessionIdleTracker {
       if (this.settleActive()) return // attach-replay blip — not a real turn
       if (Date.now() - this.lastWorkingAt > RECENT_WORK_WINDOW_MS) return
       this.onIdle(rawTitle ?? '')
-    }, DEBOUNCE_MS)
+    }, wait)
   }
 
   /** Снять висящий debounce при закрытии таба/сессии: иначе таймер стрелял
