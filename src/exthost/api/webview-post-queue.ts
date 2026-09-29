@@ -98,7 +98,18 @@ export class WebviewPostQueue {
     if (this.flushTimer) return
     this.flushTimer = setImmediate(() => {
       this.flushTimer = null
-      this.sendOneFrame()
+      try {
+        this.sendOneFrame()
+      } catch (err) {
+        // Запланированный сброс вызывающего не имеет: бросок отсюда уходил
+        // НЕОБРАБОТАННЫМ исключением процесса — по одному на каждый кадр при
+        // стоящем канале, то есть лавиной тостов «Extension crashed». Пачка уже
+        // завершена `false`; остаток очереди тоже получает исход, а отказ
+        // остаётся видимым в журнале (INC-2026-0055).
+        this.failQueued()
+        console.error('[webview] post delivery failed:', err instanceof Error ? err.message : err)
+        return
+      }
       if (this.queue.length > 0) this.schedule() // more pending → next tick
     })
   }
@@ -134,14 +145,42 @@ export class WebviewPostQueue {
       if (g) g.ids.push(p.id)
       else groups.push({ ids: [p.id], msg: p.msg })
     }
-    this.broadcast("kamin:webview:post", { batch: groups })
+    // Кадр уже ВЫНУТ из очереди. Если вещание бросит — а оно бросает: отказ
+    // записи в канал IPC ребёнка приходит именно отсюда (`write UNKNOWN`,
+    // INC-2026-0055) — пачка исчезала бесследно, и её обещания не завершались
+    // никогда. Контракт `postMessage` знает такой исход: он разрешается и
+    // тогда, когда сообщение доставлено, и тогда, когда оно ПОТЕРЯНО. Значит
+    // отказ обязан завершить пачку `false`, а не оставить её висеть.
+    //
+    // Ошибка после этого идёт дальше: делать вид, что расширение-хост здоров,
+    // пока чат и консоль не обновляются, нельзя — этим инцидент и начался.
+    try {
+      this.broadcast("kamin:webview:post", { batch: groups })
+    } catch (err) {
+      for (const p of batch) p.settle(false)
+      throw err
+    }
     for (const p of batch) p.settle(true)
   }
 
   /** Send everything queued NOW, in order, still respecting the frame cap. */
   private flushNow(): void {
     if (this.flushTimer) { clearImmediate(this.flushTimer); this.flushTimer = null }
-    while (this.queue.length > 0) this.sendOneFrame()
+    // Отказ вещания уже завершил свою пачку `false`; оставшаяся очередь тоже
+    // обязана получить исход, иначе синхронный сброс перед dispose оставил бы
+    // её висеть — ровно то, что чинится выше, только другим путём.
+    try {
+      while (this.queue.length > 0) this.sendOneFrame()
+    } catch (err) {
+      this.failQueued()
+      throw err
+    }
+  }
+
+  /** Завершить всё, что ещё лежит в очереди, как недоставленное. */
+  private failQueued(): void {
+    const pending = this.queue.splice(0, this.queue.length)
+    for (const p of pending) p.settle(false)
   }
 
   /** Every webview broadcast that is NOT a queued post must go through here.
