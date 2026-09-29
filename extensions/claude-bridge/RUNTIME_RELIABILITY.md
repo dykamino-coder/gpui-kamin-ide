@@ -898,9 +898,21 @@ call count. Требуется отличить ожидаемую отмену 
 как crash. Typed generation-scoped cancellation ещё нужна; это не завершённый BR-18
 teardown fix.
 
-**Status:** ready. **Dependency:** none; start from fresh `origin/main`.
-The former draft PR chain is merged; BR-17 evidence is not a prerequisite.
-**Acceptance:** automated + Windows runtime merge gate.
+**Status:** implementation в Change/Fix PR (пачка `RV-2026-09-29`); Windows
+runtime gate — обязательный CI job PR. **Dependency:** none; start from fresh
+`origin/main`. The former draft PR chain is merged; BR-17 evidence is not a
+prerequisite. **Acceptance:** automated + Windows runtime merge gate.
+
+**Реализовано:** типизированная отмена `RpcPeerDisconnectedError` с кодом
+`rpc/peer-disconnected` в кадре ответа (`protocol.ts`), `failAll` отклоняет
+именно ею, код переносится через границу процесса в обе стороны
+(`rpc.ts`). Сдерживание падений в `child-crash.ts` пропускает такую отмену по
+КОДУ и по-прежнему ловит любой другой отказ. Закрываемые диалоги
+(`showMessage`/`showInputBox`/`showQuickPick`/`showOpenDialog`/
+`showSaveDialog`) завершаются штатным значением «закрыт пользователем»
+вместо отказа. Область отмены — endpoint одного соединения, поэтому вызов
+нового поколения клиента отменить нельзя. `unhandledRejection` глобально не
+глушится, текст ошибки не сопоставляется.
 
 Source chain reproduces the screenshot text exactly:
 
