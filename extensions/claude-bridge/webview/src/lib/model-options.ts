@@ -1,5 +1,10 @@
 // Models offered for new selections. A resumed session can still use a model
 // absent from this list; never label it as the default or change it implicitly.
+//
+// Superseded versions are not offered: Opus 5.5 and Sonnet 5.5 replace Opus 5
+// and Sonnet 5 outright, so listing both only asks the user to pick between a
+// model and its own older build. Sessions already running on a removed model
+// keep it — `selectedModelOption` renders any unknown id as-is.
 export const DEFAULT_MODEL_ID = 'claude-opus-5-5'
 
 export interface ModelOption {
@@ -11,9 +16,7 @@ export interface ModelOption {
 
 export const MODEL_OPTIONS: readonly ModelOption[] = [
   { value: 'claude-opus-5-5', icon: 'fa-gem', name: 'Opus 5.5', description: 'Default for new sessions, 1M-token context' },
-  { value: 'claude-opus-5', icon: 'fa-gem', name: 'Opus 5', description: 'Previous Opus version, 1M-token context' },
   { value: 'claude-sonnet-5-5', icon: 'fa-feather', name: 'Sonnet 5.5', description: 'Latest Sonnet, 1M-token context' },
-  { value: 'claude-sonnet-5', icon: 'fa-feather', name: 'Sonnet 5', description: 'Fast and balanced' },
   { value: 'claude-haiku-4-5', icon: 'fa-bolt', name: 'Haiku 4.5', description: 'Fastest, lightweight tasks' },
   { value: 'claude-fable-5-1', icon: 'fa-book-open', name: 'Fable 5.1', description: 'Complex, long-running work; access depends on account' },
 ]
