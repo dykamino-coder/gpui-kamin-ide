@@ -497,7 +497,9 @@ export interface KaminBridgeApi {
 
   // ─── Effort ────────────────────────────────────────
   changeEffort(tabId: string, effort: string): void
-  onSessionRestarted(callback: (tabId: string, data: { sessionId: string; effort?: string; model?: string }) => void): () => void
+  /** `inPlace` — горячая смена модели: PTY не перезапускался, консоль
+   *  чистить нечего. Отсутствие признака означает настоящий перезапуск. */
+  onSessionRestarted(callback: (tabId: string, data: { sessionId: string; effort?: string; model?: string; inPlace?: boolean }) => void): () => void
   // Fired when the user manually Reconnects a tab: the server ended the old
   // session and `--resume`s a BRAND-NEW PTY, so the console must wipe the dead
   // session's screen (broadcast → every iframe clears its own terminal).

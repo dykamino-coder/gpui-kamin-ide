@@ -41477,7 +41477,11 @@ function handleServerMessage(msg, ctx) {
       ctx.window.webContents.send("session-restarted", ctx.tabId, {
         sessionId: msg.sessionId,
         effort: msg.effort,
-        model: msg.model
+        model: msg.model,
+        // PTY не перезапускался — консоль чистить нечего. Признак несёт
+        // сервер; его отсутствие (сервер старого образца) читается как
+        // настоящий перезапуск, то есть прежнее поведение (INC-2026-0053).
+        inPlace: msg.inPlace === true
       });
       ctx.notifySessionInfo(msg.effort, msg.model);
       break;

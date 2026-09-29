@@ -8,6 +8,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
+import { rememberModelSelection } from './model-selection'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
 import type { JsonlEntry } from '../../shared/jsonl-types'
@@ -100,15 +101,25 @@ export function attachSessionWebSocket(_server: HttpServer): void {
     // We send a ping every 15s; if we don't get a pong by the next tick,
     // forcibly terminate the connection so 'close' fires and cleanup runs.
     let isAlive = true
-    ws.on('pong', () => { isAlive = true })
+    ws.on('pong', () => {
+      isAlive = true
+    })
     const heartbeat = setInterval(() => {
       if (!isAlive) {
         debugLog('Session WS heartbeat timeout — terminating', { sessionId: authenticatedSessionId })
-        try { ws.terminate() } catch { /* ignore */ }
+        try {
+          ws.terminate()
+        } catch {
+          /* ignore */
+        }
         return
       }
       isAlive = false
-      try { ws.ping() } catch { /* socket already closing */ }
+      try {
+        ws.ping()
+      } catch {
+        /* socket already closing */
+      }
     }, 15_000)
 
     ws.on('message', async (raw: Buffer | string) => {
@@ -146,20 +157,15 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
           try {
             const bearerHash = crypto.createHash('sha256').update(msg.token).digest('hex').slice(0, 16)
-            const session = await createSession(
-              ws,
-              resolved.userName,
-              resolved.tokenId,
-              {
-                cwd: msg.cwd,
-                cols: msg.cols,
-                rows: msg.rows,
-                basePrompt: msg.basePrompt,
-                transcriptMirrorDir: msg.transcriptMirrorDir,
-                bearerHash,
-                protocolVersion: msg.protocolVersion ?? 0,
-              }
-            )
+            const session = await createSession(ws, resolved.userName, resolved.tokenId, {
+              cwd: msg.cwd,
+              cols: msg.cols,
+              rows: msg.rows,
+              basePrompt: msg.basePrompt,
+              transcriptMirrorDir: msg.transcriptMirrorDir,
+              bearerHash,
+              protocolVersion: msg.protocolVersion ?? 0,
+            })
 
             // Register external MCP tools BEFORE CLI initializes
             if (msg.externalTools && Array.isArray(msg.externalTools)) {
@@ -167,7 +173,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               debugLog('External tools registered at session create', {
                 sessionId: session.id,
                 count: msg.externalTools.length,
-                tools: msg.externalTools.map(t => t.name),
+                tools: msg.externalTools.map((t) => t.name),
               })
             }
 
@@ -179,13 +185,15 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             if (!tokenWsMap.has(resolved.tokenId)) tokenWsMap.set(resolved.tokenId, new Set())
             tokenWsMap.get(resolved.tokenId)!.add(ws)
 
-            ws.send(JSON.stringify({
-              type: 'session:created',
-              sessionId: session.id,
-              effort: session.effort,
-              model: session.model,
-              settingsDir: session.settingsDir,
-            }))
+            ws.send(
+              JSON.stringify({
+                type: 'session:created',
+                sessionId: session.id,
+                effort: session.effort,
+                model: session.model,
+                settingsDir: session.settingsDir,
+              }),
+            )
 
             // Send initial tree to this client
             broadcastTree(resolved.tokenId)
@@ -238,7 +246,11 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Abort the in-flight upstream request directly so the stream stops NOW,
           // then SIGINT the CLI to end the turn.
           if (!authenticatedSessionId) return
-          try { getSession(authenticatedSessionId)?.streamingProxy?.interrupt() } catch { /* no proxy this session */ }
+          try {
+            getSession(authenticatedSessionId)?.streamingProxy?.interrupt()
+          } catch {
+            /* no proxy this session */
+          }
           writeInput(authenticatedSessionId, '\x03')
           break
         }
@@ -277,12 +289,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
         case 'elicitation:response': {
           if (!authenticatedSessionId) return
-          handleElicitationResponse(
-            authenticatedSessionId,
-            msg.requestId,
-            msg.action,
-            msg.content
-          )
+          handleElicitationResponse(authenticatedSessionId, msg.requestId, msg.action, msg.content)
           break
         }
 
@@ -318,7 +325,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           if (msg.conversationId) {
             const canonical = followCompactLinks(msg.conversationId)
             if (canonical !== msg.conversationId) {
-              infoLog('Resume: canonicalized to chain tip before lock', { requested: msg.conversationId, tip: canonical })
+              infoLog('Resume: canonicalized to chain tip before lock', {
+                requested: msg.conversationId,
+                tip: canonical,
+              })
               msg.conversationId = canonical
             }
           }
@@ -326,12 +336,18 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           let releaseResumeLock: () => void = () => {}
           if (resumeLockKey) {
             while (resumeLocks.has(resumeLockKey)) {
-              await resumeLocks.get(resumeLockKey)!.catch(() => { /* ждём, исход не важен */ })
+              await resumeLocks.get(resumeLockKey)!.catch(() => {
+                /* ждём, исход не важен */
+              })
             }
             let resolveLock!: () => void
-            const lock = new Promise<void>((r) => { resolveLock = r })
+            const lock = new Promise<void>((r) => {
+              resolveLock = r
+            })
             resumeLocks.set(resumeLockKey, lock)
-            const safety = setTimeout(() => { releaseResumeLock() }, RESUME_LOCK_SAFETY_MS)
+            const safety = setTimeout(() => {
+              releaseResumeLock()
+            }, RESUME_LOCK_SAFETY_MS)
             releaseResumeLock = () => {
               clearTimeout(safety)
               if (resumeLocks.get(resumeLockKey) === lock) resumeLocks.delete(resumeLockKey)
@@ -351,7 +367,11 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // Steal: a zombie WS is still bound (half-open socket) — close
               // it; its close handler is a no-op because the map no longer
               // points at it (stale-ws guard below).
-              try { oldWs.close(4003, 'Session reattached from another client') } catch { /* ignore */ }
+              try {
+                oldWs.close(4003, 'Session reattached from another client')
+              } catch {
+                /* ignore */
+              }
             }
 
             reattachSession(live, ws)
@@ -371,20 +391,24 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               live.registeredTools = msg.externalTools
             }
 
-            ws.send(JSON.stringify({
-              type: 'session:created',
-              sessionId: live.id,
-              effort: live.effort,
-              model: live.model,
-              settingsDir: live.settingsDir,
-              reattached: true,
-            }))
-            if (live.cliConversationId) {
-              ws.send(JSON.stringify({
-                type: 'session:conversation-id',
+            ws.send(
+              JSON.stringify({
+                type: 'session:created',
                 sessionId: live.id,
-                conversationId: live.cliConversationId,
-              }))
+                effort: live.effort,
+                model: live.model,
+                settingsDir: live.settingsDir,
+                reattached: true,
+              }),
+            )
+            if (live.cliConversationId) {
+              ws.send(
+                JSON.stringify({
+                  type: 'session:conversation-id',
+                  sessionId: live.id,
+                  conversationId: live.cliConversationId,
+                }),
+              )
             }
             // Re-emit the full transcript so the fresh client rebuilds its
             // chat state (same contract as a real resume).
@@ -401,24 +425,19 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
           try {
             const bearerHash = crypto.createHash('sha256').update(msg.token).digest('hex').slice(0, 16)
-            const session = await createSession(
-              ws,
-              resolved.userName,
-              resolved.tokenId,
-              {
-                cwd: msg.cwd,
-                cols: msg.cols,
-                rows: msg.rows,
-                resumeConversationId: msg.conversationId,
-                // A resumed session respawns the CLI, so it must carry the
-                // prompt too — otherwise the instructions only ever applied to
-                // brand-new sessions.
-                basePrompt: msg.basePrompt,
-                transcriptMirrorDir: msg.transcriptMirrorDir,
-                bearerHash,
-                protocolVersion: msg.protocolVersion ?? 0,
-              }
-            )
+            const session = await createSession(ws, resolved.userName, resolved.tokenId, {
+              cwd: msg.cwd,
+              cols: msg.cols,
+              rows: msg.rows,
+              resumeConversationId: msg.conversationId,
+              // A resumed session respawns the CLI, so it must carry the
+              // prompt too — otherwise the instructions only ever applied to
+              // brand-new sessions.
+              basePrompt: msg.basePrompt,
+              transcriptMirrorDir: msg.transcriptMirrorDir,
+              bearerHash,
+              protocolVersion: msg.protocolVersion ?? 0,
+            })
 
             // Register external MCP tools BEFORE CLI initializes
             if (msg.externalTools && Array.isArray(msg.externalTools)) {
@@ -437,25 +456,29 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             if (!tokenWsMap.has(resolved.tokenId)) tokenWsMap.set(resolved.tokenId, new Set())
             tokenWsMap.get(resolved.tokenId)!.add(ws)
 
-            ws.send(JSON.stringify({
-              type: 'session:created',
-              sessionId: session.id,
-              effort: session.effort,
-              model: session.model,
-              settingsDir: session.settingsDir,
-              resumeNotFound: session.resumeNotFound || undefined,
-            }))
+            ws.send(
+              JSON.stringify({
+                type: 'session:created',
+                sessionId: session.id,
+                effort: session.effort,
+                model: session.model,
+                settingsDir: session.settingsDir,
+                resumeNotFound: session.resumeNotFound || undefined,
+              }),
+            )
 
             // The requested conversation is not on this server — a fresh one
             // was started. Nothing hits the JSONL until the first message, so
             // without this the client sits in "Loading conversation…" until
             // its 20s watchdog. Declare the (empty) replay complete right away.
             if (session.resumeNotFound) {
-              ws.send(JSON.stringify({
-                type: 'jsonl:status',
-                status: 'watching',
-                replayComplete: true,
-              }))
+              ws.send(
+                JSON.stringify({
+                  type: 'jsonl:status',
+                  status: 'watching',
+                  replayComplete: true,
+                }),
+              )
             }
 
             // Send initial tree to this client
@@ -469,7 +492,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 sessionId: session.id,
                 conversationId: msg.conversationId,
               })
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
 
             debugLog('Session resumed via WS', {
               sessionId: session.id,
@@ -508,31 +533,20 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             let newSession: PtySession
             if (session.cliConversationId) {
               // Has conversation → restart with resume + new effort
-              newSession = await restartWithEffort(
-                oldSessionId,
-                msg.effort,
-                ws,
-                authenticatedUser!,
-                session.tokenId,
-              )
+              newSession = await restartWithEffort(oldSessionId, msg.effort, ws, authenticatedUser!, session.tokenId)
             } else {
               // No conversation yet (empty chat) → recreate fresh with effort, preserve model
               session.isRestarting = true
               const preservedModel = session.model
               destroySession(oldSessionId)
-              newSession = await createSession(
-                ws,
-                authenticatedUser!,
-                session.tokenId,
-                {
-                  cwd: session.cwd,
-                  cols: 120,
-                  rows: 40,
-                  effort: msg.effort,
-                  model: preservedModel || undefined,
-                  protocolVersion: preservedProto,
-                }
-              )
+              newSession = await createSession(ws, authenticatedUser!, session.tokenId, {
+                cwd: session.cwd,
+                cols: 120,
+                rows: 40,
+                effort: msg.effort,
+                model: preservedModel || undefined,
+                protocolVersion: preservedProto,
+              })
             }
             newSession.streamProtocol = preservedProto
 
@@ -541,12 +555,14 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sessionWsMap.set(newSession.id, ws)
 
             // Notify client about the restart (include both effort + model for UI sync)
-            ws.send(JSON.stringify({
-              type: 'session:restarted',
-              sessionId: newSession.id,
-              effort: newSession.effort || msg.effort,
-              model: newSession.model,
-            }))
+            ws.send(
+              JSON.stringify({
+                type: 'session:restarted',
+                sessionId: newSession.id,
+                effort: newSession.effort || msg.effort,
+                model: newSession.model,
+              }),
+            )
 
             debugLog('Session restarted with new effort', {
               oldSessionId,
@@ -581,15 +597,27 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // в его очередь и применится после витка. Фоллбэк на рестарт — для
           // пустых сессий (нет беседы) и умершего PTY.
           if (session.cliConversationId && !session.isRestarting && msg.model) {
-            writeInput(authenticatedSessionId, `\x15/model ${msg.model}\r`)
-            session.model = msg.model
-            ws.send(JSON.stringify({
-              type: 'session:model-changed',
-              sessionId: authenticatedSessionId,
-              model: msg.model,
-              effort: session.effort,
-            }))
-            return
+            // Успех объявляется ТОЛЬКО если команда действительно легла в
+            // stdin. На неживом PTY запись молча терялась, а плашка уже
+            // показывала новую модель (INC-2026-0053) — теперь такой случай
+            // уходит на честный перезапуск ниже.
+            if (writeInput(authenticatedSessionId, `\x15/model ${msg.model}\r`)) {
+              session.model = msg.model
+              // Выбор до первого ответа в JSONL не записан нигде: без него
+              // респаун вернул бы прежнюю модель.
+              rememberModelSelection(session.cliConversationId, msg.model)
+              ws.send(
+                JSON.stringify({
+                  type: 'session:model-changed',
+                  sessionId: authenticatedSessionId,
+                  model: msg.model,
+                  effort: session.effort,
+                  // Горячая смена PTY не перезапускает — консоль чистить нечего.
+                  inPlace: true,
+                }),
+              )
+              return
+            }
           }
           try {
             const oldSessionId = authenticatedSessionId
@@ -602,31 +630,20 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             let newSession: PtySession
             if (session.cliConversationId) {
               // Has conversation → restart with resume + new model
-              newSession = await restartWithModel(
-                oldSessionId,
-                msg.model,
-                ws,
-                authenticatedUser!,
-                session.tokenId,
-              )
+              newSession = await restartWithModel(oldSessionId, msg.model, ws, authenticatedUser!, session.tokenId)
             } else {
               // No conversation yet (empty chat) → recreate fresh with model, preserve effort
               session.isRestarting = true
               const preservedEffort = session.effort
               destroySession(oldSessionId)
-              newSession = await createSession(
-                ws,
-                authenticatedUser!,
-                session.tokenId,
-                {
-                  cwd: session.cwd,
-                  cols: 120,
-                  rows: 40,
-                  model: msg.model,
-                  effort: preservedEffort || undefined,
-                  protocolVersion: preservedProto,
-                }
-              )
+              newSession = await createSession(ws, authenticatedUser!, session.tokenId, {
+                cwd: session.cwd,
+                cols: 120,
+                rows: 40,
+                model: msg.model,
+                effort: preservedEffort || undefined,
+                protocolVersion: preservedProto,
+              })
             }
             newSession.streamProtocol = preservedProto
 
@@ -635,12 +652,14 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sessionWsMap.set(newSession.id, ws)
 
             // Notify client about the restart (include both effort + model for UI sync)
-            ws.send(JSON.stringify({
-              type: 'session:restarted',
-              sessionId: newSession.id,
-              effort: newSession.effort,
-              model: newSession.model || msg.model,
-            }))
+            ws.send(
+              JSON.stringify({
+                type: 'session:restarted',
+                sessionId: newSession.id,
+                effort: newSession.effort,
+                model: newSession.model || msg.model,
+              }),
+            )
 
             debugLog('Session restarted with new model', {
               oldSessionId,
@@ -675,7 +694,11 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           const session = getSession(authenticatedSessionId)
           if (!session) return
 
-          const externalTools = (msg as any).tools as Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>
+          const externalTools = (msg as any).tools as Array<{
+            name: string
+            description: string
+            inputSchema: Record<string, unknown>
+          }>
           if (!Array.isArray(externalTools)) return
 
           // This message is a complete external-tool snapshot. Replacing the
@@ -687,7 +710,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sessionId: authenticatedSessionId,
             externalCount: externalTools.length,
             totalCount: session.registeredTools.length,
-            tools: externalTools.map(t => t.name),
+            tools: externalTools.map((t) => t.name),
           })
           break
         }
@@ -727,8 +750,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             return
           }
           const fp = await fingerprintTranscript(syncPath)
-          const { sinceHead, sincePos, lastPos, lastUuid } =
-            msg as unknown as { sinceHead?: string; sincePos?: number; lastPos?: number; lastUuid?: string }
+          const { sinceHead, sincePos, lastPos, lastUuid } = msg as unknown as {
+            sinceHead?: string
+            sincePos?: number
+            lastPos?: number
+            lastUuid?: string
+          }
           // Two independent gates. The fingerprint catches a rewritten file; the
           // boundary check catches a repaired one, where the head survives but
           // every offset after the edit has shifted (see isRecordBoundary).
@@ -755,12 +782,26 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           }
           const dlSession = getSession(authenticatedSessionId)
           if (!dlSession?.jsonlWatcher) {
-            ws.send(JSON.stringify({ type: 'jsonl:download-response', content: null, fileName: null, error: 'No active JSONL watcher' }))
+            ws.send(
+              JSON.stringify({
+                type: 'jsonl:download-response',
+                content: null,
+                fileName: null,
+                error: 'No active JSONL watcher',
+              }),
+            )
             return
           }
           const filePath = dlSession.jsonlWatcher.getFilePath()
           if (!filePath) {
-            ws.send(JSON.stringify({ type: 'jsonl:download-response', content: null, fileName: null, error: 'JSONL file not yet discovered' }))
+            ws.send(
+              JSON.stringify({
+                type: 'jsonl:download-response',
+                content: null,
+                fileName: null,
+                error: 'JSONL file not yet discovered',
+              }),
+            )
             return
           }
           try {
@@ -780,17 +821,26 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             } else {
               ws.send(JSON.stringify({ type: 'jsonl:download-begin', fileName, total }))
               for (let sent = 0; sent < total; sent += DOWNLOAD_CHUNK_CHARS) {
-                ws.send(JSON.stringify({
-                  type: 'jsonl:download-chunk',
-                  chunk: content.slice(sent, sent + DOWNLOAD_CHUNK_CHARS),
-                  sent: Math.min(sent + DOWNLOAD_CHUNK_CHARS, total),
-                  total,
-                }))
+                ws.send(
+                  JSON.stringify({
+                    type: 'jsonl:download-chunk',
+                    chunk: content.slice(sent, sent + DOWNLOAD_CHUNK_CHARS),
+                    sent: Math.min(sent + DOWNLOAD_CHUNK_CHARS, total),
+                    total,
+                  }),
+                )
               }
               ws.send(JSON.stringify({ type: 'jsonl:download-end', fileName, total }))
             }
           } catch (err) {
-            ws.send(JSON.stringify({ type: 'jsonl:download-response', content: null, fileName: null, error: `Failed to read file: ${String(err)}` }))
+            ws.send(
+              JSON.stringify({
+                type: 'jsonl:download-response',
+                content: null,
+                fileName: null,
+                error: `Failed to read file: ${String(err)}`,
+              }),
+            )
           }
           break
         }
@@ -822,7 +872,11 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 const line = lines[i]!
                 if (!line.trim() || line.includes(SKIP_LINE_MARKER)) continue
                 let r: JsonlEntry
-                try { r = JSON.parse(line) as JsonlEntry } catch { continue }
+                try {
+                  r = JSON.parse(line) as JsonlEntry
+                } catch {
+                  continue
+                }
                 const ts = r.timestamp
                 if (!ts) continue // ts-less rows can't be placed on the range axis
                 if ((r as { subtype?: string }).subtype === 'compact_boundary') continue
@@ -830,7 +884,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 if (toTs && ts >= toTs) continue
                 records.push(r)
               }
-            } catch { /* fall through — empty result tells the client to reset the view */ }
+            } catch {
+              /* fall through — empty result tells the client to reset the view */
+            }
           }
           ws.send(JSON.stringify({ type: 'jsonl:segment-response', fromTs, toTs, records }))
           break

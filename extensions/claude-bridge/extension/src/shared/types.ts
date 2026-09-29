@@ -450,7 +450,9 @@ export interface KaminBridgeApi {
 
   // ─── Effort ────────────────────────────────────────
   changeEffort(tabId: string, effort: string): void
-  onSessionRestarted(callback: (tabId: string, data: { sessionId: string; effort?: string; model?: string }) => void): () => void
+  /** `inPlace` — горячая смена модели: PTY не перезапускался, консоль
+   *  чистить нечего. Отсутствие признака означает настоящий перезапуск. */
+  onSessionRestarted(callback: (tabId: string, data: { sessionId: string; effort?: string; model?: string; inPlace?: boolean }) => void): () => void
 
   // ─── Model ────────────────────────────────────────
   changeModel(tabId: string, model: string): void

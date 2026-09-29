@@ -30,7 +30,15 @@ export type ServerMessage =
   | { type: 'session:tree-update'; tree: unknown[] }
   | { type: 'session:restarted'; sessionId: string; effort?: string; model?: string }
   // Горячая смена модели (/model в живой PTY) — sessionId прежний, без реплея.
-  | { type: 'session:model-changed'; sessionId: string; effort?: string; model?: string }
+  | {
+      type: 'session:model-changed'
+      sessionId: string
+      effort?: string
+      model?: string
+      /** Горячая смена: PTY не перезапускался, консоль чистить нечего.
+       *  Сервер старого образца поля не шлёт — это настоящий перезапуск. */
+      inPlace?: boolean
+    }
   | { type: 'jsonl:subagent-entries'; agentName: string; entries: unknown[]; agentId?: string }
   | { type: 'session:title'; title: string }
   | { type: 'session:conversation-id'; sessionId: string; conversationId: string }

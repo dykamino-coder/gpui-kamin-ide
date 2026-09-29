@@ -6,11 +6,7 @@ import type { WebSocket as WS } from 'ws'
 import type { PtySession } from './types'
 import { eventBus } from '../events/bus'
 import { debugLog } from '../logging'
-import {
-  setSessionPromptReady,
-  submitCoordinatedText,
-  writeCoordinatedInput,
-} from './session-input-coordinator'
+import { setSessionPromptReady, submitCoordinatedText, writeCoordinatedInput } from './session-input-coordinator'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -24,7 +20,8 @@ const OUTPUT_MAX_WAIT_MS = 32
 // We capture every match into the api_errors table for the dashboard
 // errors badge + chart. Pattern is intentionally permissive on the
 // error-type slug (CLI varies it: ConnectionRefused, Timeout, 429, etc.).
-const API_ERROR_RE = /([\w\d_-]+)\s*·\s*(https:\/\/api\.anthropic\.com\/[^\s·]+)\s*·\s*retry in (\d+)ms\s*\(attempt\s*(\d+)\/(\d+)\)/g
+const API_ERROR_RE =
+  /([\w\d_-]+)\s*·\s*(https:\/\/api\.anthropic\.com\/[^\s·]+)\s*·\s*retry in (\d+)ms\s*\(attempt\s*(\d+)\/(\d+)\)/g
 // Non-retryable fatal errors — CLI prints `API Error: <Type> fetching "<url>"`
 // and aborts the turn without a retry-counter line. Without a separate match
 // these never make it into api_errors and the dashboard shows 0.
@@ -110,8 +107,11 @@ export function sendToClient(ws: WS, msg: Record<string, unknown>): boolean {
 /**
  * Write PTY stdin data.
  */
-export function writeInputToSession(session: PtySession, data: string): void {
-  if (session.state !== 'running') return
+export function writeInputToSession(session: PtySession, data: string): boolean {
+  // Отдаёт, ЛЕГЛА ли запись. Молчаливый возврат на неживом PTY приводил к
+  // тому, что смена модели рапортовалась успешной, даже когда команду никто
+  // не получил (INC-2026-0053).
+  if (session.state !== 'running') return false
   session.lastActivityAt = new Date()
   writeCoordinatedInput(session, data)
 
@@ -148,6 +148,7 @@ export function writeInputToSession(session: PtySession, data: string): void {
       lastActivityAt: session.lastActivityAt.toISOString(),
     })
   }
+  return true
 }
 
 /**
@@ -195,7 +196,9 @@ export function attachStartupAutoResponder(session: PtySession): void {
   let respondCount = 0
 
   // Auto-disable after 30 seconds (startup should be done by then)
-  const timeout = setTimeout(() => { disposed = true }, 30_000)
+  const timeout = setTimeout(() => {
+    disposed = true
+  }, 30_000)
 
   const disposable = session.pty.onData((data: string) => {
     if (disposed) return
@@ -250,8 +253,14 @@ export function attachOutputDebounce(session: PtySession): void {
   let maxTimer: ReturnType<typeof setTimeout> | null = null
 
   function flush() {
-    if (trailTimer) { clearTimeout(trailTimer); trailTimer = null }
-    if (maxTimer) { clearTimeout(maxTimer); maxTimer = null }
+    if (trailTimer) {
+      clearTimeout(trailTimer)
+      trailTimer = null
+    }
+    if (maxTimer) {
+      clearTimeout(maxTimer)
+      maxTimer = null
+    }
     if (outputBuffer && session.ws.readyState === 1 /* WS.OPEN */) {
       sendToClient(session.ws, { type: 'session:output', data: outputBuffer })
       outputBuffer = ''
@@ -270,8 +279,12 @@ export function attachOutputDebounce(session: PtySession): void {
       const plain = data.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
 
       const recordError = (
-        errorType: string, url: string, retryMs: number,
-        attempt: number, maxAttempts: number, raw: string,
+        errorType: string,
+        url: string,
+        retryMs: number,
+        attempt: number,
+        maxAttempts: number,
+        raw: string,
       ): void => {
         const dedupeKey = `${errorType}|${url}|${attempt}|${session.id}`
         const now = Date.now()
@@ -293,18 +306,16 @@ export function attachOutputDebounce(session: PtySession): void {
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [ts, sessionId, userName, errorType, url, attempt, maxAttempts, retryMs, raw],
             )
-          } catch { /* best-effort */ }
+          } catch {
+            /* best-effort */
+          }
         })()
       }
 
       let m: RegExpExecArray | null
       const re = new RegExp(API_ERROR_RE.source, 'g')
       while ((m = re.exec(plain)) !== null) {
-        recordError(
-          m[1] ?? 'Unknown', m[2] ?? '',
-          Number(m[3] ?? 0), Number(m[4] ?? 0), Number(m[5] ?? 0),
-          m[0] ?? '',
-        )
+        recordError(m[1] ?? 'Unknown', m[2] ?? '', Number(m[3] ?? 0), Number(m[4] ?? 0), Number(m[5] ?? 0), m[0] ?? '')
       }
       // Fatal (non-retryable) errors — single occurrence, no retry counter.
       const reFatal = new RegExp(API_ERROR_FATAL_RE.source, 'g')
@@ -333,8 +344,10 @@ export function attachOutputDebounce(session: PtySession): void {
       SPIN_SCAN.lastIndex = 0
       while ((sp = SPIN_SCAN.exec(data)) !== null) spinIdx.push(sp.index)
       for (let k = spinIdx.length - 1; k >= 0; k--) {
-        const plain = data.slice(spinIdx[k]!, spinIdx[k]! + STATUS_WINDOW)
-          .replace(ANSI_STRIP_CSI, '').replace(ANSI_STRIP_OSC, '')
+        const plain = data
+          .slice(spinIdx[k]!, spinIdx[k]! + STATUS_WINDOW)
+          .replace(ANSI_STRIP_CSI, '')
+          .replace(ANSI_STRIP_OSC, '')
         const statusMatch = plain.match(STATUS_RE)
         if (statusMatch) {
           statusText = `${statusMatch[1]!.trim()} (${statusMatch[2]!.trim()})`
@@ -400,8 +413,12 @@ export function attachOutputDebounce(session: PtySession): void {
               const { withStatsWrite } = await import('../stats/database/write-lock')
               const db = await getDb()
               // Same row the sweeper rewrites — one writer at a time (write-lock.ts).
-              await withStatsWrite(() => db.run(`UPDATE session_tokens SET title = ? WHERE session_id = ?`, [titleSnapshot, convId]))
-            } catch { /* best-effort */ }
+              await withStatsWrite(() =>
+                db.run(`UPDATE session_tokens SET title = ? WHERE session_id = ?`, [titleSnapshot, convId]),
+              )
+            } catch {
+              /* best-effort */
+            }
           })()
         }
         // Notify the client of the title change.
@@ -424,7 +441,10 @@ export function attachOutputDebounce(session: PtySession): void {
     // (a `cat` of a large file, a base64 blob) into call args throws
     // `RangeError: Maximum call stack size exceeded` past ~100k args, which would
     // escape the pty.onData callback to uncaughtException.
-    for (const line of lines) { session.outputBuffer.push(line); session.outputBufferBytes += line.length }
+    for (const line of lines) {
+      session.outputBuffer.push(line)
+      session.outputBufferBytes += line.length
+    }
     // Evict oldest only past cap+slack → the O(n) splice runs once per ~slack of
     // output, not every chunk (active sessions sit AT the cap). One pass trims
     // back to both caps, updating the running byte counter as it drops lines.
