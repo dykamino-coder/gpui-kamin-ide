@@ -7,8 +7,8 @@
 // native watcher starts executed synchronously on the host's event loop —
 // a CPU profile showed 17.7s inside `FSWatcher.start` (chokidar handler.js
 // `_handleFile`), i.e. the 4-7s loop stalls that starved every webview RPC
-// at boot ("Restoring…" forever, empty palette). Under the user's corporate
-// DLP each handle costs extra. One recursive watcher is what VS Code ships
+// at boot ("Restoring…" forever, empty palette). With endpoint protection,
+// each handle costs extra. One recursive watcher is what VS Code ships
 // on Windows; the historical "recursive drops events under load" concern is
 // covered by the tree reading on demand and the index rescanning on gaps.
 

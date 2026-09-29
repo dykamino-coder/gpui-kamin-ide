@@ -108,7 +108,7 @@ export function parseMcpJson(parsed: Record<string, any>, sourcePath: string, pl
     }
 
     if (serverType === 'http' || serverType === 'sse' || serverType === 'ws') {
-      // Resolve env vars + plugin-root in url too (corporate deployments
+      // Resolve env vars + plugin-root in url too (some deployments
       // sometimes embed ${REGION_HOST} or ${CLAUDE_PLUGIN_ROOT}-relative
       // paths in URLs).
       config.url = entry.url ? resolveAll(String(entry.url)) : entry.url

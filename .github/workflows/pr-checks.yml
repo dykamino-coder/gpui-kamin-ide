@@ -3,16 +3,19 @@ name: pull request checks
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A later main push must not cancel the exact quality run a release needs.
+  group: pr-checks-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   scope:
@@ -43,6 +46,7 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_NAME: ${{ github.event_name }}
           PUSH_BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -64,6 +68,26 @@ jobs:
             --changed-files "$changed_files")"
           release_candidate="$(jq -r '.release' <<< "$release_change")"
           echo "release_candidate=$release_candidate" >> "$GITHUB_OUTPUT"
+
+          if [[ "$EVENT_NAME" == "pull_request" && "$release_candidate" == "true" ]]; then
+            jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" \
+              > "$RUNNER_TEMP/release-pr-body.md"
+            node scripts/release/release-notes.mjs \
+              --body-file "$RUNNER_TEMP/release-pr-body.md" \
+              --repository "$GITHUB_REPOSITORY" \
+              --output "$RUNNER_TEMP/release-notes.md" \
+              --pulls-output "$RUNNER_TEMP/release-notes-prs.txt"
+            previous_tag="$(git tag -l 'kaminide-v[0-9]*' \
+              --sort=-version:refname | sed -n '1p')"
+            notes_args=()
+            if [[ -n "$previous_tag" ]]; then
+              notes_args+=(--previous-tag "$previous_tag")
+            fi
+            node scripts/release/verify-release-notes-prs.mjs \
+              --pulls-file "$RUNNER_TEMP/release-notes-prs.txt" \
+              --repository "$GITHUB_REPOSITORY" --head HEAD \
+              "${notes_args[@]}"
+          fi
 
           installer_candidate="$release_candidate"
           if grep -Eq '^(\.github/workflows/(docker|pr-checks)\.yml$|scripts/(build-runtime-payload|build_installer|build_setup_rust)\.mjs$|scripts/release/)' "$changed_files"; then
@@ -117,7 +141,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -143,7 +167,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -185,7 +209,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -215,7 +239,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -240,7 +264,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -272,7 +296,7 @@ jobs:
 
       - name: Restore Cargo inputs and build output
         id: cargo-cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -305,7 +329,7 @@ jobs:
 
       - name: Set up Node.js for the installer
         if: needs.scope.outputs.installer_candidate == 'true'
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -353,7 +377,7 @@ jobs:
       - name: Upload the tested release candidate
         if: needs.scope.outputs.release_candidate == 'true'
         id: release-artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: kaminide-release-${{ github.sha }}
           path: |
@@ -368,7 +392,7 @@ jobs:
       - name: Upload installer pipeline validation
         if: needs.scope.outputs.installer_candidate == 'true' && needs.scope.outputs.release_candidate != 'true'
         id: validation-artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: kaminide-installer-validation-${{ github.sha }}
           path: |
@@ -401,7 +425,7 @@ jobs:
       - name: Save the shared Cargo cache from main
         if: success() && steps.cargo-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         continue-on-error: true
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -423,7 +447,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
 
@@ -443,7 +467,7 @@ jobs:
             --release-sha "$(git rev-parse HEAD)"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Build the release image without publishing
         env:

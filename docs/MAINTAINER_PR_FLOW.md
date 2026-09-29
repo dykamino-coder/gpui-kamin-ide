@@ -211,6 +211,7 @@ Checkbox автора помогает маршрутизации, но факт
 | Diagnostic PR: registration | открытая task card и private evidence; регистрацию завершает автор |
 | Diagnostic PR: research/verification result | evidence и outcome уже зарегистрированной задачи; приёмка у мейнтейнера |
 | Change/Fix PR | functional code, tests, fixtures или исправляющая документация без release bump |
+| Dependabot GitHub Actions PR | обновление workflow Action pins; приёмка по [CONTRIBUTING.md](../CONTRIBUTING.md#обновления-github-actions-от-dependabot), без BR/INC и без отдельного product release |
 | Release PR | в diff только versions и производные lockfiles; release notes находятся в PR body, binary artifacts создаёт CI |
 
 Если Diagnostic PR уже содержит functional fix, агент исправляет тип на
@@ -230,7 +231,7 @@ raw evidence в public checkout и не создаёт там extracts или п
 
 До чтения реализации и merge агент проверяет public diff и PR body:
 
-- raw corporate logs, prompts, internal repository contents, user paths и
+- raw private logs, prompts, private repository contents, user paths и
   screenshots не должны находиться в public repository;
 - PAT, cookies, passwords, authorization headers, private keys и credential
   exports запрещены в обоих репозиториях;
@@ -240,7 +241,7 @@ raw evidence в public checkout и не создаёт там extracts или п
   не выполняются.
 
 При credential exposure агент не печатает значение, не продолжает merge и
-сообщает владельцу о необходимости удаления и ротации. При raw corporate data
+сообщает владельцу о необходимости удаления и ротации. При raw private data
 в public PR агент не мержит его: сохраняет допустимый материал в private repo,
 готовит sanitized summary и сообщает владельцу, что публичная история требует
 отдельной очистки.
@@ -292,12 +293,18 @@ Maintainer agent:
    `ours`/`theirs`;
 5. запускает применимые automated и Windows runtime gates на точном merge
    candidate;
-6. не выдаёт недоступную corporate-only проверку за пройденную;
+6. не выдаёт недоступную deployment-only проверку за пройденную;
 7. закрывает review threads, фиксирует ограничения и мержит через GitHub PR
    flow.
 
-Post-merge corporate observation не блокирует merge/release, если PR не
+Post-merge deployment observation не блокирует merge/release, если PR не
 заявляет этот недоступный сценарий проверенным и называет владельца наблюдения.
+
+Dependabot PR для GitHub Actions из snapshot проходит тот же порядок обновления
+branch, проверки точного head и последовательного merge. Особая проверка
+workflow и исходы `merged`/`closed`/`blocked` описаны в `CONTRIBUTING.md`.
+При пересечении с другим PR, меняющим workflow, сначала принять зависимое
+изменение, затем заново проверить Dependabot PR от свежего `origin/main`.
 
 ## 6. Один release на пачку
 
@@ -311,12 +318,22 @@ Post-merge corporate observation не блокирует merge/release, если
 - Если ни один Change/Fix PR не смержен, release не создаётся.
 - Diagnostic-only изменения release не вызывают.
 - Чистые docs/process изменения без product/runtime diff release не вызывают.
+- Обновления только GitHub Actions от Dependabot release не вызывают.
 - Если mergeable fix несколько, release выполняется один раз после последнего.
 - Входящий чужой PR после snapshot относится к следующему запуску. Принятый
   через coordination PR собственный child входит в текущую пачку и её один
   release; отдельного release на каждую новую находку нет.
 - Release выполняется отдельной branch/PR строго по `CONTRIBUTING.md`; functional
   code в release PR не добавляется.
+- В body release PR мейнтейнер пишет `## Release notes` по шаблону из
+  `CONTRIBUTING.md`: только смерженные implementation PR с реально доставленными
+  изменениями после предыдущего immutable release tag. Diagnostic/docs PR,
+  registry updates и version bump не объявляются исправлениями. Мейнтейнер
+  проверяет необходимость `Upgrade notes` и `Known issues`: в последнем
+  перечисляет только существенные открытые проблемы этого release с public
+  task link, симптомом и workaround либо его отсутствием, не весь backlog.
+  Отдельно указываются фактические проверки и ограничения; CI проверяет формат
+  и ссылки, а открытый статус и применимость задач проверяет мейнтейнер.
 - До merge maintainer принимает настоящий Windows candidate из PR Actions
   artifact. Локальная сборка допустима для диагностики, но не является
   production source.
@@ -331,13 +348,17 @@ Post-merge corporate observation не блокирует merge/release, если
 
 ## 7. Результат запуска
 
+Перед отчётом выполнить [финальную сверку связанных PR](../CLAUDE.md#завершение-поручения-и-связанные-pr),
+включая private evidence repository. Незавершённый вспомогательный PR должен
+попасть в отчёт с владельцем, blocker/review и условием продолжения.
+
 Итоговый отчёт кратко перечисляет:
 
 - merged, closed, replaced и blocked PR;
 - незавершённые регистрации с автором и blocker, открытые BR/INC без PR решения
   и причины, по которым они не входят в текущий snapshot;
 - проверки точных merge candidates;
-- недоступные corporate observations и их владельцев;
+- недоступные deployment observations и их владельцев;
 - release PR/version, Actions run, GitHub Release и Docker digest либо причину
   отсутствия/незавершённости release;
 - порядок оставшихся dependencies;

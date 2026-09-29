@@ -6,7 +6,7 @@
 //   4. WSL distro list on Windows (`wsl -l -q`).
 //
 // Cached for the lifetime of the host process — the discovery walk
-// touches the FS and spawns several child processes (slow on corp
+// touches the FS and spawns several child processes (slow on managed
 // machines), no point re-running on every "+ new terminal" click.
 //
 // Ported 1:1 from the legacy Bridge desktop client's shell discovery.
@@ -18,7 +18,7 @@ import path from "node:path"
 import { promisify } from "node:util"
 
 // ASYNC child-process spawn. discoverShells() runs `where`/`which`/`wsl -l` to
-// enumerate shells; these are slow on corp machines (cold WSL alone can take
+// enumerate shells; these are slow on managed machines (cold WSL alone can take
 // seconds). The former `execFileSync` blocked the ENTIRE host event loop for
 // that whole time, stalling every other IPC the renderer awaited (listDir,
 // doc-sync, streaming forwarding) → the UI froze ("Not Responding"). execFile is

@@ -64,7 +64,7 @@ function formatHour(h: number | null): string {
 
 function shortModel(m: string | null): string {
   if (!m) return '—'
-  // claude-opus-5 → Opus 5; claude-opus-4-8-20250101 → Opus 4.8 (старые логи)
+  // claude-opus-5-5 → Opus 5.5; claude-opus-4-8-20250101 → Opus 4.8 (старые логи)
   const match = m.match(/claude-(opus|sonnet|haiku|fable)-(\d+)-?(\d+)?/i)
   if (match) {
     const family = match[1]!.charAt(0).toUpperCase() + match[1]!.slice(1).toLowerCase()

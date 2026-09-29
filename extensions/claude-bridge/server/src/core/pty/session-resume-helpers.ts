@@ -45,7 +45,9 @@ export function findOrRecreateSettingsDir(conversationId: string, _tokenId: stri
       // synthetic <synthetic> UUID as previous_message_id → 400 forever,
       // or choke on a torn line / broken parentUuid chain left by a
       // mid-write kill (network drop → instant reconnect).
-      try { repairJsonl(jsonlPath) } catch (e) {
+      try {
+        repairJsonl(jsonlPath)
+      } catch (e) {
         warnLog('repairJsonl failed', { jsonlPath, error: String(e) })
       }
 
@@ -63,7 +65,9 @@ export function findOrRecreateSettingsDir(conversationId: string, _tokenId: stri
         return reconstructed
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return null
 }
 
@@ -83,7 +87,9 @@ export function scanForSettingsDirBySlug(slug: string): string | null {
         if (candidateSlug === slug) return candidate
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return null
 }
 
@@ -128,7 +134,11 @@ export interface JsonlRepairStats {
 }
 
 const NO_REPAIR: JsonlRepairStats = {
-  repaired: false, droppedUnparseable: 0, droppedSynthetic: 0, relinkedParents: 0, truncatedTail: 0,
+  repaired: false,
+  droppedUnparseable: 0,
+  droppedSynthetic: 0,
+  relinkedParents: 0,
+  truncatedTail: 0,
 }
 
 /**
@@ -165,10 +175,13 @@ const NO_REPAIR: JsonlRepairStats = {
  */
 export function repairJsonl(jsonlPath: string): JsonlRepairStats {
   let content: string
-  try { content = fs.readFileSync(jsonlPath, 'utf8') }
-  catch { return NO_REPAIR }
+  try {
+    content = fs.readFileSync(jsonlPath, 'utf8')
+  } catch {
+    return NO_REPAIR
+  }
 
-  const rawLines = content.split('\n').filter(l => l.trim().length > 0)
+  const rawLines = content.split('\n').filter((l) => l.trim().length > 0)
   if (rawLines.length === 0) return NO_REPAIR
 
   // Pass 1+2: parse, drop torn lines and synthetic-id entries.
@@ -178,8 +191,12 @@ export function repairJsonl(jsonlPath: string): JsonlRepairStats {
   let droppedSynthetic = 0
   for (const line of rawLines) {
     let obj: Record<string, unknown>
-    try { obj = JSON.parse(line) }
-    catch { droppedUnparseable++; continue }
+    try {
+      obj = JSON.parse(line)
+    } catch {
+      droppedUnparseable++
+      continue
+    }
     const mid = (obj as { message?: { id?: unknown } }).message?.id
     if (typeof mid === 'string' && mid.length > 0 && !mid.startsWith('msg_') && !isCompactCheckpoint(line)) {
       droppedSynthetic++
@@ -213,14 +230,20 @@ export function repairJsonl(jsonlPath: string): JsonlRepairStats {
   // the broken trailing entries past that checkpoint are removed.
   let lastGoodIdx = -1
   for (let i = kept.length - 1; i >= 0; i--) {
-    if (isCompletedRealAssistant(kept[i]!.line) || isCompactCheckpoint(kept[i]!.line)) { lastGoodIdx = i; break }
+    if (isCompletedRealAssistant(kept[i]!.line) || isCompactCheckpoint(kept[i]!.line)) {
+      lastGoodIdx = i
+      break
+    }
   }
   let truncatedTail = 0
   let final = kept
   if (lastGoodIdx >= 0) {
     let hasBadTail = false
     for (let i = lastGoodIdx + 1; i < kept.length; i++) {
-      if (isBrokenAssistant(kept[i]!.line)) { hasBadTail = true; break }
+      if (isBrokenAssistant(kept[i]!.line)) {
+        hasBadTail = true
+        break
+      }
     }
     if (hasBadTail) {
       // Drop everything after the last good assistant entry. We deliberately
@@ -234,19 +257,25 @@ export function repairJsonl(jsonlPath: string): JsonlRepairStats {
   const changed = droppedUnparseable > 0 || droppedSynthetic > 0 || relinkedParents > 0 || truncatedTail > 0
   if (!changed) return NO_REPAIR
 
-  try { fs.copyFileSync(jsonlPath, `${jsonlPath}.bak-${Date.now()}`) }
-  catch (e) {
+  try {
+    fs.copyFileSync(jsonlPath, `${jsonlPath}.bak-${Date.now()}`)
+  } catch (e) {
     warnLog('repairJsonl backup failed; skipping repair to avoid data loss', {
-      jsonlPath, error: String(e),
+      jsonlPath,
+      error: String(e),
     })
     return NO_REPAIR
   }
   const tmpPath = `${jsonlPath}.repair-tmp`
-  fs.writeFileSync(tmpPath, final.map(p => p.line).join('\n') + '\n')
+  fs.writeFileSync(tmpPath, final.map((p) => p.line).join('\n') + '\n')
   fs.renameSync(tmpPath, jsonlPath)
 
   const stats: JsonlRepairStats = {
-    repaired: true, droppedUnparseable, droppedSynthetic, relinkedParents, truncatedTail,
+    repaired: true,
+    droppedUnparseable,
+    droppedSynthetic,
+    relinkedParents,
+    truncatedTail,
   }
   debugLog('repairJsonl: transcript repaired', { jsonlPath, ...stats })
   return stats
@@ -269,13 +298,14 @@ export function resolveNewestInChain(settingsDir: string, conversationId: string
     const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
     const dir = path.join(os.homedir(), '.claude', 'projects', slug)
     if (!fs.existsSync(dir)) return null
-    const files = fs.readdirSync(dir)
-      .filter(f => f.endsWith('.jsonl'))
-      .map(f => {
+    const files = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.jsonl'))
+      .map((f) => {
         const st = fs.statSync(path.join(dir, f))
         return { id: f.slice(0, -'.jsonl'.length), mtime: st.mtimeMs, size: st.size }
       })
-      .filter(f => f.size > 0)
+      .filter((f) => f.size > 0)
       .sort((a, b) => b.mtime - a.mtime)
     const newest = files[0]
     if (!newest) return null
@@ -302,7 +332,10 @@ export function resolveNewestInChain(settingsDir: string, conversationId: string
     const candUuids = uuidsOf(candPath, 200)
     let related = false
     for (const u of candUuids) {
-      if (baseUuids.has(u)) { related = true; break }
+      if (baseUuids.has(u)) {
+        related = true
+        break
+      }
     }
     if (!related) {
       const bt = firstTs(basePath)
@@ -325,11 +358,55 @@ export function repairTranscriptForResume(settingsDir: string, conversationId: s
   const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
   const jsonlPath = path.join(os.homedir(), '.claude', 'projects', slug, `${conversationId}.jsonl`)
   if (!fs.existsSync(jsonlPath)) return NO_REPAIR
-  try { return repairJsonl(jsonlPath) }
-  catch (e) {
+  try {
+    return repairJsonl(jsonlPath)
+  } catch (e) {
     warnLog('repairTranscriptForResume failed', { jsonlPath, error: String(e) })
     return NO_REPAIR
   }
+}
+
+/** Read the most recent real assistant model without loading a large transcript.
+ * An explicit --model overrides Claude Code's restored model on --resume, so
+ * the server must recover it before applying a new-session default. */
+export function lastModelFromJsonlTail(jsonlPath: string): string | null {
+  let fd: number | undefined
+  try {
+    fd = fs.openSync(jsonlPath, 'r')
+    const size = fs.fstatSync(fd).size
+    const maxBytes = 8 * 1024 * 1024
+    const start = Math.max(0, size - maxBytes)
+    const buffer = Buffer.alloc(size - start)
+    let read = 0
+    while (read < buffer.length) {
+      const count = fs.readSync(fd, buffer, read, buffer.length - read, start + read)
+      if (count === 0) break
+      read += count
+    }
+    const text = buffer.subarray(0, read).toString('utf8')
+    const lines = text.slice(start === 0 ? 0 : text.indexOf('\n') + 1).split('\n')
+    for (let i = lines.length - 1; i >= 0; i--) {
+      let entry: { type?: string; model?: unknown; message?: { model?: unknown } }
+      try {
+        entry = JSON.parse(lines[i]!)
+      } catch {
+        continue
+      }
+      if (entry.type !== 'assistant') continue
+      const model = entry.message?.model ?? entry.model
+      if (typeof model === 'string' && model && model !== '<synthetic>') return model
+    }
+  } catch {
+    /* missing or unreadable transcript: let Claude Code restore it */
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd)
+  }
+  return null
+}
+
+export function lastModelForResume(settingsDir: string, conversationId: string): string | null {
+  const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
+  return lastModelFromJsonlTail(path.join(os.homedir(), '.claude', 'projects', slug, `${conversationId}.jsonl`))
 }
 
 /** True iff the JSONL line is an assistant entry that came from a real
@@ -337,8 +414,11 @@ export function repairTranscriptForResume(settingsDir: string, conversationId: s
 function isCompletedRealAssistant(line: string): boolean {
   if (!line || !line.trim()) return false
   let entry: { type?: string; message?: { id?: unknown; model?: unknown; stop_reason?: unknown } }
-  try { entry = JSON.parse(line) }
-  catch { return false }
+  try {
+    entry = JSON.parse(line)
+  } catch {
+    return false
+  }
   if (entry.type !== 'assistant') return false
   const m = entry.message
   if (!m) return false
@@ -365,23 +445,29 @@ function isCompletedRealAssistant(line: string): boolean {
 function isCompactCheckpoint(line: string): boolean {
   if (!line || !line.trim()) return false
   let e: { type?: string; subtype?: string; isCompactSummary?: unknown; message?: { content?: unknown } } | null
-  try { e = JSON.parse(line) }
-  catch { return false }
+  try {
+    e = JSON.parse(line)
+  } catch {
+    return false
+  }
   if (!e || typeof e !== 'object') return false
   if (e.type === 'system' && e.subtype === 'compact_boundary') return true
   if (e.type === 'compact-summary') return true
   if (e.isCompactSummary === true) return true
   const c = e.message?.content
-  const text = typeof c === 'string' ? c
-    : Array.isArray(c) ? c.map((b) => (b as { text?: string }).text ?? '').join(' ') : ''
+  const text =
+    typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (b as { text?: string }).text ?? '').join(' ') : ''
   return /compacted\s*\(ctrl[+\s]*o/i.test(text)
 }
 
 function isBrokenAssistant(line: string): boolean {
   if (!line || !line.trim()) return false
   let entry: { type?: string; message?: { id?: unknown; model?: unknown; stop_reason?: unknown } }
-  try { entry = JSON.parse(line) }
-  catch { return false }
+  try {
+    entry = JSON.parse(line)
+  } catch {
+    return false
+  }
   if (entry.type !== 'assistant') return false
   const m = entry.message
   if (!m) return false

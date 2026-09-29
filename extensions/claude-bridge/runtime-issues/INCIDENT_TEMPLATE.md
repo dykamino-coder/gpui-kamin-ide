@@ -8,7 +8,7 @@
 - **Private evidence:** immutable private commit URL or explained `not required`
 - **Dependencies:** none
 - **Acceptance:** automated / Windows runtime / post-merge observation
-- **Corporate observation owner:** none
+- **Deployment observation owner:** none
 
 ## Symptom
 

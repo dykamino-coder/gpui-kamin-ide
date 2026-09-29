@@ -17,7 +17,7 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
 
   const args = state.config.args ?? []
 
-  // Замерено на машине с корпоративным DLP/прокси: `npx -y <pkg>@latest`
+  // Замерено на машине с защитным ПО/прокси: `npx -y <pkg>@latest`
   // отвечает на initialize через ~29 СЕКУНД (резолв реестра до старта
   // сервера). Прежний 30с-таймаут убивал процесс за долю секунды до
   // готовности и заводил вечный цикл reconnect → npx → SIGTERM.

@@ -48568,14 +48568,15 @@ async function httpFetch(url, headers, body) {
 function suggestFetchHint(cause, host) {
   if (!cause) return null;
   const code = cause?.code || cause?.cause?.code;
-  if (code === "ENOTFOUND") return `DNS lookup failed \u2014 is "${host}" reachable from this machine? (VPN/corporate DNS?)`;
+  if (code === "ENOTFOUND") return `DNS lookup failed \u2014 is "${host}" reachable from this machine? (VPN or private DNS?)`;
   if (code === "ECONNREFUSED") return `Nothing listening on ${host} \u2014 check the port and that the service is running.`;
   if (code === "ECONNRESET") return `Connection reset by ${host} \u2014 remote closed mid-handshake (TLS mismatch, firewall, service crashed).`;
-  if (code === "CERT_HAS_EXPIRED" || code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE" || code === "SELF_SIGNED_CERT_IN_CHAIN") {
-    return `TLS certificate problem (${code}) \u2014 for private endpoints set NODE_TLS_REJECT_UNAUTHORIZED=0 in the server env, or install the corp CA root.`;
+  if (code === "CERT_HAS_EXPIRED") return `TLS certificate has expired for ${host} \u2014 renew the certificate.`;
+  if (code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE" || code === "SELF_SIGNED_CERT_IN_CHAIN") {
+    return `TLS certificate chain validation failed (${code}) \u2014 fix the server certificate chain or configure the issuing CA with NODE_EXTRA_CA_CERTS before starting the Bridge process.`;
   }
   if (code === "ETIMEDOUT") return `Connection to ${host} timed out \u2014 firewall or VPN may be blocking.`;
-  if (String(code).startsWith("DEPTH_ZERO")) return `TLS chain validation failed \u2014 likely missing corp CA root.`;
+  if (String(code).startsWith("DEPTH_ZERO")) return `TLS chain validation failed \u2014 likely missing private CA root.`;
   return null;
 }
 

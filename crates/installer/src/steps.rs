@@ -306,14 +306,9 @@ fn write_registry(dir: &Path, version: &str) -> Result<()> {
 }
 
 fn write_shortcuts(dir: &Path) -> Result<()> {
-    let exe = dir.join("kaminide-gpui.exe").display().to_string();
     // WScript.Shell через PowerShell (скрыто): IShellLink на windows-rs — сотня
     // строк COM ради двух ярлыков.
-    let script = format!(
-        "$w = New-Object -ComObject WScript.Shell; \
-         foreach ($p in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {{ \
-           $s = $w.CreateShortcut((Join-Path $p 'KaminIDE.lnk')); $s.TargetPath = '{exe}'; $s.Save() }}"
-    );
+    let script = crate::shortcuts::creation_script(dir);
     let code = quiet("powershell", &["-NoProfile", "-Command", &script])?;
     if code != 0 {
         klog(&format!("shortcuts exit {code} (non-fatal)"));

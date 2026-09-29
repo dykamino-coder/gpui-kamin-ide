@@ -21,8 +21,8 @@ manifest, а номер версии всегда соответствует о�
 
 Новый runtime incident оформляется одним файлом
 `extensions/claude-bridge/runtime-issues/INC-YYYY-NNNN.md`. Raw logs,
-screenshots, prompts, корпоративные paths/hostnames и полный analysis хранятся в
-private repository `dykamino-coder/gpui-kamin-ide-priv-evidence`; public PR
+screenshots, prompts, пути и адреса закрытых окружений и полный analysis
+хранятся в private repository `dykamino-coder/gpui-kamin-ide-priv-evidence`; public PR
 содержит только sanitized symptom, проверенные факты, incident ID и private URL.
 
 Maintainer agent уже авторизован в обоих репозиториях и открывает evidence по
@@ -54,8 +54,9 @@ calls не выполняются. Credentials не передаются ни в
 Автор постановки — человек или основной агент, которому поручено
 зарегистрировать проблему. Он отвечает за карточку и сам мержит свой
 Diagnostic PR; отдельный maintainer review постановки не требуется. Поручение
-зарегистрировать задачу включает этот документационный commit/push/merge,
-если владелец явно не ограничил scope. Ограничение `только исследование`
+зарегистрировать задачу включает этот документационный commit/push/merge
+и завершение связанного private evidence PR по тем же gates, если владелец
+явно не ограничил scope. Ограничение `только исследование`
 запрещает functional fix, но допускает регистрацию открытой задачи.
 
 Порядок работы автора:
@@ -72,19 +73,29 @@ Diagnostic PR; отдельный maintainer review постановки не т
    о причине полевого сбоя.
 3. Применить [private intake](#diagnostic-intake). Проверить public diff/body и
    связанное private evidence: provenance, доступность URL, отсутствие secrets
-   и raw corporate data в public. Private evidence фиксируется immutable URL
+   и raw private data в public. Private evidence фиксируется immutable URL
    на commit либо явно указывается, почему оно не требуется. Разрешение на
    регистрацию не расширяет разрешение на публикацию raw evidence.
 4. Создать Diagnostic PR только со своей открытой карточкой. Указать
    `author registration`, Incident ID, состояние, следующий шаг и проверки.
    PR body и карточка ссылаются друг на друга; номер созданного PR записать
-   перед финальной проверкой. Проверить Markdown-ссылки, `git diff --check`,
-   свежесть branch и применимые CI checks на точном merge candidate.
-5. Самостоятельно смержить PR через обычный GitHub PR flow после успешных
+   перед финальной проверкой. Если добавлено private evidence, записать этот
+   номер и canonical public task URL в private manifest/summary, проверить
+   private diff, checksums, privacy, свежую base/head и применимые checks/reviews.
+   Слить связанный private PR через обычный GitHub PR flow, сделать `fetch`
+   и проверить пакет с обратными ссылками в private `origin/main`. Public card
+   должна ссылаться на immutable commit с этим проверенным пакетом. Уже
+   зарегистрированный пакет повторно не публиковать. Затем проверить public
+   Markdown-ссылки, `git diff --check`, свежесть branch и применимые CI checks
+   на точном merge candidate.
+5. Самостоятельно смержить public PR через обычный GitHub PR flow после успешных
    проверок, без bypass обязательных checks/reviews. Затем сделать `fetch` и
-   проверить карточку и её открытый статус в актуальном `origin/main`.
-   Вернуть ссылку на карточку в `main` и merged PR. Только это завершает
-   регистрацию; просто открытый PR постановки завершением не считается.
+   проверить карточку и её открытый статус в актуальном public `origin/main`,
+   доступность immutable evidence URL и обратные ссылки. Вернуть ссылку на
+   карточку в `main` и merged PR обоих репозиториев, когда private PR создавался.
+   Только это завершает регистрацию; открытый public или связанный private PR
+   остаётся незавершённой регистрацией с явным blocker. Финальная сверка PR
+   обязательна по [CLAUDE.md](CLAUDE.md#завершение-поручения-и-связанные-pr).
 
 Недостающие измерения или Windows/runtime acceptance относятся к следующему
 этапу и явно записываются в карточке. Они не блокируют регистрацию, если
@@ -296,7 +307,7 @@ Workflow `.github/workflows/pr-checks.yml` автоматически выпол
 имя и проходит только когда все применимые Node, Bridge и Rust jobs успешны;
 docs-only PR ограничивается проверкой scope и whitespace. Workflow использует
 только read-only `GITHUB_TOKEN`, не получает production secrets и ничего не
-публикует. Ручные Windows и corporate-only gates ниже остаются отдельными и не
+публикует. Ручные Windows и deployment-only gates ниже остаются отдельными и не
 подменяются CI.
 
 Проверки независимых компонентов и Docker dry-run выполняются параллельно:
@@ -321,6 +332,9 @@ cache основной ветки. PR-run может читать cache свое
 полный Rust gate для Rust-изменений. Аналогично, Docker dry-run в PR может
 читать общий BuildKit cache, но обновляет его только trusted run в `main`,
 чтобы release workflow не потреблял cache из недоверенной PR-среды.
+Новый push в `main` не отменяет quality run предыдущего commit: каждый exact
+SHA должен получить собственный результат для возможного release. Для одного
+PR более старый run после нового push в его branch по-прежнему отменяется.
 
 Для UI-изменения дополнительно проверяются Windows runtime, hover/click,
 keyboard/focus, соседние элементы и визуальный результат. Незапущенная из-за
@@ -344,27 +358,27 @@ UX-исправления. Если Windows-проверка является me
 PR явно называет владельца наблюдения и не утверждает, что полевой дефект уже
 устранён.
 
-### Недоступный корпоративный контур
+### Недоступное окружение развёртывания
 
-Maintainer agent, который проверяет, сливает и выпускает проект, работает вне
-корпоративной сети и не имеет доступа к внутреннему GitLab, private/internal
-marketplaces и plugin repositories. Он не должен запрашивать или использовать
-корпоративный PAT, чужие Windows Credentials/VPN либо пытаться обходить это
-ограничение.
+Maintainer agent, который проверяет, сливает и выпускает проект, не имеет
+доступа к серверу, на котором развёрнут сервис, и к связанным с ним закрытым
+Git-источникам, marketplaces и plugin repositories. Он не должен запрашивать
+или использовать чужие токены, Windows Credentials или VPN либо пытаться
+обходить это ограничение.
 
 Если проверка требует именно такого доступа, PR обязан отдельно указать:
 
 - что maintainer проверяет до merge на automated tests, local fixtures и
   доступном Windows runtime;
-- какой corporate-only сценарий он намеренно пропускает;
-- владельца проверки внутри корпоративного контура, ожидаемый результат и
+- какой deployment-only сценарий он намеренно пропускает;
+- владельца проверки в окружении развёртывания, ожидаемый результат и
   evidence после обычной выкладки.
 
-Corporate-only проверка помечается как **post-merge production observation** и
-не блокирует merge/release. Недоступность GitLab для maintainer agent не
-считается падением теста. Это исключение не снимает остальные применимые merge
-gates и не позволяет объявлять корпоративную интеграцию проверенной до отчёта
-владельца.
+Deployment-only проверка помечается как **post-merge production observation** и
+не блокирует merge/release. Недоступность сервера или закрытого источника для
+maintainer agent не считается падением теста. Это исключение не снимает
+остальные применимые merge gates и не позволяет объявлять закрытую интеграцию
+проверенной до отчёта владельца.
 
 ## 5. Коммиты и PR
 
@@ -426,6 +440,33 @@ docs/process пачка release не создают.
 подмешиваются. Каждый deliverable получает отдельный PR, а строгие зависимости
 проверяются после каждого merge от свежего `origin/main`.
 
+### Обновления GitHub Actions от Dependabot
+
+`.github/dependabot.yml` раз в неделю проверяет версии GitHub Actions и
+самостоятельно открывает PR с меткой `github_actions`, когда доступно обновление.
+Такой PR не является следствием соседнего change PR, не обновляет установленную
+версию KaminIDE и не публикует релиз. Само появление PR не означает, что его
+можно автоматически смержить.
+
+Мейнтейнер включает уже открытые Dependabot PR в snapshot общего запуска
+`делай задачи` или поручения обработать очередь PR. Узкая runtime-пачка и
+поручение по одному другому PR не захватывают их автоматически. Для каждого
+обновления мейнтейнер проверяет фактический diff, upstream release notes и
+новый version/SHA pin, влияние на workflows, применимые CI jobs и review.
+Изменение release workflow требует его Windows candidate и release pipeline
+dry run, даже если обновилась только версия Action. Мейнтейнер отдельно
+отмечает, какие шаги нового Action эти проверки не выполняют: зелёный dry run
+не доказывает успешность будущей публикации с production secrets. Перед merge
+PR обновляется от свежего `origin/main`, а проверки проходят на его конечном
+head.
+
+Одобрённые обновления мержатся по одному через обычный PR flow. Если PR
+устарел, заменён или не подходит, его закрывают с причиной. Если блокирует
+совместимость, CI либо проверка, его оставляют открытым с конкретным blocker,
+владельцем следующего шага и условием повторной проверки. Чистое обновление
+GitHub Actions не является release-relevant change и само по себе не требует
+повышения версий приложения или server.
+
 ## 6. Release PR
 
 Release PR создаёт мейнтейнер из актуального `origin/main` после объединения
@@ -468,6 +509,70 @@ chore(release): KaminIDE 1.0.43 / server 6.3.118
 
 Фактические номера выбираются после последнего `fetch`; номера из примера не
 резервируются заранее.
+
+### Release notes для GitHub Release
+
+Раздел `## Release notes` в body release PR — источник опубликованного текста.
+GitHub `--generate-notes` не используется: он смешивает исправления с
+diagnostic/docs PR, где только заведены задачи, и может охватить старые релизы.
+Мейнтейнер составляет список из **уже смерженных** implementation PR после
+предыдущего immutable `kaminide-v<version>` tag. `kaminide-latest` — подвижный
+compatibility tag, его нельзя использовать как базу сравнения. Если предыдущего
+immutable tag нет, мейнтейнер явно фиксирует проверенную baseline-версию и не
+выдаёт всю историю репозитория за изменения одного релиза.
+
+Release notes описывают значимые последствия для пользователей и эксплуатации,
+а не перечисляют все commits. `Shipped changes` содержит реально доставленные
+features, fixes, изменения поведения, performance/reliability/security и
+существенные изменения release-инфраструктуры. Несколько commits одного
+результата объединяются в один понятный пункт. Каждая строка ссылается на merged
+implementation PR в этом репозитории. Diagnostic incident cards, постановки
+задач, registry updates, закрытие карточек, version-bump PR и чистые
+docs/tests/CI/refactor изменения не перечисляются как fixes. Исключение для
+внутренней работы — доказанное изменение установки, обновления, публикации или
+эксплуатации доставленного продукта: его описывают по фактическому эффекту.
+
+`Upgrade notes` — необязательный раздел для действий при обновлении,
+несовместимостей, изменений конфигурации и миграции данных. `Known issues` —
+необязательный раздел только для существенных нерешённых проблем, которые
+затрагивают выпускаемые версии. Для каждого пункта мейнтейнер сверяет открытый
+статус и применимость, описывает наблюдаемый симптом и условия, указывает
+обходной путь либо явно пишет, что его нет, и даёт ссылку на sanitized public
+task card/issue/PR этого репозитория. Подтверждённый симптом допустим при
+неизвестной причине; гипотезу не выдавать за установленную причину. Карточка
+может быть заведена до текущего release, но весь backlog переносить нельзя.
+Если проблема устранена или не затрагивает новый release, её не повторяют в
+`Known issues`. Diagnostic PR в этом разделе не становится shipped fix и сам
+по себе release не вызывает.
+
+Разделы следуют в порядке `Shipped changes`, при необходимости `Upgrade notes`
+и `Known issues`, затем обязательный `Verification and limitations`. В последнем
+указываются реально пройденные проверки и существенные непроверенные сценарии.
+Имена закрытых сервисов, raw logs и секреты в публичный текст не попадают. Полная
+техническая история остаётся доступной через сравнение immutable release tags;
+её не копируют в пункты release notes. Пример точного формата body:
+
+```markdown
+## Release notes
+### Shipped changes
+- Installer shortcuts use the installation directory as their working directory ([#117](https://github.com/dykamino-coder/gpui-kamin-ide/pull/117)).
+
+### Verification and limitations
+- Windows CI built the installer and tested real shortcuts; manual Windows smoke testing was unavailable.
+```
+
+PR CI требует непустые обязательные подразделы, ссылки на merged main-branch
+implementation PR с изменением вне одной документации в каждой строке
+`Shipped changes`, порядок разделов и ссылку на public task в каждом пункте
+`Known issues`, если раздел добавлен. Для implementation PR проверяются
+достижимость merge commit из проверяемой branch и отсутствие в предыдущем
+immutable release tag. Открытый статус и применимость known issues мейнтейнер
+сверяет вручную; CI этого не доказывает. Изменение body повторно
+запускает проверки. Production workflow сверяет hash просмотренного текста и
+публикует его вместе с Docker digest; при пустых/изменённых notes выпуск
+останавливается до Docker publication. Автоматическая проверка не определяет,
+правдиво ли описано поведение: мейнтейнер сверяет каждую строку с diff,
+результатом тестов и статусом задачи перед merge release PR.
 
 ## 7. Windows installer и приёмка release PR
 
@@ -536,6 +641,9 @@ threads. Сам merge не переносит PR artifact в production.
 
 После merge порядок полностью автоматический:
 
+Release workflow ставит runs в очередь: последующие merges не отменяют
+ожидающий выпуск. Очередь обрабатывается последовательно.
+
 1. `pull request checks` повторяет применимую матрицу на точном commit в `main`,
    заново собирает Windows installer и provenance и сохраняет artifact с SHA;
 2. workflow `release` запускается только после успешного gate этого же SHA и
@@ -547,15 +655,27 @@ threads. Сам merge не переносит PR artifact в production.
    labels, provenance и SBOM;
 5. image запускается по digest, а `/health`, `/api/download/check`, updater
    manifest и SHA-256 выдаваемого installer проверяются до продвижения aliases;
-6. создаётся immutable GitHub Release `kaminide-v<app-version>` с installer и
-   provenance;
+6. создаётся immutable GitHub Release `kaminide-v<app-version>` с installer,
+   provenance и проверенными release notes из body release PR;
 7. только после успешных проверок текущего release commit обновляются Docker
    `latest`, assets и git-тег compatibility Release `kaminide-latest`, а также
    отметка Latest у versioned GitHub Release. Rolling tag разрешено передвигать
-   только вперёд по истории `main`.
+   только вперёд по истории `main`: последующий docs/change merge не мешает
+   продвижению ещё не опубликованного release, но уже опубликованный более новый
+   release не может быть заменён старым retry.
 
 Обычный change/docs/diagnostic merge не содержит coordinated version bump:
-release workflow завершается зелёным no-op и ничего не публикует.
+release workflow завершается зелёным no-op и ничего не публикует. В списке
+Actions каждый запуск называется `Release check: <заголовок коммита>` (ручной
+retry показывает SHA); зелёный результат проверки сам по себе не означает
+релиз. Для no-op Summary содержит `No release published`, а в выпустившем
+версии запуске выполняется job `publish verified release`. Опубликованные
+версии проверяются по immutable тегу `kaminide-v<app-version>`.
+
+Для оператора Linux-хоста порядок запуска опубликованного Bridge
+image, сохранения volumes и обновления описан в
+[Bridge deployment runbook](extensions/claude-bridge/server/DEPLOYMENT.md).
+Этот документ не меняет автоматический GitHub Release/Docker publication flow.
 
 Перезапись уже опубликованной версии не допускается. Исправление после релиза
 получает новый patch и проходит тот же процесс как hotfix.

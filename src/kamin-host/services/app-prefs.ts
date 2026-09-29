@@ -11,7 +11,7 @@ export interface AppPrefs {
    *  and an extension posts a message (e.g. Claude waiting / session finished). */
   backgroundToasts: boolean
   /** Use the Windows-signed system ConPTY instead of node-pty's bundled one.
-   *  Off by default (bundled is instant on desktop Win11); on for corp AppLocker
+   *  Off by default (bundled is instant on desktop Win11); on for AppLocker
    *  setups that block the unsigned OpenConsole.exe. */
   useConptyDll: boolean
   /** Drop the confirmation dialog when a session or a whole project folder is

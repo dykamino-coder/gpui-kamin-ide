@@ -30,10 +30,7 @@ export { buildSystemPrompt }
 // is already on (session-settings). Denying it just cut teammates off from the
 // team-lead — they could only return via final text. Allowed now.
 // ---------------------------------------------------------------------------
-export const EXTRA_NATIVE_DENY = [
-  'Monitor', 'CronCreate', 'CronDelete', 'CronList',
-  'RemoteTrigger',
-]
+export const EXTRA_NATIVE_DENY = ['Monitor', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger']
 // The old 'ListMcpResources'/'ReadMcpResource' entries were misspelled (the
 // real natives are ListMcpResourcesTool/ReadMcpResourceTool) so they never
 // denied anything. Dropped — the bridge now answers resources/list itself
@@ -152,7 +149,7 @@ export function buildSessionEnv(sessionId: string, userName: string, effort?: st
   // Still set defensively in case a future CLI version starts honouring
   // them for MCP — costs nothing if they're a no-op.
   env.BASH_DEFAULT_TIMEOUT_MS = '1500000' // 25 min default
-  env.BASH_MAX_TIMEOUT_MS = '1800000'     // 30 min ceiling
+  env.BASH_MAX_TIMEOUT_MS = '1800000' // 30 min ceiling
 
   // Anthropic API request timeout. CLI 2.1.101 fixed a hardcoded 5min cap
   // that was ignoring this var — extended thinking and slow gateways
@@ -189,23 +186,31 @@ export function buildSessionEnv(sessionId: string, userName: string, effort?: st
   return env
 }
 
+/** Only the retired Opus 4/4.1 IDs get the legacy resume fallback. Newer
+ *  Opus 4.x models remain available and must keep an existing session's choice. */
+export function modelForResume(requestedModel: string): string {
+  return /^claude-opus-4(?:$|-20250514$|-(?:0|1)(?:$|[-\[]))/.test(requestedModel)
+    ? DEFAULT_SESSION_MODEL
+    : requestedModel
+}
+
 export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readonly string[] = []): string[] {
   const args: string[] = [
-    '--disallowedTools', getDisallowedBuiltinTools().join(','),
+    '--disallowedTools',
+    getDisallowedBuiltinTools().join(','),
     '--dangerously-skip-permissions',
-    '--effort', sessionConfig.effort || 'high',
+    '--effort',
+    sessionConfig.effort || 'high',
   ]
 
-  // Default every fresh session to DEFAULT_SESSION_MODEL unless the client
-  // explicitly picked something else. Sessions that are --resume'd will pick up
-  // their prior model from the JSONL before this arg kicks in (CLI gives
-  // --resume precedence over --model for historical model of the conversation).
-  const requestedModel = sessionConfig.model || DEFAULT_SESSION_MODEL
-  // Опус 4.x выпилен (клиентский пикер его не выдаёт): легаси id из старых
-  // сохранённых сессий не должен воскрешать снятую модель.
-  // Граница после «4»: не зацепить гипотетический claude-opus-45.
-  const effectiveModel = /claude-opus-4(?:[.-]|$|\[)/.test(requestedModel) ? DEFAULT_SESSION_MODEL : requestedModel
-  args.push('--model', effectiveModel)
+  // --model overrides the transcript's model on --resume. createSession
+  // normally recovers that model first; if a transcript has no readable model,
+  // omit the flag and let Claude Code restore it itself.
+  if (!sessionConfig.resumeConversationId || sessionConfig.model) {
+    const requestedModel = sessionConfig.model || DEFAULT_SESSION_MODEL
+    const effectiveModel = modelForResume(requestedModel)
+    args.push('--model', effectiveModel)
+  }
 
   // Resume a previous conversation
   if (sessionConfig.resumeConversationId) {

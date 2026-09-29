@@ -7,8 +7,8 @@
 import path from 'path'
 
 const VALID_NAME = /^[A-Za-z0-9._-]{1,64}$/
-// Allow https / http / git@ / ssh:// / git:// schemes. Corporate GitLab
-// instances often expose HTTP-only endpoints behind a VPN, so rejecting
+// Allow https / http / git@ / ssh:// / git:// schemes. Private Git hosts
+// may expose HTTP-only endpoints behind a VPN, so rejecting
 // http:// breaks legit internal marketplaces. Keep argv-safe character
 // class (no shell metacharacters).
 const VALID_GIT_URL = /^(https?:\/\/|git@|ssh:\/\/|git:\/\/)[A-Za-z0-9._\-\/:@+%~]{4,512}(\.git)?$/

@@ -2,7 +2,8 @@
 
 - [ ] Diagnostic PR: регистрация/уточнение открытой задачи самим автором
 - [ ] Diagnostic PR: результат research/verification для приёмки мейнтейнером
-- [ ] Change/Fix PR: функциональные изменения без повышения release-версий
+- [ ] Change/Fix PR: code, tests, CI/config или исправляющая документация
+      без повышения release-версий
 - [ ] Release PR: подготовлен мейнтейнером, функционального кода нет
 
 Фактический diff соответствует выбранному типу:
@@ -24,7 +25,7 @@ docs/MAINTAINER_PR_FLOW.md. -->
 - Next step: <!-- research/change/verify, bounded результат и владелец -->
 - Private evidence: <!-- полный URL или объяснение `not required` -->
 
-- [ ] Public diff/body не содержит raw corporate logs, prompts, user paths,
+- [ ] Public diff/body не содержит raw private logs, prompts, user paths,
       internal repository contents или screenshots
 - [ ] PAT, passwords, cookies, authorization headers, private keys и credential
       exports отсутствуют в обоих репозиториях
@@ -79,15 +80,16 @@ Diagnostic stage / outcome:
 
 ## Ограничения доступа
 
-- [ ] Реальный corporate GitLab/private marketplace не требуется
-- [ ] Требуется owner-only corporate production observation после выпуска
+- [ ] Доступ к серверу развёртывания или закрытому marketplace не требуется
+- [ ] Требуется owner-only deployment observation после выпуска
 
-Maintainer-проверки, недоступный corporate-only сценарий, владелец и ожидаемое
+Maintainer-проверки, недоступный deployment-only сценарий, владелец и ожидаемое
 evidence:
 
-<!-- Maintainer agent не имеет доступа к corporate GitLab, marketplace/plugins,
-PAT, Windows Credentials или VPN. Он запускает доступные gates и не пытается
-выполнять недоступный сценарий. Не прикладывайте secrets или repository data. -->
+<!-- Maintainer agent не имеет доступа к серверу развёртывания, связанным
+закрытым Git-источникам, marketplace/plugins и чужим credentials или VPN.
+Он запускает доступные gates и не пытается выполнять недоступный сценарий.
+Не прикладывайте secrets или repository data. -->
 
 ## Класс приёмки
 
@@ -120,5 +122,9 @@ PAT, Windows Credentials или VPN. Он запускает доступные 
       acceptance приведены выше
 - [ ] Release PR меняет только `Cargo.toml`, `Cargo.lock`, Bridge server
       `package.json` и его `package-lock.json`; release notes находятся в body
+- [ ] Для release PR раздел `## Release notes` заполнен по `CONTRIBUTING.md`:
+      только смерженные implementation PR в `Shipped changes`, реальные проверки
+      и ограничения; `Upgrade notes`/`Known issues` добавлены при необходимости,
+      открытый статус и применимость известных проблем проверены вручную
 - [ ] Release PR не содержит вручную загруженных production assets; merge после
       приёмки разрешит exact-main automation из `CONTRIBUTING.md`

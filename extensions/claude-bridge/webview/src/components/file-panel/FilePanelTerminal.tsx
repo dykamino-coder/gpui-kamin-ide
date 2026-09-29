@@ -292,7 +292,7 @@ export function FilePanelTerminal({ tabId, cwd, visible }: FilePanelTerminalProp
   // Inactive tabs that have never been visible render an empty
   // placeholder — no xterm DOM, no PTY. Once the user clicks the tab
   // for the first time, `visible` flips and `mounted` flips with it,
-  // and the real terminal mounts. This prevents corp-Windows machines
+  // and the real terminal mounts. This prevents Windows machines with endpoint protection
   // from spawning N PowerShell instances at app start (each can take
   // 30+s under AppLocker / AV scanning).
   if (!mounted) {

@@ -15,8 +15,8 @@ export interface RefreshResult {
 }
 
 // Pull an existing marketplace checkout. Blocks stdin prompts and captures
-// git stderr so the UI can surface auth failures (common on corporate
-// GitLab). `source: directory` marketplaces need no update — the user
+// git stderr so the UI can surface auth failures (common on private
+// Git hosts). `source: directory` marketplaces need no update — the user
 // edits files in place — so we no-op. Returns the refreshed metadata so
 // the caller can update its lastUpdated display without re-listing all
 // marketplaces.

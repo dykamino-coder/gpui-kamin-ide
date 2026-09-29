@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeContextStats } from './session-cost'
+import { computeContextStats, contextLimitForModel, tierForModel } from './session-cost'
 
 // One assistant turn on the 1M Opus tier. `used` = input + cache_read + cache_creation.
 const turn = (msgId: string, inputTok: number, opts: { output?: number; cacheRead?: number } = {}) => ({
@@ -74,5 +74,35 @@ describe('computeContextStats — general', () => {
     const s = computeContextStats([turn('m1', 500_000)], true, TAB_MODEL)!
     expect(s.limit).toBe(1_000_000)
     expect(s.pct).toBe(50)
+  })
+})
+
+describe('Opus 5.5 estimates', () => {
+  it('uses the new published pricing without changing historical Opus 5 costs', () => {
+    expect(tierForModel('claude-opus-5-5')).toEqual({ input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 })
+    expect(tierForModel('claude-opus-5')).toEqual({ input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 })
+  })
+
+  it('uses the native 1M context window for Opus 5.5', () => {
+    expect(contextLimitForModel('claude-opus-5-5')).toBe(1_000_000)
+  })
+})
+
+describe('Fable 5.1 estimates', () => {
+  it('uses the published cache-read rate and native 1M window', () => {
+    expect(tierForModel('claude-fable-5-1')).toEqual({ input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 })
+    expect(contextLimitForModel('claude-fable-5-1')).toBe(1_000_000)
+  })
+})
+
+describe('Sonnet 5.5 estimates', () => {
+  it('uses the published Sonnet 5 rates without repricing older Sonnet logs', () => {
+    expect(tierForModel('claude-sonnet-5-5')).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 })
+    expect(tierForModel('claude-sonnet-5')).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 })
+    expect(tierForModel('claude-sonnet-4-6')).toEqual({ input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 })
+  })
+
+  it('uses the native 1M context window for Sonnet 5.5', () => {
+    expect(contextLimitForModel('claude-sonnet-5-5')).toBe(1_000_000)
   })
 })
