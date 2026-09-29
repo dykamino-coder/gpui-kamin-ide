@@ -228,8 +228,20 @@ respawn уже отправляется; полноценного shell recovery
 providers/state нет. BR-05 connection recovery не закрывает этот более широкий контракт.
 Нужен отдельный implementation PR и Windows gate; в этой ревизии код не дописывается.
 
-**Status:** ready. **Dependency:** none. **Acceptance:** automated + Windows
-runtime merge gate.
+**Status:** implementation в Change/Fix PR (пачка `RV-2026-09-29`); Windows
+runtime gate — обязательный CI job PR. **Dependency:** none.
+**Acceptance:** automated + Windows runtime merge gate.
+
+**Реализовано:** оболочка обрабатывает `kamin:exthost:respawned` в
+`ws_events/views.rs`: снимает отметки `resolved_views()` и сразу
+перерезолвливает встроенные и динамические вью, не дожидаясь
+`kamin:registry:update` (тот приходит от активации расширений, а вернуться
+вью обязаны и без неё). Заодно перезапрашивается статус со списком
+расширений. Своих слушателей обработчик не заводит, поэтому повторный
+respawn дубликатов не создаёт.
+
+**Остаток корня:** повторный посев open documents, active editor, selections
+и LSP state в нового ребёнка этим PR не покрыт — это отдельный child.
 
 Shell должен обработать `kamin:exthost:respawned`, заново получить contributions
 и восстановить view providers/state без полного restart приложения. Нужны tests
