@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { normalizeConnectionTransition } from '../../incident-diagnostics'
 import { toRendererConnectionState } from './connection-state'
 import { handleServerMessage, type HandlerCtx } from './handle-server-message'
 
@@ -52,5 +53,39 @@ describe('renderer connection state', () => {
 
     expect(terminateSessionWithError).toHaveBeenCalledOnce()
     expect(terminateSessionWithError).toHaveBeenCalledWith('Session not found')
+  })
+})
+
+/** Диагностика классифицирует разрыв ровно по тому объекту, который отдал
+ *  маппер: `recordBridgeOutbound` передаёт `args[1]` нормализатору без правок.
+ *  Поэтому связка проверяется целиком, а не каждая функция по отдельности —
+ *  по отдельности обе были зелёными и при потерянном коде (INC-2026-0027). */
+function classifyThroughMapper(state: Parameters<typeof toRendererConnectionState>[0]): string {
+  return normalizeConnectionTransition('tab-1', toRendererConnectionState(state, 'authority-a', 1, 1, 1)).cause
+}
+
+describe('INC-2026-0027: код закрытия доходит до диагностики', () => {
+  it('обрыв без причины (1006) остаётся сетевым, а не неизвестным', () => {
+    expect(classifyThroughMapper({ status: 'disconnected', closeCode: 1006 })).toBe('network')
+  })
+
+  it('штатное закрытие сервером (1000) остаётся удалённым закрытием', () => {
+    expect(classifyThroughMapper({ status: 'disconnected', closeCode: 1000 })).toBe('remote-close')
+  })
+
+  it('текстовая причина классифицируется и без кода', () => {
+    // Путь через `error` работал и до исправления: тест сторожит, что перенос
+    // кода его не подменил собой.
+    expect(classifyThroughMapper({ status: 'disconnected', error: 'Connection timed out' })).toBe('timeout')
+  })
+
+  it('намеренное отсоединение без кода остаётся неизвестным', () => {
+    // `disconnect()` ставит состояние без кода: приписывать ему сетевой сбой
+    // нельзя, иначе журнал наполнится ложными обрывами.
+    expect(classifyThroughMapper({ status: 'disconnected' })).toBe('unknown')
+  })
+
+  it('код не подменяет собой причину живого соединения', () => {
+    expect(classifyThroughMapper({ status: 'authenticated', sessionId: 'pty-1', closeCode: 1006 })).toBe('none')
   })
 })
