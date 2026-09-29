@@ -63,7 +63,9 @@ function highlightCode(code: string, lang: string): string {
 // Trailing sentence punctuation shouldn't be part of a linked URL
 // ("see http://x." → link http://x, not http://x.).
 function stripUrlTrail(u: string): string {
-  return u.replace(/[.,;:!?)\]]+$/, '')
+  // Хвостовые знаки эмфазы — часть разметки, а не адреса: `**https://x**`
+  // уносил `**` в href и в подпись (INC-2026-0051).
+  return u.replace(/[.,;:!?)\]*_]+$/, '')
 }
 // A code span whose ENTIRE content is one URL — nothing before or after. The
 // backtick already delimits it exactly, so no trailing-punctuation trim is
@@ -81,6 +83,27 @@ function extAnchor(url: string, label: string): string {
 // escaping + inline-code, so it operates on escaped text; the preceding-char
 // guard (`[^"'>=/\]]`) keeps it from re-linking a URL already inside an
 // href="…" attribute or a just-emitted anchor's label.
+/** Выполнить замену по тексту, скрыв HTML-теги за метками.
+ *
+ *  Метка — символ, которого в уже экранированном тексте быть не может, поэтому
+ *  замена не видит ни имён тегов, ни значений атрибутов, но по-прежнему видит
+ *  текст ПО ОБЕ стороны от тега. Разбиение по тегам такого не даёт: эмфаза
+ *  вокруг готовой ссылки перестала бы работать. */
+const TAG_MARK = String.fromCharCode(0)
+
+function withTagsMasked(html: string, run: (masked: string) => string): string {
+  const tags: string[] = []
+  const masked = html
+    .split(TAG_MARK)
+    .join('')
+    .replace(/<[^>]*>/g, (tag) => {
+      tags.push(tag)
+      return `${TAG_MARK}${String(tags.length - 1)}${TAG_MARK}`
+    })
+  const unmask = new RegExp(TAG_MARK + '([0-9]+)' + TAG_MARK, 'g')
+  return run(masked).replace(unmask, (_m, i: string) => tags[Number(i)] ?? '')
+}
+
 function linkify(text: string): string {
   text = text.replace(
     /\[([^\]]+)\]\((https?:\/\/[^)\s]+|mailto:[^)\s]+|www\.[^)\s]+)\)/g,
@@ -88,7 +111,13 @@ function linkify(text: string): string {
   )
   text = text.replace(
     /(^|[^"'>=/\]])((?:https?:\/\/|www\.)[^\s<>"'\])]+)/g,
-    (_m, pre: string, url: string) => pre + extAnchor(stripUrlTrail(url), stripUrlTrail(url)),
+    (_m, pre: string, url: string) => {
+      // Отрезанный хвост ВОЗВРАЩАЕТСЯ в текст, а не исчезает. Раньше он
+      // пропадал вместе с точкой в конце предложения, а знаки эмфазы,
+      // проглоченные адресом, лишали пару открывающему `**` (INC-2026-0051).
+      const clean = stripUrlTrail(url)
+      return pre + extAnchor(clean, clean) + url.slice(clean.length)
+    },
   )
   return text
 }
@@ -160,9 +189,16 @@ export function renderMarkdown(md: string): string {
   text = text.replace(/^## (.+)$/gm, '<h2 style="font-size:16px;color:var(--text-primary);margin:12px 0 5px;">$1</h2>')
   text = text.replace(/^# (.+)$/gm, '<h1 style="font-size: var(--fs-lg);color:var(--text-primary);margin:12px 0 6px;font-weight:700;">$1</h1>')
 
-  // Bold and italic
-  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  // Bold and italic. Замены идут по строке, где ТЕГИ СКРЫТЫ: раньше они шли по
+  // всему HTML, включая значения атрибутов, и вставляли закрывающий тег прямо
+  // в href уже созданной ссылки — при клике он уезжал как `%3C/strong%3E`
+  // (INC-2026-0051). Скрытие, а не разбиение по тегам: эмфаза вокруг ссылки
+  // (`**[метка](url)**`) обязана продолжать работать.
+  text = withTagsMasked(text, (masked) =>
+    masked
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>'),
+  )
 
   // Unordered lists (with nesting). Items are tight by default. Nesting is 2+
   // spaces or a tab — models routinely indent sub-bullets by three, which the
