@@ -24,6 +24,13 @@ export interface SafeConnectionTransition {
   retryAttempt: number
 }
 
+/** Отметка о непоместившейся записи. Заведомо короткая: она обязана лечь в
+ *  пустое поколение даже тогда, когда исходная запись в него не поместилась. */
+export interface SafeRecordDropped {
+  event: "record-dropped"
+  dropped: SafeConnectionTransition["event"] | SafeRendererSample["event"]
+}
+
 export interface SafeRendererSample {
   event: "renderer-sample"
   role: RendererRole
@@ -105,7 +112,7 @@ export function normalizeRendererSample(raw: unknown): SafeRendererSample {
   }
 }
 
-export function formatIncidentLine(record: SafeConnectionTransition | SafeRendererSample): string {
+export function formatIncidentLine(record: SafeConnectionTransition | SafeRendererSample | SafeRecordDropped): string {
   return `[incident] ${JSON.stringify({
     schema: 1,
     ts: new Date().toISOString(),
@@ -120,9 +127,25 @@ const lastConnectionByTab = new Map<string, string>()
 const lastSampleByRole = new Map<RendererRole, number>()
 let installed = false
 let incidentLog: RollingLogWriter | null = null
+let dropMarked = false
 
+/** Ротация обязана проходить МЕЖДУ записями, а не внутри одной.
+ *
+ *  `write` дозаполняет остаток поколения и лишь потом вращает журнал — верно
+ *  для сырого потока, неверно для строки `[incident] <json>`: голова строки
+ *  оставалась в `.1`, хвост уходил в новое поколение, и ни один обломок не
+ *  разбирался как JSONL (INC-2026-0026). `writeRecord` вращает журнал заранее
+ *  и кладёт запись целиком. */
 function emit(record: SafeConnectionTransition | SafeRendererSample): void {
-  incidentLog?.write(`${formatIncidentLine(record)}\n`)
+  const log = incidentLog
+  if (!log) return
+  if (log.writeRecord(`${formatIncidentLine(record)}\n`)) return
+  // Целиком запись не легла: либо она длиннее целого поколения, либо отказал
+  // дескриптор. Кладём ОДНУ короткую отметку вместо обломка — повторять её на
+  // каждый отказ нельзя, иначе журнал заполнит собой сама диагностика.
+  if (dropMarked) return
+  dropMarked = true
+  log.writeRecord(`${formatIncidentLine({ event: "record-dropped", dropped: record.event })}\n`)
 }
 
 export function recordBridgeOutbound(channel: string, args: unknown[]): void {
@@ -158,6 +181,7 @@ export function installIncidentDiagnostics(
 ): void {
   if (installed) return
   installed = true
+  dropMarked = false
   try {
     mkdirSync(logDir, { recursive: true })
     incidentLog = new RollingLogWriter(join(logDir, "incident.log"), {
