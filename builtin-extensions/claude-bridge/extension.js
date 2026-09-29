@@ -41203,6 +41203,9 @@ var SessionIdleTracker = class {
   wasWorking = false;
   settleUntil = 0;
   awaitingReplaySince = 0;
+  /** Сервер шлёт состояния жизненного цикла (`UserPromptSubmit`/`Stop`). Пока
+   *  их нет, трекер обязан работать как раньше — на эвристике заголовка OSC. */
+  hookSeen = false;
   /** Call on every socket (re)open — starts a window during which an idle
    *  transition won't fire a toast (covers the attach-replay blip). */
   armSettle() {
@@ -41218,7 +41221,19 @@ var SessionIdleTracker = class {
     if (Date.now() < this.settleUntil) return true;
     return this.awaitingReplaySince > 0 && Date.now() - this.awaitingReplaySince < SETTLE_HARD_CAP_MS;
   }
-  track(rawTitle, isWorking) {
+  /**
+   *  `hookDriven` — состояние пришло из хука жизненного цикла CLI, а не из
+   *  эвристики заголовка OSC.
+   *
+   *  BR-23: оба вида состояний шли сюда неразличимо, а трекер не знает границ
+   *  витка. Простой OSC-мигание «работает → простаивает» посреди оркестрации
+   *  Agent Teams снова разрешало тост, и до ЕДИНСТВЕННОГО `Stop` главного витка
+   *  успевало накопиться несколько «Session finished». Поэтому как только
+   *  сервер показал, что умеет хуки, виток закрывает ТОЛЬКО хук: эвристический
+   *  простой по-прежнему отслеживается, но тоста не даёт.
+   */
+  track(rawTitle, isWorking, hookDriven = false) {
+    if (hookDriven) this.hookSeen = true;
     if (isWorking) {
       this.lastWorkingAt = Date.now();
       this.wasWorking = true;
@@ -41229,6 +41244,7 @@ var SessionIdleTracker = class {
       return;
     }
     if (!this.wasWorking) return;
+    if (this.hookSeen && !hookDriven) return;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
@@ -41469,7 +41485,7 @@ function handleServerMessage(msg, ctx) {
         ...typeof m.waiting === "boolean" ? { waiting: m.waiting } : {},
         ...typeof m.lastMessage === "string" ? { lastMessage: m.lastMessage } : {}
       });
-      ctx.trackActivityForIdle(rawTitle, isWorking);
+      ctx.trackActivityForIdle(rawTitle, isWorking, hookDriven);
       ctx.notifyActivity(isWorking, hookDriven);
       break;
     }
@@ -42413,7 +42429,7 @@ var ConnectionManager = class _ConnectionManager {
         _ConnectionManager.lastTree = tree;
         this.window.webContents.send("tree-update", tree);
       },
-      trackActivityForIdle: (rawTitle, isWorking) => this.idleTracker.track(rawTitle, isWorking),
+      trackActivityForIdle: (rawTitle, isWorking, hookDriven) => this.idleTracker.track(rawTitle, isWorking, hookDriven),
       noteReplayCompleteForIdle: () => this.idleTracker.noteReplayComplete(),
       notifyActivity: (working, hookDriven) => _ConnectionManager.onActivity?.(this.tabId, working, hookDriven),
       handleMcpCall: (m) => {
