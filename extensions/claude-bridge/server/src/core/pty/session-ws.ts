@@ -9,6 +9,7 @@ import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
 import { rememberModelSelection } from './model-selection'
+import { waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
 import type { JsonlEntry } from '../../shared/jsonl-types'
@@ -47,6 +48,10 @@ import { sendSessionError as sendError } from './session-error'
  *  serialises quickly and progress moves visibly; large enough that a 36MB
  *  transcript is ~36 frames rather than thousands. */
 const DOWNLOAD_CHUNK_CHARS = 1_000_000
+/** Порог обратного давления выгрузки — вчетверо ниже общего предела 16 МиБ:
+ *  выгрузка не должна подводить соединение к границе, за которой обычные кадры
+ *  сессии начнут БРОСАТЬСЯ. */
+const DOWNLOAD_DRAIN = { limit: 4 * 1024 * 1024, pollMs: 25, timeoutMs: 60_000 }
 
 /** Yield to the event loop every N lines while parsing a whole transcript for a
  *  segment load, so the shared server stays responsive to other sessions. */
@@ -820,7 +825,20 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               ws.send(JSON.stringify({ type: 'jsonl:download-response', content, fileName }))
             } else {
               ws.send(JSON.stringify({ type: 'jsonl:download-begin', fileName, total }))
+              // Обратное давление БЕЗ ПОТЕРЬ. Раньше куски уходили подряд, без
+              // ожидания опустошения буфера и без отмены при разрыве: на
+              // медленном соединении выгрузка копилась поверх обычного трафика
+              // сессии (INC-2026-0019). Бросать кусок, как это делает
+              // `sendToClient` за пределом, здесь нельзя — у выгрузки нет
+              // повторной доставки, и брошенный кусок означает молча
+              // испорченный файл.
+              let aborted: DrainOutcome | null = null
               for (let sent = 0; sent < total; sent += DOWNLOAD_CHUNK_CHARS) {
+                const gate = await waitForDrain(ws, DOWNLOAD_DRAIN)
+                if (gate !== 'ready') {
+                  aborted = gate
+                  break
+                }
                 ws.send(
                   JSON.stringify({
                     type: 'jsonl:download-chunk',
@@ -830,7 +848,20 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   }),
                 )
               }
-              ws.send(JSON.stringify({ type: 'jsonl:download-end', fileName, total }))
+              if (aborted === null) {
+                ws.send(JSON.stringify({ type: 'jsonl:download-end', fileName, total }))
+              } else if (aborted === 'timeout' && ws.readyState === ws.OPEN) {
+                // Молчания быть не должно: клиент обязан узнать, что файл
+                // неполон, а не остаться с оборванной выгрузкой.
+                ws.send(
+                  JSON.stringify({
+                    type: 'jsonl:download-response',
+                    content: null,
+                    fileName: null,
+                    error: 'Download aborted: the connection did not drain',
+                  }),
+                )
+              }
             }
           } catch (err) {
             ws.send(
