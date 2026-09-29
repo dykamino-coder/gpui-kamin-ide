@@ -16,12 +16,25 @@ import { sendToClient } from './session-io'
 const MCP_CALL_TIMEOUT_MS = 120_000
 const HEAVY_TOOL_TIMEOUT_MS = 1_800_000 // 30 minutes
 const HEAVY_TOOLS = new Set([
-  'Grep', 'Glob', 'Read', 'Bash', 'PowerShell', 'Write', 'Edit',
-  'NotebookEdit', 'WebFetch', 'WebSearch', 'Monitor',
+  'Grep',
+  'Glob',
+  'Read',
+  'Bash',
+  'PowerShell',
+  'Write',
+  'Edit',
+  'NotebookEdit',
+  'WebFetch',
+  'WebSearch',
+  'Monitor',
   // Worktree / LSP — cold-start + indexing on big repos legitimately
   // exceed the 2-min default.
-  'EnterWorktree', 'ExitWorktree',
-  'LspDiagnostics', 'LspHover', 'LspDefinition', 'LspReferences',
+  'EnterWorktree',
+  'ExitWorktree',
+  'LspDiagnostics',
+  'LspHover',
+  'LspDefinition',
+  'LspReferences',
 ])
 const INTERACTIVE_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode'])
 
@@ -38,11 +51,7 @@ export function hasInflightMcpCall(sessionId: string): boolean {
   return false
 }
 
-export function sendMcpCall(
-  session: PtySession,
-  toolName: string,
-  input: Record<string, unknown>,
-): Promise<unknown> {
+export function sendMcpCall(session: PtySession, toolName: string, input: Record<string, unknown>): Promise<unknown> {
   const requestId = randomUUID()
   session.mcpCallCount++
   session.lastActivityAt = new Date()
@@ -69,18 +78,37 @@ export function sendMcpCall(
           reject(new Error(`MCP call timeout (${timeoutMs}ms): ${toolName}`))
         }, timeoutMs)
 
-    const delivered = session.ws.readyState === 1 /* WS.OPEN */
+    // `delivered` — это «кадр ПРИНЯТ транспортом», а не «сокет был открыт».
+    // Раньше признак считался по `readyState` ДО отправки и результат
+    // `sendToClient` игнорировался, а тот возвращает `false` не только на
+    // закрытом сокете: при переполнении исходящего буфера (16 МиБ) кадр
+    // отбрасывается, состояние сокета при этом остаётся `OPEN`. Интерактивный
+    // запрос без timeout помечался доставленным, не уходил никуда, и
+    // `resendUndeliveredMcpCalls` его пропускал — пользователь не получал
+    // вопрос, а вызов инструмента вставал навсегда (INC-2026-0011).
+    //
+    // Запись кладём ДО отправки: ответ клиента приходит отдельным событием
+    // цикла и не может обогнать синхронный `sendToClient`, но порядок
+    // сохраняет запись валидной даже если это изменится.
     pendingMcpCalls.set(requestId, {
-      resolve, reject, timer, toolName, input, delivered,
-      createdAt: Date.now(), sessionId: session.id,
+      resolve,
+      reject,
+      timer,
+      toolName,
+      input,
+      delivered: false,
+      createdAt: Date.now(),
+      sessionId: session.id,
     })
 
-    sendToClient(session.ws, {
+    const delivered = sendToClient(session.ws, {
       type: 'mcp:call',
       requestId,
       toolName,
       input,
     })
+    const pending = pendingMcpCalls.get(requestId)
+    if (pending) pending.delivered = delivered
 
     debugLog('MCP call sent to client host', { sessionId: session.id, requestId, toolName, delivered })
   })
@@ -96,13 +124,19 @@ export function resendUndeliveredMcpCalls(session: PtySession): void {
   for (const [requestId, pending] of pendingMcpCalls) {
     if (pending.sessionId !== session.id || pending.delivered) continue
     if (session.ws.readyState !== 1 /* WS.OPEN */) return
-    pending.delivered = true
-    sendToClient(session.ws, {
+    // Та же ошибка, что и при первой отправке: признак ставился ДО неё, и
+    // отброшенный по переполнению кадр навсегда числился доставленным.
+    // Теперь запрос остаётся недоставленным и будет повторён при следующем
+    // подключении; выходим сразу — буфер переполнен, остальные кадры тоже
+    // не пройдут.
+    const delivered = sendToClient(session.ws, {
       type: 'mcp:call',
       requestId,
       toolName: pending.toolName,
       input: pending.input,
     })
+    if (!delivered) return
+    pending.delivered = true
     debugLog('MCP call re-sent after reattach', { sessionId: session.id, requestId, toolName: pending.toolName })
   }
 }
