@@ -293,9 +293,16 @@ starvation path. После его merge повторить оба исходн�
 При исчезновении всех проверяемых симптомов закрыть verification с evidence, при
 остатке завести bounded child. Отдельный speculative repaint fix не нужен.
 
-**Status:** waiting для повторной verification. **Dependency:** BR-31;
-BR-01 уже merged. **Acceptance будущего fix:** automated + Windows runtime
-merge gate.
+**Status:** waiting для повторной verification; зависимость СНЯТА.
+**Dependency:** BR-31 реализован и влит ([#147](https://github.com/dykamino-coder/gpui-kamin-ide/pull/147)),
+BR-01 влит ранее — блокирующих зависимостей не осталось. **Acceptance будущего
+fix:** automated + Windows runtime merge gate.
+
+**Обновление 2026-09-29:** условие «после merge BR-31 повторить оба исходных
+сценария Chat и сценарий Plugins» стало выполнимым: `web::deliver()` зовёт
+`mark_pull_pending()`, которая будит насос без заказа перерисовки. Повтор
+сценариев БЕЗ движения мыши, смены фокуса и ручного ресайза этой правкой не
+выполнялся и остаётся всей оставшейся работой карточки.
 
 Подтверждены два проявления одного класса, но общая причина пока не доказана:
 
@@ -1297,8 +1304,11 @@ pending/generation/cancellation/reconciliation guarantees остаются не�
 после BR-31. Timeout сам по себе не доказывает отсутствие повторной mutation.
 
 **Status:** confirmed incident; transport diagnostics pending.
-**Dependency:** PR #12–#16 уже merged; BR-31 закрывает подтверждённый delivery
-path и нужен перед окончательной runtime acceptance общего transport. **Acceptance будущего fix:** automated transport/lifecycle tests +
+**Dependency:** PR #12–#16 влиты; BR-31 РЕАЛИЗОВАН и влит
+([#147](https://github.com/dykamino-coder/gpui-kamin-ide/pull/147)) — путь
+доставки, который он закрывал, больше не ждёт. Остаётся окончательная runtime
+acceptance общего транспорта; из неё НЕ следует, что подтверждённый путь
+доставки объясняет каждый случай зависшего ответа (см. ниже). **Acceptance будущего fix:** automated transport/lifecycle tests +
 Windows CEF runtime gate.
 
 Windows acceptance PR #13 воспроизвёл 3 раза из 5: mutating call
