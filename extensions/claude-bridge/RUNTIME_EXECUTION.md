@@ -41,9 +41,53 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 - `observation` — только заранее определённая полевая проверка;
 - `none` — новых PR по задаче сейчас не требуется.
 
-## Текущая пачка `RV-2026-09-06` — приёмка уже смерженного кода
+## Текущая пачка `RV-2026-09-29` — готовые к реализации BR
 
-**Status:** waiting — остаются Windows UI/authenticated live gates.
+**Status:** ready. **Snapshot:** `origin/main` `53439c554b5f979bfbddbf9a857c0342a6353fac`
+(релиз KaminIDE 1.0.59 / server 6.3.136). Открытых PR на момент snapshot нет.
+**Запуск:** владелец поручил обновить версию приложения, слить очередь PR и
+заняться проблемами, описанными в репозитории — общий запуск по
+[maintainer flow](../../docs/MAINTAINER_PR_FLOW.md#general-backlog-run).
+Ограничений `review only`, `без merge`, `без release` владелец не ставил.
+
+Выбор сделан из принятого backlog: 32 BR-карточки и 51 карточка
+`runtime-issues/INC-*.md`, из которых 48 без PR решения. В пачку взяты только
+задачи со статусом `ready`, чью приёмку закрывают automated tests и
+обязательный Windows CI gate.
+
+1. **BR-19** — `change`: разрыв shell-соединения обрабатывается как отмена
+   жизненного цикла, а не как падение расширения. Типизированная отмена с
+   областью поколения вместо `failAll` + классификация post-boot unhandled
+   rejection.
+2. **BR-31** — `change`: пробуждение насоса доставки webview на посты хоста.
+   Строгий prerequisite для завершения BR-25.
+3. **BR-04** — `change`: восстановление webview после respawn extension-host —
+   обработчик `kamin:exthost:respawned` и повторный посев provider/state.
+
+Порядок последовательный: BR-19 и BR-04 пересекаются по `src/kamin-host/`,
+BR-31 — по доставке в webview. После каждого merge выполняется новый `fetch` и
+проверка следующей ветки на overlap с обновлённым `main`.
+
+**Отложено с причинами (остаётся в backlog, не в этой пачке):**
+
+- **BR-18A**, **BR-20** — acceptance требует isolated authenticated Linux
+  server/browser, у мейнтейнера такого контура нет; шаг помечен как
+  owner-only post-merge observation.
+- **BR-02**, **BR-17** — research/operational PR вне поручения этой пачки.
+- **INC-2026-0011, -0020, -0025, -0043, -0054** (P1 без PR решения) и 42
+  карточки P2 — остаются принятым backlog. Каждая требует собственного
+  research или evidence, не покрытого automated-гейтами этой пачки; включение
+  их в пачку без этого дало бы speculative fix, что запрещено разделом
+  «Snapshot runtime-пачки».
+
+**Release.** Один release по разделу 6 flow — после последнего смерженного
+release-relevant Change/Fix PR этой пачки.
+
+## История `RV-2026-09-06` — приёмка уже смерженного кода
+
+**Status:** проход окончен; остатки перенесены в backlog. Windows UI и
+authenticated live gates по BR-05/09/10/29 не выполнены и завершёнными не
+объявляются: они ждут доступного контура у владельца.
 **Snapshot:** `origin/main` `686cc92b6c935e8ffb2416cf7b3b6f22c6f19ba2`, после
 merge и повторной проверки BR-30/#47. **Запуск:** владелец поручил закрыть
 остатки уже реализованных задач без новых functional fixes. Аудит и команды:
