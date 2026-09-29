@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import { assertValidName, assertAbsolutePath } from '../validators'
-import { redactUrl } from './url-auth'
+import { redactUrlsInText } from './url-auth'
 import { knownMarketplacesPath, readKnownMarketplaces, writeKnownMarketplaces } from './known-store'
 import { pullAllSubClones, syncPluginCacheFromSubClone } from '../plugins/sub-clone'
 import { runGit } from '../lib/git-async'
@@ -12,6 +12,22 @@ export interface RefreshResult {
   lastUpdated?: string
   error?: string
   changed?: boolean
+}
+
+/** Исход одного маркетплейса в своде. Свод обязан доносить его наверх: обычный
+ *  отказ `git pull` — это РАЗРЕШЁННОЕ обещание, а не исключение, поэтому внешний
+ *  catch его не видел и вызывающий получал «всё хорошо» (INC-2026-0041). */
+export interface MarketplaceOutcome {
+  name: string
+  ok: boolean
+  changed?: boolean
+  error?: string
+}
+
+/** Итог свода. `ok` — только когда ни один маркетплейс не отказал. */
+export interface RefreshSweepResult {
+  ok: boolean
+  results: MarketplaceOutcome[]
 }
 
 // Pull an existing marketplace checkout. Blocks stdin prompts and captures
@@ -68,7 +84,7 @@ export async function refreshMarketplaceOnce(name: string): Promise<RefreshResul
     return { ok: true, lastUpdated: entry.lastUpdated, changed }
   } catch (err: any) {
     const stderrRaw = typeof err?.stderr === 'string' ? err.stderr : err?.stderr?.toString() || ''
-    const stderr = redactUrl(stderrRaw).slice(0, 2000)
+    const stderr = redactUrlsInText(stderrRaw).slice(0, 2000)
     let hint = ''
     if (/authentication failed|could not read (Username|Password)|unable to access/i.test(stderrRaw)) {
       hint = 'Authentication required. The stored URL probably lost its token — re-add the marketplace with a Personal Access Token.'
@@ -77,8 +93,13 @@ export async function refreshMarketplaceOnce(name: string): Promise<RefreshResul
     } else if (/terminal prompts disabled/i.test(stderrRaw)) {
       hint = 'Git needs credentials but none are available. Re-add the marketplace with a token.'
     }
+    // `runGit` собирает message из аргументов команды и куска stderr, а в URL
+    // маркетплейса вшит токен: редактировать только отдельное поле stderr
+    // недостаточно — итоговый текст уходит и в журнал, и в тост. Чистить надо
+    // ТЕКСТОВЫМ редактором: `new URL` читает «fatal: … https://u:t@host» как
+    // адрес со схемой `fatal:` без пароля и вернул бы токен нетронутым.
     const message = [
-      `git pull failed: ${err?.message || 'unknown error'}`,
+      `git pull failed: ${redactUrlsInText(String(err?.message ?? err ?? 'unknown error'))}`,
       hint && `Hint: ${hint}`,
       stderr && `--- git stderr ---\n${stderr}`,
     ].filter(Boolean).join('\n')
@@ -90,19 +111,44 @@ export async function refreshMarketplaceOnce(name: string): Promise<RefreshResul
 // false. Runs sequentially so we don't hammer the remote, but fire-and-
 // forget from the caller's perspective — results are pushed to the UI via
 // an `mcp-servers-changed`-style broadcast (`marketplaces:updated`) so
-// the marketplace bar refreshes its chips when pulls finish.
-export async function refreshAllMarketplaces(window?: BrowserWindow): Promise<void> {
-  if (!fs.existsSync(knownMarketplacesPath())) return
+// the marketplace bar refreshes its chips when pulls finish. Один отказавший
+// маркетплейс не останавливает остальные, но и не выдаётся за успех.
+export async function refreshAllMarketplaces(window?: BrowserWindow): Promise<RefreshSweepResult> {
+  if (!fs.existsSync(knownMarketplacesPath())) return { ok: true, results: [] }
   const known = readKnownMarketplaces() as any
   const names = Object.keys(known).filter(n => known[n]?.autoUpdate !== false)
+  const results: MarketplaceOutcome[] = []
   for (const name of names) {
-    try { await refreshMarketplaceOnce(name) } catch { /* logged inside */ }
-    if (window && !window.isDestroyed()) {
-      window.webContents.send('marketplaces:updated', { name })
+    let outcome: MarketplaceOutcome
+    try {
+      const result = await refreshMarketplaceOnce(name)
+      outcome = result.ok
+        ? { name, ok: true, changed: result.changed }
+        : { name, ok: false, error: result.error ?? 'Update failed' }
+    } catch (err: any) {
+      // Неожиданный бросок (повреждённый known-store, отказ записи) прежде
+      // проглатывался пустым catch. Он такой же отказ, как и возвращённый.
+      outcome = { name, ok: false, error: redactUrlsInText(String(err?.message ?? err)) }
     }
+    if (!outcome.ok) console.warn(`[marketplaces] ${name}: refresh failed — ${outcome.error ?? ''}`)
+    results.push(outcome)
+    // Событие остаётся событием ЗАВЕРШЕНИЯ: `name` на месте ради прежних
+    // слушателей, исход добавлен рядом. Без него чип гасил спиннер и молча
+    // перечитывал список, как будто обновление прошло.
+    if (window && !window.isDestroyed()) {
+      window.webContents.send('marketplaces:updated', {
+        name,
+        ok: outcome.ok,
+        ...(outcome.error === undefined ? {} : { error: outcome.error }),
+      })
+    }
+    // А вот хук `MarketplaceUpdated` — событие УСПЕХА: обновления не было,
+    // значит и сообщать о нём нечего.
+    if (!outcome.ok) continue
     try {
       const { emitBridgeHookEvent } = await import('../hooks/emit-bridge-event')
       emitBridgeHookEvent('MarketplaceUpdated', { name })
     } catch { /* ignore */ }
   }
+  return { ok: results.every(r => r.ok), results }
 }

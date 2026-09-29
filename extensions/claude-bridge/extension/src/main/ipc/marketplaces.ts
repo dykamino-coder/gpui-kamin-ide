@@ -42,8 +42,9 @@ export function registerMarketplaceIPC(getMainWindow: () => BrowserWindow | null
   })
 
   ipcMain.handle('plugins:refresh-all-marketplaces', async () => {
-    await refreshAllMarketplaces(getMainWindow() ?? undefined)
-    return { ok: true }
+    // Безусловное `{ok:true}` скрывало отказ отдельного маркетплейса за сводом
+    // (INC-2026-0041): `ok` теперь ложно, если отказал хоть один.
+    return await refreshAllMarketplaces(getMainWindow() ?? undefined)
   })
 
   ipcMain.handle('plugins:set-marketplace-autoupdate', (
@@ -58,7 +59,13 @@ export function registerMarketplaceIPC(getMainWindow: () => BrowserWindow | null
   // bit so the window is up and the user isn't competing with a burst of
   // git requests at cold start. Matches CLI's at-session-start behaviour.
   setTimeout(() => {
-    refreshAllMarketplaces(getMainWindow() ?? undefined).catch(err => {
+    refreshAllMarketplaces(getMainWindow() ?? undefined).then(sweep => {
+      // Обычный отказ `git pull` — разрешённое обещание, до внешнего `catch`
+      // он не доходил. Стойкий след теперь остаётся и для фонового прогона.
+      for (const result of sweep.results) {
+        if (!result.ok) console.warn(`[marketplaces] auto-refresh failed for "${result.name}": ${result.error ?? ''}`)
+      }
+    }).catch(err => {
       console.warn('[marketplaces] auto-refresh failed:', err instanceof Error ? err.message : err)
     })
   }, 8_000)

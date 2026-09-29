@@ -29,6 +29,18 @@ export function MarketplaceChip({ name, autoUpdate, isActive, onClick, onRefresh
     return bridge.onMarketplaceUpdated((payload) => {
       if (payload.name !== name) return
       setUpdating(false)
+      // Фоновое обновление могло отказать: раньше исход до сюда не доезжал и
+      // чип гасил спиннер молча, будто обновление прошло (INC-2026-0041).
+      // `ok === undefined` — отправитель старого образца, исход неизвестен:
+      // выдавать его за отказ нельзя.
+      if (payload.ok === false) {
+        showToast({
+          type: 'error',
+          title: name,
+          message: payload.error || 'Update failed',
+        })
+        return
+      }
       onRefresh()
     })
   }, [name])

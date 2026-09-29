@@ -29,13 +29,25 @@ export function applyAuthToUrl(url: string, auth: MarketplaceAuth): string {
 }
 
 /** Hide credentials in a URL for display / logging: `http://user:pass@host` →
- *  `http://user:***@host`. Mirrors CLI's redactUrlCredentials behaviour. */
+ *  `http://user:***@host`. Mirrors CLI's redactUrlCredentials behaviour.
+ *
+ *  Only for a string that IS a URL. Free text goes through `redactUrlsInText`:
+ *  `new URL` happily reads `fatal: unable to access https://user:token@host` as
+ *  a URL with scheme `fatal:` and no password, and would hand the token back
+ *  untouched (INC-2026-0041). */
 export function redactUrl(url: string): string {
   try {
     const u = new URL(url)
     if (u.password) u.password = '***'
     return u.toString()
   } catch {
-    return url.replace(/(https?:\/\/[^:/\s]+):([^@/\s]+)@/g, '$1:***@')
+    return redactUrlsInText(url)
   }
+}
+
+/** Hide credentials in every URL embedded in arbitrary text — a git error
+ *  message, a stderr dump, a log line. Purely textual on purpose: whole-string
+ *  URL parsing cannot be trusted here, see `redactUrl`. */
+export function redactUrlsInText(text: string): string {
+  return text.replace(/(https?:\/\/)([^@\s/]*):([^@\s/]*)@/gi, '$1$2:***@')
 }
