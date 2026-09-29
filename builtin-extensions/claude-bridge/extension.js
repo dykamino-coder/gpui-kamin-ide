@@ -50579,8 +50579,15 @@ var lastConnectionByTab = /* @__PURE__ */ new Map();
 var lastSampleByRole = /* @__PURE__ */ new Map();
 var installed2 = false;
 var incidentLog = null;
+var dropMarked = false;
 function emit(record) {
-  incidentLog?.write(`${formatIncidentLine(record)}
+  const log2 = incidentLog;
+  if (!log2) return;
+  if (log2.writeRecord(`${formatIncidentLine(record)}
+`)) return;
+  if (dropMarked) return;
+  dropMarked = true;
+  log2.writeRecord(`${formatIncidentLine({ event: "record-dropped", dropped: record.event })}
 `);
 }
 function recordBridgeOutbound(channel, args) {
@@ -50611,6 +50618,7 @@ function recordRendererSample(raw, now = Date.now()) {
 function installIncidentDiagnostics(logDir, subscribe) {
   if (installed2) return;
   installed2 = true;
+  dropMarked = false;
   try {
     (0, import_node_fs7.mkdirSync)(logDir, { recursive: true });
     incidentLog = new RollingLogWriter((0, import_node_path9.join)(logDir, "incident.log"), {
