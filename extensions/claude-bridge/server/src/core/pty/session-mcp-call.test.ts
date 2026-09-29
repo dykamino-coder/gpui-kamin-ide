@@ -1,10 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 
-import {
-  pendingMcpCalls,
-  resendUndeliveredMcpCalls,
-  sendMcpCall,
-} from './session-mcp-call.js'
+import { pendingMcpCalls, resendUndeliveredMcpCalls, sendMcpCall } from './session-mcp-call.js'
 import type { PtySession } from './types.js'
 
 /** Сокет, повторяющий поведение настоящего при переполнении буфера: он
@@ -40,7 +36,7 @@ function session(ws: unknown): PtySession {
 const OVER_CAP = 17 * 1024 * 1024
 
 function pendingFor(sessionId: string) {
-  return [...pendingMcpCalls.values()].filter(call => call.sessionId === sessionId)
+  return [...pendingMcpCalls.values()].filter((call) => call.sessionId === sessionId)
 }
 
 /** Единственный ожидаемый вызов сессии: падает с внятным текстом, если их не
@@ -52,7 +48,9 @@ function onlyPending(sessionId: string) {
 }
 
 describe('INC-2026-0011: состояние доставки интерактивного MCP-вызова', () => {
-  beforeEach(() => { pendingMcpCalls.clear() })
+  beforeEach(() => {
+    pendingMcpCalls.clear()
+  })
 
   it('отброшенный по переполнению буфера вызов НЕ считается доставленным', () => {
     const live = socket({ buffered: OVER_CAP })

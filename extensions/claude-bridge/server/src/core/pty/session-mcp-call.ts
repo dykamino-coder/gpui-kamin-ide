@@ -16,12 +16,25 @@ import { sendToClient } from './session-io'
 const MCP_CALL_TIMEOUT_MS = 120_000
 const HEAVY_TOOL_TIMEOUT_MS = 1_800_000 // 30 minutes
 const HEAVY_TOOLS = new Set([
-  'Grep', 'Glob', 'Read', 'Bash', 'PowerShell', 'Write', 'Edit',
-  'NotebookEdit', 'WebFetch', 'WebSearch', 'Monitor',
+  'Grep',
+  'Glob',
+  'Read',
+  'Bash',
+  'PowerShell',
+  'Write',
+  'Edit',
+  'NotebookEdit',
+  'WebFetch',
+  'WebSearch',
+  'Monitor',
   // Worktree / LSP — cold-start + indexing on big repos legitimately
   // exceed the 2-min default.
-  'EnterWorktree', 'ExitWorktree',
-  'LspDiagnostics', 'LspHover', 'LspDefinition', 'LspReferences',
+  'EnterWorktree',
+  'ExitWorktree',
+  'LspDiagnostics',
+  'LspHover',
+  'LspDefinition',
+  'LspReferences',
 ])
 const INTERACTIVE_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode'])
 
@@ -38,11 +51,7 @@ export function hasInflightMcpCall(sessionId: string): boolean {
   return false
 }
 
-export function sendMcpCall(
-  session: PtySession,
-  toolName: string,
-  input: Record<string, unknown>,
-): Promise<unknown> {
+export function sendMcpCall(session: PtySession, toolName: string, input: Record<string, unknown>): Promise<unknown> {
   const requestId = randomUUID()
   session.mcpCallCount++
   session.lastActivityAt = new Date()
@@ -82,8 +91,14 @@ export function sendMcpCall(
     // цикла и не может обогнать синхронный `sendToClient`, но порядок
     // сохраняет запись валидной даже если это изменится.
     pendingMcpCalls.set(requestId, {
-      resolve, reject, timer, toolName, input, delivered: false,
-      createdAt: Date.now(), sessionId: session.id,
+      resolve,
+      reject,
+      timer,
+      toolName,
+      input,
+      delivered: false,
+      createdAt: Date.now(),
+      sessionId: session.id,
     })
 
     const delivered = sendToClient(session.ws, {
