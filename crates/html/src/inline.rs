@@ -637,6 +637,12 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         || parent.contain_layout == Some(true)
         || parent.contain_paint == Some(true);
     c.cb_rtl = parent.rtl == Some(true);
+    // Внутри повёрнутого абзаца родитель — горизонтальный клон
+    // (`render.rs: paragraph`, `horizontal.vertical = None`), и о вертикальном
+    // письме содержащего блока говорит только `rotated_line`.
+    c.cb_vertical = parent.vertical == Some(true) || parent.rotated_line == Some(true);
+    c.cb_vertical_rl = parent.vertical_rl == Some(true);
+    c.cb_sideways = parent.sideways == Some(true);
     // Относительный сдвиг строчного предка КОПИТСЯ вниз (§9.4.3: сдвиг несёт
     // с собой всё содержимое коробки). Куски вне потока его получали
     // (`shift_overlays`), а вложенные куски самой строки — нет: сдвиг

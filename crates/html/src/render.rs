@@ -1566,9 +1566,43 @@ fn grid_stack(c: &Element) -> bool {
         return false;
     }
     if let Some(rows) = s.grid_rows.as_ref() {
-        if !rows
+        // Ряд, чей размер при `height: auto` равен вкладу ЕДИНСТВЕННОГО
+        // элемента ряда: `auto`/`min-content`/`max-content` (css-grid-1
+        // §12.4-12.6); `minmax(<0 | по содержимому>, <auto | max-content |
+        // fr>)` — база не больше вклада, предел = вклад; `fr` при
+        // неопределённом свободном месте — §12.7.1 «max-content contribution»
+        // (ровно вклад, пока гибкая дорожка ОДНА); `minmax(<по содержимому>,
+        // <px>)` — база = min-content = вклад (расходится лишь для элемента
+        // ниже предела; копия кладётся `Definite(h)` и берёт ту же высоту).
+        // css-grid-2 §12.1 шаг 3 растит именно такие ряды. С заданной
+        // высотой `fr`/`minmax` делят ЕЁ, а не вклад: `grid-item-
+        // fragmentation-014/016` (`height:200px`) держатся на прежнем пути.
+        let content = |t: &Track| matches!(t, Track::Auto | Track::MinContent | Track::MaxContent);
+        let lo_ok = |t: &Track| content(t) || matches!(t, Track::Px(v) if *v <= 0.0);
+        let by_item = |t: &TrackSize| match t {
+            TrackSize::Single(t) => content(t) || matches!(t, Track::Fr(_)),
+            TrackSize::MinMax(lo, hi) => {
+                lo_ok(lo)
+                    && (content(hi)
+                        || matches!(hi, Track::Fr(_))
+                        || (content(lo) && matches!(hi, Track::Px(_))))
+            }
+            TrackSize::AutoRepeat { .. } => false,
+        };
+        let all_auto = rows
             .iter()
-            .all(|t| matches!(t, TrackSize::Single(Track::Auto)))
+            .all(|t| matches!(t, TrackSize::Single(Track::Auto)));
+        let flexible = rows
+            .iter()
+            .filter(|t| {
+                matches!(t, TrackSize::Single(Track::Fr(_)) | TrackSize::MinMax(_, Track::Fr(_)))
+            })
+            .count();
+        if !all_auto
+            && (!matches!(s.height, None | Some(Len::Auto))
+                || s.max_height.is_some()
+                || flexible > 1
+                || !rows.iter().all(by_item))
         {
             return false;
         }
@@ -8639,6 +8673,27 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         // и когда край закрыт рамкой или внутренним отступом — там поле
         // наружу не уходит, но обрезать его всё равно надо.
         // Собственное поле контейнера не трогается («but not its own»).
+        // Блок внутри строчного (`<span><div>…</div></span>`) — тоже первый/
+        // последний потоковый ребёнок контейнера: строчный рвётся на
+        // анонимные коробки, а пустые куски коробок не дают (CSS 2.1
+        // §9.2.1.1). Разрыв делает `blocks()` уже ПОСЛЕ этого шага, и цепочки
+        // обрезки упирались в `<span>` как в строчную коробку
+        // (`block-container-block-in-inline-001…007`). Контейнеру с обрезкой
+        // рвём заранее тем же путём, что и `blocks()` (`wrap_anon_tables` →
+        // `split_block_in_inline`); повторный разрыв там ничего не меняет.
+        // У гибкого контейнера и сетки разрыва нет (`ordered_context`).
+        if e.style.margin_trim & 3 != 0
+            && !matches!(
+                e.style.display,
+                Some(Display::Flex)
+                    | Some(Display::InlineFlex)
+                    | Some(Display::Grid)
+                    | Some(Display::InlineGrid)
+                    | Some(Display::GridLanes)
+            )
+        {
+            e.children = split_block_in_inline(&wrap_anon_tables(&e.children));
+        }
         if e.style.margin_trim & 1 != 0 {
             let mut path: Vec<usize> = vec![];
             let mut eat: Vec<(Vec<usize>, bool)> = vec![];
@@ -9332,7 +9387,17 @@ fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
         {
             continue;
         }
-        s = adjoin(s, through_strut(ch)?);
+        let t = through_strut(ch)?;
+        // Поля детей контейнера с `margin-trim` обрезаны (css-box-4
+        // §margin-trim-block: «and any margins collapsed with it»): насквозь
+        // схлопнутый ребёнок примыкает ОБОИМИ краями, значит его поля
+        // обрезаются при любом бите. В струну родителя идут только свои поля
+        // контейнера. Обрезку на своём уровне сделает `collapse_margins`, но
+        // уровень выше считается РАНЬШЕ и успевал забрать поле 222
+        // (`block-container-block-end-self-collapsing-block-start-margin-nested`).
+        if e.style.margin_trim & 3 == 0 {
+            s = adjoin(s, t);
+        }
     }
     Some(s)
 }
@@ -9398,7 +9463,11 @@ fn leading_chain(
             continue;
         }
         eat.push((path.clone(), false));
-        if top_edge_open(ch) {
+        // Спуск в ребёнка с `margin-trim: block-start` не нужен: верхнее поле
+        // его первого ребёнка (и всё, что с ним схлопнулось) обрезано, наружу
+        // примыкать нечему. Без этого поле 50 ребёнка уходило через контейнер
+        // в `body`, и страница съезжала на 50 (`block-container-non-adjoining-item`).
+        if top_edge_open(ch) && ch.style.margin_trim & 1 == 0 {
             s = adjoin(s, leading_chain(&ch.children, path, eat)?);
         }
         path.pop();
@@ -12314,11 +12383,12 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
             && let Some(raw0) = f.style.shape_outside.as_deref()
             && raw0.contains("url(")
             && let Some(u) = crate::computed::parse_url(raw0)
-            && let Some(img) = crate::background::load(&u)
+            && let Some((w, h)) = crate::background::intrinsic_px(&u)
         {
-            let sz = img.size(0);
-            cw = sz.width.0 as f32;
-            chh = sz.height.0 as f32;
+            // Своя величина, а не размер растра: SVG растрируется вдвое
+            // плотнее (`background::intrinsic_px`).
+            cw = w;
+            chh = h;
         }
         let (mw, mh) = (
             ml + bl + pl + cw + pr + br_ + mr,
@@ -12375,12 +12445,50 @@ fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElemen
                     // Координаты — от опорной коробки; переводим к margin-box.
                     let (cx, cy) = (cx + bx, cy + by);
                     let cx = if side < 0 { cx } else { mw - cx };
-                    crate::flow::FloatShape::Ellipse {
-                        top: 0.0,
-                        cx: cx + off,
-                        cy,
-                        rx: rx + sm,
-                        ry: ry + sm,
+                    let (rx, ry) = (rx + sm, ry + sm);
+                    // css-shapes-1 §3.1: «When a shape is used to define a
+                    // float area, the shape is clipped to the float's margin
+                    // box». Аналитический эллипс клипа не знает: круг
+                    // `at left top` второго флоата лез на радиус ВЫШЕ своего
+                    // флоата и выталкивал коробки под него (`circle-032`:
+                    // длинная коробка на y=180 вместо 60), `circle(100%)`
+                    // отдавал экстент шире margin-box (`circle-041`: 164 при
+                    // 120). Вылезающий эллипс идёт профилем по точке высоты:
+                    // тот же срез `ellipse_cut`, по высоте только [0, mh), по
+                    // оси зажат [0, mw] — как растровый путь
+                    // (`background::shape_profile`). Лежащий внутри — прежней
+                    // аналитикой, ни на сотую не меняется.
+                    const EPS: f32 = 0.01;
+                    let spills = cy - ry < -EPS || cy + ry > mh + EPS || cx + rx > mw + EPS;
+                    if spills {
+                        let rows = mh.ceil().max(1.0) as usize;
+                        let ext: Vec<f32> = (0..rows)
+                            .map(|r| {
+                                let y0 = r as f32;
+                                let v = crate::flow::ellipse_cut(
+                                    cy,
+                                    rx,
+                                    ry,
+                                    cx,
+                                    y0,
+                                    (y0 + 1.0).min(mh),
+                                )
+                                .clamp(0.0, mw);
+                                if v > 0.0 { off + v } else { 0.0 }
+                            })
+                            .collect();
+                        crate::flow::FloatShape::Profile {
+                            top: 0.0,
+                            ext: std::sync::Arc::new(ext),
+                        }
+                    } else {
+                        crate::flow::FloatShape::Ellipse {
+                            top: 0.0,
+                            cx: cx + off,
+                            cy,
+                            rx,
+                            ry,
+                        }
                     }
                 }
                 None => crate::flow::FloatShape::Band {
@@ -13056,6 +13164,34 @@ fn flattens_3d(c: &Computed) -> bool {
 }
 
 fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
+    // `transform: inherit` / `transform-origin: inherit` (css-cascade-4
+    // §inherit: «the property's specified and computed values are the
+    // inherited value»). Разбор ставит только бит (computed.rs:6535), а
+    // значение родителя кладёт `inline::inherit` (inline.rs:897) в СЛИТЫЙ
+    // стиль. Блочный путь строит обёртку по `&e.style` (render.rs:4663), и
+    // унаследованное значение терялось (`transform-inherit-001/002`,
+    // `-origin-001/002`, `css-transform-inherit-scale`). Бит решается здесь,
+    // от того же родителя; у формы (`&merged`) результат тот же.
+    let inherited_tf;
+    let c = {
+        use crate::computed::inh;
+        let bits = c.inherit_bits & (inh::TRANSFORM | inh::TRANSFORM_ORIGIN);
+        if bits == 0 {
+            c
+        } else {
+            let mut own = c.clone();
+            if bits & inh::TRANSFORM != 0 {
+                own.transform = parent.transform;
+            }
+            if bits & inh::TRANSFORM_ORIGIN != 0 {
+                own.transform_origin = parent.transform_origin;
+                own.transform_origin_px = parent.transform_origin_px;
+                own.transform_origin_z = parent.transform_origin_z;
+            }
+            inherited_tf = own;
+            &inherited_tf
+        }
+    };
     // Объёмный контекст: своя ячейка нужна владельцу `preserve-3d`, чужая —
     // КАЖДОМУ его прямому ребёнку, даже без собственного `transform`:
     // изнанка решается по НАКОПЛЕННОЙ матрице (`backface-visibility-hidden-004`
@@ -17003,6 +17139,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 || cell.style.overflow_y == Some(crate::computed::Overflow::Hidden)
                 || spans_collapsed;
             let mut cell = cell.clone();
+            // `padding: inherit` и `border: inherit` решаются только в СЛИТОМ
+            // стиле (`cm`, `inline.rs` ветки `padding_inherit`/`border_inherit*`),
+            // а коробку ячейки, полкромки сросшейся модели и `cellpadding`
+            // ниже строят из СЫРОГО стиля: там лежало умолчание `td {padding:
+            // 1px}` вместо 5px ряда (CSS 2.1 §6.2.1 — значение родителя).
+            // `row-margin-border-padding`, `row-group-margin-border-padding`:
+            // все четыре стола с `.inherited` выходили меньше эталона.
+            if cell.style.padding_inherit || cell.style.padding_inherit_side.contains(&true) {
+                cell.style.padding = cm.padding;
+            }
+            if cell.style.border_inherit
+                || cell.style.border_inherit_w.contains(&true)
+                || cell.style.border_inherit_s.contains(&true)
+                || cell.style.border_inherit_c.contains(&true)
+            {
+                cell.style.border_width = cm.border_width;
+                cell.style.border_visible = cm.border_visible;
+                cell.style.border_side_styles = cm.border_side_styles;
+                cell.style.border_colors = cm.border_colors;
+                cell.style.border_color = cm.border_color;
+                cell.style.border_dashed = cm.border_dashed;
+                cell.style.border_dotted = cm.border_dotted;
+            }
             // ПРОБОВАЛИ И ОТКАТИЛИ: держать внутри ячейки ПОЛОВИНУ её кромки
             // прозрачной рамкой, а внутри таблицы — половину своей (§17.6.2:
             // «row-width = (0.5 * border-width0) + padding-left1 + …», «the

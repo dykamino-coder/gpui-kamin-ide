@@ -1139,9 +1139,37 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         Some(Position::Absolute) | Some(Position::Fixed) => set(c.width),
         _ => false,
     };
-    let drop_left = over && c.cb_rtl && set(c.inset.left) && set(c.inset.right);
+    // В ВЕРТИКАЛЬНОМ содержащем блоке оси меняются ролями
+    // (css-writing-modes-4 §7.1: правила §10.3 горизонтали действуют по
+    // вертикали). Горизонталь — БЛОЧНАЯ ось: отбрасывается её конец (§10.6.4
+    // «ignore the value for 'bottom'»), а он у `vertical-rl` слева, у
+    // `vertical-lr` справа, и от `direction` не зависит. Вертикаль — СТРОЧНАЯ:
+    // по §10.3.7 при `rtl` отбрасывается её конец, то есть `top` (у
+    // `sideways-lr` строка идёт снизу вверх, и конец — верх уже при `ltr`).
+    // Прежнее правило по `cb_rtl` в вертикали угадывало только `vrl`+`rtl`:
+    // `abs-pos-non-replaced-vrl-214/220` (ltr) и `vlr-223/227/229` (rtl)
+    // уезжали на 80, `vlr-093/097`, `vrl-092/096` (rtl, `top`+`bottom`+
+    // `height`) — тоже. Ровно так и в корпусе: `dynamic-offset-vrl-002`
+    // (`left … /* ignored */`), `dynamic-offset-vrl-rtl-002` (`top …
+    // /* ignored */`). Только для абсолюта: относительный сдвиг (§9.4.3) в
+    // вертикали пока оставлен прежним.
+    let vertical_cb =
+        matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) && c.cb_vertical;
+    let drop_left = over
+        && set(c.inset.left)
+        && set(c.inset.right)
+        && if vertical_cb {
+            c.cb_vertical_rl
+        } else {
+            c.cb_rtl
+        };
+    let drop_top = vertical_cb
+        && set(c.height)
+        && set(c.inset.top)
+        && set(c.inset.bottom)
+        && c.cb_rtl != (c.cb_sideways && !c.cb_vertical_rl);
     for (val, f) in [
-        (c.inset.top, 0u8),
+        (if drop_top { None } else { c.inset.top }, 0u8),
         (c.inset.right, 1),
         (c.inset.bottom, 2),
         (if drop_left { None } else { c.inset.left }, 3),

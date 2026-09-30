@@ -67,7 +67,88 @@ pub struct Cb {
 /// Второй проход по дереву коробок: каждому элементу с `offset-path`
 /// считается offset-трансформ по геометрии его СОДЕРЖАЩЕГО БЛОКА.
 pub fn settle(nodes: &mut [Node]) {
+    // `offset-path: url(#id)` ссылается на SVG-фигуру ЛЮБОГО места документа —
+    // словарь эквивалентных путей собирается до обхода и живёт ровно один
+    // проход (вложенный документ `<iframe>` зовёт `settle` со своим деревом).
+    let mut shapes = std::collections::HashMap::new();
+    collect_shapes(nodes, &mut shapes);
+    SVG_SHAPES.with(|m| *m.borrow_mut() = shapes);
     walk(nodes, None);
+    SVG_SHAPES.with(|m| m.borrow_mut().clear());
+}
+
+thread_local! {
+    /// `id` → эквивалентный путь (SVG 2 §shapes, «equivalent path») фигур
+    /// документа — для `offset-path: url(#id)`.
+    static SVG_SHAPES: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Собрать фигуры с `id`. По `getElementById` побеждает ПЕРВАЯ.
+fn collect_shapes(nodes: &[Node], out: &mut std::collections::HashMap<String, String>) {
+    for n in nodes {
+        let Node::Element(e) = n else { continue };
+        if let Some(d) = shape_d(e)
+            && let Some(id) = e.attr("id")
+        {
+            out.entry(id.to_string()).or_insert(d);
+        }
+        collect_shapes(&e.children, out);
+    }
+}
+
+/// Эквивалентный путь SVG-фигуры в её пользовательских единицах (SVG 2
+/// §9.x «equivalent path»): прямоугольник — от левого верхнего угла по
+/// часовой, круг и эллипс — от самой правой точки по часовой, линия и
+/// ломаная — от первой точки. `None` — не фигура (тогда `url()` ведёт себя
+/// как `path("m 0 0")`, motion-1 §offset-path: `offset-path-url-011`).
+fn shape_d(e: &crate::dom::Element) -> Option<String> {
+    let n = |k: &str| {
+        e.attr(k)
+            .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
+            .unwrap_or(0.0)
+    };
+    let arcs = |cx: f32, cy: f32, rx: f32, ry: f32| {
+        format!(
+            "M{} {cy} A{rx} {ry} 0 0 1 {cx} {} A{rx} {ry} 0 0 1 {} {cy} A{rx} {ry} 0 0 1 {cx} {} A{rx} {ry} 0 0 1 {} {cy} Z",
+            cx + rx,
+            cy + ry,
+            cx - rx,
+            cy - ry,
+            cx + rx
+        )
+    };
+    let pts = |closed: bool| -> Option<String> {
+        let nums: Vec<f32> = e
+            .attr("points")?
+            .split(|ch: char| ch == ',' || ch.is_whitespace())
+            .filter_map(|t| t.parse().ok())
+            .collect();
+        let mut d = String::new();
+        for (i, p) in nums.chunks_exact(2).enumerate() {
+            d.push_str(&format!("{}{} {} ", if i == 0 { 'M' } else { 'L' }, p[0], p[1]));
+        }
+        if closed && !d.is_empty() {
+            d.push('Z');
+        }
+        (!d.is_empty()).then_some(d)
+    };
+    Some(match e.tag.as_str() {
+        "path" => e.attr("d")?.to_string(),
+        "rect" => {
+            let (x, y) = (n("x"), n("y"));
+            format!("M{x} {y} H{} V{} H{x} Z", x + n("width"), y + n("height"))
+        }
+        "circle" => {
+            let r = n("r");
+            arcs(n("cx"), n("cy"), r, r)
+        }
+        "ellipse" => arcs(n("cx"), n("cy"), n("rx"), n("ry")),
+        "line" => format!("M{} {} L{} {}", n("x1"), n("y1"), n("x2"), n("y2")),
+        "polyline" => pts(false)?,
+        "polygon" => pts(true)?,
+        _ => return None,
+    })
 }
 
 /// `parent` — геометрия родителя и признак «родитель сам устанавливает
@@ -234,6 +315,26 @@ fn offset_transform_css(c: &Computed, cb: Option<&Cb>) -> Option<String> {
     }
     if let Some(args) = func.strip_prefix("ray(") {
         return ray_css(c, args.trim_end_matches(')'), cb, cb.map(|g| g.boxes[kind]));
+    }
+    // `url(#id)` (motion-1 §offset-path): путь — эквивалентный путь SVG-фигуры,
+    // а «The <coord-box> defines the viewport and user coordinate system for
+    // the shape element, with the origin … at the top left corner, and units
+    // being 1px in size» — то есть та же опорная коробка содержащего блока,
+    // что у `<basic-shape>`. Не фигура (или нет такого `id`) — `path("m 0 0")`
+    // в своей системе (`offset-path-url-011`). Отрезается всё до `#`: разбор
+    // значения мог дописать к ссылке адрес документа.
+    if let Some(inner) = func.strip_prefix("url(") {
+        let raw = inner
+            .trim_end_matches(')')
+            .trim()
+            .trim_matches(|q: char| q == '"' || q == '\'');
+        let id = raw.rsplit_once('#').map_or(raw, |(_, t)| t);
+        let Some(d) = SVG_SHAPES.with(|m| m.borrow().get(id).cloned()) else {
+            return path_css(c, "m 0 0", (0.0, 0.0));
+        };
+        let g = cb?;
+        let rb = g.boxes[kind];
+        return path_css(c, &d, (rb.0 - g.self_off.0, rb.1 - g.self_off.1));
     }
     // Всё прочее — `<basic-shape>` или голый `<coord-box>`: и то и другое
     // живёт в опорной коробке содержащего блока, без неё строить нечего.

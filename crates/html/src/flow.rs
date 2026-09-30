@@ -434,7 +434,7 @@ impl FloatShape {
 
 /// Экстент эллипса (центр по y — `cy_abs`, радиусы rx/ry, центр по x — cx)
 /// на полосе [y0, y1): максимум `cx + rx·√(1−(dy/ry)²)` по dy в полосе.
-fn ellipse_cut(cy_abs: f32, rx: f32, ry: f32, cx: f32, y0: f32, y1: f32) -> f32 {
+pub(crate) fn ellipse_cut(cy_abs: f32, rx: f32, ry: f32, cx: f32, y0: f32, y1: f32) -> f32 {
     if ry <= 0.0 || rx <= 0.0 {
         return 0.0;
     }
@@ -1769,8 +1769,30 @@ impl Element for ColumnStack {
         if let Some((rw, color)) = self.rule {
             let col_w = self.col_w.get();
             let rows = self.lines_plan.borrow().clone();
-            for &(ry, rh) in &rows {
-                for i in 1..self.count {
+            // css-multicol-1 §4 (`column-rule`): «Column rules are only drawn
+            // between two columns that both have content». Занятость — по
+            // плану укладки: наибольшая колонка линии с НЕнулевым куском
+            // (щуп статической позиции абсолюта — кусок нулевой высоты).
+            // `grid-container-fragmentation-007/008`: 3 колонки из 5, лишние
+            // линейки в 3-м и 4-м промежутках — 0.83 %. Без рядов (и при
+            // `nowrap`) все колонки — одна линия, переполняющие тоже в ней.
+            let wrap = matches!(self.rows, Some(r) if r.wrap);
+            let used: Vec<usize> = {
+                let plan = self.plan.borrow();
+                (0..rows.len())
+                    .map(|l| {
+                        plan.iter()
+                            .filter(|f| {
+                                f.h > 0.01 && (if wrap { f.col / self.count } else { 0 }) == l
+                            })
+                            .map(|f| if wrap { f.col % self.count } else { f.col } + 1)
+                            .max()
+                            .unwrap_or(0)
+                    })
+                    .collect()
+            };
+            for (l, &(ry, rh)) in rows.iter().enumerate() {
+                for i in 1..used.get(l).copied().unwrap_or(0).min(self.count) {
                     let cx_ = i as f32 * (col_w + self.gap) - self.gap * 0.5;
                     window.paint_quad(gpui::fill(
                         Bounds {
