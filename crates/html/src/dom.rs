@@ -963,12 +963,22 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                             child.style.subgrid_rows
                         };
                         let vertical_axis = row_dir != el.style.vertical.unwrap_or(false);
+                        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (b47ecf2): класть СРЕЗ в скрещенную
+                        // ось (колонки родителя → `grid_rows` подсетки): +1/−2,
+                        // ушли `grid-subgridded-to-grid-lanes/track-sizing/
+                        // {column,row}-subgrid-auto-fill-007` — тест там на
+                        // ЛУНКАХ (срез режет `render.rs`, оси не скрещивает),
+                        // эталон — та же разметка на `inline grid` (режет этот
+                        // проход). Скрещиваются только признак и растяжка ниже;
+                        // `subgrid-stretch` срезу безразличен (обе оси по 100).
+                        // Возвращать вместе со скрещиванием в `render.rs` (Blink
+                        // `grid_item.cc:192-207`) и замером лунковых пар.
                         if row_dir {
-                            child.style.grid_tracks = Some(slice);
-                            child.style.grid_cols = Some(span as u16);
+                            child.style.grid_rows = Some(slice);
                             child.style.align_self = None;
                         } else {
-                            child.style.grid_rows = Some(slice);
+                            child.style.grid_tracks = Some(slice);
+                            child.style.grid_cols = Some(span as u16);
                             child.style.justify_self = None;
                         }
                         if own {

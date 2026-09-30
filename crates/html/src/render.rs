@@ -2508,12 +2508,94 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         .map(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style)))
         .collect();
     // Запреты `break-before/after: avoid*` элементов гибкой стопки — с
-    // переносом с крайних потомков (`edge_avoid`).
+    // переносом с крайних потомков (`edge_avoid`). Сцепки из них (`flex_run`
+    // ниже) — только у РЯДА С ПЕРЕНОСОМ: там стопка «строка = элемент» идёт по
+    // блочной оси в порядке строк. ★ Потери P6 (свод v219): у колонки сцепка
+    // уводила `single-line-column-flex-fragmentation-016/017`,
+    // `multi-line-column-flex-fragmentation-027/028` — диапазон сцепки для
+    // `fill_at` монолит, и в колонке с заданной высотой ветка `overflow_to`
+    // держала в одной колонке элемент в 300px, хотя `avoid` запрещает только
+    // ТОЧКУ между элементами (css-break-3 §4.4 правило 1; Blink
+    // `fragmentation_utils.cc:266-269` лишь снижает её привлекательность).
+    // `wrap-reverse` кладёт строки с другого края, а стопка — в порядке DOM
+    // (`multi-line-row-flex-fragmentation-050`).
+    let avoid_chains = flex_items
+        && c.style.vertical != Some(true)
+        && matches!(
+            c.style.flex_dir,
+            None | Some(crate::computed::FlexDir::Row) | Some(crate::computed::FlexDir::RowReverse)
+        )
+        && c.style.flex_wrap == Some(true)
+        && c.style.flex_wrap_reverse != Some(true);
     let avoid_kid: Vec<(bool, bool)> = kids
         .iter()
         .map(|n| match n {
-            Node::Element(k) if flex_items => (edge_avoid(k, false), edge_avoid(k, true)),
+            Node::Element(k) if avoid_chains => (edge_avoid(k, false), edge_avoid(k, true)),
             _ => (false, false),
+        })
+        .collect();
+    // Элемент в ОДНОЙ строке с предыдущим — там, где это видно без раскладки:
+    // ширины в процентах без полей, отступов, рамок по главной оси, без
+    // `flex-basis`, `min/max-width` и `column-gap` (css-flexbox-1 §9.3: строка
+    // набирается, пока следующий элемент помещается). Граница внутри строки —
+    // не точка класса A (§12: «Class A break opportunities occur between
+    // sibling flex lines»; Blink кладёт `break-*` на СТРОКУ,
+    // `flex_layout_algorithm.cc:1892-1906`): сцепка от неё начаться не может
+    // (`multi-line-row-flex-fragmentation-040`: 50% + 50%).
+    let main_gap0 = match c.style.gap {
+        None | Some((_, None)) => true,
+        Some((_, Some(Len::Px(v)))) => v.abs() < 0.01,
+        _ => false,
+    };
+    let zero = |l: &Option<Len>| match l {
+        None => true,
+        Some(Len::Px(v)) => v.abs() < 0.01,
+        _ => false,
+    };
+    let pct_of = |k: &Element| -> Option<f32> {
+        let kb = k.style.borders();
+        match k.style.width {
+            Some(Len::Pct(p))
+                if main_gap0
+                    && k.style.flex_basis.is_none()
+                    && k.style.min_width.is_none()
+                    && k.style.max_width.is_none()
+                    && zero(&k.style.margin.left)
+                    && zero(&k.style.margin.right)
+                    && zero(&k.style.padding.left)
+                    && zero(&k.style.padding.right)
+                    && zero(&kb.left)
+                    && zero(&kb.right) =>
+            {
+                Some(p)
+            }
+            _ => None,
+        }
+    };
+    let mut line_acc: Option<f32> = None;
+    let mut line_fa = false;
+    let line_inner: Vec<bool> = kids
+        .iter()
+        .map(|n| match n {
+            // Внепоточный — не элемент (§4.1): строку не рвёт и в неё не входит.
+            Node::Element(k) if avoid_chains && out_of_flow(&k.style) => false,
+            Node::Element(k) if avoid_chains => {
+                let w = pct_of(k);
+                let forced = line_fa || edge_break(k, false);
+                line_fa = edge_break(k, true);
+                let inner = !forced
+                    && matches!((line_acc, w), (Some(s), Some(p)) if s + p <= 1.0 + 1e-3);
+                line_acc = match w {
+                    Some(p) if inner => line_acc.map(|s| s + p),
+                    w => w,
+                };
+                inner
+            }
+            _ => {
+                line_acc = None;
+                line_fa = false;
+                false
+            }
         })
         .collect();
     // Спуск — по физике контейнера. ★ ЗАМЕРЕНО (04.09,
@@ -2751,6 +2833,16 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         let mut flex_run: Option<f32> = None;
         let mut flex_open = 0.0f32;
         let mut flex_prev_aa = false;
+        // Можно ли начать сцепку от `flex_open`. Нельзя от верха контейнера
+        // (css-flexbox-1 §12; Blink `fragmentation_utils.cc:244-253`: без
+        // `has_container_separation` — `kBreakAppealLastResort`), от
+        // принудительного разрыва (`multi-line-row-flex-fragmentation-023`: рост
+        // в `growths` уходил из распорки-коробки в поле) и изнутри строки
+        // (`line_inner`).
+        let mut flex_open_ok = false;
+        // Идёт сцепка (открыта и без диапазона — чтобы её хвост не начал новую
+        // с середины).
+        let mut flex_chain = false;
         for (ki, (h, kmt, kmb, kcuts, kforced, ksolid, fb, fa, kreach)) in
             kids.into_iter().enumerate()
         {
@@ -2809,13 +2901,19 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 let joined = (flex_prev_aa || avoid_kid.get(ki).is_some_and(|a| a.0))
                     && !(fb || force_next);
                 if joined {
-                    if flex_run.is_none() {
-                        flex_run = Some(flex_open);
+                    if !flex_chain {
+                        flex_chain = true;
+                        flex_run = flex_open_ok.then_some(flex_open);
                     }
-                } else if let Some(s) = flex_run.take() {
-                    solid.push((s, y));
+                } else {
+                    if let Some(s) = flex_run.take() {
+                        solid.push((s, y));
+                    }
+                    flex_chain = false;
+                    flex_open = b;
+                    flex_open_ok =
+                        !(fb || force_next) && !line_inner.get(ki).copied().unwrap_or(false);
                 }
-                flex_open = b;
             } else if !first {
                 cuts.push((y, y + lead));
                 // Принудительный разрыв на границе детей.
@@ -15390,9 +15488,24 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     // (clip-path-semicircle-ref). Однородные радиусы совпадают с растеризатором.
     // Фигурные углы (`corner-shape`, css-borders-4) — той же маской: запись
     // несёт радиусы (точки либо доли, резолв при растре) и параметр K по углам.
-    let rrect = c
-        .radius_masked()
-        .then(|| format!("shape:{}", crate::background::rrect_spec(c, None)));
+    // Радиус в единицах шрифта на `e.style` ещё не разрешён: `rrect_spec`
+    // читает только точки и доли и писал бы `0` — маску БЕЗ скругления поверх
+    // квада, с которого `apply_radius` скругление снял. Меряем тем же
+    // `poly_unit`, что вершины полигона (`contain-paint-clip-002`: 4em = 64 →
+    // ужатие css-backgrounds-3 §5.5 до 60). Blink берёт форму обрезки из
+    // вычисленного стиля (`paint_property_tree_builder.cc:3127-3143`).
+    let rrect = c.radius_masked().then(|| {
+        let mut own = c.clone();
+        for r in [
+            &mut own.radius.tl,
+            &mut own.radius.tr,
+            &mut own.radius.br,
+            &mut own.radius.bl,
+        ] {
+            *r = r.map(poly_unit);
+        }
+        format!("shape:{}", crate::background::rrect_spec(&own, None))
+    });
     // `border-shape` (css-borders-4): фон и содержимое режутся ВНЕШНИМ
     // контуром рамки (Blink клипует фон внешней фигурой, у двух фигур —
     // внутренней; кольцо у нас лежит непрозрачным слоем сверху, итог тот же).
@@ -20436,25 +20549,6 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // резала бы ячейку уже содержимого (`width: 0` прятал текст).
             // Снимается с ЛЮБОЙ ячейки: у объединённой (colspan) ширина на
             // коробке резала её до одной колонки, хотя место ей — весь охват.
-            // Ширина ОБЪЕДИНЁННОЙ ячейки раздаётся по её колонкам (CSS 2.1
-            // §17.5.2.2 п.2): в `col_widths` идут только одиночные, и
-            // `colspan=3; width: 100px` получала 0+0+0 плюс два зазора
-            // (`border-spacing-095`: зелёное 40×100 вместо 100×100). Пол
-            // ячейки делает раздачу сама сетка — шаг «spanning items» по
-            // дорожкам с внутренним минимумом. Фиксированную раскладку не
-            // трогаем: там дорожки `minmax(0, fr)`, и пол ячейки их не касается
-            // по правилам сетки, а ширину охвата §17.5.2.1 делит отдельно.
-            if span_cols > 1
-                && e.style.table_fixed != Some(true)
-                && !table_is_vertical
-                && let Some(Len::Px(w)) = cell.style.width
-            {
-                let floor = match cell.style.min_width {
-                    Some(Len::Px(m)) => m.max(w),
-                    _ => w,
-                };
-                cell.style.min_width = Some(Len::Px(floor));
-            }
             if matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
                 cell.style.width = None;
             }
@@ -25162,66 +25256,12 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             (lane_extents.get(i), along_size),
             (Some(c), Some(a)) if *c > a + 0.01
         );
-        // По оси укладки содержимое контейнера лунок — ОДИН субъект
-        // выравнивания (css-align-3 §align-block, css-grid-3): все лунки
-        // сдвигаются на одну величину от самой длинной, а распределяющие
-        // значения при одном субъекте падают в фолбэк (css-align-3 §4.3:
-        // space-between → start, space-around/evenly → safe center). Прежде
-        // раздача шла КАЖДОЙ лунке своя, и при `align-content: center` короткие
-        // лунки уезжали ниже длинных (`grid-lanes-align-content-001`: эталон —
-        // один многоколонник в `inline-block`, сдвинутый целиком).
-        // Обратное заполнение и rtl-ряды остаются прежним путём.
-        if !fill_reverse && !(row_dir && merged.rtl == Some(true)) {
-            if let (Some(j), Some(a)) = (content(along_content), along_size) {
-                let px_e = |l: Option<Len>| match l {
-                    Some(Len::Px(v)) => v,
-                    _ => 0.0,
-                };
-                let b = merged.borders();
-                let edges = if merged.border_box != Some(true) {
-                    0.0
-                } else if row_dir {
-                    px_e(merged.padding.left)
-                        + px_e(merged.padding.right)
-                        + px_e(b.left)
-                        + px_e(b.right)
-                } else {
-                    px_e(merged.padding.top)
-                        + px_e(merged.padding.bottom)
-                        + px_e(b.top)
-                        + px_e(b.bottom)
-                };
-                let content_extent = lane_extents.iter().copied().fold(0.0f32, f32::max);
-                let free = a - edges - content_extent;
-                let shift = if along_safe && free < -0.01 {
-                    0.0
-                } else {
-                    match j {
-                        gpui::JustifyContent::End => free,
-                        gpui::JustifyContent::Center => free / 2.0,
-                        gpui::JustifyContent::SpaceAround | gpui::JustifyContent::SpaceEvenly => {
-                            free.max(0.0) / 2.0
-                        }
-                        _ => 0.0,
-                    }
-                };
-                if shift.abs() > 0.01 {
-                    lane = lane.relative();
-                    lane = if row_dir {
-                        lane.left(px(shift))
-                    } else {
-                        lane.top(px(shift))
-                    };
-                }
+        match content(along_content) {
+            Some(j) if !(along_safe && overflowed) => lane.style().justify_content = Some(j),
+            _ if fill_reverse => {
+                lane.style().justify_content = Some(gpui::JustifyContent::End);
             }
-        } else {
-            match content(along_content) {
-                Some(j) if !(along_safe && overflowed) => lane.style().justify_content = Some(j),
-                _ if fill_reverse => {
-                    lane.style().justify_content = Some(gpui::JustifyContent::End);
-                }
-                _ => {}
-            }
+            _ => {}
         }
         match (used_sizes.get(i).copied().flatten(), tracks.get(i)) {
             (Some(w), _) if row_dir => lane = lane.h(gpui::px(w)).flex_shrink_0(),

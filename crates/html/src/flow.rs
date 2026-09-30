@@ -1225,15 +1225,54 @@ impl ColumnStack {
         None
     }
 
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (30.09): балансировка снимает нарушение
-    // `break-*: avoid` РОСТОМ колонок (Blink `has_violating_break` →
-    // `minimal_space_shortage`, `scout-multicol-rest-2026-09-30.md` P5).
-    // Свод v215 и проба: +2 (`balance-break-avoidance-001/002`), −4 —
-    // `flex-container-fragmentation-003/004` и `grid-lanes-container-
-    // fragmentation-003/004` (0.27 → «красное видно»): при заданной высоте
-    // 100 и `break-before: avoid` колонки вырастали за коробку. Рост должен
-    // упираться в `column-height`/высоту коробки — без этого гейта не
-    // возвращать.
+    /// На сколько поднять высоту СБАЛАНСИРОВАННЫХ колонок, чтобы снять нарушение
+    /// правила 1 css-break-3 §4.3 на границе перед `bad`: первый кусок коробки
+    /// `bad` (монолит целиком, иначе до её первой точки класса A, без точек —
+    /// целиком, как недолаз `fill_at`) обязан встать в колонку, где кончилась
+    /// `bad − 1`. Blink делает то же растяжением: разрыв на границе с `avoid`
+    /// получает `kBreakAppealViolatingBreakAvoid` (`break_appeal.h:26`,
+    /// `fragmentation_utils.cc:266-270`), это взводит `has_violating_break`
+    /// (`column_layout_algorithm.cc:994`), и колонки растут на
+    /// `minimal_space_shortage` (`:1168-1170`). `None` — растить не на что.
+    fn avoid_shortage(kids: &[Kid], plan: &[Frag], bad: usize, target: f32) -> Option<f32> {
+        let prev_col = plan.iter().filter(|f| f.kid == bad - 1).map(|f| f.col).max()?;
+        let end = plan
+            .iter()
+            .filter(|f| f.col == prev_col)
+            .map(|f| f.y + f.h)
+            .fold(0.0f32, f32::max);
+        let k = &kids[bad];
+        let lead = kids[bad - 1].mb.max(k.mt);
+        let piece = if k.monolith {
+            k.h
+        } else {
+            k.cuts
+                .iter()
+                .map(|&(need, _)| need)
+                .find(|&n| n > 0.01)
+                .unwrap_or(k.h)
+        };
+        let d = end + lead + piece - target;
+        (d > 0.01).then_some(d)
+    }
+
+    /// Сколько принудительных разрывов в линии: между соседями
+    /// (`force_before`/`force_after`) и внутри коробок (`forced` строго внутри
+    /// `0..h`) — та же разметка, что режет прогоны в `runs_guess`. Нужна одной
+    /// проверке Blink `column_layout_algorithm.cc:1152`: при `used_column_count_
+    /// <= forced_break_count + 1` мягких точек разрыва нет, и растяжение ради
+    /// `avoid` ничего не даст (css-multicol-1 §7 «honoring forced breaks»).
+    fn forced_breaks(kids: &[Kid]) -> usize {
+        let between = (1..kids.len())
+            .filter(|&i| kids[i].force_before || kids[i - 1].force_after)
+            .count();
+        let inside: usize = kids
+            .iter()
+            .map(|k| k.forced.iter().filter(|&&f| f > 0.01 && f < k.h - 0.01).count())
+            .sum();
+        between + inside
+    }
+
     /// Ближайшая ВЫШЕ разрешённая граница для отступа от нарушения на `bad`:
     /// наибольшее `j` из `1..bad`, где ни `break-before` коробки `j`, ни
     /// `break-after` коробки `j-1` разрыв не запрещают. `None` — разрешённых
@@ -1702,6 +1741,33 @@ impl ColumnStack {
         for _ in 0..6 {
             let (cols, shortage, slots) = Self::fill(kids, target, limit, false);
             if cols <= self.count {
+                // Колонок хватило, но план рвёт запрещённую границу (css-break-3
+                // §4.3, правило 1) — растим высоту ровно на недолаз
+                // (`avoid_shortage`): Blink выходит из цикла балансировки только
+                // без нарушений (`column_layout_algorithm.cc:1145-1147`).
+                // `balance-break-avoidance-002` 75 → 100, `-001` 50 → 100.
+                //
+                // Гейты — те же, что у Blink перед растяжением. (1) Рост идёт
+                // через `clamp`, то есть в потолок `cap` = заданная высота коробки
+                // (`Rows::cap`, `render.rs`; Blink `ConstrainColumnBlockSize`,
+                // `:1172`, `:1785-1788`, `:1812`), и если выше не вышло — план
+                // принимается С НАРУШЕНИЕМ (`:1175-1178` «Give up if we cannot
+                // get taller columns»; css-break-3 §4.3: «rules 1, 2 and 4 are
+                // dropped»). ★ Без этого гейта (замер 30.09, `Rows::cap` ещё не
+                // было) `flex-/grid-lanes-container-fragmentation-003/004` —
+                // `height: 100px`, 50 + 50 + 300 в четырёх колонках — росли
+                // 100 → 400 за коробку. (2) Принудительных разрывов не меньше
+                // `count − 1` — растягивать бесполезно (`:1152`, `forced_breaks`).
+                if Self::forced_breaks(kids) + 1 < self.count
+                    && let Some(d) = Self::first_avoid_violation(kids, &slots)
+                        .and_then(|bad| Self::avoid_shortage(kids, &slots, bad, target))
+                {
+                    let grown = clamp(target + d);
+                    if grown > target + 0.01 {
+                        target = grown;
+                        continue;
+                    }
+                }
                 return (target, slots);
             }
             // Недолаза не было ни у одной коробки: `shortage` так и остался

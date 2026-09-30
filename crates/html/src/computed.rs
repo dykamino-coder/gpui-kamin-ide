@@ -8911,12 +8911,34 @@ impl Computed {
         // `rrect` режет и фон, и детей; без рамки padding-box = border-box, и
         // край маски — ровно край обрезки. Тень и контур лежат ВНЕ коробки —
         // маска их съела бы, такие коробки идут прежним путём.
-        if self.contain_paint == Some(true) && self.shadows.is_empty() && self.outline.is_none() {
-            let rounded = |l: Option<Len>| {
-                matches!(l, Some(Len::Px(v)) if v > 0.0) || matches!(l, Some(Len::Pct(p)) if p > 0.0)
-            };
-            let bare = |l: Option<Len>| !matches!(l, Some(Len::Px(v)) if v > 0.0)
-                && !matches!(l, Some(Len::Pct(_)) | Some(Len::Em(_)));
+        // Решение обязано СОВПАСТЬ на двух стилях одной коробки: `apply_radius`
+        // читает слитый (`inline::inherit` → `resolve_em`, радиус уже в
+        // точках), а `render::grouped` — собственный `e.style`, где `4em`
+        // доживает как `Len::Em`. Гейт по одним точкам и долям снимал
+        // скругление квада, а маски на `e.style` не заводил — зелёный квадрат
+        // без обрезки углов (`contain-paint-clip-002`: `border-radius: 4em`,
+        // 0.00 → 0.65 = площадь углов 120² − π·60²). Blink решает по одному
+        // стилю (`paint_property_tree_builder.cc:3010-3012`,
+        // `NeedsInnerBorderRadiusClip`). Для гейта важен лишь знак длины —
+        // меряем единой точкой, как `apply::radius_px`. Тень в единицах шрифта
+        // до `resolve_em` лежит строкой (`shadow_raw`) — исключается и она.
+        // Внутренняя копия прокрутки (`scroller`) идёт мимо `grouped`: маски
+        // там нет, снимать скругление квада нельзя.
+        let font_len = |l: Option<Len>| match l {
+            Some(Len::Pct(p)) => Some(p),
+            Some(l) => crate::metrics::fallback_len_px(l, "", 16.0),
+            None => None,
+        };
+        if self.contain_paint == Some(true)
+            && self.shadows.is_empty()
+            && self.shadow_raw.is_none()
+            && self.outline.is_none()
+            && !self.scroller
+            && self.overflow_x != Some(Overflow::Scroll)
+            && self.overflow_y != Some(Overflow::Scroll)
+        {
+            let rounded = |l: Option<Len>| font_len(l).is_some_and(|v| v > 0.0);
+            let bare = |l: Option<Len>| font_len(l).is_none_or(|v| v <= 0.0);
             let b = self.borders();
             if [self.radius.tl, self.radius.tr, self.radius.br, self.radius.bl]
                 .into_iter()
