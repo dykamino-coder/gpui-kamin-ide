@@ -31,7 +31,7 @@ export function validateRuntimeCloseout(pull, register) {
   if (!taskId?.startsWith("BR-")) return;
 
   const rows = new Map([...register.matchAll(
-    /^\|\s*\[(BR-\d+)\]\([^)]*\)\s*\|([^\n]+)$/gm,
+    /^\|\s*\[(BR-\d+[A-Z]*)\]\([^)]*\)\s*\|([^\n]+)$/gm,
   )].map((match) => [match[1], {
     line: match[0],
   }]));

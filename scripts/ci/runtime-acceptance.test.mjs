@@ -41,6 +41,11 @@ test("a task ID in the title works for existing PR descriptions", async () => {
   }), /requires ## Runtime acceptance/);
 });
 
+test("letter-suffixed BR cards remain identifiable", async () => {
+  assert.equal(primaryTask("## Task\nBR-18A local hook investigation"), "BR-18A");
+  assert.match(await taskCard("BR-18A"), /^### BR-18A/);
+});
+
 test("a required gate needs the exact candidate and task-specific evidence", async () => {
   const card = await taskCard("BR-31");
   const accepted = `${body}

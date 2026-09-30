@@ -14,7 +14,7 @@ function field(body, name) {
 
 export function primaryTask(body, title = "") {
   const task = section(body, /^(?:Task|Задача)$/i);
-  const id = /\b(?:BR-\d+|INC-\d{4}-\d{4})\b/;
+  const id = /\b(?:BR-\d+[A-Z]*|INC-\d{4}-\d{4})\b/;
   return task.match(id)?.[0] ?? title.match(id)?.[0] ??
     body.slice(0, 1000).match(id)?.[0] ?? null;
 }

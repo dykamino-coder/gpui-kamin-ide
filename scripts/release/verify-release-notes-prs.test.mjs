@@ -64,3 +64,12 @@ test("does not treat an incidental BR mention outside the task section as an imp
 test("rejects a task missing from the shared BR register", () => {
   assert.throws(() => validateRuntimeCloseout(runtimePull, ""), /no runtime register row/);
 });
+
+test("letter-suffixed BR close-out uses the exact register row", () => {
+  const suffixed = {
+    ...runtimePull,
+    body: "## Task\nBR-18A local hook fix.\n",
+  };
+  assert.doesNotThrow(() => validateRuntimeCloseout(suffixed,
+    "| [BR-18A](RUNTIME_RELIABILITY.md#br-18a) | ready | verify | PR #147 merged |"));
+});
