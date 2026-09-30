@@ -228,9 +228,11 @@ respawn уже отправляется; полноценного shell recovery
 providers/state нет. BR-05 connection recovery не закрывает этот более широкий контракт.
 Нужен отдельный implementation PR и Windows gate; в этой ревизии код не дописывается.
 
-**Status:** implementation в Change/Fix PR (пачка `RV-2026-09-29`); Windows
-runtime gate — обязательный CI job PR. **Dependency:** none.
+**Status:** implementation PR #148 и дополнительный PR #152 merged;
+Windows runtime acceptance ещё не подтверждена. CI job на Windows не запускает
+живой интерфейс. **Dependency:** none.
 **Acceptance:** automated + Windows runtime merge gate.
+**Windows runtime merge gate:** required.
 
 **Реализовано:** оболочка обрабатывает `kamin:exthost:respawned` в
 `ws_events/views.rs`: снимает отметки `resolved_views()` и сразу
@@ -240,7 +242,7 @@ runtime gate — обязательный CI job PR. **Dependency:** none.
 расширений. Своих слушателей обработчик не заводит, поэтому повторный
 respawn дубликатов не создаёт.
 
-**Остаток корня закрыт вторым PR:** событие перезапуска пробрасывается и в
+**Часть остатка закрыта PR #152:** событие перезапуска пробрасывается и в
 модель (`ShellEvent::HostEvent`), а она заново открывает в хосте документы
 всех открытых табов — текстом ИЗ БУФЕРА, а не с диска, чтобы расширения
 видели несохранённые правки. Без этого зеркало документов у нового ребёнка
@@ -297,6 +299,7 @@ starvation path. После его merge повторить оба исходн�
 **Dependency:** BR-31 реализован и влит ([#147](https://github.com/dykamino-coder/gpui-kamin-ide/pull/147)),
 BR-01 влит ранее — блокирующих зависимостей не осталось. **Acceptance будущего
 fix:** automated + Windows runtime merge gate.
+**Windows runtime merge gate:** required for a later functional fix; current verification has its own evidence.
 
 **Обновление 2026-09-29:** условие «после merge BR-31 повторить оба исходных
 сценария Chat и сценарий Plugins» стало выполнимым: `web::deliver()` зовёт
@@ -921,10 +924,11 @@ call count. Требуется отличить ожидаемую отмену 
 как crash. Typed generation-scoped cancellation ещё нужна; это не завершённый BR-18
 teardown fix.
 
-**Status:** implementation в Change/Fix PR (пачка `RV-2026-09-29`); Windows
-runtime gate — обязательный CI job PR. **Dependency:** none; start from fresh
-`origin/main`. The former draft PR chain is merged; BR-17 evidence is not a
-prerequisite. **Acceptance:** automated + Windows runtime merge gate.
+**Status:** implementation PR #146 merged; Windows runtime acceptance ещё не
+подтверждена. CI job на Windows не запускает живой интерфейс.
+**Dependency:** none; BR-17 evidence is not a prerequisite.
+**Acceptance:** automated + Windows runtime merge gate.
+**Windows runtime merge gate:** required.
 
 **Реализовано:** типизированная отмена `RpcPeerDisconnectedError` с кодом
 `rpc/peer-disconnected` в кадре ответа (`protocol.ts`), `failAll` отклоняет
@@ -1187,6 +1191,7 @@ window не классифицирован. Владелец воспроизв�
 **Status:** investigation. **Dependency:** diagnostic capture из текущего UI;
 BR-01 желателен для корреляции с runtime events. **Acceptance будущего fix:**
 automated differential/render tests + Windows CEF runtime gate.
+**Windows runtime merge gate:** required for a later functional fix; research alone does not assert a fix.
 
 Наблюдаемый 24 августа screenshot локализует отказ уже после загрузки данных:
 
@@ -1254,6 +1259,7 @@ Private evidence: [INC-2026-0036](https://github.com/dykamino-coder/gpui-kamin-i
 внутри витка и потеря ответа хосту закрыты. ОТКРЫТО: тост завершения сам не
 закрывается. **Dependency:** none. **Acceptance оставшейся части:** явный
 контракт непрерывного тоста с кнопкой + Windows native-toast gate.
+**Windows runtime merge gate:** required for the remaining functional fix.
 
 **Регрессия 1.0.61 и её исправление (2026-09-29, живая проверка):** правило
 «раз сервер показал, что умеет хуки, виток закрывает ТОЛЬКО хук» опиралось на
@@ -1355,6 +1361,7 @@ pending/generation/cancellation/reconciliation guarantees остаются не�
 acceptance общего транспорта; из неё НЕ следует, что подтверждённый путь
 доставки объясняет каждый случай зависшего ответа (см. ниже). **Acceptance будущего fix:** automated transport/lifecycle tests +
 Windows CEF runtime gate.
+**Windows runtime merge gate:** required for a later functional fix; diagnostics alone do not assert a fix.
 
 Windows acceptance PR #13 воспроизвёл 3 раза из 5: mutating call
 `hooks:set-plugin-approval` завершился host-side, approval store был записан и
@@ -1756,11 +1763,12 @@ file overlap с уже открытыми branches.
 меняли этот path. Нужен отдельный event-driven implementation PR, unit wake test и Windows
 R6 ≤ 1 s; в этой ревизии functional code не пишется.
 
-**Status:** implementation в Change/Fix PR (пачка `RV-2026-09-29`); Windows
-CEF runtime gate — обязательный CI job PR. Подтверждён source defect
-(INC-2026-0002). **Dependency:** none; BR-25 completion зависит от него.
-**Acceptance:** automated test на wake без кадра + Windows CEF runtime gate
-(reveal без pointer).
+**Status:** implementation PR #147 merged; Windows R6 acceptance ещё не
+подтверждена. CI job на Windows не запускает CEF-сценарий. Подтверждён
+source defect (INC-2026-0002). **Dependency:** none; BR-25 completion зависит
+от R6. **Acceptance:** automated test на wake без кадра + Windows CEF runtime
+gate (reveal без pointer).
+**Windows runtime merge gate:** required.
 
 **Реализовано:** `web::wake_pump()` будит насос НЕ заказывая перерисовку, и
 единая точка `mark_pull_pending()` ставит вью в `PULL_PENDING` вместе с

@@ -116,6 +116,18 @@ Blocked PR не задерживает независимые PR. Зависим
    и отчёт по разделам 6–7. Входящие после snapshot задачи остаются следующему
    запуску, кроме явно включённых собственных child по правилу ниже.
 
+Обновление реестра в шаге 6 — отдельный coordination PR после проверки merge,
+а не текст в отчёте или release notes. Для выбранного ID записать номер каждого
+смерженного implementation PR и фактический следующий шаг: `verify` с
+конкретным непроведённым gate, `waiting` с prerequisite либо `done` только с
+evidence всей обязательной приёмки. `ready/change` можно оставить для
+ограниченного частичного исправления, если следующий PR решает **оставшуюся**
+часть, а не повторяет уже смерженную. Первоначальный snapshot остаётся в
+истории. До следующего release сравнить все включённые implementation PR с
+актуальными строками реестра; автоматический release-check потребует точный
+номер каждого первичного BR PR в его строке. Этот check не подтверждает
+выполнение ручного runtime gate.
+
 Общий запуск не сводится к прежней verification-пачке или только списку PR.
 Он также не является бесконечным мониторингом backlog. Обязательные Windows,
 privacy, review и release gates сохраняются; отсутствие среды не является
@@ -300,6 +312,17 @@ Maintainer agent:
 Post-merge deployment observation не блокирует merge/release, если PR не
 заявляет этот недоступный сценарий проверенным и называет владельца наблюдения.
 
+Перед merge для каждого Change/Fix PR открыть `Acceptance` исходной BR/INC
+карточки и выписать требуемые gates. Зелёный job `Windows Rust tests and
+installer build (no GUI acceptance)` означает только сборку/автотесты; он
+не выполняет сценарий в живом KaminIDE. Если карточка требует Windows runtime
+merge gate, проверить точный кандидат, сценарий, наблюдаемый результат и
+task-specific evidence из `## Runtime acceptance` PR по
+[CONTRIBUTING.md](../CONTRIBUTING.md#класс-приёмки). CI не может подтвердить
+подлинность ручного evidence. Пока gate недоступен, PR с functional fix
+остаётся открытым; его нельзя заменить обещанием post-merge observation.
+Для карточек без такого требования не вводить дополнительный UI-прогон.
+
 Dependabot PR для GitHub Actions из snapshot проходит тот же порядок обновления
 branch, проверки точного head и последовательного merge. Особая проверка
 workflow и исходы `merged`/`closed`/`blocked` описаны в `CONTRIBUTING.md`.
@@ -325,6 +348,14 @@ workflow и исходы `merged`/`closed`/`blocked` описаны в `CONTRIBU
   release; отдельного release на каждую новую находку нет.
 - Release выполняется отдельной branch/PR строго по `CONTRIBUTING.md`; functional
   code в release PR не добавляется.
+- До release PR зафиксировать в его `## Задача` ID пачки или ссылку на отдельное
+  поручение владельца, если это standalone hotfix. Сверить, что все
+  release-relevant PR входят в этот scope. Новые PR после snapshot не делают
+  вторую пачку или второй release автоматически.
+- Сверить первичные BR/INC из каждого `Shipped changes` с карточками и
+  `RUNTIME_EXECUTION.md`. Строка BR должна называть точный смерженный PR и
+  остаток работы; непройденный обязательный Windows gate не объявлять
+  пройденным по зелёному CI или по наличию installer artifact.
 - В body release PR мейнтейнер пишет `## Release notes` по шаблону из
   `CONTRIBUTING.md`: только смерженные implementation PR с реально доставленными
   изменениями после предыдущего immutable release tag. Diagnostic/docs PR,

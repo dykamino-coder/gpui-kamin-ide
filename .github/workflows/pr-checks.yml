@@ -128,6 +128,20 @@ jobs:
             echo "- build Windows installer candidate: \`$installer_candidate\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Only task cards that require a live Windows gate need runtime evidence.
+      # The Rust/installer job below cannot attest a CEF or native UI scenario.
+      - name: Check task-specific Windows runtime acceptance
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ steps.changes.outputs.base_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed_files="$RUNNER_TEMP/runtime-acceptance-files.txt"
+          git diff --name-only "$BASE_SHA...HEAD" > "$changed_files"
+          node scripts/ci/runtime-acceptance.mjs \
+            --event "$GITHUB_EVENT_PATH" --files "$changed_files"
+
   root-node:
     name: root Node checks
     needs: scope
@@ -279,12 +293,23 @@ jobs:
         run: git diff --exit-code -- builtin-extensions/claude-bridge/chat.html builtin-extensions/claude-bridge/tools.html builtin-extensions/claude-bridge/customize.html
 
   rust-windows:
-    name: Windows quality and release candidate
+    name: Windows Rust tests and installer build (no GUI acceptance)
     needs: scope
     if: needs.scope.outputs.rust == 'true' || needs.scope.outputs.installer_candidate == 'true'
     runs-on: windows-latest
     timeout-minutes: 150
     steps:
+      - name: Describe the Windows CI boundary
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ### Windows CI scope
+          This job runs Rust checks and, when applicable, builds an installer.
+          It does **not** launch KaminIDE or exercise CEF, pointer, keyboard,
+          extension-host recovery, or a task-specific Windows runtime scenario.
+          A green result cannot satisfy a Windows runtime merge gate in a task card.
+          EOF
+
       - name: Check out the pull request merge candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

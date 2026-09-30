@@ -41,9 +41,9 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 - `observation` — только заранее определённая полевая проверка;
 - `none` — новых PR по задаче сейчас не требуется.
 
-## Текущая пачка `RV-2026-09-29` — готовые к реализации BR
+## Текущая пачка `RV-2026-09-29` — реализация слита, приёмка открыта
 
-**Status:** ready. **Snapshot:** `origin/main` `53439c554b5f979bfbddbf9a857c0342a6353fac`
+**Status:** verification pending. **Snapshot:** `origin/main` `53439c554b5f979bfbddbf9a857c0342a6353fac`
 (релиз KaminIDE 1.0.59 / server 6.3.136). Открытых PR на момент snapshot нет.
 **Запуск:** владелец поручил обновить версию приложения, слить очередь PR и
 заняться проблемами, описанными в репозитории — общий запуск по
@@ -52,8 +52,9 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 
 Выбор сделан из принятого backlog: 32 BR-карточки и 51 карточка
 `runtime-issues/INC-*.md`, из которых 48 без PR решения. В пачку взяты только
-задачи со статусом `ready`, чью приёмку закрывают automated tests и
-обязательный Windows CI gate.
+задачи со статусом `ready`. Исходная запись ошибочно приравняла Windows CI job
+к обязательному Windows runtime gate: job собирает и тестирует код, но не
+выполняет сценарии в живом интерфейсе.
 
 1. **BR-19** — `change`: разрыв shell-соединения обрабатывается как отмена
    жизненного цикла, а не как падение расширения. Типизированная отмена с
@@ -80,8 +81,22 @@ BR-31 — по доставке в webview. После каждого merge вы
   их в пачку без этого дало бы speculative fix, что запрещено разделом
   «Snapshot runtime-пачки».
 
-**Release.** Один release по разделу 6 flow — после последнего смерженного
-release-relevant Change/Fix PR этой пачки.
+**Implementation and release:** BR-19 — PR #146, BR-31 — PR #147, BR-04 —
+PR #148. Единственный release исходного snapshot опубликован через PR #150
+(KaminIDE 1.0.60 / server 6.3.137). Поздний ограниченный остаток BR-04
+(повторный посев открытых документов) слит отдельным PR #152 и вошёл в
+release PR #163 (1.0.61); его включение в новый coordination snapshot не
+зафиксировано. Это не меняет задним числом состав исходной пачки.
+
+**Открытая приёмка:** для BR-19 нужен живой Windows-разрыв и восстановление
+shell-соединения без ложного `Extension crashed`; для BR-31 — R6 из
+INC-2026-0002 (reveal Agents без pointer → строки и invoke reply ≤ 1 с);
+для BR-04 — принудительный respawn ребёнка на Windows с возвратом Chat,
+Console, соседней вью и состояния документов. CI этих сценариев не выполнял.
+Реализация в `main` не означает `done`; до task-specific evidence эти ID
+остаются `verify`. Непокрытые active editor, selection и LSP state BR-04
+требуют отдельного bounded child после уточнения контрактов. Новый release
+не следует из этой незакрытой verification-пачки автоматически.
 
 ## История `RV-2026-09-06` — приёмка уже смерженного кода
 
@@ -166,9 +181,9 @@ production-run требует repository secrets и отдельный след�
 | [BR-01](RUNTIME_RELIABILITY.md#br-01--durable-incident-diagnostics) | done | observation | diagnostics | none | Только следующий реальный incident bundle |
 | [BR-02](RUNTIME_RELIABILITY.md#br-02--calibrate-the-long-session-memory-envelope) | ready | research | long session | BR-01 и BR-30 выполнены | Повторяемый Windows envelope artifact |
 | [BR-03](RUNTIME_RELIABILITY.md#br-03--long-session-mitigation) | deferred | change | long session | решение BR-02 | Минимальная доказанная mitigation |
-| [BR-04](RUNTIME_RELIABILITY.md#br-04--recover-webviews-after-extension-host-respawn) | ready | change | exthost recovery | none | Recovery PR с automated и Windows gates |
+| [BR-04](RUNTIME_RELIABILITY.md#br-04--recover-webviews-after-extension-host-respawn) | ready | verify | exthost recovery | PR #148 и #152 merged | Windows respawn gate для вью/документов; active editor/selection/LSP — отдельный child после уточнения |
 | [BR-05](RUNTIME_RELIABILITY.md#br-05--rehydrate-authoritative-connection-state) | ready | verify | connection | код PR #14 merged | Остаток live gate: send/close-tab/server errors на exact-main server |
-| [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | waiting | verify | rendering/connection | BR-31 | Повторить оба исходных Chat no-pointer сценария; сверить duplicate/остаток |
+| [BR-06](RUNTIME_RELIABILITY.md#br-06--webview-update-stalls-until-pointer-activity) | ready | verify | rendering/connection | BR-31 implementation PR #147 merged; его R6 ещё открыт | Повторить оба исходных Chat no-pointer сценария и Plugins; сверить duplicate/остаток |
 | [BR-07](RUNTIME_RELIABILITY.md#br-07--surface-native-claude-attention-in-chat) | waiting | change | native attention | BR-11 | Минимальный tab-scoped Console banner |
 | [BR-08](RUNTIME_RELIABILITY.md#br-08--explain-unexpected-automatic-reload-skills) | ready | change | skills sync | none | Bounded revision/reason telemetry PR + observation |
 | [BR-09](RUNTIME_RELIABILITY.md#br-09--make-agent-teams-report-delivery-explicit) | ready | verify | Agent Teams | код PR #15 merged | 3/3 reports и один bounded recovery на authenticated Windows/Linux gate |
@@ -182,19 +197,19 @@ production-run требует repository secrets и отдельный след�
 | [BR-17](RUNTIME_RELIABILITY.md#br-17--persist-privacy-safe-bridge-server-logs) | ready | change | server operations | none | Persistent bounded logs в disposable compose |
 | [BR-18](RUNTIME_RELIABILITY.md#br-18--keep-sessionend-relay-available-and-secret-safe-during-teardown) | done | observation | teardown | BR-17 для остаточной причины | PR #20 в `main`; trigger классифицируется по новым logs |
 | [BR-18A](RUNTIME_RELIABILITY.md#br-18a--classify-local-sessionend-execution-on-explicit-end) | ready | verify | local hooks | BR-18 relay fix merged | Bounded local SessionEnd outcome/contract artifact; functional fix отдельно |
-| [BR-19](RUNTIME_RELIABILITY.md#br-19--treat-shell-disconnect-as-lifecycle-cancellation-not-extension-crash) | ready | change | lifecycle RPC | none | Typed generation-scoped cancellation PR |
+| [BR-19](RUNTIME_RELIABILITY.md#br-19--treat-shell-disconnect-as-lifecycle-cancellation-not-extension-crash) | ready | verify | lifecycle RPC | PR #146 merged | Живой Windows disconnect/reconnect без ложного crash; task-specific evidence |
 | [BR-20](RUNTIME_RELIABILITY.md#br-20--restore-complete-claude-plan-usage-windows) | ready | change | account usage | none | Dynamic usage-window compatibility PR |
 | [BR-21](RUNTIME_RELIABILITY.md#br-21--define-and-reconcile-dashboard-analytics-semantics) | ready | research | analytics | none | Сначала metric-contract decision PR; child PR ниже |
 | [BR-22](RUNTIME_RELIABILITY.md#br-22--keep-live-chat-render-window-populated-by-drawable-rows) | blocked | verify | chat history | paired private diagnostic dumps | Classification одного расходящегося drawable path |
-| [BR-23](RUNTIME_RELIABILITY.md#br-23--make-session-complete-notifications-transient-and-turn-scoped) | ready | change | notifications | PR #14 уже merged | Turn-scoped transient completion PR |
-| [BR-24](RUNTIME_RELIABILITY.md#br-24--bound-and-reconcile-lost-webview-invoke-replies) | ready | change | invoke transport | BR-31 перед финальным runtime gate | Bounded invoke/pump diagnostics; затем проверить residual guarantees |
-| [BR-25](RUNTIME_RELIABILITY.md#br-25--verify-agents-view-delivery-and-rehydration-after-reveal) | waiting | verify | Agent Teams UI | BR-31; baseline + BR-27 + BR-26 done | Пачка B: completion gate без repaint workaround |
+| [BR-23](RUNTIME_RELIABILITY.md#br-23--make-session-complete-notifications-transient-and-turn-scoped) | ready | change | notifications | PR #161 и regression fix #164 merged | Отдельный explicit transient host contract; текущий toast всё ещё закрывается вручную |
+| [BR-24](RUNTIME_RELIABILITY.md#br-24--bound-and-reconcile-lost-webview-invoke-replies) | ready | change | invoke transport | BR-31 implementation PR #147 merged; R6 открыт | Bounded invoke/generation diagnostics; затем проверить residual guarantees |
+| [BR-25](RUNTIME_RELIABILITY.md#br-25--verify-agents-view-delivery-and-rehydration-after-reveal) | waiting | verify | Agent Teams UI | BR-31 R6 ещё открыт; baseline + BR-27 + BR-26 done | Completion gate без repaint workaround после BR-31 R6 |
 | [BR-26](RUNTIME_RELIABILITY.md#br-26--publish-agent-replay-state-atomically) | done | none | Agent Teams UI | none | Generation-scoped replay staging в `main`; BR-25 completion ждёт BR-31 |
 | [BR-27](RUNTIME_RELIABILITY.md#br-27--derive-active-and-completed-from-one-lifecycle-partition) | done | none | Agent Teams UI | none | Partition + parser fix в `main`; BR-26 также done |
 | [BR-28](RUNTIME_RELIABILITY.md#br-28--measure-sidebar-geometry-during-session-hover) | done | none | native sidebar | none | Paired artifact INC-2026-0003: sibling reflow не воспроизводится |
 | [BR-29](RUNTIME_RELIABILITY.md#br-29--make-hover-to-rename-transition-atomic) | ready | verify | native sidebar | код PR #37 merged | Windows focus/typing/keyboard/hitbox acceptance |
 | [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation) | done | none | diagnostics | none | PR #31 + #47; Windows 12/12 на main 686cc92; BR-02 разблокирован |
-| [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | ready | change | CEF/webview delivery | none | Следующая пачка: event-driven pull wake (INC-2026-0002) |
+| [BR-31](RUNTIME_RELIABILITY.md#br-31--wake-the-webview-delivery-pump-on-host-posts) | ready | verify | CEF/webview delivery | PR #147 merged | Windows R6 без pointer/forced repaint; rows и invoke reply ≤ 1 с |
 
 ## Зарегистрированные incidents вне BR-реестра
 

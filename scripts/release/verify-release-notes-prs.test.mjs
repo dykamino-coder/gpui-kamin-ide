@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateReleaseNotePull } from "./verify-release-notes-prs.mjs";
+import { validateReleaseNotePull, validateRuntimeCloseout } from "./verify-release-notes-prs.mjs";
 
 const pull = {
   number: 117,
@@ -30,4 +30,46 @@ test("rejects version-bump and documentation PR titles", () => {
     assert.throws(() => validateReleaseNotePull({ ...pull, title },
       ["src/runtime.ts"]), /documentation or a version bump/);
   }
+});
+
+const register = `| ID | State | Result | Track | Prerequisite | Next artifact |
+| --- | --- | --- | --- | --- | --- |
+| [BR-31](RUNTIME_RELIABILITY.md#br-31) | ready | change | delivery | none | Wake PR |
+| [BR-25](RUNTIME_RELIABILITY.md#br-25) | waiting | verify | agents | BR-31 | Windows gate |
+`;
+const runtimePull = {
+  number: 147,
+  body: "## Задача\nBR-31 implements pump wake; BR-25 depends on it.\n\n## Limitations\nWindows CEF gate remains.\n",
+};
+
+test("rejects a release when the BR row ignores its merged implementation", () => {
+  assert.throws(() => validateRuntimeCloseout(runtimePull, register),
+    /BR-31.*does not acknowledge this merge/);
+});
+
+test("allows either verification or a bounded next change after recording the merged PR", () => {
+  const reconciled = register.replace("| Wake PR |", "| PR #147 merged; Windows R6 gate remains |");
+  assert.doesNotThrow(() => validateRuntimeCloseout(runtimePull, reconciled));
+  assert.doesNotThrow(() => validateRuntimeCloseout(runtimePull,
+    reconciled.replace("| ready | change | delivery", "| ready | verify | delivery")));
+});
+
+test("does not treat an incidental BR mention outside the task section as an implementation", () => {
+  assert.doesNotThrow(() => validateRuntimeCloseout({
+    ...runtimePull,
+    body: "## Task\nFix INC-2026-0055.\n\n## Limitations\nBR-31 still needs a Windows gate.\n",
+  }, register));
+});
+
+test("rejects a task missing from the shared BR register", () => {
+  assert.throws(() => validateRuntimeCloseout(runtimePull, ""), /no runtime register row/);
+});
+
+test("letter-suffixed BR close-out uses the exact register row", () => {
+  const suffixed = {
+    ...runtimePull,
+    body: "## Task\nBR-18A local hook fix.\n",
+  };
+  assert.doesNotThrow(() => validateRuntimeCloseout(suffixed,
+    "| [BR-18A](RUNTIME_RELIABILITY.md#br-18a) | ready | verify | PR #147 merged |"));
 });
