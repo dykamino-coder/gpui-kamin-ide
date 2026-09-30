@@ -793,9 +793,13 @@ impl Paragraph {
             let end = if this.spaces_are_content() {
                 to
             } else {
-                trim_hanging(&this.text[from..to]) + from
+                this.hang_tail(from, to)
             };
-            let w = this.span(&segs, from, end);
+            // Трекинг ПОСЛЕДНЕГО знака куска на конце строки не действует
+            // (css-text-3 §8.2) — `lay_in` его вычитает, а минимум по
+            // содержимому считал, и кусок выходил шире на `letter-spacing`.
+            let w = this.span(&segs, from, end) - this.tail_spacing(end);
+            let w = if w < px(0.) { px(0.) } else { w };
             if w > best {
                 best = w;
             }
@@ -1447,7 +1451,7 @@ impl Paragraph {
             {
                 at
             } else {
-                trim_hanging(&self.text[start..at]) + start
+                self.hang_tail(start, at)
             };
             // Свисающее за края в ширину строки не входит — ни открывающий
             // знак в начале, ни точка с запятой в конце.
@@ -1473,6 +1477,9 @@ impl Paragraph {
             // Раньше кусок перед переводом строки уходил в строку целиком,
             // сколько бы ни переполнял коробку (`pre-wrap-leading-spaces`).
             if mandatory && !over {
+                // Хвост `pre-wrap` перед принудительным разрывом висит
+                // УСЛОВНО: влезшая часть занимает место (css-text-3 §4.1.3).
+                let width = self.conditional_width(segs, head, at, width, limit);
                 out.push(Line {
                     range: start..at,
                     width,
@@ -1513,7 +1520,7 @@ impl Paragraph {
                 let tail = if self.spaces_are_content() {
                     cut
                 } else {
-                    trim_hanging(&self.text[start..cut]) + start
+                    self.hang_tail(start, cut)
                 };
                 let tail = tail - self.hang_last(tail, false, true);
                 // Разрыв по мягкому переносу: на строке остаётся знак
@@ -1521,7 +1528,7 @@ impl Paragraph {
                 let hyphen = self.text[..cut].ends_with('\u{00ad}');
                 let extra = if hyphen { self.hyphen_w.get() } else { px(0.) };
                 out.push(Line {
-                    range: start..cut,
+                    range: start..self.drop_collapsible_tail(start, cut),
                     width: self.span(&segs, head, tail) - self.tail_spacing(tail) + extra,
                     ellipsis: false,
                     hyphen,
@@ -1547,17 +1554,23 @@ impl Paragraph {
             let tail = if self.spaces_are_content() || (limit.is_none() && self.wrap.keep_spaces) {
                 end
             } else {
-                trim_hanging(&self.text[start..end]) + start
+                self.hang_tail(start, end)
             };
             let head = start + self.hang_first(start);
             let tail = tail - self.hang_last(tail, true, true);
+            let (fl, fr) = self.flow_cut(out.len());
+            let indent = self.indent_of(head_of_part, first_part, limit) + px(fl);
+            // Конец блока — тоже принудительный разрыв: хвост `pre-wrap`
+            // последней строки висит условно (`pre-wrap-019`, `#test2`:
+            // `"0 "` занимает 2ch, а не 1ch).
+            let room = limit.map(|w| w - indent - px(fr));
+            let bare = self.span(&segs, head, tail) - self.tail_spacing(tail);
             out.push(Line {
                 range: start..end,
-                width: self.span(&segs, head, tail) - self.tail_spacing(tail),
+                width: self.conditional_width(segs, head, end, bare, room),
                 ellipsis: false,
                 hyphen: false,
-                indent: self.indent_of(head_of_part, first_part, limit)
-                    + px(self.flow_cut(out.len()).0),
+                indent,
             });
         }
         // Печать разреза строк: `HTML_LINES=1`. Себя окупила — ею нашлось,
@@ -1582,6 +1595,48 @@ impl Paragraph {
             );
         }
         out
+    }
+
+    /// Ширина строки перед ПРИНУДИТЕЛЬНЫМ разрывом (конец блока — тоже он) с
+    /// учётом условного висения, css-text-3 §4.1.3 шаг 4: «If white-space is
+    /// set to pre-wrap, the UA must (unconditionally) hang this sequence,
+    /// unless the sequence is followed by a forced line break, in which case
+    /// it must conditionally hang the sequence instead». Условно висящее
+    /// входит в ширину, пока влезает. Висящие без условий знаки перед ним
+    /// (U+3000 при `normal`) висят, только если условный ряд начинается уже
+    /// НЕ раньше края (`hanging-whitespace-003`: строки с рядом от 6, 5 и 4ch
+    /// в коробке 4ch висят целиком, ряд от 3ch занимает место).
+    fn conditional_width(
+        &self,
+        segs: &[Seg],
+        head: usize,
+        end: usize,
+        bare: Pixels,
+        room: Option<Pixels>,
+    ) -> Pixels {
+        let Some(room) = room else { return bare };
+        if self.spaces_are_content() || head >= end {
+            return bare;
+        }
+        let body = self.text[head..end]
+            .trim_end_matches(['\n', '\u{b}', '\u{c}', '\u{85}', '\u{2028}', '\u{2029}']);
+        let body_end = head + body.len();
+        // Начало хвостового ряда СОХРАНЁННЫХ пробелов переносящего куска.
+        let mut from = body_end;
+        for (i, ch) in body.char_indices().rev() {
+            let w = self.wrap_at(head + i);
+            if matches!(ch, ' ' | '\t') && w.keep_spaces && !w.nowrap && !w.break_spaces {
+                from = head + i;
+            } else {
+                break;
+            }
+        }
+        if from == body_end || self.span(segs, head, from) >= room {
+            return bare;
+        }
+        let full = self.span(segs, head, body_end) - self.tail_spacing(body_end);
+        let fit = if full < room { full } else { room };
+        if fit > bare { fit } else { bare }
     }
 
     /// Место разрыва внутри неразрывного куска — по знакам, до последнего
@@ -1639,6 +1694,32 @@ impl Paragraph {
         end
     }
 
+    /// Конец измеряемой части строки: висящий хвост срезается ПО МЕСТУ.
+    ///
+    /// Пробел куска с `break-spaces` (и `pre`) не висит (css-text-3 §4.1.3:
+    /// «treated the same as other visible characters»), а висеть может только
+    /// то, что стоит у самого края, — значит, и всё ПЕРЕД ним остаётся в
+    /// строке (`hanging-whitespace-001`: U+3000 абзаца `normal` перед
+    /// `<span style="white-space:break-spaces"> </span>`). `spaces_are_content`
+    /// смотрит правило абзаца и вложенного куска не видит. Без таких кусков
+    /// результат совпадает с `trim_hanging`.
+    fn hang_tail(&self, start: usize, end: usize) -> usize {
+        let mut at = end;
+        for (i, ch) in self.text[start..end].char_indices().rev() {
+            if ch == '\u{feff}' || !(hangs(ch) || zero_width(ch)) {
+                break;
+            }
+            if ch != '\n' && hangs(ch) {
+                let w = self.wrap_at(start + i);
+                if w.break_spaces || (w.keep_spaces && w.nowrap) {
+                    break;
+                }
+            }
+            at = start + i;
+        }
+        at
+    }
+
     /// Неперносима ли точка МЕЖДУ двумя знаками.
     ///
     /// Решает её общий предок (css-text-3 §5.1). У нас предки выражены
@@ -1652,6 +1733,26 @@ impl Paragraph {
             (Some(a), Some(b)) if a == b => self.spans[a].1.nowrap,
             _ => self.wrap.nowrap,
         }
+    }
+
+    /// Конец строки после шага 3 Phase II (css-text-3 §4.1.3): «A sequence of
+    /// collapsible spaces at the end of a line … is removed». Удаляется из
+    /// СТРОКИ, а не только из её ширины: подложка куска больше не тянется по
+    /// пробелу (`line-break-anywhere-and-white-space-004`). Схлопываемые —
+    /// только U+0020 и табуляция там, где пробелы не сохраняются; U+3000,
+    /// U+00A0 и прочие Zs не схлопываются, они ВИСЯТ и рисуются (★ откат у
+    /// `trim_hanging`: обрезка подложки по всему `hangs` ломала
+    /// `trailing-ideographic-space-*`).
+    fn drop_collapsible_tail(&self, start: usize, end: usize) -> usize {
+        let mut at = end;
+        for (i, ch) in self.text[start..end].char_indices().rev() {
+            if matches!(ch, ' ' | '\t') && !self.wrap_at(start + i).keep_spaces {
+                at = start + i;
+            } else {
+                break;
+            }
+        }
+        at
     }
 
     /// Рвётся ли на этом месте что угодно и где угодно — без оглядки на
@@ -2752,6 +2853,17 @@ impl Element for Paragraph {
             // текста и сдвигал его); место в ширине строки они держат.
             let visible = if self.wrap.rtl && !self.wrap.break_spaces {
                 range.start..range.start + trim_hanging(&self.text[range.clone()])
+            } else if !self.wrap.keep_spaces {
+                // Схлопываемый пробел конца строки УДАЛЯЕТСЯ (CSS 2.1 §16.6.1),
+                // а не висит: рисовать его незачем, а подложка `<span>` под ним
+                // вылезала за край коробки квадратом кегля (`c548-leadin-000`:
+                // красный 25×25 справа от первой строки). Отличие от откаченной
+                // правки у `trim_hanging`: там резалась ПОДЛОЖКА прогонов по
+                // всему `hangs` (U+3000, U+2000..200A и пр.), здесь — только сам
+                // отрезок набора, только U+0020/U+0009 и только при схлопывающем
+                // `white-space`; прочие Zs-разделители висят как прежде.
+                let body = &self.text[range.clone()];
+                range.start..range.start + body.trim_end_matches([' ', '\t']).len()
             } else {
                 range.clone()
             };

@@ -944,6 +944,10 @@ pub(crate) struct PaintSurface {
     /// KaminIDE patch: прозрачность группы целиком.
     #[cfg(not(target_os = "macos"))]
     pub opacity: f32,
+    /// KaminIDE patch: цветовые функции `backdrop-filter` матрицей 4×5 над
+    /// НЕумноженным RGBA (строки R, G, B, A: четыре множителя и сдвиг).
+    #[cfg(not(target_os = "macos"))]
+    pub color_matrix: Option<[f32; 20]>,
 }
 
 impl From<PaintSurface> for Primitive {

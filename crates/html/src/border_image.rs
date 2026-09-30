@@ -83,13 +83,30 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                     image.slice[2].px(ih),
                     image.slice[3].px(iw),
                 ];
-                // Ширины кусков рамки на экране.
-                let w = [
-                    image.width[0].px(base[0], ah),
-                    image.width[1].px(base[1], aw),
-                    image.width[2].px(base[2], ah),
-                    image.width[3].px(base[3], aw),
+                // Ширины кусков рамки на экране. `auto` — своя величина куска
+                // образа (css-backgrounds-3 §6.5: «the intrinsic width or
+                // height … of the corresponding image slice»), а у образа без
+                // своей величины — толщина рамки (`BorderImageWidth::px`).
+                let own_size = intrinsic.w.is_some() && intrinsic.h.is_some();
+                let one = |i: usize, border: f32, side: f32| match image.width[i] {
+                    crate::computed::BorderImageWidth::Auto if own_size => cut[i],
+                    other => other.px(border, side),
+                };
+                let mut w = [
+                    one(0, base[0], ah),
+                    one(1, base[1], aw),
+                    one(2, base[2], ah),
+                    one(3, base[3], aw),
                 ];
+                // Встречные ширины не перекрываются (§6.5): «the used values of
+                // all border-image-width values are proportionally reduced
+                // until they no longer overlap».
+                let f = (aw / (w[1] + w[3]).max(0.0001)).min(ah / (w[0] + w[2]).max(0.0001));
+                if f < 1.0 {
+                    for v in w.iter_mut() {
+                        *v *= f;
+                    }
+                }
                 // Полосы вдоль осей: угол — середина — угол.
                 let cols = [w[3], (aw - w[3] - w[1]).max(0.0), w[1]];
                 let rows = [w[0], (ah - w[0] - w[2]).max(0.0), w[2]];

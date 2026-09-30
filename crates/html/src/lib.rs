@@ -110,7 +110,7 @@ pub const BROWSER_CSS: &str = r#"
        и -002 (0.23 -> 1.39); эталоны этих пар рамку рамке не рисуют. */
     fieldset { margin-inline: 2px; border: 2px groove; padding: 0.35em 0.75em 0.625em }
     legend { padding-inline: 2px }
-    a { color: #0000ee }
+    a[href] { color: #0000ee }
     button { padding: 1px 6px; border-radius: 0 }
     canvas { background: none; border: none }
     mark { background: yellow; color: black }

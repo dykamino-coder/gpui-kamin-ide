@@ -124,6 +124,21 @@ struct BlurQuad {
     mask_clip: [f32; 4],
 }
 
+/// KaminIDE patch: матрица 4×5 подложки в поля `BlurQuad`, свободные в
+/// проходах подложки: строки множителей — в `poly`, сдвиги — в `mask_rect`
+/// (см. shaders.hlsl `backdrop_matrix`).
+fn matrix_rows(m: &[f32; 20]) -> ([[f32; 4]; 4], [f32; 4]) {
+    (
+        [
+            [m[0], m[1], m[2], m[3]],
+            [m[5], m[6], m[7], m[8]],
+            [m[10], m[11], m[12], m[13]],
+            [m[15], m[16], m[17], m[18]],
+        ],
+        [m[4], m[9], m[14], m[19]],
+    )
+}
+
 fn create_blur_texture(
     device: &ID3D11Device,
     width: u32,
@@ -1250,6 +1265,8 @@ impl DirectXRenderer {
             // размытие фона, а «положить сюда готовый буфер группы».
             let drawn = if surface.group > 0 {
                 self.draw_group_composite(surface)
+            } else if surface.color_matrix.is_some() && surface.blur_radius <= 0.0 {
+                self.draw_backdrop_matrix(surface)
             } else {
                 self.draw_backdrop_blur(surface)
             };
@@ -1383,10 +1400,12 @@ impl DirectXRenderer {
             pad: 0.0,
             blend_mode: 0,
             poly_count: 0,
-            pad2: [0.0; 2],
-            poly: [[0.0; 4]; 4],
-        mask_rect: [0.0; 4],
-        mask_clip: [0.0; 4],
+            // KaminIDE patch: размытие + цветовые функции `backdrop-filter`
+            // — матрица в свободных полях (pad2.x = 1 — она есть).
+            pad2: [if s.color_matrix.is_some() { 1.0 } else { 0.0 }, 0.0],
+            poly: s.color_matrix.map_or([[0.0; 4]; 4], |m| matrix_rows(&m).0),
+            mask_rect: s.color_matrix.map_or([0.0; 4], |m| matrix_rows(&m).1),
+            mask_clip: [0.0; 4],
         };
         self.pipelines
             .blur_pipeline
@@ -1397,6 +1416,98 @@ impl DirectXRenderer {
         self.pipelines.blur_pipeline.draw_with_texture(
             &dc,
             &last.srv,
+            &self.resources.viewport,
+            &self.blur.globals,
+            &self.globals.sampler,
+            1,
+        )
+    }
+
+    /// KaminIDE patch: `backdrop-filter` из одних цветовых функций
+    /// (filter-effects-2 §3): копия кадра под областью — один в один, без
+    /// каскада уменьшений; матрица 4×5 в шейдере (blur_pass 4), маска
+    /// скруглений border-box и прозрачность элемента (`pad`).
+    fn draw_backdrop_matrix(&mut self, s: &PaintSurface) -> Result<()> {
+        let Some(m) = s.color_matrix else {
+            return Ok(());
+        };
+        // Нулевая коробка не фильтрует ничего (`backdrop-filter-zero-size`).
+        if s.bounds.size.width.0 < 1.0 || s.bounds.size.height.0 < 1.0 {
+            return Ok(());
+        }
+        let device = self.devices.device.clone();
+        let dc = self.devices.device_context.clone();
+        let (vw, vh) = (self.resources.width, self.resources.height);
+        if self
+            .blur
+            .copy
+            .as_ref()
+            .is_none_or(|t| t.width != vw || t.height != vh)
+        {
+            self.blur.copy = Some(create_blur_texture(&device, vw, vh, false)?);
+        }
+        // Подложка матричного прохода: копия цели (сэмплить связанный RTV нельзя).
+        let copy_srv = {
+            let copy = self.blur.copy.as_ref().unwrap();
+            unsafe {
+                dc.CopyResource(&copy.texture, &*self.resources.render_target);
+            }
+            copy.srv.clone()
+        };
+        self.ensure_blur_globals(&device)?;
+        let (fw, fh) = (vw as f32, vh as f32);
+        update_buffer(
+            &dc,
+            self.blur.globals[0].as_ref().unwrap(),
+            &[GlobalParams {
+                gamma_ratios: self.font_info.gamma_ratios,
+                viewport_size: [fw, fh],
+                grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
+                _pad: 0,
+            }],
+        )?;
+        let (poly, shift) = matrix_rows(&m);
+        let quad = BlurQuad {
+            bounds: [
+                s.bounds.origin.x.0,
+                s.bounds.origin.y.0,
+                s.bounds.size.width.0,
+                s.bounds.size.height.0,
+            ],
+            content_mask: [
+                s.content_mask.bounds.origin.x.0,
+                s.content_mask.bounds.origin.y.0,
+                s.content_mask.bounds.size.width.0,
+                s.content_mask.bounds.size.height.0,
+            ],
+            corner_radii: [
+                s.corner_radii.top_left.0,
+                s.corner_radii.top_right.0,
+                s.corner_radii.bottom_right.0,
+                s.corner_radii.bottom_left.0,
+            ],
+            src_origin: [s.bounds.origin.x.0 / fw, s.bounds.origin.y.0 / fh],
+            src_scale: [s.bounds.size.width.0 / fw, s.bounds.size.height.0 / fh],
+            texel: [1.0 / fw, 1.0 / fh],
+            blur_pass: 4.0,
+            pad: s.opacity,
+            blend_mode: 0,
+            poly_count: 0,
+            pad2: [1.0, 0.0],
+            poly,
+            mask_rect: shift,
+            mask_clip: [0.0; 4],
+        };
+        self.pipelines
+            .blur_pipeline
+            .update_buffer(&device, &dc, &[quad])?;
+        // Матричный проход пишет в кадр.
+        unsafe {
+            dc.OMSetRenderTargets(Some(&self.resources.render_target_view), None);
+        }
+        self.pipelines.blur_pipeline.draw_with_texture(
+            &dc,
+            &copy_srv,
             &self.resources.viewport,
             &self.blur.globals,
             &self.globals.sampler,

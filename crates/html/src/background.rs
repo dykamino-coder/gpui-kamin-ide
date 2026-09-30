@@ -144,6 +144,32 @@ impl Source {
     }
 }
 
+/// Разбить запись по пробелам ВЕРХНЕГО уровня: `calc(10px + 15%)` — один
+/// токен. Без скобок — ровно `split_whitespace`.
+pub(crate) fn split_top(s: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut start: Option<usize> = None;
+    for (i, ch) in s.char_indices() {
+        if ch.is_whitespace() && depth <= 0 {
+            if let Some(st) = start.take() {
+                out.push(&s[st..i]);
+            }
+            continue;
+        }
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            _ => {}
+        }
+        start.get_or_insert(i);
+    }
+    if let Some(st) = start {
+        out.push(&s[st..]);
+    }
+    out
+}
+
 /// Перевести `shape()` (css-shapes-2 §2.4) в контур SVG `d`.
 ///
 /// Команды идут через точку с запятой (запятые заменил разбор свойств —
@@ -158,6 +184,12 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
             "right" | "bottom" | "x-end" | "y-end" => return Some(side),
             "center" => return Some(side * 0.5),
             _ => {}
+        }
+        // Смесь долей и точек (`of calc(10px + 15%)`): `Len::parse` её
+        // отбрасывает, и прежде `?` ронял ВЕСЬ контур — элемент рисовался
+        // без обрезки (clip-path-shape-011 и его эталон: 6.83).
+        if let Some((p, add)) = crate::value::calc_pct_px(t) {
+            return Some(p * side + add);
         }
         match crate::value::Len::parse(t)? {
             crate::value::Len::Px(v) => Some(v),
@@ -200,7 +232,8 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
     let mut cur = (0.0f32, 0.0f32);
     let mut sub = cur;
     for cmd in args.split(';') {
-        let toks: Vec<&str> = cmd.split_whitespace().collect();
+        // Токены верхнего уровня: `calc(10px + 15%)` не рвётся на три куска.
+        let toks: Vec<&str> = split_top(cmd);
         if toks.is_empty() {
             continue;
         }
@@ -296,8 +329,19 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                 let rel = toks.get(1) == Some(&"by");
                 let (x, y) = pair(toks.get(2)?, toks.get(3)?)?;
                 let of_at = toks.iter().position(|t| *t == "of")?;
-                let rx = val(toks.get(of_at + 1)?, bw)?;
-                let ry = toks.get(of_at + 2).and_then(|t| val(t, bh)).unwrap_or(rx);
+                // css-shapes-2 `arc`: при ДВУХ значениях доля первого — от
+                // ширины, второго — от высоты; ОДНО значение задаёт оба радиуса,
+                // и доля меряется от direction-agnostic size
+                // sqrt(w² + h²) / sqrt(2), как радиус `circle()`
+                // (clip-path-shape-011: 10% на 400x300 = 35.36, а не 40).
+                let (rx, ry) = match toks.get(of_at + 2).and_then(|t| val(t, bh)) {
+                    Some(ry) => (val(toks.get(of_at + 1)?, bw)?, ry),
+                    None => {
+                        let diag = ((bw * bw + bh * bh) / 2.0).sqrt();
+                        let r = val(toks.get(of_at + 1)?, diag)?;
+                        (r, r)
+                    }
+                };
                 let sweep = if toks.contains(&"cw") { 1 } else { 0 };
                 let large = if toks.contains(&"large") { 1 } else { 0 };
                 let rot = toks
@@ -935,7 +979,10 @@ pub fn rasterize_shape(raw: &str, w: u32, h: u32, scale: f32) -> Option<Arc<Rend
 pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32, f32, f32)> {
     let (kind, rest) = raw.split_once('(')?;
     let circle = kind.trim().eq_ignore_ascii_case("circle");
-    let rest = rest.trim_end_matches(')');
+    // Снимается ОДНА закрывающая скобка — своей функции: `trim_end_matches`
+    // съедал и скобку последнего `calc(...)` центра
+    // (`circle(25% at calc(50% - 10px) calc(50% - 10px))`).
+    let rest = rest.strip_suffix(')').unwrap_or(rest);
     // Ключевое слово `at` может стоять ПЕРВЫМ, без радиусов перед ним:
     // `ellipse(at 110px 50%)`. Деление по строке с двумя пробелами такую
     // запись не находило вовсе, и `at` уходило в радиус по X
@@ -954,6 +1001,11 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
             "center" => Some(side * 0.5),
             "left" | "top" => Some(0.0),
             "right" | "bottom" => Some(side),
+            // Смесь долей и точек в центре (`at calc(50% - 10px) …`).
+            _ if t.starts_with("calc(") => {
+                let (p, add) = crate::value::calc_pct_px(t)?;
+                Some(p * side + add * scale)
+            }
             _ => match crate::value::Len::parse(t)? {
                 crate::value::Len::Px(v) => Some(v * scale),
                 crate::value::Len::Pct(p) => Some(p * side),
@@ -963,7 +1015,8 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
     };
     let (cx, cy) = match pos {
         Some(p) => {
-            let toks: Vec<&str> = p.split_whitespace().collect();
+            // Токены верхнего уровня: `calc(50% - 10px)` — один токен.
+            let toks: Vec<&str> = split_top(p);
             // Позиционные слова в паре идут в любом порядке: горизонтальное
             // слово — всегда ось X (`at center right`, `at top left`).
             let horiz = |t: &str| matches!(t, "left" | "right");
@@ -992,6 +1045,12 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
                 let (tx, ty) = match toks.as_slice() {
                     [a, b] if vert(a) || horiz(b) => (*b, *a),
                     [a, b] => (*a, *b),
+                    // Одно значение: второе — `center` (css-values-4
+                    // §position), но слово `top`/`bottom` — вертикальная ось:
+                    // `at top` = `center top` (offset-path-shape-circle-003,
+                    // -ellipse-003). Прежде `top` уходило в X и центр вставал
+                    // на левую сторону.
+                    [a] if vert(a) => ("center", *a),
                     [a] => (*a, "center"),
                     _ => ("center", "center"),
                 };
@@ -2001,12 +2060,16 @@ fn colour_at(
             // (css-color-4 §12.2): перевод туда, покомпонентная доля,
             // перевод обратно. Прозрачность живёт отдельно от осей цвета
             // и всегда линейна.
-            let (r, g, bl) = crate::color_space::mix_in(space, hue, a.0, b.0, k);
+            // Премультипликация (css-images-3 §3.5.3, css-color-4 §12.3):
+            // для прямоугольных осей она равна доле `k·a1 / alpha`.
+            let alpha = a.0.a + (b.0.a - a.0.a) * k;
+            let kc = if alpha > 0.0 { k * b.0.a / alpha } else { k };
+            let (r, g, bl) = crate::color_space::mix_in(space, hue, a.0, b.0, kc);
             return crate::value::Color {
                 r,
                 g,
                 b: bl,
-                a: a.0.a + (b.0.a - a.0.a) * k,
+                a: alpha,
             };
         }
     }
@@ -2507,8 +2570,33 @@ pub fn canvas_layer(c: &Computed, area: RootArea) -> Option<AnyElement> {
     )
 }
 
+/// Заливка `background-clip: border-area` (css-backgrounds-4): фон «within
+/// the area painted by the border» — одноцветный фон тогда просто лежит ПОД
+/// краской рамки. Рисуют его те же примитивы, что и рамку (квад, слой рамки,
+/// кольца `corner-shape` и `border-shape`), с той же геометрией стиля.
+pub(crate) fn border_area_fill(c: &Computed) -> Option<crate::value::Color> {
+    if c.bg_clip != Some(crate::computed::BgClip::BorderArea) {
+        return None;
+    }
+    flat_fill(c)
+}
+
+/// Цвет, которым красится рамка: свой `border-color` поверх заливки
+/// `border-area` («ignoring any transparency introduced by border-color»).
+pub(crate) fn border_paint(c: &Computed, colour: crate::value::Color) -> crate::value::Color {
+    match border_area_fill(c) {
+        Some(fill) => over(colour, fill),
+        None => colour,
+    }
+}
+
 pub fn layer(c: &Computed) -> Option<AnyElement> {
     c.bg_image.as_ref()?;
+    // Одноцветный фон `border-area` несёт краска рамки (`border_paint`):
+    // плитки легли бы на всю коробку.
+    if border_area_fill(c).is_some() {
+        return None;
+    }
     let style = c.clone();
     Some(
         gpui::canvas(
@@ -2534,6 +2622,90 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
         .size_full()
         .into_any_element(),
     )
+}
+
+// --- Сплошная заливка ----------------------------------------------------
+//
+// Фон, который сводится к ОДНОМУ цвету (цвет фона, одноцветный градиент,
+// растр из одинаковых непрозрачных точек, мощённый без зазоров), не
+// нуждается в маске для `background-clip: text | border-area`: области
+// краски хватает цвета глифа или рамки.
+
+/// Краска `top` поверх `base` (source-over), цвета без премультипликации.
+pub(crate) fn over(top: crate::value::Color, base: crate::value::Color) -> crate::value::Color {
+    let a = top.a + base.a * (1.0 - top.a);
+    if a <= 0.0 {
+        return crate::value::Color::default();
+    }
+    let mix = |t: f32, b: f32| (t * top.a + b * base.a * (1.0 - top.a)) / a;
+    crate::value::Color {
+        r: mix(top.r, base.r),
+        g: mix(top.g, base.g),
+        b: mix(top.b, base.b),
+        a,
+    }
+}
+
+/// Единственный цвет растра, если все его точки одинаковы и непрозрачны.
+fn flat_colour(src: &str) -> Option<crate::value::Color> {
+    let Source::Raster(image) = source(src)? else {
+        return None;
+    };
+    let bytes = image.as_bytes(0)?;
+    let first = bytes.get(0..4)?;
+    if first[3] != 255 || !bytes.chunks_exact(4).all(|p| p == first) {
+        return None;
+    }
+    // Порядок байтов растра — BGRA (см. `border_image::tests`).
+    Some(crate::value::Color {
+        r: first[2] as f32 / 255.0,
+        g: first[1] as f32 / 255.0,
+        b: first[0] as f32 / 255.0,
+        a: 1.0,
+    })
+}
+
+/// Весь фон коробки одним цветом, если он таков: цвет фона, поверх него
+/// одноцветный градиент или одноцветный растр, мощённый без зазоров.
+/// `None` — фон узорный (или его нет вовсе).
+pub(crate) fn flat_fill(c: &Computed) -> Option<crate::value::Color> {
+    if c.gradient.is_some() && c.bg_image.is_some() {
+        return None;
+    }
+    let mut fill = c.background.unwrap_or_default();
+    if let Some(g) = &c.gradient {
+        let one = g.from;
+        let flat = !c.gradient_as_tile()
+            && g.to == one
+            && g.stops.iter().all(|s| s.0 == one)
+            && g.stops_px.iter().all(|s| s.0 == one)
+            && g.stops_raw.iter().all(|s| s.0 == one);
+        if !flat {
+            return None;
+        }
+        fill = over(one, fill);
+    }
+    if let Some(src) = &c.bg_image {
+        let rep = c.bg_repeat.unwrap_or(BgRepeat::Repeat);
+        let covers = |t: Tiling| matches!(t, Tiling::Repeat | Tiling::Round);
+        if !covers(rep.axis(true)) || !covers(rep.axis(false)) {
+            return None;
+        }
+        fill = over(flat_colour(&key_exif(src, c))?, fill);
+    }
+    (fill.a > 0.0).then_some(fill)
+}
+
+/// Заливка `background-clip: text`, которую несёт цвет глифов.
+///
+/// Только НЕПРОЗРАЧНАЯ: тогда «цвет поверх заливки» тоже непрозрачен, и
+/// повторное слияние стилей (`inline::inherit` зовётся цепочкой) даёт тот же
+/// цвет — смешение не копится.
+pub(crate) fn text_clip_fill(c: &Computed) -> Option<crate::value::Color> {
+    if c.bg_clip != Some(crate::computed::BgClip::Text) {
+        return None;
+    }
+    flat_fill(c).filter(|f| f.a >= 1.0)
 }
 
 /// Нарисовать фоновые плитки стиля в ЗАДАННОЙ области.

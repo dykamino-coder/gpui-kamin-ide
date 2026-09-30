@@ -79,6 +79,31 @@ pub(crate) mod inh {
     pub(crate) const OUTLINE_C: u16 = 1 << 12;
     pub(crate) const OUTLINE_S: u16 = 1 << 13;
     pub(crate) const OUTLINE_O: u16 = 1 << 14;
+    /// `overflow-clip-margin: inherit` — коробка отсчёта и поле родителя.
+    pub(crate) const CLIP_MARGIN: u16 = 1 << 15;
+}
+
+/// Разряды `will_change` (css-will-change-1 §2.1): чего ждать от коробки,
+/// которая свойство только ОБЕЩАЕТ. «If any non-initial value of a property
+/// would create a stacking context on the element, specifying that property
+/// in will-change must create a stacking context on the element» — и то же
+/// дословно про содержащий блок для `absolute` и для `fixed`.
+pub(crate) mod wc {
+    /// Содержащий блок для `position: absolute`.
+    pub(crate) const CB_ABS: u8 = 1 << 0;
+    /// Содержащий блок для `position: fixed`.
+    pub(crate) const CB_FIXED: u8 = 1 << 1;
+    /// Контекст наложения.
+    pub(crate) const STACK: u8 = 1 << 2;
+    /// `z-index`: контекст только там, где `z-index` действует
+    /// (позиционированная коробка, элемент flex/grid) — решает
+    /// `inline::inherit`, где известен вид родителя.
+    pub(crate) const STACK_Z: u8 = 1 << 3;
+    /// Обещано свойство семьи `transform` или `contain`: к строчной
+    /// НЕатомарной коробке они не применяются (css-transforms-1
+    /// «transformable element»), поэтому три разряда выше ставит `dom::walk`,
+    /// когда вид коробки уже известен (`will-change-transform-inline`).
+    pub(crate) const BOX: u8 = 1 << 4;
 }
 
 /// Есть ли в записи длины в единицах шрифта (`em`, `rem`, `ex`, `ch`).
@@ -363,7 +388,13 @@ pub struct Outline {
     pub width: Option<Len>,
     pub color: Option<Color>,
     pub offset: Option<Len>,
-    /// none/hidden гасят, dotted/dashed рисуются как solid (приближение).
+    /// `outline-offset: inset` (css-ui-4; WPT `outline-offset-inset-*`):
+    /// сдвиг равен минус толщине. Толщина известна только к отрисовке,
+    /// поэтому здесь метка, а не длина.
+    pub inset: bool,
+    /// 0 — none/hidden (гасят), 1 — сплошные и прочие (double/groove/…
+    /// рисуются сплошной — приближение), 2 — `auto`, 3 — `dotted`,
+    /// 4 — `dashed`.
     pub style: Option<u8>,
 }
 
@@ -602,10 +633,14 @@ pub enum BgClip {
     PaddingBox,
     /// До края содержимого — внутрь ещё и на поля.
     ContentBox,
-    /// По форме текста. Своей отрисовки для него нет: фон под текстом мы
-    /// показать не умеем, поэтому такой фон не рисуется вовсе — это ближе к
-    /// правде, чем закрасить всю коробку.
+    /// По форме текста (css-backgrounds-4). Сплошную непрозрачную заливку
+    /// несёт цвет глифов (`background::text_clip_fill`); узорный фон не
+    /// рисуется вовсе — маски глифов нет.
     Text,
+    /// По области, которую красит рамка (css-backgrounds-4 `border-area`).
+    /// Сплошную заливку несёт краска рамки (`background::border_paint`);
+    /// узорный фон красит border-box, как прежде.
+    BorderArea,
 }
 
 /// `background-size`.
@@ -1057,6 +1092,105 @@ impl Filter {
         }
     }
 
+    /// Цветовые функции одной аффинной матрицей 4×5 над НЕумноженным RGBA:
+    /// строки R, G, B, A по пять чисел (четыре множителя и сдвиг), порядок
+    /// функций — как в `apply`. None — матрица единичная (остаётся разве что
+    /// размытие). filter-effects-1 §«Supported filter functions»: каждая
+    /// цветовая функция — `feColorMatrix`/`feComponentTransfer` с линейной
+    /// формулой, их цепочка — произведение матриц.
+    pub fn color_matrix(&self) -> Option<[f32; 20]> {
+        // Три строки RGB: множители при r, g, b и сдвиг.
+        type M = [[f32; 4]; 3];
+        const ID: M = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+        ];
+        // `a` поверх `b`: a·(b·x + tb) + ta.
+        fn then(a: &M, b: &M) -> M {
+            std::array::from_fn(|i| {
+                std::array::from_fn(|j| {
+                    let s: f32 = (0..3).map(|k| a[i][k] * b[k][j]).sum();
+                    if j == 3 { s + a[i][3] } else { s }
+                })
+            })
+        }
+        // (1 − k)·I + k·T — доля `k` пути к матрице `t` (без сдвига).
+        fn toward(t: [[f32; 3]; 3], k: f32) -> M {
+            std::array::from_fn(|i| {
+                std::array::from_fn(|j| {
+                    if j == 3 {
+                        return 0.0;
+                    }
+                    let id = if i == j { 1.0 } else { 0.0 };
+                    id + (t[i][j] - id) * k
+                })
+            })
+        }
+        let diag = |k: f32, shift: f32| -> M {
+            [
+                [k, 0.0, 0.0, shift],
+                [0.0, k, 0.0, shift],
+                [0.0, 0.0, k, shift],
+            ]
+        };
+        let mut m = ID;
+        if self.sepia > 0.0 {
+            let t = [
+                [0.393, 0.769, 0.189],
+                [0.349, 0.686, 0.168],
+                [0.272, 0.534, 0.131],
+            ];
+            m = then(&toward(t, self.sepia), &m);
+        }
+        if self.grayscale > 0.0 || self.saturate != 1.0 {
+            let l = [0.2126f32, 0.7152, 0.0722];
+            m = then(&toward([l, l, l], self.grayscale), &m);
+            // lum + (c − lum)·s = I + (L − I)·(1 − s)
+            m = then(&toward([l, l, l], 1.0 - self.saturate), &m);
+        }
+        if self.invert > 0.0 {
+            m = then(&diag(1.0 - 2.0 * self.invert, self.invert), &m);
+        }
+        if self.contrast != 1.0 {
+            m = then(&diag(self.contrast, 0.5 - 0.5 * self.contrast), &m);
+        }
+        if self.hue_rotate != 0.0 {
+            let a = self.hue_rotate.to_radians();
+            let (cos, sin) = (a.cos(), a.sin());
+            let h = [
+                [
+                    0.213 + cos * 0.787 - sin * 0.213,
+                    0.715 - cos * 0.715 - sin * 0.715,
+                    0.072 - cos * 0.072 + sin * 0.928,
+                ],
+                [
+                    0.213 - cos * 0.213 + sin * 0.143,
+                    0.715 + cos * 0.285 + sin * 0.140,
+                    0.072 - cos * 0.072 - sin * 0.283,
+                ],
+                [
+                    0.213 - cos * 0.213 - sin * 0.787,
+                    0.715 - cos * 0.715 + sin * 0.715,
+                    0.072 + cos * 0.928 + sin * 0.072,
+                ],
+            ];
+            m = then(&toward(h, 1.0), &m);
+        }
+        if self.brightness != 1.0 {
+            m = then(&diag(self.brightness, 0.0), &m);
+        }
+        if m == ID && self.opacity == 1.0 {
+            return None;
+        }
+        Some([
+            m[0][0], m[0][1], m[0][2], 0.0, m[0][3], //
+            m[1][0], m[1][1], m[1][2], 0.0, m[1][3], //
+            m[2][0], m[2][1], m[2][2], 0.0, m[2][3], //
+            0.0, 0.0, 0.0, self.opacity, 0.0,
+        ])
+    }
+
     /// Применить к цвету.
     pub fn apply(&self, c: Color) -> Color {
         let (mut r, mut g, mut b) = (c.r, c.g, c.b);
@@ -1235,6 +1369,11 @@ pub struct Computed {
     /// Авторское `align-self: normal` (css-align-3 §6.2): у элемента гибкого
     /// контейнера оно ведёт себя как `stretch`, а не «взять у родителя».
     pub align_self_normal: bool,
+    /// Элемент гибкого РЯДА, поперечный размер которого тянет строка
+    /// (`stretch` при `height: auto`). Взводит сборщик детей гибкого
+    /// контейнера (`render.rs`, ветка `flex_context`), где виден родитель;
+    /// читает обособление размера в `apply::apply_box`.
+    pub(crate) cross_stretched: bool,
     pub flex_basis: Option<Len>,
     pub justify_content: Option<Justify>,
     pub gap: Option<(Option<Len>, Option<Len>)>,
@@ -1474,6 +1613,11 @@ pub struct Computed {
     /// Внутренний флаг каскада, а не свойство отрисовки: к моменту выхода из
     /// `resolve` он уже подставлен в `border_color`.
     pub(crate) border_color_is_current: bool,
+    /// Сторона получила `currentColor` из БОКОВОГО сокращения без цвета
+    /// (`border-top: solid 1em`) поверх общего `border-color`, пришедшего
+    /// раньше. Внутренний флаг каскада: цвет текста в `border_colors`
+    /// подставляет `inline::inherit`, когда тот известен.
+    pub(crate) border_side_current: [bool; 4],
     /// `border-collapse: collapse` — зазор между ячейками пропадает.
     pub border_collapse: Option<bool>,
     /// `empty-cells: hide` — у ПУСТОЙ ячейки не рисуются ни фон, ни рамка
@@ -1576,6 +1720,19 @@ pub struct Computed {
     /// остаётся физическим, а «мерить по себе» помнится здесь: зеркалит его
     /// `inline::inherit`, где известны письмо элемента И письмо родителя.
     pub align_self_own_axis: bool,
+    /// Ключевое слово `align-self` — ГИБКОЕ (`flex-start`/`flex-end`): его
+    /// концы следуют `wrap-reverse` строки, а `start`/`end`/`self-*` — нет
+    /// (css-align-3 §6.1). `Align` различия не несёт, его зеркалит
+    /// `inline::inherit` (`self-align-start-end-flex-001`).
+    pub align_self_flex_kw: bool,
+    /// `justify-self: self-start`/`self-end` — по письму САМОГО элемента, как
+    /// `align_self_own_axis` (`align-self-static-position-006`).
+    pub justify_self_own_axis: bool,
+    /// `last baseline`: запасное выравнивание — `end`, а не `start`
+    /// (css-align-3 §9.3; `align-self-static-position-008`,
+    /// `justify-self-static-position-001`). `Align::Baseline` его не различает.
+    pub align_self_last: bool,
+    pub justify_self_last: bool,
     pub align_items_safe: bool,
     pub justify_content_safe: bool,
     pub align_content_safe: bool,
@@ -1617,6 +1774,9 @@ pub struct Computed {
     /// Цвета рамки по сторонам. У GPUI цвет рамки один на элемент, поэтому
     /// разные цвета сторон дорисовываются полосами.
     pub border_colors: [Option<Color>; 4],
+    /// `font-size: larger` (+1) / `smaller` (−1): шаг по таблице ключевых
+    /// кеглей от кегля родителя (§15.7). Разрешает `inline::inherit`.
+    pub(crate) font_size_step: i8,
     /// Ранги стилей кромок по сторонам [верх, право, низ, лево] для
     /// разбора конфликтов сросшихся рамок (CSS 2.1 §17.6.2.1):
     /// 0 none, 1 hidden, 3 inset, 4 groove, 5 outset, 6 ridge, 7 dotted,
@@ -1635,6 +1795,9 @@ pub struct Computed {
     pub outline: Option<Outline>,
     /// `backdrop-filter: blur(N)` — размытие того, что под элементом.
     pub backdrop_blur: Option<f32>,
+    /// `backdrop-filter`: цветовые функции списка (без размытия). Рисуются
+    /// матрицей 4×5 тем же проходом подложки (`Filter::color_matrix`).
+    pub backdrop_color: Option<Filter>,
 
     pub word_spacing: Option<Len>,
     /// Межбуквенный интервал ПОСЛЕ последнего знака этого куска.
@@ -1767,6 +1930,10 @@ pub struct Computed {
     /// ждёт своего кегля и разбирается в `resolve_em` (css-transforms-1
     /// §computed value: относительные длины становятся абсолютными).
     pub transform_raw: Option<String>,
+    /// `box-shadow` с длинами в единицах шрифта — так же ждёт своего кегля и
+    /// разбирается в `resolve_em` (`box-shadow-calc`: `calc(1em + 10px)`
+    /// прежде ронял тень целиком — `parse_shadows` пропускает `em`).
+    pub shadow_raw: Option<String>,
     /// Есть ли выше трансформированный предок: он — содержащий блок и для
     /// `position: fixed` (css-transforms-1 §transform-rendering: «…for all
     /// of its absolute-position descendants, fixed-position descendants»).
@@ -1938,6 +2105,13 @@ pub struct Computed {
     pub inline_pad: Option<[f32; 4]>,
     /// Скругление фона строчного бокса.
     pub inline_radius: Option<f32>,
+    /// Сплошная заливка предка с `background-clip: text` (css-backgrounds-4
+    /// §background-clip): глифы поддерева красятся цветом текста ПОВЕРХ неё.
+    /// Ставит и снимает `inline::inherit`; `None` — такого предка нет.
+    pub text_clip_fill: Option<Color>,
+    /// Цвет текста ДО наложения на `text_clip_fill`: его получают внепоточные
+    /// потомки — в геометрию текста они не входят.
+    pub text_clip_raw: Option<Color>,
     /// `background-clip`: до какого края красится фон. `None` — до внешнего
     /// края рамки, как по умолчанию в CSS.
     pub bg_clip: Option<BgClip>,
@@ -1975,6 +2149,11 @@ pub struct Computed {
     /// Элемент КОЛОНКИ гибкого контейнера: определён ли главный размер
     /// контейнера (css-flexbox-1 §9.8 п.1). `None` — не элемент колонки.
     pub(crate) flex_main_def: Option<bool>,
+    /// Довод `fit-content(<length-percentage>)` у `width`, `min-width`,
+    /// `max-width` (по порядку); само значение остаётся `Len::FitContent`.
+    /// Новый вариант `Len` потянул бы правку полусотни `match` по крейту, а
+    /// потребитель у довода один — обёртка-сетка `render::content_sized`.
+    pub(crate) fit_arg: [Option<Len>; 3],
     pub clip_margin: Option<f32>,
     /// Коробка отсчёта края обрезки: 0 content, 1 padding, 2 border;
     /// None — умолчание (padding-box).
@@ -1988,11 +2167,24 @@ pub struct Computed {
     /// `isolation: isolate`: поддерево смешивается внутри себя, а с кадром —
     /// уже готовой картинкой.
     pub isolate: Option<bool>,
+    /// `will-change` (css-will-change-1): разряды `wc::*`; ноль — `auto`.
+    /// Слоёв композитора у нас нет, поэтому от обещания остаётся ровно то,
+    /// что дало бы само свойство: содержащий блок и контекст наложения.
+    pub will_change: u8,
     /// `font-stretch` — ширина начертания в процентах от обычной.
     ///
     /// Это НЕ возможность OpenType: узкое начертание — отдельный шрифт
     /// семейства, и выбирается он при подборе.
     pub font_stretch: Option<f32>,
+    /// `font-size-adjust` (css-fonts-5): метрика (0 ex-height, 1 cap-height,
+    /// 2 ch-width, 3 ic-width, 4 ic-height; `u8::MAX` — `none`) и желаемая
+    /// доля кегля (`NaN` — `from-font`). Наследуется.
+    pub font_size_adjust: Option<(u8, f32)>,
+    /// Вычисленный кегль и заданная высота строки ДО подгонки кегля. Детям
+    /// уходит ИМЕННО вычисленный кегль («otherwise the effect would
+    /// compound»), и от него же считаются `em` и числовой `line-height`.
+    /// Пусто, пока используемый кегль равен вычисленному.
+    pub font_adjust_base: Option<(f32, Option<Len>)>,
     /// `tab-size` — во сколько пробелов раскрывается табуляция.
     pub tab_size: Option<u8>,
     /// `tab-size` в ДЛИНЕ: шаг табуляции задан не числом знаков, а величиной.
@@ -2021,6 +2213,12 @@ pub struct Computed {
     /// внепоточных потомков (§10.1 п.4). Ставится при наследовании: сам
     /// каскад предков не видит.
     pub(crate) cb_ancestor: bool,
+    /// Есть ли выше по дереву корень подложки (filter-effects-2
+    /// §BackdropRoot): прозрачность, фильтр, маска, clip-path, смешивание,
+    /// `backdrop-filter`, `will-change` с ними. Ставится при наследовании.
+    pub(crate) backdrop_root_above: bool,
+    /// `will-change` называет свойство, создающее корень подложки.
+    pub(crate) will_change_root: bool,
     /// `display: table-caption` — метка для таблицы.
     pub is_caption: Option<bool>,
     /// Род группы рядов: 0 — шапка, 1 — тело, 2 — подвал. `Display` у всех
@@ -2106,6 +2304,11 @@ pub struct Computed {
     /// страницами (css-break-3 §4.1). Свойство не разбиралось вовсе, и
     /// отличить монолит от обычной коробки было нечем.
     pub break_inside_avoid: bool,
+    /// `box-decoration-break: clone` (css-break-4 §break-decoration): «Each
+    /// box fragment is independently wrapped with the border, padding, and
+    /// margin … The background is drawn independently in each fragment».
+    /// Не наследуется; начальное `slice` = `false`.
+    pub bdb_clone: bool,
     /// `break-before`/`break-after` (css-break-4 §3.1): принудительный разрыв
     /// колонки/страницы перед или после коробки.
     pub break_before_force: bool,
@@ -2207,6 +2410,9 @@ pub struct Computed {
     /// `filter: url(#id)` — ссылка на SVG-`<filter>` документа; рисуется
     /// растровым слоем поверх коробки (`interact::FilterLayer`).
     pub filter_ref: Option<String>,
+    /// `filter: drop-shadow(...)` — тень фильтра; у коробки со сплошным
+    /// фоном становится внешней тенью (`inline::inherit`).
+    pub drop_shadow: Option<Shadow>,
 
     /// `background-image: url(...)` — ссылка на картинку-заливку.
     pub bg_image: Option<String>,
@@ -2226,9 +2432,19 @@ pub struct Computed {
     pub counter_set: Option<String>,
     /// Возможности шрифта (`font-feature-settings`, `font-variant`).
     pub font_features: Vec<(String, u32)>,
+    /// Значение СВОЙСТВА `font-feature-settings` целиком (`normal` — пустой
+    /// список). Отдельно от `font_features`: по css-fonts-4 §7.2 оно старше
+    /// `font-variant-*` при ЛЮБОМ порядке объявлений и наследуется своим
+    /// значением, а не пропадает, стоит ребёнку задать `font-variant`
+    /// (`font-variant-04`).
+    pub font_settings: Option<Vec<(String, u32)>>,
     /// `font-synthesis-weight|style|small-caps: none` — подмена начертания
     /// запрещена (css-fonts-4 §6.5). Ложь = `none`, пусто = `auto`.
     pub font_synth: (Option<bool>, Option<bool>, Option<bool>),
+    /// `font-kerning` (css-fonts-4 §6.4): 0 `none`, 1 `normal`, 2 `auto`. Сам
+    /// кернинг уходит тегом `kern`; поле — ради оракула `@supports`: `auto`
+    /// тега не кладёт, и без поля свойство выглядело неподдержанным.
+    pub font_kerning: Option<u8>,
     /// Знак акцента (`text-emphasis-style`, css-text-decor-3 §5): рисуется
     /// над каждым знаком базы, как надстрочная аннотация руби.
     pub text_emphasis: Option<String>,
@@ -2572,6 +2788,30 @@ impl Computed {
         }
     }
 
+    /// Во сколько раз ИСПОЛЬЗУЕМЫЙ кегль отличается от вычисленного.
+    ///
+    /// css-fonts-5 §font-size-adjust: `u = (m / m′) s` — желаемая доля `m`,
+    /// делённая на ту же метрику шрифта `m′`. `none` и `from-font` (метрика
+    /// своего же первого доступного шрифта, отношение ровно 1) кегль не
+    /// трогают. Метрику, которую не удалось снять, спека велит не подгонять.
+    pub fn used_font_factor(&self, family: &str) -> f32 {
+        // Дескриптор `size-adjust` масштабирует ВСЕ метрики лица; поверх него
+        // `font-size-adjust` сводит метрику к заданной доле, и множитель
+        // дескриптора сокращается: `m / (m′·k) · k = m / m′`
+        // (`size-adjust-02/03`). `from-font` — метрика того же лица, то есть
+        // остаётся один дескриптор.
+        let size_adjust = crate::fonts::size_adjust(family);
+        match self.font_size_adjust {
+            Some((metric, want)) if want.is_finite() => {
+                match crate::metrics::adjust_aspect(family, metric) {
+                    Some(have) if have > 0.0 => want / have,
+                    _ => size_adjust,
+                }
+            }
+            _ => size_adjust,
+        }
+    }
+
     pub fn resolve_em(&mut self, parent_font_px: f32) {
         // Сначала свой размер шрифта: от него считается всё остальное. Для
         // него самого единицы шрифта считаются от РОДИТЕЛЬСКОГО кегля.
@@ -2592,7 +2832,10 @@ impl Computed {
         };
         // Длины в единицах шрифта внутри transform/transform-origin: свой
         // кегль известен только теперь.
-        if self.transform_raw.is_some() || self.transform_origin_raw.is_some() {
+        if self.transform_raw.is_some()
+            || self.transform_origin_raw.is_some()
+            || self.shadow_raw.is_some()
+        {
             let own_font = match self.font_size {
                 Some(Len::Px(v)) => v,
                 Some(Len::Em(k)) => k * parent_font_px,
@@ -2606,6 +2849,10 @@ impl Computed {
             if let Some(raw) = self.transform_origin_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("transform-origin", &px);
+            }
+            if let Some(raw) = self.shadow_raw.take() {
+                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                self.apply_one("box-shadow", &px);
             }
         }
         for list in [self.grid_tracks.as_mut(), self.grid_rows.as_mut()]
@@ -2639,19 +2886,35 @@ impl Computed {
         // нуль занимает целый кегль, у текстового шрифта — около половины.
         // Семейство здесь уже унаследовано, поэтому замер возможен только на
         // этом шаге, вместе с `em`.
-        let (mut ch, ex) = crate::metrics::ch_ex_px(&family, base);
+        // Повторный вызов на уже подогнанном стиле: база — сохранённый
+        // вычисленный кегль, а не подогнанный.
+        let base = self.font_adjust_base.map_or(base, |b| b.0);
+        // Используемый кегль (css-fonts-5 §font-size-adjust): «affects the
+        // size of relative units that are based on font metrics such as ex
+        // and ch but does not affect the size of em units». `em` и числовой
+        // `line-height` остаются от `base`, метрики шрифта — от `used`, и сам
+        // текст набирается `used` (`font_size`), а детям уходит `base`.
+        let used = base * self.used_font_factor(&family);
+        if used != base && self.font_adjust_base.is_none() {
+            self.font_adjust_base = Some((base, self.line_height));
+            if let Some(Len::Pct(m)) = self.line_height {
+                self.line_height = Some(Len::Px(m * base));
+            }
+            self.font_size = Some(Len::Px(used.max(0.01)));
+        }
+        let (mut ch, ex) = crate::metrics::ch_ex_px(&family, used);
         // `ch` — продвижение нуля вдоль оси строки. При стоящих глифах в
         // вертикальном письме строка идёт сверху вниз, и продвижение равно
         // кеглю, а не ширине глифа (CSS Writing Modes §7.4).
         if self.vertical == Some(true) && self.upright == Some(true) {
-            ch = base;
+            ch = used;
         }
         // `ic` меряется по тому же семейству и тем же шагом, что `ch` и `ex`.
-        let ic = crate::metrics::ic_px(&family, base);
+        let ic = crate::metrics::ic_px(&family, used);
         // `cap` — высота прописной того же лица (css-values-4 §6.1.4). Щуп
         // вертикальных метрик её уже отдаёт третьим числом (по нему
         // `text-box-trim` считает срез `cap`), своего замера не нужно.
-        let cap = crate::metrics::vmetrics_px(&family, base).2;
+        let cap = crate::metrics::vmetrics_px(&family, used).2;
         let to_px = move |l: &mut Option<Len>| match *l {
             Some(Len::Em(k)) => *l = Some(Len::Px(k * base)),
             Some(Len::EmPx(k, add)) => *l = Some(Len::Px(k * base + add)),
@@ -2732,6 +2995,38 @@ impl Computed {
     /// Нужен там, где абзац разбит на куски: фон, отступы, рамка и размеры
     /// принадлежат абзацу целиком, и повторять их на каждом слове нельзя —
     /// иначе у каждого слова появляется своя подложка и своё поле.
+    /// Итоговые возможности OpenType куска — в порядке старшинства
+    /// css-fonts-4 §7.2: `font-variant-*` и прочие свойства, затем свойство
+    /// `font-feature-settings`. Повтор тега схлопывается, побеждает
+    /// последний: прежде в gpui уходило `liga 0, …, liga 1`, а
+    /// `apply_font_features` дописывал после них ещё `liga 0`
+    /// (`font-features-across-space-3`).
+    pub fn used_features(&self) -> Vec<(String, u32)> {
+        // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
+        let mut all: Vec<(String, u32)> =
+            crate::fonts::face_features(self.font_family.as_deref().unwrap_or(""));
+        all.extend(self.font_features.iter().cloned());
+        // Шаг 4 §7.2: «setting a non-default value for the letter-spacing
+        // property disables optional ligatures» (css-text-3 §8.2). Старше
+        // `font-variant-ligatures`, младше `font-feature-settings`
+        // (`font-feature-resolution-001/002`: `fvl-1 ls-1` — без лигатуры,
+        // `ls-1 ffs-1` — с ней).
+        if matches!(self.letter_spacing, Some(Len::Px(v) | Len::Em(v)) if v != 0.0) {
+            for tag in ["liga", "clig", "dlig", "hlig"] {
+                all.push((tag.to_string(), 0));
+            }
+        }
+        if let Some(settings) = &self.font_settings {
+            all.extend(settings.iter().cloned());
+        }
+        let mut out: Vec<(String, u32)> = Vec::with_capacity(all.len());
+        for (tag, value) in all {
+            out.retain(|(t, _)| *t != tag);
+            out.push((tag, value));
+        }
+        out
+    }
+
     pub fn text_only(&self) -> Computed {
         Computed {
             color: self.color,
@@ -2760,6 +3055,7 @@ impl Computed {
             monospace: self.monospace,
             letter_spacing: self.letter_spacing,
             font_features: self.font_features.clone(),
+            font_settings: self.font_settings.clone(),
             text_transform: self.text_transform,
             ellipsis: self.ellipsis,
             overflow_marker: self.overflow_marker.clone(),
@@ -2784,6 +3080,10 @@ impl Computed {
             rel_shift: self.rel_shift,
             text_fit: self.text_fit,
             hyphen_char: self.hyphen_char.clone(),
+            // Кусок, собранный из `text_only`, бывает родителем: без базы он
+            // отдал бы детям ПОДОГНАННЫЙ кегль, и подгонка накопилась бы.
+            font_size_adjust: self.font_size_adjust,
+            font_adjust_base: self.font_adjust_base,
             ..Computed::default()
         }
     }
@@ -2967,9 +3267,32 @@ impl Computed {
             )
         });
         let ordered = keys;
+        // `all: revert` / `all: revert-layer` (css-cascade-5 §3.2 «all»,
+        // §7.2): откат КАЖДОГО свойства, кроме `direction` и `unicode-bidi`,
+        // тем же правилом, что откат одного свойства ниже, — всё, что этот
+        // блок сказал о свойстве ДО `all`, снимается. Ключ `all` не
+        // разбирался вовсе, и `background-color: red; border-color: red;
+        // all: revert` оставлял красные поля ввода (`appearance-revert-001`).
+        // Порядок — по первому появлению ключа (`ORDER_KEY`): повтор
+        // свойства ПОСЛЕ `all` в том же блоке этим не различается (редкость).
+        let all_at = d
+            .get("all")
+            .and_then(|v| {
+                v.split(crate::css::DECL_SEP)
+                    .filter(|part| is_important(part) == important)
+                    .last()
+            })
+            .filter(|part| matches!(strip_important(part).trim(), "revert" | "revert-layer"))
+            .map(|_| место("all"));
         for k in &ordered {
             let Some(v) = d.get(*k) else { continue };
             if k.starts_with("--") || k.as_str() == crate::css::ORDER_KEY {
+                continue;
+            }
+            if let Some(at) = all_at
+                && место(k.as_str()) < at
+                && !matches!(k.as_str(), "direction" | "unicode-bidi")
+            {
                 continue;
             }
             // `revert`/`revert-layer` — не ЗНАЧЕНИЕ, а откат каскада
@@ -2994,7 +3317,10 @@ impl Computed {
                 })
                 .unwrap_or(0);
             for part in parts[from..].iter().copied() {
-                let resolved = resolve_vars(strip_important(part), vars);
+                // Типизированный `attr()` подставляется тем же шагом, что и
+                // `var()` (css-values-5 §7.7): после него значение разбирается
+                // как обычное.
+                let resolved = resolve_attrs(k.as_str(), &resolve_vars(strip_important(part), vars));
                 self.apply_one(k, &resolved);
             }
         }
@@ -3174,6 +3500,21 @@ impl Computed {
                         self.col_role = Some(u8::from(v == "table-column-group"));
                         Some(Display::None)
                     }
+                    // Блочный пункт списка со своим контекстом (css-display-3
+                    // §2.3: `flow-root list-item`, `block flow-root
+                    // list-item` — любые перестановки слов). Прежде запись
+                    // уходила в `_ => self.display`, и `<span class=li>`
+                    // оставался строчным (`display-flow-root-list-item-001`
+                    // 10.88 против 5.86 у той же разметки без `list-item`).
+                    two if {
+                        let mut w: Vec<&str> = two.split_whitespace().collect();
+                        w.sort_unstable();
+                        w == ["flow-root", "list-item"] || w == ["block", "flow-root", "list-item"]
+                    } =>
+                    {
+                        self.flow_root = Some(true);
+                        Some(Display::ListItem)
+                    }
                     // Запись из ДВУХ слов: из неё берётся только внутренний
                     // вид «лунки» — его иначе не выразить вовсе. Полный разбор
                     // двух слов ЗАМЕРЕН и откачен (см. комментарий выше).
@@ -3344,14 +3685,21 @@ impl Computed {
                 }
             }
             "align-self" => {
-                if let Ok(a) = align_keyword(v) {
+                // `left`/`right` у `align-self` недействительны: это
+                // `<self-position>` без них, физические стороны есть только у
+                // `justify-self` (css-align-3 §6.1) — объявление отбрасывается
+                // (`align-self-static-position-008`: `right` ждёт `start`;
+                // `grid-abspos-staticpos-align-self-rtl-*`).
+                let last = v.split_whitespace().last();
+                if !matches!(last, Some("left") | Some("right"))
+                    && let Ok(a) = align_keyword(v)
+                {
                     self.align_self = a;
                     self.align_self_safe = is_safe(v);
                     self.align_self_normal = v.trim() == "normal";
-                    self.align_self_own_axis = matches!(
-                        v.split_whitespace().last(),
-                        Some("self-start") | Some("self-end")
-                    );
+                    self.align_self_own_axis = matches!(last, Some("self-start") | Some("self-end"));
+                    self.align_self_flex_kw = matches!(last, Some("flex-start") | Some("flex-end"));
+                    self.align_self_last = v.split_whitespace().any(|w| w == "last");
                 }
             }
             "align-items" => {
@@ -3570,6 +3918,7 @@ impl Computed {
             // сама раскладка, но объявление всё равно отбрасывается.
             "width" => {
                 self.width_inherit = v == "inherit";
+                self.fit_arg[0] = fit_content_arg(v);
                 assign_size(&mut self.width, v);
             }
             "height" => {
@@ -3581,6 +3930,7 @@ impl Computed {
             // `None`, и `max-height: inherit` снимал предел вовсе.
             "min-width" => {
                 self.minmax_inherit[0] = v == "inherit";
+                self.fit_arg[1] = fit_content_arg(v);
                 assign_size(&mut self.min_width, v);
             }
             "min-height" => {
@@ -3589,6 +3939,7 @@ impl Computed {
             }
             "max-width" => {
                 self.minmax_inherit[2] = v == "inherit";
+                self.fit_arg[2] = fit_content_arg(v);
                 assign_size(&mut self.max_width, v);
             }
             "max-height" => {
@@ -3841,6 +4192,11 @@ impl Computed {
                     } else {
                         self.border_color = Color::parse(v);
                     }
+                    // Общий цвет, записанный ПОЗЖЕ бокового сокращения,
+                    // перебивает его `currentColor` на всех сторонах.
+                    if self.border_color_is_current || self.border_color.is_some() {
+                        self.border_side_current = [false; 4];
+                    }
                     return;
                 }
                 let colors: Vec<Option<Color>> =
@@ -3882,6 +4238,47 @@ impl Computed {
             }
             // `corner-shape` (css-borders-4 §corner-shaping-shorthand): 1–4
             // значения раскладываются по углам как `border-radius`.
+            // Сокращение `corner` (css-borders-4 §corner-shorthand): до
+            // четырёх углов через `/` по часовой от верхнего левого (схема
+            // 1–4 значений — как у `border-radius`), в каждом — радиус
+            // `<length-percentage>{1,2}` и/или форма `<corner-shape-value>`
+            // в любом порядке; опущенное — начальное (`0`, `round`).
+            // Раскладывается в те же лонгхенды, что пишет эталон
+            // (`corner-shorthand-rendering`).
+            "corner" => {
+                let mut corners: Vec<(Vec<&str>, Option<&str>)> = Vec::new();
+                for part in v.split('/').map(str::trim) {
+                    let mut lens = Vec::new();
+                    let mut shape = None;
+                    for tok in part.split_whitespace() {
+                        if corner_shape_param(tok).is_some() {
+                            shape = Some(tok);
+                        } else if Len::parse(tok).is_some() {
+                            lens.push(tok);
+                        } else {
+                            return;
+                        }
+                    }
+                    corners.push((lens, shape));
+                }
+                let pick: [usize; 4] = match corners.len() {
+                    1 => [0, 0, 0, 0],
+                    2 => [0, 1, 0, 1],
+                    3 => [0, 1, 2, 1],
+                    4 => [0, 1, 2, 3],
+                    _ => return,
+                };
+                const NAMES: [&str; 4] = ["top-left", "top-right", "bottom-right", "bottom-left"];
+                for (slot, &i) in pick.iter().enumerate() {
+                    let (lens, shape) = &corners[i];
+                    let radius = if lens.is_empty() { "0".to_string() } else { lens.join(" ") };
+                    self.apply_one(&format!("border-{}-radius", NAMES[slot]), &radius);
+                    self.apply_one(
+                        &format!("corner-{}-shape", NAMES[slot]),
+                        shape.unwrap_or("round"),
+                    );
+                }
+            }
             "corner-shape" => {
                 if let Some(k) = corner_shape_shorthand(v) {
                     self.corner_shape = Some(k);
@@ -3920,6 +4317,46 @@ impl Computed {
                     }] = val;
                     self.corner_shape = Some(k);
                 }
+            }
+            // Сокращения стороны (css-borders-4 §corner-sizing, tentative):
+            // два угла одной стороны. До `/` — первый угол (`rx [ry]`), после —
+            // второй; без `/` оба одинаковы. Углы стороны идут слева направо
+            // (верх/низ) и сверху вниз (лево/право): `border-bottom-radius:
+            // 3em 2em / 4em 1em` ≡ `bottom-left: 3em 2em; bottom-right: 4em
+            // 1em` (`border-radius-side-shorthands-001`). Логические — по
+            // письму на момент объявления; вертикальное письмо пока как
+            // горизонтальное (`-002` горизонтальный).
+            "border-top-radius"
+            | "border-right-radius"
+            | "border-bottom-radius"
+            | "border-left-radius"
+            | "border-block-start-radius"
+            | "border-block-end-radius"
+            | "border-inline-start-radius"
+            | "border-inline-end-radius" => {
+                let rtl = self.rtl == Some(true);
+                let (a, b) = match (key, rtl) {
+                    ("border-top-radius", _) | ("border-block-start-radius", false) => (0, 1),
+                    ("border-block-start-radius", true) => (1, 0),
+                    ("border-bottom-radius", _) | ("border-block-end-radius", false) => (3, 2),
+                    ("border-block-end-radius", true) => (2, 3),
+                    ("border-left-radius", _)
+                    | ("border-inline-start-radius", false)
+                    | ("border-inline-end-radius", true) => (0, 3),
+                    _ => (1, 2),
+                };
+                let (first, second) = match v.split_once('/') {
+                    Some((x, y)) => (x.trim(), y.trim()),
+                    None => (v, v),
+                };
+                const LONG: [&str; 4] = [
+                    "border-top-left-radius",
+                    "border-top-right-radius",
+                    "border-bottom-right-radius",
+                    "border-bottom-left-radius",
+                ];
+                self.apply_one(LONG[a], first);
+                self.apply_one(LONG[b], second);
             }
             "border-radius" => {
                 // Эллиптические радиусы: `H / V` (css-backgrounds-3 §5.1) —
@@ -4088,6 +4525,14 @@ impl Computed {
             // отодвигается наружу (css-overflow-3 §5). Запись допускает и
             // указание коробки отсчёта — её мы не различаем, край один.
             "overflow-clip-margin" => {
+                // `inherit` у НЕнаследуемого свойства — вычисленное значение
+                // родителя целиком (css-cascade-4 §inherit). Ветка длины ниже
+                // слово не понимала, и объявление пропадало
+                // (`overflow-clip-margin-009`: поле 20 родителя не доезжало).
+                if v.trim() == "inherit" {
+                    self.inherit_bits |= inh::CLIP_MARGIN;
+                    return;
+                }
                 // `<visual-box> || <length>`: коробка отсчёта и поле, в любом
                 // порядке, любая часть может отсутствовать (умолчание —
                 // padding-box, поле 0).
@@ -4262,13 +4707,20 @@ impl Computed {
                     }
                 }
             }
+            "box-shadow" if has_font_units(v) => self.shadow_raw = Some(v.to_string()),
             "box-shadow" => {
+                self.shadow_raw = None;
                 if v == "inherit" {
                     self.shadow_inherit = true;
                     return;
                 }
                 // `inset` в записи означает тень ВНУТРИ фигуры: раньше такая
                 // запись просто не рисовалась.
+                // Негодная запись ОТБРАСЫВАЕТСЯ целиком, прежняя тень живёт
+                // (§7.1 `none | <shadow>#`; `box-shadow-invalid-001`).
+                if !box_shadow_valid(v) {
+                    return;
+                }
                 let (inset, outer): (Vec<&str>, Vec<&str>) = crate::css::split_args(v)
                     .into_iter()
                     .partition(|one| one.contains("inset"));
@@ -4305,7 +4757,8 @@ impl Computed {
                 // `medium`) не сбрасывал кегль корня, и абзац
                 // `percentage-rem-low` набирался четырьмя точками вместо
                 // шестнадцати. Таблица — та же, что у Chrome при базовом 16.
-                let word = match v.to_ascii_lowercase().as_str() {
+                let lower = v.to_ascii_lowercase();
+                let word = match lower.as_str() {
                     "xx-small" => Some(Len::Px(9.0)),
                     "x-small" => Some(Len::Px(10.0)),
                     "small" => Some(Len::Px(13.0)),
@@ -4322,11 +4775,25 @@ impl Computed {
                 };
                 if let Some(l) = word {
                     self.font_size = Some(l);
+                    // `larger`/`smaller` шагают по ТАБЛИЦЕ (§15.7: «if the
+                    // parent element has font size 'medium', then 'larger'
+                    // will make … 'large'»), а не множат: шесть шагов вверх от
+                    // `xx-small` (9 → 26.9) не сходились с шестью вниз от
+                    // `xx-large` (32 → 10.7) (`font-size-121`). Кегль родителя
+                    // известен в `inline::inherit`; `Len::Em` — запас вне таблицы.
+                    self.font_size_step = match lower.as_str() {
+                        "larger" => 1,
+                        "smaller" => -1,
+                        _ => 0,
+                    };
                     return;
                 }
                 self.font_size = match Len::parse(v) {
                     Some(l) if neg(&l) => self.font_size,
-                    other => other,
+                    other => {
+                        self.font_size_step = 0;
+                        other
+                    }
                 };
             }
             "font-weight" => {
@@ -4354,9 +4821,23 @@ impl Computed {
                 // конкретный системный шрифт, и без подстановки разметка
                 // набиралась умолчанием движка, шире браузерного. Берётся то
                 // же семейство, что подставляет Chrome на этой системе.
+                // Родовое имя — только БЕЗ кавычек (css-fonts-4 §4.1.1: names
+                // that happen to be the same as a keyword value «must be quoted
+                // to prevent confusion with the keywords»): `"fantasy", serif` —
+                // семейство «fantasy», затем родовое `serif`
+                // (`quoted-generic-ignored`).
+                let quoted = |f: &str| f.starts_with('"') || f.starts_with('\'');
+                let first_generic = v
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|f| !quoted(f))
+                    .map(str::to_ascii_lowercase)
+                    .find(|f| is_generic(f));
                 let generic = v
                     .split(',')
-                    .map(|f| f.trim().trim_matches(is_quote).to_ascii_lowercase())
+                    .map(str::trim)
+                    .filter(|f| !quoted(f))
+                    .map(str::to_ascii_lowercase)
                     .find_map(|f| generic_family(&f));
                 // Первое НЕ родовое имя списка уходит в шрифт как есть:
                 // подстановкой недостающего занимается сама система шрифтов.
@@ -4366,11 +4847,15 @@ impl Computed {
                     let un = crate::css::unescape(f);
                     un.split_whitespace().collect::<Vec<_>>().join(" ")
                 };
-                let usable = |f: &str| {
+                // Годно ли имя списка как ИМЯ СЕМЕЙСТВА: в кавычках — всегда
+                // (даже `"serif"`), без кавычек — если это не родовое слово.
+                let usable = |raw: &str| {
+                    let f = raw.trim_matches(is_quote);
                     let lower = f.to_ascii_lowercase();
                     !f.is_empty()
-                        && !is_generic(&lower)
-                        && !matches!(lower.as_str(), "inherit" | "initial")
+                        && (quoted(raw)
+                            || (!is_generic(&lower)
+                                && !matches!(lower.as_str(), "inherit" | "initial")))
                 };
                 // Первое ДОСТУПНОЕ имя списка: браузер идёт по списку, пока
                 // не найдёт шрифт (§15.3). Прежде бралось первое подходящее по
@@ -4402,10 +4887,35 @@ impl Computed {
                 };
                 let installed = v
                     .split(',')
-                    .map(|f| norm(f.trim().trim_matches(is_quote)))
-                    .find(|f| usable(f) && available(f));
+                    .map(str::trim)
+                    .filter(|raw| usable(raw))
+                    .map(|raw| norm(raw.trim_matches(is_quote)))
+                    .find(|f| available(f));
                 if let Some(found) = installed {
                     self.font_family = Some(found);
+                    return;
+                }
+                // Ни одно имя не доступно. Первое родовое имя списка — его
+                // подстановка; `monospace` своего имени не даёт (семейство под
+                // него берёт `metrics::mono_family` по признаку). Родового нет —
+                // шрифт ДОКУМЕНТА (CSS 2.1 §15.3, «the user agent's default
+                // font»), а не неизвестное имя: DirectWrite заменял его
+                // системным UI-шрифтом (`select_font`, Segoe UI), тогда как
+                // эталон без `font-family` набирается базой документа
+                // (`font-family-name-017/018/022`, `standard-font-family`).
+                // Метка «шрифт документа» — ПУСТОЕ имя: оно задано (родителя
+                // не наследует, `-017`), а меряется и набирается как `None`.
+                // Пока список установленных не снят (`fonts_known`), о
+                // доступности судить нечем — ниже прежняя ветка.
+                if crate::metrics::fonts_known() && lower.trim() != "inherit" {
+                    self.font_family = match first_generic.as_deref() {
+                        Some("monospace" | "ui-monospace") => None,
+                        Some(_) => generic.map(str::to_string),
+                        None => {
+                            self.monospace = Some(false);
+                            Some(String::new())
+                        }
+                    };
                     return;
                 }
                 self.font_family = v
@@ -4697,6 +5207,33 @@ impl Computed {
             // deprecated»), и в корпусе его не просит ни один рефтест —
             // разбираем два ключевых слова.
             "image-orientation" => self.image_orient_none = Some(v.trim() == "none"),
+            // Долгая запись `white-space-collapse` (css-text-4 §3.1) трогает
+            // ТОЛЬКО схлопывание; перенос (`nowrap`) остаётся за
+            // `text-wrap-mode`. У `preserve-spaces` и `discard` своего пути в
+            // сборке текста нет — не трогаем.
+            "white-space-collapse" => match v {
+                "collapse" => {
+                    self.keep_spaces = Some(false);
+                    self.preserve_newlines = Some(false);
+                    self.break_after_spaces = Some(false);
+                }
+                "preserve" => {
+                    self.keep_spaces = Some(true);
+                    self.preserve_newlines = Some(true);
+                    self.break_after_spaces = Some(false);
+                }
+                "preserve-breaks" => {
+                    self.keep_spaces = Some(false);
+                    self.preserve_newlines = Some(true);
+                    self.break_after_spaces = Some(false);
+                }
+                "break-spaces" => {
+                    self.keep_spaces = Some(true);
+                    self.preserve_newlines = Some(true);
+                    self.break_after_spaces = Some(true);
+                }
+                _ => {}
+            },
             "white-space" => {
                 // `pre` не переносит строки — так же, как `nowrap`; переносят
                 // только `pre-wrap` и `pre-line`.
@@ -4856,6 +5393,11 @@ impl Computed {
             "justify-self" => {
                 self.justify_self = parse_align(v);
                 self.justify_self_safe = is_safe(v);
+                self.justify_self_own_axis = matches!(
+                    v.split_whitespace().last(),
+                    Some("self-start") | Some("self-end")
+                );
+                self.justify_self_last = v.split_whitespace().any(|w| w == "last");
             }
             // `place-*` — сокращения «поперёк / вдоль»; одно значение задаёт обе оси.
             "place-items" | "place-content" | "place-self" => {
@@ -5091,6 +5633,7 @@ impl Computed {
                     width: Some(Len::Px(3.0)),
                     color: None,
                     offset: None,
+                    inset: false,
                     style: None,
                 });
                 for token in split_ws_top(v) {
@@ -5120,22 +5663,56 @@ impl Computed {
                 }
                 let mut o = self.outline.unwrap_or_default();
                 match key {
+                    // `initial`/`unset` ненаследуемой ширины — `medium`, 3px
+                    // (css-ui-4 §outline-width); слова разбор не знал, ширина
+                    // оставалась пустой, и обводка не рисовалась вовсе
+                    // (`zoom/outline-width-keywords`, коробка `.initial`).
+                    "outline-width" if matches!(v, "initial" | "unset") => {
+                        o.width = Some(Len::Px(3.0))
+                    }
                     "outline-width" => o.width = outline_width_of(v).or(o.width),
                     "outline-color" => o.color = Color::parse(v),
                     "outline-style" => o.style = outline_style_of(v),
-                    _ => o.offset = Len::parse(v),
+                    // `outline-offset: inset` — «внутрь на толщину»: слово
+                    // уходило в разбор длины, давало `None`, и контур ложился
+                    // СНАРУЖИ коробки (`outline-offset-inset-002` 0.93,
+                    // `-004` 3.31).
+                    _ => {
+                        o.inset = v == "inset";
+                        o.offset = if o.inset { None } else { Len::parse(v) };
+                    }
                 }
                 self.outline = Some(o);
             }
             "backdrop-filter" => {
-                self.backdrop_blur = v
-                    .strip_prefix("blur(")
-                    .and_then(|r| r.strip_suffix(')'))
-                    .and_then(Len::parse)
-                    .and_then(|l| match l {
-                        Len::Px(v) => Some(v),
-                        _ => None,
-                    })
+                // Тот же `<filter-value-list>`, что у `filter`
+                // (filter-effects-2 §BackdropFilterProperty): разбор общий,
+                // размытие идёт своим проходом, цветовые функции — матрицей.
+                let mut tmp = Self::default();
+                tmp.apply_one("filter", v);
+                let f = tmp.filter.unwrap_or_else(Filter::neutral);
+                self.backdrop_blur = (f.blur > 0.0).then_some(f.blur);
+                self.backdrop_color = f
+                    .color_matrix()
+                    .map(|_| Filter { blur: 0.0, ..f });
+            }
+            "will-change" => {
+                // Только признак корня подложки (filter-effects-2
+                // §BackdropRoot: «will-change specifying any property that
+                // would create a Backdrop Root on non-initial value»).
+                self.will_change_root = v.split(',').any(|p| {
+                    matches!(
+                        p.trim(),
+                        "opacity"
+                            | "filter"
+                            | "mask"
+                            | "mask-image"
+                            | "mask-border"
+                            | "clip-path"
+                            | "backdrop-filter"
+                            | "mix-blend-mode"
+                    )
+                });
             }
             "background-image" => {
                 if v == "inherit" {
@@ -5180,11 +5757,19 @@ impl Computed {
                         }
                         self.gradient = Some(g);
                     } else if let Some(img) = parts.first().map(|p| p.trim())
-                        && img.starts_with("conic-gradient(")
+                        && gradient_as_raster(img)
                     {
-                        // Конический идёт растровой плиткой — фильтр к нему
-                        // пока не доносим; сама картинка лучше, чем ничего.
-                        self.bg_image = Some(img.to_string());
+                        // Конический и повторяющиеся идут растровой плиткой
+                        // (`gradient_as_raster`): фильтр доносится до цветов
+                        // стопов прямо в записи — растеризатор получает уже
+                        // пересчитанные цвета (filter-effects-1 §12
+                        // `filter()`: фильтр применяется к КАРТИНКЕ).
+                        let mut tmp = Self::default();
+                        tmp.apply_one("filter", &parts[1..].join(" "));
+                        self.bg_image = Some(match tmp.filter {
+                            Some(f) => filter_gradient_text(img, &f),
+                            None => img.to_string(),
+                        });
                     }
                 } else if gradient_as_raster(v) {
                     // Конический и ПОВТОРЯЮЩИЕСЯ GPU-путь не выражает — они
@@ -5266,7 +5851,13 @@ impl Computed {
                                 if let Ok(v) = pc.parse::<f32>() {
                                     p = (v / 100.0).clamp(0.0, 1.0);
                                 }
-                            } else if let Some(c) = Color::parse(tok) {
+                            } else if let Some(c) = Color::parse(
+                                tok.strip_prefix("image(")
+                                    .and_then(|t| t.strip_suffix(')'))
+                                    .unwrap_or(tok),
+                            ) {
+                                // `image(<color>)` — та же сплошная картинка,
+                                // что и голый `<color>` (css-images-4 §2.6).
                                 colors.push(c);
                             } else if let Some(u) = parse_url(tok) {
                                 url.get_or_insert(u);
@@ -5355,9 +5946,9 @@ impl Computed {
                             | "status-bar"
                     ) || t.starts_with(|c: char| c.is_ascii_digit() || c == '.')
                 };
-                if head
-                    .split_whitespace()
-                    .any(|t| !head_word(&t.to_ascii_lowercase()))
+                if split_outside_parens(head)
+                    .iter()
+                    .any(|t| !head_word(&t.to_ascii_lowercase()) && !font_size_token(t))
                 {
                     return;
                 }
@@ -5379,26 +5970,34 @@ impl Computed {
                 }) {
                     return;
                 }
-                for token in head.split_whitespace() {
-                    match token {
+                // Сокращение сперва сбрасывает ВСЕ свои части к начальным
+                // значениям (CSS 2.1 §15.8), и только потом пишет названные.
+                // Пустой слот у нас — «наследовать», поэтому сброс явный:
+                // `normal` у веса, наклона и высоты строки (`Len::Auto` —
+                // метка `normal`, см. `"line-height"`). Без него
+                // `p { font: 16px serif }` под `html { font: 20px/1 Ahem }`
+                // наследовал `line-height: 1` (`numbers-units-018`), а
+                // `em { font: 1em/1 Ahem }` — курсив UA-листа (`c42-ibx-ht-000`).
+                self.italic = Some(false);
+                self.font_weight = Some(400);
+                self.line_height = Some(Len::Auto);
+                for token in split_outside_parens(head) {
+                    let t = token.as_str();
+                    match t.to_ascii_lowercase().as_str() {
                         "italic" | "oblique" => self.italic = Some(true),
                         "bold" | "bolder" => self.font_weight = Some(700),
-                        t if t.starts_with(|c: char| c.is_ascii_digit()) => {
-                            if let Some((size, lh)) = t.split_once('/') {
+                        // Кегль — и `0` (`font: 0 Ahem`: вес 0 зацикливал
+                        // подбор шрифта, vars-font-shorthand-001).
+                        _ if font_size_token(t) => match font_slash(t) {
+                            Some((size, lh)) => {
                                 self.apply_one("font-size", size);
                                 self.apply_one("line-height", lh);
-                            } else if t == "0"
-                                || (Len::parse(t).is_some()
-                                    && !t.chars().all(|c| c.is_ascii_digit()))
-                            {
-                                // `font: 0 Ahem` — ноль это ДЛИНА (кегль 0),
-                                // а не вес: вес 0 зацикливал подбор шрифта
-                                // (vars-font-shorthand-001 висел).
-                                self.apply_one("font-size", t);
-                            } else {
-                                self.font_weight =
-                                    t.parse().ok().filter(|w| (1..=1000).contains(w));
                             }
+                            None => self.apply_one("font-size", t),
+                        },
+                        _ if t.starts_with(|c: char| c.is_ascii_digit()) => {
+                            self.font_weight =
+                                t.parse().ok().filter(|w| (1..=1000).contains(w));
                         }
                         _ => {}
                     }
@@ -5726,6 +6325,11 @@ impl Computed {
                 self.line_clamp = None;
                 self.clamp_auto = None;
                 self.clamp_legacy = Some(false);
+                // Одна строка многоточия без числа — `max-lines: none` при
+                // `continue: collapse` (§5.1: «Sets continue to collapse if
+                // either or both values are specified»), то есть срез по
+                // высоте, как у `auto` (`line-clamp-balance-009`).
+                let mut ellipsis_given = false;
                 let mut rest = v.trim();
                 while !rest.is_empty() {
                     let quote = rest.as_bytes()[0];
@@ -5743,11 +6347,15 @@ impl Computed {
                     rest = tail.trim_start();
                     if word.len() >= 2 && (word.starts_with('"') || word.starts_with('\'')) {
                         self.overflow_marker = Some(word[1..word.len() - 1].to_string());
+                        ellipsis_given = true;
                     } else if word.eq_ignore_ascii_case("auto") {
                         self.clamp_auto = Some(true);
                     } else if let Ok(n) = word.parse::<u32>() {
                         self.line_clamp = Some(n);
                     }
+                }
+                if ellipsis_given && self.line_clamp.is_none() {
+                    self.clamp_auto = Some(true);
                 }
             }
             "-webkit-line-clamp" => {
@@ -5824,6 +6432,7 @@ impl Computed {
                     "padding-box" => Some(BgClip::PaddingBox),
                     "content-box" => Some(BgClip::ContentBox),
                     "text" => Some(BgClip::Text),
+                    "border-area" => Some(BgClip::BorderArea),
                     _ => None,
                 }
             }
@@ -6010,26 +6619,29 @@ impl Computed {
             "font-kerning" => {
                 // css-fonts-4 §6.4: `none` гасит кернинг, `normal` включает,
                 // `auto` оставляет решение шрифту (у нас — включён).
+                let kern: u8 = match v.trim() {
+                    "none" => 0,
+                    "normal" => 1,
+                    "auto" => 2,
+                    // Негодное значение роняет объявление (§4.2), а не стирает
+                    // прежний `kern`.
+                    _ => return,
+                };
                 self.font_features.retain(|(t, _)| t != "kern");
-                match v.trim() {
-                    "none" => self.font_features.push(("kern".to_string(), 0)),
-                    "normal" => self.font_features.push(("kern".to_string(), 1)),
-                    _ => {}
+                if kern < 2 {
+                    self.font_features.push(("kern".to_string(), kern as u32));
                 }
+                self.font_kerning = Some(kern);
             }
             "font-feature-settings" => {
                 // Низкоуровневые теги через запятую: `"tnum" 1, "liga" off`.
-                for token in v.split(',') {
-                    let mut parts = token.split_whitespace();
-                    let tag = parts.next().unwrap_or("").trim_matches('"');
-                    if tag.len() == 4 {
-                        let on = match parts.next() {
-                            Some("off") | Some("0") => 0,
-                            Some("on") | None => 1,
-                            Some(n) => n.parse().unwrap_or(1),
-                        };
-                        self.font_features.push((tag.to_string(), on));
-                    }
+                if v == "inherit" {
+                    self.font_settings = None;
+                    return;
+                }
+                // Негодный список роняет объявление целиком (§4.2).
+                if let Some(list) = feature_list(v) {
+                    self.font_settings = Some(list);
                 }
             }
             "font-variant"
@@ -6137,6 +6749,46 @@ impl Computed {
                     }
                 }
             }
+            "font-size-adjust" => {
+                // css-fonts-5 §font-size-adjust:
+                //   none | [ ex-height | cap-height | ch-width | ic-width
+                //          | ic-height ]? [ from-font | <number [0,∞]> ]
+                // Негодная запись (доля, `auto`, отрицательное число) роняет
+                // объявление целиком, прежнее значение живёт (§4.2;
+                // `font-size-adjust-006/007/008`).
+                let lower = v.to_ascii_lowercase();
+                if lower == "inherit" {
+                    self.font_size_adjust = None;
+                    return;
+                }
+                if lower == "none" || lower == "initial" {
+                    self.font_size_adjust = Some((u8::MAX, 0.0));
+                    return;
+                }
+                let toks = split_outside_parens(&lower);
+                let (metric, number) = match toks.as_slice() {
+                    [n] => ("ex-height", n.as_str()),
+                    [m, n] => (m.as_str(), n.as_str()),
+                    _ => return,
+                };
+                let metric = match metric {
+                    "ex-height" => 0,
+                    "cap-height" => 1,
+                    "ch-width" => 2,
+                    "ic-width" => 3,
+                    "ic-height" => 4,
+                    _ => return,
+                };
+                let want = if number == "from-font" {
+                    f32::NAN
+                } else {
+                    match crate::value::number(number) {
+                        Some(k) if k >= 0.0 => k,
+                        _ => return,
+                    }
+                };
+                self.font_size_adjust = Some((metric, want));
+            }
             "font-stretch" => {
                 // Ключевые слова CSS — это проценты от обычной ширины.
                 let pct = match v {
@@ -6239,6 +6891,11 @@ impl Computed {
     /// планирования фрагментов, а не правка общей укладки.
             "break-inside" | "page-break-inside" => {
                 self.break_inside_avoid = v.trim().starts_with("avoid")
+            }
+            // Префиксное написание — то же свойство (`border-image-000`,
+            // `-webkit-box-decoration-break: clone`).
+            "box-decoration-break" | "-webkit-box-decoration-break" => {
+                self.bdb_clone = v.trim().eq_ignore_ascii_case("clone")
             }
             "break-before" | "page-break-before" => {
                 self.break_before_force = matches!(
@@ -6415,24 +7072,59 @@ impl Computed {
                 // `column-height` и `column-wrap` в начальные
                 // (`columns-shorthand-reset-wrap`, `columns: 2 / 0`).
                 let (head, tail) = v.split_once('/').map_or((v, None), |(a, b)| (a, Some(b)));
+                // Грамматика css-multicol-1 §columns: «<<'column-width'>> ||
+                // <<'column-count'>>» — не больше двух слов, каждое не больше раза.
+                // Иное объявление НЕВАЛИДНО и отбрасывается ЦЕЛИКОМ (css-syntax-3
+                // §consume-declaration), ничего не сбрасывая. Прежде слова брались
+                // поштучно: `columns: 8 auto 6em` давал `column-count: 8` и
+                // `column-width: 6em`, и с пакетом B (`column_width` из `merged`,
+                // в точках) колонок стало min(8, ⌊240/120⌋) = 2 вместо 4 —
+                // `multicol-columns-invalid-002` 0.00 (v39) → 0.67 (v40).
+                let words: Vec<&str> = head.split_whitespace().collect();
+                if words.is_empty() || words.len() > 2 {
+                    return;
+                }
+                let mut count: Option<u16> = None;
+                let mut width: Option<Len> = None;
+                for token in &words {
+                    if token.eq_ignore_ascii_case("auto") {
+                        continue;
+                    }
+                    match token.parse::<u16>() {
+                        Ok(n) if n > 0 && count.is_none() => count = Some(n),
+                        // `0` — как прежде: без действия (как длина `column-width: 0`
+                        // у нас отвергается и в полной форме).
+                        Ok(0) => {}
+                        Ok(_) => return,
+                        Err(_) => match Len::parse(token) {
+                            Some(l)
+                                if width.is_none()
+                                    && !matches!(
+                                        l,
+                                        Len::Auto
+                                            | Len::Pct(_)
+                                            | Len::MinContent
+                                            | Len::MaxContent
+                                            | Len::FitContent
+                                    )
+                                    && !matches!(l, Len::Px(w) | Len::Em(w) if w < 0.0) =>
+                            {
+                                width = Some(l)
+                            }
+                            _ => return,
+                        },
+                    }
+                }
                 self.column_height = None;
                 self.column_wrap = None;
                 if let Some(t) = tail {
                     self.apply_one("column-height", t.trim());
                 }
-                for token in head.split_whitespace() {
-                    if token == "auto" {
-                        continue;
-                    }
-                    match token.parse::<u16>() {
-                        Ok(n) if n > 0 => self.column_count = Some(n),
-                        Ok(_) => {}
-                        Err(_) => {
-                            if let Some(l) = Len::parse(token) {
-                                self.column_width = Some(l);
-                            }
-                        }
-                    }
+                if let Some(n) = count {
+                    self.column_count = Some(n);
+                }
+                if let Some(l) = width {
+                    self.column_width = Some(l);
                 }
             }
 
@@ -6549,6 +7241,34 @@ impl Computed {
                 }
             }
             "filter" => {
+                // `drop-shadow(<color>? && <length>{2,3})` (filter-effects-1
+                // §funcdef-filter-drop-shadow) несёт скобки цвета внутри —
+                // режется по балансу скобок, а не по первой `)`. Значения —
+                // как у box-shadow, но 3-я длина — СИГМА: радиус box-shadow
+                // вдвое больше.
+                self.drop_shadow = v.find("drop-shadow(").and_then(|at| {
+                    let rest = &v[at + "drop-shadow(".len()..];
+                    let mut depth = 1usize;
+                    let end = rest.char_indices().find_map(|(i, ch)| {
+                        match ch {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    return Some(i);
+                                }
+                            }
+                            _ => {}
+                        }
+                        None
+                    })?;
+                    parse_shadows(&rest[..end])
+                        .first()
+                        .map(|sh| Shadow {
+                            blur: sh.blur * 2.0,
+                            ..*sh
+                        })
+                });
                 let mut f = self.filter.unwrap_or_else(Filter::neutral);
                 for call in v.split(')') {
                     let Some((name, arg)) = call.split_once('(') else {
@@ -6593,7 +7313,10 @@ impl Computed {
             // после каскада (`dom::walk`), когда известны и путь, и точка
             // отсчёта, и авторский `transform` — раньше собрать нечего.
             "offset-path" => self.offset_path = (v.trim() != "none").then(|| v.trim().to_string()),
-            "offset-distance" => self.offset_distance = Len::parse(v.trim()),
+            // `<length-percentage>`: смесь `calc(12.5% + 200px)` доживает
+            // индексом арены — доля решается длиной пути во втором проходе
+            // (`motion::path_css`; offset-path-shape-xywh-002).
+            "offset-distance" => self.offset_distance = Len::parse_mixed(v.trim()),
             "offset-rotate" => self.offset_rotate = Some(v.trim().to_string()),
             "offset-anchor" => self.offset_anchor = Some(v.trim().to_string()),
             "offset-position" => self.offset_position = Some(v.trim().to_string()),
@@ -7398,6 +8121,35 @@ impl Computed {
                 }
             }
             "isolation" => self.isolate = Some(v == "isolate"),
+            // css-will-change-1 §2.1: обещанное свойство даёт коробке то, что
+            // дало бы его неначальное значение, — содержащий блок для
+            // `absolute`/`fixed` и контекст наложения (`will-change-fixpos-cb-*`,
+            // `-abspos-cb-*`, `-fixedpos-cb-*`, `-stacking-context-z-index-2/3`).
+            // `position` даёт блок только абсолютам (`-fixpos-cb-position-1`).
+            // `auto`, `scroll-position`, `contents` и прочие свойства — ноль:
+            // `will-change: height` не меняет ничего (`-fixpos-cb-height-1`).
+            "will-change" => {
+                let mut bits = 0u8;
+                for part in v.split(',') {
+                    bits |= match part.trim().to_ascii_lowercase().as_str() {
+                        "transform" | "translate" | "rotate" | "scale" | "perspective"
+                        | "-webkit-perspective" | "transform-style" | "offset-path"
+                        | "contain" => wc::BOX,
+                        "filter" | "backdrop-filter" | "-webkit-backdrop-filter" => {
+                            wc::CB_ABS | wc::CB_FIXED | wc::STACK
+                        }
+                        "position" => wc::CB_ABS | wc::STACK,
+                        "opacity" | "isolation" | "mix-blend-mode" | "clip-path"
+                        | "-webkit-clip-path" | "mask" | "mask-image" | "-webkit-mask"
+                        | "-webkit-mask-image" | "mask-border" | "view-transition-name" => {
+                            wc::STACK
+                        }
+                        "z-index" => wc::STACK_Z,
+                        _ => 0,
+                    };
+                }
+                self.will_change = bits;
+            }
             "shape-outside" => {
                 let t = v.trim();
                 if t != "none" {
@@ -8378,7 +9130,15 @@ impl Computed {
                 self.border_color = None;
                 self.border_colors = [None; 4];
             }
-            (None, Some(i)) => self.border_colors[i] = None,
+            // Боковое сокращение без цвета даёт стороне `currentColor`
+            // (§8.5.4), и он обязан перебить общий цвет менее специфичного
+            // правила: `div { border-color: red }` + `.test { border-top: solid
+            // 1em }` — верх цвета ТЕКСТА (`border-shorthands-003`). Пустой слот
+            // стороны значит «взять общий», поэтому сторона помечается.
+            (None, Some(i)) => {
+                self.border_colors[i] = None;
+                self.border_side_current[i] = true;
+            }
         }
         let Some(w) = width else { return };
         match side {
@@ -8653,15 +9413,51 @@ fn join_slash(v: &str) -> String {
 
 fn split_font(v: &str) -> (&str, &str) {
     let mut end = 0;
-    for token in v.split_whitespace() {
-        let at = v[end..].find(token).map(|i| end + i).unwrap_or(end);
+    for token in split_outside_parens(v) {
+        let at = v[end..].find(token.as_str()).map(|i| end + i).unwrap_or(end);
         end = at + token.len();
-        let numeric = token.starts_with(|c: char| c.is_ascii_digit());
-        if numeric && (token.contains('/') || Len::parse(token).is_some()) {
+        if font_size_token(&token) {
             return (&v[..end], v[end..].trim());
         }
     }
     (v, "")
+}
+
+/// Кусок головы сокращения `font`, который задаёт КЕГЛЬ (быть может, с
+/// `/высотой строки`). Голое число — ВЕС, а не кегль (§15.6: 100…900):
+/// `Len::parse("900")` даёт точки, и `font: 900 2em Ahem` отдавал кегль
+/// весу, а `2em Ahem` — семейству, после чего гибло всё
+/// (`font-family-011`). Ключевые кегли и математические функции — тоже
+/// кегль (§15.8; `font: calc(10 * 10px) sans-serif`, `font-148`).
+fn font_size_token(token: &str) -> bool {
+    let size = font_slash(token).map_or(token, |(s, _)| s);
+    let lower = size.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "xx-small" | "x-small" | "small" | "medium" | "large" | "x-large" | "xx-large"
+            | "xxx-large" | "larger" | "smaller"
+    ) || ["calc(", "min(", "max(", "clamp("].iter().any(|f| lower.starts_with(f))
+    {
+        return true;
+    }
+    size.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+        && (token.contains('/')
+            || size == "0"
+            || (Len::parse(size).is_some() && !size.chars().all(|c| c.is_ascii_digit())))
+}
+
+/// Косая черта ВНЕ скобок: `20px/1.5` делится, `calc(100px/2)` — нет.
+fn font_slash(t: &str) -> Option<(&str, &str)> {
+    let mut depth = 0i32;
+    for (i, ch) in t.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            '/' if depth == 0 => return Some((&t[..i], &t[i + 1..])),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Разбор значения `content` в список составляющих (css-content-3 §2).
@@ -8815,7 +9611,36 @@ fn unescape_content(text: &str) -> String {
     if !text.contains('\\') {
         return text.to_string();
     }
-    crate::css::unescape(text)
+    // Экранированный перевод строки внутри строки CSS — ПРОДОЛЖЕНИЕ, а не
+    // знак: CSS 2.1 §4.1.3 «the newline itself has to be escaped with a
+    // backslash (\). The newline is subsequently removed from the string»
+    // (css-syntax-3 §4.3.5: newline после `\` потребляется). `css::unescape`
+    // общий с именами и оставлял `\n`; в `white-space: pre` он становился
+    // жёстким разрывом, и кошка `content-173` рвалась лишними строками.
+    // Остальные экранирования уходят в `unescape` как есть; `\` в конце
+    // строки (EOF) пропадает.
+    let mut joined = String::with_capacity(text.len());
+    let mut it = text.chars().peekable();
+    while let Some(ch) = it.next() {
+        if ch != '\\' {
+            joined.push(ch);
+            continue;
+        }
+        match it.next() {
+            Some('\n') | Some('\u{c}') => {}
+            Some('\r') => {
+                if it.peek() == Some(&'\n') {
+                    it.next();
+                }
+            }
+            Some(c) => {
+                joined.push('\\');
+                joined.push(c);
+            }
+            None => {}
+        }
+    }
+    crate::css::unescape(&joined)
 }
 
 /// `url(...)` из значения фона; кавычки внутри необязательны.
@@ -8963,7 +9788,9 @@ fn parse_overflow(v: &str) -> Option<Overflow> {
     match v {
         "hidden" => Some(Overflow::Hidden),
         "clip" => Some(Overflow::Clip),
-        "scroll" | "auto" => Some(Overflow::Scroll),
+        // `overlay` — устаревший синоним `auto` (css-overflow-3 §overflow:
+        // «legacy value alias of auto»; `overflow-overlay`).
+        "scroll" | "auto" | "overlay" => Some(Overflow::Scroll),
         "visible" => Some(Overflow::Visible),
         _ => None,
     }
@@ -9333,6 +10160,144 @@ fn top_level_comma(inner: &str) -> Option<usize> {
         }
     }
     None
+}
+
+thread_local! {
+    /// Атрибуты элемента, чей стиль сейчас собирается, — источник для
+    /// типизированного `attr()` (css-values-5 §7.7). Ставит `dom::walk` на
+    /// время `resolve_with_vars` и сразу снимает: у стилей вне этого окна
+    /// (наведение, кадры анимации, псевдоэлементы) хозяина нет, и там берётся
+    /// запасное значение.
+    static CURRENT_ATTRS: std::cell::RefCell<Vec<(String, String)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub fn set_current_attrs(attrs: &[(String, String)]) {
+    CURRENT_ATTRS.with(|a| *a.borrow_mut() = attrs.to_vec());
+}
+
+pub fn clear_current_attrs() {
+    CURRENT_ATTRS.with(|a| a.borrow_mut().clear());
+}
+
+/// Значение атрибута по имени из `attr()`.
+///
+/// Префикс пространства имён (`foo|bar`): у атрибутов HTML пространства нет,
+/// а реестра `@namespace` здесь не видно — атрибут считается отсутствующим, и
+/// берётся запасное значение (`attr-namespace-non-existing`). `|bar` и `*|bar`
+/// — по локальному имени. Сравнение ASCII-регистронезависимое: HTML-парсер
+/// опускает в нижний регистр только ASCII, и запрос опускается так же, а
+/// не-ASCII знаки сравниваются как есть (`html-attr-case-insensitivity`).
+fn attr_value(name: &str) -> Option<String> {
+    let local = match name.split_once('|') {
+        Some(("" | "*", local)) => local,
+        Some(_) => return None,
+        None => name,
+    };
+    CURRENT_ATTRS.with(|a| {
+        a.borrow()
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(local))
+            .map(|(_, v)| v.clone())
+    })
+}
+
+/// Значение атрибута под типом `attr()`; `None` — не разбирается этим типом.
+fn attr_cast(value: &str, ty: &str) -> Option<String> {
+    let v = value.trim();
+    let ty: String = ty
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    // `<length>`: голое число длиной не бывает, кроме нуля (css-values-4
+    // §6.1); `Len::parse` принимает его точками — отсекаем здесь.
+    let length = |v: &str| match Len::parse(v) {
+        Some(Len::Px(n)) if v.parse::<f32>().is_ok() => (n == 0.0).then(|| v.to_string()),
+        Some(
+            Len::Pct(_)
+            | Len::Auto
+            | Len::MinContent
+            | Len::MaxContent
+            | Len::FitContent
+            | Len::Anchor(_),
+        )
+        | None => None,
+        Some(_) => Some(v.to_string()),
+    };
+    let percentage = |v: &str| {
+        v.strip_suffix('%')
+            .and_then(|n| n.trim().parse::<f32>().ok())
+            .map(|_| v.to_string())
+    };
+    match ty.as_str() {
+        // Любые токены; `url()` из атрибута запрещён (attr-tainted).
+        "type(*)" => (!v.is_empty() && !v.to_ascii_lowercase().contains("url("))
+            .then(|| v.to_string()),
+        "type(<length>)" => length(v),
+        "type(<percentage>)" => percentage(v),
+        "type(<length-percentage>)" => length(v).or_else(|| percentage(v)),
+        "type(<number>)" | "number" => v.parse::<f32>().ok().map(|_| v.to_string()),
+        "type(<integer>)" => v.parse::<i64>().ok().map(|_| v.to_string()),
+        "type(<color>)" => Color::parse(v).map(|_| v.to_string()),
+        // `attr(x px)` — число из атрибута с единицей из записи.
+        unit if !unit.is_empty()
+            && (unit == "%" || unit.chars().all(|c| c.is_ascii_alphabetic())) =>
+        {
+            v.parse::<f32>().ok().map(|_| format!("{v}{unit}"))
+        }
+        _ => None,
+    }
+}
+
+/// Типизированный `attr()` (css-values-5 §7.7): `attr(<имя> <тип>, <запас>?)`
+/// подставляется ДО разбора значения, как `var()`. Нетипизированная запись
+/// (`attr(x)` — строка) остаётся как есть: её разбирают `content` и счётчики.
+/// Негодный атрибут без запаса делает объявление недействительным на
+/// вычислении — значение становится `unset`.
+fn resolve_attrs(key: &str, value: &str) -> String {
+    if key == "content"
+        || !value
+            .as_bytes()
+            .windows(5)
+            .any(|w| w.eq_ignore_ascii_case(b"attr("))
+    {
+        return value.to_string();
+    }
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    loop {
+        // ASCII-опускание не сдвигает байтов: индекс годен и для `rest`.
+        let Some(at) = rest.to_ascii_lowercase().find("attr(") else {
+            break;
+        };
+        let after = &rest[at + 5..];
+        let Some(close) = balanced_close(after) else {
+            break;
+        };
+        let inner = &after[..close];
+        let (head, fallback) = match top_level_comma(inner) {
+            Some(i) => (inner[..i].trim(), Some(inner[i + 1..].trim())),
+            None => (inner.trim(), None),
+        };
+        let (name, ty) = match head.split_once(char::is_whitespace) {
+            Some((n, t)) => (n.trim(), t.trim()),
+            None => (head, ""),
+        };
+        out.push_str(&rest[..at]);
+        if ty.is_empty() {
+            out.push_str(&rest[at..at + 5 + close + 1]);
+        } else {
+            match (attr_value(name).and_then(|v| attr_cast(&v, ty)), fallback) {
+                (Some(v), _) => out.push_str(&v),
+                (None, Some(f)) => out.push_str(f),
+                (None, None) => return "unset".to_string(),
+            }
+        }
+        rest = &after[close + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn resolve_vars(value: &str, vars: &Decls) -> String {
@@ -10014,11 +10979,46 @@ fn image_resolution(token: &str) -> Option<f32> {
 /// углу) и все повторяющиеся (узор стопов мостится вдоль линии —
 /// css-images-3 §3.6). Такие рисуются растровой плиткой — тем же путём,
 /// которым уже ходит `conic-gradient()`.
-fn gradient_as_raster(v: &str) -> bool {
+pub(crate) fn gradient_as_raster(v: &str) -> bool {
     v.starts_with("conic-gradient(")
         || v.starts_with("repeating-linear-gradient(")
         || v.starts_with("repeating-radial-gradient(")
         || v.starts_with("repeating-conic-gradient(")
+}
+
+/// Пересчитать фильтром цвета стопов в ЗАПИСИ растрового градиента: такие
+/// градиенты живут строкой в `bg_image`, а не полем `gradient`. Слова, не
+/// являющиеся цветом (направление, позиции, `from`/`at`), остаются как есть.
+pub(crate) fn filter_gradient_text(raw: &str, f: &Filter) -> String {
+    let (Some(open), Some(close)) = (raw.find('('), raw.rfind(')')) else {
+        return raw.to_string();
+    };
+    if close <= open {
+        return raw.to_string();
+    }
+    let parts: Vec<String> = crate::css::split_args(&raw[open + 1..close])
+        .into_iter()
+        .map(|part| {
+            split_outside_parens(part)
+                .into_iter()
+                .map(|w| match Color::parse(&w) {
+                    Some(c) => {
+                        let c = f.apply(c);
+                        format!(
+                            "rgba({},{},{},{})",
+                            (c.r * 255.0).round(),
+                            (c.g * 255.0).round(),
+                            (c.b * 255.0).round(),
+                            c.a
+                        )
+                    }
+                    None => w,
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect();
+    format!("{}{})", &raw[..=open], parts.join(", "))
 }
 
 
@@ -10170,6 +11170,16 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
             idx = 1;
             135.0
         }
+        // Остальные два угла (css-images-3 §3.1): без них направление
+        // уходило в разбор стопов и выбрасывалось, а градиент шёл сверху вниз.
+        "to bottom left" | "to left bottom" => {
+            idx = 1;
+            225.0
+        }
+        "to top left" | "to left top" => {
+            idx = 1;
+            315.0
+        }
         "to top right" | "to right top" => {
             idx = 1;
             45.0
@@ -10254,13 +11264,11 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         // нет, а `stops_px` собирается только когда позиция есть у всех.
         raw_px = vec![(colour, None), (colour, None)];
     }
-    // Стопы без позиции распределяются равномерно — так же, как в CSS.
+    // Фиксация по css-images-3 §3.5.3: позиция не меньше предыдущей, стопы
+    // без позиции — поровну между соседями С позициями (а не по номеру в
+    // списке). Тот же расклад, что у растра.
     let last = raw.len() - 1;
-    let mut stops: Vec<(Color, f32)> = raw
-        .iter()
-        .enumerate()
-        .map(|(i, (c, pos))| (*c, pos.unwrap_or(i as f32 / last as f32)))
-        .collect();
+    let mut stops: Vec<(Color, f32)> = crate::background::place_stops(raw.clone());
     // `in hsl longer hue`: тон идёт ДЛИННОЙ дугой (css-images-4 §3.4.1.1).
     // Растр интерполирует линейно в sRGB, поэтому дуга выкладывается
     // СИНТЕТИЧЕСКИМИ промежуточными стопами (gradient-longer-hue-hsl-001).
@@ -10361,17 +11369,30 @@ fn legacy_srgb_color(token: &str) -> bool {
         return true;
     }
     match t.split_once('(') {
-        Some((name, _)) => matches!(name.trim(), "rgb" | "rgba" | "hsl" | "hsla" | "hwb"),
+        // `rgb()` с `none` устаревшей записью не выражается: Blink вычисляет
+        // его в `color(srgb …)`, и умолчание смешения становится OKLab
+        // (`gradient-analogous-missing-components-004`, `gradient-eval-004`).
+        // У `hsl()`/`hwb()` пространство и с `none` остаётся устаревшим.
+        Some((name, body)) => match name.trim() {
+            "rgb" | "rgba" => !body.contains("none"),
+            "hsl" | "hsla" | "hwb" => true,
+            _ => false,
+        },
         // Имя цвета, `transparent` и `currentcolor` — тоже устаревшие формы.
         None => true,
     }
 }
-/// Стиль обводки: 0 = не рисуется (none/hidden), 1 = рисуется.
+/// Стиль обводки: 0 — не рисуется (none/hidden), 1 — сплошной (и все, что
+/// рисуются сплошной), 2 — `auto` (цвет от `accent-color`, css-ui-4
+/// §outline-color), 3 — `dotted`, 4 — `dashed`: узор тем же примитивом, что
+/// у рамки (`outline-style-012`: эталон — `border: 4px dotted`).
 fn outline_style_of(v: &str) -> Option<u8> {
     match v {
         "none" | "hidden" => Some(0),
-        "solid" | "dotted" | "dashed" | "double" | "groove" | "ridge" | "inset" | "outset"
-        | "auto" => Some(1),
+        "auto" => Some(2),
+        "dotted" => Some(3),
+        "dashed" => Some(4),
+        "solid" | "double" | "groove" | "ridge" | "inset" | "outset" => Some(1),
         _ => None,
     }
 }
@@ -10398,6 +11419,40 @@ fn solid_gradient(c: Color) -> Gradient {
         to: c,
         ..Default::default()
     }
+}
+
+/// Список `font-feature-settings` (css-fonts-4 §7.1): `normal` — пустой,
+/// иначе `<opentype-tag> [ <integer [0,∞]> | on | off ]?` через запятую.
+/// Тег — СТРОКА ровно из четырёх печатных ASCII-знаков в ЛЮБЫХ кавычках:
+/// `'liga' off` прежде терялся целиком (`trim_matches('"')` оставлял шесть
+/// знаков — `font-feature-resolution-001/002`). Тот же разбор нужен
+/// дескриптору в `@font-face`.
+pub(crate) fn feature_list(v: &str) -> Option<Vec<(String, u32)>> {
+    let v = v.trim();
+    if v.eq_ignore_ascii_case("normal") {
+        return Some(Vec::new());
+    }
+    let mut out = Vec::new();
+    for token in v.split(',') {
+        let token = token.trim();
+        let q = token.chars().next()?;
+        if q != '"' && q != '\'' {
+            return None;
+        }
+        let rest = &token[1..];
+        let end = rest.find(q)?;
+        let tag = &rest[..end];
+        if tag.len() != 4 || !tag.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
+            return None;
+        }
+        let on = match rest[end + 1..].trim() {
+            "" | "on" => 1,
+            "off" => 0,
+            n => n.parse::<u32>().ok()?,
+        };
+        out.push((tag.to_string(), on));
+    }
+    Some(out)
 }
 
 /// Годное имя семейства: строка в кавычках либо ряд идентификаторов.
@@ -10435,6 +11490,18 @@ fn family_name_ok(part: &str) -> bool {
     })
 }
 
+/// Довод `fit-content(<length-percentage>)` (css-sizing-3 §4.1): только
+/// точки или доля, неотрицательные. Прочее (`em`, `calc`) — `None`, и
+/// значение ведёт себя, как прежде, голым `fit-content`.
+fn fit_content_arg(v: &str) -> Option<Len> {
+    let lower = v.trim().to_ascii_lowercase();
+    let arg = lower.strip_prefix("fit-content(")?.strip_suffix(')')?;
+    match Len::parse(arg) {
+        Some(l @ (Len::Px(n) | Len::Pct(n))) if n >= 0.0 => Some(l),
+        _ => None,
+    }
+}
+
 fn assign_size(slot: &mut Option<Len>, v: &str) {
     let parsed = Len::parse(v);
     // Отрицательный размер невалиден в ЛЮБОЙ единице (CSS 2.1 §10.4:
@@ -10469,6 +11536,32 @@ fn assign_size(slot: &mut Option<Len>, v: &str) {
     if let Some(l) = parsed {
         *slot = Some(l);
     }
+}
+
+/// Годна ли запись `box-shadow` ЦЕЛИКОМ (css-backgrounds-3 §7.1:
+/// `none | <shadow>#`; тень — 2-4 длины, не больше одного цвета и одного
+/// `inset`). `none` внутри списка делает декларацию негодной.
+fn box_shadow_valid(v: &str) -> bool {
+    if v.trim().eq_ignore_ascii_case("none") {
+        return true;
+    }
+    crate::css::split_args(v).iter().all(|s| {
+        let (mut lens, mut colours, mut insets) = (0, 0, 0);
+        for token in tokenize_shadow(s) {
+            match Len::parse(&token) {
+                Some(Len::Pct(_)) => return false,
+                Some(_) => lens += 1,
+                None if token.eq_ignore_ascii_case("inset") => insets += 1,
+                None if token.eq_ignore_ascii_case("currentcolor")
+                    || Color::parse(&token).is_some() =>
+                {
+                    colours += 1
+                }
+                None => return false,
+            }
+        }
+        (2..=4).contains(&lens) && colours <= 1 && insets <= 1
+    })
 }
 
 fn parse_shadows(v: &str) -> Vec<Shadow> {

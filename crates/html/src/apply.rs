@@ -939,6 +939,80 @@ fn ratio_as_auto_min(c: &Computed) -> bool {
         })
 }
 
+/// Внутренний размер ПУСТОЙ коробки с `contain: size` по оси (без отступов).
+///
+/// css-contain-2 §3.1: коробка меряется «as if it had no contents» —
+/// выбрасывается вклад СОДЕРЖИМОГО, но не собственная геометрия коробки:
+/// явные дорожки сетки со щелями (css-grid-2 §11/§12: у пустой сетки дорожка
+/// `auto`/`fr`/по содержимому — ноль, фиксированная — своя длина) и
+/// «число × ширина колонки + щели» многоколонника (css-multicol-1 §3.4).
+/// Шрифтовые дорожки и `repeat(auto-*)` без раскладки не посчитать — ноль, как
+/// было.
+///
+/// `inline` — строчная ось (ширина при горизонтальном письме).
+fn empty_contained_size(c: &Computed, inline: bool) -> f32 {
+    let px_of = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    // `gap` хранит пару (ряды, колонки); `column-gap` пишет и пару, и своё
+    // поле (`computed.rs`, ветки `"gap"`/`"column-gap"`).
+    let gap = if inline {
+        c.gap.and_then(|g| g.1).or(c.column_gap)
+    } else {
+        c.gap.and_then(|g| g.0)
+    };
+    if inline
+        && let (Some(count), Some(Len::Px(w))) = (c.column_count, c.column_width)
+        && count > 0
+        && w > 0.0
+    {
+        // `column-gap: normal` — кегль (css-align-3 §8.3), как в блочном пути.
+        let g = match c.column_gap {
+            Some(Len::Px(v)) => v,
+            _ => match c.font_size {
+                Some(Len::Px(size)) => size,
+                _ => 16.0,
+            },
+        };
+        return count as f32 * w + (count as f32 - 1.0) * g;
+    }
+    let grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    if !grid {
+        return 0.0;
+    }
+    let tracks = if inline {
+        c.grid_tracks.as_ref()
+    } else {
+        c.grid_rows.as_ref()
+    };
+    let Some(tracks) = tracks.filter(|t| !t.is_empty()) else {
+        return 0.0;
+    };
+    let one = |t: &Track| -> Option<f32> {
+        match t {
+            Track::Px(v) => Some(*v),
+            Track::Font(_) => None,
+            _ => Some(0.0),
+        }
+    };
+    let sum: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
+        TrackSize::Single(x) => one(x).map(|v| acc + v),
+        // У пустой дорожки `minmax(a, b)` размер по max-content — верхняя
+        // граница, если она фиксирована, иначе нижняя.
+        TrackSize::MinMax(lo, hi) => match (one(lo), hi) {
+            (_, Track::Px(v)) => Some(acc + v),
+            (Some(v), _) => Some(acc + v),
+            (None, _) => None,
+        },
+        _ => None,
+    });
+    match sum {
+        Some(total) => total + px_of(gap) * tracks.len().saturating_sub(1) as f32,
+        None => 0.0,
+    }
+}
+
 fn apply_box(mut d: Div, c: &Computed) -> Div {
     // `contain: size`: коробка меряется как пустая — рост от содержимого
     // подменяется `contain-intrinsic-size` (или нулём). Подмена касается
@@ -957,7 +1031,18 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         };
         let b = c.borders();
         let pad = side(c.padding.top) + side(c.padding.bottom) + side(b.top) + side(b.bottom);
-        d = d.h(px(c.contain_intrinsic.1.unwrap_or(0.0) + pad));
+        let ci = px(c
+            .contain_intrinsic
+            .1
+            .unwrap_or_else(|| empty_contained_size(c, false))
+            + pad);
+        // `contain-intrinsic-size` — ВНУТРЕННИЙ размер (css-sizing-4
+        // §intrinsic-size-override), а не использованный: у растянутого
+        // строкой элемента ряда высоту даёт строка (css-flexbox-1 §9.4 п.11).
+        // Явная высота глушила растяжку (`contain-intrinsic-size-010/016`:
+        // 13 точек вместо 100); нижней гранью подмена держит строку
+        // авто-высоты от схлопывания в ноль.
+        d = if c.cross_stretched { d.min_h(ci) } else { d.h(ci) };
     }
     // По строчной оси то же самое, но только когда ширина ЯВНО названа
     // размером по содержимому: обычная блочная ширина и так берётся от
@@ -989,7 +1074,11 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         };
         let b = c.borders();
         let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
-        d = d.w(px(c.contain_intrinsic.0.unwrap_or(0.0) + pad));
+        d = d.w(px(c
+            .contain_intrinsic
+            .0
+            .unwrap_or_else(|| empty_contained_size(c, true))
+            + pad));
     }
     // Вклад обособленной коробки в измеряющего родителя — тоже
     // `contain-intrinsic-size`: он же перебивает автоминимум элемента ряда
@@ -1190,10 +1279,14 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // уезжали на 80, `vlr-093/097`, `vrl-092/096` (rtl, `top`+`bottom`+
     // `height`) — тоже. Ровно так и в корпусе: `dynamic-offset-vrl-002`
     // (`left … /* ignored */`), `dynamic-offset-vrl-rtl-002` (`top …
-    // /* ignored */`). Только для абсолюта: относительный сдвиг (§9.4.3) в
-    // вертикали пока оставлен прежним.
-    let vertical_cb =
-        matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) && c.cb_vertical;
+    // /* ignored */`).
+    // Относительный сдвиг решает переопределённую ось по тем же сторонам
+    // (§9.4.3 в логических осях, Blink `relative_utils.cc:71-88`):
+    // `overconstrained-rel-pos-*-vrl-*`, `-rtl-*-vlr-*`.
+    let vertical_cb = matches!(
+        c.position,
+        Some(Position::Absolute) | Some(Position::Fixed) | Some(Position::Relative)
+    ) && c.cb_vertical;
     let drop_left = over
         && set(c.inset.left)
         && set(c.inset.right)
@@ -1202,8 +1295,10 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         } else {
             c.cb_rtl
         };
+    // У относительного сдвига переопределение от размера не зависит (`over`
+    // для него всегда истинно) — только у абсолюта нужен `height`.
     let drop_top = vertical_cb
-        && set(c.height)
+        && (c.position == Some(Position::Relative) || set(c.height))
         && set(c.inset.top)
         && set(c.inset.bottom)
         && c.cb_rtl != (c.cb_sideways && !c.cb_vertical_rl);
@@ -1377,6 +1472,57 @@ fn apply_radius(mut d: Div, c: &Computed) -> Div {
     d
 }
 
+/// Рамка `double` (css-backgrounds-3 §4.2): «two parallel solid lines with
+/// some space between them». Квад GPUI умеет только сплошную, поэтому обе
+/// линии рисуют кольца в `render::decorations`, а квад и слой рамки цвета не
+/// получают. `Some((цвет, толщины))`, когда КАЖДАЯ видимая сторона `double`
+/// толщиной от 3 px (тоньше линии не разойтись — Blink рисует сплошной) и
+/// цвет у сторон один (иначе поверх легли бы полосы сторон).
+pub(crate) fn double_border(c: &Computed) -> Option<(crate::value::Color, [f32; 4])> {
+    if c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty())
+        || c.corner_shaped()
+        || c.border_shape.is_some()
+    {
+        return None;
+    }
+    let w = c.borders();
+    let side_px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let widths = [side_px(w.top), side_px(w.right), side_px(w.bottom), side_px(w.left)];
+    let mut any = false;
+    for (i, width) in widths.iter().enumerate() {
+        if *width <= 0.0 {
+            continue;
+        }
+        if c.border_side_styles[i] != Some(10) || *width < 3.0 {
+            return None;
+        }
+        any = true;
+    }
+    if !any {
+        return None;
+    }
+    let sides: Vec<_> = c.border_colors.iter().flatten().collect();
+    let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
+    if !(sides.is_empty() || sides.len() == 4) || (sides.len() > 1 && uniform.is_none()) {
+        return None;
+    }
+    let colour = uniform
+        .copied()
+        .copied()
+        .or(c.border_color)
+        .or(c.color)
+        .unwrap_or(crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
+    Some((crate::background::border_paint(c, colour), widths))
+}
+
 /// Рамка ПОВЕРХ слоя картинки: цвет и толщины сторон, если рамку надо
 /// рисовать отдельным слоем после плиток фона, а не квадом коробки.
 ///
@@ -1390,6 +1536,10 @@ fn apply_radius(mut d: Div, c: &Computed) -> Div {
 /// `paint_tiles` и раньше обходил ужатием области краски — слой делает то же
 /// для любой рамки. `None` — рисовать по-старому.
 pub(crate) fn border_layer(c: &Computed) -> Option<(crate::value::Color, [f32; 4])> {
+    // Рамку `double` рисуют кольца (`double_border`) — поверх плиток и так.
+    if double_border(c).is_some() {
+        return None;
+    }
     // Слой картинки бывает только у этих двух (см. `render::decorations`).
     if c.bg_image.is_none() && !c.gradient_as_tile() {
         return None;
@@ -1436,7 +1586,7 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::value::Color, [f32; 4
             b: 0.0,
             a: 1.0,
         });
-    Some((colour, widths))
+    Some((crate::background::border_paint(c, colour), widths))
 }
 
 fn apply_paint(mut d: Div, c: &Computed) -> Div {
@@ -1507,9 +1657,10 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
         && !c.corner_shaped()
         && c.border_shape.is_none()
         && border_layer(c).is_none()
+        && double_border(c).is_none()
         && let Some(bc) = uniform.copied().copied().or(c.border_color).or(current)
     {
-        d = d.border_color(bc.to_hsla());
+        d = d.border_color(crate::background::border_paint(c, bc).to_hsla());
     }
     if c.border_dashed == Some(true) {
         d = d.border_dashed();
@@ -1579,6 +1730,9 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
         d.style().inset_box_shadow = Some(
             c.inset_shadows
                 .iter()
+                // Резкую внутреннюю рисует слой-кольцо в декорациях: примитив
+                // с нулевым размытием вырождается в шейдере (как у внешней).
+                .filter(|s| s.blur > 0.0)
                 .map(|s| gpui::BoxShadow {
                     color: shadow_colour(s).to_hsla(),
                     offset: gpui::point(px(s.x), px(s.y)),
@@ -1636,7 +1790,7 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
     }
     // Возможности шрифта: капитель, старостильные цифры, ширина начертания —
     // всё это таблицы OpenType, и GPUI умеет их включать.
-    if let Some(family) = &c.font_family {
+    if let Some(family) = c.font_family.as_ref().filter(|f| !f.is_empty()) {
         // Имя из разметки — придуманное (`@font-face`): в набор обязано уйти
         // имя, под которым файл знает система шрифтов. Без подмены весь
         // текст, идущий гpui-раскладкой (не резчиком), набирался подменным
@@ -1652,13 +1806,12 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
             .get_or_insert_with(Default::default)
             .font_stretch = Some(gpui::FontStretch::from_percent(pct));
     }
-    if !c.font_features.is_empty() {
+    let features = c.used_features();
+    if !features.is_empty() {
         d.style()
             .text
             .get_or_insert_with(Default::default)
-            .font_features = Some(gpui::FontFeatures(std::sync::Arc::new(
-            c.font_features.clone(),
-        )));
+            .font_features = Some(gpui::FontFeatures(std::sync::Arc::new(features)));
     }
     if let Some(col) = c.color {
         d = d.text_color(col.to_hsla());

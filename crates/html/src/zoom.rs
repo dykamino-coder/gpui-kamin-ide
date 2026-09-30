@@ -166,6 +166,16 @@ fn scale_own(c: &mut Computed, k: f32) {
         mul(&mut o.width);
         mul(&mut o.offset);
     }
+    // `background-size` в точках — тоже длина (§493; `zoom/background-size`);
+    // `cover`/`contain` и доли зуму безразличны.
+    if let crate::computed::BgSize::Fixed(w, h) = &mut c.bg_size {
+        mul(w);
+        mul(h);
+    }
+    // `contain-intrinsic-*` хранится точками (`zoom/contain-intrinsic-height`,
+    // `-width`: `10rem` при кегле корня 1px и `zoom: 10` — сторона 100).
+    c.contain_intrinsic.0 = c.contain_intrinsic.0.map(|v| v * k);
+    c.contain_intrinsic.1 = c.contain_intrinsic.1.map(|v| v * k);
     if let Some((x, y)) = c.translate.as_mut() {
         for t in [x, y] {
             if let Len::Px(v) = *t {
@@ -315,6 +325,38 @@ fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
     per_side(&mut c.margin_inherit, &mut c.margin, &p.margin, own);
     per_side(&mut c.inset_inherit, &mut c.inset, &p.inset, own);
     per_side(&mut c.border_inherit_w, &mut c.border_width, &p.border_width, own);
+    // `outline-width`/`outline-offset: inherit` и `background-size: inherit`
+    // живут разрядами `inherit_bits`, и слияние (`inline::inherit`) копирует
+    // точки родителя БЕЗ своего множителя (`zoom/outline-width`,
+    // `outline-offset`, `background-size`: вторая коробка группы с зумом 2).
+    // Значение родителя — его собственный стиль, уже с его зумом, × `own`;
+    // разряд снимается. Не в точках — разряд остаётся, как прежде.
+    use crate::computed::inh;
+    if c.inherit_bits & (inh::OUTLINE_W | inh::OUTLINE_O) != 0 {
+        let from = p.outline.unwrap_or_default();
+        let mut o = c.outline.unwrap_or_default();
+        let mut hit = false;
+        if c.inherit_bits & inh::OUTLINE_W != 0 && let Some(v) = px(from.width) {
+            o.width = Some(v);
+            c.inherit_bits &= !inh::OUTLINE_W;
+            hit = true;
+        }
+        if c.inherit_bits & inh::OUTLINE_O != 0 && let Some(v) = px(from.offset) {
+            o.offset = Some(v);
+            c.inherit_bits &= !inh::OUTLINE_O;
+            hit = true;
+        }
+        if hit {
+            c.outline = Some(o);
+        }
+    }
+    if c.inherit_bits & inh::BG_SIZE != 0
+        && let crate::computed::BgSize::Fixed(w, h) = p.bg_size
+    {
+        let k = |l: Option<Len>| px(l).or(l);
+        c.bg_size = crate::computed::BgSize::Fixed(k(w), k(h));
+        c.inherit_bits &= !inh::BG_SIZE;
+    }
 }
 
 /// Запомнить для потомков собственные наследуемые длины в точках. Заданное

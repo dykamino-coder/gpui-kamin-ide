@@ -340,12 +340,23 @@ GradientColor prepare_gradient_color(uint tag, uint color_space, Hsla solid, Lin
 /// готовыми. Промежуточные встречаются заметно реже, и ради них не стоит
 /// растить вершинные выходы: нужный отрезок ищется здесь, и переводятся
 /// только два его цвета.
+/// KaminIDE patch: доля смешения ЦВЕТА при премультиплицированной
+/// интерполяции (css-images-3 §3.5.3, css-color-4 §12.3). Смешать
+/// `a0·c0` и `a1·c1` и поделить на итоговую прозрачность — то же самое, что
+/// взять обычную долю `u·a1 / lerp(a0, a1, u)`. Прозрачность смешивается
+/// своей, обычной долей.
+float premul_u(float u, float a0, float a1) {
+    float a = lerp(a0, a1, u);
+    return a > 0.0 ? u * a1 / a : u;
+}
+
 float4 gradient_mix(Background background, float t, float4 color0, float4 color1) {
     if (background.stop_count <= 2u) {
         float u = (t - background.colors[0].percentage)
                 / max(background.colors[1].percentage - background.colors[0].percentage, 0.0001);
         u = clamp(u, 0.0, 1.0);
-        float4 mixed = lerp(color0, color1, u);
+        float4 mixed = lerp(color0, color1, premul_u(u, color0.a, color1.a));
+        mixed.a = lerp(color0.a, color1.a, u);
         return background.color_space == 1u ? oklab_to_srgb(mixed) : mixed;
     }
     uint last = background.stop_count - 1u;
@@ -366,12 +377,18 @@ float4 gradient_mix(Background background, float t, float4 color0, float4 color1
     float u = clamp((t - lo) / max(hi - lo, 0.0001), 0.0, 1.0);
     float4 a = hsla_to_rgba(background.colors[i].color);
     float4 b = hsla_to_rgba(background.colors[i + 1u].color);
+    float w = premul_u(u, a.a, b.a);
+    float alpha = lerp(a.a, b.a, u);
     if (background.color_space == 1u) {
         a = srgb_to_oklab(a);
         b = srgb_to_oklab(b);
-        return oklab_to_srgb(lerp(a, b, u));
+        float4 m = lerp(a, b, w);
+        m.a = alpha;
+        return oklab_to_srgb(m);
     }
-    return lerp(a, b, u);
+    float4 m = lerp(a, b, w);
+    m.a = alpha;
+    return m;
 }
 
 float2x2 rotate2d(float angle) {
@@ -1478,9 +1495,29 @@ BlurVertexOutput blur_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
     return output;
 }
 
+// KaminIDE patch: цветовые функции `backdrop-filter` (filter-effects-1
+// §«Supported filter functions»: все — аффинные матрицы 4×5 над НЕумноженным
+// RGBA). Строки множителей едут в poly[0..3], сдвиги — в mask_rect: у
+// проходов подложки многоугольника и маски-изображения нет. Выход —
+// НЕумноженный цвет с альфой (блендер пайплайна — SRC_ALPHA).
+float4 backdrop_matrix(BlurQuad q, float4 c) {
+    float3 rgb = c.a > 0.0 ? c.rgb / c.a : float3(0.0, 0.0, 0.0);
+    float4 u = float4(rgb, c.a);
+    return saturate(float4(dot(q.poly[0], u), dot(q.poly[1], u),
+                           dot(q.poly[2], u), dot(q.poly[3], u)) + q.mask_rect);
+}
+
 float4 blur_fragment(BlurFragmentInput input): SV_Target {
     BlurQuad q = blur_quads[input.quad_id];
     float2 t = q.texel;
+    // KaminIDE patch: подложка без размытия (blur_pass 4) — копия кадра
+    // один в один, матрица, маска скруглений и прозрачность элемента (pad).
+    // Стоит ДО ветки групп (blur_pass > 2.5).
+    if (q.blur_pass > 3.5) {
+        float4 o = backdrop_matrix(q, t_sprite.Sample(s_sprite, input.uv));
+        float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
+        return float4(o.rgb, o.a * saturate(0.5 - distance) * q.pad);
+    }
     // KaminIDE patch: композит буфера группы. Картинка уже готова — её
     // нельзя размазывать, поэтому выборка одна, а маска скруглений и
     // прозрачность группы гасят и цвет, и альфу (цвет премультиплирован).
@@ -1558,7 +1595,14 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
     if (q.blur_pass < 0.5) {
         float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
         float mask = saturate(0.5 - distance);
-        c = float4(c.rgb * mask, mask);
+        if (q.pad2.x > 0.5) {
+            // Размытие + цветовые функции: подложка непрозрачна (каскад
+            // ставит a = 1), матрица — поверх размытого.
+            float4 o = backdrop_matrix(q, float4(c.rgb, 1.0));
+            c = float4(o.rgb, o.a * mask);
+        } else {
+            c = float4(c.rgb * mask, mask);
+        }
     } else if (q.blur_pass < 1.5) {
         // Фон непрозрачен по определению: копия кадра.
         c.a = 1.0;

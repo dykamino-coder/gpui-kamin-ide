@@ -74,6 +74,14 @@ pub fn collapse_across_pieces(pieces: &mut [Piece]) {
                     prev_space = false;
                     continue;
                 }
+                // Кусок-метка направления (`bidi_marks`: RLE/LRE/PDF вокруг
+                // `<span dir>`) ряд пробелов НЕ рвёт и сам его не начинает —
+                // css-text-3 §4.1 велит обрабатывать пробелы, не видя этих
+                // знаков. Иначе `x <span dir=rtl> x </span> x` набирался
+                // семью знаками вместо пяти (`white-space-collapsing-bidi-002`).
+                if !text.is_empty() && text.chars().all(bidi_format) {
+                    continue;
+                }
                 if prev_space {
                     let rest = text.trim_start_matches(' ');
                     if rest.len() != text.len() {
@@ -182,7 +190,12 @@ pub fn collect(
                 // нет, а фон обязан рваться на переносах вместе со строкой.
                 // Берётся из СЛИТОГО стиля: отложенный цвет (`currentColor`,
                 // относительная функция) решён только там.
-                if let Some(bg) = merged.background {
+                // `background-clip: text`: бокс фоном не красится — заливку
+                // несёт цвет глифов (`inherit`), узорную показать нечем.
+                if let Some(bg) = merged
+                    .background
+                    .filter(|_| merged.bg_clip != Some(crate::computed::BgClip::Text))
+                {
                     merged.inline_bg = Some(bg);
                     // Единицы шрифта разрешаются так же, как в `inline_sides`:
                     // разбор только по точкам ронял `padding: 1em` в ноль, и
@@ -229,15 +242,44 @@ pub fn collect(
                     merged.inline_border = Some(sided);
                 }
                 // Контур строчного куска рисует тот же прогон: коробки у
-                // куска нет, а место контур и не занимает.
+                // куска нет, а место контур и не занимает. Рисуется только
+                // ЗАДАННЫЙ видимый стиль (начальное `outline-style` — `none`),
+                // толщина без записи — `medium`, цвет без своего — цвет текста
+                // куска С НАСЛЕДОВАНИЕМ (`merged`, а не свой `e.style`), без
+                // него — чёрный. Полосу прогона `paint_line_background`
+                // заводит ТОЛЬКО от фона (`line.rs`, `current_background`),
+                // поэтому контуру без фона даётся прозрачная подложка: иначе
+                // кольцо не рисовалось вовсе (`outline-004` «красное видно»,
+                // `outline-022` 0.83 = 100²−80²). ★ Не путать с откатом K2
+                // (07.09, `line.rs`): там полоса заводилась от ЛЮБОЙ рамки, и
+                // обычная рамка рисовалась дважды (`bidi-00*`); здесь — только
+                // контур, второго рисовальщика у которого нет.
                 if merged.inline_border.is_none()
                     && e.style.display.is_none()
                     && let Some(o) = e.style.outline
-                    && let Some(Len::Px(width)) = o.width
+                    && o.style.is_some_and(|s| s != 0)
+                    && let Some(width) = match o.width {
+                        Some(Len::Px(w)) => Some(w),
+                        None => Some(3.0),
+                        _ => None,
+                    }
                     && width > 0.0
-                    && let Some(color) = o.color.or(e.style.color)
                 {
+                    let color = o.color.or(merged.color).unwrap_or(Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    });
                     merged.inline_border = Some((color, [width; 4]));
+                    if merged.inline_bg.is_none() {
+                        merged.inline_bg = Some(Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 0.0,
+                        });
+                    }
                 }
                 // Атомарная строчная коробка — ГРАНИЦА переноса, даже когда
                 // своей коробки в раскладке ей не завели (размер не задан, и
@@ -487,7 +529,9 @@ pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
                     out.push(Piece::Text { text, style: own });
                     continue;
                 };
-                let end = pos.0 + pos.1.len_utf8();
+                // Разрез по шаблону css-pseudo-4 §first-letter, а не по
+                // первому знаку (`first_letter_end`).
+                let end = first_letter_end(&text, pos.0);
                 let mut letter = own.clone();
                 // Из слоя берутся ТОЛЬКО текстовые свойства: коробки у буквы
                 // нет, и отступы абзаца ей не принадлежат.
@@ -500,6 +544,13 @@ pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
                 letter.font_weight = style.font_weight.or(own.font_weight);
                 letter.italic = style.italic.or(own.italic);
                 letter.font_family = style.font_family.clone().or(own.font_family.clone());
+                // Подложка буквы — её собственная (фон к `::first-letter`
+                // применим, css-pseudo-4 §first-letter-styling). Рисует её
+                // прогон, как у строчной коробки; фон БЛОКА из копии слоя
+                // снимает вызывающий (`render.rs`, рядом с вызовом).
+                if let Some(bg) = style.background {
+                    letter.inline_bg = Some(bg);
+                }
                 out.push(Piece::Text {
                     text: text[..end].to_string(),
                     style: letter,
@@ -516,6 +567,267 @@ pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
         }
     }
     out
+}
+
+/// Пунктуация — общая категория Unicode `P*` (css-pseudo-4 §first-letter
+/// ссылается на UAX44). Таблицы категорий в крейте нет, поэтому перечень
+/// блоков: ASCII без символов `S*` (`$ + < = > ^ ` | ~`), Latin-1, общая и
+/// дополнительная пунктуация, скобки, CJK и полноширинные формы, эгейский
+/// разделитель (`first-letter-trailing-punctuation`: U+10100 входит в букву).
+fn is_punct(c: char) -> bool {
+    if c.is_ascii() {
+        return c.is_ascii_punctuation()
+            && !matches!(c, '$' | '+' | '<' | '=' | '>' | '^' | '`' | '|' | '~');
+    }
+    matches!(
+        c as u32,
+        0xA1 | 0xA7
+            | 0xAB
+            | 0xB6
+            | 0xB7
+            | 0xBB
+            | 0xBF
+            | 0x37E
+            | 0x387
+            | 0x55A..=0x55F
+            | 0x589
+            | 0x58A
+            | 0x5BE
+            | 0x5C0
+            | 0x5C3
+            | 0x5C6
+            | 0x5F3
+            | 0x5F4
+            | 0x609
+            | 0x60A
+            | 0x60C
+            | 0x60D
+            | 0x61B
+            | 0x61D..=0x61F
+            | 0x66A..=0x66D
+            | 0x6D4
+            | 0x964
+            | 0x965
+            | 0x970
+            | 0xE4F
+            | 0xE5A
+            | 0xE5B
+            | 0x2010..=0x2027
+            | 0x2030..=0x2043
+            | 0x2045..=0x2051
+            | 0x2053..=0x205E
+            | 0x207D
+            | 0x207E
+            | 0x208D
+            | 0x208E
+            | 0x2308..=0x230B
+            | 0x2329
+            | 0x232A
+            | 0x2768..=0x2775
+            | 0x27C5
+            | 0x27C6
+            | 0x27E6..=0x27EF
+            | 0x2983..=0x2998
+            | 0x29D8..=0x29DB
+            | 0x29FC
+            | 0x29FD
+            | 0x2E00..=0x2E2E
+            | 0x2E30..=0x2E4F
+            | 0x3001..=0x3003
+            | 0x3008..=0x3011
+            | 0x3014..=0x301F
+            | 0x3030
+            | 0x303D
+            | 0x30A0
+            | 0x30FB
+            | 0xFE10..=0xFE19
+            | 0xFE30..=0xFE52
+            | 0xFE54..=0xFE61
+            | 0xFE63
+            | 0xFE68
+            | 0xFE6A
+            | 0xFE6B
+            | 0xFF01..=0xFF03
+            | 0xFF05..=0xFF0A
+            | 0xFF0C..=0xFF0F
+            | 0xFF1A
+            | 0xFF1B
+            | 0xFF1F
+            | 0xFF20
+            | 0xFF3B..=0xFF3D
+            | 0xFF3F
+            | 0xFF5B
+            | 0xFF5D
+            | 0xFF5F..=0xFF65
+            | 0x10100..=0x10102
+            | 0x1039F
+            | 0x1091F
+    )
+}
+
+/// Открывающая пунктуация и тире (`Ps`, `Pd`): ХВОСТОМ первой буквы они не
+/// бывают («T(rail» → «T», «T–rail» → «T»).
+fn open_or_dash(c: char) -> bool {
+    let u = c as u32;
+    matches!(c, '(' | '[' | '{' | '-')
+        || matches!(
+            u,
+            0x58A
+                | 0x5BE
+                | 0xF3A
+                | 0xF3C
+                | 0x1400
+                | 0x169B
+                | 0x1806
+                | 0x2010..=0x2015
+                | 0x201A
+                | 0x201E
+                | 0x2045
+                | 0x207D
+                | 0x208D
+                | 0x2308
+                | 0x230A
+                | 0x2329
+                | 0x27C5
+                | 0x27E6
+                | 0x27E8
+                | 0x27EA
+                | 0x27EC
+                | 0x27EE
+                | 0x29D8
+                | 0x29DA
+                | 0x29FC
+                | 0x2E17
+                | 0x2E1A
+                | 0x2E22
+                | 0x2E24
+                | 0x2E26
+                | 0x2E28
+                | 0x2E3A
+                | 0x2E3B
+                | 0x2E40
+                | 0x2E42
+                | 0x3008
+                | 0x300A
+                | 0x300C
+                | 0x300E
+                | 0x3010
+                | 0x3014
+                | 0x3016
+                | 0x3018
+                | 0x301A
+                | 0x301C
+                | 0x301D
+                | 0x3030
+                | 0x30A0
+                | 0xFE31
+                | 0xFE32
+                | 0xFE35
+                | 0xFE37
+                | 0xFE39
+                | 0xFE3B
+                | 0xFE3D
+                | 0xFE3F
+                | 0xFE41
+                | 0xFE43
+                | 0xFE47
+                | 0xFE58
+                | 0xFE59
+                | 0xFE5B
+                | 0xFE5D
+                | 0xFE63
+                | 0xFF08
+                | 0xFF0D
+                | 0xFF3B
+                | 0xFF5B
+                | 0xFF5F
+                | 0xFF62
+        )
+        || ((0x2768..=0x2775).contains(&u) && u % 2 == 0)
+        || ((0x2983..=0x2998).contains(&u) && u % 2 == 1)
+}
+
+/// Типографский пробел `Zs` без U+3000 (оба правила спеки его исключают).
+fn typographic_space(c: char) -> bool {
+    matches!(
+        c,
+        ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'..='\u{200A}' | '\u{202F}' | '\u{205F}'
+    )
+}
+
+/// Смещение знака в блоках брахми (деванагари…малаялам повторяют одну
+/// раскладку ISCII): вирама — 0x4D, согласные — 0x15…0x39.
+fn brahmic_offset(c: char) -> Option<u32> {
+    let u = c as u32;
+    (0x0900..=0x0D7F).contains(&u).then_some(u & 0x7F)
+}
+
+/// Знак, который держится за предыдущую букву: комбинирующие диакритики,
+/// селекторы начертания, ZWJ и зависимые знаки брахми (огласовки, вирама,
+/// анусвара).
+fn joins_letter(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x300..=0x36F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE00..=0xFE0F
+            | 0xFE20..=0xFE2F | 0x200D
+    ) || brahmic_offset(c).is_some_and(|o| {
+        matches!(o, 0x00..=0x03 | 0x3A..=0x3C | 0x3E..=0x4F | 0x51..=0x57 | 0x62..=0x63)
+    })
+}
+
+/// Конец текста первой буквы (css-pseudo-4 §first-letter): ведущая
+/// пунктуация с пробелами между нею и буквой, сама буква — «typographic
+/// letter unit» с диакритиками и слитными согласными брахми (вирама +
+/// согласная, `first-letter-hi-001`: «स्थ», а не «स»), затем хвост из
+/// пунктуации кроме `Ps`/`Pd` с пробелами-не-разделителями слов между.
+/// Шаблон спеки: `(P (Zs|P)*)? (L|N|S) ((Zs|P−(Ps|Pd))* (P−(Ps|Pd)))?`.
+/// Нет буквы за ведущей пунктуацией — прежний разрез по первому знаку.
+fn first_letter_end(text: &str, start: usize) -> usize {
+    let chars: Vec<(usize, char)> = text[start..]
+        .char_indices()
+        .map(|(i, c)| (start + i, c))
+        .collect();
+    let end_at = |k: usize| chars.get(k).map_or(text.len(), |(i, _)| *i);
+    let mut k = 0;
+    if chars.first().is_some_and(|(_, c)| is_punct(*c)) {
+        while chars
+            .get(k)
+            .is_some_and(|(_, c)| is_punct(*c) || typographic_space(*c))
+        {
+            k += 1;
+        }
+    }
+    if !chars
+        .get(k)
+        .is_some_and(|(_, c)| !c.is_whitespace() && !is_punct(*c))
+    {
+        return end_at(1);
+    }
+    k += 1;
+    while let Some(&(_, c)) = chars.get(k) {
+        let after_virama = brahmic_offset(chars[k - 1].1) == Some(0x4D);
+        let consonant = brahmic_offset(c).is_some_and(|o| (0x15..=0x39).contains(&o));
+        if joins_letter(c) || (after_virama && consonant) {
+            k += 1;
+        } else {
+            break;
+        }
+    }
+    // Хвост: пробелы (кроме разделителей слов U+0020/U+00A0) допустимы
+    // только МЕЖДУ знаками пунктуации — висящий пробел в букву не входит
+    // («T.&emsp;est» → «T.», а «T&emsp;.est» → «T&emsp;.»).
+    let (mut end, mut j) = (k, k);
+    while let Some(&(_, c)) = chars.get(j) {
+        if is_punct(c) && !open_or_dash(c) {
+            j += 1;
+            end = j;
+        } else if typographic_space(c) && !matches!(c, ' ' | '\u{A0}') {
+            j += 1;
+        } else {
+            break;
+        }
+    }
+    end_at(end)
 }
 
 /// Одеть первые `at` байт абзаца в стиль первой строки (`::first-line`).
@@ -540,6 +852,10 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                     // своих: при повторе тега побеждает первая строка.
                     c.font_features.extend(style.font_features.iter().cloned());
                     c.font_family = style.font_family.clone().or(base.font_family.clone());
+                    c.font_settings = style
+                        .font_settings
+                        .clone()
+                        .or_else(|| base.font_settings.clone());
                     // Коробочная часть первой строки: интерлиньяж и подложка
                     // (css-pseudo-4 §4.1; first-line-line-height-001/002).
                     c.background = style.background.or(base.background);
@@ -621,6 +937,26 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
         || c.filter.is_some()
         || c.contain_paint == Some(true)
         || c.contain_layout == Some(true)
+        // css-will-change-1 §2.1: обещание свойства, которое дало бы блок,
+        // даёт его уже сейчас (`will-change-abspos-cb-002/003`).
+        || c.will_change & (crate::computed::wc::CB_ABS | crate::computed::wc::CB_FIXED) != 0
+}
+
+/// Корень подложки (filter-effects-2 §BackdropRoot) — без корня документа:
+/// его «Backdrop Root Image» и есть весь кадр. Фильтр у потомков
+/// наследуется (`inherit`), но они и так под корнем.
+fn backdrop_root(c: &Computed) -> bool {
+    c.opacity.is_some_and(|o| o < 1.0)
+        || c.filter.is_some_and(|f| f != crate::computed::Filter::neutral())
+        || c.filter_ref.is_some()
+        || c.mask_image.is_some()
+        || c.clip_ref.is_some()
+        || c.clip_polygon.is_some()
+        || c.clip_shape.is_some()
+        || c.blend.is_some_and(|b| b != 0)
+        || c.backdrop_blur.is_some()
+        || c.backdrop_color.is_some()
+        || c.will_change_root
 }
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): `zoom` (css-viewport-1) как домножение
@@ -635,6 +971,7 @@ pub(crate) fn establishes_cb(c: &Computed) -> bool {
 pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
+    c.backdrop_root_above = parent.backdrop_root_above || backdrop_root(parent);
     // Ближайший содержащий блок абсолюта по `node_id` — ключ реестра рамок
     // `anchor::CB` (нужен `position-area`); корень даёт 0 = начальный
     // содержащий блок, окно.
@@ -654,7 +991,33 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.transform_ancestor = parent.transform_ancestor
         || parent.transform.is_some()
         || parent.contain_layout == Some(true)
-        || parent.contain_paint == Some(true);
+        || parent.contain_paint == Some(true)
+        // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства
+        // (`will-change-fixpos-cb-*`, `-fixedpos-cb-*`).
+        || parent.will_change & crate::computed::wc::CB_FIXED != 0;
+    // `will-change: z-index` — контекст наложения ровно там, где `z-index`
+    // действует: у позиционированной коробки и у элемента flex/grid
+    // (css-flexbox-1 §5.4, css-grid-2 §6.2) — `-stacking-context-z-index-2/3`;
+    // у простого блока — нет (`-z-index-4` зелёный и обязан остаться). Это не
+    // домножение длин (★ выше): один битовый тест, страница без
+    // `will-change` в ветку не заходит.
+    if own.will_change & crate::computed::wc::STACK_Z != 0
+        && (matches!(
+            own.position,
+            Some(crate::computed::Position::Relative)
+                | Some(crate::computed::Position::Absolute)
+                | Some(crate::computed::Position::Fixed)
+                | Some(crate::computed::Position::Sticky)
+        ) || matches!(
+            parent.display,
+            Some(crate::computed::Display::Flex)
+                | Some(crate::computed::Display::InlineFlex)
+                | Some(crate::computed::Display::Grid)
+                | Some(crate::computed::Display::InlineGrid)
+        ))
+    {
+        c.will_change |= crate::computed::wc::STACK;
+    }
     c.cb_rtl = parent.rtl == Some(true);
     // Внутри повёрнутого абзаца родитель — горизонтальный клон
     // (`render.rs: paragraph`, `horizontal.vertical = None`), и о вертикальном
@@ -716,7 +1079,21 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         || ratio_height
         || match parent.height {
             Some(crate::value::Len::Px(_)) => true,
-            Some(crate::value::Len::Pct(_)) => parent.cb_height_def,
+            // Доля высоты у абсолютной/фиксированной коробки решается ВСЕГДА
+            // (§10.5: оговорка «not absolutely positioned»; её же держит гейт
+            // `apply.rs`), значит её высота для детей определена — как у
+            // Blink, где внепоточная коробка отдаёт детям свой блочный размер.
+            // Прежде `.modal {position: fixed; height: stretch}` передавал
+            // ложный признак от `body`, и `height: 100%` цепочки гас
+            // (`intrinsic-height-abspos-stretch-percentage-child`: 25 %).
+            Some(crate::value::Len::Pct(_)) => {
+                parent.cb_height_def
+                    || matches!(
+                        parent.position,
+                        Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                    )
+            }
             _ => matches!(
                 parent.position,
                 Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
@@ -772,21 +1149,31 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         };
         from_parent(&mut c.line_height);
         from_parent(&mut c.font_size);
+        // `lh` — вычисленный `line-height` САМОГО элемента, а `line-height`
+        // (как кегль и гарнитура) НАСЛЕДУЕТСЯ: незаданное на элементе берётся у
+        // родителя. Ребёнок `height: 3lh` внутри `font: 16px / 32px` обязан
+        // выйти 96, а не 3 × normal(16) ≈ 55 (`line-clamp-auto-035`: блок
+        // с `height: 3lh` не доставал до потолка и не прятался).
         let font = match c.font_size {
             Some(crate::value::Len::Px(v)) => v,
+            None => parent_font,
             _ => 16.0,
         };
         // `line-height: normal` — доля кегля ПО МЕТРИКАМ шрифта, а не
         // постоянные 1.2: у `lh`-единицы иначе выходила чужая высота строки
         // (`line-clamp-auto-*` меряют высоту в `lh`).
-        let family = c.font_family.clone().unwrap_or_else(|| {
-            if c.monospace == Some(true) {
-                crate::metrics::mono_family().to_string()
-            } else {
-                String::new()
-            }
-        });
-        let line = match c.line_height {
+        let family = c
+            .font_family
+            .clone()
+            .or_else(|| parent.font_family.clone())
+            .unwrap_or_else(|| {
+                if c.monospace.or(parent.monospace) == Some(true) {
+                    crate::metrics::mono_family().to_string()
+                } else {
+                    String::new()
+                }
+            });
+        let line = match c.line_height.or(parent.line_height) {
             Some(crate::value::Len::Px(v)) => v,
             Some(crate::value::Len::Em(k)) | Some(crate::value::Len::Pct(k)) => k * font,
             _ => {
@@ -892,6 +1279,8 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             }
             if on(inh::OUTLINE_O) {
                 o.offset = from.offset;
+                // Метка `inset` — часть значения сдвига и наследуется с ним.
+                o.inset = from.inset;
             }
             c.outline = Some(o);
         }
@@ -926,6 +1315,10 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             c.transform_origin = parent.transform_origin;
             c.transform_origin_px = parent.transform_origin_px;
             c.transform_origin_z = parent.transform_origin_z;
+        }
+        if on(inh::CLIP_MARGIN) {
+            c.clip_margin = parent.clip_margin;
+            c.clip_margin_box = parent.clip_margin_box;
         }
     }
     for (i, on) in own.margin_inherit.iter().enumerate() {
@@ -1008,7 +1401,13 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // `c` — клон `own`, но `lh` в собственном кегле уже решён выше от строки
     // РОДИТЕЛЯ (css-values-4 §6.1.1, `from_parent`). Брать `own` здесь значило
     // вернуть сырое `Len::Lh` — кегль терялся (`lh-unit-002`).
-    c.font_size = c.font_size.or(parent.font_size);
+    // Детям уходит ВЫЧИСЛЕННЫЙ кегль, а не подогнанный `font-size-adjust`:
+    // «child elements inherit the computed font-size value (otherwise, the
+    // effect of font-size-adjust would compound)» (css-fonts-4 §2.5).
+    c.font_size = c.font_size.or(match parent.font_adjust_base {
+        Some((px, _)) => Some(Len::Px(px)),
+        None => parent.font_size,
+    });
     // Кегль НОЛЬ вешает набор намертво (DirectWrite-цикл: `font: 0 Ahem` из
     // vars-font-shorthand-001 замораживал страницу навсегда) — клэмп к
     // микроскопическому: визуально то же «ничего», формулы живы.
@@ -1024,7 +1423,12 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // То же для высоты строки: `line-height: 2lh` уже переведён в точки от
     // строки родителя; сырое `Lh` уходило в `apply.rs` как `relative(2)` от
     // СВОЕГО кегля (`lh-unit-001`: 84 вместо 100).
-    c.line_height = c.line_height.or(parent.line_height);
+    // У подогнанного родителя числовой `line-height` переведён в точки ЕГО
+    // вычисленным кеглем; ребёнок наследует сам множитель.
+    c.line_height = c.line_height.or(match parent.font_adjust_base {
+        Some((_, lh)) => lh,
+        None => parent.line_height,
+    });
     c.text_align = own.text_align.or(parent.text_align);
     c.no_justify = own.no_justify.or(parent.no_justify);
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
@@ -1121,6 +1525,26 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             other => other,
         };
     }
+    // `start`/`end` (и `self-*`) меряются по ПИСЬМУ, а раскладка знает только
+    // гибкие концы (`apply::to_items` → `FlexStart`/`FlexEnd`), которые
+    // АВТОРСКИЙ `wrap-reverse` родителя переворачивает (css-align-3 §6.1,
+    // css-flexbox-1 §5.2). Концы письма меняются местами ровно тогда: taffy
+    // развернёт их обратно. Переворот поперёк письма (`apply.rs`: `flip`
+    // через тот же `WrapReverse`) здесь не участвует — он виден раскладке и
+    // для `flex-*`, и для `start` одинаково (`self-align-start-end-flex-001`).
+    if !own.align_self_flex_kw
+        && parent.flex_wrap_reverse == Some(true)
+        && matches!(
+            parent.display,
+            Some(crate::computed::Display::Flex) | Some(crate::computed::Display::InlineFlex)
+        )
+    {
+        c.align_self = match c.align_self {
+            Some(crate::computed::Align::Start) => Some(crate::computed::Align::End),
+            Some(crate::computed::Align::End) => Some(crate::computed::Align::Start),
+            other => other,
+        };
+    }
     c.text_emphasis = own.text_emphasis.clone().or(parent.text_emphasis.clone());
     c.emphasis_under = own.emphasis_under || parent.emphasis_under;
     // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
@@ -1147,6 +1571,9 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.list_style_inside = own.list_style_inside.or(parent.list_style_inside);
     c.vertical_align = own.vertical_align.or(parent.vertical_align);
     c.font_stretch = own.font_stretch.or(parent.font_stretch);
+    // `font-size-adjust` наследуется значением; подгонку каждый элемент
+    // считает сам, по СВОЕМУ шрифту (`Computed::resolve_em`).
+    c.font_size_adjust = own.font_size_adjust.or(parent.font_size_adjust);
     c.no_select = own.no_select.or(parent.no_select);
     c.pointer_events_none = own.pointer_events_none.or(parent.pointer_events_none);
     c.line_clamp = own.line_clamp.or(parent.line_clamp);
@@ -1165,6 +1592,13 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     if c.font_features.is_empty() {
         c.font_features = parent.font_features.clone();
     }
+    // `font-feature-settings` наследуется своим значением независимо от
+    // `font-variant-*` ребёнка (css-fonts-4 §6.12: `font-variant: none` «does
+    // not reset … font-feature-settings»).
+    c.font_settings = own
+        .font_settings
+        .clone()
+        .or_else(|| parent.font_settings.clone());
     c.text_shadow = own.text_shadow.or(parent.text_shadow);
     c.rtl = own.rtl.or(parent.rtl);
     // `text-align: start|end` — края СТРОКИ, и разворачиваются они в момент
@@ -1205,10 +1639,68 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
                 stop.0 = f.apply(stop.0);
             }
         }
+        // Растровый градиент (`conic`, `repeating-*`) живёт строкой в
+        // `bg_image`: его стопы красятся в самой записи
+        // (`filter-function-repeating-*-ref`: `filter: invert(1)` на фоне).
+        if own.bg_image.is_some()
+            && let Some(img) = c.bg_image.as_deref()
+            && crate::computed::gradient_as_raster(img)
+        {
+            c.bg_image = Some(crate::computed::filter_gradient_text(img, &f));
+        }
         if !own.shadows.is_empty() {
             for sh in c.shadows.iter_mut() {
                 sh.color = f.apply(sh.color);
             }
+        }
+    }
+    // `filter: drop-shadow()` у коробки со СПЛОШНЫМ фоном: силуэт такой
+    // коробки — border-box со скруглением, и тень фильтра (filter-effects-1
+    // §dropshadowEquivalent: размытая альфа входа, сдвиг, цвет — ПОД входом)
+    // совпадает с внешней box-shadow без разлёта. Картинку поддерева так не
+    // выразить — только коробку; повторное слияние тень не удваивает.
+    if let Some(sh) = c.drop_shadow
+        && c.background.is_some_and(|b| b.a >= 1.0)
+        && !c.shadows.contains(&sh)
+    {
+        c.shadows.push(sh);
+    }
+    // `background-clip: text` со СПЛОШНОЙ заливкой (css-backgrounds-4
+    // §background-clip): фон виден только под глифами элемента и его
+    // поточных и плавающих потомков, а сам текст красится ПОВЕРХ фона своим
+    // цветом. Для одноцветного непрозрачного фона это ровно «цвет текста
+    // поверх заливки» — маска глифов не нужна, а подчёркивания, многоточие и
+    // знаки выделения цветом `currentColor` получают тот же цвет сами.
+    // Смешивается только ВОЗНИКШЕЕ на узле (как у фильтра выше): унаследованный
+    // цвет уже смешан предком. Внепоточные потомки в геометрию текста не входят
+    // (`clip-text-out-of-flow-child`) и получают несмешанный цвет обратно.
+    let black = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
+    let out_of_flow = matches!(
+        own.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    );
+    if let Some(fill) = crate::background::text_clip_fill(&c) {
+        c.text_clip_raw = c.color;
+        c.text_clip_fill = Some(fill);
+        c.color = Some(crate::background::over(c.color.unwrap_or(black), fill));
+    } else if parent.text_clip_fill.is_some() && out_of_flow {
+        c.text_clip_fill = None;
+        c.text_clip_raw = None;
+        if own.color.is_none() {
+            c.color = parent.text_clip_raw;
+        }
+    } else if let Some(fill) = parent.text_clip_fill {
+        c.text_clip_fill = Some(fill);
+        if own.color.is_some() {
+            c.text_clip_raw = c.color;
+            c.color = Some(crate::background::over(c.color.unwrap_or(black), fill));
+        } else {
+            c.text_clip_raw = parent.text_clip_raw;
         }
     }
     // Наследуемые по CSS, но забытые прежде: без них `white-space: pre` на
@@ -1226,13 +1718,30 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // `em` считается от размера шрифта — а он известен только здесь, когда
     // наследование уже произошло. Раньше длина переводилась в точки при
     // разборе, по постоянным 16 точкам, и вложенные кегли не перемножались.
-    let parent_px = match parent.font_size {
-        Some(Len::Px(px)) => px,
-        _ => 16.0,
+    // База `em` у собственного кегля — ВЫЧИСЛЕННЫЙ кегль родителя:
+    // `font-size-adjust` «does not affect the size of em units».
+    let parent_px = match parent.font_adjust_base {
+        Some((px, _)) => px,
+        None => match parent.font_size {
+            Some(Len::Px(px)) => px,
+            _ => 16.0,
+        },
     };
     // Процент у размера шрифта — доля родительского кегля; в точках его надо
     // получить здесь, иначе абзац уходил в запасную ветку переноса (размер
     // «не такой, как у базового») и терял перенос по словам.
+    // `larger`/`smaller`: шаг по таблице ключевых кеглей, если кегль
+    // родителя в ней стоит (§15.7; таблица та же, что у слов в
+    // `computed.rs`). Вне таблицы работает запасной `Len::Em` (1.2 и 5/6).
+    if c.font_size_step != 0 {
+        const TABLE: [f32; 8] = [9.0, 10.0, 13.0, 16.0, 18.0, 24.0, 32.0, 48.0];
+        if let Some(i) = TABLE.iter().position(|t| (t - parent_px).abs() < 0.01) {
+            let j = i as i32 + i32::from(c.font_size_step);
+            if (0..TABLE.len() as i32).contains(&j) {
+                c.font_size = Some(Len::Px(TABLE[j as usize]));
+            }
+        }
+    }
     if let Some(Len::Pct(k)) = c.font_size {
         c.font_size = Some(Len::Px(k * parent_px));
     }
@@ -1247,6 +1756,29 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             .iter()
             .any(|w| !matches!(w, None | Some(Len::Px(0.0))))
     };
+    // Сторона с `currentColor` из бокового сокращения при ОБЩЕМ цвете рамки:
+    // ей положен цвет текста, а не общий (§8.5.4; `border-shorthands-003`).
+    // Прочие стороны получают общий цвет ЯВНО: единый цвет квада
+    // (`apply::apply_paint`) смотрит только на заданные стороны и иначе
+    // выкрасил бы их цветом помеченной. Без общего цвета пустой слот и так
+    // даёт цвет текста.
+    if c.border_color.is_some() && c.border_side_current.iter().any(|f| *f) {
+        let current = c.color.unwrap_or(Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
+        for i in 0..4 {
+            if c.border_colors[i].is_none() {
+                c.border_colors[i] = if c.border_side_current[i] {
+                    Some(current)
+                } else {
+                    c.border_color
+                };
+            }
+        }
+    }
     if has_border && c.border_color.is_none() && c.border_colors.iter().all(Option::is_none) {
         c.border_color = c.color.or(Some(Color {
             r: 0.0,
@@ -1662,7 +2194,16 @@ pub fn shift_spans(
                         DESCENT * parent - (DESCENT * size + half)
                     }
                 })
-            });
+            })
+            // Запрет вне-поточной коробке — на ВСЮ цепочку, а не на её голову:
+            // `(!out_of_flow).then(..)` гасил только сдвиг длиной в точках, а
+            // `sub`/`super`, `em`, `ex`, процент и `text-top`/`text-bottom`
+            // проходили дальше по `or_else`. Абсолютный кусок блокифицирован
+            // (CSS 2.1 §9.7), `vertical-align` к нему не применяется вовсе.
+            // `vertical-align-sub-001`: зелёный кусок уезжал вниз на 0.2em и
+            // открывал красный. `super-001` был зелёным случайно: подъём
+            // гасила верхняя надбавка строки (`line_padding`).
+            .filter(|_| !out_of_flow);
         if let Some(v) = dy {
             out.push((at..end, gpui::px(v)));
         }
@@ -2412,6 +2953,24 @@ fn drop_hanging_tail(mut pieces: Vec<Piece>) -> Vec<Piece> {
 /// Ряд — гибкая строка с переносом, и перевод строки в нём не значит ничего:
 /// `<br>` доезжал сюда куском текста `\n` и молча пропадал. Разрыв даёт
 /// распорка во всю ширину — следующему ребёнку места в строке уже нет.
+/// Разрыв, закрывающий ПУСТУЮ строку (в ней ни слова, ни атома): такая
+/// строка не «zero-height» (CSS 2.1 §9.4.2 исключает только строки без
+/// текста и без разрыва), её высоту даёт strut — `line-height` блока
+/// (§10.8.1). Распорка `h_0` роняла строку `отступ + <br>` в ноль, и квадрат
+/// вставал наверх вместо низа (`text-indent-on-blank-line-rtl-left-align`).
+fn blank_line_break(style: &Computed) -> AnyElement {
+    let size = match style.font_size {
+        Some(Len::Px(v)) => v,
+        _ => 16.0,
+    };
+    let lh = match style.line_height {
+        Some(Len::Px(v)) => v,
+        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+        _ => size * 1.2,
+    };
+    gpui::div().w_full().h(gpui::px(lh)).flex_shrink_0().into_any_element()
+}
+
 fn line_break() -> AnyElement {
     gpui::div().w_full().h_0().into_any_element()
 }
@@ -2434,8 +2993,15 @@ fn normalize_spaces(raw: &str) -> String {
             at += 1;
         }
         let had_break = chars[start..at].iter().any(|c| matches!(*c, '\n' | '\r'));
-        let before = out.chars().next_back();
-        let after = chars.get(at).copied();
+        // Соседи ряда ищутся СКВОЗЬ знаки управления двунаправленностью
+        // (css-text-3 §4.1: «as if they were not there»): ряд по ту сторону
+        // RLO/PDF — продолжение прежнего и удаляется целиком (CSS 2.1 §16.6.1
+        // шаг 4), `x ␠RLO␠x` — один пробел (`white-space-collapsing-bidi-001`).
+        let before = out.chars().rev().find(|c| !bidi_format(*c));
+        if before == Some(' ') {
+            continue;
+        }
+        let after = chars[at..].iter().copied().find(|c| !bidi_format(*c));
         // Преобразование перевода строки (CSS Text 3 §4.1.2): между двумя
         // ШИРОКИМИ знаками перевод УДАЛЯЕТСЯ, а не становится пробелом —
         // иначе японский текст, набранный в несколько строк, получает лишние
@@ -2484,6 +3050,14 @@ fn wide_cjk(ch: char) -> bool {
 /// идеографический пробел `U+3000` держит место целого иероглифа, неразрывный
 /// `U+00A0` не даёт разорвать строку. Пока схлопывалось всё пробельное подряд,
 /// такой пробел пропадал из текста вместе со своей шириной.
+/// Знак управления двунаправленностью — встраивание, отмена, изоляция
+/// (UAX #9: LRE/RLE/PDF/LRO/RLO, LRI/RLI/FSI/PDI). Для обработки пробелов
+/// его нет вовсе: css-text-3 §4.1 — «ignoring bidi formatting characters as
+/// if they were not there» (`white-space-collapsing-bidi-001/002`).
+fn bidi_format(ch: char) -> bool {
+    matches!(ch as u32, 0x202A..=0x202E | 0x2066..=0x2069)
+}
+
 fn is_collapsible(ch: char) -> bool {
     matches!(ch, ' ' | '\t' | '\n' | '\r')
 }
@@ -2638,7 +3212,8 @@ pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement)> {
 fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     let mut font = base.font();
     // Названное семейство сильнее родового: подстановкой занимается система.
-    if let Some(family) = &style.font_family {
+    // Пустое имя — «шрифт документа» (разбор `font-family`): база как есть.
+    if let Some(family) = style.font_family.as_ref().filter(|f| !f.is_empty()) {
         // Имя из разметки может быть придуманным (`@font-face`) — система
         // шрифтов знает файл под его собственным именем. Лиц у имени бывает
         // несколько, и нужное выбирает ширина начертания (§font-matching).
@@ -2661,8 +3236,9 @@ fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     if let Some(pct) = style.font_stretch {
         font.stretch = gpui::FontStretch::from_percent(pct);
     }
-    if !style.font_features.is_empty() {
-        font.features = gpui::FontFeatures(std::sync::Arc::new(style.font_features.clone()));
+    let features = style.used_features();
+    if !features.is_empty() {
+        font.features = gpui::FontFeatures(std::sync::Arc::new(features));
     }
     // `visibility: hidden` на самом куске: место в строке он держит, а чернил
     // не даёт (§11.2). Прозрачный цвет, а не пропуск куска, — иначе поехали бы
@@ -2722,9 +3298,15 @@ pub fn highlight_for(style: &Computed) -> HighlightStyle {
 /// `justify_start/end`, гейт «только атомы, без знаков и `<br>`»). Обещание
 /// +24/−0 на `abs-pos-non-replaced-vrl-*`. Полный свод против v35: +0/−4
 /// (`abs-pos-non-replaced-icb-vlr-005/-013`, `-vrl-004/-012` 0.00 → 1.16),
-/// рядом `ruby-bidi-002` 0.16 → 0.72. Гейт `!hard_break` семью `icb-*` не
-/// защитил. Чинить порядок атомов надо в bidi-порядке кусков (`lines.rs`),
-/// а не разворотом ряда.
+/// рядом `ruby-bidi-002` 0.16 → 0.72.
+/// Причина отката — ПРИЖИМ, а не разворот: `justify_start()` это
+/// `JustifyContent::Start`, а taffy считает `Start` от ФИЗИЧЕСКОГО начала и
+/// `row-reverse` его не разворачивает (`taffy/.../alignment.rs:50-67`, учёт
+/// разворота есть только у `FlexStart`/`FlexEnd`). Развёрнутый ряд
+/// прижимался к ЛЕВОМУ краю: однокартинная строка `icb-*` уезжала на 530
+/// влево (ровно 1.16 — текст подписи в двух местах), квадрат эталона
+/// `vrl-006-ref` — за левый край окна (3.55 → 2.49). Разворот ниже прижимает
+/// `FlexStart`/`FlexEnd`. Разбор: `target/scout-abspos-vert-2026-09-30.md` §2.
 /// Запасная ветка: гибкая строка из отдельных СЛОВ.
 ///
 /// Сюда абзац попадает, когда единым текстовым блоком его не собрать: разные
@@ -2736,6 +3318,10 @@ pub fn as_wrapped_row(
     pieces: Vec<Piece>,
     align: Option<crate::computed::Align>,
     text_align: Option<crate::computed::TextAlign>,
+    // Уровень абзаца по HL1 (css-writing-modes-4 §2.4): `direction`
+    // содержащего блока. В `text_align` он уже растворён физической стороной,
+    // а порядку коробок в строке нужен сам признак.
+    rtl: bool,
     indent: f32,
     nowrap: bool,
     render_text: &mut dyn FnMut(String, &Computed) -> AnyElement,
@@ -2759,7 +3345,34 @@ pub fn as_wrapped_row(
         Piece::Text { text, .. } => text.contains('\n'),
         _ => false,
     });
+    // Правило L2 двунаправленного алгоритма для строки БЕЗ ЗНАКОВ.
+    // css-writing-modes-4 §2.4: атомарные строчные коробки «are treated as
+    // neutral characters»; нейтралы без сильных соседей получают уровень
+    // абзаца (UAX #9 N1/N2), при `rtl` это 1, и L2 разворачивает строку
+    // целиком. Уровней 2 (латиница внутри rtl) без знаков не бывает, поэтому
+    // разворот ряда — точная перестановка. Blink:
+    // `LogicalLineBuilder::BidiReorder` (атом = U+FFFC).
+    // Ряд со знаками не трогаем: у прогонов текста свои уровни. Жёсткий
+    // разрыв и куски вне потока (`Overlay`, щуп статической позиции) — тоже:
+    // первый переставил бы сами строки, второй сдвинул бы щуп, чьи rtl-рукава
+    // в `LatePlace` настроены на прежний порядок.
+    let reversed = rtl
+        && !hard_break
+        && pieces.iter().any(|p| matches!(p, Piece::Atom(_)))
+        && pieces.iter().all(|p| match p {
+            Piece::Atom(_) => true,
+            Piece::Overlay(_) => false,
+            Piece::Text { text, .. } => text
+                .chars()
+                .all(|c| c.is_whitespace() || c == '\u{200b}'),
+        });
     let mut row = gpui::div().flex().max_w_full();
+    // Развёрнутый ряд кладёт первого ребёнка у ПРАВОГО края; перенос строк
+    // при этом идёт по-прежнему вниз, а в каждую строку попадают куски в
+    // логическом порядке — ровно как у rtl-строк в CSS.
+    if reversed {
+        row = row.flex_row_reverse();
+    }
     if !nowrap || hard_break {
         row = row.flex_wrap();
     }
@@ -2773,8 +3386,24 @@ pub fn as_wrapped_row(
     // из элементов — гибкий ряд, и прижим у него называется `justify-content`;
     // раньше свойство доходило только до текстового блока, и ряд из
     // `inline-block` оставался слева при `text-align: right`.
+    //
+    // У развёрнутого ряда прижим — ТОЛЬКО `FlexStart`/`FlexEnd`: taffy
+    // считает `Start`/`End` (`justify_start()`/`justify_end()`) от
+    // физического начала и разворот ряда их не меняет
+    // (`taffy/src/compute/common/alignment.rs:50-67`). На этом упал откат K1
+    // (08.09): ряд прижимался влево. `FlexStart` развёрнутого ряда — правый
+    // край, `FlexEnd` — левый. Без значения taffy сам берёт `FlexStart`
+    // (`flexbox.rs:1923`), то есть правый край — начало rtl-строки.
     row = match text_align {
         Some(TextAlign::Center) => row.justify_center(),
+        Some(TextAlign::Right) if reversed => {
+            row.style().justify_content = Some(gpui::JustifyContent::FlexStart);
+            row
+        }
+        Some(TextAlign::Left) if reversed => {
+            row.style().justify_content = Some(gpui::JustifyContent::FlexEnd);
+            row
+        }
         Some(TextAlign::Right) => row.justify_end(),
         Some(TextAlign::Left) => row.justify_start(),
         _ => row,
@@ -2791,6 +3420,9 @@ pub fn as_wrapped_row(
                 .into_any_element(),
         );
     }
+    // Пуста ли текущая строка ряда: распорка отступа строку не наполняет,
+    // слово и атом — наполняют (см. `blank_line_break`).
+    let mut line_empty = true;
     for group in glue_atoms(split_glued_tail(drop_hanging_tail(pieces))) {
         // Склеенная группа — свой НЕПЕРЕНОСИМЫЙ ряд: шва внутри него нет, и
         // атом уходит на новую строку вместе с приклеенным знаком. Ряд из
@@ -2798,6 +3430,7 @@ pub fn as_wrapped_row(
         // тут нет» выражается ровно одним общим ребёнком
         // (css-text-3 §5.1, пункт «atomic-compat-wrap»).
         if group.len() > 1 {
+            line_empty = false;
             let mut glued = gpui::div().flex().flex_shrink_0().items_baseline();
             for p in group {
                 glued = match p {
@@ -2811,15 +3444,28 @@ pub fn as_wrapped_row(
         }
         for p in group {
             row = match p {
-                Piece::Atom(el) => row.child(el),
+                Piece::Atom(el) => {
+                    line_empty = false;
+                    row.child(el)
+                }
                 Piece::Overlay(el) => row.child(overlay_in_row(el)),
                 Piece::Text { text, style } => {
                     // Пробел остаётся при слове: без него слова слиплись бы.
                     for (n, part) in text.split('\n').enumerate() {
                         if n > 0 {
-                            row = row.child(line_break());
+                            // Разрыв после содержимого — нулевая распорка, как
+                            // прежде; разрыв ПУСТОЙ строки держит её strut.
+                            row = row.child(if line_empty {
+                                blank_line_break(&style)
+                            } else {
+                                line_break()
+                            });
+                            line_empty = true;
                         }
                         for w in part.split_inclusive(' ') {
+                            if w.chars().any(|c| !matches!(c, ' ' | '\u{200b}')) {
+                                line_empty = false;
+                            }
                             row = row.child(render_text(w.to_string(), &style));
                         }
                     }

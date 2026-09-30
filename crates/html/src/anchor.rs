@@ -51,6 +51,12 @@ pub struct AnchorRec {
     pub hidden: bool,
     pub id: u64,
     pub cb: u64,
+    /// Та же рамка ПОСЛЕ трансформов предков и своего (§2 «Determining the
+    /// Anchor»: «includes … transforms … the axis-aligned bounding
+    /// rectangle»), и номер самого внутреннего трансформа в стеке `TF`
+    /// (0 — трансформов нет, `rect_tf == rect`).
+    pub rect_tf: Bounds<Pixels>,
+    pub tf_top: u32,
 }
 
 /// Итог размещения кандидата на подготовке кадра: сдвиг коробки, переполнил
@@ -63,6 +69,10 @@ struct Placement {
     dy: f32,
     overflow: bool,
     imcb: (f32, f32),
+    /// Размер клетки `position-area` по осям — она и есть содержащий блок
+    /// коробки (§position-area: «makes that the box's containing block»);
+    /// `(0, 0)` без области.
+    cell: (f32, f32),
 }
 
 thread_local! {
@@ -76,13 +86,16 @@ thread_local! {
     /// Те же именованные пробы кадра С ПОРЯДКОМ СБОРКИ (`Computed::anchor_seq`):
     /// на следующем кадре станут `LAST_NAMED`, и размер по `anchor-size()`
     /// возьмёт «последний якорь с этим именем раньше меня по дереву».
-    static NAMED_SEQ: RefCell<Vec<(String, u32, Bounds<Pixels>)>> = RefCell::new(Vec::new());
+    static NAMED_SEQ: RefCell<Vec<(String, u32, AnchorRec)>> = RefCell::new(Vec::new());
     /// Реестры ПРОШЛОГО кадра — для величин, которые нужны ДО раскладки
     /// (`anchor-size()`, растяжка в клетке `position-area`): размер решает
     /// taffy, а рамки известны только на подготовке; стенд ждёт устоявшихся
     /// кадров, и значение из кадра N−1 доезжает к N+1.
-    static LAST_NAMED: RefCell<Vec<(String, u32, Bounds<Pixels>)>> = RefCell::new(Vec::new());
-    static LAST_IMPLICIT: RefCell<HashMap<u64, Bounds<Pixels>>> = RefCell::new(HashMap::new());
+    /// Полная запись (не только рамка): прошлый кадр подменяет текущий и там,
+    /// где якорь ещё не подготовлен (`AnchorPlan::rec`), — нужны `id`/`cb`
+    /// для приемлемости.
+    static LAST_NAMED: RefCell<Vec<(String, u32, AnchorRec)>> = RefCell::new(Vec::new());
+    static LAST_IMPLICIT: RefCell<HashMap<u64, AnchorRec>> = RefCell::new(HashMap::new());
     /// Рамки СОДЕРЖАЩИХ БЛОКОВ кадра (padding box): `node_id` элемента с
     /// `establishes_cb` → рамка. Нужны сетке `position-area`.
     static CB: RefCell<HashMap<u64, Bounds<Pixels>>> = RefCell::new(HashMap::new());
@@ -90,8 +103,18 @@ thread_local! {
     /// ключу коробки: текущий кадр и прошлый — для `place-self: stretch`.
     static AREA_NOW: RefCell<HashMap<u64, (f32, f32)>> = RefCell::new(HashMap::new());
     static AREA_LAST: RefCell<HashMap<u64, (f32, f32)>> = RefCell::new(HashMap::new());
+    /// Размер САМОЙ клетки (без вставок) — база долей размеров, полей и
+    /// отбивок: текущий кадр и прошлый (`resolve_sizes`).
+    static CELL_NOW: RefCell<HashMap<u64, (f32, f32)>> = RefCell::new(HashMap::new());
+    static CELL_LAST: RefCell<HashMap<u64, (f32, f32)>> = RefCell::new(HashMap::new());
     /// Счётчик порядка сборки элементов в кадре (`next_seq`).
     static SEQ: Cell<u32> = const { Cell::new(0) };
+    /// Стек плоских трансформов предков на подготовке кадра: номер и
+    /// аффинная `[[a, b, tx], [c, d, ty]]` в css-точках окна. Кладёт
+    /// `interact::Transformed::prepaint` вокруг ребёнка; номера идут заново
+    /// каждый кадр (`reset`), дерево то же — номера те же.
+    static TF: RefCell<Vec<(u32, [[f32; 3]; 2])>> = const { RefCell::new(Vec::new()) };
+    static TF_NEXT: Cell<u32> = const { Cell::new(0) };
     /// Цепочка содержащих блоков: `node_id` блока → `node_id` его ближайшего
     /// содержащего блока (0 — начальный). Нужна приемлемости якоря (§target:
     /// содержащий блок коробки должен быть в цепочке содержащих блоков якоря).
@@ -110,14 +133,15 @@ pub fn reset() {
     let named = NAMED_SEQ.with(|v| std::mem::take(&mut *v.borrow_mut()));
     LAST_NAMED.with(|v| *v.borrow_mut() = named);
     let implicit = IMPLICIT.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    LAST_IMPLICIT.with(|m| {
-        *m.borrow_mut() = implicit.into_iter().map(|(k, r)| (k, r.rect)).collect();
-    });
+    LAST_IMPLICIT.with(|m| *m.borrow_mut() = implicit);
     CB.with(|m| m.borrow_mut().clear());
     CB_PARENT.with(|m| m.borrow_mut().clear());
     let area = AREA_NOW.with(|m| std::mem::take(&mut *m.borrow_mut()));
     AREA_LAST.with(|m| *m.borrow_mut() = area);
+    let cell = CELL_NOW.with(|m| std::mem::take(&mut *m.borrow_mut()));
+    CELL_LAST.with(|m| *m.borrow_mut() = cell);
     SEQ.with(|s| s.set(0));
+    TF_NEXT.with(|n| n.set(0));
 }
 
 /// Порядковый номер сборки элемента в кадре: зовёт `render::element` в
@@ -128,6 +152,64 @@ pub fn next_seq() -> u32 {
         s.set(v);
         v
     })
+}
+
+/// Положить плоский трансформ на стек подготовки (`Transformed::prepaint`).
+pub fn tf_push(m: [[f32; 3]; 2]) {
+    let id = TF_NEXT.with(|n| {
+        let v = n.get() + 1;
+        n.set(v);
+        v
+    });
+    TF.with(|s| s.borrow_mut().push((id, m)));
+}
+
+/// Снять трансформ со стека подготовки.
+pub fn tf_pop() {
+    TF.with(|s| {
+        s.borrow_mut().pop();
+    });
+}
+
+/// Рамка через весь стек: углы идут от ВНУТРЕННЕГО трансформа к внешнему
+/// (экран = внешний(…внутренний(p))), результат — объемлющий прямоугольник
+/// (§2: «axis-aligned bounding rectangle»). Второе — номер внутреннего
+/// трансформа (0 — стек пуст).
+fn tf_map(r: Bounds<Pixels>) -> (Bounds<Pixels>, u32) {
+    TF.with(|s| {
+        let s = s.borrow();
+        let Some(&(top, _)) = s.last() else {
+            return (r, 0);
+        };
+        let x0 = f32::from(r.origin.x);
+        let y0 = f32::from(r.origin.y);
+        let x1 = x0 + f32::from(r.size.width);
+        let y1 = y0 + f32::from(r.size.height);
+        let (mut lx, mut ly, mut hx, mut hy) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for (mut x, mut y) in [(x0, y0), (x1, y0), (x0, y1), (x1, y1)] {
+            for (_, m) in s.iter().rev() {
+                (x, y) = (
+                    m[0][0] * x + m[0][1] * y + m[0][2],
+                    m[1][0] * x + m[1][1] * y + m[1][2],
+                );
+            }
+            lx = lx.min(x);
+            ly = ly.min(y);
+            hx = hx.max(x);
+            hy = hy.max(y);
+        }
+        let b = Bounds {
+            origin: gpui::point(px(lx), px(ly)),
+            size: gpui::size(px(hx - lx), px(hy - ly)),
+        };
+        (b, top)
+    })
+}
+
+/// Лежит ли трансформ `id` на текущем стеке — то есть предок ли он коробки,
+/// которая сейчас готовится.
+fn tf_under(id: u32) -> bool {
+    TF.with(|s| s.borrow().iter().any(|(i, _)| *i == id))
 }
 
 /// Ключ коробки в реестрах между кадрами: `node_id`; у псевдоэлемента он 0 —
@@ -204,12 +286,20 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
                 // Маска обрезки в точке пробы — пересечение `overflow`-обрезок
                 // всех предков: по ней `AnchorPlace` решает, обрезан ли якорь
                 // промежуточными коробками (§position-visibility).
+                // Рамка раскладки — до трансформов: `Transformed` матрицу
+                // применяет только на отрисовке. Отображённую снимаем здесь же
+                // по стеку предков (`tf_map`), выбирает её цель (`lookup`):
+                // `transform-001/002/009` — якорь с `translate(-200px, -100px)
+                // scale(2)` обязан стоять там, где нарисован.
+                let (rect_tf, tf_top) = tf_map(outer);
                 let rec = AnchorRec {
                     rect: outer,
                     clip: window.content_mask().bounds,
                     hidden,
                     id,
                     cb: own_cb,
+                    rect_tf,
+                    tf_top,
                 };
                 NAMED.with(|m| {
                     let mut m = m.borrow_mut();
@@ -220,7 +310,7 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
                 NAMED_SEQ.with(|v| {
                     let mut v = v.borrow_mut();
                     for n in &names {
-                        v.push((n.clone(), seq, outer));
+                        v.push((n.clone(), seq, rec));
                     }
                 });
                 if implicit {
@@ -290,10 +380,11 @@ fn settle_len(l: Option<Len>, has_default: bool, known: &HashSet<String>) -> Opt
     for _ in 0..4 {
         let Some(Len::Anchor(i)) = cur else { return cur };
         let f = anchor_get(i)?;
-        let resolvable = match &f.name {
+        // У `min()`/`max()` разрешимы должны быть ВСЕ доводы.
+        let resolvable = std::iter::once(&f).chain(f.alts.iter()).all(|g| match &g.name {
             Some(n) => known.contains(n),
             None => has_default,
-        };
+        });
         if resolvable {
             return cur;
         }
@@ -658,6 +749,9 @@ pub struct AnchorPlan {
     fixed: bool,
     /// Ключ в `AREA_NOW` (размер клетки для растяжки на следующем кадре).
     key: u64,
+    /// Порядок сборки коробки (`Computed::anchor_seq`): якорь из реестра
+    /// прошлого кадра годен, только если собран РАНЬШЕ неё (`last_named`).
+    seq: u32,
     /// Ссылается ли коробка на якорь по умолчанию — `position-area`,
     /// `anchor()` без имени, `anchor-center` (§position-visibility: anchor-valid).
     refs_default: bool,
@@ -750,23 +844,38 @@ impl AnchorPlan {
                 && !(inherited.transform_ancestor
                     || inherited.transform.is_some()
                     || inherited.contain_layout == Some(true)
-                    || inherited.contain_paint == Some(true)),
+                    || inherited.contain_paint == Some(true)
+                    || inherited.will_change & crate::computed::wc::CB_FIXED != 0),
             key: own.anchor_key,
+            seq: own.anchor_seq,
             refs_default,
         })
     }
 
     /// Запись якоря по имени (или якоря по умолчанию) — только приемлемого.
     fn rec(&self, name: Option<&str>) -> Option<AnchorRec> {
+        // Реестр ТЕКУЩЕГО кадра знает только якоря, уже прошедшие подготовку.
+        // Якорь раньше по дереву, но в слое, который готовится ПОЗЖЕ коробки
+        // (слой ICB у `fixed`, `interact::icb_close` — последние дети
+        // документа), в нём ещё не записан: `anchor-abspos-to-fixedpos-001` —
+        // `fixed`-якорь и абсолют без краёв в потоке, коробка падала на
+        // статическую позицию под якорь. Спека требует лишь «laid out
+        // strictly before» по дереву (§target) — его и проверяет фильтр `seq`
+        // у записи прошлого кадра (стенд ждёт устоявшихся кадров, как у
+        // `anchor-size()`). Якорь ниже по дереву (`anchor-position-circular`)
+        // фильтр отсекает.
+        let named = |n: &str| {
+            NAMED
+                .with(|m| m.borrow().get(n).copied())
+                .or_else(|| last_named(n, self.seq))
+        };
         let r = match name {
-            Some(n) => NAMED.with(|m| m.borrow().get(n).copied()),
+            Some(n) => named(n),
             None => match &self.default_anchor {
-                Some(DefaultAnchor::Named(n)) => {
-                    NAMED.with(|m| m.borrow().get(n.as_str()).copied())
-                }
-                Some(DefaultAnchor::Implicit(id)) => {
-                    IMPLICIT.with(|m| m.borrow().get(id).copied())
-                }
+                Some(DefaultAnchor::Named(n)) => named(n.as_str()),
+                Some(DefaultAnchor::Implicit(id)) => IMPLICIT
+                    .with(|m| m.borrow().get(id).copied())
+                    .or_else(|| LAST_IMPLICIT.with(|m| m.borrow().get(id).copied())),
                 None => None,
             },
         }?;
@@ -800,8 +909,15 @@ impl AnchorPlan {
         true
     }
 
+    /// Рамка якоря в системе координат коробки: если самый внутренний
+    /// трансформ якоря — предок и самой коробки, вся цепочка трансформов у
+    /// них общая и сравнивать надо до-трансформные рамки; иначе — рамку
+    /// после трансформов (§2, «in the coordinate space of the absolutely
+    /// positioned element's containing block»). Частично общая цепочка —
+    /// приближение: берётся отображённая.
     fn lookup(&self, name: Option<&str>) -> Option<Bounds<Pixels>> {
-        self.rec(name).map(|r| r.rect)
+        self.rec(name)
+            .map(|r| if r.tf_top == 0 || tf_under(r.tf_top) { r.rect } else { r.rect_tf })
     }
 
     /// Доля [0;1] вдоль физической оси от её начала, куда указывает
@@ -841,6 +957,30 @@ impl AnchorPlan {
         })
     }
 
+    /// Экранная координата края по одной `anchor()` (без запасного значения).
+    fn hit_one(&self, f: &AnchorFn, y_axis: bool, end_side: bool) -> Option<f32> {
+        let a = self.lookup(f.name.as_deref())?;
+        let t = self.fraction(f.side, y_axis, end_side)?;
+        let (start, len) = if y_axis {
+            (f32::from(a.origin.y), f32::from(a.size.height))
+        } else {
+            (f32::from(a.origin.x), f32::from(a.size.width))
+        };
+        Some(start + len * t + f.add)
+    }
+
+    /// То же для `min()`/`max()` (`AnchorFn::alts`): все доводы в одной
+    /// экранной системе, берётся меньший/больший; неразрешимый довод делает
+    /// неразрешимой всю функцию — дальше её запасное значение.
+    fn hit_of(&self, f: &AnchorFn, y_axis: bool, end_side: bool) -> Option<f32> {
+        let mut acc = self.hit_one(f, y_axis, end_side)?;
+        for g in &f.alts {
+            let v = self.hit_one(g, y_axis, end_side)?;
+            acc = if f.max { acc.max(v) } else { acc.min(v) };
+        }
+        Some(acc)
+    }
+
     /// Куда просится край по `anchor()`: экранная координата; вставка в
     /// точках от края содержащего блока (запасное значение); ничего.
     fn resolve_anchor(&self, first: AnchorFn, y_axis: bool, end_side: bool) -> Edge {
@@ -848,15 +988,7 @@ impl AnchorPlan {
         // Цепочка запасных значений: `anchor(top, anchor(--a1 bottom))`.
         for _ in 0..4 {
             let Some(cur) = f.take() else { break };
-            let hit = self.lookup(cur.name.as_deref()).and_then(|a| {
-                let t = self.fraction(cur.side, y_axis, end_side)?;
-                let (start, len) = if y_axis {
-                    (f32::from(a.origin.y), f32::from(a.size.height))
-                } else {
-                    (f32::from(a.origin.x), f32::from(a.size.width))
-                };
-                Some(start + len * t + cur.add)
-            });
+            let hit = self.hit_of(&cur, y_axis, end_side);
             match (hit, cur.fallback) {
                 (Some(want), _) => return Edge::Abs(want),
                 (None, Some(Len::Px(v))) => return Edge::FromEdge(v),
@@ -981,7 +1113,7 @@ impl AnchorPlan {
         a: Bounds<Pixels>,
         cb: Bounds<Pixels>,
         own: Bounds<Pixels>,
-    ) -> (f32, f32, bool) {
+    ) -> (f32, f32, bool, f32) {
         let f = f32::from;
         let (cs, ce, as_, ae, os, olen) = if x {
             (
@@ -1032,7 +1164,13 @@ impl AnchorPlan {
             safe,
             al == Al::AnchorCenter,
         );
-        (pos + m_s - os, (ie - is).max(0.0), overflows(pos, mbox, is, ie))
+        // Четвёртое — длина самой клетки `[s, e]`: база долей (`CELL_NOW`).
+        (
+            pos + m_s - os,
+            (ie - is).max(0.0),
+            overflows(pos, mbox, is, ie),
+            (e - s).max(0.0),
+        )
     }
 
     /// Ось без `position-area`: IMCB — содержащий блок, срезанный авторскими
@@ -1107,6 +1245,7 @@ impl AnchorPlan {
             dy,
             overflow: ox || oy,
             imcb: (w, h),
+            cell: (0.0, 0.0),
         }
     }
 
@@ -1116,13 +1255,14 @@ impl AnchorPlan {
         let (tx, ty) = self.area?;
         let a = self.lookup(None)?;
         let cb = self.cb_bounds(window)?;
-        let (dx, w, ox) = self.axis_place(true, tx, a, cb, own);
-        let (dy, h, oy) = self.axis_place(false, ty, a, cb, own);
+        let (dx, w, ox, cw) = self.axis_place(true, tx, a, cb, own);
+        let (dy, h, oy, ch) = self.axis_place(false, ty, a, cb, own);
         Some(Placement {
             dx,
             dy,
             overflow: ox || oy,
             imcb: (w, h),
+            cell: (cw, ch),
         })
     }
 
@@ -1415,6 +1555,7 @@ impl Element for AnchorPlace {
         let plan = &self.plans[k];
         if plan.area.is_some() {
             AREA_NOW.with(|m| m.borrow_mut().insert(self.key, p.imcb));
+            CELL_NOW.with(|m| m.borrow_mut().insert(self.key, p.cell));
         }
         if self.plans.len() > 1 {
             let prev = CHOSEN.with(|m| m.borrow_mut().insert(self.key, k));
@@ -1508,24 +1649,26 @@ pub fn apply_chosen(c: &mut Computed) {
 /// именем, собранная РАНЬШЕ коробки (`seq`), — «the last element in tree
 /// order» среди «laid out strictly before» (§target anchor element);
 /// неявный — по `node_id` хозяина.
-fn last_lookup(name: Option<&str>, default: &Option<DefaultAnchor>, seq: u32) -> Option<Bounds<Pixels>> {
-    let by_name = |n: &str| {
-        LAST_NAMED.with(|v| {
-            v.borrow()
-                .iter()
-                .filter(|(k, s, _)| k == n && *s < seq)
-                .max_by_key(|(_, s, _)| *s)
-                .map(|(_, _, b)| *b)
-        })
-    };
+fn last_lookup(name: Option<&str>, default: &Option<DefaultAnchor>, seq: u32) -> Option<AnchorRec> {
     match name {
-        Some(n) => by_name(n),
+        Some(n) => last_named(n, seq),
         None => match default {
-            Some(DefaultAnchor::Named(n)) => by_name(n),
+            Some(DefaultAnchor::Named(n)) => last_named(n, seq),
             Some(DefaultAnchor::Implicit(id)) => LAST_IMPLICIT.with(|m| m.borrow().get(id).copied()),
             None => None,
         },
     }
+}
+
+/// Последняя запись прошлого кадра с этим именем, собранная раньше `seq`.
+fn last_named(n: &str, seq: u32) -> Option<AnchorRec> {
+    LAST_NAMED.with(|v| {
+        v.borrow()
+            .iter()
+            .filter(|(k, s, _)| k == n && *s < seq)
+            .max_by_key(|(_, s, _)| *s)
+            .map(|(_, _, r)| *r)
+    })
 }
 
 /// Размеры абсолюта, зависящие от якоря, — В ТОЧКИ до раскладки (зовёт
@@ -1552,7 +1695,18 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
             let Some(cur) = f.take() else { break };
             // `anchor()` в размере негодна (§anchor-fn: только вставки).
             let Some(kind) = cur.size else { return None };
-            let hit = last_lookup(cur.name.as_deref(), &default_anchor, seq).map(|b| {
+            let hit = last_lookup(cur.name.as_deref(), &default_anchor, seq).map(|r| {
+                // Размер решается ДО раскладки, стека трансформов коробки ещё
+                // нет: под трансформированным предком считаем цепочку общей
+                // (до-трансформная рамка), без него — отображённую
+                // (`transform-002/009`: `anchor-size(width)` = 100, а не 50).
+                let b = if r.tf_top != 0
+                    && !(inherited.transform_ancestor || inherited.transform.is_some())
+                {
+                    r.rect_tf
+                } else {
+                    r.rect
+                };
                 let width = match kind {
                     AnchorSize::Width => true,
                     AnchorSize::Height => false,
@@ -1573,6 +1727,39 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
         }
         None
     };
+    // §position-area: клетка «makes that the box's containing block», и
+    // доли размеров, полей и отбивок решаются от неё, а не от исходного
+    // содержащего блока (заметка спеки: «like max-height: 100%»). Раскладка
+    // клетки не знает — доли переводятся в точки здесь, по клетке прошлого
+    // кадра, ДО растяжки ниже (она вычитает уже решённые поля и отбивки).
+    // Поля и отбивки — от строчного размера клетки по письму содержащего
+    // блока (`position-area-percents-001`: 5% от 80 в горизонтальном, от 40
+    // в `vertical-rl`); размеры — по своей оси (`transform-001`:
+    // `width: 100%` = ширина якоря, а не 800 окна).
+    if c.position_area.is_some()
+        && default_anchor.is_some()
+        && let Some((cw, ch)) = CELL_LAST.with(|m| m.borrow().get(&c.anchor_key).copied())
+    {
+        let of = |l: Option<Len>, base: f32| match l {
+            Some(Len::Pct(p)) => Some(Len::Px(p * base)),
+            other => other,
+        };
+        let inline = if cb_vertical { ch } else { cw };
+        c.width = of(c.width, cw);
+        c.min_width = of(c.min_width, cw);
+        c.max_width = of(c.max_width, cw);
+        c.height = of(c.height, ch);
+        c.min_height = of(c.min_height, ch);
+        c.max_height = of(c.max_height, ch);
+        c.margin.top = of(c.margin.top, inline);
+        c.margin.right = of(c.margin.right, inline);
+        c.margin.bottom = of(c.margin.bottom, inline);
+        c.margin.left = of(c.margin.left, inline);
+        c.padding.top = of(c.padding.top, inline);
+        c.padding.right = of(c.padding.right, inline);
+        c.padding.bottom = of(c.padding.bottom, inline);
+        c.padding.left = of(c.padding.left, inline);
+    }
     c.width = one(c.width, false);
     c.min_width = one(c.min_width, false);
     c.max_width = one(c.max_width, false);

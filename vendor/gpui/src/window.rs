@@ -3622,6 +3622,38 @@ impl Window {
             blur_radius: blur_radius * scale_factor,
             group: 0,
             opacity: 1.0,
+            color_matrix: None,
+        });
+    }
+
+    /// KaminIDE patch: `backdrop-filter` с цветовыми функциями — матрица 4×5
+    /// над подложкой (и размытие, если оно тоже задано). Прозрачность
+    /// элемента входит в композит (filter-effects-2 §3 шаг 5: эффекты
+    /// самого элемента применяются к отфильтрованной подложке).
+    pub fn paint_backdrop_filter(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        blur_radius: f32,
+        color_matrix: [f32; 20],
+    ) {
+        use crate::PaintSurface;
+
+        self.invalidator.debug_assert_paint();
+
+        let scale_factor = self.scale_factor();
+        let bounds = bounds.scale(scale_factor);
+        let content_mask = self.content_mask().scale(scale_factor);
+        let opacity = self.element_opacity();
+        self.next_frame.scene.insert_primitive(PaintSurface {
+            order: 0,
+            bounds,
+            content_mask,
+            corner_radii: corner_radii.scale(scale_factor),
+            blur_radius: blur_radius * scale_factor,
+            group: 0,
+            opacity,
+            color_matrix: Some(color_matrix),
         });
     }
 
@@ -3700,6 +3732,7 @@ impl Window {
             blur_radius: 0.0,
             group: index + 1,
             opacity,
+            color_matrix: None,
         });
         result
     }

@@ -453,6 +453,10 @@ fn path_css(c: &Computed, d: &str, shift: (f32, f32)) -> Option<String> {
     let want = match c.offset_distance {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(p)) => p * total,
+        // Смесь долей и точек: доля — от длины пути (css-values-4 §10.9).
+        Some(Len::Calc(i)) => crate::value::calc_get(i)
+            .pct_px()
+            .map_or(0.0, |(p, px)| p * total + px),
         _ => 0.0,
     };
     // §path-distance: замкнутый контур — по модулю длины («Modulo here uses
@@ -516,6 +520,8 @@ fn position_in(toks: &[&str], rb: (f32, f32, f32, f32)) -> (f32, f32) {
     let (a, b) = match (toks.first(), toks.get(1)) {
         (Some(a), Some(b)) if vert(a) || horiz(b) => (*b, *a),
         (Some(a), Some(b)) => (*a, *b),
+        // Одно вертикальное слово — ось Y, X по центру (css-values-4 §position).
+        (Some(a), None) if vert(a) => ("center", *a),
         (Some(a), None) => (*a, "center"),
         _ => ("center", "center"),
     };
@@ -621,6 +627,8 @@ fn anchor_point(c: &Computed) -> Option<((f32, f32), (f32, f32))> {
     let (a, b) = match (toks.first(), toks.get(1)) {
         (Some(a), Some(b)) if vert(a) || horiz(b) => (*b, *a),
         (Some(a), Some(b)) => (*a, *b),
+        // `offset-anchor: top` — это `center top` (css-values-4 §position).
+        (Some(a), None) if vert(a) => ("center", *a),
         (Some(a), None) => (*a, "center"),
         _ => ("center", "center"),
     };
@@ -732,13 +740,18 @@ fn ray_len(kind: u8, s: (f32, f32), rb: (f32, f32, f32, f32), dir: (f32, f32)) -
                     return f32::INFINITY;
                 }
                 let t = num / den;
-                if t >= 0.0 { t } else { f32::INFINITY }
+                // Сторона, на которой начало уже стоит (t = 0), не пересечение:
+                // из угла (0,0) под 90deg луч идёт до ПРАВОЙ стороны
+                // (`offset-path-ray-019`: `translateX(100px)` и `200px`).
+                // Луч наружу со стороны не находит ни одного t > 0 — длина 0,
+                // как и велит §ray() для начала на границе.
+                if t > 1e-4 { t } else { f32::INFINITY }
             };
-            t(x0 - s.0, dir.0)
+            let hit = t(x0 - s.0, dir.0)
                 .min(t(x1 - s.0, dir.0))
                 .min(t(y0 - s.1, dir.1))
-                .min(t(y1 - s.1, dir.1))
-                .max(0.0)
+                .min(t(y1 - s.1, dir.1));
+            if hit.is_finite() { hit } else { 0.0 }
         }
     }
 }

@@ -158,6 +158,24 @@ pub fn normal_line(family: &str) -> f32 {
     fractions(family).2
 }
 
+/// Метрика шрифта в ДОЛЯХ КЕГЛЯ для `font-size-adjust` (css-fonts-5): 0 —
+/// `ex-height`, 1 — `cap-height`, 2 — `ch-width`, 3 — `ic-width`,
+/// 4 — `ic-height`.
+///
+/// Вертикального продвижения щуп не меряет. У полноширинного иероглифа оно
+/// равно горизонтальному, а без знака `水` обе метрики по css-values-4 §6.1.4
+/// считаются целым кеглем (`FALLBACK.3`).
+pub fn adjust_aspect(family: &str, metric: u8) -> Option<f32> {
+    let (ch, ex, _, ic) = fractions(family);
+    Some(match metric {
+        0 => ex,
+        1 => vmetrics_px(family, 1.0).2,
+        2 => ch,
+        3 | 4 => ic,
+        _ => return None,
+    })
+}
+
 /// Доли кегля для семейства: замер идёт один раз и запоминается.
 ///
 /// Имя из разметки может быть ПРИДУМАННЫМ (`@font-face`): система шрифтов
@@ -217,6 +235,13 @@ thread_local! {
 pub fn font_installed(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     INSTALLED.with(|i| i.borrow().contains(&lower))
+}
+
+/// Снят ли список установленных семейств (`use_text_system`). До него
+/// `font_installed` отрицателен для всех, и судить о «недоступности» имени
+/// нельзя.
+pub fn fonts_known() -> bool {
+    INSTALLED.with(|i| !i.borrow().is_empty())
 }
 
 /// Поставить щуп поверх системы шрифтов GPUI.

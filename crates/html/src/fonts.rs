@@ -21,6 +21,12 @@ use std::collections::HashMap;
 thread_local! {
     /// Придуманное разметкой имя → имя, под которым шрифт знает система.
     static ALIASES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    /// Придуманное имя → дескриптор `font-feature-settings` его правила
+    /// (css-fonts-4 §7.2, шаг 2). Ключ — ИМЯ ИЗ РАЗМЕТКИ: три правила с одним
+    /// файлом (`lato-ffs-`, `lato-ffs-0`, `lato-ffs-1`) дают одно настоящее
+    /// имя, а возможности у них разные.
+    static FEATURES: RefCell<HashMap<String, Vec<(String, u32)>>> =
+        RefCell::new(HashMap::new());
     /// ВСЕ лица семейства в порядке объявления: ширина из дескриптора
     /// `font-stretch` (отрезок процентов) и имя в системе. Одного слота мало:
     /// правил `@font-face` на одно имя бывает много, и выбор между ними ведёт
@@ -31,12 +37,21 @@ thread_local! {
     /// из нескольких правил (подмножества знаков), и пробел у него есть,
     /// если его несёт ХОТЬ ОДНО.
     static HAS_SPACE: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
+    /// Придуманное имя → множитель `size-adjust` (css-fonts-5). `NaN` — правила
+    /// одного семейства дают РАЗНЫЕ множители: лицо по наклону и весу мы не
+    /// выбираем, и общий множитель красил бы чужое лицо.
+    static SIZE_ADJUST: RefCell<HashMap<String, f32>> = RefCell::new(HashMap::new());
     /// Уже загруженные файлы: одно и то же правило встречается на странице
     /// не по разу, а разбор шрифта дорог.
     static LOADED: RefCell<HashMap<String, Option<String>>> =
         RefCell::new(HashMap::new());
     /// Приёмник шрифта: отдаёт системе байты и возвращает её имя семейства.
     static LOADER: RefCell<Option<Loader>> = const { RefCell::new(None) };
+    /// Алфавитная базовая линия файла (`BASE`, тег `romn`) в долях em над
+    /// нулём глифа — по адресу файла: байты есть только при первой загрузке.
+    static ROMN_BY_SRC: RefCell<HashMap<String, Option<f32>>> = RefCell::new(HashMap::new());
+    /// То же по придуманному страницей имени семейства (живёт одну страницу).
+    static ROMN: RefCell<HashMap<String, f32>> = RefCell::new(HashMap::new());
 }
 
 /// Загрузчик: получает содержимое файла, отдаёт имя семейства в системе.
@@ -50,6 +65,16 @@ pub fn install_loader(loader: impl Fn(Vec<u8>) -> Option<String> + 'static) {
 /// Настоящее имя семейства за именем из разметки.
 pub fn alias(family: &str) -> Option<String> {
     ALIASES.with(|a| a.borrow().get(&family.to_ascii_lowercase()).cloned())
+}
+
+/// Возможности из дескриптора `font-feature-settings` правила `@font-face`.
+pub fn face_features(family: &str) -> Vec<(String, u32)> {
+    FEATURES.with(|f| {
+        f.borrow()
+            .get(&family.to_ascii_lowercase())
+            .cloned()
+            .unwrap_or_default()
+    })
 }
 
 /// Ширина из дескриптора `font-stretch` правила `@font-face` — отрезок в
@@ -185,8 +210,11 @@ pub fn load_faces(css: &str) {
     // Имена семейств придумывает страница, и на соседней странице то же имя
     // значит другой файл — поэтому таблица подмены живёт РОВНО одну страницу.
     ALIASES.with(|a| a.borrow_mut().clear());
+    FEATURES.with(|f| f.borrow_mut().clear());
     FACES.with(|f| f.borrow_mut().clear());
     HAS_SPACE.with(|s| s.borrow_mut().clear());
+    SIZE_ADJUST.with(|s| s.borrow_mut().clear());
+    ROMN.with(|r| r.borrow_mut().clear());
     load_faces_into(css);
 }
 
@@ -207,6 +235,8 @@ fn load_faces_into(css: &str) {
             Some(hit) => hit,
             None => {
                 let loaded = read_font(&src).and_then(|bytes| {
+                    let romn = sfnt_romn_baseline(&bytes);
+                    ROMN_BY_SRC.with(|m| m.borrow_mut().insert(src.clone(), romn));
                     LOADER.with(|l| l.borrow().as_ref().and_then(|load| load(bytes)))
                 });
                 LOADED.with(|c| c.borrow_mut().insert(src.clone(), loaded.clone()));
@@ -222,6 +252,9 @@ fn load_faces_into(css: &str) {
         }
         if let Some(real) = real {
             let name = family.trim_matches(is_quote).to_ascii_lowercase();
+            if let Some(Some(v)) = ROMN_BY_SRC.with(|m| m.borrow().get(&src).copied()) {
+                ROMN.with(|r| r.borrow_mut().insert(name.clone(), v));
+            }
             // Правил на одно семейство бывает много: пробел у семейства есть,
             // если его несёт хоть одно из них.
             let space = range_has_space(declaration(&block, "unicode-range").as_deref());
@@ -232,6 +265,18 @@ fn load_faces_into(css: &str) {
             });
             // Лицо запоминается вместе с шириной из дескриптора: выбор между
             // правилами одного семейства ведёт §font-matching.
+            // `size-adjust: <percentage [0,∞]>`; без дескриптора — 100%.
+            let adjust = declaration(&block, "size-adjust")
+                .and_then(|v| v.trim().strip_suffix('%')?.trim().parse::<f32>().ok())
+                .filter(|p| *p >= 0.0)
+                .map_or(1.0, |p| p / 100.0);
+            SIZE_ADJUST.with(|s| {
+                let mut s = s.borrow_mut();
+                let slot = s.entry(name.clone()).or_insert(adjust);
+                if *slot != adjust {
+                    *slot = f32::NAN;
+                }
+            });
             let width = stretch_desc(declaration(&block, "font-stretch").as_deref());
             FACES.with(|f| {
                 f.borrow_mut()
@@ -239,13 +284,110 @@ fn load_faces_into(css: &str) {
                     .or_default()
                     .push((width, real.clone()));
             });
+            if let Some(list) = declaration(&block, "font-feature-settings")
+                .and_then(|v| crate::computed::feature_list(&v))
+            {
+                FEATURES.with(|f| f.borrow_mut().insert(name.clone(), list));
+            }
             ALIASES.with(|a| a.borrow_mut().insert(name, real));
         }
     }
 }
 
+/// Множитель `size-adjust` семейства (1.0 — нет дескриптора или правила
+/// семейства расходятся между собой).
+pub fn size_adjust(family: &str) -> f32 {
+    SIZE_ADJUST.with(|s| {
+        s.borrow()
+            .get(&family.to_ascii_lowercase())
+            .copied()
+            .filter(|k| k.is_finite())
+            .unwrap_or(1.0)
+    })
+}
+
 fn is_quote(c: char) -> bool {
     c == '"' || c == '\''
+}
+
+/// Алфавитная базовая линия семейства в долях em над нулём глифа: у
+/// `BaselineDiagnostic` она на 50/1000 выше нуля, у обычного шрифта — ноль
+/// (css-inline-3 §4.3 `alphabetic`: «Use the alphabetic baseline»).
+pub fn alphabetic_em(family: &str) -> f32 {
+    let key = family.trim().trim_matches(is_quote).to_ascii_lowercase();
+    ROMN.with(|r| r.borrow().get(&key).copied()).unwrap_or(0.0)
+}
+
+/// Координата базовой линии `romn` горизонтальной оси таблицы `BASE`
+/// (OpenType BASE: Axis → BaseTagList/BaseScriptList → BaseValues →
+/// BaseCoord) в долях em; скрипт `latn`, затем `DFLT`, затем первый.
+/// `None` — таблицы, оси или тега нет.
+fn sfnt_romn_baseline(bytes: &[u8]) -> Option<f32> {
+    let be16 = |at: usize| -> Option<u16> {
+        Some(u16::from_be_bytes([*bytes.get(at)?, *bytes.get(at + 1)?]))
+    };
+    let be32 = |at: usize| -> Option<u32> {
+        Some(u32::from_be_bytes([
+            *bytes.get(at)?,
+            *bytes.get(at + 1)?,
+            *bytes.get(at + 2)?,
+            *bytes.get(at + 3)?,
+        ]))
+    };
+    let num_tables = be16(4)? as usize;
+    let (mut base, mut head) = (None, None);
+    for i in 0..num_tables {
+        let rec = 12 + i * 16;
+        match bytes.get(rec..rec + 4)? {
+            b"BASE" => base = Some(be32(rec + 8)? as usize),
+            b"head" => head = Some(be32(rec + 8)? as usize),
+            _ => {}
+        }
+    }
+    let (base, head) = (base?, head?);
+    let upem = be16(head + 18)? as f32;
+    let horiz = be16(base + 4)? as usize;
+    if upem <= 0.0 || horiz == 0 {
+        return None;
+    }
+    let axis = base + horiz;
+    let (tags_off, scripts_off) = (be16(axis)? as usize, be16(axis + 2)? as usize);
+    if tags_off == 0 || scripts_off == 0 {
+        return None;
+    }
+    let (tags, scripts) = (axis + tags_off, axis + scripts_off);
+    let tag_count = be16(tags)? as usize;
+    let romn = (0..tag_count)
+        .find(|i| bytes.get(tags + 2 + i * 4..tags + 6 + i * 4) == Some(b"romn".as_slice()))?;
+    let script_count = be16(scripts)? as usize;
+    let mut script = None;
+    for want in [b"latn", b"DFLT"] {
+        for i in 0..script_count {
+            let rec = scripts + 2 + i * 6;
+            if bytes.get(rec..rec + 4)? == want.as_slice() {
+                script = Some(scripts + be16(rec + 4)? as usize);
+                break;
+            }
+        }
+        if script.is_some() {
+            break;
+        }
+    }
+    let script = match script {
+        Some(s) => s,
+        None if script_count > 0 => scripts + be16(scripts + 6)? as usize,
+        None => return None,
+    };
+    let values_off = be16(script)? as usize;
+    if values_off == 0 {
+        return None;
+    }
+    let values = script + values_off;
+    if romn >= be16(values + 2)? as usize {
+        return None;
+    }
+    let coord = values + be16(values + 4 + romn * 2)? as usize;
+    Some(be16(coord + 2)? as i16 as f32 / upem)
 }
 
 /// Тела всех правил `@font-face` в таблице.
@@ -264,8 +406,21 @@ fn faces(css: &str) -> Vec<String> {
         let Some(close) = css[start + open..].find('}') else {
             break;
         };
-        out.push(css[start + open + 1..start + open + close].to_string());
+        let body = css[start + open + 1..start + open + close].to_string();
         from = start + open + close;
+        // Правило внутри ложного `@media`/`@supports` не действует
+        // (css-conditional-3 §2): иначе вторая, «запасная» грань того же
+        // семейства перебивала первую (`at-media-content-002`,
+        // `at-supports-content-002`: `local('Arial')` вместо Ahem). Сюда
+        // приходит вся разметка — стек скобок считается от начала своего
+        // `<style>`.
+        let base = lower[..start]
+            .rfind("<style")
+            .map_or(0, |s| lower[s..start].find('>').map_or(start, |g| s + g + 1));
+        if crate::css::in_false_group(&css[base..], start - base, crate::css::Media::default()) {
+            continue;
+        }
+        out.push(body);
     }
     out
 }

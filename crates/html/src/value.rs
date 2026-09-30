@@ -228,8 +228,24 @@ impl Len {
         if lower.starts_with("anchor-size(") && s.ends_with(')') {
             return parse_anchor(&s[12..s.len() - 1], 0.0, true);
         }
+        // `min()`/`max()` от `anchor()` (css-values-4 §comparison-functions):
+        // прежде запись проваливалась в общий разбор и выбрасывалась, и
+        // абсолют падал на статическую позицию.
+        if (lower.starts_with("min(") || lower.starts_with("max("))
+            && lower.contains("anchor(")
+            && s.ends_with(')')
+        {
+            return parse_anchor_minmax(s, lower.starts_with("max("));
+        }
         if lower.starts_with("calc(") && (lower.contains("anchor(") || lower.contains("anchor-size(")) {
             return parse_anchor_calc(s);
+        }
+        // `min()`/`max()`/`clamp()` на верхнем уровне (css-values-4 §10.2):
+        // разбираются тем же выражением, что и `calc()` — функцию сравнения
+        // понимает `Calc::factor`. Прежде запись падала в `css_number` и
+        // объявление роняло: `height: max(calc(100%))` оставляло 0 (`calc-in-max`).
+        if lower.starts_with("min(") || lower.starts_with("max(") || lower.starts_with("clamp(") {
+            return parse_calc(&lower);
         }
         // Имена единиц регистронезависимы (css-values-4 §6: «unit identifiers
         // are ASCII case-insensitive»): `105.83333Q` — те же четверть-
@@ -510,7 +526,9 @@ impl Color {
 
     fn parse_rgb(inner: &str) -> Option<Self> {
         // Принимаем и запятые, и пробельный синтаксис `rgb(1 2 3 / 50%)`.
-        let cleaned = inner.replace('/', " ");
+        // `none` — отсутствующий компонент, при отрисовке он ноль (CSS Color 4
+        // §4.4); без этого стоп `rgb(0% 0% none)` выпадал из градиента целиком.
+        let cleaned = inner.replace('/', " ").replace("none", "0");
         let parts: Vec<&str> = cleaned
             .split([',', ' '])
             .map(str::trim)
@@ -882,6 +900,12 @@ pub struct AnchorFn {
     pub size: Option<AnchorSize>,
     pub fallback: Option<Len>,
     pub add: f32,
+    /// `min(anchor(…), anchor(…), …)` / `max(…)` (css-values-4
+    /// §comparison-functions): остальные доводы; сама запись — первый.
+    /// Пусто — обычная `anchor()`.
+    pub alts: Vec<AnchorFn>,
+    /// `max()` при непустых `alts`, иначе `min()`.
+    pub max: bool,
 }
 
 /// Арена `anchor()` — тем же порядком, что `CALC_POOL`: append-only, `Len`
@@ -966,7 +990,49 @@ fn parse_anchor(inner: &str, add: f32, size_fn: bool) -> Option<Len> {
         size: size_fn.then(|| size.unwrap_or(AnchorSize::Implicit)),
         fallback,
         add,
+        alts: Vec::new(),
+        max: false,
     })))
+}
+
+/// `min(anchor(…), …)` / `max(anchor(…), …)` во вставке абсолюта
+/// (`anchor-in-css-min-max-function`: `top: min(anchor(--a1 bottom),
+/// anchor(--a2 bottom), anchor(--a3 top))`). Доводы режутся запятыми
+/// верхнего уровня, каждый обязан быть `anchor()` (в том числе
+/// `calc(anchor() ± px)`); `anchor-size()` и смесь с длинами — негодны:
+/// крайний член сравнивается с краем якоря только в одной системе отсчёта.
+fn parse_anchor_minmax(s: &str, max: bool) -> Option<Len> {
+    let inner = &s[4..s.len() - 1];
+    let mut args = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (i, ch) in inner.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => {
+                args.push(inner[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    args.push(inner[start..].trim());
+    let mut fns = Vec::with_capacity(args.len());
+    for a in args {
+        let Len::Anchor(i) = Len::parse(a)? else {
+            return None;
+        };
+        let f = anchor_get(i)?;
+        if f.size.is_some() || !f.alts.is_empty() {
+            return None;
+        }
+        fns.push(f);
+    }
+    let mut first = fns.remove(0);
+    first.alts = fns;
+    first.max = max;
+    Some(Len::Anchor(anchor_store(first)))
 }
 
 /// `calc(anchor(…) ± <length>)`: функция вырезается и заменяется нулём,
@@ -1069,6 +1135,22 @@ impl Sum {
             cap: self.cap + sign * other.cap,
             vh: self.vh + sign * other.vh,
             vw: self.vw + sign * other.vw,
+        }
+    }
+
+    /// Единственная живая природа суммы: номер поля и величина. Пустая сумма —
+    /// ноль в точках. Две и больше природ — `None`: такие доводы `min()`/`max()`
+    /// сравнимы только на раскладке.
+    fn nature(self) -> Option<(u8, f32)> {
+        let f = [
+            self.px, self.pct, self.em, self.ch, self.ex, self.ic, self.cap, self.lh, self.vh,
+            self.vw,
+        ];
+        let mut alive = f.iter().enumerate().filter(|(_, v)| **v != 0.0);
+        match (alive.next(), alive.next()) {
+            (None, _) => Some((0, 0.0)),
+            (Some((i, v)), None) => Some((i as u8, *v)),
+            _ => None,
         }
     }
 
@@ -1213,6 +1295,26 @@ impl<'a> Calc<'a> {
 
     fn factor(&mut self) -> Option<Val> {
         self.rest = self.rest.trim_start();
+        // `min()`/`max()`/`clamp()` (css-values-4 §10.2): доводы — полные
+        // выражения через запятую, сворачивает их `compare`.
+        let rest = self.rest;
+        for (name, kind) in [("min(", 0u8), ("max(", 1u8), ("clamp(", 2u8)] {
+            if rest
+                .get(..name.len())
+                .is_some_and(|h| h.eq_ignore_ascii_case(name))
+            {
+                let mut sub = Calc {
+                    rest: &rest[name.len()..],
+                };
+                let mut args = vec![sub.expr()?];
+                while sub.eat(&[',']).is_some() {
+                    args.push(sub.expr()?);
+                }
+                sub.eat(&[')'])?;
+                self.rest = sub.rest;
+                return compare(kind, &args);
+            }
+        }
         let inner = self
             .rest
             .strip_prefix('(')
@@ -1254,6 +1356,40 @@ impl<'a> Calc<'a> {
     }
 }
 
+/// `min()` (0), `max()` (1), `clamp()` (2) над разобранными доводами.
+///
+/// Сворачивается только однородное (css-values-4 §10.10, упрощение
+/// функций сравнения): все доводы — числа, либо все — длины ОДНОЙ природы.
+/// Тогда ответ — сам один из доводов, и природа доживает как у `calc()`.
+/// Смесь природ (`min(50%, 100px)`) решается только раскладкой — запись, как
+/// и смешанный `calc()`, отбрасывается. Число вместе с длиной — несовместимые
+/// типы: `min(0, 100%)` недействительно (`max-unitless-zero-invalid`).
+fn compare(kind: u8, args: &[Val]) -> Option<Val> {
+    if args.is_empty() || (kind == 2 && args.len() != 3) {
+        return None;
+    }
+    let keys: Vec<(u8, f32)> = args
+        .iter()
+        .map(|a| match a {
+            Val::Num(n) => Some((u8::MAX, *n)),
+            Val::Len(s) => s.nature(),
+        })
+        .collect::<Option<_>>()?;
+    let nature = keys[0].0;
+    if keys.iter().any(|k| k.0 != nature) {
+        return None;
+    }
+    let want = match kind {
+        0 => keys.iter().map(|k| k.1).fold(f32::INFINITY, f32::min),
+        1 => keys.iter().map(|k| k.1).fold(f32::NEG_INFINITY, f32::max),
+        // `clamp(MIN, VAL, MAX)` = `max(MIN, min(VAL, MAX))`: при MIN > MAX
+        // побеждает MIN (§10.2).
+        _ => keys[1].1.min(keys[2].1).max(keys[0].1),
+    };
+    let at = keys.iter().position(|k| k.1 == want)?;
+    Some(args[at])
+}
+
 fn eval_calc(inner: &str) -> Option<Sum> {
     let mut calc = Calc { rest: inner };
     let val = calc.expr()?;
@@ -1276,8 +1412,41 @@ pub fn lerp_len(a: Len, b: Len, k: f32) -> Option<Len> {
     a.scaled(1.0 - k).add(b.scaled(k), 1.0).collapse()
 }
 
+/// Число `<number>` или `calc()` из одних чисел (css-values-4 §10.1).
+///
+/// `font-size-adjust: cap-height calc(1462 / 2048)` — не длина, и
+/// `Len::parse` её не берёт: голое число `eval_calc` отбрасывает намеренно.
+pub fn number(s: &str) -> Option<f32> {
+    let s = s.trim();
+    if let Some(inner) = s.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')) {
+        let mut calc = Calc { rest: inner };
+        return match calc.expr()? {
+            Val::Num(n) if calc.rest.trim().is_empty() => Some(n),
+            _ => None,
+        };
+    }
+    css_number(s)
+}
+
 fn parse_calc(inner: &str) -> Option<Len> {
     eval_calc(inner)?.collapse()
+}
+
+/// `calc()` из долей и точек — парой `(доля, точки)`, БЕЗ записи в арену.
+///
+/// Для потребителей на отрисовке (`shape()`, центр `circle()`/`ellipse()`):
+/// они зовутся каждый кадр, а арена `CALC_POOL` чистится только вместе с
+/// документом — `parse_mixed` копил бы по записи на кадр. Любая другая
+/// природа (`em`, `vw`…) — `None`.
+pub fn calc_pct_px(raw: &str) -> Option<(f32, f32)> {
+    let inner = raw.trim().strip_prefix("calc(")?.strip_suffix(')')?;
+    let s = eval_calc(inner)?;
+    let rest = Sum {
+        px: 0.0,
+        pct: 0.0,
+        ..s
+    };
+    (rest == Sum::default()).then_some((s.pct, s.px))
 }
 
 #[cfg(test)]

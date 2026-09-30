@@ -234,6 +234,13 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
         // собой, и дети `body` верхнего уровня её не получают.
         if html.tag == "html" {
             html.style.root_box = true;
+            // css-display-3 §2.7: «a display of contents computes to block on
+            // the root element». Без коробки корня слой канваса (`canvas_bg`
+            // ниже) не заводился, и фон-картинка корня пропадала целиком
+            // (`display-contents-root-background` 99.93).
+            if html.style.display == Some(crate::computed::Display::Contents) {
+                html.style.display = Some(crate::computed::Display::Block);
+            }
         }
         // Фон переносится только от элемента С КОРОБКОЙ: `display: none` и
         // `display: contents` коробки не дают, и канвас остаётся чистым
@@ -652,11 +659,32 @@ fn settle_explicit_inherit(nodes: &mut [Node], parent: Option<&crate::computed::
 /// Разбор ВЛОЖЕННОГО документа (`<iframe>`): тот же конвейер, что у
 /// `Document::new`, но БЕЗ сброса буферов замеров и проб — они принадлежат
 /// внешнему документу, и сброс посреди его отрисовки крал его состояние.
-pub fn parse_embedded(html: &str, theme_css: &str) -> (Vec<Node>, u64) {
+///
+/// `viewport` — коробка рамки: `@media (width)` вложенного документа
+/// меряется ЕГО областью просмотра (mediaqueries-4 §width — «the width of
+/// the targeted display area»; у рамки свой контекст просмотра, HTML
+/// §4.8.5), а не внешним окном (`css-page/media-queries-002-print`: рамка
+/// 100x100 и `@media (width: 100px) and (height: 100px)`).
+pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec<Node>, u64) {
     crate::fonts::load_faces_additive(html);
     crate::color_space::load_profiles(html);
+    // Пулы `@page` ВНЕШНЕГО документа: `parse_media` начинает с их очистки
+    // (`take_page_decls`), а рамка разбирается на КАЖДОМ кадре — лист
+    // печатной пары со второго кадра терял size/margin/фон. Правила `@page`
+    // самой рамки к листам внешнего документа не относятся (css-page-3: page
+    // context — только у корневого документа), поэтому пулы возвращаются.
+    let outer_page = crate::css::page_decls_snapshot();
+    let outer_named = crate::css::page_named_decls_snapshot();
+    let media = crate::css::Media {
+        width: viewport.0,
+        height: viewport.1,
+        ..crate::css::Media::default()
+    };
+    let parsed = crate::dom::parse_media(html, theme_css, media);
+    *crate::css::PAGE_DECLS.lock().unwrap() = outer_page;
+    *crate::css::PAGE_NAMED_DECLS.lock().unwrap() = outer_named;
     let (mut nodes, _root) = unwrap_document(mark_canvas_background(resolve_logical(
-        propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),
+        propagate_writing_mode(viewport_overflow(parsed)),
     )));
     // Вложенному документу offset-трансформ нужен ровно так же: проход по
     // дереву переехал сюда из разбора стиля (`dom.rs`), и без этой строки

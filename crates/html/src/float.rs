@@ -490,10 +490,17 @@ fn measure_columns(
         (None, Some(fw)) => fw,
         (None, None) => 1,
     };
-    let inner = (avail - gap * (count.saturating_sub(1)) as f32) / count as f32;
-    if inner <= font_size {
-        return (Vec::new(), count, px(line_height));
-    }
+    // css-multicol-1 §3.4 (11): «W := max(0, (U + column-gap)/N - column-gap)» —
+    // колонка уже кегля законна, содержимое из неё вытекает (§8.1: «visibly
+    // overflows and is not clipped to the column box»). Прежний сторож отдавал
+    // ОДНУ колонку (`multicol-clip-001`: W = 20 при кегле 20, `-gap-large-001`:
+    // W = 0, `multicol-count-computed-003/005`). Держал он другое: при такой
+    // ширине переносчик gpui рвёт слово АВАРИЙНО (`line_wrapper.rs`, ветка
+    // `last_candidate_ix == 0`), и «bl» считался двумя строками — замер
+    // `scout-mctextflow-2026-09.md` §5 D: 2.38 от одних буквенных строк. В узком
+    // режиме такие границы ниже отбрасываются.
+    let inner = ((avail - gap * (count.saturating_sub(1)) as f32) / count as f32).max(0.0);
+    let narrow = inner <= font_size;
     let mut wrapper = window
         .text_system()
         .line_wrapper(font.clone(), px(font_size));
@@ -508,6 +515,14 @@ fn measure_columns(
         boundaries.extend(
             wrapper
                 .wrap_line(&[LineFragment::text(seg)], px(inner))
+                // Узкая колонка: только законные возможности переноса — перед
+                // границей пробел (css-text-3 §5, `overflow-wrap: normal`). Аварийный
+                // разрыв внутри слова отбрасывается, слово вылезает за край колонки,
+                // как в рисунке куска (`blocks()` слово не рвёт). Переносчик после
+                // аварийного разрыва продолжает считать ширину с него, и следующая
+                // законная граница остаётся на месте: «bl ac» при 20 — границы 1, 3, 4,
+                // остаётся 3. Широкие колонки — байт-в-байт прежние.
+                .filter(|b| !narrow || seg.as_bytes().get(b.ix.wrapping_sub(1)) == Some(&b' '))
                 .map(|b| b.ix + off),
         );
         off += seg.len() + 1;

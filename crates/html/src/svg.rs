@@ -124,7 +124,257 @@ fn untaint_filters(e: &mut Element) {
     }
 }
 
+thread_local! {
+    /// Размер опорной коробки `view-box` ближайшего вьюпорта (css-masking-1
+    /// §5.1 `view-box`): начало — в начале системы координат `viewBox`,
+    /// размер — его ширина и высота; без `viewBox` — размер самого `<svg>`.
+    static VIEW_BOX: std::cell::Cell<(f32, f32)> =
+        const { std::cell::Cell::new((300.0, 150.0)) };
+    /// Пишутся дети `<clipPath>`: свой `<clipPath>` рядом с ними синтезировать
+    /// нельзя — модель содержимого `<clipPath>` только фигуры, текст и `use`.
+    static IN_CLIP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Сдвиг `transform="translate(x[ ,]y)"` — единственный вид, который переносит
+/// рамку ребёнка в систему группы без поворота и масштаба.
+fn translate_only(t: &str) -> Option<(f32, f32)> {
+    let inner = t.trim().strip_prefix("translate(")?.strip_suffix(')')?;
+    let v: Vec<f32> = inner
+        .split([' ', ','])
+        .filter(|s| !s.is_empty())
+        .map(|s| s.parse::<f32>().ok())
+        .collect::<Option<_>>()?;
+    match v.as_slice() {
+        [x] => Some((*x, 0.0)),
+        [x, y] => Some((*x, *y)),
+        _ => None,
+    }
+}
+
+/// Половина обводки фигуры — на столько stroke-box шире fill-box
+/// (css-masking-1: «stroke bounding box»). Нет обводки — ноль.
+fn stroke_half(e: &Element) -> f32 {
+    let paint = e
+        .attr("stroke")
+        .map(str::to_string)
+        .or_else(|| e.style.svg_stroke.clone());
+    if paint.as_deref().is_none_or(|s| s.trim() == "none") {
+        return 0.0;
+    }
+    e.attr("stroke-width")
+        .map(str::to_string)
+        .or_else(|| e.style.svg_stroke_width.clone())
+        .and_then(|w| w.trim().trim_end_matches("px").parse::<f32>().ok())
+        .unwrap_or(1.0)
+        * 0.5
+}
+
+/// Рамка фигуры в её пользовательской системе: fill-box (SVG 2 «object
+/// bounding box»), при `stroke` — stroke-box. Только фигуры с явной
+/// геометрией и группы из них; остальное — `None`, синтеза обрезки нет.
+fn shape_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32, f32)> {
+    let num = |k: &str| {
+        e.attr(k)
+            .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
+    };
+    let css = |l: Option<crate::value::Len>| match l {
+        Some(crate::value::Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let (x, y, w, h) = match e.tag.to_ascii_lowercase().as_str() {
+        "rect" | "image" => (
+            num("x").or(css(e.style.svg_x)).unwrap_or(0.0),
+            num("y").or(css(e.style.svg_y)).unwrap_or(0.0),
+            num("width").or(css(e.style.width))?,
+            num("height").or(css(e.style.height))?,
+        ),
+        "circle" => {
+            let r = num("r")?;
+            let (cx, cy) = (num("cx").unwrap_or(0.0), num("cy").unwrap_or(0.0));
+            (cx - r, cy - r, 2.0 * r, 2.0 * r)
+        }
+        "ellipse" => {
+            let (rx, ry) = (num("rx")?, num("ry")?);
+            let (cx, cy) = (num("cx").unwrap_or(0.0), num("cy").unwrap_or(0.0));
+            (cx - rx, cy - ry, 2.0 * rx, 2.0 * ry)
+        }
+        "g" => {
+            // Объединение рамок детей в системе группы (clip-path-path-003:
+            // `<g>` из двух прямоугольников, начало рамки — (0,-100)).
+            let mut acc: Option<(f32, f32, f32, f32)> = None;
+            for n in &e.children {
+                let Node::Element(c) = n else { continue };
+                if c.style.transform.is_some() || c.style.translate.is_some() {
+                    return None;
+                }
+                let (dx, dy) = match c.attr("transform") {
+                    Some(t) => translate_only(t)?,
+                    None => (0.0, 0.0),
+                };
+                let (cx, cy, cw, ch) = shape_box(c, stroke)?;
+                let (x0, y0) = (cx + dx, cy + dy);
+                let (x1, y1) = (x0 + cw, y0 + ch);
+                acc = Some(match acc {
+                    None => (x0, y0, x1, y1),
+                    Some((a, b, c1, d)) => (a.min(x0), b.min(y0), c1.max(x1), d.max(y1)),
+                });
+            }
+            let (x0, y0, x1, y1) = acc?;
+            return Some((x0, y0, x1 - x0, y1 - y0));
+        }
+        _ => return None,
+    };
+    let half = if stroke { stroke_half(e) } else { 0.0 };
+    Some((x - half, y - half, w + 2.0 * half, h + 2.0 * half))
+}
+
+/// Конец функции `name(...)` с учётом вложенных скобок: индекс ПОСЛЕ ее `)`.
+fn func_end(s: &str) -> Option<usize> {
+    let mut depth = 0i32;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Содержимое `<clipPath>` для CSS-фигуры в пользовательской системе фигуры;
+/// `rb` — опорная коробка (x, y, w, h). `None` — фигура не выражается.
+fn clip_body(
+    c: &crate::computed::Computed,
+    (bx, by, bw, bh): (f32, f32, f32, f32),
+) -> Option<String> {
+    use crate::value::Len;
+    let at = |l: Len, side: f32| match l {
+        Len::Px(v) => Some(v),
+        Len::Pct(p) => Some(p * side),
+        _ => None,
+    };
+    if let Some(points) = &c.clip_polygon {
+        let mut pts = String::new();
+        for (x, y) in points {
+            pts.push_str(&format!("{},{} ", bx + at(*x, bw)?, by + at(*y, bh)?));
+        }
+        let rule = if c.clip_polygon_evenodd { "evenodd" } else { "nonzero" };
+        return Some(format!(
+            "<polygon clip-rule=\"{rule}\" points=\"{}\"/>",
+            pts.trim_end()
+        ));
+    }
+    if let Some([t, r, b, l]) = c.clip_inset {
+        let (t, r, b, l) = (at(t, bh)?, at(r, bw)?, at(b, bh)?, at(l, bw)?);
+        let (w, h) = ((bw - l - r).max(0.0), (bh - t - b).max(0.0));
+        let round = c.clip_round.unwrap_or(0.0).max(0.0);
+        return Some(format!(
+            "<rect x=\"{}\" y=\"{}\" width=\"{w}\" height=\"{h}\" rx=\"{round}\" ry=\"{round}\"/>",
+            bx + l,
+            by + t
+        ));
+    }
+    if c.clip_bare_box {
+        return Some(format!(
+            "<rect x=\"{bx}\" y=\"{by}\" width=\"{bw}\" height=\"{bh}\"/>"
+        ));
+    }
+    let spec = c.clip_shape.as_deref()?;
+    if let Some(raw) = spec.strip_prefix("shape:") {
+        if !(raw.starts_with("circle(") || raw.starts_with("ellipse(")) {
+            return None;
+        }
+        // Хвост после функции — слово коробки (`… view-box`): отрезается.
+        let func = &raw[..func_end(raw)?];
+        let (cx, cy, rx, ry) = crate::background::shape_params(func, bw, bh, 1.0)?;
+        return Some(format!(
+            "<ellipse cx=\"{}\" cy=\"{}\" rx=\"{rx}\" ry=\"{ry}\"/>",
+            bx + cx,
+            by + cy
+        ));
+    }
+    let (rule, d) = if let Some(rest) = spec.strip_prefix("pathdef:") {
+        let (rule, d) = rest.split_once(':')?;
+        (rule, d.to_string())
+    } else if let Some(rest) = spec.strip_prefix("shapedef:") {
+        let (rule, body) = rest.split_once(':')?;
+        (rule, crate::background::shape_to_path(body, bw, bh)?)
+    } else {
+        return None;
+    };
+    // Точки `path()`/`shape()` отсчитываются от НАЧАЛА опорной коробки.
+    let mut path = format!("<path clip-rule=\"{rule}\" transform=\"translate({bx} {by})\" d=\"");
+    escape_attr(&d, &mut path);
+    path.push_str("\"/>");
+    Some(path)
+}
+
+/// CSS-обрезка базовой фигурой на SVG-ребёнке (css-masking-1 §5.1): usvg
+/// понимает у `clip-path` только `url()`, поэтому фигура синтезируется
+/// `<clipPath clipPathUnits="userSpaceOnUse">` ПЕРЕД элементом, а элемент
+/// получает ссылку. Возвращает id синтезированного определения.
+///
+/// Прежде запись молча терялась, и фигура рисовалась целиком
+/// (`svg-clip-path-fixed-values` 4.22, `clip-path-path-003` 1.05,
+/// `svg-clip-path-ellipse-offset` 0.82, `clip-path-viewBox-1a/1b` 2.19/6.72;
+/// близнецы `*-borderBox-1b`, `*-strokeBox-1b/1c` и родня держались под
+/// порогом случайно — 0.47-0.49).
+fn synth_clip(e: &Element, out: &mut String) -> Option<String> {
+    if e.tag.eq_ignore_ascii_case("svg") || IN_CLIP.with(|c| c.get()) {
+        return None;
+    }
+    let has = |c: &crate::computed::Computed| {
+        c.clip_polygon.is_some()
+            || c.clip_inset.is_some()
+            || c.clip_bare_box
+            || c.clip_shape.as_deref().is_some_and(|s| {
+                s.starts_with("shape:") || s.starts_with("pathdef:") || s.starts_with("shapedef:")
+            })
+    };
+    // Каскад сильнее презентационного атрибута; атрибут разбирается тем же
+    // `apply_one`, что и CSS-объявление.
+    let parsed: crate::computed::Computed;
+    let (c, view_box) = if has(&e.style) {
+        (&e.style, false)
+    } else {
+        let raw = e
+            .attr("clip-path")
+            .filter(|v| !v.trim_start().starts_with("url("))?;
+        let mut fresh = crate::computed::Computed::default();
+        fresh.apply_one("clip-path", raw);
+        parsed = fresh;
+        (&parsed, raw.contains("view-box"))
+    };
+    if !has(c) {
+        return None;
+    }
+    // Коробки SVG-элемента (css-masking-1): content/padding -> fill-box,
+    // border/margin и умолчание -> stroke-box; `view-box` — начало системы
+    // `viewBox`, его размер.
+    let rb = if view_box {
+        let (w, h) = VIEW_BOX.with(|v| v.get());
+        (0.0, 0.0, w, h)
+    } else {
+        shape_box(e, !matches!(c.clip_ref, Some(2) | Some(3)))?
+    };
+    let body = clip_body(c, rb)?;
+    let mut hasher = DefaultHasher::new();
+    body.hash(&mut hasher);
+    let id = format!("kamin-clip-{:x}", hasher.finish());
+    out.push_str(&format!(
+        "<clipPath id=\"{id}\" clipPathUnits=\"userSpaceOnUse\">{body}</clipPath>"
+    ));
+    Some(id)
+}
+
 pub(crate) fn write_element(e: &Element, out: &mut String) {
+    // Синтезированный `<clipPath>` пишется ПЕРЕД элементом (см. `synth_clip`).
+    let clip_id = synth_clip(e, out);
     out.push('<');
     out.push_str(&e.tag);
     // `transform-origin` растеризатор не знает — точка отсчёта
@@ -329,6 +579,11 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         if combined.is_some() && (k == "transform" || k == "transform-origin") {
             continue;
         }
+        // Синтезированная обрезка заменяет CSS-запись фигуры: usvg её не
+        // разбирает, а оставленная рядом с нашей `url()` спорила бы с ней.
+        if clip_id.is_some() && k == "clip-path" {
+            continue;
+        }
         if k == "transform-origin" {
             continue;
         }
@@ -350,7 +605,10 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
                 .split(';')
                 .filter(|d| {
                     let name = d.split(':').next().unwrap_or("").trim();
-                    !matches!(
+                    // `clip-path` из `style=` уже ушёл синтезированным
+                    // `<clipPath>`: в usvg объявление `style` перебивает
+                    // презентационный атрибут и погасило бы нашу ссылку.
+                    !(matches!(
                         name,
                         "transform"
                             | "transform-origin"
@@ -358,7 +616,7 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
                             | "translate"
                             | "rotate"
                             | "scale"
-                    )
+                    ) || (clip_id.is_some() && name == "clip-path"))
                 })
                 .collect();
             std::borrow::Cow::Owned(kept.join(";"))
@@ -375,6 +633,9 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         out.push_str(" transform=\"");
         escape_attr(t, out);
         out.push('"');
+    }
+    if let Some(id) = &clip_id {
+        out.push_str(&format!(" clip-path=\"url(#{id})\""));
     }
     // CSS-геометрия и заливка SVG-фигур (SVG 2): стилевые ширина/высота
     // и `fill` доезжают до растеризатора презентационными атрибутами,
@@ -453,12 +714,25 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         return;
     }
     out.push('>');
+    // Вложенный `<svg>` — свой вьюпорт для `view-box` детей; дети
+    // `<clipPath>` — без синтеза своей обрезки (см. `IN_CLIP`).
+    let prev_vb = VIEW_BOX.with(|v| v.get());
+    if e.tag.eq_ignore_ascii_case("svg") {
+        let vb = view_box_ratio(e).unwrap_or_else(|| size_of(e));
+        VIEW_BOX.with(|v| v.set(vb));
+    }
+    let prev_clip = IN_CLIP.with(|c| c.get());
+    if e.tag.eq_ignore_ascii_case("clippath") {
+        IN_CLIP.with(|c| c.set(true));
+    }
     for child in &e.children {
         match child {
             Node::Text(t) => escape_text(t, out),
             Node::Element(el) => write_element(el, out),
         }
     }
+    IN_CLIP.with(|c| c.set(prev_clip));
+    VIEW_BOX.with(|v| v.set(prev_vb));
     out.push_str("</");
     out.push_str(&e.tag);
     out.push('>');
@@ -579,9 +853,15 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     // Обособление размера: рисунок меряется как пустой, величину задаёт
     // `contain-intrinsic-size` (css-contain-2 §size containment) — ни
     // атрибуты, ни `viewBox` не смотрим.
+    // Атрибутные `width`/`height` — природный размер замещаемого, и зум его
+    // домножает («It also multiplies the natural size of all replaced
+    // elements», css-viewport-1 §zoom; `zoom/svg-stroke-width`). CSS-размеры
+    // ниже уже домножены проходом `zoom::resolve`.
+    let z = e.style.zoom_eff.unwrap_or(1.0);
     let num = |name: &str| -> Option<f32> {
         e.attr(name)
             .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
+            .map(|v| v * z)
     };
     // Стилевые размеры СТАРШЕ атрибутов (CSS поверх разметки).
     let css = |l: Option<crate::value::Len>| match l {
@@ -888,6 +1168,15 @@ fn serialize_sized(e: &Element, w: f32, h: f32) -> String {
     if !e.attrs.iter().any(|(k, _)| k == "xmlns") {
         out.push_str(" xmlns=\"http://www.w3.org/2000/svg\"");
     }
+    // Под зумом без `viewBox` пользовательские единицы обязаны вырасти вместе
+    // с канвой (длины внутри рисунка — тоже used-значения, css-viewport-1
+    // §zoom): `viewBox` в незумленных единицах растягивает содержимое на
+    // зумленную канву (`zoom/svg-path`, `zoom/svg`). С `viewBox` масштаб уже
+    // задаёт он сам.
+    let z = e.style.zoom_eff.unwrap_or(1.0);
+    if (z - 1.0).abs() > f32::EPSILON && !e.attrs.iter().any(|(k, _)| k.eq_ignore_ascii_case("viewbox")) {
+        out.push_str(&format!(" viewBox=\"0 0 {} {}\"", w / z, h / z));
+    }
     for (k, v) in &e.attrs {
         if k == "width" || k == "height" {
             continue;
@@ -899,6 +1188,10 @@ fn serialize_sized(e: &Element, w: f32, h: f32) -> String {
         out.push('"');
     }
     out.push('>');
+    // Опорная коробка `view-box` для CSS-обрезки детей (`synth_clip`): корень
+    // пишется здесь, а не в `write_element`.
+    VIEW_BOX.with(|v| v.set(view_box_ratio(e).unwrap_or_else(|| size_of(e))));
+    IN_CLIP.with(|c| c.set(false));
     for child in &e.children {
         match child {
             Node::Text(t) => escape_text(t, &mut out),

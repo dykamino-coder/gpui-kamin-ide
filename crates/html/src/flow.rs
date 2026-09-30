@@ -512,6 +512,17 @@ pub struct StackChild {
     /// маски колонки и погас (`out-of-flow-in-multicolumn-042/045`), а у
     /// КОРНЯ копии `layout_as_root` его и вовсе не читает (проба `pm1`).
     pub rel: (f32, f32),
+    /// `box-decoration-break: clone`: блочное украшение `(верх, низ)`.
+    /// Взведённое поле значит, что КАЖДАЯ копия — уже готовый фрагмент своей
+    /// высоты (`render.rs::clone_fragment`): её не поднимают на срез и не
+    /// режут маской.
+    pub clone_dec: Option<(f32, f32)>,
+    /// Монолит-ПОТОМОК, начатый на верху колонки, переполняет её, а не режется
+    /// краем (`fill_at`, `overflow_to`). Только `column-fill: auto` без рядов и
+    /// только ребёнку без элементов ряда (`render::parallel_items_inside`):
+    /// баланс подобрал бы высоту ниже монолита, а у ряда flex/сетки/таблицы в
+    /// переполнение ушли бы соседи по ряду.
+    pub overflow_top: bool,
 }
 
 /// Мера ребёнка для укладки колонок.
@@ -534,6 +545,12 @@ pub struct Kid {
     /// Низ параллельного потока от верха коробки (`StackChild::over`); `h`,
     /// когда потока нет.
     pub over: f32,
+    /// `box-decoration-break: clone` — блочное украшение `(верх, низ)`,
+    /// повторяемое в КАЖДОМ фрагменте (css-break-4 §break-decoration).
+    /// `None` — `slice`, прежний путь до последней строки.
+    pub clone_dec: Option<(f32, f32)>,
+    /// См. `StackChild::overflow_top`; у страниц — `false`.
+    pub overflow_top: bool,
 }
 
 /// Кусок ребёнка в колонке: чей он, какая по счёту копия, в какой колонке
@@ -623,6 +640,11 @@ pub struct Rows {
     /// `wrap` — лишние колонки в новый ряд; иначе (`nowrap` с заданным
     /// `column-height`) — вбок, за край коробки (css-multicol-1 §8.2).
     pub wrap: bool,
+    /// Рядов нет — это ПОТОЛОК баланса: `h` = заданная высота коробки
+    /// многоколоночника (Blink `ConstrainColumnBlockSize`: колонка не выше
+    /// used block-size контейнера). Линия одна, высотой в баланс, лишние
+    /// колонки — вбок.
+    pub cap: bool,
 }
 
 thread_local! {
@@ -814,7 +836,11 @@ impl ColumnStack {
             // (ниже, перед `prev_mb = k.mb`). Монолит не трогаем: его
             // переполнение по css-break-3 §4.1 остаётся в своей колонке
             // целиком.
-            let flow = if k.over > k.h + 0.01 && !k.monolith {
+            // У `clone` поток не включается: `from`/`h` его кусков — в других
+            // координатах (содержимое / готовый фрагмент), и откат курсора
+            // ниже их бы не понял. Неразрезанная `clone`-коробка с потоком
+            // рисуется `slice` (`render.rs`, `frag_geom.len() > 1`).
+            let flow = if k.over > k.h + 0.01 && !k.monolith && k.clone_dec.is_none() {
                 k.over
             } else {
                 k.h
@@ -822,6 +848,92 @@ impl ColumnStack {
             loop {
                 let target = target_at(col);
                 let room = target - cur;
+                // `box-decoration-break: clone` (css-break-4 §break-decoration):
+                // блочное украшение стоит в КАЖДОМ фрагменте, из остатка
+                // колонки оно вычитается каждый раз — высота коробки =
+                // содержимое + N · украшение (Blink
+                // `UpdateBorderPaddingForClonedBoxDecorations`). `from` здесь —
+                // по СОДЕРЖИМОМУ, `Frag.h` — готовая высота фрагмента:
+                // НЕпоследний тянется до низа колонки (§box-splitting: «its
+                // content box extends to fill any remaining fragmentainer
+                // extent (leaving room for any margins/borders/padding applied
+                // by clone)»), последний — по остатку. Монолит сюда не заходит.
+                // ★ Откат 07.09 (v153) был НЕ из-за этой ветки: план верен,
+                // красное ушло из 14 пар; остатки и потери дала сборка копии
+                // (`target/scout-bdb-2026-09-30.md` §3).
+                if let Some((dt, db)) = k.clone_dec.filter(|_| !k.monolith) {
+                    let dec = dt + db;
+                    let content = (k.h - dec).max(0.0);
+                    let croom = room - dec;
+                    let rest = content - from;
+                    let edge = from + croom.max(0.0);
+                    // Принудительный разрыв внутри содержимого: `k.forced` — в
+                    // координатах КОРОБКИ, содержимое начинается с `dt`.
+                    let forced = k
+                        .forced
+                        .iter()
+                        .map(|&f| f - dt)
+                        .find(|&f| f > from + 0.01 && f < content - 0.01 && f <= edge + 0.01);
+                    if forced.is_none() && rest <= croom + 0.01 {
+                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec });
+                        y = cur + rest + dec;
+                        placed = true;
+                        break;
+                    }
+                    shortage = shortage.min(rest - croom);
+                    if croom <= 0.01 && placed {
+                        col += 1;
+                        cur = 0.0;
+                        placed = false;
+                        continue;
+                    }
+                    // Пустая колонка, где украшению не хватило места, всё равно
+                    // съедает 1px содержимого — иначе коробка не продвигается
+                    // (`multicol-zero-height-003`: «it should expend 1px of its
+                    // content-box per fragment»).
+                    // Монолит-потомок (css-break-4 §4.1; `k.solid` — в координатах
+                    // КОРОБКИ): край внутри него — разрыв ПЕРЕД ним; монолит,
+                    // начатый ровно с `from`, берётся целиком и переполняет
+                    // фрагмент (css-break-3 §4.1; `clone-012`).
+                    let before = k
+                        .solid
+                        .iter()
+                        .map(|&(a, b)| (a - dt, b - dt))
+                        .filter(|&(a, b)| a > from + 0.01 && a < edge - 0.01 && edge < b - 0.01)
+                        .map(|(a, _)| a)
+                        .reduce(f32::min);
+                    let whole = k
+                        .solid
+                        .iter()
+                        .map(|&(a, b)| (a - dt, b - dt))
+                        .filter(|&(a, b)| (a - from).abs() <= 0.01 && b > edge + 0.01)
+                        .map(|(_, b)| b.min(content))
+                        .reduce(f32::max);
+                    let take = match forced {
+                        Some(f) => f - from,
+                        None if croom <= 0.01 => rest.min(1.0),
+                        None => before.or(whole).map_or(croom, |p| p - from),
+                    };
+                    if take >= rest - 0.01 {
+                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec });
+                        y = cur + rest + dec;
+                        placed = true;
+                        break;
+                    }
+                    let fh = if croom <= 0.01 { take + dec } else { room };
+                    out.push(Frag { kid, copy, col, y: cur, from, h: fh });
+                    from += take;
+                    if copy + 1 >= limit {
+                        y = target;
+                        placed = true;
+                        break;
+                    }
+                    copy += 1;
+                    col += 1;
+                    cur = 0.0;
+                    placed = false;
+                    continue;
+                }
                 let rest = flow - from;
                 // Принудительный разрыв ВНУТРИ коробки раньше её конца и раньше
                 // края колонки — режем ровно там.
@@ -881,7 +993,49 @@ impl ColumnStack {
                     (a, nf)
                 };
                 let holds = |a: f32, b: f32| a < edge - 0.01 && edge < b - 0.01;
-                let cut = if mono || room <= 0.01 {
+                // Монолит-ПОТОМОК, начатый на верху колонки, не режется краем, а
+                // переполняет колонку: кусок идёт до КОНЦА монолита, продолжение —
+                // со следующей колонки (css-break-4 §unforced-breaks: «the UA must
+                // not break at the top of the page, i.e. it must place at least some
+                // content on each fragmentainer»; Blink `fragmentation_utils.cc`
+                // `FinishFragmentation`: «If intrinsic block-size is larger than
+                // space left, it means that we have some tall unbreakable child
+                // content … this fragment will be allowed to take up more space …
+                // to encompass the unbreakable content»). Прежде ветка ниже отдавала
+                // `None` при `a <= from`, и ребёнок резался по краю колонки прямо
+                // сквозь монолит: `monolithic-overflow-003…005.tentative` (два
+                // `contain: size` по 100 в колонках по 60), `tall-line-in-short-
+                // fragmentainer-000/001` (строка `inline-block` 100 в колонке 50).
+                // «Верх колонки» — пустая колонка, нулевой курсор (перед нами только
+                // коробки нулевой высоты: разрыв перед монолитом прогресса не даёт,
+                // `tall-line-…-000`) либо ПЕРВЫЙ кусок коробки с заданной высотой,
+                // которая сама в остаток влезает: её первое содержимое остаётся в
+                // колонке, даже переполняя её (Blink `BoxFragmentBuilder::
+                // MustStayInCurrentFragmentainer`; `tall-content-inside-constrained-
+                // block-000…002`: коробка 25 в остатке 25, внутри `contain: size` 50).
+                let at_top = !placed
+                    || cur <= 0.01
+                    || (flow > k.h + 0.01 && from <= 0.01 && k.h <= room + 0.01);
+                let overflow_to = if k.overflow_top && !mono && room > 0.01 && at_top {
+                    k.solid
+                        .iter()
+                        .filter(|&&(a, b)| holds(a, b) && a <= from + 0.01)
+                        .map(|&(_, b)| b)
+                        .fold(None::<f32>, |m, b| Some(m.map_or(b, |x| x.max(b))))
+                } else {
+                    None
+                };
+                // Монолит дотянулся до конца ребёнка — ребёнок кончается в этой
+                // колонке, переполнив её (как монолит-ребёнок в ветке `None =>`).
+                if overflow_to.is_some_and(|b| b >= flow - 0.01) {
+                    out.push(Frag { kid, copy, col, y: cur, from, h: rest });
+                    y = cur + rest;
+                    placed = true;
+                    break;
+                }
+                let cut = if let Some(b) = overflow_to {
+                    Some(at(b))
+                } else if mono || room <= 0.01 {
                     None
                 } else if paged && k.solid.iter().any(|&(a, b)| holds(a, b)) {
                     // Страницы: край внутри монолитных диапазонов, а они бывают
@@ -1167,6 +1321,14 @@ impl ColumnStack {
     /// «балансировка» в самой `balance`.
     fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Vec<Frag>, Vec<(usize, f32)>) {
         let count = self.count;
+        // Потолок баланса без рядов (`Rows::cap`): баланс как прежде, но не
+        // выше высоты коробки; копий — сколько построил `render.rs`, лишние
+        // колонки переполняют вбок (`place`: `(col, 0.0)`). Линия — высотой
+        // в баланс, не в потолок: по ней `growths` меряет рост.
+        if let Some(Rows { h: Some(lim), cap: true, .. }) = self.rows {
+            let (h, plan) = self.balance_line(kids, self.copies, Some(lim.max(1.0)));
+            return (h, vec![(0.0, h)], plan, Vec::new());
+        }
         let Some(rows) = self.rows else {
             // Предел копий поднимает ТОЛЬКО `column-fill: auto` с заданной
             // высотой: там `balance_line` первой строкой уходит в
@@ -1347,8 +1509,26 @@ impl ColumnStack {
         let mut out = Vec::new();
         for f in &plan {
             let k = &kids[f.kid];
+            // У `clone` `from` — по СОДЕРЖИМОМУ, а `h` уже растянут до низа
+            // колонки: `from + h` в координатах `solid`/`forced` смысла не
+            // имеет, и распорка роста не нужна — фрагмент и так во всю колонку.
+            if k.clone_dec.is_some() {
+                continue;
+            }
             let end = f.from + f.h;
-            if !plan.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1) {
+            // Непоследний фрагмент — есть следующая копия. Либо кусок оборван
+            // ПРИНУДИТЕЛЬНЫМ разрывом, когда копии кончились (`fill_at`: «Копий
+            // больше нет — остаток за кадром»): содержимое после разрыва уходит в
+            // переполняющую колонку, а коробка всё равно занимает остаток своей
+            // (css-break-3 §box-splitting: «its content box extends to fill any
+            // remaining fragmentainer extent»; Blink
+            // `ConsumeRemainingFragmentainerSpace`, `block_layout_algorithm.cc:3129`,
+            // вызов при принудительном разрыве `:3212`). Без этого фон обёртки во
+            // второй колонке `multicol-fill-balance-041` обрывался на 40 из 100.
+            let has_next = plan.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1);
+            let cut_short =
+                end < k.h - 0.01 && k.forced.iter().any(|&x| (x - end).abs() < 0.01);
+            if !has_next && !cut_short {
                 continue;
             }
             // Принудительный разрыв внутри коробки — такой же НЕпоследний
@@ -1392,6 +1572,101 @@ impl ColumnStack {
         out
     }
 
+    /// `box-decoration-break: clone`: геометрия фрагментов КАЖДОГО ребёнка —
+    /// по копиям `(съеденное содержимое, высота фрагмента)`. Нужна
+    /// `render.rs` ДО сборки копий: фрагмент `clone` строится отдельной
+    /// коробкой своей высоты. Щуп тот же, что у `growths`.
+    pub(crate) fn frags_of(
+        kids: &[Kid],
+        count: usize,
+        fixed_height: Option<f32>,
+        rows: Option<Rows>,
+        copies: usize,
+    ) -> Vec<Vec<(f32, f32)>> {
+        let probe = ColumnStack {
+            children: Vec::new(),
+            count: count.max(1),
+            gap: 0.0,
+            fixed_height,
+            rule: None,
+            rows,
+            copies: copies.max(1),
+            gap_items: None,
+            intrinsic: None,
+            plan: std::cell::RefCell::new(Vec::new()),
+            col_w: std::cell::Cell::new(0.0),
+            lines_plan: std::cell::RefCell::new(Vec::new()),
+            spans_plan: std::cell::RefCell::new(Vec::new()),
+        };
+        let (_, _, plan, _) = probe.balance(kids);
+        let mut out: Vec<Vec<(f32, f32)>> = vec![Vec::new(); kids.len()];
+        for f in &plan {
+            let v = &mut out[f.kid];
+            if v.len() <= f.copy {
+                v.resize(f.copy + 1, (0.0, 0.0));
+            }
+            v[f.copy] = (f.from, f.h);
+        }
+        out
+    }
+
+    /// Начальная высота балансировки — по ПРОГОНАМ содержимого между
+    /// принудительными разрывами (Blink `ResolveColumnAutoBlockSizeInternal`,
+    /// `column_layout_algorithm.cc:1532`, `ContentRuns`: «A content run starts out
+    /// as representing one single column, and we'll add as many additional
+    /// implicit breaks as needed into the content runs that are the tallest
+    /// ones»). css-multicol-1 §Filling Columns: «minimize variations in column
+    /// height, while honoring forced breaks». Прогон рвётся на `force_before`/
+    /// `force_after` детей и на внутренних `forced` (продолжение — с `nf` из
+    /// `cuts`, поле на разрыве усекается). Поля между детьми не считаются — как в
+    /// прежней сумме `k.h`: без принудительных разрывов прогон один, и итог
+    /// тождественно прежний `total / count`.
+    /// Прежняя сумма принимала план, где у единственного ребёнка кончились копии
+    /// (`fill_at`: «Копий больше нет — остаток за кадром»): `multicol-fill-
+    /// balance-041` (20 | 40 | 100 в двух колонках) брал 80 вместо 100,
+    /// `multicol-fill-auto-004` (10|10|10|10|100 в пяти) — 28 вместо 100.
+    fn runs_guess(kids: &[Kid], count: usize) -> f32 {
+        let mut runs: Vec<f32> = Vec::new();
+        let mut cur = 0.0f32;
+        let mut started = false;
+        let mut force_next = false;
+        for k in kids {
+            if (k.force_before || force_next) && started {
+                runs.push(cur);
+                cur = 0.0;
+            }
+            force_next = k.force_after;
+            started = true;
+            let mut from = 0.0f32;
+            for &f in k.forced.iter().filter(|&&f| f > 0.01 && f < k.h - 0.01) {
+                cur += (f - from).max(0.0);
+                runs.push(cur);
+                cur = 0.0;
+                from = k
+                    .cuts
+                    .iter()
+                    .find(|&&(need, _)| (need - f).abs() < 0.01)
+                    .map_or(f, |&(_, nf)| nf);
+            }
+            cur += (k.h - from).max(0.0);
+        }
+        runs.push(cur);
+        // `DistributeImplicitBreaks`: очередной неявный разрыв — в прогон с самой
+        // высокой колонкой на данный момент.
+        let mut split = vec![1usize; runs.len()];
+        for _ in runs.len()..count.max(1) {
+            let i = (0..runs.len())
+                .max_by(|&a, &b| {
+                    (runs[a] / split[a] as f32).total_cmp(&(runs[b] / split[b] as f32))
+                })
+                .unwrap_or(0);
+            split[i] += 1;
+        }
+        (0..runs.len())
+            .map(|i| runs[i] / split[i] as f32)
+            .fold(0.0f32, f32::max)
+    }
+
     /// Одна линия колонок: высота заданная (fill:auto) либо баланс «оценка +
     /// добавка на минимальный недолаз» (blink `ResolveColumnAutoBlockSize`);
     /// `cap` — потолок баланса (`ConstrainColumnBlockSize`).
@@ -1409,7 +1684,9 @@ impl ColumnStack {
             let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, limit, false);
             return (h, slots);
         }
-        let total: f32 = kids.iter().map(|k| k.h).sum();
+        // Оценка — по прогонам между принудительными разрывами (`runs_guess`); без
+        // них это прежняя `сумма / count`.
+        let guess = Self::runs_guess(kids, self.count);
         // Разрезаемая коробка потолка колонке не задаёт: её высоту держит
         // только сумма. Потолок нужен монолитам — они остаются целыми.
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v103, `scout-break-2026-09d.md` F2):
@@ -1421,7 +1698,7 @@ impl ColumnStack {
             .filter(|k| k.monolith)
             .fold(0.0f32, |m, k| m.max(k.h));
         let clamp = |t: f32| cap.map_or(t, |c| t.min(c));
-        let mut target = clamp((total / self.count as f32).max(tallest).max(1.0));
+        let mut target = clamp(guess.max(tallest).max(1.0));
         for _ in 0..6 {
             let (cols, shortage, slots) = Self::fill(kids, target, limit, false);
             if cols <= self.count {
@@ -1438,7 +1715,24 @@ impl ColumnStack {
             // `f32::MAX`, затем в бесконечность (`multicol-fill-balance-002`,
             // «Don't overstretch»).
             // Упёрлись в потолок — выше колонкам нельзя, остаток уходит вбок.
-            if shortage >= f32::MAX || cap.is_some_and(|c| target >= c) {
+            if shortage >= f32::MAX {
+                // Лишние колонки — только от принудительных разрывов: каждая
+                // колонка держит свой прогон целиком, и высота линии — самый
+                // высокий из них (Blink `ContentRuns::DistributeImplicitBreaks`
+                // при числе прогонов больше колонок; css-multicol-1 §7
+                // «honoring forced breaks»). Стартовая оценка `total / count`
+                // выше любого прогона (`grid-item-fragmentation-039`:
+                // `columns: 1`, прогоны 100 + 100 — колонка 200 вместо 100).
+                let used = slots.iter().map(|f| f.y + f.h).fold(0.0f32, f32::max);
+                if used > 0.01 && used < target - 0.01 {
+                    let (cols2, _, slots2) = Self::fill(kids, used, limit, false);
+                    if cols2 == cols {
+                        return (used, slots2);
+                    }
+                }
+                return (target, slots);
+            }
+            if cap.is_some_and(|c| target >= c) {
                 return (target, slots);
             }
             // Как blink: расти ровно на минимально необходимое.
@@ -1536,6 +1830,8 @@ impl Element for ColumnStack {
                 solid: c.solid.clone(),
                 span: c.span,
                 over: c.over,
+                clone_dec: c.clone_dec,
+                overflow_top: c.overflow_top,
             })
             .collect();
         let count = self.count;
@@ -1677,6 +1973,8 @@ impl Element for ColumnStack {
                 solid: c.solid.clone(),
                 span: c.span,
                 over: c.over,
+                clone_dec: c.clone_dec,
+                overflow_top: c.overflow_top,
             })
             .collect();
         let (_, lines, plan, spans) = self.balance(&heights);
@@ -1684,7 +1982,11 @@ impl Element for ColumnStack {
         *self.lines_plan.borrow_mut() = lines;
         let step = col_w + self.gap;
         for f in &plan {
-            let full_h = self.children[f.kid].h;
+            // У `clone` копия — САМ фрагмент своей высоты со своими рамками,
+            // отбивкой и фоном (`render.rs::clone_fragment`): раскладывать её
+            // на полную высоту коробки и поднимать на срез нельзя.
+            let clone = self.children[f.kid].clone_dec.is_some();
+            let full_h = if clone { f.h } else { self.children[f.kid].h };
             // Колонка в своём ряду: `x` по номеру в ряду, `y` от верха ряда.
             let (c, ry) = self.place(f.col);
             // Сдвиг фрагмента (css-break-3 §5.5) — здесь, а не внутри копии:
@@ -1712,7 +2014,7 @@ impl Element for ColumnStack {
                 window,
                 cx,
             );
-            el.prepaint_at(point(x, y - px(f.from)), window, cx);
+            el.prepaint_at(point(x, if clone { y } else { y - px(f.from) }), window, cx);
         }
         // Спаннер — во всю ширину коробки, первой копией (запасных у него
         // нет: между колонками он не режется).
@@ -1835,11 +2137,26 @@ impl Element for ColumnStack {
             let rel = self.children[f.kid].rel;
             let x = bounds.origin.x + px(c as f32 * step + rel.0);
             let y = bounds.origin.y + px(ry + f.y + rel.1);
-            let split = parts[f.kid] > 1;
+            // Маска — устройство `slice`. Фрагмент `clone` самодостаточен:
+            // содержимое режет его внутренняя обёртка (`clone_fragment`), а
+            // тень/контур обязаны выходить за колонку (`clone-009`).
+            let split = parts[f.kid] > 1 && self.children[f.kid].clone_dec.is_none();
+            // Срез `slice` (css-break-3 §4) — поперёк БЛОЧНОЙ оси. Вбок колонка
+            // переполнение не режет: css-multicol-1 §8.1 «content that extends
+            // outside column boxes visibly overflows and is not clipped to the column
+            // box» (Blink режет только `overflow` самой коробки). Маска шириной в
+            // колонку прятала жёлтую полосу 180px поверх линеек (`column-rule-002`),
+            // правую четверть ребёнка 100px в колонке 75
+            // (`relative-child-overflowing-column-gap`) и всё содержимое при стопке
+            // шириной 0 (`relative-child-overflowing-container`, колонка 1px). Вылет —
+            // на ширину окна (у стопки нулевой ширины своей ширины нет); дальше режет
+            // маска предка. Заменяет P10 `scout-grid-frag-2026-09-30.md` §5.10.
+            let win_w = window.viewport_size().width;
+            let spill = if win_w > bounds.size.width { win_w } else { bounds.size.width };
             let mask = gpui::ContentMask {
                 bounds: Bounds {
-                    origin: point(x, y),
-                    size: size(px(col_w), px(f.h)),
+                    origin: point(x - spill, y),
+                    size: size(px(col_w) + spill + spill, px(f.h)),
                 },
             };
             let kid = &mut self.children[f.kid];
@@ -2087,6 +2404,12 @@ impl Element for PageStack {
                     // мешать их без отдельного замера печатного среза нельзя.
                     // `over == h` — поток выключен.
                     over: h,
+                    // Страницы: `box-decoration-break` пока `slice` — весь
+                    // кластер `clone` в колонках.
+                    clone_dec: None,
+                    // У страниц своё правило переполнения монолита (`fill_at`,
+                    // ветка `paged && placed && cur > target`, crbug 1402540).
+                    overflow_top: false,
                 }
             })
             .collect();

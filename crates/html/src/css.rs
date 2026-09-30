@@ -182,8 +182,19 @@ impl Selector {
             let name = unescape(rest[..head_end].trim()).to_ascii_lowercase();
             // Пространство имён нам чуждо: `*|div` — тот же div, `*|*` —
             // универсал (селекторы-4 §type-nmsp).
+            // Пространство имён нам чуждо, но НЕОБЪЯВЛЕННЫЙ префикс делает
+            // селектор недействительным (css-namespaces-3 §5: «A type selector
+            // … containing a namespace prefix that has not been previously
+            // declared is an invalid selector»), а с ним и весь список:
+            // `.test1, y|div { red }` после неверного `@namespace y` не красит
+            // (`at-media-003`, `at-supports-045`, `at-supports-namespace-001/002`).
             let name = match name.rsplit_once('|') {
-                Some((_, t)) => t.to_string(),
+                Some((ns, t)) => {
+                    if !ns_declared(ns) {
+                        return None;
+                    }
+                    t.to_string()
+                }
                 None => name,
             };
             if !name.is_empty() && name != "*" {
@@ -721,11 +732,18 @@ fn strip_nested_blocks(body: &str) -> String {
 
 impl Default for Media {
     fn default() -> Self {
+        let print = PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed);
+        // Печатный носитель меряется ЛИСТОМ, а не окном (mediaqueries-4
+        // §width: «For paged media, this is the width of the page box»).
+        // Лист WPT по умолчанию — 5in x 3in = 480x288, и `@page { size }`
+        // запрос не меняет (csswg#5437; `media-queries-001-print`: запрос
+        // 4in..5in x 2in..3in при `@page { size: 10in }` обязан сработать).
+        let (width, height) = if print { (480.0, 288.0) } else { (1280.0, 800.0) };
         Media {
-            width: 1280.0,
-            height: 800.0,
+            width,
+            height,
             dark: true,
-            print: PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed),
+            print,
         }
     }
 }
@@ -1226,8 +1244,97 @@ pub fn parse_stylesheet(css: &str) -> Vec<Rule> {
     parse_stylesheet_media(css, Media::default())
 }
 
+thread_local! {
+    /// Префиксы `@namespace` разбираемой таблицы; `None` — разбор идёт не из
+    /// таблицы, и префиксы не проверяются (прежнее поведение).
+    static NS_PREFIXES: std::cell::RefCell<Option<std::collections::HashSet<String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Снимает префиксы, когда верхний вызов разбора таблицы кончился (и при панике).
+struct NsScope(bool);
+
+impl Drop for NsScope {
+    fn drop(&mut self) {
+        if self.0 {
+            NS_PREFIXES.with(|n| *n.borrow_mut() = None);
+        }
+    }
+}
+
+/// Объявлен ли префикс. Пустой (`|div`) и `*` объявлены всегда.
+fn ns_declared(ns: &str) -> bool {
+    ns.is_empty()
+        || ns == "*"
+        || NS_PREFIXES.with(|n| n.borrow().as_ref().is_none_or(|s| s.contains(ns)))
+}
+
+/// Префиксы действительных `@namespace` (css-namespaces-3 §2): «must follow
+/// all @charset and @import rules and precede all other non-ignored at-rules
+/// and style rules … Otherwise the @namespace rule is invalid». Даже пустой
+/// `@media {}` или `@supports (…) {}` закрывает пролог (`at-media-003`,
+/// `at-supports-045`).
+fn declared_prefixes(css: &str) -> std::collections::HashSet<String> {
+    let mut set = std::collections::HashSet::new();
+    let cleaned = strip_comments(css);
+    let mut rest = cleaned.as_str();
+    while let Some((piece, tail)) = next_piece(rest) {
+        rest = tail;
+        let Piece::Statement { head } = piece else { break };
+        let low = head.trim().to_ascii_lowercase();
+        if low.starts_with("@charset") || low.starts_with("@import") || low.starts_with("@layer") {
+            continue;
+        }
+        let Some(r) = low.strip_prefix("@namespace") else { break };
+        let first = r.split_whitespace().next().unwrap_or("");
+        if !first.is_empty()
+            && !first.starts_with('"')
+            && !first.starts_with('\'')
+            && !first.starts_with("url(")
+        {
+            set.insert(first.to_string());
+        }
+    }
+    set
+}
+
+/// `attr(ns|name)` с необъявленным префиксом делает объявление негодным —
+/// для оракула `@supports` (`at-supports-namespace-001`: `attr(y|href)`).
+fn attr_prefixes_declared(v: &str) -> bool {
+    let low = v.to_ascii_lowercase();
+    let mut from = 0usize;
+    while let Some(at) = low[from..].find("attr(") {
+        let open = from + at + 5;
+        let arg = low[open..]
+            .trim_start()
+            .split(|ch: char| ch == ')' || ch == ',' || ch.is_whitespace())
+            .next()
+            .unwrap_or("");
+        if let Some((ns, _)) = arg.split_once('|')
+            && !ns_declared(ns)
+        {
+            return false;
+        }
+        from = open;
+    }
+    true
+}
+
 /// То же, но с известными условиями окружения.
 pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
+    // Префиксы считает ВЕРХНИЙ вызов: вложенные группы (`@media`,
+    // `@supports`, `@layer`) разбираются тем же входом рекурсивно и видят
+    // пролог своей таблицы.
+    let top = NS_PREFIXES.with(|n| n.borrow().is_none());
+    if top {
+        let declared = declared_prefixes(css);
+        NS_PREFIXES.with(|n| *n.borrow_mut() = Some(declared));
+    }
+    let _scope = NsScope(top);
+    sheet_rules(css, media)
+}
+
+fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
     let mut out = vec![];
     let cleaned = strip_comments(css);
     let mut rest = cleaned.as_str();
@@ -1504,6 +1611,81 @@ fn supports_take_term(s: &str) -> Option<(&str, &str)> {
     None
 }
 
+/// `selector(<complex-selector>)` (css-conditional-4 §at-supports-ext):
+/// ОДИН сложный селектор — список через запятую ложен (`at-supports-selector-004`);
+/// внутри `:is()/:where()/:has()/:not()` прощающего разбора при проверке нет —
+/// неизвестная часть роняет всё (`…-detecting-invalid-in-logical-combinations`).
+/// Псевдоэлементы, которые Blink знает, а наш каскад не исполняет
+/// (`::details-content`, `::picker(select)`, `::picker-icon`,
+/// `::-webkit-slider-thumb`), для ПРОВЕРКИ снимаются; в `known_pseudo` их не
+/// вносим — иначе правила с ними начали бы применяться к самой коробке.
+fn supports_selector(args: &str) -> bool {
+    let s = args.trim();
+    if split_top_level(s, ',').len() > 1 {
+        return false;
+    }
+    let mut s = s.to_string();
+    for known in [
+        "::details-content",
+        "::picker(select)",
+        "::picker-icon",
+        "::-webkit-slider-thumb",
+        "::-webkit-slider-runnable-track",
+    ] {
+        s = s.replace(known, "");
+    }
+    // Неизвестные вендорные псевдо — не поддержаны (`::-webkit-asdf`).
+    if s.contains("::-webkit-") || s.contains(":-webkit-") {
+        return false;
+    }
+    // Снятый псевдоэлемент мог стоять один: `::picker-icon` → пусто.
+    if s.trim().is_empty() || s.ends_with(|ch: char| ch.is_whitespace() || "+>~".contains(ch)) {
+        s.push('*');
+    }
+    selector_strict(&s)
+}
+
+/// Селектор годен, и годна КАЖДАЯ часть списков внутри `:is()` и родни.
+fn selector_strict(s: &str) -> bool {
+    if Selector::parse(s).is_none() {
+        return false;
+    }
+    for f in [":is(", ":where(", ":has(", ":not(", ":matches(", ":any("] {
+        let mut from = 0usize;
+        while let Some(at) = s[from..].find(f) {
+            let open = from + at + f.len();
+            let mut depth = 1i32;
+            let mut close = None;
+            for (i, ch) in s[open..].char_indices() {
+                match ch {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            close = Some(open + i);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let Some(close) = close else { return false };
+            for part in split_top_level(&s[open..close], ',') {
+                let mut p = part.trim();
+                // Относительный селектор `:has(> .a)`: ведущий комбинатор.
+                if f == ":has(" {
+                    p = p.trim_start_matches(['>', '+', '~']).trim_start();
+                }
+                if p.is_empty() || !selector_strict(p) {
+                    return false;
+                }
+            }
+            from = close;
+        }
+    }
+    true
+}
+
 fn supports_eval_term(term: &str) -> SupTri {
     let term = term.trim();
     // Функция `имя(...)`.
@@ -1515,10 +1697,7 @@ fn supports_eval_term(term: &str) -> SupTri {
         let args = &term[open + 1..term.len().saturating_sub(1)];
         return match name.as_str() {
             "selector" => {
-                // Неизвестные вендорные псевдо — не поддержаны.
-                if args.contains("::-webkit-") || args.contains(":-webkit-") {
-                    SupTri::False
-                } else if Selector::parse(args).is_some() {
+                if supports_selector(args) {
                     SupTri::True
                 } else {
                     SupTri::False
@@ -1532,7 +1711,29 @@ fn supports_eval_term(term: &str) -> SupTri {
                     SupTri::False
                 }
             }
-            "font-tech" | "at-rule" => SupTri::False,
+            // `font-tech(<font-tech>)` — ровно ОДНО слово (css-conditional-5
+            // §font-tech): `features-opentype color-COLRv1` и список через
+            // запятую — ложь (`at-supports-font-tech-001`). Технологии —
+            // то, что открывает DirectWrite; `incremental` — нет.
+            "font-tech" => {
+                let t = args.trim().to_ascii_lowercase();
+                if matches!(
+                    t.as_str(),
+                    "features-opentype"
+                        | "features-aat"
+                        | "color-colrv0"
+                        | "color-colrv1"
+                        | "color-sbix"
+                        | "color-cbdt"
+                        | "variations"
+                        | "palettes"
+                ) {
+                    SupTri::True
+                } else {
+                    SupTri::False
+                }
+            }
+            "at-rule" => SupTri::False,
             // `not(...)`/`or(...)` и прочие неизвестные функции — это
             // `<general-enclosed>`, а css-conditional-3 §4 говорит о нём
             // дословно: «The result is false». Не «неизвестно»: иначе
@@ -1573,6 +1774,22 @@ fn supports_eval_term(term: &str) -> SupTri {
         // (`at-supports-034..037`: каждое условие берётся в СВОИ скобки).
         if colons.len() > 2 {
             return SupTri::False;
+        }
+        if !attr_prefixes_declared(colons[1]) {
+            return SupTri::False;
+        }
+        // css-variables-1 §3: «If a property contains one or more var()
+        // functions, and those functions are syntactically valid, the entire
+        // property's grammar must be assumed to be valid at parse time».
+        // Оракул «дельта на чистом стиле» такое не видит: без значения
+        // переменной объявление не пишет ни в одно поле (`at-supports-044`,
+        // `(color: var(--anything) invalid-value)`).
+        if colons[1].to_ascii_lowercase().contains("var(") {
+            return if parse_decls(inner).is_empty() {
+                SupTri::False
+            } else {
+                SupTri::True
+            };
         }
         let decls = parse_decls(inner);
         if decls.is_empty() {
@@ -2351,10 +2568,57 @@ pub type Keyframes = Vec<(f32, Decls)>;
 /// объявлений, а из вложенных блоков, и общий разборщик такое телом правила
 /// не считает.
 pub fn parse_keyframes(css: &str) -> HashMap<String, Keyframes> {
+    parse_keyframes_in(css, None)
+}
+
+/// Лежит ли место `at` таблицы внутри группы `@media`/`@supports`, чьё
+/// условие ЛОЖНО (css-conditional-3 §2: правила такой группы не действуют —
+/// и `@font-face`, и `@keyframes`, а не только правила стиля:
+/// `at-media-content-002/003`, `at-supports-content-002/003`).
+/// Стек заголовков открытых блоков считается по скобкам, строки пропускаются.
+pub(crate) fn in_false_group(css: &str, at: usize, media: Media) -> bool {
+    let end = at.min(css.len());
+    let b = css.as_bytes();
+    let mut heads: Vec<(usize, usize)> = Vec::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < end {
+        match b[i] {
+            q @ (b'"' | b'\'') => {
+                i += 1;
+                i += skip_string(&css[i..], q as char);
+                continue;
+            }
+            b'{' => {
+                heads.push((start, i));
+                start = i + 1;
+            }
+            b'}' => {
+                heads.pop();
+                start = i + 1;
+            }
+            b';' => start = i + 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    heads.iter().any(|&(s, e)| {
+        let head = css[s..e].trim();
+        let low = head.to_ascii_lowercase();
+        (low.starts_with("@media") && !media.matches(&low))
+            || (low.starts_with("@supports") && !supports(&head[9..]))
+    })
+}
+
+/// Наборы кадров таблицы. `media` — условия окружения: с ними кадры ложной
+/// группы не берутся; `None` (лист агента) — берутся все, как прежде.
+pub fn parse_keyframes_in(css: &str, media: Option<Media>) -> HashMap<String, Keyframes> {
     let cleaned = strip_comments(css);
     let mut out: HashMap<String, Keyframes> = HashMap::new();
     let mut rest = cleaned.as_str();
     while let Some(at) = rest.find("@keyframes") {
+        let pos = cleaned.len() - rest.len() + at;
+        let skip = media.is_some_and(|m| in_false_group(&cleaned, pos, m));
         rest = &rest[at + "@keyframes".len()..];
         let Some(brace) = rest.find('{') else { break };
         let name = rest[..brace].trim().to_string();
@@ -2363,6 +2627,9 @@ pub fn parse_keyframes(css: &str) -> HashMap<String, Keyframes> {
         };
         let body = &rest[brace + 1..brace + close];
         rest = &rest[brace + close + 1..];
+        if skip {
+            continue;
+        }
 
         let mut frames: Keyframes = vec![];
         let mut inner = body;

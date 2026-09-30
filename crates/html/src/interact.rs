@@ -1330,12 +1330,35 @@ impl Element for Transformed {
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
+        bounds: Bounds<Pixels>,
         _state: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
+        // Плоская матрица — на стек якорей (`anchor::tf_push`): рамку якоря
+        // проба снимает на подготовке, а трансформ применяется только в
+        // `paint`, и без стека якорь виделся до трансформа (css-anchor-
+        // position-1 §2 «includes … transforms»; `transform-001/002/009`).
+        // Формула та же, что у плоского пути `paint`, но в css-точках, без
+        // `scale_factor`: x' = o + lin·(x − o) + сдвиг. Объёмный путь в стек
+        // не идёт — его матрица решается на отрисовке по накопленной ячейке.
+        let flat = !self.has_3d && self.frame_3d.is_none() && self.under_3d.is_none();
+        if flat {
+            let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            let ox = f32::from(bounds.origin.x) + w * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
+            let oy = f32::from(bounds.origin.y) + h * self.origin.1 + self.origin_px.1.unwrap_or(0.0);
+            let sx = self.tr[0][0] + w * self.tr[0][1] + h * self.tr[0][2];
+            let sy = self.tr[1][0] + w * self.tr[1][1] + h * self.tr[1][2];
+            let [[a, b], [c, d]] = self.lin;
+            crate::anchor::tf_push([
+                [a, b, ox - a * ox - b * oy + sx],
+                [c, d, oy - c * ox - d * oy + sy],
+            ]);
+        }
         self.child.as_mut().unwrap().prepaint(window, cx);
+        if flat {
+            crate::anchor::tf_pop();
+        }
     }
 
     fn paint(
@@ -1839,6 +1862,42 @@ impl Element for CellsClipped {
                 window.paint_quad(quad);
             }
         }
+        // Обводка ряда/группы — вокруг охвата ТОЧНЫХ ячеек, снаружи и без
+        // маски (css-ui-4 §outline: рамка вне коробки, раскладку не трогает).
+        // Тот же кольцевой квад, что у резкой тени выше.
+        if let Some(o) = &self.style.outline {
+            let em = match self.style.font_size {
+                Some(crate::value::Len::Px(v)) => v,
+                _ => 16.0,
+            };
+            let px_of = |l: Option<crate::value::Len>| match l {
+                Some(crate::value::Len::Px(v)) => v,
+                Some(crate::value::Len::Em(k)) => k * em,
+                _ => 0.0,
+            };
+            let w = px_of(o.width);
+            let out = px_of(o.offset) + w;
+            if let (true, true, Some(colour)) =
+                (o.style != Some(0), w > 0.0, o.color.or(self.style.color))
+            {
+                let ring = Bounds {
+                    origin: gpui::point(area.origin.x - gpui::px(out), area.origin.y - gpui::px(out)),
+                    size: gpui::size(
+                        area.size.width + gpui::px(2.0 * out),
+                        area.size.height + gpui::px(2.0 * out),
+                    ),
+                };
+                let mut quad = gpui::fill(ring, gpui::transparent_black());
+                quad.border_color = colour.to_hsla();
+                quad.border_widths = gpui::Edges {
+                    top: gpui::px(w),
+                    right: gpui::px(w),
+                    bottom: gpui::px(w),
+                    left: gpui::px(w),
+                };
+                window.paint_quad(quad);
+            }
+        }
         for rect in all {
             window.with_content_mask(Some(gpui::ContentMask { bounds: rect }), |window| {
                 // Цвет ряда — под картинкой, в тех же прямоугольниках: на
@@ -1996,6 +2055,11 @@ pub struct GapRuleSpec {
     /// строчной оси считаются от правого края (css-gaps-1 §insets-start-end;
     /// `multicol-gap-decorations-direction-inset`, вторая половина).
     pub rtl: bool,
+    /// Промежутки по x (по y) нумеруются справа налево (снизу вверх):
+    /// значения списков назначаются в ЛОГИЧЕСКОМ порядке оси (css-gaps-1
+    /// §assigning; эталоны `*-multi-value-direction`/`-writing-mode`).
+    pub rev_x: bool,
+    pub rev_y: bool,
 }
 
 /// Допуск сравнения координат раскладки.
@@ -2413,6 +2477,7 @@ fn line_runs(
     gap_a: Option<f32>,
     main: Option<&GapAxisRule>,
     cross: Option<&GapAxisRule>,
+    rev_cross: bool,
 ) -> (Vec<GapRun>, Vec<GapRun>) {
     let lines = tracks_a(items, gap_a);
     let r0 = items.iter().map(|i| i.b0).fold(f32::INFINITY, f32::min);
@@ -2477,7 +2542,11 @@ fn line_runs(
     for (k, &(s, e)) in lines.iter().enumerate() {
         let before = (k > 0).then(|| (s - lines[k - 1].1, main.is_some(), main_w));
         let after = (k + 1 < lines.len()).then(|| (lines[k + 1].0 - e, main.is_some(), main_w));
-        for &(lo, hi) in &inner[k] {
+        // Счёт сквозной по строкам (§assigning: «does not restart at the
+        // beginning of each flex line»), внутри строки — от её логического
+        // начала: при `rev_cross` крайний правый (нижний) промежуток первый.
+        let n = inner[k].len();
+        for (j, &(lo, hi)) in inner[k].iter().enumerate() {
             crosses.push(GapRun {
                 g0: lo,
                 g1: hi,
@@ -2488,11 +2557,11 @@ fn line_runs(
                 hidden: vec![],
                 start_edge: before,
                 end_edge: after,
-                index: ix,
+                index: if rev_cross { ix + n - 1 - j } else { ix + j },
                 count: cross_total.max(1),
             });
-            ix += 1;
         }
+        ix += n;
     }
     (mains, crosses)
 }
@@ -2581,12 +2650,18 @@ impl Element for GapRulePainter {
                 // поперечные `b` — по y; у линеек по y — наоборот.
                 let (tx, ty) = (spec.tracks_x.as_deref(), spec.tracks_y.as_deref());
                 if let Some(r) = on_x {
-                    for run in grid_runs(&ix, spec.gap_x, spec.gap_y, r, on_y, tx, ty) {
+                    for mut run in grid_runs(&ix, spec.gap_x, spec.gap_y, r, on_y, tx, ty) {
+                        if spec.rev_x {
+                            run.index = run.count - 1 - run.index;
+                        }
                         layers.push((true, run, r, false));
                     }
                 }
                 if let Some(r) = on_y {
-                    for run in grid_runs(&iy, spec.gap_y, spec.gap_x, r, on_x, ty, tx) {
+                    for mut run in grid_runs(&iy, spec.gap_y, spec.gap_x, r, on_x, ty, tx) {
+                        if spec.rev_y {
+                            run.index = run.count - 1 - run.index;
+                        }
                         layers.push((false, run, r, false));
                     }
                 }
@@ -2599,9 +2674,20 @@ impl Element for GapRulePainter {
                     .collect();
                 let (main, cross) = if stacked_vertically { (on_y, on_x) } else { (on_x, on_y) };
                 let gap_a = if stacked_vertically { spec.gap_y } else { spec.gap_x };
-                let (mains, crosses) = line_runs(&it, gap_a, main, cross);
+                // Главные промежутки лежат по оси укладки строк, поперечные —
+                // по оси элементов строки; каждая нумеруется от своего
+                // логического начала.
+                let (rev_main, rev_cross) = if stacked_vertically {
+                    (spec.rev_y, spec.rev_x)
+                } else {
+                    (spec.rev_x, spec.rev_y)
+                };
+                let (mains, crosses) = line_runs(&it, gap_a, main, cross, rev_cross);
                 if let Some(r) = main {
-                    for run in mains {
+                    for mut run in mains {
+                        if rev_main {
+                            run.index = run.count - 1 - run.index;
+                        }
                         layers.push((!stacked_vertically, run, r, true));
                     }
                 }
@@ -3200,6 +3286,10 @@ pub struct ClampCut {
     limit: Option<u32>,
     /// Потолок высоты контейнера в точках (max-height), если задан.
     max_h: Option<f32>,
+    /// `text-box-trim: trim-end` контейнера в точках: последняя строка
+    /// ПЕРЕД точкой обрыва — последняя отформатированная, и её конец
+    /// срезается (`text-box-trim-line-clamp-*`). Ноль — среза нет.
+    trim_end: f32,
 }
 
 impl ClampCut {
@@ -3209,7 +3299,14 @@ impl ClampCut {
             lines,
             limit,
             max_h,
+            trim_end: 0.0,
         }
+    }
+
+    /// Срез конца последней видимой строки (`text-box-trim`).
+    pub fn trim_end(mut self, v: f32) -> Self {
+        self.trim_end = v.max(0.0);
+        self
     }
 }
 
@@ -3285,21 +3382,89 @@ impl Element for ClampCut {
         }
         rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let mut cut: Option<f32> = self.max_h.map(|m| top + m);
-        if let Some(limit) = self.limit {
-            let mut seen = 0u32;
-            for (_, bottom, countable) in &rows {
-                if *countable {
-                    seen += 1;
-                    if seen == limit {
-                        let candidate = *bottom;
-                        cut = Some(cut.map_or(candidate, |c| c.min(candidate)));
-                        break;
-                    }
+        let trim_end = self.trim_end;
+        // Счётный режим (css-overflow-4 §5.3): точка среза — СРАЗУ после N-й
+        // считаемой строки. Это готовая строка, а не бюджет высоты, поэтому
+        // правила авто-режима ниже (вычет нижних рамки и паддинга, посадка на
+        // верх пересечённой строки) к ней не применяются: после `c2 -= bp`
+        // точка уходила внутрь N-й строки, и строка пропадала
+        // (`line-clamp-012/022`, `webkit-line-clamp-050`). Абзацу N-й строки
+        // отдаётся бюджет строк — тот же `CLAMP_PARA`, что у авто-режима, и
+        // «…» ставит строчный слой. Высоту даёт УКОРОЧЕННОЕ содержимое — с
+        // полями, схлопыванием и заданной высотой предков (Blink: всё за
+        // точкой `is_hidden_for_paint`, размер — по видимому); потолок нужен,
+        // только когда за точкой есть другое содержимое.
+        let mut num_para: Option<(u32, usize)> = None;
+        let mut by_count = false;
+        if let Some(limit) = self.limit.filter(|n| *n > 0) {
+            // (верх строки, низ строки, номер абзаца, номер строки в абзаце)
+            let mut marks: Vec<(f32, f32, u32, usize)> = vec![];
+            for e in entries.iter().filter(|e| e.line > 0.0 && !e.skip_count) {
+                let Some(seq) = e.seq else { continue };
+                let y0 = f32::from(e.bounds.origin.y);
+                let h = f32::from(e.bounds.size.height);
+                if h <= 0.0 {
+                    continue;
+                }
+                let n = (h / e.line).round().max(1.0) as usize;
+                let step = h / n as f32;
+                for i in 0..n {
+                    marks.push((y0 + i as f32 * step, y0 + (i + 1) as f32 * step, seq, i + 1));
                 }
             }
-            if seen < limit && self.max_h.is_none() {
-                // Строк меньше предела — среза нет.
-                cut = None;
+            marks.sort_by(|a, b| a.0.total_cmp(&b.0));
+            match marks.get(limit as usize - 1).copied() {
+                Some((_, bottom, seq, k)) if cut.is_none_or(|c| bottom <= c + 0.5) => {
+                    // Остаток СВОЕГО абзаца — знак нужен, потолок нет: абзац
+                    // укоротит бюджет.
+                    let own_rest = entries.iter().any(|e| {
+                        e.line > 0.0
+                            && e.seq == Some(seq)
+                            && f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height)
+                                > bottom + 0.5
+                    });
+                    // Другое содержимое за точкой: чужой абзац, выходящий за
+                    // неё (в том числе несчитаемый), или коробка, начатая после.
+                    let follows = entries.iter().any(|e| {
+                        let y0 = f32::from(e.bounds.origin.y);
+                        let h = f32::from(e.bounds.size.height);
+                        h > 0.0
+                            && if e.line > 0.0 {
+                                e.seq != Some(seq) && y0 + h > bottom + 0.5
+                            } else {
+                                y0 >= bottom - 0.5
+                            }
+                    });
+                    if own_rest || follows || entries.iter().any(|e| e.clamped.is_some()) {
+                        num_para = Some((seq, k));
+                    }
+                    by_count = true;
+                    if follows {
+                        // Коробки, содержащие точку, фрагментированы в ней и
+                        // уносят свои нижние рамку и паддинг (§5.3); коробка с
+                        // заданной высотой не фрагментируется — видна целиком.
+                        let mut add = 0.0f32;
+                        let mut floor = bottom;
+                        for (y0, y1, fixed, bp) in &blocks {
+                            if *y0 < bottom && bottom < *y1 {
+                                if *fixed {
+                                    floor = floor.max(*y1);
+                                } else {
+                                    add += *bp;
+                                }
+                            }
+                        }
+                        cut = Some((bottom + add).max(floor));
+                    }
+                }
+                // `max-height` теснее N строк — дальше как в авто-режиме.
+                Some(_) => {}
+                None => {
+                    if self.max_h.is_none() {
+                        // Строк меньше предела — среза нет.
+                        cut = None;
+                    }
+                }
             }
         }
         // Блок, СОДЕРЖАЩИЙ точку среза, фрагментируется по последней
@@ -3307,7 +3472,7 @@ impl Element for ClampCut {
         // высотой: её не фрагментировать (css-overflow-4 §line-clamp).
         // Строка, пересечённая точкой, не показывается половинкой:
         // срез поднимается к её верху.
-        if let Some(c) = cut {
+        if let Some(c) = cut.filter(|_| !by_count) {
             // Коробка с ЗАДАННОЙ высотой не фрагментируется: пересечённая
             // точкой среза, она прячется целиком (css-overflow-4 §5.3).
             let mut c2 = c;
@@ -3321,18 +3486,65 @@ impl Element for ClampCut {
             // бюджет строк на них укорачивается, а итоговый срез — на
             // столько же удлиняется (`line-clamp-auto-019`: 2+14+4×32+14+2
             // = 160 = ровно потолок `max-height: 5lh`).
-            let bp: f32 = blocks
+            let crossed: Vec<(f32, f32)> = blocks
                 .iter()
                 .filter(|(y0, y1, fixed, _)| !*fixed && *y0 < c2 && c2 < *y1)
-                .map(|(_, _, _, bp)| *bp)
-                .sum();
+                .map(|(y0, _, _, bp)| (*y0, *bp))
+                .collect();
+            let bp: f32 = crossed.iter().map(|(_, bp)| *bp).sum();
             c2 -= bp;
+            // Строка, которая влезает только СРЕЗАННОЙ (`text-box-trim:
+            // trim-end` — последняя строка перед обрывом срезается), остаётся:
+            // `max-height: 285px` при строке 100 и срезе 25 — три строки
+            // (3·100 − 25 = 275), а не две (`line-clamp-auto-001/002`).
             for (y0, y1, _) in &rows {
-                if *y0 < c2 && c2 < *y1 - 0.5 {
+                if *y0 < c2 && c2 < *y1 - trim_end - 0.5 {
                     c2 = *y0;
                 }
             }
-            cut = Some(c2 + bp);
+            // И точка обрыва садится на срезанный низ последней видимой
+            // строки: при числовом пределе — всегда, в авто-режиме — только
+            // когда строки идут дальше точки (иначе обрыва нет и срез уже
+            // сделал хвост `blocks()`).
+            if trim_end > 0.0
+                && (self.limit.is_some() || rows.iter().any(|r| r.1 > c2 + 0.5))
+                && let Some(b) = rows
+                    .iter()
+                    .map(|r| r.1)
+                    .filter(|y1| *y1 - trim_end <= c2 + 0.5)
+                    .max_by(|a, b| a.total_cmp(b))
+            {
+                c2 = c2.min(b - trim_end);
+            }
+            // Пересечённая коробка, в которую с её верхними рамкой и паддингом
+            // не влезло НИ ОДНОЙ строки, не фрагментируется: точка среза — между
+            // ней и предыдущим соседом (§5.3 «between two in-flow block-level
+            // sibling boxes»; `line-clamp-auto-024`: 224, а не 240). Её нижние
+            // рамка и паддинг не нужны; охватывающие непустые свои уносят.
+            // Строка «влезла» — по СРЕЗАННОМУ низу (`trim_end`, как в цикле
+            // выше): без поправки последняя видимая строка под `text-box-trim`
+            // не считалась бы, и срез уходил бы к верху её коробки.
+            let holds = |y0: f32| {
+                rows.iter().any(|(r0, r1, countable)| {
+                    *countable && *r0 >= y0 - 0.5 && *r1 - trim_end <= c2 + 0.5
+                })
+            };
+            match crossed
+                .iter()
+                .filter(|(y0, _)| !holds(*y0))
+                .map(|(y0, _)| *y0)
+                .reduce(f32::min)
+            {
+                Some(empty_top) => {
+                    let keep: f32 = crossed
+                        .iter()
+                        .filter(|(y0, _)| holds(*y0) && *y0 < empty_top)
+                        .map(|(_, bp)| *bp)
+                        .sum();
+                    cut = Some(empty_top + keep);
+                }
+                None => cut = Some(c2 + bp),
+            }
         }
         // ★ ЗАМЕРЕНО (10.09, `scout-clampmarker-2026-09c.md`, 21 хунк):
         // срез 416 пар (семья `line-clamp` + схлопывание полей) 259 ->
@@ -3385,7 +3597,11 @@ impl Element for ClampCut {
                     }
                     let n = (h / e.line).round().max(1.0) as usize;
                     let step = h / n as f32;
-                    let k = (1..=n).filter(|i| y0 + *i as f32 * step <= c + 0.5).count();
+                    // Точка `c` уже стоит на СРЕЗАННОМ низу последней
+                    // строки — полный низ этой строки ниже на `trim_end`.
+                    let k = (1..=n)
+                        .filter(|i| y0 + *i as f32 * step <= c + trim_end + 0.5)
+                        .count();
                     (k >= 1).then_some((y0 + k as f32 * step, seq, k))
                 })
                 .max_by(|a, b| a.0.total_cmp(&b.0))
@@ -3395,6 +3611,8 @@ impl Element for ClampCut {
         // строк на следующем кадре — это отражение нашей же правки, а не
         // новое измерение. Правило конечно (бюджет строго убывает и не
         // меньше единицы), поэтому кадр не может просить себя без конца.
+        // Счётный режим несёт свой бюджет (см. выше); авто-режим — свой.
+        let para = if self.limit.is_some() { num_para } else { para };
         let prev_para = clamp_para(self.key);
         let para = match (prev_para, para) {
             (Some((ps, pk)), Some((s, k))) if ps == s && k > pk => Some((ps, pk)),
@@ -3433,23 +3651,21 @@ impl Element for ClampCut {
         // Гистерезис: мелкие колебания точки (обрезка двигает схлопнутые
         // поля, точка плывёт на доли строки) не перезаписывают её — иначе
         // пары мигали между прогонами. Крупный сдвиг — честный пересчёт.
+        // «Измерено: резать нечего» хранится БЕСКОНЕЧНОСТЬЮ, а не пустотой:
+        // пустота значит «ещё не мерили», и `styled_div_with` подставлял бы
+        // запасной потолок `N × line-height` навсегда (`webkit-line-clamp-029`:
+        // все строки в своём контексте, считать нечего, а коробка резалась на
+        // три строки из пяти). Запасной потолок остаётся только первому кадру.
+        let v = rel.unwrap_or(f32::INFINITY);
         let prev = clamp_cut(self.key);
-        let changed = match (prev, rel) {
-            (Some(a), Some(b)) => (a - b).abs() > 4.0,
-            (None, None) => false,
-            _ => true,
+        let changed = match prev {
+            Some(a) if a.is_finite() && v.is_finite() => (a - v).abs() > 4.0,
+            Some(a) => a.is_finite() != v.is_finite(),
+            None => true,
         };
         if changed {
             CLAMP_CUTS.with(|m| {
-                let mut m = m.borrow_mut();
-                match rel {
-                    Some(v) => {
-                        m.insert(self.key, v);
-                    }
-                    None => {
-                        m.remove(&self.key);
-                    }
-                }
+                m.borrow_mut().insert(self.key, v);
             });
             window.request_animation_frame();
         }
@@ -4238,6 +4454,13 @@ pub struct Spot {
     /// быть нулём), а сторону — отдельным `InsetBias::kEnd`
     /// (`absolute_utils.cc:34`).
     pub block_strut: bool,
+    /// Выравнивание в ПРЯМОУГОЛЬНИКЕ СТАТИЧЕСКОЙ ПОЗИЦИИ (css-position-3
+    /// §static-position-rectangle; css-align-3 §justify-abspos,
+    /// §align-abspos): физические доли `(x, y)`. По строчной оси прямоугольник
+    /// — дырка блочной распорки (края содержимого родителя), коробка встаёт
+    /// в долю `x` свободного места; по блочной он нулевой, и коробка висит от
+    /// статической точки на долю `y` своей высоты. `None` — прежний путь.
+    pub self_align: Option<(f32, f32)>,
 }
 
 pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;
@@ -4361,6 +4584,15 @@ pub fn late_close() -> Vec<AnyElement> {
         .into_iter()
         .map(|(spot, el)| spot_place(spot, el))
         .collect()
+}
+
+/// Есть ли в открытом верхнем слое накопленное содержимое. Спрашивает цикл
+/// детей контейнера перед позиционированным соседом: слой выпускается
+/// раньше него, чтобы абсолют на статической позиции красился в порядке
+/// дерева (CSS 2.1 прил. E, шаг 8), а не поверх всех позиционированных
+/// соседей после него.
+pub fn late_pending() -> bool {
+    LATE.with(|s| s.borrow().last().is_some_and(|layer| !layer.is_empty()))
 }
 
 /// Отдать содержимое верхнему слою. Если слоя нет (элемент собирают вне
@@ -4604,6 +4836,18 @@ impl Element for LatePlace {
             // шага явно — прибавка `available_inline_size` (может быть нулём,
             // `block_layout_algorithm.cc:1740`) и `InsetBias::kEnd`
             // (`absolute_utils.cc:34`).
+            // Прямоугольник статической позиции с `justify-self`/`align-self`
+            // (`Spot::self_align`): правило выше строк rtl — сторону уже
+            // посчитал `render::static_self_align` (при rtl `start` — доля 1,
+            // та же формула, что у рукава ниже) (`align-self-static-position-
+            // 001/006/008`, `justify-self-static-position-001`).
+            (Some(hole), None) if now.block_strut && now.self_align.is_some() => {
+                let (kx, ky) = now.self_align.unwrap_or_default();
+                gpui::point(
+                    hole.origin.x + (hole.size.width - bounds.size.width) * kx - bounds.origin.x,
+                    hole.origin.y - bounds.size.height * ky - bounds.origin.y,
+                )
+            }
             (Some(hole), None) if now.rtl && now.block_strut => gpui::point(
                 hole.origin.x + hole.size.width * now.line_align.unwrap_or(1.0)
                     - bounds.size.width

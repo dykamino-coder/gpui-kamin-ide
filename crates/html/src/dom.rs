@@ -145,7 +145,7 @@ head, title, meta, link, template { display: none }
     u { text-decoration: underline }
     s, del { text-decoration: line-through }
     small { font-size: 11px }
-    a { color: #8ab4f8; text-decoration: underline }
+    a[href] { color: #8ab4f8; text-decoration: underline }
     code, kbd, samp { font-family: monospace; font-size: 12px }
     pre { font-family: monospace; margin: 6px 0; padding: 8px; overflow-x: auto }
     /* Заранее размеченный текст зазоров `text-autospace` не получает: правка
@@ -196,7 +196,10 @@ fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
     let head = &html[..cut];
     let xhtml = head.trim_start().starts_with("<?xml")
         || head.contains("http://www.w3.org/1999/xhtml");
-    if !xhtml || !html.contains("/>") {
+    // `<pre>`/`<listing>`/`<textarea>` в XHTML тоже требуют правки (см. ниже),
+    // даже если самозакрытых тегов в документе нет.
+    let lf_tags = ["<pre", "<listing", "<textarea"].iter().any(|t| html.contains(t));
+    if !xhtml || (!html.contains("/>") && !lf_tags) {
         return std::borrow::Cow::Borrowed(html);
     }
     const VOID: &[&str] = &[
@@ -268,6 +271,19 @@ fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
                 foreign += 1;
             }
             out.push_str(&tag[..=end]);
+            // Первый перевод строки после `<pre>` выбрасывает только HTML-разбор
+            // (`ignore_lf`, `vendor/html5ever/src/tree_builder/mod.rs:536`); в XML
+            // такого правила нет, и XHTML-документ держит его строкой. Лишний
+            // `\n` отдаётся разборщику на съедение, исходный остаётся:
+            // `c548-ln-ht-000` (`pre.control` — 5 строк, у нас было 4),
+            // `white-space-pre-001` (эталон ждёт 7 строк).
+            let after = &tag[end + 1..];
+            if foreign == 0
+                && matches!(name.as_str(), "pre" | "listing" | "textarea")
+                && (after.starts_with('\n') || after.starts_with("\r\n"))
+            {
+                out.push('\n');
+            }
         }
         rest = &tag[end + 1..];
     }
@@ -344,7 +360,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
         frames: frames.clone(),
     };
     for css in &sheets {
-        frames.extend(parse_keyframes(css));
+        frames.extend(crate::css::parse_keyframes_in(css, Some(media)));
     }
     // `:has()`: аргументы собираются со всех селекторов, правила с
     // вложенным `:has` выкидываются (спека: cannot be nested), отметки
@@ -386,6 +402,8 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
         false,
         &mut out,
     );
+    // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
+    resolve_display_inherit(&mut out, (None, None, None, None, None));
     hoist_grid_abspos(&mut out);
     content_box_static_position(&mut out);
     flex_items_lose_float(&mut out);
@@ -394,6 +412,46 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     filter_ref_only_empty(&mut out);
     fold_run_ins(&mut out, None);
     out
+}
+
+/// `display` родителя вместе с метками ролей: то, что переносит `inherit`.
+type DisplayOf = (
+    Option<Display>,
+    Option<bool>,
+    Option<u8>,
+    Option<u8>,
+    Option<bool>,
+);
+
+/// `display: inherit` — вычисленное значение ДОМ-родителя (CSS 2.1 §6.2.1).
+///
+/// Прежде бит `inh::DISPLAY` решался при сборке (`inline::inherit`) от
+/// РЕНДЕР-родителя, а табличная починка (`fixup_row_children`,
+/// `wrap_anon_tables`) смотрит `e.style.display` раньше и видела `None`:
+/// `#test {display: inherit}` в `.tr {display: table-row}` становился блоком
+/// с красным фоном и рамкой внутри анонимной ячейки, а не рядом без ячеек
+/// (`empty-cells-applies-to-017`). Где рендер-родитель совпадает с
+/// ДОМ-родителем, результат прежний побайтно: значение то же, бит снят.
+fn resolve_display_inherit(nodes: &mut [Node], parent: DisplayOf) {
+    for node in nodes.iter_mut() {
+        let Node::Element(el) = node else { continue };
+        if el.style.inherit_bits & crate::computed::inh::DISPLAY != 0 {
+            el.style.display = parent.0;
+            el.style.inline_display = parent.1;
+            el.style.row_group_kind = parent.2;
+            el.style.col_role = parent.3;
+            el.style.is_caption = parent.4;
+            el.style.inherit_bits &= !crate::computed::inh::DISPLAY;
+        }
+        let own: DisplayOf = (
+            el.style.display,
+            el.style.inline_display,
+            el.style.row_group_kind,
+            el.style.col_role,
+            el.style.is_caption,
+        );
+        resolve_display_inherit(&mut el.children, own);
+    }
 }
 
 /// `filter: url(#id)` дешёвым слоем рисуется только у коробки БЕЗ содержимого
@@ -421,7 +479,15 @@ fn filter_ref_only_empty(nodes: &mut [Node]) {
 /// коробка, становится её ПЕРВЫМ СТРОЧНЫМ ребёнком; во всех остальных
 /// случаях он ведёт себя как блок (это уже так — разбор дал Block).
 fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
-    let is_blank = |n: &Node| matches!(n, Node::Text(t) if t.trim().is_empty());
+    // Пробельный текст прозрачен для вбегания, только если он СХЛОПНЕТСЯ:
+    // при `white-space: pre*` контейнера пробел — настоящий строчный кусок
+    // (анонимная строка), и за run-in идёт уже не блок (css-display-3 §4.1:
+    // «intervening white space» — схлопываемый). `run-in-basic-014`: эталон —
+    // run-in блоком, строка сохранённого пробела, затем блок.
+    let keep = parent.is_some_and(|p| p.keep_spaces == Some(true));
+    let is_blank = |n: &Node| {
+        matches!(n, Node::Text(t) if t.is_empty() || (!keep && t.trim().is_empty()))
+    };
     let mut i = 0;
     while i < nodes.len() {
         // Сначала вглубь: вложенные run-in решаются в своём контейнере.
@@ -675,12 +741,18 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
             Some(Display::Grid) | Some(Display::InlineGrid)
         ) {
             for row_dir in [false, true] {
-                let tracks = if row_dir {
+                let raw = if row_dir {
                     el.style.grid_rows.clone()
                 } else {
                     el.style.grid_tracks.clone()
                 }
                 .unwrap_or_default();
+                // Доли `fr` при точечном размере родителя — в точки ДО нарезки
+                // (`fr_tracks_to_px`). Такой срез годен только оси, где ребёнок
+                // вправду подсеточный (проверка ниже, у ребёнка).
+                let fr_px = fr_tracks_to_px(&el.style, &raw, row_dir);
+                let from_fr = fr_px.is_some();
+                let tracks = fr_px.unwrap_or(raw);
                 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v125/v126,
                 // `scout-subgrid-2026-09.md` шаг 1): расширить гейт с «все
                 // дорожки `Px`» до «все нарезаемы» (симметрично здесь и в
@@ -748,6 +820,22 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                         }
                         continue;
                     }
+                    // Переведённые доли режутся только в ПАРАЛЛЕЛЬНУЮ ось, где
+                    // написано `subgrid`: своя ось подсетки остаётся своей
+                    // (`subgrid-gap-decorations-003`: ряды `subgrid`, колонки
+                    // `repeat(2, 1fr)` — прежний откат с сырой долей давал 99.00).
+                    if from_fr {
+                        let own_axis = if row_dir {
+                            child.style.subgrid_rows
+                        } else {
+                            child.style.subgrid_cols
+                        };
+                        let parallel = child.style.vertical.unwrap_or(false)
+                            == el.style.vertical.unwrap_or(false);
+                        if !(own_axis && parallel) {
+                            continue;
+                        }
+                    }
                     let Some((at, span)) = slot else {
                         continue;
                     };
@@ -812,8 +900,14 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // родителя», то есть разница НОЛЬ. Пока `None` считался
                     // нулём, разница выходила равной родительскому зазору и
                     // дорожки раздувались на его половину.
+                    // Проверяется СВОЯ ось: первый проход (колонки) уже записал
+                    // зазор колонок в `child.style.gap`, и прежнее условие «обе
+                    // оси пусты» во втором проходе ложно — ряды подсетки
+                    // оставались без зазора (`subgrid-gap-decorations-007`: ряды
+                    // 0/100/200 вместо 0/110/220 при эталоне `grid-010-ref`).
+                    let unset = own.is_none();
                     let own = own.or(par);
-                    if own != Some(Len::Px(0.0)) && crow.is_none() && ccol.is_none() {
+                    if own != Some(Len::Px(0.0)) && unset {
                         child.style.gap = Some(if row_dir {
                             (par, ccol)
                         } else {
@@ -843,7 +937,58 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // `row-subgrid-orthogonal-writing-mode-001/002/003`.
                     let parallel = child.style.vertical.unwrap_or(false)
                         == el.style.vertical.unwrap_or(false);
-                    if row_dir {
+                    // ОРТОГОНАЛЬНАЯ подсетка: оси родителя и подсетки
+                    // скрещены. `Computed` хранит дорожки ЛОГИЧЕСКИ
+                    // (`apply::grid_style` переставляет их через `flip`), а
+                    // подсеточная ось называется по шаблону САМОЙ подсетки
+                    // (css-grid-2 §subgrid-listing): колонки родителя у
+                    // подсетки с другим письмом — это её РЯДЫ, ряды родителя
+                    // — её колонки. Blink пишет то же (`grid/grid_item.cc`:
+                    // `has_subgridded_columns = is_parallel_with_root_grid ?
+                    // GridTemplateColumns() : GridTemplateRows()`). Прежде
+                    // срез колонок ложился в колонки подсетки (после `flip` —
+                    // в ФИЗИЧЕСКИЕ ряды), а §subgrid-box-alignment
+                    // («always stretched … any specified width/height
+                    // constraints» игнорируются) у ортогональной подсетки не
+                    // делался вовсе: вторая половина `subgrid/subgrid-stretch`
+                    // (восемь коробок `vrl`, 16.23) держала свои 50/150 вместо
+                    // дорожки 100. Размер гасится ФИЗИЧЕСКИЙ: ряды
+                    // горизонтального родителя — высота, колонки — ширина.
+                    // Разница зазоров по-прежнему пишется в оси родителя —
+                    // отдельный шаг.
+                    if !parallel {
+                        let own = if row_dir {
+                            child.style.subgrid_cols
+                        } else {
+                            child.style.subgrid_rows
+                        };
+                        let vertical_axis = row_dir != el.style.vertical.unwrap_or(false);
+                        if row_dir {
+                            child.style.grid_tracks = Some(slice);
+                            child.style.grid_cols = Some(span as u16);
+                            child.style.align_self = None;
+                        } else {
+                            child.style.grid_rows = Some(slice);
+                            child.style.justify_self = None;
+                        }
+                        if own {
+                            if vertical_axis {
+                                child.style.height = None;
+                                child.style.max_height = None;
+                                child.style.min_height = Some(Len::Px(0.0));
+                            } else {
+                                child.style.width = None;
+                                child.style.max_width = None;
+                                child.style.min_width = Some(Len::Px(0.0));
+                            }
+                            let stretch = Some(crate::computed::Align::Stretch);
+                            if row_dir {
+                                child.style.align_self = stretch;
+                            } else {
+                                child.style.justify_self = stretch;
+                            }
+                        }
+                    } else if row_dir {
                         child.style.grid_rows = Some(slice);
                         child.style.align_self = None;
                         if parallel && child.style.subgrid_rows {
@@ -872,6 +1017,72 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
         }
         subgrid_takes_parent_tracks(&mut el.children);
     }
+}
+
+/// Доли `fr` родительской сетки в точках — для среза в ПОДСЕТКУ.
+///
+/// css-grid-2 §subgrids: подсетка получает ИСПОЛЬЗОВАННЫЕ размеры дорожек
+/// родителя. Сырую долю резать нельзя: у подсетки она разрешается заново
+/// против её собственного неопределённого размера (откат v125/v126 в
+/// `subgrid_takes_parent_tracks`). Здесь доля переводится в точки по размеру
+/// САМОГО родителя — css-grid-1 §12.7.1 «Find the Size of an fr»: остаток
+/// после точечных дорожек и зазоров делится на сумму долей, но не меньше
+/// единицы. Гейт: размер оси и зазор — точки (или зазор не задан), все
+/// дорожки — точки или доли, хотя бы одна доля; иначе `None`. Рост доли под
+/// содержимое (`minmax(auto, 1fr)`) здесь не виден — у пар семьи элементы пустые.
+fn fr_tracks_to_px(
+    style: &Computed,
+    tracks: &[crate::computed::TrackSize],
+    row_dir: bool,
+) -> Option<Vec<crate::computed::TrackSize>> {
+    use crate::computed::{Track, TrackSize};
+    let mut fr_sum = 0.0f32;
+    let mut px_sum = 0.0f32;
+    for t in tracks {
+        match t {
+            TrackSize::Single(Track::Fr(f)) => fr_sum += *f,
+            TrackSize::Single(Track::Px(v)) => px_sum += *v,
+            _ => return None,
+        }
+    }
+    if fr_sum <= 0.0 {
+        return None;
+    }
+    let size = match if row_dir { style.height } else { style.width } {
+        Some(Len::Px(v)) => v,
+        _ => return None,
+    };
+    let px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => Some(v),
+        None => Some(0.0),
+        _ => None,
+    };
+    // `box-sizing: border-box` — заданный размер включает поля и рамку.
+    let inner = if style.border_box == Some(true) {
+        let b = style.borders();
+        let (p0, p1, b0, b1) = if row_dir {
+            (style.padding.top, style.padding.bottom, b.top, b.bottom)
+        } else {
+            (style.padding.left, style.padding.right, b.left, b.right)
+        };
+        size - px(p0)? - px(p1)? - px(b0)? - px(b1)?
+    } else {
+        size
+    };
+    let (grow, gcol) = style.gap.unwrap_or((None, None));
+    let gap = px(if row_dir { grow } else { gcol })?;
+    let n = tracks.len() as f32;
+    let leftover = (inner - px_sum - gap * (n - 1.0)).max(0.0);
+    let per = leftover / fr_sum.max(1.0);
+    Some(
+        tracks
+            .iter()
+            .map(|t| match t {
+                TrackSize::Single(Track::Fr(f)) => TrackSize::Single(Track::Px(f * per)),
+                other => other.clone(),
+            })
+            .collect(),
+    )
 }
 
 fn flex_items_lose_float(nodes: &mut [Node]) {
@@ -1309,7 +1520,7 @@ fn shadow_scope(root: &Handle, agent: &Scope, media: Media) -> (Rc<Scope>, Vec<H
                 ..r
             });
         }
-        frames.extend(parse_keyframes(css));
+        frames.extend(crate::css::parse_keyframes_in(css, Some(media)));
     }
     let mut raw: Vec<String> = vec![];
     rules.retain(|r| collect_has_args(&r.sel, &mut raw));
@@ -1832,6 +2043,72 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
         style.max_width = None;
         style.max_height = None;
     }
+}
+
+/// `aspect-ratio: auto && <ratio>` у НЕзамещаемой коробки (css-sizing-4
+/// §5.1): «the preferred aspect ratio is the specified ratio … unless it is
+/// a replaced element with a natural aspect ratio … size calculations
+/// involving the aspect ratio work with the content box dimensions always».
+/// У замещаемых запасное соотношение читает отрисовка (`image_with::ratio_of`),
+/// здесь их не трогаем. Раскладка движка считает соотношение по
+/// border-box при `box-sizing: border-box`, поэтому соотношение контента
+/// переводится в соотношение border-box по оси, заданной в точках
+/// (`block-aspect-ratio-004/006`, `flex-aspect-ratio-025/026`).
+fn promote_auto_ratio(style: &mut Computed, tag: &str) {
+    if matches!(
+        tag,
+        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input" | "select"
+            | "textarea" | "button"
+    ) || style.aspect_ratio.is_some()
+    {
+        return;
+    }
+    let Some(r) = style.aspect_ratio_auto.filter(|r| r.is_finite() && *r > 0.0) else {
+        return;
+    };
+    if style.border_box != Some(true) {
+        style.aspect_ratio = Some(r);
+        return;
+    }
+    let px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let b = style.borders();
+    let pad_x = px(style.padding.left) + px(style.padding.right) + px(b.left) + px(b.right);
+    let pad_y = px(style.padding.top) + px(style.padding.bottom) + px(b.top) + px(b.bottom);
+    // Ось, заданная в точках (с зажимом своими пределами), либо её предел.
+    let axis = |v: Option<Len>, lo: Option<Len>, hi: Option<Len>| -> Option<f32> {
+        let clamp = |x: f32| {
+            let x = match lo {
+                Some(Len::Px(l)) => x.max(l),
+                _ => x,
+            };
+            match hi {
+                Some(Len::Px(h)) => x.min(h),
+                _ => x,
+            }
+        };
+        match (v, lo) {
+            (Some(Len::Px(x)), _) => Some(clamp(x)),
+            (_, Some(Len::Px(l))) => Some(l),
+            _ => None,
+        }
+    };
+    let w = axis(style.width, style.min_width, style.max_width);
+    let h = axis(style.height, style.min_height, style.max_height);
+    let border_ratio = match (w, h) {
+        (Some(wb), None) => {
+            let hb = (wb - pad_x).max(0.0) / r + pad_y;
+            (hb > 0.0).then(|| wb / hb)
+        }
+        (None, Some(hb)) if hb > 0.0 => {
+            let wb = (hb - pad_y).max(0.0) * r + pad_x;
+            Some(wb / hb)
+        }
+        _ => None,
+    };
+    style.aspect_ratio = Some(border_ratio.unwrap_or(r));
 }
 
 fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
@@ -2392,7 +2669,11 @@ fn walk(
                 own
             };
             let vars = &own_vars;
+            // Типизированный `attr()` читает атрибуты ЭТОГО элемента
+            // (css-values-5 §7.7): слот ставится только на время его каскада.
+            crate::computed::set_current_attrs(&attrs);
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+            crate::computed::clear_current_attrs();
             // Корневые метрики для `rem`/`rlh` (css-values-4 §6.1.4).
             // Записываются ЗДЕСЬ, а не в наследовании: `Len::parse` работает
             // на разборе объявлений, а `walk` идёт в порядке документа —
@@ -2418,8 +2699,34 @@ fn walk(
                 crate::value::set_root_metrics(font, line);
             }
             apply_presentational_size(&mut style, &tag, &attrs);
+            promote_auto_ratio(&mut style, &tag);
             apply_presentational_colors(&mut style, &tag, &attrs);
             finish_inline_display(&mut style, &tag);
+            // css-will-change-1: обещанный `transform`/`contain` делает коробку
+            // содержащим блоком и контекстом наложения лишь там, где само
+            // свойство применимо. У строчной НЕатомарной коробки его нет
+            // (`will-change-transform-inline`: `fixed` внутри `<span>` стоит от
+            // окна); замещаемые и вынесенные из потока — атомарны. Вид коробки
+            // известен только здесь, после `finish_inline_display`.
+            if style.will_change & crate::computed::wc::BOX != 0 {
+                let out_of_flow = style.float.is_some_and(|f| f != 0)
+                    || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed));
+                let replaced = matches!(
+                    tag.as_str(),
+                    "img" | "svg" | "input" | "select" | "textarea" | "button" | "video"
+                        | "canvas" | "iframe" | "object" | "embed" | "meter" | "progress"
+                );
+                let inline_tag =
+                    INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
+                let non_atomic = !out_of_flow
+                    && !replaced
+                    && (style.inline_display == Some(true)
+                        || (style.display.is_none() && inline_tag));
+                if !non_atomic {
+                    use crate::computed::wc;
+                    style.will_change |= wc::CB_ABS | wc::CB_FIXED | wc::STACK;
+                }
+            }
             inlinify_in_ruby(&mut style, &tag, path.iter().rev());
             // css-ruby-1 §3.3: «Neither the margin, padding, and border
             // properties … apply to base containers or annotation containers»
