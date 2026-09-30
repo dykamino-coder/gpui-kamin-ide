@@ -980,7 +980,10 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             c.background = Some(resolved);
         }
     }
-    c.font_size = own.font_size.or(parent.font_size);
+    // `c` — клон `own`, но `lh` в собственном кегле уже решён выше от строки
+    // РОДИТЕЛЯ (css-values-4 §6.1.1, `from_parent`). Брать `own` здесь значило
+    // вернуть сырое `Len::Lh` — кегль терялся (`lh-unit-002`).
+    c.font_size = c.font_size.or(parent.font_size);
     // Кегль НОЛЬ вешает набор намертво (DirectWrite-цикл: `font: 0 Ahem` из
     // vars-font-shorthand-001 замораживал страницу навсегда) — клэмп к
     // микроскопическому: визуально то же «ничего», формулы живы.
@@ -993,7 +996,10 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.italic = own.italic.or(parent.italic);
     c.underline = own.underline.or(parent.underline);
     c.line_through = own.line_through.or(parent.line_through);
-    c.line_height = own.line_height.or(parent.line_height);
+    // То же для высоты строки: `line-height: 2lh` уже переведён в точки от
+    // строки родителя; сырое `Lh` уходило в `apply.rs` как `relative(2)` от
+    // СВОЕГО кегля (`lh-unit-001`: 84 вместо 100).
+    c.line_height = c.line_height.or(parent.line_height);
     c.text_align = own.text_align.or(parent.text_align);
     c.no_justify = own.no_justify.or(parent.no_justify);
     c.text_align_last = own.text_align_last.or(parent.text_align_last);

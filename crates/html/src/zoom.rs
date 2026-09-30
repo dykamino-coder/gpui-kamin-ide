@@ -84,10 +84,24 @@ fn apply(c: &mut Computed, parent: Option<&Computed>, eff: f32, own: f32, carrie
         Some(Len::Ex(k)) => Some(Len::Ex(k * own)),
         Some(Len::Ic(k)) => Some(Len::Ic(k * own)),
         Some(Len::EmPx(k, add)) => Some(Len::EmPx(k * own, add * eff)),
+        // `lh` в кегле берётся от строки РОДИТЕЛЯ (`inline::inherit`,
+        // `from_parent`), а она уже несёт зум предков — домножается только
+        // СВОЙ множитель, как у `em`.
+        Some(Len::Lh(k)) => Some(Len::Lh(k * own)),
+        Some(Len::LhPx(k, add)) => Some(Len::LhPx(k * own, add * eff)),
         None if (own - 1.0).abs() > f32::EPSILON => Some(Len::Em(own)),
         other => other,
     };
     scale_own(c, eff);
+    // То же у высоты строки: `line-height: 2lh` решается от строки родителя
+    // и должен «still multiply by our own zoom» (relative-units-from-parent:
+    // `zoom: 2; line-height: 2lh` ≡ `line-height: 4lh`). Точечная часть
+    // `LhPx` уже домножена в `scale_own`.
+    c.line_height = match c.line_height {
+        Some(Len::Lh(k)) => Some(Len::Lh(k * own)),
+        Some(Len::LhPx(k, add)) => Some(Len::LhPx(k * own, add)),
+        other => other,
+    };
     if (own - 1.0).abs() > f32::EPSILON {
         inherited(c, own, carried);
         explicit(c, parent, own);

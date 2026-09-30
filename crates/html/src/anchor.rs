@@ -740,7 +740,10 @@ impl AnchorPlan {
             cb_vertical: inherited.vertical == Some(true),
             cb_node: own.cb_node,
             fixed: own.position == Some(Position::Fixed)
-                && !(inherited.transform_ancestor || inherited.transform.is_some()),
+                && !(inherited.transform_ancestor
+                    || inherited.transform.is_some()
+                    || inherited.contain_layout == Some(true)
+                    || inherited.contain_paint == Some(true)),
             key: own.anchor_key,
             refs_default,
         })

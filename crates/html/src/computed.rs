@@ -92,7 +92,7 @@ fn has_font_units(v: &str) -> bool {
 }
 
 /// Заменить длины в единицах шрифта на пиксели: `1em` → `16px`.
-fn font_lengths_to_px(v: &str, em: f32, rem: f32, ex: f32, ch: f32) -> String {
+pub(crate) fn font_lengths_to_px(v: &str, em: f32, rem: f32, ex: f32, ch: f32) -> String {
     let mut out = String::with_capacity(v.len() + 8);
     let mut token = String::new();
     let flush = |token: &mut String, out: &mut String| {
@@ -3299,7 +3299,18 @@ impl Computed {
                             }
                             self.flex_grow = number(a);
                             self.flex_shrink = number(b);
-                            self.flex_basis = Len::parse(c);
+                            // `content` — ключевое слово основы (css-flexbox-1 §7.2),
+                            // а не длина: `Len::parse` его не знает, и `flex: 0 0
+                            // content` падал в `auto` с заданной шириной
+                            // (`flexbox-flex-basis-content-001b/002b`,
+                            // `percentage-heights-016`). Смысл тот же, что у длинной
+                            // формы `flex-basis: content` ниже.
+                            if c.eq_ignore_ascii_case("content") {
+                                self.flex_basis = Some(Len::Auto);
+                                self.basis_content = Some(true);
+                            } else {
+                                self.flex_basis = Len::parse(c);
+                            }
                         }
                         _ => {}
                     }
@@ -5098,10 +5109,15 @@ impl Computed {
                     self.gradient = None;
                     self.gradient_raw = None;
                 } else if v.starts_with("linear-gradient(") || v.starts_with("radial-gradient(") {
-                    self.gradient = parse_gradient(v);
-                    // Сырая запись нужна фону РЯДА таблицы: он рисуется
-                    // слоем картинки, и градиент туда идёт источником.
-                    self.gradient_raw = Some(v.to_string());
+                    // Негодная запись роняет ОБЪЯВЛЕНИЕ (§4.2), прежняя
+                    // картинка живёт: `linear-gradient(green, green)` и следом
+                    // четыре негодных угла обязаны оставить зелёный.
+                    if let Some(g) = parse_gradient(v) {
+                        self.gradient = Some(g);
+                        // Сырая запись нужна фону РЯДА таблицы: он рисуется
+                        // слоем картинки, и градиент туда идёт источником.
+                        self.gradient_raw = Some(v.to_string());
+                    }
                 } else if let Some(rest) = v.strip_prefix("filter(") {
                     // `filter(<image>, <filter-list>)` (filter-effects-1 §12):
                     // фильтр применяется К КАРТИНКЕ, не к элементу — цвета
@@ -9790,6 +9806,24 @@ fn gradient_as_raster(v: &str) -> bool {
 ///
 /// Позиции стопов сохраняются: без них полосы не расставить, а именно они
 /// задают, где цвет меняется.
+/// Угол направления градиента по единице (css-values-4 §7.1): `Some(Some(deg))`
+/// — законный угол, `Some(None)` — число с НЕЗНАКОМОЙ единицей (`90degree`,
+/// `0.25turns`): вся запись негодна; `None` — не размерность вовсе (цвет,
+/// `to right`), решают прочие ветки.
+fn gradient_angle(a: &str) -> Option<Option<f32>> {
+    let a = a.trim();
+    let cut = a.find(|c: char| c.is_ascii_alphabetic())?;
+    let (num, unit) = a.split_at(cut);
+    let n: f32 = num.parse().ok()?;
+    Some(match unit.to_ascii_lowercase().as_str() {
+        "deg" => Some(n),
+        "grad" => Some(n * 0.9),
+        "rad" => Some(n.to_degrees()),
+        "turn" => Some(n * 360.0),
+        _ => None,
+    })
+}
+
 pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
     // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
@@ -9885,6 +9919,15 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         a if a.ends_with("deg") => {
             idx = 1;
             a.trim_end_matches("deg").trim().parse().unwrap_or(180.0)
+        }
+        // Размерность с другой единицей: `grad`/`rad`/`turn` — законный угол,
+        // прочее (`90degree`, `100gradian`, `1.57radian`, `0.25turns`) делает
+        // запись негодной целиком (`angle-units-001`). Прежде такой довод
+        // падал в `_ => 180.0`, не читался цветом и молча пропускался —
+        // градиент из оставшихся стопов КРАСИЛ.
+        a if !radial && gradient_angle(a).is_some() => {
+            idx = 1;
+            gradient_angle(a).flatten()?
         }
         "to right" => {
             idx = 1;

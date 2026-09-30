@@ -231,6 +231,12 @@ impl Len {
         if lower.starts_with("calc(") && (lower.contains("anchor(") || lower.contains("anchor-size(")) {
             return parse_anchor_calc(s);
         }
+        // Имена единиц регистронезависимы (css-values-4 §6: «unit identifiers
+        // are ASCII case-insensitive»): `105.83333Q` — те же четверть-
+        // миллиметры, что `105.83333q` (`q-unit-case-insensitivity-*`), а
+        // `CALC(` — тот же `calc(`. Единственное чувствительное к регистру
+        // место — имя якоря — разобрано выше по исходной строке.
+        let s = lower.as_str();
         if let Some(inner) = s.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')) {
             return parse_calc(inner);
         }

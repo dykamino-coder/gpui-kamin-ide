@@ -3455,6 +3455,15 @@ thread_local! {
     static MASK_DEFS_FOR: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+thread_local! {
+    /// Размер окна документа в css-точках — для единиц `vw`/`vh` там, куда
+    /// `RenderOpts` не доходит (`grouped`: вершины `polygon()`). Ставится в
+    /// `element()` рядом с `resolve_viewport` — тем же значением, каким
+    /// разрешаются `width: 50vw` эталонов.
+    static PAINT_VIEWPORT: std::cell::Cell<(f32, f32)> =
+        const { std::cell::Cell::new((0.0, 0.0)) };
+}
+
 /// Содержимое определения маски по имени (`#id` без решётки).
 pub(crate) fn mask_def(id: &str) -> Option<String> {
     MASK_DEFS.with(|m| m.borrow().get(id).cloned())
@@ -3704,7 +3713,18 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // `order` в CSS работает ТОЛЬКО внутри гибкого контейнера и сетки; в
     // обычном потоке он не значит ничего. Раньше сортировались дети любого
     // родителя — блоки меняли порядок там, где браузер их не трогает.
-    let under_tf = inherited.transform_ancestor || inherited.transform.is_some();
+    // Барьер `fixed` — не только СВОЙ трансформ родителя, но и его
+    // `contain: layout|paint` (css-contain-2 §3.2 п.5, §3.3: «establishes …
+    // a fixed positioning containing block»). `transform_ancestor` родителя
+    // несёт лишь ЕГО предков (`inline::inherit`), поэтому прямой ребёнок
+    // обособленной коробки уходил в слой окна и садился в угол экрана
+    // (`contain-layout-007`, `contain-paint-010`), а внук — нет
+    // (`contain-*-containing-block-fixed-001` = 0.00). Список совпадает с
+    // `fixed_cb_box` — расхождение он прямо запрещает.
+    let under_tf = inherited.transform_ancestor
+        || inherited.transform.is_some()
+        || inherited.contain_layout == Some(true)
+        || inherited.contain_paint == Some(true);
     let ordered_context = matches!(
         inherited.display,
         Some(Display::Flex)
@@ -3852,9 +3872,27 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                         inherited.flex_dir,
                         Some(FlexDir::Col) | Some(FlexDir::ColReverse)
                     ) {
+                        // Абсолют с ОБОИМИ вертикальными отступами и авто-высотой
+                        // тоже определён: высота выходит из уравнения
+                        // css-position-3 §4.1 (`top + height + bottom` = блок
+                        // содержащего, а он у абсолюта всегда определён,
+                        // css-sizing-3 §4.1 «definite»). Без этого колонка
+                        // `position: absolute; top: 0; bottom: 0` считалась
+                        // неопределённой, и основа-доля ребёнка снималась
+                        // (`percentage-heights-002`: синяя полоса по содержимому,
+                        // красный фон контейнера под ней).
+                        let edge = |l: Option<Len>| l.is_some_and(|v| v != Len::Auto);
+                        let abs_both_insets = matches!(
+                            inherited.position,
+                            Some(crate::computed::Position::Absolute)
+                                | Some(crate::computed::Position::Fixed)
+                        ) && matches!(inherited.height, None | Some(Len::Auto))
+                            && edge(inherited.inset.top)
+                            && edge(inherited.inset.bottom);
                         let definite = matches!(inherited.height, Some(Len::Px(_)))
                             || (matches!(inherited.height, Some(Len::Pct(_)))
                                 && inherited.cb_height_def)
+                            || abs_both_insets
                             || inherited.stretched
                             || inherited.root_box;
                         e.style.flex_main_def = Some(definite);
@@ -3996,6 +4034,22 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                             _ => e.style.width = own.then_some(e.style.attr_width).flatten(),
                         }
                     }
+                    // Основа-ДОЛЯ у элемента колонки, чей контейнер не определён
+                    // по главной оси, — это `content` (css-flexbox-1 §7.2.3: «if
+                    // that containing block's size is indefinite, the used value
+                    // for flex-basis is content»; Blink `IsItemFlexBasisDefinite`).
+                    // Taffy не решает долю и падает на заданную высоту
+                    // (`flexbox.rs` `flex_basis.or(main_size)`): `flex: 0 0 0%;
+                    // height: 500px` давал 500 вместо содержимого 100
+                    // (`flex-basis-010`), а `flex: 1 1; height: 100px` делал
+                    // блок детей определённым, и `height: 100%` ребёнка
+                    // закрашивал красное (`percentage-heights-017/018`).
+                    if e.style.flex_main_def == Some(false)
+                        && matches!(e.style.flex_basis, Some(Len::Pct(_)))
+                    {
+                        e.style.flex_basis = None;
+                        e.style.height = own.then_some(e.style.attr_height).flatten();
+                    }
                     Node::Element(e)
                 }
                 other => other,
@@ -4121,6 +4175,41 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                         && matches!(
                             e.style.height,
                             Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Pct(_))
+                        )
+                        && e.style.align_self.is_none()
+                        && !e.inline
+                        && matches!(e.style.display, None | Some(Display::Block))
+                        && !matches!(
+                            e.style.position,
+                            Some(crate::computed::Position::Absolute)
+                                | Some(crate::computed::Position::Fixed)
+                        )
+                    {
+                        e.style.align_self = Some(Align::End);
+                    }
+                    // `vertical-lr`/`vertical-rl`/`sideways-rl` при
+                    // `direction: rtl`: строчная ось идёт СНИЗУ вверх —
+                    // inline-start содержащего блока у НИЖНЕГО края
+                    // (css-writing-modes-4 §6.4: line-right = низ, rtl
+                    // ставит start на line-right). Переполненная по строчной
+                    // оси коробка стоит у inline-start и вылезает к inline-end
+                    // (CSS 2.2 §10.3.3 в логических осях, §7.1) — то есть
+                    // низом к низу и ВВЕРХ. Без правила тело `height: 100vh`
+                    // с рамками под корнем `vertical-lr; direction: rtl`
+                    // лежало от верха, и красная верхняя рамка оставалась в
+                    // окне (`contain-{body,html}-t-o-*` — ломался и эталон).
+                    // `sideways-lr` исключён: у него line-left = низ, и при rtl
+                    // start — ВЕРХ (правило выше его не касается rtl).
+                    if inherited.vertical == Some(true)
+                        && inherited.rtl == Some(true)
+                        && !(inherited.sideways == Some(true) && inherited.vertical_rl != Some(true))
+                        && matches!(
+                            e.style.height,
+                            Some(Len::Px(_))
+                                | Some(Len::Em(_))
+                                | Some(Len::Pct(_))
+                                | Some(Len::Vh(_))
+                                | Some(Len::Vw(_))
                         )
                         && e.style.align_self.is_none()
                         && !e.inline
@@ -12703,7 +12792,36 @@ fn px_of2(l: &Option<Len>) -> Option<f32> {
 fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     let blur = c.filter.map_or(0.0, |f| f.blur);
     let blend = c.blend.unwrap_or(0);
-    let polygon = c.clip_polygon.as_deref().unwrap_or(&[]);
+    // Вершины полигона в `em`/`ex`/`ch`/`vw`/`vh` (css-shapes-1 `polygon()`:
+    // `<length-percentage>`) меряются ЗДЕСЬ, как у `clip: rect()` ниже: на
+    // разборе кегль и окно неизвестны, а отрисовка (`Grouped::paint`, `coord`)
+    // знает только точки и доли — остальное шло нулём, и полоса схлопывалась
+    // в линию (clip-path-polygon-013: 4 полосы из 6, 30400/480000 = 6.33).
+    // Смесь `calc()` по-прежнему отбрасывается ещё на разборе.
+    let poly_font = match c.font_size {
+        Some(Len::Px(v)) => v,
+        _ => 16.0,
+    };
+    let poly_family = c.font_family.clone().unwrap_or_default();
+    let poly_vp = PAINT_VIEWPORT.with(|v| v.get());
+    let poly_unit = |l: Len| -> Len {
+        match l {
+            Len::Px(_) | Len::Pct(_) => l,
+            Len::Vw(k) => Len::Px(k * poly_vp.0),
+            Len::Vh(k) => Len::Px(k * poly_vp.1),
+            other => crate::metrics::fallback_len_px(other, &poly_family, poly_font)
+                .map(Len::Px)
+                .unwrap_or(other),
+        }
+    };
+    let polygon_px: Vec<(Len, Len)> = c
+        .clip_polygon
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .map(|&(x, y)| (poly_unit(x), poly_unit(y)))
+        .collect();
+    let polygon = polygon_px.as_slice();
     // Маска-изображение (css-masking §7.1): источник уходит строкой, его
     // альфа гасит готовый буфер группы при композите; резолв — при
     // отрисовке, когда известен размер коробки. Базовая форма `clip-path`
@@ -12742,10 +12860,27 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         let [et, er, eb, el] = c.border_shape_ext();
         format!("bordershape:{ot} {or_} {ob} {ol} {stroke} {et} {er} {eb} {el}:{shape}")
     });
+    // Шрифтовые единицы в командах `shape()` — СВОИМ кеглем и семейством
+    // (css-values-4 §6.1): `shape_to_path` на отрисовке знает только запасной
+    // кегль 16 и системный шрифт, и `2ch`/`10em` при `font: 5px Ahem`
+    // выходили ≈17.8/160 вместо 10/50 (clip-path-shape-002-units 0.81).
+    // Корневой кегль — тот же, что читает `Len::parse` для `rem`.
+    let clip_shape = c.clip_shape.clone().map(|s| {
+        if !s.starts_with("shapedef:") {
+            return s;
+        }
+        let px = match c.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let family = c.font_family.clone().unwrap_or_default();
+        let (ch, ex) = crate::metrics::ch_ex_px(&family, px);
+        crate::computed::font_lengths_to_px(&s, px, crate::value::root_font_px(), ex, ch)
+    });
     let mask = c
         .mask_image
         .clone()
-        .or_else(|| c.clip_shape.clone())
+        .or(clip_shape)
         .or(bshape)
         .or(rrect)
         .map(|m| resolve_mask_refs(&m));
@@ -13557,6 +13692,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     merged.first_line = e.first_line.as_ref().map(&resolved);
     // Единицы окна разрешаются здесь: размер окна знает только сборщик.
     merged.resolve_viewport(opts.viewport);
+    PAINT_VIEWPORT.with(|v| v.set(opts.viewport));
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::forms::element(e, &merged, opts) {
