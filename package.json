@@ -14,8 +14,9 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:release": "node --test scripts/release/*.test.mjs",
+    "test:ci": "node --test scripts/ci/*.test.mjs",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run test:release",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run test:release && npm run test:ci",
     "notes:check": "node scripts/release/check-notes.mjs",
     "build:host": "vite build --config vite.kamin-host.standalone.config.ts",
     "build:payload": "node scripts/build-runtime-payload.mjs"

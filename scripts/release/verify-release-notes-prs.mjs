@@ -3,6 +3,7 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { primaryTask } from "../ci/runtime-acceptance.mjs";
 
 const run = promisify(execFile);
 
@@ -20,6 +21,29 @@ export function validateReleaseNotePull(pull, paths) {
     throw new Error(`PR #${pull.number} only registered or documented work`);
   }
   return pull.merge_commit_sha;
+}
+
+// A release may ship a bounded partial fix while the parent BR still needs a
+// later change. The shared register must nevertheless acknowledge this exact
+// merged PR and describe what remains, rather than silently re-queueing it.
+export function validateRuntimeCloseout(pull, register) {
+  const taskId = primaryTask(pull.body ?? "", pull.title ?? "");
+  if (!taskId?.startsWith("BR-")) return;
+
+  const rows = new Map([...register.matchAll(
+    /^\|\s*\[(BR-\d+)\]\([^)]*\)\s*\|([^\n]+)$/gm,
+  )].map((match) => [match[1], {
+    line: match[0],
+  }]));
+  const row = rows.get(taskId);
+  if (!row) {
+    throw new Error(`PR #${pull.number} cites ${taskId}, but it has no runtime register row`);
+  }
+  if (!new RegExp(`(^|\\D)#${pull.number}\\b`).test(row.line)) {
+    throw new Error(
+      `PR #${pull.number} implements ${taskId}, but its runtime register row does not acknowledge this merge; reconcile progress and the next artifact in a separate coordination PR before release`,
+    );
+  }
 }
 
 function valueAfter(flag) {
@@ -40,6 +64,7 @@ if (process.argv[1]?.endsWith("/verify-release-notes-prs.mjs")) {
     const numbers = (await readFile(valueAfter("--pulls-file"), "utf8"))
       .trim().split(/\r?\n/).filter(Boolean);
     if (numbers.length === 0) throw new Error("Release notes cite no change PRs");
+    const register = await readFile("extensions/claude-bridge/RUNTIME_EXECUTION.md", "utf8");
     for (const number of numbers) {
       if (!/^[1-9]\d*$/.test(number)) throw new Error(`Invalid PR number: ${number}`);
       const { stdout: pullJson } = await run("gh", [
@@ -52,6 +77,7 @@ if (process.argv[1]?.endsWith("/verify-release-notes-prs.mjs")) {
       const pull = JSON.parse(pullJson);
       const mergeSha = validateReleaseNotePull(pull,
         pathList.trim().split(/\r?\n/).filter(Boolean));
+      validateRuntimeCloseout(pull, register);
       await run("git", ["merge-base", "--is-ancestor", mergeSha, head]);
       if (previousTag) {
         try {
