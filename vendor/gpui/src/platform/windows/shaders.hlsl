@@ -114,14 +114,24 @@ float4 distance_from_clip_rect_transformed(float2 unit_vertex, Bounds bounds, Bo
     return distance_from_clip_rect_impl(transformed, clip_bounds);
 }
 
+// KaminIDE patch: кривые sRGB шли НАОБОРОТ (показатели 2.2 и 1/2.2 стояли
+// местами), и OKLab-градиент выходил вдвое темнее: середина red→lime давала
+// (93,33,0) вместо (208,168,0). Кривая — точная, css-color-4 §10.2; вход
+// зажимается, иначе `pow` от отрицательного даёт NaN вне охвата.
 // Convert linear RGB to sRGB
 float3 linear_to_srgb(float3 color) {
-    return pow(color, float3(2.2, 2.2, 2.2));
+    color = saturate(color);
+    float3 lo = color * 12.92;
+    float3 hi = 1.055 * pow(color, float3(1.0 / 2.4, 1.0 / 2.4, 1.0 / 2.4)) - 0.055;
+    return lerp(hi, lo, step(color, float3(0.0031308, 0.0031308, 0.0031308)));
 }
 
 // Convert sRGB to linear RGB
 float3 srgb_to_linear(float3 color) {
-    return pow(color, float3(1.0 / 2.2, 1.0 / 2.2, 1.0 / 2.2));
+    color = saturate(color);
+    float3 lo = color / 12.92;
+    float3 hi = pow((color + 0.055) / 1.055, float3(2.4, 2.4, 2.4));
+    return lerp(hi, lo, step(color, float3(0.04045, 0.04045, 0.04045)));
 }
 
 /// Hsla to linear RGBA conversion.

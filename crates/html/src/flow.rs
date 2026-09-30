@@ -700,6 +700,18 @@ impl ColumnStack {
         // больше колонок, чем `column-count`.
         let copies = match rows {
             Some(_) => children.iter().map(|c| c.frags.len() + 1).max().unwrap_or(1),
+            // Переполняющие колонки (css-multicol-1 §8.2) при `column-fill: auto`
+            // с заданной высотой: копий столько, сколько построил `render.rs`
+            // (лишние он строит только ребёнку с абсолютным потомком). Без
+            // такого ребёнка у всех детей ровно `count` копий, и значение
+            // тождественно прежнему. Балансировку это не трогает: без
+            // `fixed_height` ветка ниже, как прежде.
+            None if fixed_height.is_some() => children
+                .iter()
+                .map(|c| c.frags.len() + 1)
+                .max()
+                .unwrap_or(1)
+                .max(count.max(1)),
             None => count.max(1),
         };
         ColumnStack {
@@ -1147,7 +1159,18 @@ impl ColumnStack {
     fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Vec<Frag>, Vec<(usize, f32)>) {
         let count = self.count;
         let Some(rows) = self.rows else {
-            let (h, plan) = self.balance_line(kids, count, None);
+            // Предел копий поднимает ТОЛЬКО `column-fill: auto` с заданной
+            // высотой: там `balance_line` первой строкой уходит в
+            // `fill_avoiding` и высоту не подбирает. У балансировки предел
+            // остаётся `count` — её условие выхода `cols <= self.count`
+            // (Blink `ResolveColumnAutoBlockSize`) от числа копий зависеть не
+            // должно.
+            let limit = if self.fixed_height.is_some() {
+                self.copies.max(count)
+            } else {
+                count
+            };
+            let (h, plan) = self.balance_line(kids, limit, None);
             return (h, vec![(0.0, h)], plan, Vec::new());
         };
         let limit = self.copies;

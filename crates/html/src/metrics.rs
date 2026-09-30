@@ -59,6 +59,13 @@ pub fn install_vprobe(probe: impl Fn(&str, f32) -> (f32, f32, f32) + 'static) {
 /// Метрики линейны по кеглю, поэтому замер идёт один раз на семейство
 /// (`PROBE_SIZE`), а дальше — умножение.
 pub fn vmetrics_px(family: &str, size_px: f32) -> (f32, f32, f32) {
+    // Имя из `@font-face` — придумка страницы: `font-family: CSSTest` при
+    // файле, чьё семейство `CSSTest Basic`. Щуп по придуманному имени
+    // получал ПОДСТАНОВОЧНЫЙ шрифт, и полулидинг среза расходился со
+    // строкой, которую рисует настоящее лицо (`text-box-trim-start-002`,
+    // `-end-003`). `fractions()` разворачивает имя так же.
+    let real = crate::fonts::alias(family);
+    let family = real.as_deref().unwrap_or(family);
     let key = family.to_ascii_lowercase();
     if let Some(hit) = VCACHE.with(|c| c.borrow().get(&key).copied()) {
         return (hit.0 * size_px, hit.1 * size_px, hit.2 * size_px);

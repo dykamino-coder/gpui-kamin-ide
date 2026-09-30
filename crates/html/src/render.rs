@@ -744,6 +744,17 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // Разные цвета сторон рамки: у GPUI цвет рамки один на элемент, поэтому
     // несовпадающие стороны дорисовываются полосами поверх.
     let sides: Vec<_> = c.border_colors.iter().flatten().collect();
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (30.09): не класть полосу, когда все ЗАДАННЫЕ
+    // стороны одного цвета (квад и так красит их, `apply::apply_paint`
+    // `!mixed`), — ради удвоенной альфы односторонней полупрозрачной рамки
+    // (`grid-gap-decorations-067…082`). Свод v210: +7/−31 — 24 пары
+    // `border-image-*` (полосы легли поверх картинки; с прежним правилом для
+    // картинки срез щелей/фонов/line-clamp 1329 пар дал +7/−7). Сами 067…082
+    // почти не сдвинулись (075/076 0.51 → 0.48), зато непрозрачные
+    // односторонние `border-bottom` эталонов `019/048-051` ушли 0.11 → 0.61,
+    // пунктирные `016` 0.35 → 1.01: квад рисует одностороннюю рамку не
+    // точка в точку как полоса. Выигрыш `007`, `fragmentation-020/021/
+    // 025/026` — от того же снятия полосы; разбирать по снимкам обеих сторон.
     let uniform = sides.len() == 4 && sides.iter().all(|s| *s == sides[0]);
     // При `border-shape` рамка — один слой цветом relevant side (спека:
     // stroke-from-border), прямоугольные полосы сторон ей не нужны.
@@ -1058,6 +1069,28 @@ fn visible_overflow(c: &Computed) -> bool {
         matches!(o, None | Some(crate::computed::Overflow::Visible))
     };
     ok(c.overflow_x) && ok(c.overflow_y)
+}
+/// Несёт ли поддерево АБСОЛЮТНОГО потомка, чей низ `shape_full` сворачивает
+/// в меру коробки (дотяг `oof_reach`). Только такому ребёнку стопки колонок
+/// переполняющие колонки нужны ради внепоточного (css-position-3
+/// §abspos-breaking: «The box may subsequently be broken over several
+/// fragmentation containers»; Blink рождает их от внепоточного —
+/// `column_layout_algorithm.cc` `num_new_columns`). Спуск не идёт внутрь
+/// коробки, обрезающей переполнение (абсолют за ней в колонках не виден:
+/// `out-of-flow-in-multicolumn-107`, `overflow: clip` над абсолютом
+/// 100000px), и внутрь вложенного многоколоночника (у его абсолютов свои
+/// колонки). Глубина — та же, что у меры стопки (`shape_full(c, 4, ..)`).
+fn carries_abspos(c: &Element, depth: u8) -> bool {
+    depth > 0
+        && c.children.iter().any(|n| match n {
+            Node::Element(k) => {
+                k.style.position == Some(crate::computed::Position::Absolute)
+                    || (visible_overflow(&k.style)
+                        && !multicol_container(&k.style)
+                        && carries_abspos(k, depth - 1))
+            }
+            _ => false,
+        })
 }
 fn block_like_float(c: &Computed) -> bool {
     c.float.unwrap_or(0) != 0 && matches!(c.width, Some(Len::Pct(p)) if p >= 0.9999)
@@ -13426,11 +13459,29 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             Some(Len::Em(k)) => Some(k * em_base),
             _ => None,
         };
-        let h = px_of(e.style.height);
-        let min_h = px_of(e.style.min_height);
-        let max_h = px_of(e.style.max_height);
-        // Предел, поставленный СВОЕЙ высотой, уже содержимый (box-sizing по
-        // умолчанию content-box) — вычитать из него нечего. Вычет нужен
+        // `box-sizing: border-box`: заданные высота и её пределы — это
+        // РАМОЧНАЯ коробка, а предел строк — размер СОДЕРЖИМОГО (§7.3.1
+        // «inner size»; Blink переводит в content-box в
+        // `SetOrthogonalFallbackInlineSize`). Атомный путь это уже делает
+        // (`edges` при `border_box` выше), блочный — нет: эталоны
+        // `sizing-orthog-vlr-in-htb-007`, `vrl-in-htb-007/010`
+        // (`box-sizing: border-box; height: 400px`, рамка 3) переносили на
+        // 400, тест после вычета рамок в `aaa7d8d` — на 394.
+        let own_edges = if e.style.border_box == Some(true) {
+            let b = e.style.borders();
+            px_of(b.top).unwrap_or(0.0)
+                + px_of(b.bottom).unwrap_or(0.0)
+                + px_of(e.style.padding.top).unwrap_or(0.0)
+                + px_of(e.style.padding.bottom).unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        let content = |v: f32| (v - own_edges).max(0.0);
+        let h = px_of(e.style.height).map(content);
+        let min_h = px_of(e.style.min_height).map(content);
+        let max_h = px_of(e.style.max_height).map(content);
+        // Предел, поставленный СВОЕЙ высотой, уже содержимый (content-box
+        // по умолчанию, border-box переведён выше) — вычитать из него нечего. Вычет нужен
         // только УНАСЛЕДОВАННОМУ пределу, см. хунк ниже.
         let mut own_limit = false;
         if h.is_some() || min_h.is_some() || max_h.is_some() {
@@ -14449,12 +14500,47 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // сегментном пути (см. `unified` выше).
                                 let _nested = crate::flow::StackScope::enter();
                                 let span = copy.style.column_span == Some(true) && !copy.inline;
+                                // Переполняющие колонки (css-multicol-1 §8.2: «A multicol
+                                // container can have more columns than it has room for due
+                                // to: a declaration that constrains the column height … In
+                                // this case, additional column boxes are created in the
+                                // inline direction») — ТОЛЬКО ребёнку, который несёт
+                                // абсолютного потомка: его содержащий блок сплошной, и
+                                // абсолют режется по колонкам сам (css-position-3
+                                // §abspos-breaking), а копий у ребёнка было ровно
+                                // `column-count` — хвост уходил «за кадр» (`flow.rs`
+                                // `fill_at`, `copy + 1 >= limit`;
+                                // `out-of-flow-in-multicolumn-007`: CB 300 при колонке 100,
+                                // копий 2 из 3). ★ Прежний патч без гейта «несёт абсолют»
+                                // (scout-fragoof-2026-09d §7) замерен +7/−14: все потери —
+                                // дети БЕЗ абсолютов (вложенные многоколоночники, флекс,
+                                // `multicol-fill-balance-*`), у которых мера `shape_full`
+                                // не совпадает с рисунком. Гейт `plain_block_tree` — тот же,
+                                // что у параллельного потока выше. Прочим детям — прежнее
+                                // число копий, и стопка без такого ребёнка байт-в-байт
+                                // прежняя (`ColumnStack::new` берёт наибольшее число копий).
+                                let kid_copies = match fixed {
+                                    Some(per)
+                                        if rows.is_none()
+                                            && !span
+                                            && per > 0.0
+                                            && visible_overflow(&e.style)
+                                            && visible_overflow(&copy.style)
+                                            && plain_block_tree(&copy, 4)
+                                            && carries_abspos(&copy, 4) =>
+                                    {
+                                        ((h.max(over) / per).ceil() as usize + 1)
+                                            .min(16)
+                                            .max(copies)
+                                    }
+                                    _ => copies,
+                                };
                                 crate::flow::StackChild {
                                     el: build(true),
                                     frags: if span {
                                         Vec::new()
                                     } else {
-                                        (1..copies).map(|_| build(false)).collect()
+                                        (1..kid_copies).map(|_| build(false)).collect()
                                     },
                                     monolith,
                                     cuts,

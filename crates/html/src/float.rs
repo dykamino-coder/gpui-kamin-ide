@@ -93,25 +93,42 @@ fn measure(
     // 1118 -> 1118, ноль сдвигов в обе стороны. Прошлый замер этой же правки
     // показывал −35, но те потери принадлежали чужому гейту `align-self`
     // (снят в 82dfc0f), а не порогу.
+    // Ведущий пробельный прогон — ВНЕ переносчика. `LineWrapper::wrap_line`
+    // (vendor/gpui `line_wrapper.rs:201-217`) редакторский: знаки до первого
+    // непробельного он запоминает ОТСТУПОМ и прибавляет `отступ × ширина
+    // пробела` к КАЖДОЙ перенесённой строке. Текст колонки приходит сырым
+    // (`gather_text`): «\n  XXXXX …» давал отступ 3, в Ahem 20px строка после
+    // первой теряла 60 точек из 100, слово рвалось по буквам, и разрез уходил
+    // на 25-й байт вместо конца текста (`shape-outside-path-000-ref`: сбоку
+    // 19 «X» из 50, остальное под флоатом). В CSS такого отступа нет: пробелы
+    // в начале строки удаляются (CSS 2.1 §16.6.1, css-text-3 §4.1.2), и
+    // `lines.rs` рисует колонку без него. Смещения переносчика возвращаются в
+    // сырой текст прибавкой длины прогона — `split_nodes` режет именно его.
+    let ws = |c: char| matches!(c, ' ' | '\t' | '\n' | '\r');
+    let lead = text.len() - text.trim_start_matches(ws).len();
+    let body = &text[lead..];
     if narrow <= 0.0 {
         let below = wrapper
-            .wrap_line(&[LineFragment::text(text)], width)
+            .wrap_line(&[LineFragment::text(body)], width)
             .count()
             + 1;
         return (0, px(float_size.1 + below as f32 * line_height));
     }
     let beside_lines = (float_size.1 / line_height).ceil().max(1.0) as usize;
     let at = wrapper
-        .wrap_line(&[LineFragment::text(text)], px(narrow))
+        .wrap_line(&[LineFragment::text(body)], px(narrow))
         .nth(beside_lines - 1)
-        .map(|b| b.ix)
+        .map(|b| lead + b.ix)
         // Текст кончился раньше, чем плавающий блок: резать нечего.
         .unwrap_or(text.len());
     let below_lines = if at >= text.len() {
         0
     } else {
         wrapper
-            .wrap_line(&[LineFragment::text(&text[at..])], width)
+            .wrap_line(
+                &[LineFragment::text(text[at..].trim_start_matches(ws))],
+                width,
+            )
             .count()
             + 1
     };
