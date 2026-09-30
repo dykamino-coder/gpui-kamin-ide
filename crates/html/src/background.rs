@@ -1921,10 +1921,16 @@ fn angle_fraction(token: &str) -> Option<f32> {
 /// Расставить позиции стопов по правилам css-images: крайние без позиции — на
 /// края, промежуточные — поровну между соседями с позициями, и позиции не
 /// убывают.
-fn place_stops(raw: Vec<(crate::value::Color, Option<f32>)>) -> Vec<(crate::value::Color, f32)> {
+pub(crate) fn place_stops(
+    raw: Vec<(crate::value::Color, Option<f32>)>,
+) -> Vec<(crate::value::Color, f32)> {
     let last = raw.len() - 1;
     let mut out: Vec<(crate::value::Color, f32)> = Vec::with_capacity(raw.len());
-    let mut floor = 0.0f32;
+    // Зажим снизу — только позицией ПРЕДШЕСТВЕННИКА (css-images-3 §3.5.3):
+    // у первого стопа его нет, и отрицательная позиция законна. Нулевой
+    // пол сдвигал `calc(-65535000px)` в ноль, и вся коробка красилась
+    // первым цветом (`gradient-eval-*`).
+    let mut floor = f32::NEG_INFINITY;
     for (i, (colour, pos)) in raw.iter().enumerate() {
         let at = match pos {
             Some(v) => v.max(floor),

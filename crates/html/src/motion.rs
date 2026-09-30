@@ -345,7 +345,7 @@ fn offset_transform_css(c: &Computed, cb: Option<&Cb>) -> Option<String> {
         // передаём любое — `rrect_of` берёт из него только размер и радиусы.
         crate::background::motion_shape_d("border-box", rb.2, rb.3, g.radius)?
     } else {
-        equivalent_path(&func, rb.2, rb.3, g.radius)?
+        equivalent_path(&shape_start(&func, c, g, rb), rb.2, rb.3, g.radius)?
     };
     // Путь строится в системе ОПОРНОЙ коробки, а `transform` живёт в системе
     // самой коробки: сдвигаем на разницу их начал.
@@ -393,11 +393,40 @@ fn split_coord_box(raw: &str) -> (String, usize) {
 /// точки и против часовой — точка на 25 % оказалась бы в зеркальном месте.
 /// Прямоугольники и многоугольник отдаёт `motion_shape_d`: `rrect_d` уже
 /// начинает с левого конца верхней стороны и идёт по часовой.
+/// Пропущенный `at <position>` у круга и эллипса: «if they accept an `at
+/// <position>` argument but that argument is omitted, and the element defines
+/// an offset starting position via 'offset-position', it uses the specified
+/// offset starting position for that argument» (motion-1 §offset-path).
+/// Начало даёт `start_of` в системе содержащего блока — в запись оно уходит
+/// в системе опорной коробки (`offset-path-shape-circle-002`, `-ellipse-002`).
+fn shape_start(func: &str, c: &Computed, g: &Cb, rb: (f32, f32, f32, f32)) -> String {
+    let pos = c.offset_position.as_deref().map(str::trim).unwrap_or("normal");
+    let round = func.starts_with("circle(") || func.starts_with("ellipse(");
+    let Some(open) = func.find('(') else {
+        return func.to_string();
+    };
+    let body = func[open + 1..].trim_end_matches(')').trim();
+    if !round || pos == "normal" || body.split_whitespace().any(|t| t == "at") {
+        return func.to_string();
+    }
+    let s = start_of(c, Some(g), Some(rb));
+    let (x, y) = (s.0 - rb.0, s.1 - rb.1);
+    let head = &func[..open + 1];
+    if body.is_empty() {
+        format!("{head}at {x}px {y}px)")
+    } else {
+        format!("{head}{body} at {x}px {y}px)")
+    }
+}
+
 fn equivalent_path(raw: &str, w: f32, h: f32, radius: [(f32, f32); 4]) -> Option<String> {
     if raw.starts_with("circle(") || raw.starts_with("ellipse(") {
         let (cx, cy, rx, ry) = crate::background::shape_params(raw, w, h, 1.0)?;
+        // Нулевой радиус — путь из одной точки, центра (Blink строит эллипс
+        // нулевого радиуса), а не отказ от трансформа: `closest-side` из
+        // угла коробки даёт ровно ноль (`offset-path-shape-circle-002`).
         if rx <= 0.0 || ry <= 0.0 {
-            return None;
+            return Some(format!("M{cx} {cy}"));
         }
         return Some(format!(
             "M{} {} A{rx} {ry} 0 0 1 {} {} A{rx} {ry} 0 0 1 {} {} A{rx} {ry} 0 0 1 {} {} A{rx} {ry} 0 0 1 {} {} Z",

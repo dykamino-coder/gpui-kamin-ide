@@ -1790,6 +1790,14 @@ pub struct Computed {
     /// §transform-box): длины `transform-origin` отсчитываются от рамки
     /// фигуры, а не от вьюпорта.
     pub transform_box_fill: Option<bool>,
+    /// Опорная коробка `transform-box` целиком (css-transforms-1
+    /// §transform-box) — для SVG-элементов без CSS-коробки: 0 — `view-box`,
+    /// 1 — `fill-box` (и `content-box`: «the used value for content-box is
+    /// fill-box»), 2 — `stroke-box` (и `border-box`). None — не задано.
+    pub transform_box: Option<u8>,
+    /// `vector-effect: non-scaling-stroke` (SVG 2 §vector-effect): толщина
+    /// обводки задана в точках экрана.
+    pub svg_non_scaling: Option<bool>,
     /// Ячейка матрицы перспективы (см. `PerspectiveFrame`); один и тот же
     /// `Rc` у `e.style` родителя, его `merged` и `inherited` детей.
     pub perspective_frame: Option<PerspectiveFrame>,
@@ -3360,7 +3368,13 @@ impl Computed {
                 self.justify_content_safe = is_safe(v);
             }
             "gap" => {
-                let parts: Vec<Option<Len>> = v.split_whitespace().map(Len::parse).collect();
+                // Куски — по пробелам ВНЕ скобок: `calc(15% + 7px) calc(10px +
+                // 5%)` рвался на шесть кусков, и объявление молча отбрасывалось
+                // (`grid-gutters-011/012`). Смесь долей с точками доживает
+                // индексом (`parse_mixed`): зазор разрешает её от своей стороны
+                // контент-бокса в `apply.rs` (css-gaps-1 §gap-percent).
+                let tokens = split_outside_parens(v);
+                let parts: Vec<Option<Len>> = tokens.iter().map(|t| Len::parse_mixed(t)).collect();
                 self.gap = match parts.len() {
                     1 => Some((parts[0], parts[0])),
                     2 => Some((parts[0], parts[1])),
@@ -3372,8 +3386,10 @@ impl Computed {
                 // `column_flow`), и `gap: 20px 0` прежде оставлял кегль —
                 // `column-wrap-no-constraints-001`, красная полоса между
                 // колонками.
+                // Многоколоночнику — прежний разбор без смеси: его зазор долю
+                // с точками не читает.
                 if parts.len() == 1 || parts.len() == 2 {
-                    self.column_gap = parts[parts.len() - 1];
+                    self.column_gap = Len::parse(&tokens[tokens.len() - 1]);
                 }
             }
             "row-gap" => self.gap = Some((Len::parse(v), self.gap.and_then(|g| g.1))),
@@ -4157,6 +4173,22 @@ impl Computed {
                 let bottom = layers.last().copied().unwrap_or(v);
                 if top.starts_with("linear-gradient(") || top.starts_with("radial-gradient(") {
                     self.gradient = parse_gradient(top);
+                    // Пространство смешения, которого GPU-путь не выражает
+                    // (всё, кроме гамма-sRGB и OKLab — css-color-4 §12.1),
+                    // рисуется растровой плиткой, как у длинного
+                    // `background-image`: там сырая запись ставится всегда, а
+                    // сокращение её не заводило, и `in srgb-linear`/`in lch`
+                    // смешивались в гамма-sRGB. Радиальный растеризатор пока
+                    // рисует осью (`rasterize_gradient` — `Mode::Axis`), его
+                    // оставляем на GPU. Сокращение сбрасывает картинку
+                    // (css-backgrounds-3 §2.1), поэтому иначе — `None`.
+                    self.gradient_raw = self
+                        .gradient
+                        .as_ref()
+                        .filter(|g| {
+                            !g.radial && !matches!(g.space, GradSpace::Srgb | GradSpace::Oklab)
+                        })
+                        .map(|_| top.to_string());
                     // Цвет ищется в НИЖНЕМ слое (он один его допускает);
                     // при единственном слое нижний == верхний, и цвет стоит
                     // там же, рядом с градиентом: `background: linear-… green`.
@@ -7079,7 +7111,16 @@ impl Computed {
             // (`view-box`) длины в `transform-origin` считаются от вьюпорта.
             "transform-box" => {
                 self.transform_box_fill = Some(v.trim() == "fill-box");
+                self.transform_box = match v.trim() {
+                    "view-box" => Some(0),
+                    "fill-box" | "content-box" => Some(1),
+                    "stroke-box" | "border-box" => Some(2),
+                    _ => None,
+                };
             }
+            // SVG 2 §vector-effect: `non-scaling-stroke` — толщина обводки в
+            // точках экрана; нужна опорной коробке и толщине в `svg.rs`.
+            "vector-effect" => self.svg_non_scaling = Some(v.trim() == "non-scaling-stroke"),
 
             // --- Обтекание и направление письма --------------------------------
             // `initial-letter: normal | <size> [<sink> | drop | raise]`
@@ -8109,6 +8150,32 @@ impl Computed {
     pub fn radius_masked(&self) -> bool {
         if self.radius_ell.is_some() || self.corner_shaped() {
             return true;
+        }
+        // `contain: paint` со скруглением: обрезка содержимого обязана учесть
+        // углы (css-contain-2 §3.3: «clipped to the overflow clip edge … taking
+        // corner clipping into account»). Маска gpui — только прямоугольник
+        // (`ContentMask`), и `overflow_hidden` оставлял переполнение в углах
+        // (`contain-paint-001`: красная полоса за кругом). Маска группы по
+        // `rrect` режет и фон, и детей; без рамки padding-box = border-box, и
+        // край маски — ровно край обрезки. Тень и контур лежат ВНЕ коробки —
+        // маска их съела бы, такие коробки идут прежним путём.
+        if self.contain_paint == Some(true) && self.shadows.is_empty() && self.outline.is_none() {
+            let rounded = |l: Option<Len>| {
+                matches!(l, Some(Len::Px(v)) if v > 0.0) || matches!(l, Some(Len::Pct(p)) if p > 0.0)
+            };
+            let bare = |l: Option<Len>| !matches!(l, Some(Len::Px(v)) if v > 0.0)
+                && !matches!(l, Some(Len::Pct(_)) | Some(Len::Em(_)));
+            let b = self.borders();
+            if [self.radius.tl, self.radius.tr, self.radius.br, self.radius.bl]
+                .into_iter()
+                .any(rounded)
+                && bare(b.top)
+                && bare(b.right)
+                && bare(b.bottom)
+                && bare(b.left)
+            {
+                return true;
+            }
         }
         let side = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,

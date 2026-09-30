@@ -153,6 +153,19 @@ pub fn collect(
                     });
                     continue;
                 }
+                // `display: contents` — коробки нет (css-display-3 §2.5 «does
+                // not generate any boxes, but its children … still generate
+                // boxes and text runs as normal»): ни рамки, ни полей, ни
+                // отступов, ни знаков направления — детям уходят только
+                // текстовые свойства наследованием. Блочный путь это знает
+                // (`render.rs:4358`), а строчный сбор вёл такой элемент обычным
+                // `<span>`, и рамка рисовалась прогоном
+                // (`display-contents-inline-001` «красное видно»).
+                if e.style.display == Some(crate::computed::Display::Contents) {
+                    let merged = inherit(inherited, &e.style);
+                    out.extend(collect(&e.children, &merged, atom));
+                    continue;
+                }
                 if let Some(piece) = atom(e) {
                     out.push(piece);
                     continue;
@@ -520,6 +533,12 @@ pub fn style_first_line(pieces: Vec<Piece>, at: usize, style: &Computed) -> Vec<
                     c.color = style.color.or(base.color);
                     c.font_weight = style.font_weight.or(base.font_weight);
                     c.italic = style.italic.or(base.italic);
+                    // Возможности шрифта первой строки, в том числе запрет
+                    // подмены начертания (`nsyw`/`nsys`, css-fonts-4 §6.5):
+                    // без них полужирный и курсив `::first-line` синтезировались
+                    // вопреки `font-synthesis-*: none`. Дописываются ПОСЛЕ
+                    // своих: при повторе тега побеждает первая строка.
+                    c.font_features.extend(style.font_features.iter().cloned());
                     c.font_family = style.font_family.clone().or(base.font_family.clone());
                     // Коробочная часть первой строки: интерлиньяж и подложка
                     // (css-pseudo-4 §4.1; first-line-line-height-001/002).

@@ -714,7 +714,14 @@ impl AnchorPlan {
             .map(|a| physical_area(a, inherited, own));
         let anchor_center = own.align_self == Some(Align::AnchorCenter)
             || own.justify_self == Some(Align::AnchorCenter);
-        let refs_default = area.is_some()
+        // §position-visibility, anchor-valid: «If the box references the
+        // default anchor box (e.g. using 'position-area', 'anchor()' or
+        // 'anchor-size()' functions, or 'anchor-center'), but the default
+        // anchor box cannot be resolved…» — ссылка это САМА запись
+        // `position-area`. `area` выше уже отфильтрована якорем по умолчанию,
+        // и коробка без якоря (`position-visibility-anchor-valid`, #target2:
+        // `position-area: block-end`, имени нет) не пряталась никогда.
+        let refs_default = own.position_area.is_some()
             || anchor_center
             || sides.iter().flatten().any(|s| s.f.name.is_none());
         if sides.iter().all(Option::is_none)

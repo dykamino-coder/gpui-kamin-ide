@@ -1071,6 +1071,15 @@ impl ColumnStack {
         None
     }
 
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (30.09): балансировка снимает нарушение
+    // `break-*: avoid` РОСТОМ колонок (Blink `has_violating_break` →
+    // `minimal_space_shortage`, `scout-multicol-rest-2026-09-30.md` P5).
+    // Свод v215 и проба: +2 (`balance-break-avoidance-001/002`), −4 —
+    // `flex-container-fragmentation-003/004` и `grid-lanes-container-
+    // fragmentation-003/004` (0.27 → «красное видно»): при заданной высоте
+    // 100 и `break-before: avoid` колонки вырастали за коробку. Рост должен
+    // упираться в `column-height`/высоту коробки — без этого гейта не
+    // возвращать.
     /// Ближайшая ВЫШЕ разрешённая граница для отступа от нарушения на `bad`:
     /// наибольшее `j` из `1..bad`, где ни `break-before` коробки `j`, ни
     /// `break-after` коробки `j-1` разрыв не запрещают. `None` — разрешённых

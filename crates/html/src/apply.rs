@@ -716,11 +716,40 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         } else {
             (row, col)
         };
-        if let Some(r) = down {
-            d = d.gap_y(len_to_gpui(r));
+        // `calc(доля + точки)` в зазоре: доля — от своей стороны КОНТЕНТ-бокса
+        // (css-gaps-1 §gap-percent: «'gap' always resolves percentages against
+        // the corresponding size of the content box»). gpui знает «точки ИЛИ
+        // доля», поэтому смесь разрешается здесь, когда сторона в точках
+        // (`grid-gutters-011`: `calc(15% + 7px)` от 220 = 40). Сторона не
+        // известна — зазор не ставится, как и прежде, когда запись
+        // отбрасывалась целиком (`gap-010-ltr` держит ровно это).
+        let px_or_0 = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let edges = c.borders();
+        let content = |size: Option<Len>, sides: [Option<Len>; 4]| match size {
+            Some(Len::Px(v)) if c.border_box == Some(true) => {
+                Some((v - sides.iter().map(|s| px_or_0(*s)).sum::<f32>()).max(0.0))
+            }
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        };
+        let basis_y = content(c.height, [c.padding.top, c.padding.bottom, edges.top, edges.bottom]);
+        let basis_x = content(c.width, [c.padding.left, c.padding.right, edges.left, edges.right]);
+        let gap_len = |l: Len, basis: Option<f32>| -> Option<gpui::DefiniteLength> {
+            if let Len::Calc(i) = l
+                && let Some((k, add)) = crate::value::calc_get(i).pct_px()
+            {
+                return basis.map(|b| px((add + k * b).max(0.0)).into());
+            }
+            Some(len_to_gpui(l))
+        };
+        if let Some(r) = down.and_then(|r| gap_len(r, basis_y)) {
+            d = d.gap_y(r);
         }
-        if let Some(cg) = across {
-            d = d.gap_x(len_to_gpui(cg));
+        if let Some(cg) = across.and_then(|cg| gap_len(cg, basis_x)) {
+            d = d.gap_x(cg);
         }
     }
 
@@ -1073,7 +1102,17 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // Сдвиг несёт РОДНАЯ маска (патч GPUI): рамка и фон самой коробки
     // рисуются вне маски, режется только содержимое — обёртка снаружи резала
     // и рамку.
-    if let Some(m) = c.clip_margin {
+    // У СКРОЛЛЕРА (`hidden`/`scroll`) коробка `border-box` игнорируется
+    // ВМЕСТЕ со сдвигом (css-overflow-3 §overflow-clip-margin; названия
+    // `overflow-clip-margin-021/022`: «border-box is ignored on a scroller,
+    // including the offset»): край остаётся на padding-box. `content-box` и
+    // отрицательный сдвиг у скроллера действуют — `-018/-019/-020` зелёные.
+    let scroller = matches!(c.overflow_x, Some(Overflow::Hidden) | Some(Overflow::Scroll))
+        || matches!(c.overflow_y, Some(Overflow::Hidden) | Some(Overflow::Scroll));
+    if let Some(m) = c
+        .clip_margin
+        .filter(|_| !(scroller && c.clip_margin_box == Some(2)))
+    {
         let side = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,
             _ => 0.0,

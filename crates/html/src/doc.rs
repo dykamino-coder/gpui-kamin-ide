@@ -605,6 +605,15 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
     // стороны уже физические. Страницу без `zoom` проход не меняет: у неё ни
     // одного элемента с `zoom`, и ни одна ветка записи не исполняется.
     crate::zoom::resolve(&mut nodes);
+    // `z-index: inherit` и `clip: inherit` разбор выражает только разрядом
+    // `inherit_bits`, а значение родителя кладёт слияние (`inline::inherit`) —
+    // в СЛИТЫЙ стиль. Сборщик же дерева решает слой и обрезку по
+    // СОБСТВЕННОМУ (`defers(&e.style, …)`, `below`, `grouped(…, &e.style)`),
+    // и там оставалось прежнее объявление: `z-index: -1; z-index: inherit`
+    // клал зелёный под поток (`z-index-014`), `clip: inherit` не резал
+    // ничего (`clip-102`). CSS 2.1 §6.2.1: «the property takes the same
+    // computed value as the property for the element's parent».
+    settle_explicit_inherit(&mut nodes, None);
     // Якорные вставки, которым не разрешиться никогда (нет имени и якоря
     // по умолчанию; имя, которого в документе нет), сводятся к запасному
     // значению или к `auto` ЗДЕСЬ — сборщик дерева выбирает статическую
@@ -616,6 +625,28 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
     // домножены) и после `resolve_logical` (стороны уже физические).
     crate::motion::settle(&mut nodes);
     nodes
+}
+
+/// Явное `inherit` у `z-index` и `clip` — в собственный стиль элемента.
+///
+/// Оба свойства ненаследуемые, поэтому собственный стиль родителя и есть его
+/// вычисленное значение (как у `zoom::explicit`). Проход сверху вниз: у
+/// родителя цепочка `inherit` к этому шагу уже разрешена.
+fn settle_explicit_inherit(nodes: &mut [Node], parent: Option<&crate::computed::Computed>) {
+    use crate::computed::inh;
+    for n in nodes.iter_mut() {
+        let Node::Element(e) = n else { continue };
+        if let Some(p) = parent {
+            if e.style.inherit_bits & inh::Z_INDEX != 0 {
+                e.style.z_index = p.z_index;
+            }
+            if e.style.inherit_bits & inh::CLIP != 0 {
+                e.style.clip_rect = p.clip_rect;
+                e.style.clip_len = p.clip_len;
+            }
+        }
+        settle_explicit_inherit(&mut e.children, Some(&e.style));
+    }
 }
 
 /// Разбор ВЛОЖЕННОГО документа (`<iframe>`): тот же конвейер, что у

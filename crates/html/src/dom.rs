@@ -667,7 +667,7 @@ pub(crate) fn subgrid_inhibited(style: &Computed) -> bool {
         || matches!(style.position, Some(Position::Absolute) | Some(Position::Fixed))
 }
 
-fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
+pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         if matches!(

@@ -1267,6 +1267,15 @@ fn eval_calc(inner: &str) -> Option<Sum> {
     }
 }
 
+/// Интерполяция длин РАЗНЫХ природ покомпонентно, как `calc()` (css-values-4
+/// §3.2): середина `0px → 200vw` — `100vw`. Результат сворачивается обычным
+/// `collapse`; смесь, которую он не держит (доля вместе с точками), даёт
+/// `None` — вызывающий берёт ближайший кадр, как прежде.
+pub fn lerp_len(a: Len, b: Len, k: f32) -> Option<Len> {
+    let (a, b) = (Sum::from_len(a)?, Sum::from_len(b)?);
+    a.scaled(1.0 - k).add(b.scaled(k), 1.0).collapse()
+}
+
 fn parse_calc(inner: &str) -> Option<Len> {
     eval_calc(inner)?.collapse()
 }

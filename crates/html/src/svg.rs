@@ -144,15 +144,27 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         num_attr("width").unwrap_or(0.0),
         num_attr("height").unwrap_or(0.0),
     );
+    // Опорная коробка (css-transforms-1 §transform-box) — только при ЯВНОЙ
+    // `fill-box`/`stroke-box` (и их CSS-двойниках `content-box`/`border-box`).
+    // Тогда и доли, и ДЛИНЫ `transform-origin` отсчитываются от её левого
+    // верха, а проценты `translate()` — от её размера (`fill-box-001`
+    // target4: `75px 75px` — это (100,100), а не (75,75)). Без явного
+    // значения путь прежний: доли от рамки по атрибутам, длины как есть.
+    let ref_box = match e.style.transform_box {
+        Some(k @ (1 | 2)) => Some(reference_box(e, k == 2).unwrap_or((fx, fy, fw, fh))),
+        _ => None,
+    };
+    let (bx, by, bw, bh) = ref_box.unwrap_or((fx, fy, fw, fh));
+    let from_box = |v: f32, o: f32| if ref_box.is_some() { o + v } else { v };
     // CSS `transform-origin` сильнее презентационного атрибута
     // (css-transforms-1 §specificity): доли — от той же опорной коробки, что
-    // и у атрибута, точки — как есть (`transform-box/fill-box-*`,
-    // `svg-origin-relative-length-*`).
+    // и у атрибута, точки — от её начала при явной коробке, иначе как есть
+    // (`transform-box/fill-box-*`, `svg-origin-relative-length-*`).
     let style_origin = match (e.style.transform_origin, e.style.transform_origin_px) {
-        (_, (Some(px), Some(py))) => Some((px, py)),
+        (_, (Some(px), Some(py))) => Some((from_box(px, bx), from_box(py, by))),
         (Some((kx, ky)), (px, py)) => Some((
-            px.unwrap_or(fx + fw * kx),
-            py.unwrap_or(fy + fh * ky),
+            px.map_or(bx + bw * kx, |v| from_box(v, bx)),
+            py.map_or(by + bh * ky, |v| from_box(v, by)),
         )),
         _ => None,
     };
@@ -229,6 +241,12 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         };
         Some((ox, oy))
     }));
+    // Начальный `transform-origin` SVG-элемента — `0 0` (UA-лист:
+    // `*:not(svg), *:not(foreignObject) > svg { transform-origin: 0 0 }`), и
+    // отсчитывается он от опорной коробки: при явной `fill-box`/`stroke-box`
+    // это её левый верх, а не начало координат (`fill-box-001` target1:
+    // `rotate(90deg)` вокруг (0,0) уводил фигуру за кадр).
+    let origin = origin.or(ref_box.map(|(x, y, _, _)| (x, y)));
     // Стилевой transform на SVG-ребёнке СИЛЬНЕЕ презентационного атрибута
     // (css-transforms §specificity) — сериализуется атрибутом для
     // растеризатора.
@@ -241,8 +259,8 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
         if unit {
             return String::new();
         }
-        let tx = t.tr[0][0] + fw * t.tr[0][1] + fh * t.tr[0][2];
-        let ty = t.tr[1][0] + fw * t.tr[1][1] + fh * t.tr[1][2];
+        let tx = t.tr[0][0] + bw * t.tr[0][1] + bh * t.tr[0][2];
+        let ty = t.tr[1][0] + bw * t.tr[1][1] + bh * t.tr[1][2];
         format!(
             "matrix({} {} {} {} {} {})",
             t.lin[0][0], t.lin[1][0], t.lin[0][1], t.lin[1][1], tx, ty
@@ -274,10 +292,22 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
             crate::value::Len::Pct(k) => k * base,
             _ => 0.0,
         };
-        let (dx, dy) = (axis(x, fw), axis(y, fh));
+        let (dx, dy) = (axis(x, bw), axis(y, bh));
         (dx != 0.0 || dy != 0.0).then_some((dx, dy))
     });
-    let attr_t = attr_of("transform").map(str::to_string);
+    // Невалидный список преобразований В АТРИБУТЕ (`rotate(90,)`: запятая без
+    // аргумента — грамматика `transform-list`, SVG 1.1 §7.6). Атрибут —
+    // презентационная форма свойства `transform` (css-transforms-1
+    // §svg-transform), и ошибка разбора отбрасывает его целиком, как
+    // невалидное объявление. usvg висячую запятую прощает и поворачивал
+    // фигуру (`svg-rotate-3args-invalid-002`, `svg-external-styles-014`).
+    let attr_bad = attr_of("transform").is_some_and(|t| {
+        let s: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+        s.contains(",)") || s.contains("(,") || s.contains(",,")
+    });
+    let attr_t = attr_of("transform")
+        .filter(|_| !attr_bad)
+        .map(str::to_string);
     let base_t = style_t.filter(|t| !t.is_empty()).or(attr_t);
     let transform = match (ind_t, base_t) {
         (Some((dx, dy)), Some(t)) => Some(format!("translate({dx} {dy}) {t}")),
@@ -300,6 +330,9 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
             continue;
         }
         if k == "transform-origin" {
+            continue;
+        }
+        if k == "transform" && attr_bad {
             continue;
         }
         // `divisor="0"` у feConvolveMatrix: по спеке берётся умолчание (сумма
@@ -380,9 +413,28 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
     if let Some(w) = &e.style.svg_stroke_width
         && !has("stroke-width")
     {
-        out.push_str(" stroke-width=\"");
-        escape_attr(w, out);
-        out.push('"');
+        // `vector-effect: non-scaling-stroke` из КАСКАДА (SVG 2
+        // §vector-effect): толщина — в точках экрана. Само свойство в разметку
+        // не уходит, поэтому собственный масштаб фигуры снимается с толщины
+        // здесь: равномерный множитель стилевой матрицы √|det| (масштаб
+        // предков не учитывается). Без этого `svgbox-stroke-box-003/004` при
+        // верной геометрии рисовали обводку вдвое тоньше эталонной.
+        let k = match (e.style.svg_non_scaling, e.style.transform) {
+            (Some(true), Some(t)) if !has("vector-effect") => {
+                (t.lin[0][0] * t.lin[1][1] - t.lin[0][1] * t.lin[1][0]).abs().sqrt()
+            }
+            _ => 1.0,
+        };
+        match w.trim().trim_end_matches("px").parse::<f32>() {
+            Ok(v) if k > 1e-6 && (k - 1.0).abs() > 1e-6 => {
+                out.push_str(&format!(" stroke-width=\"{}\"", v / k));
+            }
+            _ => {
+                out.push_str(" stroke-width=\"");
+                escape_attr(w, out);
+                out.push('"');
+            }
+        }
     }
     if e.tag != "svg" {
         if let Some(crate::value::Len::Px(x)) = e.style.svg_x
@@ -410,6 +462,94 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
     out.push_str("</");
     out.push_str(&e.tag);
     out.push('>');
+}
+
+/// Опорная коробка SVG-элемента для `transform-box` (css-transforms-1
+/// §transform-box) в его пользовательских точках: `(x, y, ширина, высота)`.
+///
+/// fill-box — object bounding box (SVG 2 §8.10): `rect`/`image`/`use`/
+/// `foreignObject` по атрибутам, `circle`/`ellipse` по центру и радиусам,
+/// `g`/`a` — объединение детей (их собственные преобразования не
+/// учитываются). stroke-box — она же, раздвинутая на полтолщины обводки,
+/// когда обводка есть; у `vector-effect: non-scaling-stroke` толщина задана в
+/// точках экрана и сама зависит от преобразования — эталоны
+/// `svgbox-stroke-box-003..005` ждут для неё рамку заливки.
+fn reference_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32, f32)> {
+    let num = |name: &str| {
+        e.attrs
+            .iter()
+            .find(|(k, _)| k == name)
+            .and_then(|(_, v)| v.trim().trim_end_matches("px").parse::<f32>().ok())
+    };
+    let fill = match e.tag.as_str() {
+        "rect" | "image" | "use" | "foreignObject" => (
+            num("x").unwrap_or(0.0),
+            num("y").unwrap_or(0.0),
+            num("width")?,
+            num("height")?,
+        ),
+        "circle" => {
+            let r = num("r")?;
+            (
+                num("cx").unwrap_or(0.0) - r,
+                num("cy").unwrap_or(0.0) - r,
+                2.0 * r,
+                2.0 * r,
+            )
+        }
+        "ellipse" => {
+            let (rx, ry) = (num("rx")?, num("ry")?);
+            (
+                num("cx").unwrap_or(0.0) - rx,
+                num("cy").unwrap_or(0.0) - ry,
+                2.0 * rx,
+                2.0 * ry,
+            )
+        }
+        "g" | "a" => {
+            let mut acc: Option<(f32, f32, f32, f32)> = None;
+            for n in &e.children {
+                let Node::Element(c) = n else { continue };
+                let Some((x, y, w, h)) = reference_box(c, stroke) else {
+                    continue;
+                };
+                acc = Some(match acc {
+                    None => (x, y, w, h),
+                    Some((ax, ay, aw, ah)) => {
+                        let (x0, y0) = (ax.min(x), ay.min(y));
+                        let (x1, y1) = ((ax + aw).max(x + w), (ay + ah).max(y + h));
+                        (x0, y0, x1 - x0, y1 - y0)
+                    }
+                });
+            }
+            return acc;
+        }
+        _ => return None,
+    };
+    let non_scaling = e.style.svg_non_scaling == Some(true)
+        || e
+            .attrs
+            .iter()
+            .any(|(k, v)| k == "vector-effect" && v.trim() == "non-scaling-stroke");
+    let paint = e
+        .attrs
+        .iter()
+        .find(|(k, _)| k == "stroke")
+        .map(|(_, v)| v.clone())
+        .or_else(|| e.style.svg_stroke.clone());
+    if !stroke || non_scaling || paint.as_deref().is_none_or(|p| p.trim() == "none") {
+        return Some(fill);
+    }
+    let sw = num("stroke-width")
+        .or_else(|| {
+            e.style
+                .svg_stroke_width
+                .as_deref()
+                .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
+        })
+        .unwrap_or(1.0);
+    let half = sw * 0.5;
+    Some((fill.0 - half, fill.1 - half, fill.2 + sw, fill.3 + sw))
 }
 
 fn escape_attr(v: &str, out: &mut String) {
