@@ -22,9 +22,9 @@ export function primaryTask(body, title = "") {
 export function requiresWindowsRuntimeGate(card) {
   const explicit = card.match(/\*\*Windows runtime merge gate:\*\*\s*(required|not required)/i)?.[1];
   if (explicit) return explicit.toLowerCase() === "required";
-  const acceptance = card.match(/\*\*Acceptance:\*\*([^\n]*(?:\n(?!\n)[^\n]*)?)/i)?.[1] ?? "";
+  const acceptance = card.match(/\*\*Acceptance[^*]{0,80}:\*\*\s*([^\n]*(?:\n(?!\n)[^\n]*){0,4})/i)?.[1] ?? "";
   return /Windows/i.test(acceptance) &&
-    /runtime|CEF|GPUI|Agent Teams|\bUI\b/i.test(acceptance) &&
+    /runtime|CEF|GPUI|Agent Teams|native-toast|\bUI\b/i.test(acceptance) &&
     !/не требуется|not required|потребуется отдельному/i.test(acceptance);
 }
 

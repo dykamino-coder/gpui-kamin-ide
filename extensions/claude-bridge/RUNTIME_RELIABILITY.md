@@ -299,6 +299,7 @@ starvation path. После его merge повторить оба исходн�
 **Dependency:** BR-31 реализован и влит ([#147](https://github.com/dykamino-coder/gpui-kamin-ide/pull/147)),
 BR-01 влит ранее — блокирующих зависимостей не осталось. **Acceptance будущего
 fix:** automated + Windows runtime merge gate.
+**Windows runtime merge gate:** required for a later functional fix; current verification has its own evidence.
 
 **Обновление 2026-09-29:** условие «после merge BR-31 повторить оба исходных
 сценария Chat и сценарий Plugins» стало выполнимым: `web::deliver()` зовёт
@@ -1190,6 +1191,7 @@ window не классифицирован. Владелец воспроизв�
 **Status:** investigation. **Dependency:** diagnostic capture из текущего UI;
 BR-01 желателен для корреляции с runtime events. **Acceptance будущего fix:**
 automated differential/render tests + Windows CEF runtime gate.
+**Windows runtime merge gate:** required for a later functional fix; research alone does not assert a fix.
 
 Наблюдаемый 24 августа screenshot локализует отказ уже после загрузки данных:
 
@@ -1257,6 +1259,7 @@ Private evidence: [INC-2026-0036](https://github.com/dykamino-coder/gpui-kamin-i
 внутри витка и потеря ответа хосту закрыты. ОТКРЫТО: тост завершения сам не
 закрывается. **Dependency:** none. **Acceptance оставшейся части:** явный
 контракт непрерывного тоста с кнопкой + Windows native-toast gate.
+**Windows runtime merge gate:** required for the remaining functional fix.
 
 **Регрессия 1.0.61 и её исправление (2026-09-29, живая проверка):** правило
 «раз сервер показал, что умеет хуки, виток закрывает ТОЛЬКО хук» опиралось на
@@ -1358,6 +1361,7 @@ pending/generation/cancellation/reconciliation guarantees остаются не�
 acceptance общего транспорта; из неё НЕ следует, что подтверждённый путь
 доставки объясняет каждый случай зависшего ответа (см. ниже). **Acceptance будущего fix:** automated transport/lifecycle tests +
 Windows CEF runtime gate.
+**Windows runtime merge gate:** required for a later functional fix; diagnostics alone do not assert a fix.
 
 Windows acceptance PR #13 воспроизвёл 3 раза из 5: mutating call
 `hooks:set-plugin-approval` завершился host-side, approval store был записан и

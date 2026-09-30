@@ -17,10 +17,13 @@ Windows quality and release candidate passed.
 `;
 
 test("real BR-31 and INC-0002 cards require a live Windows gate", async () => {
-  for (const taskId of ["BR-31", "INC-2026-0002"]) {
+  for (const taskId of ["BR-06", "BR-22", "BR-23", "BR-24", "BR-31",
+    "INC-2026-0002", "INC-2026-0038", "INC-2026-0043", "INC-2026-0047"]) {
     assert.equal(requiresWindowsRuntimeGate(await taskCard(taskId)), true);
   }
-  assert.equal(requiresWindowsRuntimeGate(await taskCard("BR-17")), false);
+  for (const taskId of ["BR-02", "BR-14", "BR-17", "INC-2026-0026"]) {
+    assert.equal(requiresWindowsRuntimeGate(await taskCard(taskId)), false);
+  }
 });
 
 test("a green Windows build cannot pass a task-specific CEF runtime gate", async () => {
