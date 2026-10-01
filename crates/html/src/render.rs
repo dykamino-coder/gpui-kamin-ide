@@ -3259,7 +3259,25 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                         // строка стоит на краю, и общий срез совпадает с
                         // раздельными (css-grid-2 §12.1 шаг 3: ряд растёт).
                         // Границ РЯДОВ по-прежнему нет — см. выше.
-                        for (_, row, kmt, s, plain) in &spots {
+                        for (ix, row, kmt, s, plain) in &spots {
+                            // Страницы: монолитный элемент (`contain: size`,
+                            // замещаемый…) — сплошной диапазон во всю его
+                            // высоту, и край листа внутри него уводит разрыв
+                            // к началу ряда (css-grid-2 §fragmenting: «a grid
+                            // container may break between rows»; Blink
+                            // `IsMonolithic` → разрыв перед рядом;
+                            // `grid-fragmentation-between-rows-001-print`:
+                            // второй ряд `contain: size` резался краем листа).
+                            if cx.paged
+                                && !*plain
+                                && let (Some(&(r0, _)), Some(Node::Element(k))) =
+                                    (b.get(*row), c.children.get(*ix))
+                                && solid_box(k)
+                            {
+                                let start = top + r0 + kmt;
+                                solid.push((start, start + s.0));
+                                continue;
+                            }
                             let (true, Some(&(r0, _))) = (*plain, b.get(*row)) else {
                                 continue;
                             };
