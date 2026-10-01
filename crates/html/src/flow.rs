@@ -1502,7 +1502,7 @@ impl ColumnStack {
         // на её начало: начало строки — начало группы, перенос всей группы в
         // следующую колонку уводил бы и соседние строки (параллельные потоки),
         // `multi-line-column-flex-fragmentation-028`.
-        let lo = if kids[bad].par.group != 0 {
+        let lo = if kids[bad].par.group != 0 && !kids[bad].par.group_start {
             (0..=bad).rev().find(|&i| kids[i].par.line_start).map_or(1, |i| i + 1)
         } else {
             1
@@ -1513,7 +1513,9 @@ impl ColumnStack {
                 !kids[j].avoid_before
                     && !kids[j - 1].avoid_after
                     && !(kids[j].par.group != 0 && kids[j].par.line_start && !kids[j].par.group_start)
-                    && !(kids[bad].par.group == 0 && kids[j].par.group != 0 && !kids[j].par.group_start)
+                    && !((kids[bad].par.group == 0 || kids[bad].par.group_start)
+                        && kids[j].par.group != 0
+                        && !kids[j].par.group_start)
             })
     }
 
@@ -1549,7 +1551,8 @@ impl ColumnStack {
         // fragmentation-018`: запреты в трёх строках сразу). Поток ребёнка —
         // индекс начала его строки, у обычного ребёнка — `usize::MAX`.
         let flow_of = |i: usize| -> usize {
-            if kids[i].par.group == 0 {
+            // Начало группы — граница самого контейнера с соседом: общий поток.
+            if kids[i].par.group == 0 || kids[i].par.group_start {
                 return usize::MAX;
             }
             (0..=i).rev().find(|&j| kids[j].par.line_start).unwrap_or(0)
