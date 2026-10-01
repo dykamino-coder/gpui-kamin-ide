@@ -21734,6 +21734,23 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     {
                         el.style.height = Some(Len::Px(h * k));
                     }
+                    // Пороги той же долей — от той же заданной высоты ячейки
+                    // (CSS 2.1 §10.7: доля `max-height`/`min-height` считается
+                    // как у `height`). Нерешённая доля у нас отбрасывается, и
+                    // заменяемый ребёнок шёл природным размером: `<canvas
+                    // 200×200 max-height: 100%>` в ячейке высотой 100 давал
+                    // 200×200 вместо 100×100
+                    // (`percent-height-replaced-in-percent-cell-002`).
+                    if let Node::Element(el) = child
+                        && let Some(Len::Pct(k)) = el.style.max_height
+                    {
+                        el.style.max_height = Some(Len::Px(h * k));
+                    }
+                    if let Node::Element(el) = child
+                        && let Some(Len::Pct(k)) = el.style.min_height
+                    {
+                        el.style.min_height = Some(Len::Px(h * k));
+                    }
                 }
                 cell.style.height = None;
                 let floor = match cell.style.min_height {
