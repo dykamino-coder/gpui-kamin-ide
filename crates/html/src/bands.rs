@@ -259,6 +259,17 @@ impl FloatBands {
         (l, r.max(l))
     }
 
+    /// Ближайшая граница полос строго ниже `y` — следующий кандидат верха
+    /// при переборе возможностей (Blink `ExclusionSpace::AllLayoutOpportunities`,
+    /// `exclusion_space.h:633-646`; Servo `PlacementAmongFloats::place`,
+    /// `flow/float.rs:227-252`). `None` — ниже `y` полос больше нет, место
+    /// свободно до конца контекста.
+    pub fn next_edge(&self, y: f32) -> Option<f32> {
+        let i = self.idx_at(y);
+        let t = self.bands[i + 1].top;
+        t.is_finite().then_some(t)
+    }
+
     /// Позиция, ниже которой обязан начаться блок с данным `clear` (§9.5.2);
     /// `y` — гипотетическая позиция без clearance.
     ///

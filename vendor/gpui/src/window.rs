@@ -3952,6 +3952,35 @@ impl Window {
 
     /// Compute the layout for the given id within the given available space.
     /// This method is called for its side effect, typically by the framework prior to painting.
+    /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
+    ///
+    /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
+    /// движок вынут из окна (`compute_layout` ниже держит его `take()`-нутым), и
+    /// `layout_as_root` в нём паникует на `unwrap`. Хосту полос обтекания
+    /// (`crates/html/src/band_flow.rs`) размер детей нужен именно там: высота
+    /// контекста с флоатами зависит от ширины содержащего блока, а её знает
+    /// только замер. Здесь на время `f` в окно кладётся свежий движок, после —
+    /// возвращается прежний (`None` внутри замера, основной вне его). Узлы
+    /// свежего движка живут только внутри `f`: элемент, разложенный в нём,
+    /// в основное дерево не годится — его надо строить заново (так делает и
+    /// Blink: пробная раскладка флоата до посадки, `floats_utils.cc:173-189`).
+    pub fn with_nested_layout<R>(&mut self, f: impl FnOnce(&mut Window) -> R) -> R {
+        let outer = self.layout_engine.replace(TaffyLayoutEngine::new());
+        let r = f(self);
+        self.layout_engine = outer;
+        r
+    }
+
+    /// KaminIDE patch: размер узла без округления к физической точке (см.
+    /// `TaffyLayoutEngine::layout_size_unrounded`).
+    pub fn layout_size_unrounded(&mut self, layout_id: LayoutId) -> Size<Pixels> {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_ref()
+            .unwrap()
+            .layout_size_unrounded(layout_id, scale_factor)
+    }
+
     /// After calling it, you can request the bounds of the given layout node id or any descendant.
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
