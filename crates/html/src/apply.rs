@@ -473,6 +473,43 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
                 Some(c.grid_auto_cols_list.iter().map(track).collect());
         }
     }
+    // Лунки на пути сетки: одинокий `repeat(auto-*)` с дорожками ПО
+    // СОДЕРЖИМОМУ (css-grid-3 §7.2.1 «Intrinsic Tracks and repeat()»,
+    // Overview.bs:444-500) отдаётся раскладке телом как есть — число повторов
+    // по гипотетическим размерам считает `taffy::compute::grid::lanes`. Ветки
+    // выше умеют только точечное тело и подменяли его счётом колонок.
+    if c.lanes_taffy {
+        let row_dir = crate::dom::lanes_row_dir(c);
+        let (repeat, body, list) = if row_dir {
+            (c.auto_repeat_rows, &c.auto_repeat_body_rows, &c.grid_rows)
+        } else {
+            (c.auto_repeat_cols, &c.auto_repeat_body_cols, &c.grid_tracks)
+        };
+        if let (None, Some(r), Some(body)) = (list, repeat, body)
+            && r.track.is_none()
+            && r.track_pct.is_none()
+            && !body.is_empty()
+            // Только тело с дорожкой ПО СОДЕРЖИМОМУ: точечное тело ведут
+            // ветки выше (★ ЗАМЕРЕНО: `row-auto-repeat-014`, тело
+            // `[v] 10px [w] 10px [x] 10px`, 0.00 → 18.83 при отдаче сюда).
+            && body.iter().any(|t| {
+                !matches!(
+                    t,
+                    TrackSize::Single(crate::computed::Track::Px(_) | crate::computed::Track::Pct(_))
+                )
+            })
+        {
+            let line = vec![gpui::GridTrack::AutoRepeat {
+                fit: r.fit,
+                tracks: body.iter().map(track).collect(),
+            }];
+            d = if row_dir {
+                d.grid_template_rows(line)
+            } else {
+                d.grid_template_cols(line)
+            };
+        }
+    }
     if let Some(f) = c.grid_auto_flow {
         // Направление наполнения тоже логическое: «по рядам» значит «вдоль
         // строки», а строка при вертикальном письме идёт сверху вниз.

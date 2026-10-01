@@ -1263,12 +1263,11 @@ pub(crate) fn lanes_row_dir(s: &Computed) -> bool {
 /// разметка на `inline-grid`), а не рукописной оценкой `render::lanes`.
 ///
 /// Гейт — то, чего taffy-путь пока не умеет; такой контейнер остаётся на
-/// `render::lanes`: вертикальное письмо и `rtl` контейнера, интрин-дорожки
-/// внутри `repeat(auto-*)` (css-grid-3 §7.2.1, гипотетический размер по
-/// содержимому). Подсетки среди детей идут тем же путём: срез им режет
-/// `subgrid_takes_parent_tracks` ровно как у сетки-эталона.
+/// `render::lanes`: вертикальное письмо и `rtl` контейнера. Подсетки среди
+/// детей идут тем же путём: срез им режет `subgrid_takes_parent_tracks`
+/// ровно как у сетки-эталона; интрин-дорожки в `repeat(auto-*)` считает
+/// taffy (css-grid-3 §7.2.1).
 fn lanes_as_grid(nodes: &mut [Node]) {
-    use crate::computed::{Track, TrackSize};
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         lanes_as_grid(&mut el.children);
@@ -1276,19 +1275,7 @@ fn lanes_as_grid(nodes: &mut [Node]) {
             continue;
         }
         let s = &el.style;
-        let row_dir = lanes_row_dir(s);
-        let repeat = if row_dir { s.auto_repeat_rows } else { s.auto_repeat_cols };
-        let intrinsic_repeat = repeat.is_some_and(|r| r.track.is_none() && r.track_pct.is_none());
-        let list = if row_dir { &s.grid_rows } else { &s.grid_tracks };
-        let odd_repeat = list.as_ref().is_some_and(|l| {
-            l.iter().any(|t| match t {
-                TrackSize::AutoRepeat { tracks, .. } => {
-                    !tracks.iter().all(|b| matches!(b, TrackSize::Single(Track::Px(_))))
-                }
-                _ => false,
-            })
-        });
-        if s.vertical == Some(true) || s.rtl == Some(true) || intrinsic_repeat || odd_repeat {
+        if s.vertical == Some(true) || s.rtl == Some(true) {
             continue;
         }
         el.style.display = Some(if el.style.lanes_inline {

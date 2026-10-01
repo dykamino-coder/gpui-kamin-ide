@@ -25,8 +25,8 @@ use super::types::{GridItem, GridTrack, NamedLineResolver, TrackCounts};
 use super::OriginZeroLine;
 use crate::geometry::{AbsoluteAxis, AbstractAxis, InBothAbsAxis, Line, Point, Rect, Size};
 use crate::style::{
-    AlignItems, AlignSelf, AvailableSpace, GridLanes, MaxTrackSizingFunction, MinTrackSizingFunction, Overflow,
-    Position,
+    AlignItems, AlignSelf, AvailableSpace, GenericGridTemplateComponent, GenericRepetition, GridLanes, GridPlacement,
+    MaxTrackSizingFunction, MinTrackSizingFunction, Overflow, Position, RepetitionCount, TrackSizingFunction,
 };
 use crate::style_helpers::*;
 use crate::tree::{Layout, LayoutInput, LayoutOutput, LayoutPartialTreeExt, NodeId, RunMode, SizingMode};
@@ -221,13 +221,45 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         |val, basis| tree.calc(val, basis),
         AbsoluteAxis::Horizontal,
     );
-    let (row_auto_repetition_count, grid_template_row_count) = compute_explicit_grid_size_in_axis(
+    let (mut row_auto_repetition_count, mut grid_template_row_count) = compute_explicit_grid_size_in_axis(
         &style,
         auto_fit_container_size.height,
         auto_repeat_fit_strategy.height,
         |val, basis| tree.calc(val, basis),
         AbsoluteAxis::Vertical,
     );
+    let (mut col_auto_repetition_count, mut grid_template_col_count) =
+        (col_auto_repetition_count, grid_template_col_count);
+    // Интрин-дорожки в `repeat(auto-*)` по оси решётки (css-grid-3 §7.2.1):
+    // общий счёт сетки такой шаблон отвергает (нет фиксированной грани), а
+    // лункам число повторов дают гипотетические размеры дорожек.
+    let owned = owned_template(&style, grid_abs);
+    let grid_gap_style = if rows { style.gap().height } else { style.gap().width };
+    drop(style);
+    if let Some(template) = owned {
+        let avail = if rows { auto_fit_container_size.height } else { auto_fit_container_size.width };
+        let strategy = if rows { auto_repeat_fit_strategy.height } else { auto_repeat_fit_strategy.width };
+        let (reps, count) = intrinsic_repetitions(
+            tree,
+            node,
+            &template,
+            grid_gap_style,
+            rows,
+            avail,
+            strategy,
+            inner_node_size,
+            align_items,
+            justify_items,
+        );
+        if rows {
+            row_auto_repetition_count = reps;
+            grid_template_row_count = count;
+        } else {
+            col_auto_repetition_count = reps;
+            grid_template_col_count = count;
+        }
+    }
+    let style = tree.get_grid_container_style(node);
     let mut name_resolver = NamedLineResolver::new(&style, col_auto_repetition_count, row_auto_repetition_count);
     let explicit_col_count = grid_template_col_count.max(name_resolver.area_column_count());
     let explicit_row_count = grid_template_row_count.max(name_resolver.area_row_count());
@@ -300,15 +332,14 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             }
         }
     }
-    let mut budget: usize = children.iter().filter(|c| c.definite.is_none()).map(|c| c.span).sum();
-    for flag in occupied.iter_mut() {
-        if budget == 0 {
-            break;
-        }
-        if !*flag {
-            *flag = true;
-            budget -= 1;
-        }
+    // N считается от начала сетки, а не по свободным дорожкам: так делает Blink
+    // (`BuildVirtualGridLanesItems`, :1866-1876: пролёт в диапазоне `auto-fit`
+    // пропускается, если `EndLine() > unplaced_item_span_count`), и так ждёт
+    // эталон `column-auto-repeat-auto-012` («the second track should still be
+    // collapsed»: один авто-элемент, явные — в дорожках 1 и 3).
+    let budget: usize = children.iter().filter(|c| c.definite.is_none()).map(|c| c.span).sum();
+    for flag in occupied.iter_mut().take(budget) {
+        *flag = true;
     }
 
     let mut grid_tracks: GridTrackVec<GridTrack> = GridTrackVec::new();
@@ -957,6 +988,249 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         item_content_size_contribution,
         Point { x: None, y: baseline },
     )
+}
+
+/// Шаблон оси решётки — своими данными (стиль занимает дерево, а
+/// гипотетический размер требует его на изменение). `Some` — только когда в
+/// шаблоне ровно один `repeat(auto-*)` и в нём есть дорожка без
+/// фиксированной грани (иначе счёт общий, `compute_explicit_grid_size_in_axis`).
+enum OwnedComponent {
+    Single(TrackSizingFunction),
+    Count(u16, Vec<TrackSizingFunction>),
+    Auto(Vec<TrackSizingFunction>),
+}
+
+fn owned_template(style: &impl GridContainerStyle, axis: AbsoluteAxis) -> Option<Vec<OwnedComponent>> {
+    let template = match axis {
+        AbsoluteAxis::Horizontal => style.grid_template_columns(),
+        AbsoluteAxis::Vertical => style.grid_template_rows(),
+    }?;
+    let mut out = Vec::new();
+    let mut autos = 0;
+    let mut intrinsic = false;
+    for component in template {
+        match component {
+            GenericGridTemplateComponent::Single(f) => out.push(OwnedComponent::Single(f)),
+            GenericGridTemplateComponent::Repeat(r) => {
+                let tracks: Vec<TrackSizingFunction> = r.tracks().collect();
+                if tracks.is_empty() {
+                    return None;
+                }
+                match r.count() {
+                    RepetitionCount::Count(c) => out.push(OwnedComponent::Count(c, tracks)),
+                    RepetitionCount::AutoFill | RepetitionCount::AutoFit => {
+                        autos += 1;
+                        intrinsic |= tracks.iter().any(|t| !t.has_fixed_component());
+                        out.push(OwnedComponent::Auto(tracks));
+                    }
+                }
+            }
+        }
+    }
+    (autos == 1 && intrinsic).then_some(out)
+}
+
+/// Число повторов интрин-`repeat(auto-*)` по гипотетическим размерам
+/// (css-grid-3 §7.2.1, Overview.bs:444-500; Blink
+/// `GridLanesLayoutAlgorithm::ComputeAutomaticRepetitions`, :2999): явное
+/// размещение не учитывается, ничего не схлопывается, тело повторяется
+/// `2 + (наибольший пролёт − 2) / (дорожек в теле)` раз (вниз, не меньше
+/// двух); размер записи тела — наибольший среди её копий. Возвращает число
+/// повторов и число дорожек явной сетки.
+#[allow(clippy::too_many_arguments)]
+fn intrinsic_repetitions<Tree: LayoutGridContainer>(
+    tree: &mut Tree,
+    node: NodeId,
+    template: &[OwnedComponent],
+    gap_style: LengthPercentage,
+    rows: bool,
+    avail: Option<f32>,
+    strategy: AutoRepeatStrategy,
+    inner_node_size: Size<Option<f32>>,
+    align_items: Option<AlignItems>,
+    justify_items: Option<AlignItems>,
+) -> (u16, u16) {
+    let mut spans: Vec<(NodeId, usize, u16)> = Vec::new();
+    for (index, child) in tree.child_ids(node).enumerate() {
+        let style = tree.get_grid_child_style(child);
+        if style.box_generation_mode() == BoxGenerationMode::None || style.position() == Position::Absolute {
+            continue;
+        }
+        let line = if rows { style.grid_row() } else { style.grid_column() };
+        let span = match (&line.start, &line.end) {
+            (GridPlacement::Line(a), GridPlacement::Line(b)) => (b.as_i16() - a.as_i16()).unsigned_abs().max(1),
+            (GridPlacement::Span(k), _) | (_, GridPlacement::Span(k)) => (*k).max(1),
+            _ => 1,
+        };
+        spans.push((child, index, span));
+    }
+    let body_len = template
+        .iter()
+        .find_map(|c| match c {
+            OwnedComponent::Auto(t) => Some(t.len()),
+            _ => None,
+        })
+        .unwrap_or(1);
+    let largest = spans.iter().map(|s| s.2 as usize).max().unwrap_or(1);
+    let copies = (2 + largest.saturating_sub(2) / body_len).max(2);
+    // Развёрнутый шаблон: функция дорожки и номер записи тела повтора.
+    let mut expanded: Vec<(TrackSizingFunction, Option<usize>)> = Vec::new();
+    let mut non_repeat = 0u16;
+    for c in template {
+        match c {
+            OwnedComponent::Single(f) => {
+                expanded.push((*f, None));
+                non_repeat += 1;
+            }
+            OwnedComponent::Count(n, t) => {
+                for _ in 0..*n {
+                    expanded.extend(t.iter().map(|f| (*f, None)));
+                }
+                non_repeat += n * t.len() as u16;
+            }
+            OwnedComponent::Auto(t) => {
+                for _ in 0..copies {
+                    expanded.extend(t.iter().enumerate().map(|(j, f)| (*f, Some(j))));
+                }
+            }
+        }
+    }
+    let n = expanded.len();
+    let mut grid_tracks: GridTrackVec<GridTrack> = GridTrackVec::new();
+    grid_tracks.push(GridTrack::gutter(LengthPercentage::length(0.0)));
+    for (i, (f, _)) in expanded.iter().enumerate() {
+        grid_tracks.push(GridTrack::new(f.min_sizing_function(), f.max_sizing_function()));
+        // Крайние зазоры нулевые, внутренние — зазор сетки (как у
+        // `initialize_grid_tracks`).
+        let gutter = if i + 1 < n { gap_style } else { LengthPercentage::length(0.0) };
+        grid_tracks.push(GridTrack::gutter(gutter));
+    }
+    let mut stack_tracks: GridTrackVec<GridTrack> = GridTrackVec::new();
+    stack_tracks.push(GridTrack::gutter(LengthPercentage::length(0.0)));
+    for (child, _, _) in &spans {
+        let mut track = GridTrack::new(MinTrackSizingFunction::auto(), MaxTrackSizingFunction::auto());
+        if rows {
+            let width = tree.measure_child_size(
+                *child,
+                Size::NONE,
+                Size { width: inner_node_size.width, height: None },
+                Size::MAX_CONTENT,
+                SizingMode::InherentSize,
+                AbsoluteAxis::Horizontal,
+                Line::FALSE,
+            );
+            track.base_size = width;
+        }
+        stack_tracks.push(track);
+        stack_tracks.push(GridTrack::gutter(LengthPercentage::length(0.0)));
+    }
+    let mut items: Vec<GridItem> = Vec::new();
+    for (k, (child, index, span)) in spans.iter().enumerate() {
+        let style = tree.get_grid_child_style(*child);
+        let span = (*span as usize).min(n);
+        let stack_line = Line { start: OriginZeroLine(k as i16), end: OriginZeroLine(k as i16 + 1) };
+        for s in 0..=(n - span) {
+            let grid_line = Line { start: OriginZeroLine(s as i16), end: OriginZeroLine((s + span) as i16) };
+            let (col, row) = if rows { (stack_line, grid_line) } else { (grid_line, stack_line) };
+            items.push(GridItem::new_with_placement_style_and_order(
+                *child,
+                col,
+                row,
+                &style,
+                align_items.unwrap_or(AlignItems::Stretch),
+                justify_items.unwrap_or(AlignItems::Stretch),
+                *index as u16,
+            ));
+        }
+    }
+    let grid_counts = TrackCounts::from_raw(0, n as u16, 0);
+    let stack_counts = TrackCounts::from_raw(0, spans.len() as u16, 0);
+    let axis = if rows { AbstractAxis::Block } else { AbstractAxis::Inline };
+    let mut inner = inner_node_size;
+    inner.set(axis, None);
+    let mut space = Size::MAX_CONTENT;
+    if rows {
+        space.width = inner_node_size.width.map(AvailableSpace::Definite).unwrap_or(AvailableSpace::MaxContent);
+    } else {
+        space.height = inner_node_size.height.map(AvailableSpace::Definite).unwrap_or(AvailableSpace::MaxContent);
+    }
+    if rows {
+        resolve_item_track_indexes(&mut items, stack_counts, grid_counts);
+        determine_if_item_crosses_flexible_or_intrinsic_tracks(&mut items, &stack_tracks, &grid_tracks);
+        track_sizing_algorithm(
+            tree,
+            AbstractAxis::Block,
+            None,
+            None,
+            AlignContent::Start,
+            AlignContent::Start,
+            space,
+            inner,
+            &mut grid_tracks,
+            &mut stack_tracks,
+            &mut items,
+            |track: &GridTrack, _, _| Some(track.base_size),
+            false,
+        );
+    } else {
+        resolve_item_track_indexes(&mut items, grid_counts, stack_counts);
+        determine_if_item_crosses_flexible_or_intrinsic_tracks(&mut items, &grid_tracks, &stack_tracks);
+        track_sizing_algorithm(
+            tree,
+            AbstractAxis::Inline,
+            None,
+            None,
+            AlignContent::Start,
+            AlignContent::Start,
+            space,
+            inner,
+            &mut grid_tracks,
+            &mut stack_tracks,
+            &mut items,
+            |_: &GridTrack, _, _| None,
+            false,
+        );
+    }
+    // Гипотетический размер — предел роста после шага §12.5 (Blink
+    // :1880-1890: «we need to use the growth limit as the track size»).
+    let size_of = |i: usize| {
+        let t = &grid_tracks[2 * i + 1];
+        if t.growth_limit.is_finite() {
+            f32_max(t.base_size, t.growth_limit)
+        } else {
+            t.base_size
+        }
+    };
+    let mut body = Vec::with_capacity(body_len);
+    body.resize(body_len, 0.0f32);
+    let mut fixed = 0.0f32;
+    for (i, (_, j)) in expanded.iter().enumerate() {
+        match j {
+            // Пол 1px (css-grid-2 §7.2.3.2, Overview.bs:1944: «It is suggested
+            // that this floor be 1px»): пустые элементы иначе дают нулевой шаг,
+            // и повтор оставался одним (`column-auto-repeat-auto-028`).
+            Some(j) => body[*j] = f32_max(body[*j], f32_max(size_of(i), 1.0)),
+            None => fixed += size_of(i),
+        }
+    }
+    let Some(room) = avail else {
+        return (1, non_repeat + body_len as u16);
+    };
+    let gap = gap_style.resolve_or_zero(Some(room), |val, basis| tree.calc(val, basis));
+    let body_sum: f32 = body.iter().sum();
+    let per_rep = body_sum + gap * body_len as f32;
+    let first = fixed + body_sum + gap * (non_repeat as usize + body_len).saturating_sub(1) as f32;
+    let reps = if first > room || per_rep <= 0.0 {
+        1u16
+    } else {
+        let fit = (room - first) / per_rep;
+        let extra = match strategy {
+            AutoRepeatStrategy::MaxRepetitionsThatDoNotOverflow => fit.floor(),
+            AutoRepeatStrategy::MinRepetitionsThatDoOverflow => fit.ceil(),
+        };
+        (extra.clamp(0.0, 1000.0) as u16) + 1
+    };
+    (reps, non_repeat + reps * body_len as u16)
 }
 
 /// Путь проёмов для плотной укладки: в дорожке `t` и следующих `remaining`

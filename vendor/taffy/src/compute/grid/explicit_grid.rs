@@ -10,6 +10,9 @@ use crate::util::ResolveOrZero;
 use crate::{GenericGridTemplateComponent, GenericRepetition, GridContainerStyle};
 
 /// The auto-repeat fit strategy to use
+// KaminIDE patch: `Copy` — лункам стратегия нужна второй раз, для счёта
+// интрин-повтора (`lanes.rs::intrinsic_repetitions`).
+#[derive(Clone, Copy)]
 pub(crate) enum AutoRepeatStrategy {
     /// If the grid container has a definite size or max size in the relevant axis:
     ///   - then the number of repetitions is the largest possible positive integer that does not cause the grid to overflow the content
