@@ -18784,6 +18784,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         // `column-fill: auto` с заданной высотой и без рядов:
                         // баланс считал бы содержимое по сумме записей, а строки
                         // идут бок о бок.
+                        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (01.10): то же при балансе
+                        // (`rows.is_none()` без `fixed`) с оценкой баланса по
+                        // самой длинной строке группы (`runs_guess`). css-break/
+                        // flexbox 319: +0/−2 — `multi-line-row-flex-fragmentation-
+                        // 037/038` 0.07 → «красное видно»; балансные 033-035, 048
+                        // не взяты.
                         let (kids, kid_par, kid_parent, kid_starts) = if fixed.is_some() && rows.is_none() {
                             let col_w = match merged.width {
                                 Some(Len::Px(w)) if merged.border_box != Some(true) && cols > 0 => {
