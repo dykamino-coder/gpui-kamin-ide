@@ -1263,7 +1263,23 @@ impl ColumnStack {
                             .map(at)
                     }
                 } else if let Some(&(a, _)) = k.solid.iter().find(|&&(a, b)| holds(a, b)) {
-                    // Колонки — как прежде: первый содержащий диапазон.
+                    // Колонки — как прежде: первый содержащий диапазон. Его
+                    // начало само может лежать ВНУТРИ другого диапазона —
+                    // закрытой запретом границы (`shape_full`, `blk_avoid`):
+                    // тогда разрыв уходит к началу и того (`break-between-
+                    // avoid-007`: край в монолите c, перед c граница с `break-
+                    // before: avoid` — разрыв между a и b, а не перед c).
+                    let mut a = a;
+                    for _ in 0..4 {
+                        match k
+                            .solid
+                            .iter()
+                            .find(|&&(s0, s1)| s0 < a - 0.01 && a < s1 - 0.01 && s0 > from + 0.01)
+                        {
+                            Some(&(s0, _)) => a = s0,
+                            None => break,
+                        }
+                    }
                     if a > from + 0.01 { Some(at(a)) } else { None }
                 } else {
                     Some(at(edge))
