@@ -179,8 +179,15 @@ impl FloatBands {
     /// потолок; правило 2 (лесенка) своего кода не имеет: его исполняет сама
     /// модель полос.
     pub fn add_float(&mut self, side: i8, w: f32, h: f32, clear: Option<i8>) -> (f32, f32) {
-        // Отрицательные размеры в занятость не идут: спека объявляет такую
-        // позицию неопределённой.
+        // Отрицательные размеры в ЗАНЯТОСТЬ не идут (спека объявляет такую
+        // позицию неопределённой), но в проверку места и в позицию — идут:
+        // Blink ищет возможность с `minimum_inline_size = inline_size +
+        // margins.InlineSum()` без отсечки (`floats_utils.cc:40-61`), а
+        // прямоугольник исключения отсекает в ноль (`CreateExclusionArea`,
+        // `:150-161`). Флоат `margin-left: -150px` шириной 50 за флоатом в
+        // 150 встаёт на x=150 своего margin-box — его рамка на нуле
+        // (`negative-margin-float-positioning`).
+        let w_fit = w;
         let (w, h) = (w.max(0.0), h.max(0.0));
         // Правила 4, 5, 6 и §9.5.2.
         let ceiling = self.clearance(clear, self.ceiling());
@@ -192,7 +199,7 @@ impl FloatBands {
         // флоата, значит НИЖЕ потолка новых сужений не появляется — полосы
         // вниз только расширяются.
         let mut i = self.idx_at(ceiling);
-        while !self.fits(i, side, w) && self.bands[i + 1].top.is_finite() {
+        while !self.fits(i, side, w_fit) && self.bands[i + 1].top.is_finite() {
             i += 1;
         }
         let y = self.bands[i].top.max(ceiling);
@@ -201,7 +208,7 @@ impl FloatBands {
         let x = if side < 0 {
             l.max(self.cb.0)
         } else {
-            r.min(self.cb.1) - w
+            r.min(self.cb.1) - w_fit
         };
         // Занятость: экстент — дальний от своей стороны край флоата.
         let edge = if side < 0 { x + w } else { x };
