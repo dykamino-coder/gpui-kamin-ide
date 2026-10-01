@@ -224,6 +224,37 @@ pub fn apply(d: Div, c: &Computed) -> Div {
 /// Стиль контейнера-сетки: дорожки, неявные дорожки, направление.
 fn grid_style(mut d: Div, c: &Computed) -> Div {
     d = d.grid();
+    // Контейнер лунок на пути сетки (`dom::lanes_as_grid`): раскладку лунками
+    // делает taffy. Порог `flow-tolerance: normal` — 1em (css-grid-3
+    // Overview.bs:828-831), `infinite` разбор держит бесконечными точками.
+    if c.lanes_taffy {
+        let em = match c.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let (tolerance, tolerance_pct) = match c.lanes_tolerance {
+            Some(Len::Px(v)) => (v, None),
+            Some(Len::Em(k)) => (k * em, None),
+            Some(Len::Pct(k)) => (0.0, Some(k)),
+            _ => (em, None),
+        };
+        d.style().grid_lanes = Some(gpui::GridLanesFlow {
+            rows: crate::dom::lanes_row_dir(c),
+            track_reverse: c.lanes_track_reverse,
+            fill_reverse: c.lanes_fill_reverse,
+            dense: c.lanes_dense,
+            tolerance,
+            tolerance_pct,
+        });
+        // По оси укладки `normal` — это НЕ растяжка (css-grid-3
+        // Overview.bs:1161-1225: самовыравнивание лишь у элементов над
+        // проёмом; Blink `ResolvedAlignSelf(normal)` :1056-1060), а общий
+        // путь `align-items: stretch` в стиль не пишет — для сетки это
+        // умолчание. Лункам явная растяжка нужна в стиле.
+        if c.align_items == Some(crate::computed::Align::Stretch) {
+            d.style().align_items = Some(gpui::AlignItems::Stretch);
+        }
+    }
     // Оси сетки ЛОГИЧЕСКИЕ: «колонки» идут вдоль строки, «ряды» — вдоль
     // потока. При вертикальном письме строка идёт сверху вниз, а поток —
     // поперёк, поэтому колонки становятся физическими рядами и наоборот.

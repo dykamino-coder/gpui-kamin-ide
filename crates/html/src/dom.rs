@@ -404,6 +404,9 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     );
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     resolve_display_inherit(&mut out, (None, None, None, None, None));
+    // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
+    // подсетки: дальше они идут тем же кодом, что и сетка.
+    lanes_as_grid(&mut out);
     hoist_grid_abspos(&mut out);
     content_box_static_position(&mut out);
     flex_items_lose_float(&mut out);
@@ -1237,6 +1240,66 @@ fn add_len(a: Option<Len>, b: Option<Len>) -> Option<Len> {
 /// и `grid-column` задают ему прямоугольник области (css-grid-2 §9). Раскладка
 /// знает только ПРЯМЫХ детей сетки, поэтому потомок поднимается к ней. Стиль к
 /// этому моменту уже вычислен, и переезд по дереву его не меняет.
+/// Ось лунок контейнера: `true` — лунки РЯДАМИ (ось решётки — ряды).
+///
+/// Без явного `grid-lanes-direction` направление выдаёт ТА ОСЬ, по которой
+/// объявлены дорожки — то же правило, что у `render::lanes`.
+pub(crate) fn lanes_row_dir(s: &Computed) -> bool {
+    let row_tracks = s.grid_rows.is_some() || s.auto_repeat_rows.is_some() || s.grid_auto_fill_row.is_some();
+    let col_tracks = s.grid_tracks.is_some() || s.auto_repeat_cols.is_some() || s.grid_auto_fill_min.is_some();
+    s.lanes_row.unwrap_or(row_tracks && !col_tracks)
+}
+
+/// Контейнер лунок — на путь СЕТКИ, раскладку лунками делает taffy
+/// (`vendor/taffy/src/compute/grid/lanes.rs`, css-grid-3).
+///
+/// css-grid-3 §grid-lanes-track-templates (Overview.bs:414-433): по оси
+/// решётки «the full power of grid layout is available» — шаблоны, линии,
+/// области, явная и неявная сетка «formed in the same way as for a regular
+/// grid container», а дорожки размеряются алгоритмом css-grid-2 §12
+/// (Overview.bs:619-669). Поэтому контейнер становится обычной сеткой с
+/// пометкой `lanes_taffy`: шаблоны, зазоры, выравнивание и дети идут ТЕМ ЖЕ
+/// путём, что у сетки-эталона (`grid-subgridded-to-grid-lanes/**` — та же
+/// разметка на `inline-grid`), а не рукописной оценкой `render::lanes`.
+///
+/// Гейт — то, чего taffy-путь пока не умеет; такой контейнер остаётся на
+/// `render::lanes`: вертикальное письмо и `rtl` контейнера, интрин-дорожки
+/// внутри `repeat(auto-*)` (css-grid-3 §7.2.1, гипотетический размер по
+/// содержимому), подсетки среди детей.
+fn lanes_as_grid(nodes: &mut [Node]) {
+    use crate::computed::{Track, TrackSize};
+    for node in nodes.iter_mut() {
+        let Node::Element(el) = node else { continue };
+        lanes_as_grid(&mut el.children);
+        if el.style.display != Some(Display::GridLanes) {
+            continue;
+        }
+        let s = &el.style;
+        let row_dir = lanes_row_dir(s);
+        let repeat = if row_dir { s.auto_repeat_rows } else { s.auto_repeat_cols };
+        let intrinsic_repeat = repeat.is_some_and(|r| r.track.is_none() && r.track_pct.is_none());
+        let list = if row_dir { &s.grid_rows } else { &s.grid_tracks };
+        let odd_repeat = list.as_ref().is_some_and(|l| {
+            l.iter().any(|t| match t {
+                TrackSize::AutoRepeat { tracks, .. } => {
+                    !tracks.iter().all(|b| matches!(b, TrackSize::Single(Track::Px(_))))
+                }
+                _ => false,
+            })
+        });
+        let has_subgrid = el.children.iter().any(|c| matches!(c, Node::Element(k) if k.style.subgrid));
+        if s.vertical == Some(true) || s.rtl == Some(true) || intrinsic_repeat || odd_repeat || has_subgrid {
+            continue;
+        }
+        el.style.display = Some(if el.style.lanes_inline {
+            Display::InlineGrid
+        } else {
+            Display::Grid
+        });
+        el.style.lanes_taffy = true;
+    }
+}
+
 fn hoist_grid_abspos(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };

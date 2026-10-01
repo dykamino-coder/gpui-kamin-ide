@@ -174,6 +174,39 @@ pub trait CoreStyle {
     fn margin_trim(&self) -> u8 {
         0
     }
+    /// KaminIDE patch: раскладка ЛУНКАМИ (css-grid-3 «grid lanes»): сетка
+    /// с дорожками только по ОДНОЙ оси. `None` — обычная сетка.
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn grid_lanes(&self) -> Option<GridLanes> {
+        None
+    }
+}
+
+/// KaminIDE patch: параметры раскладки лунками (css-grid-3 §grid-lanes-model,
+/// `csswg-drafts/css-grid-3/Overview.bs:203`). Контейнер остаётся сеткой
+/// (`Display::Grid`): дорожки ОСИ РЕШЁТКИ размеряются тем же алгоритмом
+/// css-grid-2 §12 по «виртуальным» элементам (Overview.bs:619-745), а вдоль
+/// ОСИ УКЛАДКИ элементы встают в самую короткую лунку (Overview.bs:885-968).
+/// Оси ФИЗИЧЕСКИЕ: письмо переставляет их до нас.
+#[cfg(feature = "grid")]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct GridLanes {
+    /// Ось решётки — РЯДЫ (`grid-lanes-direction: row`): лунки идут
+    /// горизонтальными полосами, укладка — слева направо.
+    pub rows: bool,
+    /// `track-reverse`: авто-перебор дорожек от последней к первой.
+    pub track_reverse: bool,
+    /// `fill-reverse`: укладка от КОНЦА оси укладки.
+    pub fill_reverse: bool,
+    /// `grid-auto-flow: dense` — добор в пропуски (Overview.bs:871-883).
+    pub dense: bool,
+    /// Порог «равных» лунок (`flow-tolerance`, Overview.bs:787-869), уже в
+    /// точках раскладки; `f32::INFINITY` — `infinite`.
+    pub tolerance: f32,
+    /// Порог долей размера контейнера по оси решётки (`flow-tolerance: N%`);
+    /// при `Some` перекрывает `tolerance`.
+    pub tolerance_pct: Option<f32>,
 }
 
 /// Sets the layout used for the children of this node
@@ -477,6 +510,9 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// края: 1 верх, 2 право, 4 низ, 8 лево.
     #[cfg(any(feature = "flexbox", feature = "grid"))]
     pub margin_trim: u8,
+    /// KaminIDE patch: раскладка лунками (см. [`GridLanes`]).
+    #[cfg(feature = "grid")]
+    pub grid_lanes: Option<GridLanes>,
 
     // Block container properties
     /// How items elements should aligned in the inline axis
@@ -590,6 +626,8 @@ impl<S: CheapCloneStr> Style<S> {
         flex_balance_lines: 0,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         margin_trim: 0,
+        #[cfg(feature = "grid")]
+        grid_lanes: None,
         #[cfg(feature = "flexbox")]
         flex_grow: 0.0,
         #[cfg(feature = "flexbox")]
@@ -701,6 +739,11 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn margin_trim(&self) -> u8 {
         self.margin_trim
     }
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn grid_lanes(&self) -> Option<GridLanes> {
+        self.grid_lanes
+    }
 }
 
 impl<T: CoreStyle> CoreStyle for &'_ T {
@@ -773,6 +816,11 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn margin_trim(&self) -> u8 {
         (*self).margin_trim()
+    }
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn grid_lanes(&self) -> Option<GridLanes> {
+        (*self).grid_lanes()
     }
 }
 

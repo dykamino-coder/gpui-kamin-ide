@@ -249,6 +249,8 @@ pub struct Style {
     /// KaminIDE patch: `margin-trim` (css-box-4 §margin-trim) гибкого
     /// контейнера и сетки — ФИЗИЧЕСКИЕ края: 1 верх, 2 право, 4 низ, 8 лево.
     pub margin_trim: u8,
+    /// KaminIDE patch: контейнер-сетка раскладывается ЛУНКАМИ (css-grid-3).
+    pub grid_lanes: Option<crate::GridLanesFlow>,
     /// KaminIDE patch: наружная коробка ТАБЛИЦЫ (`crates/html` `render::table`).
     /// Гибкая раскладка не ужимает такой элемент по главной оси ниже
     /// min-content его содержимого (css-tables-3 §3.9: GRIDMIN сильнее
@@ -915,6 +917,7 @@ impl Default for Style {
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
             margin_trim: 0,
+            grid_lanes: None,
             flex_grow: 0.0,
             flex_shrink: 1.0,
             item_is_table: false,

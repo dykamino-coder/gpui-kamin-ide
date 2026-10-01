@@ -498,6 +498,15 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_balance_lines: self.flex_balance_lines,
             // KaminIDE patch: `margin-trim`, физические биты сторон.
             margin_trim: self.margin_trim,
+            // KaminIDE patch: раскладка лунками; порог в точках раскладки.
+            grid_lanes: self.grid_lanes.map(|l| taffy::style::GridLanes {
+                rows: l.rows,
+                track_reverse: l.track_reverse,
+                fill_reverse: l.fill_reverse,
+                dense: l.dense,
+                tolerance: l.tolerance * scale_factor,
+                tolerance_pct: l.tolerance_pct,
+            }),
             flex_basis: self.flex_basis.to_taffy(rem_size, scale_factor),
             // KaminIDE patch: пол GRIDMIN у таблицы-элемента.
             item_is_table: self.item_is_table,

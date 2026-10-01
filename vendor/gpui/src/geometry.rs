@@ -3723,6 +3723,25 @@ pub enum GridAutoFlow {
     ColumnDense,
 }
 
+/// KaminIDE patch: раскладка ЛУНКАМИ (css-grid-3 `display: grid-lanes`) —
+/// сетка с дорожками по одной оси; см. `taffy::GridLanes`. Оси ФИЗИЧЕСКИЕ:
+/// письмо переставляет их в `crates/html`.
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
+pub struct GridLanesFlow {
+    /// Ось решётки — ряды (лунки идут горизонтальными полосами).
+    pub rows: bool,
+    /// `track-reverse`.
+    pub track_reverse: bool,
+    /// `fill-reverse`.
+    pub fill_reverse: bool,
+    /// `grid-auto-flow: dense`.
+    pub dense: bool,
+    /// Порог `flow-tolerance` в пикселях; `f32::INFINITY` — `infinite`.
+    pub tolerance: f32,
+    /// `flow-tolerance: N%` — доля размера контейнера по оси решётки.
+    pub tolerance_pct: Option<f32>,
+}
+
 /// A location in a grid layout.
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct GridLocation {

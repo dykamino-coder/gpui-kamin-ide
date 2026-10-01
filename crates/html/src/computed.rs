@@ -1901,6 +1901,11 @@ pub struct Computed {
     /// `display: inline grid-lanes` — контейнер лунок строчного уровня:
     /// ширина по дорожкам, не на всю строку.
     pub lanes_inline: bool,
+    /// Контейнер лунок, переведённый на путь СЕТКИ: `display` уже
+    /// `Grid`/`InlineGrid`, а раскладку лунками делает taffy
+    /// (`vendor/taffy/src/compute/grid/lanes.rs`). Ставит
+    /// `dom::lanes_as_grid`.
+    pub lanes_taffy: bool,
     pub justify_self: Option<Align>,
 
     pub grid_rows: Option<Vec<TrackSize>>,

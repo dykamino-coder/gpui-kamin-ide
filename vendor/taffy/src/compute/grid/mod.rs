@@ -29,6 +29,8 @@ pub(crate) use types::{GridCoordinate, GridLine, OriginZeroLine};
 mod alignment;
 mod explicit_grid;
 mod implicit_grid;
+// KaminIDE patch: раскладка лунками (css-grid-3) на общем алгоритме дорожек.
+mod lanes;
 mod placement;
 mod track_sizing;
 mod types;
@@ -48,6 +50,13 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     let LayoutInput { known_dimensions, parent_size, available_space, run_mode, .. } = inputs;
 
     let style = tree.get_grid_container_style(node);
+
+    // KaminIDE patch: контейнер ЛУНОК (css-grid-3 `display: grid-lanes`) —
+    // своя раскладка поверх тех же дорожек (`lanes.rs`).
+    if let Some(lanes) = style.grid_lanes() {
+        drop(style);
+        return lanes::compute_grid_lanes_layout(tree, node, inputs, lanes);
+    }
 
     // 1. Compute "available grid space"
     // https://www.w3.org/TR/css-grid-1/#available-grid-space
