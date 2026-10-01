@@ -21518,7 +21518,26 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // (см. interact::EdgePainter): кромка соседей ОДНА, рисуется
             // поверх фонов, и «шире побеждает» решается наложением.
             let cell_edge = if collapse_cells {
-                let b = cell.style.borders();
+                // Толщина в кегельных единицах — из СЛИТОГО стиля, где `em`
+                // уже разрешён кеглем ячейки (то же правило, что у `box_style`
+                // ниже): сырой `Em` давал нулевую кромку, и ячейка с `border:
+                // solid 1em` вовсе не попадала в разбор сросшихся кромок, а
+                // рамка рисовалась коробкой — чёрным блоком без разбора
+                // конфликтов (`border-conflict-element-001d/001e`).
+                let b = {
+                    let own = cell.style.borders();
+                    let merged = cm.borders();
+                    let pick = |o: Option<Len>, m: Option<Len>| match o {
+                        Some(Len::Px(_)) | None => o,
+                        _ => m,
+                    };
+                    crate::computed::Sides {
+                        top: pick(own.top, merged.top),
+                        right: pick(own.right, merged.right),
+                        bottom: pick(own.bottom, merged.bottom),
+                        left: pick(own.left, merged.left),
+                    }
+                };
                 let widths = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
                 let black = crate::value::Color {
                     r: 0.0,
@@ -21526,9 +21545,13 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     b: 0.0,
                     a: 1.0,
                 };
+                // Цвет без объявления — `currentColor` (css-backgrounds-3
+                // §border-color, initial: currentcolor), а не чёрный: `td.blue
+                // {color: blue; border: solid 1em}` красил кромку чёрным.
                 let side_colour = |i: usize| {
                     cell.style.border_colors[i]
                         .or(cell.style.border_color)
+                        .or(cm.color)
                         .unwrap_or(black)
                 };
                 let colors = [
@@ -21546,18 +21569,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // кромок стоит по паддинг-боксу, и рамкой линия уехала бы
                 // внутрь.
                 let win = win_edges.get(&cell.node_id).copied().unwrap_or(widths);
-                let half = |i: usize, own: Option<Len>| {
+                // Авторский отступ в кегельных единицах — из СЛИТОГО стиля
+                // (`em` там разрешён кеглем ячейки, как у `box_style`): сырой
+                // `Em` падал в ноль, и ячейка сросшейся модели с `padding:
+                // 0.5em` теряла отступ целиком — одни полкромки без
+                // внутренности (`border-conflict-element-001e`: сетка 100
+                // точек вместо 200).
+                let merged_pad = cm.padding;
+                let half = |i: usize, own: Option<Len>, merged: Option<Len>| {
                     let base = match own {
                         Some(Len::Px(v)) => v,
-                        _ => 0.0,
+                        None => 0.0,
+                        Some(_) => match merged {
+                            Some(Len::Px(v)) => v,
+                            _ => 0.0,
+                        },
                     };
                     Some(Len::Px(base + win[i] / 2.0))
                 };
                 cell.style.padding = crate::computed::Sides {
-                    top: half(0, cell.style.padding.top),
-                    right: half(1, cell.style.padding.right),
-                    bottom: half(2, cell.style.padding.bottom),
-                    left: half(3, cell.style.padding.left),
+                    top: half(0, cell.style.padding.top, merged_pad.top),
+                    right: half(1, cell.style.padding.right, merged_pad.right),
+                    bottom: half(2, cell.style.padding.bottom, merged_pad.bottom),
+                    left: half(3, cell.style.padding.left, merged_pad.left),
                 };
 
                 cell.style.border_width = Default::default();
@@ -22173,6 +22207,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     let side_colour = |k: usize| {
                         row.style.border_colors[k]
                             .or(row.style.border_color)
+                            .or(row_style.color)
                             .unwrap_or(black)
                     };
                     let colors = [
@@ -22242,6 +22277,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     let side_colour = |k: usize| {
                         g.style.border_colors[k]
                             .or(g.style.border_color)
+                            .or(g.style.color)
+                            .or(inherited.color)
                             .unwrap_or(black)
                     };
                     let colors = [
@@ -22309,6 +22346,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     let side_colour = |k: usize| {
                         el.style.border_colors[k]
                             .or(el.style.border_color)
+                            .or(el.style.color)
+                            .or(inherited.color)
                             .unwrap_or(black)
                     };
                     let colors = [
@@ -22380,6 +22419,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     let side_colour = |k: usize| {
                         el.style.border_colors[k]
                             .or(el.style.border_color)
+                            .or(el.style.color)
+                            .or(inherited.color)
                             .unwrap_or(black)
                     };
                     let colors = [
@@ -22986,6 +23027,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         let side_colour = |i: usize| {
             e.style.border_colors[i]
                 .or(e.style.border_color)
+                .or(inherited.color)
                 .unwrap_or(black)
         };
         let colors = [
