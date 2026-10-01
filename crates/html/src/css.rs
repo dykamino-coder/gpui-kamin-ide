@@ -1384,17 +1384,31 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
                 let flat = strip_nested_blocks(body);
                 let decls = parse_decls(&flat);
                 if !decls.is_empty() {
+                    // Объявления листа — В ПОРЯДКЕ ЗАПИСИ, повтор свойства —
+                    // отдельной парой на своём месте. Словарь `Decls` порядка не
+                    // помнит (случайный `RandomState` на процесс), повтор
+                    // склеивает через `DECL_SEP`, а `page_box` стенда применяет
+                    // пары по очереди: `margin: 0; margin-top: 20vw`
+                    // (`page-size-016`) давал разный лист от прогона к прогону,
+                    // а `margin: 13px; margin: inherit` (`page-margin-006`) —
+                    // значение «13px\u{1}inherit», которое не разбиралось вовсе.
+                    // Служебный `ORDER_KEY` в пул больше не попадает.
+                    let order = decls.get(ORDER_KEY).cloned().unwrap_or_default();
+                    let list: Vec<(String, String)> = order
+                        .split(DECL_SEP)
+                        .filter_map(|k| decls.get(k).map(|v| (k, v)))
+                        .flat_map(|(k, v)| {
+                            v.split(DECL_SEP)
+                                .map(move |one| (k.to_string(), one.trim().to_string()))
+                        })
+                        .collect();
                     if named {
-                        let list: Vec<(String, String)> = decls.into_iter().collect();
                         PAGE_NAMED_DECLS
                             .lock()
                             .unwrap()
                             .push((selector.to_string(), list));
                     } else {
-                        let mut pool = PAGE_DECLS.lock().unwrap();
-                        for (k, v) in decls {
-                            pool.push((k, v));
-                        }
+                        PAGE_DECLS.lock().unwrap().extend(list);
                     }
                 }
                 false

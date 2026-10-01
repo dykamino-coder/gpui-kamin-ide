@@ -2283,6 +2283,9 @@ pub struct PageGeom {
     pub size: (f32, f32),
     pub margin: [f32; 4],
     pub border: (f32, gpui::Hsla),
+    /// Контур листа: толщина, сдвиг наружу от рамки, цвет (css-ui-4 §outline;
+    /// у коробки страницы это обычное свойство, `page-box-010`).
+    pub outline: (f32, f32, gpui::Hsla),
     pub padding: [f32; 4],
     /// Фон листа — кроет ВЕСЬ лист вместе с полями (§painting, слой 1).
     pub bg: gpui::Hsla,
@@ -2388,14 +2391,23 @@ impl PageStack {
         let s = self.grid.get().1;
         let (sx, sy) = self.sheet_origin(i);
         let (ax, ay) = self.geom.area_origin();
+        let area = Bounds {
+            origin: point(
+                bounds.origin.x + px((sx + ax) * s),
+                bounds.origin.y + px((sy + ay) * s),
+            ),
+            size: size(px(self.geom.area.0 * s), px(self.geom.area.1 * s)),
+        };
+        // Отрицательные поля выносят page area ЗА лист, а видно только то,
+        // что на листе (`page-margin-negative-print.tentative`: красная рамка
+        // 20px на −20..0 обязана уйти под обрез). Маски фрагментов, слоёв ICB
+        // и `fixed` — пересечения с этой, обрез достаётся всем.
+        let sheet = Bounds {
+            origin: point(bounds.origin.x + px(sx * s), bounds.origin.y + px(sy * s)),
+            size: size(px(self.geom.size.0 * s), px(self.geom.size.1 * s)),
+        };
         gpui::ContentMask {
-            bounds: Bounds {
-                origin: point(
-                    bounds.origin.x + px((sx + ax) * s),
-                    bounds.origin.y + px((sy + ay) * s),
-                ),
-                size: size(px(self.geom.area.0 * s), px(self.geom.area.1 * s)),
-            },
+            bounds: area.intersect(&sheet),
         }
     }
 }
@@ -2670,7 +2682,13 @@ impl Element for PageStack {
                 let bw = (g.size.0 - g.margin[1] - g.margin[3]).max(0.0);
                 let bh = (g.size.1 - g.margin[0] - g.margin[2]).max(0.0);
                 if let Some(c) = g.canvas {
-                    window.paint_quad(gpui::fill(rect(bx, by, bw, bh), c));
+                    // Канвас кроет border box листа (§painting), но не шире
+                    // самого листа: при отрицательных полях жёлтый фон тела
+                    // вылезал полосами за правый и нижний край.
+                    let (cx, cy) = (bx.max(sx), by.max(sy));
+                    let cw = ((bx + bw).min(sx + g.size.0) - cx).max(0.0);
+                    let ch = ((by + bh).min(sy + g.size.1) - cy).max(0.0);
+                    window.paint_quad(gpui::fill(rect(cx, cy, cw, ch), c));
                 }
                 let (t, c) = g.border;
                 if t > 0.0 {
@@ -2681,6 +2699,22 @@ impl Element for PageStack {
                         (bx + bw - t, by, t, bh),
                     ] {
                         window.paint_quad(gpui::fill(rect(r.0, r.1, r.2, r.3), c));
+                    }
+                }
+                // Контур — снаружи рамки со сдвигом, в слое рамок (под
+                // содержимым): `page-box-010` — поле 50, контур 10 со сдвигом
+                // 40 ложится вплотную к краю листа, как рамка эталона.
+                let (ow, off, oc) = g.outline;
+                if ow > 0.0 {
+                    let (ox, oy) = (bx - off - ow, by - off - ow);
+                    let (fw, fh) = (bw + 2.0 * (off + ow), bh + 2.0 * (off + ow));
+                    for r in [
+                        (ox, oy, fw, ow),
+                        (ox, oy + fh - ow, fw, ow),
+                        (ox, oy, ow, fh),
+                        (ox + fw - ow, oy, ow, fh),
+                    ] {
+                        window.paint_quad(gpui::fill(rect(r.0, r.1, r.2, r.3), oc));
                     }
                 }
             }

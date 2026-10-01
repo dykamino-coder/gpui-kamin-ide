@@ -87,7 +87,28 @@ impl Render for Page {
                     [px(&m.top), px(&m.right), px(&m.bottom), px(&m.left)]
                 })
                 .unwrap_or([0.0; 4]);
-            page_box(decls, root_margin)
+            // Режим письма листа — от КОРНЯ (css-page-3 §page-properties: «The
+            // page context inherits from the root element»; Blink `StyleForPage`
+            // наследует от documentElement), `writing-mode` внутри `@page` не
+            // действует (`page-box-009`: «should be in horizontal-tb»). Нужен
+            // логическим полям и отступам листа (`page-box-008`).
+            let root_wm = self
+                .doc
+                .nodes()
+                .iter()
+                .find_map(|n| match n {
+                    kamin_html::dom::Node::Element(e) if e.tag == "html" => Some(e),
+                    _ => None,
+                })
+                .map(|e| {
+                    (
+                        e.style.vertical == Some(true),
+                        e.style.vertical_rl == Some(true),
+                        e.style.rtl == Some(true),
+                    )
+                })
+                .unwrap_or((false, false, false));
+            page_box(decls, root_margin, root_wm)
         });
         let opts = RenderOpts {
             viewport: page.as_ref().map(|p| (p.area.0, p.area.1)).unwrap_or((
@@ -119,9 +140,11 @@ impl Render for Page {
                 size: p.size,
                 margin: p.margin,
                 border: (p.border.0, p.border.1.to_hsla()),
-                padding: [0.0; 4],
+                // Page area внутри отступов листа (`PageGeom::area_origin`).
+                padding: p.padding,
                 bg: p.bg.map(|c| c.to_hsla()).unwrap_or(gpui::white()),
                 canvas: None,
+                outline: (p.outline.0, p.outline.1, p.outline.2.to_hsla()),
                 area: p.area,
             };
             let stack = kamin_html::render::render_paged(self.doc.nodes(), &opts, geom);
@@ -213,13 +236,19 @@ struct PageBox {
     size: (f32, f32),
     /// Поля: верх/право/низ/лево.
     margin: [f32; 4],
+    /// Отступы листа: верх/право/низ/лево. Page area — КОНТЕНТНАЯ область
+    /// коробки страницы, внутри отступов (css-page-3 §page-model; Blink
+    /// `ResolvePageBoxGeometry` считает их как у обычного блока).
+    padding: [f32; 4],
     /// Область содержимого (page area).
     area: (f32, f32),
     bg: Option<kamin_html::value::Color>,
     border: (f32, kamin_html::value::Color),
+    /// Контур листа: толщина, сдвиг, цвет (`outline`/`outline-offset`).
+    outline: (f32, f32, kamin_html::value::Color),
 }
 
-fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4]) -> PageBox {
+fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool, bool)) -> PageBox {
     use kamin_html::value::{Color, Len};
     let (mut w, mut h) = (480.0f32, 288.0f32);
     // Поля листа по умолчанию — ЗАМЕР отдельным прогоном: WPT их не
@@ -230,12 +259,48 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4]) -> PageBox {
     let default_margin: f32 = std::env::var("WPT_PAGE_MARGIN")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(0.0);
+        // ★ Умолчание — 0.5in: так печатает раннер WPT (wpt#40788; Blink
+        // `StyleForPage` берёт поля из параметров печати), и эталоны это
+        // ЗАШИВАЮТ: `monolithic-overflow-027-ref` 400vh = 8in = четыре листа
+        // по 2in, `monolithic-overflow-030-ref` — `height: 1.5in` + квадрат
+        // 0.5in на лист. `WPT_PAGE_MARGIN=0` — прежнее поведение.
+        .unwrap_or(48.0);
     let mut margin = [default_margin; 4];
+    let mut padding = [0.0f32; 4];
+    // Стороны с `margin: auto` — их размер решается остатком (ниже).
+    let mut auto_m = [false; 4];
+    // Логическая сторона листа → физический индекс [верх, право, низ, лево]
+    // по письму КОРНЯ (css-writing-modes-4 §6.2): `page-box-008`
+    // (`html { writing-mode: vertical-rl }`) — inline-start сверху,
+    // block-start справа; `page-box-009` — как у горизонтального корня.
+    let (vertical, vertical_rl, rtl) = wm;
+    let logical = move |block: bool, start: bool| -> usize {
+        match (vertical, block) {
+            (false, true) if start => 0,
+            (false, true) => 2,
+            (false, false) if start != rtl => 3,
+            (false, false) => 1,
+            (true, true) if start == vertical_rl => 1,
+            (true, true) => 3,
+            (true, false) if start != rtl => 0,
+            (true, false) => 2,
+        }
+    };
     // `width`/`height` листа — размер PAGE AREA, не листа (css-page-3
     // §page-model); применяются после полей, см. ниже.
     let (mut explicit_w, mut explicit_h): (Option<f32>, Option<f32>) = (None, None);
     let mut bg: Option<Color> = None;
+    // Контур по умолчанию — `currentColor`, у листа это чёрный.
+    let mut outline = (
+        0.0f32,
+        0.0f32,
+        Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        },
+    );
     let mut border = (
         0.0f32,
         Color {
@@ -305,26 +370,94 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4]) -> PageBox {
                     3 => (side(0), side(1), side(2), side(1)),
                     _ => (side(0), side(1), side(2), side(3)),
                 };
-                for (slot, (t, vert)) in
-                    margin
-                        .iter_mut()
-                        .zip([(a, true), (b, false), (c, true), (d, false)])
+                for (i, (slot, (t, vert))) in margin
+                    .iter_mut()
+                    .zip([(a, true), (b, false), (c, true), (d, false)])
+                    .enumerate()
+                {
+                    auto_m[i] = t == "auto";
+                    if auto_m[i] {
+                        *slot = 0.0;
+                    } else if let Some(px) = px_of(t, vert) {
+                        *slot = px;
+                    }
+                }
+            }
+            "margin-top" | "margin-right" | "margin-bottom" | "margin-left" => {
+                let i = match k.as_str() {
+                    "margin-top" => 0,
+                    "margin-right" => 1,
+                    "margin-bottom" => 2,
+                    _ => 3,
+                };
+                auto_m[i] = v.trim() == "auto";
+                if auto_m[i] {
+                    margin[i] = 0.0;
+                } else if let Some(px) = px_of(v, i % 2 == 0) {
+                    margin[i] = px;
+                }
+            }
+            // Отступы листа. Проценты — по СВОЕЙ физической оси, как у полей
+            // (css-page-3 §page-properties: «for right and left values,
+            // percentages are relative to the width of the containing block;
+            // for top and bottom values, … to the height»): `page-box-007`
+            // `5% 20% 15% 40%` от 400x800 = 40/80/120/160.
+            "padding" => {
+                let vals: Vec<&str> = v.split_whitespace().collect();
+                let side = |i: usize| vals.get(i).copied().unwrap_or("0");
+                let (a, b, c, d) = match vals.len() {
+                    1 => (side(0), side(0), side(0), side(0)),
+                    2 => (side(0), side(1), side(0), side(1)),
+                    3 => (side(0), side(1), side(2), side(1)),
+                    _ => (side(0), side(1), side(2), side(3)),
+                };
+                for (slot, (t, vert)) in padding
+                    .iter_mut()
+                    .zip([(a, true), (b, false), (c, true), (d, false)])
                 {
                     if let Some(px) = px_of(t, vert) {
                         *slot = px;
                     }
                 }
             }
-            "margin-top" => margin[0] = px_of(v, true).unwrap_or(margin[0]),
-            "margin-right" => margin[1] = px_of(v, false).unwrap_or(margin[1]),
-            "margin-bottom" => margin[2] = px_of(v, true).unwrap_or(margin[2]),
-            "margin-left" => margin[3] = px_of(v, false).unwrap_or(margin[3]),
+            "padding-top" => padding[0] = px_of(v, true).unwrap_or(padding[0]),
+            "padding-right" => padding[1] = px_of(v, false).unwrap_or(padding[1]),
+            "padding-bottom" => padding[2] = px_of(v, true).unwrap_or(padding[2]),
+            "padding-left" => padding[3] = px_of(v, false).unwrap_or(padding[3]),
+            // Логические поля и отступы (`margin-block-start` и родня): сторона
+            // — по письму корня, доля — по физической оси этой стороны.
+            k if (k.starts_with("margin-") || k.starts_with("padding-"))
+                && (k.contains("-block-") || k.contains("-inline-"))
+                && (k.ends_with("-start") || k.ends_with("-end")) =>
+            {
+                let i = logical(k.contains("-block-"), k.ends_with("-start"));
+                let slot = if k.starts_with("padding-") {
+                    &mut padding[i]
+                } else {
+                    &mut margin[i]
+                };
+                if let Some(px) = px_of(v, i % 2 == 0) {
+                    *slot = px;
+                }
+            }
             "background" | "background-color" => {
                 let first = v.split_whitespace().next().unwrap_or("");
                 if let Some(c) = Color::parse(first) {
                     bg = Some(c);
                 }
             }
+            "outline" => {
+                for t in v.split_whitespace() {
+                    if let Some(px) = px_of(t, false) {
+                        outline.0 = px;
+                    } else if let Some(c) = Color::parse(t) {
+                        outline.2 = c;
+                    }
+                }
+            }
+            "outline-width" => outline.0 = px_of(v, false).unwrap_or(outline.0),
+            "outline-offset" => outline.1 = px_of(v, false).unwrap_or(outline.1),
+            "outline-color" => outline.2 = Color::parse(v.trim()).unwrap_or(outline.2),
             "border" => {
                 for t in v.split_whitespace() {
                     if let Some(px) = px_of(t, false) {
@@ -342,22 +475,53 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4]) -> PageBox {
     // edges of the page box» (Blink `ResolvePageBoxGeometry`);
     // `page-size-013`: size 500px, margin 50px, width 200px, height 300px →
     // лист 300x400 (эталон `size: 300px 400px; margin: 50px`).
+    // `width`/`height` — контентная коробка листа, то есть page area: лист =
+    // она + отступы + рамка + поля.
+    // Ось с `auto`-полем: лист остаётся размером `size`, а `auto`-поля делят
+    // остаток — он бывает ОТРИЦАТЕЛЬНЫМ, если коробка шире `size` (Blink
+    // `ResolvePageBoxGeometry` → `ResolveAutoMargins`, csswg#8508;
+    // `page-margin-auto-negative-print.tentative`: size 300, width 340,
+    // margin auto → по −20 с каждой стороны). Ось без `auto` — прежнее
+    // переопределение: лист подгоняется под поля (`page-size-013`).
+    let fit = |size: f32, used: f32, a: bool, b: bool, ma: &mut f32, mb: &mut f32| -> f32 {
+        match (a, b) {
+            (true, true) => {
+                *ma = (size - used) / 2.0;
+                *mb = *ma;
+                size
+            }
+            (true, false) => {
+                *ma = size - used - *mb;
+                size
+            }
+            (false, true) => {
+                *mb = size - used - *ma;
+                size
+            }
+            (false, false) => used + *ma + *mb,
+        }
+    };
+    let [mt, mr, mb, ml] = &mut margin;
     if let Some(x) = explicit_w {
-        w = x + margin[1] + margin[3] + border.0 * 2.0;
+        let used = x + border.0 * 2.0 + padding[1] + padding[3];
+        w = fit(w, used, auto_m[3], auto_m[1], ml, mr);
     }
     if let Some(y) = explicit_h {
-        h = y + margin[0] + margin[2] + border.0 * 2.0;
+        let used = y + border.0 * 2.0 + padding[0] + padding[2];
+        h = fit(h, used, auto_m[0], auto_m[2], mt, mb);
     }
     let area = (
-        (w - margin[1] - margin[3] - border.0 * 2.0).max(0.0),
-        (h - margin[0] - margin[2] - border.0 * 2.0).max(0.0),
+        (w - margin[1] - margin[3] - border.0 * 2.0 - padding[1] - padding[3]).max(0.0),
+        (h - margin[0] - margin[2] - border.0 * 2.0 - padding[0] - padding[2]).max(0.0),
     );
     PageBox {
         size: (w, h),
         margin,
+        padding,
         area,
         bg,
         border,
+        outline,
     }
 }
 
