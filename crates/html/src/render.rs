@@ -25188,8 +25188,43 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 item.style.grid_cols = None;
             }
         } else if item.style.subgrid {
+            // Гейт среза — ТОТ ЖЕ, что у сборки дерева для обычной сетки
+            // (`dom::subgrid_takes_parent_tracks`): ОБЪЯВЛЕННЫЕ дорожки лунок
+            // сплошь `Px`, либо `fr`+`Px` при точечном размере контейнера
+            // (`fr_tracks_to_px`) — и тогда только в параллельную подсеточную
+            // ось. Прежде срез резался из `tracks` ПОСЛЕ прохода вкладов, а он
+            // переводит `auto`-колонки в точки по эвристике `cross_of`: тест
+            // `grid-subgridded-to-grid-lanes/**` (лунки) получал срез, которого
+            // эталон (та же разметка на `inline-grid`, гейт `dom.rs`) не
+            // получает, — пара разводилась по построению (`scout-subgrid-
+            // 2026-09-30.md` S1, `gap/*` 27 пар с родителями `auto`,
+            // `100px auto`, `repeat(4, auto)`). Доли без перевода в точки
+            // лунки прежде не резали вовсе — эталон их режет; теперь обе
+            // стороны режут одно и то же.
+            let declared_raw = if row_dir {
+                merged.grid_rows.clone()
+            } else {
+                merged.grid_tracks.clone()
+            }
+            .unwrap_or_default();
+            let declared_fr = crate::dom::fr_tracks_to_px(merged, &declared_raw, row_dir);
+            let from_fr = declared_fr.is_some();
+            let declared = declared_fr.unwrap_or(declared_raw);
+            let own_axis = if row_dir {
+                item.style.subgrid_rows
+            } else {
+                item.style.subgrid_cols
+            };
+            let item_parallel =
+                item.style.vertical.unwrap_or(false) == merged.vertical.unwrap_or(false);
+            let gate = !declared.is_empty()
+                && declared
+                    .iter()
+                    .all(|t| matches!(t, TrackSize::Single(Track::Px(_))))
+                && (!from_fr || (own_axis && item_parallel));
+            let source: &[TrackSize] = if gate { &declared } else { &[] };
             let slice: Vec<TrackSize> = (at..at + span)
-                .filter_map(|i| tracks.get(i).cloned())
+                .filter_map(|i| source.get(i).cloned())
                 .collect();
             if slice.len() == span
                 && slice
@@ -25300,23 +25335,14 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 // берётся заново из дорожек родителя, а зазор подсетки после
                 // первой записи уже задан и повторно не меняется.
                 //
-                // Гейт — тот же, что у сборки дерева: ОБЪЯВЛЕННЫЕ дорожки
-                // лунок сплошь `Px`. Дорожки, переведённые в точки проходом
+                // Гейт — тот же, что у сборки дерева (`gate` выше: сюда
+                // доходит только срез из ОБЪЯВЛЕННЫХ точечных дорожек или
+                // переведённых долей). Дорожки, переведённые в точки проходом
                 // вкладов (`intrinsic_track` выше), эталон на сетке не
-                // получает (там `auto` гейт не проходит), и повторный проход
-                // по ним развёл бы пару. Ортогональный элемент пропускается:
-                // срез в него ложится по скрещенной оси.
-                let declared = if row_dir {
-                    merged.grid_rows.as_deref()
-                } else {
-                    merged.grid_tracks.as_deref()
-                };
-                let declared_px = declared.is_some_and(|d| {
-                    !d.is_empty()
-                        && d.iter()
-                            .all(|t| matches!(t, TrackSize::Single(Track::Px(_))))
-                });
-                if parallel && declared_px {
+                // получает, и повторный проход по ним развёл бы пару.
+                // Ортогональный элемент пропускается: срез в него ложится по
+                // скрещенной оси.
+                if parallel {
                     let mut one = [Node::Element(item)];
                     crate::dom::subgrid_takes_parent_tracks(&mut one);
                     let [Node::Element(back)] = one else {

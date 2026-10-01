@@ -1040,7 +1040,7 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
 /// единицы. Гейт: размер оси и зазор — точки (или зазор не задан), все
 /// дорожки — точки или доли, хотя бы одна доля; иначе `None`. Рост доли под
 /// содержимое (`minmax(auto, 1fr)`) здесь не виден — у пар семьи элементы пустые.
-fn fr_tracks_to_px(
+pub(crate) fn fr_tracks_to_px(
     style: &Computed,
     tracks: &[crate::computed::TrackSize],
     row_dir: bool,
