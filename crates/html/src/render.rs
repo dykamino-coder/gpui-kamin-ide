@@ -4227,7 +4227,13 @@ fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32, Vec<(Eleme
         || s.justify_content.is_some()
         || s.align_content.is_some()
         || s.align_items.is_some()
-        || s.position.is_some()
+        // `position: relative` без сдвигов ничего не двигает, а содержащим
+        // блоком ему служить некому (внепоточных детей гейт не пускает).
+        || !(s.position.is_none()
+            || (s.position == Some(crate::computed::Position::Relative)
+                && [&s.inset.top, &s.inset.right, &s.inset.bottom, &s.inset.left]
+                    .into_iter()
+                    .all(|l| matches!(l, None | Some(Len::Auto)))))
         || s.transform.is_some()
         || s.min_height.is_some()
         || s.max_height.is_some()
