@@ -113,6 +113,26 @@ pub(in super::super) struct GridItem {
     /// KaminIDE patch: обрезанные `margin-trim` стороны элемента (биты
     /// физических сторон контейнера) — для финального выравнивания.
     pub margin_trim: u8,
+    /// KaminIDE patch: оси, в которых элемент ВКЛАДЫВАЕТСЯ в размер дорожек
+    /// этого контейнера (биты `SUBGRID_COLUMNS`/`SUBGRID_ROWS`). Подсетка в
+    /// своей подсеточной оси «acts as if it was completely empty» (css-grid-2
+    /// §9 (g) `#subgrid-size-contribution`) — бит снят; элемент подсетки,
+    /// сплющенный в этот контейнер, вкладывается только в подсеточные оси.
+    pub sizing_axes: u8,
+    /// KaminIDE patch: элемент ПОДСЕТКИ, сплющенный в дорожки этого
+    /// контейнера (§9 (h) `#subgrid-item-contribution`). Он только вкладывает
+    /// размеры; раскладывает и ставит его сама подсетка.
+    pub flattened: bool,
+    /// KaminIDE patch: накопленные края подсеток над элементом — «an extra
+    /// layer of (potentially negative) margin» (§subgrid-margins,
+    /// §subgrid-gaps), в точках, по физическим сторонам.
+    pub extra_margin: Rect<f32>,
+    /// KaminIDE patch: размер области сплющенного элемента в НЕподсеточной
+    /// оси его подсетки — её собственная дорожка, когда она известна без
+    /// содержимого (Blink меряет такой элемент по дорожкам «standalone»-оси
+    /// подсетки, `grid_layout_algorithm.cc` `IsSubgridWithStandaloneAxis`).
+    /// Перекрывает оценку по дорожкам контейнера в `available_space`.
+    pub subgrid_cross: Size<Option<f32>>,
 }
 
 impl GridItem {
@@ -174,7 +194,23 @@ impl GridItem {
             y_position: 0.0,
             height: 0.0,
             margin_trim: 0,
+            sizing_axes: 3,
+            flattened: false,
+            extra_margin: Rect::ZERO,
+            subgrid_cross: Size::NONE,
         }
+    }
+
+    /// KaminIDE patch: вкладывается ли элемент в размер дорожек оси `axis`
+    /// (см. [`GridItem::sizing_axes`]). Оси сетки taffy физические: `Inline`
+    /// — колонки, `Block` — ряды.
+    #[inline(always)]
+    pub fn sizes_axis(&self, axis: AbstractAxis) -> bool {
+        let bit = match axis {
+            AbstractAxis::Inline => 1,
+            AbstractAxis::Block => 2,
+        };
+        self.sizing_axes & bit != 0
     }
 
     /// This item's placement in the specified axis in OriginZero coordinates
@@ -362,6 +398,12 @@ impl GridItem {
         other_axis_available_space: Option<f32>,
         get_track_size_estimate: impl Fn(&GridTrack, Option<f32>) -> Option<f32>,
     ) -> Size<Option<f32>> {
+        // KaminIDE patch: см. `GridItem::subgrid_cross`.
+        if let Some(cross) = self.subgrid_cross.get(axis.other()) {
+            let mut size = Size::NONE;
+            size.set(axis.other(), Some(cross));
+            return size;
+        }
         let item_other_axis_size: Option<f32> = {
             other_axis_tracks[self.track_range_excluding_lines(axis.other())]
                 .iter()
@@ -401,14 +443,21 @@ impl GridItem {
         inner_node_width: Option<f32>,
         tree: &impl LayoutPartialTree,
     ) -> Size<f32> {
+        // KaminIDE patch: края подсеток над сплющенным элементом —
+        // дополнительный слой поля (css-grid-2 §subgrid-margins).
         Rect {
-            left: self.margin.left.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)) + self.baseline_shim_x,
+            left: self.margin.left.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis))
+                + self.baseline_shim_x
+                + self.extra_margin.left,
             right: self.margin.right.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis))
-                + self.baseline_shim_x_end,
+                + self.baseline_shim_x_end
+                + self.extra_margin.right,
             top: self.margin.top.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
-                + self.baseline_shim,
+                + self.baseline_shim
+                + self.extra_margin.top,
             bottom: self.margin.bottom.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
-                + self.baseline_shim_end,
+                + self.baseline_shim_end
+                + self.extra_margin.bottom,
         }
         .sum_axes()
     }

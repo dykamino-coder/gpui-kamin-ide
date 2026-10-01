@@ -18,6 +18,7 @@
 //! taffy: тест и эталон шли разными алгоритмами.
 use super::alignment::{align_item_within_area, align_tracks};
 use super::explicit_grid::{compute_explicit_grid_size_in_axis, initialize_grid_tracks, AutoRepeatStrategy};
+use super::subgrid;
 use super::track_sizing::{
     determine_if_item_crosses_flexible_or_intrinsic_tracks, resolve_item_track_indexes, track_sizing_algorithm,
 };
@@ -365,6 +366,39 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
     // элемент меряется по содержимому, а не растягивается (у Blink та же мера
     // уходит в `opt_fixed_inline_size`, :1332-1343).
     let mut stack_max: Vec<Option<f32>> = Vec::with_capacity(children.len());
+    // KaminIDE patch: подсетка в лунках (css-grid-3 Overview.bs:502-519,
+    // 671-700) — до размера дорожек ей известен только пролёт: дорожки
+    // оси решётки при замере по оси укладки `auto` по числу пролёта.
+    let grid_gap_px = grid_gap_style
+        .resolve_or_zero(if rows { inner_node_size.height } else { inner_node_size.width }, |val, basis| {
+            tree.calc(val, basis)
+        });
+    // Позиция авто-размещённой подсетки ещё неизвестна — для замера она
+    // ставится в начало контейнера, как у Blink (`grid_layout_utils.cc`
+    // `AccommodateSubgridExtraMargins`: «we place them at the beginning of
+    // the container for sizing»).
+    for child in &children {
+        let (s, e) = child.definite.unwrap_or((0, child.span.min(n).max(1)));
+        let lines = Line { start: (2 * s) as u16, end: (2 * e) as u16 };
+        // Имена родителя наследует только подсетка с ОПРЕДЕЛЁННОЙ позицией:
+        // авто-размещённая в лунках их не получает (css-grid-3
+        // Overview.bs:502-519).
+        let names = match child.definite {
+            Some(_) => name_resolver.names_in_span(!rows, s as i16 - negative_implicit as i16 + 1, (e - s) as u16),
+            None => Vec::new(),
+        };
+        subgrid::publish_lanes_subgrid(
+            tree,
+            child.node,
+            rows,
+            &grid_tracks,
+            lines,
+            false,
+            grid_gap_px,
+            inner_node_size,
+            names,
+        );
+    }
     for child in &children {
         let mut track = GridTrack::new(MinTrackSizingFunction::auto(), MaxTrackSizingFunction::auto());
         if rows {
@@ -427,6 +461,20 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         }
     }
     let (col_counts, row_counts) = if rows { (stack_counts, counts) } else { (counts, stack_counts) };
+    // KaminIDE patch: элементы подсеток-элементов вкладываются в дорожки оси
+    // решётки — у авто-размещённой подсетки из КАЖДОЙ её виртуальной позиции
+    // (css-grid-3 §track-sizing-subgrid, Overview.bs:671-700: «items of an
+    // auto-placed subgrid contribute to every track they could be placed
+    // in»); края подсетки — полом дорожек (Blink
+    // `AccommodateSubgridExtraMargins`, ветка `is_auto_placed`).
+    let grid_bit = if rows { crate::style::SUBGRID_ROWS } else { crate::style::SUBGRID_COLUMNS };
+    let container_gap =
+        if rows { Size { width: 0.0, height: grid_gap_px } } else { Size { width: grid_gap_px, height: 0.0 } };
+    let subgrid_edges =
+        subgrid::flatten_subgrid_items(tree, &mut items, container_gap, inner_node_size, grid_bit, None);
+    if !subgrid_edges.is_empty() {
+        subgrid::apply_subgrid_floors(&mut grid_tracks, &subgrid_edges, !rows, counts);
+    }
     resolve_item_track_indexes(&mut items, col_counts, row_counts);
     if rows {
         determine_if_item_crosses_flexible_or_intrinsic_tracks(&mut items, &stack_tracks, &grid_tracks);
@@ -436,6 +484,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
 
     // Размер дорожек оси решётки — ОБЩИМ алгоритмом сетки.
     let grid_alignment = if rows { align_content } else { justify_content }.unwrap_or(AlignContent::Stretch);
+    let sizing_count = subgrid::partition_for_axis(&mut items, grid_axis);
     if rows {
         track_sizing_algorithm(
             tree,
@@ -448,7 +497,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             inner_node_size,
             &mut grid_tracks,
             &mut stack_tracks,
-            &mut items,
+            &mut items[..sizing_count],
             |track: &GridTrack, _, _| Some(track.base_size),
             false,
         );
@@ -464,7 +513,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             inner_node_size,
             &mut grid_tracks,
             &mut stack_tracks,
-            &mut items,
+            &mut items[..sizing_count],
             |_: &GridTrack, _, _| None,
             false,
         );
@@ -580,6 +629,39 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         let area_start = grid_tracks[2 * s + 1].offset;
         let area_end = grid_tracks[2 * e].offset;
         let area = f32_max(area_end - area_start, 0.0);
+        // KaminIDE patch: подсетке — размеры дорожек её пролёта (§9 (a)).
+        let lines = Line { start: (2 * s) as u16, end: (2 * e) as u16 };
+        let names = match child.definite {
+            Some(_) => name_resolver.names_in_span(!rows, s as i16 - negative_implicit as i16 + 1, (e - s) as u16),
+            None => Vec::new(),
+        };
+        subgrid::publish_lanes_subgrid(
+            tree,
+            child.node,
+            rows,
+            &grid_tracks,
+            lines,
+            true,
+            grid_gap_px,
+            inner_node_size,
+            names,
+        );
+        // Мерка по оси укладки у подсетки шла по дорожкам НАЧАЛА контейнера
+        // (позиция авто-размещённой ещё не была известна); теперь дорожки —
+        // её собственные, и max-content ширина рядных лунок берётся заново
+        // (`row-auto-placed-subgrid-inherited-tracks-001`: доля высоты
+        // ребёнка с `aspect-ratio` считается от дорожки 100, а не 50).
+        if rows && subgrid::lanes_subgridded(tree, child.node, rows) {
+            stack_max[k] = Some(tree.measure_child_size(
+                child.node,
+                Size::NONE,
+                Size { width: inner_node_size.width, height: None },
+                Size { width: AvailableSpace::MaxContent, height: AvailableSpace::MaxContent },
+                SizingMode::InherentSize,
+                AbsoluteAxis::Horizontal,
+                Line::FALSE,
+            ));
+        }
         let item = layout_lanes_item(tree, child.node, rows, area, stack_avail, None, stack_max[k], container_align);
         let (m_start, m_end) =
             if rows { (item.margin.left, item.margin.right) } else { (item.margin.top, item.margin.bottom) };
@@ -1326,8 +1408,34 @@ fn layout_lanes_item(
         .maybe_resolve(cb, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
         .maybe_add(box_sizing_adjustment);
-    let margin = raw_margin.map(|m| m.resolve_to_option(cb.width.unwrap_or(0.0), |val, basis| tree.calc(val, basis)));
+    let mut margin =
+        raw_margin.map(|m| m.resolve_to_option(cb.width.unwrap_or(0.0), |val, basis| tree.calc(val, basis)));
     drop(style);
+    // KaminIDE patch: подсетка всегда растянута в подсеточной оси, её
+    // выравнивание и размеры там игнорируются (css-grid-2
+    // §subgrid-box-alignment) — иначе линии подсетки не совпали бы с
+    // дорожками, которые ей выданы (`subgrid::publish_lanes_subgrid`).
+    let subgridded = position != Position::Absolute && subgrid::lanes_subgridded(tree, node, rows);
+    let (mut inherent_size, mut min_size, mut max_size) = (inherent_size, min_size, max_size);
+    let (justify_self, align_self) = if subgridded {
+        if rows {
+            inherent_size.height = None;
+            min_size.height = Some(padding_border_size.height);
+            max_size.height = None;
+            margin.top = margin.top.or(Some(0.0));
+            margin.bottom = margin.bottom.or(Some(0.0));
+            (justify_self, Some(AlignSelf::Stretch))
+        } else {
+            inherent_size.width = None;
+            min_size.width = Some(padding_border_size.width);
+            max_size.width = None;
+            margin.left = margin.left.or(Some(0.0));
+            margin.right = margin.right.or(Some(0.0));
+            (Some(AlignSelf::Stretch), align_self)
+        }
+    } else {
+        (justify_self, align_self)
+    };
 
     // Выравнивание по оси решётки — как у сетки: `normal` растягивает, если
     // размер не задан.

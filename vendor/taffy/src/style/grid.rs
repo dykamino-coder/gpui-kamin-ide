@@ -211,6 +211,13 @@ pub trait GridContainerStyle: CoreStyle {
         Style::<Self::CustomIdent>::DEFAULT.justify_items
     }
 
+    /// KaminIDE patch: `<line-name-list>` подсеточной оси (`subgrid [a] [b]`),
+    /// `columns` — физические колонки. `None` — у оси такого списка нет.
+    #[inline(always)]
+    fn subgrid_line_names(&self, _columns: bool) -> Option<super::SubgridLineNames<Self::CustomIdent>> {
+        None
+    }
+
     /// Get a grid item's row or column placement depending on the axis passed
     #[inline(always)]
     fn grid_template_tracks(&self, axis: AbsoluteAxis) -> Option<Self::TemplateTrackList<'_>> {

@@ -3742,6 +3742,52 @@ pub struct GridLanesFlow {
     pub tolerance_pct: Option<f32>,
 }
 
+/// KaminIDE patch: имена линий одной оси сетки (css-grid-2 §7.2.2
+/// `<line-names>`): по списку имён на линию. Для шаблона — по линиям между
+/// компонентами списка дорожек (как `taffy::Style::grid_template_*_names`),
+/// `repeat` — имена внутри `repeat(auto-fill|auto-fit, …)`; для
+/// `<line-name-list>` подсетки — по линии на запись, `repeat` — тело
+/// `repeat(auto-fill, …)`. Оси ФИЗИЧЕСКИЕ.
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
+pub struct GridAxisLineNames {
+    /// Линии до авто-повтора (без повтора — все).
+    pub before: Vec<Vec<String>>,
+    /// Имена линий тела авто-повтора.
+    pub repeat: Option<Vec<Vec<String>>>,
+    /// Линии после авто-повтора.
+    pub after: Vec<Vec<String>>,
+}
+
+/// KaminIDE patch: грань размещения по ИМЕНИ линии (css-grid-2 §8.3):
+/// `a`, `a 2`, `-1 a` — `Line`, `span a`, `span 2 a` — `Span`. Число 0 у
+/// `Line` — «число не задано» (голое имя ищется сперва как `a-start`/`a-end`).
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema)]
+pub enum GridNamedLine {
+    /// Линия с именем.
+    Line(String, i16),
+    /// Пролёт до N-й линии с именем.
+    Span(String, u16),
+}
+
+/// KaminIDE patch: имена линий контейнера и именованные грани элемента —
+/// их разрешает taffy (`NamedLineResolver`), в том числе через подсетки
+/// (§9 (d) наследование имён). Оси ФИЗИЧЕСКИЕ.
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
+pub struct GridLineNames {
+    /// Имена линий шаблона колонок.
+    pub columns: Option<GridAxisLineNames>,
+    /// Имена линий шаблона рядов.
+    pub rows: Option<GridAxisLineNames>,
+    /// `<line-name-list>` подсеточных колонок.
+    pub subgrid_columns: Option<GridAxisLineNames>,
+    /// `<line-name-list>` подсеточных рядов.
+    pub subgrid_rows: Option<GridAxisLineNames>,
+    /// Именованные грани по колонкам: начало, конец.
+    pub column: [Option<GridNamedLine>; 2],
+    /// Именованные грани по рядам: начало, конец.
+    pub row: [Option<GridNamedLine>; 2],
+}
+
 /// A location in a grid layout.
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct GridLocation {

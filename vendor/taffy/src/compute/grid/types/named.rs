@@ -130,10 +130,10 @@ impl<S: CheapCloneStr> NamedLineResolver<S> {
                                 current_line += 1;
                             }
                             // Last line name set collapses with following line name set
-                            current_line -= 1;
+                            current_line = current_line.saturating_sub(1); // KaminIDE patch: повтор без списка имён
                         }
                         // Last line name set collapses with following line name set
-                        current_line -= 1;
+                        current_line = current_line.saturating_sub(1); // KaminIDE patch: повтор без списка имён
                     }
                 }
             }
@@ -170,10 +170,10 @@ impl<S: CheapCloneStr> NamedLineResolver<S> {
                                 current_line += 1;
                             }
                             // Last line name set collapses with following line name set
-                            current_line -= 1;
+                            current_line = current_line.saturating_sub(1); // KaminIDE patch: повтор без списка имён
                         }
                         // Last line name set collapses with following line name set
-                        current_line -= 1;
+                        current_line = current_line.saturating_sub(1); // KaminIDE patch: повтор без списка имён
                     }
                 }
             }
@@ -307,6 +307,13 @@ impl<S: CheapCloneStr> NamedLineResolver<S> {
         };
 
         // An index of 0 is used to represent "no index specified".
+        // KaminIDE patch: голое имя (без числа) сперва ищется как неявное
+        // `имя-start`/`имя-end` (css-grid-2 §8.3 «<custom-ident>»: «First
+        // attempt to match the grid area's edge to a named grid area: if there
+        // is a grid line whose line name is '<custom-ident>-start'… Otherwise,
+        // treat this as if the integer 1 had been specified»); с числом —
+        // только само имя. Прежде порядок был обратным.
+        let bare = idx == 0;
         if idx == 0 {
             idx = 1;
         }
@@ -335,9 +342,18 @@ impl<S: CheapCloneStr> NamedLineResolver<S> {
             GridAreaAxis::Row => &self.row_lines,
             GridAreaAxis::Column => &self.column_lines,
         };
+        if bare {
+            let implicit_name = match end {
+                GridAreaEnd::Start => format!("{name}-start"),
+                GridAreaEnd::End => format!("{name}-end"),
+            };
+            if let Some(lines) = line_lookup.get(&*implicit_name) {
+                return GridLine::from(get_line(filter_lines(lines), explicit_track_count, idx));
+            }
+        }
         if let Some(lines) = line_lookup.get(name) {
             return GridLine::from(get_line(filter_lines(lines), explicit_track_count, idx));
-        } else {
+        } else if !bare {
             // TODO: eliminate string allocations
             match end {
                 GridAreaEnd::Start => {
@@ -367,6 +383,66 @@ impl<S: CheapCloneStr> NamedLineResolver<S> {
         let line = if idx > 0 { (explicit_track_count + 1) + idx } else { -((explicit_track_count + 1) + idx) };
 
         GridLine::from(line)
+    }
+
+    /// KaminIDE patch: имена линий ПОДСЕТОЧНОЙ оси — `lines[i]` у линии `i + 1`.
+    /// Шаблонных имён у такой оси нет (её список — `<line-name-list>`,
+    /// css-grid-2 §subgrid-listing), поэтому прежние имена оси заменяются.
+    pub(crate) fn set_subgrid_line_names(&mut self, columns: bool, lines: &[Vec<S>]) {
+        let map = if columns { &mut self.column_lines } else { &mut self.row_lines };
+        map.clear();
+        for (i, names) in lines.iter().enumerate() {
+            for name in names {
+                upsert_line_name_map(map, name.clone(), (i + 1) as u16);
+            }
+        }
+        for lines in map.values_mut() {
+            lines.sort_unstable();
+            lines.dedup();
+        }
+    }
+
+    /// KaminIDE patch: имена линий оси с номерами `first ..= first + count`
+    /// (с единицы) — их наследует подсетка этого пролёта (css-grid-2 §9 (d)
+    /// `#subgrid-line-name-inheritance`). Неявные имена областей (§9 (e))
+    /// у линии, где область начинается или кончается ВНЕ пролёта, ставятся на
+    /// крайнюю линию подсетки («assigned to the first and/or last line of the
+    /// subgrid such that a named grid area exists representing that partially
+    /// overlapped area»).
+    pub(crate) fn names_in_span(&self, columns: bool, first: i16, count: u16) -> Vec<Vec<String>> {
+        let mut out: Vec<Vec<String>> = (0..=count).map(|_| Vec::new()).collect();
+        let last = first + count as i16;
+        let map = if columns { &self.column_lines } else { &self.row_lines };
+        for (name, lines) in map.iter() {
+            for &line in lines {
+                let line = line as i16;
+                if line >= first && line <= last {
+                    out[(line - first) as usize].push(String::from(name.0.as_ref()));
+                }
+            }
+        }
+        for area in self.areas.values() {
+            let (start, end) = if columns {
+                (area.column_start as i16, area.column_end as i16)
+            } else {
+                (area.row_start as i16, area.row_end as i16)
+            };
+            if end <= first || start >= last {
+                continue;
+            }
+            let name = area.name.as_ref();
+            if start < first {
+                out[0].push(format!("{name}-start"));
+            }
+            if end > last {
+                out[count as usize].push(format!("{name}-end"));
+            }
+        }
+        for names in out.iter_mut() {
+            names.sort_unstable();
+            names.dedup();
+        }
+        out
     }
 
     /// Get the number of columns defined by the grid areas

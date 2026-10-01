@@ -515,7 +515,7 @@ impl ToTaffy<taffy::style::Style> for Style {
                 .unwrap_or_default()
         }
 
-        taffy::style::Style {
+        let mut out = taffy::style::Style {
             display: self.display.into(),
             overflow: self.overflow.into(),
             scrollbar_width: self.scrollbar_width.to_taffy(rem_size, scale_factor),
@@ -558,6 +558,8 @@ impl ToTaffy<taffy::style::Style> for Style {
                 tolerance: l.tolerance * scale_factor,
                 tolerance_pct: l.tolerance_pct,
             }),
+            // KaminIDE patch: подсетка (css-grid-2 §9), биты taffy.
+            subgrid: self.grid_subgrid,
             flex_basis: self.flex_basis.to_taffy(rem_size, scale_factor),
             // KaminIDE patch: пол GRIDMIN у таблицы-элемента.
             item_is_table: self.item_is_table,
@@ -631,7 +633,90 @@ impl ToTaffy<taffy::style::Style> for Style {
                 .map(|location| to_grid_line(&location.column))
                 .unwrap_or_default(),
             ..Default::default()
+        };
+        if let Some(names) = self.grid_line_names.as_deref() {
+            apply_grid_line_names(&mut out, names);
         }
+        out
+    }
+}
+
+/// KaminIDE patch: имена линий сетки и именованные грани — в стиль taffy
+/// (его `NamedLineResolver` разрешает их, в том числе через подсетки).
+fn apply_grid_line_names(out: &mut taffy::style::Style, names: &crate::GridLineNames) {
+    use taffy::style::{GridTemplateComponent, RepetitionCount};
+    // Имена линий между КОМПОНЕНТАМИ шаблона (компонентов на один меньше,
+    // чем линий); имена внутри авто-повтора — в сам повтор.
+    fn template(components: &mut [GridTemplateComponent<String>], axis: &crate::GridAxisLineNames) -> Vec<Vec<String>> {
+        let mut lines = axis.before.clone();
+        if axis.repeat.is_some() {
+            lines.extend(axis.after.iter().cloned());
+        }
+        lines.resize(components.len() + 1, Vec::new());
+        // Разрешитель имён taffy ждёт у КАЖДОГО повтора список имён по его
+        // линиям (дорожек + 1): с пустым списком счётчик линий уходил в
+        // минус (`named.rs`, вычитание из `u16`).
+        for component in components.iter_mut() {
+            if let GridTemplateComponent::Repeat(repeat) = component {
+                repeat.line_names.resize(repeat.tracks.len() + 1, Vec::new());
+            }
+        }
+        if let Some(body) = &axis.repeat {
+            for component in components.iter_mut() {
+                if let GridTemplateComponent::Repeat(repeat) = component
+                    && matches!(repeat.count, RepetitionCount::AutoFill | RepetitionCount::AutoFit)
+                {
+                    let mut body = body.clone();
+                    body.resize(repeat.tracks.len() + 1, Vec::new());
+                    repeat.line_names = body;
+                    break;
+                }
+            }
+        }
+        lines
+    }
+    fn subgrid(axis: &crate::GridAxisLineNames) -> taffy::style::SubgridLineNames<String> {
+        taffy::style::SubgridLineNames {
+            before: axis.before.clone(),
+            repeat: axis.repeat.clone(),
+            after: axis.after.clone(),
+        }
+    }
+    fn placement(p: &crate::GridNamedLine) -> taffy::GridPlacement<String> {
+        match p {
+            crate::GridNamedLine::Line(name, n) => taffy::GridPlacement::NamedLine(name.clone(), *n),
+            crate::GridNamedLine::Span(name, n) => taffy::GridPlacement::NamedSpan(name.clone(), (*n).max(1)),
+        }
+    }
+    if let Some(axis) = &names.columns {
+        out.grid_template_column_names = template(&mut out.grid_template_columns, axis);
+    }
+    if let Some(axis) = &names.rows {
+        out.grid_template_row_names = template(&mut out.grid_template_rows, axis);
+    }
+    out.subgrid_column_names = names.subgrid_columns.as_ref().map(subgrid);
+    out.subgrid_row_names = names.subgrid_rows.as_ref().map(subgrid);
+    // Числовая грань сильнее имени: имя пишется только на месте `auto`.
+    let auto = |p: &taffy::GridPlacement<String>| matches!(p, taffy::GridPlacement::Auto);
+    if let Some(p) = &names.column[0]
+        && auto(&out.grid_column.start)
+    {
+        out.grid_column.start = placement(p);
+    }
+    if let Some(p) = &names.column[1]
+        && auto(&out.grid_column.end)
+    {
+        out.grid_column.end = placement(p);
+    }
+    if let Some(p) = &names.row[0]
+        && auto(&out.grid_row.start)
+    {
+        out.grid_row.start = placement(p);
+    }
+    if let Some(p) = &names.row[1]
+        && auto(&out.grid_row.end)
+    {
+        out.grid_row.end = placement(p);
     }
 }
 

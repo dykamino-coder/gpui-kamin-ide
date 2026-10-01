@@ -264,6 +264,13 @@ pub struct Style {
     pub margin_trim: u8,
     /// KaminIDE patch: контейнер-сетка раскладывается ЛУНКАМИ (css-grid-3).
     pub grid_lanes: Option<crate::GridLanesFlow>,
+    /// KaminIDE patch: ПОДСЕТКА (css-grid-2 §9) — физические биты taffy:
+    /// 1 колонки, 2 ряды подсеточные; 4 / 8 — зазор колонок / рядов `normal`
+    /// (зазор родителя). 0 — не подсетка.
+    pub grid_subgrid: u8,
+    /// KaminIDE patch: имена линий и именованные грани сетки (см.
+    /// [`crate::GridLineNames`]).
+    pub grid_line_names: Option<Box<crate::GridLineNames>>,
     /// KaminIDE patch: наружная коробка ТАБЛИЦЫ (`crates/html` `render::table`).
     /// Гибкая раскладка не ужимает такой элемент по главной оси ниже
     /// min-content его содержимого (css-tables-3 §3.9: GRIDMIN сильнее
@@ -935,6 +942,8 @@ impl Default for Style {
             baseline_x_flags: 0,
             margin_trim: 0,
             grid_lanes: None,
+            grid_subgrid: 0,
+            grid_line_names: None,
             flex_grow: 0.0,
             flex_shrink: 1.0,
             item_is_table: false,

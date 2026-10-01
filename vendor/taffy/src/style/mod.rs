@@ -193,6 +193,101 @@ pub trait CoreStyle {
     fn grid_lanes(&self) -> Option<GridLanes> {
         None
     }
+    /// KaminIDE patch: ПОДСЕТКА (css-grid-2 §9) — физические биты:
+    /// [`SUBGRID_COLUMNS`], [`SUBGRID_ROWS`] (ось подсеточная) и
+    /// [`SUBGRID_COLUMN_GAP_NORMAL`], [`SUBGRID_ROW_GAP_NORMAL`] (зазор оси —
+    /// `normal`, то есть зазор родителя, §subgrid-gaps). 0 — не подсетка.
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn subgrid(&self) -> u8 {
+        0
+    }
+}
+
+/// KaminIDE patch: бит подсеточных КОЛОНОК (горизонтальная ось) в [`CoreStyle::subgrid`].
+#[cfg(feature = "grid")]
+pub const SUBGRID_COLUMNS: u8 = 1;
+/// KaminIDE patch: бит подсеточных РЯДОВ (вертикальная ось) в [`CoreStyle::subgrid`].
+#[cfg(feature = "grid")]
+pub const SUBGRID_ROWS: u8 = 2;
+/// KaminIDE patch: `column-gap: normal` у подсетки — зазор колонок родителя.
+#[cfg(feature = "grid")]
+pub const SUBGRID_COLUMN_GAP_NORMAL: u8 = 4;
+/// KaminIDE patch: `row-gap: normal` у подсетки — зазор рядов родителя.
+#[cfg(feature = "grid")]
+pub const SUBGRID_ROW_GAP_NORMAL: u8 = 8;
+
+/// KaminIDE patch: дорожки ОДНОЙ подсеточной оси, выданные подсетке её
+/// родительской сеткой (css-grid-2 §9 (a) `#subgrid-tracks`: «its track sizes
+/// are governed by the parent grid»). Размеры уже в координатах коробки
+/// содержимого подсетки: из крайних дорожек вычтены её поля, рамки и
+/// отбивки, внутренние сдвинуты на половину разницы зазоров (§subgrid-gaps),
+/// так что линии подсетки совпадают с линиями родителя (Blink
+/// `grid_track_collection.cc` `CreateSubgridTrackCollection`).
+#[cfg(feature = "grid")]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SubgridAxisTracks {
+    /// Число явных дорожек подсетки — её пролёт в родителе (§9 (b) `#subgrid-span`).
+    pub count: u16,
+    /// Использованные размеры дорожек; `None` — родитель эту ось ещё не
+    /// размерил (подсетку меряют до того), дорожки тогда `auto`.
+    pub sizes: Option<Vec<f32>>,
+    /// Использованный зазор подсетки в этой оси.
+    pub gap: f32,
+    /// Явные имена линий родителя на линиях пролёта (`count + 1` список) —
+    /// подсетка их наследует (§9 (d) `#subgrid-line-name-inheritance`).
+    pub names: Vec<Vec<String>>,
+}
+
+/// KaminIDE patch: `<line-name-list>` подсеточной оси (css-grid-2
+/// §subgrid-listing): `subgrid [a] [b] repeat(auto-fill, [c]) [d]`. Каждый
+/// элемент списка — имена ОДНОЙ линии; `repeat` — тело `repeat(auto-fill, …)`,
+/// которое повторяется, пока список не сравняется с пролётом подсетки
+/// (§auto-repeat: «repeats enough times for the name list to match the
+/// subgrid's specified grid span»).
+#[cfg(feature = "grid")]
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct SubgridLineNames<S: CheapCloneStr> {
+    /// Линии до повтора.
+    pub before: Vec<Vec<S>>,
+    /// Тело авто-повтора.
+    pub repeat: Option<Vec<Vec<S>>>,
+    /// Линии после повтора.
+    pub after: Vec<Vec<S>>,
+}
+
+#[cfg(feature = "grid")]
+impl<S: CheapCloneStr> SubgridLineNames<S> {
+    /// Имена линий подсетки из `count` дорожек (`count + 1` линия): авто-повтор
+    /// разворачивается по Blink `ComputeAutomaticRepetitionsForSubgrid`
+    /// (`grid_layout_algorithm.cc:905-935`), лишнее отрезается (§9 (b):
+    /// «the used value is truncated to match the used number of explicit
+    /// tracks»).
+    pub fn expand(&self, count: u16) -> Vec<Vec<S>> {
+        let span = count as usize;
+        let mut out: Vec<Vec<S>> = self.before.clone();
+        if let Some(body) = &self.repeat {
+            let fixed = self.before.len() + self.after.len();
+            let reps =
+                if fixed > span || body.is_empty() || body.len() > span { 0 } else { (span - fixed + 1) / body.len() };
+            for _ in 0..reps {
+                out.extend(body.iter().cloned());
+            }
+        }
+        out.extend(self.after.iter().cloned());
+        out.truncate(span + 1);
+        out
+    }
+}
+
+/// KaminIDE patch: подсеточные оси узла (см. [`SubgridAxisTracks`]); оси физические.
+#[cfg(feature = "grid")]
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct SubgridTracks {
+    /// Колонки (горизонтальная ось).
+    pub columns: Option<SubgridAxisTracks>,
+    /// Ряды (вертикальная ось).
+    pub rows: Option<SubgridAxisTracks>,
 }
 
 /// KaminIDE patch: параметры раскладки лунками (css-grid-3 §grid-lanes-model,
@@ -549,6 +644,9 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// 8 — элемент параллелен горизонтальной сетке: `justify-items:
     /// baseline` контейнера на него не действует.
     pub baseline_x_flags: u8,
+    /// KaminIDE patch: подсетка — биты [`CoreStyle::subgrid`].
+    #[cfg(feature = "grid")]
+    pub subgrid: u8,
 
     // Block container properties
     /// How items elements should aligned in the inline axis
@@ -605,6 +703,12 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// The named lines between the rows
     #[cfg(feature = "grid")]
     pub grid_template_row_names: GridTrackVec<GridTrackVec<S>>,
+    /// KaminIDE patch: `<line-name-list>` подсеточных колонок (см. [`SubgridLineNames`]).
+    #[cfg(feature = "grid")]
+    pub subgrid_column_names: Option<SubgridLineNames<S>>,
+    /// KaminIDE patch: `<line-name-list>` подсеточных рядов.
+    #[cfg(feature = "grid")]
+    pub subgrid_row_names: Option<SubgridLineNames<S>>,
 
     // Grid child properties
     /// Defines which row in the grid the item should start and end at
@@ -668,6 +772,8 @@ impl<S: CheapCloneStr> Style<S> {
         baseline_from_last: false,
         baseline_x_hint: None,
         baseline_x_flags: 0,
+        #[cfg(feature = "grid")]
+        subgrid: 0,
         #[cfg(feature = "flexbox")]
         flex_grow: 0.0,
         #[cfg(feature = "flexbox")]
@@ -685,6 +791,10 @@ impl<S: CheapCloneStr> Style<S> {
         grid_template_column_names: GridTrackVec::new(),
         #[cfg(feature = "grid")]
         grid_template_row_names: GridTrackVec::new(),
+        #[cfg(feature = "grid")]
+        subgrid_column_names: None,
+        #[cfg(feature = "grid")]
+        subgrid_row_names: None,
         #[cfg(feature = "grid")]
         grid_auto_rows: GridTrackVec::new(),
         #[cfg(feature = "grid")]
@@ -792,6 +902,11 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn baseline_x_flags(&self) -> u8 {
         self.baseline_x_flags
     }
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn subgrid(&self) -> u8 {
+        self.subgrid
+    }
 }
 
 impl<T: CoreStyle> CoreStyle for &'_ T {
@@ -877,6 +992,11 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn baseline_x_flags(&self) -> u8 {
         (*self).baseline_x_flags()
+    }
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn subgrid(&self) -> u8 {
+        (*self).subgrid()
     }
 }
 
@@ -1113,6 +1233,15 @@ impl<S: CheapCloneStr> GridContainerStyle for Style<S> {
     fn grid_template_row_names(&self) -> Option<Self::TemplateLineNames<'_>> {
         Some(self.grid_template_row_names.iter().map(|names| names.iter()))
     }
+
+    #[inline(always)]
+    fn subgrid_line_names(&self, columns: bool) -> Option<SubgridLineNames<S>> {
+        if columns {
+            self.subgrid_column_names.clone()
+        } else {
+            self.subgrid_row_names.clone()
+        }
+    }
 }
 
 #[cfg(feature = "grid")]
@@ -1198,6 +1327,10 @@ impl<T: GridContainerStyle> GridContainerStyle for &'_ T {
     #[inline(always)]
     fn justify_items(&self) -> Option<AlignItems> {
         (*self).justify_items()
+    }
+    #[inline(always)]
+    fn subgrid_line_names(&self, columns: bool) -> Option<SubgridLineNames<Self::CustomIdent>> {
+        (*self).subgrid_line_names(columns)
     }
 }
 

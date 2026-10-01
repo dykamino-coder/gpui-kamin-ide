@@ -153,6 +153,10 @@ struct NodeData {
     /// The computation result from layout algorithm
     #[cfg(feature = "detailed_layout_info")]
     pub(crate) detailed_layout_info: DetailedLayoutInfo,
+
+    /// KaminIDE patch: дорожки, выданные подсетке родителем (css-grid-2 §9).
+    #[cfg(feature = "grid")]
+    pub(crate) subgrid_tracks: Option<crate::style::SubgridTracks>,
 }
 
 impl NodeData {
@@ -167,6 +171,8 @@ impl NodeData {
             has_context: false,
             #[cfg(feature = "detailed_layout_info")]
             detailed_layout_info: DetailedLayoutInfo::None,
+            #[cfg(feature = "grid")]
+            subgrid_tracks: None,
         }
     }
 
@@ -572,6 +578,22 @@ where
     #[inline(always)]
     fn get_grid_child_style(&self, child_node_id: NodeId) -> Self::GridItemStyle<'_> {
         &self.taffy.nodes[child_node_id.into()].style
+    }
+
+    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
+        self.taffy.nodes[node_id.into()].subgrid_tracks.clone()
+    }
+
+    // KaminIDE patch: смена дорожек подсетки сбрасывает её кэш — ключ кэша
+    // (известные размеры, доступное место, режим) дорожек не содержит, и
+    // прежний результат, посчитанный по другим дорожкам, вернулся бы как
+    // годный.
+    fn set_subgrid_tracks(&mut self, node_id: NodeId, tracks: Option<crate::style::SubgridTracks>) {
+        let node = &mut self.taffy.nodes[node_id.into()];
+        if node.subgrid_tracks != tracks {
+            node.subgrid_tracks = tracks;
+            node.cache.clear();
+        }
     }
 
     #[inline(always)]

@@ -286,6 +286,19 @@ pub trait LayoutGridContainer: LayoutPartialTree {
     /// Get the child's styles
     fn get_grid_child_style(&self, child_node_id: NodeId) -> Self::GridItemStyle<'_>;
 
+    /// KaminIDE patch: дорожки, выданные узлу-ПОДСЕТКЕ его родительской сеткой
+    /// (css-grid-2 §9). Родитель пишет их ПЕРЕД каждым замером и раскладкой
+    /// подсетки; подсетка без записи раскладывается как обычная сетка.
+    /// Реализация без хранилища (по умолчанию) — подсеток нет вовсе.
+    fn get_subgrid_tracks(&self, _node_id: NodeId) -> Option<crate::style::SubgridTracks> {
+        None
+    }
+
+    /// KaminIDE patch: записать дорожки подсетки (см. [`Self::get_subgrid_tracks`]).
+    /// Новая запись, отличная от прежней, обязана сбросить кэш раскладки
+    /// узла: результат подсетки зависит от дорожек, а ключ кэша их не знает.
+    fn set_subgrid_tracks(&mut self, _node_id: NodeId, _tracks: Option<crate::style::SubgridTracks>) {}
+
     /// Set the node's detailed grid information
     ///
     /// Implementing this method is optional. Doing so allows you to access details about the the grid such as

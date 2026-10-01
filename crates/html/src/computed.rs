@@ -1528,6 +1528,18 @@ pub struct Computed {
     pub grid_areas: Option<Vec<Vec<String>>>,
     /// Имя области у ребёнка: `grid-area: header`.
     pub grid_area_name: Option<String>,
+    /// Имена линий `grid-template-columns` (логические колонки): у
+    /// подсеточной оси — её `<line-name-list>` (`subgrid [a] [b]`). Разрешает
+    /// их раскладка (taffy `NamedLineResolver`), в том числе через подсетки
+    /// (css-grid-2 §9 (d)); прежде имена выбрасывались при разборе.
+    pub grid_col_line_names: Option<gpui::GridAxisLineNames>,
+    /// То же для `grid-template-rows`.
+    pub grid_row_line_names: Option<gpui::GridAxisLineNames>,
+    /// Именованные грани `grid-column-start`/`-end` (css-grid-2 §8.3):
+    /// `Placement` у такой грани — `Auto`, имя разрешает раскладка.
+    pub grid_col_named: [Option<gpui::GridNamedLine>; 2],
+    /// То же для рядов.
+    pub grid_row_named: [Option<gpui::GridNamedLine>; 2],
     /// `repeat(auto-fill, minmax(N, 1fr))` — сколько влезет колонок шириной
     /// не меньше N. Число колонок здесь считает раскладка, а не разметка.
     pub grid_auto_fill_min: Option<f32>,
@@ -4007,6 +4019,20 @@ impl Computed {
             // Отсюда условие `l.len() > 1` ниже — оно не заплатка, а граница
             // между двумя честными путями счёта повторов.
             "grid-template-columns" if v.contains("auto-fill") || v.contains("auto-fit") => {
+                // `subgrid [a] repeat(auto-fill, [b])` — повтор СПИСКА ИМЁН
+                // подсетки (css-grid-2 §subgrid-listing, `<line-name-list>`),
+                // а не дорожек: такой элемент — подсетка, и дорожки ей выдаёт
+                // родитель (`taffy::compute::grid::subgrid`). Прежде запись
+                // уходила в разбор авто-повтора, и элемент подсеткой не был
+                // (`subgrid/repeat-auto-fill-005`).
+                self.grid_col_line_names = parse_line_names(v);
+                if v.trim_start().starts_with("subgrid") {
+                    self.subgrid_cols = true;
+                    self.subgrid = true;
+                    self.grid_cols = count_tracks(v);
+                    self.grid_tracks = parse_tracks(v);
+                    return;
+                }
                 // css-grid-1 `<auto-track-list>`: ВОКРУГ авто-повтора допустим
                 // только `<fixed-size>`. css-grid-3 §7.2.1 ослабила запись
                 // ВНУТРИ `repeat()`, снаружи всё по-прежнему — голая
@@ -4057,6 +4083,14 @@ impl Computed {
             // То же по РЯДАМ: у раскладки лунками дорожки задают ряды, когда
             // `grid-lanes-direction: row` (`row-auto-repeat-001`).
             "grid-template-rows" if v.contains("auto-fill") || v.contains("auto-fit") => {
+                // Подсетка со списком имён в повторе — см. колонки выше.
+                self.grid_row_line_names = parse_line_names(v);
+                if v.trim_start().starts_with("subgrid") {
+                    self.subgrid_rows = true;
+                    self.subgrid = true;
+                    self.grid_rows = parse_tracks(v);
+                    return;
+                }
                 // Та же негодность по РЯДАМ (`row-auto-repeat-auto-005`,
                 // `row-auto-repeat-{fit,max,min}-content-003`).
                 if auto_repeat_outside_intrinsic(v) {
@@ -4102,8 +4136,14 @@ impl Computed {
             // (шаг C), а `-003` при верно разрешённых гранях (span a / a -1 →
             // линии 3..5) остаётся на 0.52. Возвращать вместе с шагами B и C.
             "grid-template-columns" => {
-                self.subgrid |= v.contains("subgrid");
-                self.subgrid_cols |= v.contains("subgrid");
+                // Признак ПОСЛЕДНЕГО объявления, а не накопленный: каскад
+                // берёт последнее (`grid-lanes-subgrid-001b`: правило класса
+                // `grid: subgrid / subgrid` и встроенное `grid: auto/subgrid`
+                // — ряды у подсетки СВОИ, а ИЛИ оставлял их подсеточными, и
+                // с настоящей подсеткой taffy ряд сжимался в один).
+                self.subgrid_cols = v.contains("subgrid");
+                self.subgrid = self.subgrid_cols || self.subgrid_rows;
+                self.grid_col_line_names = parse_line_names(v);
                 self.grid_cols = count_tracks(v);
                 self.grid_tracks = parse_tracks(v);
             }
@@ -4112,14 +4152,15 @@ impl Computed {
             // Формы с `auto-flow` описывают неявные дорожки: там сторона со
             // словом задаёт направление автопотока, а вторая — шаблон.
             "grid" | "grid-template" => {
-                self.subgrid |= v.contains("subgrid");
                 let (rows, cols) = split_slash(v);
                 // `grid: subgrid / subgrid`, `grid-template: subgrid / 20% 30%`
                 // — слово стоит на СВОЕЙ стороне косой черты, и ось у него
                 // своя. Без косой черты `split_slash` кладёт всё в `rows`, что
-                // и верно: сокращение начинается с рядов.
-                self.subgrid_rows |= rows.contains("subgrid");
-                self.subgrid_cols |= cols.contains("subgrid");
+                // и верно: сокращение начинается с рядов. Сокращение задаёт
+                // обе оси заново (см. `grid-template-columns`).
+                self.subgrid_rows = rows.contains("subgrid");
+                self.subgrid_cols = cols.contains("subgrid");
+                self.subgrid = self.subgrid_cols || self.subgrid_rows;
                 match (rows.contains("auto-flow"), cols.contains("auto-flow")) {
                     (true, _) => {
                         self.grid_auto_flow = Some(if rows.contains("dense") {
@@ -5675,8 +5716,9 @@ impl Computed {
             "grid-row-gap" => self.apply_one("row-gap", v),
             "grid-column-gap" => self.apply_one("column-gap", v),
             "grid-template-rows" => {
-                self.subgrid |= v.contains("subgrid");
-                self.subgrid_rows |= v.contains("subgrid");
+                self.subgrid_rows = v.contains("subgrid");
+                self.subgrid = self.subgrid_cols || self.subgrid_rows;
+                self.grid_row_line_names = parse_line_names(v);
                 self.grid_rows = parse_tracks(v);
             }
             "grid-auto-columns" => {
@@ -5702,23 +5744,33 @@ impl Computed {
                     (false, false) => AutoFlow::Row,
                 })
             }
-            "grid-column" => self.grid_col = parse_span(v),
-            "grid-row" => self.grid_row = parse_span(v),
+            "grid-column" => {
+                self.grid_col = parse_span(v);
+                self.grid_col_named = parse_named_pair(v);
+            }
+            "grid-row" => {
+                self.grid_row = parse_span(v);
+                self.grid_row_named = parse_named_pair(v);
+            }
             "grid-column-start" => {
                 let end = self.grid_col.map(|c| c.1).unwrap_or(Placement::Auto);
                 self.grid_col = Some((parse_placement(v), end));
+                self.grid_col_named[0] = parse_named_placement(v);
             }
             "grid-column-end" => {
                 let start = self.grid_col.map(|c| c.0).unwrap_or(Placement::Auto);
                 self.grid_col = Some((start, parse_placement(v)));
+                self.grid_col_named[1] = parse_named_placement(v);
             }
             "grid-row-start" => {
                 let end = self.grid_row.map(|c| c.1).unwrap_or(Placement::Auto);
                 self.grid_row = Some((parse_placement(v), end));
+                self.grid_row_named[0] = parse_named_placement(v);
             }
             "grid-row-end" => {
                 let start = self.grid_row.map(|c| c.0).unwrap_or(Placement::Auto);
                 self.grid_row = Some((start, parse_placement(v)));
+                self.grid_row_named[1] = parse_named_placement(v);
             }
             "grid-template-areas" => {
                 // Каждая строка записи — ряд сетки: `"head head" "side main"`.
@@ -5740,6 +5792,20 @@ impl Computed {
                         .map(|p| parse_placement(p))
                         .unwrap_or(Placement::Auto)
                 };
+                // Именованные грани (css-grid-2 §8.4 `grid-area`): опущенная
+                // грань повторяет имя противоположной по оси стороны
+                // (`grid-area: a` — все четыре грани `a`).
+                let named = |i: usize| parts.get(i).and_then(|p| parse_named_placement(p));
+                let ident = |n: &Option<gpui::GridNamedLine>| match n {
+                    Some(gpui::GridNamedLine::Line(name, 0)) => Some(gpui::GridNamedLine::Line(name.clone(), 0)),
+                    _ => None,
+                };
+                let row_start = named(0);
+                let col_start = if parts.len() > 1 { named(1) } else { ident(&row_start) };
+                let row_end = if parts.len() > 2 { named(2) } else { ident(&row_start) };
+                let col_end = if parts.len() > 3 { named(3) } else { ident(&col_start) };
+                self.grid_row_named = [row_start, row_end];
+                self.grid_col_named = [col_start, col_end];
                 if parts.len() >= 2 {
                     self.grid_row = Some((at(0), at(2)));
                     self.grid_col = Some((at(1), at(3)));
@@ -9741,6 +9807,181 @@ fn background_shorthand_valid(v: &str) -> bool {
         }
     }
     any
+}
+
+/// Токены записи шаблона для имён линий: `[имена]`, `функция(…)`, слова.
+fn line_name_tokens(v: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let (mut paren, mut bracket) = (0i32, 0i32);
+    let flush = |cur: &mut String, out: &mut Vec<String>| {
+        let t = cur.trim();
+        if !t.is_empty() {
+            out.push(t.to_string());
+        }
+        cur.clear();
+    };
+    for ch in v.chars() {
+        match ch {
+            '(' => {
+                paren += 1;
+                cur.push(ch);
+            }
+            ')' => {
+                paren -= 1;
+                cur.push(ch);
+            }
+            '[' if paren == 0 => {
+                if bracket == 0 {
+                    flush(&mut cur, &mut out);
+                }
+                bracket += 1;
+                cur.push(ch);
+            }
+            ']' if paren == 0 => {
+                bracket -= 1;
+                cur.push(ch);
+                if bracket == 0 {
+                    flush(&mut cur, &mut out);
+                }
+            }
+            c if c.is_whitespace() && paren == 0 && bracket == 0 => flush(&mut cur, &mut out),
+            _ => cur.push(ch),
+        }
+    }
+    flush(&mut cur, &mut out);
+    out
+}
+
+/// `[a b]` → `["a", "b"]`.
+fn bracket_names(t: &str) -> Option<Vec<String>> {
+    let inner = t.strip_prefix('[')?.strip_suffix(']')?;
+    Some(inner.split_whitespace().map(str::to_string).collect())
+}
+
+/// Имена линий тела `repeat(…)`: у шаблона — по линиям вокруг дорожек тела
+/// (дорожек + 1), у `<line-name-list>` подсетки — по записи на линию.
+fn repeat_body_names(rest: &str, subgrid: bool) -> Vec<Vec<String>> {
+    let mut lines: Vec<Vec<String>> = if subgrid { Vec::new() } else { vec![Vec::new()] };
+    for t in line_name_tokens(rest) {
+        match bracket_names(&t) {
+            Some(names) if subgrid => lines.push(names),
+            Some(names) => {
+                if let Some(last) = lines.last_mut() {
+                    last.extend(names);
+                }
+            }
+            None if !subgrid => lines.push(Vec::new()),
+            None => {}
+        }
+    }
+    lines
+}
+
+/// Имена линий записи `grid-template-*` (css-grid-2 §7.2.2 `<line-names>`,
+/// §subgrid-listing `<line-name-list>`): по списку имён на линию между
+/// КОМПОНЕНТАМИ шаблона — `repeat(N, …)` раскрыт на месте, как в
+/// `parse_tracks`, а `repeat(auto-fill|auto-fit, …)` остаётся одним
+/// компонентом со своими именами (`repeat`). `None` — имён нет.
+fn parse_line_names(v: &str) -> Option<gpui::GridAxisLineNames> {
+    let tokens = line_name_tokens(v);
+    let subgrid = tokens.first().is_some_and(|t| t.eq_ignore_ascii_case("subgrid"));
+    let mut out = gpui::GridAxisLineNames::default();
+    let mut lines: Vec<Vec<String>> = if subgrid { Vec::new() } else { vec![Vec::new()] };
+    let mut any = false;
+    let mut after = false;
+    for t in tokens.iter().skip(usize::from(subgrid)) {
+        if let Some(names) = bracket_names(t) {
+            any |= !names.is_empty();
+            if subgrid {
+                lines.push(names);
+            } else if let Some(last) = lines.last_mut() {
+                last.extend(names);
+            }
+            continue;
+        }
+        if let Some(inner) = t.strip_prefix("repeat(").and_then(|r| r.strip_suffix(')')) {
+            let (count, rest) = inner.split_once(',')?;
+            let body = repeat_body_names(rest, subgrid);
+            any |= body.iter().any(|b| !b.is_empty());
+            let count = count.trim();
+            if count.eq_ignore_ascii_case("auto-fill") || count.eq_ignore_ascii_case("auto-fit") {
+                if after {
+                    return None;
+                }
+                out.before = std::mem::take(&mut lines);
+                out.repeat = Some(body);
+                lines = if subgrid { Vec::new() } else { vec![Vec::new()] };
+                after = true;
+            } else {
+                let n: usize = count.parse().ok()?;
+                for _ in 0..n.min(64) {
+                    if subgrid {
+                        lines.extend(body.iter().cloned());
+                    } else {
+                        if let (Some(last), Some(first)) = (lines.last_mut(), body.first()) {
+                            last.extend(first.iter().cloned());
+                        }
+                        lines.extend(body.iter().skip(1).cloned());
+                    }
+                }
+            }
+            continue;
+        }
+        if !subgrid {
+            lines.push(Vec::new());
+        }
+    }
+    if !any {
+        return None;
+    }
+    if after {
+        out.after = lines;
+    } else {
+        out.before = lines;
+    }
+    Some(out)
+}
+
+/// Грань размещения по имени линии (css-grid-2 §8.3): `a`, `a 2`, `-1 a`,
+/// `span a`, `span 2 a`. Без имени — `None` (числовую грань разбирает
+/// `parse_placement`).
+fn parse_named_placement(v: &str) -> Option<gpui::GridNamedLine> {
+    let (mut span, mut num, mut name) = (false, None::<i16>, None::<String>);
+    for t in v.split_whitespace() {
+        if t.eq_ignore_ascii_case("span") {
+            span = true;
+        } else if let Ok(n) = t.parse::<i16>() {
+            num = Some(n);
+        } else if t.eq_ignore_ascii_case("auto") {
+            return None;
+        } else {
+            name = Some(t.to_string());
+        }
+    }
+    let name = name?;
+    Some(if span {
+        gpui::GridNamedLine::Span(name, num.unwrap_or(1).max(1) as u16)
+    } else {
+        gpui::GridNamedLine::Line(name, num.unwrap_or(0))
+    })
+}
+
+/// Обе грани `grid-column`/`grid-row`: при одном значении-имени конец — то
+/// же имя («if the first value is a <custom-ident>, the grid-row-end/
+/// grid-column-end longhand is also set to that <custom-ident>», §8.4).
+fn parse_named_pair(v: &str) -> [Option<gpui::GridNamedLine>; 2] {
+    match v.split_once('/') {
+        Some((a, b)) => [parse_named_placement(a), parse_named_placement(b)],
+        None => {
+            let start = parse_named_placement(v);
+            let end = match &start {
+                Some(gpui::GridNamedLine::Line(name, 0)) => Some(gpui::GridNamedLine::Line(name.clone(), 0)),
+                _ => None,
+            };
+            [start, end]
+        }
+    }
 }
 
 fn parse_placement(v: &str) -> Placement {

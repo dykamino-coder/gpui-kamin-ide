@@ -443,6 +443,12 @@ fn initialize_track_sizes(
             .definite_value(axis_inner_node_size, |val, basis| tree.calc(val, basis))
             .unwrap_or(f32::INFINITY);
 
+        // KaminIDE patch: края подсетки в дорожке с внутренним минимумом
+        // (см. `GridTrack::subgrid_floor`).
+        if track.subgrid_floor > track.base_size && track.min_track_sizing_function.is_intrinsic() {
+            track.base_size = track.subgrid_floor;
+        }
+
         // In all cases, if the growth limit is less than the base size, increase the growth limit to match the base size.
         if track.growth_limit < track.base_size {
             track.growth_limit = track.base_size;

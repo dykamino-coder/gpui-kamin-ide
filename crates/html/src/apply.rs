@@ -164,6 +164,44 @@ fn to_items(a: Align) -> gpui::AlignItems {
     }
 }
 
+/// Имена линий контейнера-сетки и именованные грани элемента — раскладке
+/// (css-grid-2 §7.2.2, §8.3; разрешает taffy `NamedLineResolver`, через
+/// подсетки — с наследованием имён родителя, §9 (d)). Оси контейнера
+/// ЛОГИЧЕСКИЕ и переставляются при вертикальном письме, как его дорожки
+/// (`grid_style`); у подсеточной оси список — `<line-name-list>`. Грани
+/// элемента идут той же осью, что и его числовые (`grid_location`).
+fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
+    let mut out = gpui::GridLineNames::default();
+    let grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    if grid {
+        let flip = c.vertical == Some(true);
+        let subgrid_ok = !crate::dom::subgrid_inhibited(c);
+        let (cols, rows) = (c.grid_col_line_names.clone(), c.grid_row_line_names.clone());
+        let (cols_sub, rows_sub) = (c.subgrid_cols && subgrid_ok, c.subgrid_rows && subgrid_ok);
+        // Логическая ось → (шаблон, подсетка) физической оси.
+        let mut put = |names: Option<gpui::GridAxisLineNames>, sub: bool, physical_cols: bool| {
+            let Some(names) = names else { return };
+            match (sub, physical_cols) {
+                (true, true) => out.subgrid_columns = Some(names),
+                (true, false) => out.subgrid_rows = Some(names),
+                (false, true) => out.columns = Some(names),
+                (false, false) => out.rows = Some(names),
+            }
+        };
+        put(cols, cols_sub, !flip);
+        put(rows, rows_sub, flip);
+    }
+    out.column = c.grid_col_named.clone();
+    out.row = c.grid_row_named.clone();
+    let empty = out.columns.is_none()
+        && out.rows.is_none()
+        && out.subgrid_columns.is_none()
+        && out.subgrid_rows.is_none()
+        && out.column.iter().all(Option::is_none)
+        && out.row.iter().all(Option::is_none);
+    (!empty).then_some(out)
+}
+
 fn to_placement(p: Placement) -> gpui::GridPlacement {
     match p {
         Placement::Auto => gpui::GridPlacement::Auto,
@@ -544,6 +582,26 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
             AutoFlow::ColDense => gpui::GridAutoFlow::ColumnDense,
         });
     }
+    // Подсетка (css-grid-2 §9): раскладке — ФИЗИЧЕСКИЕ подсеточные оси и
+    // признак зазора `normal` (§subgrid-gaps: «same size gutters as its
+    // parent grid»). Дорожки подсеточной оси taffy берёт у родительской
+    // сетки уже размеренными (`taffy::compute::grid::subgrid`), а элементы
+    // подсетки вкладываются в дорожки родителя. Оси логические: при
+    // вертикальном письме колонки подсетки — физические ряды (Blink
+    // `grid_item.cc:192-197`). Обособленная подсетка подсеткой не является
+    // (§subgrid-listing, `dom::subgrid_inhibited`).
+    if (c.subgrid_cols || c.subgrid_rows) && !crate::dom::subgrid_inhibited(c) {
+        let col_gap_normal = c.gap.and_then(|g| g.1).or(c.column_gap).is_none();
+        let row_gap_normal = c.gap.and_then(|g| g.0).is_none();
+        let (cols, rows, col_gap, row_gap) = if flip {
+            (c.subgrid_rows, c.subgrid_cols, row_gap_normal, col_gap_normal)
+        } else {
+            (c.subgrid_cols, c.subgrid_rows, col_gap_normal, row_gap_normal)
+        };
+        d.style().grid_subgrid = Some(
+            u8::from(cols) | (u8::from(rows) << 1) | (u8::from(col_gap) << 2) | (u8::from(row_gap) << 3),
+        );
+    }
     d
 }
 
@@ -731,6 +789,9 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
             }
         }
         d.style().margin_trim = Some(physical);
+    }
+    if let Some(names) = grid_line_names(c) {
+        d.style().grid_line_names = Some(Box::new(names));
     }
     if c.grid_col.is_some() || c.grid_row.is_some() {
         let span = |p: Option<(Placement, Placement)>| {

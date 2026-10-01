@@ -122,8 +122,7 @@ pub(super) fn align_and_position_item(
         && align_self.or(container_alignment_styles.vertical) == Some(AlignSelf::Stretch)
         && !raw_margin.top.is_auto()
         && !raw_margin.bottom.is_auto();
-    let aspect_ratio = if (style_size.width.is_some() || stretched_w) && (style_size.height.is_some() || stretched_h)
-    {
+    let aspect_ratio = if (style_size.width.is_some() || stretched_w) && (style_size.height.is_some() || stretched_h) {
         None
     } else {
         aspect_ratio
@@ -147,11 +146,33 @@ pub(super) fn align_and_position_item(
         .maybe_apply_aspect_ratio(aspect_ratio)
         .maybe_add(box_sizing_adjustment);
 
+    // KaminIDE patch: css-grid-2 §subgrid-box-alignment — «The subgrid is
+    // always stretched in its subgridded dimension(s): the
+    // align-self/justify-self properties on it are ignored, as are any
+    // specified width/height constraints». Иначе линии подсетки не совпали бы
+    // с линиями родителя, по которым ей выданы дорожки. Лунки-подсетка в
+    // дорожки сетки не связывается (`subgrid::linked_axes`).
+    let subgridded =
+        if position != Position::Absolute && style.grid_lanes().is_none() { style.subgrid() & 3 } else { 0 };
+    let (mut inherent_size, mut min_size, mut max_size) = (inherent_size, min_size, max_size);
+    let justify_self = if subgridded & 1 != 0 { Some(AlignSelf::Stretch) } else { justify_self };
+    let align_self = if subgridded & 2 != 0 { Some(AlignSelf::Stretch) } else { align_self };
+    if subgridded & 1 != 0 {
+        inherent_size.width = None;
+        min_size.width = Some(padding_border_size.width);
+        max_size.width = None;
+    }
+    if subgridded & 2 != 0 {
+        inherent_size.height = None;
+        min_size.height = Some(padding_border_size.height);
+        max_size.height = None;
+    }
+
     // Resolve default alignment styles if they are set on neither the parent or the node itself
     // Note: if the child has a preferred aspect ratio but neither width or height are set, then the width is stretched
     // and the then height is calculated from the width according the aspect ratio
     // See: https://www.w3.org/TR/css-grid-1/#grid-item-sizing
-    let alignment_styles = InBothAbsAxis {
+    let mut alignment_styles = InBothAbsAxis {
         horizontal: justify_self.or(container_alignment_styles.horizontal).unwrap_or_else(|| {
             // KaminIDE patch: блочная ось явно растянута — строчная при
             // `normal` берётся из соотношения, а не из растяжения.
@@ -174,6 +195,18 @@ pub(super) fn align_and_position_item(
     // resolve against the WIDTH of the grid area.
     let mut margin =
         style.margin().map(|margin| margin.resolve_to_option(grid_area_size.width, |val, basis| tree.calc(val, basis)));
+    // KaminIDE patch: подсеточная ось — растяжка; `auto`-поле растяжку не
+    // отменяет (выравнивание подсетки игнорируется целиком).
+    if subgridded & 1 != 0 {
+        alignment_styles.horizontal = AlignSelf::Stretch;
+        margin.left = margin.left.or(Some(0.0));
+        margin.right = margin.right.or(Some(0.0));
+    }
+    if subgridded & 2 != 0 {
+        alignment_styles.vertical = AlignSelf::Stretch;
+        margin.top = margin.top.or(Some(0.0));
+        margin.bottom = margin.bottom.or(Some(0.0));
+    }
     // KaminIDE patch: `margin-trim` контейнера — обрезанное поле ноль, а не
     // авторское и не `auto` (биты сторон считает `compute_grid_layout`;
     // размеры дорожек их уже учли через `GridItem::margin`).
