@@ -494,7 +494,17 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
             let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
             // Элемент гибкого контейнера и сетки блокифицирован (css-display-3
             // §2.7): его базовая — первая, как у блока.
-            if visible(c.overflow_x) && visible(c.overflow_y) && !c.scroller && !c.parent_flex_grid {
+            // Руби и строчная коробка, сыгранная `inline-block`
+            // (`inline_display`), — не атомы: их базовая — базовая основы
+            // (★ ЗАМЕРЕНО: `initial-letter-block-position-raise-over/under-ruby`
+            // 0.24 → 1.25 / 0.25 → 0.60).
+            if visible(c.overflow_x)
+                && visible(c.overflow_y)
+                && !c.scroller
+                && !c.parent_flex_grid
+                && c.ruby_role.is_none()
+                && c.inline_display != Some(true)
+            {
                 d.style().baseline_from_last = Some(true);
             }
         }
@@ -708,7 +718,10 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         Some(Align::Start) => d = d.items_start(),
         Some(Align::End) => d = d.items_end(),
         // `last baseline` — своя группа с прижимом к концу (css-align-3 §9.3).
-        Some(Align::Baseline) if c.align_items_last => {
+        // Не у лунок: их дорожки — гибкие ряды движка, и прижим к концу уводил
+        // лунки целиком (★ ЗАМЕРЕНО: `row-grid-lanes-item-baseline-001/003`
+        // 0.00 → 8.02/7.56, `column-fill-reverse-justify-items-002` 0.00 → 3.87).
+        Some(Align::Baseline) if c.align_items_last && c.display != Some(Display::GridLanes) && !c.parent_lanes => {
             d.style().align_items = Some(gpui::AlignItems::LastBaseline);
         }
         Some(Align::Baseline) => d = d.items_baseline(),

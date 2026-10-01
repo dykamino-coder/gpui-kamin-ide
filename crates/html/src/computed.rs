@@ -1883,6 +1883,8 @@ pub struct Computed {
     /// `align-items: last baseline` — то же для умолчания детей: раскладка
     /// получает `LastBaseline` (css-align-3 §4.2), а не первую базовую.
     pub align_items_last: bool,
+    /// `justify-items: last baseline` — для лунок-колонок (поперёк лунки).
+    pub justify_items_last: bool,
     pub align_items_safe: bool,
     pub justify_content_safe: bool,
     pub align_content_safe: bool,
@@ -2247,6 +2249,8 @@ pub struct Computed {
     /// Родитель — гибкий контейнер, сетка или лунки: элемент блокифицирован
     /// (css-display-3 §2.7), хотя `display` в стиле остаётся строчным.
     pub(crate) parent_flex_grid: bool,
+    /// Родитель — лунки (`display: grid-lanes`).
+    pub(crate) parent_lanes: bool,
     /// Логические стороны и размеры до перевода в физические.
     pub logical: Option<Box<Logical>>,
     /// Ширина пришла из ЛОГИЧЕСКОГО `inline-size` при вертикальном письме:
@@ -5614,6 +5618,7 @@ impl Computed {
             "justify-items" => {
                 self.justify_items = parse_align(v);
                 self.justify_items_safe = is_safe(v);
+                self.justify_items_last = v.split_whitespace().any(|w| w == "last");
             }
             // Значение бывает составным: `row fill-reverse`, `column
             // track-reverse`. Сверка со строкой ЦЕЛИКОМ путала ось на каждом

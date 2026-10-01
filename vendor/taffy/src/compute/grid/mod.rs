@@ -594,7 +594,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             container_alignment_styles
         };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-        let (content_size_contribution, y_position, height, first_baseline, last_baseline) = align_and_position_item(
+        let (content_size_contribution, y_position, height, _first_baseline, last_baseline) = align_and_position_item(
             tree,
             item.node,
             index as u32,
@@ -611,14 +611,17 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         );
         item.y_position = y_position;
         item.height = height;
-        // KaminIDE patch: базовая линия контейнера берётся из ИТОГОВОЙ раскладки
-        // элемента (от верха рамки). Значение от `resolve_item_baselines`
-        // мерилось до раскладки, есть только у рядов с двумя и более
-        // участниками и уже содержит верхнее поле — вместе с `y_position` оно
-        // считалось дважды (css-grid-2 §10.8; Blink grid_layout_algorithm.cc
-        // `ComputeGridItemBaselines(... kFinalBaselines)` — итоговые базовые
-        // меряются раскладкой «layout», а не «measure»).
-        item.baseline = first_baseline;
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (01.10, пакет 3 ст.1, P1 `scout-grid-baseline`):
+        // первая базовая контейнера из ИТОГОВОЙ раскладки элемента
+        // (`item.baseline = _first_baseline`) и выбор «первого» в порядке сетки
+        // (css-grid-2 §10.8). Срез 5003 пары (flex/grid/align/inline/wm/
+        // multicol/CSS2 linebox/contain): +1 (`grid-inline-items-002`) / −8:
+        // `grid-container-baseline-synthesized-001..004` 0.00 → 16.06 (пустая
+        // `display: table` в элементе отдаёт базовую у ВЕРХА — наш стол
+        // базовую не прячет), `display-inline-grid` и
+        // `row/column-subgrid-auto-fill-005/007` (эталоны на `inline-block` со
+        // столом). Возвращать вместе с базовой пустого стола.
+        // ПОСЛЕДНЯЯ базовая элемента — из итоговой раскладки (ст.3).
         item.last_baseline = last_baseline;
 
         #[cfg(feature = "content_size")]
@@ -727,24 +730,12 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         // Check if any items in *this row* are baseline aligned
         let row_has_baseline_item = first_row_items.iter().any(|item| item.align_self == AlignSelf::Baseline);
 
-        // KaminIDE patch: «первый» — в ПОРЯДКЕ СЕТКИ (css-grid-2 §10.8: «the
-        // first such grid item (in grid order)», обход ячеек по рядам), то
-        // есть с меньшей стартовой колонкой; при равенстве `min_by_key` отдаёт
-        // первого по документу (срез уже в этом порядке: сортировка по ряду
-        // устойчивая).
         let item = if row_has_baseline_item {
-            first_row_items
-                .iter()
-                .filter(|item| item.align_self == AlignSelf::Baseline)
-                .min_by_key(|item| item.column_indexes.start)
-                .unwrap()
+            first_row_items.iter().find(|item| item.align_self == AlignSelf::Baseline).unwrap()
         } else {
-            first_row_items.iter().min_by_key(|item| item.column_indexes.start).unwrap()
+            &first_row_items[0]
         };
 
-        // Без собственной базовой линии — синтез от нижнего края рамки элемента
-        // (как было; css-align-3 §9.1 «synthesize baselines»: alphabetic — у
-        // line-under края).
         item.y_position + item.baseline.unwrap_or(item.height)
     };
 

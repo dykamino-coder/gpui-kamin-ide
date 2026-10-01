@@ -25497,6 +25497,13 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
             {
                 cross = Some(Align::Start);
             }
+            // `last baseline` контейнера доезжает до элемента вместе с
+            // выравниванием: лунка — гибкий ряд, и группа последних базовых
+            // прижимается к её концу (css-align-3 §9.3; `row-grid-lanes-item-
+            // baseline-001/003` — эталон на гибком ряде с `last baseline`).
+            if item.style.align_self.is_none() {
+                item.style.align_self_last = merged.align_items_last;
+            }
             item.style.align_self = cross;
         } else {
             let safe = cross_safe(

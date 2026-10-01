@@ -446,13 +446,20 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     // KaminIDE patch: ПОСЛЕДНЯЯ базовая контейнера (css-flexbox-1 §8.5):
     // у ряда — из последней строки, от участника `last baseline`, а без него —
     // от последнего элемента; у колонки — последний элемент.
+    // Ряд без участников `last baseline`, но с группой первых базовых в
+    // последней строке: базовая этой строки — ОБЩАЯ базовая группы (так
+    // устроена строка движка, `inline::as_wrapped_row`: одна строчная коробка
+    // — одна базовая), тем же отсчётом, что и первая базовая контейнера.
+    // Иначе однострочный `inline-block` с руби отдавал «последней» базовую
+    // аннотации (★ ЗАМЕРЕНО: `initial-letter-block-position-raise-*-ruby`).
     let last_vertical_baseline = flex_lines.last().and_then(|line| {
-        line.items
-            .iter()
-            .rev()
-            .find(|item| constants.is_column || item.align_self == AlignSelf::LastBaseline)
-            .or_else(|| line.items.iter().next_back())
-            .map(|child| child.last_baseline_pos)
+        if let Some(child) = line.items.iter().rev().find(|item| constants.is_column || item.align_self == AlignSelf::LastBaseline) {
+            return Some(child.last_baseline_pos);
+        }
+        if let Some(child) = line.items.iter().find(|item| item.align_self == AlignSelf::Baseline) {
+            return Some(child.offset_cross + child.baseline);
+        }
+        line.items.iter().next_back().map(|child| child.last_baseline_pos)
     });
 
     // KaminIDE patch: первая базовая по x — у первого по порядку элемента,
@@ -2430,13 +2437,16 @@ fn align_flex_items_along_cross_axis(
                 0.0
             }
         }
-        // KaminIDE patch: `last baseline` вне группы (колонка) — запасное
-        // `safe self-end` (css-align-3 §9.3), то есть cross-end строки.
+        // KaminIDE patch: `last baseline` в КОЛОНКЕ — как `baseline` здесь же:
+        // выравнивания по базовым поперёк колонки у taffy нет, и обе дают
+        // flex-start. ★ ЗАМЕРЕНО: запасное `safe self-end` (css-align-3 §9.3)
+        // уводило эталоны на гибких колонках с `last baseline` вправо
+        // (`column-fill-reverse-justify-items-002` 0.00 → 3.87).
         AlignSelf::LastBaseline => {
             if constants.is_wrap_reverse {
-                0.0
-            } else {
                 free_space
+            } else {
+                0.0
             }
         }
     }
