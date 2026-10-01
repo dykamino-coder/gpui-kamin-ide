@@ -445,6 +445,18 @@ where
                 (Display::Flex, true) => compute_flexbox_layout(tree, node, inputs),
                 #[cfg(feature = "grid")]
                 (Display::Grid, true) => compute_grid_layout(tree, node, inputs),
+                // KaminIDE patch: ПУСТАЯ сетка — тоже сетка: явные дорожки и
+                // повторы `auto-fill` задают её размер без элементов (css-grid-2
+                // §7.1 «explicit grid», §7.2.3.2: число повторов — от
+                // минимального размера контейнера). Путь листа их не видел:
+                // пустые лунки `aspect-ratio: 1/1; repeat(auto-fill, 50px);
+                // min-height: 60px` выходили квадратом 60, а не 100
+                // (`column-auto-repeat-003`). Узел с замером (`has_context`)
+                // остаётся листом.
+                #[cfg(feature = "grid")]
+                (Display::Grid, false) if !tree.taffy.nodes[node.into()].has_context => {
+                    compute_grid_layout(tree, node, inputs)
+                }
                 (_, false) => {
                     let node_key = node.into();
                     let style = &tree.taffy.nodes[node_key].style;

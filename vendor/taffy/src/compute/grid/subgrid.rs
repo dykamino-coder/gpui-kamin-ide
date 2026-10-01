@@ -496,6 +496,20 @@ fn flatten_into<Tree: LayoutGridContainer>(
         (linked & SUBGRID_COLUMNS == 0).then(|| standalone_tracks(tree, &style, true, inner_node_size)).flatten();
     let own_rows =
         (linked & SUBGRID_ROWS == 0).then(|| standalone_tracks(tree, &style, false, inner_node_size)).flatten();
+    // KaminIDE patch: см. `GridItem::subgrid_cross_auto` — у НЕподсеточной
+    // оси без шаблона и без `grid-auto-*` дорожки неявные `auto`.
+    let implicit_auto = |columns: bool| {
+        let (template, auto) = if columns {
+            (style.grid_template_columns().map_or(true, |t| t.len() == 0), style.grid_auto_columns().len() == 0)
+        } else {
+            (style.grid_template_rows().map_or(true, |t| t.len() == 0), style.grid_auto_rows().len() == 0)
+        };
+        template && auto
+    };
+    let cross_auto = Size {
+        width: linked & SUBGRID_COLUMNS == 0 && own_cols.is_none() && implicit_auto(true),
+        height: false,
+    };
     drop(style);
     let cross = |own: &Option<(Vec<f32>, f32)>, line: Line<OriginZeroLine>| -> Option<f32> {
         let (sizes, gap) = own.as_ref()?;
@@ -555,6 +569,7 @@ fn flatten_into<Tree: LayoutGridContainer>(
                 extra.bottom = inner;
             }
         }
+        child.subgrid_cross_auto = cross_auto;
         if let Some(width) = cross(&own_cols, child.column) {
             child.subgrid_cross.width = Some(width);
             extra.left = 0.0;

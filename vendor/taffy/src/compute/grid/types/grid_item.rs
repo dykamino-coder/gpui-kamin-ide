@@ -133,6 +133,14 @@ pub(in super::super) struct GridItem {
     /// подсетки, `grid_layout_algorithm.cc` `IsSubgridWithStandaloneAxis`).
     /// Перекрывает оценку по дорожкам контейнера в `available_space`.
     pub subgrid_cross: Size<Option<f32>>,
+    /// KaminIDE patch: НЕподсеточная ось подсетки — одни неявные `auto`-
+    /// дорожки (шаблона нет), и своя дорожка элемента не уже его min-content
+    /// (css-grid-2 §12.5: база `auto`-дорожки — min-content вклад, §12.6
+    /// растяжка добирает до области). Сплющенный элемент меряется поперёк по
+    /// `max(область − края, min-content)`, а не по одной области: иначе текст
+    /// подсетки переносился уже своей колонки (`subgrid/auto-track-sizing-001`:
+    /// колонка 100px, коробка содержимого 58px, слово «separated» шире).
+    pub subgrid_cross_auto: Size<bool>,
 }
 
 impl GridItem {
@@ -198,6 +206,7 @@ impl GridItem {
             flattened: false,
             extra_margin: Rect::ZERO,
             subgrid_cross: Size::NONE,
+            subgrid_cross_auto: Size { width: false, height: false },
         }
     }
 
@@ -358,6 +367,19 @@ impl GridItem {
             //  - The node is not absolutely positioned
             //  - The node does not have auto margins in this axis.
             if !self.margin.left.is_auto() && !self.margin.right.is_auto() && self.justify_self == AlignSelf::Stretch {
+                // KaminIDE patch: см. `GridItem::subgrid_cross_auto`.
+                if self.subgrid_cross_auto.width {
+                    let floor = tree.measure_child_size(
+                        self.node,
+                        Size::NONE,
+                        inner_node_size,
+                        Size { width: AvailableSpace::MinContent, height: AvailableSpace::MinContent },
+                        SizingMode::InherentSize,
+                        crate::geometry::AbsoluteAxis::Horizontal,
+                        Line::FALSE,
+                    );
+                    return grid_area_minus_item_margins_size.width.map(|w| w.max(floor));
+                }
                 return grid_area_minus_item_margins_size.width;
             }
 

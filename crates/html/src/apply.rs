@@ -468,6 +468,22 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
         } else {
             d.grid_template_rows(line)
         };
+    } else if let (None, Some(r), Some(body)) = (&c.grid_rows, c.auto_repeat_rows, &c.auto_repeat_body_rows)
+        && body.len() > 1
+        && body.iter().all(|t| matches!(t, TrackSize::Single(crate::computed::Track::Px(_))))
+    {
+        // Тело повтора рядов из НЕСКОЛЬКИХ точечных дорожек
+        // (`repeat(auto-fill, [v] 10px [w] 10px [x] 10px [y])`) — тем же видом,
+        // что у колонок выше: прежде ряды такой записи не получали шаблона
+        // вовсе, и имена линий повтора (css-grid-2 §7.2.3.1 «names … in the
+        // repeat() are repeated as well») разрешались по пустой явной сетке —
+        // у лунок и у сетки-эталона по-разному (`row-auto-repeat-014`).
+        let line = vec![gpui::GridTrack::AutoRepeat { fit: r.fit, tracks: body.iter().map(track).collect() }];
+        d = if flip {
+            d.grid_template_cols(line)
+        } else {
+            d.grid_template_rows(line)
+        };
     }
     // Строчная сетка ОБНИМАЕТ свои Px-дорожки (shrink-to-fit): блочная
     // ширина на всю строку ломала все пары с `display: inline grid` в

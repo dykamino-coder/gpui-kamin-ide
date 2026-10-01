@@ -211,13 +211,26 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
 
     // Явная сетка по оси решётки (css-grid-3 §grid-lanes-track-templates:
     // «formed in the same way as for a regular grid container»).
-    let auto_fit_container_size = outer_node_size
+    // KaminIDE patch: рядные лунки с `aspect-ratio` и без своей высоты —
+    // высота выводится из ширины (css-sizing-4 §5.1 «ratio-dependent axis»)
+    // ещё до счёта повторов, и у повтора по рядам размер ОПРЕДЕЛЁН, а не
+    // минимум: `aspect-ratio: 1/1; min-height: 60px; repeat(auto-fill, 50px)`
+    // по рядам — ширина 60 (минимум, перенесённый соотношением), высота 60,
+    // повтор один (эталон `row-auto-repeat-003-ref` — квадрат 60, тогда как
+    // колонки того же вида дают 100: там повтор считается по ширине).
+    let ratio_height = if rows && outer_node_size.height.is_none() && max_size.height.is_none() {
+        aspect_ratio.zip(outer_node_size.width.or(min_size.width)).map(|(r, w)| (w / r).maybe_clamp(min_size.height, None))
+    } else {
+        None
+    };
+    let fit_basis = Size { width: outer_node_size.width, height: outer_node_size.height.or(ratio_height) };
+    let auto_fit_container_size = fit_basis
         .or(max_size)
         .or(min_size)
         .maybe_clamp(min_size, max_size)
         .maybe_max(padding_border_size)
         .maybe_sub(content_box_inset.sum_axes());
-    let auto_repeat_fit_strategy = outer_node_size.or(max_size).map(|val| match val {
+    let auto_repeat_fit_strategy = fit_basis.or(max_size).map(|val| match val {
         Some(_) => AutoRepeatStrategy::MaxRepetitionsThatDoNotOverflow,
         None => AutoRepeatStrategy::MinRepetitionsThatDoOverflow,
     });
@@ -737,6 +750,21 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                         (false, true) => {
                             track[i].start = end;
                             track[i].candidate = Some(index);
+                        }
+                    }
+                }
+                // KaminIDE patch: бегущая позиция дорожки — начало её
+                // хвостового (бесконечного) проёма (Blink
+                // grid_lanes_running_positions.h:430-432
+                // `GetRunningPositionForTrack`). Пропуск, взятый плотной
+                // укладкой из ХВОСТА (дорожка ещё пустая ниже), сдвигает и её:
+                // прежде явный элемент той же дорожки вставал поверх
+                // (`column-dense-packing-multi-span-012`: Item 7 в колонке 3
+                // на месте Item 5/6).
+                for t in start..start + span {
+                    if running[t].is_finite() {
+                        if let Some(last) = openings[t].last() {
+                            running[t] = f32_max(running[t], last.start);
                         }
                     }
                 }
