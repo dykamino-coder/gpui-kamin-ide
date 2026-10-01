@@ -528,13 +528,36 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
             "outline-offset" => outline.1 = px_of(v, false).unwrap_or(outline.1),
             "outline-color" => outline.2 = Color::parse(v.trim()).unwrap_or(outline.2),
             "border" => {
+                // Сокращение без толщины — `medium`, 3px (css-backgrounds-3
+                // §border-width); `none`/`hidden` — без рамки
+                // (`margin-boxes/auto-margins-001`: `@page { border: solid }`).
+                let mut width: Option<f32> = None;
+                let mut styled = false;
                 for t in v.split_whitespace() {
-                    if let Some(px) = px_of(t, false) {
-                        border.0 = px;
-                    } else if let Some(c) = Color::parse(t) {
-                        border.1 = c;
+                    match t.to_ascii_lowercase().as_str() {
+                        "none" | "hidden" => {
+                            width = Some(0.0);
+                            styled = false;
+                        }
+                        "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset"
+                        | "outset" => styled = true,
+                        "thin" => width = Some(1.0),
+                        "medium" => width = Some(3.0),
+                        "thick" => width = Some(5.0),
+                        _ => {
+                            if let Some(px) = px_of(t, false) {
+                                width = Some(px);
+                            } else if let Some(c) = Color::parse(t) {
+                                border.1 = c;
+                            }
+                        }
                     }
                 }
+                border.0 = match width {
+                    Some(w) if styled => w,
+                    None if styled => 3.0,
+                    _ => 0.0,
+                };
             }
             _ => {}
         }
@@ -583,6 +606,19 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
         (w - margin[1] - margin[3] - border.0 * 2.0 - padding[1] - padding[3]).max(0.0),
         (h - margin[0] - margin[2] - border.0 * 2.0 - padding[0] - padding[2]).max(0.0),
     );
+    // `visibility: hidden` у листа прячет его украшения, не геометрию
+    // (`page-visibility-hidden-001-print`: красная рамка листа не видна,
+    // содержимое на месте).
+    if decls
+        .iter()
+        .rev()
+        .find(|(k, _)| k == "visibility")
+        .is_some_and(|(_, v)| matches!(v.trim(), "hidden" | "collapse"))
+    {
+        border.1.a = 0.0;
+        bg = None;
+        outline.0 = 0.0;
+    }
     PageBox {
         size: (w, h),
         margin,
