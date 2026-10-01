@@ -3225,6 +3225,8 @@ impl Window {
             self.next_frame.scene.insert_primitive(Shadow {
                 // KaminIDE patch: внутренняя тень отмечена в самой тени.
                 inset: u32::from(inset),
+                // KaminIDE patch: своя коробка — вырез наружной тени.
+                box_bounds: bounds.scale(scale_factor),
                 order: 0,
                 blur_radius: shadow.blur_radius.scale(scale_factor),
                 bounds: shadow_bounds.scale(scale_factor),

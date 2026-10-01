@@ -764,11 +764,6 @@ impl Style {
             .clamp_radii_for_quad_size(bounds.size);
 
         window.paint_shadows(bounds, corner_radii, &self.box_shadow);
-        // KaminIDE patch: внутренние тени рисуются ПОСЛЕ фона — они лежат
-        // поверх заливки, как в браузере.
-        if !self.inset_box_shadow.is_empty() {
-            window.paint_shadows_inset(bounds, corner_radii, &self.inset_box_shadow, true);
-        }
 
         let background_color = self.background.as_ref().and_then(Fill::color);
         if background_color.is_some_and(|color| !color.is_transparent()) {
@@ -800,6 +795,33 @@ impl Style {
                 border_color,
                 self.border_style,
             ));
+        }
+
+        // KaminIDE patch: внутренние тени рисуются ПОСЛЕ квада фона — они
+        // лежат поверх заливки (css-backgrounds-3 §box-shadow: «inner
+        // shadows … immediately above the background»). Прежде вызов стоял
+        // до квада, и непрозрачный фон закрывал тень целиком
+        // (border-shape-inset-shadow-blur: красная тень не видна вовсе).
+        if !self.inset_box_shadow.is_empty() {
+            // KaminIDE patch: внутренняя тень отсчитывается от PADDING-box
+            // (css-backgrounds-3 §box-shadow: «an inner box-shadow casts a
+            // shadow as if everything outside the padding edge were opaque»),
+            // радиусы внутреннего края — внешние минус рамка (§5.4). Прежде
+            // тень шла от border-box и первые `border-width` точек прятались
+            // под рамкой (border-shape-inset-shadow-blur: тень бледнее эталона).
+            let bw = self.border_widths.to_pixels(rem_size);
+            let inner = Bounds::from_corners(
+                bounds.origin + point(bw.left, bw.top),
+                bounds.bottom_right() - point(bw.right, bw.bottom),
+            );
+            let shrink = |r: Pixels, a: Pixels, b: Pixels| (r - a.max(b)).max(Pixels::ZERO);
+            let inner_radii = Corners {
+                top_left: shrink(corner_radii.top_left, bw.top, bw.left),
+                top_right: shrink(corner_radii.top_right, bw.top, bw.right),
+                bottom_right: shrink(corner_radii.bottom_right, bw.bottom, bw.right),
+                bottom_left: shrink(corner_radii.bottom_left, bw.bottom, bw.left),
+            };
+            window.paint_shadows_inset(inner, inner_radii, &self.inset_box_shadow, true);
         }
 
         // KaminIDE patch: рамка коробки рисуется ДО потомков (CSS 2.1

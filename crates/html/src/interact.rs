@@ -1877,12 +1877,15 @@ impl Element for CellsClipped {
                 size: area.size,
             };
             if sh.blur > 0.0 {
+                // Коробка — сам охват, смещение — в тени: примитив вырезает
+                // тень под СВОЕЙ коробкой (патч gpui `Shadow::box_bounds`),
+                // и сдвинутый охват вырезал бы не то место.
                 window.paint_shadows(
-                    shifted,
+                    area,
                     gpui::Corners::default(),
                     &[gpui::BoxShadow {
                         color: colour.to_hsla(),
-                        offset: gpui::point(gpui::px(0.0), gpui::px(0.0)),
+                        offset: gpui::point(gpui::px(sh.x), gpui::px(sh.y)),
                         blur_radius: gpui::px(sh.blur),
                         spread_radius: gpui::px(sh.spread),
                     }],

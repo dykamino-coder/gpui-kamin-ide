@@ -949,6 +949,9 @@ struct Shadow {
     // KaminIDE patch: внутренняя тень. Раскладка обязана совпадать с
     // `struct Shadow` в scene.rs.
     uint inset;
+    // KaminIDE patch: коробка самого элемента — наружная тень под ней не
+    // рисуется (css-backgrounds-3 §box-shadow).
+    Bounds box_bounds;
 };
 
 struct ShadowVertexOutput {
@@ -1022,6 +1025,13 @@ float4 shadow_fragment(ShadowFragmentInput input): SV_TARGET {
         inside *= saturate(0.5 - shape);
         return input.color * float4(1., 1., 1., inside);
     }
+    // KaminIDE patch: наружная тень вырезается коробкой самого элемента
+    // (css-backgrounds-3 §box-shadow: «the shadow is not painted inside the
+    // border box»; Blink `BoxPainterBase::PaintNormalBoxShadow` →
+    // `ClipToBorderEdge`). Сквозь прозрачный фон тень больше не видна
+    // сплошным пятном; край — тот же полупиксельный переход, что у квада.
+    float own = quad_sdf(input.position.xy, shadow.box_bounds, shadow.corner_radii);
+    alpha *= saturate(own + 0.5);
     return input.color * float4(1., 1., 1., alpha);
 }
 
