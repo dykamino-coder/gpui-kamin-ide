@@ -455,7 +455,22 @@ impl Element for BandFlow {
         // (`units-005`: сто флоатов по `0.87em` с красными швами).
         // Порядок отрисовки — порядок детей: флоаты пробега, потом хвост.
         let mut host = div().relative().w(px(cb)).h(px(p.height));
-        for (kid, s) in self.kids.iter().zip(p.slots.iter()) {
+        // CSS 2.1 прил. E: фоны блоков потока (шаг 4) — РАНЬШЕ флоатов
+        // (шаг 5): флоат лежит поверх блока, под которым стоит
+        // (`clear-004`). Строки рядом с флоатом его не перекрывают — их
+        // порядок с флоатом не виден.
+        let order = self
+            .kids
+            .iter()
+            .zip(p.slots.iter())
+            .filter(|(k, _)| !matches!(k.kind, Kind::Float { .. }))
+            .chain(
+                self.kids
+                    .iter()
+                    .zip(p.slots.iter())
+                    .filter(|(k, _)| matches!(k.kind, Kind::Float { .. })),
+            );
+        for (kid, s) in order {
             if matches!(kid.kind, Kind::Strut(_)) {
                 continue;
             }
