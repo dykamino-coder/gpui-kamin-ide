@@ -21324,7 +21324,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             && h > 0.0
         {
             let mut ph = div().h(px(h)).col_span(cols);
-            if e.style.rtl == Some(true) || paint_layers {
+            if e.style.vertical != Some(true) {
                 ph = ph.col_start(1).row_start(row_ix);
             }
             cells.push(ph.into_any_element());
@@ -21979,10 +21979,16 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // (CSS 2.2 §17.2) — та же явная расстановка, зеркалом.
                 let gc = cols as i16 - col_ix as i16 - span_cols as i16 + 1;
                 d = d.col_start(gc.max(1)).row_start(row_ix);
-            } else if paint_layers {
-                // Сросшаяся модель: ячейки расставлены ЯВНО, чтобы порядок
-                // детей сетки был свободен для слоёв краски (см. `cells_over`)
-                // — авто-поток привязывал бы место ячейки к её позиции в списке.
+            } else {
+                // Явная расстановка ВСЕГДА (CSS 2.1 §17.5.1: ячейка стоит в
+                // ряду своего `<tr>` и в колонке по счёту с учётом охватов).
+                // Авто-поток сетки рядов не знает: у ряда КОРОЧЕ прочих (одна
+                // ячейка в столе из двух колонок) следующий ряд продолжал
+                // заполнять ту же дорожку, и стол из `<thead>` «head» /
+                // «body one» / «body two» / «foot» выходил «head body / one
+                // body / two foot» (`rules-groups`, снимок s1234 против
+                // эталона с явной расстановкой). Заодно порядок детей сетки
+                // свободен для слоёв краски (см. `cells_over`).
                 d = d.col_start(col_ix as i16 + 1).row_start(row_ix);
             }
             for c in col_ix..(col_ix + span_cols as usize).min(occupied.len()) {
