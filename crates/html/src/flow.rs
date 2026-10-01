@@ -2323,7 +2323,15 @@ pub struct PageKid {
     /// `None` — высота не известна заранее, берётся измеренная, разрезов
     /// внутри нет.
     pub shape: Option<(f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>,
+    /// Имя страницы, с которого коробка начинается (css-page-3 §using-named-pages:
+    /// start value), `""` — без имени. Лист, на котором коробка — первая, берёт
+    /// это имя для своего `@page <имя>` (`PageStack::geom_for`).
+    pub page: String,
 }
+
+/// Геометрия листа по его номеру (с нуля) и имени страницы: каскад
+/// `@page` (`:first`, `:left`/`:right`, имена) решает стенд.
+pub type PageGeomFn = std::rc::Rc<dyn Fn(usize, &str) -> PageGeom>;
 
 /// Стопка страниц: page area каждой — фрагментаинер (css-break-4 §2). Листы
 /// раскладываются сеткой и МАСШТАБИРУЮТСЯ до вмещения в свою коробку: стенд
@@ -2331,7 +2339,13 @@ pub struct PageKid {
 /// сравнивать надо все страницы обеих сторон.
 pub struct PageStack {
     kids: Vec<PageKid>,
-    geom: PageGeom,
+    /// Лист `i` с именем страницы — его геометрия (css-page-3 §cascading).
+    geom_for: PageGeomFn,
+    /// Геометрия КАЖДОГО листа, итог `prepaint` (листы бывают разные:
+    /// `@page :first { size }`, именные страницы).
+    geoms: std::cell::RefCell<Vec<PageGeom>>,
+    /// Ячейка сетки листов — наибольший лист.
+    cell: std::cell::Cell<(f32, f32)>,
     /// Слой начального содержащего блока (внепоточные без позиционированного
     /// предка) — по КОПИИ на страницу: `icb[p]` рисуется на листе `p` со
     /// сдвигом на `p` page area вверх, то есть абсолют раскладывается «как
@@ -2358,14 +2372,16 @@ pub struct PageStack {
 impl PageStack {
     pub fn new(
         kids: Vec<PageKid>,
-        geom: PageGeom,
+        geom_for: PageGeomFn,
         icb: Vec<Vec<AnyElement>>,
         icb_reach: f32,
         fixed: Vec<Vec<AnyElement>>,
     ) -> Self {
         PageStack {
             kids,
-            geom,
+            geom_for,
+            geoms: std::cell::RefCell::new(Vec::new()),
+            cell: std::cell::Cell::new((1.0, 1.0)),
             icb,
             icb_reach,
             fixed,
@@ -2378,10 +2394,17 @@ impl PageStack {
     /// Левый верх листа `i` в НЕмасштабированных точках стопки.
     fn sheet_origin(&self, i: usize) -> (f32, f32) {
         let per_row = self.grid.get().0.max(1);
-        (
-            (i % per_row) as f32 * self.geom.size.0,
-            (i / per_row) as f32 * self.geom.size.1,
-        )
+        let (cw, ch) = self.cell.get();
+        ((i % per_row) as f32 * cw, (i / per_row) as f32 * ch)
+    }
+
+    /// Геометрия листа `i` (итог `prepaint`; за краем — последний лист).
+    fn geom(&self, i: usize) -> PageGeom {
+        let gs = self.geoms.borrow();
+        gs.get(i)
+            .or(gs.last())
+            .copied()
+            .unwrap_or_else(|| (self.geom_for)(i, ""))
     }
 
     /// Прямоугольник page area листа `i` в ИТОГОВЫХ координатах окна (с
@@ -2390,13 +2413,14 @@ impl PageStack {
     fn area_mask(&self, bounds: Bounds<Pixels>, i: usize) -> gpui::ContentMask<Pixels> {
         let s = self.grid.get().1;
         let (sx, sy) = self.sheet_origin(i);
-        let (ax, ay) = self.geom.area_origin();
+        let g = self.geom(i);
+        let (ax, ay) = g.area_origin();
         let area = Bounds {
             origin: point(
                 bounds.origin.x + px((sx + ax) * s),
                 bounds.origin.y + px((sy + ay) * s),
             ),
-            size: size(px(self.geom.area.0 * s), px(self.geom.area.1 * s)),
+            size: size(px(g.area.0 * s), px(g.area.1 * s)),
         };
         // Отрицательные поля выносят page area ЗА лист, а видно только то,
         // что на листе (`page-margin-negative-print.tentative`: красная рамка
@@ -2404,7 +2428,7 @@ impl PageStack {
         // и `fixed` — пересечения с этой, обрез достаётся всем.
         let sheet = Bounds {
             origin: point(bounds.origin.x + px(sx * s), bounds.origin.y + px(sy * s)),
-            size: size(px(self.geom.size.0 * s), px(self.geom.size.1 * s)),
+            size: size(px(g.size.0 * s), px(g.size.1 * s)),
         };
         gpui::ContentMask {
             bounds: area.intersect(&sheet),
@@ -2453,7 +2477,11 @@ impl Element for PageStack {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let g = self.geom;
+        // Первый лист — по имени первой коробки (css-page-3 §using-named-pages,
+        // п. 3: «the first page … is given the start page value of the root»):
+        // его page area — начальный содержащий блок и ширина меры.
+        let first_name = self.kids.first().map(|k| k.page.clone()).unwrap_or_default();
+        let g = (self.geom_for)(0, &first_name);
         let (aw, ah) = (g.area.0.max(1.0), g.area.1.max(1.0));
         // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
         //    уже внутри их коробок (обёртка `render_paged`), поэтому mt/mb = 0.
@@ -2515,7 +2543,60 @@ impl Element for PageStack {
             .map(|k| k.frags.len() + 1)
             .min()
             .unwrap_or(1);
-        let (pages, _, plan) = ColumnStack::fill(&kids, ah, limit, true);
+        // Листы бывают РАЗНЫЕ (`@page :first { size }`, `@page <имя>`), и
+        // высота page area решает разрезы, а имя листа — от первой коробки на
+        // нём, то есть от тех же разрезов. Укладка повторяется, пока имена
+        // листов не перестанут меняться (у одинаковых листов — один проход,
+        // байт-в-байт прежний).
+        let kid_names: Vec<String> = self.kids.iter().map(|k| k.page.clone()).collect();
+        let names_of = |plan: &[Frag], pages: usize| -> Vec<String> {
+            let mut out: Vec<Option<String>> = vec![None; pages];
+            for f in plan {
+                if let Some(slot) = out.get_mut(f.col)
+                    && slot.is_none()
+                {
+                    *slot = Some(kid_names[f.kid].clone());
+                }
+            }
+            let mut last = first_name.clone();
+            out.into_iter()
+                .map(|n| {
+                    if let Some(n) = n {
+                        last = n;
+                    }
+                    last.clone()
+                })
+                .collect()
+        };
+        let mut geoms: Vec<PageGeom> = vec![g];
+        let mut names: Vec<String> = vec![first_name.clone()];
+        let mut result = None;
+        for _ in 0..4 {
+            let tail = names.last().cloned().unwrap_or_default();
+            let at = |c: usize| -> f32 {
+                geoms
+                    .get(c)
+                    .copied()
+                    .unwrap_or_else(|| (self.geom_for)(c, &tail))
+                    .area
+                    .1
+                    .max(1.0)
+            };
+            let (pages, _, plan) = ColumnStack::fill_at(&kids, &at, limit, true);
+            let new_names = names_of(&plan, pages);
+            let stable = new_names == names;
+            names = new_names;
+            geoms = names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| (self.geom_for)(i, n))
+                .collect();
+            result = Some((pages, plan));
+            if stable {
+                break;
+            }
+        }
+        let (pages, plan) = result.unwrap_or_default();
         // Абсолюты корня добавляют листы, пока не кончится их досягаемость
         // (Blink: «If overflowed by monolithic overflow, we need more pages»,
         // box_fragment_builder.h). Потолок — число копий слоя.
@@ -2525,12 +2606,23 @@ impl Element for PageStack {
             ((self.icb_reach / ah).ceil().max(0.0) as usize).min(self.icb.len())
         };
         let pages = pages.max(icb_pages).max(1);
+        // Листы сверх плана (досягаемость абсолютов) — с именем последнего.
+        let tail = names.last().cloned().unwrap_or_default();
+        while geoms.len() < pages {
+            let i = geoms.len();
+            geoms.push((self.geom_for)(i, &tail));
+        }
+        geoms.truncate(pages);
         // 2. Сетка листов и масштаб до вмещения в коробку стопки.
         let (ww, wh) = (
             f32::from(bounds.size.width).max(1.0),
             f32::from(bounds.size.height).max(1.0),
         );
-        let (pw, ph) = (g.size.0.max(1.0), g.size.1.max(1.0));
+        // Ячейка сетки — наибольший лист (у одинаковых — сам лист).
+        let (pw, ph) = geoms.iter().fold((1.0f32, 1.0f32), |(w, h), g| {
+            (w.max(g.size.0), h.max(g.size.1))
+        });
+        self.cell.set((pw, ph));
         let mut best = (1usize, 0.0f32);
         for per_row in 1..=pages {
             let rows = pages.div_ceil(per_row);
@@ -2560,10 +2652,14 @@ impl Element for PageStack {
             );
         }
         // 3. Копии раскладываются ЦЕЛИКОМ и поднимаются на срез — ровно как
-        //    в `ColumnStack::prepaint`; видимую часть делает маска.
-        let (ax, ay) = g.area_origin();
+        //    в `ColumnStack::prepaint`; видимую часть делает маска. Ширина —
+        //    page area СВОЕГО листа (`page-size-004`: `width: 50%` на листе
+        //    100px — 50, на листах 320px — 160).
         for f in &plan {
             let (sx, sy) = self.sheet_origin(f.col);
+            let pg = geoms.get(f.col).copied().unwrap_or(g);
+            let (ax, ay) = pg.area_origin();
+            let aw = pg.area.0.max(1.0);
             let full_h = kids[f.kid].h;
             let kid = &mut self.kids[f.kid];
             let el = if f.copy == 0 {
@@ -2595,6 +2691,7 @@ impl Element for PageStack {
         // высот area: непрерывный поток абсолютов, разрезанный страницами.
         for p in 0..pages.min(self.icb.len()) {
             let (sx, sy) = self.sheet_origin(p);
+            let (ax, ay) = geoms[p].area_origin();
             let lift = p as f32 * ah;
             for el in &mut self.icb[p] {
                 el.layout_as_root(
@@ -2619,6 +2716,11 @@ impl Element for PageStack {
         // листа — его содержащий блок.
         for p in 0..pages.min(self.fixed.len()) {
             let (sx, sy) = self.sheet_origin(p);
+            // Размер содержащего блока — page area ПЕРВОГО листа: Blink
+            // раскладывает `fixed` один раз от начального содержащего блока и
+            // повторяет на каждом листе (`fixedpos-010-print`: `right: -100px`
+            // при листе 400 — за краем, на листах 500 — в правом нижнем углу).
+            let (ax, ay) = geoms[p].area_origin();
             for el in &mut self.fixed[p] {
                 el.layout_as_root(
                     size(
@@ -2636,6 +2738,7 @@ impl Element for PageStack {
             }
         }
         *self.plan.borrow_mut() = plan;
+        *self.geoms.borrow_mut() = geoms;
     }
 
     fn paint(
@@ -2648,7 +2751,6 @@ impl Element for PageStack {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let g = self.geom;
         let s = self.grid.get().1;
         let pages = self.pages.get();
         // Масштаб вокруг левого верха стопки; матрица — в точках устройства,
@@ -2676,6 +2778,7 @@ impl Element for PageStack {
             // документа (border box листа) → рамки → содержимое.
             for i in 0..pages {
                 let (sx, sy) = self.sheet_origin(i);
+                let g = self.geom(i);
                 window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
                 let bx = sx + g.margin[3];
                 let by = sy + g.margin[0];
@@ -2726,6 +2829,7 @@ impl Element for PageStack {
             for f in plan {
                 let Some(page) = masks.get(f.col).cloned() else { continue };
                 let (sx, sy) = self.sheet_origin(f.col);
+                let g = self.geom(f.col);
                 let (ax, ay) = g.area_origin();
                 let mask = gpui::ContentMask {
                     bounds: Bounds {

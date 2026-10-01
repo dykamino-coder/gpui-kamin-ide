@@ -57,19 +57,13 @@ impl Render for Page {
         let page = (kamin_html::css::PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed)
             && std::env::var("WPT_PAGE").is_ok())
         .then(|| {
-            // Именованная страница — когда имя одно на весь документ; её
-            // объявления идут ПОСЛЕ безымянных (специфичность (1,0,0),
-            // css-page-3 §cascading-and-page-context). `margin: inherit` —
-            // от корневого элемента (§page-properties: «The page context
-            // inherits from the root element»; `page-margin-006`).
-            let mut decls = kamin_html::css::page_decls_snapshot();
-            if let Some(name) = kamin_html::render::uniform_page_name(self.doc.nodes()) {
-                for (n, d) in kamin_html::css::page_named_decls_snapshot() {
-                    if n == name {
-                        decls.extend(d);
-                    }
-                }
-            }
+            // Лист — по своему номеру и имени страницы: каскад `@page`
+            // (`:first`, `:left`/`:right`, имена; специфичность (f, g, h),
+            // css-page-3 §cascading-and-page-context) решает
+            // `css::page_decls_in`. `margin: inherit` — от корневого элемента
+            // (§page-properties: «The page context inherits from the root
+            // element»; `page-margin-006`).
+            let rules = kamin_html::css::page_rules_snapshot();
             let root_margin = self
                 .doc
                 .nodes()
@@ -108,10 +102,20 @@ impl Render for Page {
                     )
                 })
                 .unwrap_or((false, false, false));
-            page_box(decls, root_margin, root_wm)
+            let rtl = root_wm.2;
+            let first = kamin_html::render::first_page_name(self.doc.nodes());
+            let boxes: std::rc::Rc<dyn Fn(usize, &str) -> PageBox> =
+                std::rc::Rc::new(move |i, name: &str| {
+                    page_box(
+                        kamin_html::css::page_decls_in(&rules, i, name, rtl),
+                        root_margin,
+                        root_wm,
+                    )
+                });
+            (boxes(0, &first), boxes)
         });
         let opts = RenderOpts {
-            viewport: page.as_ref().map(|p| (p.area.0, p.area.1)).unwrap_or((
+            viewport: page.as_ref().map(|p| (p.0.area.0, p.0.area.1)).unwrap_or((
                 f32::from(window.viewport_size().width),
                 f32::from(window.viewport_size().height),
             )),
@@ -129,25 +133,28 @@ impl Render for Page {
                 "VIEWPORT {:?} print={} page={:?}",
                 opts.viewport,
                 kamin_html::css::PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed),
-                page.as_ref().map(|p| (p.size, p.area, p.margin))
+                page.as_ref().map(|p| (p.0.size, p.0.area, p.0.margin))
             );
         }
-        if let Some(p) = page {
+        if let Some((_, boxes)) = page {
             // Печатная пара: стопка страниц (css-page-3) на всё окно —
             // движок сам режет документ по page area, рисует листы и
             // масштабирует их сеткой в окно. Сравнивается весь кадр.
-            let geom = kamin_html::flow::PageGeom {
-                size: p.size,
-                margin: p.margin,
-                border: (p.border.0, p.border.1.to_hsla()),
-                // Page area внутри отступов листа (`PageGeom::area_origin`).
-                padding: p.padding,
-                bg: p.bg.map(|c| c.to_hsla()).unwrap_or(gpui::white()),
-                canvas: None,
-                outline: (p.outline.0, p.outline.1, p.outline.2.to_hsla()),
-                area: p.area,
-            };
-            let stack = kamin_html::render::render_paged(self.doc.nodes(), &opts, geom);
+            let geom_for: kamin_html::flow::PageGeomFn = std::rc::Rc::new(move |i, name: &str| {
+                let p = boxes(i, name);
+                kamin_html::flow::PageGeom {
+                    size: p.size,
+                    margin: p.margin,
+                    border: (p.border.0, p.border.1.to_hsla()),
+                    // Page area внутри отступов листа (`PageGeom::area_origin`).
+                    padding: p.padding,
+                    bg: p.bg.map(|c| c.to_hsla()).unwrap_or(gpui::white()),
+                    canvas: None,
+                    outline: (p.outline.0, p.outline.1, p.outline.2.to_hsla()),
+                    area: p.area,
+                }
+            });
+            let stack = kamin_html::render::render_paged(self.doc.nodes(), &opts, geom_for);
             return div()
                 .w(px(f32::from(window.viewport_size().width)))
                 .h(px(f32::from(window.viewport_size().height)))
@@ -337,6 +344,38 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
                         h = nums[0];
                     }
                     _ => {}
+                }
+                // Имена носителей (css-page-3 §page-size-prop, `<page-size>`:
+                // «A5 — 148mm wide and 210 mm high» и т.д.) и ориентация:
+                // `landscape` кладёт длинную сторону горизонтально, `portrait`
+                // — вертикально (`page-size-011-print`: эталон пишет те же
+                // листы в мм). Без имени ориентация поворачивает лист WPT.
+                let mm = 96.0 / 25.4;
+                for t in &toks {
+                    let named = match t.to_ascii_lowercase().as_str() {
+                        "a5" => Some((148.0 * mm, 210.0 * mm)),
+                        "a4" => Some((210.0 * mm, 297.0 * mm)),
+                        "a3" => Some((297.0 * mm, 420.0 * mm)),
+                        "b5" => Some((176.0 * mm, 250.0 * mm)),
+                        "b4" => Some((250.0 * mm, 353.0 * mm)),
+                        "jis-b5" => Some((182.0 * mm, 257.0 * mm)),
+                        "jis-b4" => Some((257.0 * mm, 364.0 * mm)),
+                        "letter" => Some((8.5 * 96.0, 11.0 * 96.0)),
+                        "legal" => Some((8.5 * 96.0, 14.0 * 96.0)),
+                        "ledger" => Some((11.0 * 96.0, 17.0 * 96.0)),
+                        _ => None,
+                    };
+                    if let Some((a, b)) = named {
+                        w = a;
+                        h = b;
+                    }
+                }
+                for t in &toks {
+                    match t.to_ascii_lowercase().as_str() {
+                        "landscape" if w < h => std::mem::swap(&mut w, &mut h),
+                        "portrait" if w > h => std::mem::swap(&mut w, &mut h),
+                        _ => {}
+                    }
                 }
             }
             "width" => explicit_w = px_abs(v).or(explicit_w),

@@ -675,6 +675,7 @@ pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec
     // context — только у корневого документа), поэтому пулы возвращаются.
     let outer_page = crate::css::page_decls_snapshot();
     let outer_named = crate::css::page_named_decls_snapshot();
+    let outer_rules = crate::css::page_rules_snapshot();
     let media = crate::css::Media {
         width: viewport.0,
         height: viewport.1,
@@ -683,6 +684,7 @@ pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec
     let parsed = crate::dom::parse_media(html, theme_css, media);
     *crate::css::PAGE_DECLS.lock().unwrap() = outer_page;
     *crate::css::PAGE_NAMED_DECLS.lock().unwrap() = outer_named;
+    *crate::css::PAGE_RULES.lock().unwrap() = outer_rules;
     let (mut nodes, _root) = unwrap_document(mark_canvas_background(resolve_logical(
         propagate_writing_mode(viewport_overflow(parsed)),
     )));

@@ -677,8 +677,124 @@ pub static PAGE_NAMED_DECLS: std::sync::Mutex<Vec<(String, Vec<(String, String)>
     std::sync::Mutex::new(Vec::new());
 
 
+/// Селектор страницы (css-page-3 §page-selectors): имя типа страницы и
+/// счётчики псевдоклассов. `:blank` хранится ради специфичности — пустых
+/// листов стопка не рождает, и такой селектор ни с чем не совпадает.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PageSel {
+    pub name: Option<String>,
+    pub first: u8,
+    pub blank: u8,
+    pub left: u8,
+    pub right: u8,
+}
+
+/// Правило `@page` целиком: список селекторов и объявления в порядке записи.
+#[derive(Clone, Debug, Default)]
+pub struct PageRule {
+    pub sels: Vec<PageSel>,
+    pub decls: Vec<(String, String)>,
+}
+
+/// Все правила `@page` документа в порядке появления — с псевдоклассами и
+/// именами. Из них `page_decls_for` собирает объявления конкретного листа.
+pub static PAGE_RULES: std::sync::Mutex<Vec<PageRule>> = std::sync::Mutex::new(Vec::new());
+
+pub fn page_rules_snapshot() -> Vec<PageRule> {
+    PAGE_RULES.lock().unwrap().clone()
+}
+
+/// Голова `@page` → список селекторов; `None` — голова неверна, и правило
+/// отбрасывается целиком (css-page-3 §syntax-page-selector, как у обычного
+/// списка селекторов). Имя регистрозависимо, псевдоклассы — нет.
+fn parse_page_selectors(head: &str) -> Option<Vec<PageSel>> {
+    let head = head.trim();
+    if head.is_empty() {
+        return Some(vec![PageSel::default()]);
+    }
+    let mut out = Vec::new();
+    for part in head.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            return None;
+        }
+        let (ident, rest) = match part.find(':') {
+            Some(i) => (&part[..i], &part[i..]),
+            None => (part, ""),
+        };
+        let ident = ident.trim_end();
+        if !ident
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
+        {
+            return None;
+        }
+        let mut sel = PageSel {
+            name: (!ident.is_empty()).then(|| ident.to_string()),
+            ..PageSel::default()
+        };
+        for pc in rest.split(':').skip(1) {
+            match pc.trim().to_ascii_lowercase().as_str() {
+                "first" => sel.first += 1,
+                "blank" => sel.blank += 1,
+                "left" => sel.left += 1,
+                "right" => sel.right += 1,
+                _ => return None,
+            }
+        }
+        out.push(sel);
+    }
+    Some(out)
+}
+
+/// Объявления листа `index` (с нуля) с именем типа `name` (`""` — без
+/// имени): каскад css-page-3 §cascading-and-page-context. Совпавшие правила
+/// идут по возрастанию специфичности (f, g, h) — f: имя типа, g: `:first` и
+/// `:blank`, h: `:left` и `:right`, — при равной по порядку записи; объявления
+/// сливаются в этом порядке, последнее побеждает. Левые/правые — по
+/// направлению прогрессии страниц: при ltr первый лист ПРАВЫЙ
+/// (§page-selectors: «if the root element's direction is ltr, then the first
+/// page is a right page»), при rtl — левый.
+pub fn page_decls_for(index: usize, name: &str, rtl: bool) -> Vec<(String, String)> {
+    page_decls_in(&PAGE_RULES.lock().unwrap(), index, name, rtl)
+}
+
+/// То же по снимку правил (`page_rules_snapshot`).
+pub fn page_decls_in(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Vec<(String, String)> {
+    let right = (index % 2 == 0) != rtl;
+    let mut hits: Vec<((u8, u8, u8), usize)> = Vec::new();
+    for (order, r) in rules.iter().enumerate() {
+        let spec = r
+            .sels
+            .iter()
+            .filter(|s| {
+                s.name.as_deref().is_none_or(|n| n == name)
+                    && (s.first == 0 || index == 0)
+                    && s.blank == 0
+                    && (s.left == 0 || !right)
+                    && (s.right == 0 || right)
+            })
+            .map(|s| {
+                (
+                    s.name.is_some() as u8,
+                    s.first + s.blank,
+                    s.left + s.right,
+                )
+            })
+            .max();
+        if let Some(sp) = spec {
+            hits.push((sp, order));
+        }
+    }
+    hits.sort();
+    hits.into_iter()
+        .flat_map(|(_, i)| rules[i].decls.clone())
+        .collect()
+}
+
 pub fn take_page_decls() -> Vec<(String, String)> {
     PAGE_NAMED_DECLS.lock().unwrap().clear();
+    PAGE_RULES.lock().unwrap().clear();
     std::mem::take(&mut PAGE_DECLS.lock().unwrap())
 }
 
@@ -1374,13 +1490,11 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
                 // ОРИГИНАЛА головы, не из `name`.
                 let selector = head[5..].trim();
                 let named = !selector.is_empty();
-                if named
-                    && !selector
+                // Голова с псевдоклассом или списком — только в полный пул.
+                let plain = !named
+                    || selector
                         .chars()
-                        .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
-                {
-                    continue;
-                }
+                        .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_');
                 let flat = strip_nested_blocks(body);
                 let decls = parse_decls(&flat);
                 if !decls.is_empty() {
@@ -1402,12 +1516,21 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
                                 .map(move |one| (k.to_string(), one.trim().to_string()))
                         })
                         .collect();
-                    if named {
+                    // Полный пул — с псевдоклассами и списками селекторов
+                    // (`page_decls_for`). Старые пулы ниже держат прежний
+                    // смысл: только безымянные и одиночные имена.
+                    if let Some(sels) = parse_page_selectors(&head[5..]) {
+                        PAGE_RULES.lock().unwrap().push(PageRule {
+                            sels,
+                            decls: list.clone(),
+                        });
+                    }
+                    if plain && named {
                         PAGE_NAMED_DECLS
                             .lock()
                             .unwrap()
                             .push((selector.to_string(), list));
-                    } else {
+                    } else if plain {
                         PAGE_DECLS.lock().unwrap().extend(list);
                     }
                 }

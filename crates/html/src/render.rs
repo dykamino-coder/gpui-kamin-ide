@@ -1144,8 +1144,12 @@ thread_local! {
 pub fn render_paged(
     nodes: &[Node],
     opts: &RenderOpts,
-    mut geom: crate::flow::PageGeom,
+    geom_for: crate::flow::PageGeomFn,
 ) -> AnyElement {
+    // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
+    // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
+    let mut none = false;
+    let mut canvas: Option<gpui::Hsla> = None;
     let mut root = opts.root_style();
     crate::interact::frame_sanitize();
     IFRAME_DEPTH.with(|d| d.set(0));
@@ -1164,9 +1168,7 @@ pub fn render_paged(
         // page box will still be created, but no properties should apply»;
         // `root-element-display-none-print` против `blank-print-ref`).
         if matches!(e.style.display, Some(Display::None)) {
-            geom.bg = gpui::white();
-            geom.border.0 = 0.0;
-            geom.canvas = None;
+            none = true;
             nodes = Vec::new();
             break;
         }
@@ -1180,7 +1182,7 @@ pub fn render_paged(
         right += side(&e.style.margin.right) + side(&b.right) + side(&e.style.padding.right);
         top += side(&e.style.margin.top) + side(&b.top) + side(&e.style.padding.top);
         if let Some(c) = e.style.background.filter(|c| c.a > 0.0) {
-            geom.canvas = Some(c.to_hsla());
+            canvas = Some(c.to_hsla());
         }
         if let Some(p) = &e.style.page {
             root_page = p.clone();
@@ -1188,6 +1190,18 @@ pub fn render_paged(
         root = inline::inherit(&root, &e.style);
         nodes = e.children;
     }
+    let geom_for: crate::flow::PageGeomFn = std::rc::Rc::new(move |i, name: &str| {
+        let mut g = geom_for(i, name);
+        if none {
+            g.bg = gpui::white();
+            g.border.0 = 0.0;
+            g.canvas = None;
+        } else if canvas.is_some() {
+            g.canvas = canvas;
+        }
+        g
+    });
+    let geom = geom_for(0, &first_kid_page_name(&nodes, &root_page));
     // Мера для страниц: `contain: size` — монолит (как в `page_monolith`),
     // `vh`/`vw` — от page area (в сыром `e.style` они ещё не разрешены:
     // `resolve_viewport` работает на копии внутри `element()`).
@@ -1226,7 +1240,52 @@ pub fn render_paged(
                 .into_any_element(),
         ]
     };
-    for n in nodes.iter().filter(|n| !is_blank(n)) {
+    // Строчное содержимое корня — ОДИН анонимный блок (CSS 2.1 §9.2.1.1:
+    // «any inline-level content … is wrapped in an anonymous block box»):
+    // соседние текст и строчные элементы вместе с пробелами между ними идут
+    // одним ребёнком стопки. Прежде каждый узел был своим ребёнком, и
+    // `This page should <em>not</em> have a blue box.` вставал тремя
+    // строками (`fixedpos-010-print`, мера `heights=[21.6, 21.6, 21.6, …]`).
+    let inline_level = |n: &Node| match n {
+        Node::Text(_) => true,
+        Node::Element(e) => {
+            e.inline
+                && !out_of_flow(&e.style)
+                && !matches!(
+                    e.style.display,
+                    Some(Display::Block)
+                        | Some(Display::Flex)
+                        | Some(Display::Grid)
+                        | Some(Display::Table)
+                        | Some(Display::ListItem)
+                        | Some(Display::None)
+                )
+        }
+    };
+    let mut groups: Vec<Vec<Node>> = Vec::new();
+    let mut open = false;
+    for n in nodes.iter() {
+        if is_blank(n) {
+            // Пробел внутри строчного пробега — его часть, вне — пропуск.
+            if open && let Some(g) = groups.last_mut() {
+                g.push(n.clone());
+            }
+            continue;
+        }
+        let il = inline_level(n);
+        match groups.last_mut() {
+            Some(g) if open && il => g.push(n.clone()),
+            _ => groups.push(vec![n.clone()]),
+        }
+        open = il;
+    }
+    for g in groups.iter_mut() {
+        while g.last().is_some_and(is_blank) {
+            g.pop();
+        }
+    }
+    for group in &groups {
+        let n = &group[0];
         if let Node::Element(e) = n
             && matches!(e.style.display, Some(Display::None))
         {
@@ -1246,7 +1305,7 @@ pub fn render_paged(
                 .pl(px(left))
                 .pr(px(right))
                 .pt(px(pad_top))
-                .children(blocks(std::slice::from_ref(n), &root, opts))
+                .children(blocks(group, &root, opts))
                 .into_any_element();
             slot.extend(layer(crate::interact::icb_close()));
             fixed_slot.extend(layer(
@@ -1285,6 +1344,12 @@ pub fn render_paged(
         let renamed = match (&prev_end, &names) {
             (Some(p), Some((start, _))) => p != start,
             _ => false,
+        };
+        // Имя, с которого коробка начинается: своё у коробки класса A, иначе
+        // — конец предыдущей (анонимный блок и прочие продолжают страницу).
+        let start_name = match &names {
+            Some((start, _)) => start.clone(),
+            None => prev_end.clone().unwrap_or_else(|| root_page.clone()),
         };
         if let Some((_, end)) = &names {
             prev_end = Some(end.clone());
@@ -1356,10 +1421,11 @@ pub fn render_paged(
             force_before: fb || renamed,
             force_after: fa,
             shape,
+            page: start_name,
         });
     }
     PAGED.with(|p| p.set(false));
-    crate::flow::PageStack::new(kids, geom, icb_copies, icb_reach, fixed_copies)
+    crate::flow::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies)
         .into_any_element()
 }
 
@@ -4663,6 +4729,39 @@ fn page_names(e: &Element, inherited: &str) -> (String, String) {
 /// (css-page-3 §cascading-and-page-context: имя — специфичность (1,0,0),
 /// выше безымянного правила). Разные имена → `None`: геометрия листа у стопки
 /// одна, и правило одной из страниц красило бы чужие.
+/// Имя ПЕРВОЙ страницы (css-page-3 §using-named-pages, п. 3): start value
+/// первой поточной коробки класса A детей корня, иначе имя самого корня.
+fn first_kid_page_name(nodes: &[Node], root_page: &str) -> String {
+    for n in nodes.iter().filter(|n| !is_blank(n)) {
+        match n {
+            Node::Element(e) if matches!(e.style.display, Some(Display::None)) => continue,
+            Node::Element(e) if class_a_box(e) => return page_names(e, root_page).0,
+            Node::Element(e) if !e.inline => continue,
+            _ => return root_page.to_string(),
+        }
+    }
+    root_page.to_string()
+}
+
+/// Имя первой страницы документа — для стенда: геометрия первого листа даёт
+/// начальный содержащий блок (css-page-3 §page-model).
+pub fn first_page_name(nodes: &[Node]) -> String {
+    let mut nodes: Vec<Node> = nodes.to_vec();
+    let mut root_page = String::new();
+    loop {
+        let live: Vec<&Node> = nodes.iter().filter(|n| !is_blank(n)).collect();
+        let [Node::Element(e)] = live.as_slice() else { break };
+        if !matches!(e.tag.as_str(), "html" | "body") {
+            break;
+        }
+        if let Some(p) = &e.style.page {
+            root_page = p.clone();
+        }
+        nodes = (*e).clone().children;
+    }
+    first_kid_page_name(&nodes, &root_page)
+}
+
 pub fn uniform_page_name(nodes: &[Node]) -> Option<String> {
     let mut nodes: Vec<Node> = nodes.to_vec();
     let mut root_page = String::new();
