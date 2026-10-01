@@ -2297,6 +2297,21 @@ impl Element for ColumnStack {
             })
             .collect();
         let (_, lines, plan, spans) = self.balance(&heights);
+        // Отладка укладки: `KAMIN_FRAG_DEBUG=1` печатает меры и план в stderr.
+        if std::env::var_os("KAMIN_FRAG_DEBUG").is_some() {
+            for (i, k) in heights.iter().enumerate() {
+                eprintln!(
+                    "kid {i}: h {} mt {} mb {} mono {} cuts {:?} solid {:?} forced {:?} fb {} fa {} par {:?}",
+                    k.h, k.mt, k.mb, k.monolith, k.cuts, k.solid, k.forced, k.force_before, k.force_after, k.par
+                );
+            }
+            for f in &plan {
+                eprintln!(
+                    "frag kid {} copy {} col {} y {} from {} h {}",
+                    f.kid, f.copy, f.col, f.y, f.from, f.h
+                );
+            }
+        }
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         let step = col_w + self.gap;

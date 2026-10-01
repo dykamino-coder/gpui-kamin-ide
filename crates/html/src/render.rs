@@ -4193,11 +4193,39 @@ fn split_flex_lines(
                     p.group_end = true;
                 }
             }
-            None => {
-                out.push((c, s));
-                par.push(crate::flow::Par::default());
-                parent.push(None);
-            }
+            None => match flex_row_lines_of(&c, col_w) {
+                // Многострочный РЯД: строки идут одна за другой, а элементы
+                // строки — параллельные потоки своей группы (Blink
+                // `flex_layout_algorithm.cc:2167-2213`: элемент ряда — свой
+                // поток, конец ряда — самый дальний конец его элементов).
+                Some(lines) => {
+                    let pm = inline::inherit(merged, &c.style);
+                    for items in lines {
+                        group += 1;
+                        let m = items.len();
+                        for (ii, (dx, e, sh)) in items.into_iter().enumerate() {
+                            let avoid_only = e.style.break_inside_avoid
+                                && !size_monolith(&e)
+                                && visible_overflow(&e.style);
+                            out.push((e, sh));
+                            par.push(crate::flow::Par {
+                                group,
+                                group_start: ii == 0,
+                                line_start: true,
+                                group_end: ii + 1 == m,
+                                dx,
+                                avoid_only,
+                            });
+                            parent.push(Some(pm.clone()));
+                        }
+                    }
+                }
+                None => {
+                    out.push((c, s));
+                    par.push(crate::flow::Par::default());
+                    parent.push(None);
+                }
+            },
         }
     }
     starts.push(out.len());
@@ -4384,6 +4412,185 @@ fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32, Vec<(Eleme
         dx += lc + col_gap;
     }
     Some(out)
+}
+
+/// Строки многострочного РЯДА flex для `split_flex_lines`: по строке —
+/// `(сдвиг по x, элемент, мера)` каждого элемента. Строки — по css-flexbox-1
+/// §9.3 шаг 5 (главная ось — ширина), поперечный размер строки — наибольшая
+/// внешняя высота её элементов; элемент `height: auto` при `align-items:
+/// normal` тянется на строку (§9.4 шаг 11) — полом `min-height`, чтобы рост
+/// от фрагментации (`grow_pushed`) коробку не обрезал (Blink: «expansion past
+/// the block-end of each row», `flex_layout_algorithm.cc:2560-2575`).
+/// `break-before` любого элемента строки — разрыв перед строкой, `break-after`
+/// — после неё (`:1898-1906`): на первого и последнего элемента строки. Гейт —
+/// как у колонки, плюс высота контейнера `auto` и хотя бы одна строка из
+/// нескольких элементов: ряд «элемент на строку» прежний путь уже знает.
+#[allow(clippy::type_complexity)]
+fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, Element, Shape)>>> {
+    use crate::computed::FlexDir;
+    let zero = |l: &Option<Len>| match l {
+        None => true,
+        Some(Len::Px(v)) => v.abs() < 0.01,
+        _ => false,
+    };
+    let s = &c.style;
+    let b = s.borders();
+    if c.inline
+        || s.display != Some(Display::Flex)
+        || s.webkit_box == Some(true)
+        || !matches!(s.flex_dir, None | Some(FlexDir::Row))
+        || s.flex_wrap != Some(true)
+        || s.flex_wrap_reverse == Some(true)
+        || s.flex_balance == Some(true)
+        || s.vertical == Some(true)
+        || s.rtl == Some(true)
+        || s.justify_content.is_some()
+        || s.align_content.is_some()
+        || s.align_items.is_some()
+        || !matches!(s.height, None | Some(Len::Auto))
+        || s.min_height.is_some()
+        || s.max_height.is_some()
+        || s.transform.is_some()
+        || s.background.is_some()
+        || s.bg_image.is_some()
+        || !(s.position.is_none()
+            || (s.position == Some(crate::computed::Position::Relative)
+                && [&s.inset.top, &s.inset.right, &s.inset.bottom, &s.inset.left]
+                    .into_iter()
+                    .all(|l| matches!(l, None | Some(Len::Auto)))))
+        || !visible_overflow(s)
+        || ![
+            &s.margin.top,
+            &s.margin.bottom,
+            &s.margin.left,
+            &s.margin.right,
+            &s.padding.top,
+            &s.padding.bottom,
+            &s.padding.left,
+            &s.padding.right,
+            &b.top,
+            &b.bottom,
+            &b.left,
+            &b.right,
+        ]
+        .into_iter()
+        .all(zero)
+    {
+        return None;
+    }
+    let main = match s.width {
+        Some(Len::Px(w)) => w,
+        None | Some(Len::Auto) => col_w?,
+        _ => return None,
+    };
+    let (row_gap, col_gap) = match s.gap {
+        None => (0.0, 0.0),
+        Some((r, g)) => {
+            let px = |l: &Option<Len>| match l {
+                None => Some(0.0),
+                Some(Len::Px(v)) => Some(v.max(0.0)),
+                _ => None,
+            };
+            (px(&r)?, px(&g)?)
+        }
+    };
+    let side = |l: &Option<Len>| match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(*v),
+        _ => None,
+    };
+    let mut items: Vec<&Element> = Vec::new();
+    for n in c.children.iter().filter(|n| !is_blank(n)) {
+        let Node::Element(k) = n else { return None };
+        let ks = &k.style;
+        if k.inline
+            || out_of_flow(ks)
+            || !matches!(ks.position, None | Some(crate::computed::Position::Relative))
+            || ks.float.unwrap_or(0) != 0
+            || ks.flex_grow.is_some_and(|g| g > 0.0)
+            || ks.flex_basis.is_some()
+            || ks.align_self.is_some()
+            || ks.align_self_normal
+            || ks.min_height.is_some()
+            || !zero(&ks.margin.left)
+            || !zero(&ks.margin.right)
+            || !matches!(ks.width, Some(Len::Px(_)))
+        {
+            return None;
+        }
+        items.push(k);
+    }
+    if items.is_empty() {
+        return None;
+    }
+    items.sort_by_key(|k| k.style.order.unwrap_or(0));
+    // Строки по внешней ширине элементов (главная ось).
+    let mut lines: Vec<Vec<(f32, Element, Shape)>> = Vec::new();
+    let mut used = 0.0f32;
+    for k in items {
+        let kb = k.style.borders();
+        let Some(Len::Px(w)) = k.style.width else { return None };
+        let w = if k.style.border_box == Some(true) {
+            w
+        } else {
+            w + side(&k.style.padding.left)?
+                + side(&k.style.padding.right)?
+                + side(&kb.left)?
+                + side(&kb.right)?
+        };
+        let sh = shape_full(k, 4, ShapeCx::COLUMNS)?;
+        match lines.last_mut() {
+            Some(line) if used + col_gap + w <= main + 0.01 => {
+                line.push((used + col_gap, k.clone(), sh));
+                used += col_gap + w;
+            }
+            _ => {
+                lines.push(vec![(0.0, k.clone(), sh)]);
+                used = w;
+            }
+        }
+    }
+    if lines.iter().all(|l| l.len() < 2) {
+        return None;
+    }
+    for (li, line) in lines.iter_mut().enumerate() {
+        let cross = line.iter().map(|x| x.2.0 + x.2.1 + x.2.2).fold(0.0f32, f32::max);
+        let (bf, ba) = (
+            line.iter().any(|x| edge_break(&x.1, false)),
+            line.iter().any(|x| edge_avoid(&x.1, false)),
+        );
+        let (af, aa) = (
+            line.iter().any(|x| edge_break(&x.1, true)),
+            line.iter().any(|x| edge_avoid(&x.1, true)),
+        );
+        let m = line.len();
+        for (ii, (_, e, sh)) in line.iter_mut().enumerate() {
+            // `height: auto` тянется на строку — полом.
+            if matches!(e.style.height, None | Some(Len::Auto)) && sh.0 + sh.1 + sh.2 < cross - 0.01 {
+                let eb = e.style.borders();
+                let edges = side(&e.style.padding.top).unwrap_or(0.0)
+                    + side(&e.style.padding.bottom).unwrap_or(0.0)
+                    + side(&eb.top).unwrap_or(0.0)
+                    + side(&eb.bottom).unwrap_or(0.0);
+                let content = (cross - sh.1 - sh.2 - edges).max(0.0);
+                e.style.min_height = Some(Len::Px(content));
+                *sh = shape_full(e, 4, ShapeCx::COLUMNS)?;
+            }
+            // Зазор между строками — к полю элементов следующей строки.
+            if li > 0 {
+                sh.1 += row_gap;
+            }
+            if ii == 0 {
+                e.style.break_before_force |= bf;
+                e.style.break_before_avoid |= ba && !bf;
+            }
+            if ii + 1 == m {
+                e.style.break_after_force |= af;
+                e.style.break_after_avoid |= aa && !af;
+            }
+        }
+    }
+    Some(lines)
 }
 
 /// «Сдвиг ряда» сетки с рядами в точках (Blink `row_offset_adjustments`,
