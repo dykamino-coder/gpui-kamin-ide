@@ -62,8 +62,13 @@ impl Edge {
 /// Чем ребёнок хоста участвует в полосах.
 #[derive(Clone, Copy, Debug)]
 pub enum Kind {
-    /// Флоат: сторона `-1`/`1` и `clear` из стиля.
-    Float { side: i8, clear: Option<i8> },
+    /// Флоат: сторона `-1`/`1` и `clear` из стиля; `shrink` — ширина
+    /// `auto`, то есть shrink-to-fit §10.3.5.
+    Float {
+        side: i8,
+        clear: Option<i8>,
+        shrink: bool,
+    },
     /// Коробка, флоаты НЕ перекрывающая (§9.5, последний абзац): свой
     /// контекст, таблица, атом известного размера. `table` — коробка не уже
     /// своего min-content (CSS 2.1 §17.5.2: ширина таблицы не меньше
@@ -189,8 +194,22 @@ fn plan(kids: &[Kid], cb: f32, window: &mut Window, cx: &mut App) -> Plan {
     for (k, kid) in kids.iter().enumerate() {
         let [mt, mr, mb, ml] = kid.margin.map(|e| e.at(cb));
         match kid.kind {
-            Kind::Float { side, clear } => {
-                let avail = (cb - ml - mr).max(0.0);
+            Kind::Float {
+                side,
+                clear,
+                shrink,
+            } => {
+                let mut avail = (cb - ml - mr).max(0.0);
+                // §10.3.5: shrink-to-fit = `min(max(min-content, доступно),
+                // max-content)`. Каркас пробы (`align-items: flex-start`) даёт
+                // `min(max-content, доступно)` — без пола min-content, и в
+                // содержащем блоке нулевой ширины флоат схлопывался в ноль
+                // (`white-space-intrinsic-size-001`: «the parent of the flow
+                // is 0-width, so the float is min-content sized»). Пол — ширина
+                // каркаса не уже min-content.
+                if shrink {
+                    avail = avail.max(intrinsic(kid, window, cx).0);
+                }
                 let (bw, bh) = probe(kid, cb, avail, None, window, cx);
                 // Посадка margin-box: правила 1-9 §9.5.1 и clear §9.5.2 — в
                 // `bands.add_float`.

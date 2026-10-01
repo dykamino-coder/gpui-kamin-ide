@@ -10259,6 +10259,7 @@ fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEl
             Kind::Float {
                 side: c.style.float.unwrap_or(-1),
                 clear: c.style.clear,
+                shrink: matches!(c.style.width, None | Some(Len::Auto)),
             }
         } else {
             match band_piece_m(n, em) {
@@ -10297,9 +10298,16 @@ fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEl
             copy.style.clear = None;
             copy.style.margin = crate::computed::Sides::default();
             // Доля ширины — от СОДЕРЖАЩЕГО БЛОКА (§10.2), а каркас пробы
-            // шириной в окно: решаем её здесь.
+            // шириной в окно: решаем её здесь. `Pct(1.0)` — это и `100%`, и
+            // `stretch` (`value.rs` пишет ключевое слово долей): `stretch`
+            // заполняет ОКНО рядом с флоатом (css-sizing-4 §4.1, Blink —
+            // доступный размер из возможности, `block_layout_algorithm.cc`
+            // `child_available_inline_size`), и его оставляем каркасу
+            // (`bfc-next-to-float-1`); `100%` рядом с флоатом не влез бы ни в
+            // какое окно, а ниже флоатов окно и есть содержащий блок.
             if let Some(Len::Pct(k)) = copy.style.width
                 && cb > 0.0
+                && (float || k != 1.0)
             {
                 copy.style.width = Some(Len::Px(k * cb));
             }
@@ -10311,7 +10319,12 @@ fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEl
             }
             let table = copy.tag == "table"
                 || matches!(copy.style.display, Some(Display::Table) | Some(Display::InlineTable));
-            if float && !table {
+            // Замещаемый флоат, кроме `<img>` (`embed`, `object`, `video`…), —
+            // своей веткой `element` ниже: каркас блока со `blocks(детей)`
+            // рисовал вместо картинки пустую коробку, и `object-fit-*-00Ne/o/p`
+            // (88 пар `css-images`) теряли содержимое.
+            let replaced = replaced_tag(&copy) && copy.tag != "img";
+            if float && !table && !replaced {
                 // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем же
                 // путём, что у статического хоста (`shape_flow`). Таблица —
                 // своей веткой `element` ниже: каркас блока её не соберёт.
