@@ -790,9 +790,14 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // применение как items двигало содержимое вправо. У ЛУНОК инлайн-ось
     // живёт своим каналом (column-grid-lanes-item-baseline-002 полагается).
     let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    // Теперь фильтр уже: у ГОРИЗОНТАЛЬНОЙ сетки `baseline` доходит до
+    // раскладки — ортогональные (вертикальные) элементы образуют группы по
+    // оси x (css-align-3 §9.1), а параллельные его не видят (бит 8 ниже;
+    // `grid-justify-baseline-001`: одиночные группы `vertical-rl`/`-lr` берут
+    // запасное `safe self-start` — правый и левый край, а не растяжение).
     if let Some(a) = c
         .justify_items
-        .filter(|a| *a != Align::Baseline || !real_grid)
+        .filter(|a| *a != Align::Baseline || !real_grid || c.vertical != Some(true))
     {
         d.style().justify_items = Some(to_items(a));
     }
@@ -833,6 +838,8 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         }
         if item_vertical {
             bits |= 4;
+        } else if c.parent_grid == 1 {
+            bits |= 8;
         }
         d.style().baseline_x_flags = Some(bits);
     }

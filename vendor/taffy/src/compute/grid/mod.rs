@@ -584,13 +584,22 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             left: columns[item.column_indexes.start as usize + 1].offset,
             right: columns[item.column_indexes.end as usize].offset,
         };
+        // KaminIDE patch: `justify-items: baseline` не действует на элемент,
+        // параллельный горизонтальной сетке (см. `GridItem::justify_self`).
+        let item_alignment_styles = if item.baseline_x_flags & 8 != 0
+            && container_alignment_styles.horizontal == Some(AlignItems::Baseline)
+        {
+            InBothAbsAxis { horizontal: None, vertical: container_alignment_styles.vertical }
+        } else {
+            container_alignment_styles
+        };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
         let (content_size_contribution, y_position, height, first_baseline, last_baseline) = align_and_position_item(
             tree,
             item.node,
             index as u32,
             grid_area,
-            container_alignment_styles,
+            item_alignment_styles,
             Rect {
                 top: item.baseline_shim,
                 bottom: item.baseline_shim_end,

@@ -509,7 +509,9 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// `vertical-rl`), 2 — синтез центральный (у контейнера вертикальное
     /// письмо не `sideways`), 4 — у элемента своя базовая по x (вертикальное
     /// письмо самого элемента; иначе — только синтез, Blink
-    /// `LogicalBoxFragment::FirstBaseline` при `!IsWritingModeEqual()`).
+    /// `LogicalBoxFragment::FirstBaseline` при `!IsWritingModeEqual()`),
+    /// 8 — элемент параллелен горизонтальной сетке: `justify-items:
+    /// baseline` контейнера на него не действует.
     pub baseline_x_flags: u8,
 
     // Block container properties

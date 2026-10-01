@@ -142,7 +142,17 @@ impl GridItem {
             border: style.border(),
             margin: style.margin(),
             align_self: style.align_self().unwrap_or(parent_align_items),
-            justify_self: style.justify_self().unwrap_or(parent_justify_items),
+            // KaminIDE patch: `justify-items: baseline` горизонтальной сетки не
+            // действует на ПАРАЛЛЕЛЬНЫЙ ей элемент (бит 8 `baseline_x_flags`):
+            // ★ ЗАМЕРЕНО прежде (`70c2987`) — сдвиг таких элементов вредил;
+            // ортогональные (вертикальные) элементы в группу по x входят.
+            justify_self: match style.justify_self() {
+                Some(own) => own,
+                None if parent_justify_items == AlignItems::Baseline && style.baseline_x_flags() & 8 != 0 => {
+                    AlignItems::Stretch
+                }
+                None => parent_justify_items,
+            },
             baseline: None,
             baseline_shim: 0.0,
             baseline_shim_end: 0.0,
