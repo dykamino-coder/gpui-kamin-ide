@@ -14661,7 +14661,11 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             // 150×150 вместо 10ch).
             let mut sized = with_inherited_font(e, inherited);
             sized.style.resolve_em(atom_base_font(inherited, opts));
-            crate::svg::element(&crate::svg::stretch_fit(&sized, cb_w)).or_else(|| {
+            // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`; стиль
+            // коробки — свой, с решёнными шрифтовыми единицами.
+            let fitted = crate::svg::stretch_fit(&sized, cb_w);
+            let shell = sized.style.clone();
+            svg_replaced(&sized, &fitted, &shell).or_else(|| {
                 Some(image_with(
                     &with_inherited_font(e, inherited),
                     Some(atom_base_font(inherited, opts)),
