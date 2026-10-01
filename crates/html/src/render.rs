@@ -22644,6 +22644,32 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         ),
         _ => None,
     };
+    // Стол БЕЗ заданной высоты, но с рядами заданной высоты: дорожка такого
+    // ряда — `minmax(h, auto)` (CSS 2.1 §17.5.3: высота ряда — большее из
+    // заданной и нужной ячейкам), прочие — `auto`. Без дорожек высота ряда
+    // не доезжала до сетки вовсе: `tr {height: 50px}` с пустыми ячейками
+    // давал ряд в 2 точки паддинга (`table-as-item-cell-percentage-001/003/
+    // 004`: стол 100×4 вместо 100×100). Это НЕ откатанный вариант «дорожки
+    // рядов и без table_tall» (★ выше): там авто-ряды становились долями
+    // `1fr` с `flex_grow`, и ряды растягивались на высоту растянутого стола;
+    // здесь авто-ряд остаётся `auto`, а пол — только у ряда с высотой.
+    let row_floors: Option<Vec<gpui::GridTrack>> = (row_tracks.is_none()
+        && e.style.vertical != Some(true)
+        && row_elements
+            .iter()
+            .any(|r| matches!(r.style.height, Some(Len::Px(h)) if h > 0.0)))
+    .then(|| {
+        row_elements
+            .iter()
+            .map(|row| match row.style.height {
+                Some(Len::Px(h)) if h > 0.0 => gpui::GridTrack::MinMax(Box::new((
+                    gpui::GridTrack::Pixels(px(h)),
+                    gpui::GridTrack::Auto,
+                ))),
+                _ => gpui::GridTrack::Auto,
+            })
+            .collect()
+    });
     let grid_box = if e.style.vertical == Some(true) {
         // Ряд таблицы — КОЛОНКА сетки: заполнение идёт сверху вниз, ряд за
         // рядом поперёк (css-writing-modes-3 §8, table-progression-*).
@@ -22656,6 +22682,13 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // Сетка обязана занять ВСЮ высоту таблицы: доли рядов считаются
             // от её остатка, а auto-высота ребёнка гибкой колонки — ноль.
             g = g.grid_template_rows(rt).flex_grow();
+        } else if let Some(rt) = row_floors {
+            // Полы рядов (см. `row_floors`); растяжение элемента гибкого
+            // контейнера — как в ветке ниже.
+            g = g.grid_template_rows(rt);
+            if inherited.flex_item {
+                g = g.flex_grow();
+            }
         } else if inherited.flex_item {
             // Стол — элемент гибкого контейнера: высоту, данную ему ростом
             // или растяжением, делят ряды (CSS 2.1 §17.5.3; у сетки
