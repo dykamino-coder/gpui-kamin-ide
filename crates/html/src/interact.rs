@@ -3094,6 +3094,38 @@ impl Element for EdgePainter {
             }
             widest / 2.0
         };
+        // Симметрично для вертикалей: в стык вертикаль тянется на половину
+        // ГОРИЗОНТАЛЬНОЙ кромки.
+        let horiz_spans: Vec<(f32, f32, f32, f32, u8)> = horiz
+            .iter()
+            .map(|c| (c.line, c.a, c.b, c.w, c.style))
+            .collect();
+        let half_at_h = |y: f32, x: f32| -> f32 {
+            let mut widest = 0.0f32;
+            for c in &horiz_spans {
+                if (c.0 - y).abs() >= 0.75 || x < c.1 - 0.25 || x > c.2 + 0.25 {
+                    continue;
+                }
+                if c.4 == 1 {
+                    return 0.0;
+                }
+                widest = widest.max(c.3);
+            }
+            widest / 2.0
+        };
+        // Стык кромок решается ПРИОРИТЕТОМ, а не осью: прежде горизонтали
+        // рисовались ПОСЛЕ вертикалей и, протянутые в углы, всегда накрывали
+        // стык своим цветом. У Blink стык достаётся кромке, победившей в
+        // разборе §17.6.2.1 (`table_painters.cc`, `CollapsedBorderPainter`:
+        // края отрезка подрезаются/растягиваются по соседней перпендикулярной
+        // кромке в зависимости от того, кто сильнее). Поэтому отрезки обеих
+        // осей копятся с ключом победителя и красятся по возрастанию ключа —
+        // сильнейшая кромка ложится последней и забирает угол
+        // (`border-conflict-element-001e`: синяя вертикаль первой ячейки
+        // против жёлтой горизонтали второй — в эталоне угол синий).
+        // При равном ключе вертикаль идёт первой — прежний порядок.
+        type SegKey = (f32, u8, u8, u32);
+        let mut segs: Vec<(SegKey, bool, Bounds<Pixels>, crate::value::Color)> = Vec::new();
         let mut draw = |cands: &mut Vec<Cand>, vertical: bool, grid_lo: Option<f32>| {
             cands.sort_by(|p, q| {
                 p.line
@@ -3171,11 +3203,17 @@ impl Element for EdgePainter {
                         Some(_) => (line, line + win.w),
                         None => (line - win.w / 2.0, line + win.w / 2.0),
                     };
-                    // Продление В УГЛЫ только у горизонталей: пересечение
-                    // иначе оставалось пустым квадратом, а продление обеих
-                    // осей рисовало лишние усы на пунктирных рамках.
-                    let (a, b) = if !vertical && win.style >= 9 {
-                        (a - half_at(a, line), b + half_at(b, line))
+                    // Продление В УГЛЫ — только у сплошных (`style >= 9`):
+                    // пересечение иначе оставалось пустым квадратом, а
+                    // продление пунктирных рисовало лишние усы. Обе оси
+                    // тянутся на полуширину ПЕРПЕНДИКУЛЯРНОЙ кромки; кто из
+                    // них накроет угол, решает порядок по ключу (см. `segs`).
+                    let (a, b) = if win.style >= 9 {
+                        if vertical {
+                            (a - half_at_h(a, line), b + half_at_h(b, line))
+                        } else {
+                            (a - half_at(a, line), b + half_at(b, line))
+                        }
                     } else {
                         (a, b)
                     };
@@ -3190,13 +3228,26 @@ impl Element for EdgePainter {
                             size: gpui::size(gpui::px(b - a), gpui::px(hi - lo)),
                         }
                     };
-                    window.paint_quad(gpui::fill(rect, win.colour.to_hsla()));
+                    segs.push((
+                        (win.w, win.style, win.source, u32::MAX - win.doc_ix),
+                        vertical,
+                        rect,
+                        win.colour,
+                    ));
                 }
                 i = j;
             }
         };
         draw(&mut vert, true, grid_lo.map(|g| g.0));
         draw(&mut horiz, false, grid_lo.map(|g| g.1));
+        segs.sort_by(|p, q| {
+            p.0.partial_cmp(&q.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(p.1.cmp(&q.1).reverse())
+        });
+        for (_, _, rect, colour) in segs {
+            window.paint_quad(gpui::fill(rect, colour.to_hsla()));
+        }
     }
 }
 
