@@ -531,6 +531,91 @@ pub struct StackChild {
     /// режет вбок по колонке, как до вылета (`multicol-nested-013/014/021`,
     /// `multicol-fill-balance-nested-000`).
     pub nested_cols: bool,
+    /// Повторяемые шапка/подвал таблицы (css-tables-3 §repeated-headers; Blink
+    /// `table_layout_algorithm.cc:1082-1150`). `None` — повтора нет.
+    pub repeat: Option<Repeat>,
+    /// Параллельный поток строки flex (`Par`).
+    pub par: Par,
+    /// Фон таблицы для «хвоста» непоследнего фрагмента: секции и ряды до низа
+    /// фрагментаинера не тянутся, а коробка таблицы — тянется (css-break-3
+    /// §box-splitting; Blink `table_layout_algorithm.cc` — фрагмент таблицы
+    /// занимает остаток, `fragmentation_utils.cc:563` «Consumed block-size …
+    /// is always stretched to the fragmentainers»). Распорка роста
+    /// (`grow_pushed`) в пустой ячейке коробки не находит, и в хвосте было
+    /// пусто. Хвост красится цветом фона по ширине разложенной копии.
+    pub slack: Option<gpui::Hsla>,
+    /// Ширина разложенной копии (для `slack`), ставится в `prepaint`.
+    pub laid_w: std::cell::Cell<f32>,
+}
+
+/// Повтор секций таблицы во фрагментах. Фрагмент в нашей модели — СРЕЗ одной
+/// нарисованной копии `[from, from + h)`, а повторённой шапки в срезе нет:
+/// она рисуется ОТДЕЛЬНОЙ копией той же таблицы, поднятой так, что полоса
+/// шапки встаёт на верх фрагмента, и режется маской по этой полосе. Тело
+/// фрагмента-продолжения уезжает вниз на высоту полосы (`Frag::head`), у
+/// непоследнего фрагмента снизу оставлено место под подвал (`Frag::foot`) —
+/// это Blink `reserved_space = repeated_header_block_size +
+/// repeated_footer_block_size` (`:1323-1327`).
+pub struct Repeat {
+    /// Полоса шапки в координатах коробки: `(верх, высота)`; высота — шапка
+    /// плюс `border-spacing` под ней (Blink `repeated_header_block_size`,
+    /// `:1393-1395`: продолжение шапку кладёт без зазора над ней, `:942`).
+    pub head: Option<(f32, f32)>,
+    /// Полоса подвала: `(верх, высота)`; высота — подвал плюс зазор над ним
+    /// (Blink `repeated_footer_block_size`, `:1147-1149`).
+    pub foot: Option<(f32, f32)>,
+    /// Где полосам место (`RepeatGeom`).
+    pub geom: RepeatGeom,
+    /// Копии для полос: шапка — фрагменту `c ≥ 1` (`head_els[c - 1]`),
+    /// подвал — НЕпоследнему фрагменту `c` (`foot_els[c]`).
+    pub head_els: Vec<AnyElement>,
+    pub foot_els: Vec<AnyElement>,
+}
+
+/// Геометрия повтора для укладки (`fill_at`), в координатах коробки. Нули —
+/// повтора нет, укладка тождественна прежней.
+#[derive(Clone, Copy, Default)]
+pub struct RepeatGeom {
+    /// Место полосы шапки сверху у продолжения и полосы подвала снизу.
+    pub head: f32,
+    pub foot: f32,
+    /// Конец полосы шапки на её родном месте: продолжение, начатое раньше,
+    /// шапку ещё не прошло.
+    pub head_end: f32,
+    /// Точка разрыва перед подвалом на родном месте и конец подвала: фрагмент,
+    /// куда родной подвал влезает целиком, полосы не берёт — подвал в нём
+    /// последний (Blink `has_pending_repeated_footer = false`, `:1315`).
+    pub foot_at: f32,
+    pub foot_end: f32,
+    /// Коробка рядов (без подписей): повтор — только во фрагментах, где она
+    /// есть (Blink: «If this isn't the first fragment for the table box …»,
+    /// `:1108-1114`; подписи о повторе не знают, `:1248-1249`).
+    pub box_top: f32,
+    pub box_end: f32,
+}
+
+impl RepeatGeom {
+    /// Полоса шапки у фрагмента-продолжения, начатого с `from`.
+    fn head_at(&self, from: f32) -> f32 {
+        if self.head > 0.0 && from >= self.head_end - 0.01 && from < self.box_end - 0.01 {
+            self.head
+        } else {
+            0.0
+        }
+    }
+
+    /// Место под подвал у фрагмента с `from`, которому доступно `room`.
+    fn foot_for(&self, from: f32, room: f32) -> f32 {
+        if self.foot > 0.0
+            && from < self.foot_at - 0.01
+            && from + room > self.box_top + 0.01
+            && from + room < self.foot_end - 0.01
+        {
+            self.foot
+        } else {
+            0.0
+        }
+    }
 }
 
 /// Мера ребёнка для укладки колонок.
@@ -559,6 +644,37 @@ pub struct Kid {
     pub clone_dec: Option<(f32, f32)>,
     /// См. `StackChild::overflow_top`; у страниц — `false`.
     pub overflow_top: bool,
+    /// Повтор секций таблицы (`RepeatGeom`): место шапки сверху у
+    /// фрагмента-продолжения и подвала снизу у непоследнего; нули — нет.
+    pub repeat: RepeatGeom,
+    /// Параллельный поток (`Par`); `Par::default()` — обычный ребёнок.
+    pub par: Par,
+}
+
+/// Строки многострочного КОЛОНОЧНОГО flex-контейнера — параллельные потоки
+/// (Blink `flex_layout_algorithm.cc:2096-2120`: свой `FlexColumnBreakInfo` на
+/// строку, `:2504-2515` — разрыв элемента уводит к следующей строке, а не
+/// рвёт контейнер). Контейнер раскрыт в стопке на элементы
+/// (`render::split_flex_lines`): строка — подряд идущие дети с общим началом
+/// группы, каждая следующая строка укладывается С ТОГО ЖЕ места, что первая,
+/// а за группой курсор встаёт на самый дальний конец строки. Поля элементов
+/// не схлопываются (css-flexbox-1 §4.2).
+#[derive(Clone, Copy, Default, Debug)]
+pub struct Par {
+    /// Номер группы (контейнера); 0 — не в группе.
+    pub group: u32,
+    /// Первый ребёнок группы / первый ребёнок строки / последний ребёнок группы.
+    pub group_start: bool,
+    pub line_start: bool,
+    pub group_end: bool,
+    /// Сдвиг строки по оси x от края колонки.
+    pub dx: f32,
+    /// Монолит только из-за `break-inside: avoid`: это пожелание (css-break-4
+    /// §4.4), и элемент выше целого фрагментаинера с его верха рвётся как
+    /// обычный, а не с верха переносится (Blink: avoid лишь снижает
+    /// привлекательность разрыва; `multi-line-column-flex-fragmentation-017`:
+    /// элементы 250/200 при колонке 100). Не с верха — переносится целиком.
+    pub avoid_only: bool,
 }
 
 /// Кусок ребёнка в колонке: чей он, какая по счёту копия, в какой колонке
@@ -572,6 +688,10 @@ struct Frag {
     y: f32,
     from: f32,
     h: f32,
+    /// Полосы повтора таблицы (`Repeat`): шапка над `y` и подвал под `y + h`;
+    /// `y`/`h` — по-прежнему само содержимое среза.
+    head: f32,
+    foot: f32,
 }
 
 /// Колонки многоколоночного потока для БЛОЧНЫХ детей с известными
@@ -811,15 +931,50 @@ impl ColumnStack {
         let mut shortage = f32::MAX;
         let mut out: Vec<Frag> = Vec::with_capacity(kids.len());
         let mut force_next = false;
+        // Группа параллельных строк (`Par`): место начала `(col, y, placed)` и
+        // самый дальний конец строки `(col, y)`.
+        let mut group: Option<((usize, f32, bool), (usize, f32))> = None;
         for (kid, k) in kids.iter().enumerate() {
+            if k.par.group != 0
+                && k.par.line_start
+                && !k.par.group_start
+                && let Some(((sc, sy, sp), end)) = group.as_mut().map(|g| (g.0, &mut g.1))
+            {
+                // Следующая строка — с того же места, что и вся группа; конец
+                // предыдущей запомнен (столбец важнее высоты).
+                if (col, y) > *end {
+                    *end = (col, y);
+                }
+                col = sc;
+                y = sy;
+                placed = sp;
+                prev_mb = 0.0;
+                force_next = false;
+            }
             // Принудительный разрыв перед коробкой или после предыдущей:
-            // новая колонка, если текущая не пуста (css-break-4 §3.1).
-            if (k.force_before || force_next) && placed {
+            // новая колонка, если текущая не пуста (css-break-4 §3.1). Разрыв
+            // перед ПЕРВЫМ элементом любой строки flex перенесён на сам
+            // контейнер (Blink `flex_layout_algorithm.cc:1907-1918`: «Treat all
+            // columns as a "row" of columns … propagated to the container»;
+            // `split_flex_lines`), и у строки второй раз не действует
+            // (`multi-line-column-flex-fragmentation-025`).
+            let line_head = k.par.group != 0 && k.par.line_start && !k.par.group_start;
+            if (k.force_before && !line_head || force_next) && placed {
                 col += 1;
                 y = 0.0;
                 placed = false;
                 prev_mb = 0.0;
                 first = true;
+            }
+            if k.par.group != 0 && k.par.group_start {
+                // Начало группы — коробка самого контейнера (`split_flex_lines`
+                // ставит её первой «строкой»): строки начинаются там, где встал
+                // её верх (полей и рамок у контейнера нет, поле предыдущего
+                // соседа — сквозь него).
+                let gy = if first { y } else { y + prev_mb };
+                group = Some(((col, gy, placed), (col, gy)));
+                y = gy;
+                prev_mb = 0.0;
             }
             force_next = k.force_after;
             // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): схлопывание пары полей по
@@ -830,7 +985,16 @@ impl ColumnStack {
             // Правило верное, но в стопке колонок `prev_mb`/`k.mt` уже несут
             // РЕЗУЛЬТАТ схлопывания уровнем выше, и второе применение
             // вычитает отрицательное поле дважды.
-            let lead = if first { k.mt } else { prev_mb.max(k.mt) };
+            // Элементы строки flex — без схлопывания (css-flexbox-1 §4.2: «The
+            // margins of adjacent flex items do not collapse»); первый — от начала
+            // группы со своим полем.
+            let lead = if k.par.group != 0 {
+                if k.par.line_start { k.mt } else { prev_mb + k.mt }
+            } else if first {
+                k.mt
+            } else {
+                prev_mb.max(k.mt)
+            };
             let mut cur = y + lead;
             let mut from = 0.0f32;
             let mut copy = 0usize;
@@ -853,6 +1017,9 @@ impl ColumnStack {
             } else {
                 k.h
             };
+            // Полосы повтора таблицы (`Repeat::leads`); у прочих детей нули, и
+            // укладка тождественна прежней.
+            let rg = k.repeat;
             loop {
                 let target = target_at(col);
                 let room = target - cur;
@@ -883,7 +1050,7 @@ impl ColumnStack {
                         .map(|&f| f - dt)
                         .find(|&f| f > from + 0.01 && f < content - 0.01 && f <= edge + 0.01);
                     if forced.is_none() && rest <= croom + 0.01 {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec, head: 0.0, foot: 0.0 });
                         y = cur + rest + dec;
                         placed = true;
                         break;
@@ -923,13 +1090,13 @@ impl ColumnStack {
                         None => before.or(whole).map_or(croom, |p| p - from),
                     };
                     if take >= rest - 0.01 {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec, head: 0.0, foot: 0.0 });
                         y = cur + rest + dec;
                         placed = true;
                         break;
                     }
                     let fh = if croom <= 0.01 { take + dec } else { room };
-                    out.push(Frag { kid, copy, col, y: cur, from, h: fh });
+                    out.push(Frag { kid, copy, col, y: cur, from, h: fh, head: 0.0, foot: 0.0 });
                     from += take;
                     if copy + 1 >= limit {
                         y = target;
@@ -943,6 +1110,23 @@ impl ColumnStack {
                     continue;
                 }
                 let rest = flow - from;
+                // Повтор секций таблицы: фрагмент-продолжение начат ПОД полосой
+                // шапки (курсор уже стоит под ней, `RepeatGeom::head_at` при переходе),
+                // а непоследний фрагмент оставляет снизу место под подвал —
+                // Blink кладёт его сразу за содержимым фрагмента и вычитает из
+                // доступного места заранее (`table_layout_algorithm.cc:1145-1149`,
+                // `:1323-1327` `reserved_space`). Целиком влезающий остаток
+                // подвал несёт сам — он последний в таблице.
+                let hd = if copy > 0 { rg.head_at(from) } else { 0.0 };
+                let room_all = room;
+                let rf = rg.foot_for(from, room_all);
+                let room = room_all - rf;
+                // Место под содержимым непоследнего фрагмента: секция тянется до
+                // низа фрагментаинера (css-break-3 §box-splitting: «its content
+                // box extends to fill any remaining fragmentainer extent»), и
+                // подвал встаёт на самый низ — `forced-break-before-repeated-
+                // footer-001`: ряд 50 с `break-after: column`, подвал на 80..100.
+                let ft = |h: f32| if rf > 0.0 { (room_all - h).max(rf) } else { 0.0 };
                 // Принудительный разрыв ВНУТРИ коробки раньше её конца и раньше
                 // края колонки — режем ровно там.
                 let forced = k
@@ -957,7 +1141,7 @@ impl ColumnStack {
                         .find(|&&(need, _)| (need - f).abs() < 0.01)
                         .map(|&(_, nf)| nf)
                         .unwrap_or(f);
-                    out.push(Frag { kid, copy, col, y: cur, from, h: f - from });
+                    out.push(Frag { kid, copy, col, y: cur, from, h: f - from, head: hd, foot: ft(f - from) });
                     from = nf;
                     if copy + 1 >= limit {
                         y = target;
@@ -966,12 +1150,12 @@ impl ColumnStack {
                     }
                     copy += 1;
                     col += 1;
-                    cur = 0.0;
+                    cur = rg.head_at(from);
                     placed = false;
                     continue;
                 }
-                if rest <= room + 0.01 {
-                    out.push(Frag { kid, copy, col, y: cur, from, h: rest });
+                if rest <= room_all + 0.01 {
+                    out.push(Frag { kid, copy, col, y: cur, from, h: rest, head: hd, foot: 0.0 });
                     y = cur + rest;
                     placed = true;
                     break;
@@ -989,7 +1173,8 @@ impl ColumnStack {
                 // класса A, иначе срезом по краю. Так делает Blink: сначала
                 // перенос, и только на пустой странице разрыв внутри
                 // (`block-page-break-inside-avoid-7/-15-print`).
-                let mono = k.monolith && !(paged && flow > target + 0.01 && cur <= 0.01);
+                let mono = k.monolith
+                    && !((paged || k.par.avoid_only) && flow > target + 0.01 && cur <= 0.01);
                 // Точка разреза `a` с усечением поля по классу A (`nf`).
                 let at = |a: f32| -> (f32, f32) {
                     let nf = k
@@ -1036,7 +1221,7 @@ impl ColumnStack {
                 // Монолит дотянулся до конца ребёнка — ребёнок кончается в этой
                 // колонке, переполнив её (как монолит-ребёнок в ветке `None =>`).
                 if overflow_to.is_some_and(|b| b >= flow - 0.01) {
-                    out.push(Frag { kid, copy, col, y: cur, from, h: rest });
+                    out.push(Frag { kid, copy, col, y: cur, from, h: rest, head: hd, foot: 0.0 });
                     y = cur + rest;
                     placed = true;
                     break;
@@ -1078,7 +1263,23 @@ impl ColumnStack {
                             .map(at)
                     }
                 } else if let Some(&(a, _)) = k.solid.iter().find(|&&(a, b)| holds(a, b)) {
-                    // Колонки — как прежде: первый содержащий диапазон.
+                    // Колонки — как прежде: первый содержащий диапазон. Его
+                    // начало само может лежать ВНУТРИ другого диапазона —
+                    // закрытой запретом границы (`shape_full`, `blk_avoid`):
+                    // тогда разрыв уходит к началу и того (`break-between-
+                    // avoid-007`: край в монолите c, перед c граница с `break-
+                    // before: avoid` — разрыв между a и b, а не перед c).
+                    let mut a = a;
+                    for _ in 0..4 {
+                        match k
+                            .solid
+                            .iter()
+                            .find(|&&(s0, s1)| s0 < a - 0.01 && a < s1 - 0.01 && s0 > from + 0.01)
+                        {
+                            Some(&(s0, _)) => a = s0,
+                            None => break,
+                        }
+                    }
                     if a > from + 0.01 { Some(at(a)) } else { None }
                 } else {
                     Some(at(edge))
@@ -1094,13 +1295,13 @@ impl ColumnStack {
                 shortage = shortage.min(next - room);
                 match cut {
                     Some((need, nf)) => {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: (need - from).max(0.0) });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: (need - from).max(0.0), head: hd, foot: ft((need - from).max(0.0)) });
                         from = nf;
                     }
                     None if !mono && k.cuts.is_empty() && rest > target + 0.01 && room > 0.01 => {
                         // Коробка без точек разреза выше колонки — вид
                         // `slice` по краю (css-break-3 §4).
-                        out.push(Frag { kid, copy, col, y: cur, from, h: room });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: room, head: hd, foot: ft(room) });
                         from += room;
                     }
                     None if paged && placed && cur > target + 0.01 => {
@@ -1117,7 +1318,13 @@ impl ColumnStack {
                         placed = cur > 0.01;
                         continue;
                     }
-                    None if placed => {
+                    // Перед ним в колонке только коробки нулевой высоты — это
+                    // всё ещё её начало, и разрыва ПЕРЕД ребёнком нет (css-break-4
+                    // §unforced-breaks: «must place at least some content on each
+                    // fragmentainer»; `tall-break-inside-avoid-at-start`: пустой
+                    // `div`, затем `break-inside: avoid` 200 в колонке 100). У
+                    // страниц — прежнее правило.
+                    None if placed && (cur > 0.01 || paged) => {
                         // Из непустой колонки — в следующую целиком; поле на
                         // границе колонки съедается.
                         col += 1;
@@ -1126,13 +1333,13 @@ impl ColumnStack {
                         continue;
                     }
                     None if !mono && rest > target + 0.01 && room > 0.01 => {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: room });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: room, head: hd, foot: ft(room) });
                         from += room;
                     }
                     None => {
                         // Монолит с верха пустой колонки: остаётся и
                         // переполняет.
-                        out.push(Frag { kid, copy, col, y: cur, from, h: rest });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: rest, head: hd, foot: 0.0 });
                         y = cur + rest;
                         placed = true;
                         break;
@@ -1146,7 +1353,7 @@ impl ColumnStack {
                 }
                 copy += 1;
                 col += 1;
-                cur = 0.0;
+                cur = rg.head_at(from);
                 placed = false;
             }
             // Откат курсора на конец КОРОБКИ: параллельный поток уехал
@@ -1168,6 +1375,23 @@ impl ColumnStack {
             }
             prev_mb = k.mb;
             first = false;
+            // Конец группы строк: дальше поток идёт с самого дальнего конца
+            // строки (контейнер кончается вместе с последним фрагментом своих
+            // строк; поля контейнера нулевые).
+            if k.par.group != 0
+                && k.par.group_end
+                && let Some((_, end)) = group.take()
+            {
+                if (col, y) < end {
+                    col = end.0;
+                    y = end.1;
+                }
+                placed = true;
+                prev_mb = 0.0;
+                // `break-after` последних элементов строк — разрыв ПОСЛЕ
+                // контейнера (там же, :1915-1918); его несёт последний элемент.
+                force_next = k.force_after;
+            }
         }
         // Курсор мог быть откачен назад параллельным потоком: колонок нужно
         // столько, сколько занял самый дальний КУСОК, а не сколько прошёл
@@ -1189,8 +1413,18 @@ impl ColumnStack {
     /// `break-*: column`. Пропускается и разрезанная предыдущая коробка:
     /// разрыв всё равно внутри неё.
     fn first_avoid_violation(kids: &[Kid], plan: &[Frag]) -> Option<usize> {
+        Self::avoid_violation_where(kids, plan, &|_| false)
+    }
+
+    /// `first_avoid_violation`, пропуская границы, для которых `skip` истинно.
+    fn avoid_violation_where(kids: &[Kid], plan: &[Frag], skip: &dyn Fn(usize) -> bool) -> Option<usize> {
         for i in 1..kids.len() {
-            if !(kids[i].avoid_before || kids[i - 1].avoid_after) {
+            if !(kids[i].avoid_before || kids[i - 1].avoid_after) || skip(i) {
+                continue;
+            }
+            // Начало строки flex (`Par`) — не граница с предыдущим ребёнком:
+            // строки — параллельные потоки.
+            if kids[i].par.group != 0 && kids[i].par.line_start && !kids[i].par.group_start {
                 continue;
             }
             if kids[i].force_before || kids[i - 1].force_after {
@@ -1296,9 +1530,25 @@ impl ColumnStack {
     /// граница перед третьей коробкой тоже запрещена, и разрыв обязан
     /// уехать сразу на вторую.
     fn retreat_to(kids: &[Kid], bad: usize) -> Option<usize> {
-        (1..bad)
+        // В строке flex (`Par`) отступать можно только внутри своей строки и не
+        // на её начало: начало строки — начало группы, перенос всей группы в
+        // следующую колонку уводил бы и соседние строки (параллельные потоки),
+        // `multi-line-column-flex-fragmentation-028`.
+        let lo = if kids[bad].par.group != 0 && !kids[bad].par.group_start {
+            (0..=bad).rev().find(|&i| kids[i].par.line_start).map_or(1, |i| i + 1)
+        } else {
+            1
+        };
+        (lo.max(1)..bad)
             .rev()
-            .find(|&j| !kids[j].avoid_before && !kids[j - 1].avoid_after)
+            .find(|&j| {
+                !kids[j].avoid_before
+                    && !kids[j - 1].avoid_after
+                    && !(kids[j].par.group != 0 && kids[j].par.line_start && !kids[j].par.group_start)
+                    && !((kids[bad].par.group == 0 || kids[bad].par.group_start)
+                        && kids[j].par.group != 0
+                        && !kids[j].par.group_start)
+            })
     }
 
     /// `fill_at` с соблюдением правила 1 css-break-4 §4.3: пока план рвёт
@@ -1327,22 +1577,90 @@ impl ColumnStack {
             return Self::fill_at(kids, target_at, limit, paged);
         }
         let mut best = Self::fill_at(kids, target_at, limit, paged);
-        let mut mark: Option<usize> = None;
-        for _ in 0..kids.len().min(8) {
-            let Some(bad) = Self::first_avoid_violation(kids, &best.2) else {
-                return best;
-            };
-            let Some(next) = Self::retreat_to(kids, bad) else {
-                return best;
-            };
-            // Метка только назад — иначе цикл вечен, а план качается.
-            if mark.is_some_and(|m| next >= m) {
-                return best;
+        // Метка — ОДНА на поток: у обычной стопки поток один, у строк flex
+        // (`Par`) — свой у каждой строки, и отступ в одной строке не трогает
+        // соседние (параллельные потоки; `multi-line-column-flex-
+        // fragmentation-018`: запреты в трёх строках сразу). Поток ребёнка —
+        // индекс начала его строки, у обычного ребёнка — `usize::MAX`.
+        let flow_of = |i: usize| -> usize {
+            // Начало группы — граница самого контейнера с соседом: общий поток.
+            if kids[i].par.group == 0 || kids[i].par.group_start {
+                return usize::MAX;
             }
-            mark = Some(next);
+            (0..=i).rev().find(|&j| kids[j].par.line_start).unwrap_or(0)
+        };
+        let mut marks: Vec<(usize, usize)> = Vec::new();
+        let mut stuck: Vec<usize> = Vec::new();
+        // Ранние разрывы ВНУТРИ предыдущего ребёнка: `(ребёнок, точка)`.
+        let mut early: Vec<(usize, f32)> = Vec::new();
+        let mut early_tried: Vec<usize> = Vec::new();
+        let build = |marks: &[(usize, usize)], early: &[(usize, f32)]| -> Vec<Kid> {
             let mut work: Vec<Kid> = kids.to_vec();
-            work[next].force_before = true;
-            best = Self::fill_at(&work, target_at, limit, paged);
+            for &(_, m) in marks {
+                work[m].force_before = true;
+            }
+            for &(k, at) in early {
+                work[k].forced.push(at);
+                work[k].forced.sort_by(f32::total_cmp);
+            }
+            work
+        };
+        'outer: for _ in 0..kids.len().min(8) {
+            let Some(bad) =
+                Self::avoid_violation_where(kids, &best.2, &|i| stuck.contains(&flow_of(i)))
+            else {
+                return best;
+            };
+            let flow = flow_of(bad);
+            // Лучшая точка разрыва может лежать ВНУТРИ содержимого, которое
+            // уже пройдено (css-break-4 §4.4: «the UA … must choose the
+            // breakpoint with the highest break appeal»; Blink `early_break_` в
+            // `block_layout_algorithm.cc:1086`, `fragmentation_utils.cc:1250`):
+            // запрет на границе с предыдущим ребёнком снимается разрывом в его
+            // последней законной точке, а не переносом его целиком —
+            // `break-between-avoid-003`: обёртка из трёх квадратов `avoid`,
+            // следом квадрат с `break-before: avoid` в колонке 160 → разрыв
+            // между вторым и третьим квадратом. Сначала самая поздняя точка;
+            // принимается та, что снимает нарушение на этой границе.
+            if flow == usize::MAX && !early_tried.contains(&bad) && !kids[bad - 1].monolith {
+                early_tried.push(bad);
+                let pk = &kids[bad - 1];
+                let cands: Vec<f32> = pk
+                    .cuts
+                    .iter()
+                    .rev()
+                    .map(|&(need, _)| need)
+                    .filter(|&n| n > 0.01 && n < pk.h - 0.01 && !pk.forced.iter().any(|&f| (f - n).abs() < 0.01))
+                    .take(4)
+                    .collect();
+                for at in cands {
+                    let mut e2 = early.clone();
+                    e2.push((bad - 1, at));
+                    let cand = Self::fill_at(&build(&marks, &e2), target_at, limit, paged);
+                    let still = Self::avoid_violation_where(kids, &cand.2, &|i| {
+                        stuck.contains(&flow_of(i)) || i < bad
+                    });
+                    if still != Some(bad) {
+                        early = e2;
+                        best = cand;
+                        continue 'outer;
+                    }
+                }
+            }
+            let prev = marks.iter().find(|m| m.0 == flow).map(|m| m.1);
+            // Метка только назад — иначе цикл вечен, а план качается. Поток,
+            // где отступать некуда, больше не трогается.
+            let next = match Self::retreat_to(kids, bad) {
+                Some(n) if !prev.is_some_and(|m| n >= m) => n,
+                _ if flow == usize::MAX => return best,
+                _ => {
+                    stuck.push(flow);
+                    continue;
+                }
+            };
+            marks.retain(|m| m.0 != flow);
+            marks.push((flow, next));
+            best = Self::fill_at(&build(&marks, &early), target_at, limit, paged);
         }
         best
     }
@@ -1595,7 +1913,7 @@ impl ColumnStack {
             let Some(&(_, line_h)) = lines.get(f.col / count) else {
                 continue;
             };
-            let grow = line_h - f.y - f.h;
+            let grow = line_h - f.y - f.h - k.repeat.foot;
             if grow > 0.01 {
                 // Монолит растёт от НАЧАЛА своего диапазона; принудительный
                 // разрыв стоит ПЕРЕД полем следующей коробки, и распорку надо
@@ -1906,6 +2224,8 @@ impl Element for ColumnStack {
                 over: c.over,
                 clone_dec: c.clone_dec,
                 overflow_top: c.overflow_top,
+                repeat: c.repeat.as_ref().map_or(RepeatGeom::default(), |r| r.geom),
+                par: c.par,
             })
             .collect();
         let count = self.count;
@@ -2049,9 +2369,26 @@ impl Element for ColumnStack {
                 over: c.over,
                 clone_dec: c.clone_dec,
                 overflow_top: c.overflow_top,
+                repeat: c.repeat.as_ref().map_or(RepeatGeom::default(), |r| r.geom),
+                par: c.par,
             })
             .collect();
         let (_, lines, plan, spans) = self.balance(&heights);
+        // Отладка укладки: `KAMIN_FRAG_DEBUG=1` печатает меры и план в stderr.
+        if std::env::var_os("KAMIN_FRAG_DEBUG").is_some() {
+            for (i, k) in heights.iter().enumerate() {
+                eprintln!(
+                    "kid {i}: h {} mt {} mb {} mono {} cuts {:?} solid {:?} forced {:?} fb {} fa {} par {:?}",
+                    k.h, k.mt, k.mb, k.monolith, k.cuts, k.solid, k.forced, k.force_before, k.force_after, k.par
+                );
+            }
+            for f in &plan {
+                eprintln!(
+                    "frag kid {} copy {} col {} y {} from {} h {}",
+                    f.kid, f.copy, f.col, f.y, f.from, f.h
+                );
+            }
+        }
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         let step = col_w + self.gap;
@@ -2067,8 +2404,35 @@ impl Element for ColumnStack {
             // `layout_as_root` края её КОРНЯ не читает (проба `pm1`).
             let rel = self.children[f.kid].rel;
             let x = bounds.origin.x + px(c as f32 * step + rel.0);
+            let x = x + px(self.children[f.kid].par.dx);
             let y = bounds.origin.y + px(ry + f.y + rel.1);
             let kid = &mut self.children[f.kid];
+            // Полосы повтора таблицы — своими копиями: шапка встаёт над
+            // содержимым продолжения (`f.y − f.head`), подвал — сразу под ним.
+            // Копия та же полная таблица, поднятая так, что её полоса
+            // совпадает с местом во фрагменте; видимой полосу делает маска.
+            if let Some(r) = kid.repeat.as_mut() {
+                let mut band = |el: Option<&mut AnyElement>, at: f32| {
+                    if let Some(el) = el {
+                        el.layout_as_root(
+                            size(
+                                gpui::AvailableSpace::Definite(px(col_w)),
+                                gpui::AvailableSpace::Definite(px(full_h)),
+                            ),
+                            window,
+                            cx,
+                        );
+                        el.prepaint_at(point(x, y + px(at)), window, cx);
+                    }
+                };
+                if let (Some((src, _)), true) = (r.head, f.head > 0.01 && f.copy > 0) {
+                    band(r.head_els.get_mut(f.copy - 1), -f.head - src);
+                }
+                if let (Some((src, bh)), true) = (r.foot, f.foot > 0.01) {
+                    band(r.foot_els.get_mut(f.copy), f.h + f.foot - bh - src);
+                }
+            }
+            let par = kid.par.group != 0;
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {
@@ -2077,18 +2441,40 @@ impl Element for ColumnStack {
                     None => continue,
                 }
             };
+            // Строка flex (`Par`) — отдельный корень раскладки, и округление
+            // краёв к физической точке (`taffy.rs` `layout_bounds`) у неё своё:
+            // от НУЛЯ корня, а не от абсолютной координаты. Соседние строки
+            // по 5px при масштабе 1.25 расходились щелью в точку
+            // (`multi-line-column-flex-fragmentation-020`). Корень ставится на
+            // целую физическую точку, а дробный остаток сдвига уходит внутрь
+            // обёрткой с отступом — тогда оба края элемента округляются по
+            // абсолютной координате, как в одной раскладке.
+            let (x, lead) = if par {
+                use gpui::{ParentElement as _, Styled as _};
+                let s = window.scale_factor().max(0.01);
+                let x0 = px((f32::from(x) * s).floor() / s);
+                let frac = f32::from(x - x0).max(0.0);
+                let inner = std::mem::replace(el, gpui::Empty.into_any_element());
+                *el = gpui::div().pl(px(frac)).child(inner).into_any_element();
+                (x0, frac)
+            } else {
+                (x, 0.0)
+            };
             // Копия раскладывается ЦЕЛИКОМ и поднимается на срез: видимой её
             // часть делает маска в отрисовке. Иначе половина коробки просто
             // сжалась бы, а не продолжилась в следующей колонке.
-            el.layout_as_root(
+            let laid = el.layout_as_root(
                 size(
-                    gpui::AvailableSpace::Definite(px(col_w)),
+                    gpui::AvailableSpace::Definite(px(col_w + lead)),
                     gpui::AvailableSpace::Definite(px(full_h)),
                 ),
                 window,
                 cx,
             );
             el.prepaint_at(point(x, if clone { y } else { y - px(f.from) }), window, cx);
+            if kid.slack.is_some() {
+                kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));
+            }
         }
         // Спаннер — во всю ширину коробки, первой копией (запасных у него
         // нет: между колонками он не режется).
@@ -2203,6 +2589,7 @@ impl Element for ColumnStack {
         for f in &plan {
             parts[f.kid] += 1;
         }
+        let plan_all = plan.clone();
         for f in plan {
             let (c, ry) = self.place(f.col);
             // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):
@@ -2210,6 +2597,7 @@ impl Element for ColumnStack {
             // (`out-of-flow-in-multicolumn-042/045`, проба `pm3`).
             let rel = self.children[f.kid].rel;
             let x = bounds.origin.x + px(c as f32 * step + rel.0);
+            let x = x + px(self.children[f.kid].par.dx);
             let y = bounds.origin.y + px(ry + f.y + rel.1);
             // Маска — устройство `slice`. Фрагмент `clone` самодостаточен:
             // содержимое режет его внутренняя обёртка (`clone_fragment`), а
@@ -2244,6 +2632,47 @@ impl Element for ColumnStack {
                 },
             };
             let kid = &mut self.children[f.kid];
+            // Полосы повтора таблицы — каждая своей маской по своей полосе.
+            if let Some(r) = kid.repeat.as_mut() {
+                let band_mask = |top: f32, h: f32| gpui::ContentMask {
+                    bounds: Bounds {
+                        origin: point(x - spill, y + px(top)),
+                        size: size(px(col_w) + spill + spill, px(h)),
+                    },
+                };
+                if f.head > 0.01
+                    && f.copy > 0
+                    && let Some(el) = r.head_els.get_mut(f.copy - 1)
+                {
+                    window.with_content_mask(Some(band_mask(-f.head, f.head)), |window| {
+                        el.paint(window, cx)
+                    });
+                }
+                if f.foot > 0.01
+                    && let Some((_, bh)) = r.foot
+                    && let Some(el) = r.foot_els.get_mut(f.copy)
+                {
+                    window.with_content_mask(Some(band_mask(f.h + f.foot - bh, bh)), |window| {
+                        el.paint(window, cx)
+                    });
+                }
+            }
+            // Хвост непоследнего фрагмента таблицы — фоном таблицы (`slack`).
+            if let Some(bg) = kid.slack
+                && plan_all.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1)
+            {
+                let line = if matches!(self.rows, Some(r) if r.wrap) { f.col / self.count } else { 0 };
+                let line_h = self.lines_plan.borrow().get(line).map_or(0.0, |l| l.1);
+                let band = kid.repeat.as_ref().and_then(|r| r.foot).map_or(0.0, |b| b.1);
+                let tail = if f.foot > 0.01 { f.foot - band } else { line_h - f.y - f.h };
+                let w = kid.laid_w.get();
+                if tail > 0.01 && w > 0.01 {
+                    window.paint_quad(gpui::fill(
+                        Bounds { origin: point(x, y + px(f.h)), size: size(px(w), px(tail)) },
+                        bg,
+                    ));
+                }
+            }
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {
@@ -2562,6 +2991,8 @@ impl Element for PageStack {
                     // У страниц своё правило переполнения монолита (`fill_at`,
                     // ветка `paged && placed && cur > target`, crbug 1402540).
                     overflow_top: false,
+                    repeat: RepeatGeom::default(),
+                    par: Par::default(),
                 }
             })
             .collect();

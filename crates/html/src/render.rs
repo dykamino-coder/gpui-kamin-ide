@@ -2792,6 +2792,21 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             _ => (false, false),
         })
         .collect();
+    // Те же запреты на границах БЛОЧНЫХ детей (css-break-4 §4.3 правило 1):
+    // граница, закрытая `break-after: avoid*` предыдущего или `break-before:
+    // avoid*` следующего, точкой разрыва не служит. Разрыв уходит к последней
+    // законной точке ВНУТРИ предыдущего ребёнка (Blink `early_break_`,
+    // `block_layout_algorithm.cc:1086`; `break-between-avoid-007`: c с
+    // `break-before: avoid` после обёрток над a и b — разрыв между a и b).
+    let blk_avoid: Vec<(bool, bool)> = kids
+        .iter()
+        .map(|n| match n {
+            Node::Element(k) if !flex_items && !out_of_flow(&k.style) => {
+                (edge_avoid(k, false), edge_avoid(k, true))
+            }
+            _ => (false, false),
+        })
+        .collect();
     // Элемент в ОДНОЙ строке с предыдущим — там, где это видно без раскладки:
     // ширины в процентах без полей, отступов, рамок по главной оси, без
     // `flex-basis`, `min/max-width` и `column-gap` (css-flexbox-1 §9.3: строка
@@ -3091,6 +3106,10 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         let mut flex_run: Option<f32> = None;
         let mut flex_open = 0.0f32;
         let mut flex_prev_aa = false;
+        // Состояние запретов на границах блочных детей (`blk_avoid`).
+        let mut blk_prev_aa = false;
+        let mut blk_prev_start = top;
+        let mut blk_prev_cut: Option<f32> = None;
         // Можно ли начать сцепку от `flex_open`. Нельзя от верха контейнера
         // (css-flexbox-1 §12; Blink `fragmentation_utils.cc:244-253`: без
         // `has_container_separation` — `kBreakAppealLastResort`), от
@@ -3183,9 +3202,33 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 if fb || force_next {
                     forced.push(y);
                 }
+                // Закрытая запретом граница (`blk_avoid`): сплошной диапазон от
+                // последней точки внутри предыдущего ребёнка (без неё — от его
+                // начала) до начала этого: край колонки в нём уводит разрыв к
+                // его началу (`fill_at`, ветка `holds`). От верха коробки
+                // диапазон не начинается — там разрыв был бы разрывом ПЕРЕД
+                // коробкой, и это решает уровень выше.
+                if !grid_rows_stack
+                    && (blk_prev_aa || blk_avoid.get(ki).is_some_and(|a| a.0))
+                    && !(fb || force_next)
+                {
+                    let open = blk_prev_cut.unwrap_or(blk_prev_start);
+                    if open > top + 0.01 {
+                        solid.push((open, y + lead + 0.05));
+                    }
+                }
             }
             force_next = fa;
             let start = y + lead;
+            // Последняя законная точка ВНУТРИ этого ребёнка (для `blk_avoid`).
+            blk_prev_start = if first { start } else { y };
+            blk_prev_cut = kcuts
+                .iter()
+                .map(|&(need, _)| need)
+                .filter(|&n| n > 0.01 && n < h - 0.01)
+                .fold(None::<f32>, |m, n| Some(m.map_or(n, |x| x.max(n))))
+                .map(|n| start + n);
+            blk_prev_aa = blk_avoid.get(ki).is_some_and(|a| a.1);
             for (need, nf) in kcuts {
                 cuts.push((start + need, start + nf));
             }
@@ -3983,11 +4026,13 @@ fn grow_pushed(
     fixed: Option<f32>,
     rows: Option<crate::flow::Rows>,
     copies: usize,
+    par: &[crate::flow::Par],
 ) -> Vec<(Element, Shape)> {
     for _ in 0..6 {
         let probe: Vec<crate::flow::Kid> = kids
             .iter()
-            .map(|(c, s)| crate::flow::Kid {
+            .enumerate()
+            .map(|(i, (c, s))| crate::flow::Kid {
                 h: s.0,
                 mt: s.1,
                 mb: s.2,
@@ -4019,6 +4064,8 @@ fn grow_pushed(
                 // Тот же предикат, что у `StackChild` в сборке стопки: иначе
                 // распорки легли бы по другому плану, чем укладка.
                 overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(c, 4),
+                repeat: repeat_leads(c, fixed, rows),
+                par: par.get(i).copied().unwrap_or_default(),
             })
             .collect();
         let mut grows = crate::flow::ColumnStack::growths(&probe, count, fixed, rows, copies);
@@ -4036,7 +4083,7 @@ fn grow_pushed(
             // Ряд в точках, вытолкнутый целиком: растёт ПРЕДЫДУЩАЯ дорожка.
             if grow_grid_track(c, at, grow) {
                 if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS) {
-                    kids[kid].1 = s;
+                    kids[kid].1 = keep_par_margins(s, &kids[kid].1, par.get(kid));
                     changed = true;
                 }
                 continue;
@@ -4054,7 +4101,7 @@ fn grow_pushed(
                 continue;
             }
             if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS) {
-                kids[kid].1 = s;
+                kids[kid].1 = keep_par_margins(s, &kids[kid].1, par.get(kid));
                 changed = true;
             }
         }
@@ -4063,6 +4110,551 @@ fn grow_pushed(
         }
     }
     kids
+}
+
+/// Монолит ребёнка колонок держится ТОЛЬКО на `break-inside: avoid`: ни
+/// `contain: size`, ни прокрутки, ни замещаемого, ни атомарной строчной, ни
+/// сплошного строчного набора (тот же список, что у `monolith` в сборке
+/// стопки, без `break_inside_avoid`).
+fn avoid_only_monolith(c: &Element) -> bool {
+    let scrolls = |o: Option<crate::computed::Overflow>| matches!(o, Some(crate::computed::Overflow::Scroll));
+    let block_kid = |n: &Node| matches!(n, Node::Element(k) if !k.inline || k.style.display == Some(Display::Block));
+    !(size_monolith(c)
+        || scrolls(c.style.overflow_x)
+        || scrolls(c.style.overflow_y)
+        || matches!(
+            c.tag.as_str(),
+            "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
+        )
+        || matches!(
+            c.style.display,
+            Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
+        )
+        || (c.children.iter().any(|n| !is_blank(n)) && !c.children.iter().any(block_kid)))
+}
+
+/// Перемера после распорки — с прежними полями у элемента строки flex
+/// (`split_flex_lines` кладёт в поле ещё и `row-gap`).
+fn keep_par_margins(s: Shape, old: &Shape, par: Option<&crate::flow::Par>) -> Shape {
+    if par.is_some_and(|p| p.group != 0) {
+        (s.0, old.1, old.2, s.3, s.4, s.5)
+    } else {
+        s
+    }
+}
+
+/// Многострочный КОЛОНОЧНЫЙ flex-контейнер — ребёнок стопки колонок —
+/// раскрывается в свои элементы, разложенные по строкам (`flow::Par`): строки
+/// такого контейнера — параллельные потоки (Blink `flex_layout_algorithm.cc`
+/// :2108-2112 — `FlexColumnBreakInfo` на каждую строку; :2504-2515 — разрыв
+/// элемента переходит к следующей СТРОКЕ, а не обрывает контейнер; :2536-2560
+/// — рост элемента от фрагментации двигает только его строку,
+/// `item_offset_adjustment`). Прежде контейнер мерился стопкой ВСЕХ
+/// элементов подряд (`shape_full`, ветка `flex_items`), и строки ложились одна
+/// под другой (`multi-line-column-flex-fragmentation-*`: «красное видно»).
+///
+/// Строки — по css-flexbox-1 §9.3 (шаг 5, «collect consecutive items one by one
+/// until the first time that the next collected item would not fit into the
+/// flex container's inner main size»): главный размер — внешняя высота меры
+/// элемента, между элементами `row-gap`. Поперечный — наибольшая внешняя
+/// ширина в строке; `align-content: normal` = `stretch` раздаёт свободное место
+/// строкам поровну (§9.4 шаг 15 / css-align-3 §5.4), элемент `width: auto` при
+/// `align-items: normal` тянется на строку (§9.4 шаг 11). Коробка контейнера —
+/// первая «строка» группы без детей: рисует его фон под элементами и занимает
+/// его высоту и тогда, когда строки короче.
+///
+/// Гейт узкий — ровно то, что выражается без раскладки: колонка с переносом
+/// (не `reverse`), высота в точках, ни полей, ни рамок, ни отбивок у
+/// контейнера, `justify-content`/`align-content`/`align-items` по умолчанию,
+/// дети — блочные элементы в потоке без `flex-grow`, `flex-basis`,
+/// `align-self`, боковых полей и отбивок, ширина в точках либо пустой
+/// `auto`. Иначе контейнер идёт прежним путём.
+fn split_flex_lines(
+    kids: Vec<(Element, Shape)>,
+    col_w: Option<f32>,
+    merged: &Computed,
+) -> (Vec<(Element, Shape)>, Vec<crate::flow::Par>, Vec<Option<Computed>>, Vec<usize>) {
+    let mut out: Vec<(Element, Shape)> = Vec::with_capacity(kids.len());
+    let mut par: Vec<crate::flow::Par> = Vec::with_capacity(kids.len());
+    let mut parent: Vec<Option<Computed>> = Vec::with_capacity(kids.len());
+    let mut group = 0u32;
+    let mut starts: Vec<usize> = Vec::with_capacity(kids.len() + 1);
+    for (c, s) in kids {
+        starts.push(out.len());
+        match flex_lines_of(&c, col_w) {
+            Some(lines) => {
+                group += 1;
+                let pm = inline::inherit(merged, &c.style);
+                let h = match c.style.height {
+                    Some(Len::Px(v)) => v,
+                    _ => 0.0,
+                };
+                // Коробка контейнера — ПЕРВОЙ «строкой» группы: рисуется под
+                // элементами (фон контейнера, `multi-line-column-flex-
+                // fragmentation-033`) и занимает свою высоту, даже когда строки
+                // короче. `break-before` первых элементов ВСЕХ строк — на неё,
+                // `break-after` последних — на последний элемент группы (Blink
+                // `flex_layout_algorithm.cc:1907-1918`: колонки строк —
+                // «ряд», значения сливаются и уходят контейнеру; «avoid» +
+                // принудительный = принудительный, `JoinFragmentainerBreakValues`).
+                let heads: Vec<&Element> = lines.iter().filter_map(|l| l.1.first().map(|x| &x.0)).collect();
+                let tails: Vec<&Element> = lines.iter().filter_map(|l| l.1.last().map(|x| &x.0)).collect();
+                let (bf, ba) = (
+                    heads.iter().any(|e| edge_break(e, false)),
+                    heads.iter().any(|e| edge_avoid(e, false)),
+                );
+                let (af, aa) = (
+                    tails.iter().any(|e| edge_break(e, true)),
+                    tails.iter().any(|e| edge_avoid(e, true)),
+                );
+                let mut boxc = c.clone();
+                boxc.node_id = c.node_id ^ 0x0F1E_5BAC_E000_0001;
+                boxc.children = Vec::new();
+                boxc.style.display = Some(Display::Block);
+                boxc.style.flex_dir = None;
+                boxc.style.flex_wrap = None;
+                boxc.style.gap = None;
+                boxc.style.break_before_force = bf;
+                boxc.style.break_before_avoid = ba && !bf;
+                boxc.style.break_after_force = false;
+                boxc.style.break_after_avoid = false;
+                out.push((boxc, (h, 0.0, 0.0, Vec::new(), Vec::new(), Vec::new())));
+                par.push(crate::flow::Par {
+                    group,
+                    group_start: true,
+                    line_start: true,
+                    group_end: false,
+                    dx: 0.0,
+                    avoid_only: false,
+                });
+                parent.push(None);
+                let n_lines = lines.len();
+                for (li, (dx, items)) in lines.into_iter().enumerate() {
+                    let m = items.len();
+                    for (ii, (mut e, sh)) in items.into_iter().enumerate() {
+                        if li + 1 == n_lines && ii + 1 == m {
+                            e.style.break_after_force |= af;
+                            e.style.break_after_avoid |= aa && !af;
+                        }
+                        // `break-inside: avoid` без настоящего монолита
+                        // (`flow::Par::avoid_only`).
+                        let avoid_only = e.style.break_inside_avoid
+                            && !size_monolith(&e)
+                            && visible_overflow(&e.style);
+                        out.push((e, sh));
+                        par.push(crate::flow::Par {
+                            group,
+                            group_start: false,
+                            line_start: ii == 0,
+                            group_end: false,
+                            dx,
+                            avoid_only,
+                        });
+                        parent.push(Some(pm.clone()));
+                    }
+                }
+                if let Some(p) = par.last_mut() {
+                    p.group_end = true;
+                }
+            }
+            None => match flex_row_lines_of(&c, col_w) {
+                // Многострочный РЯД: строки идут одна за другой, а элементы
+                // строки — параллельные потоки своей группы (Blink
+                // `flex_layout_algorithm.cc:2167-2213`: элемент ряда — свой
+                // поток, конец ряда — самый дальний конец его элементов).
+                Some(lines) => {
+                    let pm = inline::inherit(merged, &c.style);
+                    for items in lines {
+                        group += 1;
+                        let m = items.len();
+                        for (ii, (dx, e, sh)) in items.into_iter().enumerate() {
+                            let avoid_only = e.style.break_inside_avoid
+                                && !size_monolith(&e)
+                                && visible_overflow(&e.style);
+                            out.push((e, sh));
+                            par.push(crate::flow::Par {
+                                group,
+                                group_start: ii == 0,
+                                line_start: true,
+                                group_end: ii + 1 == m,
+                                dx,
+                                avoid_only,
+                            });
+                            parent.push(Some(pm.clone()));
+                        }
+                    }
+                }
+                None => {
+                    out.push((c, s));
+                    par.push(crate::flow::Par::default());
+                    parent.push(None);
+                }
+            },
+        }
+    }
+    starts.push(out.len());
+    (out, par, parent, starts)
+}
+
+/// Строки контейнера для `split_flex_lines`: `(сдвиг строки по x, элементы с
+/// мерой)`. `None` — контейнер вне гейта.
+#[allow(clippy::type_complexity)]
+fn flex_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<(f32, Vec<(Element, Shape)>)>> {
+    use crate::computed::FlexDir;
+    let zero = |l: &Option<Len>| match l {
+        None => true,
+        Some(Len::Px(v)) => v.abs() < 0.01,
+        _ => false,
+    };
+    let s = &c.style;
+    let b = s.borders();
+    if c.inline
+        || s.display != Some(Display::Flex)
+        || s.webkit_box == Some(true)
+        || s.flex_dir != Some(FlexDir::Col)
+        || s.flex_wrap != Some(true)
+        || s.flex_wrap_reverse == Some(true)
+        || s.flex_balance == Some(true)
+        || s.vertical == Some(true)
+        || s.justify_content.is_some()
+        || s.align_content.is_some()
+        || s.align_items.is_some()
+        // `position: relative` без сдвигов ничего не двигает, а содержащим
+        // блоком ему служить некому (внепоточных детей гейт не пускает).
+        || !(s.position.is_none()
+            || (s.position == Some(crate::computed::Position::Relative)
+                && [&s.inset.top, &s.inset.right, &s.inset.bottom, &s.inset.left]
+                    .into_iter()
+                    .all(|l| matches!(l, None | Some(Len::Auto)))))
+        || s.transform.is_some()
+        || s.min_height.is_some()
+        || s.max_height.is_some()
+        || !visible_overflow(s)
+        || ![
+            &s.margin.top,
+            &s.margin.bottom,
+            &s.margin.left,
+            &s.margin.right,
+            &s.padding.top,
+            &s.padding.bottom,
+            &s.padding.left,
+            &s.padding.right,
+            &b.top,
+            &b.bottom,
+            &b.left,
+            &b.right,
+        ]
+        .into_iter()
+        .all(zero)
+    {
+        return None;
+    }
+    let Some(Len::Px(main)) = s.height else {
+        return None;
+    };
+    let cross = match s.width {
+        Some(Len::Px(w)) => w,
+        None | Some(Len::Auto) => col_w?,
+        _ => return None,
+    };
+    let (row_gap, col_gap) = match s.gap {
+        None => (0.0, 0.0),
+        Some((r, g)) => {
+            let px = |l: &Option<Len>| match l {
+                None => Some(0.0),
+                Some(Len::Px(v)) => Some(v.max(0.0)),
+                _ => None,
+            };
+            (px(&r)?, px(&g)?)
+        }
+    };
+    let mut items: Vec<&Element> = Vec::new();
+    for n in c.children.iter().filter(|n| !is_blank(n)) {
+        let Node::Element(k) = n else { return None };
+        let ks = &k.style;
+        if k.inline
+            || out_of_flow(ks)
+            || !matches!(ks.position, None | Some(crate::computed::Position::Relative))
+            || ks.float.unwrap_or(0) != 0
+            || ks.flex_grow.is_some_and(|g| g > 0.0)
+            || ks.flex_basis.is_some()
+            || ks.align_self.is_some()
+            || ks.align_self_normal
+            || !zero(&ks.margin.left)
+            || !zero(&ks.margin.right)
+        {
+            return None;
+        }
+        items.push(k);
+    }
+    if items.is_empty() {
+        return None;
+    }
+    // Визуальный порядок (`order`, стабильно), как в `blocks()`.
+    items.sort_by_key(|k| k.style.order.unwrap_or(0));
+    // Мера и внешний поперечный размер элемента; `None` у ширины — `auto`.
+    let mut measured: Vec<(Element, Shape, Option<f32>)> = Vec::with_capacity(items.len());
+    for k in items {
+        let sh = shape_full(k, 4, ShapeCx::COLUMNS)?;
+        let kb = k.style.borders();
+        let side = |l: &Option<Len>| match l {
+            None => Some(0.0),
+            Some(Len::Px(v)) => Some(*v),
+            _ => None,
+        };
+        let w = match k.style.width {
+            Some(Len::Px(w)) => {
+                let extra = if k.style.border_box == Some(true) {
+                    0.0
+                } else {
+                    side(&k.style.padding.left)?
+                        + side(&k.style.padding.right)?
+                        + side(&kb.left)?
+                        + side(&kb.right)?
+                };
+                Some(w + extra)
+            }
+            None | Some(Len::Auto)
+                if zero(&k.style.padding.left)
+                    && zero(&k.style.padding.right)
+                    && zero(&kb.left)
+                    && zero(&kb.right)
+                    && k.children.iter().all(is_blank) =>
+            {
+                None
+            }
+            _ => return None,
+        };
+        measured.push((k.clone(), sh, w));
+    }
+    // Строки: §9.3 шаг 5.
+    let mut lines: Vec<Vec<(Element, Shape, Option<f32>)>> = Vec::new();
+    let mut used = 0.0f32;
+    for (k, sh, w) in measured {
+        let outer = sh.0 + sh.1 + sh.2;
+        match lines.last_mut() {
+            Some(line) if used + row_gap + outer <= main + 0.01 => {
+                used += row_gap + outer;
+                line.push((k, sh, w));
+            }
+            _ => {
+                used = outer;
+                lines.push(vec![(k, sh, w)]);
+            }
+        }
+    }
+    // Одна строка — однострочный по сути контейнер: прежний путь его знает.
+    if lines.len() < 2 {
+        return None;
+    }
+    let n = lines.len() as f32;
+    let crosses: Vec<f32> = lines
+        .iter()
+        .map(|l| l.iter().filter_map(|x| x.2).fold(0.0f32, f32::max))
+        .collect();
+    let free = cross - crosses.iter().sum::<f32>() - col_gap * (n - 1.0);
+    let extra = if free > 0.0 { free / n } else { 0.0 };
+    let mut out = Vec::with_capacity(lines.len());
+    let mut dx = 0.0f32;
+    for (line, lc) in lines.into_iter().zip(crosses) {
+        let lc = lc + extra;
+        let mut items = Vec::with_capacity(line.len());
+        for (i, (mut k, mut sh, w)) in line.into_iter().enumerate() {
+            // `auto` тянется на строку (§9.4 шаг 11, `align-self: stretch`).
+            if w.is_none() {
+                k.style.width = Some(Len::Px(lc));
+            }
+            // Зазор между элементами строки — к полю следующего: на разрыве
+            // он пропадает вместе с полем (Blink
+            // `UpdateOffsetAdjustmentForSuppressedRowGap`, :2486-2500).
+            if i > 0 {
+                sh.1 += row_gap;
+            }
+            items.push((k, sh));
+        }
+        out.push((dx, items));
+        dx += lc + col_gap;
+    }
+    Some(out)
+}
+
+/// Строки многострочного РЯДА flex для `split_flex_lines`: по строке —
+/// `(сдвиг по x, элемент, мера)` каждого элемента. Строки — по css-flexbox-1
+/// §9.3 шаг 5 (главная ось — ширина), поперечный размер строки — наибольшая
+/// внешняя высота её элементов; элемент `height: auto` при `align-items:
+/// normal` тянется на строку (§9.4 шаг 11) — полом `min-height`, чтобы рост
+/// от фрагментации (`grow_pushed`) коробку не обрезал (Blink: «expansion past
+/// the block-end of each row», `flex_layout_algorithm.cc:2560-2575`).
+/// `break-before` любого элемента строки — разрыв перед строкой, `break-after`
+/// — после неё (`:1898-1906`): на первого и последнего элемента строки. Гейт —
+/// как у колонки, плюс высота контейнера `auto` и хотя бы одна строка из
+/// нескольких элементов: ряд «элемент на строку» прежний путь уже знает.
+#[allow(clippy::type_complexity)]
+fn flex_row_lines_of(c: &Element, col_w: Option<f32>) -> Option<Vec<Vec<(f32, Element, Shape)>>> {
+    use crate::computed::FlexDir;
+    let zero = |l: &Option<Len>| match l {
+        None => true,
+        Some(Len::Px(v)) => v.abs() < 0.01,
+        _ => false,
+    };
+    let s = &c.style;
+    let b = s.borders();
+    if c.inline
+        || s.display != Some(Display::Flex)
+        || s.webkit_box == Some(true)
+        || !matches!(s.flex_dir, None | Some(FlexDir::Row))
+        || s.flex_wrap != Some(true)
+        || s.flex_wrap_reverse == Some(true)
+        || s.flex_balance == Some(true)
+        || s.vertical == Some(true)
+        || s.rtl == Some(true)
+        || s.justify_content.is_some()
+        || s.align_content.is_some()
+        || s.align_items.is_some()
+        || !matches!(s.height, None | Some(Len::Auto))
+        || s.min_height.is_some()
+        || s.max_height.is_some()
+        || s.transform.is_some()
+        || s.background.is_some()
+        || s.bg_image.is_some()
+        || !(s.position.is_none()
+            || (s.position == Some(crate::computed::Position::Relative)
+                && [&s.inset.top, &s.inset.right, &s.inset.bottom, &s.inset.left]
+                    .into_iter()
+                    .all(|l| matches!(l, None | Some(Len::Auto)))))
+        || !visible_overflow(s)
+        || ![
+            &s.margin.top,
+            &s.margin.bottom,
+            &s.margin.left,
+            &s.margin.right,
+            &s.padding.top,
+            &s.padding.bottom,
+            &s.padding.left,
+            &s.padding.right,
+            &b.top,
+            &b.bottom,
+            &b.left,
+            &b.right,
+        ]
+        .into_iter()
+        .all(zero)
+    {
+        return None;
+    }
+    let main = match s.width {
+        Some(Len::Px(w)) => w,
+        None | Some(Len::Auto) => col_w?,
+        _ => return None,
+    };
+    let (row_gap, col_gap) = match s.gap {
+        None => (0.0, 0.0),
+        Some((r, g)) => {
+            let px = |l: &Option<Len>| match l {
+                None => Some(0.0),
+                Some(Len::Px(v)) => Some(v.max(0.0)),
+                _ => None,
+            };
+            (px(&r)?, px(&g)?)
+        }
+    };
+    let side = |l: &Option<Len>| match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(*v),
+        _ => None,
+    };
+    let mut items: Vec<&Element> = Vec::new();
+    for n in c.children.iter().filter(|n| !is_blank(n)) {
+        let Node::Element(k) = n else { return None };
+        let ks = &k.style;
+        if k.inline
+            || out_of_flow(ks)
+            || !matches!(ks.position, None | Some(crate::computed::Position::Relative))
+            || ks.float.unwrap_or(0) != 0
+            || ks.flex_grow.is_some_and(|g| g > 0.0)
+            || ks.flex_basis.is_some()
+            || ks.align_self.is_some()
+            || ks.align_self_normal
+            || ks.min_height.is_some()
+            || !zero(&ks.margin.left)
+            || !zero(&ks.margin.right)
+            || !matches!(ks.width, Some(Len::Px(_)))
+        {
+            return None;
+        }
+        items.push(k);
+    }
+    if items.is_empty() {
+        return None;
+    }
+    items.sort_by_key(|k| k.style.order.unwrap_or(0));
+    // Строки по внешней ширине элементов (главная ось).
+    let mut lines: Vec<Vec<(f32, Element, Shape)>> = Vec::new();
+    let mut used = 0.0f32;
+    for k in items {
+        let kb = k.style.borders();
+        let Some(Len::Px(w)) = k.style.width else { return None };
+        let w = if k.style.border_box == Some(true) {
+            w
+        } else {
+            w + side(&k.style.padding.left)?
+                + side(&k.style.padding.right)?
+                + side(&kb.left)?
+                + side(&kb.right)?
+        };
+        let sh = shape_full(k, 4, ShapeCx::COLUMNS)?;
+        match lines.last_mut() {
+            Some(line) if used + col_gap + w <= main + 0.01 => {
+                line.push((used + col_gap, k.clone(), sh));
+                used += col_gap + w;
+            }
+            _ => {
+                lines.push(vec![(0.0, k.clone(), sh)]);
+                used = w;
+            }
+        }
+    }
+    if lines.iter().all(|l| l.len() < 2) {
+        return None;
+    }
+    for (li, line) in lines.iter_mut().enumerate() {
+        let cross = line.iter().map(|x| x.2.0 + x.2.1 + x.2.2).fold(0.0f32, f32::max);
+        let (bf, ba) = (
+            line.iter().any(|x| edge_break(&x.1, false)),
+            line.iter().any(|x| edge_avoid(&x.1, false)),
+        );
+        let (af, aa) = (
+            line.iter().any(|x| edge_break(&x.1, true)),
+            line.iter().any(|x| edge_avoid(&x.1, true)),
+        );
+        let m = line.len();
+        for (ii, (_, e, sh)) in line.iter_mut().enumerate() {
+            // `height: auto` тянется на строку — полом.
+            if matches!(e.style.height, None | Some(Len::Auto)) && sh.0 + sh.1 + sh.2 < cross - 0.01 {
+                let eb = e.style.borders();
+                let edges = side(&e.style.padding.top).unwrap_or(0.0)
+                    + side(&e.style.padding.bottom).unwrap_or(0.0)
+                    + side(&eb.top).unwrap_or(0.0)
+                    + side(&eb.bottom).unwrap_or(0.0);
+                let content = (cross - sh.1 - sh.2 - edges).max(0.0);
+                e.style.min_height = Some(Len::Px(content));
+                *sh = shape_full(e, 4, ShapeCx::COLUMNS)?;
+            }
+            // Зазор между строками — к полю элементов следующей строки.
+            if li > 0 {
+                sh.1 += row_gap;
+            }
+            if ii == 0 {
+                e.style.break_before_force |= bf;
+                e.style.break_before_avoid |= ba && !bf;
+            }
+            if ii + 1 == m {
+                e.style.break_after_force |= af;
+                e.style.break_after_avoid |= aa && !af;
+            }
+        }
+    }
+    Some(lines)
 }
 
 /// «Сдвиг ряда» сетки с рядами в точках (Blink `row_offset_adjustments`,
@@ -4160,6 +4752,80 @@ fn table_box(c: &Element) -> bool {
 /// и неизмеримая ячейка — `None`: таблица идёт цельным куском измеренной
 /// высоты без точек, как прежде.
 fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+    table_shape_bands(c, depth, cx, &mut TableBands::default())
+}
+
+/// Полосы первой шапки и первого подвала таблицы в координатах её меры:
+/// `(верх секции, высота секции)` и `break-inside: avoid*` секции, плюс
+/// вертикальный `border-spacing`. Нужны повтору секций во фрагментах
+/// (`repeat_bands`).
+#[derive(Default, Clone, Copy)]
+struct TableBands {
+    head: Option<(f32, f32)>,
+    foot: Option<(f32, f32)>,
+    head_avoid: bool,
+    foot_avoid: bool,
+    spacing: f32,
+    /// Коробка рядов `[верх, низ)` — без подписей обёртки.
+    box_top: f32,
+    box_end: f32,
+}
+
+/// Повтор секций для стопки: полосы `flow::Repeat` и геометрия укладки.
+type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::flow::RepeatGeom);
+
+/// Повтор шапки/подвала таблицы-ребёнка стопки колонок (css-tables-3
+/// §repeated-headers; Blink `table_layout_algorithm.cc:1082-1150`): секция
+/// повторяется, если у неё `break-inside: avoid*` и блочный размер не больше
+/// четверти фрагментаинера («block-size of the section is one quarter or less
+/// than that of the fragmentainer»). Размер фрагментаинера Blink знает только
+/// вне первого прохода балансировки (`HasKnownFragmentainerBlockSize`), поэтому
+/// здесь — только `column-fill: auto` с заданной высотой и без рядов. Ответ —
+/// полосы для `flow::Repeat`: шапка `(верх секции, секция + зазор под ней)`,
+/// подвал `(верх секции − зазор, зазор + секция)`.
+fn repeat_bands(
+    c: &Element,
+    fixed: Option<f32>,
+    rows: Option<crate::flow::Rows>,
+) -> Option<RepeatSpec> {
+    let per = fixed.filter(|_| rows.is_none() && table_box(c))?;
+    let mut b = TableBands::default();
+    table_shape_bands(c, 4, ShapeCx::COLUMNS, &mut b)?;
+    let max = per / 4.0;
+    let head = b
+        .head
+        .filter(|&(_, h)| b.head_avoid && h > 0.01 && h <= max + 0.01)
+        .map(|(at, h)| (at, h + b.spacing));
+    let foot = b
+        .foot
+        .filter(|&(_, h)| b.foot_avoid && h > 0.01 && h <= max + 0.01)
+        .map(|(at, h)| (at - b.spacing, h + b.spacing));
+    if head.is_none() && foot.is_none() {
+        return None;
+    }
+    let geom = crate::flow::RepeatGeom {
+        head: head.map_or(0.0, |h| h.1),
+        foot: foot.map_or(0.0, |f| f.1),
+        head_end: head.map_or(0.0, |(at, h)| at + h),
+        foot_at: foot.map_or(f32::MAX, |(at, _)| at),
+        foot_end: foot.map_or(f32::MAX, |(at, h)| at + h),
+        box_top: b.box_top,
+        box_end: b.box_end,
+    };
+    Some((head, foot, geom))
+}
+
+/// `RepeatGeom` для щупов укладки (`grow_pushed`, план `clone`): та же мера,
+/// что у `StackChild` в сборке стопки.
+fn repeat_leads(
+    c: &Element,
+    fixed: Option<f32>,
+    rows: Option<crate::flow::Rows>,
+) -> crate::flow::RepeatGeom {
+    repeat_bands(c, fixed, rows).map_or_else(Default::default, |r| r.2)
+}
+
+fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands) -> Option<Shape> {
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
@@ -4306,6 +4972,16 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 matches!(n, Node::Element(cell) if is_cell(cell) && edge_avoid(cell, last))
             })
     }
+    // Принудительные `break-before`/`break-after` ячеек — тем же слиянием на
+    // ряд (Blink `table_row_layout_algorithm.cc:169-177`,
+    // `JoinFragmentainerBreakValues`): `break-before-expansion-001` — ячейка
+    // второго ряда с `break-before: column`.
+    fn row_force(row: &Element, last: bool) -> bool {
+        (if last { row.style.break_after_force } else { row.style.break_before_force })
+            || row.children.iter().filter(|n| !is_blank(n)).any(|n| {
+                matches!(n, Node::Element(cell) if is_cell(cell) && edge_break(cell, last))
+            })
+    }
     // Плоский список рядов: ряд, № группы, avoid группы, разрывы (свои и
     // группы — на первом/последнем её ряду), запреты разрыва на КРАЯХ ряда
     // (`ab`/`aa` — свои, ячеек и краёв группы).
@@ -4325,8 +5001,8 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 row: e,
                 group: gi,
                 avoid: false,
-                fb: e.style.break_before_force,
-                fa: e.style.break_after_force,
+                fb: row_force(e, false),
+                fa: row_force(e, true),
                 ab: row_avoid(e, false),
                 aa: row_avoid(e, true),
             });
@@ -4347,8 +5023,8 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 row: r,
                 group: gi,
                 avoid: e.style.break_inside_avoid,
-                fb: r.style.break_before_force || (i == 0 && e.style.break_before_force),
-                fa: r.style.break_after_force || (i == last && e.style.break_after_force),
+                fb: row_force(r, false) || (i == 0 && e.style.break_before_force),
+                fa: row_force(r, true) || (i == last && e.style.break_after_force),
                 // Край ГРУППЫ — тот же перенос, что у принудительных выше:
                 // `break-before: avoid` группы действует на её ПЕРВОМ ряду,
                 // `break-after: avoid` — на ПОСЛЕДНЕМ (css-break-4 §break-between,
@@ -4468,8 +5144,25 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         }
         prev_open = open;
         prev_aa = r.aa;
+        // Полосы первой шапки/подвала (`TableBands`): от верха их первого ряда
+        // до низа последнего. Секция-ряд (`is_row` прямо в таблице) — тоже
+        // секция своей роли.
+        let (kind, sec) = parts[r.group];
+        let band = match kind {
+            0 => Some((&mut bands.head, &mut bands.head_avoid)),
+            2 => Some((&mut bands.foot, &mut bands.foot_avoid)),
+            _ => None,
+        };
+        if let Some((slot, avoid)) = band {
+            *slot = Some(match *slot {
+                Some((a, _)) => (a, start + h - a),
+                None => (start, h),
+            });
+            *avoid = sec.style.break_inside_avoid;
+        }
         y = start + h;
     }
+    bands.spacing = spacing;
     // Сцепка, дожившая до конца коробки рядов, закрывается её низом.
     if let Some(s) = avoid_run {
         solid.push((s, y));
@@ -4525,6 +5218,9 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // (10,67)..(172,316), голубой (10,317)..(172,566) — раздача у нас РОВНАЯ
     // (200/200) при содержимом 1 и 3, и точки на 1 и 4 были бы ложью.
     if h_box > content_h + 0.01 {
+        // Ряды растянуты — измеренные полосы секций тоже неверны.
+        bands.head = None;
+        bands.foot = None;
         cuts.clear();
         forced.clear();
         solid.clear();
@@ -4533,8 +5229,25 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         }
     }
     if bot > 0.0 {
-        solid.push((h_box - bot, h_box));
+        // Нижняя рамка/отбивка таблицы приклеена к монолиту последнего ряда —
+        // то же правило, что у блока (`shape_full`, Р4 break-rest): точки
+        // разрыва перед block-end рамкой нет (css-break-4 §possible-breaks, класс
+        // C — только при ненулевом зазоре; Blink `FinishFragmentation` держит там
+        // лишь «last-resort breakpoint»). `table-border-006`: ряды `avoid` 100 и
+        // 70, `border-bottom: 30px` в колонке 170 — рамка уходит вместе с
+        // последним рядом, а не одна во вторую колонку. Зазор `border-spacing`
+        // между рядом и рамкой — та же «без промежутка» граница: рамка таблицы
+        // от ряда отделена именно им, а не полем.
+        let end_edge = h_box - bot;
+        let glue = solid
+            .iter()
+            .filter(|&&(a, b)| a > 0.01 && (b - (end_edge - spacing)).abs() < 0.01)
+            .map(|&(a, _)| a)
+            .fold(end_edge, f32::min);
+        solid.push((glue, h_box));
     }
+    bands.box_top = 0.0;
+    bands.box_end = h_box;
     // Подписей нет — коробка рядов и есть вся мера, как прежде.
     if caps_top.is_empty() && caps_bot.is_empty() {
         cuts.retain(|&(need, _)| need > 0.01 && need < h_box - 0.01);
@@ -4614,6 +5327,15 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         }
         wforce_next = ifa;
         let start = wy + lead;
+        // Полосы секций — в координаты обёртки: коробка рядов стоит под
+        // верхними подписями.
+        if slot.is_none() {
+            for s in [&mut bands.head, &mut bands.foot].into_iter().flatten() {
+                s.0 += start;
+            }
+            bands.box_top += start;
+            bands.box_end += start;
+        }
         wcuts.extend(icuts.into_iter().map(|(need, nf)| (start + need, start + nf)));
         wforced.extend(iforced.into_iter().map(|f| start + f));
         wsolid.extend(isolid.into_iter().map(|(a, b)| (start + a, start + b)));
@@ -18177,7 +18899,40 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         };
                         // Рост от вытолкнутых монолитов — распорки в
                         // DOM-клонах до сборки копий (`grow_pushed`).
-                        let kids = grow_pushed(kids, cols as usize, fixed, rows, copies);
+                        // Многострочный колоночный flex — строками, параллельными
+                        // потоками (`split_flex_lines`). Только при заполнении
+                        // `column-fill: auto` с заданной высотой и без рядов:
+                        // баланс считал бы содержимое по сумме записей, а строки
+                        // идут бок о бок.
+                        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (01.10): то же при балансе
+                        // (`rows.is_none()` без `fixed`) с оценкой баланса по
+                        // самой длинной строке группы (`runs_guess`). css-break/
+                        // flexbox 319: +0/−2 — `multi-line-row-flex-fragmentation-
+                        // 037/038` 0.07 → «красное видно»; балансные 033-035, 048
+                        // не взяты. Только колонки (без рядов) при балансе — 0/0.
+                        // Балансу нужен свой подбор высоты по строкам, а не оценка.
+                        let (kids, kid_par, kid_parent, kid_starts) = if fixed.is_some() && rows.is_none() {
+                            let col_w = match merged.width {
+                                Some(Len::Px(w)) if merged.border_box != Some(true) && cols > 0 => {
+                                    Some((w - used_gap * (cols as f32 - 1.0)) / cols as f32)
+                                }
+                                _ => None,
+                            };
+                            split_flex_lines(kids, col_w, &merged)
+                        } else {
+                            let n = kids.len();
+                            (kids, vec![crate::flow::Par::default(); n], vec![None; n], (0..=n).collect())
+                        };
+                        // `break-inside: avoid` без настоящего монолита — у любого
+                        // ребёнка колонок (`flow::Par::avoid_only`): с верха колонки
+                        // коробка выше колонки рвётся, а не переполняет её.
+                        let mut kid_par = kid_par;
+                        for (p, (c, _)) in kid_par.iter_mut().zip(kids.iter()) {
+                            if p.group == 0 {
+                                p.avoid_only = c.style.break_inside_avoid && avoid_only_monolith(c);
+                            }
+                        }
+                        let kids = grow_pushed(kids, cols as usize, fixed, rows, copies, &kid_par);
                         // `box-decoration-break: clone`: геометрия фрагментов —
                         // ДО сборки копий: каждая копия такой коробки строится
                         // отдельной коробкой своей высоты (`clone_fragment`).
@@ -18189,7 +18944,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             if kids.iter().any(|(c, _)| clone_dec(c).is_some()) {
                                 let probe: Vec<crate::flow::Kid> = kids
                                     .iter()
-                                    .map(|(c, s)| {
+                                    .enumerate()
+                                    .map(|(pi, (c, s))| {
                                         let mut m = c.clone();
                                         m.style.margin.top = None;
                                         m.style.margin.bottom = None;
@@ -18231,6 +18987,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                             overflow_top: fixed.is_some()
                                                 && rows.is_none()
                                                 && !parallel_items_inside(c, 4),
+                                            repeat: repeat_leads(c, fixed, rows),
+                                            par: kid_par[pi],
                                         }
                                     })
                                     .collect();
@@ -18295,6 +19053,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 let frag_geom: Vec<(f32, f32)> =
                                     clone_plan.get(ix).cloned().unwrap_or_default();
                                 let dec = clone_dec(&c).filter(|_| frag_geom.len() > 1);
+                                // Элемент строки flex (`split_flex_lines`) наследует от
+                                // СВОЕГО контейнера, а не от многоколоночника.
+                                let merged_k = kid_parent.get(ix).cloned().flatten();
+                                let merged: &Computed = merged_k.as_ref().unwrap_or(&merged);
                                 let mut copy = c;
                                 // Поля кладёт укладка колонок, не коробка.
                                 copy.style.margin.top = None;
@@ -18958,6 +19720,31 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // Вложенный многоколоночник — маска режет вбок
                                     // (`flow.rs` `StackChild::nested_cols`).
                                     nested_cols: multicol_inside(&copy, 4),
+                                    par: kid_par[ix],
+                                    // Хвост непоследнего фрагмента таблицы — её фоном
+                                    // (`flow.rs` `StackChild::slack`).
+                                    slack: table_box(&copy)
+                                        .then(|| copy.style.background.map(|c| c.to_hsla()))
+                                        .flatten(),
+                                    laid_w: Default::default(),
+                                    // Повтор шапки/подвала таблицы — полосы своими
+                                    // копиями (`flow::Repeat`); та же мера, что у
+                                    // щупов (`repeat_leads`).
+                                    repeat: repeat_bands(&copy, fixed, rows)
+                                        .filter(|_| !span)
+                                        .map(|(head, foot, geom)| crate::flow::Repeat {
+                                            head,
+                                            foot,
+                                            geom,
+                                            head_els: match head {
+                                                Some(_) => (1..kid_copies).map(|i| build(false, i)).collect(),
+                                                None => Vec::new(),
+                                            },
+                                            foot_els: match foot {
+                                                Some(_) => (0..kid_copies).map(|i| build(false, i)).collect(),
+                                                None => Vec::new(),
+                                            },
+                                        }),
                                 }
                             })
                             .collect();
@@ -19020,8 +19807,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 clone_dec: None,
                                 overflow_top: false,
                                 nested_cols: false,
+                                repeat: None,
+                                par: crate::flow::Par::default(),
+                                slack: None,
+                                laid_w: Default::default(),
                             };
-                            let at = (*at).min(children.len());
+                            // Номер — среди ДЕТЕЙ ДО раскрытия строк flex (`split_flex_lines`).
+                            let at = kid_starts.get(*at).copied().unwrap_or(children.len()).min(children.len());
                             children.insert(at, probe);
                         }
                         let mut d = d.child(crate::flow::ColumnStack::new(
