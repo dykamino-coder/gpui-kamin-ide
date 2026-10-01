@@ -1263,22 +1263,56 @@ pub fn render_paged(
                 )
         }
     };
+    // Флоат корня с ПОСЛЕДУЮЩИМ содержимым — тоже один ребёнок: соседний блок
+    // и строки обтекают флоат или очищаются от него (CSS 2.1 §9.5), а дети
+    // стопки раскладываются порознь, и флоат вставал над соседом, а не рядом
+    // (`monolithic-overflow-020-print`: флоат справа и жёлтый блок — обе
+    // стороны пары столбиком; `content-001-print-ref`: два флоата и
+    // `clear: both`). Группа флоата закрывается первым блоком после него.
+    #[derive(PartialEq)]
+    enum Run {
+        None,
+        Inline,
+        Float,
+    }
+    let floated = |n: &Node| match n {
+        Node::Element(e) => {
+            e.style.float.is_some_and(|f| f != 0)
+                && !matches!(
+                    e.style.position,
+                    Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                )
+                && !matches!(e.style.display, Some(Display::None))
+        }
+        _ => false,
+    };
     let mut groups: Vec<Vec<Node>> = Vec::new();
-    let mut open = false;
+    let mut run = Run::None;
     for n in nodes.iter() {
         if is_blank(n) {
             // Пробел внутри строчного пробега — его часть, вне — пропуск.
-            if open && let Some(g) = groups.last_mut() {
+            if run != Run::None && let Some(g) = groups.last_mut() {
                 g.push(n.clone());
             }
             continue;
         }
-        let il = inline_level(n);
+        let (fl, il) = (floated(n), inline_level(n));
+        let join = match run {
+            Run::None => false,
+            Run::Inline => il || fl,
+            Run::Float => true,
+        };
         match groups.last_mut() {
-            Some(g) if open && il => g.push(n.clone()),
+            Some(g) if join => g.push(n.clone()),
             _ => groups.push(vec![n.clone()]),
         }
-        open = il;
+        run = if fl || (run == Run::Float && il) {
+            Run::Float
+        } else if il {
+            Run::Inline
+        } else {
+            Run::None
+        };
     }
     for g in groups.iter_mut() {
         while g.last().is_some_and(is_blank) {
@@ -1342,6 +1376,8 @@ pub fn render_paged(
             ),
             _ => (false, false, false, Some((root_page.clone(), root_page.clone()))),
         };
+        // Группа из нескольких узлов монолитом не бывает: её режет край листа.
+        let monolith = monolith && group.iter().filter(|g| !is_blank(g)).count() == 1;
         let renamed = match (&prev_end, &names) {
             (Some(p), Some((start, _))) => p != start,
             _ => false,
@@ -1391,6 +1427,7 @@ pub fn render_paged(
             )
         };
         let shape = match n {
+            _ if group.iter().filter(|g| !is_blank(g)).count() > 1 => None,
             Node::Element(e) if !e.inline && !positioned(e) => {
                 shape_full(e, 4, shape_cx).map(|(h, _mt, mb, mut cuts, mut forced, mut solid)| {
                     if pad_top > 0.0 {
