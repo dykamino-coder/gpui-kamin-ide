@@ -112,7 +112,16 @@ impl Render for Page {
                         root_wm,
                     )
                 });
-            (boxes(0, &first), boxes)
+            let margins: kamin_html::render::PageMarginDeclsFn = {
+                let rules = kamin_html::css::page_rules_snapshot();
+                std::rc::Rc::new(move |i, name: &str| {
+                    (
+                        kamin_html::css::page_decls_in(&rules, i, name, rtl),
+                        kamin_html::css::page_margins_in(&rules, i, name, rtl),
+                    )
+                })
+            };
+            (boxes(0, &first), boxes, margins)
         });
         let opts = RenderOpts {
             viewport: page.as_ref().map(|p| (p.0.area.0, p.0.area.1)).unwrap_or((
@@ -136,7 +145,7 @@ impl Render for Page {
                 page.as_ref().map(|p| (p.0.size, p.0.area, p.0.margin))
             );
         }
-        if let Some((_, boxes)) = page {
+        if let Some((_, boxes, margins)) = page {
             // Печатная пара: стопка страниц (css-page-3) на всё окно —
             // движок сам режет документ по page area, рисует листы и
             // масштабирует их сеткой в окно. Сравнивается весь кадр.
@@ -154,7 +163,8 @@ impl Render for Page {
                     area: p.area,
                 }
             });
-            let stack = kamin_html::render::render_paged(self.doc.nodes(), &opts, geom_for);
+            let stack =
+                kamin_html::render::render_paged(self.doc.nodes(), &opts, geom_for, Some(margins));
             return div()
                 .w(px(f32::from(window.viewport_size().width)))
                 .h(px(f32::from(window.viewport_size().height)))
@@ -321,9 +331,24 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
     // page-size-016/017); проценты полей — от ОБЪЯВЛЕННОГО размера
     // страницы по своей оси (page-margin-005: 10% от 300px = 30px),
     // поэтому размер считается первым проходом.
+    // `em` — от кегля контекста страницы (css-page-3 §page-properties: «Values
+    // in units of em … relative to the font associated with their context»);
+    // кегль листа по умолчанию — 16 (`content-004`: `margin: 4em` = 64).
+    let fs = decls
+        .iter()
+        .rev()
+        .find(|(k, _)| k == "font-size")
+        .and_then(|(_, v)| match Len::parse(v.trim()) {
+            Some(Len::Px(p)) => Some(p),
+            Some(Len::Em(k)) => Some(k * 16.0),
+            Some(Len::Pct(k)) => Some(k * 16.0),
+            _ => None,
+        })
+        .unwrap_or(16.0);
     let px_abs = |t: &str| -> Option<f32> {
         match Len::parse(t)? {
             Len::Px(v) => Some(v),
+            Len::Em(k) => Some(k * fs),
             Len::Vw(k) => Some(k * 480.0),
             Len::Vh(k) => Some(k * 288.0),
             _ => None,
@@ -387,6 +412,7 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
     let px_of = move |t: &str, axis_h: bool| -> Option<f32> {
         match Len::parse(t)? {
             Len::Px(v) => Some(v),
+            Len::Em(k) => Some(k * fs),
             Len::Vw(k) => Some(k * 480.0),
             Len::Vh(k) => Some(k * 288.0),
             Len::Pct(k) => Some(k * if axis_h { ph } else { pw }),

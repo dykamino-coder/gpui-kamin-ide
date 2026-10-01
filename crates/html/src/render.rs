@@ -1145,6 +1145,7 @@ pub fn render_paged(
     nodes: &[Node],
     opts: &RenderOpts,
     geom_for: crate::flow::PageGeomFn,
+    margin_decls: Option<PageMarginDeclsFn>,
 ) -> AnyElement {
     // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
     // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
@@ -1425,7 +1426,16 @@ pub fn render_paged(
         });
     }
     PAGED.with(|p| p.set(false));
-    crate::flow::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies)
+    // Марджин-боксы: наследуют от контекста страницы, а тот — от корня
+    // (css-page-3 §page-properties; Blink `StyleForPage` от documentElement).
+    let margin_for: Option<crate::flow::MarginFn> = margin_decls.map(|f| {
+        let root = root.clone();
+        let opts = opts.clone();
+        std::rc::Rc::new(move |i: usize, name: &str, pages: usize, g: &crate::flow::PageGeom| {
+            page_margin_boxes(&f(i, name), i, pages, g, &root, &opts)
+        }) as crate::flow::MarginFn
+    });
+    crate::flow::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies, margin_for)
         .into_any_element()
 }
 
@@ -4729,6 +4739,180 @@ fn page_names(e: &Element, inherited: &str) -> (String, String) {
 /// (css-page-3 §cascading-and-page-context: имя — специфичность (1,0,0),
 /// выше безымянного правила). Разные имена → `None`: геометрия листа у стопки
 /// одна, и правило одной из страниц красило бы чужие.
+/// Объявления листа для марджин-боксов: контекст страницы (наследуемое
+/// идёт в коробки, css-page-3 §page-properties) и коробки по именам.
+pub type PageMarginDecls = (Vec<(String, String)>, Vec<(String, Vec<(String, String)>)>);
+pub type PageMarginDeclsFn = std::rc::Rc<dyn Fn(usize, &str) -> PageMarginDecls>;
+
+/// Марджин-боксы листа `page` из `pages` (css-page-3 §margin-boxes): элемент
+/// и мера каждой ПОРОЖДЁННОЙ коробки — `content` не `none`/`normal`
+/// (§populating-margin-boxes). Раскладку делает `flow::PageStack` по
+/// `page_margin`. Элемент — гибкая колонка во весь border box: так
+/// `vertical-align` коробки работает «как у ячейки таблицы» (§page-properties),
+/// а `text-align` наследует блок содержимого.
+fn page_margin_boxes(
+    decls: &PageMarginDecls,
+    page: usize,
+    pages: usize,
+    g: &crate::flow::PageGeom,
+    root: &Computed,
+    opts: &RenderOpts,
+) -> Vec<crate::flow::MarginBox> {
+    use crate::computed::ContentItem;
+    let (ctx, boxes) = decls;
+    let mut ctx_own = Computed::default();
+    for (k, v) in ctx {
+        ctx_own.apply_one(k, v);
+    }
+    let ctx_style = inline::inherit(root, &ctx_own);
+    let mut out = Vec::new();
+    for (slot, list) in boxes {
+        let Some(place) = crate::page_margin::place(slot) else { continue };
+        let last = |key: &str| {
+            list.iter()
+                .rev()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.trim().to_string())
+        };
+        let Some(content) = last("content") else { continue };
+        if content == "none" || content == "normal" {
+            continue;
+        }
+        let Some(items) = crate::computed::parse_content(&content) else { continue };
+        let text: String = items
+            .iter()
+            .map(|it| match it {
+                ContentItem::Str(s) => s.clone(),
+                // `page` — номер листа с единицы, `pages` — их число
+                // (§page-based-counters).
+                ContentItem::Counter(n, _) if n == "page" => (page + 1).to_string(),
+                ContentItem::Counter(n, _) if n == "pages" => pages.to_string(),
+                ContentItem::Counter(..) => "0".to_string(),
+                _ => String::new(),
+            })
+            .collect();
+        let (ta, va) = crate::page_margin::defaults(slot);
+        let va = last("vertical-align").unwrap_or_else(|| va.to_string());
+        let mut own = Computed::default();
+        own.apply_one("text-align", ta);
+        for (k, v) in list {
+            if k != "content" && k != "vertical-align" {
+                own.apply_one(k, v);
+            }
+        }
+        let resolved = inline::inherit(&ctx_style, &own);
+        let fs = match resolved.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let cb = crate::page_margin::containing_block(place, g.size, g.margin);
+        // Длина по базе: `auto` — `None`; проценты — от содержащего блока по
+        // СВОЕЙ оси (Blink `kContainingBlockSize`).
+        let len = |l: &Option<Len>, base: f32| -> Option<f32> {
+            match l {
+                Some(Len::Px(v)) => Some(*v),
+                Some(Len::Pct(k)) => Some(k * base),
+                Some(Len::Em(k)) => Some(k * fs),
+                _ => None,
+            }
+        };
+        let zero = |l: &Option<Len>, base: f32| len(l, base).unwrap_or(0.0);
+        let b = own.borders();
+        let pad = [
+            zero(&own.padding.top, cb.3),
+            zero(&own.padding.right, cb.2),
+            zero(&own.padding.bottom, cb.3),
+            zero(&own.padding.left, cb.2),
+        ];
+        let edges = [
+            zero(&b.top, cb.3) + pad[0],
+            zero(&b.right, cb.2) + pad[1],
+            zero(&b.bottom, cb.3) + pad[2],
+            zero(&b.left, cb.2) + pad[3],
+        ];
+        let auto_m = |l: &Option<Len>| matches!(l, Some(Len::Auto));
+        let margin = [
+            (!auto_m(&own.margin.top)).then(|| zero(&own.margin.top, cb.3)),
+            (!auto_m(&own.margin.right)).then(|| zero(&own.margin.right, cb.2)),
+            (!auto_m(&own.margin.bottom)).then(|| zero(&own.margin.bottom, cb.3)),
+            (!auto_m(&own.margin.left)).then(|| zero(&own.margin.left, cb.2)),
+        ];
+        let bb = own.border_box == Some(true);
+        let w = len(&own.width, cb.2).map(|v| if bb { v } else { v + edges[1] + edges[3] });
+        let h = len(&own.height, cb.3).map(|v| if bb { v } else { v + edges[0] + edges[2] });
+        let build = |full: bool| -> AnyElement {
+            let mut st = own.clone();
+            for (k, v) in [
+                ("padding-top", format!("{}px", pad[0])),
+                ("padding-right", format!("{}px", pad[1])),
+                ("padding-bottom", format!("{}px", pad[2])),
+                ("padding-left", format!("{}px", pad[3])),
+            ] {
+                st.apply_one(k, &v);
+            }
+            let size = if full { "100%" } else { "auto" };
+            for (k, v) in [
+                ("width", size),
+                ("height", size),
+                ("min-width", "0"),
+                ("max-width", "none"),
+                ("min-height", "0"),
+                ("max-height", "none"),
+                ("margin", "0"),
+                ("box-sizing", "border-box"),
+                ("display", "flex"),
+                ("flex-direction", "column"),
+                (
+                    "justify-content",
+                    match va.as_str() {
+                        "top" => "flex-start",
+                        "bottom" => "flex-end",
+                        _ => "center",
+                    },
+                ),
+            ] {
+                st.apply_one(k, v);
+            }
+            let inner = Element {
+                tag: "div".to_string(),
+                inline: false,
+                node_id: 0,
+                style: Computed::default(),
+                hover: None,
+                first_letter: None,
+                first_line: None,
+                children: vec![Node::Text(text.clone())],
+                attrs: vec![],
+                anim: Default::default(),
+                list_item: None,
+            };
+            let outer = Element {
+                tag: "div".to_string(),
+                style: st,
+                children: vec![Node::Element(inner.clone())],
+                ..inner
+            };
+            let mut els = blocks(&[Node::Element(outer)], &ctx_style, opts);
+            if els.len() == 1 && !full {
+                els.pop().unwrap()
+            } else if full {
+                div().size_full().children(els).into_any_element()
+            } else {
+                div().children(els).into_any_element()
+            }
+        };
+        out.push(crate::flow::MarginBox {
+            place,
+            el: build(true),
+            probe: build(false),
+            w,
+            h,
+            margin,
+        });
+    }
+    out
+}
+
 /// Имя ПЕРВОЙ страницы (css-page-3 §using-named-pages, п. 3): start value
 /// первой поточной коробки класса A детей корня, иначе имя самого корня.
 fn first_kid_page_name(nodes: &[Node], root_page: &str) -> String {

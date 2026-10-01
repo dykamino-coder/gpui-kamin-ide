@@ -694,6 +694,86 @@ pub struct PageSel {
 pub struct PageRule {
     pub sels: Vec<PageSel>,
     pub decls: Vec<(String, String)>,
+    /// Вложенные правила марджин-боксов (`@top-left { … }`, css-page-3
+    /// §margin-at-rules): имя коробки в нижнем регистре → объявления.
+    pub margins: Vec<(String, Vec<(String, String)>)>,
+}
+
+/// Шестнадцать марджин-боксов листа (css-page-3 §margin-boxes, Table 1) — по
+/// часовой стрелке от левого верхнего угла.
+pub const MARGIN_BOXES: [&str; 16] = [
+    "top-left-corner",
+    "top-left",
+    "top-center",
+    "top-right",
+    "top-right-corner",
+    "right-top",
+    "right-middle",
+    "right-bottom",
+    "bottom-right-corner",
+    "bottom-right",
+    "bottom-center",
+    "bottom-left",
+    "bottom-left-corner",
+    "left-bottom",
+    "left-middle",
+    "left-top",
+];
+
+/// Объявления блока В ПОРЯДКЕ ЗАПИСИ, повтор свойства — отдельной парой
+/// (`Decls` порядок помнит только в служебном `ORDER_KEY`).
+fn ordered_decls(decls: &Decls) -> Vec<(String, String)> {
+    let order = decls.get(ORDER_KEY).cloned().unwrap_or_default();
+    order
+        .split(DECL_SEP)
+        .filter_map(|k| decls.get(k).map(|v| (k, v)))
+        .flat_map(|(k, v)| {
+            v.split(DECL_SEP)
+                .map(move |one| (k.to_string(), one.trim().to_string()))
+        })
+        .collect()
+}
+
+/// Вложенные at-блоки тела `@page`: `(имя без @ в нижнем регистре, тело)`.
+fn nested_blocks(body: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let b = body.as_bytes();
+    let mut i = 0usize;
+    let mut depth = 0usize;
+    while i < b.len() {
+        match b[i] {
+            b'{' => depth += 1,
+            b'}' => depth = depth.saturating_sub(1),
+            b'@' if depth == 0 => {
+                let start = i + 1;
+                let Some(open) = body[start..].find('{').map(|k| start + k) else {
+                    break;
+                };
+                let name = body[start..open].trim().to_ascii_lowercase();
+                let mut d = 0usize;
+                let mut j = open;
+                while j < b.len() {
+                    match b[j] {
+                        b'{' => d += 1,
+                        b'}' => {
+                            d -= 1;
+                            if d == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    j += 1;
+                }
+                out.push((name, body[open + 1..j.min(b.len())].to_string()));
+                i = j + 1;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    out
 }
 
 /// Все правила `@page` документа в порядке появления — с псевдоклассами и
@@ -761,6 +841,42 @@ pub fn page_decls_for(index: usize, name: &str, rtl: bool) -> Vec<(String, Strin
 
 /// То же по снимку правил (`page_rules_snapshot`).
 pub fn page_decls_in(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Vec<(String, String)> {
+    matching_rules(rules, index, name, rtl)
+        .into_iter()
+        .flat_map(|i| rules[i].decls.clone())
+        .collect()
+}
+
+/// Марджин-боксы листа: каскад тот же, что у объявлений листа
+/// (`page_decls_in`), объявления каждой коробки сливаются по возрастанию
+/// специфичности. Порядок — `MARGIN_BOXES`; коробки без правил не попадают.
+pub fn page_margins_in(
+    rules: &[PageRule],
+    index: usize,
+    name: &str,
+    rtl: bool,
+) -> Vec<(String, Vec<(String, String)>)> {
+    let hits = matching_rules(rules, index, name, rtl);
+    MARGIN_BOXES
+        .iter()
+        .filter_map(|b| {
+            let list: Vec<(String, String)> = hits
+                .iter()
+                .flat_map(|&i| {
+                    rules[i]
+                        .margins
+                        .iter()
+                        .filter(|(n, _)| n == b)
+                        .flat_map(|(_, d)| d.clone())
+                })
+                .collect();
+            (!list.is_empty()).then(|| (b.to_string(), list))
+        })
+        .collect()
+}
+
+/// Номера совпавших с листом правил по возрастанию (специфичность, порядок).
+fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Vec<usize> {
     let right = (index % 2 == 0) != rtl;
     let mut hits: Vec<((u8, u8, u8), usize)> = Vec::new();
     for (order, r) in rules.iter().enumerate() {
@@ -787,9 +903,7 @@ pub fn page_decls_in(rules: &[PageRule], index: usize, name: &str, rtl: bool) ->
         }
     }
     hits.sort();
-    hits.into_iter()
-        .flat_map(|(_, i)| rules[i].decls.clone())
-        .collect()
+    hits.into_iter().map(|(_, i)| i).collect()
 }
 
 pub fn take_page_decls() -> Vec<(String, String)> {
@@ -1497,7 +1611,13 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
                         .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_');
                 let flat = strip_nested_blocks(body);
                 let decls = parse_decls(&flat);
-                if !decls.is_empty() {
+                // Марджин-боксы — вложенные at-правила с известным именем.
+                let margins: Vec<(String, Vec<(String, String)>)> = nested_blocks(body)
+                    .into_iter()
+                    .filter(|(n, _)| MARGIN_BOXES.contains(&n.as_str()))
+                    .map(|(n, b)| (n, ordered_decls(&parse_decls(&b))))
+                    .collect();
+                if !decls.is_empty() || !margins.is_empty() {
                     // Объявления листа — В ПОРЯДКЕ ЗАПИСИ, повтор свойства —
                     // отдельной парой на своём месте. Словарь `Decls` порядка не
                     // помнит (случайный `RandomState` на процесс), повтор
@@ -1507,15 +1627,7 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
                     // а `margin: 13px; margin: inherit` (`page-margin-006`) —
                     // значение «13px\u{1}inherit», которое не разбиралось вовсе.
                     // Служебный `ORDER_KEY` в пул больше не попадает.
-                    let order = decls.get(ORDER_KEY).cloned().unwrap_or_default();
-                    let list: Vec<(String, String)> = order
-                        .split(DECL_SEP)
-                        .filter_map(|k| decls.get(k).map(|v| (k, v)))
-                        .flat_map(|(k, v)| {
-                            v.split(DECL_SEP)
-                                .map(move |one| (k.to_string(), one.trim().to_string()))
-                        })
-                        .collect();
+                    let list = ordered_decls(&decls);
                     // Полный пул — с псевдоклассами и списками селекторов
                     // (`page_decls_for`). Старые пулы ниже держат прежний
                     // смысл: только безымянные и одиночные имена.
@@ -1523,6 +1635,7 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
                         PAGE_RULES.lock().unwrap().push(PageRule {
                             sels,
                             decls: list.clone(),
+                            margins,
                         });
                     }
                     if plain && named {

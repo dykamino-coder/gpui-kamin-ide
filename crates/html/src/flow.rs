@@ -2333,6 +2333,21 @@ pub struct PageKid {
 /// `@page` (`:first`, `:left`/`:right`, имена) решает стенд.
 pub type PageGeomFn = std::rc::Rc<dyn Fn(usize, &str) -> PageGeom>;
 
+/// Порождённый марджин-бокс листа (css-page-3 §margin-boxes): элемент во весь
+/// border box, его копия для меры по содержимому, заданные размеры (border box,
+/// `None` — `auto`) и поля (`None` — `auto`), верх/право/низ/лево.
+pub struct MarginBox {
+    pub place: crate::page_margin::Place,
+    pub el: AnyElement,
+    pub probe: AnyElement,
+    pub w: Option<f32>,
+    pub h: Option<f32>,
+    pub margin: [Option<f32>; 4],
+}
+
+/// Марджин-боксы листа по номеру, имени, числу листов и геометрии.
+pub type MarginFn = std::rc::Rc<dyn Fn(usize, &str, usize, &PageGeom) -> Vec<MarginBox>>;
+
 /// Стопка страниц: page area каждой — фрагментаинер (css-break-4 §2). Листы
 /// раскладываются сеткой и МАСШТАБИРУЮТСЯ до вмещения в свою коробку: стенд
 /// сравнивает кадр целиком, а печатный эталон WPT тоже многостраничен, и
@@ -2346,6 +2361,9 @@ pub struct PageStack {
     geoms: std::cell::RefCell<Vec<PageGeom>>,
     /// Ячейка сетки листов — наибольший лист.
     cell: std::cell::Cell<(f32, f32)>,
+    /// Марджин-боксы: построитель и итог раскладки `(лист, элемент)`.
+    margin_for: Option<MarginFn>,
+    margin_els: Vec<(usize, AnyElement)>,
     /// Слой начального содержащего блока (внепоточные без позиционированного
     /// предка) — по КОПИИ на страницу: `icb[p]` рисуется на листе `p` со
     /// сдвигом на `p` page area вверх, то есть абсолют раскладывается «как
@@ -2376,12 +2394,15 @@ impl PageStack {
         icb: Vec<Vec<AnyElement>>,
         icb_reach: f32,
         fixed: Vec<Vec<AnyElement>>,
+        margin_for: Option<MarginFn>,
     ) -> Self {
         PageStack {
             kids,
             geom_for,
             geoms: std::cell::RefCell::new(Vec::new()),
             cell: std::cell::Cell::new((1.0, 1.0)),
+            margin_for,
+            margin_els: Vec::new(),
             icb,
             icb_reach,
             fixed,
@@ -2737,6 +2758,33 @@ impl Element for PageStack {
                 );
             }
         }
+        // Марджин-боксы — после листов: `counter(pages)` знает их число.
+        self.margin_els.clear();
+        if let Some(mf) = self.margin_for.clone() {
+            for (p, pg) in geoms.iter().enumerate() {
+                let boxes = mf(p, &names.get(p).cloned().unwrap_or_else(|| tail.clone()), pages, pg);
+                let (sx, sy) = self.sheet_origin(p);
+                for (rect, mut el) in layout_margin_boxes(boxes, pg, window, cx) {
+                    el.layout_as_root(
+                        size(
+                            gpui::AvailableSpace::Definite(px(rect.2.max(0.0))),
+                            gpui::AvailableSpace::Definite(px(rect.3.max(0.0))),
+                        ),
+                        window,
+                        cx,
+                    );
+                    el.prepaint_at(
+                        point(
+                            bounds.origin.x + px(sx + rect.0),
+                            bounds.origin.y + px(sy + rect.1),
+                        ),
+                        window,
+                        cx,
+                    );
+                    self.margin_els.push((p, el));
+                }
+            }
+        }
         *self.plan.borrow_mut() = plan;
         *self.geoms.borrow_mut() = geoms;
     }
@@ -2873,8 +2921,171 @@ impl Element for PageStack {
                     });
                 }
             }
+            // Марджин-боксы — ПОСЛЕДНИМ слоем (css-page-3 §painting: «page-margin
+            // boxes» после содержимого документа), под маской всего листа.
+            let sheets: Vec<Bounds<Pixels>> = (0..pages)
+                .map(|p| {
+                    let (sx, sy) = self.sheet_origin(p);
+                    let g = self.geom(p);
+                    Bounds {
+                        origin: point(bounds.origin.x + px(sx * s), bounds.origin.y + px(sy * s)),
+                        size: size(px(g.size.0 * s), px(g.size.1 * s)),
+                    }
+                })
+                .collect();
+            for (p, el) in &mut self.margin_els {
+                let Some(sheet) = sheets.get(*p).copied() else { continue };
+                let mask = gpui::ContentMask { bounds: sheet };
+                window.with_content_mask(Some(mask), |window| {
+                    window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
+                });
+            }
         });
     }
+}
+
+/// Раскладка марджин-боксов одного листа (css-page-3 §margin-dimension; Blink
+/// `PageContainerLayoutAlgorithm::LayoutAllMarginBoxes`): прямоугольник border
+/// box каждой коробки в точках листа и её элемент. Мера — по содержимому
+/// (`probe`): главная ось стороны верха/низа — min/max-content ширина, боковых
+/// — высота при уже решённой ширине (Blink `EdgeMarginNodePreferredSize`).
+fn layout_margin_boxes(
+    boxes: Vec<MarginBox>,
+    g: &PageGeom,
+    window: &mut Window,
+    cx: &mut App,
+) -> Vec<((f32, f32, f32, f32), AnyElement)> {
+    use crate::page_margin::{self as pm, Place, Pref, Side};
+    let mut out: Vec<(usize, (f32, f32, f32, f32), AnyElement)> = Vec::new();
+    let mut edges: Vec<(Side, [Option<MarginBox>; 3])> = vec![
+        (Side::Top, [None, None, None]),
+        (Side::Right, [None, None, None]),
+        (Side::Bottom, [None, None, None]),
+        (Side::Left, [None, None, None]),
+    ];
+    for b in boxes {
+        match b.place {
+            Place::Corner { top, left } => {
+                let cb = pm::containing_block(b.place, g.size, g.margin);
+                // Обе оси «растягиваются» по своему полю листа, затем поля
+                // решаются у обоих краёв бумаги.
+                let w = b.w.unwrap_or(cb.2 - b.margin[1].unwrap_or(0.0) - b.margin[3].unwrap_or(0.0)).max(0.0);
+                let h = b.h.unwrap_or(cb.3 - b.margin[0].unwrap_or(0.0) - b.margin[2].unwrap_or(0.0)).max(0.0);
+                let (mt, _) = pm::edge_margins(b.margin[0], b.margin[2], h, cb.3, top);
+                let (ml, _) = pm::edge_margins(b.margin[3], b.margin[1], w, cb.2, left);
+                let key = match (top, left) {
+                    (true, true) => 0,
+                    (true, false) => 4,
+                    (false, false) => 8,
+                    (false, true) => 12,
+                };
+                out.push((key, (cb.0 + ml, cb.1 + mt, w, h), b.el));
+            }
+            Place::Edge { side, at } => {
+                if let Some(e) = edges.iter_mut().find(|e| e.0 == side) {
+                    e.1[at] = Some(b);
+                }
+            }
+        }
+    }
+    for (side, mut trio) in edges {
+        if trio.iter().all(|b| b.is_none()) {
+            continue;
+        }
+        let place = Place::Edge { side, at: 0 };
+        let cb = pm::containing_block(place, g.size, g.margin);
+        let horiz = side.horizontal();
+        let (main_avail, cross_avail) = if horiz { (cb.2, cb.3) } else { (cb.3, cb.2) };
+        // Поперечный размер: задан либо во всё поле без полей.
+        let cross = |b: &MarginBox| -> f32 {
+            let (spec, ma, mb) = if horiz {
+                (b.h, b.margin[0], b.margin[2])
+            } else {
+                (b.w, b.margin[3], b.margin[1])
+            };
+            spec.unwrap_or(cross_avail - ma.unwrap_or(0.0) - mb.unwrap_or(0.0)).max(0.0)
+        };
+        let mut prefs: [Option<Pref>; 3] = [None; 3];
+        for i in 0..3 {
+            let Some(b) = trio[i].as_mut() else { continue };
+            let (spec, ma, mb) = if horiz {
+                (b.w, b.margin[3], b.margin[1])
+            } else {
+                (b.h, b.margin[0], b.margin[2])
+            };
+            let margins = ma.unwrap_or(0.0) + mb.unwrap_or(0.0);
+            let (min, max) = match spec {
+                Some(v) => (v, v),
+                None if horiz => {
+                    let lo = b.probe.layout_as_root(
+                        size(gpui::AvailableSpace::MinContent, gpui::AvailableSpace::MaxContent),
+                        window,
+                        cx,
+                    );
+                    let hi = b.probe.layout_as_root(
+                        size(gpui::AvailableSpace::MaxContent, gpui::AvailableSpace::MaxContent),
+                        window,
+                        cx,
+                    );
+                    (f32::from(lo.width), f32::from(hi.width))
+                }
+                None => {
+                    let w = cross(b);
+                    let s = b.probe.layout_as_root(
+                        size(gpui::AvailableSpace::Definite(px(w)), gpui::AvailableSpace::MaxContent),
+                        window,
+                        cx,
+                    );
+                    (f32::from(s.height), f32::from(s.height))
+                }
+            };
+            prefs[i] = Some(Pref {
+                min,
+                max,
+                margins,
+                auto: spec.is_none(),
+            });
+        }
+        let mains = pm::edge_sizes(prefs, main_avail);
+        for i in 0..3 {
+            let Some(b) = trio[i].take() else { continue };
+            let main = mains[i];
+            let c = cross(&b);
+            let (ms, me) = if horiz {
+                (b.margin[3].unwrap_or(0.0), b.margin[1].unwrap_or(0.0))
+            } else {
+                (b.margin[0].unwrap_or(0.0), b.margin[2].unwrap_or(0.0))
+            };
+            let at_start = matches!(side, Side::Top | Side::Left);
+            let (cs, _) = if horiz {
+                pm::edge_margins(b.margin[0], b.margin[2], c, cross_avail, at_start)
+            } else {
+                pm::edge_margins(b.margin[3], b.margin[1], c, cross_avail, at_start)
+            };
+            let used = main + ms + me;
+            let shift = match i {
+                0 => 0.0,
+                1 => (main_avail - used) / 2.0,
+                _ => main_avail - used,
+            } + ms;
+            let rect = if horiz {
+                (cb.0 + shift, cb.1 + cs, main, c)
+            } else {
+                (cb.0 + cs, cb.1 + shift, c, main)
+            };
+            // Порядок краски Blink (`LayoutAllMarginBoxes`): по часовой от
+            // левого верхнего угла, низ и левая сторона — с конца.
+            let key = match side {
+                Side::Top => 1 + i,
+                Side::Right => 5 + i,
+                Side::Bottom => 11 - i,
+                Side::Left => 15 - i,
+            };
+            out.push((key, rect, b.el));
+        }
+    }
+    out.sort_by_key(|x| x.0);
+    out.into_iter().map(|(_, r, e)| (r, e)).collect()
 }
 
 impl IntoElement for PageStack {
