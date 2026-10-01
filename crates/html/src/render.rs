@@ -1179,6 +1179,29 @@ pub fn render_paged(
             _ => 0.0,
         };
         let b = e.style.borders();
+        // Обёртку с видимой рамкой или своим `display` (сетка, флекс) не
+        // снимаем: снятая теряла рамку и раскладку (`page-box-011-print-ref`:
+        // `body { border: 10px solid }` — чёрной рамки не было;
+        // `page-box-000-print-ref`: `html { display: grid; border: 20px }`).
+        // Она остаётся одним ребёнком стопки; фон всё равно уходит в канвас
+        // (§painting: фон корня/тела красит канвас листа).
+        let framed = [&b.top, &b.right, &b.bottom, &b.left]
+            .iter()
+            .any(|l| side(l) > 0.0);
+        let boxy = matches!(
+            e.style.display,
+            Some(Display::Grid)
+                | Some(Display::InlineGrid)
+                | Some(Display::Flex)
+                | Some(Display::InlineFlex)
+                | Some(Display::GridLanes)
+        );
+        if framed || boxy {
+            if let Some(c) = e.style.background.filter(|c| c.a > 0.0) {
+                canvas = Some(c.to_hsla());
+            }
+            break;
+        }
         left += side(&e.style.margin.left) + side(&b.left) + side(&e.style.padding.left);
         right += side(&e.style.margin.right) + side(&b.right) + side(&e.style.padding.right);
         top += side(&e.style.margin.top) + side(&b.top) + side(&e.style.padding.top);
@@ -1336,12 +1359,16 @@ pub fn render_paged(
         let build = |slot: &mut Vec<AnyElement>, fixed_slot: &mut Vec<AnyElement>| {
             crate::interact::icb_open();
             FIXED_LAYER.with(|f| f.borrow_mut().clear());
-            let el = div()
-                .pl(px(left))
-                .pr(px(right))
-                .pt(px(pad_top))
-                .children(blocks(group, &root, opts))
-                .into_any_element();
+            // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
+            // page area — содержащего блока корня (css-page-3 §page-model).
+            let mut wrap = div().pl(px(left)).pr(px(right)).pt(px(pad_top));
+            if let [Node::Element(r)] = group.as_slice()
+                && matches!(r.tag.as_str(), "html" | "body")
+                && matches!(r.style.height, Some(Len::Pct(_)))
+            {
+                wrap = wrap.h(px(ah));
+            }
+            let el = wrap.children(blocks(group, &root, opts)).into_any_element();
             slot.extend(layer(crate::interact::icb_close()));
             fixed_slot.extend(layer(
                 FIXED_LAYER.with(|f| std::mem::take(&mut *f.borrow_mut())),

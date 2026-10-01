@@ -359,6 +359,10 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
             "size" => {
                 let toks: Vec<&str> = v.split_whitespace().collect();
                 let nums: Vec<f32> = toks.iter().filter_map(|t| px_abs(t)).collect();
+                // Нулевой лист — начальное значение (csswg#8335;
+                // `printing/zero-size-001-print`: «The used page size is the
+                // initial value instead of the authored width and height of zero»).
+                let nums: Vec<f32> = if nums.iter().any(|v| *v <= 0.0) { Vec::new() } else { nums };
                 match nums.len() {
                     2 => {
                         w = nums[0];
