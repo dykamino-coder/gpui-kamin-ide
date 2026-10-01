@@ -2415,7 +2415,7 @@ impl Element for Paragraph {
         let hanging = self.hanging;
         let spacers = self.spacers.clone();
         let flow = self.flow.clone();
-        let id = window.request_measured_layout_with_baseline(
+        let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
                 // Заданная ширина сильнее доступной: раскладка уже решила, в
@@ -2515,9 +2515,19 @@ impl Element for Paragraph {
                 // Высота абзаца — сумма ШАГОВ строк: обычно это ровно
                 // `line_height`, но строка со сдвинутым по вертикали куском
                 // выше на его вылет (CSS 2.1 §10.8).
+                // Сдвиг ПОСЛЕДНЕЙ строки от первой: шаги всех строк перед ней
+                // плюс разница их надбавок сверху (у первой базовой надбавка
+                // своей строки не учтена — последняя считается тем же отсчётом,
+                // и у однострочного абзаца обе совпадают).
+                let mut last_shift = px(0.);
                 let across = {
                     probe.lines = lines.clone();
                     let pads = probe.line_padding();
+                    if pads.len() > 1 {
+                        let before: f32 = pads[..pads.len() - 1].iter().map(|(a, b)| a + b).sum();
+                        let own = pads[pads.len() - 1].0 - pads[0].0;
+                        last_shift = line_height * (pads.len() - 1) as f32 + px(before + own);
+                    }
                     let extra: f32 = pads.iter().map(|(a, b)| a + b).sum();
                     line_height * lines.len() as f32 + px(extra)
                 };
@@ -2539,6 +2549,7 @@ impl Element for Paragraph {
                     return (
                         size(known.width.unwrap_or(across), known.height.unwrap_or(width)),
                         None,
+                        None,
                     );
                 }
                 // Первая базовая линия абзаца — она нужна выравниванию
@@ -2558,9 +2569,13 @@ impl Element for Paragraph {
                     let content = ascent + descent.abs();
                     (line_height - content) / 2.0 + ascent
                 });
+                // ПОСЛЕДНЯЯ базовая — для `last baseline` (css-align-3 §9.1:
+                // «last baseline set» блока — последняя строчная коробка).
+                let last_baseline = baseline.map(|b| b + last_shift);
                 (
                     size(known.width.unwrap_or(width), known.height.unwrap_or(across)),
                     baseline,
+                    last_baseline,
                 )
             },
         );

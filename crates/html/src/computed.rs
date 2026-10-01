@@ -1880,6 +1880,11 @@ pub struct Computed {
     /// `justify-self-static-position-001`). `Align::Baseline` его не различает.
     pub align_self_last: bool,
     pub justify_self_last: bool,
+    /// `align-items: last baseline` — то же для умолчания детей: раскладка
+    /// получает `LastBaseline` (css-align-3 §4.2), а не первую базовую.
+    pub align_items_last: bool,
+    /// `justify-items: last baseline` — для лунок-колонок (поперёк лунки).
+    pub justify_items_last: bool,
     pub align_items_safe: bool,
     pub justify_content_safe: bool,
     pub align_content_safe: bool,
@@ -2235,6 +2240,22 @@ pub struct Computed {
     /// Меняет и меру `ch`: продвижение нуля идёт вдоль оси СТРОКИ, а она в
     /// вертикальном письме вертикальна, то есть равна кеглю.
     pub upright: Option<bool>,
+    /// `text-orientation: sideways` — у вертикального текста ДОМИНАНТНАЯ
+    /// базовая алфавитная, а не центральная (css-writing-modes-4 §4.2:
+    /// «In vertical typographic mode, the central baseline is used as the
+    /// dominant baseline when text-orientation is mixed or upright»).
+    /// `upright` этого не различает: `Some(false)` — и `mixed`, и `sideways`.
+    pub text_sideways: Option<bool>,
+    /// Родитель — сетка (не лунки): 1 — горизонтальная, 2 — `vertical-lr`,
+    /// 3 — `vertical-rl`. Ставится при наследовании; по нему элементу
+    /// переставляются оси выравнивания вертикальной сетки и пишутся биты
+    /// базовой по оси x (`apply.rs`).
+    pub(crate) parent_grid: u8,
+    /// Родитель — гибкий контейнер, сетка или лунки: элемент блокифицирован
+    /// (css-display-3 §2.7), хотя `display` в стиле остаётся строчным.
+    pub(crate) parent_flex_grid: bool,
+    /// Родитель — лунки (`display: grid-lanes`).
+    pub(crate) parent_lanes: bool,
     /// Логические стороны и размеры до перевода в физические.
     pub logical: Option<Box<Logical>>,
     /// Ширина пришла из ЛОГИЧЕСКОГО `inline-size` при вертикальном письме:
@@ -3920,6 +3941,7 @@ impl Computed {
                 if let Ok(a) = align_keyword(v) {
                     self.align_items = a;
                     self.align_items_safe = is_safe(v);
+                    self.align_items_last = v.split_whitespace().any(|w| w == "last");
                 }
             }
             // `space-evenly` и `space-around` различаются шириной крайних
@@ -5601,6 +5623,7 @@ impl Computed {
             "justify-items" => {
                 self.justify_items = parse_align(v);
                 self.justify_items_safe = is_safe(v);
+                self.justify_items_last = v.split_whitespace().any(|w| w == "last");
             }
             // Значение бывает составным: `row fill-reverse`, `column
             // track-reverse`. Сверка со строкой ЦЕЛИКОМ путала ось на каждом
@@ -8250,7 +8273,10 @@ impl Computed {
                     _ => None,
                 }
             }
-            "text-orientation" => self.upright = Some(v == "upright"),
+            "text-orientation" => {
+                self.upright = Some(v == "upright");
+                self.text_sideways = Some(v == "sideways" || v == "sideways-right");
+            }
             "writing-mode" => {
                 // `sideways-*` отличается от `vertical-*` только поворотом
                 // глифов, а направление потока у них общее.

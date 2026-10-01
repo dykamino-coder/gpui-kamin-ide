@@ -66,9 +66,18 @@ pub(super) fn align_and_position_item(
     order: u32,
     grid_area: Rect<f32>,
     container_alignment_styles: InBothAbsAxis<Option<AlignItems>>,
-    baseline_shim: f32,
+    // KaminIDE patch: прокладки выравнивания по базовым — лишние поля по
+    // сторонам: сверху (`first baseline`), снизу (`last baseline`), слева и
+    // справа (группы по оси x); `x_end` — группа по x у правого края.
+    shims: Rect<f32>,
+    x_end: bool,
     margin_trim: u8,
-) -> (Size<f32>, f32, f32) {
+    // KaminIDE patch: четвёртое значение — ПЕРВАЯ базовая линия элемента из
+    // ИТОГОВОЙ раскладки (от верха его рамочной коробки), для базовой линии
+    // контейнера (css-grid-2 §10.8 «Grid Container Baselines»). Прежде она
+    // выбрасывалась, и контейнер брал низ рамки первого элемента. Пятое —
+    // ПОСЛЕДНЯЯ базовая (для последней базовой контейнера).
+) -> (Size<f32>, f32, f32, Option<f32>, Option<f32>) {
     let grid_area_size = Size { width: grid_area.right - grid_area.left, height: grid_area.bottom - grid_area.top };
 
     let style = tree.get_grid_child_style(node);
@@ -182,8 +191,8 @@ pub(super) fn align_and_position_item(
     }
 
     let grid_area_minus_item_margins_size = Size {
-        width: grid_area_size.width.maybe_sub(margin.left).maybe_sub(margin.right),
-        height: grid_area_size.height.maybe_sub(margin.top).maybe_sub(margin.bottom) - baseline_shim,
+        width: grid_area_size.width.maybe_sub(margin.left).maybe_sub(margin.right) - shims.left - shims.right,
+        height: grid_area_size.height.maybe_sub(margin.top).maybe_sub(margin.bottom) - shims.top - shims.bottom,
     };
 
     // If node is absolutely positioned and width is not set explicitly, then deduce it
@@ -256,14 +265,23 @@ pub(super) fn align_and_position_item(
     // Resolve final size
     let Size { width, height } = Size { width, height }.unwrap_or(layout_output.size).maybe_clamp(min_size, max_size);
 
+    // KaminIDE patch: группа по x у правого края (письмо базовой
+    // `vertical-rl`) и одиночный участник с ней — к ПРАВОМУ краю: запасное
+    // `safe self-start` элемента, у которого начало блока справа
+    // (`grid-justify-baseline-001`).
+    let x_alignment = match justify_self.unwrap_or(alignment_styles.horizontal) {
+        AlignSelf::Baseline if x_end => AlignSelf::End,
+        other => other,
+    };
     let (x, x_margin) = align_item_within_area(
         Line { start: grid_area.left, end: grid_area.right },
-        justify_self.unwrap_or(alignment_styles.horizontal),
+        x_alignment,
         width,
         position,
         inset_horizontal,
         margin.horizontal_components(),
-        0.0,
+        shims.left,
+        shims.right,
     );
     let (y, y_margin) = align_item_within_area(
         Line { start: grid_area.top, end: grid_area.bottom },
@@ -272,7 +290,8 @@ pub(super) fn align_and_position_item(
         position,
         inset_vertical,
         margin.vertical_components(),
-        baseline_shim,
+        shims.top,
+        shims.bottom,
     );
 
     let scrollbar_size = Size {
@@ -303,7 +322,7 @@ pub(super) fn align_and_position_item(
     #[cfg(not(feature = "content_size"))]
     let contribution = Size::ZERO;
 
-    (contribution, y, height)
+    (contribution, y, height, layout_output.first_baselines.y, layout_output.last_or_first_y())
 }
 
 /// Align and size a grid item along a single axis
@@ -315,9 +334,14 @@ pub(super) fn align_item_within_area(
     inset: Line<Option<f32>>,
     margin: Line<Option<f32>>,
     baseline_shim: f32,
+    // KaminIDE patch: прокладка `last baseline` у конечного края.
+    baseline_shim_end: f32,
 ) -> (f32, Line<f32>) {
     // Calculate grid area dimension in the axis
-    let non_auto_margin = Line { start: margin.start.unwrap_or(0.0) + baseline_shim, end: margin.end.unwrap_or(0.0) };
+    let non_auto_margin = Line {
+        start: margin.start.unwrap_or(0.0) + baseline_shim,
+        end: margin.end.unwrap_or(0.0) + baseline_shim_end,
+    };
     let grid_area_size = f32_max(grid_area.end - grid_area.start, 0.0);
     let free_space = f32_max(grid_area_size - resolved_size - non_auto_margin.sum(), 0.0);
 
@@ -332,7 +356,7 @@ pub(super) fn align_item_within_area(
         if auto_margin_count > 0 && !static_abs { free_space / auto_margin_count as f32 } else { 0.0 };
     let resolved_margin = Line {
         start: margin.start.unwrap_or(auto_margin_size) + baseline_shim,
-        end: margin.end.unwrap_or(auto_margin_size),
+        end: margin.end.unwrap_or(auto_margin_size) + baseline_shim_end,
     };
 
     // Compute offset in the axis
@@ -343,6 +367,10 @@ pub(super) fn align_item_within_area(
         // TODO: Add support for baseline alignment. For now we treat it as "start".
         AlignSelf::Baseline => resolved_margin.start,
         AlignSelf::Stretch => resolved_margin.start,
+        // KaminIDE patch: группа последних базовых — у КОНЦА области, со
+        // своей прокладкой в нижнем поле; одиночный участник — запасное
+        // `safe self-end` (css-align-3 §9.3).
+        AlignSelf::LastBaseline => grid_area_size - resolved_size - resolved_margin.end,
     };
 
     let offset_within_area = if position == Position::Absolute {

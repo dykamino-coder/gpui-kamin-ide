@@ -174,6 +174,18 @@ pub trait CoreStyle {
     fn margin_trim(&self) -> u8 {
         0
     }
+    /// KaminIDE patch: собственная базовая линия узла по оси x — смещение и
+    /// «от правого края» (см. `Style::baseline_x_hint`).
+    #[inline(always)]
+    fn baseline_x_hint(&self) -> Option<(f32, bool)> {
+        None
+    }
+    /// KaminIDE patch: биты выравнивания по базовой по оси x (см.
+    /// `Style::baseline_x_flags`).
+    #[inline(always)]
+    fn baseline_x_flags(&self) -> u8 {
+        0
+    }
     /// KaminIDE patch: раскладка ЛУНКАМИ (css-grid-3 «grid lanes»): сетка
     /// с дорожками только по ОДНОЙ оси. `None` — обычная сетка.
     #[cfg(feature = "grid")]
@@ -513,6 +525,30 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// KaminIDE patch: раскладка лунками (см. [`GridLanes`]).
     #[cfg(feature = "grid")]
     pub grid_lanes: Option<GridLanes>,
+    /// KaminIDE patch: коробка не отдаёт базовые линии наружу — родитель их
+    /// синтезирует (css-contain-2 §3.2 п.7: «the containment box is treated as
+    /// having no baseline»). Ставится движком для `contain: layout`.
+    pub hides_baseline: bool,
+    /// KaminIDE patch: базовая для выравнивания снаружи — ПОСЛЕДНЯЯ
+    /// (css-inline-3 §baseline-source: `auto` у `inline-block` — `last`;
+    /// CSS 2.1 §10.8.1: «The baseline of an 'inline-block' is the baseline
+    /// of its last line box in the normal flow»). Узел отдаёт последнюю
+    /// базовую вместо первой.
+    pub baseline_from_last: bool,
+    /// KaminIDE patch: собственная базовая линия по оси x у узла без своей
+    /// раскладки текста (повёрнутый вертикальный абзац движка): смещение и
+    /// флаг «от правого края» — у `vertical-rl` первая строка справа, и
+    /// отсчёт от правого края переживает любую итоговую ширину.
+    pub baseline_x_hint: Option<(f32, bool)>,
+    /// KaminIDE patch: выравнивание по базовой по оси x (css-align-3 §9.1,
+    /// Blink baseline_utils.h): 1 — группа у ПРАВОГО края (письмо базовой —
+    /// `vertical-rl`), 2 — синтез центральный (у контейнера вертикальное
+    /// письмо не `sideways`), 4 — у элемента своя базовая по x (вертикальное
+    /// письмо самого элемента; иначе — только синтез, Blink
+    /// `LogicalBoxFragment::FirstBaseline` при `!IsWritingModeEqual()`),
+    /// 8 — элемент параллелен горизонтальной сетке: `justify-items:
+    /// baseline` контейнера на него не действует.
+    pub baseline_x_flags: u8,
 
     // Block container properties
     /// How items elements should aligned in the inline axis
@@ -628,6 +664,10 @@ impl<S: CheapCloneStr> Style<S> {
         margin_trim: 0,
         #[cfg(feature = "grid")]
         grid_lanes: None,
+        hides_baseline: false,
+        baseline_from_last: false,
+        baseline_x_hint: None,
+        baseline_x_flags: 0,
         #[cfg(feature = "flexbox")]
         flex_grow: 0.0,
         #[cfg(feature = "flexbox")]
@@ -744,6 +784,14 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn grid_lanes(&self) -> Option<GridLanes> {
         self.grid_lanes
     }
+    #[inline(always)]
+    fn baseline_x_hint(&self) -> Option<(f32, bool)> {
+        self.baseline_x_hint
+    }
+    #[inline(always)]
+    fn baseline_x_flags(&self) -> u8 {
+        self.baseline_x_flags
+    }
 }
 
 impl<T: CoreStyle> CoreStyle for &'_ T {
@@ -821,6 +869,14 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn grid_lanes(&self) -> Option<GridLanes> {
         (*self).grid_lanes()
+    }
+    #[inline(always)]
+    fn baseline_x_hint(&self) -> Option<(f32, bool)> {
+        (*self).baseline_x_hint()
+    }
+    #[inline(always)]
+    fn baseline_x_flags(&self) -> u8 {
+        (*self).baseline_x_flags()
     }
 }
 

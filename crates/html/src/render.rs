@@ -12514,8 +12514,22 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // §7.3) и только при ПОЛНОМ зажиме — иначе коробка без высоты
         // схлопывалась в ноль (даже фон пропадал), а заявка без зажима
         // делала её бесконечной (замерено: wm 118 → 104).
+        // Метрики первой строки — базовая по оси x (`VerticalText::first_line`).
+        let em = match inherited.font_size {
+            Some(Len::Px(v)) => v,
+            Some(Len::Em(k)) => k * opts.base_size(),
+            _ => opts.base_size(),
+        };
+        let lh = match inherited.line_height {
+            Some(Len::Px(v)) => Some(px(v)),
+            Some(Len::Pct(k)) | Some(Len::Em(k)) => Some(px(k * em)),
+            _ => None,
+        };
+        let central = inherited.sideways != Some(true) && inherited.text_sideways != Some(true);
         let vt = crate::interact::VerticalText::new(inner)
             .counter_clockwise(ccw_line)
+            .lines_left_first(inherited.vertical_rl != Some(true) && !ccw_line)
+            .first_line(measure_font(inherited, opts), px(em), lh, central)
             // Замер по МИНИМАЛЬНОМУ содержимому: заявленная высота повёрнутой
             // коробки становится вкладом ячейки в дорожку её колонки
             // (см. `col_min` выше). Ниже `fit_within` заявит эту же величину
@@ -14708,14 +14722,8 @@ fn content_sized(el: AnyElement, c: &Computed) -> AnyElement {
     // align-self несёт ось самого движка — перенос ломал ортогональные
     // потоки (three-levels-of-orthogonal-flows).
     if let Some(a) = c.align_self.filter(|_| c.vertical != Some(true)) {
-        wrap.style().align_self = Some(match a {
-            // `anchor-center` без якоря ведёт себя как `center` (css-anchor-position-1 §5.2).
-            Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
-            Align::Start => gpui::AlignItems::FlexStart,
-            Align::End => gpui::AlignItems::FlexEnd,
-            Align::Baseline => gpui::AlignItems::Baseline,
-            Align::Stretch => gpui::AlignItems::Stretch,
-        });
+        // `anchor-center` без якоря ведёт себя как `center` (css-anchor-position-1 §5.2).
+        wrap.style().align_self = Some(crate::apply::self_align(a, c.align_self_last));
     }
     if let Some(col) = col {
         wrap = wrap.grid_template_cols(vec![col]);
@@ -25514,6 +25522,13 @@ fn lanes(e: &Element, merged: &Computed, opts: &RenderOpts) -> AnyElement {
                 && item_height(&item, merged, opts) > zone + 0.01
             {
                 cross = Some(Align::Start);
+            }
+            // `last baseline` контейнера доезжает до элемента вместе с
+            // выравниванием: лунка — гибкий ряд, и группа последних базовых
+            // прижимается к её концу (css-align-3 §9.3; `row-grid-lanes-item-
+            // baseline-001/003` — эталон на гибком ряде с `last baseline`).
+            if item.style.align_self.is_none() {
+                item.style.align_self_last = merged.align_items_last;
             }
             item.style.align_self = cross;
         } else {

@@ -246,6 +246,19 @@ pub struct Style {
     /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
     /// балансировка строк с минимумом N строк (`flex-line-count`).
     pub flex_balance_lines: u16,
+    /// KaminIDE patch: узел не отдаёт базовые линии родителю
+    /// (css-contain-2 §3.2 п.7, `contain: layout`).
+    pub hides_baseline: bool,
+    /// KaminIDE patch: наружу отдаётся ПОСЛЕДНЯЯ базовая (`inline-block`,
+    /// css-inline-3 §baseline-source).
+    pub baseline_from_last: bool,
+    /// KaminIDE patch: собственная базовая линия по оси x (повёрнутый
+    /// вертикальный абзац): смещение и «от правого края».
+    pub baseline_x_hint: Option<(f32, bool)>,
+    /// KaminIDE patch: биты выравнивания по базовой по оси x (taffy
+    /// `Style::baseline_x_flags`): 1 — группа у правого края, 2 —
+    /// центральный синтез, 4 — своя базовая по x.
+    pub baseline_x_flags: u8,
     /// KaminIDE patch: `margin-trim` (css-box-4 §margin-trim) гибкого
     /// контейнера и сетки — ФИЗИЧЕСКИЕ края: 1 верх, 2 право, 4 низ, 8 лево.
     pub margin_trim: u8,
@@ -916,6 +929,10 @@ impl Default for Style {
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
+            hides_baseline: false,
+            baseline_from_last: false,
+            baseline_x_hint: None,
+            baseline_x_flags: 0,
             margin_trim: 0,
             grid_lanes: None,
             flex_grow: 0.0,
@@ -1183,6 +1200,9 @@ pub enum AlignItems {
     Baseline,
     /// Stretch to fill the container
     Stretch,
+    /// KaminIDE patch: `last baseline` — выравнивание по ПОСЛЕДНИМ базовым
+    /// линиям с прижимом группы к концу оси (css-align-3 §4.2, §9.3).
+    LastBaseline,
 }
 /// Used to control how child nodes are aligned.
 /// Does not apply to Flexbox, and will be ignored if specified on a flex container
@@ -1382,6 +1402,7 @@ impl From<AlignItems> for taffy::style::AlignItems {
             AlignItems::Center => Self::Center,
             AlignItems::Baseline => Self::Baseline,
             AlignItems::Stretch => Self::Stretch,
+            AlignItems::LastBaseline => Self::LastBaseline,
         }
     }
 }

@@ -3,6 +3,7 @@
 use super::types::{GridItem, GridTrack, TrackCounts};
 use crate::geometry::{AbstractAxis, Line, Size};
 use crate::style::{AlignContent, AlignSelf, AvailableSpace};
+use crate::style_helpers::TaffyMaxContent;
 use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt, SizingMode};
 use crate::util::sys::{f32_max, f32_min, Vec};
 use crate::util::{MaybeMath, ResolveOrZero};
@@ -286,8 +287,15 @@ pub(super) fn track_sizing_algorithm<Tree: LayoutPartialTree>(
     initialize_track_sizes(tree, axis_tracks, percentage_basis);
 
     // 11.5.1 Shim item baselines
+    // KaminIDE patch: проход КОЛОНОК — группы по оси x (`justify-self:
+    // baseline`; у вертикальной сетки сюда приходит `align-self`, оси
+    // переставлены движком), проход рядов — по оси y.
     if has_baseline_aligned_item {
-        resolve_item_baselines(tree, axis, other_axis_tracks, items, inner_node_size);
+        if axis == AbstractAxis::Inline {
+            resolve_item_baselines_x(tree, items, inner_node_size);
+        } else {
+            resolve_item_baselines(tree, axis, other_axis_tracks, items, inner_node_size);
+        }
     }
 
     // If all tracks have base_size = growth_limit, then skip the rest of this function.
@@ -452,19 +460,130 @@ fn resolve_item_baselines(
 ) {
     // KaminIDE patch: зовётся из прохода РЯДОВ (`axis` = Block): ряды — дорожки
     // САМОЙ оси, колонки (`other_axis_tracks`) уже размерены. Группа — ряд.
-    // Sort items by row start position so that we can iterate items in groups which are in the same row
+    // Две группы на ряд (css-align-3 §9.1): `first baseline` — по ряду, где
+    // элемент НАЧИНАЕТСЯ, прокладка сверху; `last baseline` — по ряду, где он
+    // КОНЧАЕТСЯ («participates in first/last baseline alignment within its
+    // start-most/end-most shared alignment context»), прокладка снизу.
+    resolve_item_baseline_groups(tree, axis, other_axis_tracks, items, inner_node_size, false);
+    if items.iter().any(|item| item.align_self == AlignSelf::LastBaseline) {
+        resolve_item_baseline_groups(tree, axis, other_axis_tracks, items, inner_node_size, true);
+    }
+}
+
+/// KaminIDE patch: группы базовых линий по оси x — по колонке, где элемент
+/// начинается (css-align-3 §9.1: общий контекст выравнивания — колонка).
+/// В колонке две группы (Blink baseline_utils.h `DetermineBaselineGroup`:
+/// major/minor): у левого края — письмо базовой `vertical-lr`, у правого —
+/// `vertical-rl` (у неё начало блока справа, и отсчёт идёт от правого края).
+/// Базовая элемента — своя, если письмо самого элемента вертикальное, иначе
+/// синтез (Blink logical_box_fragment.h `SynthesizedBaseline`: alphabetic в
+/// вертикальном письме — у ЛЕВОГО края рамки, central — посередине).
+/// Мерить приходится до размеров колонок, как и в исходном taffy для рядов.
+fn resolve_item_baselines_x(
+    tree: &mut impl LayoutPartialTree,
+    items: &mut [GridItem],
+    inner_node_size: Size<Option<f32>>,
+) {
+    items.sort_by_key(|item| item.placement(AbstractAxis::Inline).start);
+    let mut remaining_items = &mut items[0..];
+    while !remaining_items.is_empty() {
+        let current_column = remaining_items[0].placement(AbstractAxis::Inline).start;
+        let next_column_first_item =
+            remaining_items.iter().position(|item| item.placement(AbstractAxis::Inline).start != current_column);
+        let column_items = if let Some(index) = next_column_first_item {
+            let (column_items, tail) = remaining_items.split_at_mut(index);
+            remaining_items = tail;
+            column_items
+        } else {
+            let column_items = remaining_items;
+            remaining_items = &mut [];
+            column_items
+        };
+
+        for end_side in [false, true] {
+            let in_group = move |item: &GridItem| {
+                item.justify_self == AlignSelf::Baseline && (item.baseline_x_flags & 1 != 0) == end_side
+            };
+            // Одиночный участник — запасное выравнивание (`safe self-start`
+            // своей стороны), прокладка ему не нужна.
+            if column_items.iter().filter(|item| in_group(item)).count() <= 1 {
+                continue;
+            }
+            for item in column_items.iter_mut() {
+                if !in_group(item) {
+                    continue;
+                }
+                let measured = tree.perform_child_layout(
+                    item.node,
+                    Size::NONE,
+                    inner_node_size,
+                    Size::MAX_CONTENT,
+                    SizingMode::InherentSize,
+                    Line::FALSE,
+                );
+                let width = measured.size.width;
+                let own = if item.baseline_x_flags & 4 != 0 { measured.first_baselines.x } else { None };
+                let from_left = own.unwrap_or(if item.baseline_x_flags & 2 != 0 { width / 2.0 } else { 0.0 });
+                item.baseline_x = Some(if end_side {
+                    width - from_left
+                        + item.margin.right.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis))
+                } else {
+                    from_left
+                        + item.margin.left.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis))
+                });
+            }
+            let max_baseline = column_items
+                .iter()
+                .filter(|item| in_group(item))
+                .map(|item| item.baseline_x.unwrap_or(0.0))
+                .fold(f32::MIN, f32::max);
+            for item in column_items.iter_mut() {
+                if !in_group(item) {
+                    continue;
+                }
+                let shim = max_baseline - item.baseline_x.unwrap_or(0.0);
+                if end_side {
+                    item.baseline_shim_x_end = shim;
+                } else {
+                    item.baseline_shim_x = shim;
+                }
+            }
+        }
+    }
+}
+
+/// KaminIDE patch: одна сторона групп базовых линий рядов — первые (`last` =
+/// false) или последние (`last` = true) базовые.
+fn resolve_item_baseline_groups(
+    tree: &mut impl LayoutPartialTree,
+    axis: AbstractAxis,
+    other_axis_tracks: &[GridTrack],
+    items: &mut [GridItem],
+    inner_node_size: Size<Option<f32>>,
+    last: bool,
+) {
     let other_axis = axis;
-    items.sort_by_key(|item| item.placement(other_axis).start);
+    let wanted = if last { AlignSelf::LastBaseline } else { AlignSelf::Baseline };
+    // Ряд группы: начальный у первых базовых, конечный — у последних.
+    let group_of = |item: &GridItem| {
+        let span = item.placement(other_axis);
+        if last {
+            span.end
+        } else {
+            span.start
+        }
+    };
+    // Sort items by row start position so that we can iterate items in groups which are in the same row
+    items.sort_by_key(|item| group_of(item));
 
     // Iterate over grid rows
     let mut remaining_items = &mut items[0..];
     while !remaining_items.is_empty() {
         // Get the row index of the current row
-        let current_row = remaining_items[0].placement(other_axis).start;
+        let current_row = group_of(&remaining_items[0]);
 
         // Find the item index of the first item that is in a different row (or None if we've reached the end of the list)
-        let next_row_first_item =
-            remaining_items.iter().position(|item| item.placement(other_axis).start != current_row);
+        let next_row_first_item = remaining_items.iter().position(|item| group_of(item) != current_row);
 
         // Use this index to split the `remaining_items` slice in two slices:
         //    - A `row_items` slice containing the items (that start) in the current row
@@ -483,7 +602,7 @@ fn resolve_item_baselines(
         // Count how many items in *this row* are baseline aligned
         // If a row has one or zero items participating in baseline alignment then baseline alignment is a no-op
         // for those items and we skip further computations for that row
-        let row_baseline_item_count = row_items.iter().filter(|item| item.align_self == AlignSelf::Baseline).count();
+        let row_baseline_item_count = row_items.iter().filter(|item| item.align_self == wanted).count();
         if row_baseline_item_count <= 1 {
             continue;
         }
@@ -494,7 +613,7 @@ fn resolve_item_baselines(
         // сдвигались все элементы ряда, и `start`/`stretch`-соседи получали
         // лишнее верхнее поле.
         for item in row_items.iter_mut() {
-            if item.align_self != AlignSelf::Baseline {
+            if item.align_self != wanted {
                 continue;
             }
             // KaminIDE patch: мерить в ширине СВОИХ колонок (Blink решает
@@ -516,6 +635,20 @@ fn resolve_item_baselines(
             let baseline = measured_size_and_baselines.first_baselines.y;
             let height = measured_size_and_baselines.size.height;
 
+            // KaminIDE patch: у последних базовых — расстояние ОТ КОНЦА: от
+            // последней базовой до нижнего края margin-бокса; без своей —
+            // синтез у нижнего края рамки (css-align-3 §9.1; Blink
+            // logical_box_fragment.h `LastBaselineOrSynthesize`), то есть одно
+            // нижнее поле.
+            if last {
+                let margin_bottom =
+                    item.margin.bottom.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis));
+                item.baseline = Some(
+                    measured_size_and_baselines.last_or_first_y().map_or(0.0, |b| height - b) + margin_bottom,
+                );
+                continue;
+            }
+
             item.baseline = Some(
                 baseline.unwrap_or(height)
                     + item.margin.top.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis)),
@@ -525,18 +658,24 @@ fn resolve_item_baselines(
         // Compute the max baseline of all items in the row
         let row_max_baseline = row_items
             .iter()
-            .filter(|item| item.align_self == AlignSelf::Baseline)
+            .filter(|item| item.align_self == wanted)
             .map(|item| item.baseline.unwrap_or(0.0))
             .max_by(|a, b| a.total_cmp(b))
             .unwrap();
 
         // Compute the baseline shim for each item in the row
+        // KaminIDE patch: каждая сторона пишет только СВОЮ прокладку — иначе
+        // второй проход (последние базовые) обнулял бы первую.
         for item in row_items.iter_mut() {
-            item.baseline_shim = if item.align_self == AlignSelf::Baseline {
-                row_max_baseline - item.baseline.unwrap_or(0.0)
+            if item.align_self != wanted {
+                continue;
+            }
+            let shim = row_max_baseline - item.baseline.unwrap_or(0.0);
+            if last {
+                item.baseline_shim_end = shim;
             } else {
-                0.0
-            };
+                item.baseline_shim = shim;
+            }
         }
     }
 }

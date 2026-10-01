@@ -974,8 +974,16 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             }
         };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-        let (content_size_contribution, _, _) =
-            super::alignment::align_and_position_item(tree, child, order, grid_area, container_align, 0.0, 0);
+        let (content_size_contribution, _, _, _, _) = super::alignment::align_and_position_item(
+            tree,
+            child,
+            order,
+            grid_area,
+            container_align,
+            Rect::ZERO,
+            false,
+            0,
+        );
         #[cfg(feature = "content_size")]
         {
             item_content_size_contribution = item_content_size_contribution.f32_max(content_size_contribution);
@@ -1381,6 +1389,7 @@ fn layout_lanes_item(
         position,
         if rows { inset_v } else { inset_h },
         Line { start: gm_start, end: gm_end },
+        0.0,
         0.0,
     );
     let stack_inset = if rows { inset_h } else { inset_v };

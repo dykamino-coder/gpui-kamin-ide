@@ -213,6 +213,20 @@ pub fn fill(g: &Gradient) -> gpui::Background {
     base
 }
 
+/// `align-self` в раскладку. `last baseline` — отдельный вариант: группа
+/// последних базовых прижимается к концу оси (css-align-3 §9.3); прежде
+/// `last` сводился к первой базовой.
+pub fn self_align(a: Align, last: bool) -> gpui::AlignItems {
+    match a {
+        Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
+        Align::Start => gpui::AlignItems::FlexStart,
+        Align::End => gpui::AlignItems::FlexEnd,
+        Align::Baseline if last => gpui::AlignItems::LastBaseline,
+        Align::Baseline => gpui::AlignItems::Baseline,
+        Align::Stretch => gpui::AlignItems::Stretch,
+    }
+}
+
 pub fn apply(d: Div, c: &Computed) -> Div {
     let mut d = d;
     d = apply_layout(d, c);
@@ -538,7 +552,30 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // Блок в GPUI — дефолт; отдельного вызова не требует.
         Some(Display::Flex) | Some(Display::InlineFlex) => d = d.flex(),
         // Инлайновая коробка в строке не растягивается по ширине родителя.
-        Some(Display::InlineBlock) => d = d.flex_shrink_0(),
+        // Базовая `inline-block` — ПОСЛЕДНЕЙ строки (CSS 2.1 §10.8.1: «the
+        // baseline of its last line box in the normal flow»; css-inline-3
+        // `baseline-source: auto` → `last` у `inline-block`). При обрезке —
+        // нижний край margin-бокса: тогда флаг не ставится, базовую прячет
+        // путь прокрутки.
+        Some(Display::InlineBlock) => {
+            d = d.flex_shrink_0();
+            let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
+            // Элемент гибкого контейнера и сетки блокифицирован (css-display-3
+            // §2.7): его базовая — первая, как у блока.
+            // Руби и строчная коробка, сыгранная `inline-block`
+            // (`inline_display`), — не атомы: их базовая — базовая основы
+            // (★ ЗАМЕРЕНО: `initial-letter-block-position-raise-over/under-ruby`
+            // 0.24 → 1.25 / 0.25 → 0.60).
+            if visible(c.overflow_x)
+                && visible(c.overflow_y)
+                && !c.scroller
+                && !c.parent_flex_grid
+                && c.ruby_role.is_none()
+                && c.inline_display != Some(true)
+            {
+                d.style().baseline_from_last = Some(true);
+            }
+        }
         Some(Display::InlineGrid) => {
             d = d.flex_shrink_0();
             d = grid_style(d, c);
@@ -748,6 +785,13 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         Some(Align::Center) => d = d.items_center(),
         Some(Align::Start) => d = d.items_start(),
         Some(Align::End) => d = d.items_end(),
+        // `last baseline` — своя группа с прижимом к концу (css-align-3 §9.3).
+        // Не у лунок: их дорожки — гибкие ряды движка, и прижим к концу уводил
+        // лунки целиком (★ ЗАМЕРЕНО: `row-grid-lanes-item-baseline-001/003`
+        // 0.00 → 8.02/7.56, `column-fill-reverse-justify-items-002` 0.00 → 3.87).
+        Some(Align::Baseline) if c.align_items_last && c.display != Some(Display::GridLanes) && !c.parent_lanes => {
+            d.style().align_items = Some(gpui::AlignItems::LastBaseline);
+        }
         Some(Align::Baseline) => d = d.items_baseline(),
         // `anchor-center` у `align-items` спекой не предусмотрен — как не задано.
         Some(Align::Stretch) | Some(Align::AnchorCenter) | None => {}
@@ -772,13 +816,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // `align-self` — про САМ элемент, а не про его детей. Раньше оба свойства
     // писались в одно поле, и элемент выравнивал содержимое вместо себя.
     if let Some(a) = c.align_self {
-        d.style().align_self = Some(match a {
-            Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
-            Align::Start => gpui::AlignItems::FlexStart,
-            Align::End => gpui::AlignItems::FlexEnd,
-            Align::Baseline => gpui::AlignItems::Baseline,
-            Align::Stretch => gpui::AlignItems::Stretch,
-        });
+        d.style().align_self = Some(self_align(a, c.align_self_last));
     }
     // `flex-basis: auto` — это ОТСУТСТВИЕ основы, а не «во всю ширину»:
     // без отсева `flex: none` растягивал кнопку на всю строку.
@@ -833,14 +871,58 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // применение как items двигало содержимое вправо. У ЛУНОК инлайн-ось
     // живёт своим каналом (column-grid-lanes-item-baseline-002 полагается).
     let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    // Теперь фильтр уже: у ГОРИЗОНТАЛЬНОЙ сетки `baseline` доходит до
+    // раскладки — ортогональные (вертикальные) элементы образуют группы по
+    // оси x (css-align-3 §9.1), а параллельные его не видят (бит 8 ниже;
+    // `grid-justify-baseline-001`: одиночные группы `vertical-rl`/`-lr` берут
+    // запасное `safe self-start` — правый и левый край, а не растяжение).
     if let Some(a) = c
         .justify_items
-        .filter(|a| *a != Align::Baseline || !real_grid)
+        .filter(|a| *a != Align::Baseline || !real_grid || c.vertical != Some(true))
     {
         d.style().justify_items = Some(to_items(a));
     }
     if let Some(a) = c.justify_self {
         d.style().justify_self = Some(to_items(a));
+    }
+    // Оси ВЕРТИКАЛЬНОЙ сетки: дорожки уже переставлены (`grid_style`, `flip`),
+    // и раскладка под нами считает оси физическими. `align-*` в CSS — про
+    // БЛОЧНУЮ ось, а она здесь горизонтальна, то есть это `justify-*`
+    // раскладки, и наоборот (css-grid-2 §10.1: align — block axis, justify —
+    // inline axis). Прежде `align-items: baseline` вертикальной сетки шёл по
+    // строчной оси, где каждый элемент стоит в своём ряду один, и не делал
+    // ничего (`grid-self-baseline-vertical-lr/rl-*`).
+    if real_grid && c.vertical == Some(true) {
+        let s = d.style();
+        std::mem::swap(&mut s.align_items, &mut s.justify_items);
+    }
+    if c.parent_grid >= 2 {
+        let s = d.style();
+        std::mem::swap(&mut s.align_self, &mut s.justify_self);
+    }
+    // Биты базовой по оси x для элемента сетки (css-align-3 §9.1; Blink
+    // baseline_utils.h `DetermineBaselineWritingMode`/`DetermineBaselineGroup`):
+    // письмо базовой — своё у вертикального элемента, у горизонтального —
+    // письмо вертикальной сетки (у горизонтальной сетки — `vertical-lr`).
+    // Группа у правого края — когда это письмо `vertical-rl`. Синтез
+    // центральный, когда у сетки вертикальное письмо не `sideways` (Blink
+    // `parent_grid_font_baseline` = `GetFontBaseline()` сетки).
+    if c.parent_grid != 0 {
+        let item_vertical = c.vertical == Some(true);
+        let rl = if item_vertical { c.vertical_rl == Some(true) } else { c.parent_grid == 3 };
+        let mut bits = 0u8;
+        if rl {
+            bits |= 1;
+        }
+        if c.parent_grid >= 2 && !c.cb_sideways && c.text_sideways != Some(true) {
+            bits |= 2;
+        }
+        if item_vertical {
+            bits |= 4;
+        } else if c.parent_grid == 1 {
+            bits |= 8;
+        }
+        d.style().baseline_x_flags = Some(bits);
     }
     if let Some(r) = c.aspect_ratio
         && !ratio_as_auto_min(c)
@@ -1298,6 +1380,14 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         d = d.rounded(px(radius.max(own))).overflow_hidden();
     }
     // `contain: paint` — содержимое не выходит за коробку.
+    // `contain: layout` (и `strict`/`content`, которые раскрываются в него):
+    // коробка «is treated as having no baseline» (css-contain-2 §3.2 п.7).
+    // Родитель — строка, flex, grid — синтезирует её от края коробки. Прежде
+    // базовая линия текста внутри уходила наружу: `inline-block` с «a»
+    // вставал выше пустого соседа (`contain-layout-baseline-001..003`).
+    if c.contain_layout == Some(true) {
+        d.style().hides_baseline = Some(true);
+    }
     if c.contain_paint == Some(true) {
         d = d.overflow_hidden();
     }

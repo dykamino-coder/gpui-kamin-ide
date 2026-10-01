@@ -3979,6 +3979,12 @@ pub struct VerticalText {
     /// §computing-column-measures), и дорожку считает решётка, а не
     /// инлайн-размер всего стола. Ставится из `render.rs` (`col_min`).
     col_min: bool,
+    /// `vertical-lr` при повороте по часовой: строки поданы снизу вверх, и
+    /// первая строка — ЛЕВАЯ колонка (у `vertical-rl` — правая).
+    lr: bool,
+    /// Первая строка для базовой по оси x: шрифт, кегль, высота строки
+    /// (`None` — `normal`) и центральная ли доминантная базовая.
+    first_line: Option<(gpui::Font, Pixels, Option<Pixels>, bool)>,
 }
 
 impl VerticalText {
@@ -3991,7 +3997,21 @@ impl VerticalText {
             key: None,
             ccw: false,
             col_min: false,
+            lr: false,
+            first_line: None,
         }
+    }
+
+    /// Строки поданы снизу вверх (`vertical-lr`): первая — левая колонка.
+    pub fn lines_left_first(mut self, on: bool) -> Self {
+        self.lr = on;
+        self
+    }
+
+    /// Метрики первой строки — для базовой линии по оси x (см. `first_line`).
+    pub fn first_line(mut self, font: gpui::Font, size: Pixels, line_height: Option<Pixels>, central: bool) -> Self {
+        self.first_line = Some((font, size, line_height, central));
+        self
     }
 
     /// Поворот против часовой стрелки (`sideways-lr`).
@@ -4113,6 +4133,33 @@ impl Element for VerticalText {
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(
             gpui::AbsoluteLength::Pixels(claim),
         ));
+        // Базовая линия по оси x — первая строка повёрнутого абзаца
+        // (css-writing-modes-4 §4.2): центральная при `mixed`/`upright` —
+        // середина строки; алфавитная при `sideways` — на `halfleading +
+        // ascent` от over-края строки (у поворота по часовой over — справа,
+        // у `sideways-lr` — слева). Первая строка справа у `vertical-rl`, слева
+        // у `vertical-lr` и `sideways-lr`. Отсчёт у `vertical-rl` — от
+        // ПРАВОГО края: так он верен при любой итоговой ширине коробки.
+        // Нужна сетке (`align-self: baseline` вертикальной сетки,
+        // `justify-self: baseline` с ортогональными элементами).
+        if let Some((font, size, lh, central)) = &self.first_line {
+            let ts = window.text_system();
+            let id = ts.resolve_font(font);
+            let ascent = ts.ascent(id, *size);
+            let descent = ts.descent(id, *size).abs();
+            let lh = lh.unwrap_or(ascent + descent);
+            let b = (lh - (ascent + descent)) / 2.0 + ascent;
+            let (offset, from_right) = if *central {
+                (lh / 2.0, !self.ccw && !self.lr)
+            } else if self.ccw {
+                (b, false)
+            } else if self.lr {
+                (lh - b, false)
+            } else {
+                (b, true)
+            };
+            style.baseline_x_hint = Some((f32::from(offset), from_right));
+        }
         if let Some(cap) = self.claim_cap
             && self.natural.width >= cap
         {

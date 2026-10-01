@@ -419,8 +419,19 @@ where
                 inputs.sizing_mode
             );
 
+            // KaminIDE patch: `hides_baseline` — базовые линии узла гасятся
+            // ОДНОЙ точкой для всех алгоритмов (блок, flex, grid, лист):
+            // родитель увидит `None` и синтезирует их от края коробки
+            // (css-contain-2 §3.2 п.7; Blink `LayoutBox::ShouldApplyLayoutContainment`
+            // → `BoxFragmentBuilder` без базовых).
+            let hides_baseline = tree.taffy.nodes[node.into()].style.hides_baseline;
+            // KaminIDE patch: `inline-block` выравнивается по ПОСЛЕДНЕЙ строке.
+            let baseline_from_last = tree.taffy.nodes[node.into()].style.baseline_from_last;
+            // KaminIDE patch: собственная базовая по x (повёрнутый абзац движка —
+            // лист без замера, `interact::VerticalText`).
+            let baseline_x_hint = tree.taffy.nodes[node.into()].style.baseline_x_hint;
             // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
-            match (display_mode, has_children) {
+            let mut output = match (display_mode, has_children) {
                 (Display::None, _) => compute_hidden_layout(tree, node),
                 #[cfg(feature = "block_layout")]
                 (Display::Block, true) => compute_block_layout(tree, node, inputs),
@@ -439,7 +450,18 @@ where
                     // TODO: implement calc() in high-level API
                     compute_leaf_layout(inputs, style, |_, _| 0.0, measure_function)
                 }
+            };
+            if let (None, Some((offset, from_right))) = (output.first_baselines.x, baseline_x_hint) {
+                output.first_baselines.x = Some(if from_right { output.size.width - offset } else { offset });
             }
+            if baseline_from_last {
+                output.first_baselines.y = output.last_or_first_y();
+            }
+            if hides_baseline {
+                output.first_baselines = crate::geometry::Point::NONE;
+                output.last_baselines = crate::geometry::Point::NONE;
+            }
+            output
         })
     }
 }

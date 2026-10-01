@@ -3950,6 +3950,32 @@ impl Window {
             .request_measured_layout_with_baseline(style, rem_size, scale_factor, measure)
     }
 
+    /// KaminIDE patch: то же, но замер отдаёт ПЕРВУЮ и ПОСЛЕДНЮЮ базовые
+    /// линии содержимого (от верха коробки содержимого) — для `last baseline`
+    /// (css-align-3 §9.1).
+    pub fn request_measured_layout_with_baselines<
+        F: FnMut(
+                Size<Option<Pixels>>,
+                Size<AvailableSpace>,
+                &mut Window,
+                &mut App,
+            ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>)
+            + 'static,
+    >(
+        &mut self,
+        style: Style,
+        measure: F,
+    ) -> LayoutId {
+        self.invalidator.debug_assert_prepaint();
+
+        let rem_size = self.rem_size();
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_mut()
+            .unwrap()
+            .request_measured_layout_with_baselines(style, rem_size, scale_factor, measure)
+    }
+
     /// Compute the layout for the given id within the given available space.
     /// This method is called for its side effect, typically by the framework prior to painting.
     /// After calling it, you can request the bounds of the given layout node id or any descendant.

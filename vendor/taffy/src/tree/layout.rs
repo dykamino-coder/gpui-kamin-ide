@@ -166,6 +166,11 @@ pub struct LayoutOutput {
     pub content_size: Size<f32>,
     /// The first baseline of the node in each dimension, if any
     pub first_baselines: Point<Option<f32>>,
+    /// KaminIDE patch: ПОСЛЕДНЯЯ базовая линия по каждой оси (css-align-3
+    /// §9.1 «last baseline set»; Blink `PhysicalBoxFragment::LastBaseline`).
+    /// `None` — узел её не считал; потребитель берёт первую (у однострочного
+    /// содержимого они совпадают), см. `last_or_first`.
+    pub last_baselines: Point<Option<f32>>,
     /// Top margin that can be collapsed with. This is used for CSS block layout and can be set to
     /// `CollapsibleMarginSet::ZERO` for other layout modes that don't support margin collapsing
     pub top_margin: CollapsibleMarginSet,
@@ -187,11 +192,15 @@ pub struct MeasureOutput {
     pub size: Size<f32>,
     /// Первая базовая линия по вертикали, от ВЕРХА коробки содержимого.
     pub baseline: Option<f32>,
+    /// KaminIDE patch: ПОСЛЕДНЯЯ базовая линия по вертикали (последняя строка
+    /// абзаца), от ВЕРХА коробки содержимого — для `last baseline`
+    /// (css-align-3 §9.1). `None` — как первая.
+    pub last_baseline: Option<f32>,
 }
 
 impl From<Size<f32>> for MeasureOutput {
     fn from(size: Size<f32>) -> Self {
-        Self { size, baseline: None }
+        Self { size, baseline: None, last_baseline: None }
     }
 }
 
@@ -202,6 +211,7 @@ impl LayoutOutput {
         #[cfg(feature = "content_size")]
         content_size: Size::ZERO,
         first_baselines: Point::NONE,
+        last_baselines: Point::NONE,
         top_margin: CollapsibleMarginSet::ZERO,
         bottom_margin: CollapsibleMarginSet::ZERO,
         margins_can_collapse_through: false,
@@ -216,15 +226,34 @@ impl LayoutOutput {
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))] content_size: Size<f32>,
         first_baselines: Point<Option<f32>>,
     ) -> Self {
+        Self::from_sizes_and_all_baselines(size, content_size, first_baselines, Point::NONE)
+    }
+
+    /// KaminIDE patch: то же, но с ПОСЛЕДНИМИ базовыми линиями.
+    pub fn from_sizes_and_all_baselines(
+        size: Size<f32>,
+        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))] content_size: Size<f32>,
+        first_baselines: Point<Option<f32>>,
+        last_baselines: Point<Option<f32>>,
+    ) -> Self {
         Self {
             size,
             #[cfg(feature = "content_size")]
             content_size,
             first_baselines,
+            last_baselines,
             top_margin: CollapsibleMarginSet::ZERO,
             bottom_margin: CollapsibleMarginSet::ZERO,
             margins_can_collapse_through: false,
         }
+    }
+
+    /// KaminIDE patch: последняя базовая линия по вертикали, а без неё —
+    /// первая (узел последней не считал: однострочное содержимое, замер без
+    /// неё). Blink `LogicalBoxFragment::LastBaseline` тоже падает к первой
+    /// только через синтез, но у нас «не считал» значит «одна строка».
+    pub fn last_or_first_y(&self) -> Option<f32> {
+        self.last_baselines.y.or(self.first_baselines.y)
     }
 
     /// Construct a `LayoutOutput` from just the container and content sizes
