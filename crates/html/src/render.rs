@@ -708,7 +708,9 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                 .into_any_element(),
             );
         }
-        if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
+        // При обрезке переполнения кольцо уходит НАД буфер группы
+        // (`grouped` → `Grouped::over`): здесь оно легло бы под детей.
+        if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 && !c.border_shape_clips() {
             out.push(
                 gpui::canvas(
                     |_, _, _| {},
@@ -996,7 +998,9 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
 
     // `outline`: рамка ВНЕ коробки и без влияния на раскладку — отдельный
     // абсолютный слой с отрицательным отступом ровно на её толщину.
-    if let Some(o) = c.outline.clone() {
+    // У `border-shape` сплошной контур повторяет фигуру слоем НАД группой
+    // (`grouped` → `Grouped::over`, `Computed::shaped_outline`).
+    if let Some(o) = c.outline.clone().filter(|_| c.shaped_outline().is_none()) {
         // Шрифтовые единицы ширины и сдвига решаются своим кеглем.
         let em = match c.font_size {
             Some(Len::Px(v)) => v,
@@ -1062,12 +1066,24 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             let corner = crate::apply::radius_px(c, c.radius.tl)
                 .filter(|v| *v > 0.0)
                 .map_or(0.0, |v| v + off + w);
+            // Абсолютный ребёнок отсчитывается от padding-box (CSS 2.1
+            // §10.1), а контур лежит снаружи BORDER-box (css-ui-4 §outline:
+            // «outside the border edge»): края сдвигаются ещё и на рамку.
+            // Прежде при `border: 10px` контур ложился на 10 px внутрь — поверх
+            // рамки (border-shape-outline-with-border-ref: красный контур между
+            // зелёной рамкой и фоном).
+            let bw = c.borders();
+            let bpx = |l: Option<Len>| match l {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) => k * em,
+                _ => 0.0,
+            };
             let mut ring = div()
                 .absolute()
-                .top(px(-(off + w)))
-                .left(px(-(off + w)))
-                .right(px(-(off + w)))
-                .bottom(px(-(off + w)))
+                .top(px(-(off + w + bpx(bw.top))))
+                .left(px(-(off + w + bpx(bw.left))))
+                .right(px(-(off + w + bpx(bw.right))))
+                .bottom(px(-(off + w + bpx(bw.bottom))))
                 .border(px(w))
                 .border_color(colour.to_hsla())
                 .rounded(px(corner));
@@ -16327,9 +16343,15 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         // Рамка, несущая заливку `border-area`, видима — маска берёт внешнюю
         // фигуру, как у цветной рамки.
         let colour = crate::background::border_paint(c, colour);
+        // Обрезка переполнения — ВНУТРЕННИМ контуром (css-borders-4
+        // §border-shape-overflow-interaction; Blink `InnerPath`): у двух фигур
+        // внутренняя, у одной — внешняя минус обводка (отрицательная обводка
+        // в записи, `background::border_shape_mask_svg`). Кольцо при этом
+        // ложится НАД буфером (`Grouped::over`, ниже).
         let (shape, kind, stroke) = match &bs.inner {
-            Some((inner, k)) if colour.a <= 0.0 => (inner.as_str(), *k, 0.0),
+            Some((inner, k)) if colour.a <= 0.0 || c.border_shape_clips() => (inner.as_str(), *k, 0.0),
             Some(_) => (bs.outer.as_str(), bs.outer_box, 0.0),
+            None if c.border_shape_clips() => (bs.outer.as_str(), bs.outer_box, -stroke),
             None => (bs.outer.as_str(), bs.outer_box, stroke),
         };
         let [ot, or_, ob, ol] = c.geometry_outsets(kind);
@@ -16468,6 +16490,67 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
                 stroke,
                 &shadows,
                 false,
+                bw,
+                bh,
+                sl,
+                st,
+                aw,
+                ah,
+            )
+        }));
+    }
+    // Кольцо рамки `border-shape` при обрезке переполнения — НАД буфером
+    // группы: содержимое и фон режутся внутренним контуром (маска выше), а
+    // рамка лежит снаружи него и поверх обрезанных детей, как в Blink
+    // (`PaintBorderShape` после детей не нужен — дети до внутреннего контура
+    // не доходят). В декорациях кольцо тогда не ставится.
+    if let Some(bs) = c.border_shape.clone()
+        && c.border_shape_clips()
+    {
+        let (stroke, colour) = c.border_shape_stroke();
+        let colour = crate::background::border_paint(c, colour);
+        let outer_out = c.geometry_outsets(bs.outer_box);
+        let inner = bs
+            .inner
+            .clone()
+            .map(|(s, k)| (s, c.geometry_outsets(k)));
+        if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
+            wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
+                crate::background::border_shape_ring_svg(
+                    (bs.outer.as_str(), outer_out),
+                    inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
+                    stroke,
+                    colour,
+                    bw,
+                    bh,
+                    sl,
+                    st,
+                    aw,
+                    ah,
+                )
+            }));
+        }
+    }
+    // Контур `outline` повторяет фигуру (Blink `BorderShapePainter::
+    // PaintOutline`): полоса по внешнему контуру, над группой — контур лежит
+    // снаружи фигуры и красится последним (CSS 2.1 прил. E, шаг 10), а маска
+    // группы его бы срезала. Квад контура в декорациях не ставится.
+    if let Some(bs) = c.border_shape.clone()
+        && let Some((w, off, colour)) = c.shaped_outline()
+        && colour.a > 0.0
+    {
+        let (stroke, _) = c.border_shape_stroke();
+        let outer_out = c.geometry_outsets(bs.outer_box);
+        let single = bs.inner.is_none();
+        wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
+            crate::background::border_shape_outline_svg(
+                (bs.outer.as_str(), outer_out),
+                single,
+                stroke,
+                off,
+                w,
+                false,
+                colour,
                 bw,
                 bh,
                 sl,

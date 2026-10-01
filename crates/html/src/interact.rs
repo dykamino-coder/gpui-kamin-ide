@@ -429,12 +429,26 @@ pub struct Grouped {
     /// Колбэк строит SVG-разметку по размеру коробки (bw, bh), выносу
     /// (l, t) и холсту (aw, ah) — размеры известны только на отрисовке.
     pub under: Option<Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<String>>>,
+    /// Накладка НАД буфером группы, вне его маски: кольцо рамки
+    /// `border-shape` у коробки с обрезкой переполнения — содержимое режется
+    /// ВНУТРЕННИМ контуром (css-borders-4 §border-shape-overflow-interaction),
+    /// а рамка лежит снаружи него и поверх обрезанных детей. Колбэк — как у
+    /// `under`.
+    pub over: Vec<Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<String>>>,
+    /// Множитель интринзика плитки маски: у SVG-ребёнка маска живёт в ЕГО
+    /// пользовательских единицах (css-masking-1 §7.4 `auto` — размер
+    /// картинки в системе координат элемента), и при `viewBox` 50×50
+    /// рисунок-маска кроет 100×100 CSS-точек (mask-origin-3, mask-clip-2).
+    /// Задаёт `svg::masked_layers` через `Computed::mask_user_scale`.
+    pub mask_scale: f32,
 }
 
 impl Grouped {
     pub fn new(child: AnyElement) -> Self {
         Grouped {
             under: None,
+            over: Vec::new(),
+            mask_scale: 1.0,
             child: Some(child),
             blur: 0.0,
             opacity: 1.0,
@@ -1174,18 +1188,17 @@ impl Element for Grouped {
             });
         // Подложка (наружные тени `border-shape`) — в текущий контекст ДО
         // композита группы: под буфером и вне его маски, на области выноса.
-        if let Some(under) = self.under.as_ref() {
-            let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-            let (aw, ah) = (bw + sl + sr, bh + st + sb);
-            if let Some(markup) = under(bw, bh, sl, st, aw, ah)
-                && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
-            {
-                let at = Bounds {
-                    origin: gpui::point(bounds.origin.x - px(sl), bounds.origin.y - px(st)),
-                    size: gpui::size(px(aw), px(ah)),
-                };
-                let _ = window.paint_image(at, gpui::Corners::default(), img, 0, false);
-            }
+        let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+        let (aw, ah) = (bw + sl + sr, bh + st + sb);
+        let layer_at = Bounds {
+            origin: gpui::point(bounds.origin.x - px(sl), bounds.origin.y - px(st)),
+            size: gpui::size(px(aw), px(ah)),
+        };
+        if let Some(under) = self.under.as_ref()
+            && let Some(markup) = under(bw, bh, sl, st, aw, ah)
+            && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
+        {
+            let _ = window.paint_image(layer_at, gpui::Corners::default(), img, 0, false);
         }
         let child = self.child.as_mut().unwrap();
         window.paint_group(
@@ -1199,6 +1212,15 @@ impl Element for Grouped {
             mask_clip,
             |window| child.paint(window, cx),
         );
+        // Накладка (кольцо `border-shape` над обрезанным содержимым) — после
+        // композита, в тот же контекст.
+        for over in &self.over {
+            if let Some(markup) = over(bw, bh, sl, st, aw, ah)
+                && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
+            {
+                let _ = window.paint_image(layer_at, gpui::Corners::default(), img, 0, false);
+            }
+        }
     }
 }
 

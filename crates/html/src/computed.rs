@@ -9300,7 +9300,69 @@ impl Computed {
                 *e = e.max(tail);
             }
         }
+        // Контур `outline` повторяет фигуру (слой над группой,
+        // `background::border_shape_outline_svg`) — вынос на сдвиг и толщину.
+        if let Some((w, off, _)) = self.shaped_outline() {
+            let reach = (off + w).max(0.0) + 1.0;
+            for e in &mut ext {
+                *e = e.max(reach);
+            }
+        }
         ext
+    }
+
+    /// Контур `outline` коробки с `border-shape`, который рисуется по
+    /// фигуре: (толщина, сдвиг, цвет). Только сплошной/`auto`/`double`
+    /// (css-ui-4; Blink `BorderShapePainter::PaintOutline` остальные стили
+    /// отдаёт обычному контуру) и видимый. Толщина без значения — `medium`
+    /// (3 px), цвет без своего — `accent-color` при `auto`, иначе цвет текста,
+    /// иначе чёрный (как у `render::decorations`); `outline-offset: inset` —
+    /// минус толщина. Шрифтовые единицы — своим кеглем.
+    pub fn shaped_outline(&self) -> Option<(f32, f32, Color)> {
+        let o = self.outline.as_ref()?;
+        self.border_shape.as_ref()?;
+        if !matches!(o.style, Some(1) | Some(2)) {
+            return None;
+        }
+        let em = match self.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let px_of = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            Some(Len::Em(k)) => k * em,
+            _ => 0.0,
+        };
+        let w = match o.width {
+            None => 3.0,
+            other => px_of(other),
+        };
+        if w <= 0.0 {
+            return None;
+        }
+        let off = if o.inset { -w } else { px_of(o.offset) };
+        let colour = o
+            .color
+            .or(if o.style == Some(2) { self.accent_color } else { None })
+            .or(self.color)
+            .unwrap_or(Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            });
+        Some((w, off, colour))
+    }
+
+    /// Переполнение коробки с `border-shape` режется внутренним контуром
+    /// фигуры (css-borders-4 §border-shape-overflow-interaction: «The inner
+    /// border-shape clips the overflow content of the element»): маска
+    /// группы берёт внутренний контур, а кольцо рамки ложится НАД буфером
+    /// (`Grouped::over`). `scroll`/`auto` идут лентой прокрутки мимо группы.
+    pub fn border_shape_clips(&self) -> bool {
+        self.border_shape.is_some()
+            && (matches!(self.overflow_x, Some(Overflow::Hidden) | Some(Overflow::Clip))
+                || matches!(self.overflow_y, Some(Overflow::Hidden) | Some(Overflow::Clip)))
     }
 
     /// Тени `box-shadow` с решённым цветом: без своего цвета — цвет текста
