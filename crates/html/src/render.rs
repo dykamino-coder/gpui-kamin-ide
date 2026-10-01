@@ -18868,7 +18868,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         // самой длинной строке группы (`runs_guess`). css-break/
                         // flexbox 319: +0/−2 — `multi-line-row-flex-fragmentation-
                         // 037/038` 0.07 → «красное видно»; балансные 033-035, 048
-                        // не взяты.
+                        // не взяты. Только колонки (без рядов) при балансе — 0/0.
+                        // Балансу нужен свой подбор высоты по строкам, а не оценка.
                         let (kids, kid_par, kid_parent, kid_starts) = if fixed.is_some() && rows.is_none() {
                             let col_w = match merged.width {
                                 Some(Len::Px(w)) if merged.border_box != Some(true) && cols > 0 => {
