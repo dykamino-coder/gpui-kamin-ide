@@ -1298,8 +1298,34 @@ pub fn render_paged(
         // Флоат: не влезший MARGIN box уходит на следующую страницу целиком
         // (`float-with-large-margin-bottom-cross-page-002`: эталон —
         // `break-before: page`), нижнее поле — часть его меры.
+        if std::env::var("HTML_VIEWPORT").is_ok()
+            && let Node::Element(e) = n
+        {
+            eprintln!(
+                "PAGEKID tag={} inline={} float={:?} oof={} shape={:?}",
+                e.tag,
+                e.inline,
+                e.style.float,
+                out_of_flow(&e.style),
+                shape_full(e, 4, shape_cx).map(|s| (s.0, s.3.len(), s.5.len()))
+            );
+        }
+        // Флоат корня — ребёнок стопки СО СВОЕЙ мерой: css-break-4 §3.1
+        // «User agents should also apply these properties to floated boxes
+        // whose containing block is in the normal flow of the root fragmented
+        // element». Гейт `out_of_flow` отнимал у него меру вместе с
+        // абсолютами: таблица `float: left; break-inside: avoid` выше листа
+        // резалась срезом по краю сквозь абзац вместо точки класса A между
+        // абзацами ячейки (`float-page-break-inside-avoid-1-print` против
+        // эталона с обычной таблицей), а ветка `h + mb` ниже была мёртвой.
+        let positioned = |e: &Element| {
+            matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            )
+        };
         let shape = match n {
-            Node::Element(e) if !e.inline && !out_of_flow(&e.style) => {
+            Node::Element(e) if !e.inline && !positioned(e) => {
                 shape_full(e, 4, shape_cx).map(|(h, _mt, mb, mut cuts, mut forced, mut solid)| {
                     if pad_top > 0.0 {
                         for c in cuts.iter_mut() {
@@ -4242,8 +4268,17 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // `monolithic-overflow-003` сегодня 2.08: мера сделала бы ЕЙ ХУЖЕ.
     // Единственный диапазон, которого гейт не считает, — верхняя рамка
     // (0, top): её положили ДО цикла рядов.
+    // Страницам этот отказ не нужен: у стопки листов переполнение монолитом
+    // своё (`ColumnStack::fill_at`, ветка `paged && placed && cur > target`,
+    // crbug 1402540), а «монолитом» здесь оказывается уже верхняя рамка любой
+    // ячейки (`shape_full` кладёт её сплошным диапазоном — Blink
+    // `FinishFragmentation`: «Avoid breaking inside block-start border»).
+    // Отказ уводил таблицу с `block-size` в меру стопки блоков по тегу, где
+    // высота считается content-box: `table-fragmentation-001b-print` —
+    // 336 + отбивка + рамка = 432 вместо 336 по border-box (UA-лист
+    // css-tables-3 `table { box-sizing: border-box }`), третий пустой лист.
     let mono_inside = solid.iter().any(|&(a, b)| a > 0.01 || b > top + 0.01);
-    if mono_inside && (spec_h.is_some() || spec_min_h.is_some()) {
+    if mono_inside && !cx.paged && (spec_h.is_some() || spec_min_h.is_some()) {
         return None;
     }
     // Заданная высота — ПОЛ коробки рядов. `box-sizing` — та же мерка, что в
