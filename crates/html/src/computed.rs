@@ -2483,6 +2483,22 @@ pub struct Computed {
     pub mask_luminance: Option<bool>,
     /// `mask-origin`: коробка укладки плитки (0 border, 2 padding, 3 content).
     pub mask_origin: Option<u8>,
+    /// Готовые коробки маски в CSS-точках (укладка t/r/b/l от коробки
+    /// слоя внутрь; окраска — то же либо None = без обрезки) — для SVG-детей,
+    /// у которых fill-/stroke-/view-box считает `svg::masked_layers`, а не
+    /// рамка и отбивка (`render::grouped`).
+    pub mask_box_override: Option<([f32; 4], Option<[f32; 4]>)>,
+    /// Блок, вынесенный расщеплением строчного хозяина (block-in-inline,
+    /// `render::blocks`): в дереве отрисовки он брат хозяина, а по DOM — его
+    /// ребёнок. Объёмный контекст и перспектива деда на него не действуют:
+    /// плоский строчный хозяин — лист контекста, поддерево сплющивается в его
+    /// плоскость (css-transforms-2 §3d-rendering-context; §perspective — только
+    /// прямые дети). Ставится при выносе, читает `render::transformed`.
+    pub hoisted_block: bool,
+    /// Пользовательская единица SVG-ребёнка в CSS-точках (масштаб `viewBox`
+    /// или `zoom`); 0 — не задано (= 1). Интринзик плитки маски у такого
+    /// ребёнка считается в его единицах (`interact::Grouped::mask_scale`).
+    pub mask_user_scale: f32,
     /// `mask-clip`: коробка окраски маски; вне её элемент скрыт. 255 — no-clip.
     pub mask_clip: Option<u8>,
     /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
@@ -8675,10 +8691,17 @@ impl Computed {
                         .collect(),
                 );
             }
+            // SVG-коробки (css-masking-1 §7.10/7.11, `<geometry-box>`):
+            // у элемента с CSS-коробкой fill-box = content-box, stroke-box и
+            // view-box = border-box; у SVG-ребёнка их считает
+            // `svg::masked_layers` (mask-clip-2, mask-origin-3).
             "mask-origin" | "-webkit-mask-origin" => {
                 self.mask_origin = match v.trim() {
                     "padding-box" => Some(2),
                     "content-box" => Some(3),
+                    "fill-box" => Some(4),
+                    "stroke-box" => Some(5),
+                    "view-box" => Some(6),
                     _ => Some(0),
                 }
             }
@@ -8686,6 +8709,9 @@ impl Computed {
                 self.mask_clip = match v.trim() {
                     "padding-box" => Some(2),
                     "content-box" => Some(3),
+                    "fill-box" => Some(4),
+                    "stroke-box" => Some(5),
+                    "view-box" => Some(6),
                     "no-clip" => Some(255),
                     _ => Some(0),
                 }
@@ -9292,7 +9318,111 @@ impl Computed {
         } else {
             0.0
         };
-        out.map(|o| o.max(0.0) + stroke / 2.0 + spike)
+        let mut ext = out.map(|o| o.max(0.0) + stroke / 2.0 + spike);
+        // Тени повторяют фигуру (css-borders-4 §border-shape-shadow-interaction)
+        // и рисуются растром на той же области (`background::
+        // border_shape_shadow_svg`): наружная уходит за border-box на разлёт,
+        // смещение и хвост размытия (3σ = 1.5·blur); у внутренней хвост
+        // размытия тоже нужен — область фильтра обрезает бросающий
+        // прямоугольник, и без запаса край холста просвечивал бы.
+        for sh in &self.shadows {
+            let tail = sh.spread.max(0.0) + sh.blur.max(0.0) * 1.5 + 1.0;
+            ext[0] = ext[0].max(tail - sh.y);
+            ext[1] = ext[1].max(tail + sh.x);
+            ext[2] = ext[2].max(tail + sh.y);
+            ext[3] = ext[3].max(tail - sh.x);
+        }
+        for sh in &self.inset_shadows {
+            let tail = sh.blur.max(0.0) * 1.5 + 1.0;
+            for e in &mut ext {
+                *e = e.max(tail);
+            }
+        }
+        // Контур `outline` повторяет фигуру (слой над группой,
+        // `background::border_shape_outline_svg`) — вынос на сдвиг и толщину.
+        if let Some((w, off, _)) = self.shaped_outline() {
+            let reach = (off + w).max(0.0) + 1.0;
+            for e in &mut ext {
+                *e = e.max(reach);
+            }
+        }
+        ext
+    }
+
+    /// Контур `outline` коробки с `border-shape`, который рисуется по
+    /// фигуре: (толщина, сдвиг, цвет). Только сплошной/`auto`/`double`
+    /// (css-ui-4; Blink `BorderShapePainter::PaintOutline` остальные стили
+    /// отдаёт обычному контуру) и видимый. Толщина без значения — `medium`
+    /// (3 px), цвет без своего — `accent-color` при `auto`, иначе цвет текста,
+    /// иначе чёрный (как у `render::decorations`); `outline-offset: inset` —
+    /// минус толщина. Шрифтовые единицы — своим кеглем.
+    pub fn shaped_outline(&self) -> Option<(f32, f32, Color)> {
+        let o = self.outline.as_ref()?;
+        self.border_shape.as_ref()?;
+        if !matches!(o.style, Some(1) | Some(2)) {
+            return None;
+        }
+        let em = match self.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let px_of = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            Some(Len::Em(k)) => k * em,
+            _ => 0.0,
+        };
+        let w = match o.width {
+            None => 3.0,
+            other => px_of(other),
+        };
+        if w <= 0.0 {
+            return None;
+        }
+        let off = if o.inset { -w } else { px_of(o.offset) };
+        let colour = o
+            .color
+            .or(if o.style == Some(2) { self.accent_color } else { None })
+            .or(self.color)
+            .unwrap_or(Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            });
+        Some((w, off, colour))
+    }
+
+    /// Переполнение коробки с `border-shape` режется внутренним контуром
+    /// фигуры (css-borders-4 §border-shape-overflow-interaction: «The inner
+    /// border-shape clips the overflow content of the element»): маска
+    /// группы берёт внутренний контур, а кольцо рамки ложится НАД буфером
+    /// (`Grouped::over`). `scroll`/`auto` идут лентой прокрутки мимо группы.
+    pub fn border_shape_clips(&self) -> bool {
+        self.border_shape.is_some()
+            && (matches!(self.overflow_x, Some(Overflow::Hidden) | Some(Overflow::Clip))
+                || matches!(self.overflow_y, Some(Overflow::Hidden) | Some(Overflow::Clip)))
+    }
+
+    /// Тени `box-shadow` с решённым цветом: без своего цвета — цвет текста
+    /// (css-backgrounds-3 §box-shadow, `currentColor`; метка — отрицательная
+    /// альфа, как у `apply::shadow_colour`). `inset` — внутренние.
+    pub fn resolved_shadows(&self, inset: bool) -> Vec<(Shadow, Color)> {
+        let list = if inset { &self.inset_shadows } else { &self.shadows };
+        list.iter()
+            .map(|sh| {
+                let colour = if sh.color.a < 0.0 {
+                    self.color.unwrap_or(Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    })
+                } else {
+                    sh.color
+                };
+                (sh.clone(), colour)
+            })
+            .collect()
     }
 
     /// Есть ли угол с формой, отличной от круглой, при ненулевом радиусе
@@ -10457,6 +10587,18 @@ fn parse_border_shape(v: &str) -> Option<BorderShape> {
         }
         let close = close?;
         let shape = rest[..=close].trim().to_string();
+        // Прямоугольные фигуры пишутся через пробел (css-shapes-1 §basic-shape:
+        // `rect( [ <length-percentage> | auto ]{4} … )`, так же `inset()` и
+        // `xywh()`); запятая делает всё объявление недействительным, и
+        // `border-shape` остаётся `none` — Blink `ConsumeBasicShapeRect`
+        // (`css_parsing_utils.cc:651-668`) берёт четыре длины подряд без
+        // запятой. Прежде `rect(0, 0, 100%, 100%)` разбирался в пустой
+        // прямоугольник, и маска фигуры прятала коробку целиком
+        // (border-shape-inset-shadow-blur, -negative-spread: пустая страница).
+        let head = shape[..open].trim_start().to_ascii_lowercase();
+        if matches!(head.as_str(), "rect" | "inset" | "xywh") && shape.contains(',') {
+            return None;
+        }
         rest = rest[close + 1..].trim_start();
         let word_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
         let bx = geometry_box_kind(&rest[..word_end]);

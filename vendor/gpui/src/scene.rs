@@ -700,6 +700,13 @@ pub(crate) struct Shadow {
     /// поэтому это флаг, а не новый примитив. Поле идёт последним и обязано
     /// совпадать с концом `struct Shadow` в шейдере.
     pub inset: u32,
+    /// KaminIDE patch: коробка самого элемента (без смещения и разлёта).
+    /// Наружная тень не рисуется ПОД коробкой (css-backgrounds-3
+    /// §box-shadow: «the shadow is not painted inside the border box»;
+    /// Blink `ClipToBorderEdge`) — прежде она просвечивала сквозь
+    /// прозрачный фон сплошным пятном. Поле идёт за `inset`, раскладка
+    /// обязана совпадать с шейдером.
+    pub box_bounds: Bounds<ScaledPixels>,
 }
 
 impl From<Shadow> for Primitive {

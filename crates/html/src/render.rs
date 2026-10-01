@@ -308,7 +308,9 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     for sh in &c.shadows {
         // Тень без цвета помечена отрицательной альфой и берёт `color`
         // (css-backgrounds-3 §7.1) — как в `apply::shadow_colour`.
-        if sh.blur > 0.0 || sh.color.a == 0.0 {
+        // У `border-shape` тени повторяют фигуру — растром под группой
+        // (`grouped`, `Grouped::under`), квад здесь лёг бы прямоугольником.
+        if sh.blur > 0.0 || sh.color.a == 0.0 || c.border_shape.is_some() {
             continue;
         }
         let colour = if sh.color.a < 0.0 {
@@ -431,7 +433,9 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // есть фигура. Слой — после плиток фона и до рамки: «inner shadows …
     // immediately above the background … (below the borders and border image)».
     for sh in &c.inset_shadows {
-        if sh.blur > 0.0 || sh.color.a == 0.0 {
+        // У `border-shape` внутренняя тень — растр по внутреннему контуру
+        // (слой фигуры ниже), кольцо здесь было бы прямоугольным.
+        if sh.blur > 0.0 || sh.color.a == 0.0 || c.border_shape.is_some() {
             continue;
         }
         let colour = if sh.color.a < 0.0 {
@@ -661,7 +665,52 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         };
         let w = c.borders();
         let [t, r, b, l] = [side_px(w.top), side_px(w.right), side_px(w.bottom), side_px(w.left)];
-        if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
+        // Внутренняя тень по внутреннему контуру фигуры (css-borders-4
+        // §border-shape-shadow-interaction: «cast as if everything outside
+        // the shape defined by the inner path were opaque»; Blink
+        // `PaintInsetBoxShadowForBorderShape`) — растром на той же области,
+        // что кольцо, ПОД кольцом и над фоном (css-backgrounds-3 §box-shadow:
+        // «inner shadows … immediately above the background»).
+        let inset = c.resolved_shadows(true);
+        if inset.iter().any(|(_, k)| k.a > 0.0) {
+            let (bs, outer_out, inner) = (bs.clone(), outer_out, inner.clone());
+            out.push(
+                gpui::canvas(
+                    |_, _, _| {},
+                    move |bounds, _, window, _| {
+                        let (cw, ch) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                        let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
+                        let markup = crate::background::border_shape_shadow_svg(
+                            (bs.outer.as_str(), outer_out),
+                            inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
+                            stroke,
+                            &inset,
+                            true,
+                            bw,
+                            bh,
+                            ext[3],
+                            ext[0],
+                            cw,
+                            ch,
+                        );
+                        if let Some(markup) = markup
+                            && let Some(img) = crate::svg::rasterize(&markup, cw, ch)
+                        {
+                            let _ = window.paint_image(bounds, gpui::Corners::default(), img, 0, false);
+                        }
+                    },
+                )
+                .absolute()
+                .top(px(-(t + ext[0])))
+                .left(px(-(l + ext[3])))
+                .right(px(-(r + ext[1])))
+                .bottom(px(-(b + ext[2])))
+                .into_any_element(),
+            );
+        }
+        // При обрезке переполнения кольцо уходит НАД буфер группы
+        // (`grouped` → `Grouped::over`): здесь оно легло бы под детей.
+        if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 && !c.border_shape_clips() {
             out.push(
                 gpui::canvas(
                     |_, _, _| {},
@@ -949,7 +998,9 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
 
     // `outline`: рамка ВНЕ коробки и без влияния на раскладку — отдельный
     // абсолютный слой с отрицательным отступом ровно на её толщину.
-    if let Some(o) = c.outline.clone() {
+    // У `border-shape` сплошной контур повторяет фигуру слоем НАД группой
+    // (`grouped` → `Grouped::over`, `Computed::shaped_outline`).
+    if let Some(o) = c.outline.clone().filter(|_| c.shaped_outline().is_none()) {
         // Шрифтовые единицы ширины и сдвига решаются своим кеглем.
         let em = match c.font_size {
             Some(Len::Px(v)) => v,
@@ -1015,12 +1066,24 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             let corner = crate::apply::radius_px(c, c.radius.tl)
                 .filter(|v| *v > 0.0)
                 .map_or(0.0, |v| v + off + w);
+            // Абсолютный ребёнок отсчитывается от padding-box (CSS 2.1
+            // §10.1), а контур лежит снаружи BORDER-box (css-ui-4 §outline:
+            // «outside the border edge»): края сдвигаются ещё и на рамку.
+            // Прежде при `border: 10px` контур ложился на 10 px внутрь — поверх
+            // рамки (border-shape-outline-with-border-ref: красный контур между
+            // зелёной рамкой и фоном).
+            let bw = c.borders();
+            let bpx = |l: Option<Len>| match l {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) => k * em,
+                _ => 0.0,
+            };
             let mut ring = div()
                 .absolute()
-                .top(px(-(off + w)))
-                .left(px(-(off + w)))
-                .right(px(-(off + w)))
-                .bottom(px(-(off + w)))
+                .top(px(-(off + w + bpx(bw.top))))
+                .left(px(-(off + w + bpx(bw.left))))
+                .right(px(-(off + w + bpx(bw.right))))
+                .bottom(px(-(off + w + bpx(bw.bottom))))
                 .border(px(w))
                 .border_color(colour.to_hsla())
                 .rounded(px(corner));
@@ -9058,6 +9121,9 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
                     Node::Element(c) => c.clone(),
                     Node::Text(_) => unreachable!("блоком бывает только элемент"),
                 };
+                // Метка выноса: объёмный контекст и перспектива деда на блок
+                // не действуют (`Computed::hoisted_block`, `transformed`).
+                block.style.hoisted_block = true;
                 // Сам блок ПОЗИЦИОНИРОВАН: его собственные края нельзя ни
                 // заменить, ни сложить с чужими (у хозяина они бывают в долях,
                 // у блока — в точках). Сдвиг хозяина накладывается ОБЁРТКОЙ:
@@ -15477,7 +15543,13 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 // картинки не доезжает и EXIF-разворот применяется всё равно.
                 copy.style.image_orient_none = merged.image_orient_none;
                 Some(match copy.tag.as_str() {
-                    "svg" => crate::svg::element(&copy).unwrap_or_else(|| image(&copy)),
+                    // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`;
+                    // позиция снята и со слитого стиля, как с копии выше.
+                    "svg" => {
+                        let mut unpositioned = merged.clone();
+                        unpositioned.position = None;
+                        svg_replaced(&copy, &copy, &unpositioned).unwrap_or_else(|| image(&copy))
+                    }
                     _ => image(&copy),
                 })
             }
@@ -15868,7 +15940,11 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             // 150×150 вместо 10ch).
             let mut sized = with_inherited_font(e, inherited);
             sized.style.resolve_em(atom_base_font(inherited, opts));
-            crate::svg::element(&crate::svg::stretch_fit(&sized, cb_w)).or_else(|| {
+            // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`; стиль
+            // коробки — свой, с решёнными шрифтовыми единицами.
+            let fitted = crate::svg::stretch_fit(&sized, cb_w);
+            let shell = sized.style.clone();
+            svg_replaced(&sized, &fitted, &shell).or_else(|| {
                 Some(image_with(
                     &with_inherited_font(e, inherited),
                     Some(atom_base_font(inherited, opts)),
@@ -17494,7 +17570,7 @@ fn px_of2(l: &Option<Len>) -> Option<f32> {
 /// Таких случаев три: размытие поддерева (`filter: blur`), смешивание с
 /// кадром по формулам CSS (`mix-blend-mode`) и изоляция (`isolation`), где
 /// поддерево обязано сложиться отдельно, прежде чем попасть в кадр.
-fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
+pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     let blur = c.filter.map_or(0.0, |f| f.blur);
     let blend = c.blend.unwrap_or(0);
     // Вершины полигона в `em`/`ex`/`ch`/`vw`/`vh` (css-shapes-1 `polygon()`:
@@ -17574,9 +17650,15 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         // Рамка, несущая заливку `border-area`, видима — маска берёт внешнюю
         // фигуру, как у цветной рамки.
         let colour = crate::background::border_paint(c, colour);
+        // Обрезка переполнения — ВНУТРЕННИМ контуром (css-borders-4
+        // §border-shape-overflow-interaction; Blink `InnerPath`): у двух фигур
+        // внутренняя, у одной — внешняя минус обводка (отрицательная обводка
+        // в записи, `background::border_shape_mask_svg`). Кольцо при этом
+        // ложится НАД буфером (`Grouped::over`, ниже).
         let (shape, kind, stroke) = match &bs.inner {
-            Some((inner, k)) if colour.a <= 0.0 => (inner.as_str(), *k, 0.0),
+            Some((inner, k)) if colour.a <= 0.0 || c.border_shape_clips() => (inner.as_str(), *k, 0.0),
             Some(_) => (bs.outer.as_str(), bs.outer_box, 0.0),
+            None if c.border_shape_clips() => (bs.outer.as_str(), bs.outer_box, -stroke),
             None => (bs.outer.as_str(), bs.outer_box, stroke),
         };
         let [ot, or_, ob, ol] = c.geometry_outsets(kind);
@@ -17693,6 +17775,98 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
     wrapper.mask = mask;
+    // Наружные тени коробки с `border-shape` повторяют фигуру и лежат
+    // СНАРУЖИ неё — под буфером группы и вне его маски (css-borders-4
+    // §border-shape-shadow-interaction; Blink `PaintNormalBoxShadow`, ветка
+    // `HasBorderShape`). Квад тени (`apply::apply_paint`) и слой резкой
+    // тени (`decorations`) у такой коробки не ставятся.
+    if let Some(bs) = c.border_shape.clone()
+        && !c.shadows.is_empty()
+    {
+        let (stroke, _) = c.border_shape_stroke();
+        let outer_out = c.geometry_outsets(bs.outer_box);
+        let inner = bs
+            .inner
+            .clone()
+            .map(|(s, k)| (s, c.geometry_outsets(k)));
+        let shadows = c.resolved_shadows(false);
+        wrapper.under = Some(Box::new(move |bw, bh, sl, st, aw, ah| {
+            crate::background::border_shape_shadow_svg(
+                (bs.outer.as_str(), outer_out),
+                inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
+                stroke,
+                &shadows,
+                false,
+                bw,
+                bh,
+                sl,
+                st,
+                aw,
+                ah,
+            )
+        }));
+    }
+    // Кольцо рамки `border-shape` при обрезке переполнения — НАД буфером
+    // группы: содержимое и фон режутся внутренним контуром (маска выше), а
+    // рамка лежит снаружи него и поверх обрезанных детей, как в Blink
+    // (`PaintBorderShape` после детей не нужен — дети до внутреннего контура
+    // не доходят). В декорациях кольцо тогда не ставится.
+    if let Some(bs) = c.border_shape.clone()
+        && c.border_shape_clips()
+    {
+        let (stroke, colour) = c.border_shape_stroke();
+        let colour = crate::background::border_paint(c, colour);
+        let outer_out = c.geometry_outsets(bs.outer_box);
+        let inner = bs
+            .inner
+            .clone()
+            .map(|(s, k)| (s, c.geometry_outsets(k)));
+        if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
+            wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
+                crate::background::border_shape_ring_svg(
+                    (bs.outer.as_str(), outer_out),
+                    inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
+                    stroke,
+                    colour,
+                    bw,
+                    bh,
+                    sl,
+                    st,
+                    aw,
+                    ah,
+                )
+            }));
+        }
+    }
+    // Контур `outline` повторяет фигуру (Blink `BorderShapePainter::
+    // PaintOutline`): полоса по внешнему контуру, над группой — контур лежит
+    // снаружи фигуры и красится последним (CSS 2.1 прил. E, шаг 10), а маска
+    // группы его бы срезала. Квад контура в декорациях не ставится.
+    if let Some(bs) = c.border_shape.clone()
+        && let Some((w, off, colour)) = c.shaped_outline()
+        && colour.a > 0.0
+    {
+        let (stroke, _) = c.border_shape_stroke();
+        let outer_out = c.geometry_outsets(bs.outer_box);
+        let single = bs.inner.is_none();
+        wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
+            crate::background::border_shape_outline_svg(
+                (bs.outer.as_str(), outer_out),
+                single,
+                stroke,
+                off,
+                w,
+                false,
+                colour,
+                bw,
+                bh,
+                sl,
+                st,
+                aw,
+                ah,
+            )
+        }));
+    }
     wrapper.mask_size = c.mask_size;
     wrapper.mask_fit = c.mask_fit.unwrap_or(0);
     wrapper.mask_no_repeat = c.mask_no_repeat.unwrap_or((false, false));
@@ -17707,7 +17881,9 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         let b = c.borders();
         match kind {
             Some(2) => [side(b.top), side(b.right), side(b.bottom), side(b.left)],
-            Some(3) => [
+            // `fill-box` у коробки с CSS-раскладкой = content-box; `stroke-box`
+            // и `view-box` = border-box (css-masking-1 §7.10).
+            Some(3) | Some(4) => [
                 side(b.top) + side(c.padding.top),
                 side(b.right) + side(c.padding.right),
                 side(b.bottom) + side(c.padding.bottom),
@@ -17735,6 +17911,15 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     }
     wrapper.mask_composite = c.mask_composite.clone().unwrap_or_default();
     wrapper.mask_clip_off = c.mask_clip.filter(|k| *k != 255).map(|k| box_off(Some(k)));
+    // SVG-ребёнок: коробки маски уже посчитаны от его stroke-box
+    // (`svg::masked_layers`), рамки и отбивки у него нет.
+    if let Some((origin, clip)) = c.mask_box_override {
+        wrapper.mask_origin_off = origin;
+        wrapper.mask_clip_off = clip;
+    }
+    if c.mask_user_scale > 0.0 {
+        wrapper.mask_scale = c.mask_user_scale;
+    }
     // Точки уходят КАК ЕСТЬ (Len): проценты и пиксели резолвятся при
     // отрисовке от опорной коробки формы (css-masking §1.3.1.1): margin-box
     // расширяет bounds на поля, content-box сужает на рамку+паддинг
@@ -17824,7 +18009,13 @@ fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
     // изнанка решается по НАКОПЛЕННОЙ матрице (`backface-visibility-hidden-004`
     // — у `.card.front` своего преобразования нет вовсе).
     let keeps_3d = c.preserve_3d == Some(true) && !flattens_3d(c);
-    let under_3d = parent.frame_3d.clone();
+    // Вынесенный блок-в-строчном (`Computed::hoisted_block`): по DOM он
+    // внук, и плоский строчный хозяин — лист контекста: ни ячейка объёма, ни
+    // перспектива деда ему не достаются (css-transforms-2
+    // §3d-rendering-context; `3d-rendering-context-and-inline`:
+    // `rotateX(-90deg)` внутри `display: inline` под `preserve-3d; rotateX(90deg)`
+    // не раскручивается обратно; `perspective-children-only-inline`).
+    let under_3d = if c.hoisted_block { None } else { parent.frame_3d.clone() };
     if c.transform.is_none() && c.perspective.is_none() && !keeps_3d && under_3d.is_none() {
         return el;
     }
@@ -17842,13 +18033,25 @@ fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
     // ребёнком в дереве отрисовки, поэтому берёт перспективу, хотя по DOM он
     // внук. `overflow-perspective-001` (0.00 → 2.92) — прокручиваемая коробка:
     // начало перспективы считается от коробки, а не от области прокрутки.
-    wrapper.under_perspective = parent.perspective_frame.clone();
+    wrapper.under_perspective = if c.hoisted_block {
+        None
+    } else {
+        parent.perspective_frame.clone()
+    };
     wrapper.perspective = c.perspective;
     wrapper.perspective_frame = c.perspective_frame.clone();
     if let Some(o) = c.perspective_origin {
         wrapper.perspective_origin = o;
     }
     wrapper.perspective_origin_px = c.perspective_origin_px;
+    // Изнанка ставится ДО раннего выхода: ребёнок объёмного контекста без
+    // своего `transform` (`backface-visibility-hidden-004` `.card.front`,
+    // `transform3d-backface-visibility-006`, `backface-visibility-with-
+    // sibling-001`) решает её по накопленной матрице родителя
+    // (css-transforms-2 §backface-visibility), а флаг прежде выставлялся
+    // только на пути с собственным преобразованием — красный ребёнок под
+    // `rotateX(180deg); preserve-3d` оставался виден.
+    wrapper.backface_hidden = c.backface_hidden == Some(true);
     let Some(t) = c.transform else {
         return wrapper.into_any_element();
     };
@@ -17871,10 +18074,10 @@ fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
     wrapper.has_3d = t.has_3d;
     // Обратная сторона (css-transforms-2 §backface-visibility, «m33 < 0 →
     // the element is not rendered») решается на отрисовке по собственной
-    // 4×4: раньше здесь подменяли элемент пустым `div()`, и коробка теряла
-    // место в раскладке (backface-visibility-hidden-002: эталон держит
-    // пустые 100px; -child-translate: высота обёртки от скрытого ребёнка).
-    wrapper.backface_hidden = c.backface_hidden == Some(true);
+    // 4×4 (флаг выставлен выше): раньше здесь подменяли элемент пустым
+    // `div()`, и коробка теряла место в раскладке
+    // (backface-visibility-hidden-002: эталон держит пустые 100px;
+    // -child-translate: высота обёртки от скрытого ребёнка).
     if let Some(o) = c.transform_origin {
         wrapper.origin = o;
     }
@@ -18003,6 +18206,61 @@ fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
         keep.push(child);
     }
     e.children = keep;
+}
+
+/// Замещаемый `<svg>` с учётом его CSS-коробки (CSS 2.1 §10.3.4): растр —
+/// содержимое, а при ненулевой рамке или отбивке (`svg_has_box`) — внутри
+/// стилевого `div` размером border-box, фон красит он. Прежде растр шёл
+/// голым и рамка не рисовалась вовсе (border-shape-clips-background-ref,
+/// mask-image-svg-child-will-change: маска ложится на коробку 200×200 с
+/// рамкой 50). Без рамки и отбивки — голый растр, путь прежний.
+/// `None` — рисунок не разобрался.
+fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> Option<AnyElement> {
+    let boxed = svg_has_box(merged);
+    let inner;
+    let sized = if boxed {
+        let mut copy = sized.clone();
+        copy.style.background = None;
+        inner = copy;
+        &inner
+    } else {
+        sized
+    };
+    let raster = crate::svg::element(sized)?;
+    if !boxed {
+        return Some(raster);
+    }
+    let px_of = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let (w, h) = crate::svg::size_of(sized);
+    let b = merged.borders();
+    let bw = w + px_of(b.left) + px_of(b.right) + px_of(merged.padding.left) + px_of(merged.padding.right);
+    let bh = h + px_of(b.top) + px_of(b.bottom) + px_of(merged.padding.top) + px_of(merged.padding.bottom);
+    Some(
+        styled_div_with(e, merged)
+            .w(px(bw))
+            .h(px(bh))
+            .flex_shrink_0()
+            .child(raster)
+            .into_any_element(),
+    )
+}
+
+/// У `<svg>` есть своя CSS-коробка — ненулевая рамка или отбивка
+/// (см. ветку `"svg"` в `element`): тогда растр кладётся в стилевой `div`.
+fn svg_has_box(c: &Computed) -> bool {
+    let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v > 0.0);
+    let b = c.borders();
+    nz(b.top)
+        || nz(b.right)
+        || nz(b.bottom)
+        || nz(b.left)
+        || nz(c.padding.top)
+        || nz(c.padding.right)
+        || nz(c.padding.bottom)
+        || nz(c.padding.left)
 }
 
 fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
@@ -18791,7 +19049,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 Some(Len::Px(v)) if v > 0.0 => Some(v),
                 _ => CB_WIDTH.get().filter(|v| *v > 0.0),
             };
-            crate::svg::element(&crate::svg::stretch_fit(e, cb_w)).unwrap_or_else(|| {
+            // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
+            svg_replaced(e, &crate::svg::stretch_fit(e, cb_w), &merged).unwrap_or_else(|| {
                 styled_div_with(e, &merged)
                     .child(SharedString::from("[рисунок]"))
                     .into_any_element()

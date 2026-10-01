@@ -423,11 +423,32 @@ pub struct Grouped {
     pub clip_xywh: Option<[crate::value::Len; 4]>,
     /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
     pub mask_composite: Vec<u8>,
+    /// Подложка ПОД буфером группы, вне его маски: наружные тени
+    /// `box-shadow` коробки с `border-shape` — они лежат снаружи фигуры, а
+    /// маска группы (`bordershape:`) режет всё содержимое буфера фигурой.
+    /// Колбэк строит SVG-разметку по размеру коробки (bw, bh), выносу
+    /// (l, t) и холсту (aw, ah) — размеры известны только на отрисовке.
+    pub under: Option<Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<String>>>,
+    /// Накладка НАД буфером группы, вне его маски: кольцо рамки
+    /// `border-shape` у коробки с обрезкой переполнения — содержимое режется
+    /// ВНУТРЕННИМ контуром (css-borders-4 §border-shape-overflow-interaction),
+    /// а рамка лежит снаружи него и поверх обрезанных детей. Колбэк — как у
+    /// `under`.
+    pub over: Vec<Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<String>>>,
+    /// Множитель интринзика плитки маски: у SVG-ребёнка маска живёт в ЕГО
+    /// пользовательских единицах (css-masking-1 §7.4 `auto` — размер
+    /// картинки в системе координат элемента), и при `viewBox` 50×50
+    /// рисунок-маска кроет 100×100 CSS-точек (mask-origin-3, mask-clip-2).
+    /// Задаёт `svg::masked_layers` через `Computed::mask_user_scale`.
+    pub mask_scale: f32,
 }
 
 impl Grouped {
     pub fn new(child: AnyElement) -> Self {
         Grouped {
+            under: None,
+            over: Vec::new(),
+            mask_scale: 1.0,
             child: Some(child),
             blur: 0.0,
             opacity: 1.0,
@@ -914,7 +935,11 @@ impl Element for Grouped {
             let (img, tw, th) = match &source {
                 crate::background::Source::Raster(img) => {
                     let s = img.size(0);
-                    let (iw, ih) = (s.width.0 as f32, s.height.0 as f32);
+                    // Интринзик — в единицах элемента (`mask_scale`).
+                    let (iw, ih) = (
+                        s.width.0 as f32 * self.mask_scale,
+                        s.height.0 as f32 * self.mask_scale,
+                    );
                     // contain/cover: один множитель от пропорции интринзика.
                     let k = match self.mask_fit {
                         1 => Some((bw / iw.max(1.0)).min(bh / ih.max(1.0))),
@@ -930,7 +955,10 @@ impl Element for Grouped {
                 _ => {
                     // У рисунка может быть свой размер — contain/cover
                     // считаются от него; без интринзика плитка = коробка.
-                    let intr = source.intrinsic();
+                    let mut intr = source.intrinsic();
+                    // Интринзик — в единицах элемента (`mask_scale`).
+                    intr.w = intr.w.map(|v| v * self.mask_scale);
+                    intr.h = intr.h.map(|v| v * self.mask_scale);
                     let fit = match (self.mask_fit, intr.w, intr.h) {
                         (1, Some(iw), Some(ih)) => {
                             let k = (bw / iw.max(1.0)).min(bh / ih.max(1.0));
@@ -1165,6 +1193,20 @@ impl Element for Grouped {
                     h * sf,
                 ]
             });
+        // Подложка (наружные тени `border-shape`) — в текущий контекст ДО
+        // композита группы: под буфером и вне его маски, на области выноса.
+        let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+        let (aw, ah) = (bw + sl + sr, bh + st + sb);
+        let layer_at = Bounds {
+            origin: gpui::point(bounds.origin.x - px(sl), bounds.origin.y - px(st)),
+            size: gpui::size(px(aw), px(ah)),
+        };
+        if let Some(under) = self.under.as_ref()
+            && let Some(markup) = under(bw, bh, sl, st, aw, ah)
+            && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
+        {
+            let _ = window.paint_image(layer_at, gpui::Corners::default(), img, 0, false);
+        }
         let child = self.child.as_mut().unwrap();
         window.paint_group(
             area,
@@ -1177,6 +1219,15 @@ impl Element for Grouped {
             mask_clip,
             |window| child.paint(window, cx),
         );
+        // Накладка (кольцо `border-shape` над обрезанным содержимым) — после
+        // композита, в тот же контекст.
+        for over in &self.over {
+            if let Some(markup) = over(bw, bh, sl, st, aw, ah)
+                && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
+            {
+                let _ = window.paint_image(layer_at, gpui::Corners::default(), img, 0, false);
+            }
+        }
     }
 }
 
@@ -1855,12 +1906,15 @@ impl Element for CellsClipped {
                 size: area.size,
             };
             if sh.blur > 0.0 {
+                // Коробка — сам охват, смещение — в тени: примитив вырезает
+                // тень под СВОЕЙ коробкой (патч gpui `Shadow::box_bounds`),
+                // и сдвинутый охват вырезал бы не то место.
                 window.paint_shadows(
-                    shifted,
+                    area,
                     gpui::Corners::default(),
                     &[gpui::BoxShadow {
                         color: colour.to_hsla(),
-                        offset: gpui::point(gpui::px(0.0), gpui::px(0.0)),
+                        offset: gpui::point(gpui::px(sh.x), gpui::px(sh.y)),
                         blur_radius: gpui::px(sh.blur),
                         spread_radius: gpui::px(sh.spread),
                     }],

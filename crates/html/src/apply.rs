@@ -1525,19 +1525,25 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // Обрезка с ПОЛЕМ снимается с коробки: раскладка режет ровно по её краю,
     // а поле требует резать дальше наружу. Маску ставит свой слой
     // (`interact::ClipMargin`), его заводит сборщик дерева.
-    if c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll) {
+    // `border-shape`: переполнение режет ВНУТРЕННИЙ контур фигуры
+    // (css-borders-4 §border-shape-overflow-interaction) — маска группы
+    // (`render::grouped`), а не прямоугольник padding-box: тот срезал бы и
+    // кольцо рамки (абсолютный слой с выносом), и углы фигуры шире него
+    // (border-shape-overflow-child-clip, -replaced-img/-iframe).
+    let shaped = c.border_shape.is_some();
+    if !shaped && (c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll)) {
         d = d.overflow_x_hidden();
     }
-    if c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll) {
+    if !shaped && (c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll)) {
         d = d.overflow_y_hidden();
     }
     // `clip` режет краску, но НЕ создаёт скролл-контейнер: авто-минимум
     // flex/grid-элемента остаётся по содержимому — у gpui/taffy для этого
     // отдельный вариант (CSSWG #7714; min-size-auto-overflow-clip).
-    if c.overflow_x == Some(Overflow::Clip) {
+    if !shaped && c.overflow_x == Some(Overflow::Clip) {
         d.style().overflow.x = Some(gpui::Overflow::Clip);
     }
-    if c.overflow_y == Some(Overflow::Clip) {
+    if !shaped && c.overflow_y == Some(Overflow::Clip) {
         d.style().overflow.y = Some(gpui::Overflow::Clip);
     }
     // Поле обрезки: край отодвигается от коробки отсчёта (css-overflow-3 §5).
@@ -2079,7 +2085,10 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
             sh.color
         }
     };
-    if !c.inset_shadows.is_empty() {
+    // У `border-shape` обе тени повторяют фигуру и рисуются растром
+    // (`render::grouped` — наружные, `render::decorations` — внутренние);
+    // прямоугольные примитивы квада легли бы поверх и мимо фигуры.
+    if !c.inset_shadows.is_empty() && c.border_shape.is_none() {
         d.style().inset_box_shadow = Some(
             c.inset_shadows
                 .iter()
@@ -2095,7 +2104,7 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
                 .collect(),
         );
     }
-    if !c.shadows.is_empty() {
+    if !c.shadows.is_empty() && c.border_shape.is_none() {
         d = d.shadow(
             c.shadows
                 .iter()
