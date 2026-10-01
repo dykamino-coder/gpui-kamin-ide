@@ -1265,7 +1265,8 @@ pub(crate) fn lanes_row_dir(s: &Computed) -> bool {
 /// Гейт — то, чего taffy-путь пока не умеет; такой контейнер остаётся на
 /// `render::lanes`: вертикальное письмо и `rtl` контейнера, интрин-дорожки
 /// внутри `repeat(auto-*)` (css-grid-3 §7.2.1, гипотетический размер по
-/// содержимому), подсетки среди детей.
+/// содержимому). Подсетки среди детей идут тем же путём: срез им режет
+/// `subgrid_takes_parent_tracks` ровно как у сетки-эталона.
 fn lanes_as_grid(nodes: &mut [Node]) {
     use crate::computed::{Track, TrackSize};
     for node in nodes.iter_mut() {
@@ -1287,8 +1288,7 @@ fn lanes_as_grid(nodes: &mut [Node]) {
                 _ => false,
             })
         });
-        let has_subgrid = el.children.iter().any(|c| matches!(c, Node::Element(k) if k.style.subgrid));
-        if s.vertical == Some(true) || s.rtl == Some(true) || intrinsic_repeat || odd_repeat || has_subgrid {
+        if s.vertical == Some(true) || s.rtl == Some(true) || intrinsic_repeat || odd_repeat {
             continue;
         }
         el.style.display = Some(if el.style.lanes_inline {
