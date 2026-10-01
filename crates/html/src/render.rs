@@ -6000,6 +6000,18 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     let cb_top_open = !own_context_style(inherited)
         && zero_len(inherited.padding.top)
         && zero_len(inherited.borders().top);
+    // Измеряемый бандовый хост (`band_flow.rs`) — только в БЛОЧНОМ контейнере
+    // горизонтального письма слева направо: в гибком и сетке `float` не
+    // действует (css-flexbox-1 §3, css-grid-1 §6.1), а полосы считают обе
+    // стенки от ЛЕВОГО края физически (логических осей у них нет, шаг F10).
+    let measured_ok = !flex_ctx
+        && !matches!(
+            inherited.display,
+            Some(Display::Grid) | Some(Display::InlineGrid)
+        )
+        && inherited.vertical != Some(true)
+        && inherited.vertical_rl != Some(true)
+        && inherited.rtl != Some(true);
     let collapsed = by_layer(
         wrap_floats(
             collapsed,
@@ -6010,6 +6022,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 Some(Len::Px(v)) => v,
                 _ => opts.base_size(),
             },
+            measured_ok,
         ),
         flex_ctx,
     );
@@ -8871,6 +8884,9 @@ fn wrap_floats(
     // Кегль содержащего блока в точках: по нему `covered_flow_tail` решает
     // `em` у флоата и соседа без своего `font-size`.
     em: f32,
+    // Можно ли звать измеряемый бандовый хост (`band_host_m`): блочный
+    // контейнер горизонтального письма слева направо.
+    measured_ok: bool,
 ) -> Vec<Node> {
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
@@ -8974,7 +8990,17 @@ fn wrap_floats(
             .then(|| band_host(&nodes, i, cb_width, &out[lead_at..]))
             .flatten()
             .map(|(h, n)| (h, n, true))
-            .or_else(|| band_host(&nodes, i, cb_width, &[]).map(|(h, n)| (h, n, false)));
+            .or_else(|| band_host(&nodes, i, cb_width, &[]).map(|(h, n)| (h, n, false)))
+            // Статический гейт не сошёлся из-за НЕИЗВЕСТНЫХ стилю размеров
+            // (ширина содержащего блока, shrink-to-fit флоата, коробка
+            // своего контекста без размеров) — их меряет раскладка
+            // (`band_flow.rs`, шаги F2/F3/F5).
+            .or_else(|| {
+                measured_ok
+                    .then(|| band_host_m(&nodes, i, em))
+                    .flatten()
+                    .map(|(h, n)| (h, n, false))
+            });
         if let Some((host, next, took_lead)) = hosted {
             if took_lead {
                 out.truncate(lead_at);
@@ -9939,6 +9965,387 @@ fn band_host(
     host.children = floaters.into_iter().map(Node::Element).collect();
     host.children.extend(rest);
     Some((host, j))
+}
+
+/// Поле для измеряемого хоста: точки, доля ширины содержащего блока или
+/// `em` по кеглю `em`; `auto` — ноль (у флоата так велит §10.3.5, у куска
+/// хвоста — как `px_margin` статического хоста). Прочее (`calc`, `vw`…) —
+/// `None`, хост отменяется.
+fn band_edge(l: &Option<Len>, em: f32) -> Option<crate::band_flow::Edge> {
+    use crate::band_flow::Edge;
+    match l {
+        None | Some(Len::Auto) => Some(Edge::Px(0.0)),
+        Some(Len::Px(v)) => Some(Edge::Px(*v)),
+        Some(Len::Pct(k)) => Some(Edge::Pct(*k)),
+        Some(Len::Em(k)) => Some(Edge::Px(*k * em)),
+        _ => None,
+    }
+}
+
+/// Кегль коробки в точках для `em` её полей: свой, если задан точками,
+/// иначе кегль содержащего блока.
+fn band_em(c: &Computed, em: f32) -> Option<f32> {
+    match c.font_size {
+        None => Some(em),
+        Some(Len::Px(v)) => Some(v),
+        Some(Len::Em(k)) => Some(k * em),
+        _ => None,
+    }
+}
+
+/// Все четыре поля коробки разрешимы для измеряемого хоста.
+fn band_margins(c: &Computed, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
+    let em = band_em(c, em)?;
+    Some([
+        band_edge(&c.margin.top, em)?,
+        band_edge(&c.margin.right, em)?,
+        band_edge(&c.margin.bottom, em)?,
+        band_edge(&c.margin.left, em)?,
+    ])
+}
+
+/// Кусок хвоста измеряемого хоста: `Some(true)` — коробка, флоаты не
+/// перекрывающая (§9.5, последний абзац), `Some(false)` — распорка, `None` —
+/// не годится (хост отменяется).
+///
+/// В отличие от `band_piece` размеры коробки своего контекста в стиле не
+/// нужны: ширину окна и высоту из содержимого даёт пробная раскладка
+/// (`band_flow::plan`). Атомы строки сюда НЕ пускаются: они делят строку, а
+/// здесь каждый кусок берёт своё окно.
+fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
+    match band_piece(n) {
+        Some(BandPiece::Strut) => return Some(false),
+        Some(BandPiece::Atom) => return None,
+        _ => {}
+    }
+    let Node::Element(c) = n else {
+        return None;
+    };
+    if matches!(
+        c.style.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) || c.style.float.is_some_and(|f| f != 0)
+        || (c.style.clear.is_some() && !band_f6())
+        || matches!(
+            c.style.display,
+            Some(Display::InlineBlock)
+                | Some(Display::InlineFlex)
+                | Some(Display::InlineGrid)
+                | Some(Display::InlineTable)
+                | Some(Display::TableCell)
+                | Some(Display::None)
+        )
+        || c.inline
+        || c.style.vertical == Some(true)
+        || c.style.vertical_rl == Some(true)
+        // Таблица §9.5 названа прямо; тег `<table>` вида в стиле не несёт —
+        // его строит сборщик таблиц по тегу (`"table" =>` в `render_node`).
+        || !(own_context(c) || c.tag == "table")
+    {
+        return None;
+    }
+    band_margins(&c.style, em)?;
+    Some(true)
+}
+
+/// Измеряемый бандовый хост (шаги F2, F3, F5 `scout-float-bands-design.md`):
+/// тот же пробег флоатов и хвост из кусков, что у `band_host`, но размеры,
+/// которых нет в стиле, меряет раскладка (`band_flow::BandFlow`).
+///
+/// Гейт (все условия разом):
+///
+/// * у каждого флоата пробега поля разрешимы (`band_margins`); размеры любые
+///   — shrink-to-fit §10.3.5 считает проба;
+/// * хвост — только пустой текст и куски `band_piece_m`;
+/// * одинокий флоат с пустым хвостом полосам не нужен (как у `band_host`).
+///
+/// Ширина содержащего блока не требуется вовсе: её отдаёт замер.
+fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize)> {
+    let mut floaters: Vec<Element> = vec![];
+    let mut j = i;
+    while j < nodes.len() {
+        if is_blank(&nodes[j]) {
+            j += 1;
+            continue;
+        }
+        let Node::Element(next) = &nodes[j] else {
+            break;
+        };
+        if !next.style.float.is_some_and(|f| f != 0) {
+            break;
+        }
+        // Ортогональный флоат (своё письмо вертикально в горизонтальном
+        // контейнере): shrink-to-fit по чужой оси каркас пробы не считает
+        // (css-writing-modes-4 §7.3) — уходит на прежний путь.
+        if next.style.vertical == Some(true) || next.style.vertical_rl == Some(true) {
+            return None;
+        }
+        band_margins(&next.style, em)?;
+        floaters.push(next.clone());
+        j += 1;
+    }
+    if floaters.is_empty() {
+        return None;
+    }
+    let mut rest: Vec<Node> = vec![];
+    while j < nodes.len() {
+        // С шагом F6 очищающая коробка остаётся в хосте: clearance считают
+        // полосы (`band_flow::plan`), а не распорка флекс-ряда.
+        if let Node::Element(next) = &nodes[j]
+            && (next.style.float.is_some_and(|f| f != 0)
+                || (next.style.clear.is_some() && !band_f6()))
+        {
+            break;
+        }
+        rest.push(nodes[j].clone());
+        j += 1;
+    }
+    if {
+        static ON: std::sync::LazyLock<bool> =
+            std::sync::LazyLock::new(|| std::env::var("BF_DBG").is_ok());
+        *ON
+    } {
+        eprintln!(
+            "BFM floaters={} rest={:?}",
+            floaters.len(),
+            rest.iter()
+                .map(|n| match n {
+                    Node::Element(c) => format!(
+                        "{}:{:?}",
+                        c.tag,
+                        band_piece_m(n, em)
+                    ),
+                    Node::Text(t) => format!("txt{}", t.trim().len()),
+                })
+                .collect::<Vec<_>>()
+        );
+    }
+    if floaters.len() < 2 && !rest.iter().any(|n| !is_blank(n)) {
+        return None;
+    }
+    let rest = if band_f4() {
+        band_flow_rest(rest, em)?
+    } else {
+        if !rest
+            .iter()
+            .all(|n| is_blank(n) || band_piece_m(n, em).is_some())
+        {
+            return None;
+        }
+        rest
+    };
+    let mut host = Element {
+        list_item: None,
+        node_id: 0,
+        anim: None,
+        tag: "shape-flow".into(),
+        style: Computed::default(),
+        hover: None,
+        first_letter: None,
+        first_line: None,
+        children: Vec::new(),
+        attrs: vec![
+            ("count".into(), floaters.len().to_string()),
+            ("em".into(), em.to_string()),
+            // Метка измеряемого хоста: `shape_flow` отдаёт его `band_flow`.
+            ("bands".into(), "m".into()),
+        ],
+        inline: false,
+    };
+    host.children = floaters.into_iter().map(Node::Element).collect();
+    host.children.extend(rest);
+    Some((host, j))
+}
+
+/// Включён ли шаг F4 — блоки обычного потока и строчные прогоны в
+/// измеряемом хосте (`BF_F4=1`, только для замера ступени).
+fn band_f4() -> bool {
+    static ON: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| std::env::var("BF_F4").is_ok_and(|v| v == "1"));
+    *ON
+}
+
+/// Включён ли шаг F6 — очищающие коробки внутри измеряемого хоста
+/// (`BF_F6=1`, только для замера ступени).
+fn band_f6() -> bool {
+    static ON: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| std::env::var("BF_F6").is_ok_and(|v| v == "1"));
+    *ON
+}
+
+/// Блок обычного потока для измеряемого хоста (шаг F4): блочного уровня,
+/// в потоке, своего контекста не заводит, поля разрешимы.
+fn band_flow_block(c: &Element, em: f32) -> bool {
+    block_level_in_flow(c)
+        && !own_context(c)
+        && (c.style.clear.is_none() || band_f6())
+        && matches!(
+            c.style.display,
+            None | Some(Display::Block) | Some(Display::ListItem)
+        )
+        && band_margins(&c.style, em).is_some()
+}
+
+/// Хвост измеряемого хоста с шагом F4: куски `band_piece_m`, блоки обычного
+/// потока и строчные прогоны. Подряд идущее строчное содержимое (текст,
+/// строчные элементы, атомы) собирается в АНОНИМНЫЙ блок (CSS 2.1 §9.2.1.1)
+/// — у него своя строка и свои вырезы. Внепоточный сосед хост отменяет
+/// (как у `band_piece`).
+fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
+    let mut out: Vec<Node> = vec![];
+    let mut run: Vec<Node> = vec![];
+    let flush = |run: &mut Vec<Node>, out: &mut Vec<Node>| {
+        if run.iter().any(|n| !is_blank(n)) {
+            out.push(Node::Element(Element {
+                list_item: None,
+                node_id: 0,
+                anim: None,
+                tag: "div".into(),
+                style: Computed::default(),
+                hover: None,
+                first_letter: None,
+                first_line: None,
+                children: std::mem::take(run),
+                attrs: vec![("anon".into(), "1".into())],
+                inline: false,
+            }));
+        } else {
+            run.clear();
+        }
+    };
+    for n in rest {
+        match &n {
+            Node::Text(_) => run.push(n),
+            Node::Element(c) => {
+                if out_of_flow(&c.style) {
+                    return None;
+                }
+                if !block_level_in_flow(c) {
+                    run.push(n);
+                    continue;
+                }
+                flush(&mut run, &mut out);
+                if band_piece_m(&n, em).is_some() || band_flow_block(c, em) {
+                    out.push(n);
+                } else {
+                    return None;
+                }
+            }
+        }
+    }
+    flush(&mut run, &mut out);
+    Some(out)
+}
+
+/// Сборка измеряемого хоста: каждому ребёнку — построитель, который
+/// `band_flow` зовёт на каждую пробу и на `prepaint`.
+fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    use crate::band_flow::{Kid, Kind};
+    let count: usize = e.attr("count").and_then(|c| c.parse().ok()).unwrap_or(0);
+    let em: f32 = e
+        .attr("em")
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(opts.base_size());
+    let depth = defer_depth();
+    let mut kids: Vec<Kid> = vec![];
+    for (idx, n) in e.children.iter().enumerate() {
+        let Node::Element(c) = n else {
+            continue;
+        };
+        let Some(margin) = band_margins(&c.style, em) else {
+            continue;
+        };
+        let kind = if idx < count {
+            Kind::Float {
+                side: c.style.float.unwrap_or(-1),
+                clear: c.style.clear,
+            }
+        } else {
+            match band_piece_m(n, em) {
+                Some(true) => Kind::Piece {
+                    table: c.tag == "table"
+                        || matches!(c.style.display, Some(Display::Table)),
+                },
+                Some(false) => Kind::Strut(px_margin_box(&c.style).map_or(0.0, |(_, h)| h)),
+                None if band_f4() && (c.attr("anon") == Some("1") || band_flow_block(c, em)) => {
+                    Kind::Flow
+                }
+                None => continue,
+            }
+        };
+        let node = c.clone();
+        let inherited = inherited.clone();
+        let opts = opts.clone();
+        let float = idx < count;
+        let build: crate::band_flow::Build = std::rc::Rc::new(move |cb: f32, avail: f32, shapes| {
+            let _depth = DepthScope::enter(depth);
+            // Ширина содержащего блока — та, что намерил хост: замещаемым без
+            // размеров (§10.3.2) и долям внутри (`CB_WIDTH`), блочным детям
+            // куска — ширина окна (`AVAIL_W`).
+            let cb_prev = CB_WIDTH.get();
+            let avail_prev = AVAIL_W.get();
+            if cb > 0.0 {
+                CB_WIDTH.set(Some(cb));
+            }
+            AVAIL_W.set((avail > 0.0).then_some(avail));
+            let _cb_guard = scopeguard_cb(cb_prev);
+            let _avail_guard = AvailWGuard(avail_prev);
+            let mut copy = node.clone();
+            // Сторону, очистку и поля несёт хост (позиция от полос), на самой
+            // коробке они сдвинули бы её ещё раз — как у статического хоста.
+            copy.style.float = None;
+            copy.style.clear = None;
+            copy.style.margin = crate::computed::Sides::default();
+            // Доля ширины — от СОДЕРЖАЩЕГО БЛОКА (§10.2), а каркас пробы
+            // шириной в окно: решаем её здесь.
+            if let Some(Len::Pct(k)) = copy.style.width
+                && cb > 0.0
+            {
+                copy.style.width = Some(Len::Px(k * cb));
+            }
+            // Вырезы полос — строкам ЭТОЙ коробки, от её верха (шаг F4):
+            // `inline::inherit` начинает слитый стиль с собственного, и вырезы
+            // доезжают до прямых строк коробки.
+            if shapes.is_some() {
+                copy.style.flow_shapes = shapes;
+            }
+            let table = copy.tag == "table"
+                || matches!(copy.style.display, Some(Display::Table) | Some(Display::InlineTable));
+            if float && !table {
+                // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем же
+                // путём, что у статического хоста (`shape_flow`). Таблица —
+                // своей веткой `element` ниже: каркас блока её не соберёт.
+                let mut merged = inline::inherit(&inherited, &copy.style);
+                merged.margin = crate::computed::Sides::default();
+                if copy.tag == "img" {
+                    grouped(image(&copy), &copy.style)
+                } else {
+                    grouped(
+                        styled_div_with(&copy, &merged)
+                            .children(blocks(&copy.children, &merged, &opts))
+                            .into_any_element(),
+                        &copy.style,
+                    )
+                }
+            } else {
+                // Общий путь отрисовки узла — тот же, что в потоке: таблица,
+                // замещаемый, список строятся своими ветками `element`.
+                element(&copy, &inherited, &opts)
+            }
+        });
+        let clear = if matches!(kind, Kind::Float { .. }) {
+            None
+        } else {
+            c.style.clear
+        };
+        kids.push(Kid {
+            kind,
+            clear,
+            margin,
+            build,
+        });
+    }
+    crate::band_flow::BandFlow::new(kids).into_any_element()
 }
 
 fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
@@ -15605,6 +16012,9 @@ fn sticky_wrap(
 /// формы считается от выбранной опорной коробки (по умолчанию margin-box),
 /// затем переводится в координаты margin-box (позиция флоата).
 fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    if e.attr("bands") == Some("m") {
+        return band_flow_host(e, inherited, opts);
+    }
     let px_of = |l: &Option<Len>| match l {
         None => 0.0,
         Some(Len::Px(v)) => *v,
