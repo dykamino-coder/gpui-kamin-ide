@@ -477,6 +477,10 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// края: 1 верх, 2 право, 4 низ, 8 лево.
     #[cfg(any(feature = "flexbox", feature = "grid"))]
     pub margin_trim: u8,
+    /// KaminIDE patch: коробка не отдаёт базовые линии наружу — родитель их
+    /// синтезирует (css-contain-2 §3.2 п.7: «the containment box is treated as
+    /// having no baseline»). Ставится движком для `contain: layout`.
+    pub hides_baseline: bool,
 
     // Block container properties
     /// How items elements should aligned in the inline axis
@@ -590,6 +594,7 @@ impl<S: CheapCloneStr> Style<S> {
         flex_balance_lines: 0,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         margin_trim: 0,
+        hides_baseline: false,
         #[cfg(feature = "flexbox")]
         flex_grow: 0.0,
         #[cfg(feature = "flexbox")]

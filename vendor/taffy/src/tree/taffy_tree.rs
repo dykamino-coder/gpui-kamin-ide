@@ -419,8 +419,14 @@ where
                 inputs.sizing_mode
             );
 
+            // KaminIDE patch: `hides_baseline` — базовые линии узла гасятся
+            // ОДНОЙ точкой для всех алгоритмов (блок, flex, grid, лист):
+            // родитель увидит `None` и синтезирует их от края коробки
+            // (css-contain-2 §3.2 п.7; Blink `LayoutBox::ShouldApplyLayoutContainment`
+            // → `BoxFragmentBuilder` без базовых).
+            let hides_baseline = tree.taffy.nodes[node.into()].style.hides_baseline;
             // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
-            match (display_mode, has_children) {
+            let mut output = match (display_mode, has_children) {
                 (Display::None, _) => compute_hidden_layout(tree, node),
                 #[cfg(feature = "block_layout")]
                 (Display::Block, true) => compute_block_layout(tree, node, inputs),
@@ -439,7 +445,12 @@ where
                     // TODO: implement calc() in high-level API
                     compute_leaf_layout(inputs, style, |_, _| 0.0, measure_function)
                 }
+            };
+            if hides_baseline {
+                output.first_baselines = crate::geometry::Point::NONE;
+                output.last_baselines = crate::geometry::Point::NONE;
             }
+            output
         })
     }
 }

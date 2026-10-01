@@ -1242,6 +1242,14 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         d = d.rounded(px(radius.max(own))).overflow_hidden();
     }
     // `contain: paint` — содержимое не выходит за коробку.
+    // `contain: layout` (и `strict`/`content`, которые раскрываются в него):
+    // коробка «is treated as having no baseline» (css-contain-2 §3.2 п.7).
+    // Родитель — строка, flex, grid — синтезирует её от края коробки. Прежде
+    // базовая линия текста внутри уходила наружу: `inline-block` с «a»
+    // вставал выше пустого соседа (`contain-layout-baseline-001..003`).
+    if c.contain_layout == Some(true) {
+        d.style().hides_baseline = Some(true);
+    }
     if c.contain_paint == Some(true) {
         d = d.overflow_hidden();
     }

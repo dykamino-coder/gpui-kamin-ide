@@ -246,6 +246,9 @@ pub struct Style {
     /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
     /// балансировка строк с минимумом N строк (`flex-line-count`).
     pub flex_balance_lines: u16,
+    /// KaminIDE patch: узел не отдаёт базовые линии родителю
+    /// (css-contain-2 §3.2 п.7, `contain: layout`).
+    pub hides_baseline: bool,
     /// KaminIDE patch: `margin-trim` (css-box-4 §margin-trim) гибкого
     /// контейнера и сетки — ФИЗИЧЕСКИЕ края: 1 верх, 2 право, 4 низ, 8 лево.
     pub margin_trim: u8,
@@ -914,6 +917,7 @@ impl Default for Style {
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
+            hides_baseline: false,
             margin_trim: 0,
             flex_grow: 0.0,
             flex_shrink: 1.0,
