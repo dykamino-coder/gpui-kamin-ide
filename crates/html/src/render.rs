@@ -2792,6 +2792,21 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             _ => (false, false),
         })
         .collect();
+    // Те же запреты на границах БЛОЧНЫХ детей (css-break-4 §4.3 правило 1):
+    // граница, закрытая `break-after: avoid*` предыдущего или `break-before:
+    // avoid*` следующего, точкой разрыва не служит. Разрыв уходит к последней
+    // законной точке ВНУТРИ предыдущего ребёнка (Blink `early_break_`,
+    // `block_layout_algorithm.cc:1086`; `break-between-avoid-007`: c с
+    // `break-before: avoid` после обёрток над a и b — разрыв между a и b).
+    let blk_avoid: Vec<(bool, bool)> = kids
+        .iter()
+        .map(|n| match n {
+            Node::Element(k) if !flex_items && !out_of_flow(&k.style) => {
+                (edge_avoid(k, false), edge_avoid(k, true))
+            }
+            _ => (false, false),
+        })
+        .collect();
     // Элемент в ОДНОЙ строке с предыдущим — там, где это видно без раскладки:
     // ширины в процентах без полей, отступов, рамок по главной оси, без
     // `flex-basis`, `min/max-width` и `column-gap` (css-flexbox-1 §9.3: строка
@@ -3091,6 +3106,10 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         let mut flex_run: Option<f32> = None;
         let mut flex_open = 0.0f32;
         let mut flex_prev_aa = false;
+        // Состояние запретов на границах блочных детей (`blk_avoid`).
+        let mut blk_prev_aa = false;
+        let mut blk_prev_start = top;
+        let mut blk_prev_cut: Option<f32> = None;
         // Можно ли начать сцепку от `flex_open`. Нельзя от верха контейнера
         // (css-flexbox-1 §12; Blink `fragmentation_utils.cc:244-253`: без
         // `has_container_separation` — `kBreakAppealLastResort`), от
@@ -3183,9 +3202,33 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                 if fb || force_next {
                     forced.push(y);
                 }
+                // Закрытая запретом граница (`blk_avoid`): сплошной диапазон от
+                // последней точки внутри предыдущего ребёнка (без неё — от его
+                // начала) до начала этого: край колонки в нём уводит разрыв к
+                // его началу (`fill_at`, ветка `holds`). От верха коробки
+                // диапазон не начинается — там разрыв был бы разрывом ПЕРЕД
+                // коробкой, и это решает уровень выше.
+                if !grid_rows_stack
+                    && (blk_prev_aa || blk_avoid.get(ki).is_some_and(|a| a.0))
+                    && !(fb || force_next)
+                {
+                    let open = blk_prev_cut.unwrap_or(blk_prev_start);
+                    if open > top + 0.01 {
+                        solid.push((open, y + lead + 0.05));
+                    }
+                }
             }
             force_next = fa;
             let start = y + lead;
+            // Последняя законная точка ВНУТРИ этого ребёнка (для `blk_avoid`).
+            blk_prev_start = if first { start } else { y };
+            blk_prev_cut = kcuts
+                .iter()
+                .map(|&(need, _)| need)
+                .filter(|&n| n > 0.01 && n < h - 0.01)
+                .fold(None::<f32>, |m, n| Some(m.map_or(n, |x| x.max(n))))
+                .map(|n| start + n);
+            blk_prev_aa = blk_avoid.get(ki).is_some_and(|a| a.1);
             for (need, nf) in kcuts {
                 cuts.push((start + need, start + nf));
             }
@@ -4067,6 +4110,27 @@ fn grow_pushed(
         }
     }
     kids
+}
+
+/// Монолит ребёнка колонок держится ТОЛЬКО на `break-inside: avoid`: ни
+/// `contain: size`, ни прокрутки, ни замещаемого, ни атомарной строчной, ни
+/// сплошного строчного набора (тот же список, что у `monolith` в сборке
+/// стопки, без `break_inside_avoid`).
+fn avoid_only_monolith(c: &Element) -> bool {
+    let scrolls = |o: Option<crate::computed::Overflow>| matches!(o, Some(crate::computed::Overflow::Scroll));
+    let block_kid = |n: &Node| matches!(n, Node::Element(k) if !k.inline || k.style.display == Some(Display::Block));
+    !(size_monolith(c)
+        || scrolls(c.style.overflow_x)
+        || scrolls(c.style.overflow_y)
+        || matches!(
+            c.tag.as_str(),
+            "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
+        )
+        || matches!(
+            c.style.display,
+            Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
+        )
+        || (c.children.iter().any(|n| !is_blank(n)) && !c.children.iter().any(block_kid)))
 }
 
 /// Перемера после распорки — с прежними полями у элемента строки flex
@@ -5155,7 +5219,22 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
         }
     }
     if bot > 0.0 {
-        solid.push((h_box - bot, h_box));
+        // Нижняя рамка/отбивка таблицы приклеена к монолиту последнего ряда —
+        // то же правило, что у блока (`shape_full`, Р4 break-rest): точки
+        // разрыва перед block-end рамкой нет (css-break-4 §possible-breaks, класс
+        // C — только при ненулевом зазоре; Blink `FinishFragmentation` держит там
+        // лишь «last-resort breakpoint»). `table-border-006`: ряды `avoid` 100 и
+        // 70, `border-bottom: 30px` в колонке 170 — рамка уходит вместе с
+        // последним рядом, а не одна во вторую колонку. Зазор `border-spacing`
+        // между рядом и рамкой — та же «без промежутка» граница: рамка таблицы
+        // от ряда отделена именно им, а не полем.
+        let end_edge = h_box - bot;
+        let glue = solid
+            .iter()
+            .filter(|&&(a, b)| a > 0.01 && (b - (end_edge - spacing)).abs() < 0.01)
+            .map(|&(a, _)| a)
+            .fold(end_edge, f32::min);
+        solid.push((glue, h_box));
     }
     bands.box_top = 0.0;
     bands.box_end = h_box;
@@ -18802,6 +18881,15 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             let n = kids.len();
                             (kids, vec![crate::flow::Par::default(); n], vec![None; n], (0..=n).collect())
                         };
+                        // `break-inside: avoid` без настоящего монолита — у любого
+                        // ребёнка колонок (`flow::Par::avoid_only`): с верха колонки
+                        // коробка выше колонки рвётся, а не переполняет её.
+                        let mut kid_par = kid_par;
+                        for (p, (c, _)) in kid_par.iter_mut().zip(kids.iter()) {
+                            if p.group == 0 {
+                                p.avoid_only = c.style.break_inside_avoid && avoid_only_monolith(c);
+                            }
+                        }
                         let kids = grow_pushed(kids, cols as usize, fixed, rows, copies, &kid_par);
                         // `box-decoration-break: clone`: геометрия фрагментов —
                         // ДО сборки копий: каждая копия такой коробки строится
@@ -19591,6 +19679,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // (`flow.rs` `StackChild::nested_cols`).
                                     nested_cols: multicol_inside(&copy, 4),
                                     par: kid_par[ix],
+                                    // Хвост непоследнего фрагмента таблицы — её фоном
+                                    // (`flow.rs` `StackChild::slack`).
+                                    slack: table_box(&copy)
+                                        .then(|| copy.style.background.map(|c| c.to_hsla()))
+                                        .flatten(),
+                                    laid_w: Default::default(),
                                     // Повтор шапки/подвала таблицы — полосы своими
                                     // копиями (`flow::Repeat`); та же мера, что у
                                     // щупов (`repeat_leads`).
@@ -19673,6 +19767,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 nested_cols: false,
                                 repeat: None,
                                 par: crate::flow::Par::default(),
+                                slack: None,
+                                laid_w: Default::default(),
                             };
                             // Номер — среди ДЕТЕЙ ДО раскрытия строк flex (`split_flex_lines`).
                             let at = kid_starts.get(*at).copied().unwrap_or(children.len()).min(children.len());

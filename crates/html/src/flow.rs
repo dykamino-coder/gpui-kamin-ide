@@ -536,6 +536,16 @@ pub struct StackChild {
     pub repeat: Option<Repeat>,
     /// Параллельный поток строки flex (`Par`).
     pub par: Par,
+    /// Фон таблицы для «хвоста» непоследнего фрагмента: секции и ряды до низа
+    /// фрагментаинера не тянутся, а коробка таблицы — тянется (css-break-3
+    /// §box-splitting; Blink `table_layout_algorithm.cc` — фрагмент таблицы
+    /// занимает остаток, `fragmentation_utils.cc:563` «Consumed block-size …
+    /// is always stretched to the fragmentainers»). Распорка роста
+    /// (`grow_pushed`) в пустой ячейке коробки не находит, и в хвосте было
+    /// пусто. Хвост красится цветом фона по ширине разложенной копии.
+    pub slack: Option<gpui::Hsla>,
+    /// Ширина разложенной копии (для `slack`), ставится в `prepaint`.
+    pub laid_w: std::cell::Cell<f32>,
 }
 
 /// Повтор секций таблицы во фрагментах. Фрагмент в нашей модели — СРЕЗ одной
@@ -1292,7 +1302,13 @@ impl ColumnStack {
                         placed = cur > 0.01;
                         continue;
                     }
-                    None if placed => {
+                    // Перед ним в колонке только коробки нулевой высоты — это
+                    // всё ещё её начало, и разрыва ПЕРЕД ребёнком нет (css-break-4
+                    // §unforced-breaks: «must place at least some content on each
+                    // fragmentainer»; `tall-break-inside-avoid-at-start`: пустой
+                    // `div`, затем `break-inside: avoid` 200 в колонке 100). У
+                    // страниц — прежнее правило.
+                    None if placed && (cur > 0.01 || paged) => {
                         // Из непустой колонки — в следующую целиком; поле на
                         // границе колонки съедается.
                         col += 1;
@@ -1559,13 +1575,62 @@ impl ColumnStack {
         };
         let mut marks: Vec<(usize, usize)> = Vec::new();
         let mut stuck: Vec<usize> = Vec::new();
-        for _ in 0..kids.len().min(8) {
+        // Ранние разрывы ВНУТРИ предыдущего ребёнка: `(ребёнок, точка)`.
+        let mut early: Vec<(usize, f32)> = Vec::new();
+        let mut early_tried: Vec<usize> = Vec::new();
+        let build = |marks: &[(usize, usize)], early: &[(usize, f32)]| -> Vec<Kid> {
+            let mut work: Vec<Kid> = kids.to_vec();
+            for &(_, m) in marks {
+                work[m].force_before = true;
+            }
+            for &(k, at) in early {
+                work[k].forced.push(at);
+                work[k].forced.sort_by(f32::total_cmp);
+            }
+            work
+        };
+        'outer: for _ in 0..kids.len().min(8) {
             let Some(bad) =
                 Self::avoid_violation_where(kids, &best.2, &|i| stuck.contains(&flow_of(i)))
             else {
                 return best;
             };
             let flow = flow_of(bad);
+            // Лучшая точка разрыва может лежать ВНУТРИ содержимого, которое
+            // уже пройдено (css-break-4 §4.4: «the UA … must choose the
+            // breakpoint with the highest break appeal»; Blink `early_break_` в
+            // `block_layout_algorithm.cc:1086`, `fragmentation_utils.cc:1250`):
+            // запрет на границе с предыдущим ребёнком снимается разрывом в его
+            // последней законной точке, а не переносом его целиком —
+            // `break-between-avoid-003`: обёртка из трёх квадратов `avoid`,
+            // следом квадрат с `break-before: avoid` в колонке 160 → разрыв
+            // между вторым и третьим квадратом. Сначала самая поздняя точка;
+            // принимается та, что снимает нарушение на этой границе.
+            if flow == usize::MAX && !early_tried.contains(&bad) && !kids[bad - 1].monolith {
+                early_tried.push(bad);
+                let pk = &kids[bad - 1];
+                let cands: Vec<f32> = pk
+                    .cuts
+                    .iter()
+                    .rev()
+                    .map(|&(need, _)| need)
+                    .filter(|&n| n > 0.01 && n < pk.h - 0.01 && !pk.forced.iter().any(|&f| (f - n).abs() < 0.01))
+                    .take(4)
+                    .collect();
+                for at in cands {
+                    let mut e2 = early.clone();
+                    e2.push((bad - 1, at));
+                    let cand = Self::fill_at(&build(&marks, &e2), target_at, limit, paged);
+                    let still = Self::avoid_violation_where(kids, &cand.2, &|i| {
+                        stuck.contains(&flow_of(i)) || i < bad
+                    });
+                    if still != Some(bad) {
+                        early = e2;
+                        best = cand;
+                        continue 'outer;
+                    }
+                }
+            }
             let prev = marks.iter().find(|m| m.0 == flow).map(|m| m.1);
             // Метка только назад — иначе цикл вечен, а план качается. Поток,
             // где отступать некуда, больше не трогается.
@@ -1579,11 +1644,7 @@ impl ColumnStack {
             };
             marks.retain(|m| m.0 != flow);
             marks.push((flow, next));
-            let mut work: Vec<Kid> = kids.to_vec();
-            for &(_, m) in &marks {
-                work[m].force_before = true;
-            }
-            best = Self::fill_at(&work, target_at, limit, paged);
+            best = Self::fill_at(&build(&marks, &early), target_at, limit, paged);
         }
         best
     }
@@ -2386,7 +2447,7 @@ impl Element for ColumnStack {
             // Копия раскладывается ЦЕЛИКОМ и поднимается на срез: видимой её
             // часть делает маска в отрисовке. Иначе половина коробки просто
             // сжалась бы, а не продолжилась в следующей колонке.
-            el.layout_as_root(
+            let laid = el.layout_as_root(
                 size(
                     gpui::AvailableSpace::Definite(px(col_w + lead)),
                     gpui::AvailableSpace::Definite(px(full_h)),
@@ -2395,6 +2456,9 @@ impl Element for ColumnStack {
                 cx,
             );
             el.prepaint_at(point(x, if clone { y } else { y - px(f.from) }), window, cx);
+            if kid.slack.is_some() {
+                kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));
+            }
         }
         // Спаннер — во всю ширину коробки, первой копией (запасных у него
         // нет: между колонками он не режется).
@@ -2509,6 +2573,7 @@ impl Element for ColumnStack {
         for f in &plan {
             parts[f.kid] += 1;
         }
+        let plan_all = plan.clone();
         for f in plan {
             let (c, ry) = self.place(f.col);
             // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):
@@ -2574,6 +2639,22 @@ impl Element for ColumnStack {
                     window.with_content_mask(Some(band_mask(f.h + f.foot - bh, bh)), |window| {
                         el.paint(window, cx)
                     });
+                }
+            }
+            // Хвост непоследнего фрагмента таблицы — фоном таблицы (`slack`).
+            if let Some(bg) = kid.slack
+                && plan_all.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1)
+            {
+                let line = if matches!(self.rows, Some(r) if r.wrap) { f.col / self.count } else { 0 };
+                let line_h = self.lines_plan.borrow().get(line).map_or(0.0, |l| l.1);
+                let band = kid.repeat.as_ref().and_then(|r| r.foot).map_or(0.0, |b| b.1);
+                let tail = if f.foot > 0.01 { f.foot - band } else { line_h - f.y - f.h };
+                let w = kid.laid_w.get();
+                if tail > 0.01 && w > 0.01 {
+                    window.paint_quad(gpui::fill(
+                        Bounds { origin: point(x, y + px(f.h)), size: size(px(w), px(tail)) },
+                        bg,
+                    ));
                 }
             }
             let el = if f.copy == 0 {
