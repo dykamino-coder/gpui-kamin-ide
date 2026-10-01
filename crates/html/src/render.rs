@@ -4972,6 +4972,16 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
                 matches!(n, Node::Element(cell) if is_cell(cell) && edge_avoid(cell, last))
             })
     }
+    // Принудительные `break-before`/`break-after` ячеек — тем же слиянием на
+    // ряд (Blink `table_row_layout_algorithm.cc:169-177`,
+    // `JoinFragmentainerBreakValues`): `break-before-expansion-001` — ячейка
+    // второго ряда с `break-before: column`.
+    fn row_force(row: &Element, last: bool) -> bool {
+        (if last { row.style.break_after_force } else { row.style.break_before_force })
+            || row.children.iter().filter(|n| !is_blank(n)).any(|n| {
+                matches!(n, Node::Element(cell) if is_cell(cell) && edge_break(cell, last))
+            })
+    }
     // Плоский список рядов: ряд, № группы, avoid группы, разрывы (свои и
     // группы — на первом/последнем её ряду), запреты разрыва на КРАЯХ ряда
     // (`ab`/`aa` — свои, ячеек и краёв группы).
@@ -4991,8 +5001,8 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
                 row: e,
                 group: gi,
                 avoid: false,
-                fb: e.style.break_before_force,
-                fa: e.style.break_after_force,
+                fb: row_force(e, false),
+                fa: row_force(e, true),
                 ab: row_avoid(e, false),
                 aa: row_avoid(e, true),
             });
@@ -5013,8 +5023,8 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
                 row: r,
                 group: gi,
                 avoid: e.style.break_inside_avoid,
-                fb: r.style.break_before_force || (i == 0 && e.style.break_before_force),
-                fa: r.style.break_after_force || (i == last && e.style.break_after_force),
+                fb: row_force(r, false) || (i == 0 && e.style.break_before_force),
+                fa: row_force(r, true) || (i == last && e.style.break_after_force),
                 // Край ГРУППЫ — тот же перенос, что у принудительных выше:
                 // `break-before: avoid` группы действует на её ПЕРВОМ ряду,
                 // `break-after: avoid` — на ПОСЛЕДНЕМ (css-break-4 §break-between,
