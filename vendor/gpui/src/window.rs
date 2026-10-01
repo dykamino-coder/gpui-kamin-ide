@@ -3705,12 +3705,17 @@ impl Window {
     /// над подложкой (и размытие, если оно тоже задано). Прозрачность
     /// элемента входит в композит (filter-effects-2 §3 шаг 5: эффекты
     /// самого элемента применяются к отфильтрованной подложке).
+    ///
+    /// `hoist`: элемент сам — группа (`paint_group`, своя маска-изображение).
+    /// Внутри группы подложку копировать не из чего — буфер группы рисуется
+    /// до кадра, — и она уходит в кадр перед меткой группы (см. `paint_group`).
     pub fn paint_backdrop_filter(
         &mut self,
         bounds: Bounds<Pixels>,
         corner_radii: Corners<Pixels>,
         blur_radius: f32,
         color_matrix: [f32; 20],
+        hoist: bool,
     ) {
         use crate::PaintSurface;
 
@@ -3720,7 +3725,7 @@ impl Window {
         let bounds = bounds.scale(scale_factor);
         let content_mask = self.content_mask().scale(scale_factor);
         let opacity = self.element_opacity();
-        self.next_frame.scene.insert_primitive(PaintSurface {
+        let surface = PaintSurface {
             order: 0,
             bounds,
             content_mask,
@@ -3729,7 +3734,12 @@ impl Window {
             group: 0,
             opacity,
             color_matrix: Some(color_matrix),
-        });
+        };
+        if hoist && self.next_frame.scene.in_group {
+            self.next_frame.scene.hoisted_backdrops.push(surface);
+        } else {
+            self.next_frame.scene.insert_primitive(surface);
+        }
     }
 
     /// KaminIDE patch: нарисовать поддерево в отдельный буфер и положить в
@@ -3766,12 +3776,16 @@ impl Window {
         let content_mask = self.content_mask().scale(scale_factor);
 
         let mut outer = crate::Scene::default();
+        outer.in_group = true;
         std::mem::swap(&mut self.next_frame.scene, &mut outer);
         let result = f(self);
         std::mem::swap(&mut self.next_frame.scene, &mut outer);
 
         let mut inner = outer;
         inner.finish();
+        // KaminIDE patch: подложки, поднятые из группы (`paint_backdrop_filter`
+        // с `hoist`), — в объемлющую сцену; до кадра — сквозь все уровни.
+        let hoisted = std::mem::take(&mut inner.hoisted_backdrops);
         // Группы, вложенные в эту, переезжают в общий список кадра ПЕРЕД ней:
         // их номера были местными, поэтому сдвигаются на длину списка.
         let mut nested = std::mem::take(&mut inner.groups);
@@ -3799,6 +3813,16 @@ impl Window {
             mask_once,
             mask_clip,
         });
+        // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
+        // копирует кадр, уже нарисованный под элементом, а буфер группы
+        // (фон, рамка, дети — filter-effects-2 §3 шаг 5) композитится поверх.
+        if self.next_frame.scene.in_group {
+            self.next_frame.scene.hoisted_backdrops.extend(hoisted);
+        } else {
+            for surface in hoisted {
+                self.next_frame.scene.insert_primitive(surface);
+            }
+        }
         self.next_frame.scene.insert_primitive(PaintSurface {
             order: 0,
             bounds: scaled,

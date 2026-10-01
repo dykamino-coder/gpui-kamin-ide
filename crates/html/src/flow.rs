@@ -523,6 +523,14 @@ pub struct StackChild {
     /// баланс подобрал бы высоту ниже монолита, а у ряда flex/сетки/таблицы в
     /// переполнение ушли бы соседи по ряду.
     pub overflow_top: bool,
+    /// В поддереве ребёнка есть многоколоночник (`render::multicol_inside`). Внешними
+    /// колонками он у нас не фрагментируется (нет Blink
+    /// `is_constrained_by_outer_fragmentation_context_`,
+    /// `column_layout_algorithm.cc:1743-1746`): копия — ПЛОСКИЙ рисунок его
+    /// собственного баланса, и её боковой вылет выдуман. Маска такого ребёнка
+    /// режет вбок по колонке, как до вылета (`multicol-nested-013/014/021`,
+    /// `multicol-fill-balance-nested-000`).
+    pub nested_cols: bool,
 }
 
 /// Мера ребёнка для укладки колонок.
@@ -2217,8 +2225,18 @@ impl Element for ColumnStack {
             // шириной 0 (`relative-child-overflowing-container`, колонка 1px). Вылет —
             // на ширину окна (у стопки нулевой ширины своей ширины нет); дальше режет
             // маска предка. Заменяет P10 `scout-grid-frag-2026-09-30.md` §5.10.
+            // Кроме ребёнка с вложенным многоколоночником (`StackChild::nested_cols`):
+            // его ширина за колонкой — артефакт плоской копии, а не переполнение
+            // (`scout-mcnested-2026-09b.md` §5.3: красный потомок `margin-left:100%`
+            // в `multicol-fill-balance-nested-000` прячет только маска колонки).
             let win_w = window.viewport_size().width;
-            let spill = if win_w > bounds.size.width { win_w } else { bounds.size.width };
+            let spill = if self.children[f.kid].nested_cols {
+                px(0.)
+            } else if win_w > bounds.size.width {
+                win_w
+            } else {
+                bounds.size.width
+            };
             let mask = gpui::ContentMask {
                 bounds: Bounds {
                     origin: point(x - spill, y),

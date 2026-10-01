@@ -418,6 +418,9 @@ pub struct ColumnFlow {
     /// `column-fill: auto` с заданной высотой: колонки заполняются подряд до
     /// этой высоты, а не делятся поровну (css-multicol-1 §3.3).
     fill_height: Option<f32>,
+    /// Текст — единственного ребёнка-монолита (`render::column_flow_in`): в
+    /// узкой колонке его строки не режутся (`measure_columns`).
+    whole: bool,
     cuts: Rc<std::cell::RefCell<(Vec<usize>, Pixels, usize)>>,
     child: Option<AnyElement>,
 }
@@ -434,6 +437,7 @@ impl ColumnFlow {
         font_size: f32,
         line_height: f32,
         fill_height: Option<f32>,
+        whole: bool,
     ) -> Self {
         ColumnFlow {
             build,
@@ -445,6 +449,7 @@ impl ColumnFlow {
             font_size,
             line_height,
             fill_height,
+            whole,
             cuts: Rc::new(std::cell::RefCell::new((Vec::new(), px(0.), 1))),
             child: None,
         }
@@ -475,6 +480,7 @@ fn measure_columns(
     font_size: f32,
     line_height: f32,
     fill_height: Option<f32>,
+    whole: bool,
     width: Pixels,
     window: &mut Window,
 ) -> (Vec<usize>, usize, Pixels) {
@@ -501,6 +507,15 @@ fn measure_columns(
     // режиме такие границы ниже отбрасываются.
     let inner = ((avail - gap * (count.saturating_sub(1)) as f32) / count as f32).max(0.0);
     let narrow = inner <= font_size;
+    // Монолит (`whole`: `contain: size`, css-contain-2 §containment-size «Size
+    // containment boxes are monolithic») по строкам между колонками не режется, а
+    // текстовый путь видит только его голый текст. В узкой колонке — прежний
+    // сторож «без разрезов»: `contain-size-breaks-001` (5 строк Ahem в колонках по
+    // 1em) с границами по пробелам давал «A B | C D | E» — не прямоугольник.
+    // Широкие колонки — как прежде.
+    if narrow && whole {
+        return (Vec::new(), count, px(line_height));
+    }
     let mut wrapper = window
         .text_system()
         .line_wrapper(font.clone(), px(font_size));
@@ -589,6 +604,7 @@ impl Element for ColumnFlow {
         let line_height = self.line_height;
         let cuts = self.cuts.clone();
         let fill_height = self.fill_height;
+        let whole = self.whole;
         // css-multicol-1 §Overflow: заданная блочная высота ограничивает высоту
         // КОЛОНКИ, а не всей стопки — с ней рождаются переполняющие колонки.
         let layout_id = window.request_measured_layout(
@@ -623,6 +639,7 @@ impl Element for ColumnFlow {
                     font_size,
                     line_height,
                     fill_height,
+                    whole,
                     width,
                     window,
                 );
@@ -653,6 +670,7 @@ impl Element for ColumnFlow {
                 self.font_size,
                 self.line_height,
                 self.fill_height,
+                self.whole,
                 bounds.size.width,
                 window,
             );

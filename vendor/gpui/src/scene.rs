@@ -73,6 +73,13 @@ pub(crate) struct Scene {
     pub(crate) monochrome_sprites: Vec<MonochromeSprite>,
     pub(crate) polychrome_sprites: Vec<PolychromeSprite>,
     pub(crate) surfaces: Vec<PaintSurface>,
+    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
+    pub(crate) in_group: bool,
+    /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
+    /// группы рисуется ДО кадра, и копировать подложку в нём не из чего
+    /// (filter-effects-2 §3 шаг 1 — «Backdrop Root Image» лежит ПОД
+    /// элементом). Кладутся в кадр перед меткой группы.
+    pub(crate) hoisted_backdrops: Vec<PaintSurface>,
 }
 
 impl Scene {
@@ -108,6 +115,7 @@ impl Scene {
         self.monochrome_sprites.clear();
         self.polychrome_sprites.clear();
         self.surfaces.clear();
+        self.hoisted_backdrops.clear();
     }
 
     pub fn len(&self) -> usize {

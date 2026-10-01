@@ -216,6 +216,7 @@ fn scale_own(c: &mut Computed, k: f32) {
         .iter_mut()
         .chain(c.inset_shadows.iter_mut())
         .chain(c.text_shadow.iter_mut())
+        .chain(c.text_shadow_rest.iter_mut())
     {
         scale_shadow(sh, k);
     }

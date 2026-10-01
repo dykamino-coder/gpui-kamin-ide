@@ -256,8 +256,38 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
     // прежде зелёные пары совпадали с эталоном ИМЕННО одноколоночным
     // поведением, а свои дорожки без настоящих ширин родителя их разломали.
     // Возвращаться только с настоящей передачей дорожек родителя вниз.
+    // Явная сетка — не меньше `grid-template-areas`: «The size of the explicit
+    // grid is determined by the larger of the number of rows/columns defined
+    // by 'grid-template-areas' and the number of rows/columns sized by
+    // 'grid-template-rows'/'grid-template-columns'», лишние берут размер
+    // `grid-auto-*` (css-grid-2 Overview.bs:1495-1499; Blink
+    // `grid_line_resolver.cc:525-538`). Раскладке области не передаются, и их
+    // лишние колонки были у неё НЕЯВНЫМИ: размер тот же, но линия `-1`
+    // считалась от шаблона (`subgrid/abs-pos-001`: `3 / -1` абсолюта во внешней
+    // сетке кончался на линии 11, а не 12). Список `grid-auto-*` из нескольких
+    // значений и повтор `auto-fill/fit` не трогаем: там счёт другой.
+    let (area_rows, area_cols) = c.grid_areas.as_ref().map_or((0, 0), |a| {
+        (a.len(), a.iter().map(|r| r.len()).max().unwrap_or(0))
+    });
+    let with_areas =
+        |tracks: &[TrackSize], want: usize, auto: &Option<TrackSize>, list: &[TrackSize]| {
+            let mut out: Vec<gpui::GridTrack> = tracks.iter().map(track).collect();
+            let plain = tracks
+                .iter()
+                .all(|t| !matches!(t, TrackSize::AutoRepeat { .. }));
+            if plain && list.is_empty() && want > out.len() {
+                let fill = auto.as_ref().map(track).unwrap_or(gpui::GridTrack::Auto);
+                out.resize(want, fill);
+            }
+            out
+        };
     match (&c.grid_tracks, c.grid_cols, auto_fill) {
-        (Some(tracks), _, _) => d = along_line(d, tracks.iter().map(track).collect()),
+        (Some(tracks), _, _) => {
+            d = along_line(
+                d,
+                with_areas(tracks, area_cols, &c.grid_auto_cols, &c.grid_auto_cols_list),
+            )
+        }
         // «Сколько влезет» умеет сама раскладка — короткая форма GPUI.
         // Тело повтора из НЕСКОЛЬКИХ дорожек: своего «минимума» оно не даёт
         // (`auto_fill_min` разбирает одну дорожку), поэтому идёт своей ветвью.
@@ -383,7 +413,8 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
         }
     }
     if let Some(rows) = &c.grid_rows {
-        let tracks: Vec<gpui::GridTrack> = rows.iter().map(track).collect();
+        // Ряды областей сверх шаблона — тоже явные (см. `with_areas` выше).
+        let tracks = with_areas(rows, area_rows, &c.grid_auto_rows, &c.grid_auto_rows_list);
         d = if flip {
             d.grid_template_cols(tracks)
         } else {

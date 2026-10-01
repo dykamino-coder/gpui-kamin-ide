@@ -956,6 +956,19 @@ fn backdrop_root(c: &Computed) -> bool {
         || c.blend.is_some_and(|b| b != 0)
         || c.backdrop_blur.is_some()
         || c.backdrop_color.is_some()
+        // Любой `backdrop-filter`, кроме `none` (Overview.bs:119; Blink
+        // paint_property_tree_builder.cc:1846), и `view-transition-name`
+        // (css-view-transitions-1 Overview.bs:582).
+        || c.backdrop_filter_set
+        || c.vt_name
+        // `clip-path` ЛЮБОЙ формой (Overview.bs:118; Blink
+        // paint_property_tree_builder.cc:1887 `ClipPathClip()`): `inset()`,
+        // `rect()`, `xywh()` и голая коробка разбором лежат не в
+        // `clip_shape`/`clip_polygon` (`backdrop-filter-backdrop-root-clip-path-2`).
+        || c.clip_inset.is_some()
+        || c.clip_edges.is_some()
+        || c.clip_xywh.is_some()
+        || c.clip_bare_box
         || c.will_change_root
 }
 
@@ -1431,6 +1444,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     }
     c.font_weight = own.font_weight.or(parent.font_weight);
     c.italic = own.italic.or(parent.italic);
+    c.oblique = own.oblique.or(parent.oblique);
     c.underline = own.underline.or(parent.underline);
     c.line_through = own.line_through.or(parent.line_through);
     // То же для высоты строки: `line-height: 2lh` уже переведён в точки от
@@ -1613,6 +1627,12 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         .clone()
         .or_else(|| parent.font_settings.clone());
     c.text_shadow = own.text_shadow.or(parent.text_shadow);
+    // Хвост списка идёт вместе с первой тенью: своя запись — свой хвост,
+    // унаследованная — хвост родителя (css-text-decor-3: `text-shadow`
+    // наследуется списком целиком).
+    if own.text_shadow.is_none() {
+        c.text_shadow_rest = parent.text_shadow_rest.clone();
+    }
     c.rtl = own.rtl.or(parent.rtl);
     // `text-align: start|end` — края СТРОКИ, и разворачиваются они в момент
     // ОТРИСОВКИ, а не здесь: иначе левый край, вычисленный для тела страницы,
@@ -3400,23 +3420,23 @@ pub fn as_wrapped_row(
     // раньше свойство доходило только до текстового блока, и ряд из
     // `inline-block` оставался слева при `text-align: right`.
     //
-    // У развёрнутого ряда прижим — ТОЛЬКО `FlexStart`/`FlexEnd`: taffy
-    // считает `Start`/`End` (`justify_start()`/`justify_end()`) от
-    // физического начала и разворот ряда их не меняет
-    // (`taffy/src/compute/common/alignment.rs:50-67`). На этом упал откат K1
-    // (08.09): ряд прижимался влево. `FlexStart` развёрнутого ряда — правый
-    // край, `FlexEnd` — левый. Без значения taffy сам берёт `FlexStart`
+    // Прижим ФИЗИЧЕСКИЙ и у развёрнутого ряда: `Start`/`End` taffy считает от
+    // физического начала (`taffy/src/compute/common/alignment.rs:50-66`), и
+    // `End` кладёт развёрнутую строку к правому краю ровно так же, как
+    // `FlexStart` (первым идёт физически левый ребёнок, `flexbox.rs:2499`,
+    // смещение `free_space` у обоих). Откат K1 (08.09) падал на ЗЕРКАЛЕ
+    // (`Right` → `justify_start()`), а не на физическом прижиме.
+    // `FlexStart`/`FlexEnd` здесь нельзя: абсолют-ребёнок ряда (держатель
+    // замещаемого с долей ширины, `atom_element`) ставится taffy по
+    // `justify_content` БЕЗ учёта разворота (`flexbox.rs:2782-2799`: пара
+    // `(FlexStart, false)` → начало), и rtl-статика уезжала к ЛЕВОМУ краю
+    // (`absolute-replaced-width-020`: 3.84 — синий 96×96 слева). Blink
+    // разворот учитывает (`flex_layout_algorithm.cc:457-478`
+    // `MainAxisStaticPositionEdge`), css-flexbox-1 §4.1 — «as if it were the
+    // sole flex item». Без значения taffy сам берёт `FlexStart`
     // (`flexbox.rs:1923`), то есть правый край — начало rtl-строки.
     row = match text_align {
         Some(TextAlign::Center) => row.justify_center(),
-        Some(TextAlign::Right) if reversed => {
-            row.style().justify_content = Some(gpui::JustifyContent::FlexStart);
-            row
-        }
-        Some(TextAlign::Left) if reversed => {
-            row.style().justify_content = Some(gpui::JustifyContent::FlexEnd);
-            row
-        }
         Some(TextAlign::Right) => row.justify_end(),
         Some(TextAlign::Left) => row.justify_start(),
         _ => row,
@@ -3436,6 +3456,15 @@ pub fn as_wrapped_row(
     // Пуста ли текущая строка ряда: распорка отступа строку не наполняет,
     // слово и атом — наполняют (см. `blank_line_break`).
     let mut line_empty = true;
+    // strut пустой строки — только у ПЕРВОЙ строки с ненулевым отступом
+    // (`text-indent-on-blank-line-rtl-left-align`). CSS 2.1 §9.4.2
+    // (css2/Overview.bs:6776) даёт strut и прочим строкам `<br>`, но тогда его
+    // обязана получить и строка из одного атома (Blink ставит
+    // `should_create_line_box` обоим: line_breaker.cc:2906 и :3158), а у ряда
+    // атомов strut откачен (+3/−37, см. выше). Пустой `<br>` со strut при
+    // атоме без него разводил пару `<svg height=0>` ↔ `<br>`: эталон
+    // `mask-image-3-ref` уезжал на 19.2px, `mask-image-3a…3e, 3h` — 0.61.
+    let mut indent_line = indent != 0.0;
     for group in glue_atoms(split_glued_tail(drop_hanging_tail(pieces))) {
         // Склеенная группа — свой НЕПЕРЕНОСИМЫЙ ряд: шва внутри него нет, и
         // атом уходит на новую строку вместе с приклеенным знаком. Ряд из
@@ -3467,13 +3496,15 @@ pub fn as_wrapped_row(
                     for (n, part) in text.split('\n').enumerate() {
                         if n > 0 {
                             // Разрыв после содержимого — нулевая распорка, как
-                            // прежде; разрыв ПУСТОЙ строки держит её strut.
-                            row = row.child(if line_empty {
+                            // прежде; разрыв ПУСТОЙ строки с отступом держит
+                            // её strut (см. `indent_line`).
+                            row = row.child(if line_empty && indent_line {
                                 blank_line_break(&style)
                             } else {
                                 line_break()
                             });
                             line_empty = true;
+                            indent_line = false;
                         }
                         for w in part.split_inclusive(' ') {
                             if w.chars().any(|c| !matches!(c, ' ' | '\u{200b}')) {

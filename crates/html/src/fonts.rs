@@ -37,10 +37,13 @@ thread_local! {
     /// из нескольких правил (подмножества знаков), и пробел у него есть,
     /// если его несёт ХОТЬ ОДНО.
     static HAS_SPACE: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
-    /// Придуманное имя → множитель `size-adjust` (css-fonts-5). `NaN` — правила
-    /// одного семейства дают РАЗНЫЕ множители: лицо по наклону и весу мы не
-    /// выбираем, и общий множитель красил бы чужое лицо.
-    static SIZE_ADJUST: RefCell<HashMap<String, f32>> = RefCell::new(HashMap::new());
+    /// Придуманное имя → лица семейства с их множителем `size-adjust`
+    /// (css-fonts-5): `(наклон, множитель)` на каждое правило, наклон — из
+    /// дескриптора `font-style` (0 normal, 1 italic, 2 oblique). Множитель —
+    /// свойство ЛИЦА: какое из них возьмёт элемент, решает подбор по наклону
+    /// (`size_adjust`), а не семейство целиком.
+    static SIZE_ADJUST: RefCell<HashMap<String, Vec<(u8, f32)>>> =
+        RefCell::new(HashMap::new());
     /// Уже загруженные файлы: одно и то же правило встречается на странице
     /// не по разу, а разбор шрифта дорог.
     static LOADED: RefCell<HashMap<String, Option<String>>> =
@@ -270,12 +273,18 @@ fn load_faces_into(css: &str) {
                 .and_then(|v| v.trim().strip_suffix('%')?.trim().parse::<f32>().ok())
                 .filter(|p| *p >= 0.0)
                 .map_or(1.0, |p| p / 100.0);
+            // Наклон лица — дескриптор `font-style` (css-fonts-4
+            // §font-prop-desc): `italic`, `oblique [<angle>{1,2}]`, иначе normal.
+            let slope = match declaration(&block, "font-style").map(|v| v.trim().to_ascii_lowercase()) {
+                Some(v) if v.starts_with("italic") => 1u8,
+                Some(v) if v.starts_with("oblique") => 2,
+                _ => 0,
+            };
             SIZE_ADJUST.with(|s| {
-                let mut s = s.borrow_mut();
-                let slot = s.entry(name.clone()).or_insert(adjust);
-                if *slot != adjust {
-                    *slot = f32::NAN;
-                }
+                s.borrow_mut()
+                    .entry(name.clone())
+                    .or_default()
+                    .push((slope, adjust));
             });
             let width = stretch_desc(declaration(&block, "font-stretch").as_deref());
             FACES.with(|f| {
@@ -294,15 +303,32 @@ fn load_faces_into(css: &str) {
     }
 }
 
-/// Множитель `size-adjust` семейства (1.0 — нет дескриптора или правила
-/// семейства расходятся между собой).
-pub fn size_adjust(family: &str) -> f32 {
+/// Множитель `size-adjust` лица, которое подбор по наклону (css-fonts-4
+/// §font-style-matching; Blink `font_face_cache.cc:227-259`) выберет для
+/// запроса `want`: 0 normal, 1 italic, 2 oblique. Порядок наклонов лиц:
+/// italic → italic, oblique, normal; normal → normal, oblique, italic
+/// (§5.2 шаг 2); oblique → oblique, normal, italic — наклонный запрос на
+/// курсивное лицо не падает (csswg#9389, `italic-oblique-fallback`). Среди
+/// лиц одного наклона вес и ширину мы не выбираем: расходятся их множители —
+/// 1.0 (`oblique-last-resort-weight-selection`: два oblique-лица, 100% и 50%).
+pub fn size_adjust(family: &str, want: u8) -> f32 {
     SIZE_ADJUST.with(|s| {
-        s.borrow()
-            .get(&family.to_ascii_lowercase())
-            .copied()
-            .filter(|k| k.is_finite())
-            .unwrap_or(1.0)
+        let s = s.borrow();
+        let Some(faces) = s.get(&family.to_ascii_lowercase()) else {
+            return 1.0;
+        };
+        let order: [u8; 3] = match want {
+            1 => [1, 2, 0],
+            2 => [2, 0, 1],
+            _ => [0, 2, 1],
+        };
+        for slope in order {
+            let mut hit = faces.iter().filter(|(k, _)| *k == slope).map(|(_, a)| *a);
+            if let Some(first) = hit.next() {
+                return if hit.all(|a| a == first) { first } else { 1.0 };
+            }
+        }
+        1.0
     })
 }
 

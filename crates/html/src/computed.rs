@@ -1040,6 +1040,115 @@ impl Transform {
         self
     }
 
+    /// Отдельные `rotate`/`scale` СЛЕВА от этого списка (css-transforms-2
+    /// §ctm: п.4 — `rotate`, п.5 — `scale`, п.7 — функции `transform`; Blink
+    /// `ComputedStyle::ApplyTransform`, style/computed_style.cc:1464-1487 —
+    /// `Rotate()`, `Scale()`, затем `Transform().Operations()`). Обе матрицы —
+    /// плоская и 4×4 — получают одну и ту же свёртку; разложение, m33 и
+    /// `has_3d` остаются от самого списка (SVG, клип, изнанка).
+    pub fn after_individual(self, rotate: Option<f32>, scale: Option<(f32, f32)>) -> Transform {
+        if rotate.is_none() && scale.is_none() {
+            return self;
+        }
+        let mut out = Transform::default();
+        if let Some(a) = rotate {
+            out.push(Self::rot(a), NO_SHIFT);
+        }
+        if let Some((x, y)) = scale {
+            out.push(Self::diag(x, y), NO_SHIFT);
+        }
+        out.push2(self.lin, self.tr);
+        out.push4(self.m4, self.m4_pct);
+        Transform {
+            lin: out.lin,
+            tr: out.tr,
+            m4: out.m4,
+            m4_pct: out.m4_pct,
+            ..self
+        }
+    }
+
+    /// Промежуточная ПЛОСКАЯ матрица между `self` и `other` на доле `k`
+    /// (css-transforms-1 §matrix-interpolation): обе раскладываются на
+    /// масштаб, угол и остаток 2×2 (§decomposing-a-2d-matrix, «unmatrix»),
+    /// компоненты смешиваются линейно — со сменой флипа и без «длинного пути»
+    /// (§interpolation-of-decomposed-2d-matrix-values) — и собираются обратно:
+    /// `lin = K·R(угол)·diag(sx, sy)`. `none` приходит сюда тождеством
+    /// (§interpolation-of-transforms). Сдвиг вместе с долями размера —
+    /// линейно. Необратимая сторона — `None`: анимация дискретна.
+    pub fn lerp_2d(&self, other: &Transform, k: f32) -> Option<Transform> {
+        use std::f32::consts::{PI, TAU};
+        // Столбцы `lin` — образы осей: `row0` псевдокода = (a, b) записи
+        // `matrix(a, b, c, d, e, f)`, `row1` = (c, d).
+        let unmatrix = |l: [[f32; 2]; 2]| -> Option<((f32, f32), f32, [f32; 4])> {
+            let (r0x, r0y, r1x, r1y) = (l[0][0], l[1][0], l[0][1], l[1][1]);
+            let det = r0x * r1y - r0y * r1x;
+            if det.abs() < 1e-9 {
+                return None;
+            }
+            let mut sx = (r0x * r0x + r0y * r0y).sqrt();
+            let mut sy = (r1x * r1x + r1y * r1y).sqrt();
+            if det < 0.0 {
+                if r0x < r1y {
+                    sx = -sx;
+                } else {
+                    sy = -sy;
+                }
+            }
+            let (r0x, r0y, r1x, r1y) = (r0x / sx, r0y / sx, r1x / sy, r1y / sy);
+            let angle = r0y.atan2(r0x);
+            let (sn, cs) = (-r0y, r0x);
+            let m = [
+                cs * r0x + sn * r1x,
+                cs * r0y + sn * r1y,
+                -sn * r0x + cs * r1x,
+                -sn * r0y + cs * r1y,
+            ];
+            Some(((sx, sy), angle, m))
+        };
+        let (mut sa, mut aa, ma) = unmatrix(self.lin)?;
+        let (sb, mut ab, mb) = unmatrix(other.lin)?;
+        if (sa.0 < 0.0 && sb.1 < 0.0) || (sa.1 < 0.0 && sb.0 < 0.0) {
+            sa = (-sa.0, -sa.1);
+            aa += if aa < 0.0 { PI } else { -PI };
+        }
+        if aa == 0.0 {
+            aa = TAU;
+        }
+        if ab == 0.0 {
+            ab = TAU;
+        }
+        if (aa - ab).abs() > PI {
+            if aa > ab {
+                aa -= TAU;
+            } else {
+                ab -= TAU;
+            }
+        }
+        let mix = |x: f32, y: f32| x + (y - x) * k;
+        let (sx, sy) = (mix(sa.0, sb.0), mix(sa.1, sb.1));
+        let m: [f32; 4] = std::array::from_fn(|i| mix(ma[i], mb[i]));
+        let angle = mix(aa, ab);
+        let r = Self::rot(angle);
+        // K·R — остаток столбцами (m11, m12) и (m21, m22), как в псевдокоде.
+        let kr = [
+            [m[0] * r[0][0] + m[2] * r[1][0], m[0] * r[0][1] + m[2] * r[1][1]],
+            [m[1] * r[0][0] + m[3] * r[1][0], m[1] * r[0][1] + m[3] * r[1][1]],
+        ];
+        let lin = [[kr[0][0] * sx, kr[0][1] * sy], [kr[1][0] * sx, kr[1][1] * sy]];
+        let tr: [[f32; 3]; 2] =
+            std::array::from_fn(|i| std::array::from_fn(|j| mix(self.tr[i][j], other.tr[i][j])));
+        let mut out = Transform::default();
+        out.push(lin, tr);
+        Some(Transform {
+            rotate_rad: angle,
+            scale: (sx, sy),
+            translate: (tr[0][0], tr[1][0]),
+            translate_pct: (tr[0][1], tr[1][2]),
+            ..out
+        })
+    }
+
     fn rot(a: f32) -> [[f32; 2]; 2] {
         [[a.cos(), -a.sin()], [a.sin(), a.cos()]]
     }
@@ -1282,6 +1391,27 @@ pub struct AnimSpec {
     /// `animation-play-state: paused` — живой анимации нет, рисуется один
     /// кадр на месте `(-delay)/duration` (reftest'ы иначе недетерминированы).
     pub paused: bool,
+    /// `animation-name: a, b` — все имена списка по порядку; пусто, когда имя
+    /// одно (тогда работает `name`).
+    pub names: Vec<String>,
+}
+
+impl AnimSpec {
+    /// Анимация, которая за жизнь страницы не сдвинется ни на точку, по сути
+    /// остановлена: пауза или `animation: a 2000000s; animation-delay:
+    /// -1000000s`. Один предикат на разрешение кадров (`dom.rs`) и отрисовку.
+    pub fn frozen(&self) -> bool {
+        self.paused || (!self.infinite && self.seconds >= 3600.0 && self.delay <= 0.0)
+    }
+
+    /// Доля пути остановленной анимации: `(-delay)/duration`.
+    pub fn frozen_t(&self) -> f32 {
+        if self.seconds > 0.0 {
+            ((-self.delay) / self.seconds).clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    }
 }
 
 /// Одна составляющая `content` (css-content-3 §2 `<content-list>`).
@@ -1577,6 +1707,11 @@ pub struct Computed {
     pub font_size: Option<Len>,
     pub font_weight: Option<u16>,
     pub italic: Option<bool>,
+    /// `font-style: oblique` отдельно от `italic`: набору наклон один
+    /// (`italic` держит оба), а подбору лица это РАЗНЫЕ запросы (css-fonts-4
+    /// §font-style-matching) — от выбранного лица зависит `size-adjust`
+    /// (`fonts::size_adjust`, `italic-oblique-fallback`).
+    pub oblique: Option<bool>,
     pub underline: Option<bool>,
     pub line_through: Option<bool>,
     pub line_height: Option<Len>,
@@ -1910,8 +2045,19 @@ pub struct Computed {
     pub column_gap: Option<Len>,
     /// `translate` — визуальный сдвиг, не меняющий раскладку.
     pub translate: Option<(Len, Len)>,
-    /// `text-shadow`: смещение, размытие и цвет.
+    /// `text-shadow`: смещение, размытие и цвет — ПЕРВАЯ (верхняя) тень списка.
     pub text_shadow: Option<Shadow>,
+    /// Остальные тени `text-shadow` в порядке записи: свойство — СПИСОК, и
+    /// «the first shadow is on top» (css-text-decor-3 Overview.bs:881-882).
+    /// Первая живёт в `text_shadow`: на неё смотрят зум и наследование.
+    /// Прежде хвост отбрасывался — `-1em 0em orange, 1em 0em blue` у эталона
+    /// `box-shadow-multiple-001-ref` рисовал одну оранжевую.
+    pub text_shadow_rest: Vec<Shadow>,
+    /// `text-shadow` с длинами в единицах шрифта ждёт своего кегля, как
+    /// `shadow_raw` у `box-shadow` (вычисленное значение — «three absolute
+    /// lengths», css-text-decor-3 Overview.bs:868-869), и разбирается в
+    /// `resolve_em`.
+    pub text_shadow_raw: Option<String>,
     /// `animation` — ссылка на набор кадров.
     pub animation: Option<AnimSpec>,
     /// `transition` — длительность перехода в секундах.
@@ -1922,6 +2068,11 @@ pub struct Computed {
     pub resize: Option<(bool, bool)>,
     /// `transform`/`rotate`/`scale`: поворот в радианах и масштаб по осям.
     pub transform: Option<Transform>,
+    /// `rotate` вокруг оси z (радианы) и `scale` по осям — отдельными полями:
+    /// разложение в `transform` порядок теряет, а css-transforms-2 §ctm ставит
+    /// их СЛЕВА от списка `transform` (п.4-5 перед п.7). `None` — `none`.
+    pub rotate_prop: Option<f32>,
+    pub scale_prop: Option<(f32, f32)>,
     /// `offset-path` как записано (motion-1 §offset-path): `path('…')`,
     /// `ray(…)`, `<basic-shape>` или `url(#id)`. Разбирается не здесь:
     /// сэмплеру нужны все остальные `offset-*`, а каскад сводит их вразнобой.
@@ -2237,6 +2388,17 @@ pub struct Computed {
     pub(crate) backdrop_root_above: bool,
     /// `will-change` называет свойство, создающее корень подложки.
     pub(crate) will_change_root: bool,
+    /// `backdrop-filter` задан (не `none`): корень подложки при ЛЮБОМ списке,
+    /// даже тождественном `invert(0)`, у которого матрицы нет
+    /// (filter-effects-2 Overview.bs:119; Blink
+    /// paint_property_tree_builder.cc:1846 `!BackdropFilter().IsEmpty()`).
+    pub(crate) backdrop_filter_set: bool,
+    /// `view-transition-name` не `none` — тоже корень подложки
+    /// (css-view-transitions-1 Overview.bs:582).
+    pub(crate) vt_name: bool,
+    /// `backdrop-filter: url(#id)` — ссылка на SVG `<filter>`; сводится к
+    /// матрице 4×5 на отрисовке (`render::svg_filter_matrix`).
+    pub(crate) backdrop_ref: Option<String>,
     /// `display: table-caption` — метка для таблицы.
     pub is_caption: Option<bool>,
     /// Род группы рядов: 0 — шапка, 1 — тело, 2 — подвал. `Display` у всех
@@ -2552,6 +2714,7 @@ impl Computed {
         c.outline = None;
         c.shadows.clear();
         c.text_shadow = None;
+        c.text_shadow_rest.clear();
         c.underline = None;
         c.line_through = None;
         c
@@ -2829,7 +2992,15 @@ impl Computed {
         // дескриптора сокращается: `m / (m′·k) · k = m / m′`
         // (`size-adjust-02/03`). `from-font` — метрика того же лица, то есть
         // остаётся один дескриптор.
-        let size_adjust = crate::fonts::size_adjust(family);
+        // Множитель — свойство лица, лицо выбирает наклон запроса.
+        let slope = if self.oblique == Some(true) {
+            2
+        } else if self.italic == Some(true) {
+            1
+        } else {
+            0
+        };
+        let size_adjust = crate::fonts::size_adjust(family, slope);
         match self.font_size_adjust {
             Some((metric, want)) if want.is_finite() => {
                 match crate::metrics::adjust_aspect(family, metric) {
@@ -2864,6 +3035,7 @@ impl Computed {
         if self.transform_raw.is_some()
             || self.transform_origin_raw.is_some()
             || self.shadow_raw.is_some()
+            || self.text_shadow_raw.is_some()
         {
             let own_font = match self.font_size {
                 Some(Len::Px(v)) => v,
@@ -2882,6 +3054,13 @@ impl Computed {
             if let Some(raw) = self.shadow_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("box-shadow", &px);
+            }
+            // `text-shadow` наследуется ВЫЧИСЛЕННЫМ значением: `em` решается
+            // кеглем того элемента, где тень объявлена, а потомки получают уже
+            // точки (сырая запись есть только у своего стиля).
+            if let Some(raw) = self.text_shadow_raw.take() {
+                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                self.apply_one("text-shadow", &px);
             }
         }
         for list in [self.grid_tracks.as_mut(), self.grid_rows.as_mut()]
@@ -3070,6 +3249,7 @@ impl Computed {
             font_family: self.font_family.clone(),
             font_weight: self.font_weight,
             italic: self.italic,
+            oblique: self.oblique,
             underline: self.underline,
             line_through: self.line_through,
             line_height: self.line_height,
@@ -4837,7 +5017,12 @@ impl Computed {
                     n => n.parse().ok(),
                 }
             }
-            "font-style" => self.italic = Some(v == "italic" || v == "oblique"),
+            "font-style" => {
+                self.italic = Some(v == "italic" || v == "oblique");
+                // `oblique <angle>` — тоже наклон, а не курсив (css-fonts-4
+                // §font-style-prop): подбор лица различает их.
+                self.oblique = Some(v.starts_with("oblique"));
+            }
             "font-family" => {
                 // Имя семейства — либо строка в кавычках, либо ряд
                 // ИДЕНТИФИКАТОРОВ (§15.3). Неверное имя делает объявление
@@ -5110,7 +5295,18 @@ impl Computed {
             // Обводка — то же семейство. Значение уходит в разметку как есть:
             // разбирать цвет здесь незачем, его знает usvg.
             "stroke" => self.svg_stroke = Some(v.to_string()),
-            "stroke-width" => self.svg_stroke_width = Some(v.to_string()),
+            // Вычисленное `stroke-width` — «the absolute length, or percentage»
+            // (fill-stroke-3 §stroke-width): `calc()` из точек сворачивается
+            // здесь. usvg его не понимает и рисовал толщину по умолчанию 1
+            // (`zoom/stroke`: эталон `calc(6px * var(--scale))`). В Blink —
+            // `UnzoomedLength` через `ConvertUnzoomedLength`
+            // (css_properties.json5:6150-6159).
+            "stroke-width" => {
+                self.svg_stroke_width = Some(match crate::value::calc_pct_px(v) {
+                    Some((pct, px)) if pct == 0.0 => format!("{px}"),
+                    _ => v.to_string(),
+                });
+            }
             // `x`/`y` — геометрические СВОЙСТВА фигуры (SVG 2 §Geometry).
             // У HTML-коробки таких свойств нет, поэтому имена свободны, а в
             // разметку они уходят только внутри SVG-поддерева (гейт в svg.rs).
@@ -5729,24 +5925,74 @@ impl Computed {
                 self.backdrop_color = f
                     .color_matrix()
                     .map(|_| Filter { blur: 0.0, ..f });
+                // Корень подложки — любое значение, кроме `none`
+                // (filter-effects-2 Overview.bs:119; Blink
+                // paint_property_tree_builder.cc:1846): тождественная
+                // `invert(0)` матрицы не даёт, но корнем остаётся
+                // (`backdrop-filter-backdrop-root-backdrop-filter`).
+                self.backdrop_filter_set = !v.trim().eq_ignore_ascii_case("none");
+                // `url(#id)` — SVG `<filter>` (`render::svg_filter_matrix`).
+                self.backdrop_ref = tmp.filter_ref;
             }
+            // `view-transition-name` не `none` — корень подложки
+            // (css-view-transitions-1 Overview.bs:577-582 «Form a backdrop
+            // root»; Blink paint_property_tree_builder.cc:1858-1862
+            // `NeedsEffectForViewTransition`).
+            "view-transition-name" => {
+                self.vt_name = !v.trim().eq_ignore_ascii_case("none");
+            }
+            // css-will-change-1 §2.1: обещанное свойство даёт коробке то, что
+            // дало бы его неначальное значение, — содержащий блок для
+            // `absolute`/`fixed` и контекст наложения (`will-change-fixpos-cb-*`,
+            // `-abspos-cb-*`, `-fixedpos-cb-*`, `-stacking-context-z-index-2/3`).
+            // `position` даёт блок только абсолютам (`-fixpos-cb-position-1`).
+            // `auto`, `scroll-position`, `contents` и прочие свойства — ноль:
+            // `will-change: height` не меняет ничего (`-fixpos-cb-height-1`).
+            // Здесь же признак корня подложки (filter-effects-2
+            // Overview.bs:122: «will-change specifying any property that
+            // would create a Backdrop Root on non-initial value»). Арма ОДНА:
+            // вторая с тем же ключом в этом `match` недостижима — так с
+            // b47ecf2 разряды `wc::*` не ставились вовсе.
             "will-change" => {
-                // Только признак корня подложки (filter-effects-2
-                // §BackdropRoot: «will-change specifying any property that
-                // would create a Backdrop Root on non-initial value»).
-                self.will_change_root = v.split(',').any(|p| {
-                    matches!(
-                        p.trim(),
+                let mut bits = 0u8;
+                let mut root = false;
+                for part in v.split(',') {
+                    let name = part.trim().to_ascii_lowercase();
+                    root |= matches!(
+                        name.as_str(),
                         "opacity"
                             | "filter"
                             | "mask"
                             | "mask-image"
+                            | "-webkit-mask"
+                            | "-webkit-mask-image"
                             | "mask-border"
                             | "clip-path"
+                            | "-webkit-clip-path"
                             | "backdrop-filter"
+                            | "-webkit-backdrop-filter"
                             | "mix-blend-mode"
-                    )
-                });
+                            | "view-transition-name"
+                    );
+                    bits |= match name.as_str() {
+                        "transform" | "translate" | "rotate" | "scale" | "perspective"
+                        | "-webkit-perspective" | "transform-style" | "offset-path"
+                        | "contain" => wc::BOX,
+                        "filter" | "backdrop-filter" | "-webkit-backdrop-filter" => {
+                            wc::CB_ABS | wc::CB_FIXED | wc::STACK
+                        }
+                        "position" => wc::CB_ABS | wc::STACK,
+                        "opacity" | "isolation" | "mix-blend-mode" | "clip-path"
+                        | "-webkit-clip-path" | "mask" | "mask-image" | "-webkit-mask"
+                        | "-webkit-mask-image" | "mask-border" | "view-transition-name" => {
+                            wc::STACK
+                        }
+                        "z-index" => wc::STACK_Z,
+                        _ => 0,
+                    };
+                }
+                self.will_change = bits;
+                self.will_change_root = root;
             }
             "background-image" => {
                 if v == "inherit" {
@@ -5932,6 +6178,7 @@ impl Computed {
                     self.font_family = None;
                     self.font_weight = None;
                     self.italic = None;
+                    self.oblique = None;
                     self.line_height = None;
                     return;
                 }
@@ -6013,12 +6260,17 @@ impl Computed {
                 // наследовал `line-height: 1` (`numbers-units-018`), а
                 // `em { font: 1em/1 Ahem }` — курсив UA-листа (`c42-ibx-ht-000`).
                 self.italic = Some(false);
+                self.oblique = Some(false);
                 self.font_weight = Some(400);
                 self.line_height = Some(Len::Auto);
                 for token in split_outside_parens(head) {
                     let t = token.as_str();
                     match t.to_ascii_lowercase().as_str() {
-                        "italic" | "oblique" => self.italic = Some(true),
+                        "italic" => self.italic = Some(true),
+                        "oblique" => {
+                            self.italic = Some(true);
+                            self.oblique = Some(true);
+                        }
                         "bold" | "bolder" => self.font_weight = Some(700),
                         // Кегль — и `0` (`font: 0 Ahem`: вес 0 зацикливал
                         // подбор шрифта, vars-font-shorthand-001).
@@ -7173,7 +7425,17 @@ impl Computed {
                 let y = it.next().and_then(Len::parse).unwrap_or(Len::Px(0.0));
                 self.translate = Some((x, y));
             }
-            "text-shadow" => self.text_shadow = parse_shadows(v).into_iter().next(),
+            // Тень в единицах шрифта — строкой до своего кегля (`resolve_em`):
+            // `parse_shadows` такую тень пропускает, и `1em 0em purple` у
+            // эталона `box-shadow-multiple-001-ref` пропадала, пока тест после
+            // `shadow_raw` уже рисовал свою `box-shadow` в `em` (0.08 → 6.25).
+            "text-shadow" if has_font_units(v) => self.text_shadow_raw = Some(v.to_string()),
+            "text-shadow" => {
+                self.text_shadow_raw = None;
+                let mut list = parse_shadows(v).into_iter();
+                self.text_shadow = list.next();
+                self.text_shadow_rest = list.collect();
+            }
 
             // --- Время --------------------------------------------------------
             "animation"
@@ -7190,6 +7452,7 @@ impl Computed {
                     alternate: false,
                     delay: 0.0,
                     paused: false,
+                    names: Vec::new(),
                 });
                 // В сокращении второе время — задержка (css-animations §5).
                 let mut times = 0usize;
@@ -7239,6 +7502,18 @@ impl Computed {
                     {
                         a.name = token.to_string();
                     }
+                }
+                // `animation-name: a, b` — СПИСОК (css-animations-1 §3: при
+                // общем свойстве побеждает имя, стоящее в списке позже). Цикл
+                // выше оставил в `name` последнее имя — одиночный путь прежний;
+                // весь список нужен слоению остановленных анимаций (`dom.rs`).
+                if key == "animation-name" {
+                    let names: Vec<String> = v
+                        .split(',')
+                        .map(|n| n.trim().to_string())
+                        .filter(|n| !n.is_empty() && n != "none")
+                        .collect();
+                    a.names = if names.len() > 1 { names } else { Vec::new() };
                 }
                 // Свойства без имени (`animation-play-state` до сокращения)
                 // копят состояние: имя может прийти следующей декларацией.
@@ -7727,6 +8002,21 @@ impl Computed {
                     value.to_radians()
                 };
                 self.transform = Some(t);
+                // Угол вокруг оси z — ещё и отдельным полем: в матрицу
+                // отрисовки его приставляет `transformed()` СЛЕВА от списка
+                // `transform` (css-transforms-2 §ctm п.4). Рукав из ★ выше
+                // возвращён вместе с запеканием остановленных кадров
+                // (`render.rs`, `bake_frozen`); его шесть потерь 05.09 —
+                // скриптовые пары («вне цели: скрипт» в `rep-all-v219.txt`).
+                // Ось (`x 45deg`, `0 1 0 44deg`) плоскому пути не выразима.
+                let angle_only = raw.split_whitespace().count() == 1
+                    && raw
+                        .trim_end_matches("deg")
+                        .trim_end_matches("rad")
+                        .trim()
+                        .parse::<f32>()
+                        .is_ok();
+                self.rotate_prop = angle_only.then_some(t.rotate_rad);
             }
             "scale" => {
                 let mut t = self.transform.unwrap_or_default();
@@ -7741,6 +8031,18 @@ impl Computed {
                 let x = nums.first().copied().unwrap_or(1.0);
                 t.scale = (x, nums.get(1).copied().unwrap_or(x));
                 self.transform = Some(t);
+                // …и отдельным полем для матрицы отрисовки (css-transforms-2
+                // §ctm п.5). Ноль по третьей оси делает матрицу необратимой, и
+                // элемент не рисуется (css-transforms-1 §transform-rendering;
+                // `individual-transform-3`: `scale: 1 1 0`) — плоский путь
+                // выражает это нулевым масштабом, как `scale(0)`.
+                self.scale_prop = (!nums.is_empty()).then(|| {
+                    if nums.get(2).is_some_and(|z| *z == 0.0) {
+                        (0.0, 0.0)
+                    } else {
+                        t.scale
+                    }
+                });
             }
             "transform-origin" => {
                 // Точка отсчёта хранится ДОЛЯМИ коробки. Точечная запись
@@ -8159,35 +8461,9 @@ impl Computed {
                 }
             }
             "isolation" => self.isolate = Some(v == "isolate"),
-            // css-will-change-1 §2.1: обещанное свойство даёт коробке то, что
-            // дало бы его неначальное значение, — содержащий блок для
-            // `absolute`/`fixed` и контекст наложения (`will-change-fixpos-cb-*`,
-            // `-abspos-cb-*`, `-fixedpos-cb-*`, `-stacking-context-z-index-2/3`).
-            // `position` даёт блок только абсолютам (`-fixpos-cb-position-1`).
-            // `auto`, `scroll-position`, `contents` и прочие свойства — ноль:
-            // `will-change: height` не меняет ничего (`-fixpos-cb-height-1`).
-            "will-change" => {
-                let mut bits = 0u8;
-                for part in v.split(',') {
-                    bits |= match part.trim().to_ascii_lowercase().as_str() {
-                        "transform" | "translate" | "rotate" | "scale" | "perspective"
-                        | "-webkit-perspective" | "transform-style" | "offset-path"
-                        | "contain" => wc::BOX,
-                        "filter" | "backdrop-filter" | "-webkit-backdrop-filter" => {
-                            wc::CB_ABS | wc::CB_FIXED | wc::STACK
-                        }
-                        "position" => wc::CB_ABS | wc::STACK,
-                        "opacity" | "isolation" | "mix-blend-mode" | "clip-path"
-                        | "-webkit-clip-path" | "mask" | "mask-image" | "-webkit-mask"
-                        | "-webkit-mask-image" | "mask-border" | "view-transition-name" => {
-                            wc::STACK
-                        }
-                        "z-index" => wc::STACK_Z,
-                        _ => 0,
-                    };
-                }
-                self.will_change = bits;
-            }
+            // `will-change` (css-will-change-1 §2.1) разбирается ОДНОЙ армой
+            // рядом с `backdrop-filter`: вторая арма того же ключа в этом
+            // `match` недостижима.
             "shape-outside" => {
                 let t = v.trim();
                 if t != "none" {
@@ -10244,13 +10520,14 @@ pub fn clear_current_attrs() {
 ///
 /// Префикс пространства имён (`foo|bar`): у атрибутов HTML пространства нет,
 /// а реестра `@namespace` здесь не видно — атрибут считается отсутствующим, и
-/// берётся запасное значение (`attr-namespace-non-existing`). `|bar` и `*|bar`
-/// — по локальному имени. Сравнение ASCII-регистронезависимое: HTML-парсер
-/// опускает в нижний регистр только ASCII, и запрос опускается так же, а
-/// не-ASCII знаки сравниваются как есть (`html-attr-case-insensitivity`).
+/// берётся запасное значение (`attr-namespace-non-existing`). `|bar` — по
+/// локальному имени; `*|bar` сюда не доходит (`resolve_attrs`). Сравнение
+/// ASCII-регистронезависимое: HTML-парсер опускает в нижний регистр только
+/// ASCII, и запрос опускается так же, а не-ASCII знаки сравниваются как есть
+/// (`html-attr-case-insensitivity`).
 fn attr_value(name: &str) -> Option<String> {
     let local = match name.split_once('|') {
-        Some(("" | "*", local)) => local,
+        Some(("", local)) => local,
         Some(_) => return None,
         None => name,
     };
@@ -10344,6 +10621,14 @@ fn resolve_attrs(key: &str, value: &str) -> String {
             Some((n, t)) => (n.trim(), t.trim()),
             None => (head, ""),
         };
+        // `<attr-name>` — как `<wq-name>`, «but without the possibility of a
+        // wildcard prefix» (css-values-5 §attr-notation, Overview.bs:2057-2059):
+        // `attr(*|bar …)` негоден при разборе, запас не спасает
+        // (`attr-namespace-wildcard`). Выброс объявления здесь выражается
+        // `unset`, как у негодного атрибута без запаса.
+        if name.starts_with("*|") {
+            return "unset".to_string();
+        }
         out.push_str(&rest[..at]);
         if ty.is_empty() {
             out.push_str(&rest[at..at + 5 + close + 1]);
