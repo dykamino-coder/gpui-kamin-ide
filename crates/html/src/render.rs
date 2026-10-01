@@ -4621,7 +4621,12 @@ fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
     let from_bottom = len(&e.style.inset.bottom)
         .and_then(|b| cx.viewport.map(|v| v.1 - b))
         .unwrap_or(0.0);
-    let own = shape_full(e, 4, cx).map(|s| s.0).unwrap_or(0.0);
+    // Мера `None` (строчное содержимое) — не «пусто»: хотя бы точка высоты,
+    // чтобы лист под самой строкой родился (`fixedpos-005-print`: `top:
+    // 300vh` внутри `top: 100vh` — текст ровно на краю четвёртого листа).
+    let own = shape_full(e, 4, cx).map(|s| s.0).unwrap_or_else(|| {
+        if e.children.iter().all(is_blank) { 0.0 } else { 1.0 }
+    });
     let clipped = matches!(
         e.style.overflow_y,
         Some(crate::computed::Overflow::Hidden)

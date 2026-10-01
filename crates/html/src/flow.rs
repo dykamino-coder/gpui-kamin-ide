@@ -2665,7 +2665,7 @@ impl Element for PageStack {
         self.pages.set(pages);
         if std::env::var("HTML_VIEWPORT").is_ok() {
             eprintln!(
-                "PAGESTACK bounds={:?} kids={} heights={:?} cuts={:?} shape/mono={:?} forced={:?} area={:?} size={:?} pages={} grid={:?} plan={}",
+                "PAGESTACK bounds={:?} kids={} heights={:?} cuts={:?} shape/mono={:?} forced={:?} area={:?} size={:?} pages={} grid={:?} plan={} icb_reach={}",
                 bounds,
                 kids.len(),
                 kids.iter().map(|k| k.h).collect::<Vec<_>>(),
@@ -2676,7 +2676,8 @@ impl Element for PageStack {
                 g.size,
                 pages,
                 best,
-                plan.len()
+                plan.len(),
+                self.icb_reach
             );
         }
         // 3. Копии раскладываются ЦЕЛИКОМ и поднимаются на срез — ровно как
