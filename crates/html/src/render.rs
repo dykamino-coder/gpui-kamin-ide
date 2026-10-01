@@ -2725,6 +2725,19 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         .iter()
         .map(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style)))
         .collect();
+    // Абсолют с заданным `top` стоит от верха содержащего блока, а не на
+    // статическом месте (CSS 2.1 §10.6.4): его дотяг у страниц отсчитывается
+    // от верха коробки. Прежде — от курсора потока, и `top: 0` после блока
+    // 250vh тянул лист на 250vh дальше (`fixedpos-008-print`: девять листов
+    // вместо шести).
+    let abs_top: Vec<bool> = kids
+        .iter()
+        .map(|n| {
+            matches!(n, Node::Element(k)
+                if k.style.position == Some(crate::computed::Position::Absolute)
+                    && matches!(k.style.inset.top, Some(l) if !matches!(l, Len::Auto)))
+        })
+        .collect();
     // Запреты `break-before/after: avoid*` элементов гибкой стопки — с
     // переносом с крайних потомков (`edge_avoid`). Сцепки из них (`flex_run`
     // ниже) — только у РЯДА С ПЕРЕНОСОМ: там стопка «строка = элемент» идёт по
@@ -3068,7 +3081,12 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             // (css-flexbox-1 §4.1): ни зазора, ни границы элементов. Дотяг
             // его низа фрагментации по-прежнему нужен.
             if flex_items && oof_kid.get(ki).copied().unwrap_or(false) {
-                oof_reach = oof_reach.max(y + kreach);
+                let origin = if cx.paged && abs_top.get(ki).copied().unwrap_or(false) {
+                    0.0
+                } else {
+                    y
+                };
+                oof_reach = oof_reach.max(origin + kreach);
                 continue;
             }
             // Сетка: поля рядов не схлопываются ни между собой, ни сквозь
@@ -3154,7 +3172,12 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             // координаты этой коробки. `y` он не двигает:
             // внепоточный соседей не сдвигает
             // (CSS 2.1 §9.3.1).
-            oof_reach = oof_reach.max(start + kreach);
+            let origin = if cx.paged && abs_top.get(ki).copied().unwrap_or(false) {
+                0.0
+            } else {
+                start
+            };
+            oof_reach = oof_reach.max(origin + kreach);
             y = start + h;
             prev_mb = kmb;
             first = false;
@@ -4618,7 +4641,26 @@ fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
             })
             .sum()
     };
-    (top + own.max(inner)).max(from_bottom)
+    // Абсолютные потомки-абсолюты: содержащий блок — эта коробка, их `top`
+    // — от её верха (CSS 2.1 §10.6.4). Мера `shape_full` у коробки со
+    // строчным содержимым `None`, и дотяг вложенного `top: 300vh` терялся
+    // (`fixedpos-005-print`: три листа вместо пяти).
+    let nested = if clipped {
+        0.0
+    } else {
+        e.children
+            .iter()
+            .filter_map(|n| match n {
+                Node::Element(k)
+                    if k.style.position == Some(crate::computed::Position::Absolute) =>
+                {
+                    Some(oof_reach(k, cx))
+                }
+                _ => None,
+            })
+            .fold(0.0f32, f32::max)
+    };
+    (top + own.max(inner).max(nested)).max(from_bottom)
 }
 
 /// Монолит стопки страниц (css-break-4 §4.1; Blink `IsMonolithic`):
