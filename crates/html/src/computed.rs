@@ -2479,6 +2479,22 @@ pub struct Computed {
     pub mask_luminance: Option<bool>,
     /// `mask-origin`: коробка укладки плитки (0 border, 2 padding, 3 content).
     pub mask_origin: Option<u8>,
+    /// Готовые коробки маски в CSS-точках (укладка t/r/b/l от коробки
+    /// слоя внутрь; окраска — то же либо None = без обрезки) — для SVG-детей,
+    /// у которых fill-/stroke-/view-box считает `svg::masked_layers`, а не
+    /// рамка и отбивка (`render::grouped`).
+    pub mask_box_override: Option<([f32; 4], Option<[f32; 4]>)>,
+    /// Блок, вынесенный расщеплением строчного хозяина (block-in-inline,
+    /// `render::blocks`): в дереве отрисовки он брат хозяина, а по DOM — его
+    /// ребёнок. Объёмный контекст и перспектива деда на него не действуют:
+    /// плоский строчный хозяин — лист контекста, поддерево сплющивается в его
+    /// плоскость (css-transforms-2 §3d-rendering-context; §perspective — только
+    /// прямые дети). Ставится при выносе, читает `render::transformed`.
+    pub hoisted_block: bool,
+    /// Пользовательская единица SVG-ребёнка в CSS-точках (масштаб `viewBox`
+    /// или `zoom`); 0 — не задано (= 1). Интринзик плитки маски у такого
+    /// ребёнка считается в его единицах (`interact::Grouped::mask_scale`).
+    pub mask_user_scale: f32,
     /// `mask-clip`: коробка окраски маски; вне её элемент скрыт. 255 — no-clip.
     pub mask_clip: Option<u8>,
     /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
@@ -8663,10 +8679,17 @@ impl Computed {
                         .collect(),
                 );
             }
+            // SVG-коробки (css-masking-1 §7.10/7.11, `<geometry-box>`):
+            // у элемента с CSS-коробкой fill-box = content-box, stroke-box и
+            // view-box = border-box; у SVG-ребёнка их считает
+            // `svg::masked_layers` (mask-clip-2, mask-origin-3).
             "mask-origin" | "-webkit-mask-origin" => {
                 self.mask_origin = match v.trim() {
                     "padding-box" => Some(2),
                     "content-box" => Some(3),
+                    "fill-box" => Some(4),
+                    "stroke-box" => Some(5),
+                    "view-box" => Some(6),
                     _ => Some(0),
                 }
             }
@@ -8674,6 +8697,9 @@ impl Computed {
                 self.mask_clip = match v.trim() {
                     "padding-box" => Some(2),
                     "content-box" => Some(3),
+                    "fill-box" => Some(4),
+                    "stroke-box" => Some(5),
+                    "view-box" => Some(6),
                     "no-clip" => Some(255),
                     _ => Some(0),
                 }

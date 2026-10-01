@@ -14261,7 +14261,13 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 // картинки не доезжает и EXIF-разворот применяется всё равно.
                 copy.style.image_orient_none = merged.image_orient_none;
                 Some(match copy.tag.as_str() {
-                    "svg" => crate::svg::element(&copy).unwrap_or_else(|| image(&copy)),
+                    // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`;
+                    // позиция снята и со слитого стиля, как с копии выше.
+                    "svg" => {
+                        let mut unpositioned = merged.clone();
+                        unpositioned.position = None;
+                        svg_replaced(&copy, &copy, &unpositioned).unwrap_or_else(|| image(&copy))
+                    }
                     _ => image(&copy),
                 })
             }
@@ -16263,7 +16269,7 @@ fn px_of2(l: &Option<Len>) -> Option<f32> {
 /// Таких случаев три: размытие поддерева (`filter: blur`), смешивание с
 /// кадром по формулам CSS (`mix-blend-mode`) и изоляция (`isolation`), где
 /// поддерево обязано сложиться отдельно, прежде чем попасть в кадр.
-fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
+pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     let blur = c.filter.map_or(0.0, |f| f.blur);
     let blend = c.blend.unwrap_or(0);
     // Вершины полигона в `em`/`ex`/`ch`/`vw`/`vh` (css-shapes-1 `polygon()`:
@@ -16574,7 +16580,9 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         let b = c.borders();
         match kind {
             Some(2) => [side(b.top), side(b.right), side(b.bottom), side(b.left)],
-            Some(3) => [
+            // `fill-box` у коробки с CSS-раскладкой = content-box; `stroke-box`
+            // и `view-box` = border-box (css-masking-1 §7.10).
+            Some(3) | Some(4) => [
                 side(b.top) + side(c.padding.top),
                 side(b.right) + side(c.padding.right),
                 side(b.bottom) + side(c.padding.bottom),
@@ -16602,6 +16610,15 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     }
     wrapper.mask_composite = c.mask_composite.clone().unwrap_or_default();
     wrapper.mask_clip_off = c.mask_clip.filter(|k| *k != 255).map(|k| box_off(Some(k)));
+    // SVG-ребёнок: коробки маски уже посчитаны от его stroke-box
+    // (`svg::masked_layers`), рамки и отбивки у него нет.
+    if let Some((origin, clip)) = c.mask_box_override {
+        wrapper.mask_origin_off = origin;
+        wrapper.mask_clip_off = clip;
+    }
+    if c.mask_user_scale > 0.0 {
+        wrapper.mask_scale = c.mask_user_scale;
+    }
     // Точки уходят КАК ЕСТЬ (Len): проценты и пиксели резолвятся при
     // отрисовке от опорной коробки формы (css-masking §1.3.1.1): margin-box
     // расширяет bounds на поля, content-box сужает на рамку+паддинг
@@ -16870,6 +16887,61 @@ fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
         keep.push(child);
     }
     e.children = keep;
+}
+
+/// Замещаемый `<svg>` с учётом его CSS-коробки (CSS 2.1 §10.3.4): растр —
+/// содержимое, а при ненулевой рамке или отбивке (`svg_has_box`) — внутри
+/// стилевого `div` размером border-box, фон красит он. Прежде растр шёл
+/// голым и рамка не рисовалась вовсе (border-shape-clips-background-ref,
+/// mask-image-svg-child-will-change: маска ложится на коробку 200×200 с
+/// рамкой 50). Без рамки и отбивки — голый растр, путь прежний.
+/// `None` — рисунок не разобрался.
+fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> Option<AnyElement> {
+    let boxed = svg_has_box(merged);
+    let inner;
+    let sized = if boxed {
+        let mut copy = sized.clone();
+        copy.style.background = None;
+        inner = copy;
+        &inner
+    } else {
+        sized
+    };
+    let raster = crate::svg::element(sized)?;
+    if !boxed {
+        return Some(raster);
+    }
+    let px_of = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let (w, h) = crate::svg::size_of(sized);
+    let b = merged.borders();
+    let bw = w + px_of(b.left) + px_of(b.right) + px_of(merged.padding.left) + px_of(merged.padding.right);
+    let bh = h + px_of(b.top) + px_of(b.bottom) + px_of(merged.padding.top) + px_of(merged.padding.bottom);
+    Some(
+        styled_div_with(e, merged)
+            .w(px(bw))
+            .h(px(bh))
+            .flex_shrink_0()
+            .child(raster)
+            .into_any_element(),
+    )
+}
+
+/// У `<svg>` есть своя CSS-коробка — ненулевая рамка или отбивка
+/// (см. ветку `"svg"` в `element`): тогда растр кладётся в стилевой `div`.
+fn svg_has_box(c: &Computed) -> bool {
+    let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v > 0.0);
+    let b = c.borders();
+    nz(b.top)
+        || nz(b.right)
+        || nz(b.bottom)
+        || nz(b.left)
+        || nz(c.padding.top)
+        || nz(c.padding.right)
+        || nz(c.padding.bottom)
+        || nz(c.padding.left)
 }
 
 fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
@@ -17658,7 +17730,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 Some(Len::Px(v)) if v > 0.0 => Some(v),
                 _ => CB_WIDTH.get().filter(|v| *v > 0.0),
             };
-            crate::svg::element(&crate::svg::stretch_fit(e, cb_w)).unwrap_or_else(|| {
+            // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
+            svg_replaced(e, &crate::svg::stretch_fit(e, cb_w), &merged).unwrap_or_else(|| {
                 styled_div_with(e, &merged)
                     .child(SharedString::from("[рисунок]"))
                     .into_any_element()

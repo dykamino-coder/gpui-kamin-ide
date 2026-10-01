@@ -935,7 +935,11 @@ impl Element for Grouped {
             let (img, tw, th) = match &source {
                 crate::background::Source::Raster(img) => {
                     let s = img.size(0);
-                    let (iw, ih) = (s.width.0 as f32, s.height.0 as f32);
+                    // Интринзик — в единицах элемента (`mask_scale`).
+                    let (iw, ih) = (
+                        s.width.0 as f32 * self.mask_scale,
+                        s.height.0 as f32 * self.mask_scale,
+                    );
                     // contain/cover: один множитель от пропорции интринзика.
                     let k = match self.mask_fit {
                         1 => Some((bw / iw.max(1.0)).min(bh / ih.max(1.0))),
@@ -951,7 +955,10 @@ impl Element for Grouped {
                 _ => {
                     // У рисунка может быть свой размер — contain/cover
                     // считаются от него; без интринзика плитка = коробка.
-                    let intr = source.intrinsic();
+                    let mut intr = source.intrinsic();
+                    // Интринзик — в единицах элемента (`mask_scale`).
+                    intr.w = intr.w.map(|v| v * self.mask_scale);
+                    intr.h = intr.h.map(|v| v * self.mask_scale);
                     let fit = match (self.mask_fit, intr.w, intr.h) {
                         (1, Some(iw), Some(ih)) => {
                             let k = (bw / iw.max(1.0)).min(bh / ih.max(1.0));
