@@ -202,6 +202,27 @@ fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
     (!empty).then_some(out)
 }
 
+/// Размещение элемента сетки — для обёртки `render::content_sized`: в
+/// дорожках родителя стоит ОНА, а не сам элемент (css-grid-2 §8: размещение —
+/// свойство элемента сетки, а элементом здесь служит обёртка). Числовые грани
+/// и именованные (без имён линий самого элемента: обёртка — своя сетка).
+pub(crate) fn grid_item_placement(c: &Computed) -> (Option<gpui::GridLocation>, Option<gpui::GridLineNames>) {
+    let location = (c.grid_col.is_some() || c.grid_row.is_some()).then(|| {
+        let span = |p: Option<(Placement, Placement)>| {
+            let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
+            to_placement(a)..to_placement(b)
+        };
+        gpui::GridLocation { row: span(c.grid_row), column: span(c.grid_col) }
+    });
+    let named = c.grid_col_named.iter().chain(c.grid_row_named.iter()).any(Option::is_some);
+    let names = named.then(|| gpui::GridLineNames {
+        column: c.grid_col_named.clone(),
+        row: c.grid_row_named.clone(),
+        ..Default::default()
+    });
+    (location, names)
+}
+
 fn to_placement(p: Placement) -> gpui::GridPlacement {
     match p {
         Placement::Auto => gpui::GridPlacement::Auto,

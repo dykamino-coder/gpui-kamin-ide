@@ -1526,6 +1526,10 @@ pub struct Computed {
     /// разворачиваются в номера линий при сборке дерева — там, где известны и
     /// контейнер, и его дети.
     pub grid_areas: Option<Vec<Vec<String>>>,
+    /// `grid-template-areas: inherit` (css-cascade-4 §7.3 «explicit
+    /// inheritance»): свойство не наследуемое, запись родителя переносит
+    /// `doc::settle_explicit_inherit`.
+    pub grid_areas_inherit: bool,
     /// Имя области у ребёнка: `grid-area: header`.
     pub grid_area_name: Option<String>,
     /// Имена линий `grid-template-columns` (логические колонки): у
@@ -5773,6 +5777,14 @@ impl Computed {
                 self.grid_row_named[1] = parse_named_placement(v);
             }
             "grid-template-areas" => {
+                // Явное `inherit` — запись родителя (её переносит
+                // `doc::settle_explicit_inherit`): прежде слово само шло в
+                // область `inherit`, а `grid-area: a` у детей не находил
+                // области (`grid-placement-using-named-grid-lines-008`).
+                self.grid_areas_inherit = v.trim().eq_ignore_ascii_case("inherit");
+                if self.grid_areas_inherit {
+                    return;
+                }
                 // Каждая строка записи — ряд сетки: `"head head" "side main"`.
                 let rows: Vec<Vec<String>> = v
                     .split('"')

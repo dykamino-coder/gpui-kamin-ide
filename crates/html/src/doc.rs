@@ -651,6 +651,9 @@ fn settle_explicit_inherit(nodes: &mut [Node], parent: Option<&crate::computed::
                 e.style.clip_rect = p.clip_rect;
                 e.style.clip_len = p.clip_len;
             }
+            if e.style.grid_areas_inherit {
+                e.style.grid_areas = p.grid_areas.clone();
+            }
         }
         settle_explicit_inherit(&mut e.children, Some(&e.style));
     }

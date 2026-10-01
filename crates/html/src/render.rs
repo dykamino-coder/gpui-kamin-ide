@@ -6472,16 +6472,35 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             let hoist_margins = content_sized_wraps(&e.style)
                 && !replaced_tag(e)
                 && (negative(e.style.margin.left) || negative(e.style.margin.right));
+            // Размещение в сетке тоже уезжает на обёртку (см.
+            // `content_sized`): в дорожках родителя стоит она. Внутри обёртки
+            // (своя сетка в одну дорожку) элемент с прежним `grid-row: 2`
+            // уходил бы в её неявный ряд. Прежде обёртка без размещения
+            // ставилась авто-размещением (`row-fill-reverse-align-self-001`:
+            // `width: min-content; grid-row: 2` в лунках вставал в ряд 1).
+            let placement = crate::apply::grid_item_placement(&e.style);
+            let hoist_place = content_sized_wraps(&e.style)
+                && !replaced_tag(e)
+                && (placement.0.is_some() || placement.1.is_some());
             let stripped;
-            let e = if hoist_margins {
+            let e = if hoist_margins || hoist_place {
                 let mut copy = e.clone();
-                copy.style.margin.left = None;
-                copy.style.margin.right = None;
+                if hoist_margins {
+                    copy.style.margin.left = None;
+                    copy.style.margin.right = None;
+                }
+                if hoist_place {
+                    copy.style.grid_row = None;
+                    copy.style.grid_col = None;
+                    copy.style.grid_row_named = [None, None];
+                    copy.style.grid_col_named = [None, None];
+                }
                 stripped = copy;
                 &stripped
             } else {
                 e
             };
+            let placement = if hoist_place { placement } else { (None, None) };
             // Анимация оборачивает ЛЮБОЙ элемент: таблицу, список, картинку —
             // раньше она доставалась только простому блоку.
             // Фон КАНВАСА (CSS 2.2 §14.2): фон корневого html — а без него
@@ -7121,7 +7140,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             let mut done = if replaced_tag(e) {
                 layered_built
             } else {
-                content_sized(layered_built, &e.style)
+                content_sized(layered_built, &e.style, placement)
             };
             // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
             // flow): свой анкор-ряд вокруг ОДНОГО узла — соседей не трогает.
@@ -15092,7 +15111,11 @@ fn content_sized_wraps(c: &Computed) -> bool {
         )
 }
 
-fn content_sized(el: AnyElement, c: &Computed) -> AnyElement {
+fn content_sized(
+    el: AnyElement,
+    c: &Computed,
+    placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
+) -> AnyElement {
     let track = |l: Option<Len>| match l {
         Some(Len::MinContent) => Some(gpui::GridTrack::MinContent),
         Some(Len::MaxContent) => Some(gpui::GridTrack::MaxContent),
@@ -15187,6 +15210,14 @@ fn content_sized(el: AnyElement, c: &Computed) -> AnyElement {
     }
     if let Some(row) = row {
         wrap = wrap.grid_template_rows(vec![row]);
+    }
+    // Размещение элемента в сетке родителя — на обёртке (см. вызов).
+    let (location, names) = placement;
+    if let Some(location) = location {
+        wrap.style().grid_location = Some(location);
+    }
+    if let Some(names) = names {
+        wrap.style().grid_line_names = Some(Box::new(names));
     }
     wrap.child(el).into_any_element()
 }
