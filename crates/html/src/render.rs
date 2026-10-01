@@ -4389,15 +4389,38 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     let mut prev_open = 0.0f32;
     let mut prev_aa = false;
     let mut force_next = false;
+    // Ячейки с `rowspan`: (первый ряд, охват, высота содержимого). Их высота
+    // НЕ растит свой ряд — она ложится на все охваченные (css-tables-3
+    // §height-distribution); мера принимается, только если охват и так
+    // вмещает ячейку (сверка после цикла), иначе — прежний отказ. Точки
+    // разреза внутри такой ячейки не берутся: где именно внутри охвата
+    // стоит её содержимое, мера не знает. Прежде любой `rowspan` отменял
+    // меру таблицы целиком, и стол не фрагментировался вовсе
+    // (`table-rowspan-001`: пустая ячейка `rowspan=2`, снимок — вторая
+    // колонка пуста, стол переполняет первую).
+    let mut spans: Vec<(usize, usize, f32)> = Vec::new();
+    let mut row_box: Vec<(f32, f32)> = Vec::new();
     for (i, r) in rows.iter().enumerate() {
         let start = y + spacing;
         let mut h = px_of(&r.row.style.height)?;
         for n in r.row.children.iter().filter(|n| !is_blank(n)) {
             let Node::Element(cell) = n else { return None };
-            if !is_cell(cell) || cell.attr("rowspan").is_some_and(|v| v.trim() != "1") {
+            if !is_cell(cell) {
                 return None;
             }
+            let rs = match cell.attr("rowspan").map(str::trim) {
+                None => 1,
+                Some(v) => match v.parse::<usize>() {
+                    Ok(0) => rows.len().saturating_sub(i).max(1),
+                    Ok(n) => n.max(1),
+                    Err(_) => return None,
+                },
+            };
             let (ch, _, _, kcuts, kforced, ksolid) = shape_full(cell, depth - 1, cell_cx)?;
+            if rs > 1 {
+                spans.push((i, rs, ch));
+                continue;
+            }
             h = h.max(ch);
             // Точки и монолиты ячеек — объединением, как у ряда flex без
             // переноса: рвать нельзя там, где не даёт хоть одна ячейка.
@@ -4468,7 +4491,17 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         }
         prev_open = open;
         prev_aa = r.aa;
+        row_box.push((start, h));
         y = start + h;
+    }
+    // Сверка охватов (см. `spans`): ячейка выше суммы своих рядов с зазорами
+    // раздала бы им высоту — этого мера не умеет, отказ как прежде.
+    for (i, rs, ch) in spans {
+        let last = (i + rs).min(row_box.len()).saturating_sub(1);
+        let span_h = row_box[last].0 + row_box[last].1 - row_box[i].0;
+        if ch > span_h + 0.01 {
+            return None;
+        }
     }
     // Сцепка, дожившая до конца коробки рядов, закрывается её низом.
     if let Some(s) = avoid_run {
