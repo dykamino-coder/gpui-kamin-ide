@@ -2338,7 +2338,9 @@ pub type PageGeomFn = std::rc::Rc<dyn Fn(usize, &str) -> PageGeom>;
 /// `None` — `auto`) и поля (`None` — `auto`), верх/право/низ/лево.
 pub struct MarginBox {
     pub place: crate::page_margin::Place,
-    pub el: AnyElement,
+    /// Элемент коробки по её border box (ширина, высота) — строится после
+    /// раскладки, с размером в точках.
+    pub make: std::rc::Rc<dyn Fn(f32, f32) -> AnyElement>,
     pub probe: AnyElement,
     pub w: Option<f32>,
     pub h: Option<f32>,
@@ -2979,7 +2981,7 @@ fn layout_margin_boxes(
                     (false, false) => 8,
                     (false, true) => 12,
                 };
-                out.push((key, (cb.0 + ml, cb.1 + mt, w, h), b.el));
+                out.push((key, (cb.0 + ml, cb.1 + mt, w, h), (b.make)(w, h)));
             }
             Place::Edge { side, at } => {
                 if let Some(e) = edges.iter_mut().find(|e| e.0 == side) {
@@ -3081,7 +3083,7 @@ fn layout_margin_boxes(
                 Side::Bottom => 11 - i,
                 Side::Left => 15 - i,
             };
-            out.push((key, rect, b.el));
+            out.push((key, rect, (b.make)(rect.2, rect.3)));
         }
     }
     out.sort_by_key(|x| x.0);

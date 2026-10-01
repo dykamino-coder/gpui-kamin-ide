@@ -4840,7 +4840,13 @@ fn page_margin_boxes(
         let bb = own.border_box == Some(true);
         let w = len(&own.width, cb.2).map(|v| if bb { v } else { v + edges[1] + edges[3] });
         let h = len(&own.height, cb.3).map(|v| if bb { v } else { v + edges[0] + edges[2] });
-        let build = |full: bool| -> AnyElement {
+        // `size` — border box в точках (итог раскладки) либо `None` для меры по
+        // содержимому: доли от обёртки не годятся, `blocks` кладёт коробку в
+        // свою обёртку, и `height: 100%` решалась от неё как `auto` —
+        // `vertical-align` терял высоту (`alignment-001`: буквы у верха).
+        let opts = opts.clone();
+        let ctx_style = ctx_style.clone();
+        let build = move |size: Option<(f32, f32)>| -> AnyElement {
             let mut st = own.clone();
             for (k, v) in [
                 ("padding-top", format!("{}px", pad[0])),
@@ -4850,10 +4856,13 @@ fn page_margin_boxes(
             ] {
                 st.apply_one(k, &v);
             }
-            let size = if full { "100%" } else { "auto" };
+            let (sw, sh) = match size {
+                Some((w, h)) => (format!("{w}px"), format!("{h}px")),
+                None => ("auto".to_string(), "auto".to_string()),
+            };
             for (k, v) in [
-                ("width", size),
-                ("height", size),
+                ("width", sw.as_str()),
+                ("height", sh.as_str()),
                 ("min-width", "0"),
                 ("max-width", "none"),
                 ("min-height", "0"),
@@ -4892,19 +4901,18 @@ fn page_margin_boxes(
                 children: vec![Node::Element(inner.clone())],
                 ..inner
             };
-            let mut els = blocks(&[Node::Element(outer)], &ctx_style, opts);
-            if els.len() == 1 && !full {
+            let mut els = blocks(&[Node::Element(outer)], &ctx_style, &opts);
+            if els.len() == 1 {
                 els.pop().unwrap()
-            } else if full {
-                div().size_full().children(els).into_any_element()
             } else {
                 div().children(els).into_any_element()
             }
         };
+        let probe = build(None);
         out.push(crate::flow::MarginBox {
             place,
-            el: build(true),
-            probe: build(false),
+            make: std::rc::Rc::new(move |w, h| build(Some((w, h)))),
+            probe,
             w,
             h,
             margin,
