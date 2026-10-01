@@ -3,6 +3,7 @@
 use super::types::{GridItem, GridTrack, TrackCounts};
 use crate::geometry::{AbstractAxis, Line, Size};
 use crate::style::{AlignContent, AlignSelf, AvailableSpace};
+use crate::style_helpers::TaffyMaxContent;
 use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt, SizingMode};
 use crate::util::sys::{f32_max, f32_min, Vec};
 use crate::util::{MaybeMath, ResolveOrZero};
@@ -286,8 +287,15 @@ pub(super) fn track_sizing_algorithm<Tree: LayoutPartialTree>(
     initialize_track_sizes(tree, axis_tracks, percentage_basis);
 
     // 11.5.1 Shim item baselines
+    // KaminIDE patch: проход КОЛОНОК — группы по оси x (`justify-self:
+    // baseline`; у вертикальной сетки сюда приходит `align-self`, оси
+    // переставлены движком), проход рядов — по оси y.
     if has_baseline_aligned_item {
-        resolve_item_baselines(tree, axis, other_axis_tracks, items, inner_node_size);
+        if axis == AbstractAxis::Inline {
+            resolve_item_baselines_x(tree, items, inner_node_size);
+        } else {
+            resolve_item_baselines(tree, axis, other_axis_tracks, items, inner_node_size);
+        }
     }
 
     // If all tracks have base_size = growth_limit, then skip the rest of this function.
@@ -459,6 +467,88 @@ fn resolve_item_baselines(
     resolve_item_baseline_groups(tree, axis, other_axis_tracks, items, inner_node_size, false);
     if items.iter().any(|item| item.align_self == AlignSelf::LastBaseline) {
         resolve_item_baseline_groups(tree, axis, other_axis_tracks, items, inner_node_size, true);
+    }
+}
+
+/// KaminIDE patch: группы базовых линий по оси x — по колонке, где элемент
+/// начинается (css-align-3 §9.1: общий контекст выравнивания — колонка).
+/// В колонке две группы (Blink baseline_utils.h `DetermineBaselineGroup`:
+/// major/minor): у левого края — письмо базовой `vertical-lr`, у правого —
+/// `vertical-rl` (у неё начало блока справа, и отсчёт идёт от правого края).
+/// Базовая элемента — своя, если письмо самого элемента вертикальное, иначе
+/// синтез (Blink logical_box_fragment.h `SynthesizedBaseline`: alphabetic в
+/// вертикальном письме — у ЛЕВОГО края рамки, central — посередине).
+/// Мерить приходится до размеров колонок, как и в исходном taffy для рядов.
+fn resolve_item_baselines_x(
+    tree: &mut impl LayoutPartialTree,
+    items: &mut [GridItem],
+    inner_node_size: Size<Option<f32>>,
+) {
+    items.sort_by_key(|item| item.placement(AbstractAxis::Inline).start);
+    let mut remaining_items = &mut items[0..];
+    while !remaining_items.is_empty() {
+        let current_column = remaining_items[0].placement(AbstractAxis::Inline).start;
+        let next_column_first_item =
+            remaining_items.iter().position(|item| item.placement(AbstractAxis::Inline).start != current_column);
+        let column_items = if let Some(index) = next_column_first_item {
+            let (column_items, tail) = remaining_items.split_at_mut(index);
+            remaining_items = tail;
+            column_items
+        } else {
+            let column_items = remaining_items;
+            remaining_items = &mut [];
+            column_items
+        };
+
+        for end_side in [false, true] {
+            let in_group = move |item: &GridItem| {
+                item.justify_self == AlignSelf::Baseline && (item.baseline_x_flags & 1 != 0) == end_side
+            };
+            // Одиночный участник — запасное выравнивание (`safe self-start`
+            // своей стороны), прокладка ему не нужна.
+            if column_items.iter().filter(|item| in_group(item)).count() <= 1 {
+                continue;
+            }
+            for item in column_items.iter_mut() {
+                if !in_group(item) {
+                    continue;
+                }
+                let measured = tree.perform_child_layout(
+                    item.node,
+                    Size::NONE,
+                    inner_node_size,
+                    Size::MAX_CONTENT,
+                    SizingMode::InherentSize,
+                    Line::FALSE,
+                );
+                let width = measured.size.width;
+                let own = if item.baseline_x_flags & 4 != 0 { measured.first_baselines.x } else { None };
+                let from_left = own.unwrap_or(if item.baseline_x_flags & 2 != 0 { width / 2.0 } else { 0.0 });
+                item.baseline_x = Some(if end_side {
+                    width - from_left
+                        + item.margin.right.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis))
+                } else {
+                    from_left
+                        + item.margin.left.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis))
+                });
+            }
+            let max_baseline = column_items
+                .iter()
+                .filter(|item| in_group(item))
+                .map(|item| item.baseline_x.unwrap_or(0.0))
+                .fold(f32::MIN, f32::max);
+            for item in column_items.iter_mut() {
+                if !in_group(item) {
+                    continue;
+                }
+                let shim = max_baseline - item.baseline_x.unwrap_or(0.0);
+                if end_side {
+                    item.baseline_shim_x_end = shim;
+                } else {
+                    item.baseline_shim_x = shim;
+                }
+            }
+        }
     }
 }
 

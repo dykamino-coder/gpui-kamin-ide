@@ -249,6 +249,13 @@ pub struct Style {
     /// KaminIDE patch: узел не отдаёт базовые линии родителю
     /// (css-contain-2 §3.2 п.7, `contain: layout`).
     pub hides_baseline: bool,
+    /// KaminIDE patch: собственная базовая линия по оси x (повёрнутый
+    /// вертикальный абзац): смещение и «от правого края».
+    pub baseline_x_hint: Option<(f32, bool)>,
+    /// KaminIDE patch: биты выравнивания по базовой по оси x (taffy
+    /// `Style::baseline_x_flags`): 1 — группа у правого края, 2 —
+    /// центральный синтез, 4 — своя базовая по x.
+    pub baseline_x_flags: u8,
     /// KaminIDE patch: `margin-trim` (css-box-4 §margin-trim) гибкого
     /// контейнера и сетки — ФИЗИЧЕСКИЕ края: 1 верх, 2 право, 4 низ, 8 лево.
     pub margin_trim: u8,
@@ -918,6 +925,8 @@ impl Default for Style {
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
             hides_baseline: false,
+            baseline_x_hint: None,
+            baseline_x_flags: 0,
             margin_trim: 0,
             flex_grow: 0.0,
             flex_shrink: 1.0,

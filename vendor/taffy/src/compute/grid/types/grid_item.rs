@@ -66,6 +66,19 @@ pub(in super::super) struct GridItem {
     /// KaminIDE patch: ПОСЛЕДНЯЯ базовая элемента из итоговой раскладки (от
     /// верха рамки) — для последней базовой контейнера (css-grid-2 §10.8).
     pub last_baseline: Option<f32>,
+    /// KaminIDE patch: биты выравнивания по базовой по оси x (стиль
+    /// `baseline_x_flags`: 1 — группа у правого края, 2 — центральный синтез,
+    /// 4 — своя базовая по x).
+    pub baseline_x_flags: u8,
+    /// KaminIDE patch: расстояние базовой по x до края группы (с полем) —
+    /// мера группы колонки (`resolve_item_baselines_x`).
+    pub baseline_x: Option<f32>,
+    /// KaminIDE patch: прокладки по x — лишнее левое (группа у левого края)
+    /// или правое (у правого) поле: `justify-self: baseline` в горизонтальной
+    /// сетке и `align-self: baseline` в вертикальной (оси переставлены
+    /// движком), css-align-3 §9.3.
+    pub baseline_shim_x: f32,
+    pub baseline_shim_x_end: f32,
 
     /// The item's definite row-start and row-end (same as `row` field, except in a different coordinate system)
     /// (as indexes into the Vec<GridTrack> stored in a grid's AbstractAxisTracks)
@@ -134,6 +147,10 @@ impl GridItem {
             baseline_shim: 0.0,
             baseline_shim_end: 0.0,
             last_baseline: None,
+            baseline_x_flags: style.baseline_x_flags(),
+            baseline_x: None,
+            baseline_shim_x: 0.0,
+            baseline_shim_x_end: 0.0,
             row_indexes: Line { start: 0, end: 0 }, // Properly initialised later
             column_indexes: Line { start: 0, end: 0 }, // Properly initialised later
             crosses_flexible_row: false,            // Properly initialised later
@@ -375,8 +392,9 @@ impl GridItem {
         tree: &impl LayoutPartialTree,
     ) -> Size<f32> {
         Rect {
-            left: self.margin.left.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
-            right: self.margin.right.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
+            left: self.margin.left.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)) + self.baseline_shim_x,
+            right: self.margin.right.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis))
+                + self.baseline_shim_x_end,
             top: self.margin.top.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
                 + self.baseline_shim,
             bottom: self.margin.bottom.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))

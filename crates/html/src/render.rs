@@ -12514,8 +12514,22 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // §7.3) и только при ПОЛНОМ зажиме — иначе коробка без высоты
         // схлопывалась в ноль (даже фон пропадал), а заявка без зажима
         // делала её бесконечной (замерено: wm 118 → 104).
+        // Метрики первой строки — базовая по оси x (`VerticalText::first_line`).
+        let em = match inherited.font_size {
+            Some(Len::Px(v)) => v,
+            Some(Len::Em(k)) => k * opts.base_size(),
+            _ => opts.base_size(),
+        };
+        let lh = match inherited.line_height {
+            Some(Len::Px(v)) => Some(px(v)),
+            Some(Len::Pct(k)) | Some(Len::Em(k)) => Some(px(k * em)),
+            _ => None,
+        };
+        let central = inherited.sideways != Some(true) && inherited.text_sideways != Some(true);
         let vt = crate::interact::VerticalText::new(inner)
             .counter_clockwise(ccw_line)
+            .lines_left_first(inherited.vertical_rl != Some(true) && !ccw_line)
+            .first_line(measure_font(inherited, opts), px(em), lh, central)
             // Замер по МИНИМАЛЬНОМУ содержимому: заявленная высота повёрнутой
             // коробки становится вкладом ячейки в дорожку её колонки
             // (см. `col_min` выше). Ниже `fit_within` заявит эту же величину

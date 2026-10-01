@@ -321,6 +321,9 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     // Determine if the grid has any baseline aligned items
     let has_baseline_aligned_item =
         items.iter().any(|item| matches!(item.align_self, AlignSelf::Baseline | AlignSelf::LastBaseline));
+    // KaminIDE patch: и по оси x (`justify-self: baseline`; у вертикальной
+    // сетки — `align-self`, оси переставлены движком).
+    let has_justify_baseline_item = items.iter().any(|item| item.justify_self == AlignSelf::Baseline);
 
     // Run track sizing algorithm for Inline axis
     track_sizing_algorithm(
@@ -339,8 +342,9 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             track.max_track_sizing_function.definite_value(parent_size, |val, basis| tree.calc(val, basis))
         },
         // KaminIDE patch: базовые линии рядов решаются в проходе РЯДОВ, когда
-        // ширины колонок уже известны (см. `resolve_item_baselines`).
-        false,
+        // ширины колонок уже известны (см. `resolve_item_baselines`); здесь —
+        // только группы по оси x (`resolve_item_baselines_x`).
+        has_justify_baseline_item,
     );
     let initial_column_sum = columns.iter().map(|track| track.base_size).sum::<f32>();
     inner_node_size.width = inner_node_size.width.or_else(|| initial_column_sum.into());
@@ -587,8 +591,13 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             index as u32,
             grid_area,
             container_alignment_styles,
-            item.baseline_shim,
-            item.baseline_shim_end,
+            Rect {
+                top: item.baseline_shim,
+                bottom: item.baseline_shim_end,
+                left: item.baseline_shim_x,
+                right: item.baseline_shim_x_end,
+            },
+            item.baseline_x_flags & 1 != 0,
             item.margin_trim,
         );
         item.y_position = y_position;
@@ -669,7 +678,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             // TODO: Baseline alignment support for absolutely positioned items (should check if is actuallty specified)
             #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
             let (content_size_contribution, _, _, _, _) =
-                align_and_position_item(tree, child, order, grid_area, container_alignment_styles, 0.0, 0.0, 0);
+                align_and_position_item(tree, child, order, grid_area, container_alignment_styles, Rect::ZERO, false, 0);
             #[cfg(feature = "content_size")]
             {
                 item_content_size_contribution = item_content_size_contribution.f32_max(content_size_contribution);

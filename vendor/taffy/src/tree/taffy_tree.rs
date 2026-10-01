@@ -425,6 +425,9 @@ where
             // (css-contain-2 §3.2 п.7; Blink `LayoutBox::ShouldApplyLayoutContainment`
             // → `BoxFragmentBuilder` без базовых).
             let hides_baseline = tree.taffy.nodes[node.into()].style.hides_baseline;
+            // KaminIDE patch: собственная базовая по x (повёрнутый абзац движка —
+            // лист без замера, `interact::VerticalText`).
+            let baseline_x_hint = tree.taffy.nodes[node.into()].style.baseline_x_hint;
             // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
             let mut output = match (display_mode, has_children) {
                 (Display::None, _) => compute_hidden_layout(tree, node),
@@ -446,6 +449,9 @@ where
                     compute_leaf_layout(inputs, style, |_, _| 0.0, measure_function)
                 }
             };
+            if let (None, Some((offset, from_right))) = (output.first_baselines.x, baseline_x_hint) {
+                output.first_baselines.x = Some(if from_right { output.size.width - offset } else { offset });
+            }
             if hides_baseline {
                 output.first_baselines = crate::geometry::Point::NONE;
                 output.last_baselines = crate::geometry::Point::NONE;

@@ -238,7 +238,7 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
         intrinsic_outer_height,
         first_child_top_margin_set,
         last_child_bottom_margin_set,
-        (first_baseline, last_baseline),
+        (first_baseline, last_baseline, first_baseline_x),
     ) = perform_final_layout_on_in_flow_children(
             tree,
             &mut items,
@@ -296,7 +296,10 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
         size: final_outer_size,
         #[cfg(feature = "content_size")]
         content_size,
-        first_baselines: Point { x: None, y: if hides_baseline { None } else { first_baseline } },
+        first_baselines: Point {
+            x: if hides_baseline { None } else { first_baseline_x },
+            y: if hides_baseline { None } else { first_baseline },
+        },
         last_baselines: Point { x: None, y: if hides_baseline { None } else { last_baseline } },
         top_margin: if own_margins_collapse_with_children.start {
             first_child_top_margin_set
@@ -418,7 +421,7 @@ fn perform_final_layout_on_in_flow_children(
     resolved_content_box_inset: Rect<f32>,
     text_align: TextAlign,
     own_margins_collapse_with_children: Line<bool>,
-) -> (Size<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, (Option<f32>, Option<f32>)) {
+) -> (Size<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, (Option<f32>, Option<f32>, Option<f32>)) {
     // Resolve container_inner_width for sizing child nodes using initial content_box_inset
     let container_inner_width = container_outer_width - content_box_inset.horizontal_axis_sum();
     let parent_size = Size { width: Some(container_outer_width), height: None };
@@ -439,6 +442,9 @@ fn perform_final_layout_on_in_flow_children(
     // §9.1 «last baseline set»: у блочного контейнера — последняя строчная
     // коробка, то есть последний потоковый ребёнок, у которого она есть).
     let mut last_baseline: Option<f32> = None;
+    // KaminIDE patch: первая базовая по оси x — от первого потокового
+    // ребёнка, у которого она есть (вертикальный абзац в обёртке-блоке).
+    let mut first_baseline_x: Option<f32> = None;
     for item in items.iter_mut() {
         if item.position == Position::Absolute {
             item.static_position = Point { x: resolved_content_box_inset.left, y: y_offset_for_absolute }
@@ -557,6 +563,9 @@ fn perform_final_layout_on_in_flow_children(
             if let Some(b) = item_layout.last_or_first_y() {
                 last_baseline = Some(location.y + b);
             }
+            if first_baseline_x.is_none() {
+                first_baseline_x = item_layout.first_baselines.x.map(|b| location.x + b);
+            }
             tree.set_unrounded_layout(
                 item.node_id,
                 &Layout {
@@ -619,7 +628,7 @@ fn perform_final_layout_on_in_flow_children(
         content_height,
         first_child_top_margin_set,
         last_child_bottom_margin_set,
-        (first_baseline, last_baseline),
+        (first_baseline, last_baseline, first_baseline_x),
     )
 }
 

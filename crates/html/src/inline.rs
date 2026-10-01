@@ -1489,6 +1489,19 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         _ => own.vertical_align_base,
     };
     c.upright = own.upright.or(parent.upright);
+    c.text_sideways = own.text_sideways.or(parent.text_sideways);
+    // Сетка-родитель и её письмо: у вертикальной сетки оси выравнивания
+    // элемента переставляются (`apply.rs`), а по оси x идут группы базовых.
+    c.parent_grid = match parent.display {
+        Some(crate::computed::Display::Grid) | Some(crate::computed::Display::InlineGrid) => {
+            match (parent.vertical == Some(true), parent.vertical_rl == Some(true)) {
+                (false, _) => 1,
+                (true, false) => 2,
+                (true, true) => 3,
+            }
+        }
+        _ => 0,
+    };
     // Наследуемые текстовые свойства из второй волны разбора. Без них
     // `text-transform` на контейнере не доходил до вложенного текста —
     // а в разметке его ставят именно на контейнер.

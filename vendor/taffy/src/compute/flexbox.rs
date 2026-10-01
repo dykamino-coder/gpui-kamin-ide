@@ -96,6 +96,9 @@ struct FlexItem {
     /// контейнера после итоговой раскладки — для последней базовой самого
     /// контейнера (css-flexbox-1 §8.5 «last main-axis baseline set»).
     last_baseline_pos: f32,
+    /// KaminIDE patch: первая базовая элемента по оси x от левого края
+    /// контейнера (вертикальный блок движка — гибкий ряд блоков).
+    baseline_x_pos: Option<f32>,
 
     /// A temporary value for the main offset
     ///
@@ -452,10 +455,16 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
             .map(|child| child.last_baseline_pos)
     });
 
+    // KaminIDE patch: первая базовая по x — у первого по порядку элемента,
+    // у которого она есть (вертикальный блок — гибкий ряд блоков, первый
+    // блок в порядке потока; у `vertical-rl` ряд обратный, и первый — правый).
+    let first_horizontal_baseline =
+        flex_lines.iter().flat_map(|line| line.items.iter()).find_map(|item| item.baseline_x_pos);
+
     LayoutOutput::from_sizes_and_all_baselines(
         constants.container_size,
         inflow_content_size.f32_max(absolute_content_size),
-        Point { x: None, y: first_vertical_baseline },
+        Point { x: first_horizontal_baseline, y: first_vertical_baseline },
         Point { x: None, y: last_vertical_baseline },
     )
 }
@@ -630,6 +639,7 @@ fn generate_anonymous_flex_items(
                 baseline: 0.0,
                 last_baseline_from_end: 0.0,
                 last_baseline_pos: 0.0,
+                baseline_x_pos: None,
 
                 offset_main: 0.0,
                 offset_cross: 0.0,
@@ -2553,6 +2563,9 @@ fn calculate_flex_item(
     // ИТОГОВОМУ месту коробки (без своей — синтез у нижнего края рамки,
     // css-align-3 §9.1 «synthesize baselines»).
     item.last_baseline_pos = location.y + layout_output.last_or_first_y().unwrap_or(size.height);
+    // KaminIDE patch: базовая по x (вертикальное письмо) — тоже по итоговому
+    // месту коробки.
+    item.baseline_x_pos = layout_output.first_baselines.x.map(|b| location.x + b);
     let scrollbar_size = Size {
         width: if item.overflow.y == Overflow::Scroll { item.scrollbar_width } else { 0.0 },
         height: if item.overflow.x == Overflow::Scroll { item.scrollbar_width } else { 0.0 },

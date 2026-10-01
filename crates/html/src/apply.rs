@@ -786,6 +786,43 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     if let Some(a) = c.justify_self {
         d.style().justify_self = Some(to_items(a));
     }
+    // Оси ВЕРТИКАЛЬНОЙ сетки: дорожки уже переставлены (`grid_style`, `flip`),
+    // и раскладка под нами считает оси физическими. `align-*` в CSS — про
+    // БЛОЧНУЮ ось, а она здесь горизонтальна, то есть это `justify-*`
+    // раскладки, и наоборот (css-grid-2 §10.1: align — block axis, justify —
+    // inline axis). Прежде `align-items: baseline` вертикальной сетки шёл по
+    // строчной оси, где каждый элемент стоит в своём ряду один, и не делал
+    // ничего (`grid-self-baseline-vertical-lr/rl-*`).
+    if real_grid && c.vertical == Some(true) {
+        let s = d.style();
+        std::mem::swap(&mut s.align_items, &mut s.justify_items);
+    }
+    if c.parent_grid >= 2 {
+        let s = d.style();
+        std::mem::swap(&mut s.align_self, &mut s.justify_self);
+    }
+    // Биты базовой по оси x для элемента сетки (css-align-3 §9.1; Blink
+    // baseline_utils.h `DetermineBaselineWritingMode`/`DetermineBaselineGroup`):
+    // письмо базовой — своё у вертикального элемента, у горизонтального —
+    // письмо вертикальной сетки (у горизонтальной сетки — `vertical-lr`).
+    // Группа у правого края — когда это письмо `vertical-rl`. Синтез
+    // центральный, когда у сетки вертикальное письмо не `sideways` (Blink
+    // `parent_grid_font_baseline` = `GetFontBaseline()` сетки).
+    if c.parent_grid != 0 {
+        let item_vertical = c.vertical == Some(true);
+        let rl = if item_vertical { c.vertical_rl == Some(true) } else { c.parent_grid == 3 };
+        let mut bits = 0u8;
+        if rl {
+            bits |= 1;
+        }
+        if c.parent_grid >= 2 && !c.cb_sideways && c.text_sideways != Some(true) {
+            bits |= 2;
+        }
+        if item_vertical {
+            bits |= 4;
+        }
+        d.style().baseline_x_flags = Some(bits);
+    }
     if let Some(r) = c.aspect_ratio
         && !ratio_as_auto_min(c)
     {

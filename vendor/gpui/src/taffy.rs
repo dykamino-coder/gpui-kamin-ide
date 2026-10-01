@@ -526,6 +526,11 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_balance_lines: self.flex_balance_lines,
             // KaminIDE patch: `contain: layout` — базовых линий нет.
             hides_baseline: self.hides_baseline,
+            // KaminIDE patch: базовая по оси x (вертикальное письмо).
+            baseline_x_hint: self
+                .baseline_x_hint
+                .map(|(offset, from_right)| (offset * scale_factor, from_right)),
+            baseline_x_flags: self.baseline_x_flags,
             // KaminIDE patch: `margin-trim`, физические биты сторон.
             margin_trim: self.margin_trim,
             flex_basis: self.flex_basis.to_taffy(rem_size, scale_factor),

@@ -2233,6 +2233,17 @@ pub struct Computed {
     /// Меняет и меру `ch`: продвижение нуля идёт вдоль оси СТРОКИ, а она в
     /// вертикальном письме вертикальна, то есть равна кеглю.
     pub upright: Option<bool>,
+    /// `text-orientation: sideways` — у вертикального текста ДОМИНАНТНАЯ
+    /// базовая алфавитная, а не центральная (css-writing-modes-4 §4.2:
+    /// «In vertical typographic mode, the central baseline is used as the
+    /// dominant baseline when text-orientation is mixed or upright»).
+    /// `upright` этого не различает: `Some(false)` — и `mixed`, и `sideways`.
+    pub text_sideways: Option<bool>,
+    /// Родитель — сетка (не лунки): 1 — горизонтальная, 2 — `vertical-lr`,
+    /// 3 — `vertical-rl`. Ставится при наследовании; по нему элементу
+    /// переставляются оси выравнивания вертикальной сетки и пишутся биты
+    /// базовой по оси x (`apply.rs`).
+    pub(crate) parent_grid: u8,
     /// Логические стороны и размеры до перевода в физические.
     pub logical: Option<Box<Logical>>,
     /// Ширина пришла из ЛОГИЧЕСКОГО `inline-size` при вертикальном письме:
@@ -8249,7 +8260,10 @@ impl Computed {
                     _ => None,
                 }
             }
-            "text-orientation" => self.upright = Some(v == "upright"),
+            "text-orientation" => {
+                self.upright = Some(v == "upright");
+                self.text_sideways = Some(v == "sideways" || v == "sideways-right");
+            }
             "writing-mode" => {
                 // `sideways-*` отличается от `vertical-*` только поворотом
                 // глифов, а направление потока у них общее.

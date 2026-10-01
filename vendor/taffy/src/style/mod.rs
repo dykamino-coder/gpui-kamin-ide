@@ -174,6 +174,18 @@ pub trait CoreStyle {
     fn margin_trim(&self) -> u8 {
         0
     }
+    /// KaminIDE patch: собственная базовая линия узла по оси x — смещение и
+    /// «от правого края» (см. `Style::baseline_x_hint`).
+    #[inline(always)]
+    fn baseline_x_hint(&self) -> Option<(f32, bool)> {
+        None
+    }
+    /// KaminIDE patch: биты выравнивания по базовой по оси x (см.
+    /// `Style::baseline_x_flags`).
+    #[inline(always)]
+    fn baseline_x_flags(&self) -> u8 {
+        0
+    }
 }
 
 /// Sets the layout used for the children of this node
@@ -481,6 +493,18 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// синтезирует (css-contain-2 §3.2 п.7: «the containment box is treated as
     /// having no baseline»). Ставится движком для `contain: layout`.
     pub hides_baseline: bool,
+    /// KaminIDE patch: собственная базовая линия по оси x у узла без своей
+    /// раскладки текста (повёрнутый вертикальный абзац движка): смещение и
+    /// флаг «от правого края» — у `vertical-rl` первая строка справа, и
+    /// отсчёт от правого края переживает любую итоговую ширину.
+    pub baseline_x_hint: Option<(f32, bool)>,
+    /// KaminIDE patch: выравнивание по базовой по оси x (css-align-3 §9.1,
+    /// Blink baseline_utils.h): 1 — группа у ПРАВОГО края (письмо базовой —
+    /// `vertical-rl`), 2 — синтез центральный (у контейнера вертикальное
+    /// письмо не `sideways`), 4 — у элемента своя базовая по x (вертикальное
+    /// письмо самого элемента; иначе — только синтез, Blink
+    /// `LogicalBoxFragment::FirstBaseline` при `!IsWritingModeEqual()`).
+    pub baseline_x_flags: u8,
 
     // Block container properties
     /// How items elements should aligned in the inline axis
@@ -595,6 +619,8 @@ impl<S: CheapCloneStr> Style<S> {
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         margin_trim: 0,
         hides_baseline: false,
+        baseline_x_hint: None,
+        baseline_x_flags: 0,
         #[cfg(feature = "flexbox")]
         flex_grow: 0.0,
         #[cfg(feature = "flexbox")]
@@ -706,6 +732,14 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn margin_trim(&self) -> u8 {
         self.margin_trim
     }
+    #[inline(always)]
+    fn baseline_x_hint(&self) -> Option<(f32, bool)> {
+        self.baseline_x_hint
+    }
+    #[inline(always)]
+    fn baseline_x_flags(&self) -> u8 {
+        self.baseline_x_flags
+    }
 }
 
 impl<T: CoreStyle> CoreStyle for &'_ T {
@@ -778,6 +812,14 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn margin_trim(&self) -> u8 {
         (*self).margin_trim()
+    }
+    #[inline(always)]
+    fn baseline_x_hint(&self) -> Option<(f32, bool)> {
+        (*self).baseline_x_hint()
+    }
+    #[inline(always)]
+    fn baseline_x_flags(&self) -> u8 {
+        (*self).baseline_x_flags()
     }
 }
 
