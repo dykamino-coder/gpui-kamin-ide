@@ -31,6 +31,12 @@ LIST="${1:?список пар}"
 N="${2:-6}"
 STALL="${WPT_STALL_SECS:-90}"
 BIN="${WPT_BIN:-target/debug/examples/wptrun.exe}"
+# Печатные пары (`-print`, css-page) — постранично, как задумано в WPT
+# (решение пользователя 01.10). Флаг действует только вместе с печатной
+# медиа (`wptrun.rs`: `PRINT_MEDIA && WPT_PAGE`), экранные пары не трогает.
+# Снять для сравнения со сводами до v223: `WPT_PAGE= bash scripts/wpt-shard.sh …`.
+export WPT_PAGE="${WPT_PAGE-1}"
+[ -z "$WPT_PAGE" ] && unset WPT_PAGE
 [ -x "$BIN" ] || { echo "нет бинаря $BIN — сначала cargo build --example wptrun (без -p)"; exit 1; }
 total=$(grep -c '|' "$LIST")
 per=$(( (total + N - 1) / N ))
