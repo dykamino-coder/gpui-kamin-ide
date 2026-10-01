@@ -1502,6 +1502,14 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         }
         _ => 0,
     };
+    c.parent_flex_grid = matches!(
+        parent.display,
+        Some(crate::computed::Display::Flex)
+            | Some(crate::computed::Display::InlineFlex)
+            | Some(crate::computed::Display::Grid)
+            | Some(crate::computed::Display::InlineGrid)
+            | Some(crate::computed::Display::GridLanes)
+    );
     // Наследуемые текстовые свойства из второй волны разбора. Без них
     // `text-transform` на контейнере не доходил до вложенного текста —
     // а в разметке его ставят именно на контейнер.

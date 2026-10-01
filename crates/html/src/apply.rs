@@ -484,7 +484,20 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // Блок в GPUI — дефолт; отдельного вызова не требует.
         Some(Display::Flex) | Some(Display::InlineFlex) => d = d.flex(),
         // Инлайновая коробка в строке не растягивается по ширине родителя.
-        Some(Display::InlineBlock) => d = d.flex_shrink_0(),
+        // Базовая `inline-block` — ПОСЛЕДНЕЙ строки (CSS 2.1 §10.8.1: «the
+        // baseline of its last line box in the normal flow»; css-inline-3
+        // `baseline-source: auto` → `last` у `inline-block`). При обрезке —
+        // нижний край margin-бокса: тогда флаг не ставится, базовую прячет
+        // путь прокрутки.
+        Some(Display::InlineBlock) => {
+            d = d.flex_shrink_0();
+            let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
+            // Элемент гибкого контейнера и сетки блокифицирован (css-display-3
+            // §2.7): его базовая — первая, как у блока.
+            if visible(c.overflow_x) && visible(c.overflow_y) && !c.scroller && !c.parent_flex_grid {
+                d.style().baseline_from_last = Some(true);
+            }
+        }
         Some(Display::InlineGrid) => {
             d = d.flex_shrink_0();
             d = grid_style(d, c);

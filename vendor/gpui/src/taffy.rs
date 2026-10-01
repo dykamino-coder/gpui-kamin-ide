@@ -526,6 +526,8 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_balance_lines: self.flex_balance_lines,
             // KaminIDE patch: `contain: layout` — базовых линий нет.
             hides_baseline: self.hides_baseline,
+            // KaminIDE patch: `inline-block` — последняя базовая.
+            baseline_from_last: self.baseline_from_last,
             // KaminIDE patch: базовая по оси x (вертикальное письмо).
             baseline_x_hint: self
                 .baseline_x_hint

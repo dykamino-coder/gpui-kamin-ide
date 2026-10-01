@@ -425,6 +425,8 @@ where
             // (css-contain-2 §3.2 п.7; Blink `LayoutBox::ShouldApplyLayoutContainment`
             // → `BoxFragmentBuilder` без базовых).
             let hides_baseline = tree.taffy.nodes[node.into()].style.hides_baseline;
+            // KaminIDE patch: `inline-block` выравнивается по ПОСЛЕДНЕЙ строке.
+            let baseline_from_last = tree.taffy.nodes[node.into()].style.baseline_from_last;
             // KaminIDE patch: собственная базовая по x (повёрнутый абзац движка —
             // лист без замера, `interact::VerticalText`).
             let baseline_x_hint = tree.taffy.nodes[node.into()].style.baseline_x_hint;
@@ -451,6 +453,9 @@ where
             };
             if let (None, Some((offset, from_right))) = (output.first_baselines.x, baseline_x_hint) {
                 output.first_baselines.x = Some(if from_right { output.size.width - offset } else { offset });
+            }
+            if baseline_from_last {
+                output.first_baselines.y = output.last_or_first_y();
             }
             if hides_baseline {
                 output.first_baselines = crate::geometry::Point::NONE;

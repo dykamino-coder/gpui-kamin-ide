@@ -493,6 +493,12 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// синтезирует (css-contain-2 §3.2 п.7: «the containment box is treated as
     /// having no baseline»). Ставится движком для `contain: layout`.
     pub hides_baseline: bool,
+    /// KaminIDE patch: базовая для выравнивания снаружи — ПОСЛЕДНЯЯ
+    /// (css-inline-3 §baseline-source: `auto` у `inline-block` — `last`;
+    /// CSS 2.1 §10.8.1: «The baseline of an 'inline-block' is the baseline
+    /// of its last line box in the normal flow»). Узел отдаёт последнюю
+    /// базовую вместо первой.
+    pub baseline_from_last: bool,
     /// KaminIDE patch: собственная базовая линия по оси x у узла без своей
     /// раскладки текста (повёрнутый вертикальный абзац движка): смещение и
     /// флаг «от правого края» — у `vertical-rl` первая строка справа, и
@@ -619,6 +625,7 @@ impl<S: CheapCloneStr> Style<S> {
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         margin_trim: 0,
         hides_baseline: false,
+        baseline_from_last: false,
         baseline_x_hint: None,
         baseline_x_flags: 0,
         #[cfg(feature = "flexbox")]

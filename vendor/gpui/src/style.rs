@@ -249,6 +249,9 @@ pub struct Style {
     /// KaminIDE patch: узел не отдаёт базовые линии родителю
     /// (css-contain-2 §3.2 п.7, `contain: layout`).
     pub hides_baseline: bool,
+    /// KaminIDE patch: наружу отдаётся ПОСЛЕДНЯЯ базовая (`inline-block`,
+    /// css-inline-3 §baseline-source).
+    pub baseline_from_last: bool,
     /// KaminIDE patch: собственная базовая линия по оси x (повёрнутый
     /// вертикальный абзац): смещение и «от правого края».
     pub baseline_x_hint: Option<(f32, bool)>,
@@ -925,6 +928,7 @@ impl Default for Style {
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
             hides_baseline: false,
+            baseline_from_last: false,
             baseline_x_hint: None,
             baseline_x_flags: 0,
             margin_trim: 0,
