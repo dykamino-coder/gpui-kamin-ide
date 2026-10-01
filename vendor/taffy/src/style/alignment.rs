@@ -28,6 +28,12 @@ pub enum AlignItems {
     Baseline,
     /// Stretch to fill the container
     Stretch,
+    /// KaminIDE patch: `last baseline` (css-align-3 §4.2, §9.3) — группа
+    /// выравнивается по ПОСЛЕДНИМ базовым линиям и прижимается к концу оси;
+    /// одиночный участник берёт запасное `safe self-end`. Прежде `last`
+    /// сводился к первой базовой (Blink `AxisEdge::kLastBaseline`,
+    /// grid_item.h `IsLastBaselineSpecified`).
+    LastBaseline,
 }
 /// Used to control how child nodes are aligned.
 /// Does not apply to Flexbox, and will be ignored if specified on a flex container

@@ -238,7 +238,7 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
         intrinsic_outer_height,
         first_child_top_margin_set,
         last_child_bottom_margin_set,
-        first_baseline,
+        (first_baseline, last_baseline),
     ) = perform_final_layout_on_in_flow_children(
             tree,
             &mut items,
@@ -297,6 +297,7 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
         #[cfg(feature = "content_size")]
         content_size,
         first_baselines: Point { x: None, y: if hides_baseline { None } else { first_baseline } },
+        last_baselines: Point { x: None, y: if hides_baseline { None } else { last_baseline } },
         top_margin: if own_margins_collapse_with_children.start {
             first_child_top_margin_set
         } else {
@@ -417,7 +418,7 @@ fn perform_final_layout_on_in_flow_children(
     resolved_content_box_inset: Rect<f32>,
     text_align: TextAlign,
     own_margins_collapse_with_children: Line<bool>,
-) -> (Size<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Option<f32>) {
+) -> (Size<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, (Option<f32>, Option<f32>)) {
     // Resolve container_inner_width for sizing child nodes using initial content_box_inset
     let container_inner_width = container_outer_width - content_box_inset.horizontal_axis_sum();
     let parent_size = Size { width: Some(container_outer_width), height: None };
@@ -434,6 +435,10 @@ fn perform_final_layout_on_in_flow_children(
     // KaminIDE patch: базовая линия ПЕРВОГО потокового ребёнка — она же
     // базовая линия блока.
     let mut first_baseline: Option<f32> = None;
+    // KaminIDE patch: и ПОСЛЕДНЕГО — с последней базовой линией (css-align-3
+    // §9.1 «last baseline set»: у блочного контейнера — последняя строчная
+    // коробка, то есть последний потоковый ребёнок, у которого она есть).
+    let mut last_baseline: Option<f32> = None;
     for item in items.iter_mut() {
         if item.position == Position::Absolute {
             item.static_position = Point { x: resolved_content_box_inset.left, y: y_offset_for_absolute }
@@ -549,6 +554,9 @@ fn perform_final_layout_on_in_flow_children(
             if first_baseline.is_none() {
                 first_baseline = item_first_baseline.map(|b| location.y + b);
             }
+            if let Some(b) = item_layout.last_or_first_y() {
+                last_baseline = Some(location.y + b);
+            }
             tree.set_unrounded_layout(
                 item.node_id,
                 &Layout {
@@ -606,7 +614,13 @@ fn perform_final_layout_on_in_flow_children(
 
     committed_y_offset += resolved_content_box_inset.bottom + bottom_y_margin_offset;
     let content_height = f32_max(0.0, committed_y_offset);
-    (inflow_content_size, content_height, first_child_top_margin_set, last_child_bottom_margin_set, first_baseline)
+    (
+        inflow_content_size,
+        content_height,
+        first_child_top_margin_set,
+        last_child_bottom_margin_set,
+        (first_baseline, last_baseline),
+    )
 }
 
 /// Perform absolute layout on all absolutely positioned children.

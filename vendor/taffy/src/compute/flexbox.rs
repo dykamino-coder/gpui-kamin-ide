@@ -87,6 +87,15 @@ struct FlexItem {
 
     /// The position of the bottom edge of this item
     baseline: f32,
+    /// KaminIDE patch: `last baseline` — расстояние от ПОСЛЕДНЕЙ базовой
+    /// линии элемента до cross-end края его margin-бокса: группа прижимается
+    /// к концу строки (css-align-3 §9.3; Blink baseline_utils.h
+    /// `DetermineBaselineGroup`: у `is_last_baseline` группы меняются местами).
+    last_baseline_from_end: f32,
+    /// KaminIDE patch: положение последней базовой линии элемента от верха
+    /// контейнера после итоговой раскладки — для последней базовой самого
+    /// контейнера (css-flexbox-1 §8.5 «last main-axis baseline set»).
+    last_baseline_pos: f32,
 
     /// A temporary value for the main offset
     ///
@@ -431,10 +440,23 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
             })
     };
 
-    LayoutOutput::from_sizes_and_baselines(
+    // KaminIDE patch: ПОСЛЕДНЯЯ базовая контейнера (css-flexbox-1 §8.5):
+    // у ряда — из последней строки, от участника `last baseline`, а без него —
+    // от последнего элемента; у колонки — последний элемент.
+    let last_vertical_baseline = flex_lines.last().and_then(|line| {
+        line.items
+            .iter()
+            .rev()
+            .find(|item| constants.is_column || item.align_self == AlignSelf::LastBaseline)
+            .or_else(|| line.items.iter().next_back())
+            .map(|child| child.last_baseline_pos)
+    });
+
+    LayoutOutput::from_sizes_and_all_baselines(
         constants.container_size,
         inflow_content_size.f32_max(absolute_content_size),
         Point { x: None, y: first_vertical_baseline },
+        Point { x: None, y: last_vertical_baseline },
     )
 }
 
@@ -606,6 +628,8 @@ fn generate_anonymous_flex_items(
                 content_flex_fraction: 0.0,
 
                 baseline: 0.0,
+                last_baseline_from_end: 0.0,
+                last_baseline_pos: 0.0,
 
                 offset_main: 0.0,
                 offset_cross: 0.0,
@@ -1901,13 +1925,21 @@ fn calculate_children_base_lines(
         // If a flex line has one or zero items participating in baseline alignment then baseline alignment is a no-op so we skip
         let line_baseline_child_count =
             line.items.iter().filter(|child| child.align_self == AlignSelf::Baseline).count();
-        if line_baseline_child_count <= 1 {
+        // KaminIDE patch: группа `last baseline` — отдельная (css-align-3
+        // §9.1: «compatible baseline alignment preferences» — первые и
+        // последние базовые на разных сторонах контекста), и у неё свой
+        // порог «больше одного участника».
+        let line_last_baseline_child_count =
+            line.items.iter().filter(|child| child.align_self == AlignSelf::LastBaseline).count();
+        if line_baseline_child_count <= 1 && line_last_baseline_child_count <= 1 {
             continue;
         }
 
         for child in line.items.iter_mut() {
             // Only calculate baselines for children participating in baseline alignment
-            if child.align_self != AlignSelf::Baseline {
+            let is_first = child.align_self == AlignSelf::Baseline && line_baseline_child_count > 1;
+            let is_last = child.align_self == AlignSelf::LastBaseline && line_last_baseline_child_count > 1;
+            if !is_first && !is_last {
                 continue;
             }
 
@@ -1944,6 +1976,17 @@ fn calculate_children_base_lines(
 
             let baseline = measured_size_and_baselines.first_baselines.y;
             let height = measured_size_and_baselines.size.height;
+
+            // KaminIDE patch: `last baseline` меряется ОТ КОНЦА: расстояние от
+            // последней базовой до нижнего края margin-бокса. Без своей базовой
+            // — синтез у того же края, что и у первой (низ margin-бокса), то
+            // есть ноль.
+            if is_last {
+                child.last_baseline_from_end = measured_size_and_baselines
+                    .last_or_first_y()
+                    .map_or(0.0, |b| height - b + child.margin.bottom);
+                continue;
+            }
 
             // KaminIDE patch: у ребёнка без собственной базовой линии ею
             // служит НИЖНИЙ КРАЙ MARGIN-бокса (CSS 2.1 §10.8, Blink
@@ -1990,6 +2033,14 @@ fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>
         //       previous two steps and zero.
         for line in flex_lines.iter_mut() {
             let max_baseline: f32 = line.items.iter().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
+            // KaminIDE patch: группа `last baseline` — та же сумма двух
+            // наибольших расстояний, только отсчёт от cross-end края.
+            let max_last_from_end: f32 = line
+                .items
+                .iter()
+                .filter(|child| child.align_self == AlignSelf::LastBaseline)
+                .map(|child| child.last_baseline_from_end)
+                .fold(0.0, |acc, x| acc.max(x));
             line.cross_size = line
                 .items
                 .iter()
@@ -1999,6 +2050,13 @@ fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>
                         && !child.margin_is_auto.cross_end(constants.dir)
                     {
                         max_baseline - child.baseline + child.hypothetical_outer_size.cross(constants.dir)
+                    } else if constants.is_row
+                        && child.align_self == AlignSelf::LastBaseline
+                        && !child.margin_is_auto.cross_start(constants.dir)
+                        && !child.margin_is_auto.cross_end(constants.dir)
+                    {
+                        child.hypothetical_outer_size.cross(constants.dir) - child.last_baseline_from_end
+                            + max_last_from_end
                     } else {
                         child.hypothetical_outer_size.cross(constants.dir)
                     }
@@ -2221,6 +2279,28 @@ fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &Algo
             })
             .map(|child| child.outer_target_size.cross(constants.dir) - child.baseline)
             .fold(0.0, |acc, x| acc.max(x));
+        // KaminIDE patch: группа `last baseline` прижимается к cross-END
+        // строки (css-align-3 §9.3: запасное — `safe self-end`): вплотную к
+        // нему встаёт участник с наибольшим расстоянием от последней базовой
+        // до этого края. При `wrap-reverse` cross-end — верх, и расстояние
+        // меряется до верха.
+        let last_participant = |child: &FlexItem| {
+            child.align_self == AlignSelf::LastBaseline
+                && !child.margin_is_auto.cross_start(constants.dir)
+                && !child.margin_is_auto.cross_end(constants.dir)
+        };
+        let max_last_from_end: f32 = line
+            .items
+            .iter()
+            .filter(|child| last_participant(child))
+            .map(|child| child.last_baseline_from_end)
+            .fold(0.0, |acc, x| acc.max(x));
+        let max_last_from_start: f32 = line
+            .items
+            .iter()
+            .filter(|child| last_participant(child))
+            .map(|child| child.outer_target_size.cross(constants.dir) - child.last_baseline_from_end)
+            .fold(0.0, |acc, x| acc.max(x));
 
         for child in line.items.iter_mut() {
             let free_space = line_cross_size - child.outer_target_size.cross(constants.dir);
@@ -2254,6 +2334,14 @@ fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &Algo
                 } else {
                     child.margin.right = free_space;
                 }
+            } else if constants.is_row && child.align_self == AlignSelf::LastBaseline {
+                // KaminIDE patch: см. `max_last_from_end` выше.
+                child.offset_cross = if constants.is_wrap_reverse {
+                    let from_start = child.outer_target_size.cross(constants.dir) - child.last_baseline_from_end;
+                    max_last_from_start - from_start
+                } else {
+                    free_space - (max_last_from_end - child.last_baseline_from_end)
+                };
             } else if constants.is_row && constants.is_wrap_reverse && child.align_self == AlignSelf::Baseline {
                 // KaminIDE patch: см. `max_baseline_from_end` выше.
                 let from_end = child.outer_target_size.cross(constants.dir) - child.baseline;
@@ -2290,7 +2378,7 @@ fn align_flex_items_along_cross_axis(
     // там начало письма у физического начала.
     if child.safe_align_self
         && free_space < 0.0
-        && !matches!(child.align_self, AlignSelf::Stretch | AlignSelf::Baseline)
+        && !matches!(child.align_self, AlignSelf::Stretch | AlignSelf::Baseline | AlignSelf::LastBaseline)
     {
         return if constants.is_wrap_reverse { free_space } else { 0.0 };
     }
@@ -2330,6 +2418,15 @@ fn align_flex_items_along_cross_axis(
                 free_space
             } else {
                 0.0
+            }
+        }
+        // KaminIDE patch: `last baseline` вне группы (колонка) — запасное
+        // `safe self-end` (css-align-3 §9.3), то есть cross-end строки.
+        AlignSelf::LastBaseline => {
+            if constants.is_wrap_reverse {
+                0.0
+            } else {
+                free_space
             }
         }
     }
@@ -2452,6 +2549,10 @@ fn calculate_flex_item(
         true => Point { x: offset_main, y: offset_cross },
         false => Point { x: offset_cross, y: offset_main },
     };
+    // KaminIDE patch: последняя базовая элемента от верха контейнера — по
+    // ИТОГОВОМУ месту коробки (без своей — синтез у нижнего края рамки,
+    // css-align-3 §9.1 «synthesize baselines»).
+    item.last_baseline_pos = location.y + layout_output.last_or_first_y().unwrap_or(size.height);
     let scrollbar_size = Size {
         width: if item.overflow.y == Overflow::Scroll { item.scrollbar_width } else { 0.0 },
         height: if item.overflow.x == Overflow::Scroll { item.scrollbar_width } else { 0.0 },
@@ -2829,12 +2930,12 @@ fn perform_absolute_layout_on_absolute_children(
                 // Note: Stretch should be FlexStart not Start when we support both
                 (AlignSelf::Start, _)
                 | (AlignSelf::Baseline | AlignSelf::Stretch | AlignSelf::FlexStart, false)
-                | (AlignSelf::FlexEnd, true) => {
+                | (AlignSelf::FlexEnd | AlignSelf::LastBaseline, true) => {
                     constants.content_box_inset.cross_start(constants.dir) + resolved_margin.cross_start(constants.dir)
                 }
                 (AlignSelf::End, _)
                 | (AlignSelf::Baseline | AlignSelf::Stretch | AlignSelf::FlexStart, true)
-                | (AlignSelf::FlexEnd, false) => {
+                | (AlignSelf::FlexEnd | AlignSelf::LastBaseline, false) => {
                     constants.container_size.cross(constants.dir)
                         - constants.content_box_inset.cross_end(constants.dir)
                         - final_size.cross(constants.dir)

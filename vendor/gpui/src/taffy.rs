@@ -15,7 +15,8 @@ use taffy::{
 
 /// KaminIDE patch: замер отдаёт не только размер, но и первую БАЗОВУЮ ЛИНИЮ
 /// (от верха коробки содержимого). Без неё `align-items: baseline` в taffy
-/// вырождается в выравнивание по нижним краям коробок.
+/// вырождается в выравнивание по нижним краям коробок. Третье значение —
+/// ПОСЛЕДНЯЯ базовая (последняя строка) для `last baseline`.
 type NodeMeasureFn = StackSafe<
     Box<
         dyn FnMut(
@@ -23,7 +24,7 @@ type NodeMeasureFn = StackSafe<
             Size<AvailableSpace>,
             &mut Window,
             &mut App,
-        ) -> (Size<Pixels>, Option<Pixels>),
+        ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>),
     >,
 >;
 
@@ -119,12 +120,38 @@ impl TaffyLayoutEngine {
         style: Style,
         rem_size: Pixels,
         scale_factor: f32,
-        measure: impl FnMut(
+        mut measure: impl FnMut(
             Size<Option<Pixels>>,
             Size<AvailableSpace>,
             &mut Window,
             &mut App,
         ) -> (Size<Pixels>, Option<Pixels>)
+        + 'static,
+    ) -> LayoutId {
+        self.request_measured_layout_with_baselines(
+            style,
+            rem_size,
+            scale_factor,
+            move |known, available, window, cx| {
+                let (size, first) = measure(known, available, window, cx);
+                (size, first, None)
+            },
+        )
+    }
+
+    /// KaminIDE patch: то же, но замер отдаёт ПЕРВУЮ и ПОСЛЕДНЮЮ базовые
+    /// линии содержимого (`last baseline`, css-align-3 §9.1).
+    pub fn request_measured_layout_with_baselines(
+        &mut self,
+        style: Style,
+        rem_size: Pixels,
+        scale_factor: f32,
+        measure: impl FnMut(
+            Size<Option<Pixels>>,
+            Size<AvailableSpace>,
+            &mut Window,
+            &mut App,
+        ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>)
         + 'static,
     ) -> LayoutId {
         let taffy_style = style.to_taffy(rem_size, scale_factor);
@@ -270,11 +297,12 @@ impl TaffyLayoutEngine {
                         untransform(available_space.height),
                     );
 
-                    let (a, baseline): (Size<Pixels>, Option<Pixels>) =
+                    let (a, baseline, last_baseline): (Size<Pixels>, Option<Pixels>, Option<Pixels>) =
                         (node_context.measure)(known_dimensions, available_space, window, cx);
                     taffy::MeasureOutput {
                         size: size(a.width.0 * scale_factor, a.height.0 * scale_factor).into(),
                         baseline: baseline.map(|b| b.0 * scale_factor),
+                        last_baseline: last_baseline.map(|b| b.0 * scale_factor),
                     }
                 },
             )

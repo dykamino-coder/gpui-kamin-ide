@@ -58,6 +58,14 @@ pub(in super::super) struct GridItem {
     /// Shim for baseline alignment that acts like an extra top margin
     /// TODO: Support last baseline and vertical text baselines
     pub baseline_shim: f32,
+    /// KaminIDE patch: прокладка `last baseline` — лишнее НИЖНЕЕ поле: группа
+    /// последних базовых ряда прижимается к его концу (css-align-3 §9.3;
+    /// Blink grid_layout_algorithm.cc `CalculateBaselineShim` с
+    /// `IsLastBaselineSpecified` и `BaselineGroup::kMinor`).
+    pub baseline_shim_end: f32,
+    /// KaminIDE patch: ПОСЛЕДНЯЯ базовая элемента из итоговой раскладки (от
+    /// верха рамки) — для последней базовой контейнера (css-grid-2 §10.8).
+    pub last_baseline: Option<f32>,
 
     /// The item's definite row-start and row-end (same as `row` field, except in a different coordinate system)
     /// (as indexes into the Vec<GridTrack> stored in a grid's AbstractAxisTracks)
@@ -124,6 +132,8 @@ impl GridItem {
             justify_self: style.justify_self().unwrap_or(parent_justify_items),
             baseline: None,
             baseline_shim: 0.0,
+            baseline_shim_end: 0.0,
+            last_baseline: None,
             row_indexes: Line { start: 0, end: 0 }, // Properly initialised later
             column_indexes: Line { start: 0, end: 0 }, // Properly initialised later
             crosses_flexible_row: false,            // Properly initialised later
@@ -369,7 +379,8 @@ impl GridItem {
             right: self.margin.right.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
             top: self.margin.top.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
                 + self.baseline_shim,
-            bottom: self.margin.bottom.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis)),
+            bottom: self.margin.bottom.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
+                + self.baseline_shim_end,
         }
         .sum_axes()
     }

@@ -213,6 +213,20 @@ pub fn fill(g: &Gradient) -> gpui::Background {
     base
 }
 
+/// `align-self` в раскладку. `last baseline` — отдельный вариант: группа
+/// последних базовых прижимается к концу оси (css-align-3 §9.3); прежде
+/// `last` сводился к первой базовой.
+pub fn self_align(a: Align, last: bool) -> gpui::AlignItems {
+    match a {
+        Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
+        Align::Start => gpui::AlignItems::FlexStart,
+        Align::End => gpui::AlignItems::FlexEnd,
+        Align::Baseline if last => gpui::AlignItems::LastBaseline,
+        Align::Baseline => gpui::AlignItems::Baseline,
+        Align::Stretch => gpui::AlignItems::Stretch,
+    }
+}
+
 pub fn apply(d: Div, c: &Computed) -> Div {
     let mut d = d;
     d = apply_layout(d, c);
@@ -680,6 +694,10 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         Some(Align::Center) => d = d.items_center(),
         Some(Align::Start) => d = d.items_start(),
         Some(Align::End) => d = d.items_end(),
+        // `last baseline` — своя группа с прижимом к концу (css-align-3 §9.3).
+        Some(Align::Baseline) if c.align_items_last => {
+            d.style().align_items = Some(gpui::AlignItems::LastBaseline);
+        }
         Some(Align::Baseline) => d = d.items_baseline(),
         // `anchor-center` у `align-items` спекой не предусмотрен — как не задано.
         Some(Align::Stretch) | Some(Align::AnchorCenter) | None => {}
@@ -704,13 +722,7 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // `align-self` — про САМ элемент, а не про его детей. Раньше оба свойства
     // писались в одно поле, и элемент выравнивал содержимое вместо себя.
     if let Some(a) = c.align_self {
-        d.style().align_self = Some(match a {
-            Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
-            Align::Start => gpui::AlignItems::FlexStart,
-            Align::End => gpui::AlignItems::FlexEnd,
-            Align::Baseline => gpui::AlignItems::Baseline,
-            Align::Stretch => gpui::AlignItems::Stretch,
-        });
+        d.style().align_self = Some(self_align(a, c.align_self_last));
     }
     // `flex-basis: auto` — это ОТСУТСТВИЕ основы, а не «во всю ширину»:
     // без отсева `flex: none` растягивал кнопку на всю строку.

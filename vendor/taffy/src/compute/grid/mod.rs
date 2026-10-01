@@ -307,16 +307,20 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     // Выравнивание в `align_and_position_item` для `Baseline` и так даёт
     // `start`; здесь элемент лишь выводится из группы и шима.
     for item in items.iter_mut() {
-        if item.align_self == AlignSelf::Baseline
+        if matches!(item.align_self, AlignSelf::Baseline | AlignSelf::LastBaseline)
             && item.crosses_intrinsic_row
             && item.size.height.tag() == crate::CompactLength::PERCENT_TAG
         {
-            item.align_self = AlignSelf::Start;
+            // KaminIDE patch: у `last baseline` запасное — `safe self-end`
+            // (Blink grid_item.cc `SetAlignmentFallback`: kMinor → kEnd).
+            item.align_self =
+                if item.align_self == AlignSelf::LastBaseline { AlignSelf::End } else { AlignSelf::Start };
         }
     }
 
     // Determine if the grid has any baseline aligned items
-    let has_baseline_aligned_item = items.iter().any(|item| item.align_self == AlignSelf::Baseline);
+    let has_baseline_aligned_item =
+        items.iter().any(|item| matches!(item.align_self, AlignSelf::Baseline | AlignSelf::LastBaseline));
 
     // Run track sizing algorithm for Inline axis
     track_sizing_algorithm(
@@ -577,13 +581,14 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             right: columns[item.column_indexes.end as usize].offset,
         };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-        let (content_size_contribution, y_position, height, first_baseline) = align_and_position_item(
+        let (content_size_contribution, y_position, height, first_baseline, last_baseline) = align_and_position_item(
             tree,
             item.node,
             index as u32,
             grid_area,
             container_alignment_styles,
             item.baseline_shim,
+            item.baseline_shim_end,
             item.margin_trim,
         );
         item.y_position = y_position;
@@ -596,6 +601,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         // `ComputeGridItemBaselines(... kFinalBaselines)` — итоговые базовые
         // меряются раскладкой «layout», а не «measure»).
         item.baseline = first_baseline;
+        item.last_baseline = last_baseline;
 
         #[cfg(feature = "content_size")]
         {
@@ -662,8 +668,8 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
 
             // TODO: Baseline alignment support for absolutely positioned items (should check if is actuallty specified)
             #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-            let (content_size_contribution, _, _, _) =
-                align_and_position_item(tree, child, order, grid_area, container_alignment_styles, 0.0, 0);
+            let (content_size_contribution, _, _, _, _) =
+                align_and_position_item(tree, child, order, grid_area, container_alignment_styles, 0.0, 0.0, 0);
             #[cfg(feature = "content_size")]
             {
                 item_content_size_contribution = item_content_size_contribution.f32_max(content_size_contribution);
@@ -724,10 +730,26 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         item.y_position + item.baseline.unwrap_or(item.height)
     };
 
-    LayoutOutput::from_sizes_and_baselines(
+    // KaminIDE patch: ПОСЛЕДНЯЯ базовая контейнера (css-grid-2 §10.8 «last
+    // baseline set … the last row»): элементы, КОНЧАЮЩИЕСЯ в последнем ряду;
+    // предпочтение участникам `last baseline`; последний в порядке сетки —
+    // с наибольшей стартовой колонкой. Без своей — синтез у низа рамки.
+    let grid_container_last_baseline: f32 = {
+        let last_row = items.iter().map(|item| item.row_indexes.end).max().unwrap_or(0);
+        let in_last_row = || items.iter().filter(move |item| item.row_indexes.end == last_row);
+        let item = in_last_row()
+            .filter(|item| item.align_self == AlignSelf::LastBaseline)
+            .max_by_key(|item| item.column_indexes.start)
+            .or_else(|| in_last_row().max_by_key(|item| item.column_indexes.start))
+            .unwrap();
+        item.y_position + item.last_baseline.unwrap_or(item.height)
+    };
+
+    LayoutOutput::from_sizes_and_all_baselines(
         container_border_box,
         item_content_size_contribution,
         Point { x: None, y: Some(grid_container_baseline) },
+        Point { x: None, y: Some(grid_container_last_baseline) },
     )
 }
 

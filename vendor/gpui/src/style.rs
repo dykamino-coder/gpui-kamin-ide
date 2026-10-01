@@ -1180,6 +1180,9 @@ pub enum AlignItems {
     Baseline,
     /// Stretch to fill the container
     Stretch,
+    /// KaminIDE patch: `last baseline` — выравнивание по ПОСЛЕДНИМ базовым
+    /// линиям с прижимом группы к концу оси (css-align-3 §4.2, §9.3).
+    LastBaseline,
 }
 /// Used to control how child nodes are aligned.
 /// Does not apply to Flexbox, and will be ignored if specified on a flex container
@@ -1379,6 +1382,7 @@ impl From<AlignItems> for taffy::style::AlignItems {
             AlignItems::Center => Self::Center,
             AlignItems::Baseline => Self::Baseline,
             AlignItems::Stretch => Self::Stretch,
+            AlignItems::LastBaseline => Self::LastBaseline,
         }
     }
 }

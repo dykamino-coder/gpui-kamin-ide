@@ -1880,6 +1880,9 @@ pub struct Computed {
     /// `justify-self-static-position-001`). `Align::Baseline` его не различает.
     pub align_self_last: bool,
     pub justify_self_last: bool,
+    /// `align-items: last baseline` — то же для умолчания детей: раскладка
+    /// получает `LastBaseline` (css-align-3 §4.2), а не первую базовую.
+    pub align_items_last: bool,
     pub align_items_safe: bool,
     pub justify_content_safe: bool,
     pub align_content_safe: bool,
@@ -3915,6 +3918,7 @@ impl Computed {
                 if let Ok(a) = align_keyword(v) {
                     self.align_items = a;
                     self.align_items_safe = is_safe(v);
+                    self.align_items_last = v.split_whitespace().any(|w| w == "last");
                 }
             }
             // `space-evenly` и `space-around` различаются шириной крайних

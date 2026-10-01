@@ -14708,14 +14708,8 @@ fn content_sized(el: AnyElement, c: &Computed) -> AnyElement {
     // align-self несёт ось самого движка — перенос ломал ортогональные
     // потоки (three-levels-of-orthogonal-flows).
     if let Some(a) = c.align_self.filter(|_| c.vertical != Some(true)) {
-        wrap.style().align_self = Some(match a {
-            // `anchor-center` без якоря ведёт себя как `center` (css-anchor-position-1 §5.2).
-            Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
-            Align::Start => gpui::AlignItems::FlexStart,
-            Align::End => gpui::AlignItems::FlexEnd,
-            Align::Baseline => gpui::AlignItems::Baseline,
-            Align::Stretch => gpui::AlignItems::Stretch,
-        });
+        // `anchor-center` без якоря ведёт себя как `center` (css-anchor-position-1 §5.2).
+        wrap.style().align_self = Some(crate::apply::self_align(a, c.align_self_last));
     }
     if let Some(col) = col {
         wrap = wrap.grid_template_cols(vec![col]);
