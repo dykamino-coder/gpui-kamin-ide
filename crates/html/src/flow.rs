@@ -531,6 +531,79 @@ pub struct StackChild {
     /// режет вбок по колонке, как до вылета (`multicol-nested-013/014/021`,
     /// `multicol-fill-balance-nested-000`).
     pub nested_cols: bool,
+    /// Повторяемые шапка/подвал таблицы (css-tables-3 §repeated-headers; Blink
+    /// `table_layout_algorithm.cc:1082-1150`). `None` — повтора нет.
+    pub repeat: Option<Repeat>,
+}
+
+/// Повтор секций таблицы во фрагментах. Фрагмент в нашей модели — СРЕЗ одной
+/// нарисованной копии `[from, from + h)`, а повторённой шапки в срезе нет:
+/// она рисуется ОТДЕЛЬНОЙ копией той же таблицы, поднятой так, что полоса
+/// шапки встаёт на верх фрагмента, и режется маской по этой полосе. Тело
+/// фрагмента-продолжения уезжает вниз на высоту полосы (`Frag::head`), у
+/// непоследнего фрагмента снизу оставлено место под подвал (`Frag::foot`) —
+/// это Blink `reserved_space = repeated_header_block_size +
+/// repeated_footer_block_size` (`:1323-1327`).
+pub struct Repeat {
+    /// Полоса шапки в координатах коробки: `(верх, высота)`; высота — шапка
+    /// плюс `border-spacing` под ней (Blink `repeated_header_block_size`,
+    /// `:1393-1395`: продолжение шапку кладёт без зазора над ней, `:942`).
+    pub head: Option<(f32, f32)>,
+    /// Полоса подвала: `(верх, высота)`; высота — подвал плюс зазор над ним
+    /// (Blink `repeated_footer_block_size`, `:1147-1149`).
+    pub foot: Option<(f32, f32)>,
+    /// Где полосам место (`RepeatGeom`).
+    pub geom: RepeatGeom,
+    /// Копии для полос: шапка — фрагменту `c ≥ 1` (`head_els[c - 1]`),
+    /// подвал — НЕпоследнему фрагменту `c` (`foot_els[c]`).
+    pub head_els: Vec<AnyElement>,
+    pub foot_els: Vec<AnyElement>,
+}
+
+/// Геометрия повтора для укладки (`fill_at`), в координатах коробки. Нули —
+/// повтора нет, укладка тождественна прежней.
+#[derive(Clone, Copy, Default)]
+pub struct RepeatGeom {
+    /// Место полосы шапки сверху у продолжения и полосы подвала снизу.
+    pub head: f32,
+    pub foot: f32,
+    /// Конец полосы шапки на её родном месте: продолжение, начатое раньше,
+    /// шапку ещё не прошло.
+    pub head_end: f32,
+    /// Точка разрыва перед подвалом на родном месте и конец подвала: фрагмент,
+    /// куда родной подвал влезает целиком, полосы не берёт — подвал в нём
+    /// последний (Blink `has_pending_repeated_footer = false`, `:1315`).
+    pub foot_at: f32,
+    pub foot_end: f32,
+    /// Коробка рядов (без подписей): повтор — только во фрагментах, где она
+    /// есть (Blink: «If this isn't the first fragment for the table box …»,
+    /// `:1108-1114`; подписи о повторе не знают, `:1248-1249`).
+    pub box_top: f32,
+    pub box_end: f32,
+}
+
+impl RepeatGeom {
+    /// Полоса шапки у фрагмента-продолжения, начатого с `from`.
+    fn head_at(&self, from: f32) -> f32 {
+        if self.head > 0.0 && from >= self.head_end - 0.01 && from < self.box_end - 0.01 {
+            self.head
+        } else {
+            0.0
+        }
+    }
+
+    /// Место под подвал у фрагмента с `from`, которому доступно `room`.
+    fn foot_for(&self, from: f32, room: f32) -> f32 {
+        if self.foot > 0.0
+            && from < self.foot_at - 0.01
+            && from + room > self.box_top + 0.01
+            && from + room < self.foot_end - 0.01
+        {
+            self.foot
+        } else {
+            0.0
+        }
+    }
 }
 
 /// Мера ребёнка для укладки колонок.
@@ -559,6 +632,9 @@ pub struct Kid {
     pub clone_dec: Option<(f32, f32)>,
     /// См. `StackChild::overflow_top`; у страниц — `false`.
     pub overflow_top: bool,
+    /// Повтор секций таблицы (`RepeatGeom`): место шапки сверху у
+    /// фрагмента-продолжения и подвала снизу у непоследнего; нули — нет.
+    pub repeat: RepeatGeom,
 }
 
 /// Кусок ребёнка в колонке: чей он, какая по счёту копия, в какой колонке
@@ -572,6 +648,10 @@ struct Frag {
     y: f32,
     from: f32,
     h: f32,
+    /// Полосы повтора таблицы (`Repeat`): шапка над `y` и подвал под `y + h`;
+    /// `y`/`h` — по-прежнему само содержимое среза.
+    head: f32,
+    foot: f32,
 }
 
 /// Колонки многоколоночного потока для БЛОЧНЫХ детей с известными
@@ -853,6 +933,9 @@ impl ColumnStack {
             } else {
                 k.h
             };
+            // Полосы повтора таблицы (`Repeat::leads`); у прочих детей нули, и
+            // укладка тождественна прежней.
+            let rg = k.repeat;
             loop {
                 let target = target_at(col);
                 let room = target - cur;
@@ -883,7 +966,7 @@ impl ColumnStack {
                         .map(|&f| f - dt)
                         .find(|&f| f > from + 0.01 && f < content - 0.01 && f <= edge + 0.01);
                     if forced.is_none() && rest <= croom + 0.01 {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec, head: 0.0, foot: 0.0 });
                         y = cur + rest + dec;
                         placed = true;
                         break;
@@ -923,13 +1006,13 @@ impl ColumnStack {
                         None => before.or(whole).map_or(croom, |p| p - from),
                     };
                     if take >= rest - 0.01 {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: rest + dec, head: 0.0, foot: 0.0 });
                         y = cur + rest + dec;
                         placed = true;
                         break;
                     }
                     let fh = if croom <= 0.01 { take + dec } else { room };
-                    out.push(Frag { kid, copy, col, y: cur, from, h: fh });
+                    out.push(Frag { kid, copy, col, y: cur, from, h: fh, head: 0.0, foot: 0.0 });
                     from += take;
                     if copy + 1 >= limit {
                         y = target;
@@ -943,6 +1026,23 @@ impl ColumnStack {
                     continue;
                 }
                 let rest = flow - from;
+                // Повтор секций таблицы: фрагмент-продолжение начат ПОД полосой
+                // шапки (курсор уже стоит под ней, `RepeatGeom::head_at` при переходе),
+                // а непоследний фрагмент оставляет снизу место под подвал —
+                // Blink кладёт его сразу за содержимым фрагмента и вычитает из
+                // доступного места заранее (`table_layout_algorithm.cc:1145-1149`,
+                // `:1323-1327` `reserved_space`). Целиком влезающий остаток
+                // подвал несёт сам — он последний в таблице.
+                let hd = if copy > 0 { rg.head_at(from) } else { 0.0 };
+                let room_all = room;
+                let rf = rg.foot_for(from, room_all);
+                let room = room_all - rf;
+                // Место под содержимым непоследнего фрагмента: секция тянется до
+                // низа фрагментаинера (css-break-3 §box-splitting: «its content
+                // box extends to fill any remaining fragmentainer extent»), и
+                // подвал встаёт на самый низ — `forced-break-before-repeated-
+                // footer-001`: ряд 50 с `break-after: column`, подвал на 80..100.
+                let ft = |h: f32| if rf > 0.0 { (room_all - h).max(rf) } else { 0.0 };
                 // Принудительный разрыв ВНУТРИ коробки раньше её конца и раньше
                 // края колонки — режем ровно там.
                 let forced = k
@@ -957,7 +1057,7 @@ impl ColumnStack {
                         .find(|&&(need, _)| (need - f).abs() < 0.01)
                         .map(|&(_, nf)| nf)
                         .unwrap_or(f);
-                    out.push(Frag { kid, copy, col, y: cur, from, h: f - from });
+                    out.push(Frag { kid, copy, col, y: cur, from, h: f - from, head: hd, foot: ft(f - from) });
                     from = nf;
                     if copy + 1 >= limit {
                         y = target;
@@ -966,12 +1066,12 @@ impl ColumnStack {
                     }
                     copy += 1;
                     col += 1;
-                    cur = 0.0;
+                    cur = rg.head_at(from);
                     placed = false;
                     continue;
                 }
-                if rest <= room + 0.01 {
-                    out.push(Frag { kid, copy, col, y: cur, from, h: rest });
+                if rest <= room_all + 0.01 {
+                    out.push(Frag { kid, copy, col, y: cur, from, h: rest, head: hd, foot: 0.0 });
                     y = cur + rest;
                     placed = true;
                     break;
@@ -1036,7 +1136,7 @@ impl ColumnStack {
                 // Монолит дотянулся до конца ребёнка — ребёнок кончается в этой
                 // колонке, переполнив её (как монолит-ребёнок в ветке `None =>`).
                 if overflow_to.is_some_and(|b| b >= flow - 0.01) {
-                    out.push(Frag { kid, copy, col, y: cur, from, h: rest });
+                    out.push(Frag { kid, copy, col, y: cur, from, h: rest, head: hd, foot: 0.0 });
                     y = cur + rest;
                     placed = true;
                     break;
@@ -1094,13 +1194,13 @@ impl ColumnStack {
                 shortage = shortage.min(next - room);
                 match cut {
                     Some((need, nf)) => {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: (need - from).max(0.0) });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: (need - from).max(0.0), head: hd, foot: ft((need - from).max(0.0)) });
                         from = nf;
                     }
                     None if !mono && k.cuts.is_empty() && rest > target + 0.01 && room > 0.01 => {
                         // Коробка без точек разреза выше колонки — вид
                         // `slice` по краю (css-break-3 §4).
-                        out.push(Frag { kid, copy, col, y: cur, from, h: room });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: room, head: hd, foot: ft(room) });
                         from += room;
                     }
                     None if paged && placed && cur > target + 0.01 => {
@@ -1126,13 +1226,13 @@ impl ColumnStack {
                         continue;
                     }
                     None if !mono && rest > target + 0.01 && room > 0.01 => {
-                        out.push(Frag { kid, copy, col, y: cur, from, h: room });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: room, head: hd, foot: ft(room) });
                         from += room;
                     }
                     None => {
                         // Монолит с верха пустой колонки: остаётся и
                         // переполняет.
-                        out.push(Frag { kid, copy, col, y: cur, from, h: rest });
+                        out.push(Frag { kid, copy, col, y: cur, from, h: rest, head: hd, foot: 0.0 });
                         y = cur + rest;
                         placed = true;
                         break;
@@ -1146,7 +1246,7 @@ impl ColumnStack {
                 }
                 copy += 1;
                 col += 1;
-                cur = 0.0;
+                cur = rg.head_at(from);
                 placed = false;
             }
             // Откат курсора на конец КОРОБКИ: параллельный поток уехал
@@ -1595,7 +1695,7 @@ impl ColumnStack {
             let Some(&(_, line_h)) = lines.get(f.col / count) else {
                 continue;
             };
-            let grow = line_h - f.y - f.h;
+            let grow = line_h - f.y - f.h - k.repeat.foot;
             if grow > 0.01 {
                 // Монолит растёт от НАЧАЛА своего диапазона; принудительный
                 // разрыв стоит ПЕРЕД полем следующей коробки, и распорку надо
@@ -1906,6 +2006,7 @@ impl Element for ColumnStack {
                 over: c.over,
                 clone_dec: c.clone_dec,
                 overflow_top: c.overflow_top,
+                repeat: c.repeat.as_ref().map_or(RepeatGeom::default(), |r| r.geom),
             })
             .collect();
         let count = self.count;
@@ -2049,6 +2150,7 @@ impl Element for ColumnStack {
                 over: c.over,
                 clone_dec: c.clone_dec,
                 overflow_top: c.overflow_top,
+                repeat: c.repeat.as_ref().map_or(RepeatGeom::default(), |r| r.geom),
             })
             .collect();
         let (_, lines, plan, spans) = self.balance(&heights);
@@ -2069,6 +2171,31 @@ impl Element for ColumnStack {
             let x = bounds.origin.x + px(c as f32 * step + rel.0);
             let y = bounds.origin.y + px(ry + f.y + rel.1);
             let kid = &mut self.children[f.kid];
+            // Полосы повтора таблицы — своими копиями: шапка встаёт над
+            // содержимым продолжения (`f.y − f.head`), подвал — сразу под ним.
+            // Копия та же полная таблица, поднятая так, что её полоса
+            // совпадает с местом во фрагменте; видимой полосу делает маска.
+            if let Some(r) = kid.repeat.as_mut() {
+                let mut band = |el: Option<&mut AnyElement>, at: f32| {
+                    if let Some(el) = el {
+                        el.layout_as_root(
+                            size(
+                                gpui::AvailableSpace::Definite(px(col_w)),
+                                gpui::AvailableSpace::Definite(px(full_h)),
+                            ),
+                            window,
+                            cx,
+                        );
+                        el.prepaint_at(point(x, y + px(at)), window, cx);
+                    }
+                };
+                if let (Some((src, _)), true) = (r.head, f.head > 0.01 && f.copy > 0) {
+                    band(r.head_els.get_mut(f.copy - 1), -f.head - src);
+                }
+                if let (Some((src, bh)), true) = (r.foot, f.foot > 0.01) {
+                    band(r.foot_els.get_mut(f.copy), f.h + f.foot - bh - src);
+                }
+            }
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {
@@ -2244,6 +2371,31 @@ impl Element for ColumnStack {
                 },
             };
             let kid = &mut self.children[f.kid];
+            // Полосы повтора таблицы — каждая своей маской по своей полосе.
+            if let Some(r) = kid.repeat.as_mut() {
+                let band_mask = |top: f32, h: f32| gpui::ContentMask {
+                    bounds: Bounds {
+                        origin: point(x - spill, y + px(top)),
+                        size: size(px(col_w) + spill + spill, px(h)),
+                    },
+                };
+                if f.head > 0.01
+                    && f.copy > 0
+                    && let Some(el) = r.head_els.get_mut(f.copy - 1)
+                {
+                    window.with_content_mask(Some(band_mask(-f.head, f.head)), |window| {
+                        el.paint(window, cx)
+                    });
+                }
+                if f.foot > 0.01
+                    && let Some((_, bh)) = r.foot
+                    && let Some(el) = r.foot_els.get_mut(f.copy)
+                {
+                    window.with_content_mask(Some(band_mask(f.h + f.foot - bh, bh)), |window| {
+                        el.paint(window, cx)
+                    });
+                }
+            }
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {
@@ -2562,6 +2714,7 @@ impl Element for PageStack {
                     // У страниц своё правило переполнения монолита (`fill_at`,
                     // ветка `paged && placed && cur > target`, crbug 1402540).
                     overflow_top: false,
+                    repeat: RepeatGeom::default(),
                 }
             })
             .collect();

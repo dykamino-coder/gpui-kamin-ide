@@ -4019,6 +4019,7 @@ fn grow_pushed(
                 // Тот же предикат, что у `StackChild` в сборке стопки: иначе
                 // распорки легли бы по другому плану, чем укладка.
                 overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(c, 4),
+                repeat: repeat_leads(c, fixed, rows),
             })
             .collect();
         let mut grows = crate::flow::ColumnStack::growths(&probe, count, fixed, rows, copies);
@@ -4160,6 +4161,80 @@ fn table_box(c: &Element) -> bool {
 /// и неизмеримая ячейка — `None`: таблица идёт цельным куском измеренной
 /// высоты без точек, как прежде.
 fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+    table_shape_bands(c, depth, cx, &mut TableBands::default())
+}
+
+/// Полосы первой шапки и первого подвала таблицы в координатах её меры:
+/// `(верх секции, высота секции)` и `break-inside: avoid*` секции, плюс
+/// вертикальный `border-spacing`. Нужны повтору секций во фрагментах
+/// (`repeat_bands`).
+#[derive(Default, Clone, Copy)]
+struct TableBands {
+    head: Option<(f32, f32)>,
+    foot: Option<(f32, f32)>,
+    head_avoid: bool,
+    foot_avoid: bool,
+    spacing: f32,
+    /// Коробка рядов `[верх, низ)` — без подписей обёртки.
+    box_top: f32,
+    box_end: f32,
+}
+
+/// Повтор секций для стопки: полосы `flow::Repeat` и геометрия укладки.
+type RepeatSpec = (Option<(f32, f32)>, Option<(f32, f32)>, crate::flow::RepeatGeom);
+
+/// Повтор шапки/подвала таблицы-ребёнка стопки колонок (css-tables-3
+/// §repeated-headers; Blink `table_layout_algorithm.cc:1082-1150`): секция
+/// повторяется, если у неё `break-inside: avoid*` и блочный размер не больше
+/// четверти фрагментаинера («block-size of the section is one quarter or less
+/// than that of the fragmentainer»). Размер фрагментаинера Blink знает только
+/// вне первого прохода балансировки (`HasKnownFragmentainerBlockSize`), поэтому
+/// здесь — только `column-fill: auto` с заданной высотой и без рядов. Ответ —
+/// полосы для `flow::Repeat`: шапка `(верх секции, секция + зазор под ней)`,
+/// подвал `(верх секции − зазор, зазор + секция)`.
+fn repeat_bands(
+    c: &Element,
+    fixed: Option<f32>,
+    rows: Option<crate::flow::Rows>,
+) -> Option<RepeatSpec> {
+    let per = fixed.filter(|_| rows.is_none() && table_box(c))?;
+    let mut b = TableBands::default();
+    table_shape_bands(c, 4, ShapeCx::COLUMNS, &mut b)?;
+    let max = per / 4.0;
+    let head = b
+        .head
+        .filter(|&(_, h)| b.head_avoid && h > 0.01 && h <= max + 0.01)
+        .map(|(at, h)| (at, h + b.spacing));
+    let foot = b
+        .foot
+        .filter(|&(_, h)| b.foot_avoid && h > 0.01 && h <= max + 0.01)
+        .map(|(at, h)| (at - b.spacing, h + b.spacing));
+    if head.is_none() && foot.is_none() {
+        return None;
+    }
+    let geom = crate::flow::RepeatGeom {
+        head: head.map_or(0.0, |h| h.1),
+        foot: foot.map_or(0.0, |f| f.1),
+        head_end: head.map_or(0.0, |(at, h)| at + h),
+        foot_at: foot.map_or(f32::MAX, |(at, _)| at),
+        foot_end: foot.map_or(f32::MAX, |(at, h)| at + h),
+        box_top: b.box_top,
+        box_end: b.box_end,
+    };
+    Some((head, foot, geom))
+}
+
+/// `RepeatGeom` для щупов укладки (`grow_pushed`, план `clone`): та же мера,
+/// что у `StackChild` в сборке стопки.
+fn repeat_leads(
+    c: &Element,
+    fixed: Option<f32>,
+    rows: Option<crate::flow::Rows>,
+) -> crate::flow::RepeatGeom {
+    repeat_bands(c, fixed, rows).map_or_else(Default::default, |r| r.2)
+}
+
+fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands) -> Option<Shape> {
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
@@ -4468,8 +4543,25 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         }
         prev_open = open;
         prev_aa = r.aa;
+        // Полосы первой шапки/подвала (`TableBands`): от верха их первого ряда
+        // до низа последнего. Секция-ряд (`is_row` прямо в таблице) — тоже
+        // секция своей роли.
+        let (kind, sec) = parts[r.group];
+        let band = match kind {
+            0 => Some((&mut bands.head, &mut bands.head_avoid)),
+            2 => Some((&mut bands.foot, &mut bands.foot_avoid)),
+            _ => None,
+        };
+        if let Some((slot, avoid)) = band {
+            *slot = Some(match *slot {
+                Some((a, _)) => (a, start + h - a),
+                None => (start, h),
+            });
+            *avoid = sec.style.break_inside_avoid;
+        }
         y = start + h;
     }
+    bands.spacing = spacing;
     // Сцепка, дожившая до конца коробки рядов, закрывается её низом.
     if let Some(s) = avoid_run {
         solid.push((s, y));
@@ -4525,6 +4617,9 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // (10,67)..(172,316), голубой (10,317)..(172,566) — раздача у нас РОВНАЯ
     // (200/200) при содержимом 1 и 3, и точки на 1 и 4 были бы ложью.
     if h_box > content_h + 0.01 {
+        // Ряды растянуты — измеренные полосы секций тоже неверны.
+        bands.head = None;
+        bands.foot = None;
         cuts.clear();
         forced.clear();
         solid.clear();
@@ -4535,6 +4630,8 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     if bot > 0.0 {
         solid.push((h_box - bot, h_box));
     }
+    bands.box_top = 0.0;
+    bands.box_end = h_box;
     // Подписей нет — коробка рядов и есть вся мера, как прежде.
     if caps_top.is_empty() && caps_bot.is_empty() {
         cuts.retain(|&(need, _)| need > 0.01 && need < h_box - 0.01);
@@ -4614,6 +4711,15 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         }
         wforce_next = ifa;
         let start = wy + lead;
+        // Полосы секций — в координаты обёртки: коробка рядов стоит под
+        // верхними подписями.
+        if slot.is_none() {
+            for s in [&mut bands.head, &mut bands.foot].into_iter().flatten() {
+                s.0 += start;
+            }
+            bands.box_top += start;
+            bands.box_end += start;
+        }
         wcuts.extend(icuts.into_iter().map(|(need, nf)| (start + need, start + nf)));
         wforced.extend(iforced.into_iter().map(|f| start + f));
         wsolid.extend(isolid.into_iter().map(|(a, b)| (start + a, start + b)));
@@ -18200,6 +18306,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                             overflow_top: fixed.is_some()
                                                 && rows.is_none()
                                                 && !parallel_items_inside(c, 4),
+                                            repeat: repeat_leads(c, fixed, rows),
                                         }
                                     })
                                     .collect();
@@ -18927,6 +19034,24 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // Вложенный многоколоночник — маска режет вбок
                                     // (`flow.rs` `StackChild::nested_cols`).
                                     nested_cols: multicol_inside(&copy, 4),
+                                    // Повтор шапки/подвала таблицы — полосы своими
+                                    // копиями (`flow::Repeat`); та же мера, что у
+                                    // щупов (`repeat_leads`).
+                                    repeat: repeat_bands(&copy, fixed, rows)
+                                        .filter(|_| !span)
+                                        .map(|(head, foot, geom)| crate::flow::Repeat {
+                                            head,
+                                            foot,
+                                            geom,
+                                            head_els: match head {
+                                                Some(_) => (1..kid_copies).map(|i| build(false, i)).collect(),
+                                                None => Vec::new(),
+                                            },
+                                            foot_els: match foot {
+                                                Some(_) => (0..kid_copies).map(|i| build(false, i)).collect(),
+                                                None => Vec::new(),
+                                            },
+                                        }),
                                 }
                             })
                             .collect();
@@ -18989,6 +19114,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 clone_dec: None,
                                 overflow_top: false,
                                 nested_cols: false,
+                                repeat: None,
                             };
                             let at = (*at).min(children.len());
                             children.insert(at, probe);
