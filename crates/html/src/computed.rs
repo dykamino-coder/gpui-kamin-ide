@@ -9280,7 +9280,49 @@ impl Computed {
         } else {
             0.0
         };
-        out.map(|o| o.max(0.0) + stroke / 2.0 + spike)
+        let mut ext = out.map(|o| o.max(0.0) + stroke / 2.0 + spike);
+        // Тени повторяют фигуру (css-borders-4 §border-shape-shadow-interaction)
+        // и рисуются растром на той же области (`background::
+        // border_shape_shadow_svg`): наружная уходит за border-box на разлёт,
+        // смещение и хвост размытия (3σ = 1.5·blur); у внутренней хвост
+        // размытия тоже нужен — область фильтра обрезает бросающий
+        // прямоугольник, и без запаса край холста просвечивал бы.
+        for sh in &self.shadows {
+            let tail = sh.spread.max(0.0) + sh.blur.max(0.0) * 1.5 + 1.0;
+            ext[0] = ext[0].max(tail - sh.y);
+            ext[1] = ext[1].max(tail + sh.x);
+            ext[2] = ext[2].max(tail + sh.y);
+            ext[3] = ext[3].max(tail - sh.x);
+        }
+        for sh in &self.inset_shadows {
+            let tail = sh.blur.max(0.0) * 1.5 + 1.0;
+            for e in &mut ext {
+                *e = e.max(tail);
+            }
+        }
+        ext
+    }
+
+    /// Тени `box-shadow` с решённым цветом: без своего цвета — цвет текста
+    /// (css-backgrounds-3 §box-shadow, `currentColor`; метка — отрицательная
+    /// альфа, как у `apply::shadow_colour`). `inset` — внутренние.
+    pub fn resolved_shadows(&self, inset: bool) -> Vec<(Shadow, Color)> {
+        let list = if inset { &self.inset_shadows } else { &self.shadows };
+        list.iter()
+            .map(|sh| {
+                let colour = if sh.color.a < 0.0 {
+                    self.color.unwrap_or(Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    })
+                } else {
+                    sh.color
+                };
+                (sh.clone(), colour)
+            })
+            .collect()
     }
 
     /// Есть ли угол с формой, отличной от круглой, при ненулевом радиусе
@@ -10445,6 +10487,18 @@ fn parse_border_shape(v: &str) -> Option<BorderShape> {
         }
         let close = close?;
         let shape = rest[..=close].trim().to_string();
+        // Прямоугольные фигуры пишутся через пробел (css-shapes-1 §basic-shape:
+        // `rect( [ <length-percentage> | auto ]{4} … )`, так же `inset()` и
+        // `xywh()`); запятая делает всё объявление недействительным, и
+        // `border-shape` остаётся `none` — Blink `ConsumeBasicShapeRect`
+        // (`css_parsing_utils.cc:651-668`) берёт четыре длины подряд без
+        // запятой. Прежде `rect(0, 0, 100%, 100%)` разбирался в пустой
+        // прямоугольник, и маска фигуры прятала коробку целиком
+        // (border-shape-inset-shadow-blur, -negative-spread: пустая страница).
+        let head = shape[..open].trim_start().to_ascii_lowercase();
+        if matches!(head.as_str(), "rect" | "inset" | "xywh") && shape.contains(',') {
+            return None;
+        }
         rest = rest[close + 1..].trim_start();
         let word_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
         let bx = geometry_box_kind(&rest[..word_end]);

@@ -308,7 +308,9 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     for sh in &c.shadows {
         // Тень без цвета помечена отрицательной альфой и берёт `color`
         // (css-backgrounds-3 §7.1) — как в `apply::shadow_colour`.
-        if sh.blur > 0.0 || sh.color.a == 0.0 {
+        // У `border-shape` тени повторяют фигуру — растром под группой
+        // (`grouped`, `Grouped::under`), квад здесь лёг бы прямоугольником.
+        if sh.blur > 0.0 || sh.color.a == 0.0 || c.border_shape.is_some() {
             continue;
         }
         let colour = if sh.color.a < 0.0 {
@@ -431,7 +433,9 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // есть фигура. Слой — после плиток фона и до рамки: «inner shadows …
     // immediately above the background … (below the borders and border image)».
     for sh in &c.inset_shadows {
-        if sh.blur > 0.0 || sh.color.a == 0.0 {
+        // У `border-shape` внутренняя тень — растр по внутреннему контуру
+        // (слой фигуры ниже), кольцо здесь было бы прямоугольным.
+        if sh.blur > 0.0 || sh.color.a == 0.0 || c.border_shape.is_some() {
             continue;
         }
         let colour = if sh.color.a < 0.0 {
@@ -661,6 +665,49 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
         };
         let w = c.borders();
         let [t, r, b, l] = [side_px(w.top), side_px(w.right), side_px(w.bottom), side_px(w.left)];
+        // Внутренняя тень по внутреннему контуру фигуры (css-borders-4
+        // §border-shape-shadow-interaction: «cast as if everything outside
+        // the shape defined by the inner path were opaque»; Blink
+        // `PaintInsetBoxShadowForBorderShape`) — растром на той же области,
+        // что кольцо, ПОД кольцом и над фоном (css-backgrounds-3 §box-shadow:
+        // «inner shadows … immediately above the background»).
+        let inset = c.resolved_shadows(true);
+        if inset.iter().any(|(_, k)| k.a > 0.0) {
+            let (bs, outer_out, inner) = (bs.clone(), outer_out, inner.clone());
+            out.push(
+                gpui::canvas(
+                    |_, _, _| {},
+                    move |bounds, _, window, _| {
+                        let (cw, ch) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+                        let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
+                        let markup = crate::background::border_shape_shadow_svg(
+                            (bs.outer.as_str(), outer_out),
+                            inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
+                            stroke,
+                            &inset,
+                            true,
+                            bw,
+                            bh,
+                            ext[3],
+                            ext[0],
+                            cw,
+                            ch,
+                        );
+                        if let Some(markup) = markup
+                            && let Some(img) = crate::svg::rasterize(&markup, cw, ch)
+                        {
+                            let _ = window.paint_image(bounds, gpui::Corners::default(), img, 0, false);
+                        }
+                    },
+                )
+                .absolute()
+                .top(px(-(t + ext[0])))
+                .left(px(-(l + ext[3])))
+                .right(px(-(r + ext[1])))
+                .bottom(px(-(b + ext[2])))
+                .into_any_element(),
+            );
+        }
         if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
             out.push(
                 gpui::canvas(
@@ -16399,6 +16446,37 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
     wrapper.mask = mask;
+    // Наружные тени коробки с `border-shape` повторяют фигуру и лежат
+    // СНАРУЖИ неё — под буфером группы и вне его маски (css-borders-4
+    // §border-shape-shadow-interaction; Blink `PaintNormalBoxShadow`, ветка
+    // `HasBorderShape`). Квад тени (`apply::apply_paint`) и слой резкой
+    // тени (`decorations`) у такой коробки не ставятся.
+    if let Some(bs) = c.border_shape.clone()
+        && !c.shadows.is_empty()
+    {
+        let (stroke, _) = c.border_shape_stroke();
+        let outer_out = c.geometry_outsets(bs.outer_box);
+        let inner = bs
+            .inner
+            .clone()
+            .map(|(s, k)| (s, c.geometry_outsets(k)));
+        let shadows = c.resolved_shadows(false);
+        wrapper.under = Some(Box::new(move |bw, bh, sl, st, aw, ah| {
+            crate::background::border_shape_shadow_svg(
+                (bs.outer.as_str(), outer_out),
+                inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
+                stroke,
+                &shadows,
+                false,
+                bw,
+                bh,
+                sl,
+                st,
+                aw,
+                ah,
+            )
+        }));
+    }
     wrapper.mask_size = c.mask_size;
     wrapper.mask_fit = c.mask_fit.unwrap_or(0);
     wrapper.mask_no_repeat = c.mask_no_repeat.unwrap_or((false, false));

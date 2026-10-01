@@ -423,11 +423,18 @@ pub struct Grouped {
     pub clip_xywh: Option<[crate::value::Len; 4]>,
     /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
     pub mask_composite: Vec<u8>,
+    /// Подложка ПОД буфером группы, вне его маски: наружные тени
+    /// `box-shadow` коробки с `border-shape` — они лежат снаружи фигуры, а
+    /// маска группы (`bordershape:`) режет всё содержимое буфера фигурой.
+    /// Колбэк строит SVG-разметку по размеру коробки (bw, bh), выносу
+    /// (l, t) и холсту (aw, ah) — размеры известны только на отрисовке.
+    pub under: Option<Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<String>>>,
 }
 
 impl Grouped {
     pub fn new(child: AnyElement) -> Self {
         Grouped {
+            under: None,
             child: Some(child),
             blur: 0.0,
             opacity: 1.0,
@@ -1165,6 +1172,21 @@ impl Element for Grouped {
                     h * sf,
                 ]
             });
+        // Подложка (наружные тени `border-shape`) — в текущий контекст ДО
+        // композита группы: под буфером и вне его маски, на области выноса.
+        if let Some(under) = self.under.as_ref() {
+            let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            let (aw, ah) = (bw + sl + sr, bh + st + sb);
+            if let Some(markup) = under(bw, bh, sl, st, aw, ah)
+                && let Some(img) = crate::svg::rasterize(&markup, aw, ah)
+            {
+                let at = Bounds {
+                    origin: gpui::point(bounds.origin.x - px(sl), bounds.origin.y - px(st)),
+                    size: gpui::size(px(aw), px(ah)),
+                };
+                let _ = window.paint_image(at, gpui::Corners::default(), img, 0, false);
+            }
+        }
         let child = self.child.as_mut().unwrap();
         window.paint_group(
             area,

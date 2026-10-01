@@ -1096,6 +1096,36 @@ pub fn element(e: &Element) -> Option<AnyElement> {
                 if let Some(v) = own {
                     m = m.max(at + v);
                 }
+                // Переполнение считается по stroke-box и с учётом чистого
+                // сдвига (SVG 2 §overflow: видна вся отрисовка, включая
+                // обводку): `<rect stroke-width=20 transform=translate(10 20)>`
+                // в `overflow: visible` канве 230×240 рисуется до 240×250
+                // (border-shape-shadow-ref). Поворот и масштаб — как прежде.
+                if let Some((bx, by, bw, bh)) = shape_box(el, true) {
+                    let (mut dx, mut dy) = el
+                        .attr("transform")
+                        .and_then(translate_only)
+                        .unwrap_or((0.0, 0.0));
+                    let pure = |t: &crate::computed::Transform| {
+                        t.rotate_rad == 0.0
+                            && t.skew_rad == (0.0, 0.0)
+                            && t.scale == (1.0, 1.0)
+                            && t.translate_pct == (0.0, 0.0)
+                    };
+                    match el.style.transform.as_ref() {
+                        Some(t) if pure(t) => {
+                            dx += t.translate.0;
+                            dy += t.translate.1;
+                        }
+                        Some(_) => continue,
+                        None => {}
+                    }
+                    if let Some((tx, ty)) = el.style.translate {
+                        dx += px_len(Some(tx)).unwrap_or(0.0);
+                        dy += px_len(Some(ty)).unwrap_or(0.0);
+                    }
+                    m = m.max(if horiz { bx + dx + bw } else { by + dy + bh });
+                }
             }
         }
         m
@@ -1177,6 +1207,12 @@ fn serialize_sized(e: &Element, w: f32, h: f32) -> String {
     if (z - 1.0).abs() > f32::EPSILON && !e.attrs.iter().any(|(k, _)| k.eq_ignore_ascii_case("viewbox")) {
         out.push_str(&format!(" viewBox=\"0 0 {} {}\"", w / z, h / z));
     }
+    // Канва шире коробки (`overflow: visible`, см. `element`): при `viewBox`
+    // пользовательские единицы обязаны остаться прежними, иначе рисунок
+    // растянулся бы на выросшую канву (`border-shape-shadow-ref`: рамка
+    // 220 → 230). `viewBox` расширяется в той же пропорции, что и канва.
+    let (w0, h0) = size_of(e);
+    let grown = w > w0 + 0.5 || h > h0 + 0.5;
     for (k, v) in &e.attrs {
         if k == "width" || k == "height" {
             continue;
@@ -1184,6 +1220,24 @@ fn serialize_sized(e: &Element, w: f32, h: f32) -> String {
         out.push(' ');
         out.push_str(k);
         out.push_str("=\"");
+        if grown && k.eq_ignore_ascii_case("viewbox") {
+            let p: Vec<f32> = v
+                .split([' ', ','])
+                .filter(|s| !s.is_empty())
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            if p.len() == 4 && w0 > 0.0 && h0 > 0.0 {
+                out.push_str(&format!(
+                    "{} {} {} {}",
+                    p[0],
+                    p[1],
+                    p[2] * w / w0,
+                    p[3] * h / h0
+                ));
+                out.push('"');
+                continue;
+            }
+        }
         escape_attr(v, &mut out);
         out.push('"');
     }

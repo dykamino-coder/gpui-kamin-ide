@@ -2042,7 +2042,10 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
             sh.color
         }
     };
-    if !c.inset_shadows.is_empty() {
+    // У `border-shape` обе тени повторяют фигуру и рисуются растром
+    // (`render::grouped` — наружные, `render::decorations` — внутренние);
+    // прямоугольные примитивы квада легли бы поверх и мимо фигуры.
+    if !c.inset_shadows.is_empty() && c.border_shape.is_none() {
         d.style().inset_box_shadow = Some(
             c.inset_shadows
                 .iter()
@@ -2058,7 +2061,7 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
                 .collect(),
         );
     }
-    if !c.shadows.is_empty() {
+    if !c.shadows.is_empty() && c.border_shape.is_none() {
         d = d.shadow(
             c.shadows
                 .iter()
