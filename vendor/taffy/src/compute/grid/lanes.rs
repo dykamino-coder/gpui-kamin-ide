@@ -92,6 +92,10 @@ struct Placed {
     stack_fit: Option<f32>,
     /// Выравнивание по базовой линии по оси решётки.
     grid_baseline: bool,
+    /// KaminIDE patch: последняя базовая (от верха рамки) и участие в
+    /// группе `last baseline` по оси решётки.
+    last_baseline: Option<f32>,
+    grid_last_baseline: bool,
 }
 
 /// Проём над элементом по оси укладки (Blink `TrackOpening`,
@@ -120,6 +124,8 @@ struct ItemBox {
     stack_align: Option<AlignSelf>,
     stack_size_fixed: bool,
     grid_baseline: bool,
+    last_baseline: Option<f32>,
+    grid_last_baseline: bool,
 }
 
 /// Раскладка контейнера лунок.
@@ -564,6 +570,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             Line { start: border.top, end: border.bottom },
             &mut grid_tracks,
             grid_alignment,
+            false,
         );
     } else {
         align_tracks(
@@ -572,6 +579,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             Line { start: border.left, end: border.right },
             &mut grid_tracks,
             grid_alignment,
+            false,
         );
     }
 
@@ -754,6 +762,8 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                     area,
                     stack_fit: stack_max[k],
                     grid_baseline: item.grid_baseline,
+            last_baseline: item.last_baseline,
+            grid_last_baseline: item.grid_last_baseline,
                 });
                 continue;
             }
@@ -797,6 +807,8 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             area,
             stack_fit: stack_max[k],
             grid_baseline: item.grid_baseline,
+            last_baseline: item.last_baseline,
+            grid_last_baseline: item.grid_last_baseline,
         });
     }
 
@@ -918,6 +930,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                     p.size = item.size;
                     p.content_size = item.content_size;
                     p.baseline = item.baseline;
+                    p.last_baseline = item.last_baseline;
                     if lanes.fill_reverse {
                         p.stack_pos -= space;
                     }
@@ -948,6 +961,25 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             for i in group {
                 let shim = shared - base_of(&placed[i]);
                 placed[i].grid_pos += shim;
+            }
+        }
+        // KaminIDE patch: группа `last baseline` — по дорожке, где элемент
+        // КОНЧАЕТСЯ (css-align-3 §9.1: «end-most shared alignment context»);
+        // базовая меряется от конечного края поля (Blink
+        // grid_lanes_layout_algorithm.cc:501-510 `GetBaselineSideMargin`:
+        // у last — `block_end`), элемент уже прижат к концу области запасным
+        // `safe self-end` (`align_item_within_area`) и сдвигается к началу.
+        for t in 0..n {
+            let group: Vec<usize> =
+                (0..placed.len()).filter(|&i| placed[i].grid_last_baseline && placed[i].end == t + 1).collect();
+            if group.len() < 2 {
+                continue;
+            }
+            let from_end = |p: &Placed| p.margin.bottom + p.size.height - p.last_baseline.unwrap_or(p.size.height);
+            let shared = group.iter().map(|&i| from_end(&placed[i])).fold(f32::NEG_INFINITY, f32_max);
+            for i in group {
+                let shim = shared - from_end(&placed[i]);
+                placed[i].grid_pos -= shim;
             }
         }
     }
@@ -1541,10 +1573,12 @@ fn layout_lanes_item(
         overflow,
         baseline: output.first_baselines.y,
         stack_align: match stack_align {
-            Some(AlignSelf::Baseline) => None,
+            Some(AlignSelf::Baseline | AlignSelf::LastBaseline) => None,
             other => other,
         },
         stack_size_fixed,
         grid_baseline: grid_alignment == AlignSelf::Baseline,
+        last_baseline: output.last_or_first_y(),
+        grid_last_baseline: grid_alignment == AlignSelf::LastBaseline,
     }
 }

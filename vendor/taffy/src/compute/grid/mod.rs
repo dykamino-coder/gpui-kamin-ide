@@ -118,6 +118,13 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     };
     let align_items = style.align_items();
     let justify_items = style.justify_items();
+    // KaminIDE patch: `safe` у выравнивания дорожек (css-align-3 §4.4); у
+    // лунок его решает `lanes.rs` до этого пути. Подсеточная ось выравнивания
+    // содержимого не знает вовсе (выше — `Start`).
+    let safe_content = {
+        let (_, _, align_safe, justify_safe) = style.safe_alignment();
+        (align_safe && sub_rows.is_none(), justify_safe && sub_cols.is_none())
+    };
 
     // Note: we avoid accessing the grid rows/columns methods more than once as this can
     // cause an expensive-ish computation
@@ -633,6 +640,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         Line { start: border.left, end: border.right },
         &mut columns,
         justify_content,
+        safe_content.1,
     );
     // Align rows
     align_tracks(
@@ -641,6 +649,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         Line { start: border.top, end: border.bottom },
         &mut rows,
         align_content,
+        safe_content.0,
     );
 
     // KaminIDE patch: дорожки выровнены — подсеткам окончательные размеры

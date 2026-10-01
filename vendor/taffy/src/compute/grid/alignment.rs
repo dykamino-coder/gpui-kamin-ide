@@ -20,6 +20,11 @@ pub(super) fn align_tracks(
     border: Line<f32>,
     tracks: &mut [GridTrack],
     track_alignment_style: AlignContent,
+    // KaminIDE patch: приставка `safe` у `align-content`/`justify-content`
+    // (css-align-3 §4.4 «If the alignment subject overflows the alignment
+    // container, the alignment subject is aligned as if the alignment mode
+    // were start»).
+    is_safe: bool,
 ) {
     let used_size: f32 = tracks.iter().map(|track| track.base_size).sum();
     let free_space = grid_container_content_box_size - used_size;
@@ -32,7 +37,6 @@ pub(super) fn align_tracks(
     // simply pass zero here. Grid layout is never reversed.
     let gap = 0.0;
     let layout_is_reversed = false;
-    let is_safe = false; // TODO: Implement safe alignment
     let track_alignment = apply_alignment_fallback(free_space, num_tracks, track_alignment_style, is_safe);
 
     // KaminIDE patch: схлопнутая дорожка доли распределения не получает
