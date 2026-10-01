@@ -23031,6 +23031,34 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             w.flex_grow = grow;
             w.flex_shrink = shrink;
             w.align_self = if e.style.align_self.is_some() { own_align } else { None };
+            // Основа в РЯДУ: главная ось контейнера — строчная ось обёртки,
+            // и основа, оставленная на столе внутри колонки `wrap`, там не
+            // действует (у колонки это поперечная ось). Переносится на
+            // обёртку вместе с рамкой и отбивкой стола content-box —
+            // css-flexbox-1 §4: «as if the distance between the table wrapper
+            // box's edges and the table box's content edges were all part of
+            // the table box's border+padding area»
+            // (`table-as-item-inflexible-in-row-2`: `flex: 0 0 80px; border:
+            // 10px solid` — стол выходил 20 точек вместо 100).
+            if !matches!(inherited.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
+                && let Some(Len::Px(b)) = e.style.flex_basis
+            {
+                s.flex_basis = None;
+                let side = |l: Option<Len>| match l {
+                    Some(Len::Px(v)) => v,
+                    _ => 0.0,
+                };
+                let bd = e.style.borders();
+                let edges = if e.style.border_box == Some(true) {
+                    0.0
+                } else {
+                    side(bd.left)
+                        + side(bd.right)
+                        + side(e.style.padding.left)
+                        + side(e.style.padding.right)
+                };
+                w.flex_basis = Some(gpui::Length::Definite(px(b + edges).into()));
+            }
         } else {
             wrap.style().align_self = Some(gpui::AlignItems::FlexStart);
         }
