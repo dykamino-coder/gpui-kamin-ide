@@ -91,6 +91,8 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     content_box_inset.right += scrollbar_gutter.x;
     content_box_inset.bottom += scrollbar_gutter.y;
 
+    // KaminIDE patch: `margin-trim` — снять до `drop(style)`.
+    let margin_trim = style.margin_trim();
     let align_content = style.align_content().unwrap_or(AlignContent::Stretch);
     let justify_content = style.justify_content().unwrap_or(JustifyContent::Stretch);
     let align_items = style.align_items();
@@ -244,9 +246,74 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     // each axis, and doing it up-front here means we don't have to keep repeating that calculation
     resolve_item_track_indexes(&mut items, final_col_counts, final_row_counts);
 
+    // KaminIDE patch: `margin-trim` сетки (css-box-4 §margin-trim, «Grid
+    // Containers»): обнуляются поля элементов у краёв контейнера — в первой
+    // и последней ЖИВОЙ дорожке каждой оси; схлопнутые (`auto-fit` без
+    // элементов) не в счёт (`grid-trim-ignores-collapsed-tracks`). Биты
+    // физические: 1 верх, 2 право, 4 низ, 8 лево (`html::apply`). В векторе
+    // дорожек нечётные индексы — дорожки, чётные — линии: элемент с линии `s`
+    // начинается дорожкой `s + 1` и кончается дорожкой `e - 1`.
+    if margin_trim != 0 {
+        let first_live = |tracks: &[GridTrack]| {
+            tracks.iter().enumerate().find(|(i, t)| i % 2 == 1 && !t.is_collapsed).map(|(i, _)| i as u16)
+        };
+        let last_live = |tracks: &[GridTrack]| {
+            tracks.iter().enumerate().rev().find(|(i, t)| i % 2 == 1 && !t.is_collapsed).map(|(i, _)| i as u16)
+        };
+        let (col_first, col_last) = (first_live(&columns[..]), last_live(&columns[..]));
+        let (row_first, row_last) = (first_live(&rows[..]), last_live(&rows[..]));
+        let zero = crate::style::LengthPercentageAuto::length(0.0);
+        for item in items.iter_mut() {
+            let mut sides = 0u8;
+            if row_first == Some(item.row_indexes.start + 1) {
+                sides |= 1;
+            }
+            if row_last == Some(item.row_indexes.end - 1) {
+                sides |= 4;
+            }
+            if col_first == Some(item.column_indexes.start + 1) {
+                sides |= 8;
+            }
+            if col_last == Some(item.column_indexes.end - 1) {
+                sides |= 2;
+            }
+            sides &= margin_trim;
+            if sides & 1 != 0 {
+                item.margin.top = zero;
+            }
+            if sides & 2 != 0 {
+                item.margin.right = zero;
+            }
+            if sides & 4 != 0 {
+                item.margin.bottom = zero;
+            }
+            if sides & 8 != 0 {
+                item.margin.left = zero;
+            }
+            item.margin_trim = sides;
+        }
+    }
+
     // For each item, and in each axis, determine whether the item crosses any flexible (fr) tracks
     // Record this as a boolean (per-axis) on each item for later use in the track-sizing algorithm
     determine_if_item_crosses_flexible_or_intrinsic_tracks(&mut items, &columns, &rows);
+
+    // KaminIDE patch: css-grid-2 — элемент, чей размер по оси выравнивания
+    // зависит от размера ВНУТРЕННЕ-размерной дорожки (процентная высота в
+    // `auto`/`min-content`/`max-content`-ряду), в выравнивании по базовой
+    // линии не участвует и берёт запасное выравнивание (`first baseline` →
+    // `safe self-start`). Иначе цикл: ряд зависит от сдвига, сдвиг — от ряда
+    // (`grid-align-baseline-005`: `<canvas height:100%>` в `auto`-ряду).
+    // Выравнивание в `align_and_position_item` для `Baseline` и так даёт
+    // `start`; здесь элемент лишь выводится из группы и шима.
+    for item in items.iter_mut() {
+        if item.align_self == AlignSelf::Baseline
+            && item.crosses_intrinsic_row
+            && item.size.height.tag() == crate::CompactLength::PERCENT_TAG
+        {
+            item.align_self = AlignSelf::Start;
+        }
+    }
 
     // Determine if the grid has any baseline aligned items
     let has_baseline_aligned_item = items.iter().any(|item| item.align_self == AlignSelf::Baseline);
@@ -267,7 +334,9 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         |track: &GridTrack, parent_size: Option<f32>, tree: &Tree| {
             track.max_track_sizing_function.definite_value(parent_size, |val, basis| tree.calc(val, basis))
         },
-        has_baseline_aligned_item,
+        // KaminIDE patch: базовые линии рядов решаются в проходе РЯДОВ, когда
+        // ширины колонок уже известны (см. `resolve_item_baselines`).
+        false,
     );
     let initial_column_sum = columns.iter().map(|track| track.base_size).sum::<f32>();
     inner_node_size.width = inner_node_size.width.or_else(|| initial_column_sum.into());
@@ -288,7 +357,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         &mut columns,
         &mut items,
         |track: &GridTrack, _, _| Some(track.base_size),
-        false, // TODO: Support baseline alignment in the vertical axis
+        has_baseline_aligned_item,
     );
     let initial_row_sum = rows.iter().map(|track| track.base_size).sum::<f32>();
     inner_node_size.height = inner_node_size.height.or_else(|| initial_row_sum.into());
@@ -405,7 +474,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             &mut rows,
             &mut items,
             |track: &GridTrack, _, _| Some(track.base_size),
-            has_baseline_aligned_item,
+            false,
         );
 
         // Row sizing must be re-run (once) if:
@@ -465,7 +534,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                 &mut columns,
                 &mut items,
                 |track: &GridTrack, _, _| Some(track.base_size),
-                false, // TODO: Support baseline alignment in the vertical axis
+                has_baseline_aligned_item,
             );
         }
     }
@@ -515,6 +584,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             grid_area,
             container_alignment_styles,
             item.baseline_shim,
+            item.margin_trim,
         );
         item.y_position = y_position;
         item.height = height;
@@ -585,7 +655,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             // TODO: Baseline alignment support for absolutely positioned items (should check if is actuallty specified)
             #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
             let (content_size_contribution, _, _) =
-                align_and_position_item(tree, child, order, grid_area, container_alignment_styles, 0.0);
+                align_and_position_item(tree, child, order, grid_area, container_alignment_styles, 0.0, 0);
             #[cfg(feature = "content_size")]
             {
                 item_content_size_contribution = item_content_size_contribution.f32_max(content_size_contribution);

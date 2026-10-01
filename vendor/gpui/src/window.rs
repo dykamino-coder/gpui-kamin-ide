@@ -850,6 +850,10 @@ pub struct Window {
     /// заданная ребёнком в немасштабированных точках под масштабом стопки
     /// страниц, обязана быть переведена в итоговые координаты окна.
     mask_scale: Option<(Point<Pixels>, f32)>,
+    /// KaminIDE patch: итоговая матрица `with_transformation_masked`, пока
+    /// рисуется её содержимое: маски детей переводятся ею в координаты окна
+    /// (см. `with_content_mask`). None — маски как есть.
+    mask_map: Option<TransformationMatrix>,
     pub(crate) element_opacity: f32,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
@@ -1250,6 +1254,7 @@ impl Window {
             element_offset_stack: Vec::new(),
             transformation_stack: Vec::new(),
             mask_scale: None,
+            mask_map: None,
             content_mask_stack: Vec::new(),
             element_opacity: 1.0,
             requested_autoscroll: None,
@@ -2565,7 +2570,16 @@ impl Window {
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
         if let Some(mask) = mask {
-            let mask = self.scaled_mask(mask).intersect(&self.content_mask());
+            // KaminIDE patch: под `with_transformation_masked` маска ребёнка
+            // задана в его НЕпреобразованных точках, а шейдер сравнивает её с
+            // уже преобразованной позицией (`distance_from_clip_rect_transformed`):
+            // переводим той же матрицей, что и квады. Подобие стопки страниц
+            // в итоговой матрице уже есть, `scaled_mask` второй раз не нужен.
+            let mask = match self.mask_map {
+                Some(m) => self.mapped_mask(mask, &m),
+                None => self.scaled_mask(mask),
+            }
+            .intersect(&self.content_mask());
             self.content_mask_stack.push(mask);
             let result = f(self);
             self.content_mask_stack.pop();
@@ -2610,6 +2624,34 @@ impl Window {
                 size: Size {
                     width: Pixels(b.size.width.0 * s),
                     height: Pixels(b.size.height.0 * s),
+                },
+            },
+        }
+    }
+
+    /// KaminIDE patch: образ маски под матрицей `with_transformation_masked`.
+    /// Матрица живёт в точках устройства, маска — в логических: туда и
+    /// обратно через масштаб окна. Матрица сохраняет оси (иначе `mask_map`
+    /// не ставится), поэтому образ двух противоположных углов — снова
+    /// противоположные углы прямоугольника.
+    fn mapped_mask(&self, mask: ContentMask<Pixels>, m: &TransformationMatrix) -> ContentMask<Pixels> {
+        let s = self.scale_factor();
+        let b = mask.bounds;
+        let at = |x: f32, y: f32| {
+            let (x, y) = (x * s, y * s);
+            (
+                (m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y) / s,
+                (m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y) / s,
+            )
+        };
+        let (x0, y0) = at(b.origin.x.0, b.origin.y.0);
+        let (x1, y1) = at(b.origin.x.0 + b.size.width.0, b.origin.y.0 + b.size.height.0);
+        ContentMask {
+            bounds: Bounds {
+                origin: Point::new(Pixels(x0.min(x1)), Pixels(y0.min(y1))),
+                size: Size {
+                    width: Pixels((x1 - x0).abs()),
+                    height: Pixels((y1 - y0).abs()),
                 },
             },
         }
@@ -2788,7 +2830,40 @@ impl Window {
         // подобран под них). Менять только вместе с `lines.rs`/`flow.rs`.
         let combined = transformation.compose(self.current_transformation());
         self.transformation_stack.push(combined);
+        // KaminIDE patch: обычное вложение маски не переводит — ни своё, ни
+        // унаследованное от `with_transformation_masked` снаружи: вертикальный
+        // абзац, `CombinedUpright`, стопка страниц и объёмный путь рисуются
+        // байт в байт как прежде.
+        let prev_map = self.mask_map.take();
         let result = f(self);
+        self.mask_map = prev_map;
+        self.transformation_stack.pop();
+        result
+    }
+
+    /// KaminIDE patch: `with_transformation`, под которым маски детей
+    /// (`overflow`, плитки фона, полосы рамки) едут вместе с содержимым.
+    ///
+    /// Шейдер сравнивает маску с УЖЕ преобразованной позицией, а дети
+    /// задают маски в своих непреобразованных точках — обрезка стояла на
+    /// месте коробки до `transform` (`transform-clip-001`: 190×190 вместо
+    /// полосы 200×10; `transform-background-001`: видна половина плиток).
+    /// Маска переводится ИТОГОВОЙ матрицей (та же свёртка `transformation ∘
+    /// current`, что у квадов, — порядок вложений не меняется) и только когда
+    /// она сохраняет оси; при косом повороте — прежнее поведение.
+    pub fn with_transformation_masked<R>(
+        &mut self,
+        transformation: TransformationMatrix,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let combined = transformation.compose(self.current_transformation());
+        let r = combined.rotation_scale;
+        let keeps_axes = (r[0][1].abs() < 1e-4 && r[1][0].abs() < 1e-4)
+            || (r[0][0].abs() < 1e-4 && r[1][1].abs() < 1e-4);
+        self.transformation_stack.push(combined);
+        let prev_map = std::mem::replace(&mut self.mask_map, keeps_axes.then_some(combined));
+        let result = f(self);
+        self.mask_map = prev_map;
         self.transformation_stack.pop();
         result
     }

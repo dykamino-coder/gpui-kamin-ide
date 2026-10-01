@@ -132,6 +132,8 @@ struct AlgoConstants {
     /// KaminIDE patch: `flex-wrap: balance` — 0 = жадный перенос,
     /// N ≥ 1 = балансировщик строк с минимумом N строк.
     balance_lines: u16,
+    /// KaminIDE patch: `margin-trim` — физические края (`MT_*`).
+    margin_trim: u8,
 
     /// The item's min_size style
     min_size: Size<Option<f32>>,
@@ -218,8 +220,15 @@ pub fn compute_flexbox_layout(
     });
 
     // The size of the container should be floored by the padding and border
-    let styled_based_known_dimensions =
-        known_dimensions.or(min_max_definite_size.or(clamped_style_size).maybe_max(padding_border_sum));
+    // KaminIDE patch: пол и у ИЗВЕСТНОГО размера — как в `block.rs`
+    // (`styled_based_known_dimensions … .maybe_max(padding_border_size)`) и
+    // `grid/mod.rs`. Растянутый элемент в строке `height: 0` получал известную
+    // высоту 0 при `border-bottom: 5px`, и нижняя полоса рамки уезжала на 5px
+    // вверх (эталоны `grid-gap-decorations-007`, `-fragmentation-020…028`).
+    // CSS: коробка не бывает меньше своих полей и рамки.
+    let styled_based_known_dimensions = known_dimensions
+        .or(min_max_definite_size.or(clamped_style_size))
+        .maybe_max(padding_border_sum);
 
     // Short-circuit layout if the container's size is fully determined by the container's size and the run mode
     // is ComputeSize (and thus the container's size is all that we're interested in)
@@ -277,6 +286,10 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     // 5. Collect flex items into flex lines.
     debug_log!("collect_flex_lines");
     let mut flex_lines = collect_flex_lines(&constants, available_space, &mut flex_items);
+
+    // KaminIDE patch: `margin-trim` — после разбиения на строки и ДО главного
+    // размера контейнера и гибких длин: оба шага читают поля элементов.
+    trim_flex_margins(&mut flex_lines, &constants);
 
     // If container size is undefined, determine the container's main size
     // and then re-resolve gaps based on newly determined size
@@ -480,6 +493,7 @@ fn compute_constants(
         is_wrap,
         is_wrap_reverse,
         balance_lines,
+        margin_trim: style.margin_trim(),
         min_size: style
             .min_size()
             .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
@@ -535,6 +549,14 @@ fn generate_anonymous_flex_items(
             let pb_sum = (padding + border).sum_axes();
             let box_sizing_adjustment =
                 if child_style.box_sizing() == BoxSizing::ContentBox { pb_sum } else { Size::ZERO };
+            // KaminIDE patch: перенос пределов через соотношение (css-sizing-4
+            // §5.1 «size transfers») — см. `transfer_min_max`.
+            let (min_transferred, max_transferred) = transfer_min_max(
+                child_style.size().maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis)),
+                child_style.min_size().maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis)),
+                child_style.max_size().maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis)),
+                aspect_ratio,
+            );
             FlexItem {
                 node: child,
                 order: index as u32,
@@ -543,16 +565,8 @@ fn generate_anonymous_flex_items(
                     .maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis))
                     .maybe_apply_aspect_ratio(aspect_ratio)
                     .maybe_add(box_sizing_adjustment),
-                min_size: child_style
-                    .min_size()
-                    .maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis))
-                    .maybe_apply_aspect_ratio(aspect_ratio)
-                    .maybe_add(box_sizing_adjustment),
-                max_size: child_style
-                    .max_size()
-                    .maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis))
-                    .maybe_apply_aspect_ratio(aspect_ratio)
-                    .maybe_add(box_sizing_adjustment),
+                min_size: min_transferred.maybe_add(box_sizing_adjustment),
+                max_size: max_transferred.maybe_add(box_sizing_adjustment),
 
                 inset: child_style
                     .inset()
@@ -637,6 +651,32 @@ fn determine_available_space(
     Size { width, height }
 }
 
+/// KaminIDE patch: перенос min/max через соотношение сторон (css-sizing-4
+/// §5.1 «size transfers»). Предел одной оси переносится в другую, только
+/// если ПРЕДПОЧТИТЕЛЬНЫЙ размер принимающей оси `auto`
+/// (`block-aspect-ratio-037`: `width:100px; min-height:100px; 2/1` — ширина
+/// 100, а не перенесённые 200); перенесённый минимум не выше заданного
+/// максимума этой оси (`block-aspect-ratio-022`), перенесённый максимум не
+/// ниже заданного минимума (`block-aspect-ratio-048/049`). Заданные
+/// пределы остаются как есть.
+fn transfer_min_max(
+    size: Size<Option<f32>>,
+    min: Size<Option<f32>>,
+    max: Size<Option<f32>>,
+    ratio: Option<f32>,
+) -> (Size<Option<f32>>, Size<Option<f32>>) {
+    let Some(ratio) = ratio else {
+        return (min, max);
+    };
+    let to_w = |h: Option<f32>| h.map(|h| h * ratio);
+    let to_h = |w: Option<f32>| w.map(|w| w / ratio);
+    let min_w = min.width.or_else(|| if size.width.is_none() { to_w(min.height).maybe_min(max.width) } else { None });
+    let min_h = min.height.or_else(|| if size.height.is_none() { to_h(min.width).maybe_min(max.height) } else { None });
+    let max_w = max.width.or_else(|| if size.width.is_none() { to_w(max.height).maybe_max(min.width) } else { None });
+    let max_h = max.height.or_else(|| if size.height.is_none() { to_h(max.width).maybe_max(min.height) } else { None });
+    (Size { width: min_w, height: min_h }, Size { width: max_w, height: max_h })
+}
+
 /// Determine the flex base size and hypothetical main size of each item.
 ///
 /// # [9.2. Line Length Determination](https://www.w3.org/TR/css-flexbox-1/#line-sizing)
@@ -713,7 +753,12 @@ fn determine_flex_base_size(
                 // css-sizing-4 §4): элемент с `aspect-ratio` и авто-главным
                 // размером обязан взять его из растяжения, а не остаться по
                 // содержимому.
-                ckd = ckd.maybe_apply_aspect_ratio(child_style.aspect_ratio());
+                // `auto`-поля по поперечной оси отменяют растяжение
+                // (css-flexbox-1 §9.4 п.11) — главный из него не выводится
+                // (`flex-aspect-ratio-010`).
+                if !child.margin_is_auto.cross_start(dir) && !child.margin_is_auto.cross_end(dir) {
+                    ckd = ckd.maybe_apply_aspect_ratio(child_style.aspect_ratio());
+                }
             }
             ckd
         };
@@ -729,6 +774,17 @@ fn determine_flex_base_size(
         .main(dir);
         let flex_basis = child_style
             .flex_basis()
+            .maybe_resolve(container_width, |val, basis| tree.calc(val, basis))
+            .maybe_add(box_sizing_adjustment);
+
+        // KaminIDE patch: для автоминимума (css-flexbox-1 §4.5) нужны
+        // соотношение сторон и главный размер ИЗ СТИЛЯ — `child.size` уже
+        // заполнен через соотношение, и подсказкой заданного размера он не
+        // является (`flex-aspect-ratio-051/052`).
+        let child_aspect_ratio = child_style.aspect_ratio();
+        let specified_main_size = child_style
+            .size()
+            .main(dir)
             .maybe_resolve(container_width, |val, basis| tree.calc(val, basis))
             .maybe_add(box_sizing_adjustment);
 
@@ -831,7 +887,10 @@ fn determine_flex_base_size(
                 debug_log!("COMPUTE CHILD MIN SIZE:");
                 tree.measure_child_size(
                     child.node,
-                    child_known_dimensions,
+                    // KaminIDE patch: без главного размера, выведенного из
+                    // соотношения (патч растяжения выше), иначе замер
+                    // возвращает его вместо содержимого (`flex-aspect-ratio-049/050`).
+                    child_known_dimensions.with_main(dir, None),
                     child_parent_size,
                     child_available_space,
                     SizingMode::ContentSize,
@@ -840,12 +899,74 @@ fn determine_flex_base_size(
                 )
             };
 
+            // KaminIDE patch: min-content коробки с соотношением сторон и
+            // ОПРЕДЕЛЁННЫМ поперечным размером не меньше перенесённого через
+            // соотношение (css-sizing-4 §5.1/§5.2; Blink
+            // `ComputeMinMaxInlineSizesFromAspectRatio`) —
+            // `flex-aspect-ratio-047/048/053/054`. Поперечный определён, если
+            // задан стилем или растянут без `auto`-полей в контейнере с
+            // определённым поперечным размером.
+            let ratio_cross = child.size.cross(dir).or_else(|| {
+                if child.align_self == AlignSelf::Stretch
+                    && !child.margin_is_auto.cross_start(dir)
+                    && !child.margin_is_auto.cross_end(dir)
+                {
+                    constants.node_inner_size.cross(dir).maybe_sub(child.margin.cross_axis_sum(dir))
+                } else {
+                    None
+                }
+            });
+            let transferred_main = child_aspect_ratio.and_then(|ratio| {
+                ratio_cross.map(|cross| if dir.is_row() { cross * ratio } else { cross / ratio })
+            });
+            let min_content_main_size = min_content_main_size.maybe_max(transferred_main);
+
             // 4.5. Automatic Minimum Size of Flex Items
             // https://www.w3.org/TR/css-flexbox-1/#min-size-auto
             let clamped_min_content_size =
-                min_content_main_size.maybe_min(child.size.main(dir)).maybe_min(child.max_size.main(dir));
+                min_content_main_size.maybe_min(specified_main_size).maybe_min(child.max_size.main(dir));
             clamped_min_content_size.maybe_max(padding_border_axes_sums.main(dir))
         });
+
+        // KaminIDE patch: пол GRIDMIN у ТАБЛИЦЫ-элемента (css-tables-3 §3.9:
+        // «the used min-width of a table is the greater of the resolved
+        // min-width, CAPMIN, and GRIDMIN»; CSS 2.1 §17.5.3: заданная высота
+        // стола — лишь минимум). Автоминимум выше меряет наружную коробку
+        // стола, а у неё авторская `width`, и замер возвращает её же: стол
+        // `width:10px; max-width:10px` с содержимым 100 оставался 10
+        // (`table-as-item-auto-min-width`); явный `min-width` выключал
+        // автоминимум совсем (`-fixed-min-width`, `-fixed-min-width-3`,
+        // `-wide-content`); в колонке высоты 0 стол ужимался ниже содержимого
+        // (`-min-content-height-1/2`). Поэтому меряются ДЕТИ наружной коробки
+        // (решётка стола): она — гибкая колонка, по ширине берётся наибольший,
+        // по высоте — сумма. Пол сильнее `min-*`/`max-*` (в `maybe_clamp`
+        // минимум побеждает максимум).
+        if tree.get_flexbox_child_style(child.node).is_table_item() {
+            let pb_cross = (child.padding + child.border).cross_axis_sum(dir);
+            let inner_cross = child_known_dimensions.cross(dir).maybe_sub(pb_cross);
+            let kids: Vec<NodeId> = tree.child_ids(child.node).collect();
+            let mut content_floor: f32 = 0.0;
+            for kid in kids {
+                if tree.get_flexbox_child_style(kid).position() == Position::Absolute {
+                    continue;
+                }
+                let kid_main = tree.measure_child_size(
+                    kid,
+                    Size::NONE.with_cross(dir, inner_cross),
+                    Size::NONE,
+                    Size::MIN_CONTENT.with_cross(
+                        dir,
+                        inner_cross.map(AvailableSpace::Definite).unwrap_or(AvailableSpace::MaxContent),
+                    ),
+                    SizingMode::InherentSize,
+                    dir.main_axis(),
+                    Line::FALSE,
+                );
+                content_floor = if dir.is_row() { content_floor.max(kid_main) } else { content_floor + kid_main };
+            }
+            let table_floor = content_floor + padding_border_axes_sums.main(dir).unwrap_or(0.0);
+            child.resolved_minimum_main_size = child.resolved_minimum_main_size.max(table_floor);
+        }
 
         let hypothetical_inner_min_main =
             child.resolved_minimum_main_size.maybe_max(padding_border_axes_sums.main(constants.dir));
@@ -969,7 +1090,16 @@ fn collect_flex_lines<'a>(
                             // So first item in the line does not contribute a gap to the line length
                             let gap_contribution = if idx == 0 { 0.0 } else { main_axis_gap };
                             line_length += child.hypothetical_outer_size.main(constants.dir) + gap_contribution;
-                            line_length > main_axis_available_space && idx != 0
+                            // KaminIDE patch: `margin-trim` — строка режется
+                            // уже по обрезанным полям: у первого элемента
+                            // строки нет начального поля, у кандидата в
+                            // последние — конечного (`flex-row-inline-multiline`:
+                            // 25+50 | 50+25 в 100 — одна строка на двоих).
+                            if idx == 0 {
+                                line_length -= trimmed_main(child, constants, true);
+                            }
+                            line_length - trimmed_main(child, constants, false) > main_axis_available_space
+                                && idx != 0
                         })
                         .map(|(idx, _)| idx)
                         .unwrap_or(flex_items.len());
@@ -980,6 +1110,109 @@ fn collect_flex_lines<'a>(
                 }
                 lines
             }
+        }
+    }
+}
+
+/// KaminIDE patch: `margin-trim` (css-box-4 §margin-trim, «Flex Containers»).
+/// Биты — ФИЗИЧЕСКИЕ края контейнера; логические переводит `html::apply`.
+const MT_TOP: u8 = 1;
+const MT_RIGHT: u8 = 2;
+const MT_BOTTOM: u8 = 4;
+const MT_LEFT: u8 = 8;
+
+/// Физические края, к которым примыкают первый и последний элемент строки:
+/// у `*-reverse` первый элемент стоит у конца оси (`calculate_layout_line`
+/// обходит строку с хвоста).
+fn trim_main_sides(dir: FlexDirection) -> (u8, u8) {
+    match dir {
+        FlexDirection::Row => (MT_LEFT, MT_RIGHT),
+        FlexDirection::RowReverse => (MT_RIGHT, MT_LEFT),
+        FlexDirection::Column => (MT_TOP, MT_BOTTOM),
+        FlexDirection::ColumnReverse => (MT_BOTTOM, MT_TOP),
+    }
+}
+
+/// Поле элемента на физическом крае `side`.
+fn margin_on(margin: &Rect<f32>, side: u8) -> f32 {
+    match side {
+        MT_TOP => margin.top,
+        MT_RIGHT => margin.right,
+        MT_BOTTOM => margin.bottom,
+        _ => margin.left,
+    }
+}
+
+/// Сколько главного поля срежет обрезка, если элемент окажется первым
+/// (`first`) или последним в строке, — для жадного переноса.
+fn trimmed_main(child: &FlexItem, constants: &AlgoConstants, first: bool) -> f32 {
+    let (start, end) = trim_main_sides(constants.dir);
+    let side = if first { start } else { end };
+    if constants.margin_trim & side == 0 {
+        0.0
+    } else {
+        margin_on(&child.margin, side)
+    }
+}
+
+/// Обнулить поля у краёв контейнера: по главной оси — у первого и последнего
+/// элемента КАЖДОЙ строки, по поперечной — у всех элементов первой и
+/// последней строки (при `wrap-reverse` первая строка стоит у поперечного
+/// конца, `final_layout_pass`). Гипотетический внешний главный размер
+/// уменьшается на срезанное: по нему растягивает `resolve_flexible_lengths`
+/// (`flex-row-grow`), а главный размер контейнера читает уже сами поля
+/// (`determine_container_main_size`, `width: min-content`).
+fn trim_flex_margins(flex_lines: &mut [FlexLine], constants: &AlgoConstants) {
+    let trim = constants.margin_trim;
+    if trim == 0 || flex_lines.is_empty() {
+        return;
+    }
+    let dir = constants.dir;
+    let (main_first, main_last) = trim_main_sides(dir);
+    let (cross_start, cross_end) = if constants.is_row { (MT_TOP, MT_BOTTOM) } else { (MT_LEFT, MT_RIGHT) };
+    let (line_first, line_last) =
+        if constants.is_wrap_reverse { (cross_end, cross_start) } else { (cross_start, cross_end) };
+    let last_line = flex_lines.len() - 1;
+    for (li, line) in flex_lines.iter_mut().enumerate() {
+        let count = line.items.len();
+        for (i, item) in line.items.iter_mut().enumerate() {
+            let mut sides = 0u8;
+            if i == 0 {
+                sides |= main_first;
+            }
+            if i + 1 == count {
+                sides |= main_last;
+            }
+            if li == 0 {
+                sides |= line_first;
+            }
+            if li == last_line {
+                sides |= line_last;
+            }
+            sides &= trim;
+            if sides == 0 {
+                continue;
+            }
+            let before = item.margin.main_axis_sum(dir);
+            if sides & MT_TOP != 0 {
+                item.margin.top = 0.0;
+                item.margin_is_auto.top = false;
+            }
+            if sides & MT_RIGHT != 0 {
+                item.margin.right = 0.0;
+                item.margin_is_auto.right = false;
+            }
+            if sides & MT_BOTTOM != 0 {
+                item.margin.bottom = 0.0;
+                item.margin_is_auto.bottom = false;
+            }
+            if sides & MT_LEFT != 0 {
+                item.margin.left = 0.0;
+                item.margin_is_auto.left = false;
+            }
+            let cut = before - item.margin.main_axis_sum(dir);
+            let outer = item.hypothetical_outer_size.main(dir) - cut;
+            item.hypothetical_outer_size.set_main(dir, outer);
         }
     }
 }
@@ -1589,9 +1822,24 @@ fn determine_hypothetical_cross_size(
 
         let child_known_main = constants.container_size.main(constants.dir).into();
 
-        let child_cross = child
-            .size
-            .cross(constants.dir)
+        // KaminIDE patch: у элемента с соотношением сторон и `auto`
+        // поперечным размером гипотетический поперечный — из ИСПОЛЬЗОВАННОГО
+        // главного (css-flexbox-1 §9.4 п.7: «layout as if it were an in-flow
+        // block-level box with the used main size»; css-sizing-4 §5.1), не
+        // меньше содержимого (§5.2). `child.size.cross` выведен из ЗАДАННОГО
+        // главного и после гибкости устарел (`flex-aspect-ratio-011..014`).
+        let ratio_cross = {
+            let child_style = tree.get_flexbox_child_style(child.node);
+            match child_style.aspect_ratio() {
+                Some(ratio) if child_style.size().cross(constants.dir).is_auto() => {
+                    let main = child.target_size.main(constants.dir);
+                    Some(if constants.is_row { main / ratio } else { main * ratio })
+                }
+                _ => None,
+            }
+        };
+
+        let child_cross = (if ratio_cross.is_some() { None } else { child.size.cross(constants.dir) })
             .maybe_clamp(child.min_size.cross(constants.dir), child.max_size.cross(constants.dir))
             .maybe_max(padding_border_sum);
 
@@ -1616,6 +1864,7 @@ fn determine_hypothetical_cross_size(
                 constants.dir.cross_axis(),
                 Line::FALSE,
             )
+            .max(ratio_cross.unwrap_or(0.0))
             .maybe_clamp(child.min_size.cross(constants.dir), child.max_size.cross(constants.dir))
             .max(padding_border_sum)
         });
@@ -1955,23 +2204,49 @@ fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &Algo
     for line in flex_lines {
         let line_cross_size = line.cross_size;
         let max_baseline: f32 = line.items.iter_mut().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
+        // KaminIDE patch: при `wrap-reverse` cross-start строки — НИЖНИЙ край
+        // (css-flexbox-1 §5.2), и вплотную к нему встаёт участник с наибольшим
+        // расстоянием от базовой линии до cross-start края margin-бокса
+        // (§8.3). Меряем это расстояние снизу; одиночный участник (базовая
+        // линия не считалась) даёт фолбэк — низ строки
+        // (`flexbox-align-self-baseline-horiz-003`,
+        // `multiline-reverse-wrap-baseline`).
+        let max_baseline_from_end: f32 = line
+            .items
+            .iter()
+            .filter(|child| {
+                child.align_self == AlignSelf::Baseline
+                    && !child.margin_is_auto.cross_start(constants.dir)
+                    && !child.margin_is_auto.cross_end(constants.dir)
+            })
+            .map(|child| child.outer_target_size.cross(constants.dir) - child.baseline)
+            .fold(0.0, |acc, x| acc.max(x));
 
         for child in line.items.iter_mut() {
             let free_space = line_cross_size - child.outer_target_size.cross(constants.dir);
 
+            // KaminIDE patch: css-flexbox-1 §9.6 шаг 13 — auto-поля делят только
+            // ПОЛОЖИТЕЛЬНЫЙ остаток; при переполнении начальное auto-поле = 0, а
+            // конечное добирает минус («Otherwise, if the block-start or
+            // inline-start margin … is auto, set it to zero»). Совпадает с CSS 2.1
+            // §10.3.3 для блочной колонки движка: auto «treated as zero»,
+            // переопределённым становится `margin-right`. Прежде коробка шире
+            // родителя уезжала влево на половину переполнения
+            // (`margin-auto-on-block-box`: `.big{margin:auto}` на 200 вместо 250).
+            let fill = free_space.max(0.0);
             if child.margin_is_auto.cross_start(constants.dir) && child.margin_is_auto.cross_end(constants.dir) {
                 if constants.is_row {
-                    child.margin.top = free_space / 2.0;
-                    child.margin.bottom = free_space / 2.0;
+                    child.margin.top = fill / 2.0;
+                    child.margin.bottom = fill / 2.0 + (free_space - fill);
                 } else {
-                    child.margin.left = free_space / 2.0;
-                    child.margin.right = free_space / 2.0;
+                    child.margin.left = fill / 2.0;
+                    child.margin.right = fill / 2.0 + (free_space - fill);
                 }
             } else if child.margin_is_auto.cross_start(constants.dir) {
                 if constants.is_row {
-                    child.margin.top = free_space;
+                    child.margin.top = fill;
                 } else {
-                    child.margin.left = free_space;
+                    child.margin.left = fill;
                 }
             } else if child.margin_is_auto.cross_end(constants.dir) {
                 if constants.is_row {
@@ -1979,6 +2254,10 @@ fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &Algo
                 } else {
                     child.margin.right = free_space;
                 }
+            } else if constants.is_row && constants.is_wrap_reverse && child.align_self == AlignSelf::Baseline {
+                // KaminIDE patch: см. `max_baseline_from_end` выше.
+                let from_end = child.outer_target_size.cross(constants.dir) - child.baseline;
+                child.offset_cross = free_space - (max_baseline_from_end - from_end);
             } else {
                 // 14. Align all flex items along the cross-axis.
                 child.offset_cross = align_flex_items_along_cross_axis(child, free_space, max_baseline, constants);
@@ -2000,6 +2279,21 @@ fn align_flex_items_along_cross_axis(
     max_baseline: f32,
     constants: &AlgoConstants,
 ) -> f32 {
+    // KaminIDE patch: приставка `safe` у `align-self`/`align-items`
+    // (css-align-3 §4.4: «If the size of the alignment subject overflows the
+    // alignment container, the alignment subject is instead aligned as if
+    // the alignment mode were start»). Флаг `safe_align_self` собирался при
+    // создании элемента, но здесь не читался. Начало оси письма — сторона
+    // `flex-start`: переворот поперечной оси письмом (`html::apply`, `flip`)
+    // выражен тем же `wrap-reverse` (`self-align-safe-unsafe-flex-001…003`).
+    // Известный промах: АВТОРСКИЙ `wrap-reverse` + `safe` + переполнение —
+    // там начало письма у физического начала.
+    if child.safe_align_self
+        && free_space < 0.0
+        && !matches!(child.align_self, AlignSelf::Stretch | AlignSelf::Baseline)
+    {
+        return if constants.is_wrap_reverse { free_space } else { 0.0 };
+    }
     match child.align_self {
         AlignSelf::Start => 0.0,
         AlignSelf::FlexStart => {
@@ -2451,12 +2745,17 @@ fn perform_absolute_layout_on_absolute_children(
             } else {
                 (auto_margin_size.width, auto_margin_size.width)
             };
-            let both_auto_y = margin.top.is_none() && margin.bottom.is_none();
-            let (auto_top, auto_bottom) = if both_auto_y && auto_margin_size.height < 0.0 {
-                (0.0, free_space.height)
-            } else {
-                (auto_margin_size.height, auto_margin_size.height)
-            };
+            // KaminIDE patch: по ВЕРТИКАЛИ оговорки «unless this would make
+            // them negative» нет — она только у §10.3.7 (строчная ось).
+            // CSS 2.1 §10.6.4: «If both 'margin-top' and 'margin-bottom' are
+            // 'auto', solve the equation under the extra constraint that the
+            // two margins get equal values». Blink так же: `absolute_utils.cc`
+            // `ComputeMargins` делит остаток поровну при
+            // `free_space > 0 || is_block_direction`. Прежний зажим верхнего
+            // поля в ноль оставлял переполняющую коробку у верхнего края
+            // (`absolute-non-replaced-height-013`: `top/bottom: 50%`, высота
+            // 100 в блоке 100 — поля по −50, коробка обязана стоять в нуле).
+            let (auto_top, auto_bottom) = (auto_margin_size.height, auto_margin_size.height);
             Rect {
                 left: margin.left.unwrap_or(auto_left),
                 right: margin.right.unwrap_or(auto_right),

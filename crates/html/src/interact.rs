@@ -376,6 +376,10 @@ pub struct Grouped {
     pub opacity: f32,
     /// Режим смешивания с кадром (`mix-blend-mode`), 0 — обычный.
     pub blend: u32,
+    /// Чистая изоляция (контекст наложения со смешиванием внутри,
+    /// `isolation: isolate`): буфер кладётся в кадр ЦЕЛИКОМ, коробка его не
+    /// режет — вылезшие за неё потомки остаются видимыми.
+    pub spill: bool,
     /// Обрезка многоугольником: вершины в долях коробки (`clip-path`).
     pub polygon: Vec<(crate::value::Len, crate::value::Len)>,
     /// Правило намотки полигона: `evenodd` шейдер не умеет.
@@ -428,6 +432,7 @@ impl Grouped {
             blur: 0.0,
             opacity: 1.0,
             blend: 0,
+            spill: false,
             polygon: Vec::new(),
             polygon_evenodd: false,
             poly_expand: [0.0; 4],
@@ -628,6 +633,20 @@ impl Element for Grouped {
                 bounds.size.width + margin * 2.0 + px(sl + sr),
                 bounds.size.height + margin * 2.0 + px(st + sb),
             ),
+        };
+        // Изоляция не обрезает (css-compositing-1 §isolation: группа меняет
+        // только порядок сложения): смешиваемый ребёнок на 50 точек за краем
+        // контейнера (`mix-blend-mode-overflowing-child`) и кольцо 10 точек
+        // (`-blended-element-with-transparent-pixels`) обязаны попасть в кадр.
+        // Буфер группы — во всё окно, поэтому и область композита — окно;
+        // обрезку предков несёт маска содержимого самого композита.
+        let area = if self.spill {
+            Bounds {
+                origin: gpui::point(px(0.0), px(0.0)),
+                size: window.viewport_size(),
+            }
+        } else {
+            area
         };
         // Вершины считаются от ОПОРНОЙ коробки формы (bounds ± края:
         // margin-box шире, content-box уже); проценты — доли её сторон,
@@ -1450,7 +1469,11 @@ impl Element for Transformed {
         let in_3d =
             self.frame_3d.is_some() || self.under_3d.as_ref().and_then(|f| f.get()).is_some();
         if !self.has_3d && !in_3d {
-            // Плоский путь — прежний, байт в байт.
+            // Плоский путь — прежний по матрице. Маски детей (`overflow`,
+            // плитки фона, полосы рамки) едут вместе с содержимым
+            // (`Window::with_transformation_masked`): прежде обрезка стояла
+            // на месте коробки до `transform` (`transform-clip-001`,
+            // `transform-background-001/002`, `transform-fixed-bg-001/003`).
             let matrix = gpui::TransformationMatrix::unit()
                 .translate(origin)
                 .compose(gpui::TransformationMatrix {
@@ -1459,7 +1482,7 @@ impl Element for Transformed {
                 })
                 .translate(back);
             let child = self.child.as_mut().unwrap();
-            window.with_transformation(matrix, |window| child.paint(window, cx));
+            window.with_transformation_masked(matrix, |window| child.paint(window, cx));
             return;
         }
         // --- Объёмный путь: одна 4×4 ОДНОГО элемента, сплющенная на экран ---
@@ -1562,7 +1585,9 @@ impl Element for Transformed {
             None => flat,
         };
         let child = self.child.as_mut().unwrap();
-        window.with_transformation(flat, |window| child.paint(window, cx));
+        // Маски детей едут за сплющенной матрицей (как на плоском пути,
+        // `Window::with_transformation_masked`); косая — прежнее поведение.
+        window.with_transformation_masked(flat, |window| child.paint(window, cx));
     }
 }
 

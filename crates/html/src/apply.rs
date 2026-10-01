@@ -35,10 +35,14 @@ fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         // точечная (ближе, чем прежний сброс всего объявления).
         Len::Calc(i) => {
             let s = crate::value::calc_get(i);
-            if s.pct != 0.0 {
-                relative(s.pct)
-            } else {
-                px(s.px).into()
+            match s.pct_px() {
+                // Доля с точками — настоящий calc раскладки (css-values-4
+                // §10.9): KaminIDE patch `DefiniteLength::Calc` + решатель в
+                // taffy. Прежняя подмена половиной замерена в минус
+                // (`gap-003-ltr`), поэтому только через calc.
+                Some((pct, add)) => gpui::DefiniteLength::Calc(add, pct),
+                None if s.pct != 0.0 => relative(s.pct),
+                None => px(s.px).into(),
             }
         }
         // `auto` в размере значит «пусть решает раскладка» — это отсутствие
@@ -554,6 +558,44 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
             d.style().flex_balance_lines = Some(c.flex_line_count.unwrap_or(1).max(1));
         }
     }
+    // `margin-trim` гибкого контейнера и сетки (css-box-4 §margin-trim):
+    // раскладка физическая, поэтому логические края переводятся ЗДЕСЬ, по
+    // письму самого контейнера. Биты раскладки: 1 верх, 2 право, 4 низ,
+    // 8 лево (`flex-*-trimmed-only`, `flex-*-multiline`, `grid-*-start`).
+    if c.margin_trim != 0
+        && matches!(
+            c.display,
+            Some(Display::Flex)
+                | Some(Display::InlineFlex)
+                | Some(Display::Grid)
+                | Some(Display::InlineGrid)
+        )
+    {
+        let vertical = c.vertical == Some(true);
+        let (block_start, block_end) = match (vertical, c.vertical_rl == Some(true)) {
+            (false, _) => (1u8, 4u8),
+            (true, true) => (2, 8),
+            (true, false) => (8, 2),
+        };
+        let (inline_start, inline_end) = match (vertical, c.rtl == Some(true)) {
+            (false, false) => (8u8, 2u8),
+            (false, true) => (2, 8),
+            (true, false) => (1, 4),
+            (true, true) => (4, 1),
+        };
+        let mut physical = 0u8;
+        for (bit, side) in [
+            (1u8, block_start),
+            (2, block_end),
+            (4, inline_start),
+            (8, inline_end),
+        ] {
+            if c.margin_trim & bit != 0 {
+                physical |= side;
+            }
+        }
+        d.style().margin_trim = Some(physical);
+    }
     if c.grid_col.is_some() || c.grid_row.is_some() {
         let span = |p: Option<(Placement, Placement)>| {
             let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
@@ -813,7 +855,8 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // защита сырого стиля — рамки, замещаемого и подписи таблицы, — но
         // замерено полным сводом: CSS3 2355 -> 2354, `row-auto-repeat-auto-023`
         // 0.32 -> 9.86, приобретений ноль. Сырому стилю правило тоже нужно.
-        if matches!(l, Len::Pct(_))
+        if (matches!(l, Len::Pct(_))
+            || matches!(l, Len::Calc(i) if crate::value::calc_get(i).pct != 0.0))
             && f % 2 == 1
             && !c.cb_height_def
             && !c.root_box
@@ -852,7 +895,18 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
                 continue;
             }
         }
-        let g = len_to_gpui(l);
+        // Смесь «доля ± точки»: поправка `content-box` едет в точечную часть,
+        // доля считается от родителя и поправки не требует. Новая пара НЕ
+        // кладётся в арену (`calc_store` на каждом кадре раздувал бы её).
+        let g = match l {
+            Len::Calc(i) => match crate::value::calc_get(i).pct_px() {
+                Some((pct, add)) => {
+                    gpui::DefiniteLength::Calc(add + if f % 2 == 0 { pad_x } else { pad_y }, pct)
+                }
+                None => len_to_gpui(l),
+            },
+            _ => len_to_gpui(l),
+        };
         d = match f {
             0 => d.w(g),
             1 => d.h(g),
@@ -921,6 +975,7 @@ fn ratio_as_auto_min(c: &Computed) -> bool {
         && visible(c.overflow_x)
         && visible(c.overflow_y)
         && !c.scroller
+        && !c.flex_item_ratio
         // Абсолют с краями по ОБЕИМ сторонам зависимой оси растягивается
         // краями, и отношение обязано победить растяжку (`abspos-005/006`)
         // — ему отношение остаётся в раскладке; без краёв автоминимум
@@ -936,6 +991,17 @@ fn ratio_as_auto_min(c: &Computed) -> bool {
             !matches!(c.min_height, Some(Len::Px(_)))
         } else {
             !matches!(c.min_width, Some(Len::Px(_)))
+        })
+        // Процентный предел зависимой оси эмуляцией не выразить: явный
+        // минимум из соотношения сильнее любого максимума (CSS 2.1 §10.4), а
+        // доля предела во вкладе должна игнорироваться и решаться только в
+        // раскладке (css-sizing-3 §5.2.1; `intrinsic-percent-non-replaced-007`:
+        // `height:100px; 2/1; max-width:50%` в `max-content` — 100×100, а не
+        // 200×100). Такой коробке соотношение остаётся в раскладке.
+        && (if px_w {
+            !matches!(c.max_height, Some(Len::Pct(_)))
+        } else {
+            !matches!(c.max_width, Some(Len::Pct(_)))
         })
 }
 

@@ -5158,6 +5158,10 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     e.style.float = None;
                     e.style.clear = None;
                     e.style.vertical_align = None;
+                    e.style.flex_item = matches!(
+                        inherited.display,
+                        Some(Display::Flex) | Some(Display::InlineFlex)
+                    );
                     // Элемент КОЛОНКИ: определён ли главный размер
                     // контейнера (css-flexbox-1 §9.8 п.1). От этого зависит,
                     // определён ли блок у ЕГО детей — доля высоты внутри
@@ -5281,6 +5285,9 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                         }
                     }
                     let ratio_ok = e.style.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0);
+                    e.style.flex_item_ratio = ratio_ok
+                        && !positioned_out
+                        && matches!(inherited.display, Some(Display::Flex) | Some(Display::InlineFlex));
                     // `flex-basis` задаёт размер СОДЕРЖИМОГО (css-flexbox-1 §7.2.3:
                     // «flex-basis determines the size of the content box, unless
                     // otherwise specified such as by box-sizing»), а в раскладку
@@ -6183,6 +6190,23 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 crate::apply::apply(div(), &holder)
                     .child(element(&inner, inherited, opts))
                     .into_any_element()
+            } else if stacking_context(&e.style)
+                && e.style.isolate != Some(true)
+                && blends_inside(&e.children, 0)
+            {
+                // css-compositing-1 §mix-blend-mode: смешиваемый потомок
+                // смешивается только с содержимым СВОЕГО контекста наложения.
+                // Контекст обязан сложиться отдельной группой, иначе подложкой
+                // становится весь кадр: белая страница вокруг родителя давала
+                // красное кольцо (`-blended-element-with-transparent-pixels`),
+                // lime вместо fuchsia (`-blended-with-3D-transform`). Blink —
+                // `PaintLayer::HasNonIsolatedDescendantWithBlendMode`.
+                let mut iso = e.style.clone();
+                iso.isolate = Some(true);
+                grouped(
+                    transformed(animated(e, inherited, opts), &e.style, inherited),
+                    &iso,
+                )
             } else {
                 grouped(
                     transformed(animated(e, inherited, opts), &e.style, inherited),
@@ -7347,6 +7371,23 @@ fn stacking_context(c: &Computed) -> bool {
                     | Some(crate::computed::Position::Fixed)
                     | Some(crate::computed::Position::Sticky)
             ))
+}
+
+/// Есть ли в поддереве смешивание (`mix-blend-mode` ≠ normal).
+///
+/// Спуск НЕ останавливается на вложенных контекстах наложения: лишняя
+/// изоляция при обычном сложении картинку не меняет (source-over
+/// ассоциативен), а вложенный контекст со смешиванием внутри изолируется тем
+/// же правилом сам. Глубина ограничена ради страниц с тысячами вложенных
+/// трансформов: обход идёт у каждого контекста наложения.
+fn blends_inside(nodes: &[Node], depth: usize) -> bool {
+    depth < 32
+        && nodes.iter().any(|n| match n {
+            Node::Element(c) => {
+                c.style.blend.is_some_and(|b| b != 0) || blends_inside(&c.children, depth + 1)
+            }
+            Node::Text(_) => false,
+        })
 }
 
 /// Действует ли `z-index` на этой коробке.
@@ -15621,7 +15662,19 @@ fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     {
         return el;
     }
+    // Чистая изоляция — буфер без собственного эффекта: ни размытия, ни
+    // смешивания, ни маски, ни обрезки. Такой буфер коробкой не режется
+    // (`interact::Grouped::spill`).
+    let pure_isolation = blur <= 0.0
+        && blend == 0
+        && polygon.is_empty()
+        && mask.is_none()
+        && clip_rect.is_none()
+        && clip_inset.is_none()
+        && c.clip_edges.is_none()
+        && c.clip_xywh.is_none();
     let mut wrapper = crate::interact::Grouped::new(el);
+    wrapper.spill = pure_isolation;
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
     wrapper.mask = mask;
@@ -21567,6 +21620,12 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // Сетка обязана занять ВСЮ высоту таблицы: доли рядов считаются
             // от её остатка, а auto-высота ребёнка гибкой колонки — ноль.
             g = g.grid_template_rows(rt).flex_grow();
+        } else if inherited.flex_item {
+            // Стол — элемент гибкого контейнера: высоту, данную ему ростом
+            // или растяжением, делят ряды (CSS 2.1 §17.5.3; у сетки
+            // `align-content: normal` = stretch тянет auto-ряды), иначе ячейки
+            // оставались по содержимому (`table-as-item-stretch-cross-size-2`).
+            g = g.flex_grow();
         }
         g
     };
@@ -21743,6 +21802,10 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     if e.style.width.is_none() && e.style.align_self.is_none() {
         outer.style().align_self = Some(gpui::AlignItems::FlexStart);
     }
+    // Пол GRIDMIN (css-tables-3 §3.9): гибкая раскладка не ужимает стол по
+    // главной оси ниже min-content его решётки — `vendor/taffy` `flexbox.rs`,
+    // признак `item_is_table` (`table-as-item-auto-min-width`, `-wide-content`).
+    outer.style().item_is_table = Some(true);
     // КОРНЕВОЙ стол (`<html display: table>`): родитель — блок стенда, где
     // `align-self` не работает, и стол растягивался на всё окно. Гибкая
     // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
@@ -21869,7 +21932,33 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         } else {
             div().flex().flex_col()
         };
-        wrap.style().align_self = Some(gpui::AlignItems::FlexStart);
+        // Элемент гибкого контейнера у стола с подписями — ОБЁРТКА
+        // (css-flexbox-1 §4: «the table wrapper box becomes the flex item, and
+        // the order and align-self properties apply to it … the flex item's
+        // final size is calculated … as if the distance between the table
+        // wrapper box's edges and the table box's content edges were all part
+        // of the table box's border+padding area»). Рост и сжатие уходят на
+        // обёртку, стол внутри неё забирает остаток и растягивается по её
+        // ширине — подписи и стол одной ширины. Основа остаётся на столе: в
+        // колонке `wrap` его главная ось та же, что у контейнера-колонки
+        // (`table-as-item-inflexible-in-column-2`). Прижим `FlexStart` —
+        // только вне гибкого контейнера: там он даёт сжатие по содержимому
+        // (§17.5.2), а в гибком контейнере отбирал растяжение
+        // (`table-as-item-stretch-cross-size*`, `-flex-cross-size`).
+        let mut outer = outer;
+        if inherited.flex_item && !vertical {
+            let s = outer.style();
+            let grow = s.flex_grow.take();
+            let shrink = s.flex_shrink.take();
+            let own_align = s.align_self.take();
+            s.flex_grow = Some(1.0);
+            let w = wrap.style();
+            w.flex_grow = grow;
+            w.flex_shrink = shrink;
+            w.align_self = if e.style.align_self.is_some() { own_align } else { None };
+        } else {
+            wrap.style().align_self = Some(gpui::AlignItems::FlexStart);
+        }
         // Инлайн-размер ОБЁРТКИ — инлайн-размер САМОГО стола, а не наоборот.
         // CSS 2.1 §17.4: «The width of the table wrapper box is the border-edge
         // width of the table grid box inside it … Percentages on 'width' and

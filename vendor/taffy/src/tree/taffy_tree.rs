@@ -15,6 +15,49 @@ use crate::tree::{
 use crate::util::debug::{debug_log, debug_log_node};
 use crate::util::sys::{new_vec_with_capacity, ChildrenVec, Vec};
 
+/// KaminIDE patch: реестр пар `calc(<точки> + <доля>)` для calc-значений taffy.
+///
+/// `CompactLength::calc` хранит «указатель», выровненный на 8, а решает его
+/// `resolve_calc_value` этого дерева. Разыменовывать чужой адрес здесь нельзя
+/// (`#![deny(unsafe_code)]`), поэтому в указателе лежит НОМЕР пары в реестре,
+/// сдвинутый на три бита: нулевые младшие биты и ненулевое значение —
+/// ровно то, что проверяет `CompactLength::calc`. Одинаковые пары получают
+/// один номер, реестр растёт только новыми значениями и живёт весь процесс.
+#[cfg(feature = "std")]
+static CALC_PAIRS: std::sync::Mutex<Option<(std::vec::Vec<(f32, f32)>, std::collections::HashMap<(u32, u32), usize>)>> =
+    std::sync::Mutex::new(None);
+
+/// Дескриптор calc-значения «`px` + `fraction` × база» для
+/// `LengthPercentage::calc` и родни (css-values-4 §10.9: доля доживает до
+/// used-value и решается от базы раскладки).
+#[cfg(feature = "std")]
+pub fn calc_handle(px: f32, fraction: f32) -> *const () {
+    let mut guard = CALC_PAIRS.lock().unwrap_or_else(|e| e.into_inner());
+    let (pairs, index) = guard.get_or_insert_with(Default::default);
+    let key = (px.to_bits(), fraction.to_bits());
+    let at = *index.entry(key).or_insert_with(|| {
+        pairs.push((px, fraction));
+        pairs.len()
+    });
+    (at << 3) as *const ()
+}
+
+/// Пара по дескриптору `calc_handle`; чужой дескриптор — ноль.
+#[cfg(feature = "std")]
+fn calc_pair(val: *const ()) -> (f32, f32) {
+    let at = (val as usize) >> 3;
+    let guard = CALC_PAIRS.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .as_ref()
+        .and_then(|(pairs, _)| pairs.get(at.wrapping_sub(1)).copied())
+        .unwrap_or((0.0, 0.0))
+}
+
+#[cfg(not(feature = "std"))]
+fn calc_pair(_val: *const ()) -> (f32, f32) {
+    (0.0, 0.0)
+}
+
 use crate::compute::{
     compute_cached_layout, compute_hidden_layout, compute_leaf_layout, compute_root_layout, round_layout,
 };
@@ -341,8 +384,12 @@ where
     }
 
     #[inline(always)]
-    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
-        0.0
+    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
+        // KaminIDE patch: указатель — дескриптор `calc_handle` (индекс пары
+        // «точки + доля» в реестре, не адрес). Раньше здесь стоял ноль, и calc
+        // taffy был недоступен вовсе.
+        let (px, fraction) = calc_pair(val);
+        px + fraction * basis
     }
 
     #[inline(always)]

@@ -71,6 +71,12 @@ pub trait FlexboxItemStyle: CoreStyle {
     fn align_self(&self) -> Option<AlignSelf> {
         Style::<Self::CustomIdent>::DEFAULT.align_self
     }
+    /// KaminIDE patch: элемент — наружная коробка таблицы; по главной оси он
+    /// не ужимается ниже min-content своего содержимого (css-tables-3 §3.9).
+    #[inline(always)]
+    fn is_table_item(&self) -> bool {
+        false
+    }
 }
 
 use crate::geometry::AbsoluteAxis;

@@ -168,6 +168,12 @@ pub trait CoreStyle {
     fn safe_alignment(&self) -> (bool, bool, bool, bool) {
         (false, false, false, false)
     }
+    /// KaminIDE patch: `margin-trim` контейнера (css-box-4 §margin-trim) —
+    /// ФИЗИЧЕСКИЕ края: 1 верх, 2 право, 4 низ, 8 лево; 0 — `none`.
+    #[inline(always)]
+    fn margin_trim(&self) -> u8 {
+        0
+    }
 }
 
 /// Sets the layout used for the children of this node
@@ -467,6 +473,10 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// балансировка строк с минимумом N строк (`flex-line-count`).
     #[cfg(feature = "flexbox")]
     pub flex_balance_lines: u16,
+    /// KaminIDE patch: `margin-trim` гибкого контейнера и сетки — физические
+    /// края: 1 верх, 2 право, 4 низ, 8 лево.
+    #[cfg(any(feature = "flexbox", feature = "grid"))]
+    pub margin_trim: u8,
 
     // Block container properties
     /// How items elements should aligned in the inline axis
@@ -578,6 +588,8 @@ impl<S: CheapCloneStr> Style<S> {
         flex_wrap: FlexWrap::NoWrap,
         #[cfg(feature = "flexbox")]
         flex_balance_lines: 0,
+        #[cfg(any(feature = "flexbox", feature = "grid"))]
+        margin_trim: 0,
         #[cfg(feature = "flexbox")]
         flex_grow: 0.0,
         #[cfg(feature = "flexbox")]
@@ -685,6 +697,10 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn safe_alignment(&self) -> (bool, bool, bool, bool) {
         self.safe_alignment
     }
+    #[inline(always)]
+    fn margin_trim(&self) -> u8 {
+        self.margin_trim
+    }
 }
 
 impl<T: CoreStyle> CoreStyle for &'_ T {
@@ -753,6 +769,10 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn safe_alignment(&self) -> (bool, bool, bool, bool) {
         (*self).safe_alignment()
+    }
+    #[inline(always)]
+    fn margin_trim(&self) -> u8 {
+        (*self).margin_trim()
     }
 }
 
@@ -870,6 +890,10 @@ impl<S: CheapCloneStr> FlexboxItemStyle for Style<S> {
     fn align_self(&self) -> Option<AlignSelf> {
         self.align_self
     }
+    #[inline(always)]
+    fn is_table_item(&self) -> bool {
+        self.item_is_table
+    }
 }
 
 #[cfg(feature = "flexbox")]
@@ -889,6 +913,10 @@ impl<T: FlexboxItemStyle> FlexboxItemStyle for &'_ T {
     #[inline(always)]
     fn align_self(&self) -> Option<AlignSelf> {
         (*self).align_self()
+    }
+    #[inline(always)]
+    fn is_table_item(&self) -> bool {
+        (*self).is_table_item()
     }
 }
 

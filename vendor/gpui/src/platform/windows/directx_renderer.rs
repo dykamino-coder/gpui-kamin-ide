@@ -53,6 +53,11 @@ pub(crate) struct DirectXRenderer {
     /// возвращающие цель кадра (пути через MSAA), уводили бы примитивы
     /// группы прямо в кадр.
     group_target: Option<[Option<ID3D11RenderTargetView>; 1]>,
+    /// KaminIDE patch: текстура под `group_target`. Смешивание вложенной
+    /// группы берёт цвет назначения ИЗ НЕЁ: бэкбуфер во время
+    /// `render_groups` ещё пуст (`pre_draw` очистил его в ноль), и смешиваемый
+    /// потомок изолирующего родителя видел прозрачную подложку.
+    group_target_tex: Option<ID3D11Texture2D>,
     /// KaminIDE patch: блендер для картинок с уже умноженным на прозрачность
     /// цветом (буферы групп). Обычный блендер умножает на неё второй раз —
     /// края группы уходили в чёрный ореол.
@@ -420,6 +425,7 @@ impl DirectXRenderer {
             font_info: Self::get_font_info(),
             blur: BlurScratch::default(),
             group_target: None,
+            group_target_tex: None,
             blend_premultiplied: None,
             blend_replace: None,
         })
@@ -722,8 +728,10 @@ impl DirectXRenderer {
                 dc.RSSetViewports(Some(&self.resources.viewport));
             }
             self.group_target = Some(raw_rtv);
+            self.group_target_tex = Some(self.blur.groups[i * 2].texture.clone());
             let drawn = self.draw_scene(&group.scene);
             self.group_target = None;
+            self.group_target_tex = None;
             drawn?;
 
             let slot = if group.blur_radius > 0.0 {
@@ -1576,8 +1584,14 @@ impl DirectXRenderer {
                 self.blur.copy = Some(create_blur_texture(&device, rw, rh, false)?);
             }
             let copy = self.blur.copy.as_ref().unwrap();
+            // KaminIDE patch: подложка — буфер ОБЪЕМЛЮЩЕЙ группы, когда
+            // композит идёт в него (css-compositing-1 §mix-blend-mode:
+            // смешивание только с содержимым своего контекста наложения).
             unsafe {
-                dc.CopyResource(&copy.texture, &*self.resources.render_target);
+                match self.group_target_tex.as_ref() {
+                    Some(tex) => dc.CopyResource(&copy.texture, tex),
+                    None => dc.CopyResource(&copy.texture, &*self.resources.render_target),
+                }
                 dc.PSSetShaderResources(2, Some(&copy.srv));
             }
         }

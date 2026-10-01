@@ -21,7 +21,13 @@ impl Sides {
     /// Раскрытие сокращённой записи: 1 значение — все стороны, 2 — верт/гориз,
     /// 3 — верх/гориз/низ, 4 — по часовой.
     fn shorthand(raw: &str) -> Sides {
-        let v: Vec<Option<Len>> = raw.split_whitespace().map(Len::parse).collect();
+        // Разрез — по пробелам ВНЕ скобок: `calc(10px + 1%) 0 0 0` — четыре
+        // значения, а не шесть обрывков (`calc-margin-block-1`). Смесь с долей
+        // доживает индексом (`parse_mixed`) — раскладка складывает её сама.
+        let v: Vec<Option<Len>> = split_outside_parens(raw)
+            .iter()
+            .map(|t| Len::parse_mixed(t))
+            .collect();
         match v.len() {
             1 => Sides {
                 top: v[0],
@@ -1683,6 +1689,12 @@ pub struct Computed {
     /// выражает (★ ЗАМЕРЕНО: в общем поле `block-aspect-ratio-002/015/016/018/
     /// 043/047`, `grid-aspect-ratio-005/008` уходили с 0.00 в 14.25).
     pub aspect_ratio_auto: Option<f32>,
+    /// Коробка с `aspect-ratio` — элемент ГИБКОГО контейнера (ставит
+    /// `render.rs` при раскладке детей ряда/колонки). Её автоминимум по
+    /// соотношению считает раскладка (css-flexbox-1 §4.5: подсказка по
+    /// содержимому), а не явный минимум `apply::ratio_as_auto_min`
+    /// (`flex-aspect-ratio-002/004`).
+    pub flex_item_ratio: bool,
     /// Коробка АБСОЛЮТНА, но позиционирование с неё снято ради статической
     /// позиции (`render.rs`). Само `position` там обнуляется, а знать о нём
     /// нужно: размер по свободной строчной оси у абсолюта считается по
@@ -2149,6 +2161,12 @@ pub struct Computed {
     /// Элемент КОЛОНКИ гибкого контейнера: определён ли главный размер
     /// контейнера (css-flexbox-1 §9.8 п.1). `None` — не элемент колонки.
     pub(crate) flex_main_def: Option<bool>,
+    /// Элемент ГИБКОГО контейнера (родитель `display: flex | inline-flex`).
+    /// Ставится сборкой детей ряда/колонки в `render::blocks`, не каскадом и
+    /// не наследуется (`inline::inherit` клонирует СВОЙ стиль ребёнка). Нужен
+    /// таблице: у неё гибким элементом становится обёртка с подписями
+    /// (css-flexbox-1 §4).
+    pub(crate) flex_item: bool,
     /// Довод `fit-content(<length-percentage>)` у `width`, `min-width`,
     /// `max-width` (по порядку); само значение остаётся `Len::FitContent`.
     /// Новый вариант `Len` потянул бы правку полусотни `match` по крейту, а
@@ -2321,9 +2339,11 @@ pub struct Computed {
     /// сообщить движку запрет разрыва МЕЖДУ соседями было нечем.
     pub break_before_avoid: bool,
     pub break_after_avoid: bool,
-    /// `margin-trim` (css-box-4 §margin-trim): биты обрезаемых краёв,
-    /// 1 — `block-start`, 2 — `block-end`. `block` — оба. Начальное `none`
-    /// (0). Инлайновые значения старой редакции спеки не берём.
+    /// `margin-trim` (css-box-4 §margin-trim): биты обрезаемых ЛОГИЧЕСКИХ
+    /// краёв: 1 — `block-start`, 2 — `block-end`, 4 — `inline-start`,
+    /// 8 — `inline-end`. Начальное `none` (0). Блочный контейнер исполняет
+    /// только блочные биты (`render::collapse_margins`), гибкий и сетка —
+    /// все четыре (раскладка, `apply` переводит их в физические).
     pub margin_trim: u8,
     /// `zoom` (css-viewport-1 §zoom-property): СВОЙ множитель элемента, как
     /// написан; `None` — не задан. `0`/`0%` по спеке читаются единицей.
@@ -2741,10 +2761,16 @@ impl Computed {
             Some(Len::Vh(k)) => *l = Some(Len::Px(k * viewport.1)),
             Some(Len::Calc(i)) => {
                 let mut s = crate::value::calc_get(i);
-                s.px += s.vw * viewport.0 + s.vh * viewport.1;
-                s.vw = 0.0;
-                s.vh = 0.0;
-                *l = s.collapse();
+                // Без слагаемых окна складывать нечего: индекс остаётся
+                // (арена append-only, `resolve_viewport` идёт на каждом
+                // слитом стиле), а `collapse` стёр бы процентную смесь
+                // `calc(50% - 3px)` в `None` уже после разбора.
+                if s.vw != 0.0 || s.vh != 0.0 {
+                    s.px += s.vw * viewport.0 + s.vh * viewport.1;
+                    s.vw = 0.0;
+                    s.vh = 0.0;
+                    *l = s.collapse_mixed();
+                }
             }
             _ => {}
         };
@@ -2755,10 +2781,13 @@ impl Computed {
                     Some(Len::Vh(k)) => *one = Some(Len::Px(k * viewport.1)),
                     Some(Len::Calc(i)) => {
                         let mut s = crate::value::calc_get(i);
-                        s.px += s.vw * viewport.0 + s.vh * viewport.1;
-                        s.vw = 0.0;
-                        s.vh = 0.0;
-                        *one = s.collapse();
+                        // То же, что у размеров: смесь с долей доживает.
+                        if s.vw != 0.0 || s.vh != 0.0 {
+                            s.px += s.vw * viewport.0 + s.vh * viewport.1;
+                            s.vw = 0.0;
+                            s.vh = 0.0;
+                            *one = s.collapse_mixed();
+                        }
                     }
                     _ => {}
                 }
@@ -4070,7 +4099,11 @@ impl Computed {
                     self.margin_inherit[1] = true;
                     return;
                 }
-                self.margin.right = Len::parse(v);
+                // Смесь «доля ± точки» доживает индексом: раскладка складывает
+                // её сама (css-values-4 §10.9), а вклад решает долю от нуля
+                // (css-sizing-3 §5.2.1, `calc-margins-*`). Вертикальные поля
+                // — по-прежнему `parse`: смесь там закрыла бы схлопывание.
+                self.margin.right = Len::parse_mixed(v);
                 self.side_seq.margin[1] = self.decl_seq;
             }
             "margin-bottom" => {
@@ -4086,7 +4119,8 @@ impl Computed {
                     self.margin_inherit[3] = true;
                     return;
                 }
-                self.margin.left = Len::parse(v);
+                // Смесь «доля ± точки» доживает (см. `margin-right`).
+                self.margin.left = Len::parse_mixed(v);
                 self.side_seq.margin[3] = self.decl_seq;
             }
 
@@ -7048,9 +7082,13 @@ impl Computed {
                         "block" => bits |= 3,
                         "block-start" => bits |= 1,
                         "block-end" => bits |= 2,
-                        // Инлайновые значения старой редакции: объявление
-                        // действительно, но шаг 1 их не исполняет.
-                        "inline" | "inline-start" | "inline-end" => {}
+                        // Строчные края — текущая редакция спеки: их
+                        // исполняют гибкий контейнер и сетка («Flex
+                        // Containers», «Grid Containers»); блочный контейнер
+                        // их не видит (`block-container-inline-001`).
+                        "inline" => bits |= 12,
+                        "inline-start" => bits |= 4,
+                        "inline-end" => bits |= 8,
                         _ => ok = false,
                     }
                 }
@@ -11525,7 +11563,10 @@ fn fit_content_arg(v: &str) -> Option<Len> {
 }
 
 fn assign_size(slot: &mut Option<Len>, v: &str) {
-    let parsed = Len::parse(v);
+    // Смесь «доля ± точки» доживает индексом (`parse_mixed`): раскладка
+    // складывает её сама (`DefiniteLength::Calc`, css-values-4 §10.9).
+    // Прежде `calc(50% - 3px)` роняло объявление (`calc-width-block-1`).
+    let parsed = Len::parse_mixed(v);
     // Отрицательный размер невалиден в ЛЮБОЙ единице (CSS 2.1 §10.4:
     // `min-width`/`min-height` — «Value: <length> | <percentage> | inherit»,
     // отрицательные значения не допускаются). Прежде отбраковывались только

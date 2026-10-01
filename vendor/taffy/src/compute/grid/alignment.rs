@@ -67,6 +67,7 @@ pub(super) fn align_and_position_item(
     grid_area: Rect<f32>,
     container_alignment_styles: InBothAbsAxis<Option<AlignItems>>,
     baseline_shim: f32,
+    margin_trim: u8,
 ) -> (Size<f32>, f32, f32) {
     let grid_area_size = Size { width: grid_area.right - grid_area.left, height: grid_area.bottom - grid_area.top };
 
@@ -96,6 +97,29 @@ pub(super) fn align_and_position_item(
     let box_sizing_adjustment =
         if style.box_sizing() == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
 
+    // KaminIDE patch: явное `stretch` (не `normal`) делает ось определённой
+    // без соотношения сторон (css-grid-2 §6.2; Blink kStretchExplicit против
+    // kStretchImplicit). Если обе оси определены так или длиной из стиля,
+    // соотношение не действует вовсе (`grid-aspect-ratio-032..037`); если
+    // явно растянута только блочная, строчная при `normal` не тянется, а
+    // выводится из соотношения (`grid-aspect-ratio-028/029`).
+    let raw_margin = style.margin();
+    let style_size = style.size().maybe_resolve(grid_area_size, |val, basis| tree.calc(val, basis));
+    let stretched_w = position != Position::Absolute
+        && justify_self.or(container_alignment_styles.horizontal) == Some(AlignSelf::Stretch)
+        && !raw_margin.left.is_auto()
+        && !raw_margin.right.is_auto();
+    let stretched_h = position != Position::Absolute
+        && align_self.or(container_alignment_styles.vertical) == Some(AlignSelf::Stretch)
+        && !raw_margin.top.is_auto()
+        && !raw_margin.bottom.is_auto();
+    let aspect_ratio = if (style_size.width.is_some() || stretched_w) && (style_size.height.is_some() || stretched_h)
+    {
+        None
+    } else {
+        aspect_ratio
+    };
+
     let inherent_size = style
         .size()
         .maybe_resolve(grid_area_size, |val, basis| tree.calc(val, basis))
@@ -120,7 +144,9 @@ pub(super) fn align_and_position_item(
     // See: https://www.w3.org/TR/css-grid-1/#grid-item-sizing
     let alignment_styles = InBothAbsAxis {
         horizontal: justify_self.or(container_alignment_styles.horizontal).unwrap_or_else(|| {
-            if inherent_size.width.is_some() {
+            // KaminIDE patch: блочная ось явно растянута — строчная при
+            // `normal` берётся из соотношения, а не из растяжения.
+            if inherent_size.width.is_some() || (aspect_ratio.is_some() && stretched_h) {
                 AlignSelf::Start
             } else {
                 AlignSelf::Stretch
@@ -137,8 +163,23 @@ pub(super) fn align_and_position_item(
 
     // Note: This is not a bug. It is part of the CSS spec that both horizontal and vertical margins
     // resolve against the WIDTH of the grid area.
-    let margin =
+    let mut margin =
         style.margin().map(|margin| margin.resolve_to_option(grid_area_size.width, |val, basis| tree.calc(val, basis)));
+    // KaminIDE patch: `margin-trim` контейнера — обрезанное поле ноль, а не
+    // авторское и не `auto` (биты сторон считает `compute_grid_layout`;
+    // размеры дорожек их уже учли через `GridItem::margin`).
+    if margin_trim & 1 != 0 {
+        margin.top = Some(0.0);
+    }
+    if margin_trim & 2 != 0 {
+        margin.right = Some(0.0);
+    }
+    if margin_trim & 4 != 0 {
+        margin.bottom = Some(0.0);
+    }
+    if margin_trim & 8 != 0 {
+        margin.left = Some(0.0);
+    }
 
     let grid_area_minus_item_margins_size = Size {
         width: grid_area_size.width.maybe_sub(margin.left).maybe_sub(margin.right),

@@ -496,7 +496,11 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_wrap: self.flex_wrap.into(),
             // KaminIDE patch: `flex-wrap: balance` + `flex-line-count`.
             flex_balance_lines: self.flex_balance_lines,
+            // KaminIDE patch: `margin-trim`, физические биты сторон.
+            margin_trim: self.margin_trim,
             flex_basis: self.flex_basis.to_taffy(rem_size, scale_factor),
+            // KaminIDE patch: пол GRIDMIN у таблицы-элемента.
+            item_is_table: self.item_is_table,
             flex_grow: self.flex_grow,
             flex_shrink: self.flex_shrink,
             // KaminIDE patch: явный список дорожек имеет приоритет — он
@@ -624,6 +628,9 @@ impl ToTaffy<taffy::style::LengthPercentage> for DefiniteLength {
             DefiniteLength::Fraction(fraction) => {
                 taffy::style::LengthPercentage::percent(*fraction)
             }
+            DefiniteLength::Calc(add, fraction) => {
+                taffy::style::LengthPercentage::calc(taffy::tree::calc_handle(add * scale_factor, *fraction))
+            }
         }
     }
 }
@@ -644,6 +651,9 @@ impl ToTaffy<taffy::style::LengthPercentageAuto> for DefiniteLength {
             DefiniteLength::Fraction(fraction) => {
                 taffy::style::LengthPercentageAuto::percent(*fraction)
             }
+            DefiniteLength::Calc(add, fraction) => {
+                taffy::style::LengthPercentageAuto::calc(taffy::tree::calc_handle(add * scale_factor, *fraction))
+            }
         }
     }
 }
@@ -661,6 +671,9 @@ impl ToTaffy<taffy::style::Dimension> for DefiniteLength {
                 }
             },
             DefiniteLength::Fraction(fraction) => taffy::style::Dimension::percent(*fraction),
+            DefiniteLength::Calc(add, fraction) => {
+                taffy::style::Dimension::calc(taffy::tree::calc_handle(add * scale_factor, *fraction))
+            }
         }
     }
 }

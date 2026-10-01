@@ -3324,6 +3324,10 @@ pub enum DefiniteLength {
     Absolute(AbsoluteLength),
     /// A relative length specified as a fraction of the parent's size, between 0 and 1.
     Fraction(f32),
+    /// KaminIDE patch: `calc(<доля> + <точки>)` — (точки, доля). Раскладке
+    /// уходит calc-дескриптором taffy (`taffy::tree::calc_handle`), решается как
+    /// точки + доля × база (css-values-4 §10.9: доля доживает до used-value).
+    Calc(f32, f32),
 }
 
 impl DefiniteLength {
@@ -3362,6 +3366,13 @@ impl DefiniteLength {
                 AbsoluteLength::Pixels(px) => px * fraction,
                 AbsoluteLength::Rems(rems) => rems * rem_size * fraction,
             },
+            DefiniteLength::Calc(add, fraction) => {
+                let base = match base_size {
+                    AbsoluteLength::Pixels(px) => px,
+                    AbsoluteLength::Rems(rems) => rems * rem_size,
+                };
+                base * fraction + Pixels::from(add)
+            }
         }
     }
 }
@@ -3377,6 +3388,9 @@ impl Display for DefiniteLength {
         match self {
             DefiniteLength::Absolute(length) => write!(f, "{length}"),
             DefiniteLength::Fraction(fraction) => write!(f, "{}%", (fraction * 100.0) as i32),
+            DefiniteLength::Calc(add, fraction) => {
+                write!(f, "calc({}% + {}px)", fraction * 100.0, add)
+            }
         }
     }
 }
@@ -3885,6 +3899,7 @@ impl IsZero for DefiniteLength {
         match self {
             DefiniteLength::Absolute(length) => length.is_zero(),
             DefiniteLength::Fraction(fraction) => *fraction == 0.,
+            DefiniteLength::Calc(add, fraction) => *add == 0. && *fraction == 0.,
         }
     }
 }

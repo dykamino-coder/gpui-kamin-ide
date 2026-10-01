@@ -89,6 +89,9 @@ pub(in super::super) struct GridItem {
     pub y_position: f32,
     /// Final height. Used to compute baseline alignment for the container.
     pub height: f32,
+    /// KaminIDE patch: обрезанные `margin-trim` стороны элемента (биты
+    /// физических сторон контейнера) — для финального выравнивания.
+    pub margin_trim: u8,
 }
 
 impl GridItem {
@@ -133,6 +136,7 @@ impl GridItem {
             minimum_contribution_cache: Size::NONE,
             y_position: 0.0,
             height: 0.0,
+            margin_trim: 0,
         }
     }
 
@@ -379,10 +383,19 @@ impl GridItem {
         inner_node_size: Size<Option<f32>>,
     ) -> f32 {
         let known_dimensions = self.known_dimensions(tree, inner_node_size, available_space);
+        // KaminIDE patch (css-sizing-3 §5.2.1 «cyclic percentage», css-grid-2
+        // §11.5): содержащий блок элемента — грид-ОБЛАСТЬ, в размеряемой оси её
+        // ещё нет, и доля `width`/`height` при подсчёте вклада ведёт себя как
+        // `auto`. Прежде база доли — весь КОНТЕЙНЕР (`inner_node_size`): `span 2;
+        // width: 100%` в `repeat(2, max-content)` шириной 300 давал две дорожки по
+        // 150 вместо 120 (эталон `column-auto-repeat-max-content-002-ref`).
+        // То же правило уже стоит в `minimum_contribution` ниже.
+        let mut pct_basis = inner_node_size;
+        pct_basis.set(axis, None);
         tree.measure_child_size(
             self.node,
             known_dimensions,
-            inner_node_size,
+            pct_basis,
             available_space.map(|opt| match opt {
                 Some(size) => AvailableSpace::Definite(size),
                 None => AvailableSpace::MinContent,
@@ -418,10 +431,13 @@ impl GridItem {
         inner_node_size: Size<Option<f32>>,
     ) -> f32 {
         let known_dimensions = self.known_dimensions(tree, inner_node_size, available_space);
+        // KaminIDE patch: то же для max-content-вклада (см. `min_content_contribution`).
+        let mut pct_basis = inner_node_size;
+        pct_basis.set(axis, None);
         tree.measure_child_size(
             self.node,
             known_dimensions,
-            inner_node_size,
+            pct_basis,
             available_space.map(|opt| match opt {
                 Some(size) => AvailableSpace::Definite(size),
                 None => AvailableSpace::MaxContent,

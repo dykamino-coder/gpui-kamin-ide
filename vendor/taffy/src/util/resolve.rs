@@ -94,14 +94,20 @@ impl<In, Out, T: MaybeResolve<In, Out>> MaybeResolve<Size<In>, Size<Out>> for Si
 impl ResolveOrZero<Option<f32>, f32> for LengthPercentage {
     /// Will return a default value of result is evaluated to `None`
     fn resolve_or_zero(self, context: Option<f32>, calc: impl Fn(*const (), f32) -> f32) -> f32 {
-        self.maybe_resolve(context, calc).unwrap_or(0.0)
+        // KaminIDE patch: при неизвестной базе доля решается ОТ НУЛЯ, а не
+        // гасит значение целиком (css-sizing-3 §5.2.1: «for margins and
+        // paddings, a cyclic percentage is resolved against zero»). У голой
+        // доли итог тот же ноль, у `calc(10% + 100px)` — точечная часть.
+        self.maybe_resolve(Some(context.unwrap_or(0.0)), calc).unwrap_or(0.0)
     }
 }
 
 impl ResolveOrZero<Option<f32>, f32> for LengthPercentageAuto {
     /// Will return a default value of result is evaluated to `None`
     fn resolve_or_zero(self, context: Option<f32>, calc: impl Fn(*const (), f32) -> f32) -> f32 {
-        self.maybe_resolve(context, calc).unwrap_or(0.0)
+        // KaminIDE patch: доля — от нуля при неизвестной базе (см. выше);
+        // `auto` по-прежнему ноль.
+        self.maybe_resolve(Some(context.unwrap_or(0.0)), calc).unwrap_or(0.0)
     }
 }
 

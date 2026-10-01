@@ -246,6 +246,14 @@ pub struct Style {
     /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
     /// балансировка строк с минимумом N строк (`flex-line-count`).
     pub flex_balance_lines: u16,
+    /// KaminIDE patch: `margin-trim` (css-box-4 §margin-trim) гибкого
+    /// контейнера и сетки — ФИЗИЧЕСКИЕ края: 1 верх, 2 право, 4 низ, 8 лево.
+    pub margin_trim: u8,
+    /// KaminIDE patch: наружная коробка ТАБЛИЦЫ (`crates/html` `render::table`).
+    /// Гибкая раскладка не ужимает такой элемент по главной оси ниже
+    /// min-content его содержимого (css-tables-3 §3.9: GRIDMIN сильнее
+    /// `min-width`/`max-width`/`flex-shrink`).
+    pub item_is_table: bool,
     /// Sets the initial main axis size of the item
     pub flex_basis: Length,
     /// The relative rate at which this item grows when it is expanding to fill space, 0.0 is the default value, and this value must be positive.
@@ -810,33 +818,43 @@ impl Style {
                 self.border_style,
             );
 
-            window.with_content_mask(Some(ContentMask { bounds: top_bounds }), |window| {
-                window.paint_quad(quad.clone());
-            });
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: right_bounds,
-                }),
-                |window| {
+            // KaminIDE patch: четыре полосы-маски — оптимизация перерисовки
+            // (полосы не пересекаются, итог равен одному проходу). Под
+            // преобразованием они лежат в точках окна, а квад — под матрицей:
+            // повёрнутое кольцо резалось полосами неповёрнутой коробки
+            // (`2d-rotate-001`: рамка 10px под `rotate(30deg)`). Тогда — один
+            // проход без масок.
+            if window.current_transformation() != crate::TransformationMatrix::unit() {
+                window.paint_quad(quad);
+            } else {
+                window.with_content_mask(Some(ContentMask { bounds: top_bounds }), |window| {
                     window.paint_quad(quad.clone());
-                },
-            );
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: bottom_bounds,
-                }),
-                |window| {
-                    window.paint_quad(quad.clone());
-                },
-            );
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: left_bounds,
-                }),
-                |window| {
-                    window.paint_quad(quad);
-                },
-            );
+                });
+                window.with_content_mask(
+                    Some(ContentMask {
+                        bounds: right_bounds,
+                    }),
+                    |window| {
+                        window.paint_quad(quad.clone());
+                    },
+                );
+                window.with_content_mask(
+                    Some(ContentMask {
+                        bounds: bottom_bounds,
+                    }),
+                    |window| {
+                        window.paint_quad(quad.clone());
+                    },
+                );
+                window.with_content_mask(
+                    Some(ContentMask {
+                        bounds: left_bounds,
+                    }),
+                    |window| {
+                        window.paint_quad(quad);
+                    },
+                );
+            }
         }
 
 
@@ -896,8 +914,10 @@ impl Default for Style {
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
+            margin_trim: 0,
             flex_grow: 0.0,
             flex_shrink: 1.0,
+            item_is_table: false,
             flex_basis: Length::Auto,
             background: None,
             border_color: None,

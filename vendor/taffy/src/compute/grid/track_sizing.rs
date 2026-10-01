@@ -3,7 +3,6 @@
 use super::types::{GridItem, GridTrack, TrackCounts};
 use crate::geometry::{AbstractAxis, Line, Size};
 use crate::style::{AlignContent, AlignSelf, AvailableSpace};
-use crate::style_helpers::TaffyMinContent;
 use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt, SizingMode};
 use crate::util::sys::{f32_max, f32_min, Vec};
 use crate::util::{MaybeMath, ResolveOrZero};
@@ -288,7 +287,7 @@ pub(super) fn track_sizing_algorithm<Tree: LayoutPartialTree>(
 
     // 11.5.1 Shim item baselines
     if has_baseline_aligned_item {
-        resolve_item_baselines(tree, axis, items, inner_node_size);
+        resolve_item_baselines(tree, axis, other_axis_tracks, items, inner_node_size);
     }
 
     // If all tracks have base_size = growth_limit, then skip the rest of this function.
@@ -447,12 +446,14 @@ fn initialize_track_sizes(
 fn resolve_item_baselines(
     tree: &mut impl LayoutPartialTree,
     axis: AbstractAxis,
+    other_axis_tracks: &[GridTrack],
     items: &mut [GridItem],
     inner_node_size: Size<Option<f32>>,
 ) {
-    // Sort items by track in the other axis (row) start position so that we can iterate items in groups which
-    // are in the same track in the other axis (row)
-    let other_axis = axis.other();
+    // KaminIDE patch: зовётся из прохода РЯДОВ (`axis` = Block): ряды — дорожки
+    // САМОЙ оси, колонки (`other_axis_tracks`) уже размерены. Группа — ряд.
+    // Sort items by row start position so that we can iterate items in groups which are in the same row
+    let other_axis = axis;
     items.sort_by_key(|item| item.placement(other_axis).start);
 
     // Iterate over grid rows
@@ -488,12 +489,26 @@ fn resolve_item_baselines(
         }
 
         // Compute the baselines of all items in the row
+        // KaminIDE patch: только УЧАСТНИКИ выравнивания (css-align-3 §9.1:
+        // группа — коробки, выравниваемые по базовой линии). Прежде мерились и
+        // сдвигались все элементы ряда, и `start`/`stretch`-соседи получали
+        // лишнее верхнее поле.
         for item in row_items.iter_mut() {
+            if item.align_self != AlignSelf::Baseline {
+                continue;
+            }
+            // KaminIDE patch: мерить в ширине СВОИХ колонок (Blink решает
+            // базовые линии рядов после размеров колонок): иначе `width: 100%`
+            // считался от всей сетки (`grid-self-baseline-008`: холст 4× выше).
+            let column_width: f32 = other_axis_tracks[item.track_range_excluding_lines(axis.other())]
+                .iter()
+                .map(|track| track.base_size)
+                .sum();
             let measured_size_and_baselines = tree.perform_child_layout(
                 item.node,
                 Size::NONE,
-                inner_node_size,
-                Size::MIN_CONTENT,
+                Size { width: Some(column_width), height: inner_node_size.height },
+                Size { width: AvailableSpace::Definite(column_width), height: AvailableSpace::MinContent },
                 SizingMode::InherentSize,
                 Line::FALSE,
             );
@@ -508,12 +523,20 @@ fn resolve_item_baselines(
         }
 
         // Compute the max baseline of all items in the row
-        let row_max_baseline =
-            row_items.iter().map(|item| item.baseline.unwrap_or(0.0)).max_by(|a, b| a.total_cmp(b)).unwrap();
+        let row_max_baseline = row_items
+            .iter()
+            .filter(|item| item.align_self == AlignSelf::Baseline)
+            .map(|item| item.baseline.unwrap_or(0.0))
+            .max_by(|a, b| a.total_cmp(b))
+            .unwrap();
 
         // Compute the baseline shim for each item in the row
         for item in row_items.iter_mut() {
-            item.baseline_shim = row_max_baseline - item.baseline.unwrap_or(0.0);
+            item.baseline_shim = if item.align_self == AlignSelf::Baseline {
+                row_max_baseline - item.baseline.unwrap_or(0.0)
+            } else {
+                0.0
+            };
         }
     }
 }

@@ -972,6 +972,19 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     let mut c = own.clone();
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.backdrop_root_above = parent.backdrop_root_above || backdrop_root(parent);
+    // filter-effects-2 §3 шаг 4: содержимое B — и его СОБСТВЕННЫЙ фон —
+    // рисуется поверх уже отфильтрованной подложки. Фон коробки красит сама
+    // коробка раньше детей, а канвас подложки — ребёнок; явный
+    // `background-clip: border-box` уводит фон в слой-ребёнка
+    // `render::clip_layer`, который идёт после декораций.
+    if c.backdrop_color.is_some()
+        && !c.backdrop_root_above
+        && c.bg_clip.is_none()
+        && (c.background.is_some() || c.gradient.is_some())
+        && matches!(c.display, None | Some(crate::computed::Display::Block))
+    {
+        c.bg_clip = Some(crate::computed::BgClip::BorderBox);
+    }
     // Ближайший содержащий блок абсолюта по `node_id` — ключ реестра рамок
     // `anchor::CB` (нужен `position-area`); корень даёт 0 = начальный
     // содержащий блок, окно.
