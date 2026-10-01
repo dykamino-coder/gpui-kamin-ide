@@ -2327,6 +2327,11 @@ pub struct PageKid {
     /// start value), `""` — без имени. Лист, на котором коробка — первая, берёт
     /// это имя для своего `@page <имя>` (`PageStack::geom_for`).
     pub page: String,
+    /// Поля коробки для укладки (схлопываются с соседями в `fill`) и смещение
+    /// её border box внутри элемента — на него копия поднимается.
+    pub mt: f32,
+    pub mb: f32,
+    pub inner_top: f32,
 }
 
 /// Геометрия листа по его номеру (с нуля) и имени страницы: каскад
@@ -2507,7 +2512,7 @@ impl Element for PageStack {
         let g = (self.geom_for)(0, &first_name);
         let (aw, ah) = (g.area.0.max(1.0), g.area.1.max(1.0));
         // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
-        //    уже внутри их коробок (обёртка `render_paged`), поэтому mt/mb = 0.
+        //    — из меры (`PageKid::mt/mb`), у измеренных без меры они внутри обёртки.
         let kids: Vec<Kid> = self
             .kids
             .iter_mut()
@@ -2530,8 +2535,8 @@ impl Element for PageStack {
                 };
                 Kid {
                     h,
-                    mt: 0.0,
-                    mb: 0.0,
+                    mt: k.mt,
+                    mb: k.mb,
                     monolith: k.monolith,
                     cuts,
                     force_before: k.force_before,
@@ -2685,6 +2690,7 @@ impl Element for PageStack {
             let aw = pg.area.0.max(1.0);
             let full_h = kids[f.kid].h;
             let kid = &mut self.kids[f.kid];
+            let inner_top = kid.inner_top;
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {
@@ -2704,7 +2710,7 @@ impl Element for PageStack {
             el.prepaint_at(
                 point(
                     bounds.origin.x + px(sx + ax),
-                    bounds.origin.y + px(sy + ay + f.y - f.from),
+                    bounds.origin.y + px(sy + ay + f.y - f.from - inner_top),
                 ),
                 window,
                 cx,
