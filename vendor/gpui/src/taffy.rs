@@ -313,20 +313,6 @@ impl TaffyLayoutEngine {
         );
     }
 
-    /// KaminIDE patch: размер узла БЕЗ округления к физической точке.
-    ///
-    /// `layout_bounds` округляет края на абсолютной координате — для краски
-    /// это верно, а для арифметики полос обтекания (`crates/html/src/
-    /// band_flow.rs`) нет: десять флоатов по `0.87em` в контейнере `8.7em`
-    /// после округления каждого не влезают в строку (`units-005`).
-    pub fn layout_size_unrounded(&self, id: LayoutId, scale_factor: f32) -> Size<Pixels> {
-        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
-        size(
-            Pixels(layout.size.width / scale_factor),
-            Pixels(layout.size.height / scale_factor),
-        )
-    }
-
     pub fn layout_bounds(&mut self, id: LayoutId, scale_factor: f32) -> Bounds<Pixels> {
         if let Some(layout) = self.absolute_layout_bounds.get(&id).cloned() {
             return layout;

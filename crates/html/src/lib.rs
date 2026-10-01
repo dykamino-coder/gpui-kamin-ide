@@ -31,7 +31,6 @@
 pub mod anchor;
 pub mod apply;
 pub mod background;
-pub mod band_flow;
 pub mod bands;
 pub mod border_image;
 pub mod color_space;
