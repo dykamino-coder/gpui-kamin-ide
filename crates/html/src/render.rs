@@ -8367,6 +8367,9 @@ fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
                     Node::Element(c) => c.clone(),
                     Node::Text(_) => unreachable!("блоком бывает только элемент"),
                 };
+                // Метка выноса: объёмный контекст и перспектива деда на блок
+                // не действуют (`Computed::hoisted_block`, `transformed`).
+                block.style.hoisted_block = true;
                 // Сам блок ПОЗИЦИОНИРОВАН: его собственные края нельзя ни
                 // заменить, ни сложить с чужими (у хозяина они бывают в долях,
                 // у блока — в точках). Сдвиг хозяина накладывается ОБЁРТКОЙ:
@@ -16708,7 +16711,13 @@ fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
     // изнанка решается по НАКОПЛЕННОЙ матрице (`backface-visibility-hidden-004`
     // — у `.card.front` своего преобразования нет вовсе).
     let keeps_3d = c.preserve_3d == Some(true) && !flattens_3d(c);
-    let under_3d = parent.frame_3d.clone();
+    // Вынесенный блок-в-строчном (`Computed::hoisted_block`): по DOM он
+    // внук, и плоский строчный хозяин — лист контекста: ни ячейка объёма, ни
+    // перспектива деда ему не достаются (css-transforms-2
+    // §3d-rendering-context; `3d-rendering-context-and-inline`:
+    // `rotateX(-90deg)` внутри `display: inline` под `preserve-3d; rotateX(90deg)`
+    // не раскручивается обратно; `perspective-children-only-inline`).
+    let under_3d = if c.hoisted_block { None } else { parent.frame_3d.clone() };
     if c.transform.is_none() && c.perspective.is_none() && !keeps_3d && under_3d.is_none() {
         return el;
     }
@@ -16726,13 +16735,25 @@ fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
     // ребёнком в дереве отрисовки, поэтому берёт перспективу, хотя по DOM он
     // внук. `overflow-perspective-001` (0.00 → 2.92) — прокручиваемая коробка:
     // начало перспективы считается от коробки, а не от области прокрутки.
-    wrapper.under_perspective = parent.perspective_frame.clone();
+    wrapper.under_perspective = if c.hoisted_block {
+        None
+    } else {
+        parent.perspective_frame.clone()
+    };
     wrapper.perspective = c.perspective;
     wrapper.perspective_frame = c.perspective_frame.clone();
     if let Some(o) = c.perspective_origin {
         wrapper.perspective_origin = o;
     }
     wrapper.perspective_origin_px = c.perspective_origin_px;
+    // Изнанка ставится ДО раннего выхода: ребёнок объёмного контекста без
+    // своего `transform` (`backface-visibility-hidden-004` `.card.front`,
+    // `transform3d-backface-visibility-006`, `backface-visibility-with-
+    // sibling-001`) решает её по накопленной матрице родителя
+    // (css-transforms-2 §backface-visibility), а флаг прежде выставлялся
+    // только на пути с собственным преобразованием — красный ребёнок под
+    // `rotateX(180deg); preserve-3d` оставался виден.
+    wrapper.backface_hidden = c.backface_hidden == Some(true);
     let Some(t) = c.transform else {
         return wrapper.into_any_element();
     };
@@ -16755,10 +16776,10 @@ fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
     wrapper.has_3d = t.has_3d;
     // Обратная сторона (css-transforms-2 §backface-visibility, «m33 < 0 →
     // the element is not rendered») решается на отрисовке по собственной
-    // 4×4: раньше здесь подменяли элемент пустым `div()`, и коробка теряла
-    // место в раскладке (backface-visibility-hidden-002: эталон держит
-    // пустые 100px; -child-translate: высота обёртки от скрытого ребёнка).
-    wrapper.backface_hidden = c.backface_hidden == Some(true);
+    // 4×4 (флаг выставлен выше): раньше здесь подменяли элемент пустым
+    // `div()`, и коробка теряла место в раскладке
+    // (backface-visibility-hidden-002: эталон держит пустые 100px;
+    // -child-translate: высота обёртки от скрытого ребёнка).
     if let Some(o) = c.transform_origin {
         wrapper.origin = o;
     }
