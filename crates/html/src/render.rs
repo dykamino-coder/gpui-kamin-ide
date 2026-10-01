@@ -1144,8 +1144,13 @@ thread_local! {
 pub fn render_paged(
     nodes: &[Node],
     opts: &RenderOpts,
-    mut geom: crate::flow::PageGeom,
+    geom_for: crate::flow::PageGeomFn,
+    margin_decls: Option<PageMarginDeclsFn>,
 ) -> AnyElement {
+    // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
+    // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
+    let mut none = false;
+    let mut canvas: Option<gpui::Hsla> = None;
     let mut root = opts.root_style();
     crate::interact::frame_sanitize();
     IFRAME_DEPTH.with(|d| d.set(0));
@@ -1164,9 +1169,7 @@ pub fn render_paged(
         // page box will still be created, but no properties should apply»;
         // `root-element-display-none-print` против `blank-print-ref`).
         if matches!(e.style.display, Some(Display::None)) {
-            geom.bg = gpui::white();
-            geom.border.0 = 0.0;
-            geom.canvas = None;
+            none = true;
             nodes = Vec::new();
             break;
         }
@@ -1176,11 +1179,34 @@ pub fn render_paged(
             _ => 0.0,
         };
         let b = e.style.borders();
+        // Обёртку с видимой рамкой или своим `display` (сетка, флекс) не
+        // снимаем: снятая теряла рамку и раскладку (`page-box-011-print-ref`:
+        // `body { border: 10px solid }` — чёрной рамки не было;
+        // `page-box-000-print-ref`: `html { display: grid; border: 20px }`).
+        // Она остаётся одним ребёнком стопки; фон всё равно уходит в канвас
+        // (§painting: фон корня/тела красит канвас листа).
+        let framed = [&b.top, &b.right, &b.bottom, &b.left]
+            .iter()
+            .any(|l| side(l) > 0.0);
+        let boxy = matches!(
+            e.style.display,
+            Some(Display::Grid)
+                | Some(Display::InlineGrid)
+                | Some(Display::Flex)
+                | Some(Display::InlineFlex)
+                | Some(Display::GridLanes)
+        );
+        if framed || boxy {
+            if let Some(c) = e.style.background.filter(|c| c.a > 0.0) {
+                canvas = Some(c.to_hsla());
+            }
+            break;
+        }
         left += side(&e.style.margin.left) + side(&b.left) + side(&e.style.padding.left);
         right += side(&e.style.margin.right) + side(&b.right) + side(&e.style.padding.right);
         top += side(&e.style.margin.top) + side(&b.top) + side(&e.style.padding.top);
         if let Some(c) = e.style.background.filter(|c| c.a > 0.0) {
-            geom.canvas = Some(c.to_hsla());
+            canvas = Some(c.to_hsla());
         }
         if let Some(p) = &e.style.page {
             root_page = p.clone();
@@ -1188,6 +1214,18 @@ pub fn render_paged(
         root = inline::inherit(&root, &e.style);
         nodes = e.children;
     }
+    let geom_for: crate::flow::PageGeomFn = std::rc::Rc::new(move |i, name: &str| {
+        let mut g = geom_for(i, name);
+        if none {
+            g.bg = gpui::white();
+            g.border.0 = 0.0;
+            g.canvas = None;
+        } else if canvas.is_some() {
+            g.canvas = canvas;
+        }
+        g
+    });
+    let geom = geom_for(0, &first_kid_page_name(&nodes, &root_page));
     // Мера для страниц: `contain: size` — монолит (как в `page_monolith`),
     // `vh`/`vw` — от page area (в сыром `e.style` они ещё не разрешены:
     // `resolve_viewport` работает на копии внутри `element()`).
@@ -1226,7 +1264,86 @@ pub fn render_paged(
                 .into_any_element(),
         ]
     };
-    for n in nodes.iter().filter(|n| !is_blank(n)) {
+    // Строчное содержимое корня — ОДИН анонимный блок (CSS 2.1 §9.2.1.1:
+    // «any inline-level content … is wrapped in an anonymous block box»):
+    // соседние текст и строчные элементы вместе с пробелами между ними идут
+    // одним ребёнком стопки. Прежде каждый узел был своим ребёнком, и
+    // `This page should <em>not</em> have a blue box.` вставал тремя
+    // строками (`fixedpos-010-print`, мера `heights=[21.6, 21.6, 21.6, …]`).
+    let inline_level = |n: &Node| match n {
+        Node::Text(_) => true,
+        Node::Element(e) => {
+            e.inline
+                && !out_of_flow(&e.style)
+                && !matches!(
+                    e.style.display,
+                    Some(Display::Block)
+                        | Some(Display::Flex)
+                        | Some(Display::Grid)
+                        | Some(Display::Table)
+                        | Some(Display::ListItem)
+                        | Some(Display::None)
+                )
+        }
+    };
+    // Флоат корня с ПОСЛЕДУЮЩИМ содержимым — тоже один ребёнок: соседний блок
+    // и строки обтекают флоат или очищаются от него (CSS 2.1 §9.5), а дети
+    // стопки раскладываются порознь, и флоат вставал над соседом, а не рядом
+    // (`monolithic-overflow-020-print`: флоат справа и жёлтый блок — обе
+    // стороны пары столбиком; `content-001-print-ref`: два флоата и
+    // `clear: both`). Группа флоата закрывается первым блоком после него.
+    #[derive(PartialEq)]
+    enum Run {
+        None,
+        Inline,
+        Float,
+    }
+    let floated = |n: &Node| match n {
+        Node::Element(e) => {
+            e.style.float.is_some_and(|f| f != 0)
+                && !matches!(
+                    e.style.position,
+                    Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                )
+                && !matches!(e.style.display, Some(Display::None))
+        }
+        _ => false,
+    };
+    let mut groups: Vec<Vec<Node>> = Vec::new();
+    let mut run = Run::None;
+    for n in nodes.iter() {
+        if is_blank(n) {
+            // Пробел внутри строчного пробега — его часть, вне — пропуск.
+            if run != Run::None && let Some(g) = groups.last_mut() {
+                g.push(n.clone());
+            }
+            continue;
+        }
+        let (fl, il) = (floated(n), inline_level(n));
+        let join = match run {
+            Run::None => false,
+            Run::Inline => il || fl,
+            Run::Float => true,
+        };
+        match groups.last_mut() {
+            Some(g) if join => g.push(n.clone()),
+            _ => groups.push(vec![n.clone()]),
+        }
+        run = if fl || (run == Run::Float && il) {
+            Run::Float
+        } else if il {
+            Run::Inline
+        } else {
+            Run::None
+        };
+    }
+    for g in groups.iter_mut() {
+        while g.last().is_some_and(is_blank) {
+            g.pop();
+        }
+    }
+    for group in &groups {
+        let n = &group[0];
         if let Node::Element(e) = n
             && matches!(e.style.display, Some(Display::None))
         {
@@ -1242,12 +1359,16 @@ pub fn render_paged(
         let build = |slot: &mut Vec<AnyElement>, fixed_slot: &mut Vec<AnyElement>| {
             crate::interact::icb_open();
             FIXED_LAYER.with(|f| f.borrow_mut().clear());
-            let el = div()
-                .pl(px(left))
-                .pr(px(right))
-                .pt(px(pad_top))
-                .children(blocks(std::slice::from_ref(n), &root, opts))
-                .into_any_element();
+            // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
+            // page area — содержащего блока корня (css-page-3 §page-model).
+            let mut wrap = div().pl(px(left)).pr(px(right)).pt(px(pad_top));
+            if let [Node::Element(r)] = group.as_slice()
+                && matches!(r.tag.as_str(), "html" | "body")
+                && matches!(r.style.height, Some(Len::Pct(_)))
+            {
+                wrap = wrap.h(px(ah));
+            }
+            let el = wrap.children(blocks(group, &root, opts)).into_any_element();
             slot.extend(layer(crate::interact::icb_close()));
             fixed_slot.extend(layer(
                 FIXED_LAYER.with(|f| std::mem::take(&mut *f.borrow_mut())),
@@ -1282,9 +1403,17 @@ pub fn render_paged(
             ),
             _ => (false, false, false, Some((root_page.clone(), root_page.clone()))),
         };
+        // Группа из нескольких узлов монолитом не бывает: её режет край листа.
+        let monolith = monolith && group.iter().filter(|g| !is_blank(g)).count() == 1;
         let renamed = match (&prev_end, &names) {
             (Some(p), Some((start, _))) => p != start,
             _ => false,
+        };
+        // Имя, с которого коробка начинается: своё у коробки класса A, иначе
+        // — конец предыдущей (анонимный блок и прочие продолжают страницу).
+        let start_name = match &names {
+            Some((start, _)) => start.clone(),
+            None => prev_end.clone().unwrap_or_else(|| root_page.clone()),
         };
         if let Some((_, end)) = &names {
             prev_end = Some(end.clone());
@@ -1298,24 +1427,87 @@ pub fn render_paged(
         // Флоат: не влезший MARGIN box уходит на следующую страницу целиком
         // (`float-with-large-margin-bottom-cross-page-002`: эталон —
         // `break-before: page`), нижнее поле — часть его меры.
+        if std::env::var("HTML_VIEWPORT").is_ok()
+            && let Node::Element(e) = n
+        {
+            eprintln!(
+                "PAGEKID tag={} inline={} float={:?} oof={} shape={:?}",
+                e.tag,
+                e.inline,
+                e.style.float,
+                out_of_flow(&e.style),
+                shape_full(e, 4, shape_cx).map(|s| (s.0, s.3.len(), s.5.len()))
+            );
+        }
+        // Флоат корня — ребёнок стопки СО СВОЕЙ мерой: css-break-4 §3.1
+        // «User agents should also apply these properties to floated boxes
+        // whose containing block is in the normal flow of the root fragmented
+        // element». Гейт `out_of_flow` отнимал у него меру вместе с
+        // абсолютами: таблица `float: left; break-inside: avoid` выше листа
+        // резалась срезом по краю сквозь абзац вместо точки класса A между
+        // абзацами ячейки (`float-page-break-inside-avoid-1-print` против
+        // эталона с обычной таблицей), а ветка `h + mb` ниже была мёртвой.
+        let positioned = |e: &Element| {
+            matches!(
+                e.style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            )
+        };
+        // Поля ребёнка: мера `shape_full` — border box, а обёртка рисует его
+        // со смещением на верхнее поле. Прежде поле выбрасывалось, и маска
+        // фрагмента высотой в border box резала нарисованное ниже поля
+        // (`page-left-right-001-print-ref`: `margin-top: 200px` у блока 100 —
+        // жёлтого квадрата не было вовсе). Теперь поля уходят в `Kid.mt/mb`
+        // (схлопывание соседей — в `fill`), а копия поднимается на смещение
+        // border box внутри обёртки (`PageKid::inner_top`). У первого ребёнка
+        // с отбивкой корня и у флоата (его поля не схлопываются, CSS 2.1
+        // §8.3.1) поля — часть самой меры.
+        let mut margins = (0.0f32, 0.0f32, 0.0f32);
         let shape = match n {
-            Node::Element(e) if !e.inline && !out_of_flow(&e.style) => {
-                shape_full(e, 4, shape_cx).map(|(h, _mt, mb, mut cuts, mut forced, mut solid)| {
-                    if pad_top > 0.0 {
+            _ if group.iter().filter(|g| !is_blank(g)).count() > 1 => None,
+            Node::Element(e) if !e.inline && !positioned(e) => {
+                shape_full(e, 4, shape_cx).map(|(h, mt, mb, mut cuts, mut forced, mut solid)| {
+                    let floated = e.style.float.unwrap_or(0) != 0;
+                    // Письмо — своё или унаследованное от корня (`html, body {
+                    // writing-mode }` снимаются выше, свой стиль ребёнка его не
+                    // несёт).
+                    let vertical = e.style.vertical.or(root.vertical) == Some(true);
+                    let fold = pad_top > 0.0 || floated;
+                    let lead = if vertical {
+                        pad_top
+                    } else if fold {
+                        pad_top + mt
+                    } else {
+                        0.0
+                    };
+                    if lead != 0.0 {
                         for c in cuts.iter_mut() {
-                            c.0 += pad_top;
-                            c.1 += pad_top;
+                            c.0 += lead;
+                            c.1 += lead;
                         }
                         for f in forced.iter_mut() {
-                            *f += pad_top;
+                            *f += lead;
                         }
                         for r in solid.iter_mut() {
-                            r.0 += pad_top;
-                            r.1 += pad_top;
+                            r.0 += lead;
+                            r.1 += lead;
                         }
                     }
-                    let h = if e.style.float.unwrap_or(0) != 0 { h + mb } else { h };
-                    (h + pad_top, cuts, forced, solid)
+                    // Вертикальное письмо: поля меры — по блочной оси письма, не
+                    // по высоте стопки; прежнее поведение (`block-001-wm-vlr/vrl`:
+                    // `margin-inline-start` сверху — 0.40 -> 0.88 с полями).
+                    if vertical {
+                        let h = if floated { h + mb } else { h };
+                        return (h + pad_top, cuts, forced, solid);
+                    }
+                    if fold {
+                        let tail = if floated { mb } else { 0.0 };
+                        margins = (0.0, if floated { 0.0 } else { mb }, 0.0);
+                        (h + lead + tail, cuts, forced, solid)
+                    } else {
+                        margins = (mt, mb, mt);
+                        (h, cuts, forced, solid)
+                    }
                 })
             }
             _ => None,
@@ -1330,10 +1522,23 @@ pub fn render_paged(
             force_before: fb || renamed,
             force_after: fa,
             shape,
+            page: start_name,
+            mt: margins.0,
+            mb: margins.1,
+            inner_top: margins.2,
         });
     }
     PAGED.with(|p| p.set(false));
-    crate::flow::PageStack::new(kids, geom, icb_copies, icb_reach, fixed_copies)
+    // Марджин-боксы: наследуют от контекста страницы, а тот — от корня
+    // (css-page-3 §page-properties; Blink `StyleForPage` от documentElement).
+    let margin_for: Option<crate::flow::MarginFn> = margin_decls.map(|f| {
+        let root = root.clone();
+        let opts = opts.clone();
+        std::rc::Rc::new(move |i: usize, name: &str, pages: usize, g: &crate::flow::PageGeom| {
+            page_margin_boxes(&f(i, name), i, pages, g, &root, &opts)
+        }) as crate::flow::MarginFn
+    });
+    crate::flow::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies, margin_for)
         .into_any_element()
 }
 
@@ -2547,6 +2752,19 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         .iter()
         .map(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style)))
         .collect();
+    // Абсолют с заданным `top` стоит от верха содержащего блока, а не на
+    // статическом месте (CSS 2.1 §10.6.4): его дотяг у страниц отсчитывается
+    // от верха коробки. Прежде — от курсора потока, и `top: 0` после блока
+    // 250vh тянул лист на 250vh дальше (`fixedpos-008-print`: девять листов
+    // вместо шести).
+    let abs_top: Vec<bool> = kids
+        .iter()
+        .map(|n| {
+            matches!(n, Node::Element(k)
+                if k.style.position == Some(crate::computed::Position::Absolute)
+                    && matches!(k.style.inset.top, Some(l) if !matches!(l, Len::Auto)))
+        })
+        .collect();
     // Запреты `break-before/after: avoid*` элементов гибкой стопки — с
     // переносом с крайних потомков (`edge_avoid`). Сцепки из них (`flex_run`
     // ниже) — только у РЯДА С ПЕРЕНОСОМ: там стопка «строка = элемент» идёт по
@@ -2890,7 +3108,12 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             // (css-flexbox-1 §4.1): ни зазора, ни границы элементов. Дотяг
             // его низа фрагментации по-прежнему нужен.
             if flex_items && oof_kid.get(ki).copied().unwrap_or(false) {
-                oof_reach = oof_reach.max(y + kreach);
+                let origin = if cx.paged && abs_top.get(ki).copied().unwrap_or(false) {
+                    0.0
+                } else {
+                    y
+                };
+                oof_reach = oof_reach.max(origin + kreach);
                 continue;
             }
             // Сетка: поля рядов не схлопываются ни между собой, ни сквозь
@@ -2976,7 +3199,12 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
             // координаты этой коробки. `y` он не двигает:
             // внепоточный соседей не сдвигает
             // (CSS 2.1 §9.3.1).
-            oof_reach = oof_reach.max(start + kreach);
+            let origin = if cx.paged && abs_top.get(ki).copied().unwrap_or(false) {
+                0.0
+            } else {
+                start
+            };
+            oof_reach = oof_reach.max(origin + kreach);
             y = start + h;
             prev_mb = kmb;
             first = false;
@@ -3081,7 +3309,25 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                         // строка стоит на краю, и общий срез совпадает с
                         // раздельными (css-grid-2 §12.1 шаг 3: ряд растёт).
                         // Границ РЯДОВ по-прежнему нет — см. выше.
-                        for (_, row, kmt, s, plain) in &spots {
+                        for (ix, row, kmt, s, plain) in &spots {
+                            // Страницы: монолитный элемент (`contain: size`,
+                            // замещаемый…) — сплошной диапазон во всю его
+                            // высоту, и край листа внутри него уводит разрыв
+                            // к началу ряда (css-grid-2 §fragmenting: «a grid
+                            // container may break between rows»; Blink
+                            // `IsMonolithic` → разрыв перед рядом;
+                            // `grid-fragmentation-between-rows-001-print`:
+                            // второй ряд `contain: size` резался краем листа).
+                            if cx.paged
+                                && !*plain
+                                && let (Some(&(r0, _)), Some(Node::Element(k))) =
+                                    (b.get(*row), c.children.get(*ix))
+                                && solid_box(k)
+                            {
+                                let start = top + r0 + kmt;
+                                solid.push((start, start + s.0));
+                                continue;
+                            }
                             let (true, Some(&(r0, _))) = (*plain, b.get(*row)) else {
                                 continue;
                             };
@@ -4242,8 +4488,17 @@ fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     // `monolithic-overflow-003` сегодня 2.08: мера сделала бы ЕЙ ХУЖЕ.
     // Единственный диапазон, которого гейт не считает, — верхняя рамка
     // (0, top): её положили ДО цикла рядов.
+    // Страницам этот отказ не нужен: у стопки листов переполнение монолитом
+    // своё (`ColumnStack::fill_at`, ветка `paged && placed && cur > target`,
+    // crbug 1402540), а «монолитом» здесь оказывается уже верхняя рамка любой
+    // ячейки (`shape_full` кладёт её сплошным диапазоном — Blink
+    // `FinishFragmentation`: «Avoid breaking inside block-start border»).
+    // Отказ уводил таблицу с `block-size` в меру стопки блоков по тегу, где
+    // высота считается content-box: `table-fragmentation-001b-print` —
+    // 336 + отбивка + рамка = 432 вместо 336 по border-box (UA-лист
+    // css-tables-3 `table { box-sizing: border-box }`), третий пустой лист.
     let mono_inside = solid.iter().any(|&(a, b)| a > 0.01 || b > top + 0.01);
-    if mono_inside && (spec_h.is_some() || spec_min_h.is_some()) {
+    if mono_inside && !cx.paged && (spec_h.is_some() || spec_min_h.is_some()) {
         return None;
     }
     // Заданная высота — ПОЛ коробки рядов. `box-sizing` — та же мерка, что в
@@ -4393,7 +4648,12 @@ fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
     let from_bottom = len(&e.style.inset.bottom)
         .and_then(|b| cx.viewport.map(|v| v.1 - b))
         .unwrap_or(0.0);
-    let own = shape_full(e, 4, cx).map(|s| s.0).unwrap_or(0.0);
+    // Мера `None` (строчное содержимое) — не «пусто»: хотя бы точка высоты,
+    // чтобы лист под самой строкой родился (`fixedpos-005-print`: `top:
+    // 300vh` внутри `top: 100vh` — текст ровно на краю четвёртого листа).
+    let own = shape_full(e, 4, cx).map(|s| s.0).unwrap_or_else(|| {
+        if e.children.iter().all(is_blank) { 0.0 } else { 1.0 }
+    });
     let clipped = matches!(
         e.style.overflow_y,
         Some(crate::computed::Overflow::Hidden)
@@ -4413,7 +4673,26 @@ fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
             })
             .sum()
     };
-    (top + own.max(inner)).max(from_bottom)
+    // Абсолютные потомки-абсолюты: содержащий блок — эта коробка, их `top`
+    // — от её верха (CSS 2.1 §10.6.4). Мера `shape_full` у коробки со
+    // строчным содержимым `None`, и дотяг вложенного `top: 300vh` терялся
+    // (`fixedpos-005-print`: три листа вместо пяти).
+    let nested = if clipped {
+        0.0
+    } else {
+        e.children
+            .iter()
+            .filter_map(|n| match n {
+                Node::Element(k)
+                    if k.style.position == Some(crate::computed::Position::Absolute) =>
+                {
+                    Some(oof_reach(k, cx))
+                }
+                _ => None,
+            })
+            .fold(0.0f32, f32::max)
+    };
+    (top + own.max(inner).max(nested)).max(from_bottom)
 }
 
 /// Монолит стопки страниц (css-break-4 §4.1; Blink `IsMonolithic`):
@@ -4622,13 +4901,205 @@ fn page_names(e: &Element, inherited: &str) -> (String, String) {
     (start, end)
 }
 
-/// Имя страницы документа, если оно ОДНО на все страницы: начальное и
-/// конечное значения каждой коробки класса A верхнего уровня (с учётом
-/// `page` у `html`/`body`) совпадают. Стенд по нему выбирает `@page <имя>`
-/// (css-page-3 §cascading-and-page-context: имя — специфичность (1,0,0),
-/// выше безымянного правила). Разные имена → `None`: геометрия листа у стопки
-/// одна, и правило одной из страниц красило бы чужие.
-pub fn uniform_page_name(nodes: &[Node]) -> Option<String> {
+/// Объявления листа для марджин-боксов: контекст страницы (наследуемое
+/// идёт в коробки, css-page-3 §page-properties) и коробки по именам.
+pub type PageMarginDecls = (Vec<(String, String)>, Vec<(String, Vec<(String, String)>)>);
+pub type PageMarginDeclsFn = std::rc::Rc<dyn Fn(usize, &str) -> PageMarginDecls>;
+
+/// Марджин-боксы листа `page` из `pages` (css-page-3 §margin-boxes): элемент
+/// и мера каждой ПОРОЖДЁННОЙ коробки — `content` не `none`/`normal`
+/// (§populating-margin-boxes). Раскладку делает `flow::PageStack` по
+/// `page_margin`. Элемент — гибкая колонка во весь border box: так
+/// `vertical-align` коробки работает «как у ячейки таблицы» (§page-properties),
+/// а `text-align` наследует блок содержимого.
+fn page_margin_boxes(
+    decls: &PageMarginDecls,
+    page: usize,
+    pages: usize,
+    g: &crate::flow::PageGeom,
+    root: &Computed,
+    opts: &RenderOpts,
+) -> Vec<crate::flow::MarginBox> {
+    use crate::computed::ContentItem;
+    let (ctx, boxes) = decls;
+    let mut ctx_own = Computed::default();
+    for (k, v) in ctx {
+        ctx_own.apply_one(k, v);
+    }
+    let ctx_style = inline::inherit(root, &ctx_own);
+    let mut out = Vec::new();
+    for (slot, list) in boxes {
+        let Some(place) = crate::page_margin::place(slot) else { continue };
+        let last = |key: &str| {
+            list.iter()
+                .rev()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.trim().to_string())
+        };
+        let Some(content) = last("content") else { continue };
+        if content == "none" || content == "normal" {
+            continue;
+        }
+        let Some(items) = crate::computed::parse_content(&content) else { continue };
+        let text: String = items
+            .iter()
+            .map(|it| match it {
+                ContentItem::Str(s) => s.clone(),
+                // `page` — номер листа с единицы, `pages` — их число
+                // (§page-based-counters).
+                ContentItem::Counter(n, _) if n == "page" => (page + 1).to_string(),
+                ContentItem::Counter(n, _) if n == "pages" => pages.to_string(),
+                ContentItem::Counter(..) => "0".to_string(),
+                _ => String::new(),
+            })
+            .collect();
+        let (ta, va) = crate::page_margin::defaults(slot);
+        let va = last("vertical-align").unwrap_or_else(|| va.to_string());
+        let mut own = Computed::default();
+        own.apply_one("text-align", ta);
+        for (k, v) in list {
+            if k != "content" && k != "vertical-align" {
+                own.apply_one(k, v);
+            }
+        }
+        let resolved = inline::inherit(&ctx_style, &own);
+        let fs = match resolved.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let cb = crate::page_margin::containing_block(place, g.size, g.margin);
+        // Длина по базе: `auto` — `None`; проценты — от содержащего блока по
+        // СВОЕЙ оси (Blink `kContainingBlockSize`).
+        let len = |l: &Option<Len>, base: f32| -> Option<f32> {
+            match l {
+                Some(Len::Px(v)) => Some(*v),
+                Some(Len::Pct(k)) => Some(k * base),
+                Some(Len::Em(k)) => Some(k * fs),
+                _ => None,
+            }
+        };
+        let zero = |l: &Option<Len>, base: f32| len(l, base).unwrap_or(0.0);
+        let b = own.borders();
+        let pad = [
+            zero(&own.padding.top, cb.3),
+            zero(&own.padding.right, cb.2),
+            zero(&own.padding.bottom, cb.3),
+            zero(&own.padding.left, cb.2),
+        ];
+        let edges = [
+            zero(&b.top, cb.3) + pad[0],
+            zero(&b.right, cb.2) + pad[1],
+            zero(&b.bottom, cb.3) + pad[2],
+            zero(&b.left, cb.2) + pad[3],
+        ];
+        let auto_m = |l: &Option<Len>| matches!(l, Some(Len::Auto));
+        let margin = [
+            (!auto_m(&own.margin.top)).then(|| zero(&own.margin.top, cb.3)),
+            (!auto_m(&own.margin.right)).then(|| zero(&own.margin.right, cb.2)),
+            (!auto_m(&own.margin.bottom)).then(|| zero(&own.margin.bottom, cb.3)),
+            (!auto_m(&own.margin.left)).then(|| zero(&own.margin.left, cb.2)),
+        ];
+        let bb = own.border_box == Some(true);
+        let w = len(&own.width, cb.2).map(|v| if bb { v } else { v + edges[1] + edges[3] });
+        let h = len(&own.height, cb.3).map(|v| if bb { v } else { v + edges[0] + edges[2] });
+        // `size` — border box в точках (итог раскладки) либо `None` для меры по
+        // содержимому: доли от обёртки не годятся, `blocks` кладёт коробку в
+        // свою обёртку, и `height: 100%` решалась от неё как `auto` —
+        // `vertical-align` терял высоту (`alignment-001`: буквы у верха).
+        let opts = opts.clone();
+        let ctx_style = ctx_style.clone();
+        let build = move |size: Option<(f32, f32)>| -> AnyElement {
+            let mut st = own.clone();
+            for (k, v) in [
+                ("padding-top", format!("{}px", pad[0])),
+                ("padding-right", format!("{}px", pad[1])),
+                ("padding-bottom", format!("{}px", pad[2])),
+                ("padding-left", format!("{}px", pad[3])),
+            ] {
+                st.apply_one(k, &v);
+            }
+            let (sw, sh) = match size {
+                Some((w, h)) => (format!("{w}px"), format!("{h}px")),
+                None => ("auto".to_string(), "auto".to_string()),
+            };
+            for (k, v) in [
+                ("width", sw.as_str()),
+                ("height", sh.as_str()),
+                ("min-width", "0"),
+                ("max-width", "none"),
+                ("min-height", "0"),
+                ("max-height", "none"),
+                ("margin", "0"),
+                ("box-sizing", "border-box"),
+                ("display", "flex"),
+                ("flex-direction", "column"),
+                (
+                    "justify-content",
+                    match va.as_str() {
+                        "top" => "flex-start",
+                        "bottom" => "flex-end",
+                        _ => "center",
+                    },
+                ),
+            ] {
+                st.apply_one(k, v);
+            }
+            let inner = Element {
+                tag: "div".to_string(),
+                inline: false,
+                node_id: 0,
+                style: Computed::default(),
+                hover: None,
+                first_letter: None,
+                first_line: None,
+                children: vec![Node::Text(text.clone())],
+                attrs: vec![],
+                anim: Default::default(),
+                list_item: None,
+            };
+            let outer = Element {
+                tag: "div".to_string(),
+                style: st,
+                children: vec![Node::Element(inner.clone())],
+                ..inner
+            };
+            let mut els = blocks(&[Node::Element(outer)], &ctx_style, &opts);
+            if els.len() == 1 {
+                els.pop().unwrap()
+            } else {
+                div().children(els).into_any_element()
+            }
+        };
+        let probe = build(None);
+        out.push(crate::flow::MarginBox {
+            place,
+            make: std::rc::Rc::new(move |w, h| build(Some((w, h)))),
+            probe,
+            w,
+            h,
+            margin,
+        });
+    }
+    out
+}
+
+/// Имя ПЕРВОЙ страницы (css-page-3 §using-named-pages, п. 3): start value
+/// первой поточной коробки класса A детей корня, иначе имя самого корня.
+fn first_kid_page_name(nodes: &[Node], root_page: &str) -> String {
+    for n in nodes.iter().filter(|n| !is_blank(n)) {
+        match n {
+            Node::Element(e) if matches!(e.style.display, Some(Display::None)) => continue,
+            Node::Element(e) if class_a_box(e) => return page_names(e, root_page).0,
+            Node::Element(e) if !e.inline => continue,
+            _ => return root_page.to_string(),
+        }
+    }
+    root_page.to_string()
+}
+
+/// Имя первой страницы документа — для стенда: геометрия первого листа даёт
+/// начальный содержащий блок (css-page-3 §page-model).
+pub fn first_page_name(nodes: &[Node]) -> String {
     let mut nodes: Vec<Node> = nodes.to_vec();
     let mut root_page = String::new();
     loop {
@@ -4642,21 +5113,7 @@ pub fn uniform_page_name(nodes: &[Node]) -> Option<String> {
         }
         nodes = (*e).clone().children;
     }
-    let mut name: Option<String> = None;
-    for n in nodes.iter().filter(|n| !is_blank(n)) {
-        let Node::Element(e) = n else { continue };
-        if matches!(e.style.display, Some(Display::None)) || !class_a_box(e) {
-            continue;
-        }
-        let (start, end) = page_names(e, &root_page);
-        for v in [start, end] {
-            match &name {
-                Some(cur) if *cur != v => return None,
-                _ => name = Some(v),
-            }
-        }
-    }
-    name.filter(|n| !n.is_empty())
+    first_kid_page_name(&nodes, &root_page)
 }
 
 thread_local! {

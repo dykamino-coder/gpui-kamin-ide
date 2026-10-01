@@ -51,6 +51,7 @@ pub mod inline;
 pub mod interact;
 pub mod lines;
 pub mod metrics;
+pub mod page_margin;
 mod motion;
 pub mod render;
 pub mod scroll;

@@ -454,7 +454,17 @@ fn paint_line(
                 };
 
                 let content_mask = window.content_mask();
-                if max_glyph_bounds.intersects(&content_mask.bounds) {
+                // KaminIDE patch: маска окна под масштабом стопки страниц —
+                // в ИТОГОВЫХ координатах (`Window::scaled_mask`), а глиф ещё в
+                // своих; сравнивать надо образ глифа, иначе под масштабом < 1
+                // строки у низа листа отбрасывались целиком (печать:
+                // `fixedpos-004-print-ref`, абсолюты `bottom: 0` при трёх листах).
+                let glyph_view = window
+                    .scaled_mask(crate::ContentMask {
+                        bounds: max_glyph_bounds,
+                    })
+                    .bounds;
+                if glyph_view.intersects(&content_mask.bounds) {
                     if glyph.is_emoji {
                         window.paint_emoji(
                             glyph_origin + baseline_offset,

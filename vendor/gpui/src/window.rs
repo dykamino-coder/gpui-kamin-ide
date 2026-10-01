@@ -2610,7 +2610,7 @@ impl Window {
     /// KaminIDE patch: перевести маску ребёнка в итоговые координаты окна,
     /// когда стопка страниц рисует под масштабом (`with_mask_scale`). Вне
     /// стопки — тождество.
-    fn scaled_mask(&self, mask: ContentMask<Pixels>) -> ContentMask<Pixels> {
+    pub(crate) fn scaled_mask(&self, mask: ContentMask<Pixels>) -> ContentMask<Pixels> {
         let Some((o, s)) = self.mask_scale else {
             return mask;
         };

@@ -2283,6 +2283,9 @@ pub struct PageGeom {
     pub size: (f32, f32),
     pub margin: [f32; 4],
     pub border: (f32, gpui::Hsla),
+    /// Контур листа: толщина, сдвиг наружу от рамки, цвет (css-ui-4 §outline;
+    /// у коробки страницы это обычное свойство, `page-box-010`).
+    pub outline: (f32, f32, gpui::Hsla),
     pub padding: [f32; 4],
     /// Фон листа — кроет ВЕСЬ лист вместе с полями (§painting, слой 1).
     pub bg: gpui::Hsla,
@@ -2320,7 +2323,37 @@ pub struct PageKid {
     /// `None` — высота не известна заранее, берётся измеренная, разрезов
     /// внутри нет.
     pub shape: Option<(f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>,
+    /// Имя страницы, с которого коробка начинается (css-page-3 §using-named-pages:
+    /// start value), `""` — без имени. Лист, на котором коробка — первая, берёт
+    /// это имя для своего `@page <имя>` (`PageStack::geom_for`).
+    pub page: String,
+    /// Поля коробки для укладки (схлопываются с соседями в `fill`) и смещение
+    /// её border box внутри элемента — на него копия поднимается.
+    pub mt: f32,
+    pub mb: f32,
+    pub inner_top: f32,
 }
+
+/// Геометрия листа по его номеру (с нуля) и имени страницы: каскад
+/// `@page` (`:first`, `:left`/`:right`, имена) решает стенд.
+pub type PageGeomFn = std::rc::Rc<dyn Fn(usize, &str) -> PageGeom>;
+
+/// Порождённый марджин-бокс листа (css-page-3 §margin-boxes): элемент во весь
+/// border box, его копия для меры по содержимому, заданные размеры (border box,
+/// `None` — `auto`) и поля (`None` — `auto`), верх/право/низ/лево.
+pub struct MarginBox {
+    pub place: crate::page_margin::Place,
+    /// Элемент коробки по её border box (ширина, высота) — строится после
+    /// раскладки, с размером в точках.
+    pub make: std::rc::Rc<dyn Fn(f32, f32) -> AnyElement>,
+    pub probe: AnyElement,
+    pub w: Option<f32>,
+    pub h: Option<f32>,
+    pub margin: [Option<f32>; 4],
+}
+
+/// Марджин-боксы листа по номеру, имени, числу листов и геометрии.
+pub type MarginFn = std::rc::Rc<dyn Fn(usize, &str, usize, &PageGeom) -> Vec<MarginBox>>;
 
 /// Стопка страниц: page area каждой — фрагментаинер (css-break-4 §2). Листы
 /// раскладываются сеткой и МАСШТАБИРУЮТСЯ до вмещения в свою коробку: стенд
@@ -2328,7 +2361,16 @@ pub struct PageKid {
 /// сравнивать надо все страницы обеих сторон.
 pub struct PageStack {
     kids: Vec<PageKid>,
-    geom: PageGeom,
+    /// Лист `i` с именем страницы — его геометрия (css-page-3 §cascading).
+    geom_for: PageGeomFn,
+    /// Геометрия КАЖДОГО листа, итог `prepaint` (листы бывают разные:
+    /// `@page :first { size }`, именные страницы).
+    geoms: std::cell::RefCell<Vec<PageGeom>>,
+    /// Ячейка сетки листов — наибольший лист.
+    cell: std::cell::Cell<(f32, f32)>,
+    /// Марджин-боксы: построитель и итог раскладки `(лист, элемент)`.
+    margin_for: Option<MarginFn>,
+    margin_els: Vec<(usize, AnyElement)>,
     /// Слой начального содержащего блока (внепоточные без позиционированного
     /// предка) — по КОПИИ на страницу: `icb[p]` рисуется на листе `p` со
     /// сдвигом на `p` page area вверх, то есть абсолют раскладывается «как
@@ -2355,14 +2397,19 @@ pub struct PageStack {
 impl PageStack {
     pub fn new(
         kids: Vec<PageKid>,
-        geom: PageGeom,
+        geom_for: PageGeomFn,
         icb: Vec<Vec<AnyElement>>,
         icb_reach: f32,
         fixed: Vec<Vec<AnyElement>>,
+        margin_for: Option<MarginFn>,
     ) -> Self {
         PageStack {
             kids,
-            geom,
+            geom_for,
+            geoms: std::cell::RefCell::new(Vec::new()),
+            cell: std::cell::Cell::new((1.0, 1.0)),
+            margin_for,
+            margin_els: Vec::new(),
             icb,
             icb_reach,
             fixed,
@@ -2375,10 +2422,17 @@ impl PageStack {
     /// Левый верх листа `i` в НЕмасштабированных точках стопки.
     fn sheet_origin(&self, i: usize) -> (f32, f32) {
         let per_row = self.grid.get().0.max(1);
-        (
-            (i % per_row) as f32 * self.geom.size.0,
-            (i / per_row) as f32 * self.geom.size.1,
-        )
+        let (cw, ch) = self.cell.get();
+        ((i % per_row) as f32 * cw, (i / per_row) as f32 * ch)
+    }
+
+    /// Геометрия листа `i` (итог `prepaint`; за краем — последний лист).
+    fn geom(&self, i: usize) -> PageGeom {
+        let gs = self.geoms.borrow();
+        gs.get(i)
+            .or(gs.last())
+            .copied()
+            .unwrap_or_else(|| (self.geom_for)(i, ""))
     }
 
     /// Прямоугольник page area листа `i` в ИТОГОВЫХ координатах окна (с
@@ -2387,15 +2441,25 @@ impl PageStack {
     fn area_mask(&self, bounds: Bounds<Pixels>, i: usize) -> gpui::ContentMask<Pixels> {
         let s = self.grid.get().1;
         let (sx, sy) = self.sheet_origin(i);
-        let (ax, ay) = self.geom.area_origin();
+        let g = self.geom(i);
+        let (ax, ay) = g.area_origin();
+        let area = Bounds {
+            origin: point(
+                bounds.origin.x + px((sx + ax) * s),
+                bounds.origin.y + px((sy + ay) * s),
+            ),
+            size: size(px(g.area.0 * s), px(g.area.1 * s)),
+        };
+        // Отрицательные поля выносят page area ЗА лист, а видно только то,
+        // что на листе (`page-margin-negative-print.tentative`: красная рамка
+        // 20px на −20..0 обязана уйти под обрез). Маски фрагментов, слоёв ICB
+        // и `fixed` — пересечения с этой, обрез достаётся всем.
+        let sheet = Bounds {
+            origin: point(bounds.origin.x + px(sx * s), bounds.origin.y + px(sy * s)),
+            size: size(px(g.size.0 * s), px(g.size.1 * s)),
+        };
         gpui::ContentMask {
-            bounds: Bounds {
-                origin: point(
-                    bounds.origin.x + px((sx + ax) * s),
-                    bounds.origin.y + px((sy + ay) * s),
-                ),
-                size: size(px(self.geom.area.0 * s), px(self.geom.area.1 * s)),
-            },
+            bounds: area.intersect(&sheet),
         }
     }
 }
@@ -2441,10 +2505,14 @@ impl Element for PageStack {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let g = self.geom;
+        // Первый лист — по имени первой коробки (css-page-3 §using-named-pages,
+        // п. 3: «the first page … is given the start page value of the root»):
+        // его page area — начальный содержащий блок и ширина меры.
+        let first_name = self.kids.first().map(|k| k.page.clone()).unwrap_or_default();
+        let g = (self.geom_for)(0, &first_name);
         let (aw, ah) = (g.area.0.max(1.0), g.area.1.max(1.0));
         // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
-        //    уже внутри их коробок (обёртка `render_paged`), поэтому mt/mb = 0.
+        //    — из меры (`PageKid::mt/mb`), у измеренных без меры они внутри обёртки.
         let kids: Vec<Kid> = self
             .kids
             .iter_mut()
@@ -2467,8 +2535,8 @@ impl Element for PageStack {
                 };
                 Kid {
                     h,
-                    mt: 0.0,
-                    mb: 0.0,
+                    mt: k.mt,
+                    mb: k.mb,
                     monolith: k.monolith,
                     cuts,
                     force_before: k.force_before,
@@ -2503,7 +2571,60 @@ impl Element for PageStack {
             .map(|k| k.frags.len() + 1)
             .min()
             .unwrap_or(1);
-        let (pages, _, plan) = ColumnStack::fill(&kids, ah, limit, true);
+        // Листы бывают РАЗНЫЕ (`@page :first { size }`, `@page <имя>`), и
+        // высота page area решает разрезы, а имя листа — от первой коробки на
+        // нём, то есть от тех же разрезов. Укладка повторяется, пока имена
+        // листов не перестанут меняться (у одинаковых листов — один проход,
+        // байт-в-байт прежний).
+        let kid_names: Vec<String> = self.kids.iter().map(|k| k.page.clone()).collect();
+        let names_of = |plan: &[Frag], pages: usize| -> Vec<String> {
+            let mut out: Vec<Option<String>> = vec![None; pages];
+            for f in plan {
+                if let Some(slot) = out.get_mut(f.col)
+                    && slot.is_none()
+                {
+                    *slot = Some(kid_names[f.kid].clone());
+                }
+            }
+            let mut last = first_name.clone();
+            out.into_iter()
+                .map(|n| {
+                    if let Some(n) = n {
+                        last = n;
+                    }
+                    last.clone()
+                })
+                .collect()
+        };
+        let mut geoms: Vec<PageGeom> = vec![g];
+        let mut names: Vec<String> = vec![first_name.clone()];
+        let mut result = None;
+        for _ in 0..4 {
+            let tail = names.last().cloned().unwrap_or_default();
+            let at = |c: usize| -> f32 {
+                geoms
+                    .get(c)
+                    .copied()
+                    .unwrap_or_else(|| (self.geom_for)(c, &tail))
+                    .area
+                    .1
+                    .max(1.0)
+            };
+            let (pages, _, plan) = ColumnStack::fill_at(&kids, &at, limit, true);
+            let new_names = names_of(&plan, pages);
+            let stable = new_names == names;
+            names = new_names;
+            geoms = names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| (self.geom_for)(i, n))
+                .collect();
+            result = Some((pages, plan));
+            if stable {
+                break;
+            }
+        }
+        let (pages, plan) = result.unwrap_or_default();
         // Абсолюты корня добавляют листы, пока не кончится их досягаемость
         // (Blink: «If overflowed by monolithic overflow, we need more pages»,
         // box_fragment_builder.h). Потолок — число копий слоя.
@@ -2513,12 +2634,23 @@ impl Element for PageStack {
             ((self.icb_reach / ah).ceil().max(0.0) as usize).min(self.icb.len())
         };
         let pages = pages.max(icb_pages).max(1);
+        // Листы сверх плана (досягаемость абсолютов) — с именем последнего.
+        let tail = names.last().cloned().unwrap_or_default();
+        while geoms.len() < pages {
+            let i = geoms.len();
+            geoms.push((self.geom_for)(i, &tail));
+        }
+        geoms.truncate(pages);
         // 2. Сетка листов и масштаб до вмещения в коробку стопки.
         let (ww, wh) = (
             f32::from(bounds.size.width).max(1.0),
             f32::from(bounds.size.height).max(1.0),
         );
-        let (pw, ph) = (g.size.0.max(1.0), g.size.1.max(1.0));
+        // Ячейка сетки — наибольший лист (у одинаковых — сам лист).
+        let (pw, ph) = geoms.iter().fold((1.0f32, 1.0f32), |(w, h), g| {
+            (w.max(g.size.0), h.max(g.size.1))
+        });
+        self.cell.set((pw, ph));
         let mut best = (1usize, 0.0f32);
         for per_row in 1..=pages {
             let rows = pages.div_ceil(per_row);
@@ -2533,7 +2665,7 @@ impl Element for PageStack {
         self.pages.set(pages);
         if std::env::var("HTML_VIEWPORT").is_ok() {
             eprintln!(
-                "PAGESTACK bounds={:?} kids={} heights={:?} cuts={:?} shape/mono={:?} forced={:?} area={:?} size={:?} pages={} grid={:?} plan={}",
+                "PAGESTACK bounds={:?} kids={} heights={:?} cuts={:?} shape/mono={:?} forced={:?} area={:?} size={:?} pages={} grid={:?} plan={} icb_reach={}",
                 bounds,
                 kids.len(),
                 kids.iter().map(|k| k.h).collect::<Vec<_>>(),
@@ -2544,16 +2676,22 @@ impl Element for PageStack {
                 g.size,
                 pages,
                 best,
-                plan.len()
+                plan.len(),
+                self.icb_reach
             );
         }
         // 3. Копии раскладываются ЦЕЛИКОМ и поднимаются на срез — ровно как
-        //    в `ColumnStack::prepaint`; видимую часть делает маска.
-        let (ax, ay) = g.area_origin();
+        //    в `ColumnStack::prepaint`; видимую часть делает маска. Ширина —
+        //    page area СВОЕГО листа (`page-size-004`: `width: 50%` на листе
+        //    100px — 50, на листах 320px — 160).
         for f in &plan {
             let (sx, sy) = self.sheet_origin(f.col);
+            let pg = geoms.get(f.col).copied().unwrap_or(g);
+            let (ax, ay) = pg.area_origin();
+            let aw = pg.area.0.max(1.0);
             let full_h = kids[f.kid].h;
             let kid = &mut self.kids[f.kid];
+            let inner_top = kid.inner_top;
             let el = if f.copy == 0 {
                 &mut kid.el
             } else {
@@ -2573,7 +2711,7 @@ impl Element for PageStack {
             el.prepaint_at(
                 point(
                     bounds.origin.x + px(sx + ax),
-                    bounds.origin.y + px(sy + ay + f.y - f.from),
+                    bounds.origin.y + px(sy + ay + f.y - f.from - inner_top),
                 ),
                 window,
                 cx,
@@ -2583,6 +2721,7 @@ impl Element for PageStack {
         // высот area: непрерывный поток абсолютов, разрезанный страницами.
         for p in 0..pages.min(self.icb.len()) {
             let (sx, sy) = self.sheet_origin(p);
+            let (ax, ay) = geoms[p].area_origin();
             let lift = p as f32 * ah;
             for el in &mut self.icb[p] {
                 el.layout_as_root(
@@ -2607,6 +2746,11 @@ impl Element for PageStack {
         // листа — его содержащий блок.
         for p in 0..pages.min(self.fixed.len()) {
             let (sx, sy) = self.sheet_origin(p);
+            // Размер содержащего блока — page area ПЕРВОГО листа: Blink
+            // раскладывает `fixed` один раз от начального содержащего блока и
+            // повторяет на каждом листе (`fixedpos-010-print`: `right: -100px`
+            // при листе 400 — за краем, на листах 500 — в правом нижнем углу).
+            let (ax, ay) = geoms[p].area_origin();
             for el in &mut self.fixed[p] {
                 el.layout_as_root(
                     size(
@@ -2623,7 +2767,35 @@ impl Element for PageStack {
                 );
             }
         }
+        // Марджин-боксы — после листов: `counter(pages)` знает их число.
+        self.margin_els.clear();
+        if let Some(mf) = self.margin_for.clone() {
+            for (p, pg) in geoms.iter().enumerate() {
+                let boxes = mf(p, &names.get(p).cloned().unwrap_or_else(|| tail.clone()), pages, pg);
+                let (sx, sy) = self.sheet_origin(p);
+                for (rect, mut el) in layout_margin_boxes(boxes, pg, window, cx) {
+                    el.layout_as_root(
+                        size(
+                            gpui::AvailableSpace::Definite(px(rect.2.max(0.0))),
+                            gpui::AvailableSpace::Definite(px(rect.3.max(0.0))),
+                        ),
+                        window,
+                        cx,
+                    );
+                    el.prepaint_at(
+                        point(
+                            bounds.origin.x + px(sx + rect.0),
+                            bounds.origin.y + px(sy + rect.1),
+                        ),
+                        window,
+                        cx,
+                    );
+                    self.margin_els.push((p, el));
+                }
+            }
+        }
         *self.plan.borrow_mut() = plan;
+        *self.geoms.borrow_mut() = geoms;
     }
 
     fn paint(
@@ -2636,7 +2808,6 @@ impl Element for PageStack {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let g = self.geom;
         let s = self.grid.get().1;
         let pages = self.pages.get();
         // Масштаб вокруг левого верха стопки; матрица — в точках устройства,
@@ -2664,13 +2835,20 @@ impl Element for PageStack {
             // документа (border box листа) → рамки → содержимое.
             for i in 0..pages {
                 let (sx, sy) = self.sheet_origin(i);
+                let g = self.geom(i);
                 window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
                 let bx = sx + g.margin[3];
                 let by = sy + g.margin[0];
                 let bw = (g.size.0 - g.margin[1] - g.margin[3]).max(0.0);
                 let bh = (g.size.1 - g.margin[0] - g.margin[2]).max(0.0);
                 if let Some(c) = g.canvas {
-                    window.paint_quad(gpui::fill(rect(bx, by, bw, bh), c));
+                    // Канвас кроет border box листа (§painting), но не шире
+                    // самого листа: при отрицательных полях жёлтый фон тела
+                    // вылезал полосами за правый и нижний край.
+                    let (cx, cy) = (bx.max(sx), by.max(sy));
+                    let cw = ((bx + bw).min(sx + g.size.0) - cx).max(0.0);
+                    let ch = ((by + bh).min(sy + g.size.1) - cy).max(0.0);
+                    window.paint_quad(gpui::fill(rect(cx, cy, cw, ch), c));
                 }
                 let (t, c) = g.border;
                 if t > 0.0 {
@@ -2683,6 +2861,22 @@ impl Element for PageStack {
                         window.paint_quad(gpui::fill(rect(r.0, r.1, r.2, r.3), c));
                     }
                 }
+                // Контур — снаружи рамки со сдвигом, в слое рамок (под
+                // содержимым): `page-box-010` — поле 50, контур 10 со сдвигом
+                // 40 ложится вплотную к краю листа, как рамка эталона.
+                let (ow, off, oc) = g.outline;
+                if ow > 0.0 {
+                    let (ox, oy) = (bx - off - ow, by - off - ow);
+                    let (fw, fh) = (bw + 2.0 * (off + ow), bh + 2.0 * (off + ow));
+                    for r in [
+                        (ox, oy, fw, ow),
+                        (ox, oy + fh - ow, fw, ow),
+                        (ox, oy, ow, fh),
+                        (ox + fw - ow, oy, ow, fh),
+                    ] {
+                        window.paint_quad(gpui::fill(rect(r.0, r.1, r.2, r.3), oc));
+                    }
+                }
             }
             // Содержимое — под маской СВОЕГО ФРАГМЕНТА: копия нарисована во
             // всю высоту, видна только полоса `[y, y + h)` этой страницы (вид
@@ -2692,6 +2886,7 @@ impl Element for PageStack {
             for f in plan {
                 let Some(page) = masks.get(f.col).cloned() else { continue };
                 let (sx, sy) = self.sheet_origin(f.col);
+                let g = self.geom(f.col);
                 let (ax, ay) = g.area_origin();
                 let mask = gpui::ContentMask {
                     bounds: Bounds {
@@ -2735,8 +2930,171 @@ impl Element for PageStack {
                     });
                 }
             }
+            // Марджин-боксы — ПОСЛЕДНИМ слоем (css-page-3 §painting: «page-margin
+            // boxes» после содержимого документа), под маской всего листа.
+            let sheets: Vec<Bounds<Pixels>> = (0..pages)
+                .map(|p| {
+                    let (sx, sy) = self.sheet_origin(p);
+                    let g = self.geom(p);
+                    Bounds {
+                        origin: point(bounds.origin.x + px(sx * s), bounds.origin.y + px(sy * s)),
+                        size: size(px(g.size.0 * s), px(g.size.1 * s)),
+                    }
+                })
+                .collect();
+            for (p, el) in &mut self.margin_els {
+                let Some(sheet) = sheets.get(*p).copied() else { continue };
+                let mask = gpui::ContentMask { bounds: sheet };
+                window.with_content_mask(Some(mask), |window| {
+                    window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
+                });
+            }
         });
     }
+}
+
+/// Раскладка марджин-боксов одного листа (css-page-3 §margin-dimension; Blink
+/// `PageContainerLayoutAlgorithm::LayoutAllMarginBoxes`): прямоугольник border
+/// box каждой коробки в точках листа и её элемент. Мера — по содержимому
+/// (`probe`): главная ось стороны верха/низа — min/max-content ширина, боковых
+/// — высота при уже решённой ширине (Blink `EdgeMarginNodePreferredSize`).
+fn layout_margin_boxes(
+    boxes: Vec<MarginBox>,
+    g: &PageGeom,
+    window: &mut Window,
+    cx: &mut App,
+) -> Vec<((f32, f32, f32, f32), AnyElement)> {
+    use crate::page_margin::{self as pm, Place, Pref, Side};
+    let mut out: Vec<(usize, (f32, f32, f32, f32), AnyElement)> = Vec::new();
+    let mut edges: Vec<(Side, [Option<MarginBox>; 3])> = vec![
+        (Side::Top, [None, None, None]),
+        (Side::Right, [None, None, None]),
+        (Side::Bottom, [None, None, None]),
+        (Side::Left, [None, None, None]),
+    ];
+    for b in boxes {
+        match b.place {
+            Place::Corner { top, left } => {
+                let cb = pm::containing_block(b.place, g.size, g.margin);
+                // Обе оси «растягиваются» по своему полю листа, затем поля
+                // решаются у обоих краёв бумаги.
+                let w = b.w.unwrap_or(cb.2 - b.margin[1].unwrap_or(0.0) - b.margin[3].unwrap_or(0.0)).max(0.0);
+                let h = b.h.unwrap_or(cb.3 - b.margin[0].unwrap_or(0.0) - b.margin[2].unwrap_or(0.0)).max(0.0);
+                let (mt, _) = pm::edge_margins(b.margin[0], b.margin[2], h, cb.3, top);
+                let (ml, _) = pm::edge_margins(b.margin[3], b.margin[1], w, cb.2, left);
+                let key = match (top, left) {
+                    (true, true) => 0,
+                    (true, false) => 4,
+                    (false, false) => 8,
+                    (false, true) => 12,
+                };
+                out.push((key, (cb.0 + ml, cb.1 + mt, w, h), (b.make)(w, h)));
+            }
+            Place::Edge { side, at } => {
+                if let Some(e) = edges.iter_mut().find(|e| e.0 == side) {
+                    e.1[at] = Some(b);
+                }
+            }
+        }
+    }
+    for (side, mut trio) in edges {
+        if trio.iter().all(|b| b.is_none()) {
+            continue;
+        }
+        let place = Place::Edge { side, at: 0 };
+        let cb = pm::containing_block(place, g.size, g.margin);
+        let horiz = side.horizontal();
+        let (main_avail, cross_avail) = if horiz { (cb.2, cb.3) } else { (cb.3, cb.2) };
+        // Поперечный размер: задан либо во всё поле без полей.
+        let cross = |b: &MarginBox| -> f32 {
+            let (spec, ma, mb) = if horiz {
+                (b.h, b.margin[0], b.margin[2])
+            } else {
+                (b.w, b.margin[3], b.margin[1])
+            };
+            spec.unwrap_or(cross_avail - ma.unwrap_or(0.0) - mb.unwrap_or(0.0)).max(0.0)
+        };
+        let mut prefs: [Option<Pref>; 3] = [None; 3];
+        for i in 0..3 {
+            let Some(b) = trio[i].as_mut() else { continue };
+            let (spec, ma, mb) = if horiz {
+                (b.w, b.margin[3], b.margin[1])
+            } else {
+                (b.h, b.margin[0], b.margin[2])
+            };
+            let margins = ma.unwrap_or(0.0) + mb.unwrap_or(0.0);
+            let (min, max) = match spec {
+                Some(v) => (v, v),
+                None if horiz => {
+                    let lo = b.probe.layout_as_root(
+                        size(gpui::AvailableSpace::MinContent, gpui::AvailableSpace::MaxContent),
+                        window,
+                        cx,
+                    );
+                    let hi = b.probe.layout_as_root(
+                        size(gpui::AvailableSpace::MaxContent, gpui::AvailableSpace::MaxContent),
+                        window,
+                        cx,
+                    );
+                    (f32::from(lo.width), f32::from(hi.width))
+                }
+                None => {
+                    let w = cross(b);
+                    let s = b.probe.layout_as_root(
+                        size(gpui::AvailableSpace::Definite(px(w)), gpui::AvailableSpace::MaxContent),
+                        window,
+                        cx,
+                    );
+                    (f32::from(s.height), f32::from(s.height))
+                }
+            };
+            prefs[i] = Some(Pref {
+                min,
+                max,
+                margins,
+                auto: spec.is_none(),
+            });
+        }
+        let mains = pm::edge_sizes(prefs, main_avail);
+        for i in 0..3 {
+            let Some(b) = trio[i].take() else { continue };
+            let main = mains[i];
+            let c = cross(&b);
+            let (ms, me) = if horiz {
+                (b.margin[3].unwrap_or(0.0), b.margin[1].unwrap_or(0.0))
+            } else {
+                (b.margin[0].unwrap_or(0.0), b.margin[2].unwrap_or(0.0))
+            };
+            let at_start = matches!(side, Side::Top | Side::Left);
+            let (cs, _) = if horiz {
+                pm::edge_margins(b.margin[0], b.margin[2], c, cross_avail, at_start)
+            } else {
+                pm::edge_margins(b.margin[3], b.margin[1], c, cross_avail, at_start)
+            };
+            let used = main + ms + me;
+            let shift = match i {
+                0 => 0.0,
+                1 => (main_avail - used) / 2.0,
+                _ => main_avail - used,
+            } + ms;
+            let rect = if horiz {
+                (cb.0 + shift, cb.1 + cs, main, c)
+            } else {
+                (cb.0 + cs, cb.1 + shift, c, main)
+            };
+            // Порядок краски Blink (`LayoutAllMarginBoxes`): по часовой от
+            // левого верхнего угла, низ и левая сторона — с конца.
+            let key = match side {
+                Side::Top => 1 + i,
+                Side::Right => 5 + i,
+                Side::Bottom => 11 - i,
+                Side::Left => 15 - i,
+            };
+            out.push((key, rect, (b.make)(rect.2, rect.3)));
+        }
+    }
+    out.sort_by_key(|x| x.0);
+    out.into_iter().map(|(_, r, e)| (r, e)).collect()
 }
 
 impl IntoElement for PageStack {
