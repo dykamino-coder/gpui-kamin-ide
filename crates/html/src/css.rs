@@ -664,19 +664,6 @@ pub struct Media {
 /// приложение всегда экран.
 pub static PRINT_MEDIA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Объявления `@page` документа в порядке появления (css-page-3). Вложенные
-/// марджин-боксы (`@top-left` и родня) пока отрезаются. Копится при разборе
-/// листов, забирается сборщиком документа (`take_page_decls`).
-pub static PAGE_DECLS: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
-
-/// Именные правила `@page <имя> { … }` — `(имя, объявления)` в порядке
-/// появления; псевдоклассы (`:first`, `:left`…) по-прежнему отрезаются.
-/// Применяет стенд, когда имя одно на весь документ
-/// (`render::uniform_page_name`).
-pub static PAGE_NAMED_DECLS: std::sync::Mutex<Vec<(String, Vec<(String, String)>)>> =
-    std::sync::Mutex::new(Vec::new());
-
-
 /// Селектор страницы (css-page-3 §page-selectors): имя типа страницы и
 /// счётчики псевдоклассов. `:blank` хранится ради специфичности — пустых
 /// листов стопка не рождает, и такой селектор ни с чем не совпадает.
@@ -780,6 +767,8 @@ fn nested_blocks(body: &str) -> Vec<(String, String)> {
 /// именами. Из них `page_decls_for` собирает объявления конкретного листа.
 pub static PAGE_RULES: std::sync::Mutex<Vec<PageRule>> = std::sync::Mutex::new(Vec::new());
 
+/// Снимок без очистки: рендер зовётся на каждом кадре, а правила должны
+/// пережить все кадры документа (очистка — на разборе следующего).
 pub fn page_rules_snapshot() -> Vec<PageRule> {
     PAGE_RULES.lock().unwrap().clone()
 }
@@ -906,14 +895,14 @@ fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Ve
     hits.into_iter().map(|(_, i)| i).collect()
 }
 
-pub fn take_page_decls() -> Vec<(String, String)> {
-    PAGE_NAMED_DECLS.lock().unwrap().clear();
-    PAGE_RULES.lock().unwrap().clear();
-    std::mem::take(&mut PAGE_DECLS.lock().unwrap())
+/// Забрать правила `@page` прошлого документа (чистка перед разбором
+/// следующего, `dom::parse_media`).
+pub fn take_page_decls() -> Vec<PageRule> {
+    std::mem::take(&mut PAGE_RULES.lock().unwrap())
 }
 
 /// Правила `@position-try <dashed-ident> { … }` документа (css-anchor-position-1
-/// §fallback-rule): имя → объявления. Тот же пул, что `PAGE_DECLS`: копится
+/// §fallback-rule): имя → объявления. Тот же пул, что `PAGE_RULES`: копится
 /// при разборе листов, чистится на разборе следующего документа
 /// (`take_try_rules`), читается на сборке кадра (`anchor::place`). Повтор
 /// имени перекрывает — «the last one in document order wins».
@@ -927,16 +916,6 @@ pub fn take_try_rules() -> HashMap<String, Decls> {
 /// Объявления правила `@position-try` по имени (`--x`), копией.
 pub fn try_rule(name: &str) -> Option<Decls> {
     TRY_RULES.lock().unwrap().as_ref()?.get(name).cloned()
-}
-
-/// Снимок без очистки: рендер зовётся на каждом кадре, а правила должны
-/// пережить все кадры документа (очистка — на разборе следующего).
-pub fn page_decls_snapshot() -> Vec<(String, String)> {
-    PAGE_DECLS.lock().unwrap().clone()
-}
-
-pub fn page_named_decls_snapshot() -> Vec<(String, Vec<(String, String)>)> {
-    PAGE_NAMED_DECLS.lock().unwrap().clone()
 }
 
 /// Срезать вложенные at-блоки из тела `@page`: остаются только объявления.
@@ -1595,20 +1574,10 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
             let inner = if name.starts_with("@media") {
                 media.matches(&name)
             } else if name.starts_with("@page") {
-                // Безымянное правило — общий пул; именное (`@page square`) —
-                // именной пул, стенд берёт его, когда имя у всех страниц одно
-                // (`render::uniform_page_name`; `page-name-table-001`,
-                // `page-name-001`). Псевдоклассы `:first/:left/:right/:blank`
-                // по-прежнему выбрасываются: они красили бы не свои страницы.
-                // Имя регистрозависимо (css-page-3 §using-named-pages) — из
-                // ОРИГИНАЛА головы, не из `name`.
-                let selector = head[5..].trim();
-                let named = !selector.is_empty();
-                // Голова с псевдоклассом или списком — только в полный пул.
-                let plain = !named
-                    || selector
-                        .chars()
-                        .all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_');
+                // Правило с головой (имя, `:first/:left/:right/:blank`,
+                // список) — в пул `PAGE_RULES`, каскад по листу решает
+                // `page_decls_in`. Имя регистрозависимо (css-page-3
+                // §using-named-pages) — из ОРИГИНАЛА головы, не из `name`.
                 let flat = strip_nested_blocks(body);
                 let decls = parse_decls(&flat);
                 // Марджин-боксы — вложенные at-правила с известным именем.
@@ -1628,23 +1597,12 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
                     // значение «13px\u{1}inherit», которое не разбиралось вовсе.
                     // Служебный `ORDER_KEY` в пул больше не попадает.
                     let list = ordered_decls(&decls);
-                    // Полный пул — с псевдоклассами и списками селекторов
-                    // (`page_decls_for`). Старые пулы ниже держат прежний
-                    // смысл: только безымянные и одиночные имена.
                     if let Some(sels) = parse_page_selectors(&head[5..]) {
                         PAGE_RULES.lock().unwrap().push(PageRule {
                             sels,
-                            decls: list.clone(),
+                            decls: list,
                             margins,
                         });
-                    }
-                    if plain && named {
-                        PAGE_NAMED_DECLS
-                            .lock()
-                            .unwrap()
-                            .push((selector.to_string(), list));
-                    } else if plain {
-                        PAGE_DECLS.lock().unwrap().extend(list);
                     }
                 }
                 false

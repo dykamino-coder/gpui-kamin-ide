@@ -4874,12 +4874,6 @@ fn page_names(e: &Element, inherited: &str) -> (String, String) {
     (start, end)
 }
 
-/// Имя страницы документа, если оно ОДНО на все страницы: начальное и
-/// конечное значения каждой коробки класса A верхнего уровня (с учётом
-/// `page` у `html`/`body`) совпадают. Стенд по нему выбирает `@page <имя>`
-/// (css-page-3 §cascading-and-page-context: имя — специфичность (1,0,0),
-/// выше безымянного правила). Разные имена → `None`: геометрия листа у стопки
-/// одна, и правило одной из страниц красило бы чужие.
 /// Объявления листа для марджин-боксов: контекст страницы (наследуемое
 /// идёт в коробки, css-page-3 §page-properties) и коробки по именам.
 pub type PageMarginDecls = (Vec<(String, String)>, Vec<(String, Vec<(String, String)>)>);
@@ -5093,37 +5087,6 @@ pub fn first_page_name(nodes: &[Node]) -> String {
         nodes = (*e).clone().children;
     }
     first_kid_page_name(&nodes, &root_page)
-}
-
-pub fn uniform_page_name(nodes: &[Node]) -> Option<String> {
-    let mut nodes: Vec<Node> = nodes.to_vec();
-    let mut root_page = String::new();
-    loop {
-        let live: Vec<&Node> = nodes.iter().filter(|n| !is_blank(n)).collect();
-        let [Node::Element(e)] = live.as_slice() else { break };
-        if !matches!(e.tag.as_str(), "html" | "body") {
-            break;
-        }
-        if let Some(p) = &e.style.page {
-            root_page = p.clone();
-        }
-        nodes = (*e).clone().children;
-    }
-    let mut name: Option<String> = None;
-    for n in nodes.iter().filter(|n| !is_blank(n)) {
-        let Node::Element(e) = n else { continue };
-        if matches!(e.style.display, Some(Display::None)) || !class_a_box(e) {
-            continue;
-        }
-        let (start, end) = page_names(e, &root_page);
-        for v in [start, end] {
-            match &name {
-                Some(cur) if *cur != v => return None,
-                _ => name = Some(v),
-            }
-        }
-    }
-    name.filter(|n| !n.is_empty())
 }
 
 thread_local! {
