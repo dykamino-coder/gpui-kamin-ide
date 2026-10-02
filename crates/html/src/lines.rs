@@ -2156,7 +2156,14 @@ impl Paragraph {
                     // `white-space: nowrap` запрещает и аварийный разрыв:
                     // `overflow-wrap` действует, только когда перенос вообще
                     // разрешён (`overflow-wrap-002`).
-                    if self.emergency_ok(start) || self.emergency_ok(at.saturating_sub(1)) {
+                    // …и ВНУТРИ строки тоже: `<span>` с `overflow-wrap:
+                    // anywhere` посреди неразрывного ряда не касается ни его
+                    // начала, ни конца (`overflow-wrap-anywhere-inline-002/004`:
+                    // ряд «X<span>XX</span>XX» уходил одной строкой за край).
+                    if self.emergency_ok(start)
+                        || self.emergency_ok(at.saturating_sub(1))
+                        || self.emergency_inside(start, at)
+                    {
                         self.cut_by_char(start, at, limit, &x)
                     } else {
                         at
@@ -2336,7 +2343,26 @@ impl Paragraph {
             }
             last = at;
         }
+        // Хвост за последней разрешённой точкой не влез — разрыв по ней.
+        // Прежде возвращался весь отрезок: ряд «XX<span>XX</span>XXX» с
+        // `overflow-wrap: anywhere` на `<span>` рвался внутри него, но
+        // последняя точка (между `<span>` и хвостом) терялась, и хвост
+        // уезжал за край вместе с частью `<span>`.
+        if last > start && x(end) - from > limit {
+            return last;
+        }
         end
+    }
+
+    /// Есть ли между `start` и `end` кусок с разрешённым аварийным разрывом
+    /// (см. `emergency_ok`).
+    fn emergency_inside(&self, start: usize, end: usize) -> bool {
+        self.spans.iter().any(|(r, w)| {
+            r.start < end
+                && r.end > start
+                && !w.nowrap
+                && (w.break_all || w.anywhere || w.break_word || w.wrap_anywhere)
+        })
     }
 
     /// Конец измеряемой части строки: висящий хвост срезается ПО МЕСТУ.
