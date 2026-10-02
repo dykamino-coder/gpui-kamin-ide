@@ -1128,8 +1128,17 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             side_px(bw.bottom),
             side_px(bw.left),
         );
+        // Сторона без своего цвета красится общим `border-color`, а без него —
+        // цветом текста (`currentColor`): квад при полосах цвета не получает
+        // (`apply::apply_paint`, `strips`), и такая сторона иначе пропала бы.
+        let fallback = c.border_color.or(c.color).unwrap_or(crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
         for (i, colour) in c.border_colors.iter().enumerate() {
-            let Some(colour) = colour else { continue };
+            let colour = colour.as_ref().unwrap_or(&fallback);
             let w = [t, r, b, l][i];
             if w <= 0.0 {
                 continue;

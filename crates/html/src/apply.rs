@@ -2110,8 +2110,15 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // Рамка над слоем картинки — отдельным слоем (`border_layer`,
     // `render::decorations`): квад цвета не получает, иначе рамка легла бы
     // ПОД плитки, а слой — второй раз поверх (полупрозрачная потемнела бы).
+    // Полосы сторон (`render::decorations`) рисуются, когда цвет задан не у
+    // всех четырёх сторон одинаково, — тогда квад цвета не получает: иначе
+    // полупрозрачная сторона ложилась дважды, полосой поверх квада (эталоны
+    // `grid-gap-decorations-*` с `border-right: 6px solid rgba(…/.5)` темнели
+    // до двух слоёв). Полосы красят и стороны без своего цвета — см. там же.
+    let strips = !sides.is_empty() && !(sides.len() == 4 && uniform.is_some()) && c.border_shape.is_none();
     if !border_image_on
         && !mixed
+        && !strips
         && !c.corner_shaped()
         && c.border_shape.is_none()
         && border_layer(c).is_none()
