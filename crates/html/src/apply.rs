@@ -2154,7 +2154,14 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
                 .map(|s| gpui::BoxShadow {
                     color: shadow_colour(s).to_hsla(),
                     offset: gpui::point(px(s.x), px(s.y)),
-                    blur_radius: px(s.blur),
+                    // Шейдер gpui читает `blur_radius` как σ гаусса, а в CSS
+                    // радиус размытия — вдвое больше σ (css-backgrounds-3
+                    // §box-shadow: «blur radius … resulting shadow must
+                    // approximate … a Gaussian blur with a standard deviation
+                    // equal to half the blur radius»; Blink `BlurAsSigma`).
+                    // Прежде тень выходила вдвое шире — как у `text-shadow`
+                    // (`text_shadow_layers`), которая σ уже делит.
+                    blur_radius: px(s.blur * 0.5),
                     spread_radius: px(s.spread),
                 })
                 .collect(),
@@ -2170,7 +2177,14 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
                 .map(|s| gpui::BoxShadow {
                     color: shadow_colour(s).to_hsla(),
                     offset: gpui::point(px(s.x), px(s.y)),
-                    blur_radius: px(s.blur),
+                    // Шейдер gpui читает `blur_radius` как σ гаусса, а в CSS
+                    // радиус размытия — вдвое больше σ (css-backgrounds-3
+                    // §box-shadow: «blur radius … resulting shadow must
+                    // approximate … a Gaussian blur with a standard deviation
+                    // equal to half the blur radius»; Blink `BlurAsSigma`).
+                    // Прежде тень выходила вдвое шире — как у `text-shadow`
+                    // (`text_shadow_layers`), которая σ уже делит.
+                    blur_radius: px(s.blur * 0.5),
                     spread_radius: px(s.spread),
                 })
                 .collect::<Vec<_>>(),
