@@ -184,11 +184,61 @@ struct AlgoConstants {
     node_outer_size: Size<Option<f32>>,
     /// The content-box size of the node being laid out (if known)
     node_inner_size: Size<Option<f32>>,
+    /// KaminIDE patch: база долей ВЫСОТЫ детей у анонимного ряда строки —
+    /// высота содержимого его родителя (`percent_basis_from_parent`); `None`
+    /// у обычного контейнера (база — `node_inner_size`).
+    pct_height_from_parent: Option<Option<f32>>,
 
     /// The size of the virtual container containing the flex items.
     container_size: Size<f32>,
     /// The size of the internal container
     inner_container_size: Size<f32>,
+}
+
+/// KaminIDE patch: есть ли у детей ряда строки (и детей вложенных склеенных
+/// групп) доля или `calc` в высоте либо её пределах.
+fn row_children_use_pct_height(tree: &impl LayoutFlexboxContainer, node: NodeId) -> bool {
+    let pct = |d: crate::style::Dimension| !d.is_auto() && d.into_option().is_none();
+    let kids: Vec<NodeId> = tree.child_ids(node).collect();
+    kids.into_iter().any(|child| {
+        let style = tree.get_flexbox_child_style(child);
+        let own = pct(style.size().height) || pct(style.min_size().height) || pct(style.max_size().height);
+        let nested = style.is_line_row();
+        drop(style);
+        own || (nested && row_children_use_pct_height(tree, child))
+    })
+}
+
+impl AlgoConstants {
+    /// KaminIDE patch: база долей размеров ДЕТЕЙ — `node_inner_size`, а у
+    /// анонимного ряда строки высота берётся у родителя ряда
+    /// (см. `pct_height_from_parent`).
+    #[inline]
+    fn pct_basis(&self) -> Size<Option<f32>> {
+        match self.pct_height_from_parent {
+            Some(h) => Size { width: self.node_inner_size.width, height: h },
+            None => self.node_inner_size,
+        }
+    }
+}
+
+/// KaminIDE patch: `calc-size(auto, …)` у оси, чей размер вывело соотношение
+/// сторон из второй оси: выведенный размер и есть «size» основы `auto`
+/// (css-values-5 §calc-size), выражение применяется к нему
+/// (`calc-size-aspect-ratio-002`: `width: 100px; 2/1` даёт 50, `size + 50px`
+/// — 100). Свойство в стиле — `auto`, поэтому заданных размеров это не
+/// касается: они сюда приходят не через `calc_size`.
+fn calc_size_derived(size: Size<Option<f32>>, cs: [Option<(f32, f32, f32, f32)>; 4]) -> Size<Option<f32>> {
+    Size {
+        width: match cs[0] {
+            Some(f) => size.width.map(|w| crate::style::apply_calc_size(f, w)),
+            None => size.width,
+        },
+        height: match cs[1] {
+            Some(f) => size.height.map(|h| crate::style::apply_calc_size(f, h)),
+            None => size.height,
+        },
+    }
 }
 
 /// Computes the layout of a box according to the flexbox algorithm
@@ -255,7 +305,52 @@ pub fn compute_flexbox_layout(
     }
 
     debug_log!("FLEX:", dbg:style.flex_direction());
+    let height_is_auto = style.size().height.is_auto();
+    let scroll = style.overflow().x.is_scroll_container() || style.overflow().y.is_scroll_container();
     drop(style);
+
+    // KaminIDE patch: соотношение сторон у коробки, которую родитель отдал
+    // БЕЗ высоты (корень своей раскладки — флоат, замер `layout_as_root`):
+    // ширина — по содержимому или известная, высота из неё через
+    // соотношение (css-sizing-4 §5.1, ratio-dependent axis) и не меньше
+    // содержимого, если коробка не контейнер прокрутки (Overview.bs:668-676).
+    // Прежде такой коробке соотношение не доставалось вовсе: флоат
+    // `aspect-ratio: 1/1` с ребёнком шириной 100 выходил 100×0
+    // (`block-aspect-ratio-019`). Родители flex/grid выводят высоту из
+    // соотношения сами и приходят сюда уже с ней — их путь не меняется.
+    let mut styled_based_known_dimensions = styled_based_known_dimensions;
+    if let (SizingMode::InherentSize, Some(ratio), None, true) =
+        (inputs.sizing_mode, aspect_ratio, styled_based_known_dimensions.height, height_is_auto)
+    {
+        if ratio > 0.0 {
+            let width = styled_based_known_dimensions.width.unwrap_or_else(|| {
+                compute_preliminary(
+                    tree,
+                    node,
+                    LayoutInput { known_dimensions: styled_based_known_dimensions, run_mode: RunMode::ComputeSize, ..inputs },
+                )
+                .size
+                .width
+            });
+            let mut height = width / ratio;
+            if !scroll {
+                let content = compute_preliminary(
+                    tree,
+                    node,
+                    LayoutInput {
+                        known_dimensions: Size { width: Some(width), height: None },
+                        run_mode: RunMode::ComputeSize,
+                        ..inputs
+                    },
+                )
+                .size
+                .height;
+                height = height.max(content);
+            }
+            let height = height.maybe_clamp(min_size.height, max_size.height).max(padding_border_sum.height);
+            styled_based_known_dimensions = Size { width: Some(width), height: Some(height) };
+        }
+    }
 
     compute_preliminary(tree, node, LayoutInput { known_dimensions: styled_based_known_dimensions, ..inputs })
 }
@@ -266,6 +361,13 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
 
     // Define some general constants we will need for the remainder of the algorithm.
     let mut constants = compute_constants(tree, tree.get_flexbox_container_style(node), known_dimensions, parent_size);
+    // KaminIDE patch: база долей ряда строки нужна, только если у его детей
+    // (или детей склеенных групп) есть доля высоты; иначе ряд ведёт себя по-
+    // старому — замерено: без гейта ряд в вертикальном письме менял высоту
+    // соседей (`horizontal-rule-vlr-003`: 0.08 → 1.22).
+    if constants.pct_height_from_parent.is_some() && !row_children_use_pct_height(tree, node) {
+        constants.pct_height_from_parent = None;
+    }
 
     // 9. Flex Layout Algorithm
 
@@ -535,6 +637,16 @@ fn compute_constants(
 
     let node_outer_size = known_dimensions;
     let node_inner_size = node_outer_size.maybe_sub(content_box_inset.sum_axes());
+    // KaminIDE patch: анонимный ряд строки CSS-коробкой не является (CSS 2.1
+    // §10.1 п.2: содержащий блок строчного атома — «the content edge of the
+    // nearest ancestor box that is a block container»; Blink отдаёт атому
+    // `PercentageResolutionSize` пространства блока, строка прозрачна). Доли
+    // высоты его детей решаются от высоты РОДИТЕЛЯ ряда: иначе `height: 100%`
+    // у холста/картинки считалась от ряда, высота которого сама выводится из
+    // них, и схлопывалась в ноль (`intrinsic-percent-replaced-005/007`,
+    // `grid-item-inline-contribution-*`). Собственный размер ряда (строки,
+    // растяжение, `align-content`) по-прежнему от `node_inner_size`.
+    let pct_height_from_parent = (is_row && style.percent_basis_from_parent()).then_some(parent_size.height);
     let gap = style.gap().resolve_or_zero(node_inner_size.or(Size::zero()), |val, basis| tree.calc(val, basis));
 
     let container_size = Size::zero();
@@ -572,6 +684,7 @@ fn compute_constants(
         safe_align_items: style.safe_alignment().0,
         node_outer_size,
         node_inner_size,
+        pct_height_from_parent,
         container_size,
         inner_container_size,
     }
@@ -606,20 +719,24 @@ fn generate_anonymous_flex_items(
                 if child_style.box_sizing() == BoxSizing::ContentBox { pb_sum } else { Size::ZERO };
             // KaminIDE patch: перенос пределов через соотношение (css-sizing-4
             // §5.1 «size transfers») — см. `transfer_min_max`.
+            let pct_basis = constants.pct_basis();
             let (min_transferred, max_transferred) = transfer_min_max(
-                child_style.size().maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis)),
-                child_style.min_size().maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis)),
-                child_style.max_size().maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis)),
+                child_style.size().maybe_resolve(pct_basis, |val, basis| tree.calc(val, basis)),
+                child_style.min_size().maybe_resolve(pct_basis, |val, basis| tree.calc(val, basis)),
+                child_style.max_size().maybe_resolve(pct_basis, |val, basis| tree.calc(val, basis)),
                 aspect_ratio,
             );
             FlexItem {
                 node: child,
                 order: index as u32,
-                size: child_style
-                    .size()
-                    .maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis))
-                    .maybe_apply_aspect_ratio(aspect_ratio)
-                    .maybe_add(box_sizing_adjustment),
+                size: calc_size_derived(
+                    child_style
+                        .size()
+                        .maybe_resolve(pct_basis, |val, basis| tree.calc(val, basis))
+                        .maybe_apply_aspect_ratio(aspect_ratio)
+                        .maybe_add(box_sizing_adjustment),
+                    child_style.calc_size(),
+                ),
                 min_size: min_transferred.maybe_add(box_sizing_adjustment),
                 max_size: max_transferred.maybe_add(box_sizing_adjustment),
 
@@ -776,7 +893,21 @@ fn determine_flex_base_size(
 
         // Parent size for child sizing
         let cross_axis_parent_size = constants.node_inner_size.cross(dir);
-        let child_parent_size = Size::from_cross(dir, cross_axis_parent_size);
+        // KaminIDE patch: база долей — `pct_basis` (ряд строки), место — нет.
+        // Ряду строки в КОЛОНКЕ отдаётся и высота колонки: он прозрачен для
+        // долей (`percent_basis_from_parent`), и без неё основа ряда
+        // мерилась с нерешённой долей атома, а кэш taffy (ключ без
+        // `parent_size`) отдавал этот замер и проходу поперечного размера —
+        // картинка `height: 100%` выходила природной ширины
+        // (`intrinsic-percent-replaced-024/026`).
+        let child_parent_size = if constants.is_column
+            && child_style.is_line_row()
+            && row_children_use_pct_height(tree, child.node)
+        {
+            constants.pct_basis()
+        } else {
+            Size::from_cross(dir, constants.pct_basis().cross(dir))
+        };
 
         // Available space for child sizing
         let cross_axis_margin_sum = constants.margin.cross_axis_sum(dir);
@@ -887,6 +1018,30 @@ fn determine_flex_base_size(
             //    is auto and not definite, in this calculation use fit-content as the
             //    flex item’s cross size. The flex base size is the item’s resulting main size.
 
+            // KaminIDE patch: случай E для элемента КОЛОНКИ с соотношением
+            // сторон и неопределённым поперечным размером: коробка
+            // раскладывается с `width: fit-content`, а высота (главная ось)
+            // выводится из этой ширины через соотношение (css-flexbox-1 §9.2
+            // п.3E вместе с css-sizing-4 §5.1). Замер `ContentSize` соотношения
+            // не применял, и основа шла по содержимому — 0 у пустой коробки
+            // `min-width: 100px; aspect-ratio: 1` (`flex-aspect-ratio-034..037`).
+            if let (Some(ratio), true, None) = (child_aspect_ratio, constants.is_column, child_known_dimensions.cross(dir)) {
+                let fit_cross = tree
+                    .measure_child_size(
+                        child.node,
+                        Size::NONE,
+                        child_parent_size,
+                        Size::MAX_CONTENT.with_cross(dir, cross_axis_available_space),
+                        SizingMode::ContentSize,
+                        dir.cross_axis(),
+                        Line::FALSE,
+                    )
+                    .maybe_clamp(child.min_size.cross(dir), child.max_size.cross(dir));
+                if ratio > 0.0 {
+                    break 'flex_basis fit_cross / ratio;
+                }
+            }
+
             let child_available_space = Size::MAX_CONTENT
                 .with_main(
                     dir,
@@ -985,6 +1140,19 @@ fn determine_flex_base_size(
                 min_content_main_size.maybe_min(specified_main_size).maybe_min(child.max_size.main(dir));
             clamped_min_content_size.maybe_max(padding_border_axes_sums.main(dir))
         });
+        // KaminIDE patch: `min-width/min-height: calc-size(auto, …)` по главной
+        // оси — выражение над АВТОМИНИМУМОМ (css-values-5 §calc-size: основа
+        // `auto` — размер, который дало бы `auto`; css-flexbox-1 §4.5):
+        // `width: 60px; min-width: calc-size(auto, size + 40px)` с содержимым
+        // 80 — min(60, 80) + 40 = 100 (`calc-size-flex-002/003/005/006/009`).
+        {
+            let cs = tree.get_flexbox_child_style(child.node).calc_size();
+            let min_f = if dir.is_row() { cs[2] } else { cs[3] };
+            if let (Some(f), None) = (min_f, style_min_main_size) {
+                child.resolved_minimum_main_size =
+                    crate::style::apply_calc_size(f, child.resolved_minimum_main_size);
+            }
+        }
 
         // KaminIDE patch: пол GRIDMIN у ТАБЛИЦЫ-элемента (css-tables-3 §3.9:
         // «the used min-width of a table is the greater of the resolved
@@ -1566,7 +1734,7 @@ fn determine_container_main_size(
                                 let content_main_size = tree.measure_child_size(
                                     item.node,
                                     child_known_dimensions,
-                                    constants.node_inner_size,
+                                    constants.pct_basis(),
                                     child_available_space,
                                     SizingMode::InherentSize,
                                     dir.main_axis(),
@@ -1897,7 +2065,15 @@ fn determine_hypothetical_cross_size(
             }
         };
 
-        let child_cross = (if ratio_cross.is_some() { None } else { child.size.cross(constants.dir) })
+        // KaminIDE patch: у КОНТЕЙНЕРА ПРОКРУТКИ автоминимума по содержимому
+        // нет (css-sizing-4 Overview.bs:668-676, §5.2 Automatic Minimum Size:
+        // минимум по содержимому — только у коробки, что «is neither a
+        // replaced element nor a scroll container»), и размер из соотношения —
+        // окончательный: `height: 100px; aspect-ratio: 1; overflow: hidden`
+        // с содержимым 600 шириной — 100×100 (`block-aspect-ratio-018`).
+        let scroll_ratio = if child.is_scroll_container() { ratio_cross } else { None };
+        let child_cross = scroll_ratio
+            .or(if ratio_cross.is_some() { None } else { child.size.cross(constants.dir) })
             .maybe_clamp(child.min_size.cross(constants.dir), child.max_size.cross(constants.dir))
             .maybe_max(padding_border_sum);
 
@@ -1907,13 +2083,13 @@ fn determine_hypothetical_cross_size(
             .maybe_max(padding_border_sum);
 
         let child_inner_cross = child_cross.unwrap_or_else(|| {
-            tree.measure_child_size(
+            let measured = tree.measure_child_size(
                 child.node,
                 Size {
                     width: if constants.is_row { child.target_size.width.into() } else { child_cross },
                     height: if constants.is_row { child_cross } else { child.target_size.height.into() },
                 },
-                constants.node_inner_size,
+                constants.pct_basis(),
                 Size {
                     width: if constants.is_row { child_known_main } else { child_available_cross },
                     height: if constants.is_row { child_available_cross } else { child_known_main },
@@ -1921,7 +2097,20 @@ fn determine_hypothetical_cross_size(
                 SizingMode::ContentSize,
                 constants.dir.cross_axis(),
                 Line::FALSE,
-            )
+            );
+            // KaminIDE patch: `calc-size(auto, …)` в минимуме ПОПЕРЕЧНОЙ оси у
+            // коробки с соотношением: автоминимум зависимой оси — её
+            // содержимое (css-sizing-4 §5.2), выражение идёт над ним, и
+            // размер = max(из соотношения, f(содержимое))
+            // (`calc-size-aspect-ratio-004`: 50 из соотношения, содержимое
+            // 150 − 50 = 100).
+            let cs = tree.get_flexbox_child_style(child.node).calc_size();
+            let min_f = if constants.is_row { cs[3] } else { cs[2] };
+            let measured = match (min_f, ratio_cross) {
+                (Some(f), Some(_)) => crate::style::apply_calc_size(f, measured),
+                _ => measured,
+            };
+            measured
             .max(ratio_cross.unwrap_or(0.0))
             .maybe_clamp(child.min_size.cross(constants.dir), child.max_size.cross(constants.dir))
             .max(padding_border_sum)
@@ -1991,7 +2180,7 @@ fn calculate_children_base_lines(
                         child.target_size.height.into()
                     },
                 },
-                constants.node_inner_size,
+                constants.pct_basis(),
                 Size {
                     width: if constants.is_row {
                         constants.container_size.width.into()
@@ -2693,7 +2882,7 @@ fn final_layout_pass(
                 #[cfg(feature = "content_size")]
                 &mut content_size,
                 constants.container_size,
-                constants.node_inner_size,
+                constants.pct_basis(),
                 constants.content_box_inset,
                 constants.dir,
             );
@@ -2707,7 +2896,7 @@ fn final_layout_pass(
                 #[cfg(feature = "content_size")]
                 &mut content_size,
                 constants.container_size,
-                constants.node_inner_size,
+                constants.pct_basis(),
                 constants.content_box_inset,
                 constants.dir,
             );
@@ -2809,6 +2998,46 @@ fn perform_absolute_layout_on_absolute_children(
                 inset_relative_size.height.maybe_sub(margin.top).maybe_sub(margin.bottom) - top - bottom;
             known_dimensions.height = Some(f32_max(new_height_raw, 0.0));
             known_dimensions = known_dimensions.maybe_apply_aspect_ratio(aspect_ratio).maybe_clamp(min_size, max_size);
+        }
+        // KaminIDE patch: абсолютная коробка с соотношением и ОБЕИМИ
+        // автоматическими сторонами — строчная по shrink-to-fit (CSS 2.1
+        // §10.3.7), блочная из неё через соотношение (css-sizing-4 §5.1,
+        // ratio-dependent axis) с автоминимумом по содержимому, если коробка
+        // не контейнер прокрутки (Overview.bs:668-676). Прежде высота шла по
+        // содержимому, и `aspect-ratio: 1` с ребёнком шириной 100 давал
+        // коробку 100×0 (`aspect-ratio/abspos-007`). Только горизонтальная
+        // строчная ось: письма taffy не знает.
+        if let (Some(ratio), None, None) = (aspect_ratio, known_dimensions.width, known_dimensions.height) {
+            let available = Size {
+                width: AvailableSpace::Definite(container_width.maybe_clamp(min_size.width, max_size.width)),
+                height: AvailableSpace::Definite(container_height.maybe_clamp(min_size.height, max_size.height)),
+            };
+            let width = tree
+                .measure_child_size(
+                    child,
+                    Size::NONE,
+                    constants.node_inner_size,
+                    available,
+                    SizingMode::InherentSize,
+                    crate::geometry::AbsoluteAxis::Horizontal,
+                    Line::FALSE,
+                )
+                .maybe_clamp(min_size.width, max_size.width);
+            let mut height = width / ratio;
+            if !(overflow.x.is_scroll_container() || overflow.y.is_scroll_container()) {
+                let content = tree.measure_child_size(
+                    child,
+                    Size { width: Some(width), height: None },
+                    constants.node_inner_size,
+                    available,
+                    SizingMode::InherentSize,
+                    crate::geometry::AbsoluteAxis::Vertical,
+                    Line::FALSE,
+                );
+                height = height.max(content);
+            }
+            known_dimensions =
+                Size { width: Some(width), height: Some(height.maybe_clamp(min_size.height, max_size.height)) };
         }
         let layout_output = tree.perform_child_layout(
             child,

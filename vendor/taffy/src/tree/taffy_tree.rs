@@ -157,6 +157,10 @@ struct NodeData {
     /// KaminIDE patch: дорожки, выданные подсетке родителем (css-grid-2 §9).
     #[cfg(feature = "grid")]
     pub(crate) subgrid_tracks: Option<crate::style::SubgridTracks>,
+
+    /// KaminIDE patch: высота родителя, при которой посчитан кэш анонимного
+    /// ряда строки (`percent_basis_from_parent`) — см. `compute_child_layout`.
+    pub(crate) pct_parent_h: Option<Option<f32>>,
 }
 
 impl NodeData {
@@ -173,6 +177,7 @@ impl NodeData {
             detailed_layout_info: DetailedLayoutInfo::None,
             #[cfg(feature = "grid")]
             subgrid_tracks: None,
+            pct_parent_h: None,
         }
     }
 
@@ -400,11 +405,72 @@ where
 
     #[inline(always)]
     fn compute_child_layout(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutOutput {
+        // KaminIDE patch: `calc-size(<basis>, <expr>)` у `width`/`height`
+        // (css-values-5 §calc-size). Свойство в стиле — `auto`; если родитель
+        // размер оси не задал, коробка сперва меряется как `auto` (это и
+        // есть «size» основы — и для вкладов min/max-content), затем ось
+        // фиксируется результатом выражения, и раскладка идёт уже при нём
+        // (`calc-size-min-max-sizes-*`, `calc-size-aspect-ratio-001`).
+        // Высота — после ширины: основа высоты зависит от решённой ширины.
+        let cs = self.taffy.nodes[node.into()].style.calc_size;
+        let (fw, fh) = (
+            cs[0].filter(|_| inputs.known_dimensions.width.is_none()),
+            cs[1].filter(|_| inputs.known_dimensions.height.is_none()),
+        );
+        if inputs.run_mode != RunMode::PerformHiddenLayout && (fw.is_some() || fh.is_some()) {
+            let mut known = inputs.known_dimensions;
+            if let Some(f) = fw {
+                let auto = self.compute_child_layout_inner(
+                    node,
+                    LayoutInput { known_dimensions: known, run_mode: RunMode::ComputeSize, ..inputs },
+                );
+                known.width = Some(crate::style::apply_calc_size(f, auto.size.width));
+            }
+            if let Some(f) = fh {
+                let auto = self.compute_child_layout_inner(
+                    node,
+                    LayoutInput { known_dimensions: known, run_mode: RunMode::ComputeSize, ..inputs },
+                );
+                known.height = Some(crate::style::apply_calc_size(f, auto.size.height));
+            }
+            return self.compute_child_layout_inner(node, LayoutInput { known_dimensions: known, ..inputs });
+        }
+        self.compute_child_layout_inner(node, inputs)
+    }
+}
+
+impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
+where
+    MeasureFunction:
+        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+{
+    /// Раскладка узла без `calc-size()` (см. `compute_child_layout`).
+    #[inline(always)]
+    fn compute_child_layout_inner(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutOutput {
         // If RunMode is PerformHiddenLayout then this indicates that an ancestor node is `Display::None`
         // and thus that we should lay out this node using hidden layout regardless of it's own display style.
         if inputs.run_mode == RunMode::PerformHiddenLayout {
             debug_log!("HIDDEN");
             return compute_hidden_layout(self, node);
+        }
+
+        // KaminIDE patch: анонимный ряд строки решает доли высоты детей от
+        // `parent_size` (`percent_basis_from_parent`), а ключ кэша taffy
+        // `parent_size` не содержит: замер ряда в проходе, где высота
+        // родителя ещё неизвестна, отдавался и проходу, где она известна, и
+        // картинка `height: 100%` в растянутом flex-элементе выходила
+        // природной ширины (`intrinsic-percent-replaced-024/026`). Кэш ряда
+        // сбрасывается, когда высота родителя сменилась, и только у ряда, чьи
+        // дети (или дети склеенных групп) держат долю высоты — иначе база
+        // ни на что не влияет, а сброс на каждом проходе стоил ~20 % времени.
+        #[cfg(feature = "flexbox")]
+        if self.taffy.nodes[node.into()].style.percent_basis_from_parent && self.taffy.row_uses_pct_height(node) {
+            let h = inputs.parent_size.height;
+            let data = &mut self.taffy.nodes[node.into()];
+            if data.pct_parent_h != Some(h) {
+                let _ = data.cache.clear();
+                data.pct_parent_h = Some(h);
+            }
         }
 
         // We run the following wrapped in "compute_cached_layout", which will check the cache for an entry matching the node and inputs and:
@@ -634,6 +700,21 @@ where
 
 #[allow(clippy::iter_cloned_collect)] // due to no-std support, we need to use `iter_cloned` instead of `collect`
 impl<NodeContext> TaffyTree<NodeContext> {
+    /// KaminIDE patch: держит ли ребёнок анонимного ряда строки (или ребёнок
+    /// вложенной склеенной группы) долю/`calc` в высоте или её пределах —
+    /// только тогда база долей ряда (высота родителя) влияет на замер.
+    #[cfg(feature = "flexbox")]
+    fn row_uses_pct_height(&self, node: NodeId) -> bool {
+        let pct = |d: crate::style::Dimension| !d.is_auto() && d.into_option().is_none();
+        self.children[node.into()].iter().any(|&child| {
+            let style = &self.nodes[child.into()].style;
+            pct(style.size.height)
+                || pct(style.min_size.height)
+                || pct(style.max_size.height)
+                || (style.percent_basis_from_parent && self.row_uses_pct_height(child))
+        })
+    }
+
     /// Creates a new [`TaffyTree`]
     ///
     /// The default capacity of a [`TaffyTree`] is 16 nodes.

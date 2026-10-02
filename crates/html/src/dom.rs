@@ -327,6 +327,16 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
         .unwrap_or_else(|_| {
             html5ever::parse_document(RcDom::default(), Default::default()).one("")
         });
+    // Режим quirks (HTML §13.2.6.4.1, «initial» insertion mode: документ без
+    // DOCTYPE). Документ XHTML в quirks не бывает никогда (HTML §2.1, «XML
+    // documents … always in no-quirks mode»), а мы разбираем и его HTML-
+    // разборщиком, поэтому пространство имён корня его исключает.
+    QUIRKS.with(|q| {
+        q.set(
+            dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks
+                && !html.contains("http://www.w3.org/1999/xhtml"),
+        )
+    });
 
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
     let mut rules = parse_stylesheet_media(user_agent_css(), media);
@@ -1523,6 +1533,17 @@ pub(crate) struct Ancestor {
 /// Поток разбирает документ целиком, поэтому склад потоко-локальный:
 /// заполняется перед обходом, чистится по его окончании. Протаскивать его
 /// параметром через всю цепочку обхода - шесть сигнатур ради одной ветки.
+thread_local! {
+    /// Документ в режиме quirks (ставит `parse_media`; рамка сохраняет и
+    /// возвращает признак внешнего документа сама — `render::iframe`).
+    pub(crate) static QUIRKS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Режим quirks текущего документа.
+pub(crate) fn quirks() -> bool {
+    QUIRKS.with(|q| q.get())
+}
+
 thread_local! {
     static HAS_MARKS: std::cell::RefCell<HashMap<usize, Vec<u64>>> =
         std::cell::RefCell::new(HashMap::new());

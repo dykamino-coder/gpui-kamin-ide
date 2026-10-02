@@ -29,6 +29,12 @@ pub trait FlexboxContainerStyle: CoreStyle {
     fn flex_cross_reverse(&self) -> bool {
         Style::<Self::CustomIdent>::DEFAULT.flex_cross_reverse
     }
+    /// KaminIDE patch: анонимный ряд строки — доли высоты детей решаются от
+    /// высоты родителя ряда, а не от самого ряда (CSS 2.1 §10.1).
+    #[inline(always)]
+    fn percent_basis_from_parent(&self) -> bool {
+        Style::<Self::CustomIdent>::DEFAULT.percent_basis_from_parent
+    }
 
     /// How large should the gaps between items in a grid or flex container be?
     #[inline(always)]
@@ -57,6 +63,13 @@ pub trait FlexboxContainerStyle: CoreStyle {
 
 /// The set of styles required for a Flexbox item (child of a Flexbox container)
 pub trait FlexboxItemStyle: CoreStyle {
+    /// KaminIDE patch: элемент — анонимный ряд строки
+    /// (`percent_basis_from_parent`): родителю надо отдать ему свою высоту
+    /// как базу долей и в проходе основы.
+    #[inline(always)]
+    fn is_line_row(&self) -> bool {
+        false
+    }
     /// Sets the initial main axis size of the item
     #[inline(always)]
     fn flex_basis(&self) -> Dimension {

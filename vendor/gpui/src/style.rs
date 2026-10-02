@@ -251,6 +251,14 @@ pub struct Style {
     /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
     /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
     pub flex_cross_reverse: bool,
+    /// KaminIDE patch: анонимный ряд строки — не коробка CSS (CSS 2.1 §10.1:
+    /// содержащий блок строчного атома — блок-контейнер). Доли высоты детей
+    /// решаются от высоты РОДИТЕЛЯ ряда, а не от самого ряда.
+    pub percent_basis_from_parent: bool,
+    /// KaminIDE patch: `calc-size()` у `width`, `height`, `min-width`,
+    /// `min-height`: `(mul, add, max, min)` в логических точках (см.
+    /// `taffy::Style::calc_size`).
+    pub calc_size: [Option<(f32, f32, f32, f32)>; 4],
     /// KaminIDE patch: узел не отдаёт базовые линии родителю
     /// (css-contain-2 §3.2 п.7, `contain: layout`).
     pub hides_baseline: bool,
@@ -964,6 +972,8 @@ impl Default for Style {
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
             flex_cross_reverse: false,
+            percent_basis_from_parent: false,
+            calc_size: [None; 4],
             hides_baseline: false,
             baseline_from_last: false,
             baseline_x_hint: None,

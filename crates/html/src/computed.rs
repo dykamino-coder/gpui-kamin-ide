@@ -2367,6 +2367,16 @@ pub struct Computed {
     /// ОПРЕДЕЛЕНА ли высота содержащего блока: от неё зависит, считается ли
     /// доля высоты вообще (§10.5 — иначе значение равно `auto`).
     pub(crate) cb_height_def: bool,
+    /// Режим quirks: высота, от которой ДЕТИ этой коробки решают долю
+    /// высоты при неопределённом содержащем блоке (Quirks Mode §3.5 «The
+    /// percentage height calculation quirk» — ближайший предок с не-`auto`
+    /// высотой). `None` — квирка нет или опоры не нашлось.
+    pub(crate) quirk_pct_base: Option<f32>,
+    /// `calc-size(<basis>, <expr>)` у `width`, `height`, `min-width`,
+    /// `min-height` (css-values-5 §calc-size): `(mul, add, max, min)` над
+    /// размером основы-ключевого слова; само свойство при этом `auto`, а
+    /// выражение применяет раскладка (`taffy::Style::calc_size`).
+    pub(crate) calc_size: [Option<(f32, f32, f32, f32)>; 4],
     /// Коробка РАСТЯНУТА раскладкой: элемент гибкого контейнера или сетки без
     /// своей высоты получает её от полосы, и для потомков она определена.
     pub(crate) stretched: bool,
@@ -4310,13 +4320,40 @@ impl Computed {
             // (CSS 2.1 §10): `max-height: -1px` доезжал до раскладки и
             // схлопывал коробку в ноль. У `min-*` отрицательное поднимает
             // сама раскладка, но объявление всё равно отбрасывается.
+            "width" | "height" | "min-width" | "min-height" if calc_size_arg(v).is_some() => {
+                let i = match key {
+                    "width" => 0,
+                    "height" => 1,
+                    "min-width" => 2,
+                    _ => 3,
+                };
+                let slot = match i {
+                    0 => &mut self.width,
+                    1 => &mut self.height,
+                    2 => &mut self.min_width,
+                    _ => &mut self.min_height,
+                };
+                match calc_size_arg(v) {
+                    Some(CalcSize::Fixed(px)) => {
+                        *slot = Some(Len::Px(px));
+                        self.calc_size[i] = None;
+                    }
+                    Some(CalcSize::Over(f)) => {
+                        *slot = if i < 2 { Some(Len::Auto) } else { None };
+                        self.calc_size[i] = Some(f);
+                    }
+                    None => {}
+                }
+            }
             "width" => {
                 self.width_inherit = v == "inherit";
                 self.fit_arg[0] = fit_content_arg(v);
+                self.calc_size[0] = None;
                 assign_size(&mut self.width, v);
             }
             "height" => {
                 self.height_inherit = v == "inherit";
+                self.calc_size[1] = None;
                 assign_size(&mut self.height, v);
             }
             // Пределы не наследуются, но `inherit` берёт значение родителя
@@ -4325,10 +4362,12 @@ impl Computed {
             "min-width" => {
                 self.minmax_inherit[0] = v == "inherit";
                 self.fit_arg[1] = fit_content_arg(v);
+                self.calc_size[2] = None;
                 assign_size(&mut self.min_width, v);
             }
             "min-height" => {
                 self.minmax_inherit[1] = v == "inherit";
+                self.calc_size[3] = None;
                 assign_size(&mut self.min_height, v);
             }
             "max-width" => {
@@ -5743,7 +5782,14 @@ impl Computed {
                         _ => None,
                     },
                     None => body.trim().parse().ok(),
-                };
+                }
+                // Вырожденное отношение (ноль или бесконечность в любой части)
+                // ведёт себя как `auto` (css-sizing-4 Overview.bs:533: «If the
+                // <ratio> is degenerate, the property instead behaves as
+                // auto»; css-values-4 Overview.bs:1665): `0/1` давал
+                // соотношение 0, и коробка `width: 100px` получала бесконечную
+                // высоту (`zero-or-infinity-001`).
+                .filter(|r: &f32| r.is_finite() && *r > 0.0);
                 if v.split_whitespace().any(|t| t.eq_ignore_ascii_case("auto")) {
                     self.aspect_ratio_auto = ratio;
                     self.aspect_ratio = None;
@@ -12425,6 +12471,70 @@ fn fit_content_arg(v: &str) -> Option<Len> {
         Some(l @ (Len::Px(n) | Len::Pct(n))) if n >= 0.0 => Some(l),
         _ => None,
     }
+}
+
+/// Разобранный `calc-size()`.
+enum CalcSize {
+    /// Основа — длина: значение известно сразу.
+    Fixed(f32),
+    /// Основа — ключевое слово размера: `(mul, add, max, min)` над ним.
+    Over((f32, f32, f32, f32)),
+}
+
+/// `calc-size(<basis>, <calc-sum>)` (css-values-5 §calc-size,
+/// `csswg-drafts/css-values-5/Overview.bs`). Понимаются линейные выражения
+/// над `size` (`size`, `size ± L`, `size * k`, `k * size`, `size / k`, их
+/// суммы) и `min(size, L)` / `max(size, L)`; длины — в точках. Основа —
+/// `auto`, `fit-content`, `min-content`, `max-content`, `content` или длина;
+/// вложенный `calc-size()` и проценты не понимаются — объявление роняется.
+fn calc_size_arg(v: &str) -> Option<CalcSize> {
+    let inner = v.trim().strip_prefix("calc-size(")?.strip_suffix(')')?;
+    let (basis, expr) = inner.split_once(',')?;
+    let basis = basis.trim();
+    let mut expr: String = expr.chars().filter(|c| !c.is_whitespace()).collect();
+    if let Some(e) = expr.strip_prefix("calc(").and_then(|e| e.strip_suffix(')')) {
+        expr = e.to_string();
+    }
+    let px = |t: &str| t.strip_suffix("px").and_then(|n| n.parse::<f32>().ok());
+    let f = if let Some(a) = expr.strip_prefix("min(size,").and_then(|e| e.strip_suffix(')')) {
+        (1.0, 0.0, px(a)?, f32::MIN)
+    } else if let Some(a) = expr.strip_prefix("max(size,").and_then(|e| e.strip_suffix(')')) {
+        (1.0, 0.0, f32::MAX, px(a)?)
+    } else {
+        // Сумма членов: `size`, `size*k`, `k*size`, `size/k`, `L`.
+        let (mut mul, mut add) = (0.0f32, 0.0f32);
+        let mut rest = expr.as_str();
+        let mut sign = 1.0f32;
+        if let Some(r) = rest.strip_prefix('-') {
+            sign = -1.0;
+            rest = r;
+        }
+        loop {
+            let end = rest.find(['+', '-']).unwrap_or(rest.len());
+            let term = &rest[..end];
+            if term == "size" {
+                mul += sign;
+            } else if let Some(k) = term.strip_prefix("size*").or_else(|| term.strip_suffix("*size")) {
+                mul += sign * k.parse::<f32>().ok()?;
+            } else if let Some(k) = term.strip_prefix("size/") {
+                mul += sign / k.parse::<f32>().ok()?;
+            } else {
+                add += sign * px(term)?;
+            }
+            if end == rest.len() {
+                break;
+            }
+            sign = if rest.as_bytes()[end] == b'-' { -1.0 } else { 1.0 };
+            rest = &rest[end + 1..];
+        }
+        (mul, add, f32::MAX, f32::MIN)
+    };
+    if let Some(b) = px(basis) {
+        let (mul, add, max, min) = f;
+        return Some(CalcSize::Fixed((b * mul + add).min(max).max(min).max(0.0)));
+    }
+    matches!(basis, "auto" | "fit-content" | "min-content" | "max-content" | "content")
+        .then_some(CalcSize::Over(f))
 }
 
 fn assign_size(slot: &mut Option<Len>, v: &str) {

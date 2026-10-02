@@ -600,6 +600,13 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_balance_lines: self.flex_balance_lines,
             // KaminIDE patch: обратная поперечная ось однострочного контейнера.
             flex_cross_reverse: self.flex_cross_reverse,
+            // KaminIDE patch: анонимный ряд строки прозрачен для долей высоты.
+            percent_basis_from_parent: self.percent_basis_from_parent,
+            // KaminIDE patch: `calc-size()`; длины выражения — в точки
+            // раскладки (тот же множитель, что у прочих длин `to_taffy`).
+            calc_size: self.calc_size.map(|f| {
+                f.map(|(mul, add, max, min)| (mul, add * scale_factor, max * scale_factor, min * scale_factor))
+            }),
             // KaminIDE patch: `contain: layout` — базовых линий нет.
             hides_baseline: self.hides_baseline,
             // KaminIDE patch: `inline-block` — последняя базовая.
