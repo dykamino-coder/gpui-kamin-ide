@@ -424,14 +424,27 @@ where
                     node,
                     LayoutInput { known_dimensions: known, run_mode: RunMode::ComputeSize, ..inputs },
                 );
-                known.width = Some(crate::style::apply_calc_size(f, auto.size.width));
+                // Замер `ContentSize` соотношения сторон не знает: размер
+                // основы `auto` при известной второй оси — из соотношения
+                // (css-sizing-4 §5.1; `calc-size-aspect-ratio-001`).
+                let ratio = self.taffy.nodes[node.into()].style.aspect_ratio;
+                let base = match (ratio, known.height) {
+                    (Some(r), Some(h)) => auto.size.width.max(h * r),
+                    _ => auto.size.width,
+                };
+                known.width = Some(crate::style::apply_calc_size(f, base));
             }
             if let Some(f) = fh {
                 let auto = self.compute_child_layout_inner(
                     node,
                     LayoutInput { known_dimensions: known, run_mode: RunMode::ComputeSize, ..inputs },
                 );
-                known.height = Some(crate::style::apply_calc_size(f, auto.size.height));
+                let ratio = self.taffy.nodes[node.into()].style.aspect_ratio.filter(|r| *r > 0.0);
+                let base = match (ratio, known.width) {
+                    (Some(r), Some(w)) => auto.size.height.max(w / r),
+                    _ => auto.size.height,
+                };
+                known.height = Some(crate::style::apply_calc_size(f, base));
             }
             return self.compute_child_layout_inner(node, LayoutInput { known_dimensions: known, ..inputs });
         }

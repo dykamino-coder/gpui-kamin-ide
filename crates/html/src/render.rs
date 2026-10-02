@@ -17037,6 +17037,11 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             if !matches!(inherited.display, Some(Display::TableCell) | Some(Display::GridLanes)) {
                 copy.style.cb_height_def = inline::inherit(inherited, &e.style).cb_height_def;
             }
+            // Единицы окна (`vw`/`vh`, в том числе внутри `calc`) — в точки: держатель
+            // строится из СЫРОГО стиля, а сворачивает их только слитый
+            // (`Computed::resolve_viewport`), и `height: calc(60vh - 6px)` у
+            // картинки падал в природный размер (`intrinsic-percent-replaced-009-ref`).
+            copy.style.resolve_viewport(opts.viewport);
             Some(image_with(&copy, Some(atom_base_font(inherited, opts))))
         }
         // Замещаемые с адресом в СВОЁМ атрибуте: у блочного пути такие рукава
@@ -20187,6 +20192,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if !matches!(inherited.display, Some(Display::TableCell) | Some(Display::GridLanes)) {
                 copy.style.cb_height_def = merged.cb_height_def;
             }
+            // Единицы окна — в точки, как у строчной картинки.
+            copy.style.resolve_viewport(opts.viewport);
             image_with(&copy, Some(atom_base_font(inherited, opts)))
         }
         // Замещаемые с картинкой-источником рисуются как <img>: embed через
