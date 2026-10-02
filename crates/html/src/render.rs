@@ -18546,7 +18546,12 @@ fn has_own_box(c: &Computed, font_px: f32) -> bool {
     // (`border-top-width-0NN` уходят в прогон и там ложатся мимо). Настоящая
     // развилка — геометрия полосы: 1.16 кегля вместо подъёма и спуска шрифта,
     // и рамка внутрь вместо наружу. Возвращаться вместе с ней.
-    let inline_level = c.display.is_none();
+    // Явный `display: inline` (`div { display: inline }`) — тот же строчный
+    // уровень: разбор держит его как `InlineBlock` с `inline_display`, и
+    // `div` с рамкой уходил в коробку — с вертикальными полями и рамкой
+    // ВНУТРИ строки (`margin-top-applies-to-008`, §10.6.1: вертикальные
+    // поля строчной коробки на строку не действуют).
+    let inline_level = c.display.is_none() || c.inline_display == Some(true);
     if inline_level
         && (crate::inline::uniform_border(c, font_px).is_some()
             || crate::inline::sided_border(c, font_px).is_some())

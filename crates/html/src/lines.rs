@@ -4302,7 +4302,14 @@ impl Paragraph {
         let line_base = self.base_of(range);
         for (wi, word) in words.iter().enumerate() {
             let slice: SharedString = self.text[word.range.clone()].to_string().into();
-            let runs = slice_runs(&self.runs, &word.range);
+            // Полоса строчной коробки продолжается сквозь слова (см.
+            // `slice_runs_banded`); при rtl слова зеркалятся, и стороны
+            // меняются местами — там прежний счёт.
+            let runs = if self.wrap.rtl {
+                slice_runs(&self.runs, &word.range)
+            } else {
+                slice_runs_banded(&self.runs, &word.range)
+            };
             let shaped = window.text_system().shape_line_spaced(
                 slice,
                 self.font_size,
@@ -4370,6 +4377,44 @@ impl Paragraph {
             // Подложка прогона — отдельным вызовом, см. выше.
             let _ = shaped.paint_background(at, self.line_height, window, cx);
             let _ = shaped.paint(at, self.line_height, window, cx);
+            // Пробелы между словами тоже принадлежат полосе коробки: без
+            // этого фон и рамка `<span>` рвались на каждом пробеле. Промежуток
+            // набирается своими прогонами (обе стороны — продолжение полосы) и
+            // красит только подложку. Растянутые выключкой промежутки красит
+            // ветка ниже.
+            if step == px(0.)
+                && !self.wrap.rtl
+                && let Some(next) = words.get(wi + 1)
+                && next.range.start > word.range.end
+            {
+                let gap = word.range.end..next.range.start;
+                let gap_runs = slice_runs_banded(&self.runs, &gap);
+                if gap_runs.iter().any(|r| r.background_color.is_some()) {
+                    let gap_text: SharedString = self.text[gap.clone()].to_string().into();
+                    let gap_shaped = window.text_system().shape_line_spaced(
+                        gap_text,
+                        self.font_size,
+                        &gap_runs,
+                        None,
+                        self.letter_spans
+                            .iter()
+                            .find(|(r, _)| r.contains(&gap.start))
+                            .map(|(_, v)| *v)
+                            .unwrap_or(self.letter_spacing),
+                    );
+                    let gap_x = bounds.origin.x + dx + (self.x_at(segs, gap.start, Edge::Start) - from);
+                    let gap_y = match (line_base, self.base_of(&gap)) {
+                        (Some(l), Some(w)) => y + px(l - w),
+                        _ => y,
+                    };
+                    let _ = gap_shaped.paint_background(
+                        point(gap_x, gap_y),
+                        self.line_height,
+                        window,
+                        cx,
+                    );
+                }
+            }
             // Растянутый выключкой пробел тоже принадлежит прогону, и его
             // подложка обязана быть сплошной. Красим ТОЛЬКО когда пробел
             // целиком внутри одного прогона с фоном — иначе фон соседнего
@@ -4492,6 +4537,59 @@ impl Paragraph {
 }
 
 /// Куски оформления, попавшие в отрезок строки.
+/// Прогоны отрезка для ПОСЛОВНОЙ отрисовки полосы строчной коробки.
+///
+/// Слово, вырезанное из середины `<span>` с фоном или рамкой, — не начало и не
+/// конец коробки: полоса продолжается в соседние знаки той же коробки, и поле
+/// с боковой гранью на этой стороне не ставится (css-break-3
+/// `box-decoration-break: slice`; на переносе то же делает сплошной набор,
+/// `vendor/gpui` `line.rs` `run_background_quad` `pad_left/pad_right`).
+/// Прежде каждое слово рисовало полную коробку — с рамкой и полем с обеих
+/// сторон, и `<span>` с рамкой распадался на коробки по словам.
+///
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (03.10): полоса для `<span>` с рамкой БЕЗ фона —
+/// прозрачная подложка прогона плюс `inline_pad` в `inline.rs`, чтобы
+/// `run_background_quad` рисовал и такую рамку. Даже с отсечкой rtl,
+/// `unicode-bidi: bidi-override`, сильных R/AL и знаков направления срез 3000
+/// пар дал +1/−14, срез 125 строчных пар +7/−16: теряет семья `bidi-*` —
+/// пословная отрисовка ltr-абзаца со знаками RLO/LRO идёт в ЛОГИЧЕСКОМ
+/// порядке, и полоса на каждый видимый прогон рисует боковые грани дважды.
+/// Возвращаться вместе с двунаправленной раскладкой полос (box-decoration по
+/// видимым фрагментам, css-break-3 §5.4).
+fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
+    let mut out = slice_runs(runs, range);
+    let band_at = |at: usize| -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
+        let mut start = 0usize;
+        for run in runs {
+            if at < start + run.len {
+                return Some((run.background_color, run.background_border));
+            }
+            start += run.len;
+        }
+        None
+    };
+    if range.start > 0
+        && let Some(first) = out.first_mut()
+        && first.background_color.is_some()
+        && band_at(range.start - 1) == Some((first.background_color, first.background_border))
+    {
+        first.background_pad[3] = px(0.);
+        if let Some(b) = first.background_border.as_mut() {
+            b.1[3] = px(0.);
+        }
+    }
+    if let Some(last) = out.last_mut()
+        && last.background_color.is_some()
+        && band_at(range.end) == Some((last.background_color, last.background_border))
+    {
+        last.background_pad[1] = px(0.);
+        if let Some(b) = last.background_border.as_mut() {
+            b.1[1] = px(0.);
+        }
+    }
+    out
+}
+
 fn slice_runs(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
     let mut out = Vec::new();
     let mut at = 0usize;
