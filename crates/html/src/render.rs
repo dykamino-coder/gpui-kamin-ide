@@ -14905,6 +14905,10 @@ fn atoms_fit_line(inherited: &Computed) -> bool {
         && inherited.no_select != Some(true)
         && inherited.pointer_events_none != Some(true)
         && crate::lines::align_for(inherited) != crate::lines::Align::Justify
+        // Обрыв строки многоточием (`text-overflow: ellipsis`) режет текст по
+        // знакам, а распорку атома знаком не считает: атом обрывался не там
+        // (`text-overflow-016`, `text-overflow-ruby`) — такой абзац в ряду.
+        && inherited.ellipsis != Some(true)
 }
 
 /// `vertical-align` атома для строки абзаца, если атом туда годится.
@@ -14936,15 +14940,42 @@ fn atom_line_align(
     }
     // Ортогональный поток внутри атома меряется от ДОСТУПНОГО места (§7.3
     // css-writing-modes-3), а замер «по содержимому» его не даёт: коробка с
-    // `writing-mode: vertical-*` внутри атома выходила другой высоты
-    // (`inline-box-orthogonal-child-with-margins`).
-    fn has_vertical(nodes: &[Node]) -> bool {
+    // `writing-mode: vertical-*` и строчной стороной `auto` внутри атома
+    // выходила другой высоты (`inline-box-orthogonal-child-with-margins`).
+    // Элемент сетки и гибкого ряда размер берёт от дорожки/ряда, и от
+    // доступного места не зависит — такой атом остаётся в строке: иначе абзац
+    // теста с `vertical-rl`-элементами сетки шёл прежним рядом, а эталон из
+    // простых `inline-block` — строкой (`grid-container-baseline-
+    // synthesized-001..004`: 0.00 -> 11.00).
+    fn has_vertical(nodes: &[Node], in_box_layout: bool) -> bool {
         nodes.iter().any(|n| match n {
-            Node::Element(k) => k.style.vertical.is_some() || has_vertical(&k.children),
+            Node::Element(k) => {
+                let sized_by_parent = in_box_layout || k.style.height.is_some();
+                (k.style.vertical.is_some() && !sized_by_parent)
+                    || has_vertical(&k.children, box_layout(&k.style))
+            }
             _ => false,
         })
     }
-    if st.vertical.is_some() || has_vertical(&e.children) {
+    fn box_layout(c: &Computed) -> bool {
+        matches!(
+            c.display,
+            Some(Display::Grid)
+                | Some(Display::InlineGrid)
+                | Some(Display::Flex)
+                | Some(Display::InlineFlex)
+        )
+    }
+    // Сам атом с вертикальным письмом допустим, если он сетка или гибкий ряд:
+    // размер ему задают дорожки и содержимое, а не доступное место
+    // (`grid-container-baseline-synthesized-002/004`).
+    if (st.vertical.is_some() && !box_layout(st)) || has_vertical(&e.children, box_layout(st)) {
+        return None;
+    }
+    // Замещаемый с `aspect-ratio`: соотношение разрешается от ДОСТУПНОГО
+    // места, а замер по содержимому его не даёт (`zero-or-infinity-006`:
+    // `aspect-ratio: 0/1` давал другую высоту).
+    if replaced && (st.aspect_ratio.is_some() || st.aspect_ratio_auto.is_some()) {
         return None;
     }
     if matches!(

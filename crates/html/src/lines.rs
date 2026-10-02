@@ -1550,8 +1550,20 @@ impl Paragraph {
             *ON
         } {
             eprintln!(
-                "ATOMS lh={lh} fs={:?} strut={:?} runs={:?} boxes={:?} pads={pads:?} bounds={bounds:?}",
-                self.font_size, self.strut, self.run_metrics, self.atom_boxes
+                "ATOMS lh={lh} fs={:?} strut={:?} runs={:?} boxes={:?} pads={pads:?} bounds={bounds:?} fonts={:?} text={:?} lines={:?}",
+                self.font_size,
+                self.strut,
+                self.run_metrics,
+                self.atom_boxes,
+                self.runs
+                    .iter()
+                    .map(|r| (r.font.family.clone(), r.font_size))
+                    .collect::<Vec<_>>(),
+                self.text,
+                self.lines
+                    .iter()
+                    .map(|l| l.range.clone())
+                    .collect::<Vec<_>>()
             );
         }
         let mut tops = Vec::with_capacity(self.lines.len());
@@ -1589,18 +1601,24 @@ impl Paragraph {
                 AtomAlign::Bottom => tops[row] + lh + p + q - b.h,
                 _ => tops[row] + p + self.line_base(&line.range) + self.atom_top(&b),
             };
-            // Угол атома — к целой точке устройства на АБСОЛЮТНОЙ координате,
-            // как раскладка ставит края любых коробок (`taffy.rs`,
-            // `layout_bounds`): дробный угол корня округлялся отдельно от
-            // его детей, и соседние атомы расходились на точку
-            // (`flexbox-justify-content-horiz-004-ref`).
-            let scale = window.scale_factor().max(1.0);
-            let snap = |v: Pixels| px((f32::from(v) * scale).round() / scale);
-            self.atoms[k].el.prepaint_at(
-                point(snap(bounds.origin.x + x), snap(bounds.origin.y + px(top))),
-                window,
-                cx,
-            );
+            // Корень атома ставится на ДРОБНОЕ абсолютное место, и края
+            // всех его коробок округляются на абсолютной координате — как в
+            // основном дереве (`taffy.rs` `layout_bounds`, KaminIDE patch
+            // `set_root_origin`). Округлённый угол корня давал точку
+            // расхождения с тем же атомом в гибком ряду
+            // (`flexbox-justify-content-horiz-002/004`).
+            let origin = point(bounds.origin.x + x, bounds.origin.y + px(top));
+            match self.atoms[k].root.get() {
+                Some(root) => {
+                    window.set_layout_root_origin(root, origin);
+                    self.atoms[k]
+                        .el
+                        .prepaint_at(point(px(0.), px(0.)), window, cx);
+                }
+                None => {
+                    self.atoms[k].el.prepaint_at(origin, window, cx);
+                }
+            }
         }
     }
 
@@ -3169,6 +3187,26 @@ impl Element for Paragraph {
                 // за неё вместо переноса.
                 let width = match space_along {
                     gpui::AvailableSpace::Definite(w) if width > w => w,
+                    _ => width,
+                };
+                // Абзац с атомами, перенесённый МЯГКО, занимает всё отведённое
+                // место: ширина «по содержимому» — это min(max-content,
+                // max(min-content, доступное)) (CSS 2.1 §10.3.5, css-sizing-3
+                // §5.1 fit-content), а не самая длинная строка после переноса.
+                // Так мерил и прежний гибкий ряд с переносом, и коробка
+                // `width: fit-content(100px)` из двух `inline-block` по 60px
+                // выходила 60 вместо 100 (`fit-content-length-percentage-*`).
+                let width = match space_along {
+                    gpui::AvailableSpace::Definite(w)
+                        if known_along.is_none() && !probe.atom_boxes.is_empty() && width < w =>
+                    {
+                        let full = probe
+                            .split(None, window)
+                            .iter()
+                            .map(|l| l.width + l.indent.max(px(0.)))
+                            .fold(px(0.), |a: Pixels, b| if b > a { b } else { a });
+                        if full > w { w } else { width }
+                    }
                     _ => width,
                 };
                 // Высота абзаца — сумма ШАГОВ строк: обычно это ровно
