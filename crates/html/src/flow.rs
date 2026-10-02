@@ -804,10 +804,73 @@ pub fn in_stack() -> bool {
     STACK_DEPTH.with(|d| d.get() > 0)
 }
 
+/// Ось стопки колонок. css-multicol-1 §2 (`Overview.bs:375-379`): «The
+/// column boxes are ordered in the inline base direction of the multicol
+/// container … The column width is the length of the column box in the inline
+/// direction. The column height is the length of the column box in the block
+/// direction»; note `:544-549`: «In text set using a vertical writing mode, the
+/// block direction runs horizontally». Blink держит укладку логической
+/// (`column_layout_algorithm.cc:982` `LogicalOffset logical_offset(
+/// column_inline_offset, line_offset)`) и переводит в физику при сборке
+/// фрагмента (`WritingModeConverter`). Вся арифметика стопки (`fill_at`,
+/// `balance*`, `Rows`, `place`) у нас тоже логическая: «высота» в ней — блочный
+/// размер, «x колонки» — строчное смещение. Физика — только в раскладке и
+/// отрисовке (`prepaint_axis`/`paint_axis`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StackAxis {
+    /// `horizontal-tb`: прогрессия колонок вправо, блочная ось вниз.
+    Horizontal,
+    /// `vertical-lr`: прогрессия колонок вниз, блочная ось вправо.
+    VerticalLr,
+    /// `vertical-rl`/`sideways-rl`: прогрессия вниз, блочная ось ВЛЕВО от
+    /// правого края коробки (css-writing-modes-4 §3.1 «block flow direction»).
+    VerticalRl,
+}
+
+impl StackAxis {
+    pub fn is_vertical(self) -> bool {
+        !matches!(self, StackAxis::Horizontal)
+    }
+}
+
+/// Логическая коробка стопки → физическая. `io`/`ie` — смещение и размер по
+/// СТРОЧНОЙ оси (по ней идёт прогрессия колонок), `bo`/`be` — по БЛОЧНОЙ;
+/// `block` — блочный размер всей стопки (нужен `vertical-rl`: там блочная ось
+/// отсчитывается от правого края). Blink `WritingModeConverter::ToPhysical`
+/// (`writing_mode_converter.cc`): у `vertical-rl` `x = outer.width - offset -
+/// inner.width`.
+pub fn axis_box(
+    axis: StackAxis,
+    origin: gpui::Point<Pixels>,
+    block: f32,
+    io: f32,
+    ie: f32,
+    bo: f32,
+    be: f32,
+) -> Bounds<Pixels> {
+    match axis {
+        StackAxis::Horizontal => Bounds {
+            origin: point(origin.x + px(io), origin.y + px(bo)),
+            size: size(px(ie), px(be)),
+        },
+        StackAxis::VerticalLr => Bounds {
+            origin: point(origin.x + px(bo), origin.y + px(io)),
+            size: size(px(be), px(ie)),
+        },
+        StackAxis::VerticalRl => Bounds {
+            origin: point(origin.x + px(block - bo - be), origin.y + px(io)),
+            size: size(px(be), px(ie)),
+        },
+    }
+}
+
 pub struct ColumnStack {
     children: Vec<StackChild>,
     count: usize,
     gap: f32,
+    /// Ось прогрессии колонок (`StackAxis`); при вертикальном письме —
+    /// вертикальная. Ставится `with_axis`.
+    axis: StackAxis,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
     fixed_height: Option<f32>,
     /// Линейка между колонками: ширина и цвет.
@@ -871,6 +934,7 @@ impl ColumnStack {
             fixed_height,
             rule,
             rows,
+            axis: StackAxis::Horizontal,
             copies,
             gap_items,
             intrinsic,
@@ -878,6 +942,271 @@ impl ColumnStack {
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),
             spans_plan: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Ось прогрессии колонок (см. `StackAxis`).
+    pub fn with_axis(mut self, axis: StackAxis) -> Self {
+        self.axis = axis;
+        self
+    }
+
+    /// Геометрия детей для укладки (то же, что строят `request_layout` и
+    /// `prepaint` горизонтальной стопки).
+    fn kid_geoms(&self) -> Vec<Kid> {
+        self.children
+            .iter()
+            .map(|c| Kid {
+                h: c.h,
+                mt: c.mt,
+                mb: c.mb,
+                monolith: c.monolith,
+                cuts: c.cuts.clone(),
+                force_before: c.force_before,
+                force_after: c.force_after,
+                avoid_before: c.avoid_before,
+                avoid_after: c.avoid_after,
+                forced: c.forced.clone(),
+                solid: c.solid.clone(),
+                span: c.span,
+                over: c.over,
+                clone_dec: c.clone_dec,
+                overflow_top: c.overflow_top,
+                repeat: c.repeat.as_ref().map_or(RepeatGeom::default(), |r| r.geom),
+                par: c.par,
+            })
+            .collect()
+    }
+
+    /// Строчный и блочный размеры коробки стопки по её оси.
+    fn axis_sizes(&self, bounds: Bounds<Pixels>) -> (f32, f32) {
+        if self.axis.is_vertical() {
+            (f32::from(bounds.size.height), f32::from(bounds.size.width))
+        } else {
+            (f32::from(bounds.size.width), f32::from(bounds.size.height))
+        }
+    }
+
+    /// Раскладка стопки в ВЕРТИКАЛЬНОМ письме: та же укладка (`balance`),
+    /// физика — через `axis_box`. Горизонтальная стопка идёт прежним
+    /// `prepaint` байт в байт. Повтор шапок таблицы, строки flex (`Par`),
+    /// `clone` и хвост `slack` сюда не приходят: `render.rs` их в вертикали
+    /// не взводит.
+    fn prepaint_axis(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let axis = self.axis;
+        let (inline_avail, block_avail) = self.axis_sizes(bounds);
+        let col_w =
+            ((inline_avail - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
+        let heights = self.kid_geoms();
+        let (_, lines, plan, spans) = self.balance(&heights);
+        if std::env::var_os("KAMIN_FRAG_DEBUG").is_some() {
+            for (i, k) in heights.iter().enumerate() {
+                eprintln!(
+                    "axis {:?} kid {i}: h {} mt {} mb {} mono {} cuts {:?} solid {:?}",
+                    axis, k.h, k.mt, k.mb, k.monolith, k.cuts, k.solid
+                );
+            }
+            for f in &plan {
+                eprintln!(
+                    "frag kid {} copy {} col {} y {} from {} h {}",
+                    f.kid, f.copy, f.col, f.y, f.from, f.h
+                );
+            }
+        }
+        self.col_w.set(col_w);
+        *self.lines_plan.borrow_mut() = lines;
+        let step = col_w + self.gap;
+        let rl = axis == StackAxis::VerticalRl;
+        for f in &plan {
+            let full_h = self.children[f.kid].h;
+            let (c, ry) = self.place(f.col);
+            let rel = self.children[f.kid].rel;
+            // Копия раскладывается ЦЕЛИКОМ по блочной оси и сдвигается на
+            // срез: видимой её часть делает маска (css-break-3 §4, `slice`).
+            let b = axis_box(
+                axis,
+                bounds.origin,
+                block_avail,
+                c as f32 * step,
+                col_w,
+                ry + f.y - f.from,
+                full_h,
+            );
+            let kid = &mut self.children[f.kid];
+            let el = if f.copy == 0 {
+                &mut kid.el
+            } else {
+                match kid.frags.get_mut(f.copy - 1) {
+                    Some(e) => e,
+                    None => continue,
+                }
+            };
+            // Строчный размер блока `auto` — во всю колонку (CSS 2.1 §10.3.3
+            // в логических осях; css-writing-modes-4 §7.3): у вертикальной
+            // копии это ВЫСОТА. Корень `layout_as_root` с гибким рядом
+            // (так блок вертикального письма строится в `element()`) высоту
+            // по доступному месту не тянет — тянет поперечная ось обёртки
+            // (`align-items: stretch`). У `vertical-rl` начало блочной оси —
+            // ПРАВЫЙ край обёртки (`flex_row_reverse`).
+            {
+                use gpui::{ParentElement as _, Styled as _};
+                let inner = std::mem::replace(el, gpui::Empty.into_any_element());
+                let w = gpui::div().flex().w(b.size.width).h(b.size.height);
+                let w = if rl { w.flex_row_reverse() } else { w.flex_row() };
+                *el = w.child(inner).into_any_element();
+            }
+            el.layout_as_root(
+                size(
+                    gpui::AvailableSpace::Definite(b.size.width),
+                    gpui::AvailableSpace::Definite(b.size.height),
+                ),
+                window,
+                cx,
+            );
+            el.prepaint_at(point(b.origin.x + px(rel.0), b.origin.y + px(rel.1)), window, cx);
+        }
+        // Спаннер — во всю СТРОЧНУЮ сторону коробки.
+        for &(kid, sy) in &spans {
+            let h = self.children[kid].h;
+            let b = axis_box(axis, bounds.origin, block_avail, 0.0, inline_avail, sy, h);
+            let kid = &mut self.children[kid];
+            kid.el.layout_as_root(
+                size(
+                    gpui::AvailableSpace::Definite(b.size.width),
+                    gpui::AvailableSpace::Definite(b.size.height),
+                ),
+                window,
+                cx,
+            );
+            kid.el.prepaint_at(b.origin, window, cx);
+        }
+        if let Some(items) = &self.gap_items {
+            let lines = self.lines_plan.borrow();
+            let mut used = vec![0usize; lines.len()];
+            for f in &plan {
+                if let Some(u) = used.get_mut(f.col / self.count) {
+                    *u = (*u).max(f.col % self.count + 1);
+                }
+            }
+            let mut items = items.borrow_mut();
+            for (l, &(ly, lh)) in lines.iter().enumerate() {
+                for c in 0..used[l].max(1) {
+                    items.push(axis_box(
+                        axis,
+                        bounds.origin,
+                        block_avail,
+                        c as f32 * step,
+                        col_w,
+                        ly,
+                        lh,
+                    ));
+                }
+            }
+            for &(kid, sy) in &spans {
+                items.push(axis_box(
+                    axis,
+                    bounds.origin,
+                    block_avail,
+                    0.0,
+                    inline_avail,
+                    sy,
+                    self.children[kid].h,
+                ));
+            }
+        }
+        *self.plan.borrow_mut() = plan;
+        *self.spans_plan.borrow_mut() = spans;
+    }
+
+    /// Отрисовка вертикальной стопки (пара к `prepaint_axis`).
+    fn paint_axis(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let axis = self.axis;
+        let (_, block_avail) = self.axis_sizes(bounds);
+        let col_w = self.col_w.get();
+        let step = col_w + self.gap;
+        let wrap = matches!(self.rows, Some(r) if r.wrap);
+        if let Some((rw, color)) = self.rule {
+            let rows = self.lines_plan.borrow().clone();
+            // css-multicol-1 §4: линейка только между ЗАНЯТЫМИ колонками.
+            let used: Vec<usize> = {
+                let plan = self.plan.borrow();
+                (0..rows.len())
+                    .map(|l| {
+                        plan.iter()
+                            .filter(|f| {
+                                f.h > 0.01 && (if wrap { f.col / self.count } else { 0 }) == l
+                            })
+                            .map(|f| if wrap { f.col % self.count } else { f.col } + 1)
+                            .max()
+                            .unwrap_or(0)
+                    })
+                    .collect()
+            };
+            for (l, &(ry, rh)) in rows.iter().enumerate() {
+                for i in 1..used.get(l).copied().unwrap_or(0).min(self.count) {
+                    // Толщина линейки идёт по СТРОЧНОЙ оси (она стоит в
+                    // промежутке между колонками), длина — по блочной.
+                    let io = i as f32 * step - self.gap * 0.5 - rw * 0.5;
+                    window.paint_quad(gpui::fill(
+                        axis_box(axis, bounds.origin, block_avail, io, rw, ry, rh),
+                        color,
+                    ));
+                }
+            }
+        }
+        let plan = self.plan.borrow().clone();
+        let mut parts = vec![0usize; self.children.len()];
+        for f in &plan {
+            parts[f.kid] += 1;
+        }
+        for f in plan {
+            let (c, ry) = self.place(f.col);
+            let rel = self.children[f.kid].rel;
+            let split = parts[f.kid] > 1;
+            // Срез поперёк БЛОЧНОЙ оси; вдоль строчной колонка переполнение
+            // не режет (css-multicol-1 §8.1 «visibly overflows and is not
+            // clipped to the column box») — вылет на высоту окна, как у
+            // горизонтальной стопки на его ширину. Кроме вложенного
+            // многоколоночника (`nested_cols`).
+            let win_h = f32::from(window.viewport_size().height);
+            let spill = if self.children[f.kid].nested_cols {
+                0.0
+            } else {
+                win_h.max(f32::from(bounds.size.height))
+            };
+            let b = axis_box(
+                axis,
+                bounds.origin,
+                block_avail,
+                c as f32 * step - spill,
+                col_w + spill + spill,
+                ry + f.y,
+                f.h,
+            );
+            let mask = gpui::ContentMask {
+                bounds: Bounds {
+                    origin: point(b.origin.x + px(rel.0), b.origin.y + px(rel.1)),
+                    size: b.size,
+                },
+            };
+            let kid = &mut self.children[f.kid];
+            let el = if f.copy == 0 {
+                &mut kid.el
+            } else {
+                match kid.frags.get_mut(f.copy - 1) {
+                    Some(e) => e,
+                    None => continue,
+                }
+            };
+            if split {
+                window.with_content_mask(Some(mask), |window| el.paint(window, cx));
+            } else {
+                el.paint(window, cx);
+            }
+        }
+        let spans = self.spans_plan.borrow().clone();
+        for (kid, _) in spans {
+            self.children[kid].el.paint(window, cx);
         }
     }
 
@@ -1858,6 +2187,7 @@ impl ColumnStack {
             children: Vec::new(),
             count: count.max(1),
             gap: 0.0,
+            axis: StackAxis::Horizontal,
             fixed_height,
             rule: None,
             rows,
@@ -1952,6 +2282,7 @@ impl ColumnStack {
             children: Vec::new(),
             count: count.max(1),
             gap: 0.0,
+            axis: StackAxis::Horizontal,
             fixed_height,
             rule: None,
             rows,
@@ -2233,6 +2564,7 @@ impl Element for ColumnStack {
         let gap = self.gap;
         let rows = self.rows;
         let copies = self.copies;
+        let axis = self.axis;
         // Внутренние размеры многоколоночного контейнера. Спека их не
         // определяет (css-multicol-1 §3.4: «This specification does not
         // define how U is calculated»), единственное письменное определение —
@@ -2248,7 +2580,7 @@ impl Element for ColumnStack {
         // Детей меряем ТОЛЬКО когда ширину решает содержимое: обычному
         // блочному контейнеру её даёт родитель, и второй проход раскладки там
         // ничего не даст, кроме времени.
-        let intrinsic = self.intrinsic.map(|Intrinsic(col_w)| {
+        let intrinsic = self.intrinsic.filter(|_| !axis.is_vertical()).map(|Intrinsic(col_w)| {
             let (mut kid_min, mut kid_max) = (0.0f32, 0.0f32);
             let (mut span_min, mut span_max) = (0.0f32, 0.0f32);
             for c in self.children.iter_mut() {
@@ -2304,6 +2636,37 @@ impl Element for ColumnStack {
         let id = window.request_measured_layout(
             gpui::Style::default(),
             move |known, available, _window, _cx| {
+                // Вертикальное письмо: место под прогрессию колонок — по
+                // СТРОЧНОЙ оси, то есть высота коробки (css-multicol-1 §2), а
+                // отдаём (блочный, строчный) как (ширина, высота).
+                if axis.is_vertical() {
+                    let inline = known
+                        .height
+                        .map(f32::from)
+                        .or(match available.height {
+                            gpui::AvailableSpace::Definite(v) => Some(f32::from(v)),
+                            _ => None,
+                        })
+                        .unwrap_or(0.0);
+                    let probe = ColumnStack {
+                        children: Vec::new(),
+                        count,
+                        gap,
+                        axis,
+                        fixed_height: fixed,
+                        rule: None,
+                        rows,
+                        copies,
+                        gap_items: None,
+                        intrinsic: None,
+                        plan: std::cell::RefCell::new(Vec::new()),
+                        col_w: std::cell::Cell::new(0.0),
+                        lines_plan: std::cell::RefCell::new(Vec::new()),
+                        spans_plan: std::cell::RefCell::new(Vec::new()),
+                    };
+                    let (block, _, _, _) = probe.balance(&heights);
+                    return size(px(block), px(inline));
+                }
                 let w = known
                     .width
                     .map(f32::from)
@@ -2321,6 +2684,7 @@ impl Element for ColumnStack {
                     children: Vec::new(),
                     count,
                     gap,
+                    axis,
                     fixed_height: fixed,
                     rule: None,
                     rows,
@@ -2348,6 +2712,10 @@ impl Element for ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) {
+        if self.axis.is_vertical() {
+            self.prepaint_axis(bounds, window, cx);
+            return;
+        }
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
         let heights: Vec<Kid> = self
@@ -2533,6 +2901,10 @@ impl Element for ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) {
+        if self.axis.is_vertical() {
+            self.paint_axis(bounds, window, cx);
+            return;
+        }
         // Линейки — по центрам промежутков, высотой в колонку, в каждой линии.
         // Это простая `column-rule` без рядов; при рядах `render.rs` отдаёт
         // линейки (в том числе `row-rule`, css-multicol-2 §rg) художнику

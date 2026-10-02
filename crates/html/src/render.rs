@@ -2697,6 +2697,73 @@ impl ShapeCx {
     };
 }
 
+/// Клон поддерева, у которого ФИЗИЧЕСКИЕ поля коробки повёрнуты так, что
+/// БЛОЧНАЯ ось вертикального письма встаёт на место вертикальной: `width` ↔
+/// `height`, стороны — по логическим ролям (css-writing-modes-4 §3.1, §6.4
+/// «abstract-to-physical mappings»): новый верх — block-start (левый край у
+/// `vertical-lr`, правый у `vertical-rl`), новый низ — block-end, новые лево/право
+/// — inline-start/-end (верх/низ при `direction: ltr`).
+///
+/// Нужен ТОЛЬКО мере стопки колонок: `shape_full` написана в терминах блочного
+/// потока (`h` — размер по оси потока, `cuts`/`solid` — смещения от его начала),
+/// но читает физические поля. На повёрнутом клоне её `h` — блочный размер, а
+/// `flex-direction: row` остаётся строчной осью (в вертикали она вертикальна) —
+/// дети ряда стоят рядом, точек разреза между ними нет, как и должно быть.
+/// Рисуется по-прежнему ИСХОДНЫЙ элемент: повернуть отрисовку нельзя, вместе с
+/// коробкой повернулись бы текст, рамки и фон. Blink делает то же логическими
+/// величинами (`BoxStrut`/`LogicalSize` в `block_layout_algorithm.cc`).
+///
+/// `None` — в поддереве потомок с ДРУГИМ письмом (ортогональный поток,
+/// css-writing-modes-4 §7.3, или обратная блочная ось) либо `direction: rtl`:
+/// поворотом его мера не выражается, и многоколоночник остаётся на прежнем
+/// пути.
+fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
+    if c.style.vertical == Some(false)
+        || c.style.vertical_rl.is_some_and(|v| v != rl)
+        || c.style.rtl == Some(true)
+    {
+        return None;
+    }
+    let turn = |s: &crate::computed::Sides| crate::computed::Sides {
+        top: if rl { s.right } else { s.left },
+        bottom: if rl { s.left } else { s.right },
+        left: s.top,
+        right: s.bottom,
+    };
+    let mut t = c.clone();
+    std::mem::swap(&mut t.style.width, &mut t.style.height);
+    std::mem::swap(&mut t.style.min_width, &mut t.style.min_height);
+    std::mem::swap(&mut t.style.max_width, &mut t.style.max_height);
+    t.style.padding = turn(&c.style.padding);
+    t.style.margin = turn(&c.style.margin);
+    t.style.border_width = turn(&c.style.border_width);
+    t.style.inset = turn(&c.style.inset);
+    // Видимость рамки — `[верх, право, низ, лево]` (`Computed::borders`).
+    let v = c.style.border_visible;
+    t.style.border_visible = if rl {
+        [v[1], v[2], v[3], v[0]]
+    } else {
+        [v[3], v[2], v[1], v[0]]
+    };
+    // Обрезка ПО ОСИ ПОТОКА: в вертикальном письме это `overflow-x`.
+    t.style.overflow_y = c.style.overflow_x;
+    t.style.overflow_x = c.style.overflow_y;
+    // `border-spacing` физическое (`horizontal vertical`), ряды таблицы идут
+    // по оси потока: между рядами в вертикали — ГОРИЗОНТАЛЬНАЯ составляющая.
+    if let Some((x, y)) = c.style.border_spacing {
+        t.style.border_spacing = Some((y, x));
+    }
+    t.children = c
+        .children
+        .iter()
+        .map(|n| match n {
+            Node::Element(k) => transpose_tree(k, rl).map(Node::Element),
+            other => Some(other.clone()),
+        })
+        .collect::<Option<Vec<Node>>>()?;
+    Some(t)
+}
+
 /// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v164, `scout-breakcore-2026-09.md` FRAG-FLEX-WRAP,
 /// 11 хунков): сбор строк гибкого контейнера с `flex-wrap` при фрагментации
 /// (`flex_lines`/`flex_item_main_w`, `ShapeCx::col_w`, `wrap_end`, ветка
@@ -20201,7 +20268,27 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // `ResolveUsedColumnCount` читает уже точки.
             let column_width = merged.column_width.filter(|_| multicol);
             let column_count = merged.column_count.filter(|_| multicol);
-            let count_from_width = match (column_width, merged.width) {
+            // Ось прогрессии колонок — СТРОЧНАЯ ось многоколоночника
+            // (css-multicol-1 §2, `Overview.bs:375-379`: «The column boxes are
+            // ordered in the inline base direction»). В вертикальном письме она
+            // вертикальна, блочная — горизонтальна, у `vertical-rl` от ПРАВОГО
+            // края (css-writing-modes-4 §3.1). `inline-size`/`block-size`
+            // разложены в физические `height`/`width` ещё в каскаде, поэтому
+            // строчный размер коробки здесь — `height`, блочный — `width`.
+            // `direction: rtl` в вертикали (колонки снизу вверх) — прежним путём.
+            let col_rl = merged.vertical_rl == Some(true);
+            let col_axis = if merged.vertical == Some(true) && merged.rtl != Some(true) {
+                if col_rl {
+                    crate::flow::StackAxis::VerticalRl
+                } else {
+                    crate::flow::StackAxis::VerticalLr
+                }
+            } else {
+                crate::flow::StackAxis::Horizontal
+            };
+            let col_vert = col_axis.is_vertical();
+            let col_inline_size = if col_vert { merged.height } else { merged.width };
+            let count_from_width = match (column_width, col_inline_size) {
                 (Some(Len::Px(w)), Some(Len::Px(box_w))) if w > 0.0 => {
                     Some((((box_w + used_gap) / (w + used_gap)).floor().max(1.0)) as u16)
                 }
@@ -20265,7 +20352,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     Some(Len::Px(h)) if h >= 0.0 => Some(h),
                     _ => None,
                 };
-                let box_h = match e.style.height {
+                // Блочный размер коробки: в вертикальном письме — ширина.
+                let box_h = match if col_vert { e.style.width } else { e.style.height } {
                     Some(Len::Px(h)) if h > 0.0 => Some(h),
                     _ => None,
                 };
@@ -20304,12 +20392,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // выходили по 20, и красный фон 20..100 был виден. `min-height` не в
                 // точках (доля, `em`) — потолка нет, как до P5: ниже используемой
                 // высоты резать нельзя, а её здесь не знаем.
+                let (max_block, min_block) = if col_vert {
+                    (e.style.max_width, e.style.min_width)
+                } else {
+                    (e.style.max_height, e.style.min_height)
+                };
                 let cap_h = box_h.and_then(|h| {
-                    let h = match e.style.max_height {
+                    let h = match max_block {
                         Some(Len::Px(m)) if m >= 0.0 => h.min(m),
                         _ => h,
                     };
-                    match e.style.min_height {
+                    match min_block {
                         None | Some(Len::Auto) => Some(h),
                         Some(Len::Px(m)) => Some(h.max(m)),
                         _ => None,
@@ -20680,7 +20773,17 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     && (c.style.float.unwrap_or(0) == 0
                                         || block_like_float(&c.style)) =>
                             {
-                                shape_full(c, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h))
+                                // В вертикальном письме мера — по БЛОЧНОЙ оси
+                                // (css-multicol-1 §2: «The column height is the
+                                // length of the column box in the block
+                                // direction»): поддерево меряется ПОВЁРНУТЫМ
+                                // клоном (`transpose_tree`), рисуется исходным.
+                                if col_vert {
+                                    let t = transpose_tree(c, col_rl)?;
+                                    shape_full(&t, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h))
+                                } else {
+                                    shape_full(c, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h))
+                                }
                             }
                             _ => None,
                         })
@@ -20708,8 +20811,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         // `column-fill: auto`: колонки заполняются подряд до
                         // `column-height`, а без него — до высоты коробки
                         // (css-multicol-1 §3.3, как прежде).
+                        // `column-fill: auto` заполняет колонку до БЛОЧНОГО
+                        // размера коробки — в вертикальном письме это ширина.
                         let fixed = if e.style.column_fill_auto == Some(true) {
-                            col_h.or(match e.style.height {
+                            col_h.or(match if col_vert { e.style.width } else { e.style.height } {
                                 Some(Len::Px(h)) => Some(h),
                                 _ => None,
                             })
@@ -20730,7 +20835,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         // 037/038` 0.07 → «красное видно»; балансные 033-035, 048
                         // не взяты. Только колонки (без рядов) при балансе — 0/0.
                         // Балансу нужен свой подбор высоты по строкам, а не оценка.
-                        let (kids, kid_par, kid_parent, kid_starts) = if fixed.is_some() && rows.is_none() {
+                        // Строки flex и распорки роста (`grow_pushed`) меряют
+                        // ФИЗИЧЕСКОЕ дерево и знают только вертикальную ось —
+                        // в вертикальном письме их нет (следующий шаг).
+                        let (kids, kid_par, kid_parent, kid_starts) = if fixed.is_some() && rows.is_none() && !col_vert {
                             let col_w = match merged.width {
                                 Some(Len::Px(w)) if merged.border_box != Some(true) && cols > 0 => {
                                     Some((w - used_gap * (cols as f32 - 1.0)) / cols as f32)
@@ -20751,7 +20859,11 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 p.avoid_only = c.style.break_inside_avoid && avoid_only_monolith(c);
                             }
                         }
-                        let kids = grow_pushed(kids, cols as usize, fixed, rows, copies, &kid_par);
+                        let kids = if col_vert {
+                            kids
+                        } else {
+                            grow_pushed(kids, cols as usize, fixed, rows, copies, &kid_par)
+                        };
                         // `box-decoration-break: clone`: геометрия фрагментов —
                         // ДО сборки копий: каждая копия такой коробки строится
                         // отдельной коробкой своей высоты (`clone_fragment`).
@@ -20760,7 +20872,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         // иначе план соседа с потоком разошёлся бы с укладкой.
                         // Без `clone` среди детей не считается вовсе.
                         let clone_plan: Vec<Vec<(f32, f32)>> =
-                            if kids.iter().any(|(c, _)| clone_dec(c).is_some()) {
+                            if !col_vert && kids.iter().any(|(c, _)| clone_dec(c).is_some()) {
                                 let probe: Vec<crate::flow::Kid> = kids
                                     .iter()
                                     .enumerate()
@@ -20871,19 +20983,27 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // в коробке 70 продолжается во второй колонке).
                                 let frag_geom: Vec<(f32, f32)> =
                                     clone_plan.get(ix).cloned().unwrap_or_default();
-                                let dec = clone_dec(&c).filter(|_| frag_geom.len() > 1);
+                                let dec = clone_dec(&c).filter(|_| frag_geom.len() > 1 && !col_vert);
                                 // Элемент строки flex (`split_flex_lines`) наследует от
                                 // СВОЕГО контейнера, а не от многоколоночника.
                                 let merged_k = kid_parent.get(ix).cloned().flatten();
                                 let merged: &Computed = merged_k.as_ref().unwrap_or(&merged);
                                 let mut copy = c;
-                                // Поля кладёт укладка колонок, не коробка.
-                                copy.style.margin.top = None;
-                                copy.style.margin.bottom = None;
-                                // И поле, схлопнутое СКВОЗЬ верх (`through` в
-                                // `mt`): стопка уже положила его `lead`-ом,
-                                // второй раз его вставил бы корень копии.
-                                strip_through_top(&mut copy, 4);
+                                // Поля кладёт укладка колонок, не коробка. В
+                                // вертикальном письме блочные поля — левое и
+                                // правое; схлопывание сквозь верх (`strip_through_top`)
+                                // там не считается вовсе (мера повёрнутая).
+                                if col_vert {
+                                    copy.style.margin.left = None;
+                                    copy.style.margin.right = None;
+                                } else {
+                                    copy.style.margin.top = None;
+                                    copy.style.margin.bottom = None;
+                                    // И поле, схлопнутое СКВОЗЬ верх (`through` в
+                                    // `mt`): стопка уже положила его `lead`-ом,
+                                    // второй раз его вставил бы корень копии.
+                                    strip_through_top(&mut copy, 4);
+                                }
                                 // Коробка из одних флоатов меряется высотой их
                                 // ряда (`float_only_box`), но сама по §10.6.3
                                 // высотой НОЛЬ — вне колонок это делает
@@ -20893,7 +21013,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // (`floats-clear-multicol-*`: `background:
                                 // red`); флоаты переполняют нулевую коробку, и
                                 // маска колонки режет их по разрезам меры.
-                                if float_only_box(&copy).is_some() && through_strut(&copy).is_some() {
+                                if !col_vert && float_only_box(&copy).is_some() && through_strut(&copy).is_some() {
                                     copy.style.height = Some(Len::Px(0.0));
                                 }
                                 // Параллельный поток (css-break-3 §3):
@@ -20921,8 +21041,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // перепривязка `cx` в `shape_full`). Без него
                                 // разъезжался ЭТАЛОН четырёх пар
                                 // `flex-item-content-overflow-*`.
+                                let copy_m = if col_vert { transpose_tree(&copy, col_rl) } else { None };
                                 let (over, cuts, forced, solid) = match shape_full(
-                                    &copy,
+                                    copy_m.as_ref().unwrap_or(&copy),
                                     4,
                                     ShapeCx {
                                         unclamped: true,
@@ -20944,11 +21065,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                                 Node::Element(k) => k.inline || plain_block_tree(k, 3),
                                                 _ => true,
                                             }));
+                                    let ov = copy_m.as_ref().unwrap_or(&copy);
                                     let block_visible = matches!(
-                                        copy.style.overflow_y,
+                                        ov.style.overflow_y,
                                         None | Some(crate::computed::Overflow::Visible)
                                     ) && matches!(
-                                        copy.style.overflow_x,
+                                        ov.style.overflow_x,
                                         None | Some(crate::computed::Overflow::Visible)
                                             | Some(crate::computed::Overflow::Clip)
                                     );
@@ -21292,6 +21414,14 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     }
                                     drop(frag_gap_guard);
                                     let mut d = styled_div_with(src, src_inner);
+                                    // Ось блочного потока ВНУТРИ копии — горизонтальная
+                                    // (css-writing-modes-4 §3.1), как у вертикального
+                                    // блока в `element()`: гибкий ряд, у `vertical-rl`
+                                    // обратный. Гибкому и сеточному ось ставит `apply`.
+                                    if col_vert && matches!(src.style.display, None | Some(Display::Block)) {
+                                        d = d.flex();
+                                        d = if col_rl { d.flex_row_reverse() } else { d.flex_row() };
+                                    }
                                     // Голый `styled_div_with` — БЛОК taffy (`apply.rs`
                                     // `apply_layout`: блоку вызова нет, gpui `Display::Block`
                                     // → taffy Block), а блок общего пути — гибкая колонка
@@ -21542,7 +21672,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     par: kid_par[ix],
                                     // Хвост непоследнего фрагмента таблицы — её фоном
                                     // (`flow.rs` `StackChild::slack`).
-                                    slack: table_box(&copy)
+                                    slack: (table_box(&copy) && !col_vert)
                                         .then(|| copy.style.background.map(|c| c.to_hsla()))
                                         .flatten(),
                                     laid_w: Default::default(),
@@ -21550,7 +21680,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // копиями (`flow::Repeat`); та же мера, что у
                                     // щупов (`repeat_leads`).
                                     repeat: repeat_bands(&copy, fixed, rows)
-                                        .filter(|_| !span)
+                                        .filter(|_| !span && !col_vert)
                                         .map(|(head, foot, geom)| crate::flow::Repeat {
                                             head,
                                             foot,
@@ -21635,21 +21765,35 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             let at = kid_starts.get(*at).copied().unwrap_or(children.len()).min(children.len());
                             children.insert(at, probe);
                         }
-                        let mut d = d.child(crate::flow::ColumnStack::new(
-                            children,
-                            cols as usize,
-                            used_gap,
-                            fixed,
-                            rule,
-                            rows,
-                            gap_items.clone(),
-                            intrinsic_inline_size(&e.style, inherited).then(|| {
-                                crate::flow::Intrinsic(match column_width {
-                                    Some(Len::Px(w)) if w > 0.0 => Some(w),
-                                    _ => None,
-                                })
-                            }),
-                        ));
+                        // Стопка тянется по СТРОЧНОЙ оси: в вертикальном письме
+                        // это высота, значит коробка кладёт её гибким рядом
+                        // (поперечная ось растягивает высоту), у `vertical-rl` —
+                        // от ПРАВОГО края (`flex_row_reverse`), там начало
+                        // блочной оси.
+                        let d = if col_vert {
+                            let d = d.flex();
+                            if col_rl { d.flex_row_reverse() } else { d.flex_row() }
+                        } else {
+                            d
+                        };
+                        let mut d = d.child(
+                            crate::flow::ColumnStack::new(
+                                children,
+                                cols as usize,
+                                used_gap,
+                                fixed,
+                                rule,
+                                rows,
+                                gap_items.clone(),
+                                intrinsic_inline_size(&e.style, inherited).then(|| {
+                                    crate::flow::Intrinsic(match column_width {
+                                        Some(Len::Px(w)) if w > 0.0 => Some(w),
+                                        _ => None,
+                                    })
+                                }),
+                            )
+                            .with_axis(col_axis),
+                        );
                         // Флоаты — прежним ходом, соседями стопки.
                         for oof in &direct_oof {
                             d = d.child(element(oof, &merged, opts));
