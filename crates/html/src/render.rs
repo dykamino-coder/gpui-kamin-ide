@@ -14492,6 +14492,230 @@ fn has_flow_text(nodes: &[Node]) -> bool {
     })
 }
 
+/// Куски текста с `vertical-align: top`/`bottom` (CSS 2.1 §10.8.1): отрезок
+/// байт в тексте абзаца, край (`true` — верх) и высота строчной коробки
+/// куска — его `line-height`.
+///
+/// `vertical-align` у нас наследуется (ради ячеек таблицы), поэтому краевым
+/// считается только кусок, чьё значение ОТЛИЧАЕТСЯ от значения абзаца: иначе
+/// каждый абзац ячейки с `vertical-align: top` прижимался бы весь.
+fn edge_pieces(
+    pieces: &[inline::Piece],
+    inherited: &Computed,
+    opts: &RenderOpts,
+) -> Vec<(std::ops::Range<usize>, bool, f32)> {
+    use crate::computed::Align;
+    let mut out: Vec<(std::ops::Range<usize>, bool, f32)> = Vec::new();
+    if inherited.vertical == Some(true) || inherited.rotated_line == Some(true) {
+        return out;
+    }
+    let mut at = 0usize;
+    for p in pieces {
+        let inline::Piece::Text { text, style } = p else {
+            continue;
+        };
+        let end = at + text.len();
+        let top = match style.vertical_align {
+            Some(Align::Start) => Some(true),
+            Some(Align::End) => Some(false),
+            _ => None,
+        };
+        let out_of_flow = style.float.is_some_and(|f| f != 0)
+            || matches!(
+                style.position,
+                Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+            );
+        if let Some(top) = top
+            && style.vertical_align != inherited.vertical_align
+            && !out_of_flow
+            && !text.is_empty()
+        {
+            let size = match style.font_size {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) => k * opts.base_size(),
+                _ => own_size(inherited, opts),
+            };
+            let h = match style.line_height {
+                Some(Len::Px(v)) => v,
+                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+                _ => size * normal_fraction(style, opts),
+            };
+            match out.last_mut() {
+                // Соседние куски одного края — одна коробка (`<span>` с
+                // вложенными кусками).
+                Some((r, t, hh)) if r.end == at && *t == top => {
+                    r.end = end;
+                    *hh = hh.max(h);
+                }
+                _ => out.push((at..end, top, h)),
+            }
+        }
+        at = end;
+    }
+    out
+}
+
+/// Лежит ли отрезок внутри краевого куска.
+fn in_edge(edges: &[(std::ops::Range<usize>, bool, f32)], r: &std::ops::Range<usize>) -> bool {
+    edges
+        .iter()
+        .any(|(e, _, _)| e.start < r.end.max(r.start + 1) && r.start < e.end)
+}
+
+/// Самый крупный кегль и наибольшая `line-height` кусков ВНЕ краевых: струт
+/// строки и её базовая линия от прижатых к краю не зависят (§10.8.1).
+fn flow_metrics(
+    pieces: &[inline::Piece],
+    edges: &[(std::ops::Range<usize>, bool, f32)],
+    inherited: &Computed,
+    opts: &RenderOpts,
+) -> (f32, f32) {
+    let strut = own_size(inherited, opts);
+    let fraction = normal_fraction(inherited, opts);
+    let em_base = opts.base_size();
+    let (mut size_max, mut lh_max) = (strut, strut * fraction);
+    let mut at = 0usize;
+    for p in pieces {
+        let inline::Piece::Text { text, style } = p else {
+            continue;
+        };
+        let r = at..at + text.len();
+        at = r.end;
+        if in_edge(edges, &r) {
+            continue;
+        }
+        let size = match style.font_size {
+            Some(Len::Px(v)) => v,
+            Some(Len::Em(k)) => k * em_base,
+            _ => strut,
+        };
+        let own = match style.line_height {
+            Some(Len::Px(v)) => v,
+            Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+            _ => size * fraction,
+        };
+        size_max = size_max.max(size);
+        lh_max = lh_max.max(own);
+    }
+    (size_max, lh_max)
+}
+
+/// Можно ли абзацу ставить атомы в свою строку: горизонтальное письмо слева
+/// направо, без раздачи по ширине (места атомов считаются от продвижения
+/// распорки, а растяжку пробелов `Paragraph` раздаёт уже при отрисовке) и с
+/// выделяемым текстом — путь `StyledText` атомов не несёт.
+fn atoms_fit_line(inherited: &Computed) -> bool {
+    inherited.vertical != Some(true)
+        && inherited.rotated_line != Some(true)
+        && inherited.rtl != Some(true)
+        && inherited.no_select != Some(true)
+        && inherited.pointer_events_none != Some(true)
+        && crate::lines::align_for(inherited) != crate::lines::Align::Justify
+}
+
+/// `vertical-align` атома для строки абзаца, если атом туда годится.
+///
+/// Атом раскладывается ДО замера абзаца по своему содержимому
+/// (`Paragraph::lay_atoms`), поэтому в строку идут только атомы, чей размер от
+/// ширины строки не зависит: без долей в размерах, полях и отступах. Абсолюты
+/// (их место — щуп статической позиции), поля форм и руби остаются в ряду.
+fn atom_line_align(
+    e: &Element,
+    inherited: &Computed,
+    opts: &RenderOpts,
+) -> Option<crate::lines::AtomAlign> {
+    use crate::lines::AtomAlign;
+    let st = &e.style;
+    let atomic = matches!(
+        st.display,
+        Some(Display::InlineBlock)
+            | Some(Display::InlineTable)
+            | Some(Display::InlineFlex)
+            | Some(Display::InlineGrid)
+    ) && st.inline_display != Some(true);
+    let replaced = matches!(
+        e.tag.as_str(),
+        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
+    );
+    if !(atomic || replaced) || st.ruby_role.is_some() {
+        return None;
+    }
+    // Ортогональный поток внутри атома меряется от ДОСТУПНОГО места (§7.3
+    // css-writing-modes-3), а замер «по содержимому» его не даёт: коробка с
+    // `writing-mode: vertical-*` внутри атома выходила другой высоты
+    // (`inline-box-orthogonal-child-with-margins`).
+    fn has_vertical(nodes: &[Node]) -> bool {
+        nodes.iter().any(|n| match n {
+            Node::Element(k) => k.style.vertical.is_some() || has_vertical(&k.children),
+            _ => false,
+        })
+    }
+    if st.vertical.is_some() || has_vertical(&e.children) {
+        return None;
+    }
+    if matches!(
+        st.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) {
+        return None;
+    }
+    let fixed = |l: Option<Len>| !matches!(l, Some(Len::Pct(_)) | Some(Len::Calc(_)));
+    let sides = |s: &crate::computed::Sides| {
+        fixed(s.top) && fixed(s.right) && fixed(s.bottom) && fixed(s.left)
+    };
+    if ![
+        st.width,
+        st.height,
+        st.min_width,
+        st.min_height,
+        st.max_width,
+        st.max_height,
+    ]
+    .into_iter()
+    .all(fixed)
+        || !sides(&st.margin)
+        || !sides(&st.padding)
+    {
+        return None;
+    }
+    // Сдвиги — как у текстового куска (`inline::shift_spans`), но от кегля
+    // САМОГО атома; ось подъёма смотрит вверх.
+    let merged = inline::inherit(inherited, st);
+    let size = match merged.font_size {
+        Some(Len::Px(v)) => v,
+        _ => own_size(inherited, opts),
+    };
+    Some(match st.vertical_align {
+        Some(crate::computed::Align::Start) => AtomAlign::Top,
+        Some(crate::computed::Align::End) => AtomAlign::Bottom,
+        Some(crate::computed::Align::Center) => AtomAlign::Middle,
+        _ => match st.vertical_align_text {
+            Some(true) => AtomAlign::TextTop,
+            Some(false) => AtomAlign::TextBottom,
+            None => {
+                if let Some(v) = st.vertical_shift_px {
+                    AtomAlign::Shift(-v)
+                } else if let Some(l) = st.vertical_shift_len {
+                    let family = merged.font_family.clone().unwrap_or_default();
+                    AtomAlign::Shift(crate::metrics::spacing_px(Some(l), &family, size))
+                } else if let Some(k) = st.vertical_shift {
+                    AtomAlign::Shift(-k * size)
+                } else if let Some(k) = st.vertical_shift_pct {
+                    // Процент — от `line-height` самого атома (§10.8.1).
+                    let own = match merged.line_height {
+                        Some(Len::Px(v)) => v,
+                        Some(Len::Pct(f)) | Some(Len::Em(f)) => f * size,
+                        _ => size * normal_fraction(&merged, opts),
+                    };
+                    AtomAlign::Shift(-k * own)
+                } else {
+                    AtomAlign::Shift(0.0)
+                }
+            }
+        },
+    })
+}
+
 /// Абзац с готовым разрезом первой строки: `at` — сколько байт в неё вошло.
 fn paragraph_pieces(
     nodes: &[Node],
@@ -14819,7 +15043,17 @@ fn paragraph_pieces(
             inline::Piece::Atom(el)
         })
     };
-    let mut pieces = inline::collect(nodes, inherited, &mut atom);
+    // Каждому атому — признак, можно ли поставить его В СТРОКУ абзаца
+    // (`atom_line_align`): порядок записей совпадает с порядком `Piece::Atom`.
+    let mut atom_aligns: Vec<Option<crate::lines::AtomAlign>> = Vec::new();
+    let mut atom_noted = |e: &Element| -> Option<inline::Piece> {
+        let piece = atom(e);
+        if matches!(piece, Some(inline::Piece::Atom(_))) {
+            atom_aligns.push(atom_line_align(e, inherited, opts));
+        }
+        piece
+    };
+    let mut pieces = inline::collect(nodes, inherited, &mut atom_noted);
     if pieces.is_empty() {
         return div().into_any_element();
     }
@@ -14834,7 +15068,23 @@ fn paragraph_pieces(
     inline::hyphenate_pieces(&mut pieces);
     inline::space_transform_pieces(&mut pieces);
     let mut pieces = pieces;
-    inline::trim_edge_spaces(&mut pieces);
+    // Пойдут ли атомы В СТРОКУ (решение то же, что ниже у распорок атомов):
+    // тогда атом — содержимое строки, и край для среза пробелов он обрывает.
+    let atoms_in_line = {
+        let count = pieces
+            .iter()
+            .filter(|p| matches!(p, inline::Piece::Atom(_)))
+            .count();
+        count > 0
+            && count == atom_aligns.len()
+            && atom_aligns.iter().all(Option::is_some)
+            && atoms_fit_line(inherited)
+    };
+    if atoms_in_line {
+        inline::trim_edge_spaces_solid_atoms(&mut pieces);
+    } else {
+        inline::trim_edge_spaces(&mut pieces);
+    }
     // Свой `unicode-bidi` у самого абзаца знаками не обрамлялся: их ставит
     // сборка КУСКОВ, а корень абзаца куском не бывает. Из-за этого
     // `bidi-override` на блоке не действовал вовсе (`pre-wrap-align-*-003`:
@@ -14932,6 +15182,50 @@ fn paragraph_pieces(
     // Ряда из слов под отступ первой строки больше нет: `lines::rules` отдаёт
     // правила переноса ВСЕГДА, и своя раскладка строк умеет и отступ, и
     // отрицательный отступ.
+    // Атомы — В СТРОКУ абзаца (CSS 2.1 §9.2.2, §10.8): каждый становится
+    // распоркой (U+FEFF), её продвижение — ширина атома, а сам элемент
+    // раскладывает и ставит на базовую линию своей строки `Paragraph`. Для
+    // переноса распорка атома читается как U+FFFC (`Paragraph::linebreaks`):
+    // так атом кладёт и Blink (`inline_items_builder.cc`, знак-заместитель
+    // объекта), а класс CB даёт разрыв до и после (UAX #14 LB20).
+    // Прежде абзац с атомом уходил в гибкий ряд слов (`as_wrapped_row`): одна
+    // высота строки на ряд, базовая линия текста taffy не видна, `top`/
+    // `bottom`/`text-top` не выражались.
+    let mut line_atoms: Vec<(usize, AnyElement, crate::lines::AtomAlign)> = Vec::new();
+    let atom_count = pieces
+        .iter()
+        .filter(|p| matches!(p, inline::Piece::Atom(_)))
+        .count();
+    if atoms_in_line && atom_count == atom_aligns.len() {
+        let mut aligns = atom_aligns.into_iter().flatten();
+        let mut at = 0usize;
+        let mut out = Vec::with_capacity(pieces.len() + 2 * atom_count);
+        let mut mark = inherited.clone();
+        mark.word_space_char = None;
+        mark.letter_spacing = Some(Len::Px(0.0));
+        mark.inline_bg = None;
+        mark.inline_border = None;
+        for p in pieces {
+            match p {
+                inline::Piece::Atom(el) => {
+                    let align = aligns.next().unwrap_or(crate::lines::AtomAlign::Shift(0.0));
+                    line_atoms.push((at, el, align));
+                    out.push(inline::Piece::Text {
+                        text: inline::SPACER.to_string(),
+                        style: mark.clone(),
+                    });
+                    at += inline::SPACER.len();
+                }
+                inline::Piece::Text { text, style } => {
+                    at += text.len();
+                    out.push(inline::Piece::Text { text, style });
+                }
+                other => out.push(other),
+            }
+        }
+        pieces = out;
+    }
+    let edges = edge_pieces(&pieces, inherited, opts);
     if inline::single_block(&pieces, opts.base_size())
         && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text)
     {
@@ -14944,6 +15238,19 @@ fn paragraph_pieces(
         // Строка растёт под самый крупный кусок — как коробка строки в CSS.
         // Иначе крупный `<span>` вылезал бы на соседние строки.
         let biggest = inline::max_font_size(&pieces, own_size(inherited, opts), opts.base_size());
+        // Прогон без своего кегля набирается кеглем АБЗАЦА, а им здесь стоит
+        // самый крупный кусок: текст блока без объявленного `font-size` рядом
+        // с крупным `<span>` вырастал до его кегля (`c43-rpl-ibx-000`: вся
+        // строка в 3.75em). Свой кегль такого куска — кегль блока.
+        let mut runs = runs;
+        if (!line_atoms.is_empty() || !edges.is_empty()) && inherited.text_fit.is_none() {
+            let own = own_size(inherited, opts);
+            if biggest != own {
+                for run in runs.iter_mut().filter(|r| r.font_size.is_none()) {
+                    run.font_size = Some(gpui::px(own));
+                }
+            }
+        }
         let mut opts = opts.clone();
         if biggest != opts.base_size() {
             opts.text.line_height = gpui::px(biggest * normal_fraction(inherited, &opts)).into();
@@ -14971,10 +15278,20 @@ fn paragraph_pieces(
             // `lh_spans`. Замерено: приобретено 4, потеряно 4 — три пары
             // `*-applies-to-008` уходят с 0.02 на 0.67. Возвращать вместе с
             // разбором `vertical-align: top/bottom` на тексте.
+            // Куски у края строки в её струт не входят (§10.8.1): у
+            // `vertical-align-121` строка из 30px текста и прижатого вверх
+            // 60px куска — это 30px струта плюс вылет куска вниз, а не 60px
+            // с текстом посередине.
+            let (flow_biggest, flow_lh) = if edges.is_empty() {
+                (biggest, 0.0)
+            } else {
+                flow_metrics(&pieces, &edges, inherited, opts)
+            };
             let line = match inherited.line_height {
                 Some(Len::Px(v)) => gpui::px(v),
-                Some(Len::Pct(k)) => gpui::px(k * biggest),
-                Some(Len::Em(k)) => gpui::px(k * biggest),
+                Some(Len::Pct(k)) => gpui::px(k * flow_biggest),
+                Some(Len::Em(k)) => gpui::px(k * flow_biggest),
+                _ if !edges.is_empty() => gpui::px(flow_lh),
                 // Своей `line-height` у блока нет — её задают КУСКИ: у куска
                 // со своей высотой строки она и берётся, у остальных доля от
                 // кегля (§10.8.1). Канал `lh_spans` умеет строку только
@@ -15036,13 +15353,22 @@ fn paragraph_pieces(
                 ]
                 .concat(),
             )
-            .shift_spans(inline::shift_spans(&pieces, biggest, f32::from(line)))
-            .lh_spans(inline::line_height_spans(
-                &pieces,
-                inherited,
-                biggest,
-                crate::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
-            ))
+            .shift_spans({
+                let mut v = inline::shift_spans(&pieces, biggest, f32::from(line));
+                v.retain(|(r, _)| !in_edge(&edges, r));
+                v
+            })
+            .lh_spans({
+                let mut v = inline::line_height_spans(
+                    &pieces,
+                    inherited,
+                    biggest,
+                    crate::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
+                );
+                v.retain(|(r, _)| !in_edge(&edges, r));
+                v
+            })
+            .edge_spans(edges)
             .rel_spans(inline::rel_spans(&pieces))
             .align_last(
                 inherited
@@ -15115,6 +15441,7 @@ fn paragraph_pieces(
                 }
             }))
             .overlays(inline::overlays(pieces))
+            .atoms(line_atoms)
             .selectable(id, opts.selection_color());
             return para.into_any_element();
         }
@@ -21203,6 +21530,12 @@ fn with_inherited_font(e: &Element, inherited: &Computed) -> Element {
     // обязан идти и у элемента со своим шрифтом.
     if copy.style.image_orient_none.is_none() {
         copy.style.image_orient_none = inherited.image_orient_none;
+    }
+    // `color` наследуется (CSS 2.1 §14.1), а цвет рамки по умолчанию —
+    // `currentColor` (css-backgrounds-3 §4.1): без переноса рамка картинки
+    // в белом абзаце рисовалась чёрной (`c44-ln-box-001/002/003`).
+    if copy.style.color.is_none() {
+        copy.style.color = inherited.color;
     }
     copy
 }

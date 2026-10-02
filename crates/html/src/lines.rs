@@ -188,9 +188,202 @@ pub struct Paragraph {
     /// отрисовку. Отдельно от `shift_spans` — тот растит строчную коробку,
     /// а этот на поток не влияет вовсе.
     rel_spans: Vec<(std::ops::Range<usize>, (f32, f32))>,
+    /// Атомарные строчные коробки В СТРОКЕ (CSS 2.1 §9.2.2, §10.8): место в
+    /// тексте держит распорка (U+FEFF), её продвижение — ширина атома, а сам
+    /// атом раскладывается отдельно и ставится на базовую линию своей строки.
+    atoms: Vec<AtomSlot>,
+    /// Замеры атомов (ширина, высота, базовая линия) — копируются в щуп
+    /// замера, сами элементы туда не уходят.
+    atom_boxes: Vec<AtomBox>,
+    /// Метрики струта абзаца (§10.8.1): подъём, спуск и x-высота первого
+    /// прогона — от них считается, насколько атом вылезает за строку.
+    strut: (f32, f32, f32),
+    /// Подъём и спуск ОСНОВНОГО шрифта каждого прогона: по ним строка с
+    /// кусками разного кегля ставит их на ОДНУ базовую линию (§10.8) — так же,
+    /// как сплошной набор строки (`ShapedLine::paint` берёт наибольшие подъём
+    /// и спуск строки).
+    run_metrics: Vec<(f32, f32)>,
+    /// Куски с `vertical-align: top`/`bottom` (§10.8.1): отрезок байт, край
+    /// (`true` — верх) и высота их строчной коробки (`line-height` куска).
+    /// Равняются по краю ГОТОВОЙ строки и растят её, только если выше неё.
+    edge_spans: Vec<(std::ops::Range<usize>, bool, f32)>,
     /// Границы строк в байтах — считаются на замере, переиспользуются на
     /// отрисовке.
     lines: Vec<Line>,
+}
+
+/// Как атом встаёт в строке по вертикали (`vertical-align`, CSS 2.1 §10.8.1).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AtomAlign {
+    /// По базовой линии родителя, поднятой на `v` точек (`baseline` — ноль;
+    /// длина, процент, `sub`/`super` — свой подъём).
+    Shift(f32),
+    /// Середина коробки — на высоте базовой линии плюс половина x-высоты.
+    Middle,
+    /// Верх коробки — по верху текстовой области родителя.
+    TextTop,
+    /// Низ коробки — по низу текстовой области родителя.
+    TextBottom,
+    /// Верх коробки — по верху строчной коробки.
+    Top,
+    /// Низ коробки — по низу строчной коробки.
+    Bottom,
+}
+
+/// Атом в строке: элемент-обёртка со щупом базовой линии.
+struct AtomSlot {
+    at: usize,
+    el: AnyElement,
+    align: AtomAlign,
+    probe: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
+    /// Узел самой обёртки (см. `LayoutTap`).
+    root: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
+}
+
+/// Замер атома в точках: высота коробки полей (по §10.8 выравнивается
+/// именно она) и базовая линия от её верха. Ширина уходит продвижением
+/// распорки (`letter_spans`).
+#[derive(Clone, Copy, Debug)]
+struct AtomBox {
+    at: usize,
+    h: f32,
+    base: f32,
+    align: AtomAlign,
+}
+
+/// Щуп базовой линии атома: пустой лист с базовой линией на своём верху.
+/// В ряду `align-items: baseline` рядом с атомом его верх встаёт ровно на
+/// базовую линию атома, и раскладка отдаёт её положением щупа. Для атома без
+/// базовой линии taffy берёт нижний край полей (`flexbox.rs`) — у замещаемого
+/// это и есть его базовая по §10.8.1.
+struct BaselineProbe {
+    slot: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
+}
+
+impl Element for BaselineProbe {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        _cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let id = window
+            .request_measured_layout_with_baselines(gpui::Style::default(), |_, _, _, _| {
+                (size(px(0.), px(0.)), Some(px(0.)), Some(px(0.)))
+            });
+        self.slot.set(Some(id));
+        (id, ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+}
+
+impl IntoElement for BaselineProbe {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+/// Обёртка, запоминающая узел раскладки своего ребёнка: по нему берётся
+/// ТОЧНЫЙ размер атома (`Window::layout_exact`) — округлённый к точке
+/// устройства прибавлял до 0.4px на атом, и ряд атомов ровно в ширину строки
+/// в неё уже не влезал (`c542-letter-sp-001-ref`, `c5505-mrgn-000`).
+struct LayoutTap {
+    child: AnyElement,
+    slot: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
+}
+
+impl Element for LayoutTap {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let id = self.child.request_layout(window, cx);
+        self.slot.set(Some(id));
+        (id, ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.child.prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.child.paint(window, cx);
+    }
+}
+
+impl IntoElement for LayoutTap {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
 }
 
 /// Строка: что рисовать и сколько она занимает.
@@ -261,6 +454,11 @@ impl Paragraph {
             shift_spans: Vec::new(),
             lh_spans: Vec::new(),
             rel_spans: Vec::new(),
+            atoms: Vec::new(),
+            atom_boxes: Vec::new(),
+            strut: (0.0, 0.0, 0.0),
+            run_metrics: Vec::new(),
+            edge_spans: Vec::new(),
             lines: Vec::new(),
             clamp: None,
             clamp_force: false,
@@ -299,6 +497,12 @@ impl Paragraph {
 
     pub fn lh_spans(mut self, spans: Vec<(std::ops::Range<usize>, Pixels)>) -> Self {
         self.lh_spans = spans;
+        self
+    }
+
+    /// Куски, прижатые к краю строки (см. поле `edge_spans`).
+    pub fn edge_spans(mut self, spans: Vec<(std::ops::Range<usize>, bool, f32)>) -> Self {
+        self.edge_spans = spans;
         self
     }
 
@@ -444,9 +648,14 @@ impl Paragraph {
     /// кусков после выравнивания. На каждую строку своя пара: абзац с
     /// надстрочным знаком в одной строке не должен раздувать остальные.
     fn line_padding(&self) -> Vec<(f32, f32)> {
-        if self.shift_spans.is_empty() && self.lh_spans.is_empty() {
+        if self.shift_spans.is_empty()
+            && self.lh_spans.is_empty()
+            && self.atom_boxes.is_empty()
+            && self.edge_spans.is_empty()
+        {
             return vec![(0.0, 0.0); self.lines.len()];
         }
+        let lh = f32::from(self.line_height);
         self.lines
             .iter()
             .map(|line| {
@@ -473,6 +682,51 @@ impl Paragraph {
                     let v = f32::from(*dy);
                     above = above.max(-v);
                     below = below.max(v);
+                }
+                // Атом растит строку на то, чем его коробка полей выходит за
+                // струт (§10.8: строчная коробка — от верха самой высокой
+                // коробки до низа самой низкой). `top`/`bottom` решаются
+                // ПОСЛЕ остальных: они равняются по уже собранной строке и
+                // растят её, только если сами выше (§10.8.1).
+                let inside = |at: usize| at >= line.range.start && at < line.range.end;
+                let a = self.line_base(&line.range);
+                for b in self.atom_boxes.iter().filter(|b| inside(b.at)) {
+                    if matches!(b.align, AtomAlign::Top | AtomAlign::Bottom) {
+                        continue;
+                    }
+                    let t = self.atom_top(b);
+                    above = above.max(-t - a);
+                    below = below.max(t + b.h - (lh - a));
+                }
+                // Прижатые к краю — атомы и куски текста — после всех
+                // остальных: строка растёт, только если такой кусок выше.
+                let edges = self
+                    .atom_boxes
+                    .iter()
+                    .filter(|b| inside(b.at))
+                    .filter_map(|b| match b.align {
+                        AtomAlign::Top => Some((true, b.h)),
+                        AtomAlign::Bottom => Some((false, b.h)),
+                        _ => None,
+                    })
+                    .chain(
+                        self.edge_spans
+                            .iter()
+                            .filter(|(r, _, _)| {
+                                r.start < line.range.end && r.end > line.range.start
+                            })
+                            .map(|(_, top, h)| (*top, *h)),
+                    );
+                for (top, h) in edges {
+                    let total = lh + above + below;
+                    if h <= total {
+                        continue;
+                    }
+                    if top {
+                        below += h - total;
+                    } else {
+                        above += h - total;
+                    }
                 }
                 (above, below)
             })
@@ -1104,6 +1358,252 @@ impl Paragraph {
         self
     }
 
+    /// Атомы в строке: место в тексте (байт распорки) → элемент и его
+    /// `vertical-align`. Каждый заворачивается в ряд `align-items: baseline`
+    /// со щупом базовой линии (см. `BaselineProbe`): обёртка обтягивает
+    /// коробку полей атома, щуп отдаёт её базовую линию.
+    pub fn atoms(mut self, atoms: Vec<(usize, AnyElement, AtomAlign)>) -> Self {
+        use gpui::{ParentElement, Styled};
+        // Распорка атома — не распорка полей: из текста для переноса её не
+        // вынимают, а читают знаком-заместителем (см. `linebreaks`).
+        self.spacers
+            .retain(|s| !atoms.iter().any(|(at, _, _)| at == s));
+        self.atoms = atoms
+            .into_iter()
+            .map(|(at, el, align)| {
+                let probe = std::rc::Rc::new(std::cell::Cell::new(None));
+                let root = std::rc::Rc::new(std::cell::Cell::new(None));
+                let el = LayoutTap {
+                    child: gpui::div()
+                        .flex()
+                        .items_baseline()
+                        .child(BaselineProbe {
+                            slot: probe.clone(),
+                        })
+                        .child(el)
+                        .into_any_element(),
+                    slot: root.clone(),
+                }
+                .into_any_element();
+                AtomSlot {
+                    at,
+                    el,
+                    align,
+                    probe,
+                    root,
+                }
+            })
+            .collect();
+        self
+    }
+
+    /// Верх атома от базовой линии строки (ось вниз) — для всех выравниваний,
+    /// кроме `top`/`bottom`: те зависят от готовой строки (§10.8.1 «aligned
+    /// subtree» решается после остальных).
+    fn atom_top(&self, b: &AtomBox) -> f32 {
+        let (asc, desc, xh) = self.strut;
+        match b.align {
+            AtomAlign::Shift(v) => -b.base - v,
+            AtomAlign::Middle => -xh / 2.0 - b.h / 2.0,
+            AtomAlign::TextTop => -asc,
+            AtomAlign::TextBottom => desc - b.h,
+            AtomAlign::Top | AtomAlign::Bottom => -b.base,
+        }
+    }
+
+    /// От верха струта до его базовой линии: полулидинг плюс подъём (§10.8.1).
+    fn strut_base(&self) -> f32 {
+        let (asc, desc, _) = self.strut;
+        (f32::from(self.line_height) - (asc + desc)) / 2.0 + asc
+    }
+
+    /// Подъём и спуск основного шрифта каждого прогона.
+    fn measure_runs(&self, window: &mut Window) -> Vec<(f32, f32)> {
+        self.runs
+            .iter()
+            .map(|run| {
+                let id = window.text_system().resolve_font(&run.font);
+                let size = run.font_size.unwrap_or(self.font_size);
+                let ts = window.text_system();
+                (
+                    f32::from(ts.ascent(id, size)),
+                    f32::from(ts.descent(id, size)).abs(),
+                )
+            })
+            .collect()
+    }
+
+    /// Базовая линия отрезка от верха его строки: наибольшие подъём и спуск
+    /// прогонов отрезка, полулидинг от высоты строки — ровно как кладёт глифы
+    /// сплошной набор (`padding_top + ascent` в `vendor/gpui/.../line.rs`).
+    fn base_of(&self, range: &std::ops::Range<usize>) -> Option<f32> {
+        if self.run_metrics.len() != self.runs.len() {
+            return None;
+        }
+        let mut at = 0usize;
+        let mut best: Option<(f32, f32)> = None;
+        for (run, &(a, d)) in self.runs.iter().zip(&self.run_metrics) {
+            let (s, e) = (at, at + run.len);
+            at = e;
+            if run.len == 0 || e <= range.start || s >= range.end {
+                continue;
+            }
+            // Прогон у края строки в базовую линию не входит: его коробка
+            // равняется по краю, а не по базовой (§10.8.1). Отрезок самого
+            // такого куска своей базовой не меряет — там прогон считается.
+            let edge = self.edge_spans.iter().any(|(r, _, _)| {
+                r.start <= s && e <= r.end && !(r.start <= range.start && range.end <= r.end)
+            });
+            if edge {
+                continue;
+            }
+            best = Some(best.map_or((a, d), |(ba, bd)| (ba.max(a), bd.max(d))));
+        }
+        best.map(|(a, d)| (f32::from(self.line_height) - (a + d)) / 2.0 + a)
+    }
+
+    /// Базовая линия строки: по её прогонам, без них — по струту.
+    fn line_base(&self, range: &std::ops::Range<usize>) -> f32 {
+        self.base_of(range).unwrap_or_else(|| self.strut_base())
+    }
+
+    /// Раскладка атомов ДО замера абзаца: перенос и высота строк зависят от
+    /// их размеров, а внутри замера раскладывать нельзя (движок раскладки
+    /// занят). Атом меряется по содержимому — в строку допускаются только
+    /// атомы, чей размер от ширины строки не зависит (решает `render.rs`).
+    fn lay_atoms(&mut self, window: &mut Window, cx: &mut App) {
+        if let Some(run) = self.runs.first() {
+            let id = window.text_system().resolve_font(&run.font);
+            let size = run.font_size.unwrap_or(self.font_size);
+            let ts = window.text_system();
+            self.strut = (
+                f32::from(ts.ascent(id, size)),
+                f32::from(ts.descent(id, size)).abs(),
+                f32::from(ts.x_height(id, size)),
+            );
+        }
+        self.run_metrics = self.measure_runs(window);
+        self.atom_boxes.clear();
+        for slot in self.atoms.iter_mut() {
+            let rounded = slot.el.layout_as_root(
+                size(
+                    gpui::AvailableSpace::MaxContent,
+                    gpui::AvailableSpace::MaxContent,
+                ),
+                window,
+                cx,
+            );
+            // Размер и базовая линия — ТОЧНЫЕ, без округления к точке
+            // устройства (см. `LayoutTap`); щуп стоит прямо в обёртке, и его
+            // смещение от неё и есть базовая линия.
+            let s = slot
+                .root
+                .get()
+                .map(|id| window.layout_exact(id).1)
+                .unwrap_or(rounded);
+            let base = slot
+                .probe
+                .get()
+                .map(|id| f32::from(window.layout_exact(id).0.y))
+                .unwrap_or(f32::from(s.height));
+            // Базовая на самом ВЕРХУ коробки — признак того, что раскладка
+            // базовой линии не нашла (таблица с пустой ячейкой отдаёт ноль).
+            // По CSS 2.1 §17.5.3 и §10.8.1 тогда это низ коробки: «If there is
+            // no such line box or table-row, the baseline is the bottom of
+            // content edge of the cell box» (`min-height-applies-to-014`).
+            let base = if base <= 0.0 && s.height > px(0.) {
+                f32::from(s.height)
+            } else {
+                base
+            };
+            let w = f32::from(s.width);
+            self.atom_boxes.push(AtomBox {
+                at: slot.at,
+                h: f32::from(s.height),
+                base,
+                align: slot.align,
+            });
+            // Продвижение распорки — ширина атома. Идёт ПЕРВЫМ: поиск
+            // диапазона берёт первое попадание.
+            let len = self.text[slot.at..]
+                .chars()
+                .next()
+                .map_or(0, char::len_utf8);
+            self.letter_spans.insert(0, (slot.at..slot.at + len, px(w)));
+        }
+    }
+
+    /// Поставить атомы на места их строк: x — от продвижения до распорки
+    /// плюс прижим строки (тот же, что у отрисовки), y — от базовой линии
+    /// строки по `vertical-align`.
+    fn place_atoms(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        if self.atoms.is_empty() || self.lines.is_empty() {
+            return;
+        }
+        let segs = self.measure(window);
+        let pads = self.line_padding();
+        let lh = f32::from(self.line_height);
+        // След мест атомов: ATOM_DBG=1.
+        if {
+            static ON: std::sync::LazyLock<bool> =
+                std::sync::LazyLock::new(|| std::env::var("ATOM_DBG").is_ok());
+            *ON
+        } {
+            eprintln!(
+                "ATOMS lh={lh} fs={:?} strut={:?} runs={:?} boxes={:?} pads={pads:?} bounds={bounds:?}",
+                self.font_size, self.strut, self.run_metrics, self.atom_boxes
+            );
+        }
+        let mut tops = Vec::with_capacity(self.lines.len());
+        let mut y = 0.0f32;
+        for (i, _) in self.lines.iter().enumerate() {
+            tops.push(y);
+            let (p, q) = pads.get(i).copied().unwrap_or((0.0, 0.0));
+            y += lh + p + q;
+        }
+        for k in 0..self.atoms.len() {
+            let Some(b) = self.atom_boxes.get(k).copied() else {
+                continue;
+            };
+            let row = self
+                .lines
+                .iter()
+                .position(|l| b.at < l.range.end)
+                .unwrap_or(self.lines.len() - 1);
+            let line = self.lines[row].clone();
+            let (p, q) = pads.get(row).copied().unwrap_or((0.0, 0.0));
+            let align = self.line_align(row, &line);
+            let free_raw = bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
+            let hang = self.hang_first(line.range.start);
+            let shift = self.span(&segs, line.range.start, line.range.start + hang);
+            let lead = line.indent - shift;
+            let dx = if align == Align::Justify {
+                lead
+            } else {
+                line_offset(align, self.wrap.rtl, free_raw) + lead
+            };
+            let x = dx + self.x_at(&segs, b.at, Edge::Start)
+                - self.x_at(&segs, line.range.start, Edge::Start);
+            let top = match b.align {
+                AtomAlign::Top => tops[row],
+                AtomAlign::Bottom => tops[row] + lh + p + q - b.h,
+                _ => tops[row] + p + self.line_base(&line.range) + self.atom_top(&b),
+            };
+            // Угол атома — к целой точке устройства на АБСОЛЮТНОЙ координате,
+            // как раскладка ставит края любых коробок (`taffy.rs`,
+            // `layout_bounds`): дробный угол корня округлялся отдельно от
+            // его детей, и соседние атомы расходились на точку
+            // (`flexbox-justify-content-horiz-004-ref`).
+            let scale = window.scale_factor().max(1.0);
+            let snap = |v: Pixels| px((f32::from(v) * scale).round() / scale);
+            self.atoms[k].el.prepaint_at(
+                point(snap(bounds.origin.x + x), snap(bounds.origin.y + px(top))),
+                window,
+                cx,
+            );
+        }
+    }
+
     /// Трекинг, который добавлен ПОСЛЕДНЕМУ знаку отрезка.
     ///
     /// По css-text-3 §8.2 межбуквенный интервал в конце строки не действует:
@@ -1131,6 +1631,60 @@ impl Paragraph {
             .unwrap_or(self.letter_spacing)
     }
 
+    /// Выключка строки `i`: последняя строка и строка перед жёстким разрывом
+    /// идут своей выключкой (`text-align-last`), `plaintext` решает сторону
+    /// по абзацу между разрывами. Общая для отрисовки и для мест атомов.
+    fn line_align(&self, i: usize, line: &Line) -> Align {
+        let count = self.lines.len();
+        let body = self.text[line.range.clone()].trim_end_matches('\n');
+        let last_line = i + 1 == count || body.len() < line.range.len();
+        // Строка с СОХРАНЁННОЙ табуляцией не растягивается (позиции
+        // табуляции обязаны совпасть с нерастянутой строкой), но выключку
+        // ПОСЛЕДНЕЙ строки (`text-align-last`) она не получает: к
+        // табуляции та отношения не имеет.
+        let no_stretch = last_line;
+        // При `plaintext` сторона письма своя у каждого АБЗАЦА между
+        // жёсткими разрывами (не у строки: мягкий перенос сторону не
+        // меняет). От неё же зависят `start` и `end`.
+        let own_align =
+            match self.plaintext {
+                Some(logical) => {
+                    let start = self.text[..line.range.start]
+                        .rfind('\n')
+                        .map(|i| i + 1)
+                        .unwrap_or(0);
+                    let end = self.text[start..]
+                        .find('\n')
+                        .map(|i| start + i)
+                        .unwrap_or(self.text.len());
+                    // При `unicode-bidi: plaintext` сторона КАЖДОГО абзаца
+                    // берётся по первому сильному знаку (css-writing-modes-4
+                    // §2.2 -> UAX#9 P2/P3), а не у элемента. Порядок глифов это
+                    // уже учитывал (`BidiInfo::new(text, None)`), выключка —
+                    // нет. Нейтральный абзац сильного знака не имеет и остаётся
+                    // на стороне элемента.
+                    align_of_value(logical.physical(
+                        first_strong_rtl(&self.text[start..end]).unwrap_or(self.wrap.rtl),
+                    ))
+                }
+                None => self.align,
+            };
+        // Нерастянутая выключка: `justify` прижимает строку к НАЧАЛУ, а
+        // начало у письма справа налево — правый край, не левый.
+        let flat = |a: Align| match a {
+            Align::Justify if self.wrap.rtl => Align::Right,
+            Align::Justify => Align::Left,
+            other => other,
+        };
+        if last_line {
+            self.align_last.unwrap_or(flat(own_align))
+        } else if no_stretch {
+            flat(own_align)
+        } else {
+            own_align
+        }
+    }
+
     /// Где в коробке стоит байт текста: левый верхний угол его знака.
     fn point_of(&self, segs: &[Seg], at: usize, bounds: Bounds<Pixels>) -> Point<Pixels> {
         let row = self
@@ -1150,12 +1704,8 @@ impl Paragraph {
         // (htb-ltr-*: регресс 08-12, зелёные квадраты не закрывали красное).
         let hang = self.hang_first(line.range.start);
         let shift = self.span(segs, line.range.start, line.range.start + hang);
-        let lead = if self.wrap.rtl {
-            px(0.)
-        } else {
-            line.indent
-        } - shift
-            + px(self.flow_cut(row).0);
+        let lead =
+            if self.wrap.rtl { px(0.) } else { line.indent } - shift + px(self.flow_cut(row).0);
         // ЗАМЕРЕНО И ОТКАЧЕНО (04.09): прибавлять сюда долю ВЫКЛЮЧКИ
         // (`text-align: center|right`) тем же счётом, что и отрисовка
         // (`free/2` и `free`). Срез из 633 пар статической позиции и
@@ -1203,10 +1753,11 @@ impl Paragraph {
             return;
         };
         let lines = self.split(Some(limit), window);
-        let Some(widest_line) = lines
-            .iter()
-            .max_by(|a, b| a.width.partial_cmp(&b.width).unwrap_or(std::cmp::Ordering::Equal))
-        else {
+        let Some(widest_line) = lines.iter().max_by(|a, b| {
+            a.width
+                .partial_cmp(&b.width)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }) else {
             return;
         };
         let widest = widest_line.width;
@@ -1446,13 +1997,12 @@ impl Paragraph {
             // вообще есть. При замере по максимальному содержимому предела
             // нет, и сохранённый пробел в ширину ВХОДИТ (`pre-wrap-017`:
             // коробка `width: max-content` выходила на знак уже).
-            let measured = if self.spaces_are_content()
-                || (limit.is_none() && self.wrap.keep_spaces)
-            {
-                at
-            } else {
-                self.hang_tail(start, at)
-            };
+            let measured =
+                if self.spaces_are_content() || (limit.is_none() && self.wrap.keep_spaces) {
+                    at
+                } else {
+                    self.hang_tail(start, at)
+                };
             // Свисающее за края в ширину строки не входит — ни открывающий
             // знак в начале, ни точка с запятой в конце.
             let head = start + self.hang_first(start);
@@ -1797,13 +2347,103 @@ impl Paragraph {
     /// строка уходила за край коробки вместо переноса. Разрыв возвращается на
     /// место распорки: поле уезжает на новую строку вместе со своим текстом.
     fn linebreaks(&self) -> Vec<(usize, unicode_linebreak::BreakOpportunity)> {
-        if self.spacers.is_empty() {
-            return unicode_linebreak::linebreaks(&self.text).collect();
+        let mut out = self.linebreaks_uax();
+        // Атом — точка переноса с обеих сторон (css-text-3 §5.1: для переноса
+        // атом — знак-заместитель объекта; Blink `line_breaker.cc` рвёт до и
+        // после атомарной коробки). Нельзя только рядом со знаками GL/WJ/ZWJ
+        // — «with the exception of U+00A0 NO-BREAK SPACE» (§5.1
+        // «atomic-compat-wrap»): рядом с ним разрыв, наоборот, есть
+        // (`line-breaking-atomic-001/002`). Рядом с пробелом точку даёт сам
+        // UAX #14 — после ряда пробелов, а не перед ним.
+        if !self.atom_boxes.is_empty() {
+            let glue = |ch: char| {
+                use unicode_linebreak::BreakClass::*;
+                ch != '\u{a0}'
+                    && matches!(
+                        unicode_linebreak::break_property(ch as u32),
+                        NonBreakingGlue | WordJoiner | ZeroWidthJoiner
+                    )
+            };
+            // Пунктуация разрыв у атома НЕ гасит: «there is a soft wrap
+            // opportunity before and after each replaced element or other
+            // atomic inline, even when adjacent to a character that would
+            // normally suppress them» (css-text-3 §5.1;
+            // `line-breaking-replaced-006`: `<img>:` рвётся перед двоеточием).
+            let space = |ch: char| matches!(ch, ' ' | '\t' | '\n' | '\u{200b}');
+            // Соседний знак — мимо распорок полей (их перенос не видит, см.
+            // `linebreaks_uax`); соседний атом читается знаком-заместителем.
+            let atom_at = |at: usize| self.atom_boxes.iter().any(|x| x.at == at);
+            let skip = |at: usize| self.spacers.binary_search(&at).is_ok();
+            let prev_of = |mut at: usize| -> Option<char> {
+                loop {
+                    let (i, ch) = self.text[..at].char_indices().next_back()?;
+                    if atom_at(i) {
+                        return Some('\u{fffc}');
+                    }
+                    if !skip(i) {
+                        return Some(ch);
+                    }
+                    at = i;
+                }
+            };
+            let next_of = |mut at: usize| -> Option<char> {
+                loop {
+                    let ch = self.text.get(at..)?.chars().next()?;
+                    if atom_at(at) {
+                        return Some('\u{fffc}');
+                    }
+                    if !skip(at) {
+                        return Some(ch);
+                    }
+                    at += ch.len_utf8();
+                }
+            };
+            for b in &self.atom_boxes {
+                let end = b.at + 3;
+                if let Some(prev) = prev_of(b.at)
+                    && !space(prev)
+                    && !glue(prev)
+                {
+                    out.push((b.at, unicode_linebreak::BreakOpportunity::Allowed));
+                }
+                if let Some(next) = next_of(end)
+                    && !space(next)
+                    && !glue(next)
+                {
+                    out.push((end, unicode_linebreak::BreakOpportunity::Allowed));
+                }
+            }
+            out.sort_by_key(|(at, _)| *at);
+            out.dedup_by_key(|(at, _)| *at);
         }
-        let mut clean = String::with_capacity(self.text.len());
-        let mut map: Vec<usize> = Vec::with_capacity(self.text.len() + 1);
+        out
+    }
+
+    fn linebreaks_uax(&self) -> Vec<(usize, unicode_linebreak::BreakOpportunity)> {
+        // Распорка атома читается как U+FFFC: класс CB даёт разрыв до и после
+        // (UAX #14 LB20; css-text-3 §5.1 — для переноса атом как знак-
+        // заместитель объекта, Blink `inline_items_builder.cc`). Длина в
+        // UTF-8 у U+FEFF и U+FFFC одна — смещения не съезжают.
+        let replaced;
+        let text: &str = if self.atom_boxes.is_empty() {
+            &self.text
+        } else {
+            let mut t = self.text.to_string();
+            for b in &self.atom_boxes {
+                if t.get(b.at..b.at + 3) == Some("\u{feff}") {
+                    t.replace_range(b.at..b.at + 3, "\u{fffc}");
+                }
+            }
+            replaced = t;
+            &replaced
+        };
+        if self.spacers.is_empty() {
+            return unicode_linebreak::linebreaks(text).collect();
+        }
+        let mut clean = String::with_capacity(text.len());
+        let mut map: Vec<usize> = Vec::with_capacity(text.len() + 1);
         let mut pending: Option<usize> = None;
-        for (at, ch) in self.text.char_indices() {
+        for (at, ch) in text.char_indices() {
             if self.spacers.binary_search(&at).is_ok() {
                 pending.get_or_insert(at);
                 continue;
@@ -2038,9 +2678,15 @@ impl Paragraph {
         // (PR) with East Asian Width A/F/W», `line-break-loose-018`).
         out.retain(|s| {
             let w = self.wrap_at(s.at);
+            // Распорка атома (U+FEFF, класс WJ) здесь не запрет: за атомом
+            // точку ставит `linebreaks`.
             s.mandatory
                 || w.anywhere
                 || w.wrap_anywhere
+                || self
+                    .atom_boxes
+                    .iter()
+                    .any(|b| b.at + 3 == s.at || b.at == s.at)
                 || self.text[..s.at].chars().next_back().is_none_or(|c| {
                     !no_break_after(c) || (w.loose >= 2 && w.cjk_lang && wide_prefix(c))
                 })
@@ -2381,8 +3027,17 @@ impl Element for Paragraph {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
-        _cx: &mut App,
+        cx: &mut App,
     ) -> (LayoutId, ()) {
+        // Атомы раскладываются ДО замера: их ширина — продвижение распорки,
+        // высота растит строку (см. `lay_atoms`).
+        if !self.atoms.is_empty() {
+            self.lay_atoms(window, cx);
+        }
+        let atom_boxes = self.atom_boxes.clone();
+        let edge_spans = self.edge_spans.clone();
+        let run_metrics = self.run_metrics.clone();
+        let strut = self.strut;
         // Ширина известна только раскладке, поэтому строки считаются в замере:
         // сколько дали места — столько строк и получилось.
         let text = self.text.clone();
@@ -2440,6 +3095,10 @@ impl Element for Paragraph {
                 probe.indent = indent;
                 probe.hanging = hanging;
                 probe.flow = flow.clone();
+                probe.atom_boxes = atom_boxes.clone();
+                probe.edge_spans = edge_spans.clone();
+                probe.run_metrics = run_metrics.clone();
+                probe.strut = strut;
                 probe.spacers = spacers.clone();
                 // Предел переноса берётся ПО ОСИ СТРОКИ: по горизонтали это
                 // ширина коробки, по вертикали — её высота. Уже решённая
@@ -2520,9 +3179,17 @@ impl Element for Paragraph {
                 // своей строки не учтена — последняя считается тем же отсчётом,
                 // и у однострочного абзаца обе совпадают).
                 let mut last_shift = px(0.);
+                // Верхняя надбавка ПЕРВОЙ строки опускает её базовую линию:
+                // атом выше струта сдвигает текст строки вниз, и базовая
+                // абзаца (для `inline-block` — его собственная, §10.8.1)
+                // обязана уехать вместе с ним.
+                let mut first_above = px(0.);
                 let across = {
                     probe.lines = lines.clone();
                     let pads = probe.line_padding();
+                    if !probe.atom_boxes.is_empty() {
+                        first_above = px(pads.first().map_or(0.0, |p| p.0));
+                    }
                     if pads.len() > 1 {
                         let before: f32 = pads[..pads.len() - 1].iter().map(|(a, b)| a + b).sum();
                         let own = pads[pads.len() - 1].0 - pads[0].0;
@@ -2569,6 +3236,14 @@ impl Element for Paragraph {
                     let content = ascent + descent.abs();
                     (line_height - content) / 2.0 + ascent
                 });
+                // С атомами базовая — та же, на какую встают атомы и набор
+                // первой строки (`line_base`), плюс её верхняя надбавка.
+                let baseline = match lines.first() {
+                    Some(first) if !probe.atom_boxes.is_empty() => {
+                        Some(px(probe.line_base(&first.range)) + first_above)
+                    }
+                    _ => baseline,
+                };
                 // ПОСЛЕДНЯЯ базовая — для `last baseline` (css-align-3 §9.1:
                 // «last baseline set» блока — последняя строчная коробка).
                 let last_baseline = baseline.map(|b| b + last_shift);
@@ -2606,6 +3281,7 @@ impl Element for Paragraph {
         let limit = limit + px(1.0 / scale);
         self.apply_measured_fit();
         self.lines = self.split(Some(limit), window);
+        self.place_atoms(bounds, window, _cx);
         // Куски вне потока встают на своё место в строке: раскладываются
         // по содержимому и подготавливаются от угла своего знака.
         if !self.overlays.is_empty() {
@@ -2676,6 +3352,9 @@ impl Element for Paragraph {
             return;
         }
         let segs = self.measure(window);
+        if self.run_metrics.len() != self.runs.len() {
+            self.run_metrics = self.measure_runs(window);
+        }
         let count = self.lines.len();
         // Надбавки строк от сдвинутых кусков: шаг до следующей строки и
         // сдвиг набора внутри своей.
@@ -2713,53 +3392,7 @@ impl Element for Paragraph {
             // табуляции обязаны совпасть с нерастянутой строкой
             // (css-text-4 §8.1, `text-align-justify-tabs-001`), а раздача
             // остатка их бы сдвинула.
-            let last_line = i + 1 == count || body.len() < line.range.len();
-            // Строка с СОХРАНЁННОЙ табуляцией не растягивается (позиции
-            // табуляции обязаны совпасть с нерастянутой строкой), но выключку
-            // ПОСЛЕДНЕЙ строки (`text-align-last`) она не получает: к
-            // табуляции та отношения не имеет.
-            let no_stretch = last_line;
-            // При `plaintext` сторона письма своя у каждого АБЗАЦА между
-            // жёсткими разрывами (не у строки: мягкий перенос сторону не
-            // меняет). От неё же зависят `start` и `end`.
-            let own_align = match self.plaintext {
-                Some(logical) => {
-                    let start = self.text[..line.range.start]
-                        .rfind('\n')
-                        .map(|i| i + 1)
-                        .unwrap_or(0);
-                    let end = self.text[start..]
-                        .find('\n')
-                        .map(|i| start + i)
-                        .unwrap_or(self.text.len());
-                    // При `unicode-bidi: plaintext` сторона КАЖДОГО абзаца
-                    // берётся по первому сильному знаку (css-writing-modes-4
-                    // §2.2 -> UAX#9 P2/P3), а не у элемента. Порядок глифов это
-                    // уже учитывал (`BidiInfo::new(text, None)`), выключка —
-                    // нет. Нейтральный абзац сильного знака не имеет и остаётся
-                    // на стороне элемента.
-                    align_of_value(
-                        logical.physical(
-                            first_strong_rtl(&self.text[start..end]).unwrap_or(self.wrap.rtl),
-                        ),
-                    )
-                }
-                None => self.align,
-            };
-            // Нерастянутая выключка: `justify` прижимает строку к НАЧАЛУ, а
-            // начало у письма справа налево — правый край, не левый.
-            let flat = |a: Align| match a {
-                Align::Justify if self.wrap.rtl => Align::Right,
-                Align::Justify => Align::Left,
-                other => other,
-            };
-            let align = if last_line {
-                self.align_last.unwrap_or(flat(own_align))
-            } else if no_stretch {
-                flat(own_align)
-            } else {
-                own_align
-            };
+            let align = self.line_align(i, &line);
             // Отступ первой строки занимает место В колонке: остаток на
             // выключку считается уже без него. Правый вырез обтекания
             // (`shape-outside`) — тоже: прижатая вправо строка упирается в
@@ -2780,11 +3413,7 @@ impl Element for Paragraph {
             // правый край, и место ему уже отдано вычетом из остатка выше.
             // Прибавка слева считала бы его второй раз, а при выключке вправо
             // и вовсе гасила: `(W - w - indent) + indent = W - w`.
-            let lead = if self.wrap.rtl {
-                px(0.)
-            } else {
-                line.indent
-            } - shift;
+            let lead = if self.wrap.rtl { px(0.) } else { line.indent } - shift;
             // Строка с межсловным интервалом рисуется ПО СЛОВАМ: одним
             // набором промежутки не показать — шейпер о них не знает. Раздача
             // остатка при этом нулевая, слова просто встают по своим местам.
@@ -2806,6 +3435,7 @@ impl Element for Paragraph {
                 || self.letter_spans_diverge()
                 || !self.shift_spans.is_empty()
                 || !self.rel_spans.is_empty()
+                || !self.edge_spans.is_empty()
             {
                 let (free, dx) = if align == Align::Justify {
                     (free, lead)
@@ -2823,6 +3453,7 @@ impl Element for Paragraph {
                     line.width,
                     bounds,
                     y + above(i),
+                    pads.get(i).copied().unwrap_or((0.0, 0.0)),
                     dx,
                     window,
                     cx,
@@ -2896,6 +3527,9 @@ impl Element for Paragraph {
             } else {
                 step(i)
             };
+        }
+        for slot in self.atoms.iter_mut() {
+            slot.el.paint(window, cx);
         }
         for (_, el) in self.overlays.iter_mut() {
             el.paint(window, cx);
@@ -2995,6 +3629,11 @@ impl Paragraph {
             shift_spans: self.shift_spans.clone(),
             lh_spans: self.lh_spans.clone(),
             rel_spans: self.rel_spans.clone(),
+            atoms: Vec::new(),
+            atom_boxes: self.atom_boxes.clone(),
+            strut: self.strut,
+            run_metrics: self.run_metrics.clone(),
+            edge_spans: self.edge_spans.clone(),
             ortho_limit: self.ortho_limit,
             runs: Vec::new(),
             font_size: self.font_size,
@@ -3156,8 +3795,7 @@ impl Paragraph {
             // «你好 🟢» выходил кеглем 30px (`-013`). Многоточие и знак
             // переноса остаются вплетёнными: они обязаны сесть на базовую
             // линию строки (`hyphens-manual-011`).
-            let own_mark =
-                !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix);
+            let own_mark = !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix);
             let (tail, at_start) = if self.wrap.rtl {
                 (if run.start == range.start { suffix } else { "" }, true)
             } else if own_mark {
@@ -3185,10 +3823,7 @@ impl Paragraph {
             x += width;
         }
         // Строка-замена — за текстом строки, своим шрифтом и кеглем.
-        if !self.wrap.rtl
-            && !suffix.is_empty()
-            && self.overflow_marker.as_deref() == Some(suffix)
-        {
+        if !self.wrap.rtl && !suffix.is_empty() && self.overflow_marker.as_deref() == Some(suffix) {
             let anchor = range.end.saturating_sub(1).max(range.start);
             self.paint_suffix(suffix, anchor, point(x, at.y), window, cx);
         }
@@ -3336,6 +3971,7 @@ impl Paragraph {
         line_width: Pixels,
         bounds: Bounds<Pixels>,
         y: Pixels,
+        pad: (f32, f32),
         dx: Pixels,
         window: &mut Window,
         cx: &mut App,
@@ -3348,6 +3984,7 @@ impl Paragraph {
         if !self.letter_spans.is_empty()
             || !self.shift_spans.is_empty()
             || !self.rel_spans.is_empty()
+            || !self.edge_spans.is_empty()
         {
             let mut cuts: Vec<usize> = Vec::new();
             let mut cut = |edge: usize| {
@@ -3376,6 +4013,10 @@ impl Paragraph {
                 cut(r.end);
             }
             for (r, _) in self.shift_spans.iter() {
+                cut(r.start);
+                cut(r.end);
+            }
+            for (r, _, _) in self.edge_spans.iter() {
                 cut(r.start);
                 cut(r.end);
             }
@@ -3511,6 +4152,7 @@ impl Paragraph {
                 }
             }
         }
+        let line_base = self.base_of(range);
         for (wi, word) in words.iter().enumerate() {
             let slice: SharedString = self.text[word.range.clone()].to_string().into();
             let runs = slice_runs(&self.runs, &word.range);
@@ -3551,7 +4193,33 @@ impl Paragraph {
                 .find(|(r, _)| r.contains(&word.range.start))
                 .map(|(_, v)| *v)
                 .unwrap_or((0.0, 0.0));
-            let at = point(x + px(rx), y + dy + px(ry));
+            // Слово набирается своим вызовом, и `ShapedLine::paint` ставит
+            // его базовую линию по СВОИМ подъёму и спуску. Сплошной набор
+            // строки берёт наибольшие по всей строке — куски разного кегля
+            // стоят на одной базовой линии (§10.8). Слово опускается на
+            // разницу: у строки из одного шрифта она ровно ноль.
+            let fix = match (line_base, self.base_of(&word.range)) {
+                (Some(l), Some(w)) => px(l - w),
+                _ => px(0.),
+            };
+            // Кусок у края строки: его строчная коробка (высотой своей
+            // `line-height`, глифы по её полулидингу) встаёт верхом на верх
+            // строки или низом на низ (§10.8.1). `shaped.paint` центрирует
+            // глифы в высоте строки абзаца — разница высот делится пополам.
+            let fix = match self
+                .edge_spans
+                .iter()
+                .find(|(r, _, _)| r.contains(&word.range.start))
+            {
+                Some((_, top, h)) => {
+                    let lh = f32::from(self.line_height);
+                    let line_top = -pad.0;
+                    let box_top = if *top { line_top } else { lh + pad.1 - h };
+                    px(box_top + (h - lh) / 2.0)
+                }
+                None => fix,
+            };
+            let at = point(x + px(rx), y + dy + px(ry) + fix);
             // Подложка прогона — отдельным вызовом, см. выше.
             let _ = shaped.paint_background(at, self.line_height, window, cx);
             let _ = shaped.paint(at, self.line_height, window, cx);
@@ -3988,8 +4656,8 @@ pub fn wrap_of(c: &crate::computed::Computed) -> Wrap {
 fn centered_punctuation(ch: char) -> bool {
     matches!(
         ch,
-        '\u{30FB}' | '\u{FF1A}' | '\u{FF1B}' | '\u{FF65}' | '\u{203C}'
-            | '\u{2047}'..='\u{2049}' | '\u{FF01}' | '\u{FF1F}'
+        '\u{30FB}' | '\u{FF1A}' | '\u{FF1B}' | '\u{FF65}' | '\u{203C}' | '\u{2047}'
+            ..='\u{2049}' | '\u{FF01}' | '\u{FF1F}'
     )
 }
 
@@ -3998,8 +4666,15 @@ fn centered_punctuation(ch: char) -> bool {
 fn wide_postfix(ch: char) -> bool {
     matches!(
         ch,
-        '\u{00B0}' | '\u{2030}' | '\u{2031}' | '\u{2103}' | '\u{2109}' | '\u{FF05}'
-            | '\u{FFE0}' | '\u{2032}' | '\u{2033}'
+        '\u{00B0}'
+            | '\u{2030}'
+            | '\u{2031}'
+            | '\u{2103}'
+            | '\u{2109}'
+            | '\u{FF05}'
+            | '\u{FFE0}'
+            | '\u{2032}'
+            | '\u{2033}'
     )
 }
 
@@ -4008,8 +4683,15 @@ fn wide_postfix(ch: char) -> bool {
 fn wide_prefix(ch: char) -> bool {
     matches!(
         ch,
-        '\u{20AC}' | '\u{2116}' | '\u{FFE5}' | '\u{FFE1}' | '\u{FF04}' | '\u{FFE6}'
-            | '\u{00A7}' | '\u{00B6}' | '\u{20A9}'
+        '\u{20AC}'
+            | '\u{2116}'
+            | '\u{FFE5}'
+            | '\u{FFE1}'
+            | '\u{FF04}'
+            | '\u{FFE6}'
+            | '\u{00A7}'
+            | '\u{00B6}'
+            | '\u{20A9}'
     )
 }
 

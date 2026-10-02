@@ -4025,6 +4025,16 @@ impl Window {
         self.layout_engine = Some(layout_engine);
     }
 
+    /// KaminIDE patch: смещение узла от родителя и его размер без округления
+    /// к точке устройства (см. `TaffyLayoutEngine::layout_exact`).
+    pub fn layout_exact(&mut self, layout_id: LayoutId) -> (Point<Pixels>, Size<Pixels>) {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_ref()
+            .unwrap()
+            .layout_exact(layout_id, scale_factor)
+    }
+
     /// Obtain the bounds computed for the given LayoutId relative to the window. This method will usually be invoked by
     /// GPUI itself automatically in order to pass your element its `Bounds` automatically.
     ///
