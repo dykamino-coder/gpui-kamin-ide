@@ -1371,6 +1371,11 @@ fn ratio_as_auto_min(c: &Computed) -> bool {
     let px_w = matches!(c.width, Some(Len::Px(_)));
     let px_h = matches!(c.height, Some(Len::Px(_)));
     c.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0)
+        // `calc-size()` считает раскладка от размера, выведенного
+        // соотношением (`vendor/taffy` — `calc_size_derived`, автоминимум):
+        // эмуляция явным минимумом спрятала бы соотношение от неё
+        // (`calc-size-aspect-ratio-001…004`).
+        && c.calc_size.iter().all(Option::is_none)
         && visible(c.overflow_x)
         && visible(c.overflow_y)
         && !c.scroller
