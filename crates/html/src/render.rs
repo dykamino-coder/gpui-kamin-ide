@@ -6934,7 +6934,21 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                         && inherited.vertical_rl.is_none()
                         && e.style.width.is_some()
                         && e.style.align_self.is_none()
-                        && !e.inline
+                        // Блочный по ВЫЧИСЛЕННОМУ `display`, а не по тегу:
+                        // `span { display: block; width: … }` в rtl-блоке —
+                        // тоже блок (замер 1393 пар с rtl/картинками: +0/−0,
+                        // `block-in-inline-margins-002a/b` 0.12 -> 0.00).
+                        // Эталон `flexbox-writing-mode-013-ref` держит
+                        // слева другое (не этот путь).
+                        && (!e.inline
+                            || matches!(
+                                e.style.display,
+                                Some(Display::Block)
+                                    | Some(Display::ListItem)
+                                    | Some(Display::Flex)
+                                    | Some(Display::Grid)
+                                    | Some(Display::Table)
+                            ))
                         && !matches!(
                             e.style.position,
                             Some(crate::computed::Position::Absolute)
@@ -22337,9 +22351,18 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 .or(e.style.aspect_ratio_auto.filter(|r| *r > 0.0))
         };
         if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
-            image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0))
-                .w(px(w))
-                .h(px(h));
+            image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0));
+            // Элемент ГИБКОГО контейнера: коробку задаёт раскладка (рост,
+            // сжатие — css-flexbox-1 §9.7), и картинка заполняет её
+            // (`object-fit: fill`, css-images-3 §5.5), а не держит
+            // объявленную ширину. Прежде коробка `flex: 5` росла до 122.5,
+            // а картинка оставалась 10 точек (`flexbox-basic-img-horiz-001`,
+            // `-vert-001`).
+            image = if e.style.flex_item {
+                image.size_full()
+            } else {
+                image.w(px(w)).h(px(h))
+            };
         } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) = (e.style.width, e.style.height) {
             // Заданная ширина + auto-высота: высота из соотношения (§10.6.2),
             // без соотношения — своя, резерв 150.
