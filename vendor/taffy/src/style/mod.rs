@@ -613,6 +613,12 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// балансировка строк с минимумом N строк (`flex-line-count`).
     #[cfg(feature = "flexbox")]
     pub flex_balance_lines: u16,
+    /// KaminIDE patch: поперечная ось ОДНОСТРОЧНОГО контейнера идёт
+    /// от физического конца (cross-start справа): гибкая колонка при
+    /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
+    /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
+    #[cfg(feature = "flexbox")]
+    pub flex_cross_reverse: bool,
     /// KaminIDE patch: `margin-trim` гибкого контейнера и сетки — физические
     /// края: 1 верх, 2 право, 4 низ, 8 лево.
     #[cfg(any(feature = "flexbox", feature = "grid"))]
@@ -764,6 +770,8 @@ impl<S: CheapCloneStr> Style<S> {
         flex_wrap: FlexWrap::NoWrap,
         #[cfg(feature = "flexbox")]
         flex_balance_lines: 0,
+        #[cfg(feature = "flexbox")]
+        flex_cross_reverse: false,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         margin_trim: 0,
         #[cfg(feature = "grid")]
@@ -1047,6 +1055,10 @@ impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
         self.flex_balance_lines
     }
     #[inline(always)]
+    fn flex_cross_reverse(&self) -> bool {
+        self.flex_cross_reverse
+    }
+    #[inline(always)]
     fn gap(&self) -> Size<LengthPercentage> {
         self.gap
     }
@@ -1077,6 +1089,10 @@ impl<T: FlexboxContainerStyle> FlexboxContainerStyle for &'_ T {
     #[inline(always)]
     fn flex_balance_lines(&self) -> u16 {
         (*self).flex_balance_lines()
+    }
+    #[inline(always)]
+    fn flex_cross_reverse(&self) -> bool {
+        (*self).flex_cross_reverse()
     }
     #[inline(always)]
     fn gap(&self) -> Size<LengthPercentage> {

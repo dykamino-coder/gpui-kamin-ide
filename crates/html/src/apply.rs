@@ -760,6 +760,22 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         Some(FlexDir::ColReverse) => d = d.flex_col_reverse(),
         None => {}
     }
+    // Однострочная гибкая КОЛОНКА при `direction: rtl` (горизонтальное
+    // письмо): cross-start — inline-start письма, то есть ПРАВЫЙ край
+    // (css-flexbox-1 §2, §9.6). Раскладка поперёк идёт от физического
+    // начала, разворот ей сообщает флаг (`flex_cross_reverse`, taffy
+    // `compute_constants`); многострочной колонке то же делает `flip` ниже.
+    // Вертикальное письмо сюда не входит: там прижим держит `items_end`
+    // ниже (записи откатов 04.09).
+    if c.rtl == Some(true)
+        && c.vertical != Some(true)
+        && c.flex_wrap != Some(true)
+        && c.webkit_box != Some(true)
+        && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
+        && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
+    {
+        d.style().flex_cross_reverse = Some(true);
+    }
     if c.flex_wrap == Some(true) {
         d = d.flex_wrap();
         // При `vertical-rl` поперечная ось строки идёт справа налево — обратно
@@ -879,6 +895,14 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // `gap-001-rtl` + заложники `text-orientation-*-100`): 6 -> 6, ноль
     // сдвигов. Те пары держит другое (у `flexbox_rtl-direction` расходятся
     // поля и высота коробки, а не сторона прижима).
+    // Возвращено 02.10 иначе — флагом раскладки `flex_cross_reverse` выше
+    // (разворачивает и растяжение/базовую линию, а не только `start/end`),
+    // вместе с гашением авторского `align-self` у блока (`dom.rs`), словом
+    // `inherit`, комментариями XHTML и физическим рядом флоатов: срез 10511
+    // пар против свода v229 — +11/−1 (`flexbox_rtl-direction`,
+    // `-align-self-vert-001/002`, `-vert-rtl-001` и др.; потеря
+    // `flexbox-writing-mode-013` — у эталона блок `span` с шириной в rtl
+    // стоит слева, сам тест теперь верен).
     match c.align_items {
         Some(Align::Center) => d = d.items_center(),
         Some(Align::Start) => d = d.items_start(),

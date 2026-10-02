@@ -202,7 +202,7 @@ fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
     // `<pre>`/`<listing>`/`<textarea>` в XHTML тоже требуют правки (см. ниже),
     // даже если самозакрытых тегов в документе нет.
     let lf_tags = ["<pre", "<listing", "<textarea"].iter().any(|t| html.contains(t));
-    if !xhtml || (!html.contains("/>") && !lf_tags) {
+    if !xhtml || (!html.contains("/>") && !lf_tags && !html.contains("<!--")) {
         return std::borrow::Cow::Borrowed(html);
     }
     const VOID: &[&str] = &[
@@ -215,10 +215,25 @@ fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
     while let Some(at) = rest.find('<') {
         out.push_str(&rest[..at]);
         let tag = &rest[at..];
-        // Комментарии, объявления, инструкции — как есть.
+        // Раздел CDATA — дословный текст до `]]>` (XML 1.0 §2.7): `<!--`
+        // внутри него — не комментарий, а символы таблицы стилей
+        // (`sgml-comments-000`: CSS видит CDO и правило за ним).
+        if tag.starts_with("<![CDATA[") {
+            let end = tag.find("]]>").map(|e| e + 3).unwrap_or(tag.len());
+            out.push_str(&tag[..end]);
+            rest = &tag[end..];
+            continue;
+        }
+        // Комментарий XML (XML 1.0 §2.5) — разметка, а не текст, и в том
+        // числе внутри `<style>`: HTML-разбор держит его в сыром тексте
+        // таблицы, и слова комментария становились мусорным селектором,
+        // который глотал СЛЕДУЮЩЕЕ правило (эталоны
+        // `flexbox-align-self-vert-*-ref.xhtml`: `.centerParent
+        // { text-align: center }` за комментарием терялось, середина
+        // уезжала к левому краю). Вне сырого текста комментарий ничего не
+        // рисует — выбрасывается целиком.
         if tag.starts_with("<!--") {
             let end = tag.find("-->").map(|e| e + 3).unwrap_or(tag.len());
-            out.push_str(&tag[..end]);
             rest = &tag[end..];
             continue;
         }
@@ -413,6 +428,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     hoist_grid_abspos(&mut out);
     content_box_static_position(&mut out);
     flex_items_lose_float(&mut out);
+    align_self_from_dom_parent(&mut out, None);
     grid_table_items_keep_stretch(&mut out);
     subgrid_takes_parent_tracks(&mut out);
     filter_ref_only_empty(&mut out);
@@ -1126,6 +1142,88 @@ fn flex_items_lose_float(nodes: &mut [Node]) {
             child.style.clear = None;
         }
     }
+}
+
+/// `align-self` от ДОМ-родителя: слово `inherit` и неприменимость к блоку.
+///
+/// 1. `align-self: inherit` (css-cascade-4 §7.3) — вычисленное значение
+///    родителя. Прежде слово отбрасывалось разбором, и элемент брал
+///    `align-items` контейнера (`flexbox-align-self-vert-001`,
+///    `-horiz-001-block`: `inherit` ждёт `flex-end` от `.flexbox`).
+///    Берётся АВТОРСКОЕ значение родителя (`align_self_decl`), даже когда
+///    у самого родителя оно погашено пунктом 2: гашение — про
+///    использованное значение, вычисленное остаётся.
+/// 2. css-align-3 §6.1: `align-self` «Applies to: flex items, grid items,
+///    and absolutely-positioned boxes». Наш блок собран колонкой flex, и
+///    авторское `align-self: flex-end` у блока в `body` уводило его к
+///    правому краю (`flexbox-align-self-vert-001`, `-vert-rtl-001`).
+///    Blink читает свойство только в раскладке flex/grid
+///    (`C:\Users\MSI\Projects\refs\chromium-blink\third_party\blink\renderer\core\layout\flex\flex_layout_algorithm.cc:266`
+///    `ResolvedAlignSelf`). Гасится только авторское значение и ДО сборки:
+///    приёмы сборки пишут в то же поле позже (`render.rs`: rtl-прижим
+///    блока с шириной, `blocks()`, флоаты, столы) и видят пустое поле, как
+///    без автора. Запись отката 04.09 (`inline.rs`: гашение в
+///    `inline::inherit` без признака авторства, −50 в своде v19) — этот
+///    путь гасит только авторское. Родитель `display: contents` — настоящий
+///    контейнер выше, такие дети не трогаются; корневой уровень тоже.
+fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&ParentAlign>) {
+    for node in nodes.iter_mut() {
+        let Node::Element(el) = node else { continue };
+        let s = &mut el.style;
+        match parent {
+            Some(p) => {
+                if s.align_self_inherit {
+                    s.align_self = p.value;
+                    s.align_self_decl = Some(p.value);
+                    s.align_self_inherit = false;
+                    (
+                        s.align_self_safe,
+                        s.align_self_normal,
+                        s.align_self_own_axis,
+                        s.align_self_flex_kw,
+                        s.align_self_last,
+                    ) = p.flags;
+                }
+                if p.block
+                    && s.align_self.is_some()
+                    && s.align_self_decl == Some(s.align_self)
+                    && !matches!(s.position, Some(Position::Absolute) | Some(Position::Fixed))
+                {
+                    s.align_self = None;
+                    s.align_self_normal = false;
+                }
+            }
+            None => s.align_self_inherit = false,
+        }
+        let me = ParentAlign {
+            // Вычисленное значение для `inherit` детей — авторское, если было.
+            value: s.align_self_decl.unwrap_or(s.align_self),
+            flags: (
+                s.align_self_safe,
+                s.align_self_normal,
+                s.align_self_own_axis,
+                s.align_self_flex_kw,
+                s.align_self_last,
+            ),
+            block: matches!(
+                s.display,
+                None | Some(Display::Block)
+                    | Some(Display::ListItem)
+                    | Some(Display::InlineBlock)
+                    | Some(Display::TableCell)
+            ) && s.webkit_box != Some(true),
+        };
+        align_self_from_dom_parent(&mut el.children, Some(&me));
+    }
+}
+
+/// Что дети берут у родителя в `align_self_from_dom_parent`.
+struct ParentAlign {
+    value: Option<crate::computed::Align>,
+    /// safe, normal, own_axis, flex_kw, last.
+    flags: (bool, bool, bool, bool, bool),
+    /// Родитель — блочный контейнер (не flex/grid/contents/таблица).
+    block: bool,
 }
 
 /// Стол — элемент СЕТКИ: растяжка по дорожке остаётся за ним.

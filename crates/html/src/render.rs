@@ -6934,7 +6934,21 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                         && inherited.vertical_rl.is_none()
                         && e.style.width.is_some()
                         && e.style.align_self.is_none()
-                        && !e.inline
+                        // Блочный по ВЫЧИСЛЕННОМУ `display`, а не по тегу:
+                        // `span { display: block; width: … }` в rtl-блоке —
+                        // тоже блок (замер 1393 пар с rtl/картинками: +0/−0,
+                        // `block-in-inline-margins-002a/b` 0.12 -> 0.00).
+                        // Эталон `flexbox-writing-mode-013-ref` держит
+                        // слева другое (не этот путь).
+                        && (!e.inline
+                            || matches!(
+                                e.style.display,
+                                Some(Display::Block)
+                                    | Some(Display::ListItem)
+                                    | Some(Display::Flex)
+                                    | Some(Display::Grid)
+                                    | Some(Display::Table)
+                            ))
                         && !matches!(
                             e.style.position,
                             Some(crate::computed::Position::Absolute)
@@ -11927,8 +11941,19 @@ fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElem
     // Стиль берётся СЛИТЫЙ: у ряда своя раскладка, и без неё дети встают
     // друг под другом вместо колонок.
     let merged = inline::inherit(inherited, &row.style);
+    // Ряд обтекания ФИЗИЧЕСКИЙ: левые флоаты собраны в начало, правые — в
+    // конец (сборка `float_runs`), а `float: left/right` от письма не
+    // зависят (CSS 2.1 §9.5.1). Унаследованное `direction: rtl` разворачивало
+    // ряд (`apply.rs`: `rtl_row` → `flex_row_reverse`), и `float: right` в
+    // rtl-контейнере вставал слева (эталоны `flexbox-writing-mode-010..015`,
+    // `flexbox-align-self-vert-rtl-*-ref`). Письмо снимается только с самой
+    // коробки ряда — дети наследуют прежнее `merged`.
+    let mut row_layout = merged.clone();
+    if row_layout.vertical != Some(true) {
+        row_layout.rtl = Some(false);
+    }
     let plain_row = |nodes: &[Node]| -> AnyElement {
-        styled_div_with(row, &merged)
+        styled_div_with(row, &row_layout)
             .children(blocks(nodes, &merged, opts))
             .into_any_element()
     };
@@ -22443,9 +22468,18 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 .or(e.style.aspect_ratio_auto.filter(|r| *r > 0.0))
         };
         if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
-            image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0))
-                .w(px(w))
-                .h(px(h));
+            image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0));
+            // Элемент ГИБКОГО контейнера: коробку задаёт раскладка (рост,
+            // сжатие — css-flexbox-1 §9.7), и картинка заполняет её
+            // (`object-fit: fill`, css-images-3 §5.5), а не держит
+            // объявленную ширину. Прежде коробка `flex: 5` росла до 122.5,
+            // а картинка оставалась 10 точек (`flexbox-basic-img-horiz-001`,
+            // `-vert-001`).
+            image = if e.style.flex_item {
+                image.size_full()
+            } else {
+                image.w(px(w)).h(px(h))
+            };
         } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) = (e.style.width, e.style.height) {
             // Заданная ширина + auto-высота: высота из соотношения (§10.6.2),
             // без соотношения — своя, резерв 150.
