@@ -21,6 +21,14 @@ pub trait FlexboxContainerStyle: CoreStyle {
     fn flex_balance_lines(&self) -> u16 {
         Style::<Self::CustomIdent>::DEFAULT.flex_balance_lines
     }
+    /// KaminIDE patch: поперечная ось ОДНОСТРОЧНОГО контейнера идёт
+    /// от физического конца (cross-start справа): гибкая колонка при
+    /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
+    /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
+    #[inline(always)]
+    fn flex_cross_reverse(&self) -> bool {
+        Style::<Self::CustomIdent>::DEFAULT.flex_cross_reverse
+    }
 
     /// How large should the gaps between items in a grid or flex container be?
     #[inline(always)]

@@ -567,6 +567,8 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_wrap: self.flex_wrap.into(),
             // KaminIDE patch: `flex-wrap: balance` + `flex-line-count`.
             flex_balance_lines: self.flex_balance_lines,
+            // KaminIDE patch: обратная поперечная ось однострочного контейнера.
+            flex_cross_reverse: self.flex_cross_reverse,
             // KaminIDE patch: `contain: layout` — базовых линий нет.
             hides_baseline: self.hides_baseline,
             // KaminIDE patch: `inline-block` — последняя базовая.

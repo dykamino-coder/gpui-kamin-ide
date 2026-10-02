@@ -11927,8 +11927,19 @@ fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElem
     // Стиль берётся СЛИТЫЙ: у ряда своя раскладка, и без неё дети встают
     // друг под другом вместо колонок.
     let merged = inline::inherit(inherited, &row.style);
+    // Ряд обтекания ФИЗИЧЕСКИЙ: левые флоаты собраны в начало, правые — в
+    // конец (сборка `float_runs`), а `float: left/right` от письма не
+    // зависят (CSS 2.1 §9.5.1). Унаследованное `direction: rtl` разворачивало
+    // ряд (`apply.rs`: `rtl_row` → `flex_row_reverse`), и `float: right` в
+    // rtl-контейнере вставал слева (эталоны `flexbox-writing-mode-010..015`,
+    // `flexbox-align-self-vert-rtl-*-ref`). Письмо снимается только с самой
+    // коробки ряда — дети наследуют прежнее `merged`.
+    let mut row_layout = merged.clone();
+    if row_layout.vertical != Some(true) {
+        row_layout.rtl = Some(false);
+    }
     let plain_row = |nodes: &[Node]| -> AnyElement {
-        styled_div_with(row, &merged)
+        styled_div_with(row, &row_layout)
             .children(blocks(nodes, &merged, opts))
             .into_any_element()
     };

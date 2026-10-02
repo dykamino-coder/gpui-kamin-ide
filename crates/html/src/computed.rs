@@ -1895,6 +1895,18 @@ pub struct Computed {
     /// (css-align-3 §9.3; `align-self-static-position-008`,
     /// `justify-self-static-position-001`). `Align::Baseline` его не различает.
     pub align_self_last: bool,
+    /// Авторское объявление `align-self` (внешний `Some`), с его значением.
+    /// Нужно, чтобы отличать значение автора от приёмов сборки, которые
+    /// пишут в то же поле `align_self` (блок собран колонкой flex): только
+    /// авторское значение гасится у коробки вне гибкого контейнера и сетки
+    /// (`inline::inherit`), и только оно же переходит по `inherit` к детям —
+    /// вычисленное значение родителя от гашения не меняется (css-align-3
+    /// §6.1 «Applies to: flex items, grid items, and absolutely-positioned
+    /// boxes»; css-cascade-4 §7.3).
+    pub(crate) align_self_decl: Option<Option<Align>>,
+    /// `align-self: inherit` — значение берёт `inline::inherit` у родителя
+    /// (свойство ненаследуемое, слово копирует вычисленное значение).
+    pub(crate) align_self_inherit: bool,
     pub justify_self_last: bool,
     /// `align-items: last baseline` — то же для умолчания детей: раскладка
     /// получает `LastBaseline` (css-align-3 §4.2), а не первую базовую.
@@ -3951,6 +3963,9 @@ impl Computed {
                     self.flex_basis = Some(l);
                 }
             }
+            "align-self" if v.trim() == "inherit" => {
+                self.align_self_inherit = true;
+            }
             "align-self" => {
                 // `left`/`right` у `align-self` недействительны: это
                 // `<self-position>` без них, физические стороны есть только у
@@ -3962,6 +3977,8 @@ impl Computed {
                     && let Ok(a) = align_keyword(v)
                 {
                     self.align_self = a;
+                    self.align_self_decl = Some(a);
+                    self.align_self_inherit = false;
                     self.align_self_safe = is_safe(v);
                     self.align_self_normal = v.trim() == "normal";
                     self.align_self_own_axis = matches!(last, Some("self-start") | Some("self-end"));

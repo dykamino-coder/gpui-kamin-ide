@@ -246,6 +246,11 @@ pub struct Style {
     /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
     /// балансировка строк с минимумом N строк (`flex-line-count`).
     pub flex_balance_lines: u16,
+    /// KaminIDE patch: поперечная ось ОДНОСТРОЧНОГО контейнера идёт
+    /// от физического конца (cross-start справа): гибкая колонка при
+    /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
+    /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
+    pub flex_cross_reverse: bool,
     /// KaminIDE patch: узел не отдаёт базовые линии родителю
     /// (css-contain-2 §3.2 п.7, `contain: layout`).
     pub hides_baseline: bool,
@@ -958,6 +963,7 @@ impl Default for Style {
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
+            flex_cross_reverse: false,
             hides_baseline: false,
             baseline_from_last: false,
             baseline_x_hint: None,

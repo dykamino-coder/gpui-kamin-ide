@@ -141,6 +141,10 @@ struct AlgoConstants {
     is_wrap: bool,
     /// Is the wrap direction inverted
     is_wrap_reverse: bool,
+    /// KaminIDE patch: `is_wrap_reverse` поднят НЕ автором, а обратной
+    /// поперечной осью однострочного контейнера (`flex_cross_reverse`).
+    /// Главную ось абсолютов (`justify-content` ниже) это не трогает.
+    cross_reverse_only: bool,
     /// KaminIDE patch: `flex-wrap: balance` — 0 = жадный перенос,
     /// N ≥ 1 = балансировщик строк с минимумом N строк.
     balance_lines: u16,
@@ -488,7 +492,19 @@ fn compute_constants(
     let is_row = dir.is_row();
     let is_column = dir.is_column();
     let is_wrap = matches!(style.flex_wrap(), FlexWrap::Wrap | FlexWrap::WrapReverse);
-    let is_wrap_reverse = style.flex_wrap() == FlexWrap::WrapReverse;
+    let wrap_reverse_authored = style.flex_wrap() == FlexWrap::WrapReverse;
+    // KaminIDE patch: обратная поперечная ось ОДНОСТРОЧНОГО контейнера
+    // (гибкая колонка при `direction: rtl`: css-flexbox-1 §2 — cross-start
+    // колонки = inline-start письма, у rtl это правый край). У taffy ось
+    // поперёк всегда идёт от физического начала, а разворот выражен только
+    // `wrap-reverse`: им и пользуемся, перенос строк при этом не включается
+    // (`is_wrap` выше). Многострочному контейнеру разворот ставит
+    // `html::apply` через сам `wrap-reverse` (`flip`). Blink:
+    // `C:\Users\MSI\Projects\refs\chromium-blink\third_party\blink\
+    // renderer\core\layout\flex\flex_layout_algorithm.cc:266`
+    // (`ResolvedAlignSelf` переводит концы по письму контейнера).
+    let cross_reverse_only = !is_wrap && style.flex_cross_reverse();
+    let is_wrap_reverse = wrap_reverse_authored || cross_reverse_only;
     // KaminIDE patch: balance действует только у многострочного контейнера
     // (css-flexbox-2 §5.3: у `nowrap` `flex-line-count` не имеет эффекта).
     let balance_lines = if is_wrap { style.flex_balance_lines() } else { 0 };
@@ -530,6 +546,7 @@ fn compute_constants(
         is_column,
         is_wrap,
         is_wrap_reverse,
+        cross_reverse_only,
         balance_lines,
         margin_trim: style.margin_trim(),
         min_size: style
@@ -2906,7 +2923,12 @@ fn perform_absolute_layout_on_absolute_children(
         } else {
             // Stretch is an invalid value for justify_content in the flexbox algorithm, so we
             // treat it as if it wasn't set (and thus we default to FlexStart behaviour)
-            match (constants.justify_content.unwrap_or(JustifyContent::Start), constants.is_wrap_reverse) {
+            // KaminIDE patch: разворот поперечной оси (`cross_reverse_only`)
+            // главную ось не переворачивает.
+            match (
+                constants.justify_content.unwrap_or(JustifyContent::Start),
+                constants.is_wrap_reverse && !constants.cross_reverse_only,
+            ) {
                 (JustifyContent::SpaceBetween, _)
                 | (JustifyContent::Start, _)
                 | (JustifyContent::Stretch, false)
