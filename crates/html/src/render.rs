@@ -29591,13 +29591,23 @@ fn has_text(nodes: &[Node]) -> bool {
 /// около 1.15–1.3. Из-за постоянной 1.31 коробка с `line-height: 1em` и
 /// соседняя без него расходились по высоте строк (`pre-wrap-008`).
 fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
-    let family = style.font_family.clone().unwrap_or_else(|| {
-        if style.monospace == Some(true) {
-            crate::metrics::mono_family().to_string()
-        } else {
-            String::new()
-        }
-    });
+    // Без своего семейства текст набирается шрифтом ДОКУМЕНТА
+    // (`opts.text.font_family`, у стенда — Times New Roman), а щуп метрик
+    // пустое имя меряет как `GENERIC_SANS` (Segoe UI, `metrics.rs`
+    // `use_text_system`): `normal` выходил 1.33 вместо 1.15 у того шрифта,
+    // которым строка нарисована, и струт строки из одних атомов был выше
+    // атома (`inlines-017-ref`: ячейка 21.3px при картинке 20px).
+    let family = style
+        .font_family
+        .clone()
+        .filter(|f| !f.is_empty())
+        .unwrap_or_else(|| {
+            if style.monospace == Some(true) {
+                crate::metrics::mono_family().to_string()
+            } else {
+                opts.text.font_family.to_string()
+            }
+        });
     let measured = crate::metrics::normal_line(&family);
     if measured > 0.0 {
         measured
