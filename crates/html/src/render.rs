@@ -6853,6 +6853,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         && (inherited.vertical != Some(true) || vert_host)
         && (inherited.vertical_rl != Some(true) || vert_host)
         && inherited.rtl != Some(true);
+    let _fl_guard = BandFlGuard(BAND_FL.with(|f| f.replace(inherited.first_line.as_deref().cloned())));
     let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| {
         h.replace(match inherited.height {
             Some(Len::Px(v)) => Some(v),
@@ -9534,8 +9535,9 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
     out.extend(nodes[..at].iter().cloned());
     let mut letter = synthetic("div", style, vec![Node::Text(text[pos..end].to_string())], false);
     // Метка буквицы: её место — исключение строки (css-inline-3
-    // §initial-letter, Blink `initial_letter_utils.cc`), а не флоат полос;
-    // измеряемый хост её не берёт (шаг F11, `initial-letter-*-ruby`).
+    // §initial-letter, Blink `initial_letter_utils.cc`), а не флоат полос:
+    // измеряемый хост ставит её `FloatBands::add_initial_letter` (шаг F11);
+    // прогон с руби хост по-прежнему не берёт (`initial-letter-*-ruby`).
     if let Node::Element(e) = &mut letter {
         e.attrs.push(("initial-letter".into(), "1".into()));
     }
@@ -9936,9 +9938,21 @@ fn wrap_floats(
                     .flatten()
                     .map(|(h, n)| (h, n, false))
             });
-        if let Some((host, next, took_lead)) = hosted {
+        if let Some((mut host, next, took_lead)) = hosted {
             if took_lead {
                 out.truncate(lead_at);
+            }
+            // Хост измеряемый и до него в блоке ничего нет — первая строка
+            // блока внутри хоста: слой `::first-line` едет с ним
+            // (`band_kids` отдаёт его первому строчному прогону).
+            // Внепоточные соседи (абсолюты, флоаты) строк не образуют
+            // (`below-float3`: абсолют перед флоатом).
+            if host.attr("bands") == Some("m")
+                && out.iter().all(|n| {
+                    is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style))
+                })
+            {
+                host.first_line = BAND_FL.with(|f| f.borrow().clone());
             }
             out.push(Node::Element(host));
             i = next;
@@ -11018,11 +11032,13 @@ fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize)> {
         if band_orthogonal(&next.style) {
             return None;
         }
-        // Буквица (`initial_letter_float`) и флоат с трансформацией — на
-        // прежнем пути: у первой своё исключение строки (F11), второму
-        // трансформацию даёт сборка узла `element`, а каркас флоата хоста её
-        // не несёт (`transform-scale-test`).
-        if next.attr("initial-letter") == Some("1") || next.style.transform.is_some() {
+        // Флоат с трансформацией — на прежнем пути: трансформацию даёт
+        // сборка узла `element`, а каркас флоата хоста её не несёт
+        // (`transform-scale-test`). Буквица — своим исключением строки
+        // (шаг F11, `Kind::Float { letter }`), прежний путь — по `BF_F11=0`.
+        if (next.attr("initial-letter") == Some("1") && !band_f11())
+            || next.style.transform.is_some()
+        {
             return None;
         }
         band_margins(&next.style, em)?;
@@ -11286,6 +11302,22 @@ thread_local! {
     static BAND_CBH: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
 }
 
+thread_local! {
+    /// Слой `::first-line` содержащего блока (`inherited.first_line` в
+    /// `blocks()`): измеряемый хост — синтетический узел, своего слоя у него
+    /// нет, и `element` отдал бы детям `None`. Хост, с которого начинается
+    /// содержимое блока, несёт слой узлом (`wrap_floats`).
+    static BAND_FL: std::cell::RefCell<Option<Computed>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Вернуть прежний слой первой строки по выходе из `blocks()`.
+struct BandFlGuard(Option<Computed>);
+impl Drop for BandFlGuard {
+    fn drop(&mut self) {
+        BAND_FL.with(|f| *f.borrow_mut() = self.0.take());
+    }
+}
+
 /// Вернуть прежнюю высоту содержащего блока хоста по выходе из `blocks()`.
 struct BandCbhGuard(Option<f32>);
 impl Drop for BandCbhGuard {
@@ -11321,6 +11353,18 @@ fn band_orthogonal(c: &Computed) -> bool {
 fn band_f10() -> bool {
     static ON: std::sync::LazyLock<bool> =
         std::sync::LazyLock::new(|| std::env::var("BF_F10").map_or(true, |v| v != "0"));
+    *ON
+}
+
+/// Включён ли шаг F11 — буквица в измеряемом хосте. По умолчанию включён
+/// (замер 02.10 на 486 парах initial-letter/first-letter всего корпуса,
+/// база main 2ca1099: 421 → 432, +11/−0 — `initial-letter-drop-initial`
+/// (-vlr/-vrl), `-float-001` (-vlr/-vrl), `-indentation`,
+/// `-raised-sunken-caps-raise/-sunken`, `-with-first-line`,
+/// `text-box-trim-initial-letter-end-001`). `BF_F11=0` — прежний путь.
+fn band_f11() -> bool {
+    static ON: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| std::env::var("BF_F11").map_or(true, |v| v != "0"));
     *ON
 }
 
@@ -11412,11 +11456,19 @@ fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
     // атомов `FlowRow` с вырезами полос (как у статического хоста); иначе
     // (`<img>` без размеров, пустые строчные) — хост отменяется.
     let mut bad = false;
-    let mut flush = |run: &mut Vec<Node>, out: &mut Vec<Node>| {
+    // Прогон после `<br>` — продолжение того же абзаца (`cont`): без отступа
+    // первой строки (`band_kids`).
+    let mut cont = false;
+    let mut flush = |run: &mut Vec<Node>, out: &mut Vec<Node>, cont: bool| {
         if run.iter().any(|n| !is_blank(n)) {
+            // `<br>` — строка, пусть и пустая: прогон `[<br>]` после разреза
+            // по `<br>` — строчный, а не «пустой» (иначе хост отменялся).
             let text = run
                 .iter()
-                .any(|n| matches!(n, Node::Text(t) if !t.trim().is_empty()));
+                .any(|n| matches!(n, Node::Text(t) if !t.trim().is_empty()))
+                || run
+                    .iter()
+                    .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));
             let atoms = !text
                 && run
                     .iter()
@@ -11437,6 +11489,9 @@ fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
             let mut attrs = vec![("anon".to_string(), "1".to_string())];
             if atoms {
                 attrs.push(("atoms".into(), "1".into()));
+            }
+            if cont {
+                attrs.push(("cont".into(), "1".into()));
             }
             out.push(Node::Element(Element {
                 list_item: None,
@@ -11468,10 +11523,24 @@ fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
                     if c.style.clear.is_some() {
                         return None;
                     }
+                    // Прогон режется по `<br>` верхнего уровня: §9.5 сдвигает
+                    // под флоат СТРОКУ, в которую ничего не влезло, а план
+                    // умеет сдвигать только прогон целиком. Строка `<br>`
+                    // остаётся рядом с флоатом, а слово за ним, не влезшее в
+                    // окно, уходит под флоат своим прогоном
+                    // (`float-no-content-beside-001-ref`: `<span float>` +
+                    // `<br>` + длинное слово — прогон целиком съезжал под
+                    // флоат вместе с пустой строкой `<br>`, на строку ниже).
+                    let br = c.tag == "br";
                     run.push(n);
+                    if br {
+                        flush(&mut run, &mut out, cont);
+                        cont = true;
+                    }
                     continue;
                 }
-                flush(&mut run, &mut out);
+                flush(&mut run, &mut out, cont);
+                cont = false;
                 if band_piece_m(&n, em).is_some()
                     || band_flow_block(c, em)
                     || band_nest_ok(c, em)
@@ -11483,7 +11552,7 @@ fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
             }
         }
     }
-    flush(&mut run, &mut out);
+    flush(&mut run, &mut out, cont);
     (!bad).then_some(out)
 }
 
@@ -11529,6 +11598,8 @@ fn band_kids(
     // по таблице css-writing-modes-4 :1877-1888 (`vertical-rl`: block-start
     // — право, inline-start — верх; `vertical-lr`: block-start — лево).
     let vert = (inherited.vertical == Some(true)).then_some(inherited.vertical_rl == Some(true));
+    // Был ли уже ребёнок потока со строками (не флоат и не распорка).
+    let mut seen_inflow = false;
     for (idx, n) in nodes.iter().enumerate() {
         let Node::Element(c) = n else {
             continue;
@@ -11548,6 +11619,24 @@ fn band_kids(
             continue;
         }
         let float = idx < count || c.style.float.is_some_and(|f| f != 0);
+        // `::first-line` содержащего блока — первой строке его потока
+        // (CSS 2.1 §5.12.1); флоаты строк не образуют. Анонимный прогон
+        // своего `first_line` не несёт (`element` берёт псевдоэлементы только
+        // у самого узла), и первая строка хоста теряла свой кегль
+        // (`below-float3`: `::first-line { font-size: 50px }` у `x` под
+        // флоатом). Первый прогон получает слой хоста.
+        let first_line = !float
+            && !seen_inflow
+            && c.attr("anon") == Some("1")
+            && c.attr("cont").is_none();
+        if !float && band_piece_m(n, em) != Some(false) {
+            seen_inflow = true;
+        }
+        let first_layer: Option<Computed> = if first_line {
+            inherited.first_line.as_deref().cloned()
+        } else {
+            None
+        };
         let mut nest: Option<Nest> = None;
         let kind = if float {
             Kind::Float {
@@ -11560,6 +11649,7 @@ fn band_kids(
                 } else {
                     matches!(c.style.width, None | Some(Len::Auto))
                 },
+                letter: c.attr("initial-letter") == Some("1"),
             }
         } else {
             match band_piece_m(n, em) {
@@ -11592,6 +11682,10 @@ fn band_kids(
             match c.children.iter().find(|n| !is_blank(n)) {
                 Some(Node::Text(t)) => t.split_whitespace().next().map(|word| {
                     let mut hn = c.clone();
+                    cont_indent(&mut hn, inherited);
+                    if first_layer.is_some() {
+                        hn.first_line = first_layer.clone();
+                    }
                     hn.children = vec![Node::Text(word.to_string())];
                     let inherited = inherited.clone();
                     let opts = opts.clone();
@@ -11607,7 +11701,10 @@ fn band_kids(
         } else {
             None
         };
-        let node = c.clone();
+        let mut node = c.clone();
+        if first_layer.is_some() {
+            node.first_line = first_layer;
+        }
         let inherited = inherited.clone();
         let opts = opts.clone();
         let is_nest = nest.is_some();
@@ -11628,6 +11725,7 @@ fn band_kids(
                 let _cb_guard = scopeguard_cb(cb_prev);
                 let _avail_guard = AvailWGuard(avail_prev);
                 let mut copy = node.clone();
+                cont_indent(&mut copy, &inherited);
                 // Сторону, очистку и поля несёт хост (позиция от полос), на
                 // самой коробке они сдвинули бы её ещё раз — как у
                 // статического хоста.
@@ -11746,6 +11844,20 @@ fn band_kids(
         });
     }
     kids
+}
+
+/// Прогон-продолжение после `<br>` (`cont`, `band_flow_rest`): его первая
+/// строка — не первая строка абзаца, и `text-indent` её не сдвигает
+/// (css-text-3 §8.1), кроме `each-line` (сдвигает и строку после
+/// принудительного разрыва) и `hanging` (сдвигает все, кроме первой) — там
+/// отступ остаётся унаследованным.
+fn cont_indent(e: &mut Element, inherited: &Computed) {
+    if e.attr("cont") == Some("1")
+        && inherited.text_indent_each_line != Some(true)
+        && inherited.text_indent_hanging != Some(true)
+    {
+        e.style.text_indent = Some(Len::Px(0.0));
+    }
 }
 
 /// Можно ли разложить блок потока детьми на ОБЩИХ полосах (шаг F7): тот же

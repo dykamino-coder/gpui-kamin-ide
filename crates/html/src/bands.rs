@@ -248,6 +248,42 @@ impl FloatBands {
         (x, y)
     }
 
+    /// Поставить исключение буквицы (css-inline-3 §initial-letter-floats,
+    /// шаг F11): margin-box `w`×`h` у начала строки, верх которой — `top`
+    /// (поток), сторона `side`. Буквица — не флоат: правило 5 (не выше
+    /// ранних флоатов) к ней не относится, она встаёт в первое окно от
+    /// строки вниз, где влезает на всю свою высоту (Blink
+    /// `PostPlaceInitialLetterBox`, `inline_layout_algorithm.cc`: исключение
+    /// от позиции строки, «after floats» — за флоатами той же строки).
+    /// Потолков флоатов и позиций `clear` она не меняет.
+    pub fn add_initial_letter(&mut self, side: i8, w: f32, h: f32, top: f32) -> (f32, f32) {
+        let (w, h) = (w.max(0.0), h.max(0.0));
+        let mut y = top;
+        loop {
+            let (l, r) = self.available(y, h);
+            if r - l + EPS >= w {
+                break;
+            }
+            match self.next_edge(y) {
+                Some(t) => y = t,
+                None => break,
+            }
+        }
+        let (l, r) = self.available(y, h);
+        let x = if side < 0 { l } else { r - w };
+        let edge = if side < 0 { x + w } else { x };
+        let a = self.split_at(y);
+        let b = self.split_at(y + h);
+        for band in &mut self.bands[a..b] {
+            if side < 0 {
+                band.left = Some(band.left.map_or(edge, |old| old.max(edge)));
+            } else {
+                band.right = Some(band.right.map_or(edge, |old| old.min(edge)));
+            }
+        }
+        (x, y)
+    }
+
     /// Свободный инлайн-отрезок на полосе `[y, y + h)`: левая и правая
     /// стенки в координатах контекста.
     ///
