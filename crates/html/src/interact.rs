@@ -1915,7 +1915,8 @@ impl Element for CellsClipped {
                     &[gpui::BoxShadow {
                         color: colour.to_hsla(),
                         offset: gpui::point(gpui::px(sh.x), gpui::px(sh.y)),
-                        blur_radius: gpui::px(sh.blur),
+                        // σ = половина радиуса CSS (как в `apply::apply_paint`).
+                        blur_radius: gpui::px(sh.blur * 0.5),
                         spread_radius: gpui::px(sh.spread),
                     }],
                 );

@@ -1714,11 +1714,21 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // §dropshadowEquivalent: размытая альфа входа, сдвиг, цвет — ПОД входом)
     // совпадает с внешней box-shadow без разлёта. Картинку поддерева так не
     // выразить — только коробку; повторное слияние тень не удваивает.
+    // Длина размытия у `drop-shadow()` — это σ (filter-effects-1
+    // §funcdef-filter-drop-shadow: «standard deviation»), а у `box-shadow`
+    // радиус = 2σ (css-backgrounds-3 §box-shadow) — в список внешних теней
+    // она идёт удвоенной, чтобы после деления в `apply::apply_paint` σ
+    // осталась своей.
     if let Some(sh) = c.drop_shadow
         && c.background.is_some_and(|b| b.a >= 1.0)
-        && !c.shadows.contains(&sh)
     {
-        c.shadows.push(sh);
+        let as_box = crate::computed::Shadow {
+            blur: sh.blur * 2.0,
+            ..sh
+        };
+        if !c.shadows.contains(&as_box) {
+            c.shadows.push(as_box);
+        }
     }
     // `background-clip: text` со СПЛОШНОЙ заливкой (css-backgrounds-4
     // §background-clip): фон виден только под глифами элемента и его
