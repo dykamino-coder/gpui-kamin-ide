@@ -207,6 +207,17 @@ pub struct Paragraph {
     /// (`true` — верх) и высота их строчной коробки (`line-height` куска).
     /// Равняются по краю ГОТОВОЙ строки и растят её, только если выше неё.
     edge_spans: Vec<(std::ops::Range<usize>, bool, f32)>,
+    /// Строчные коробки кусков ПОСТРОЧНО (CSS 2.1 §10.8.1): отрезок байт →
+    /// `line-height` куска в точках. Непусто — у абзаца куски разного кегля,
+    /// гарнитуры или высоты строки, и `line_height` абзаца — это СТРУТ блока,
+    /// а каждая строка собирается из коробок своих кусков: верх — наибольший
+    /// подъём с полулидингом, низ — наибольший спуск. Прежде на весь абзац
+    /// шла одна высота по самому крупному куску.
+    box_spans: Vec<(std::ops::Range<usize>, f32)>,
+    /// Шрифт и кегль струта (шрифт самого блока) — для `box_spans`.
+    strut_run: Option<(gpui::Font, Pixels)>,
+    /// Подъём и спуск струта в точках (меряются в `request_layout`).
+    strut_box: (f32, f32),
     /// Границы строк в байтах — считаются на замере, переиспользуются на
     /// отрисовке.
     lines: Vec<Line>,
@@ -459,6 +470,9 @@ impl Paragraph {
             strut: (0.0, 0.0, 0.0),
             run_metrics: Vec::new(),
             edge_spans: Vec::new(),
+            box_spans: Vec::new(),
+            strut_run: None,
+            strut_box: (0.0, 0.0),
             lines: Vec::new(),
             clamp: None,
             clamp_force: false,
@@ -497,6 +511,17 @@ impl Paragraph {
 
     pub fn lh_spans(mut self, spans: Vec<(std::ops::Range<usize>, Pixels)>) -> Self {
         self.lh_spans = spans;
+        self
+    }
+
+    /// Строчные коробки кусков и шрифт струта (см. поле `box_spans`).
+    pub fn line_boxes(
+        mut self,
+        spans: Vec<(std::ops::Range<usize>, f32)>,
+        strut: Option<(gpui::Font, Pixels)>,
+    ) -> Self {
+        self.box_spans = spans;
+        self.strut_run = strut;
         self
     }
 
@@ -652,6 +677,7 @@ impl Paragraph {
             && self.lh_spans.is_empty()
             && self.atom_boxes.is_empty()
             && self.edge_spans.is_empty()
+            && self.box_spans.is_empty()
         {
             return vec![(0.0, 0.0); self.lines.len()];
         }
@@ -660,10 +686,17 @@ impl Paragraph {
             .iter()
             .map(|line| {
                 let (mut above, mut below) = (0.0f32, 0.0f32);
+                let boxes = !self.box_spans.is_empty() && self.run_metrics.len() == self.runs.len();
+                if boxes {
+                    let (top, bot) = self.line_extents(&line.range);
+                    let a = self.line_base(&line.range);
+                    above = top - a;
+                    below = bot - (lh - a);
+                }
                 // Кусок со своей `line-height` растит строку симметрично:
                 // полулидинг его коробки отступа ложится сверху и снизу
                 // (§10.8). Блочное значение уже учтено высотой строки.
-                for (range, lh) in &self.lh_spans {
+                for (range, lh) in self.lh_spans.iter().filter(|_| !boxes) {
                     if range.end <= line.range.start || range.start >= line.range.end {
                         continue;
                     }
@@ -673,7 +706,7 @@ impl Paragraph {
                         below = below.max(half);
                     }
                 }
-                for (range, dy) in &self.shift_spans {
+                for (range, dy) in self.shift_spans.iter().filter(|_| !boxes) {
                     if range.end <= line.range.start || range.start >= line.range.end {
                         continue;
                     }
@@ -1409,6 +1442,50 @@ impl Paragraph {
             AtomAlign::TextBottom => desc - b.h,
             AtomAlign::Top | AtomAlign::Bottom => -b.base,
         }
+    }
+
+    /// Протяжённость строки над и под её базовой линией по строчным коробкам
+    /// (CSS 2.1 §10.8.1): у каждой коробки `A = (L − (a + d)) / 2 + a` над
+    /// базовой и `L − A` под ней, где `L` — её `line-height`, `a`/`d` —
+    /// подъём и спуск её шрифта; струт блока входит всегда. Сдвиг
+    /// `vertical-align` (`shift_spans`, ось вниз) двигает коробку целиком.
+    /// Blink: `inline_box_state.cc` `ComputeTextMetrics` + `line_box_fragment_
+    /// builder` — та же сумма наибольших подъёма и спуска.
+    fn line_extents(&self, range: &std::ops::Range<usize>) -> (f32, f32) {
+        let lh = f32::from(self.line_height);
+        let (sa, sd) = self.strut_box;
+        let a_s = (lh - (sa + sd)) / 2.0 + sa;
+        let (mut top, mut bot) = (a_s, lh - a_s);
+        let mut at = 0usize;
+        for (run, &(ra, rd)) in self.runs.iter().zip(&self.run_metrics) {
+            let (s, e) = (at, at + run.len);
+            at = e;
+            if run.len == 0 || e <= range.start || s >= range.end {
+                continue;
+            }
+            // Кусок у края строки равняется по готовой строке (`edge_spans`).
+            if self
+                .edge_spans
+                .iter()
+                .any(|(r, _, _)| r.start <= s && e <= r.end)
+            {
+                continue;
+            }
+            let own = self
+                .box_spans
+                .iter()
+                .find(|(r, _)| r.contains(&s))
+                .map_or(lh, |(_, v)| *v);
+            let a_r = (own - (ra + rd)) / 2.0 + ra;
+            let dy = self
+                .shift_spans
+                .iter()
+                .find(|(r, _)| r.contains(&s))
+                .map_or(0.0, |(_, v)| f32::from(*v));
+            top = top.max(a_r - dy);
+            bot = bot.max(own - a_r + dy);
+        }
+        (top, bot)
     }
 
     /// От верха струта до его базовой линии: полулидинг плюс подъём (§10.8.1).
@@ -3052,8 +3129,23 @@ impl Element for Paragraph {
         if !self.atoms.is_empty() {
             self.lay_atoms(window, cx);
         }
+        if !self.box_spans.is_empty() {
+            if self.run_metrics.len() != self.runs.len() {
+                self.run_metrics = self.measure_runs(window);
+            }
+            if let Some((font, size)) = self.strut_run.clone() {
+                let ts = window.text_system();
+                let id = ts.resolve_font(&font);
+                self.strut_box = (
+                    f32::from(ts.ascent(id, size)),
+                    f32::from(ts.descent(id, size)).abs(),
+                );
+            }
+        }
         let atom_boxes = self.atom_boxes.clone();
         let edge_spans = self.edge_spans.clone();
+        let box_spans = self.box_spans.clone();
+        let strut_box = self.strut_box;
         let run_metrics = self.run_metrics.clone();
         let strut = self.strut;
         // Ширина известна только раскладке, поэтому строки считаются в замере:
@@ -3115,6 +3207,8 @@ impl Element for Paragraph {
                 probe.flow = flow.clone();
                 probe.atom_boxes = atom_boxes.clone();
                 probe.edge_spans = edge_spans.clone();
+                probe.box_spans = box_spans.clone();
+                probe.strut_box = strut_box;
                 probe.run_metrics = run_metrics.clone();
                 probe.strut = strut;
                 probe.spacers = spacers.clone();
@@ -3176,9 +3270,21 @@ impl Element for Paragraph {
                 // Отступ строки входит в её место в колонке: коробка по
                 // содержимому обязана вместить и его. Отрицательный уходит в
                 // поле и ширины не требует, поэтому в ноль он и упирается.
+                // У абзаца с атомами отрицательный отступ ширину по содержимому
+                // УМЕНЬШАЕТ (css-text-3 §7.1: отступ входит в строку; доля при
+                // замере — ноль): `text-indent: calc(50% - 3px)` у флоата с
+                // атомом 10px даёт 7px (`calc-text-indent-intrinsic-1`). Так
+                // мерил и прежний ряд слов; у текстового абзаца — как было.
+                let atoms_in = !probe.atom_boxes.is_empty();
                 let content = lines
                     .iter()
-                    .map(|l| l.width + l.indent.max(px(0.)))
+                    .map(|l| {
+                        if atoms_in {
+                            (l.width + l.indent).max(px(0.))
+                        } else {
+                            l.width + l.indent.max(px(0.))
+                        }
+                    })
                     .fold(px(0.), |a: Pixels, b| if b > a { b } else { a });
                 let width = known_along.unwrap_or(content);
                 // Шире отведённого коробка не бывает: у абзаца блочного уровня
@@ -3225,7 +3331,7 @@ impl Element for Paragraph {
                 let across = {
                     probe.lines = lines.clone();
                     let pads = probe.line_padding();
-                    if !probe.atom_boxes.is_empty() {
+                    if !probe.atom_boxes.is_empty() || !probe.box_spans.is_empty() {
                         first_above = px(pads.first().map_or(0.0, |p| p.0));
                     }
                     if pads.len() > 1 {
@@ -3277,7 +3383,7 @@ impl Element for Paragraph {
                 // С атомами базовая — та же, на какую встают атомы и набор
                 // первой строки (`line_base`), плюс её верхняя надбавка.
                 let baseline = match lines.first() {
-                    Some(first) if !probe.atom_boxes.is_empty() => {
+                    Some(first) if !probe.atom_boxes.is_empty() || !probe.box_spans.is_empty() => {
                         Some(px(probe.line_base(&first.range)) + first_above)
                     }
                     _ => baseline,
@@ -3672,6 +3778,9 @@ impl Paragraph {
             strut: self.strut,
             run_metrics: self.run_metrics.clone(),
             edge_spans: self.edge_spans.clone(),
+            box_spans: self.box_spans.clone(),
+            strut_run: None,
+            strut_box: self.strut_box,
             ortho_limit: self.ortho_limit,
             runs: Vec::new(),
             font_size: self.font_size,

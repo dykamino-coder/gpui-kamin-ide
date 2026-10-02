@@ -14894,6 +14894,68 @@ fn flow_metrics(
     (size_max, lh_max)
 }
 
+/// Строчные коробки кусков для построчной высоты (`Paragraph::line_boxes`,
+/// CSS 2.1 §10.8.1): отрезок байт → `line-height` куска в точках, плюс
+/// `line-height` струта блока. `None` — все куски одного кегля, гарнитуры и
+/// высоты строки: строка тогда и так равна струту, абзац идёт прежним путём.
+///
+/// Прежде высота строки на ВЕСЬ абзац бралась по самому крупному куску
+/// (`max_line_height`, `k × biggest`): одна крупная буква растила все строки,
+/// а базовая линия мелкого текста в строке с крупным стояла посередине.
+fn line_box_spans(
+    pieces: &[inline::Piece],
+    edges: &[(std::ops::Range<usize>, bool, f32)],
+    inherited: &Computed,
+    opts: &RenderOpts,
+) -> Option<(Vec<(std::ops::Range<usize>, f32)>, f32)> {
+    if inherited.vertical == Some(true)
+        || inherited.rotated_line == Some(true)
+        || inherited.text_fit.is_some()
+    {
+        return None;
+    }
+    let own = own_size(inherited, opts);
+    let strut = match inherited.line_height {
+        Some(Len::Px(v)) => v,
+        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * own,
+        None => own * normal_fraction(inherited, opts),
+        _ => return None,
+    };
+    let mut out: Vec<(std::ops::Range<usize>, f32)> = Vec::new();
+    let mut mixed = false;
+    let mut at = 0usize;
+    for p in pieces {
+        let inline::Piece::Text { text, style } = p else {
+            continue;
+        };
+        let r = at..at + text.len();
+        at = r.end;
+        if text.is_empty() || in_edge(edges, &r) {
+            continue;
+        }
+        let size = match style.font_size {
+            Some(Len::Px(v)) => v,
+            Some(Len::Em(k)) => k * opts.base_size(),
+            None => own,
+            _ => return None,
+        };
+        let lh = match style.line_height {
+            Some(Len::Px(v)) => v,
+            Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+            None => size * normal_fraction(style, opts),
+            _ => return None,
+        };
+        if (size - own).abs() > 0.01
+            || (lh - strut).abs() > 0.01
+            || style.font_family != inherited.font_family
+        {
+            mixed = true;
+        }
+        out.push((r, lh));
+    }
+    mixed.then_some((out, strut))
+}
+
 /// Можно ли абзацу ставить атомы в свою строку: горизонтальное письмо слева
 /// направо, без раздачи по ширине (места атомов считаются от продвижения
 /// распорки, а растяжку пробелов `Paragraph` раздаёт уже при отрисовке) и с
@@ -14951,7 +15013,13 @@ fn atom_line_align(
         nodes.iter().any(|n| match n {
             Node::Element(k) => {
                 let sized_by_parent = in_box_layout || k.style.height.is_some();
-                (k.style.vertical.is_some() && !sized_by_parent)
+                // Ломает замер только ортогональный ФЛОАТ (его ширина «по
+                // содержимому» берётся от доступного места); ортогональный
+                // блок в потоке раскладывается одинаково, и исключать атом
+                // ради него значило вести тест рядом, а эталон строкой
+                // (`baseline-with-orthogonal-flow-001`).
+                let floated = k.style.float.is_some_and(|f| f != 0);
+                (k.style.vertical.is_some() && !sized_by_parent && floated)
                     || has_vertical(&k.children, box_layout(&k.style))
             }
             _ => false,
@@ -15567,8 +15635,11 @@ fn paragraph_pieces(
         // самый крупный кусок: текст блока без объявленного `font-size` рядом
         // с крупным `<span>` вырастал до его кегля (`c43-rpl-ibx-000`: вся
         // строка в 3.75em). Свой кегль такого куска — кегль блока.
+        let boxes = line_box_spans(&pieces, &edges, inherited, opts);
         let mut runs = runs;
-        if (!line_atoms.is_empty() || !edges.is_empty()) && inherited.text_fit.is_none() {
+        if (!line_atoms.is_empty() || !edges.is_empty() || boxes.is_some())
+            && inherited.text_fit.is_none()
+        {
             let own = own_size(inherited, opts);
             if biggest != own {
                 for run in runs.iter_mut().filter(|r| r.font_size.is_none()) {
@@ -15627,6 +15698,12 @@ fn paragraph_pieces(
                     opts.base_size(),
                     normal_fraction(inherited, opts),
                 )),
+            };
+            // Построчные коробки (`line_box_spans`): высота строки абзаца — СТРУТ
+            // блока, крупные куски растят только свои строки.
+            let line = match &boxes {
+                Some((_, strut)) => gpui::px(*strut),
+                None => line,
             };
             if {
                 static ON: std::sync::LazyLock<bool> =
@@ -15694,6 +15771,15 @@ fn paragraph_pieces(
                 v
             })
             .edge_spans(edges)
+            .line_boxes(
+                boxes.as_ref().map(|b| b.0.clone()).unwrap_or_default(),
+                boxes.as_ref().map(|_| {
+                    (
+                        inline::strut_font(inherited, &opts.text),
+                        gpui::px(own_size(inherited, opts)),
+                    )
+                }),
+            )
             .rel_spans(inline::rel_spans(&pieces))
             .align_last(
                 inherited
