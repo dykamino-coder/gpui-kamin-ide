@@ -3471,11 +3471,12 @@ impl Element for Paragraph {
         if self.vertical {
             let scale = window.scale_factor();
             let dev = |v: Pixels| v.scale(scale);
-            let corner = if self.vertical_rl {
-                bounds.origin.x + bounds.size.width
-            } else {
-                bounds.origin.x
-            };
+            // Поворот ПО ЧАСОВОЙ: (u, v) плоской коробки → (−v, u), строки
+            // набегают от ПРАВОГО края влево — так при любом письме. У
+            // `vertical-lr` первая строка левая за счёт обратного порядка
+            // строк (`lines_reversed`, его ставит `render::paragraph`), а
+            // угол от левого края уводил весь текст за коробку.
+            let corner = bounds.origin.x + bounds.size.width;
             let matrix = gpui::TransformationMatrix::unit()
                 .translate(gpui::point(dev(corner), dev(bounds.origin.y)))
                 .rotate(gpui::Radians(std::f32::consts::FRAC_PI_2))

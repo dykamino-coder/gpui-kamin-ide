@@ -2287,6 +2287,12 @@ pub struct Computed {
     pub(crate) parent_flex_grid: bool,
     /// Родитель — лунки (`display: grid-lanes`).
     pub(crate) parent_lanes: bool,
+    /// Родитель — подсетка (`grid-template-*: subgrid`).
+    pub(crate) parent_subgrid: bool,
+    /// Абзац вертикального письма набирается САМ, по оси строки решённой
+    /// раскладкой (`lines::Paragraph::vertical`): `Some(rl)`. Ставится только
+    /// на копию стиля внутри `render::paragraph`.
+    pub(crate) para_vertical: Option<bool>,
     /// Логические стороны и размеры до перевода в физические.
     pub logical: Option<Box<Logical>>,
     /// Ширина пришла из ЛОГИЧЕСКОГО `inline-size` при вертикальном письме:

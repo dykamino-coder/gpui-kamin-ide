@@ -14807,6 +14807,32 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
             }
             return para;
         }
+        // Элемент СЕТКИ с вертикальным письмом: длина его строки — размер
+        // дорожки по блочной оси сетки, а он известен только раскладке
+        // (css-grid-2 §12.1 шаг 1: ортогональный элемент меряется под
+        // оценкой рядов; Blink `grid_layout_algorithm.cc:479-497` —
+        // повторный проход колонок по размеренным собственным рядам
+        // подсетки). Повёрнутая коробка ниже предел знает лишь из стиля
+        // (`ortho_limit` или окно), и `X X X X` в ряду 25px ложился одной
+        // колонкой во всю высоту (`subgrid/standalone-axis-size-010..013`,
+        // `column-subgrid-with-row-standalone-axis-size-*`). Абзац набирает
+        // строку сам (`lines::Paragraph::vertical`): предел — решённая
+        // раскладкой высота, а при её отсутствии — доступная.
+        //
+        // Гейт — элемент ПОДСЕТКИ: у него ось строки — собственная дорожка
+        // «standalone»-оси (`subgrid::standalone_tracks`), а повёрнутая
+        // коробка её не видит никогда. ★ ЗАМЕРЕНО: тот же путь для ЛЮБОГО
+        // элемента сетки — на парах среза css-grid/gaps/break-grid,
+        // разошедшихся с базой, +7/−16 сверх гейта подсетки (`grid-container-scrollbar-vertical-lr/rl-001`
+        // 0.00 -> 20, `orthogonal-positioned-grid-items-015`,
+        // `grid-self-baseline-changes-grid-area-size-009/012` — базовая по
+        // оси x у повёрнутой коробки своя, `VerticalText::first_line`).
+        if inherited.parent_subgrid && !ccw_line && nodes.iter().all(|n| matches!(n, Node::Text(_))) {
+            let mut flow = horizontal.clone();
+            flow.rotated_line = None;
+            flow.para_vertical = Some(inherited.vertical_rl == Some(true));
+            return paragraph(nodes, &flow, opts);
+        }
         let inner = paragraph(nodes, &horizontal, opts);
         // Спросить размер у родителя обход не может (замер внутри чужого
         // замера падает — см. `VerticalText::request_layout`). Зато предел
@@ -15969,6 +15995,7 @@ fn paragraph_pieces(
             // `unicode-bidi: plaintext` (в том числе `dir="auto"`): сторона
             // письма и логическая выключка решаются построчно.
             .reversed_lines(inherited.lines_reversed == Some(true))
+            .vertical(inherited.para_vertical.is_some(), inherited.para_vertical == Some(true))
             .plaintext(
                 inherited
                     .bidi_plaintext

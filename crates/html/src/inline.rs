@@ -1503,6 +1503,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         _ => 0,
     };
     c.parent_lanes = parent.display == Some(crate::computed::Display::GridLanes);
+    c.parent_subgrid = c.parent_grid != 0 && (parent.subgrid_cols || parent.subgrid_rows);
     c.parent_flex_grid = matches!(
         parent.display,
         Some(crate::computed::Display::Flex)
