@@ -10457,13 +10457,14 @@ fn wrap_floats(
             // (ширина содержащего блока, shrink-to-fit флоата, коробка
             // своего контекста без размеров) — их меряет раскладка
             // (`band_flow.rs`, шаги F2/F3/F5).
+            .map(|(h, n, t)| (h, n, t, Vec::new()))
             .or_else(|| {
                 measured_ok
                     .then(|| band_host_m(&nodes, i, em))
                     .flatten()
-                    .map(|(h, n)| (h, n, false))
+                    .map(|(h, n, l)| (h, n, false, l))
             });
-        if let Some((mut host, next, took_lead)) = hosted {
+        if let Some((mut host, next, took_lead, lifted)) = hosted {
             if took_lead {
                 out.truncate(lead_at);
             }
@@ -10480,6 +10481,7 @@ fn wrap_floats(
                 host.first_line = BAND_FL.with(|f| f.borrow().clone());
             }
             out.push(Node::Element(host));
+            out.extend(lifted);
             i = next;
             continue;
         }
@@ -11537,7 +11539,7 @@ fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
 /// * одинокий флоат с пустым хвостом полосам не нужен (как у `band_host`).
 ///
 /// Ширина содержащего блока не требуется вовсе: её отдаёт замер.
-fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize)> {
+fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize, Vec<Node>)> {
     let mut floaters: Vec<Element> = vec![];
     let mut j = i;
     while j < nodes.len() {
@@ -11611,7 +11613,8 @@ fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize)> {
     }
     // Хвост: куски своего контекста, блоки потока и строчные прогоны
     // (шаг F4: строки блоков потока режутся полосами, `band_flow::Kind::Flow`).
-    let rest = band_flow_rest(rest, em)?;
+    let mut lifted: Vec<Node> = vec![];
+    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted))?;
     // Блок потока или строчный прогон в хвосте (не кусок своего контекста).
     let flows = rest
         .iter()
@@ -11661,7 +11664,7 @@ fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize)> {
     };
     host.children = floaters.into_iter().map(Node::Element).collect();
     host.children.extend(rest);
-    Some((host, j))
+    Some((host, j, lifted))
 }
 
 /// Есть ли у блока флоат среди потомков обычного потока (сквозь блоки, не
@@ -11975,6 +11978,32 @@ fn flow_interior_plain(c: &Element) -> bool {
 /// — у него своя строка и свои вырезы. Внепоточный сосед хост отменяет
 /// (как у `band_piece`).
 fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
+    band_flow_rest_lift(rest, em, None)
+}
+
+/// Абсолютная коробка с заданными вставками по обеим осям: её место от
+/// статической позиции не зависит (CSS 2.1 §10.3.7/§10.6.4 — `auto` нет ни
+/// у `left`/`right`, ни у `top`/`bottom` разом), и её можно вынести из
+/// хоста в поток содержащего блока, ничего не сдвинув.
+fn abs_pinned(c: &Computed) -> bool {
+    let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
+    matches!(
+        c.position,
+        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+    ) && (set(c.inset.top) || set(c.inset.bottom))
+        && (set(c.inset.left) || set(c.inset.right))
+}
+
+/// `band_flow_rest`, где абсолюты с заданными вставками (`abs_pinned`) не
+/// отменяют хост, а уходят в `lift` — вызывающий кладёт их за хостом.
+/// Свой содержащий блок они находят снаружи хоста: внутри его отдельного
+/// дерева абсолют встал бы от держателя (`floats-placement-001`: зелёная
+/// заплатка `left: 50px` у `position: relative` контейнера).
+fn band_flow_rest_lift(
+    rest: Vec<Node>,
+    em: f32,
+    mut lift: Option<&mut Vec<Node>>,
+) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut run: Vec<Node> = vec![];
     // Прогон без текста: сплошь атомы известного размера — строчный поток
@@ -12040,6 +12069,12 @@ fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
             Node::Text(_) => run.push(n),
             Node::Element(c) => {
                 if out_of_flow(&c.style) {
+                    if let Some(l) = lift.as_deref_mut()
+                        && abs_pinned(&c.style)
+                    {
+                        l.push(n);
+                        continue;
+                    }
                     return None;
                 }
                 if !block_level_in_flow(c) {
