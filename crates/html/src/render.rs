@@ -7078,7 +7078,13 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     if ratio_ok
                         && !ordered_context
                         && matches!(e.style.width, None | Some(Len::Auto))
-                        && matches!(e.style.height, Some(Len::Px(_)))
+                        // Доля высоты от блока с высотой в точках — тоже
+                        // определённая высота (CSS 2.1 §10.5), и ширина
+                        // идёт из соотношения, а не растяжкой
+                        // (`percentage-resolution-005`: 50×100 вместо 100×100).
+                        && (matches!(e.style.height, Some(Len::Px(_)))
+                            || (matches!(e.style.height, Some(Len::Pct(_)))
+                                && matches!(inherited.height, Some(Len::Px(_)))))
                         && e.style.align_self.is_none()
                         && inherited.vertical.is_none()
                         && !e.inline
@@ -8372,10 +8378,24 @@ fn orthogonal_children(children: Vec<Node>, container: &Computed, icb_w: f32) ->
                 // РАСТЯГИВАЕТСЯ на него (stretch-fit, css-sizing-3 §5), а не
                 // жмётся к содержимому (two-levels-of-orthogonal-flows-fixed:
                 // жёлтый ребёнок обязан накрыть красный контейнер 10em).
-                // Явный `auto` при ЗАДАННОМ контейнере — по-прежнему по
-                // содержимому: растяжка тут верна лишь случайно (§7.3.2 —
-                // shrink-to-fit), а потолок вместо неё замерен и откачен (E1).
-                Some(Len::Px(_)) if explicit_auto => {}
+                // Явный `auto` при ЗАДАННОМ контейнере — shrink-to-fit
+                // (css-writing-modes-4 §7.3.2: «min(max-content, max(min-content,
+                // constraint))», constraint — размер контейнера): потолок в
+                // размер контейнера, а не растяжка. Без потолка длинная строка
+                // шла одной линией на всю max-content-ширину
+                // (`sizing-orthog-htb-in-v{lr,rl}-010/022`). Пол min-content
+                // потолком не выразить: длинное слово упрётся в предел и
+                // вылезет — его эталоны (`-011/-023`) сходятся в пределах
+                // допуска. Неявной ширине по-прежнему растяжка: потолок
+                // вместо неё замерен и откачен (E1).
+                Some(Len::Px(w)) if explicit_auto => {
+                    let b = ch.style.borders();
+                    let extra = side(ch.style.padding.left)
+                        + side(ch.style.padding.right)
+                        + side(b.left)
+                        + side(b.right);
+                    ch.style.max_width = Some(Len::Px((w - margins - extra).max(0.0)));
+                }
                 Some(Len::Px(w)) => {
                     // Ширина здесь — то, что коробке отдаст раскладка, а
                     // рендер к ЗАДАННОЙ ширине добавит отступы и рамку (как
@@ -16190,6 +16210,7 @@ fn paragraph_pieces(
         },
         inherited.nowrap == Some(true),
         &mut render_text,
+        inherited.vertical != Some(true) && inherited.rotated_line != Some(true),
     )
 }
 
@@ -16884,10 +16905,22 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
         return Some(built);
     }
     match e.tag.as_str() {
-        "img" => Some(image_with(
-            &with_inherited_font(&pct_height_to_px(e, inherited), inherited),
-            Some(atom_base_font(inherited, opts)),
-        )),
+        "img" => {
+            let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
+            // Держатель картинки строится из СЫРОГО стиля (`image_with` →
+            // `styled_div`), а признак определённого блока (CSS 2.1 §10.5)
+            // ставит только `inline::inherit`: без переноса `apply` выбрасывал
+            // `height: %` у картинки во flex-элементе, абсолюте, по цепочке
+            // долей, и она рисовалась природным размером
+            // (`intrinsic-percent-replaced-024/026`: 200×200 вместо 100×100).
+            // Ячейка исключена: её высоту считает табличная раскладка движка;
+            // лунки — тоже свой путь (`row-auto-repeat-auto-023/024`: 0.32 →
+            // 4.93 с переносом признака).
+            if !matches!(inherited.display, Some(Display::TableCell) | Some(Display::GridLanes)) {
+                copy.style.cb_height_def = inline::inherit(inherited, &e.style).cb_height_def;
+            }
+            Some(image_with(&copy, Some(atom_base_font(inherited, opts))))
+        }
         // Замещаемые с адресом в СВОЁМ атрибуте: у блочного пути такие рукава
         // есть, у строчного не было, и `<object data>` в строке терял
         // собственный размер (§10.3.2, §10.6.2) — коробки не заводил и уходил
@@ -17314,7 +17347,7 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
             // схлопывала холст в ноль — флоат выходил нулевой ширины
             // (`intrinsic-percent-replaced-001`: 2.08). Точки берутся только
             // при высоте блока в `Px` и блочном `display` (оговорки там же).
-            let converted = pct_height_to_px(e, inherited);
+            let converted = pct_height_to_px(&canvas_limit_keywords(e), inherited);
             let e = &converted;
             let merged = inline::inherit(inherited, &e.style);
             let d = styled_div_with(e, &merged).flex_shrink_0();
@@ -20029,6 +20062,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // САМОГО элемента, его и даёт `resolve_em` от кегля родителя.
             let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
             copy.style.image_orient_none = merged.image_orient_none;
+            // Признак определённого блока (§10.5) — от слитого стиля: держатель
+            // строится из сырого, и `apply` иначе выбрасывал `height: %`
+            // (см. строчный рукав `"img"` в `atom_element`; ячейка и лунки —
+            // свои пути).
+            if !matches!(inherited.display, Some(Display::TableCell) | Some(Display::GridLanes)) {
+                copy.style.cb_height_def = merged.cb_height_def;
+            }
             image_with(&copy, Some(atom_base_font(inherited, opts)))
         }
         // Замещаемые с картинкой-источником рисуются как <img>: embed через
@@ -20041,6 +20081,41 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         // который не прочитался, в картинку не превращается — падает в общий
         // рукав и показывает запасное содержимое (HTML §4.8.7).
         "iframe" | "object" if built_iframe.is_some() => built_iframe.take().unwrap(),
+        // БЛОЧНЫЙ кадр без пригодного документа — всё равно замещаемая
+        // коробка: по умолчанию 300×150 (CSS 2.1 §10.3.2 «…the used value of
+        // 'width' becomes 300px», §10.6.2 — 150px; HTML §15.4.4 у `<iframe>`
+        // атрибуты `width/height` — размеры). Прежде он шёл общим рукавом
+        // пустым блоком: ширина растягивалась на содержащий блок, высота
+        // была нулевой, и красная рамка вылезала из-под зелёной
+        // (`block-replaced-height-004/005/007`). Строчный кадр не трогаем —
+        // там коробка без вклада в строку замерена и откачена (рукав
+        // `"iframe"` в `atom_element`).
+        // Плавающий кадр сюда не идёт: замерено — `float-replaced-height-005/
+        // 007` (0.00 → «красное видно»), у флоата свой путь размеров.
+        // Только кадр в обычном блочном потоке: флоат снимает `float` с
+        // копии и кладёт её в синтетический гибкий ряд (`wrap_floats`) или в
+        // бандовый хост (`flow-root`) — там размер считает свой путь
+        // (замерено: `float-replaced-height-005/007` 0.00 → «красное видно»).
+        "iframe"
+            if !e.style.float.is_some_and(|f| f != 0)
+                && matches!(inherited.display, None | Some(Display::Block))
+                && e.style.flow_root != Some(true)
+                && !matches!(
+                    e.style.width,
+                    Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+                ) =>
+        {
+            let mut copy = pct_height_to_px(e, inherited);
+            if !matches!(copy.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
+                copy.style.width = Some(Len::Px(300.0));
+            }
+            let pct_ok = matches!(copy.style.height, Some(Len::Pct(_))) && merged.cb_height_def;
+            if !matches!(copy.style.height, Some(Len::Px(_))) && !pct_ok {
+                copy.style.height = Some(Len::Px(150.0));
+            }
+            copy.style.cb_height_def = merged.cb_height_def;
+            styled_div(&copy).flex_shrink_0().into_any_element()
+        }
         "object" if e.attr("data").is_some() && !object_is_document(e) => {
             let mut copy = e.clone();
             let url = e.attr("data").unwrap_or_default().to_string();
@@ -22124,6 +22199,9 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         _ => attr_len("height").unwrap_or(150.0),
     };
     // Рамка меряет свои `@media` своей коробкой (`doc::parse_embedded`).
+    // Режим quirks у вложенного документа свой: разбор его перепишет, а
+    // внешний возвращается после сборки рамки.
+    let outer_quirks = crate::dom::quirks();
     let (nodes, salt) = crate::doc::parse_embedded(&html, crate::BROWSER_CSS, (w, h));
     // Верхний уровень вложенного документа проходит те же ортогональные
     // поправки, что и дети контейнера.
@@ -22142,6 +22220,7 @@ fn iframe(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let mut kids = blocks(&nodes, &sub.root_style(), &sub);
     kids.extend(crate::interact::icb_close());
     IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
+    crate::dom::QUIRKS.with(|q| q.set(outer_quirks));
     Some(
         styled_div(e)
             .w(px(w))
@@ -22197,6 +22276,92 @@ fn atom_base_font(inherited: &Computed, opts: &RenderOpts) -> f32 {
         Some(Len::Px(v)) => v,
         _ => opts.base_size(),
     }
+}
+
+/// Пределы замещаемого с соотношением сторон — таблица CSS 2.1 §10.4
+/// (`csswg-drafts/css2/Overview.bs:8985-9050`): при нарушении пределов по
+/// ОДНОЙ оси вторая выводится через соотношение и зажимается своими
+/// пределами, при нарушении по обеим в разные стороны (`w < min-width`,
+/// `h > max-height`) соотношение сдаётся — обе стороны берут пределы.
+/// Прежний общий множитель «сперва потолки, затем полы» держал соотношение
+/// всегда и расходился с таблицей ровно в этих строках
+/// (`box-sizing-replaced-001..003`). `max` берётся как max(min, max).
+fn css2_replaced_limits(
+    w: f32,
+    h: f32,
+    min_w: Option<f32>,
+    max_w: Option<f32>,
+    min_h: Option<f32>,
+    max_h: Option<f32>,
+) -> (f32, f32) {
+    let min_w = min_w.unwrap_or(0.0);
+    let min_h = min_h.unwrap_or(0.0);
+    let max_w = max_w.unwrap_or(f32::INFINITY).max(min_w);
+    let max_h = max_h.unwrap_or(f32::INFINITY).max(min_h);
+    let (over_w, under_w) = (w > max_w, w < min_w);
+    let (over_h, under_h) = (h > max_h, h < min_h);
+    match (over_w, under_w, over_h, under_h) {
+        (true, _, true, _) if max_w / w <= max_h / h => (max_w, min_h.max(max_w * h / w)),
+        (true, _, true, _) => (min_w.max(max_h * w / h), max_h),
+        (_, true, _, true) if min_w / w <= min_h / h => (max_w.min(min_h * w / h), min_h),
+        (_, true, _, true) => (min_w, max_h.min(min_w * h / w)),
+        (_, true, true, _) => (min_w, max_h),
+        (true, _, _, true) => (max_w, min_h),
+        (true, _, _, _) => (max_w, (max_w * h / w).max(min_h)),
+        (_, true, _, _) => (min_w, (min_w * h / w).min(max_h)),
+        (_, _, true, _) => ((max_h * w / h).max(min_w), max_h),
+        (_, _, _, true) => ((min_h * w / h).min(max_w), min_h),
+        _ => (w, h),
+    }
+}
+
+/// Ключевое слово содержимого в ПРЕДЕЛЕ холста — в точки.
+///
+/// min-content и max-content замещаемого — его природный размер, а при
+/// определённой второй оси и соотношении — размер, перенесённый через
+/// соотношение (css-sizing-3 §5.1 «min-content … of a replaced element»;
+/// css-sizing-4 §5.1 transferred size; Blink `ComputeReplacedSize`).
+/// Раскладке такой предел не выразить (`apply` ставит вместо него долю
+/// 100%), и `width: 1000px; height: 100px; max-width: min-content` у холста
+/// 10×10 давал ширину во всю строку, а не 100
+/// (`replaced-max-width-min-content`, `replaced-min-width-min-content`).
+fn canvas_limit_keywords(e: &Element) -> Element {
+    let kw = |l: Option<Len>| {
+        matches!(
+            l,
+            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+        )
+    };
+    let c = &e.style;
+    if !(kw(c.min_width) || kw(c.max_width) || kw(c.min_height) || kw(c.max_height)) {
+        return e.clone();
+    }
+    let px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let ratio = c.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0);
+    let nat_w = match (px(c.height), ratio) {
+        (Some(h), Some(r)) => Some(h * r),
+        _ => px(c.attr_width),
+    };
+    let nat_h = match (px(c.width), ratio) {
+        (Some(w), Some(r)) => Some(w / r),
+        _ => px(c.attr_height),
+    };
+    let mut copy = e.clone();
+    let s = &mut copy.style;
+    for (lim, nat) in [
+        (&mut s.min_width, nat_w),
+        (&mut s.max_width, nat_w),
+        (&mut s.min_height, nat_h),
+        (&mut s.max_height, nat_h),
+    ] {
+        if kw(*lim) {
+            *lim = nat.map(Len::Px);
+        }
+    }
+    copy
 }
 
 fn image(e: &Element) -> AnyElement {
@@ -22847,23 +23012,9 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                     (None, None, None) => (300.0, 150.0),
                 };
                 if w0 > 0.0 && h0 > 0.0 {
-                    // §10.4: пределы держат соотношение — сперва потолки,
-                    // затем полы.
+                    // §10.4: пределы — по таблице (`css2_replaced_limits`).
                     let min_w = clamp(e.style.min_width, sub_w);
                     let min_h = clamp(e.style.min_height, sub_h);
-                    let mut scale = 1.0f32;
-                    if let Some(m) = max_w {
-                        scale = scale.min(m / w0);
-                    }
-                    if let Some(m) = max_h {
-                        scale = scale.min(m / h0);
-                    }
-                    if let Some(m) = min_w {
-                        scale = scale.max(m / w0);
-                    }
-                    if let Some(m) = min_h {
-                        scale = scale.max(m / h0);
-                    }
                     // Без СОБСТВЕННОГО соотношения стороны независимы: потолок
                     // высоты режет только высоту, и ширина остаётся своей
                     // (§10.4, таблица «no intrinsic ratio»). Прежде общий
@@ -22879,7 +23030,7 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                             limit(h0, min_h, max_h),
                         )
                     } else {
-                        (w0 * scale, h0 * scale)
+                        css2_replaced_limits(w0, h0, min_w, max_w, min_h, max_h)
                     };
                     image = vectorize(image, rw, rh)
                         .w(px(rw))

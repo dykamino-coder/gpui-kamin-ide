@@ -1125,6 +1125,42 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
                 Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
             ),
         });
+    // Quirks Mode §3.5 «The percentage height calculation quirk»: в режиме
+    // quirks содержащий блок для ДОЛИ высоты ищется циклом — предки с
+    // `height: auto` пропускаются, пока не найдётся предок с заданной
+    // высотой, абсолютный или табличный (тогда он и есть опора). Сама
+    // коробка с долей и табличный `display` квирку не подлежат. Без него
+    // `<canvas style="height:100%">` в `div` без высоты внутри флоата
+    // высотой 100 схлопывался в ноль (`intrinsic-percent-replaced-002/006`,
+    // `float-percentage-resolution-quirks-mode`). Blink:
+    // `LayoutBox::ContainingBlockLogicalHeightForPercentageResolution`
+    // (`SkipContainingBlockForPercentHeightCalculation`).
+    if crate::dom::quirks() {
+        use crate::computed::{Display as D, Position as P};
+        use crate::value::Len as L;
+        let out_of_flow = matches!(own.position, Some(P::Absolute) | Some(P::Fixed));
+        let tabular = matches!(
+            own.display,
+            Some(D::Table | D::InlineTable | D::TableCell | D::TableRow | D::TableRowGroup)
+        );
+        if let (Some(L::Pct(k)), false, false, Some(base)) =
+            (own.height, c.cb_height_def, tabular, parent.quirk_pct_base)
+        {
+            c.height = Some(L::Px(k * base));
+        }
+        c.quirk_pct_base = match c.height {
+            Some(L::Px(h)) => Some(h),
+            // Доля от определённого блока — тоже опора: флоат `height: 50%`
+            // в контейнере 200 даёт потомкам 100 (`intrinsic-percent-
+            // replaced-003/004`).
+            Some(L::Pct(k)) if !tabular => match parent.height {
+                Some(L::Px(h)) => Some(k * h),
+                _ => parent.quirk_pct_base.map(|b| k * b),
+            },
+            None | Some(L::Auto) if !out_of_flow && !tabular && !c.root_box => parent.quirk_pct_base,
+            _ => None,
+        };
+    }
     c.color = own.color.or(parent.color);
     // `background-color: inherit` переносит вычисленное значение родителя —
     // вместе с нерешённой относительной функцией (css-color-5 §4.1).
@@ -3408,6 +3444,11 @@ pub fn as_wrapped_row(
     indent: f32,
     nowrap: bool,
     render_text: &mut dyn FnMut(String, &Computed) -> AnyElement,
+    // Ряд прозрачен для долей высоты (см. `percent_basis_from_parent` ниже):
+    // только в горизонтальной строке. Повёрнутый абзац (`VerticalText`)
+    // меряется отдельным корнем, и его «родитель» — не блок строки:
+    // замерено, `horizontal-rule-vlr-003` 0.08 → 1.22.
+    pct_from_parent: bool,
 ) -> AnyElement {
     use crate::computed::{Align, TextAlign};
     // `vertical-align` в строке: умолчание — базовая линия, но `middle`,
@@ -3450,6 +3491,13 @@ pub fn as_wrapped_row(
                 .all(|c| c.is_whitespace() || c == '\u{200b}'),
         });
     let mut row = gpui::div().flex().max_w_full();
+    // Ряд строки — не коробка CSS: доли высоты атомов считаются от блока,
+    // которому принадлежит строка (CSS 2.1 §10.1 п.2; `vendor/taffy`
+    // `percent_basis_from_parent`). Доля доходит сюда, только если блок
+    // определён (`cb_height_def`, гейт `apply.rs`), — иначе она уже `auto`.
+    if pct_from_parent {
+        row.style().percent_basis_from_parent = Some(true);
+    }
     // Развёрнутый ряд кладёт первого ребёнка у ПРАВОГО края; перенос строк
     // при этом идёт по-прежнему вниз, а в каждую строку попадают куски в
     // логическом порядке — ровно как у rtl-строк в CSS.
@@ -3524,6 +3572,10 @@ pub fn as_wrapped_row(
         if group.len() > 1 {
             line_empty = false;
             let mut glued = gpui::div().flex().flex_shrink_0().items_baseline();
+            // Склеенная группа — часть той же строки: доли атомов — от блока.
+            if pct_from_parent {
+                glued.style().percent_basis_from_parent = Some(true);
+            }
             for p in group {
                 glued = match p {
                     Piece::Atom(el) => glued.child(el),

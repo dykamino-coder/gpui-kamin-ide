@@ -67,6 +67,16 @@ pub trait CheapCloneStr {}
 #[cfg(not(any(feature = "alloc", feature = "std")))]
 impl<T> CheapCloneStr for T {}
 
+/// KaminIDE patch: выражение `calc-size()` над размером основы:
+/// `(size·mul + add)` с зажимом `[min, max]`, не меньше нуля
+/// (css-values-5 §calc-size: «size» — размер, который дало бы ключевое
+/// слово основы).
+#[inline]
+pub fn apply_calc_size(f: (f32, f32, f32, f32), size: f32) -> f32 {
+    let (mul, add, max, min) = f;
+    (size * mul + add).min(max).max(min).max(0.0)
+}
+
 /// The core set of styles that are shared between all CSS layout nodes
 ///
 /// Note that all methods come with a default implementation which simply returns the default value for that style property
@@ -96,6 +106,12 @@ pub trait CoreStyle {
     #[inline(always)]
     fn box_sizing(&self) -> BoxSizing {
         BoxSizing::BorderBox
+    }
+    /// KaminIDE patch: `calc-size()` у `width`, `height`, `min-width`,
+    /// `min-height` (см. [`Style::calc_size`]).
+    #[inline(always)]
+    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
+        [None; 4]
     }
 
     // Overflow properties
@@ -605,6 +621,13 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// `justify_content`.
     #[cfg(any(feature = "flexbox", feature = "grid"))]
     pub safe_alignment: (bool, bool, bool, bool),
+    /// KaminIDE patch: `calc-size(<basis>, <expr>)` (css-values-5 §calc-size)
+    /// у `width`, `height`, `min-width`, `min-height` (в этом порядке). Само
+    /// свойство при этом `auto`: размер считается как для ключевого слова
+    /// основы, а затем проходит выражение `(size·mul + add)`, зажатое сверху
+    /// и снизу — `(mul, add, max, min)` в точках раскладки (см.
+    /// [`apply_calc_size`]).
+    pub calc_size: [Option<(f32, f32, f32, f32)>; 4],
     /// How large should the gaps between items in a grid or flex container be?
     #[cfg(any(feature = "flexbox", feature = "grid"))]
     #[cfg_attr(feature = "serde", serde(default = "style_helpers::zero"))]
@@ -619,6 +642,10 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
     #[cfg(feature = "flexbox")]
     pub flex_cross_reverse: bool,
+    /// KaminIDE patch: анонимный ряд строки — доли высоты детей решаются от
+    /// высоты родителя ряда (CSS 2.1 §10.1: строка не содержащий блок).
+    #[cfg(feature = "flexbox")]
+    pub percent_basis_from_parent: bool,
     /// KaminIDE patch: `margin-trim` гибкого контейнера и сетки — физические
     /// края: 1 верх, 2 право, 4 низ, 8 лево.
     #[cfg(any(feature = "flexbox", feature = "grid"))]
@@ -749,6 +776,7 @@ impl<S: CheapCloneStr> Style<S> {
         // Alignment
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         safe_alignment: (false, false, false, false),
+        calc_size: [None; 4],
         align_items: None,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         align_self: None,
@@ -772,6 +800,7 @@ impl<S: CheapCloneStr> Style<S> {
         flex_balance_lines: 0,
         #[cfg(feature = "flexbox")]
         flex_cross_reverse: false,
+        percent_basis_from_parent: false,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         margin_trim: 0,
         #[cfg(feature = "grid")]
@@ -824,6 +853,11 @@ impl<S: CheapCloneStr> Default for Style<S> {
 
 impl<S: CheapCloneStr> CoreStyle for Style<S> {
     type CustomIdent = S;
+
+    #[inline(always)]
+    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
+        self.calc_size
+    }
 
     #[inline(always)]
     fn box_generation_mode(&self) -> BoxGenerationMode {
@@ -919,6 +953,11 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
 
 impl<T: CoreStyle> CoreStyle for &'_ T {
     type CustomIdent = T::CustomIdent;
+
+    #[inline(always)]
+    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
+        (*self).calc_size()
+    }
 
     #[inline(always)]
     fn box_generation_mode(&self) -> BoxGenerationMode {
@@ -1059,6 +1098,10 @@ impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
         self.flex_cross_reverse
     }
     #[inline(always)]
+    fn percent_basis_from_parent(&self) -> bool {
+        self.percent_basis_from_parent
+    }
+    #[inline(always)]
     fn gap(&self) -> Size<LengthPercentage> {
         self.gap
     }
@@ -1095,6 +1138,10 @@ impl<T: FlexboxContainerStyle> FlexboxContainerStyle for &'_ T {
         (*self).flex_cross_reverse()
     }
     #[inline(always)]
+    fn percent_basis_from_parent(&self) -> bool {
+        (*self).percent_basis_from_parent()
+    }
+    #[inline(always)]
     fn gap(&self) -> Size<LengthPercentage> {
         (*self).gap()
     }
@@ -1119,6 +1166,10 @@ impl<S: CheapCloneStr> FlexboxItemStyle for Style<S> {
         self.flex_basis
     }
     #[inline(always)]
+    fn is_line_row(&self) -> bool {
+        self.percent_basis_from_parent
+    }
+    #[inline(always)]
     fn flex_grow(&self) -> f32 {
         self.flex_grow
     }
@@ -1141,6 +1192,10 @@ impl<T: FlexboxItemStyle> FlexboxItemStyle for &'_ T {
     #[inline(always)]
     fn flex_basis(&self) -> Dimension {
         (*self).flex_basis()
+    }
+    #[inline(always)]
+    fn is_line_row(&self) -> bool {
+        (*self).is_line_row()
     }
     #[inline(always)]
     fn flex_grow(&self) -> f32 {
