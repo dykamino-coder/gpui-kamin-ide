@@ -3740,6 +3740,9 @@ pub struct GridLanesFlow {
     pub tolerance: f32,
     /// `flow-tolerance: N%` — доля размера контейнера по оси решётки.
     pub tolerance_pct: Option<f32>,
+    /// Ось укладки — блочная ось контейнера при физических рядах
+    /// (вертикальное письмо): элемент по ней — по содержимому.
+    pub stack_block: bool,
 }
 
 /// KaminIDE patch: имена линий одной оси сетки (css-grid-2 §7.2.2

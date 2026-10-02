@@ -626,6 +626,7 @@ impl ToTaffy<taffy::style::Style> for Style {
                 dense: l.dense,
                 tolerance: l.tolerance * scale_factor,
                 tolerance_pct: l.tolerance_pct,
+                stack_block: l.stack_block,
             }),
             // KaminIDE patch: подсетка (css-grid-2 §9), биты taffy.
             subgrid: self.grid_subgrid,

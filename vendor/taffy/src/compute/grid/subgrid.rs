@@ -327,6 +327,11 @@ pub(super) struct SubgridEdge {
     start: f32,
     /// Накопленный край у конца пролёта.
     end: f32,
+    /// Разница зазора подсетки и зазора корневой сетки (накопленная,
+    /// Blink `AccumulatedGutterSizeDelta`).
+    delta: f32,
+    /// Подсетка-ребёнок корневого контейнера, под которой лежит эта.
+    root: NodeId,
 }
 
 /// Сплющить элементы подсеток-детей в дорожки контейнера (css-grid-2 §9 (h)).
@@ -357,6 +362,7 @@ pub(super) fn flatten_subgrid_items<Tree: LayoutGridContainer>(
         }
         item.sizing_axes &= !linked;
         let area = (item.column, item.row);
+        let (first_edge, first_item) = (edges.len(), out.len());
         flatten_into(
             tree,
             item.node,
@@ -372,9 +378,49 @@ pub(super) fn flatten_subgrid_items<Tree: LayoutGridContainer>(
             &mut edges,
             0,
         );
+        for edge in edges.iter_mut().skip(first_edge) {
+            edge.root = item.node;
+        }
+        for flat in out.iter_mut().skip(first_item) {
+            flat.subgrid_root = Some(item.node);
+        }
     }
     items.extend(out);
     edges
+}
+
+/// Пол дорожек лунок от АВТО-размещённых подсеток (Blink
+/// `AccommodateSubgridExtraMargins`, ветка `is_auto_placed`, и
+/// `LargestAutoPlacedSubgridContribution`, `grid_layout_utils.cc:1236-1258`;
+/// резолюция csswg-drafts#10926): позиция такой подсетки при размере дорожек
+/// не известна, и её наибольший вклад краёв в одну дорожку получает КАЖДАЯ
+/// дорожка — у подсетки в одну дорожку оба края, в две — край и половина
+/// разницы зазоров, шире — ещё и целая разница у внутренних
+/// (`column-subgrid-extra-margin-006..009`: четыре колонки по 29).
+pub(super) fn apply_lanes_auto_floors(
+    tracks: &mut [GridTrack],
+    edges: &[SubgridEdge],
+    columns: bool,
+    auto_root: impl Fn(NodeId) -> bool,
+) {
+    let mut largest = 0.0f32;
+    for edge in edges.iter().filter(|e| e.columns == columns && auto_root(e.root)) {
+        let half = edge.delta / 2.0;
+        let contribution = match edge.span.span() {
+            0 | 1 => edge.start + edge.end,
+            2 => (edge.start + half).max(edge.end + half),
+            _ => (edge.start + half).max(edge.delta).max(edge.end + half),
+        };
+        largest = largest.max(contribution);
+    }
+    if largest <= 0.0 {
+        return;
+    }
+    for (i, track) in tracks.iter_mut().enumerate() {
+        if i % 2 == 1 && !track.is_collapsed {
+            track.subgrid_floor = track.subgrid_floor.max(largest);
+        }
+    }
 }
 
 /// Пол дорожек оси от краёв подсеток (Blink `AccommodateSubgridExtraMargins`,
@@ -477,6 +523,8 @@ fn flatten_into<Tree: LayoutGridContainer>(
             span: area.0,
             start: ext.left + edges.left,
             end: ext.right + edges.right,
+            delta: gap.width - root_gap.width,
+            root: node,
         });
     }
     if linked & SUBGRID_ROWS != 0 {
@@ -485,6 +533,8 @@ fn flatten_into<Tree: LayoutGridContainer>(
             span: area.1,
             start: ext.top + edges.top,
             end: ext.bottom + edges.bottom,
+            delta: gap.height - root_gap.height,
+            root: node,
         });
     }
 
