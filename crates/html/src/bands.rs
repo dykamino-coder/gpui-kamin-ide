@@ -90,6 +90,15 @@ impl FloatBands {
         }
     }
 
+    /// Поставить инлайн-стенки содержащего блока; вернуть прежние.
+    ///
+    /// Содержащий блок бывает у́же контекста: флоат внутри вложенного блока
+    /// с полем обязан спотыкаться о флоат снаружи (правила 3 и 7). Servo —
+    /// `replace_containing_block_position_info` (`flow/float.rs:971-977`).
+    pub fn set_walls(&mut self, l: f32, r: f32) -> (f32, f32) {
+        std::mem::replace(&mut self.cb, (l, r.max(l)))
+    }
+
     /// Флоатов ещё не было: вызывающий может не строить хост-обёртку.
     pub fn is_empty(&self) -> bool {
         self.bands.len() == 2

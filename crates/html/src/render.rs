@@ -6745,6 +6745,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 _ => opts.base_size(),
             },
             measured_ok,
+            own_context_style(inherited),
         ),
         flex_ctx,
     );
@@ -9628,6 +9629,9 @@ fn wrap_floats(
     // Можно ли звать измеряемый бандовый хост (`band_host_m`): блочный
     // контейнер горизонтального письма слева направо.
     measured_ok: bool,
+    // Содержащий блок — корень БФК (§10.6.7): его авто-высота обязана
+    // охватить флоаты, в том числе внутри вложенных блоков.
+    parent_bfc: bool,
 ) -> Vec<Node> {
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
@@ -9696,6 +9700,20 @@ fn wrap_floats(
         Node::Text(_) => false,
     });
     if !floated {
+        // Флоатов среди прямых детей нет, но они есть ВНУТРИ блока потока, и
+        // за ним идут братья — им эти флоаты видны (одно пространство
+        // исключений на БФК, шаг F7: `new-fc-separates-from-float`,
+        // `floats-bfc-003`). Хост начинается с такого блока.
+        if measured_ok && band_f7() {
+            for i in 0..nodes.len() {
+                if let Some((host, j)) = band_host_nested(&nodes, i, em, parent_bfc) {
+                    let mut out: Vec<Node> = nodes[..i].to_vec();
+                    out.push(Node::Element(host));
+                    out.extend(nodes[j..].iter().cloned());
+                    return out;
+                }
+            }
+        }
         return nodes;
     }
     let mut nodes = nodes;
@@ -10916,6 +10934,109 @@ fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize)> {
     Some((host, j))
 }
 
+/// Есть ли у блока флоат среди потомков обычного потока (сквозь блоки, не
+/// заводящие своего контекста).
+fn has_flow_float(c: &Element) -> bool {
+    c.children.iter().any(|n| match n {
+        Node::Text(_) => false,
+        Node::Element(k) => {
+            k.style.float.is_some_and(|f| f != 0)
+                || (block_level_in_flow(k) && !own_context(k) && has_flow_float(k))
+        }
+    })
+}
+
+/// Измеряемый хост, начатый блоком потока с флоатами внутри (шаг F7): сам
+/// блок — `Kind::Nest`, за ним — хвост как у `band_host_m` до флоата или
+/// `clear`. Без братьев за блоком хост не нужен: флоаты внутри влияют
+/// только на его собственное содержимое, и его раскладывает он сам.
+fn band_host_nested(
+    nodes: &[Node],
+    i: usize,
+    em: f32,
+    parent_bfc: bool,
+) -> Option<(Element, usize)> {
+    let Node::Element(c) = &nodes[i] else {
+        return None;
+    };
+    if !has_flow_float(c) || !band_nest_ok(c, em) {
+        return None;
+    }
+    let mut j = i + 1;
+    let mut rest: Vec<Node> = vec![];
+    while j < nodes.len() {
+        if let Node::Element(next) = &nodes[j]
+            && (next.style.float.is_some_and(|f| f != 0)
+                || (next.style.clear.is_some() && !band_f6()))
+        {
+            break;
+        }
+        rest.push(nodes[j].clone());
+        j += 1;
+    }
+    // Без братьев за блоком хост нужен только корню БФК: §10.6.7 требует
+    // охватить флоаты высотой (Blink `block_layout_algorithm.cc:1309-1315`,
+    // гейт `IsNewFormattingContext`; Servo `BlockFormattingContext::layout`,
+    // `flow/mod.rs:460-465`), а блок, обнулённый §10.6.3, их не держит
+    // (`letter-spacing-206`). Обычному блоку флоаты внутри влияют только на
+    // его собственное содержимое — его раскладывает он сам.
+    if !rest.iter().any(|n| !is_blank(n)) && !parent_bfc {
+        return None;
+    }
+    let rest = band_flow_rest(rest, em)?;
+    if let Some(Node::Element(next)) = nodes[j..].iter().find(|n| !is_blank(n))
+        && next.style.clear.is_some()
+        && !zero_len(next.style.margin.top)
+        && !band_f6()
+    {
+        return None;
+    }
+    let mut host = Element {
+        list_item: None,
+        node_id: 0,
+        anim: None,
+        tag: "shape-flow".into(),
+        style: Computed::default(),
+        hover: None,
+        first_letter: None,
+        first_line: None,
+        children: Vec::new(),
+        attrs: vec![
+            ("count".into(), "0".into()),
+            ("em".into(), em.to_string()),
+            ("bands".into(), "m".into()),
+        ],
+        inline: false,
+    };
+    host.children = vec![Node::Element(c.clone())];
+    host.children.extend(rest);
+    Some((host, j))
+}
+
+/// Блок с флоатами или коробками своего контекста внутри годится в
+/// `Kind::Nest` целиком — со всеми потомками (шаг F7).
+fn band_nest_ok(c: &Element, em: f32) -> bool {
+    if !band_nest_block(c, em) {
+        return false;
+    }
+    let Some(inner_em) = band_em(&c.style, em) else {
+        return false;
+    };
+    let Some(seq) = band_seq(collapse_margins(&c.children, false), inner_em) else {
+        return false;
+    };
+    seq.iter().all(|n| match n {
+        Node::Text(_) => true,
+        Node::Element(k) => {
+            k.style.float.is_some_and(|f| f != 0)
+                || band_piece_m(n, inner_em).is_some()
+                || k.attr("anon") == Some("1")
+                || band_flow_block(k, inner_em)
+                || band_nest_ok(k, inner_em)
+        }
+    })
+}
+
 /// Атом строчного потока для `FlowRow`: инлайн-блок с margin-box в
 /// точках. Поля кладёт слот (обёртка), а не сама коробка — как у
 /// статического хоста (`shape_flow`, ветка атомов).
@@ -11067,7 +11188,10 @@ fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
                     continue;
                 }
                 flush(&mut run, &mut out);
-                if band_piece_m(&n, em).is_some() || band_flow_block(c, em) {
+                if band_piece_m(&n, em).is_some()
+                    || band_flow_block(c, em)
+                    || band_nest_ok(c, em)
+                {
                     out.push(n);
                 } else {
                     return None;
@@ -11082,22 +11206,38 @@ fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
 /// `band_flow` зовёт на каждую пробу и на `prepaint`.
 fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    use crate::band_flow::{Kid, Kind};
     let count: usize = e.attr("count").and_then(|c| c.parse().ok()).unwrap_or(0);
     let em: f32 = e
         .attr("em")
         .and_then(|c| c.parse().ok())
         .unwrap_or(opts.base_size());
+    let kids = band_kids(&e.children, count, inherited, opts, em);
+    crate::band_flow::BandFlow::new(kids).into_any_element()
+}
+
+/// Дети одного содержащего блока измеряемого хоста. `count` первых
+/// элементов — флоаты пробега; дальше флоатом считается всякий элемент с
+/// `float` (дети `Kind::Nest`, шаг F7).
+fn band_kids(
+    nodes: &[Node],
+    count: usize,
+    inherited: &Computed,
+    opts: &RenderOpts,
+    em: f32,
+) -> Vec<crate::band_flow::Kid> {
+    use crate::band_flow::{Kid, Kind, Nest};
     let depth = defer_depth();
     let mut kids: Vec<Kid> = vec![];
-    for (idx, n) in e.children.iter().enumerate() {
+    for (idx, n) in nodes.iter().enumerate() {
         let Node::Element(c) = n else {
             continue;
         };
         let Some(margin) = band_margins(&c.style, em) else {
             continue;
         };
-        let kind = if idx < count {
+        let float = idx < count || c.style.float.is_some_and(|f| f != 0);
+        let mut nest: Option<Nest> = None;
+        let kind = if float {
             Kind::Float {
                 side: c.style.float.unwrap_or(-1),
                 clear: c.style.clear,
@@ -11106,118 +11246,272 @@ fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEl
         } else {
             match band_piece_m(n, em) {
                 Some(true) => Kind::Piece {
-                    table: c.tag == "table"
-                        || matches!(c.style.display, Some(Display::Table)),
+                    table: c.tag == "table" || matches!(c.style.display, Some(Display::Table)),
                 },
                 Some(false) => Kind::Strut(px_margin_box(&c.style).map_or(0.0, |(_, h)| h)),
-                None if c.attr("anon") == Some("1") || band_flow_block(c, em) => {
-                    Kind::Flow
-                }
-                None => continue,
+                None if c.attr("anon") == Some("1") || band_flow_block(c, em) => Kind::Flow,
+                None => match band_nest(c, inherited, opts, em) {
+                    Some(nn) => {
+                        nest = Some(nn);
+                        Kind::Nest
+                    }
+                    None => continue,
+                },
             }
         };
         let node = c.clone();
         let inherited = inherited.clone();
         let opts = opts.clone();
-        let float = idx < count;
-        let build: crate::band_flow::Build = std::rc::Rc::new(move |cb: f32, avail: f32, shapes| {
-            let _depth = DepthScope::enter(depth);
-            // Ширина содержащего блока — та, что намерил хост: замещаемым без
-            // размеров (§10.3.2) и долям внутри (`CB_WIDTH`), блочным детям
-            // куска — ширина окна (`AVAIL_W`).
-            let cb_prev = CB_WIDTH.get();
-            let avail_prev = AVAIL_W.get();
-            if cb > 0.0 {
-                CB_WIDTH.set(Some(cb));
-            }
-            AVAIL_W.set((avail > 0.0).then_some(avail));
-            let _cb_guard = scopeguard_cb(cb_prev);
-            let _avail_guard = AvailWGuard(avail_prev);
-            let mut copy = node.clone();
-            // Сторону, очистку и поля несёт хост (позиция от полос), на самой
-            // коробке они сдвинули бы её ещё раз — как у статического хоста.
-            copy.style.float = None;
-            copy.style.clear = None;
-            copy.style.margin = crate::computed::Sides::default();
-            // Доля ширины — от СОДЕРЖАЩЕГО БЛОКА (§10.2), а каркас пробы
-            // шириной в окно: решаем её здесь. `Pct(1.0)` — это и `100%`, и
-            // `stretch` (`value.rs` пишет ключевое слово долей): `stretch`
-            // заполняет ОКНО рядом с флоатом (css-sizing-4 §4.1, Blink —
-            // доступный размер из возможности, `block_layout_algorithm.cc`
-            // `child_available_inline_size`), и его оставляем каркасу
-            // (`bfc-next-to-float-1`); `100%` рядом с флоатом не влез бы ни в
-            // какое окно, а ниже флоатов окно и есть содержащий блок.
-            if let Some(Len::Pct(k)) = copy.style.width
-                && cb > 0.0
-                && (float || k != 1.0)
-            {
-                copy.style.width = Some(Len::Px(k * cb));
-            }
-            // Вырезы полос — строкам ЭТОЙ коробки, от её верха (шаг F4):
-            // `inline::inherit` начинает слитый стиль с собственного, и вырезы
-            // доезжают до прямых строк коробки.
-            if shapes.is_some() {
-                copy.style.flow_shapes = shapes;
-            }
-            let table = copy.tag == "table"
-                || matches!(copy.style.display, Some(Display::Table) | Some(Display::InlineTable));
-            if copy.attr("atoms") == Some("1") {
-                // Прогон атомов: `FlowRow` режет строки вырезами полос.
-                let atoms: Vec<crate::flow::FlowChild> = copy
-                    .children
-                    .iter()
-                    .filter_map(|n| match n {
-                        Node::Element(a) => band_atom(a, &inherited, &opts),
-                        Node::Text(_) => None,
-                    })
-                    .collect();
-                let shapes = copy
-                    .style
-                    .flow_shapes
-                    .clone()
-                    .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-                return crate::flow::FlowRow::new(atoms, shapes, false).into_any_element();
-            }
-            // Замещаемый флоат, кроме `<img>` (`embed`, `object`, `video`…), —
-            // своей веткой `element` ниже: каркас блока со `blocks(детей)`
-            // рисовал вместо картинки пустую коробку, и `object-fit-*-00Ne/o/p`
-            // (88 пар `css-images`) теряли содержимое.
-            let replaced = replaced_tag(&copy) && copy.tag != "img";
-            if float && !table && !replaced {
-                // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем же
-                // путём, что у статического хоста (`shape_flow`). Таблица —
-                // своей веткой `element` ниже: каркас блока её не соберёт.
-                let mut merged = inline::inherit(&inherited, &copy.style);
-                merged.margin = crate::computed::Sides::default();
-                if copy.tag == "img" {
-                    grouped(image(&copy), &copy.style)
-                } else {
-                    grouped(
-                        styled_div_with(&copy, &merged)
-                            .children(blocks(&copy.children, &merged, &opts))
-                            .into_any_element(),
-                        &copy.style,
-                    )
+        let is_nest = nest.is_some();
+        let build: crate::band_flow::Build =
+            std::rc::Rc::new(move |cb: f32, avail: f32, shapes, height: Option<f32>| {
+                let _depth = DepthScope::enter(depth);
+                // Ширина содержащего блока — та, что намерил хост: замещаемым
+                // без размеров (§10.3.2) и долям внутри (`CB_WIDTH`), блочным
+                // детям куска — ширина окна (`AVAIL_W`).
+                let cb_prev = CB_WIDTH.get();
+                let avail_prev = AVAIL_W.get();
+                if cb > 0.0 {
+                    CB_WIDTH.set(Some(cb));
                 }
-            } else {
-                // Общий путь отрисовки узла — тот же, что в потоке: таблица,
-                // замещаемый, список строятся своими ветками `element`.
-                element(&copy, &inherited, &opts)
-            }
-        });
-        let clear = if matches!(kind, Kind::Float { .. }) {
-            None
-        } else {
-            c.style.clear
-        };
+                AVAIL_W.set((avail > 0.0).then_some(avail));
+                let _cb_guard = scopeguard_cb(cb_prev);
+                let _avail_guard = AvailWGuard(avail_prev);
+                let mut copy = node.clone();
+                // Сторону, очистку и поля несёт хост (позиция от полос), на
+                // самой коробке они сдвинули бы её ещё раз — как у
+                // статического хоста.
+                copy.style.float = None;
+                copy.style.clear = None;
+                copy.style.margin = crate::computed::Sides::default();
+                // Флоат заводит свой контекст форматирования (§9.4.1), а
+                // `float` с копии снят — метка остаётся: по ней дети флоата
+                // узнают корень БФК (`parent_bfc` у `wrap_floats` — §10.6.7:
+                // высота флоата охватывает флоаты внутри него;
+                // `letter-spacing-206`).
+                if float {
+                    copy.style.flow_root = Some(true);
+                }
+                if is_nest {
+                    // Коробка `Kind::Nest` — без детей (их кладут полосы) и
+                    // высотой содержимого из плана.
+                    copy.children.clear();
+                    copy.style.height = height.map(Len::Px);
+                    copy.style.border_box = None;
+                    return element(&copy, &inherited, &opts);
+                }
+                // Доля ширины — от СОДЕРЖАЩЕГО БЛОКА (§10.2), а каркас пробы
+                // шириной в окно: решаем её здесь.
+                // `Pct(1.0)` — это и `100%`, и `stretch` (`value.rs` пишет
+                // ключевое слово долей): `stretch` заполняет ОКНО рядом с
+                // флоатом (css-sizing-4 §4.1, Blink — доступный размер из
+                // возможности, `block_layout_algorithm.cc`
+                // `child_available_inline_size`), и его оставляем каркасу
+                // (`bfc-next-to-float-1`); `100%` рядом с флоатом не влез бы
+                // ни в какое окно, а ниже флоатов окно и есть содержащий блок.
+                if let Some(Len::Pct(k)) = copy.style.width
+                    && cb > 0.0
+                    && (float || k != 1.0)
+                {
+                    copy.style.width = Some(Len::Px(k * cb));
+                }
+                // Вырезы полос — строкам ЭТОЙ коробки, от её верха (шаг F4):
+                // `inline::inherit` начинает слитый стиль с собственного, и
+                // вырезы доезжают до прямых строк коробки.
+                if shapes.is_some() {
+                    copy.style.flow_shapes = shapes;
+                }
+                let table = copy.tag == "table"
+                    || matches!(
+                        copy.style.display,
+                        Some(Display::Table) | Some(Display::InlineTable)
+                    );
+                if copy.attr("atoms") == Some("1") {
+                    // Прогон атомов: `FlowRow` режет строки вырезами полос.
+                    let atoms: Vec<crate::flow::FlowChild> = copy
+                        .children
+                        .iter()
+                        .filter_map(|n| match n {
+                            Node::Element(a) => band_atom(a, &inherited, &opts),
+                            Node::Text(_) => None,
+                        })
+                        .collect();
+                    let shapes = copy
+                        .style
+                        .flow_shapes
+                        .clone()
+                        .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
+                    return crate::flow::FlowRow::new(atoms, shapes, false).into_any_element();
+                }
+                // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
+                // `video`…), — своей веткой `element` ниже: каркас блока со
+                // `blocks(детей)` рисовал вместо картинки пустую коробку, и
+                // `object-fit-*-00Ne/o/p` (88 пар `css-images`) теряли
+                // содержимое.
+                let replaced = replaced_tag(&copy) && copy.tag != "img";
+                if float && !table && !replaced {
+                    // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
+                    // же путём, что у статического хоста (`shape_flow`).
+                    // Таблица — своей веткой `element` ниже: каркас блока её
+                    // не соберёт.
+                    let mut merged = inline::inherit(&inherited, &copy.style);
+                    merged.margin = crate::computed::Sides::default();
+                    if copy.tag == "img" {
+                        grouped(image(&copy), &copy.style)
+                    } else {
+                        grouped(
+                            styled_div_with(&copy, &merged)
+                                .children(blocks(&copy.children, &merged, &opts))
+                                .into_any_element(),
+                            &copy.style,
+                        )
+                    }
+                } else {
+                    // Общий путь отрисовки узла — тот же, что в потоке:
+                    // таблица, замещаемый, список строятся своими ветками
+                    // `element`.
+                    element(&copy, &inherited, &opts)
+                }
+            });
+        let clear = if float { None } else { c.style.clear };
         kids.push(Kid {
             kind,
             clear,
             margin,
             build,
+            nest,
         });
     }
-    crate::band_flow::BandFlow::new(kids).into_any_element()
+    kids
+}
+
+/// Включён ли шаг F7 — блоки потока с флоатами и коробками своего
+/// контекста внутри, на общих полосах (`BF_F7=1`, только для замера).
+fn band_f7() -> bool {
+    static ON: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| std::env::var("BF_F7").is_ok_and(|v| v == "1"));
+    *ON
+}
+
+/// Можно ли разложить блок потока детьми на ОБЩИХ полосах (шаг F7): тот же
+/// гейт, что у блока потока (`band_flow_block`), кроме чистоты содержимого,
+/// плюс то, что коробка рисуется отдельно от детей — значит ни сдвига, ни
+/// эффектов группы, ни ограничителей высоты; рамка и отступ разрешимы.
+fn band_nest_block(c: &Element, em: f32) -> bool {
+    band_f7()
+        && block_level_in_flow(c)
+        && !own_context(c)
+        && !replaced_tag(c)
+        && c.style.is_caption != Some(true)
+        && c.tag != "caption"
+        && matches!(c.style.display, None | Some(Display::Block))
+        && (c.style.clear.is_none() || band_f6())
+        && c.style.position.is_none()
+        && c.style.transform.is_none()
+        && c.style.opacity.is_none()
+        && c.style.filter.is_none()
+        && (matches!(c.style.width, None | Some(Len::Auto))
+            || (matches!(c.style.width, Some(Len::Px(_))) && c.style.border_box != Some(true)))
+        && matches!(c.style.height, None | Some(Len::Auto) | Some(Len::Px(_)))
+        && c.style.min_height.is_none()
+        && c.style.max_height.is_none()
+        && band_margins(&c.style, em).is_some()
+        && band_inset(c, em).is_some()
+}
+
+/// Рамка плюс отступ коробки (верх, право, низ, лево) для `Kind::Nest`.
+fn band_inset(c: &Element, em: f32) -> Option<[crate::band_flow::Edge; 4]> {
+    use crate::band_flow::Edge;
+    let em = band_em(&c.style, em)?;
+    let b = c.style.borders();
+    let side = |p: &Option<Len>, b: &Option<Len>| -> Option<Edge> {
+        let pe = band_edge(p, em)?;
+        let be = match band_edge(b, em)? {
+            Edge::Px(v) => v,
+            // Рамка долей не бывает (css-backgrounds-3 §4.3).
+            Edge::Pct(_) => return None,
+        };
+        Some(match pe {
+            Edge::Px(v) => Edge::Px(v + be),
+            Edge::Pct(k) if be == 0.0 => Edge::Pct(k),
+            Edge::Pct(_) => return None,
+        })
+    };
+    Some([
+        side(&c.style.padding.top, &b.top)?,
+        side(&c.style.padding.right, &b.right)?,
+        side(&c.style.padding.bottom, &b.bottom)?,
+        side(&c.style.padding.left, &b.left)?,
+    ])
+}
+
+/// Содержимое `Kind::Nest`: дети блока, разложенные тем же разбором, что
+/// хвост хоста (`band_seq`), со своим наследованием и кеглем.
+fn band_nest(
+    c: &Element,
+    inherited: &Computed,
+    opts: &RenderOpts,
+    em: f32,
+) -> Option<crate::band_flow::Nest> {
+    if !band_nest_block(c, em) {
+        return None;
+    }
+    let inner_em = band_em(&c.style, em)?;
+    let seq = band_seq(collapse_margins(&c.children, false), inner_em)?;
+    let merged = inline::inherit(inherited, &c.style);
+    let kids = band_kids(&seq, 0, &merged, opts, inner_em);
+    Some(crate::band_flow::Nest {
+        kids,
+        inset: band_inset(c, em)?,
+        height: match c.style.height {
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        },
+        width: match c.style.width {
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        },
+    })
+}
+
+/// Дети `Kind::Nest`: как хвост хоста (`band_flow_rest`), но флоаты стоят
+/// между блоками на своём месте (правило 5/6 §9.5.1 — потолок от низа
+/// предыдущего блока). Флоат посреди строчного прогона (правило 6 со
+/// «верхом текущей строки») — не наш случай, отказ.
+fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
+    let mut out: Vec<Node> = vec![];
+    let mut chunk: Vec<Node> = vec![];
+    for n in nodes {
+        let float = matches!(&n, Node::Element(c) if c.style.float.is_some_and(|f| f != 0));
+        if !float {
+            chunk.push(n);
+            continue;
+        }
+        let Node::Element(f) = &n else {
+            continue;
+        };
+        // Строчное содержимое ДО флоата и ПОСЛЕ — один прогон: флоат
+        // посреди строки, отказ.
+        let open_run = chunk
+            .iter()
+            .rev()
+            .find(|m| !is_blank(m))
+            .is_some_and(|m| match m {
+                Node::Text(_) => true,
+                Node::Element(e) => !block_level_in_flow(e) && !out_of_flow(&e.style),
+            });
+        if open_run
+            || f.style.vertical == Some(true)
+            || f.style.shape_outside.is_some()
+            || band_margins(&f.style, em).is_none()
+        {
+            return None;
+        }
+        out.extend(band_flow_rest(std::mem::take(&mut chunk), em)?);
+        out.push(n);
+    }
+    out.extend(band_flow_rest(chunk, em)?);
+    Some(out)
 }
 
 fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {

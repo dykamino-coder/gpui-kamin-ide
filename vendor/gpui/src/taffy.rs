@@ -327,6 +327,17 @@ impl TaffyLayoutEngine {
         )
     }
 
+    /// KaminIDE patch: абсолютное начало узла БЕЗ округления к физической
+    /// точке. Хост полос (`band_flow.rs`) кладёт детей отдельным деревом от
+    /// своего начала; от округлённого начала их края округлялись бы второй
+    /// раз и уезжали на точку от соседей в основном дереве
+    /// (`float-nowrap-hyphen-rewind-1-ref2`: текст на 1 px левее и выше).
+    pub fn layout_origin_unrounded(&mut self, id: LayoutId, scale_factor: f32) -> Point<Pixels> {
+        let _ = self.layout_bounds(id, scale_factor);
+        let (ax, ay) = self.absolute_unrounded.get(&id).copied().unwrap_or((0.0, 0.0));
+        point(Pixels(ax / scale_factor), Pixels(ay / scale_factor))
+    }
+
     pub fn layout_bounds(&mut self, id: LayoutId, scale_factor: f32) -> Bounds<Pixels> {
         if let Some(layout) = self.absolute_layout_bounds.get(&id).cloned() {
             return layout;
