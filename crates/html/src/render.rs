@@ -6829,14 +6829,43 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // горизонтального письма слева направо: в гибком и сетке `float` не
     // действует (css-flexbox-1 §3, css-grid-1 §6.1), а полосы считают обе
     // стенки от ЛЕВОГО края физически (логических осей у них нет, шаг F10).
+    // С шагом F10 (`BF_F10=1`) хост работает и в вертикальном письме: план в
+    // логических осях, перевод в физику при сборке (`band_flow::VERT`).
+    // `sideways-*` и `direction: rtl` по-прежнему вне хоста — у них line-left
+    // не верх (css-writing-modes-4 :1877-1888).
+    let vert_host = inherited.vertical == Some(true)
+        && band_f10()
+        && inherited.sideways != Some(true);
+    // Вне хоста и там, где у раскладки свой счёт строк и разрывов: под
+    // `line-clamp` (точка среза считает строки и флоаты за ней —
+    // `line-clamp-with-floats-003/004`, `webkit-line-clamp-025`; отложенный
+    // ряд `float_flow` для этого и заведён) и на печатных листах (монолитная
+    // коробка хоста не режется между страницами —
+    // `monolithic-overflow-020-print`).
     let measured_ok = !flex_ctx
+        && inherited.line_clamp.is_none()
+        && crate::interact::clamp_context().is_none()
+        && !PAGED.with(std::cell::Cell::get)
         && !matches!(
             inherited.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
-        && inherited.vertical != Some(true)
-        && inherited.vertical_rl != Some(true)
+        && (inherited.vertical != Some(true) || vert_host)
+        && (inherited.vertical_rl != Some(true) || vert_host)
         && inherited.rtl != Some(true);
+    let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| {
+        h.replace(match inherited.height {
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        })
+    }));
+    let _wm_guard = BandWmGuard(BAND_WM.with(|w| {
+        w.replace(match (inherited.vertical, inherited.vertical_rl) {
+            (Some(true), Some(true)) => 1,
+            (Some(true), _) => 2,
+            _ => 0,
+        })
+    }));
     let collapsed = by_layer(
         wrap_floats(
             collapsed,
@@ -9469,7 +9498,14 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
     };
     let mut out: Vec<Node> = Vec::with_capacity(nodes.len() + 2 + shift as usize);
     out.extend(nodes[..at].iter().cloned());
-    out.push(synthetic("div", style, vec![Node::Text(text[pos..end].to_string())], false));
+    let mut letter = synthetic("div", style, vec![Node::Text(text[pos..end].to_string())], false);
+    // Метка буквицы: её место — исключение строки (css-inline-3
+    // §initial-letter, Blink `initial_letter_utils.cc`), а не флоат полос;
+    // измеряемый хост её не берёт (шаг F11, `initial-letter-*-ruby`).
+    if let Node::Element(e) = &mut letter {
+        e.attrs.push(("initial-letter".into(), "1".into()));
+    }
+    out.push(letter);
     for _ in 0..shift {
         out.push(synthetic("br", Computed::default(), vec![], true));
     }
@@ -9810,7 +9846,7 @@ fn wrap_floats(
         // за ним идут братья — им эти флоаты видны (одно пространство
         // исключений на БФК, шаг F7: `new-fc-separates-from-float`,
         // `floats-bfc-003`). Хост начинается с такого блока.
-        if measured_ok && band_f7() {
+        if measured_ok {
             for i in 0..nodes.len() {
                 if let Some((host, j)) = band_host_nested(&nodes, i, em, parent_bfc) {
                     let mut out: Vec<Node> = nodes[..i].to_vec();
@@ -10903,8 +10939,7 @@ fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
         // Строчный по природе тег строчен, только пока `display` не задан:
         // `<img style="display:block">` — блочного уровня.
         || (c.inline && c.style.display.is_none())
-        || c.style.vertical == Some(true)
-        || c.style.vertical_rl == Some(true)
+        || band_orthogonal(&c.style)
         // Таблица и замещаемый блочного уровня §9.5 названы прямо; тег
         // `<table>` вида в стиле не несёт — его строит сборщик таблиц по тегу
         // (`"table" =>` в `element`); `<img style="display:block">` своего
@@ -10946,7 +10981,14 @@ fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize)> {
         // Ортогональный флоат (своё письмо вертикально в горизонтальном
         // контейнере): shrink-to-fit по чужой оси каркас пробы не считает
         // (css-writing-modes-4 §7.3) — уходит на прежний путь.
-        if next.style.vertical == Some(true) || next.style.vertical_rl == Some(true) {
+        if band_orthogonal(&next.style) {
+            return None;
+        }
+        // Буквица (`initial_letter_float`) и флоат с трансформацией — на
+        // прежнем пути: у первой своё исключение строки (F11), второму
+        // трансформацию даёт сборка узла `element`, а каркас флоата хоста её
+        // не несёт (`transform-scale-test`).
+        if next.attr("initial-letter") == Some("1") || next.style.transform.is_some() {
             return None;
         }
         band_margins(&next.style, em)?;
@@ -11030,6 +11072,13 @@ fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize)> {
         attrs: vec![
             ("count".into(), floaters.len().to_string()),
             ("em".into(), em.to_string()),
+            // Высота содержащего блока (`BAND_CBH`): `shape-flow` своей нет.
+            (
+                "cbh".into(),
+                BAND_CBH
+                    .with(std::cell::Cell::get)
+                    .map_or(String::new(), |v| v.to_string()),
+            ),
             // Метка измеряемого хоста: `shape_flow` отдаёт его `band_flow`.
             ("bands".into(), "m".into()),
         ],
@@ -11143,6 +11192,16 @@ fn band_nest_ok(c: &Element, em: f32) -> bool {
     })
 }
 
+/// Есть ли в поддереве руби (`<ruby>`, `<rt>`).
+fn has_ruby(n: &Node) -> bool {
+    match n {
+        Node::Text(_) => false,
+        Node::Element(e) => {
+            matches!(e.tag.as_str(), "ruby" | "rt" | "rtc" | "rb") || e.children.iter().any(has_ruby)
+        }
+    }
+}
+
 /// Атом строчного потока для `FlowRow`: инлайн-блок с margin-box в
 /// точках. Поля кладёт слот (обёртка), а не сама коробка — как у
 /// статического хоста (`shape_flow`, ветка атомов).
@@ -11180,8 +11239,68 @@ fn host_floats_shaped(run: &[Node]) -> bool {
     })
 }
 
+thread_local! {
+    /// Письмо содержащего блока, для которого `wrap_floats` собирает хост:
+    /// 0 — горизонтальное, 1 — `vertical-rl`, 2 — `vertical-lr`. Им гейты
+    /// измеряемого хоста отличают ортогональный поток от своего.
+    static BAND_WM: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+}
+
+thread_local! {
+    /// Высота содержащего блока хоста в точках, если задана: от неё доли
+    /// высоты детей (§10.5). Хост несёт её атрибутом `cbh`.
+    static BAND_CBH: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+}
+
+/// Вернуть прежнюю высоту содержащего блока хоста по выходе из `blocks()`.
+struct BandCbhGuard(Option<f32>);
+impl Drop for BandCbhGuard {
+    fn drop(&mut self) {
+        BAND_CBH.with(|h| h.set(self.0));
+    }
+}
+
+/// Вернуть прежнее письмо хоста по выходе из `blocks()`.
+struct BandWmGuard(u8);
+impl Drop for BandWmGuard {
+    fn drop(&mut self) {
+        BAND_WM.with(|w| w.set(self.0));
+    }
+}
+
+/// Письмо коробки отличается от письма содержащего блока хоста —
+/// ортогональный поток (css-writing-modes-4 §7.3): shrink-to-fit и место по
+/// чужой оси каркас пробы не считает.
+fn band_orthogonal(c: &Computed) -> bool {
+    // Письмо наследуется: незаданное у коробки — письмо содержащего блока,
+    // ортогональна только коробка, ЗАДАВШАЯ другое.
+    let wm = BAND_WM.with(std::cell::Cell::get);
+    c.vertical.is_some_and(|v| v != (wm != 0))
+        || (c.vertical == Some(true) && c.vertical_rl.is_some_and(|r| r != (wm == 1)))
+}
+
+/// Включён ли шаг F10 — флоаты в вертикальном письме (`BF_F10=1`, только
+/// для замера).
+fn band_f10() -> bool {
+    static ON: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| std::env::var("BF_F10").is_ok_and(|v| v == "1"));
+    *ON
+}
+
 /// Включён ли шаг F6 — очищающие коробки внутри измеряемого хоста
 /// (`BF_F6=1`, только для замера ступени).
+///
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (02.10, по умолчанию выключен): очищающая коробка
+/// внутри хоста с `top = max(y + mt, низ флоатов)`. Срез флоатов/форм/clear
+/// (1173 пары) поверх F7: 863 -> 862, +4/-5. Приобретены
+/// `clear-on-child-with-margins`, `-2`, `clear-on-parent-with-margins`,
+/// `floats-wrap-bfc-007`; потеряны `adjoining-float-nested-forced-clearance`,
+/// `clearance-006`, `floats-029`, `negative-clearance-after-adjoining-float`,
+/// `zero-width-floats`. Гипотетическая позиция `y + mt` неверна, когда поле
+/// уже ушло схлопыванием на уровне узлов (`collapse_margins`) — нужен канал
+/// «поле как число» в точку полос (Servo `position_without_clearance` /
+/// `position_with_zero_clearance`, `flow/float.rs:997-1004`), а не правка
+/// здесь.
 fn band_f6() -> bool {
     static ON: std::sync::LazyLock<bool> =
         std::sync::LazyLock::new(|| std::env::var("BF_F6").is_ok_and(|v| v == "1"));
@@ -11194,6 +11313,7 @@ fn band_flow_block(c: &Element, em: f32) -> bool {
     block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)
+        && !c.children.iter().any(has_ruby)
         // Заголовок таблицы вне таблицы — анонимная таблица (§17.2.1), то
         // есть коробка, флоаты не перекрывающая (`clear-applies-to-015`).
         && c.style.is_caption != Some(true)
@@ -11218,6 +11338,12 @@ fn flow_interior_plain(c: &Element) -> bool {
         Node::Text(_) => true,
         Node::Element(k) => {
             if k.style.float.is_some_and(|f| f != 0) {
+                return false;
+            }
+            // `<br style="clear">` очищает флоаты СНАРУЖИ (§9.5.2 для
+            // строчного разрыва, HTML `clear` на `br`): высота блока растёт
+            // до их низа (`text-box-trim-float-clear-br-003`).
+            if k.style.clear.is_some() {
                 return false;
             }
             if block_level_in_flow(k) {
@@ -11261,6 +11387,16 @@ fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
             if !text && !atoms {
                 bad = true;
             }
+            if atoms && BAND_WM.with(std::cell::Cell::get) != 0 {
+                bad = true;
+            }
+            // Вырезы строк (`lines.rs` `flow_cut`) считают строки равной
+            // высоты `line_no × line-height`; руби поднимает строку на
+            // аннотацию, и вырез уезжает с неё
+            // (`initial-letter-block-position-raise-over-ruby-ref`).
+            if run.iter().any(has_ruby) {
+                bad = true;
+            }
             let mut attrs = vec![("anon".to_string(), "1".to_string())];
             if atoms {
                 attrs.push(("atoms".into(), "1".into()));
@@ -11290,6 +11426,11 @@ fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
                     return None;
                 }
                 if !block_level_in_flow(c) {
+                    // Строчный `<br clear>` — разрыв с очисткой: прогон уходит
+                    // под флоаты, чего строки хоста не умеют.
+                    if c.style.clear.is_some() {
+                        return None;
+                    }
                     run.push(n);
                     continue;
                 }
@@ -11317,8 +11458,20 @@ fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEl
         .attr("em")
         .and_then(|c| c.parse().ok())
         .unwrap_or(opts.base_size());
+    let cbh: Option<f32> = e.attr("cbh").and_then(|c| c.parse().ok());
+    let mut inherited = inherited.clone();
+    if let Some(h) = cbh {
+        inherited.height = Some(Len::Px(h));
+    }
+    let inherited = &inherited;
     let kids = band_kids(&e.children, count, inherited, opts, em);
-    crate::band_flow::BandFlow::new(kids).into_any_element()
+    let flow = crate::band_flow::BandFlow::new(kids);
+    if inherited.vertical == Some(true) {
+        flow.vertical(inherited.vertical_rl == Some(true))
+            .into_any_element()
+    } else {
+        flow.into_any_element()
+    }
 }
 
 /// Дети одного содержащего блока измеряемого хоста. `count` первых
@@ -11334,6 +11487,11 @@ fn band_kids(
     use crate::band_flow::{Kid, Kind, Nest};
     let depth = defer_depth();
     let mut kids: Vec<Kid> = vec![];
+    // Письмо содержащего блока: план хоста — в логических осях, поля
+    // переводятся в (block-start, inline-end, block-end, inline-start)
+    // по таблице css-writing-modes-4 :1877-1888 (`vertical-rl`: block-start
+    // — право, inline-start — верх; `vertical-lr`: block-start — лево).
+    let vert = (inherited.vertical == Some(true)).then_some(inherited.vertical_rl == Some(true));
     for (idx, n) in nodes.iter().enumerate() {
         let Node::Element(c) = n else {
             continue;
@@ -11341,13 +11499,30 @@ fn band_kids(
         let Some(margin) = band_margins(&c.style, em) else {
             continue;
         };
+        let [t, r, b, l] = margin;
+        let margin = match vert {
+            None => margin,
+            Some(true) => [r, b, l, t],
+            Some(false) => [l, b, r, t],
+        };
+        // Распорка держит физическую высоту — в вертикальном письме это не
+        // блочный размер.
+        if vert.is_some() && band_piece_m(n, em) == Some(false) {
+            continue;
+        }
         let float = idx < count || c.style.float.is_some_and(|f| f != 0);
         let mut nest: Option<Nest> = None;
         let kind = if float {
             Kind::Float {
                 side: c.style.float.unwrap_or(-1),
                 clear: c.style.clear,
-                shrink: matches!(c.style.width, None | Some(Len::Auto)),
+                // Строчный размер `auto` — shrink-to-fit; в вертикальном
+                // письме строчный размер — высота.
+                shrink: if vert.is_some() {
+                    matches!(c.style.height, None | Some(Len::Auto))
+                } else {
+                    matches!(c.style.width, None | Some(Len::Auto))
+                },
             }
         } else {
             match band_piece_m(n, em) {
@@ -11369,6 +11544,8 @@ fn band_kids(
         let inherited = inherited.clone();
         let opts = opts.clone();
         let is_nest = nest.is_some();
+        let vertical = vert.is_some();
+        let cb_height = inherited.height;
         let build: crate::band_flow::Build =
             std::rc::Rc::new(move |cb: f32, avail: f32, shapes, height: Option<f32>| {
                 let _depth = DepthScope::enter(depth);
@@ -11418,8 +11595,19 @@ fn band_kids(
                 if let Some(Len::Pct(k)) = copy.style.width
                     && cb > 0.0
                     && (float || k != 1.0)
+                    && !vertical
                 {
                     copy.style.width = Some(Len::Px(k * cb));
+                }
+                // Доля ВЫСОТЫ — от высоты содержащего блока, когда она задана
+                // точками (§10.5). Ребёнок хоста раскладывается своим корнем
+                // с неопределённой высотой, и доля там вырождалась в `auto`:
+                // плавающий `height: 100%` в блоке `height: 200px` выходил
+                // высотой в свой текст (`flexbox-align-self-horiz-001-ref`).
+                if let Some(Len::Pct(k)) = copy.style.height
+                    && let Some(Len::Px(h)) = cb_height
+                {
+                    copy.style.height = Some(Len::Px(k * h));
                 }
                 // Вырезы полос — строкам ЭТОЙ коробки, от её верха (шаг F4):
                 // `inline::inherit` начинает слитый стиль с собственного, и
@@ -11486,17 +11674,10 @@ fn band_kids(
             margin,
             build,
             nest,
+            anon: c.attr("anon") == Some("1"),
         });
     }
     kids
-}
-
-/// Включён ли шаг F7 — блоки потока с флоатами и коробками своего
-/// контекста внутри, на общих полосах (`BF_F7=1`, только для замера).
-fn band_f7() -> bool {
-    static ON: std::sync::LazyLock<bool> =
-        std::sync::LazyLock::new(|| std::env::var("BF_F7").is_ok_and(|v| v == "1"));
-    *ON
 }
 
 /// Можно ли разложить блок потока детьми на ОБЩИХ полосах (шаг F7): тот же
@@ -11504,7 +11685,8 @@ fn band_f7() -> bool {
 /// плюс то, что коробка рисуется отдельно от детей — значит ни сдвига, ни
 /// эффектов группы, ни ограничителей высоты; рамка и отступ разрешимы.
 fn band_nest_block(c: &Element, em: f32) -> bool {
-    band_f7()
+    // Рамка, поля и высота коробки `Kind::Nest` — физические.
+    BAND_WM.with(std::cell::Cell::get) == 0
         && block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)
