@@ -728,7 +728,8 @@ fn perform_absolute_layout_on_absolute_children(
             left: if left.is_some() { margin.left.unwrap_or(0.0) } else { 0.0 },
             right: if right.is_some() { margin.right.unwrap_or(0.0) } else { 0.0 },
             top: if top.is_some() { margin.top.unwrap_or(0.0) } else { 0.0 },
-            bottom: if bottom.is_some() { margin.left.unwrap_or(0.0) } else { 0.0 },
+            // KaminIDE patch: было `margin.left` — опечатка, нижнее поле бралось левым.
+            bottom: if bottom.is_some() { margin.bottom.unwrap_or(0.0) } else { 0.0 },
         };
 
         // Expand auto margins to fill available space
@@ -745,48 +746,26 @@ fn perform_absolute_layout_on_absolute_children(
                 height: absolute_auto_margin_space.y - final_size.height - non_auto_margin.vertical_axis_sum(),
             };
 
-            let auto_margin_size = Size {
-                // If all three of 'left', 'width', and 'right' are 'auto': First set any 'auto' values for 'margin-left' and 'margin-right' to 0.
-                // Then, if the 'direction' property of the element establishing the static-position containing block is 'ltr' set 'left' to the
-                // static position and apply rule number three below; otherwise, set 'right' to the static position and apply rule number one below.
-                //
-                // If none of the three is 'auto': If both 'margin-left' and 'margin-right' are 'auto', solve the equation under the extra constraint
-                // that the two margins get equal values, unless this would make them negative, in which case when direction of the containing block is
-                // 'ltr' ('rtl'), set 'margin-left' ('margin-right') to zero and solve for 'margin-right' ('margin-left'). If one of 'margin-left' or
-                // 'margin-right' is 'auto', solve the equation for that value. If the values are over-constrained, ignore the value for 'left' (in case
-                // the 'direction' property of the containing block is 'rtl') or 'right' (in case 'direction' is 'ltr') and solve for that value.
-                width: {
-                    let auto_margin_count = margin.left.is_none() as u8 + margin.right.is_none() as u8;
-                    if auto_margin_count == 2
-                        && (style_size.width.is_none() || style_size.width.unwrap() >= free_space.width)
-                    {
-                        0.0
-                    } else if auto_margin_count > 0 {
-                        free_space.width / auto_margin_count as f32
-                    } else {
-                        0.0
-                    }
-                },
-                height: {
-                    let auto_margin_count = margin.top.is_none() as u8 + margin.bottom.is_none() as u8;
-                    if auto_margin_count == 2
-                        && (style_size.height.is_none() || style_size.height.unwrap() >= free_space.height)
-                    {
-                        0.0
-                    } else if auto_margin_count > 0 {
-                        free_space.height / auto_margin_count as f32
-                    } else {
-                        0.0
-                    }
-                },
+            // KaminIDE patch: CSS 2.1 §10.3.7/§10.6.4 — `auto`-поля делят остаток,
+            // только когда заданы ОБА края оси; иначе они нули. Прежде пара
+            // решалась по ЗАЯВЛЕННОЙ ширине (`style_size`): при `width: auto` с
+            // `max-width` поля обнулялись, хотя после зажима правила повторяются
+            // с `max-width` как шириной (`absolute-non-replaced-width-025`), а при
+            // одном краю «остаток» выходил отрицательным. Остаток меньше нуля —
+            // начальное поле ноль, конечное забирает остаток (ltr).
+            let solve = |start: Option<f32>, end: Option<f32>, both: bool, free: f32| -> (f32, f32) {
+                match (start, end) {
+                    _ if !both => (0.0, 0.0),
+                    (None, None) if free >= 0.0 => (free / 2.0, free / 2.0),
+                    (None, None) => (0.0, free),
+                    (None, Some(_)) => (free, 0.0),
+                    (Some(_), None) => (0.0, free),
+                    (Some(_), Some(_)) => (0.0, 0.0),
+                }
             };
-
-            Rect {
-                left: margin.left.map(|_| 0.0).unwrap_or(auto_margin_size.width),
-                right: margin.right.map(|_| 0.0).unwrap_or(auto_margin_size.width),
-                top: margin.top.map(|_| 0.0).unwrap_or(auto_margin_size.height),
-                bottom: margin.bottom.map(|_| 0.0).unwrap_or(auto_margin_size.height),
-            }
+            let (ml, mr) = solve(margin.left, margin.right, left.is_some() && right.is_some(), free_space.width);
+            let (mt, mb) = solve(margin.top, margin.bottom, top.is_some() && bottom.is_some(), free_space.height);
+            Rect { left: ml, right: mr, top: mt, bottom: mb }
         };
 
         let resolved_margin = Rect {
