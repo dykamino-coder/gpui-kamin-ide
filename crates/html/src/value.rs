@@ -131,6 +131,16 @@ thread_local! {
     static ROOT_FONT_PX: std::cell::Cell<f32> = const { std::cell::Cell::new(16.0) };
     /// Высота строки корня: база единицы `rlh` (§6.1.4).
     static ROOT_LINE_PX: std::cell::Cell<f32> = const { std::cell::Cell::new(19.2) };
+    /// Кегль корня в единицах окна (`html { font-size: 100vw }`): точек на
+    /// разборе ещё нет, окно знает только сборщик дерева. Тогда `rem` доживает
+    /// той же единицей окна, умноженной на долю (`vh-em-inherit`: `1rem` =
+    /// `100vw`, а не начальные 16). Флаг — `vh` вместо `vw`.
+    static ROOT_FONT_VIEW: std::cell::Cell<Option<(bool, f32)>> = const { std::cell::Cell::new(None) };
+}
+
+/// Записать кегль корня, заданный единицей окна (`None` — кегль в точках).
+pub fn set_root_font_view(view: Option<(bool, f32)>) {
+    ROOT_FONT_VIEW.with(|c| c.set(view));
 }
 
 /// Записать корневые метрики. Зовётся разбором дерева на элементе `html`
@@ -146,6 +156,7 @@ pub fn set_root_metrics(font_px: f32, line_px: f32) {
 /// про все страницы сразу.
 pub fn reset_root_metrics() {
     set_root_metrics(16.0, 19.2);
+    set_root_font_view(None);
 }
 
 pub fn root_font_px() -> f32 {
@@ -294,7 +305,11 @@ impl Len {
         }
         // `rem` — кегль КОРНЯ, а не постоянные 16 (§6.1.4).
         if let Some(num) = s.strip_suffix("rem") {
-            return css_number(num).map(|v| Len::Px(v * root_font_px()));
+            return css_number(num).map(|v| match ROOT_FONT_VIEW.with(|c| c.get()) {
+                Some((true, k)) => Len::Vh(v * k),
+                Some((false, k)) => Len::Vw(v * k),
+                None => Len::Px(v * root_font_px()),
+            });
         }
         if let Some(num) = s.strip_suffix("em") {
             return css_number(num).map(Len::Em);

@@ -2200,6 +2200,19 @@ enum Piece<'a> {
 /// Пока искалась просто первая `{`, неизвестное at-правило с мусором в
 /// преамбуле (`@foo ] } ) … ;`) уводило разбор внутрь своего мусора, и вся
 /// таблица за ним разъезжалась (`matching-brackets-001`, `core-syntax-001`).
+/// Начинается ли кусок с at-правила: ведущие `<!--`/`-->` верхнего уровня
+/// — пробельные токены (css-syntax-3 §5.4.1), их пропускаем.
+fn statement_head(text: &str) -> bool {
+    let mut t = text.trim_start();
+    loop {
+        if let Some(r) = t.strip_prefix("<!--").or_else(|| t.strip_prefix("-->")) {
+            t = r.trim_start();
+        } else {
+            return t.starts_with('@') || t.is_empty();
+        }
+    }
+}
+
 fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
     let mut square = 0i32;
     let mut round = 0i32;
@@ -2230,7 +2243,13 @@ fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
             ']' => square = (square - 1).max(0),
             '(' => round += 1,
             ')' => round = (round - 1).max(0),
-            ';' if square == 0 && round == 0 => {
+            // Точка с запятой кончает только AT-правило-предложение. У
+            // обычного правила она — часть преамбулы до `{` (css-syntax-3
+            // §5.4.3 «consume a qualified rule»): `test; @charset "x";
+            // .a, #b { color: red }` — ОДНО правило с негодным селектором, и
+            // отбрасывается оно целиком (`at-charset-039`). Прежде `test;`
+            // обрывалось на месте, и красное правило оживало.
+            ';' if square == 0 && round == 0 && statement_head(text) => {
                 let head = &text[..at];
                 return Some((Piece::Statement { head }, &text[at + 1..]));
             }
@@ -2846,7 +2865,17 @@ pub fn parse_keyframes_in(css: &str, media: Option<Media>) -> HashMap<String, Ke
             let Some(c) = find_matching(&inner[b..]) else {
                 break;
             };
-            let decls = parse_decls(&inner[b + 1..b + c]);
+            // Объявление кадра с `!important` игнорируется ЦЕЛИКОМ
+            // (css-animations-1 §3: «declarations in a keyframe rule that are
+            // qualified with !important are ignored»). Отсекается ДО разбора:
+            // `parse_decls` оставляет из двух одноимённых важное, и обычное
+            // `border-color: green` того же кадра пропадало вместе с ним
+            // (`important-prop`).
+            let plain: Vec<&str> = split_top_level(&inner[b + 1..b + c], ';')
+                .into_iter()
+                .filter(|d| top_level_bang(d.trim()).is_none())
+                .collect();
+            let decls = parse_decls(&plain.join(";"));
             inner = &inner[b + c + 1..];
             for stop in stops.split(',') {
                 let at = match stop.trim() {

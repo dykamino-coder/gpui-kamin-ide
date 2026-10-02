@@ -164,6 +164,9 @@ head, title, meta, link, template { display: none }
        руби; аннотация вполовину кегля, одной строкой, без знака акцента.
        Пара правил равносильна спековому `rtc, :not(rtc) > rt { font-size: 50% }`.
        `unicode-bidi: isolate` пока не ставится — мерить отдельно (`ruby-bidi-001`). */
+    /* css-content-3 §4.2, HTML §15.3.3: `q` берёт кавычки из `quotes`. */
+    q::before { content: open-quote }
+    q::after { content: close-quote }
     rp { display: none }
     rb, rt, rtc { white-space: nowrap }
     rt, rtc { font-size: 50%; line-height: 1; text-emphasis: none }
@@ -1944,6 +1947,12 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
         Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
     ) {
         style.float = None;
+        // Блокифицированная коробка строчного выравнивания не имеет
+        // (`vertical-align` «applies to inline-level and table-cell
+        // elements», CSS 2.1 §10.8.1): статическая позиция абсолюта — та же,
+        // что без `sub` (`vertical-align-sub-001`: зелёный уезжал вниз и
+        // открывал красный).
+        style.apply_one("vertical-align", "baseline");
     }
     if out_of_flow {
         match style.display {
@@ -2757,6 +2766,11 @@ fn walk(
                     }
                 };
                 crate::value::set_root_metrics(font, line);
+                crate::value::set_root_font_view(match style.font_size {
+                    Some(crate::value::Len::Vh(k)) => Some((true, k)),
+                    Some(crate::value::Len::Vw(k)) => Some((false, k)),
+                    _ => None,
+                });
             }
             apply_presentational_size(&mut style, &tag, &attrs);
             promote_auto_ratio(&mut style, &tag);
@@ -2964,6 +2978,9 @@ fn walk(
             let box_level = style.display != Some(Display::Contents);
             if box_level {
                 counters.enter();
+                if let Some(q) = &style.quotes {
+                    counters.set_quotes(q.clone());
+                }
             }
             // Обратный счётчик без числа: начальное значение — итог
             // предварительного обхода области (css-lists-3
@@ -3008,7 +3025,7 @@ fn walk(
                 counters.enter_marker();
                 apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
                 if let Some(items) = m.content.as_ref() {
-                    style.marker_text = Some(content_text(items, counters, &attrs));
+                    style.marker_text = Some(content_text(items, counters, &attrs, None));
                     style.no_marker = Some(false);
                 } else if m.content_none == Some(true) {
                     style.no_marker = Some(true);
@@ -3667,10 +3684,14 @@ fn content_text(
     items: &[crate::computed::ContentItem],
     counters: &mut crate::counters::Counters,
     attrs: &[(String, String)],
+    own_quotes: Option<&Option<Vec<(String, String)>>>,
 ) -> String {
     let mut text = String::new();
     for item in items {
         match item {
+            crate::computed::ContentItem::Quote { open, emit } => {
+                text.push_str(&counters.quote(*open, *emit, own_quotes));
+            }
             crate::computed::ContentItem::Str(sv) => text.push_str(sv),
             crate::computed::ContentItem::Counter(name, style_name) => {
                 let value = counters.value_of(name);
@@ -3772,7 +3793,7 @@ fn pseudo_box_named(
     );
     // Составляющие склеиваются по порядку (css-content-3 §2): строки как
     // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
-    let text = content_text(&list, counters, attrs);
+    let text = content_text(&list, counters, attrs, style.quotes.as_ref());
     counters.leave();
     Some(Element {
         list_item: None,

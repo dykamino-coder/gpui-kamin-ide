@@ -1425,6 +1425,9 @@ pub enum ContentItem {
     Counters(String, String, String),
     /// `attr(имя)`.
     Attr(String),
+    /// `open-quote`/`close-quote` (`emit`) и `no-open-quote`/`no-close-quote`
+    /// (только сдвиг глубины) — css-content-3 §4.2.
+    Quote { open: bool, emit: bool },
 }
 
 /// Порядковые номера объявлений физических сторон (top, right, bottom, left)
@@ -2664,6 +2667,11 @@ pub struct Computed {
     /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
     pub content: Option<Vec<ContentItem>>,
+    /// `quotes` (css-content-3 §4.1): пары кавычек по уровням вложенности.
+    /// `None` — наследуется, `Some(None)` — `none` (кавычек нет, но глубина
+    /// всё равно считается). Наследование ведёт обход дерева
+    /// (`Counters::quote`): кавычки нужны уже на сборке псевдоэлемента.
+    pub quotes: Option<Option<Vec<(String, String)>>>,
     /// `counter-reset` — обнулить счётчик с этого узла.
     pub counter_reset: Option<String>,
     /// `counter-increment` — увеличить счётчик на этом узле.
@@ -3549,8 +3557,76 @@ impl Computed {
                     .filter(|part| is_important(part) == important)
                     .last()
             })
-            .filter(|part| matches!(strip_important(part).trim(), "revert" | "revert-layer"))
-            .map(|_| место("all"));
+            .filter(|part| {
+                matches!(
+                    strip_important(part).trim(),
+                    "revert" | "revert-layer" | "initial" | "unset"
+                )
+            })
+            .map(|part| (место("all"), strip_important(part).trim() == "initial"));
+        // `all: initial` / `all: unset` (css-cascade-5 §3.2) сбрасывает ВСЁ,
+        // что каскад сказал до него, — не только в этом блоке, но и в ранних
+        // правилах и в таблице агента: `div` становится строчным, цвет и
+        // шрифт — начальными (`initial`) или наследуемыми (`unset`). Кроме
+        // `direction` и `unicode-bidi`. Прежде ключ `all` понимал только
+        // откат, и `.test { all: initial }` оставлял красную рамку, фон и
+        // флоат раннего правила (`all-prop-001/002`). Сброс — СВОЙ шаг
+        // прохода: важные объявления ранних правил применяются позже и
+        // переживают его, как велит §6.1.
+        let all_reset = all_at.filter(|_| {
+            d.get("all")
+                .and_then(|v| {
+                    v.split(crate::css::DECL_SEP)
+                        .filter(|part| is_important(part) == important)
+                        .last()
+                })
+                .is_some_and(|part| matches!(strip_important(part).trim(), "initial" | "unset"))
+        });
+        let all_at = all_at.map(|(at, _)| at);
+        if let Some((_, initial)) = all_reset {
+            let keep = (
+                self.rtl,
+                self.bidi_override,
+                self.bidi_isolate,
+                self.bidi_plaintext,
+                self.decl_seq,
+            );
+            *self = Computed::default();
+            (
+                self.rtl,
+                self.bidi_override,
+                self.bidi_isolate,
+                self.bidi_plaintext,
+                self.decl_seq,
+            ) = keep;
+            self.apply_one("display", "inline");
+            if initial {
+                // Наследуемые свойства: пустое поле у нас значит «от
+                // родителя», поэтому начальное значение ставится явно.
+                for key in [
+                    "color",
+                    "font-family",
+                    "font-size",
+                    "font-style",
+                    "font-variant",
+                    "font-weight",
+                    "letter-spacing",
+                    "line-height",
+                    "list-style-position",
+                    "list-style-type",
+                    "text-align",
+                    "text-indent",
+                    "text-transform",
+                    "visibility",
+                    "white-space",
+                    "word-spacing",
+                ] {
+                    if let Some(start) = initial_value(key) {
+                        self.apply_one(key, start);
+                    }
+                }
+            }
+        }
         for k in &ordered {
             let Some(v) = d.get(*k) else { continue };
             if k.starts_with("--") || k.as_str() == crate::css::ORDER_KEY {
@@ -6911,6 +6987,45 @@ impl Computed {
             "counter-reset" => self.counter_reset = Some(v.to_string()),
             "counter-increment" => self.counter_increment = Some(v.to_string()),
             "counter-set" => self.counter_set = Some(v.to_string()),
+            "quotes" => {
+                match v {
+                    "none" => self.quotes = Some(None),
+                    // `auto` — кавычки языка; без разбора языка берутся
+                    // английские (`Counters::quote` при пустой записи).
+                    "auto" | "match-parent" => self.quotes = None,
+                    other => {
+                        // Только строки, и чётным числом (§4.1): иначе
+                        // объявление негодно и не применяется.
+                        let mut strs = vec![];
+                        let mut at = 0usize;
+                        let mut ok = true;
+                        while at < other.len() {
+                            let ch = other[at..].chars().next().unwrap_or(' ');
+                            if ch.is_whitespace() {
+                                at += ch.len_utf8();
+                                continue;
+                            }
+                            if ch != '"' && ch != '\'' {
+                                ok = false;
+                                break;
+                            }
+                            let body = at + 1;
+                            let len = crate::css::skip_string(&other[body..], ch);
+                            if !other[body..body + len].ends_with(ch) {
+                                ok = false;
+                                break;
+                            }
+                            strs.push(unescape_content(&other[body..body + len - 1]));
+                            at = body + len;
+                        }
+                        if ok && !strs.is_empty() && strs.len() % 2 == 0 {
+                            self.quotes = Some(Some(
+                                strs.chunks(2).map(|p| (p[0].clone(), p[1].clone())).collect(),
+                            ));
+                        }
+                    }
+                }
+            }
             "content" => {
                 match v {
                     // ПУСТАЯ строка — не то же самое, что `none`: коробка
@@ -10246,8 +10361,25 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
             at = body + len;
             continue;
         }
-        // Дальше только функция: `counter(`, `counters(`, `attr(`.
+        // Слова кавычек (css-content-3 §4.2). Прежде они не разбирались, и
+        // весь `content` с ними выбрасывался (`content-159`, `quotes-*`).
         let rest = &raw[at..];
+        let word_end = rest
+            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '(')
+            .unwrap_or(rest.len());
+        let quote = match rest[..word_end].to_ascii_lowercase().as_str() {
+            "open-quote" => Some((true, true)),
+            "close-quote" => Some((false, true)),
+            "no-open-quote" => Some((true, false)),
+            "no-close-quote" => Some((false, false)),
+            _ => None,
+        };
+        if let Some((open, emit)) = quote {
+            out.push(ContentItem::Quote { open, emit });
+            at += word_end;
+            continue;
+        }
+        // Дальше только функция: `counter(`, `counters(`, `attr(`.
         let open = rest.find('(')?;
         let name = rest[..open].trim().to_ascii_lowercase();
         let close = at + open + 1 + find_close(&rest[open + 1..])?;
