@@ -70,6 +70,9 @@ pub enum Kind {
         side: i8,
         clear: Option<i8>,
         shrink: bool,
+        /// Буквица (`initial-letter`, шаг F11): исключение у начала строки
+        /// потока, а не флоат (`FloatBands::add_initial_letter`).
+        letter: bool,
     },
     /// Коробка, флоаты НЕ перекрывающая (§9.5, последний абзац): свой
     /// контекст, таблица, атом известного размера. `table` — коробка не уже
@@ -321,6 +324,7 @@ fn place_seq(
                 side,
                 clear,
                 shrink,
+                letter,
             } => {
                 let mut avail = (cbw - ml - mr).max(0.0);
                 // §10.3.5: shrink-to-fit = `min(max(min-content, доступно),
@@ -350,7 +354,11 @@ fn place_seq(
                 bands.set_flow_ceiling(y);
                 // Посадка margin-box: правила 1-9 §9.5.1 и clear §9.5.2 — в
                 // `bands.add_float`.
-                let (fx, fy) = bands.add_float(side, ml + bw + mr, mt + bh + mb, clear);
+                let (fx, fy) = if letter {
+                    bands.add_initial_letter(side, ml + bw + mr, mt + bh + mb, y)
+                } else {
+                    bands.add_float(side, ml + bw + mr, mt + bh + mb, clear)
+                };
                 slots[k] = Slot {
                     x: fx + ml,
                     y: fy + mt,
