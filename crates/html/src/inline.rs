@@ -1463,6 +1463,8 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.monospace = own.monospace.or(parent.monospace);
     c.font_family = own.font_family.clone().or(parent.font_family.clone());
     c.nowrap = own.nowrap.or(parent.nowrap);
+    c.orphans = own.orphans.or(parent.orphans);
+    c.widows = own.widows.or(parent.widows);
     // Направление письма наследуется: `writing-mode` ставят на `body`, а ось
     // потока обязана смениться у КАЖДОГО вложенного блока — иначе вертикально
     // становится только сам `body`, а его дети снова текут вниз.

@@ -48,6 +48,23 @@ thread_local! {
     static VCACHE: RefCell<HashMap<String, (f32, f32, f32)>> = RefCell::new(HashMap::new());
 }
 
+/// Щуп переноса строк: сколько строк займёт текст шрифтом `font` кеглем `size`
+/// при ширине `width`. `\n` — принудительный разрыв.
+type WrapProbe = Box<dyn Fn(&gpui::Font, f32, &str, f32) -> usize>;
+
+thread_local! {
+    static WRAP: RefCell<Option<WrapProbe>> = const { RefCell::new(None) };
+}
+
+/// Число строк текста при сборке дерева — для фрагментации ПО СТРОКАМ
+/// (css-break-3 §4.3: «Between line boxes» — законная точка разрыва). Перенос
+/// тот же, что у текстового пути колонок (`float.rs` `measure_columns`):
+/// переносчик GPUI, аварийный разрыв внутри слова отбрасывается (строка его не
+/// рвёт, `overflow-wrap: normal`). `None` — щуп не поставлен.
+pub fn line_count(font: &gpui::Font, size: f32, text: &str, width: f32) -> Option<usize> {
+    WRAP.with(|w| w.borrow().as_ref().map(|f| f(font, size, text, width)))
+}
+
 /// Поставить щуп вертикальных метрик. Зовётся оттуда же, откуда `install_probe`.
 pub fn install_vprobe(probe: impl Fn(&str, f32) -> (f32, f32, f32) + 'static) {
     VPROBE.with(|p| *p.borrow_mut() = Some(Box::new(probe)));
@@ -269,6 +286,21 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
     // Второму щупу (вертикальные метрики) нужен свой владелец `Arc`:
     // первый забирает `text_system` в замыкание целиком.
     let text_system2 = text_system.clone();
+    let text_system3 = text_system.clone();
+    WRAP.with(|w| {
+        *w.borrow_mut() = Some(Box::new(move |font: &gpui::Font, size: f32, text: &str, width: f32| {
+            let mut wrapper = text_system3.line_wrapper(font.clone(), gpui::px(size));
+            let mut lines = 0usize;
+            for seg in text.split('\n') {
+                lines += 1;
+                lines += wrapper
+                    .wrap_line(&[gpui::LineFragment::text(seg)], gpui::px(width.max(0.0)))
+                    .filter(|b| seg.as_bytes().get(b.ix.wrapping_sub(1)) == Some(&b' '))
+                    .count();
+            }
+            lines
+        }));
+    });
     install_probe(move |family, size| {
         // Родовое имя системе шрифтов отдавать нельзя: `sans-serif` — это не
         // шрифт, а разряд, и поиск по нему кончается ничем. Подставляется то

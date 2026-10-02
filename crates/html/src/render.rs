@@ -2697,6 +2697,285 @@ impl ShapeCx {
     };
 }
 
+/// Кадр меры строк: наследованный стиль коробки и ширина её содержимого
+/// (`None` — неизвестна, строки не меряются).
+struct LineFrame {
+    inh: Computed,
+    w: Option<f32>,
+}
+
+/// Контекст меры строк для `shape_full`: включается только вокруг меры детей
+/// стопки колонок (`with_lines`), где ширина колонки известна. `shape_full` о
+/// наследовании и ширине ничего не знает (ей дают голый элемент), поэтому
+/// кадры ведёт `LineScope` на входе в неё.
+struct LineCx {
+    opts: RenderOpts,
+    frames: Vec<LineFrame>,
+}
+
+thread_local! {
+    static LINE_CX: std::cell::RefCell<Option<LineCx>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Выполнить `f` с контекстом меры строк: `base` — стиль многоколоночника,
+/// `w` — строчный размер колонки.
+fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, f: impl FnOnce() -> T) -> T {
+    let prev = LINE_CX.with(|l| {
+        l.borrow_mut().replace(LineCx {
+            opts: opts.clone(),
+            frames: vec![LineFrame { inh: base.clone(), w }],
+        })
+    });
+    let out = f();
+    LINE_CX.with(|l| *l.borrow_mut() = prev);
+    out
+}
+
+/// Ширина содержимого блока в потоке родителя шириной `pw` (CSS 2.1 §10.3.3:
+/// `margin-left + border + padding + width + … = containing block width`).
+/// Только обычный блок потока — у прочих ширину решает своя раскладка.
+fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
+    let s = &c.style;
+    if c.inline
+        || !matches!(s.display, None | Some(Display::Block) | Some(Display::ListItem))
+        || s.float.unwrap_or(0) != 0
+        || !matches!(s.position, None | Some(crate::computed::Position::Relative))
+        || table_box(c)
+        || multicol_container(s)
+    {
+        return None;
+    }
+    let px = |l: &Option<Len>| match l {
+        None | Some(Len::Auto) => Some(0.0),
+        Some(Len::Px(v)) => Some(*v),
+        _ => None,
+    };
+    let b = s.borders();
+    let edges = px(&s.padding.left)? + px(&s.padding.right)? + px(&b.left)? + px(&b.right)?;
+    match s.width {
+        Some(Len::Px(w)) => Some(if s.border_box == Some(true) { (w - edges).max(0.0) } else { w }),
+        None | Some(Len::Auto) => {
+            Some((pw - px(&s.margin.left)? - px(&s.margin.right)? - edges).max(0.0))
+        }
+        _ => None,
+    }
+}
+
+/// Кадр меры строк на время `shape_full(c)`.
+struct LineScope(bool);
+
+impl LineScope {
+    fn enter(c: &Element) -> Self {
+        LINE_CX.with(|l| {
+            let mut g = l.borrow_mut();
+            let Some(cx) = g.as_mut() else {
+                return LineScope(false);
+            };
+            let Some(top) = cx.frames.last() else {
+                return LineScope(false);
+            };
+            let inh = crate::inline::inherit(&top.inh, &c.style);
+            let w = top.w.and_then(|pw| line_content_w(c, pw));
+            cx.frames.push(LineFrame { inh, w });
+            LineScope(true)
+        })
+    }
+}
+
+impl Drop for LineScope {
+    fn drop(&mut self) {
+        if self.0 {
+            LINE_CX.with(|l| {
+                if let Some(cx) = l.borrow_mut().as_mut() {
+                    cx.frames.pop();
+                }
+            });
+        }
+    }
+}
+
+/// Текст строчного содержимого для меры строк: `<br>` — `\n`, пробелы
+/// схлопнуты (css-text-3 §4.1.1). `None` — среди детей есть то, что строку
+/// меняет сверх голого текста (атом, свой шрифт, отбивка, внепоточный).
+fn line_text(nodes: &[Node]) -> Option<String> {
+    fn gather(nodes: &[Node], out: &mut String) -> bool {
+        for n in nodes {
+            match n {
+                Node::Text(t) => out.push_str(t),
+                Node::Element(e) if e.tag == "br" => out.push('\u{2028}'),
+                Node::Element(e) => {
+                    let s = &e.style;
+                    let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
+                    let b = s.borders();
+                    if !e.inline
+                        || s.display.is_some()
+                        || out_of_flow(&s)
+                        || s.position.is_some()
+                        || s.font_size.is_some()
+                        || s.font_family.is_some()
+                        || s.font_weight.is_some()
+                        || s.italic.is_some()
+                        || s.line_height.is_some()
+                        || s.vertical_align.is_some()
+                        || s.letter_spacing.is_some()
+                        || !zero(&s.padding.left)
+                        || !zero(&s.padding.right)
+                        || !zero(&s.margin.left)
+                        || !zero(&s.margin.right)
+                        || !zero(&b.left)
+                        || !zero(&b.right)
+                        || matches!(e.tag.as_str(), "img" | "svg" | "input" | "button" | "select" | "textarea" | "ruby" | "canvas" | "video" | "iframe" | "object" | "embed")
+                        || !gather(&e.children, out)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+    let mut raw = String::new();
+    if !gather(nodes, &mut raw) {
+        return None;
+    }
+    let mut out = String::new();
+    let mut prev_space = false;
+    for ch in raw.chars() {
+        if ch == '\u{2028}' {
+            if out.ends_with(' ') {
+                out.pop();
+            }
+            out.push('\n');
+            prev_space = true;
+            continue;
+        }
+        if matches!(ch, ' ' | '\t' | '\n' | '\r') {
+            if !prev_space {
+                out.push(' ');
+            }
+            prev_space = true;
+        } else {
+            out.push(ch);
+            prev_space = false;
+        }
+    }
+    let out = out.trim_matches(' ').to_string();
+    (!out.trim().is_empty()).then_some(out)
+}
+
+/// Мера блока со СТРОЧНЫМ содержимым по строкам (css-break-3 §4.3: разрыв
+/// «between line boxes» — законная точка класса B; §4.4 `orphans`/`widows`).
+/// Высота — строки × высота строки; точки разреза — границы строк, кроме
+/// первых `orphans` и последних `widows`. Blink: `inline_layout_algorithm.cc`
+/// + `BreakBeforeChildIfNeeded` для строк (`block_layout_algorithm.cc`
+/// `HandleInflow` → `IsBreakInside` по строкам). Только при включённом
+/// контексте (`with_lines`) и известной ширине колонки; иначе `None`, и мера
+/// идёт прежним путём (сплошной строчный набор — монолит).
+fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<Shape> {
+    if !matches!(c.style.height, None | Some(Len::Auto))
+        || c.style.min_height.is_some()
+        || c.style.max_height.is_some()
+        || c.children.iter().all(is_blank)
+    {
+        return None;
+    }
+    let (inh, w, opts) = LINE_CX.with(|l| {
+        let g = l.borrow();
+        let cx = g.as_ref()?;
+        let f = cx.frames.last()?;
+        Some((f.inh.clone(), f.w?, cx.opts.clone()))
+    })?;
+    if inh.nowrap == Some(true)
+        || inh.keep_spaces == Some(true)
+        || inh.preserve_newlines == Some(true)
+        || inh.letter_spacing.is_some()
+        || !matches!(inh.text_indent, None | Some(Len::Px(0.0)))
+        || c.first_line.is_some()
+        || c.first_letter.is_some()
+    {
+        return None;
+    }
+    let text = line_text(&c.children)?;
+    let size = match inh.font_size {
+        Some(Len::Px(v)) if v > 0.0 => v,
+        _ => return None,
+    };
+    let lh = match inh.line_height {
+        Some(Len::Px(v)) => v,
+        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+        None => size * normal_fraction(&inh, &opts),
+        _ => return None,
+    };
+    if lh <= 0.0 {
+        return None;
+    }
+    let font = measure_font(&inh, &opts);
+    let lines = crate::metrics::line_count(&font, size, &text, w)?.max(1);
+    let orphans = inh.orphans.unwrap_or(2).max(1) as usize;
+    let widows = inh.widows.unwrap_or(2).max(1) as usize;
+    let h = top + lines as f32 * lh + bot;
+    let cuts: Vec<(f32, f32)> = (orphans..=lines.saturating_sub(widows))
+        .filter(|k| *k >= 1 && *k < lines)
+        .map(|k| (top + k as f32 * lh, top + k as f32 * lh))
+        .collect();
+    let mut solid = Vec::new();
+    if top > 0.0 {
+        solid.push((0.0, top));
+    }
+    // Между последней строкой и нижней отбивкой зазора нет — разрыва там нет
+    // (см. «склейку» в конце `shape_full`).
+    if bot > 0.0 {
+        solid.push((top + (lines - 1) as f32 * lh, h));
+    }
+    Some((h, mt, mb, cuts, Vec::new(), solid))
+}
+
+/// Сплошной строчный набор (без блочных детей) — монолит в стопке, ПОКА его
+/// строки не измерены (`line_run_shape` дала точки разреза).
+fn inline_content(k: &Element) -> bool {
+    let block_kid = |n: &Node| {
+        matches!(n, Node::Element(x)
+            if !x.inline || x.style.display == Some(Display::Block))
+    };
+    k.children.iter().any(|n| !is_blank(n)) && !k.children.iter().any(block_kid)
+}
+
+/// Строчные прогоны среди блочных детей многоколоночника — в анонимные блоки
+/// (CSS 2.1 §9.2.1.1: «If a block container box has a block-level box inside
+/// it, then we force it to have only block-level boxes inside it» — строчное
+/// содержимое оборачивается анонимной блочной коробкой). Тогда стопка колонок
+/// видит их обычными детьми и режет по строкам. `None` — заворачивать нечего.
+fn group_inline_runs(e: &Element) -> Option<Element> {
+    let inline_level = |n: &Node| match n {
+        Node::Text(_) => true,
+        Node::Element(k) => k.inline && !out_of_flow(&k.style) && k.style.display.is_none(),
+    };
+    if !e.children.iter().any(|n| inline_level(n) && !is_blank(n)) {
+        return None;
+    }
+    let mut out: Vec<Node> = Vec::new();
+    let mut run: Vec<Node> = Vec::new();
+    let flush = |run: &mut Vec<Node>, out: &mut Vec<Node>| {
+        if run.iter().all(is_blank) {
+            out.append(run);
+        } else {
+            out.push(Node::Element(anon_element("anon-block", std::mem::take(run))));
+        }
+    };
+    for n in &e.children {
+        if inline_level(n) {
+            run.push(n.clone());
+        } else {
+            flush(&mut run, &mut out);
+            out.push(n.clone());
+        }
+    }
+    flush(&mut run, &mut out);
+    let mut g = e.clone();
+    g.children = out;
+    Some(g)
+}
+
 /// Клон поддерева, у которого ФИЗИЧЕСКИЕ поля коробки повёрнуты так, что
 /// БЛОЧНАЯ ось вертикального письма встаёт на место вертикальной: `width` ↔
 /// `height`, стороны — по логическим ролям (css-writing-modes-4 §3.1, §6.4
@@ -2776,6 +3055,8 @@ fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
 /// которые держались стопкой детей, разваливаются. Половинить нельзя (это и
 /// есть откат 04.09); брать заново только с мерой по строкам (FRAG-LINES).
 fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+    // Кадр меры строк (наследование и ширина) — только при `with_lines`.
+    let _line_frame = LineScope::enter(c);
     let px_or = |l: &Option<Len>, strict: bool| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
@@ -2852,6 +3133,14 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
     };
     let top = pad(&c.style.padding.top)? + px_or(&b.top, false)?;
     let bot = pad(&c.style.padding.bottom)? + px_or(&b.bottom, false)?;
+    // Строчное содержимое — по строкам, если ширина колонки известна.
+    if !cx.paged
+        && inline_content(c)
+        && matches!(c.style.display, None | Some(Display::Block) | Some(Display::ListItem))
+        && let Some(s) = line_run_shape(c, top, bot, mt, mb)
+    {
+        return Some(s);
+    }
     let mut kids: Vec<&Node> = c.children.iter().filter(|n| !is_blank(n)).collect();
     // Гибкий контейнер, чьи элементы идут СТОПКОЙ (колонка; перенос по
     // строкам — пока «строка = элемент»). css-flexbox-1 §4.2: «The margins of
@@ -3144,7 +3433,9 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
                             // Монолит-потомок — весь диапазон
                             // его высоты; иначе — его собственные
                             // монолиты.
-                            let solid = if solid_box(k) {
+                            let solid = if solid_box(k)
+                                && !(inline_content(k) && !cuts.is_empty())
+                            {
                                 vec![(0.0, h)]
                             } else {
                                 solid
@@ -20721,9 +21012,22 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 | Some(crate::computed::Position::Fixed)
                         )
                     };
+                    // Строчный размер колонки для меры строк (`with_lines`):
+                    // css-multicol-1 §3.4 (11) «W := max(0, (U + column-gap)/N −
+                    // column-gap)» при U в точках; иначе строки не меряются.
+                    let line_col_w = match col_inline_size {
+                        Some(Len::Px(u)) if merged.border_box != Some(true) && cols > 0 => {
+                            Some(((u + used_gap) / cols as f32 - used_gap).max(0.0))
+                        }
+                        _ => None,
+                    };
+                    // Строчные прогоны среди блоков — анонимными блоками (CSS 2.1
+                    // §9.2.1.1), только когда строки можно измерить.
+                    let grouped_e = line_col_w.and_then(|_| group_inline_runs(e));
+                    let ge: &Element = grouped_e.as_ref().unwrap_or(e);
                     // Плавающие прямые дети — как прежде: не в стопку,
                     // рисуются её соседями.
-                    let direct_oof: Vec<Element> = e
+                    let direct_oof: Vec<Element> = ge
                         .children
                         .iter()
                         .filter_map(|n| match n {
@@ -20744,7 +21048,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     let oof_static: Vec<(usize, Element)> = {
                         let mut at = 0usize;
                         let mut out: Vec<(usize, Element)> = Vec::new();
-                        for n in e.children.iter().filter(|n| !is_blank(n)) {
+                        for n in ge.children.iter().filter(|n| !is_blank(n)) {
                             let Node::Element(c) = n else {
                                 at += 1;
                                 continue;
@@ -20757,7 +21061,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         }
                         out
                     };
-                    let stackable: Option<Vec<(Element, Shape)>> = e
+                    let stackable: Option<Vec<(Element, Shape)>> = with_lines(&merged, line_col_w, opts, || ge
                         .children
                         .iter()
                         .filter(|n| !is_blank(n))
@@ -20787,7 +21091,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             }
                             _ => None,
                         })
-                        .collect();
+                        .collect());
                     if let Some(kids) = stackable.filter(|k| !k.is_empty()) {
                         // Копий у ребёнка — сколько колонок он может занять: без
                         // рядов ровно `cols` (как прежде), с рядами — по своей
@@ -21042,14 +21346,14 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // разъезжался ЭТАЛОН четырёх пар
                                 // `flex-item-content-overflow-*`.
                                 let copy_m = if col_vert { transpose_tree(&copy, col_rl) } else { None };
-                                let (over, cuts, forced, solid) = match shape_full(
+                                let (over, cuts, forced, solid) = match with_lines(&merged, line_col_w, opts, || shape_full(
                                     copy_m.as_ref().unwrap_or(&copy),
                                     4,
                                     ShapeCx {
                                         unclamped: true,
                                         ..ShapeCx::COLUMNS
                                     },
-                                )
+                                ))
                                 .filter(|_| {
                                     // Сетка-стопка с обычными блочными элементами
                                     // меряется так же точно, как блок (`grid_stack`:
@@ -21593,7 +21897,10 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     // ПУСТАЯ коробка с высотой режется по своей
                                     // высоте (css-break-4 §4.2; корень A3).
                                     || (copy.children.iter().any(|n| !is_blank(n))
-                                        && !copy.children.iter().any(block_kid));
+                                        && !copy.children.iter().any(block_kid)
+                                        // Строки измерены (`line_run_shape`) — режется
+                                        // между строк, не монолит.
+                                        && cuts.is_empty());
                                 // Пока строятся копии — «внутри стопки»: вложенный
                                 // многоколоночник со спаннером остаётся на
                                 // сегментном пути (см. `unified` выше).
