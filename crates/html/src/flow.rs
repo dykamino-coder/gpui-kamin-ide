@@ -800,6 +800,26 @@ impl Drop for StackScope {
     }
 }
 
+thread_local! {
+    /// Высота ряда вложенного многоколоночника, заданная ВНЕШНЕЙ колонкой
+    /// (`set_outer_row` → `take_outer_row` первой строкой `render::element`).
+    static OUTER_ROW: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+}
+
+/// Передать следующему `element()` высоту внешнего фрагментаинера: копия
+/// вложенного многоколоночника строится рядами этой высоты (css-break-4 §2.1:
+/// «when a multi-column container breaks across pages, it generates a new row
+/// of columns on the next page»; Blink `column_layout_algorithm.cc:1741-1748`
+/// `ConstrainColumnBlockSize` → `min(size, available_outer_space)`).
+pub fn set_outer_row(h: Option<f32>) {
+    OUTER_ROW.with(|r| r.set(h));
+}
+
+/// Забрать переданную высоту (одноразово).
+pub fn take_outer_row() -> Option<f32> {
+    OUTER_ROW.with(|r| r.take())
+}
+
 pub fn in_stack() -> bool {
     STACK_DEPTH.with(|d| d.get() > 0)
 }
