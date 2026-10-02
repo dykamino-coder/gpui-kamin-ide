@@ -4009,6 +4009,19 @@ impl Window {
             .layout_size_unrounded(layout_id, scale_factor)
     }
 
+    /// KaminIDE patch: начало узла в окне без округления к физической точке
+    /// (см. `TaffyLayoutEngine::layout_origin_unrounded`); как `layout_bounds`,
+    /// со смещением текущего элемента.
+    pub fn layout_origin_unrounded(&mut self, layout_id: LayoutId) -> Point<Pixels> {
+        let scale_factor = self.scale_factor();
+        let origin = self
+            .layout_engine
+            .as_mut()
+            .unwrap()
+            .layout_origin_unrounded(layout_id, scale_factor);
+        origin + self.element_offset()
+    }
+
     /// After calling it, you can request the bounds of the given layout node id or any descendant.
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
