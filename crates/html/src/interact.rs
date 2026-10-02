@@ -2837,6 +2837,105 @@ pub fn cell_edges_for(key: u64) -> CellEdges {
     CELL_EDGES.with(|m| m.borrow_mut().entry(key).or_default().clone())
 }
 
+/// Фоны ячеек сросшейся модели: прямоугольник и цвет, снятые пробой ячейки
+/// на ПОДГОТОВКЕ кадра; красит их `CellBgPainter` — слой, лежащий в сетке
+/// ПЕРЕД кромками и ячейками. Так фон ячейки оказывается под кромками, а
+/// содержимое ячейки — над ними, как у Blink: сросшиеся кромки идут в фазе
+/// `kDescendantBlockBackgroundsOnly` (`box_fragment_painter.cc:952-957`,
+/// «Collapsed borders paint *after* children have painted their
+/// backgrounds»), а строчное, плавающее и позиционированное содержимое
+/// ячеек — в более поздних фазах, то есть поверх кромок.
+pub type CellBgs = std::rc::Rc<std::cell::RefCell<Vec<(Bounds<Pixels>, gpui::Hsla)>>>;
+
+/// Проба фона ячейки: холст во всю коробку ячейки записывает её рамку и
+/// цвет на подготовке кадра (та же механика, что `edge_probe`).
+pub fn cell_bg_probe(bgs: CellBgs, colour: gpui::Hsla) -> AnyElement {
+    gpui::canvas(
+        move |bounds: Bounds<Pixels>, _, _| {
+            bgs.borrow_mut().push((bounds, colour));
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+    .into_any_element()
+}
+
+/// Слой фонов ячеек сросшейся таблицы (см. `CellBgs`).
+pub struct CellBgPainter {
+    bgs: CellBgs,
+}
+
+impl CellBgPainter {
+    pub fn new(bgs: CellBgs) -> Self {
+        CellBgPainter { bgs }
+    }
+}
+
+impl Element for CellBgPainter {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let mut style = gpui::Style::default();
+        style.position = gpui::Position::Absolute;
+        (window.request_layout(style, [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _window: &mut Window,
+        _cx: &mut App,
+    ) {
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _state: &mut (),
+        _prepaint: &mut (),
+        window: &mut Window,
+        _cx: &mut App,
+    ) {
+        // Пробы пишут на подготовке, вся подготовка кадра идёт до отрисовки —
+        // здесь прямоугольники ЭТОГО ЖЕ кадра.
+        let bgs = std::mem::take(&mut *self.bgs.borrow_mut());
+        for (bounds, colour) in bgs {
+            window.paint_quad(gpui::fill(bounds, colour));
+        }
+    }
+}
+
+impl IntoElement for CellBgPainter {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
 /// Проба кромок: как проба фона, пишет в PREPAINT границы и рамки ячейки.
 /// Метка «коробка СЕТКИ»: проба ничего не рисует, а сообщает слою кромок,
 /// где кончаются дорожки. Граница сетки есть ВСЕГДА, даже когда рисующей
@@ -3049,6 +3148,38 @@ impl Element for EdgePainter {
             }
             widest / 2.0
         };
+        // Симметрично для вертикалей: в стык вертикаль тянется на половину
+        // ГОРИЗОНТАЛЬНОЙ кромки.
+        let horiz_spans: Vec<(f32, f32, f32, f32, u8)> = horiz
+            .iter()
+            .map(|c| (c.line, c.a, c.b, c.w, c.style))
+            .collect();
+        let half_at_h = |y: f32, x: f32| -> f32 {
+            let mut widest = 0.0f32;
+            for c in &horiz_spans {
+                if (c.0 - y).abs() >= 0.75 || x < c.1 - 0.25 || x > c.2 + 0.25 {
+                    continue;
+                }
+                if c.4 == 1 {
+                    return 0.0;
+                }
+                widest = widest.max(c.3);
+            }
+            widest / 2.0
+        };
+        // Стык кромок решается ПРИОРИТЕТОМ, а не осью: прежде горизонтали
+        // рисовались ПОСЛЕ вертикалей и, протянутые в углы, всегда накрывали
+        // стык своим цветом. У Blink стык достаётся кромке, победившей в
+        // разборе §17.6.2.1 (`table_painters.cc`, `CollapsedBorderPainter`:
+        // края отрезка подрезаются/растягиваются по соседней перпендикулярной
+        // кромке в зависимости от того, кто сильнее). Поэтому отрезки обеих
+        // осей копятся с ключом победителя и красятся по возрастанию ключа —
+        // сильнейшая кромка ложится последней и забирает угол
+        // (`border-conflict-element-001e`: синяя вертикаль первой ячейки
+        // против жёлтой горизонтали второй — в эталоне угол синий).
+        // При равном ключе вертикаль идёт первой — прежний порядок.
+        type SegKey = (f32, u8, u8, u32);
+        let mut segs: Vec<(SegKey, bool, Bounds<Pixels>, crate::value::Color)> = Vec::new();
         let mut draw = |cands: &mut Vec<Cand>, vertical: bool, grid_lo: Option<f32>| {
             cands.sort_by(|p, q| {
                 p.line
@@ -3126,11 +3257,17 @@ impl Element for EdgePainter {
                         Some(_) => (line, line + win.w),
                         None => (line - win.w / 2.0, line + win.w / 2.0),
                     };
-                    // Продление В УГЛЫ только у горизонталей: пересечение
-                    // иначе оставалось пустым квадратом, а продление обеих
-                    // осей рисовало лишние усы на пунктирных рамках.
-                    let (a, b) = if !vertical && win.style >= 9 {
-                        (a - half_at(a, line), b + half_at(b, line))
+                    // Продление В УГЛЫ — только у сплошных (`style >= 9`):
+                    // пересечение иначе оставалось пустым квадратом, а
+                    // продление пунктирных рисовало лишние усы. Обе оси
+                    // тянутся на полуширину ПЕРПЕНДИКУЛЯРНОЙ кромки; кто из
+                    // них накроет угол, решает порядок по ключу (см. `segs`).
+                    let (a, b) = if win.style >= 9 {
+                        if vertical {
+                            (a - half_at_h(a, line), b + half_at_h(b, line))
+                        } else {
+                            (a - half_at(a, line), b + half_at(b, line))
+                        }
                     } else {
                         (a, b)
                     };
@@ -3145,13 +3282,26 @@ impl Element for EdgePainter {
                             size: gpui::size(gpui::px(b - a), gpui::px(hi - lo)),
                         }
                     };
-                    window.paint_quad(gpui::fill(rect, win.colour.to_hsla()));
+                    segs.push((
+                        (win.w, win.style, win.source, u32::MAX - win.doc_ix),
+                        vertical,
+                        rect,
+                        win.colour,
+                    ));
                 }
                 i = j;
             }
         };
         draw(&mut vert, true, grid_lo.map(|g| g.0));
         draw(&mut horiz, false, grid_lo.map(|g| g.1));
+        segs.sort_by(|p, q| {
+            p.0.partial_cmp(&q.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(p.1.cmp(&q.1).reverse())
+        });
+        for (_, _, rect, colour) in segs {
+            window.paint_quad(gpui::fill(rect, colour.to_hsla()));
+        }
     }
 }
 

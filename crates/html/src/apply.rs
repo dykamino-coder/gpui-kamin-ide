@@ -1095,9 +1095,65 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     let pad_x = extra(&[c.padding.left, c.padding.right, bw.left, bw.right]);
     let pad_y = extra(&[c.padding.top, c.padding.bottom, bw.top, bw.bottom]);
 
+    // Природный размер холста под порогами — таблица CSS 2.1 §10.4 для
+    // замещаемых с соотношением сторон. Обе оси `<canvas>` пришли из
+    // атрибутов (`attr_sized`), то есть это natural size, а не заданный
+    // автором размер (HTML §4.12.5; холста нет среди «dimension attributes»
+    // HTML Rendering §15.3.10): нарушенный порог одной оси переносится на
+    // другую через соотношение, а не просто режет свою ось. Раньше
+    // `<canvas width=200 height=200 style="max-height: 100px">` выходил
+    // 200×100 вместо 100×100 (`percent-height-replaced-in-percent-cell-002`).
+    // Пороги и размеры здесь — content-box, отбивки добавит цикл ниже.
+    let natural_fit: Option<(f32, f32)> = if c.attr_sized.0
+        && c.attr_sized.1
+        && let (Some(Len::Px(w)), Some(Len::Px(h))) = (c.width, c.height)
+        && w > 0.0
+        && h > 0.0
+    {
+        let px_of = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        };
+        let min_w = px_of(c.min_width).unwrap_or(0.0);
+        let min_h = px_of(c.min_height).unwrap_or(0.0);
+        // §10.4: «max-width/max-height … less than min-* is treated as min-*».
+        let max_w = px_of(c.max_width).unwrap_or(f32::INFINITY).max(min_w);
+        let max_h = px_of(c.max_height).unwrap_or(f32::INFINITY).max(min_h);
+        let r = w / h;
+        let fit = if w > max_w && h > max_h {
+            if max_w / w <= max_h / h {
+                (max_w, (max_w / r).max(min_h))
+            } else {
+                ((max_h * r).max(min_w), max_h)
+            }
+        } else if w < min_w && h < min_h {
+            if min_w / w <= min_h / h {
+                ((min_h * r).min(max_w), min_h)
+            } else {
+                (min_w, (min_w / r).min(max_h))
+            }
+        } else if w < min_w && h > max_h {
+            (min_w, max_h)
+        } else if w > max_w && h < min_h {
+            (max_w, min_h)
+        } else if w > max_w {
+            (max_w, (max_w / r).max(min_h))
+        } else if w < min_w {
+            (min_w, (min_w / r).min(max_h))
+        } else if h > max_h {
+            ((max_h * r).max(min_w), max_h)
+        } else if h < min_h {
+            ((min_h * r).min(max_w), min_h)
+        } else {
+            (w, h)
+        };
+        (fit != (w, h) && fit.0.is_finite() && fit.1.is_finite()).then_some(fit)
+    } else {
+        None
+    };
     for (val, f) in [
-        (c.width, 0u8),
-        (c.height, 1),
+        (natural_fit.map(|f| Len::Px(f.0)).or(c.width), 0u8),
+        (natural_fit.map(|f| Len::Px(f.1)).or(c.height), 1),
         (c.min_width, 2),
         (c.min_height, 3),
         (c.max_width, 4),

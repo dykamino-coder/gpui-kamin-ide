@@ -5128,15 +5128,45 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
     let mut prev_open = 0.0f32;
     let mut prev_aa = false;
     let mut force_next = false;
+    // Ячейки с `rowspan`: (первый ряд, охват, высота содержимого). Их высота
+    // НЕ растит свой ряд — она ложится на все охваченные (css-tables-3
+    // §height-distribution); мера принимается, только если охват и так
+    // вмещает ячейку (сверка после цикла), иначе — прежний отказ. Точки
+    // разреза внутри такой ячейки не берутся: где именно внутри охвата
+    // стоит её содержимое, мера не знает. Прежде любой `rowspan` отменял
+    // меру таблицы целиком, и стол не фрагментировался вовсе
+    // (`table-rowspan-001`: пустая ячейка `rowspan=2`, снимок — вторая
+    // колонка пуста, стол переполняет первую).
+    let mut spans: Vec<(usize, usize, f32)> = Vec::new();
+    let mut row_box: Vec<(f32, f32)> = Vec::new();
     for (i, r) in rows.iter().enumerate() {
         let start = y + spacing;
         let mut h = px_of(&r.row.style.height)?;
         for n in r.row.children.iter().filter(|n| !is_blank(n)) {
             let Node::Element(cell) = n else { return None };
-            if !is_cell(cell) || cell.attr("rowspan").is_some_and(|v| v.trim() != "1") {
+            if !is_cell(cell) {
                 return None;
             }
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (02.10): урезать охват до оставшихся
+            // рядов (охват в один ряд — обычная ячейка) и брать точки и
+            // монолиты содержимого охватывающей ячейки в меру (от начала её
+            // ряда). Срез css-break/table 136 пар: 64 → 63, ядро 670: 413 →
+            // 412 — потеряна `table-cell-expansion-005` (0.00 → «красное
+            // видно»), приобретений ноль: монолиты ячейки, которой раскладка
+            // отдаёт высоту охвата, закрывали разрез там, где эталон режет.
+            let rs = match cell.attr("rowspan").map(str::trim) {
+                None => 1,
+                Some(v) => match v.parse::<usize>() {
+                    Ok(0) => rows.len().saturating_sub(i).max(1),
+                    Ok(n) => n.max(1),
+                    Err(_) => return None,
+                },
+            };
             let (ch, _, _, kcuts, kforced, ksolid) = shape_full(cell, depth - 1, cell_cx)?;
+            if rs > 1 {
+                spans.push((i, rs, ch));
+                continue;
+            }
             h = h.max(ch);
             // Точки и монолиты ячеек — объединением, как у ряда flex без
             // переноса: рвать нельзя там, где не даёт хоть одна ячейка.
@@ -5223,9 +5253,19 @@ fn table_shape_bands(c: &Element, depth: u8, cx: ShapeCx, bands: &mut TableBands
             });
             *avoid = sec.style.break_inside_avoid;
         }
+        row_box.push((start, h));
         y = start + h;
     }
     bands.spacing = spacing;
+    // Сверка охватов (см. `spans`): ячейка выше суммы своих рядов с зазорами
+    // раздала бы им высоту — этого мера не умеет, отказ как прежде.
+    for (i, rs, ch) in spans {
+        let last = (i + rs).min(row_box.len()).saturating_sub(1);
+        let span_h = row_box[last].0 + row_box[last].1 - row_box[i].0;
+        if ch > span_h + 0.01 {
+            return None;
+        }
+    }
     // Сцепка, дожившая до конца коробки рядов, закрывается её низом.
     if let Some(s) = avoid_run {
         solid.push((s, y));
@@ -22349,6 +22389,36 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // заголовок стоял над одним столбцом, значения под другим. Колонки общие
     // только если ячейки живут в общей сетке.
     let mut cells: Vec<AnyElement> = vec![];
+    // Полосы фонов колонок/групп/рядов — ПОД всеми ячейками (§17.5.1 слои
+    // 2-5 ниже слоя ячеек; у Blink фоны дорожек и рядов красит сам стол в
+    // своей фоновой фазе). Прежде полоса ряда ложилась в сетку перед СВОИМИ
+    // ячейками, то есть поверх ячеек предыдущих рядов — для масок разницы
+    // нет, а слой кромок (ниже) обязан лечь после ВСЕХ полос.
+    let mut under: Vec<AnyElement> = vec![];
+    // Фоны ячеек сросшейся модели — отдельным слоем под кромками
+    // (`interact::CellBgs`): так кромки красятся поверх фонов ячеек, но под
+    // их содержимым — у Blink сросшиеся кромки идут в фазе
+    // `kDescendantBlockBackgroundsOnly` (`box_fragment_painter.cc:952`), а
+    // строчное/плавающее/позиционированное содержимое ячеек — позже
+    // (`collapsed-border-paint-phase-001`, `collapsed-borders-painting-order-
+    // 009/010/012/013`: вложенный стол и инлайн-блок с отрицательным полем
+    // накрывались кромками внешнего стола).
+    let cell_bgs: crate::interact::CellBgs = Default::default();
+    // Слои фонов и кромок строятся только при настоящем `border-collapse:
+    // collapse` — ровно там, где ниже кладётся `EdgePainter` (у легаси
+    // `rules=` без `border-collapse` кромки живут на коробках, и проба фона
+    // без своего слоя потеряла бы цвет ячейки).
+    let paint_layers = e.style.border_collapse == Some(true);
+    // Ячейки, чьё содержимое Blink красит ПОЗЖЕ сросшихся кромок (строчный
+    // уровень, флоаты, позиционированные, контексты наложения — фазы после
+    // `kDescendantBlockBackgroundsOnly`), идут в сетку ПОСЛЕ слоя кромок;
+    // ячейки с одним блочным содержимым — до него, и их блочные потомки
+    // (в том числе вложенный блочный стол с его кромками) остаются под
+    // кромками внешнего (`collapsed-borders-painting-order-007/008/011`,
+    // `collapsed-border-paint-phase-002`). Разделение по ЯЧЕЙКЕ, а не по
+    // потомку: слоёв фаз у нас нет, а порядок детей сетки при явной
+    // расстановке на раскладку не влияет.
+    let mut cells_over: Vec<AnyElement> = vec![];
     // Наследуемые свойства САМОЙ таблицы обязаны дойти до ячеек: `inherited`
     // — это стиль её РОДИТЕЛЯ, и всё объявленное на теге таблицы
     // (`white-space`, шрифт, цвет) шло мимо. Видно было по сохранённым
@@ -22736,14 +22806,14 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         opts.doc_salt,
         have_rows,
         &mut grp_rects,
-        &mut cells,
+        &mut under,
     );
     push_col_bands(
         &col_els,
         opts.doc_salt,
         have_rows,
         &mut col_rects,
-        &mut cells,
+        &mut under,
     );
     // Ширины рамки самой таблицы: крайние ячейки расползаются фоном на её
     // половину в сросшейся модели.
@@ -22828,7 +22898,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
-            cells.push(
+            under.push(
                 crate::interact::CellsClipped::new(rects.clone(), band_style).into_any_element(),
             );
         }
@@ -22863,7 +22933,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             if band_style.bg_image.is_none() && g.style.shadows.is_empty() {
                 band_style.background = None;
             }
-            cells.push(
+            under.push(
                 crate::interact::CellsClipped::new(rects.clone(), band_style).into_any_element(),
             );
         }
@@ -22917,7 +22987,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             && h > 0.0
         {
             let mut ph = div().h(px(h)).col_span(cols);
-            if e.style.rtl == Some(true) {
+            if e.style.vertical != Some(true) {
                 ph = ph.col_start(1).row_start(row_ix);
             }
             cells.push(ph.into_any_element());
@@ -23078,7 +23148,26 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // (см. interact::EdgePainter): кромка соседей ОДНА, рисуется
             // поверх фонов, и «шире побеждает» решается наложением.
             let cell_edge = if collapse_cells {
-                let b = cell.style.borders();
+                // Толщина в кегельных единицах — из СЛИТОГО стиля, где `em`
+                // уже разрешён кеглем ячейки (то же правило, что у `box_style`
+                // ниже): сырой `Em` давал нулевую кромку, и ячейка с `border:
+                // solid 1em` вовсе не попадала в разбор сросшихся кромок, а
+                // рамка рисовалась коробкой — чёрным блоком без разбора
+                // конфликтов (`border-conflict-element-001d/001e`).
+                let b = {
+                    let own = cell.style.borders();
+                    let merged = cm.borders();
+                    let pick = |o: Option<Len>, m: Option<Len>| match o {
+                        Some(Len::Px(_)) | None => o,
+                        _ => m,
+                    };
+                    crate::computed::Sides {
+                        top: pick(own.top, merged.top),
+                        right: pick(own.right, merged.right),
+                        bottom: pick(own.bottom, merged.bottom),
+                        left: pick(own.left, merged.left),
+                    }
+                };
                 let widths = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
                 let black = crate::value::Color {
                     r: 0.0,
@@ -23086,9 +23175,13 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     b: 0.0,
                     a: 1.0,
                 };
+                // Цвет без объявления — `currentColor` (css-backgrounds-3
+                // §border-color, initial: currentcolor), а не чёрный: `td.blue
+                // {color: blue; border: solid 1em}` красил кромку чёрным.
                 let side_colour = |i: usize| {
                     cell.style.border_colors[i]
                         .or(cell.style.border_color)
+                        .or(cm.color)
                         .unwrap_or(black)
                 };
                 let colors = [
@@ -23106,18 +23199,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // кромок стоит по паддинг-боксу, и рамкой линия уехала бы
                 // внутрь.
                 let win = win_edges.get(&cell.node_id).copied().unwrap_or(widths);
-                let half = |i: usize, own: Option<Len>| {
+                // Авторский отступ в кегельных единицах — из СЛИТОГО стиля
+                // (`em` там разрешён кеглем ячейки, как у `box_style`): сырой
+                // `Em` падал в ноль, и ячейка сросшейся модели с `padding:
+                // 0.5em` теряла отступ целиком — одни полкромки без
+                // внутренности (`border-conflict-element-001e`: сетка 100
+                // точек вместо 200).
+                let merged_pad = cm.padding;
+                let half = |i: usize, own: Option<Len>, merged: Option<Len>| {
                     let base = match own {
                         Some(Len::Px(v)) => v,
-                        _ => 0.0,
+                        None => 0.0,
+                        Some(_) => match merged {
+                            Some(Len::Px(v)) => v,
+                            _ => 0.0,
+                        },
                     };
                     Some(Len::Px(base + win[i] / 2.0))
                 };
                 cell.style.padding = crate::computed::Sides {
-                    top: half(0, cell.style.padding.top),
-                    right: half(1, cell.style.padding.right),
-                    bottom: half(2, cell.style.padding.bottom),
-                    left: half(3, cell.style.padding.left),
+                    top: half(0, cell.style.padding.top, merged_pad.top),
+                    right: half(1, cell.style.padding.right, merged_pad.right),
+                    bottom: half(2, cell.style.padding.bottom, merged_pad.bottom),
+                    left: half(3, cell.style.padding.left, merged_pad.left),
                 };
 
                 cell.style.border_width = Default::default();
@@ -23327,6 +23431,23 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     {
                         el.style.height = Some(Len::Px(h * k));
                     }
+                    // Пороги той же долей — от той же заданной высоты ячейки
+                    // (CSS 2.1 §10.7: доля `max-height`/`min-height` считается
+                    // как у `height`). Нерешённая доля у нас отбрасывается, и
+                    // заменяемый ребёнок шёл природным размером: `<canvas
+                    // 200×200 max-height: 100%>` в ячейке высотой 100 давал
+                    // 200×200 вместо 100×100
+                    // (`percent-height-replaced-in-percent-cell-002`).
+                    if let Node::Element(el) = child
+                        && let Some(Len::Pct(k)) = el.style.max_height
+                    {
+                        el.style.max_height = Some(Len::Px(h * k));
+                    }
+                    if let Node::Element(el) = child
+                        && let Some(Len::Pct(k)) = el.style.min_height
+                    {
+                        el.style.min_height = Some(Len::Px(h * k));
+                    }
                 }
                 cell.style.height = None;
                 let floor = match cell.style.min_height {
@@ -23409,19 +23530,46 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 };
                 c
             };
+            // Сплошной цвет ячейки сросшейся модели уходит в слой под
+            // кромками (`cell_bgs`, см. объявление): коробка остаётся без
+            // заливки, цвет пишет проба. Картинка, градиент, `background-clip`,
+            // спрятанная или преобразованная ячейка красятся по-прежнему на
+            // месте — для них слой не строится.
+            let bg_layered = paint_layers
+                && box_style.bg_clip.is_none()
+                && box_style.gradient.is_none()
+                && box_style.bg_image.is_none()
+                && box_style.hidden != Some(true)
+                && box_style.opacity.is_none_or(|o| o >= 1.0)
+                && box_style.transform.is_none()
+                && box_style.translate.is_none()
+                && box_style.filter.is_none();
+            let mut box_style = box_style;
+            let own_bg = box_style.background;
+            if bg_layered {
+                box_style.background = None;
+            }
             let mut d = styled_div_with(cell, &box_style);
             // Заливка строки И ГРУППЫ строк: своей коробки у них в общей сетке
             // не остаётся, поэтому фон рисуют ячейки. Раньше бралась только
             // строка, и `<tbody style="background">` пропадал молча
             // (`position-relative-table-tbody-left`).
+            let mut layer_bg = bg_layered.then_some(own_bg).flatten();
             if let Some(bg) = carry.2 {
                 // Ряд с КАРТИНКОЙ красит и цвет САМ (см. CellsClipped) —
                 // ячейка его не дублирует, иначе цвет ложится поверх
                 // картинки. Ряду только с тенью цвет оставляют ячейки.
                 let picture = row.style.bg_image.is_some() || row.style.gradient_raw.is_some();
                 if !picture {
-                    d = d.bg(bg.to_hsla());
+                    if bg_layered {
+                        layer_bg = Some(bg);
+                    } else {
+                        d = d.bg(bg.to_hsla());
+                    }
                 }
+            }
+            if let Some(bg) = layer_bg {
+                d = d.child(crate::interact::cell_bg_probe(cell_bgs.clone(), bg.to_hsla()));
             }
             // Сдвиг строки или её группы: собственного элемента у них нет,
             // поэтому край, заданный на `<tr>`/`<tbody>`, двигает ячейки.
@@ -23528,6 +23676,17 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // (CSS 2.2 §17.2) — та же явная расстановка, зеркалом.
                 let gc = cols as i16 - col_ix as i16 - span_cols as i16 + 1;
                 d = d.col_start(gc.max(1)).row_start(row_ix);
+            } else {
+                // Явная расстановка ВСЕГДА (CSS 2.1 §17.5.1: ячейка стоит в
+                // ряду своего `<tr>` и в колонке по счёту с учётом охватов).
+                // Авто-поток сетки рядов не знает: у ряда КОРОЧЕ прочих (одна
+                // ячейка в столе из двух колонок) следующий ряд продолжал
+                // заполнять ту же дорожку, и стол из `<thead>` «head» /
+                // «body one» / «body two» / «foot» выходил «head body / one
+                // body / two foot» (`rules-groups`, снимок s1234 против
+                // эталона с явной расстановкой). Заодно порядок детей сетки
+                // свободен для слоёв краски (см. `cells_over`).
+                d = d.col_start(col_ix as i16 + 1).row_start(row_ix);
             }
             for c in col_ix..(col_ix + span_cols as usize).min(occupied.len()) {
                 occupied[c] = span_rows;
@@ -23678,6 +23837,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     let side_colour = |k: usize| {
                         row.style.border_colors[k]
                             .or(row.style.border_color)
+                            .or(row_style.color)
                             .unwrap_or(black)
                     };
                     let colors = [
@@ -23747,6 +23907,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     let side_colour = |k: usize| {
                         g.style.border_colors[k]
                             .or(g.style.border_color)
+                            .or(g.style.color)
+                            .or(inherited.color)
                             .unwrap_or(black)
                     };
                     let colors = [
@@ -23814,6 +23976,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     let side_colour = |k: usize| {
                         el.style.border_colors[k]
                             .or(el.style.border_color)
+                            .or(el.style.color)
+                            .or(inherited.color)
                             .unwrap_or(black)
                     };
                     let colors = [
@@ -23885,6 +24049,8 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     let side_colour = |k: usize| {
                         el.style.border_colors[k]
                             .or(el.style.border_color)
+                            .or(el.style.color)
+                            .or(inherited.color)
                             .unwrap_or(black)
                     };
                     let colors = [
@@ -23912,13 +24078,29 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     ));
                 }
             }
-            cells.push(d.children(inside).into_any_element());
+            if paint_layers && cell_paints_over(&cell.children, 24) {
+                cells_over.push(d.children(inside).into_any_element());
+            } else {
+                cells.push(d.children(inside).into_any_element());
+            }
         }
     }
 
-    if e.style.border_collapse == Some(true) {
-        cells.push(crate::interact::EdgePainter::new(table_edges.clone()).into_any_element());
+    // Порядок слоёв сетки: полосы дорожек/рядов → фоны ячеек → сросшиеся
+    // кромки → коробки ячеек с содержимым (см. `under`, `cell_bgs`). Прежде
+    // слой кромок шёл ПОСЛЕДНИМ и накрывал всё содержимое ячеек.
+    let mut grid_children = under;
+    if paint_layers {
+        grid_children
+            .push(crate::interact::CellBgPainter::new(cell_bgs.clone()).into_any_element());
     }
+    grid_children.extend(cells);
+    if paint_layers {
+        grid_children
+            .push(crate::interact::EdgePainter::new(table_edges.clone()).into_any_element());
+    }
+    grid_children.extend(cells_over);
+    let cells = grid_children;
     // Заголовок таблицы живёт ВНЕ коробки таблицы (CSS 2.1 §17.4:
     // анонимная обёртка держит заголовок и коробку) — рамка и обрезка
     // таблицы его не трогают; `caption-side: bottom` ставит его под сетку.
@@ -24172,6 +24354,32 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         ),
         _ => None,
     };
+    // Стол БЕЗ заданной высоты, но с рядами заданной высоты: дорожка такого
+    // ряда — `minmax(h, auto)` (CSS 2.1 §17.5.3: высота ряда — большее из
+    // заданной и нужной ячейкам), прочие — `auto`. Без дорожек высота ряда
+    // не доезжала до сетки вовсе: `tr {height: 50px}` с пустыми ячейками
+    // давал ряд в 2 точки паддинга (`table-as-item-cell-percentage-001/003/
+    // 004`: стол 100×4 вместо 100×100). Это НЕ откатанный вариант «дорожки
+    // рядов и без table_tall» (★ выше): там авто-ряды становились долями
+    // `1fr` с `flex_grow`, и ряды растягивались на высоту растянутого стола;
+    // здесь авто-ряд остаётся `auto`, а пол — только у ряда с высотой.
+    let row_floors: Option<Vec<gpui::GridTrack>> = (row_tracks.is_none()
+        && e.style.vertical != Some(true)
+        && row_elements
+            .iter()
+            .any(|r| matches!(r.style.height, Some(Len::Px(h)) if h > 0.0)))
+    .then(|| {
+        row_elements
+            .iter()
+            .map(|row| match row.style.height {
+                Some(Len::Px(h)) if h > 0.0 => gpui::GridTrack::MinMax(Box::new((
+                    gpui::GridTrack::Pixels(px(h)),
+                    gpui::GridTrack::Auto,
+                ))),
+                _ => gpui::GridTrack::Auto,
+            })
+            .collect()
+    });
     let grid_box = if e.style.vertical == Some(true) {
         // Ряд таблицы — КОЛОНКА сетки: заполнение идёт сверху вниз, ряд за
         // рядом поперёк (css-writing-modes-3 §8, table-progression-*).
@@ -24184,6 +24392,13 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // Сетка обязана занять ВСЮ высоту таблицы: доли рядов считаются
             // от её остатка, а auto-высота ребёнка гибкой колонки — ноль.
             g = g.grid_template_rows(rt).flex_grow();
+        } else if let Some(rt) = row_floors {
+            // Полы рядов (см. `row_floors`); растяжение элемента гибкого
+            // контейнера — как в ветке ниже.
+            g = g.grid_template_rows(rt);
+            if inherited.flex_item {
+                g = g.flex_grow();
+            }
         } else if inherited.flex_item {
             // Стол — элемент гибкого контейнера: высоту, данную ему ростом
             // или растяжением, делят ряды (CSS 2.1 §17.5.3; у сетки
@@ -24442,6 +24657,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         let side_colour = |i: usize| {
             e.style.border_colors[i]
                 .or(e.style.border_color)
+                .or(inherited.color)
                 .unwrap_or(black)
         };
         let colors = [
@@ -24520,6 +24736,34 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             w.flex_grow = grow;
             w.flex_shrink = shrink;
             w.align_self = if e.style.align_self.is_some() { own_align } else { None };
+            // Основа в РЯДУ: главная ось контейнера — строчная ось обёртки,
+            // и основа, оставленная на столе внутри колонки `wrap`, там не
+            // действует (у колонки это поперечная ось). Переносится на
+            // обёртку вместе с рамкой и отбивкой стола content-box —
+            // css-flexbox-1 §4: «as if the distance between the table wrapper
+            // box's edges and the table box's content edges were all part of
+            // the table box's border+padding area»
+            // (`table-as-item-inflexible-in-row-2`: `flex: 0 0 80px; border:
+            // 10px solid` — стол выходил 20 точек вместо 100).
+            if !matches!(inherited.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
+                && let Some(Len::Px(b)) = e.style.flex_basis
+            {
+                s.flex_basis = None;
+                let side = |l: Option<Len>| match l {
+                    Some(Len::Px(v)) => v,
+                    _ => 0.0,
+                };
+                let bd = e.style.borders();
+                let edges = if e.style.border_box == Some(true) {
+                    0.0
+                } else {
+                    side(bd.left)
+                        + side(bd.right)
+                        + side(e.style.padding.left)
+                        + side(e.style.padding.right)
+                };
+                w.flex_basis = Some(gpui::Length::Definite(px(b + edges).into()));
+            }
         } else {
             wrap.style().align_self = Some(gpui::AlignItems::FlexStart);
         }
@@ -25462,6 +25706,34 @@ fn col_element_widths(
 
 fn is_cell(e: &Element) -> bool {
     e.tag == "td" || e.tag == "th" || e.style.display == Some(Display::TableCell)
+}
+
+/// Есть ли в поддереве ячейки содержимое, которое красится ПОЗЖЕ сросшихся
+/// кромок стола: строчный уровень (атомы строки, заменяемые, инлайн-столы —
+/// фаза переднего плана), флоаты, позиционированные и контексты наложения
+/// (CSS 2.1 прил. E, шаги 5-8; Blink `box_fragment_painter.cc:952-957`
+/// красит кромки в `kDescendantBlockBackgroundsOnly`, то есть сразу после
+/// фонов поточных блочных потомков). Блочный поточный потомок без этих
+/// признаков остаётся под кромками — его в расчёт не берём, спускаясь в его
+/// детей. Глубина ограничена: обход идёт у каждой ячейки.
+fn cell_paints_over(nodes: &[Node], depth: u8) -> bool {
+    depth > 0
+        && nodes.iter().any(|n| match n {
+            Node::Element(k) => {
+                inline_level_box(k)
+                    || k.style.float.unwrap_or(0) != 0
+                    || matches!(
+                        k.style.position,
+                        Some(crate::computed::Position::Relative)
+                            | Some(crate::computed::Position::Absolute)
+                            | Some(crate::computed::Position::Fixed)
+                            | Some(crate::computed::Position::Sticky)
+                    )
+                    || stacking_context(&k.style)
+                    || cell_paints_over(&k.children, depth - 1)
+            }
+            Node::Text(_) => false,
+        })
 }
 
 /// Охват ячейки по рядам в пределах её группы: `left` — сколько рядов от
