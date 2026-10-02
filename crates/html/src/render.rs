@@ -2755,6 +2755,12 @@ fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     // ложился бы от края колонки, а мера считала бы его уже на поля
     // (`multicol-nested-002`: `margin: 0 1em`, v3 6.67). Такой блок строками не
     // меряется и идёт прежним путём.
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (03.10): обёртка-колонка вокруг копии с боковыми
+    // полями (поля кладёт раскладка) и мера строк на ширину за вычетом полей.
+    // `multicol-nested-002` 0.00 -> 2.67: поля встали, но высота
+    // многоколоночника — без нижнего поля последнего ребёнка (у Blink оно в
+    // колонке, 80 против наших 60: `fill_at` усекает хвостовое поле).
+    // Возвращать вместе с хвостовым полем в балансе.
     if px(&s.margin.left)? != 0.0 || px(&s.margin.right)? != 0.0 {
         return None;
     }
@@ -2809,6 +2815,14 @@ fn line_text(nodes: &[Node]) -> Option<String> {
             match n {
                 Node::Text(t) => out.push_str(t),
                 Node::Element(e) if e.tag == "br" => out.push('\u{2028}'),
+                // Абсолют в строке места не занимает (CSS 2.1 §9.6): строку
+                // не меняет, рисуется копией фрагмента от своего содержащего
+                // блока (`css-position/multicol/*-in-multicols`).
+                Node::Element(e)
+                    if matches!(
+                        e.style.position,
+                        Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+                    ) => {}
                 Node::Element(e) => {
                     let s = &e.style;
                     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
@@ -2883,8 +2897,18 @@ fn line_text(nodes: &[Node]) -> Option<String> {
 /// контексте (`with_lines`) и известной ширине колонки; иначе `None`, и мера
 /// идёт прежним путём (сплошной строчный набор — монолит).
 fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<Shape> {
-    if !matches!(c.style.height, None | Some(Len::Auto))
-        || c.style.min_height.is_some()
+    // Высота в точках — коробка своей высоты, строки внутри неё режутся так
+    // же (css-break-3 §4.3); строки ниже её низа — переполнение, точек там нет.
+    let fixed_h = match c.style.height {
+        None | Some(Len::Auto) => None,
+        Some(Len::Px(v)) if v >= 0.0 => Some(if c.style.border_box == Some(true) {
+            (v - top - bot).max(0.0)
+        } else {
+            v
+        }),
+        _ => return None,
+    };
+    if c.style.min_height.is_some()
         || c.style.max_height.is_some()
         || c.children.iter().all(is_blank)
     {
@@ -2924,9 +2948,10 @@ fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<S
     let lines = crate::metrics::line_count(&font, size, &text, w)?.max(1);
     let orphans = inh.orphans.unwrap_or(2).max(1) as usize;
     let widows = inh.widows.unwrap_or(2).max(1) as usize;
-    let h = top + lines as f32 * lh + bot;
+    let content = fixed_h.unwrap_or(lines as f32 * lh);
+    let h = top + content + bot;
     let cuts: Vec<(f32, f32)> = (orphans..=lines.saturating_sub(widows))
-        .filter(|k| *k >= 1 && *k < lines)
+        .filter(|k| *k >= 1 && *k < lines && (*k as f32) * lh < content - 0.01)
         .map(|k| (top + k as f32 * lh, top + k as f32 * lh))
         .collect();
     // Строка неразрывна (css-break-3 §4.3: разрыв только МЕЖДУ строками), а
