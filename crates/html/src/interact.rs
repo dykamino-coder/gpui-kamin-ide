@@ -4159,6 +4159,13 @@ pub fn vt_seq_key(base: u64) -> u64 {
     })
 }
 
+thread_local! {
+    /// Сборщик внутреннего строчного размера повёрнутого текста (`None` —
+    /// закрыт): наибольшая длина строки всех `VerticalText`, разложенных,
+    /// пока он открыт.
+    pub static VT_INLINE_MAX: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+}
+
 pub struct VerticalText {
     child: Option<AnyElement>,
     /// Естественный размер содержимого до поворота.
@@ -4309,6 +4316,16 @@ impl Element for VerticalText {
             .as_mut()
             .unwrap()
             .layout_as_root(space, window, cx);
+        // Внутренний строчный размер повёрнутого текста — длина его самой
+        // длинной строки (`natural.width` горизонтального абзаца до
+        // поворота). Наружу высотой он не заявляется (см. ниже), и пробе
+        // флоата хоста полос (`band_flow::intrinsic`, письмо вертикальное)
+        // его взять неоткуда — сборщик кладёт его сюда, когда открыт.
+        VT_INLINE_MAX.with(|c| {
+            if let Some(v) = c.get() {
+                c.set(Some(v.max(f32::from(self.natural.width))));
+            }
+        });
         let mut style = gpui::Style::default();
         // Ширина заявляется, высота — НЕТ. Ширина повёрнутого блока это число
         // строк, его меньше не сделать. А высота — длина строки, и её решает

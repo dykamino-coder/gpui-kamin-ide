@@ -123,6 +123,9 @@ pub struct Kid {
     /// Анонимный строчный прогон (CSS 2.1 §9.2.1.1): своей коробки у него
     /// нет, и сдвинуть его целиком — то же, что сдвинуть его строки.
     pub anon: bool,
+    /// Первое слово анонимного прогона (`render.rs` `band_kids`): по его
+    /// min-content решается, влезает ли первая строка в окно (§9.5).
+    pub head: Option<Build>,
 }
 
 /// Место ребёнка в плане: левый верх border-box, доступная ширина (по ней
@@ -239,17 +242,30 @@ fn unrounded(tap: &Rc<Cell<Option<LayoutId>>>, window: &mut Window) -> (f32, f32
 
 /// Внутренние ширины ребёнка (min-content, max-content) border-box.
 fn intrinsic(kid: &Kid, window: &mut Window, cx: &mut App) -> (f32, f32) {
+    intrinsic_of(&kid.build, window, cx)
+}
+
+/// Внутренние ширины того, что строит `build` (ребёнок или голова прогона).
+fn intrinsic_of(build: &Build, window: &mut Window, cx: &mut App) -> (f32, f32) {
     let tap = Rc::new(Cell::new(None));
     let mut el = Tap {
-        inner: (kid.build)(0.0, 0.0, None, None),
+        inner: build(0.0, 0.0, None, None),
         id: tap.clone(),
     }
     .into_any_element();
     let vert = VERT.with(Cell::get).is_some();
     let mut w = |a: AvailableSpace, window: &mut Window| {
         if vert {
+            // Повёрнутый текст свою длину высотой не заявляет (растягивается
+            // окном) — берём её у самого текста через сборщик
+            // `VT_INLINE_MAX`; коробка без текста отвечает раскладкой.
+            let prev = crate::interact::VT_INLINE_MAX.with(|c| c.replace(Some(0.0)));
             el.layout_as_root(size(AvailableSpace::MaxContent, a), window, cx);
-            unrounded(&tap, window).1
+            let text = crate::interact::VT_INLINE_MAX
+                .with(|c| c.replace(prev))
+                .unwrap_or(0.0);
+            let laid = unrounded(&tap, window).1;
+            if text > 0.0 { text.min(laid) } else { laid }
         } else {
             el.layout_as_root(size(a, AvailableSpace::MaxContent), window, cx);
             unrounded(&tap, window).0
@@ -469,8 +485,12 @@ fn place_seq(
                 // которое влезает его самый узкий кусок (min-content, с
                 // отступом первой строки): `below-float2/3` — флоат на всю
                 // ширину, `x` с `text-indent` встаёт под ним, а не за краем.
+                // Кусок — первое слово (`Kid::head`), когда оно известно.
                 if kid.anon {
-                    let need = intrinsic(kid, window, cx).0;
+                    let need = match kid.head.as_ref() {
+                        Some(h) => intrinsic_of(h, window, cx).0,
+                        None => intrinsic(kid, window, cx).0,
+                    };
                     loop {
                         let (l, r) = bands.available(top, 0.0);
                         if r - l + EPS >= need.min(avail) {
@@ -601,6 +621,13 @@ fn intrinsic_width(kids: &[Kid], max: bool, window: &mut Window, cx: &mut App) -
                 let ri = if mr > 0.0 { fr.max(mr) } else { fr + mr };
                 mx + li + ri
             }
+            // Анонимный прогон строк — строчный контекст САМОГО хоста: флоаты
+            // перед ним стоят в той же строке, и max-content строки — их сумма
+            // с текстом (Blink `InlineNode::ComputeMinMaxSizes`, флоаты в
+            // списке строчных элементов). Без суммы хост ужимался до ширины
+            // флоата, текст уходил под него, и хост выходил вдвое выше
+            // (`floats-122`: флоат `X` и `X` за ним — 50 вместо 100).
+            _ if kid.anon => fl + fr + mx + ml + mr,
             _ => mx + ml + mr,
         };
         max_size = max_size.max(contribution);

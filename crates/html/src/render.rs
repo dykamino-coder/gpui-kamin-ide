@@ -11279,11 +11279,14 @@ fn band_orthogonal(c: &Computed) -> bool {
         || (c.vertical == Some(true) && c.vertical_rl.is_some_and(|r| r != (wm == 1)))
 }
 
-/// Включён ли шаг F10 — флоаты в вертикальном письме (`BF_F10=1`, только
-/// для замера).
+/// Включён ли шаг F10 — флоаты в вертикальном письме. По умолчанию включён
+/// (замер 02.10, `wptrun-br5`: writing-modes из quick 168 → 170, +3/−1 —
+/// `float-contiguous-vlr-005/-009`, `-vrl-004` в плюс, `-vrl-008` в минус;
+/// пары slice4 с `writing-mode` 48 → 50, +2/−0 — `css-break/background-image-001/-002`).
+/// `BF_F10=0` — прежний путь, для замера.
 fn band_f10() -> bool {
     static ON: std::sync::LazyLock<bool> =
-        std::sync::LazyLock::new(|| std::env::var("BF_F10").is_ok_and(|v| v == "1"));
+        std::sync::LazyLock::new(|| std::env::var("BF_F10").map_or(true, |v| v != "0"));
     *ON
 }
 
@@ -11540,6 +11543,36 @@ fn band_kids(
                 },
             }
         };
+        // Голова анонимного прогона — его первое слово (до первой мягкой
+        // возможности разрыва): по ней план решает, влезает ли ПЕРВАЯ строка
+        // в окно рядом с флоатами (§9.5). min-content всего прогона — самое
+        // длинное слово где-то дальше — опускал прогон под флоат, хотя
+        // первые строки рядом помещались (`shape-image-012-ref`: флоат 100px
+        // в 200px, строки `XXXXX` по 100px рядом, а `XXXXXXXXXX` — ниже).
+        // При `nowrap` и значимых пробелах слово не граница строки — голову
+        // не заводим, мерится весь прогон.
+        let head: Option<crate::band_flow::Build> = if c.attr("anon") == Some("1")
+            && inherited.nowrap != Some(true)
+            && inherited.keep_spaces != Some(true)
+        {
+            match c.children.iter().find(|n| !is_blank(n)) {
+                Some(Node::Text(t)) => t.split_whitespace().next().map(|word| {
+                    let mut hn = c.clone();
+                    hn.children = vec![Node::Text(word.to_string())];
+                    let inherited = inherited.clone();
+                    let opts = opts.clone();
+                    let b: crate::band_flow::Build =
+                        std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
+                            let _depth = DepthScope::enter(depth);
+                            element(&hn, &inherited, &opts)
+                        });
+                    b
+                }),
+                _ => None,
+            }
+        } else {
+            None
+        };
         let node = c.clone();
         let inherited = inherited.clone();
         let opts = opts.clone();
@@ -11675,6 +11708,7 @@ fn band_kids(
             build,
             nest,
             anon: c.attr("anon") == Some("1"),
+            head,
         });
     }
     kids
