@@ -313,6 +313,24 @@ impl TaffyLayoutEngine {
         );
     }
 
+    /// KaminIDE patch: размер узла и его смещение от родителя БЕЗ округления
+    /// к точке устройства. Строке нужны точные размеры атомов: округлённые
+    /// края дают +0.4px на атом при масштабе 1.25, и ряд атомов ровно в
+    /// ширину строки переставал в неё влезать.
+    pub fn layout_exact(&self, id: LayoutId, scale_factor: f32) -> (Point<Pixels>, Size<Pixels>) {
+        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
+        (
+            point(
+                Pixels(layout.location.x / scale_factor),
+                Pixels(layout.location.y / scale_factor),
+            ),
+            size(
+                Pixels(layout.size.width / scale_factor),
+                Pixels(layout.size.height / scale_factor),
+            ),
+        )
+    }
+
     pub fn layout_bounds(&mut self, id: LayoutId, scale_factor: f32) -> Bounds<Pixels> {
         if let Some(layout) = self.absolute_layout_bounds.get(&id).cloned() {
             return layout;

@@ -2660,12 +2660,20 @@ pub fn uniform_border(c: &Computed, font_px: f32) -> Option<(Color, f32)> {
 /// (`line-edge-white-space-collapse-001` и `-002`: иначе у рамки оставался
 /// лишний пробел и из-под неё выглядывало красное).
 pub fn trim_edge_spaces(pieces: &mut [Piece]) {
-    trim_edge(pieces.iter_mut().rev(), false);
-    trim_edge(pieces.iter_mut(), true);
+    trim_edge(pieces.iter_mut().rev(), false, false);
+    trim_edge(pieces.iter_mut(), true, false);
+}
+
+/// То же для абзаца, чьи атомы встают В СТРОКУ (`Paragraph::atoms`): там атом
+/// — содержимое строки (CSS 2.1 §9.2.2), и ряд пробелов ЗА ним уже не на краю.
+/// Прозрачный атом срезал пробелы между атомами: `<img> <img>` слипались.
+pub fn trim_edge_spaces_solid_atoms(pieces: &mut [Piece]) {
+    trim_edge(pieces.iter_mut().rev(), false, true);
+    trim_edge(pieces.iter_mut(), true, true);
 }
 
 /// Один край строки: куски идут от него внутрь, коробки пропускаются.
-fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool) {
+fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool, solid_atoms: bool) {
     for piece in pieces {
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v155, `scout-emphasis-2026-09.md`):
     // отрисовка `text-emphasis` (11 хунков) вместе с правкой `trim_edge`
@@ -2678,6 +2686,7 @@ fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool) {
     // Срез краевого пробела после атома трогает всю строчную раскладку —
     // мерить отдельно и сначала только его.
         match piece {
+            Piece::Atom(_) if solid_atoms => return,
             // Коробка без текста для ряда пробелов прозрачна.
             Piece::Atom(_) | Piece::Overlay(_) => continue,
             // Распорка полей строчной коробки и метка атома прозрачны так же:
