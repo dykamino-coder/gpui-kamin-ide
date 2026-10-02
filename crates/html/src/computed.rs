@@ -1428,6 +1428,10 @@ pub enum ContentItem {
     /// `open-quote`/`close-quote` (`emit`) и `no-open-quote`/`no-close-quote`
     /// (только сдвиг глубины) — css-content-3 §4.2.
     Quote { open: bool, emit: bool },
+    /// `url(…)` — картинка-атом в `::before`/`::after` (css-content-3 §2).
+    /// Строится настоящим `<img>`-ребёнком псевдоэлемента: природный размер
+    /// меряет обычный путь картинок. В маркере и тексте не печатается.
+    Image(String),
 }
 
 /// Порядковые номера объявлений физических сторон (top, right, bottom, left)
@@ -10420,6 +10424,7 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
                 arg(2).unwrap_or_else(|| "decimal".to_string()),
             )),
             "attr" if args.len() == 1 => out.push(ContentItem::Attr(arg(0)?)),
+            "url" if args.len() <= 1 => out.push(ContentItem::Image(arg(0).unwrap_or_default())),
             // ПРОБОВАЛИ И ОТКАТИЛИ: принимать `url()` (§12.2 объявляет его
             // действительным) и класть в псевдоэлемент синтетический `<img>`.
             // Проба по 195 парам `generated-content`: флипов ноль, потеряна

@@ -3404,12 +3404,29 @@ fn walk(
             } else {
                 children
             };
+            let inline = INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
+            // Замена элемента (css-content-3 §content-property: «a single
+            // <image>» на самом элементе): коробка становится замещаемой
+            // картинкой, содержимое не рисуется. Уровень коробки остаётся от
+            // исходного тега и `display` — `<p>` замещается блоком. Корень не
+            // трогается: замещаемого корня у нас нет. Ненайденная картинка
+            // замены не делает (Servo `replaced.rs:348`: `None` при ошибке).
+            let (tag, children, attrs) = match style.content.as_deref() {
+                Some([crate::computed::ContentItem::Image(src)])
+                    if tag != "html" && content_image_src(src).is_some() =>
+                {
+                    let mut attrs: Vec<(String, String)> =
+                        attrs.into_iter().filter(|(k, _)| k != "src" && k != "srcset").collect();
+                    attrs.push(("src".into(), content_image_src(src).unwrap_or_default()));
+                    ("img".to_string(), vec![], attrs)
+                }
+                _ => (tag, children, attrs),
+            };
             out.push(Node::Element(Element {
                 list_item,
                 node_id: *counter,
                 anim,
-                inline: INLINE_TAGS.contains(&tag.as_str())
-                    || !BLOCK_TAGS.contains(&tag.as_str()),
+                inline,
                 tag,
                 style,
                 hover,
@@ -3791,6 +3808,7 @@ fn content_text(
                 text.push_str(&counters.quote(*open, *emit, own_quotes));
             }
             crate::computed::ContentItem::Str(sv) => text.push_str(sv),
+            crate::computed::ContentItem::Image(_) => {}
             crate::computed::ContentItem::Counter(name, style_name) => {
                 let value = counters.value_of(name);
                 text.push_str(&crate::counter_style::repr(value, style_name));
@@ -3813,6 +3831,21 @@ fn content_text(
         }
     }
     text
+}
+
+/// Адрес картинки из `content: url()` в форме `src` для `<img>`: загрузчик
+/// ждёт `file:///` с прямыми косыми (как пишет стенд для `<img src>`), а
+/// разбор стиля отдаёт голый путь. `None` — файла нет: такая картинка коробки
+/// не даёт (Servo `components/layout/replaced.rs:348`).
+fn content_image_src(src: &str) -> Option<String> {
+    if src.starts_with("data:") {
+        return Some(src.to_string());
+    }
+    let path = src.trim_start_matches("file:///");
+    if !std::path::Path::new(path).is_file() {
+        return None;
+    }
+    Some(format!("file:///{path}").replace('\\', "/"))
 }
 
 fn pseudo_box(
@@ -3891,7 +3924,49 @@ fn pseudo_box_named(
     );
     // Составляющие склеиваются по порядку (css-content-3 §2): строки как
     // есть, счётчики — знаками своего стиля, `attr()` — значением атрибута.
-    let text = content_text(&list, counters, attrs, style.quotes.as_ref());
+    // Составляющие идут по порядку: подряд идущие текстовые склеиваются в
+    // один текстовый узел, `url()` становится строчным `<img>` между ними.
+    // Ненайденная картинка коробки НЕ даёт вовсе — как в Servo
+    // (`components/layout/dom_traversal.rs:398`: `from_image` → `None` при
+    // ошибке загрузки, и элемент пропускается). Прошлые заходы давали ей
+    // коробку и теряли `before-after-images-001` и `-table-whitespace-001`.
+    let mut children: Vec<Node> = vec![];
+    let mut run: Vec<crate::computed::ContentItem> = vec![];
+    let flush = |run: &mut Vec<crate::computed::ContentItem>,
+                 children: &mut Vec<Node>,
+                 counters: &mut crate::counters::Counters| {
+        if !run.is_empty() {
+            let t = content_text(run, counters, attrs, style.quotes.as_ref());
+            children.push(Node::Text(t));
+            run.clear();
+        }
+    };
+    for item in &list {
+        if let crate::computed::ContentItem::Image(src) = item {
+            flush(&mut run, &mut children, counters);
+            if let Some(src) = content_image_src(src) {
+                children.push(Node::Element(Element {
+                    list_item: None,
+                    node_id: 0,
+                    anim: None,
+                    tag: "img".into(),
+                    style: Computed::default(),
+                    hover: None,
+                    first_letter: None,
+                    first_line: None,
+                    children: vec![],
+                    attrs: vec![("src".into(), src)],
+                    inline: true,
+                }));
+            }
+        } else {
+            run.push(item.clone());
+        }
+    }
+    flush(&mut run, &mut children, counters);
+    if children.is_empty() {
+        children.push(Node::Text(String::new()));
+    }
     counters.leave();
     Some(Element {
         list_item: None,
@@ -3908,7 +3983,7 @@ fn pseudo_box_named(
         hover: None,
         first_letter: None,
         first_line: None,
-        children: vec![Node::Text(text)],
+        children,
         attrs: vec![],
     })
 }

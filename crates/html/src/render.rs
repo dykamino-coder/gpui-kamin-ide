@@ -13559,7 +13559,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
                         Node::Text(t) if blank_text(t) => {}
                         Node::Text(_) => known = false,
                         Node::Element(ch) if !in_flow(&ch.style) => {}
-                        Node::Element(ch) if ch.inline => known = false,
+                        Node::Element(ch) if ch.inline && inline_level_box(ch) => known = false,
                         Node::Element(ch) => {
                             let b = ch.style.borders();
                             let side = |l: Option<Len>| match l {
@@ -13783,7 +13783,13 @@ fn first_in_flow<'a>(
         match c {
             Node::Text(t) if blank_text(t) => continue,
             Node::Text(_) => return None,
-            Node::Element(ch) if ch.inline => {
+            // Строчный ТЕГ с блочным видом — блочный ребёнок: нижнее поле
+            // `<em style="display:block">` схлопывается через родителя
+            // (`selectors-001`: под зелёной строкой оставалась красная полоса
+            // в 1em). Обратный случай (`div` с `inline-block`) остаётся на
+            // прежнем пути: ★ ЗАМЕРЕНО — чистое `inline_level_box(ch)` роняло
+            // `image-color-background-size` 0.00 → 4.50.
+            Node::Element(ch) if ch.inline && inline_level_box(ch) => {
                 // Замещаемый атом (img и родня) — строчная КОРОБКА, а не
                 // пустой спан: он рождает line box и рвёт примыкание.
                 // Пропуск ронял отступ параграфа перед голым <img> в
