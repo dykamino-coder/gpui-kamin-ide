@@ -1543,7 +1543,21 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         d.style().hides_baseline = Some(true);
     }
     if c.contain_paint == Some(true) {
-        d = d.overflow_hidden();
+        // Обрезка по краю БЕЗ контейнера прокрутки (css-contain-2 §3.3
+        // paint containment: «contents … clipped to the overflow clip
+        // edge»; вычисленный `overflow` остаётся `visible`) — это `clip`, а
+        // не `hidden`. `hidden` в taffy — контейнер прокрутки, а у него
+        // базовой линии нет (`compute/block.rs` `hides_baseline`), и
+        // `inline-block` с `contain: paint` садился на строку низом полей
+        // (`contain-paint-independent-formatting-context-002`). Ось с уже
+        // заданным `overflow` не трогается.
+        let o = &mut d.style().overflow;
+        if o.x.is_none_or(|x| x == gpui::Overflow::Visible) {
+            o.x = Some(gpui::Overflow::Clip);
+        }
+        if o.y.is_none_or(|y| y == gpui::Overflow::Visible) {
+            o.y = Some(gpui::Overflow::Clip);
+        }
     }
 
     match c.position {
