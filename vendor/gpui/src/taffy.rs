@@ -37,6 +37,9 @@ pub struct TaffyLayoutEngine {
     /// KaminIDE patch: абсолютная позиция узла в физических точках БЕЗ
     /// округления — из неё считается округление на границе кадра.
     absolute_unrounded: FxHashMap<LayoutId, (f32, f32)>,
+    /// KaminIDE patch: абсолютное начало КОРНЯ отдельного дерева (физические
+    /// точки, без округления) — см. `set_root_origin`.
+    root_origins: FxHashMap<LayoutId, (f32, f32)>,
     computed_layouts: FxHashSet<LayoutId>,
 }
 
@@ -56,6 +59,7 @@ impl TaffyLayoutEngine {
             taffy,
             absolute_layout_bounds: FxHashMap::default(),
             absolute_unrounded: FxHashMap::default(),
+            root_origins: FxHashMap::default(),
             computed_layouts: FxHashSet::default(),
         }
     }
@@ -64,7 +68,33 @@ impl TaffyLayoutEngine {
         self.taffy.clear();
         self.absolute_unrounded.clear();
         self.absolute_layout_bounds.clear();
+        self.root_origins.clear();
         self.computed_layouts.clear();
+    }
+
+    /// KaminIDE patch: поставить корень отдельного дерева (`layout_as_root`)
+    /// на ДРОБНОЕ абсолютное место окна. Края его потомков тогда округляются
+    /// на абсолютной координате — так же, как в основном дереве, — а не от
+    /// целого начала корня: атом строки (`kamin-html` `lines.rs`) иначе
+    /// расходился на точку с тем же атомом в гибком ряду
+    /// (`flexbox-justify-content-horiz-004-ref`, `grid-inline-items-001`).
+    /// Возвращаемые границы — абсолютные: смещение элемента ставить нулём.
+    pub fn set_root_origin(&mut self, id: LayoutId, origin: Point<Pixels>, scale_factor: f32) {
+        self.root_origins
+            .insert(id, (origin.x.0 * scale_factor, origin.y.0 * scale_factor));
+        let mut stack = SmallVec::<[LayoutId; 64]>::new();
+        stack.push(id);
+        while let Some(id) = stack.pop() {
+            self.absolute_layout_bounds.remove(&id);
+            self.absolute_unrounded.remove(&id);
+            stack.extend(
+                self.taffy
+                    .children(id.into())
+                    .expect(EXPECT_MESSAGE)
+                    .into_iter()
+                    .map(Into::into),
+            );
+        }
     }
 
     pub fn request_layout(
@@ -376,7 +406,8 @@ impl TaffyLayoutEngine {
                     .copied()
                     .unwrap_or((0.0, 0.0))
             }
-            None => (0.0, 0.0),
+            // KaminIDE patch: корень с заданным местом (`set_root_origin`).
+            None => self.root_origins.get(&id).copied().unwrap_or((0.0, 0.0)),
         };
         let ax = parent_x + layout.location.x;
         let ay = parent_y + layout.location.y;

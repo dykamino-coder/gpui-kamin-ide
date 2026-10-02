@@ -3283,6 +3283,11 @@ pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement)> {
     out
 }
 
+/// Шрифт струта абзаца — тот же, каким набирался бы текст самого блока.
+pub fn strut_font(style: &Computed, base: &TextStyle) -> gpui::Font {
+    run_for("x", style, base).font
+}
+
 fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
     let mut font = base.font();
     // Названное семейство сильнее родового: подстановкой занимается система.

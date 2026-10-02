@@ -4038,6 +4038,17 @@ impl Window {
         self.layout_engine = Some(layout_engine);
     }
 
+    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
+    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
+    /// надо с нулевым смещением — его границы уже абсолютные.
+    pub fn set_layout_root_origin(&mut self, layout_id: LayoutId, origin: Point<Pixels>) {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_mut()
+            .unwrap()
+            .set_root_origin(layout_id, origin, scale_factor);
+    }
+
     /// KaminIDE patch: смещение узла от родителя и его размер без округления
     /// к точке устройства (см. `TaffyLayoutEngine::layout_exact`).
     pub fn layout_exact(&mut self, layout_id: LayoutId) -> (Point<Pixels>, Size<Pixels>) {
