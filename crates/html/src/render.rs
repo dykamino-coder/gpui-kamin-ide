@@ -2759,25 +2759,17 @@ fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    // Боковые поля копии фрагмента не кладутся: копия встаёт КОРНЕМ
-    // (`layout_as_root` во всю колонку), и корень своих полей не читает — текст
-    // ложился бы от края колонки, а мера считала бы его уже на поля
-    // (`multicol-nested-002`: `margin: 0 1em`, v3 6.67). Такой блок строками не
-    // меряется и идёт прежним путём.
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (03.10): обёртка-колонка вокруг копии с боковыми
-    // полями (поля кладёт раскладка) и мера строк на ширину за вычетом полей.
-    // `multicol-nested-002` 0.00 -> 2.67: поля встали, но высота
-    // многоколоночника — без нижнего поля последнего ребёнка (у Blink оно в
-    // колонке, 80 против наших 60: `fill_at` усекает хвостовое поле).
-    // Возвращать вместе с хвостовым полем в балансе.
-    if px(&s.margin.left)? != 0.0 || px(&s.margin.right)? != 0.0 {
-        return None;
-    }
+    // Боковые поля копии фрагмента кладёт обёртка (`side_margin_wrap`): корень
+    // `layout_as_root` своих полей не читает, а под обёрткой копия — обычный
+    // ребёнок. ★ Прежде (03.10) замер обёртки дал `multicol-nested-002` 0.00 ->
+    // 2.67 из-за концевого поля в балансе — теперь оно в `balance_line`.
     let b = s.borders();
     let edges = px(&s.padding.left)? + px(&s.padding.right)? + px(&b.left)? + px(&b.right)?;
     match s.width {
         Some(Len::Px(w)) => Some(if s.border_box == Some(true) { (w - edges).max(0.0) } else { w }),
-        None | Some(Len::Auto) => Some((pw - edges).max(0.0)),
+        None | Some(Len::Auto) => {
+            Some((pw - px(&s.margin.left)? - px(&s.margin.right)? - edges).max(0.0))
+        }
         _ => None,
     }
 }
@@ -3189,6 +3181,20 @@ fn nested_box_w(c: &Element, cw: f32) -> Option<f32> {
     let outer = cw - px(&s.margin.left)? - px(&s.margin.right)?;
     let edges = px(&s.padding.left)? + px(&s.padding.right)? + px(&b.left)? + px(&b.right)?;
     Some(if s.border_box == Some(true) { outer } else { outer - edges }.max(0.0))
+}
+
+/// Копия ребёнка стопки встаёт КОРНЕМ (`flow.rs` `layout_as_root` во всю
+/// колонку), а корень taffy своих полей не кладёт: боковое поле `margin: 0 1em`
+/// пропадало, текст ложился от края колонки (`multicol-nested-002`). Обёртка-
+/// колонка делает копию обычным ребёнком: её поля и растяжение решает
+/// раскладка (CSS 2.1 §10.3.3). Только горизонтальная стопка и только при
+/// ненулевых полях в точках — иначе копия прежняя.
+fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -> AnyElement {
+    let nz = |l: &Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
+    if vertical || !(nz(&copy.style.margin.left) || nz(&copy.style.margin.right)) {
+        return el;
+    }
+    div().flex().flex_col().w_full().child(el).into_any_element()
 }
 
 /// Строчные прогоны среди блочных детей многоколоночника — в анонимные блоки
@@ -22629,11 +22635,13 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     _ => copies,
                                 };
                                 crate::flow::StackChild {
-                                    el: build(true, 0),
+                                    el: side_margin_wrap(build(true, 0), &copy, col_vert),
                                     frags: if span {
                                         Vec::new()
                                     } else {
-                                        (1..kid_copies).map(|i| build(false, i)).collect()
+                                        (1..kid_copies)
+                                            .map(|i| side_margin_wrap(build(false, i), &copy, col_vert))
+                                            .collect()
                                     },
                                     monolith,
                                     cuts,

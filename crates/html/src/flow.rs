@@ -2424,6 +2424,27 @@ impl ColumnStack {
             let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, limit, false);
             return (h, slots);
         }
+        // Нижнее поле ПОСЛЕДНЕГО ребёнка не примыкает к разрыву — многоколоночник
+        // свой контекст форматирования (CSS 2.1 §8.3.1), и поле остаётся в
+        // содержимом последней колонки: балансу оно нужно так же, как высота
+        // (Blink `column_layout_algorithm.cc` `CalculateBalancedColumnBlockSize`
+        // считает `content_block_size` с концевым полем). Без него колонки
+        // выходили на поле короче (`multicol-nested-002`: 60 против 80). На
+        // разрыве поле по-прежнему усекается — оно только у последнего.
+        let tail;
+        let kids = match kids.last() {
+            Some(k) if k.mb > 0.01 && !k.span && k.par.group == 0 => {
+                let mut v = kids.to_vec();
+                if let Some(l) = v.last_mut() {
+                    l.h += l.mb;
+                    l.over = l.over.max(l.h);
+                    l.mb = 0.0;
+                }
+                tail = v;
+                &tail[..]
+            }
+            _ => kids,
+        };
         // Оценка — по прогонам между принудительными разрывами (`runs_guess`); без
         // них это прежняя `сумма / count`.
         let guess = Self::runs_guess(kids, self.count);
