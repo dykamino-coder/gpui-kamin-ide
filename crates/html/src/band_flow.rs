@@ -120,6 +120,12 @@ pub struct Kid {
     pub build: Build,
     /// Дети `Kind::Nest`.
     pub nest: Option<Nest>,
+    /// Анонимный строчный прогон (CSS 2.1 §9.2.1.1): своей коробки у него
+    /// нет, и сдвинуть его целиком — то же, что сдвинуть его строки.
+    pub anon: bool,
+    /// Первое слово анонимного прогона (`render.rs` `band_kids`): по его
+    /// min-content решается, влезает ли первая строка в окно (§9.5).
+    pub head: Option<Build>,
 }
 
 /// Место ребёнка в плане: левый верх border-box, доступная ширина (по ней
@@ -134,6 +140,28 @@ struct Slot {
     h: Option<f32>,
     /// Места детей `Kind::Nest`.
     kids: Vec<Slot>,
+    /// Блочный размер border-box: в вертикальном письме по нему ставится
+    /// физический левый край (`vertical-rl` идёт от ПРАВОГО края).
+    b: f32,
+}
+
+thread_local! {
+    /// Письмо хоста на время плана и сборки: `None` — горизонтальное,
+    /// `Some(true)` — `vertical-rl`, `Some(false)` — `vertical-lr` (шаг F10).
+    /// Полосы и весь план считают в ЛОГИЧЕСКИХ осях (inline = вертикаль,
+    /// block = горизонталь) — как Blink: `BfcOffset` строчно-относителен
+    /// (`geometry/bfc_offset.h:26-38`), в физику переводится один раз
+    /// (`geometry/writing_mode_converter.cc:80-102`). Каркас пробы и
+    /// держатели в `prepaint` — в физике, по этому признаку.
+    static VERT: Cell<Option<bool>> = const { Cell::new(None) };
+}
+
+/// Поставить письмо хоста на время `f`.
+fn with_vert<R>(v: Option<bool>, f: impl FnOnce() -> R) -> R {
+    let prev = VERT.with(|c| c.replace(v));
+    let r = f();
+    VERT.with(|c| c.set(prev));
+    r
 }
 
 #[derive(Clone, Debug, Default)]
@@ -154,7 +182,14 @@ const EPS: f32 = 0.01;
 /// то есть ровно shrink-to-fit §10.3.5. Кусок — в колонке с растяжением:
 /// `width: auto` у блока со своим контекстом заполняет окно (§10.3.3).
 fn frame(kind: Kind, avail: f32, el: AnyElement, tap: Rc<Cell<Option<LayoutId>>>) -> AnyElement {
-    let col = div().flex().flex_col().w(px(avail.max(0.0)));
+    // Вертикальное письмо: строчная ось — физическая высота, каркас — ряд
+    // высотой в окно, поперечная ось ряда и есть строчная (css-writing-modes-4
+    // §7.1: shrink-to-fit §10.3.5 считается по строчной оси).
+    let col = if VERT.with(Cell::get).is_some() {
+        div().flex().flex_row().h(px(avail.max(0.0)))
+    } else {
+        div().flex().flex_col().w(px(avail.max(0.0)))
+    };
     let col = if matches!(kind, Kind::Float { .. }) {
         col.items_start()
     } else {
@@ -179,15 +214,17 @@ fn probe(
         (kid.build)(cb, avail, shapes, None),
         tap.clone(),
     );
-    el.layout_as_root(
-        size(
-            AvailableSpace::Definite(px(avail.max(0.0))),
-            AvailableSpace::MaxContent,
-        ),
-        window,
-        cx,
-    );
-    unrounded(&tap, window)
+    let vert = VERT.with(Cell::get).is_some();
+    let room = AvailableSpace::Definite(px(avail.max(0.0)));
+    let space = if vert {
+        size(AvailableSpace::MaxContent, room)
+    } else {
+        size(room, AvailableSpace::MaxContent)
+    };
+    el.layout_as_root(space, window, cx);
+    // (строчный, блочный) размер: в вертикальном письме — (высота, ширина).
+    let (w, h) = unrounded(&tap, window);
+    if vert { (h, w) } else { (w, h) }
 }
 
 /// Размер ребёнка по его `LayoutId` — БЕЗ округления к физической точке:
@@ -205,15 +242,34 @@ fn unrounded(tap: &Rc<Cell<Option<LayoutId>>>, window: &mut Window) -> (f32, f32
 
 /// Внутренние ширины ребёнка (min-content, max-content) border-box.
 fn intrinsic(kid: &Kid, window: &mut Window, cx: &mut App) -> (f32, f32) {
+    intrinsic_of(&kid.build, window, cx)
+}
+
+/// Внутренние ширины того, что строит `build` (ребёнок или голова прогона).
+fn intrinsic_of(build: &Build, window: &mut Window, cx: &mut App) -> (f32, f32) {
     let tap = Rc::new(Cell::new(None));
     let mut el = Tap {
-        inner: (kid.build)(0.0, 0.0, None, None),
+        inner: build(0.0, 0.0, None, None),
         id: tap.clone(),
     }
     .into_any_element();
+    let vert = VERT.with(Cell::get).is_some();
     let mut w = |a: AvailableSpace, window: &mut Window| {
-        el.layout_as_root(size(a, AvailableSpace::MaxContent), window, cx);
-        unrounded(&tap, window).0
+        if vert {
+            // Повёрнутый текст свою длину высотой не заявляет (растягивается
+            // окном) — берём её у самого текста через сборщик
+            // `VT_INLINE_MAX`; коробка без текста отвечает раскладкой.
+            let prev = crate::interact::VT_INLINE_MAX.with(|c| c.replace(Some(0.0)));
+            el.layout_as_root(size(AvailableSpace::MaxContent, a), window, cx);
+            let text = crate::interact::VT_INLINE_MAX
+                .with(|c| c.replace(prev))
+                .unwrap_or(0.0);
+            let laid = unrounded(&tap, window).1;
+            if text > 0.0 { text.min(laid) } else { laid }
+        } else {
+            el.layout_as_root(size(a, AvailableSpace::MaxContent), window, cx);
+            unrounded(&tap, window).0
+        }
     };
     let mn = w(AvailableSpace::MinContent, window);
     let mx = w(AvailableSpace::MaxContent, window);
@@ -275,7 +331,17 @@ fn place_seq(
                 // is 0-width, so the float is min-content sized»). Пол — ширина
                 // каркаса не уже min-content.
                 if shrink {
-                    avail = avail.max(intrinsic(kid, window, cx).0);
+                    let (mn, mx) = intrinsic(kid, window, cx);
+                    avail = if VERT.with(Cell::get).is_some() {
+                        // В вертикальном письме каркас — ряд, и поперечная ось
+                        // ряда (высота) у вертикального блока растягивается
+                        // до окна и при `align-items: flex-start`: строчный
+                        // размер флоата задаётся каркасу явно, полной формулой
+                        // §10.3.5 `min(max(min-content, доступно), max-content)`.
+                        mx.min(mn.max(avail))
+                    } else {
+                        avail.max(mn)
+                    };
                 }
                 let (bw, bh) = probe(kid, cbw, avail, None, window, cx);
                 // Правила 5 и 6 §9.5.1: флоат не выше низа предыдущего блока
@@ -289,6 +355,7 @@ fn place_seq(
                     x: fx + ml,
                     y: fy + mt,
                     avail,
+                    b: bh,
                     ..Slot::default()
                 };
             }
@@ -396,6 +463,7 @@ fn place_seq(
                     x,
                     y: t,
                     avail,
+                    b: bh,
                     ..Slot::default()
                 };
                 y = t + bh + mb;
@@ -407,8 +475,33 @@ fn place_seq(
                 // Blink `ComputeLineLayoutOpportunity`,
                 // `layout_opportunity.cc:164-189`). Вырезы меряются от краёв
                 // САМОЙ коробки: стенки на время — её border-box.
-                let top = bands.clearance(kid.clear, y + mt);
+                let mut top = bands.clearance(kid.clear, y + mt);
                 let avail = (cbw - ml - mr).max(0.0);
+                // §9.5: «If a shortened line box is too small to contain any
+                // content, then the line box is shifted downward … until either
+                // some content fits or there are no more floats present».
+                // Наборщик строк сдвигать строку вниз не умеет; у анонимного
+                // прогона это то же, что опустить весь прогон до окна, в
+                // которое влезает его самый узкий кусок (min-content, с
+                // отступом первой строки): `below-float2/3` — флоат на всю
+                // ширину, `x` с `text-indent` встаёт под ним, а не за краем.
+                // Кусок — первое слово (`Kid::head`), когда оно известно.
+                if kid.anon {
+                    let need = match kid.head.as_ref() {
+                        Some(h) => intrinsic_of(h, window, cx).0,
+                        None => intrinsic(kid, window, cx).0,
+                    };
+                    loop {
+                        let (l, r) = bands.available(top, 0.0);
+                        if r - l + EPS >= need.min(avail) {
+                            break;
+                        }
+                        match bands.next_edge(top) {
+                            Some(t) => top = t,
+                            None => break,
+                        }
+                    }
+                }
                 let walls = bands.set_walls(x0 + ml, x1 - mr);
                 let shapes = bands.shapes(top);
                 bands.set_walls(walls.0, walls.1);
@@ -418,6 +511,7 @@ fn place_seq(
                     y: top,
                     avail,
                     shapes: Some(shapes),
+                    b: bh,
                     ..Slot::default()
                 };
                 y = top + bh + mb;
@@ -451,6 +545,7 @@ fn place_seq(
                     avail: (bx1 - bx0).max(0.0),
                     h: Some(h),
                     kids: kids_slots,
+                    b: it + h + ib,
                     ..Slot::default()
                 };
                 y = top + it + h + ib + mb;
@@ -526,6 +621,13 @@ fn intrinsic_width(kids: &[Kid], max: bool, window: &mut Window, cx: &mut App) -
                 let ri = if mr > 0.0 { fr.max(mr) } else { fr + mr };
                 mx + li + ri
             }
+            // Анонимный прогон строк — строчный контекст САМОГО хоста: флоаты
+            // перед ним стоят в той же строке, и max-content строки — их сумма
+            // с текстом (Blink `InlineNode::ComputeMinMaxSizes`, флоаты в
+            // списке строчных элементов). Без суммы хост ужимался до ширины
+            // флоата, текст уходил под него, и хост выходил вдвое выше
+            // (`floats-122`: флоат `X` и `X` за ним — 50 вместо 100).
+            _ if kid.anon => fl + fr + mx + ml + mr,
             _ => mx + ml + mr,
         };
         max_size = max_size.max(contribution);
@@ -562,6 +664,8 @@ pub struct BandFlow {
     kids: Rc<Vec<Kid>>,
     plan: Rc<RefCell<Option<Plan>>>,
     built: Vec<AnyElement>,
+    /// Письмо хоста (см. `VERT`).
+    vert: Option<bool>,
 }
 
 impl BandFlow {
@@ -570,7 +674,14 @@ impl BandFlow {
             kids: Rc::new(kids),
             plan: Rc::new(RefCell::new(None)),
             built: Vec::new(),
+            vert: None,
         }
+    }
+
+    /// Вертикальное письмо хоста: `rl` — `vertical-rl`, иначе `vertical-lr`.
+    pub fn vertical(mut self, rl: bool) -> Self {
+        self.vert = Some(rl);
+        self
     }
 }
 
@@ -605,33 +716,50 @@ impl Element for BandFlow {
         // всю страницу вместо ширины самого широкого абзаца
         // (`letter-spacing-206-ref`).
         style.flex_shrink = 0.0;
+        let vert = self.vert;
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
-            let cb = match (known.width, available.width) {
-                (Some(w), _) => f32::from(w),
-                (None, AvailableSpace::Definite(w)) => {
-                    let w = f32::from(w);
-                    let (mn, mx) = window.with_nested_layout(|window| {
-                        (
-                            intrinsic_width(&kids, false, window, cx),
-                            intrinsic_width(&kids, true, window, cx),
-                        )
-                    });
-                    // §10.3.5: `min(max(min-content, available), max-content)`.
-                    mx.max(mn).min(mn.max(w))
+            with_vert(vert, || {
+                // Строчная ось — ширина в горизонтальном письме, высота в
+                // вертикальном; блочный размер плана уходит в другую ось.
+                let (known_inline, avail_inline) = if vert.is_some() {
+                    (known.height, available.height)
+                } else {
+                    (known.width, available.width)
+                };
+                let phys = |inline: f32, block: f32| {
+                    if vert.is_some() {
+                        size(px(block), px(inline))
+                    } else {
+                        size(px(inline), px(block))
+                    }
+                };
+                let cb = match (known_inline, avail_inline) {
+                    (Some(w), _) => f32::from(w),
+                    (None, AvailableSpace::Definite(w)) => {
+                        let w = f32::from(w);
+                        let (mn, mx) = window.with_nested_layout(|window| {
+                            (
+                                intrinsic_width(&kids, false, window, cx),
+                                intrinsic_width(&kids, true, window, cx),
+                            )
+                        });
+                        // §10.3.5: `min(max(min-content, available), max-content)`.
+                        mx.max(mn).min(mn.max(w))
+                    }
+                    (None, a) => window.with_nested_layout(|window| {
+                        intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), window, cx)
+                    }),
+                };
+                if let Some(p) = cache.borrow().as_ref()
+                    && (p.width - cb).abs() < EPS
+                {
+                    return phys(cb, p.height);
                 }
-                (None, a) => window.with_nested_layout(|window| {
-                    intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), window, cx)
-                }),
-            };
-            if let Some(p) = cache.borrow().as_ref()
-                && (p.width - cb).abs() < EPS
-            {
-                return size(px(cb), px(p.height));
-            }
-            let p = window.with_nested_layout(|window| plan(&kids, cb, window, cx));
-            let h = p.height;
-            *cache.borrow_mut() = Some(p);
-            size(px(cb), px(h))
+                let p = window.with_nested_layout(|window| plan(&kids, cb, window, cx));
+                let h = p.height;
+                *cache.borrow_mut() = Some(p);
+                phys(cb, h)
+            })
         });
         (id, id)
     }
@@ -656,7 +784,13 @@ impl Element for BandFlow {
         // хост на 9.0 логических = 11.25 физических, его текст на 12.5 →
         // 13 в основном дереве, но 1.25 → 1 во вложенном — на точку левее и
         // выше соседей).
-        let cb = f32::from(window.layout_size_unrounded(*state).width);
+        let vert = self.vert;
+        let unr = window.layout_size_unrounded(*state);
+        let cb = f32::from(if vert.is_some() {
+            unr.height
+        } else {
+            unr.width
+        });
         let origin = window.layout_origin_unrounded(*state);
         let scale = window.scale_factor();
         let (ox, oy) = (f32::from(origin.x) * scale, f32::from(origin.y) * scale);
@@ -673,7 +807,9 @@ impl Element for BandFlow {
             Some(p) => p,
             None => {
                 let kids = self.kids.clone();
-                window.with_nested_layout(|window| plan(&kids, cb, window, cx))
+                with_vert(vert, || {
+                    window.with_nested_layout(|window| plan(&kids, cb, window, cx))
+                })
             }
         };
         self.built.clear();
@@ -684,7 +820,13 @@ impl Element for BandFlow {
         // корень на каждого ребёнка округлял бы размер отдельно от места
         // (`units-005`: сто флоатов по `0.87em` с красными швами).
         // Порядок отрисовки — порядок детей: флоаты пробега, потом хвост.
-        let mut host = div().relative().w(px(cb + fx)).h(px(p.height + fy));
+        // Физический размер хоста: строчный `cb` и блочный `p.height`.
+        let (pw, ph) = if vert.is_some() {
+            (p.height, cb)
+        } else {
+            (cb, p.height)
+        };
+        let mut host = div().relative().w(px(pw + fx)).h(px(ph + fy));
         // CSS 2.1 прил. E: фоны блоков потока (шаг 4) — РАНЬШЕ флоатов
         // (шаг 5): флоат лежит поверх блока, под которым стоит
         // (`clear-004`). Строки рядом с флоатом его не перекрывают — их
@@ -697,25 +839,35 @@ impl Element for BandFlow {
                 continue;
             }
             let tap = Rc::new(Cell::new(None));
-            let el = frame(
-                kid.kind,
-                s.avail,
-                (kid.build)(cb, s.avail, s.shapes.clone(), s.h),
-                tap,
-            );
+            let el = with_vert(vert, || {
+                frame(
+                    kid.kind,
+                    s.avail,
+                    (kid.build)(cb, s.avail, s.shapes.clone(), s.h),
+                    tap,
+                )
+            });
+            // Логическое место → физическое (Blink
+            // `writing_mode_converter.cc:80-102`): строчный сдвиг — вниз,
+            // блочный — от правого края у `vertical-rl`, от левого у `-lr`.
+            let (left, top) = match vert {
+                None => (s.x, s.y),
+                Some(true) => (p.height - s.y - s.b, s.x),
+                Some(false) => (s.y, s.x),
+            };
             host = host.child(
                 div()
                     .absolute()
-                    .left(px(s.x + fx))
-                    .top(px(s.y + fy))
+                    .left(px(left + fx))
+                    .top(px(top + fy))
                     .child(el),
             );
         }
         let mut el = host.into_any_element();
         el.layout_as_root(
             size(
-                AvailableSpace::Definite(px(cb + fx)),
-                AvailableSpace::Definite(px(p.height + fy)),
+                AvailableSpace::Definite(px(pw + fx)),
+                AvailableSpace::Definite(px(ph + fy)),
             ),
             window,
             cx,
