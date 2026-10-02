@@ -965,6 +965,30 @@ impl ColumnStack {
         }
     }
 
+    /// Блочный размер СОДЕРЖИМОГО многоколоночника рядами `rows` (та же
+    /// укладка, что у `request_layout`): мера вложенного многоколоночника для
+    /// внешней стопки (`render::nested_rows_shape`).
+    pub(crate) fn measure_rows(
+        kids: &[Kid],
+        count: usize,
+        gap: f32,
+        fixed: Option<f32>,
+        rows: Rows,
+    ) -> f32 {
+        let mut probe = ColumnStack::new(Vec::new(), count, gap, fixed, None, Some(rows), None, None);
+        // Копий — как у `render.rs` для стопки с рядами: сколько колонок
+        // ребёнок может занять, с запасом на поля и срезы.
+        let per = rows.h.unwrap_or(f32::MAX).max(1.0);
+        let span = kids.iter().map(|k| (k.h / per).ceil() as usize).max().unwrap_or(0);
+        probe.copies = (span + 2).max(count).min(48);
+        // Блочный размер — низ ПОСЛЕДНЕЙ линии, а не полный ряд: последний
+        // фрагмент сбалансирован и короче ряда (Blink `LayoutRow`:
+        // `intrinsic_block_size_` растёт на высоту строки колонок;
+        // `multicol-breaking-006`: ряд 100 + хвост 80 + рамка 20).
+        let (h, lines, _, _) = probe.balance(kids);
+        lines.iter().map(|l| l.0 + l.1).fold(0.0f32, f32::max).min(h).max(0.0)
+    }
+
     /// Ось прогрессии колонок (см. `StackAxis`).
     pub fn with_axis(mut self, axis: StackAxis) -> Self {
         self.axis = axis;
