@@ -491,8 +491,52 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         if rows { Size { width: 0.0, height: grid_gap_px } } else { Size { width: grid_gap_px, height: 0.0 } };
     let subgrid_edges =
         subgrid::flatten_subgrid_items(tree, &mut items, container_gap, inner_node_size, grid_bit, None);
+    let auto_roots: Vec<NodeId> = children.iter().filter(|c| c.definite.is_none()).map(|c| c.node).collect();
     if !subgrid_edges.is_empty() {
         subgrid::apply_subgrid_floors(&mut grid_tracks, &subgrid_edges, !rows, counts);
+        subgrid::apply_lanes_auto_floors(&mut grid_tracks, &subgrid_edges, !rows, |root| auto_roots.contains(&root));
+    }
+    // css-grid-3 #track-sizing-subgrid (Overview.bs:686-694): у подсетки с
+    // АВТОМАТИЧЕСКОЙ позицией в лунках «Every item is placed into every
+    // possible parent grid track that could be spanned by the subgrid
+    // (ignoring any explicit placement of the item)», а край подсетки
+    // явно размещённый элемент получает «as usual» — по своей позиции
+    // (`extra_margin` уже посчитан сплющиванием). Копии виртуальных
+    // позиций самой подсетки дали элементу лишь её пролёты; оставляем
+    // одну копию и ставим её на каждую стартовую линию оси решётки
+    // (`gap/column-subgrid-grid-gap-009`: элемент второй колонки подсетки
+    // вкладывает 100 + 50 и в пустую первую `auto` — эталон 150px).
+    if auto_roots.iter().any(|r| items.iter().any(|it| it.subgrid_root == Some(*r))) {
+        let grid_line = |it: &GridItem| if rows { it.row } else { it.column };
+        let mut seen: Vec<NodeId> = Vec::new();
+        let mut spread: Vec<GridItem> = Vec::new();
+        items.retain(|it| {
+            if it.subgrid_root.map_or(true, |r| !auto_roots.contains(&r)) {
+                return true;
+            }
+            if !seen.contains(&it.node) {
+                seen.push(it.node);
+                let span = (grid_line(it).span().max(1) as usize).min(n);
+                for s in 0..=(n - span) {
+                    if (s..s + span).any(|t| collapsed(&grid_tracks, t)) {
+                        continue;
+                    }
+                    let mut copy = it.clone();
+                    let line = Line {
+                        start: OriginZeroLine(s as i16 - negative_implicit as i16),
+                        end: OriginZeroLine((s + span) as i16 - negative_implicit as i16),
+                    };
+                    if rows {
+                        copy.row = line;
+                    } else {
+                        copy.column = line;
+                    }
+                    spread.push(copy);
+                }
+            }
+            false
+        });
+        items.extend(spread);
     }
     resolve_item_track_indexes(&mut items, col_counts, row_counts);
     if rows {

@@ -10,7 +10,7 @@ use crate::{BoxSizing, GridItemStyle, LengthPercentage};
 use core::ops::Range;
 
 /// Represents a single grid item
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(in super::super) struct GridItem {
     /// The id of the node that this item represents
     pub node: NodeId,
@@ -141,6 +141,11 @@ pub(in super::super) struct GridItem {
     /// подсетки переносился уже своей колонки (`subgrid/auto-track-sizing-001`:
     /// колонка 100px, коробка содержимого 58px, слово «separated» шире).
     pub subgrid_cross_auto: Size<bool>,
+    /// KaminIDE patch: подсетка-ребёнок контейнера, через которую элемент
+    /// сплющен (у собственного элемента — `None`). Лункам: элементы
+    /// АВТО-размещённой подсетки вкладываются во все дорожки (css-grid-3
+    /// Overview.bs:686-694).
+    pub subgrid_root: Option<NodeId>,
 }
 
 impl GridItem {
@@ -207,6 +212,7 @@ impl GridItem {
             extra_margin: Rect::ZERO,
             subgrid_cross: Size::NONE,
             subgrid_cross_auto: Size { width: false, height: false },
+            subgrid_root: None,
         }
     }
 
