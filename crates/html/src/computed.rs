@@ -1738,6 +1738,11 @@ pub struct Computed {
     pub underline: Option<bool>,
     pub line_through: Option<bool>,
     pub line_height: Option<Len>,
+    /// `orphans`/`widows` (css-break-3 §4.4 «Breaks Between Lines»): сколько
+    /// строк блока обязано остаться до/после разрыва внутри него. Наследуются,
+    /// начальное значение 2 (`None` = 2).
+    pub orphans: Option<u16>,
+    pub widows: Option<u16>,
     pub text_align: Option<TextAlign>,
     /// `text-align-last` — выключка ПОСЛЕДНЕЙ строки абзаца. Отдельное
     /// свойство, потому что по умолчанию последняя строка не растягивается:
@@ -3711,6 +3716,19 @@ impl Computed {
             return self.apply_one(key, start);
         }
         match key {
+            // css-break-3 §4.4: `<integer [1,∞]>`; ноль и отрицательное
+            // невалидны — объявление отбрасывается.
+            "orphans" | "widows" => {
+                if let Ok(n) = v.parse::<u16>()
+                    && n >= 1
+                {
+                    if key == "orphans" {
+                        self.orphans = Some(n);
+                    } else {
+                        self.widows = Some(n);
+                    }
+                }
+            }
             "box-sizing" => self.border_box = Some(v == "border-box"),
             "display"
                 if v.trim().eq_ignore_ascii_case("-webkit-box")
