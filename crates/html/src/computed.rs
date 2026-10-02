@@ -675,12 +675,63 @@ pub fn parse_pos_words(v: &str) -> BgPos {
     // плитки складывает `доля × свободное место + точки` (`background::origin`,
     // css-values-4 §10.9 — именно `background-position` спека приводит
     // примером «preserves the percentage in a calc()»).
+    // ★ НЕ ДЕЛАТЬ: сворачивать `min()`/`max()` из одних процентов
+    // при разборе. Сравниваются РАЗРЕШЁННЫЕ длины, а база доли — свободное
+    // место, и при картинке больше коробки она отрицательна: `min(0%, 100%)`
+    // там равно 100% (`background-position-calc-minmax-001` ловит именно это).
+    let length = |t: &str| -> Option<Len> { Len::parse_mixed(t) };
+    let is_kw = |t: &str| matches!(t, "left" | "right" | "top" | "bottom" | "center");
+    // Список слоёв (`a, b`): здесь — позиция ПЕРВОГО слоя, как и картинка,
+    // которую берёт разбор фона.
+    let first = crate::css::split_args(v).into_iter().next().unwrap_or_default();
+    let tokens = split_outside_parens(first.trim());
+    // Форма из трёх-четырёх значений (css-backgrounds-3 §3.6): ключевое слово
+    // края с СМЕЩЕНИЕМ от него — `right 10px top 20%`. Прежде смещение
+    // терялось, и `right 100%` давало правый край вместо левого
+    // (`background-position-right-in-body`, `-three-four-values`).
+    if tokens.len() >= 3 {
+        let mut pairs: Vec<(String, Option<Len>)> = vec![];
+        let mut i = 0;
+        while i < tokens.len() {
+            let t = tokens[i].as_str();
+            if !is_kw(t) {
+                return BgPos { x: Some(Len::Pct(0.5)), y: Some(Len::Pct(0.5)) };
+            }
+            let off = tokens.get(i + 1).filter(|n| !is_kw(n.as_str())).and_then(|n| length(n));
+            i += if off.is_some() { 2 } else { 1 };
+            pairs.push((t.to_string(), off));
+        }
+        // Смещение от дальнего края: `100% - смещение`.
+        let from_end = |off: Option<Len>| -> Option<Len> {
+            match off {
+                None => Some(Len::Pct(1.0)),
+                Some(Len::Pct(k)) => Some(Len::Pct(1.0 - k)),
+                Some(Len::Px(px)) => Len::parse_mixed(&format!("calc(100% - {px}px)")),
+                Some(other) => Some(other),
+            }
+        };
+        let (mut x, mut y) = (None, None);
+        for (kw, off) in pairs {
+            match kw.as_str() {
+                "left" => x = Some(off.unwrap_or(Len::Pct(0.0))),
+                "right" => x = from_end(off),
+                "top" => y = Some(off.unwrap_or(Len::Pct(0.0))),
+                "bottom" => y = from_end(off),
+                // `center` оставляет свою ось серединой (умолчание ниже).
+                _ => {}
+            }
+        }
+        return BgPos {
+            x: x.or(Some(Len::Pct(0.5))),
+            y: y.or(Some(Len::Pct(0.5))),
+        };
+    }
     let word = |t: &str| -> Option<Len> {
         match t {
             "left" | "top" => Some(Len::Pct(0.0)),
             "center" => Some(Len::Pct(0.5)),
             "right" | "bottom" => Some(Len::Pct(1.0)),
-            other => Len::parse_mixed(other),
+            other => length(other),
         }
     };
     let mut x: Option<Len> = None;
@@ -688,7 +739,7 @@ pub fn parse_pos_words(v: &str) -> BgPos {
     let mut free: Vec<Option<Len>> = vec![];
     // Резка ВНЕ скобок: по пробелам `calc(50px + 50%)` рассыпался на три
     // слова, и позиция падала в центр.
-    for t in split_outside_parens(v) {
+    for t in tokens {
         match t.as_str() {
             "left" | "right" => x = word(&t),
             "top" | "bottom" => y = word(&t),
