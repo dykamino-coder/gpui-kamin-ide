@@ -314,6 +314,9 @@ pub struct GridLanes {
     /// Порог долей размера контейнера по оси решётки (`flow-tolerance: N%`);
     /// при `Some` перекрывает `tolerance`.
     pub tolerance_pct: Option<f32>,
+    /// Ось укладки — блочная ось контейнера при ФИЗИЧЕСКИХ рядах (лунки
+    /// колонками в вертикальном письме): элемент по ней — по содержимому.
+    pub stack_block: bool,
 }
 
 /// Sets the layout used for the children of this node

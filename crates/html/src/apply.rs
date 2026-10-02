@@ -191,8 +191,13 @@ fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
         put(cols, cols_sub, !flip);
         put(rows, rows_sub, flip);
     }
-    out.column = c.grid_col_named.clone();
-    out.row = c.grid_row_named.clone();
+    if placement_flip(c) {
+        out.column = c.grid_row_named.clone();
+        out.row = c.grid_col_named.clone();
+    } else {
+        out.column = c.grid_col_named.clone();
+        out.row = c.grid_row_named.clone();
+    }
     let empty = out.columns.is_none()
         && out.rows.is_none()
         && out.subgrid_columns.is_none()
@@ -212,15 +217,26 @@ pub(crate) fn grid_item_placement(c: &Computed) -> (Option<gpui::GridLocation>, 
             let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
             to_placement(a)..to_placement(b)
         };
-        gpui::GridLocation { row: span(c.grid_row), column: span(c.grid_col) }
+        if placement_flip(c) {
+            gpui::GridLocation { row: span(c.grid_col), column: span(c.grid_row) }
+        } else {
+            gpui::GridLocation { row: span(c.grid_row), column: span(c.grid_col) }
+        }
     });
     let named = c.grid_col_named.iter().chain(c.grid_row_named.iter()).any(Option::is_some);
-    let names = named.then(|| gpui::GridLineNames {
-        column: c.grid_col_named.clone(),
-        row: c.grid_row_named.clone(),
-        ..Default::default()
-    });
+    let (column, row) = if placement_flip(c) {
+        (c.grid_row_named.clone(), c.grid_col_named.clone())
+    } else {
+        (c.grid_col_named.clone(), c.grid_row_named.clone())
+    };
+    let names = named.then(|| gpui::GridLineNames { column, row, ..Default::default() });
     (location, names)
+}
+
+/// Элемент вертикальной сетки (и лунок на её пути): его логические грани
+/// ложатся на переставленные физические оси (см. `grid_style`, `flip`).
+fn placement_flip(c: &Computed) -> bool {
+    c.parent_grid >= 2
 }
 
 fn to_placement(p: Placement) -> gpui::GridPlacement {
@@ -311,13 +327,21 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
             Some(Len::Pct(k)) => (0.0, Some(k)),
             _ => (em, None),
         };
+        // Ось решётки taffy — ФИЗИЧЕСКАЯ, а `grid-lanes-direction` —
+        // логическая: при вертикальном письме колонки идут по y, ряды — по x
+        // (та же перестановка, что у дорожек сетки ниже, `flip`).
+        // ★ ЗАМЕРЕНО: `vertical-rl` как `fill-reverse` колоночных лунок —
+        // лунки вертикального письма (116 пар) +1/−1, не взято.
+        let vertical = c.vertical == Some(true);
+        let logical_rows = crate::dom::lanes_row_dir(c);
         d.style().grid_lanes = Some(gpui::GridLanesFlow {
-            rows: crate::dom::lanes_row_dir(c),
+            rows: logical_rows != vertical,
             track_reverse: c.lanes_track_reverse,
             fill_reverse: c.lanes_fill_reverse,
             dense: c.lanes_dense,
             tolerance,
             tolerance_pct,
+            stack_block: vertical && !logical_rows,
         });
         // По оси укладки `normal` — это НЕ растяжка (css-grid-3
         // Overview.bs:1161-1225: самовыравнивание лишь у элементов над
@@ -592,7 +616,7 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
                 fit: r.fit,
                 tracks: body.iter().map(track).collect(),
             }];
-            d = if row_dir {
+            d = if row_dir != flip {
                 d.grid_template_rows(line)
             } else {
                 d.grid_template_cols(line)
@@ -851,10 +875,15 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
             let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
             to_placement(a)..to_placement(b)
         };
-        d.style().grid_location = Some(gpui::GridLocation {
-            row: span(c.grid_row),
-            column: span(c.grid_col),
-        });
+        // Грани элемента ЛОГИЧЕСКИЕ (css-grid-2 §8.3: `grid-row` — блочная
+        // ось сетки), а дорожки вертикальной сетки уже переставлены
+        // (`grid_style`, `flip`): ряды — физические колонки.
+        let (row, column) = if placement_flip(c) {
+            (span(c.grid_col), span(c.grid_row))
+        } else {
+            (span(c.grid_row), span(c.grid_col))
+        };
+        d.style().grid_location = Some(gpui::GridLocation { row, column });
     }
     if let Some(g) = c.flex_grow {
         // `flex_grow()` в GPUI ставит жёсткую единицу, а `flex: 2` встречается —
@@ -1017,6 +1046,12 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     if real_grid && c.vertical == Some(true) {
         let s = d.style();
         std::mem::swap(&mut s.align_items, &mut s.justify_items);
+        // То же у распределения дорожек: `justify-content` — строчная ось
+        // (css-align-3 §5.1), у вертикальной сетки — физические ряды.
+        std::mem::swap(&mut s.align_content, &mut s.justify_content);
+        if let Some(safe) = s.safe_alignment.as_mut() {
+            std::mem::swap(&mut safe.2, &mut safe.3);
+        }
     }
     if c.parent_grid >= 2 {
         let s = d.style();

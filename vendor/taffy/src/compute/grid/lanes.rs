@@ -727,7 +727,17 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                 Line::FALSE,
             ));
         }
-        let item = layout_lanes_item(tree, child.node, rows, area, stack_avail, None, stack_max[k], container_align);
+        let item = layout_lanes_item(
+            tree,
+            child.node,
+            rows,
+            lanes.stack_block,
+            area,
+            stack_avail,
+            None,
+            stack_max[k],
+            container_align,
+        );
         let (m_start, m_end) =
             if rows { (item.margin.left, item.margin.right) } else { (item.margin.top, item.margin.bottom) };
         let stack_size = if rows { item.size.width } else { item.size.height };
@@ -992,6 +1002,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                         tree,
                         placed[index].node,
                         rows,
+                        lanes.stack_block,
                         placed[index].area,
                         stack_avail,
                         Some(grown),
@@ -1460,10 +1471,12 @@ fn dense_path(
 /// оси укладки размер — по содержимому (Overview.bs:970-975: содержащий
 /// блок — область по оси решётки и область содержимого контейнера по оси
 /// укладки). `stack_known` — размер по оси укладки при растяжке.
+#[allow(clippy::too_many_arguments)]
 fn layout_lanes_item(
     tree: &mut impl LayoutGridContainer,
     node: NodeId,
     rows: bool,
+    stack_block: bool,
     area: f32,
     stack_avail: Option<f32>,
     stack_known: Option<f32>,
@@ -1570,6 +1583,12 @@ fn layout_lanes_item(
     let stack_size_fixed = inherent_stack.is_some();
     // Без своего размера по оси укладки элемент меряется по содержимому:
     // max-content, но не шире области содержимого контейнера (fit-content).
+    // KaminIDE patch: ось укладки — БЛОЧНАЯ ось контейнера (вертикальное
+    // письмо, лунки колонками по логике — физически рядами): блочный размер
+    // элемента — по его содержимому при строчном размере области, места
+    // контейнера по этой оси он не знает (css-grid-3 Overview.bs:1107-1116,
+    // как ось укладки колоночных лунок горизонтального письма).
+    let stack_fit = if stack_block { None } else { stack_fit };
     let fit = stack_fit.map(|w| match stack_avail {
         Some(avail) => w.min(f32_max(avail - stack_margin, 0.0)),
         None => w,
@@ -1583,8 +1602,8 @@ fn layout_lanes_item(
     let known = known.maybe_apply_aspect_ratio(aspect_ratio).maybe_clamp(min_size, max_size);
     let grid_avail = AvailableSpace::Definite(f32_max(area - gm_start.unwrap_or(0.0) - gm_end.unwrap_or(0.0), 0.0));
     let stack_space = match stack_avail {
-        Some(v) => AvailableSpace::Definite(f32_max(v - stack_margin, 0.0)),
-        None => AvailableSpace::MaxContent,
+        Some(v) if !stack_block => AvailableSpace::Definite(f32_max(v - stack_margin, 0.0)),
+        _ => AvailableSpace::MaxContent,
     };
     let available = if rows {
         Size { width: stack_space, height: grid_avail }
