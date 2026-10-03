@@ -884,7 +884,27 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
             // фон обрезается её краем, поэтому все полосы живут в общем
             // обрезающем слое на всю коробку.
             let mut bands: Vec<AnyElement> = vec![];
-            for pair in g.stops_px.windows(2) {
+            // Фиксация css-images-3 §3.5.3 п.2: позиция не меньше наибольшей
+            // из предыдущих. Без неё пара `green 4em, red 3em` (обратный
+            // порядок — так пишут жёсткий край) пропускалась целиком, и под
+            // полосами оставался долевой градиент на всю коробку
+            // (`white-space-intrinsic-size-017/018`).
+            let mut fixed = g.stops_px.clone();
+            for i in 1..fixed.len() {
+                fixed[i].1 = fixed[i].1.max(fixed[i - 1].1);
+            }
+            // До первого стопа — его цвет, после последнего — цвет последнего
+            // (§3.5.3): полосы между стопами этого места не красили.
+            const FAR: f32 = 1.0e5;
+            let mut ext = Vec::with_capacity(fixed.len() + 2);
+            if let Some(first) = fixed.first() {
+                ext.push((first.0, first.1.min(0.0) - FAR));
+            }
+            ext.extend(fixed.iter().copied());
+            if let Some(last) = fixed.last() {
+                ext.push((last.0, last.1 + FAR));
+            }
+            for pair in ext.windows(2) {
                 let (a, b) = (pair[0], pair[1]);
                 let (p0, p1) = (a.1, b.1);
                 if p1 <= p0 {

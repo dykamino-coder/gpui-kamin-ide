@@ -4557,17 +4557,36 @@ impl Paragraph {
                 let gap_runs = slice_runs_banded(&self.runs, &gap);
                 if gap_runs.iter().any(|r| r.background_color.is_some()) {
                     let gap_text: SharedString = self.text[gap.clone()].to_string().into();
-                    let gap_shaped = window.text_system().shape_line_spaced(
-                        gap_text,
+                    let spacing = self
+                        .letter_spans
+                        .iter()
+                        .find(|(r, _)| r.contains(&gap.start))
+                        .map(|(_, v)| *v)
+                        .unwrap_or(self.letter_spacing);
+                    let mut gap_shaped = window.text_system().shape_line_spaced(
+                        gap_text.clone(),
                         self.font_size,
                         &gap_runs,
                         None,
-                        self.letter_spans
-                            .iter()
-                            .find(|(r, _)| r.contains(&gap.start))
-                            .map(|(_, v)| *v)
-                            .unwrap_or(self.letter_spacing),
+                        spacing,
                     );
+                    // Ширина промежутка — по РАЗЛОЖЕННОЙ строке: там в нём уже
+                    // лежит `word-spacing`, а отдельный набор пробела его не
+                    // знает, и полоса `<span>` рвалась на каждом растянутом
+                    // пробеле (`word-spacing-characters-001`). Недостача
+                    // раздаётся трекингом по знакам промежутка.
+                    let want = self.x_at(segs, gap.end, Edge::Start)
+                        - self.x_at(segs, gap.start, Edge::Start);
+                    let n = gap_text.chars().count().max(1) as f32;
+                    if (want - gap_shaped.width).abs() > px(0.5) {
+                        gap_shaped = window.text_system().shape_line_spaced(
+                            gap_text,
+                            self.font_size,
+                            &gap_runs,
+                            None,
+                            spacing + (want - gap_shaped.width) / n,
+                        );
+                    }
                     let gap_x =
                         bounds.origin.x + dx + (self.x_at(segs, gap.start, Edge::Start) - from);
                     let gap_y = match (line_base, self.base_of(&gap)) {
