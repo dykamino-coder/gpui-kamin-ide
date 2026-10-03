@@ -448,7 +448,7 @@ pub fn collect(
                     // рядом с полосой соседа (`word-spacing-characters-001`).
                     let family = merged.font_family.clone().unwrap_or_else(|| {
                         if merged.monospace == Some(true) {
-                            crate::metrics::mono_family().to_string()
+                            crate::metrics::mono_family_for(merged.lang.as_deref()).to_string()
                         } else {
                             String::new()
                         }
@@ -1362,7 +1362,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
         };
         let parent_family = parent.font_family.clone().unwrap_or_else(|| {
             if parent.monospace == Some(true) {
-                crate::metrics::mono_family().to_string()
+                crate::metrics::mono_family_for(parent.lang.as_deref()).to_string()
             } else {
                 String::new()
             }
@@ -1412,7 +1412,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             .or_else(|| parent.font_family.clone())
             .unwrap_or_else(|| {
                 if c.monospace.or(parent.monospace) == Some(true) {
-                    crate::metrics::mono_family().to_string()
+                    crate::metrics::mono_family_for(c.lang.as_deref()).to_string()
                 } else {
                     String::new()
                 }
@@ -3775,7 +3775,7 @@ fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
             .unwrap_or_else(|| family.clone())
             .into();
     } else if style.monospace == Some(true) {
-        font.family = crate::metrics::mono_family().into();
+        font.family = crate::metrics::mono_family_for(style.lang.as_deref()).into();
     }
     // Вес и курсив — ВСЕГДА от стиля куска: `None` в слитом стиле — это
     // обычное начертание, а не «как у базы» (база абзаца строится по

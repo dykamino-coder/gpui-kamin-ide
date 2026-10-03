@@ -1083,7 +1083,11 @@ impl Paragraph {
                 None,
                 self.letter_spacing,
             );
-            let width = layout.width;
+            // Ширина куска вместе с трекингом кусков и `word-spacing`: набор
+            // их не знает, `x_at` добавляет их сам — и позиция табуляции за
+            // куском обязана их учесть (`word-spacing-characters-001`:
+            // табуляция после растянутых пробелов вставала раньше).
+            let width = layout.width + self.seg_extra(start, end);
             out.push(Seg {
                 start,
                 end,
@@ -1128,6 +1132,32 @@ impl Paragraph {
     }
 
     /// Положение знака от начала своего куска.
+    /// Добавка к ширине набранного куска `start..end`: трекинг кусков сверх
+    /// общего и `word-spacing` у пробелов (то же, что `x_at` прибавляет к
+    /// положению знака в конце куска).
+    fn seg_extra(&self, start: usize, end: usize) -> Pixels {
+        let mut extra = px(0.);
+        if self.letter_spans.is_empty() && self.word_spacing == px(0.) && self.word_spans.is_empty()
+        {
+            return extra;
+        }
+        for (off, ch) in self.text[start..end].char_indices() {
+            let at = start + off;
+            if let Some((_, v)) = self.letter_spans.iter().find(|(r, _)| r.contains(&at)) {
+                extra += *v - self.letter_spacing;
+            }
+            if word_separator(ch) {
+                extra += self
+                    .word_spans
+                    .iter()
+                    .find(|(r, _)| r.contains(&at))
+                    .map(|(_, v)| *v)
+                    .unwrap_or(self.word_spacing);
+            }
+        }
+        extra
+    }
+
     fn x_at(&self, segs: &[Seg], i: usize, edge: Edge) -> Pixels {
         let i = i.min(self.text.len());
         let after_break = edge == Edge::End && i > 0 && self.text.as_bytes()[i - 1] == b'\n';

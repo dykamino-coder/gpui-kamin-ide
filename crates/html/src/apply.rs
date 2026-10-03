@@ -2409,7 +2409,7 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
         None => {}
     }
     if c.monospace == Some(true) {
-        d = d.font_family(crate::metrics::mono_family());
+        d = d.font_family(crate::metrics::mono_family_for(c.lang.as_deref()));
     }
     if let Some(Len::Px(v)) = c.letter_spacing {
         d = d.letter_spacing(px(v));
