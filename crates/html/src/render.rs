@@ -16714,11 +16714,13 @@ fn paragraph_pieces(
             // В повёрнутом абзаце руби в строку не идёт и строку не растит
             // (`atoms_fit_line`), а эталоны акцента сделаны из руби: рост
             // только у горизонтального (`text-emphasis-line-height-003*/004*`).
-            .emph_spans(if inherited.rotated_line == Some(true) || inherited.vertical == Some(true) {
-                Vec::new()
-            } else {
-                inline::emphasis_spans(&pieces, biggest)
-            })
+            .emph_spans(
+                if inherited.rotated_line == Some(true) || inherited.vertical == Some(true) {
+                    Vec::new()
+                } else {
+                    inline::emphasis_spans(&pieces, biggest)
+                },
+            )
             .edge_spans(edges)
             .line_boxes(
                 boxes.as_ref().map(|b| b.0.clone()).unwrap_or_default(),
@@ -18004,7 +18006,11 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                     let mut over = stack(false).child(unit_box(seg.bases.get(i).unwrap_or(&empty), &merged));
                     if !over_anns.is_empty() {
                         over = over.child(level_wrap(false).child(extent(
-                            div().flex().flex_col().flex_shrink_0().children(over_anns.into_iter().rev()),
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_shrink_0()
+                                .children(over_anns.into_iter().rev()),
                             false,
                         )));
                     }

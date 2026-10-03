@@ -764,7 +764,9 @@ impl WindowTextSystem {
                         .is_some_and(|g| g.0 != 0)
                 };
                 let swap = ch == '\u{2011}'
-                    && run.is_some_and(|r| !has(r.font_id, '\u{2011}') && has(r.font_id, '\u{2010}'));
+                    && run.is_some_and(|r| {
+                        !has(r.font_id, '\u{2011}') && has(r.font_id, '\u{2010}')
+                    });
                 out.push(if swap { '\u{2010}' } else { ch });
             }
             substituted = out;

@@ -809,7 +809,11 @@ impl Paragraph {
                     // Аннотация руби растит строку, только выходя за неё:
                     // полулидинг строки она занимает даром (css-ruby-1 §3.4).
                     let over = if line_no == 0 && self.ruby_trim.0 { 0.0 } else { b.over };
-                    let under = if line_no == last_line && self.ruby_trim.1 { 0.0 } else { b.under };
+                    let under = if line_no == last_line && self.ruby_trim.1 {
+                        0.0
+                    } else {
+                        b.under
+                    };
                     above = above.max(-(t - over) - a);
                     below = below.max(t + b.h + under - (lh - a));
                 }
@@ -4563,7 +4567,8 @@ impl Paragraph {
                             .map(|(_, v)| *v)
                             .unwrap_or(self.letter_spacing),
                     );
-                    let gap_x = bounds.origin.x + dx + (self.x_at(segs, gap.start, Edge::Start) - from);
+                    let gap_x =
+                        bounds.origin.x + dx + (self.x_at(segs, gap.start, Edge::Start) - from);
                     let gap_y = match (line_base, self.base_of(&gap)) {
                         (Some(l), Some(w)) => y + px(l - w),
                         _ => y,

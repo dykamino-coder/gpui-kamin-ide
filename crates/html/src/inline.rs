@@ -2529,7 +2529,10 @@ fn zero_width_format(ch: char) -> bool {
 /// Куски со знаком акцента: отрезок байт → (снизу?, высота знака). Знак
 /// набирается в половину кегля своей базы (css-text-decor-3 §5.3, как
 /// аннотация руби с `font-size: 50%`).
-pub fn emphasis_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usize>, bool, f32)> {
+pub fn emphasis_spans(
+    pieces: &[Piece],
+    base_size: f32,
+) -> Vec<(std::ops::Range<usize>, bool, f32)> {
     let mut out = Vec::new();
     let mut at = 0usize;
     for p in pieces {
