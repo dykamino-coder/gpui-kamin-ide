@@ -2110,6 +2110,37 @@ fn determine_hypothetical_cross_size(
                 (Some(f), Some(_)) => crate::style::apply_calc_size(f, measured),
                 _ => measured,
             };
+            // KaminIDE patch: the cross size of a column item is fit-content
+            // of the available width, never below its min-content
+            // (css-flexbox-1 §9.4 step 7 lays it out «as if it were an in-flow
+            // block-level box», whose shrink-to-fit floor is min-content).
+            // Measurement against a definite width returned the clamped
+            // width, so an unbreakable item narrower box than its content
+            // (`align-items: flex-start` with a wide glyph).
+            let measured = if !constants.is_row && child_available_cross.is_definite() && child.align_self != AlignSelf::Stretch {
+                let min_content = tree.measure_child_size(
+                    child.node,
+                    Size { width: child_cross, height: child.target_size.height.into() },
+                    constants.pct_basis(),
+                    Size { width: AvailableSpace::MinContent, height: child_known_main },
+                    SizingMode::ContentSize,
+                    constants.dir.cross_axis(),
+                    Line::FALSE,
+                );
+                let max_content = tree.measure_child_size(
+                    child.node,
+                    Size { width: child_cross, height: child.target_size.height.into() },
+                    constants.pct_basis(),
+                    Size { width: AvailableSpace::MaxContent, height: child_known_main },
+                    SizingMode::ContentSize,
+                    constants.dir.cross_axis(),
+                    Line::FALSE,
+                );
+                // Same cap as the grid floor: min-content never above max-content.
+                measured.max(min_content.min(max_content))
+            } else {
+                measured
+            };
             measured
             .max(ratio_cross.unwrap_or(0.0))
             .maybe_clamp(child.min_size.cross(constants.dir), child.max_size.cross(constants.dir))

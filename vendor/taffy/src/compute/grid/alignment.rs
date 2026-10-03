@@ -9,7 +9,7 @@ use crate::util::{MaybeMath, MaybeResolve, ResolveOrZero};
 
 #[cfg(feature = "content_size")]
 use crate::compute::common::content_size::compute_content_size_contribution;
-use crate::{BoxSizing, LayoutGridContainer};
+use crate::{AbsoluteAxis, BoxSizing, LayoutGridContainer};
 
 /// Align the grid tracks within the grid according to the align-content (rows) or
 /// justify-content (columns) property. This only does anything if the size of the
@@ -285,11 +285,61 @@ pub(super) fn align_and_position_item(
     // Reapply aspect ratio after stretch and absolute position height adjustments
     let Size { width, height } = Size { width, height }.maybe_apply_aspect_ratio(aspect_ratio);
 
+    // KaminIDE patch: a non-stretched in-flow item without a width is
+    // fit-content: min(max-content, max(min-content, stretch-fit))
+    // (css-grid-1 §6.2, css-sizing-3 §fit-content). Layout with a definite
+    // available width returns min(max-content, available), so an item wider
+    // than its track was squeezed into the track and its unbreakable content
+    // spilled out of its own box (`grid-self-baseline-001`: Ahem glyph poking
+    // through the right border). The floor is the item's min-content.
+    drop(style);
+    let width = if width.is_none() && position != Position::Absolute {
+        let fit = tree.measure_child_size(
+            node,
+            Size { width: None, height },
+            grid_area_size.map(Option::Some),
+            grid_area_minus_item_margins_size.map(AvailableSpace::Definite),
+            SizingMode::InherentSize,
+            AbsoluteAxis::Horizontal,
+            Line::FALSE,
+        );
+        let min_content = tree.measure_child_size(
+            node,
+            Size { width: None, height },
+            grid_area_size.map(Option::Some),
+            Size { width: AvailableSpace::MinContent, height: AvailableSpace::Definite(grid_area_minus_item_margins_size.height) },
+            SizingMode::InherentSize,
+            AbsoluteAxis::Horizontal,
+            Line::FALSE,
+        );
+        // The floor never exceeds max-content: taffy's min-content of a
+        // wrapping column flexbox can come out WIDER than its max-content
+        // (more lines at a narrower probe), and the content-sized wrapper
+        // (`render::content_sized`) is a grid too (`col-wrap-012`).
+        let max_content = tree.measure_child_size(
+            node,
+            Size { width: None, height },
+            grid_area_size.map(Option::Some),
+            Size { width: AvailableSpace::MaxContent, height: AvailableSpace::Definite(grid_area_minus_item_margins_size.height) },
+            SizingMode::InherentSize,
+            AbsoluteAxis::Horizontal,
+            Line::FALSE,
+        );
+        // ★ MEASURED (03.10): known loss `css-flexbox/intrinsic-size/row-004`
+        // (0.00 -> 2.08): a float holding a row flexbox (`flex: 0 1 100px`,
+        // child 200px) measures min-content 200 here, Blink 100 (§9.9.1
+        // clamps the contribution by the flex base size). Fix the flex
+        // min-content, not this floor.
+        let floor = min_content.min(max_content);
+        if floor > fit + 0.01 { Some(floor) } else { None }
+    } else {
+        width
+    };
+
     // Clamp size by min and max width/height
     let Size { width, height } = Size { width, height }.maybe_clamp(min_size, max_size);
 
     // Layout node
-    drop(style);
     let layout_output = tree.perform_child_layout(
         node,
         Size { width, height },
