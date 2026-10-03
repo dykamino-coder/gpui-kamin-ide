@@ -7236,7 +7236,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         // Анонимная таблица вокруг ПРОГОНА табличных братьев (§17.2.1 шаг 3)
         // — до разбиения блока в строчном и до схлопывания полей, как это
         // делает и сборщик дерева в браузере.
-        split_block_in_inline(&wrap_anon_tables(nodes))
+        split_block_in_inline(&hoist_inset_abs(&wrap_anon_tables(nodes)))
     };
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v158, `scout-flex-2026-09e.md` патч №1):
     // снятие АВТОРСКОГО `align-self` у блока в обычном потоке здесь, в начале
@@ -10063,6 +10063,100 @@ fn contains_block(children: &[Node]) -> bool {
         }
         other => breaks_inline(other),
     })
+}
+
+/// Абсолют с краями по ОБЕИМ осям внутри НЕпозиционированного строчного —
+/// наружу, соседом этого строчного на блочном уровне. Его содержащий блок —
+/// ближайший позиционированный предок (CSS 2.1 §10.1 п.4); прямоугольник
+/// фрагментов строчного (§10.1 п.4.1) — только когда позиционирован сам
+/// строчный. Куском строки (`Piece::Overlay`) он попадал в нулевую дырку
+/// `overlay_in_row` (`inline.rs`), и та становилась его содержащим блоком:
+/// `width: 100%` давал ноль, `100px` — коробку 7×7 в углу
+/// (`contain-paint-011/012`, `target/dbg/cq-a.html`, `cq-d.html`). Статической
+/// позиции у такого абсолюта нет (`at_static_position` ложно), место в
+/// потоке ему не нужно. Порядок отрисовки тот же: позиционированные красятся
+/// в порядке дерева (прил. E, шаг 8), а вынесенный встаёт сразу за своим
+/// строчным.
+fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
+    fn movable(e: &Element) -> bool {
+        let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
+        matches!(
+            e.style.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        ) && !at_static_position(&e.style)
+            && (edge(e.style.inset.left) || edge(e.style.inset.right))
+            && (edge(e.style.inset.top) || edge(e.style.inset.bottom))
+            && !matches!(
+                e.tag.as_str(),
+                "input" | "textarea" | "select" | "button" | "img" | "svg" | "canvas"
+            )
+    }
+    // Строчный, сквозь который абсолют уходит: не позиционирован и не заводит
+    // содержащего блока иначе (трансформ, `contain`, фильтр — css-transforms-1
+    // §3, css-contain-2 §3.2).
+    fn passable(e: &Element) -> bool {
+        // И без своих НАСЛЕДУЕМЫХ свойств: вынесенный абсолют наследовал бы уже
+        // от блока, мимо строчного (`contain-layout-004/005`: `::after` с
+        // кеглем Ahem 100px от `rtc` выходил мелким, красное видно).
+        let s = &e.style;
+        let own_inherited = s.font_size.is_some()
+            || s.font_family.is_some()
+            || s.font_weight.is_some()
+            || s.italic.is_some()
+            || s.line_height.is_some()
+            || s.color.is_some()
+            || s.letter_spacing.is_some()
+            || s.word_spacing.is_some()
+            || s.text_transform.is_some()
+            || s.hidden.is_some()
+            || s.rtl.is_some()
+            || s.vertical.is_some()
+            || s.nowrap.is_some()
+            || s.keep_spaces.is_some();
+        !own_inherited
+            && real_inline(e)
+            && e.style.position.is_none()
+            && e.style.transform.is_none()
+            && e.style.contain_layout != Some(true)
+            && e.style.contain_paint != Some(true)
+            && !crate::inline::establishes_cb(&e.style)
+    }
+    fn take(e: &mut Element, out: &mut Vec<Node>) {
+        let kids = std::mem::take(&mut e.children);
+        for n in kids {
+            match n {
+                Node::Element(k) if movable(&k) => out.push(Node::Element(k)),
+                Node::Element(mut k) if passable(&k) => {
+                    take(&mut k, out);
+                    e.children.push(Node::Element(k));
+                }
+                other => e.children.push(other),
+            }
+        }
+    }
+    fn has(e: &Element) -> bool {
+        e.children.iter().any(|n| match n {
+            Node::Element(k) => movable(k) || (passable(k) && has(k)),
+            _ => false,
+        })
+    }
+    if !nodes.iter().any(|n| matches!(n, Node::Element(e) if passable(e) && has(e))) {
+        return nodes.to_vec();
+    }
+    let mut out = Vec::with_capacity(nodes.len() + 1);
+    for n in nodes {
+        match n {
+            Node::Element(e) if passable(e) && has(e) => {
+                let mut e = e.clone();
+                let mut moved = Vec::new();
+                take(&mut e, &mut moved);
+                out.push(Node::Element(e));
+                out.extend(moved);
+            }
+            other => out.push(other.clone()),
+        }
+    }
+    out
 }
 
 /// Разорвать строчные, внутри которых лежит блок (CSS 2.1 §9.2.1.1).
@@ -16771,6 +16865,18 @@ fn paragraph_pieces(
             } else {
                 inner
             };
+            // Кусок кладётся КОРНЕМ в статическую точку (`lines.rs`), а корень
+            // своих полей не кладёт: от статической позиции коробку отодвигает
+            // её поле (CSS 2.1 §10.3.7, `margin-left` в уравнении ширины). Под
+            // обёрткой коробка — обычный ребёнок, и поле на месте
+            // (`CSS2/text/text-indent-013-ref`: `margin-left: -10em` — чёрная
+            // полоса на 328 вместо 168 закрывала PASS).
+            let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
+            let inner = if nz(merged.margin.left) || nz(merged.margin.top) {
+                div().flex().flex_row().items_start().child(inner).into_any_element()
+            } else {
+                inner
+            };
             return Some(inline::Piece::Overlay(inner));
         }
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО: контр-поворот физических четвёрок краёв
@@ -21868,7 +21974,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // «wrap … if we're participating in an outer fragmentation
                 // context»). Последний ряд балансируется (css-multicol-1 §7.1
                 // «only the last fragment is balanced»).
-                let nest_rows = outer_row.filter(|_| {
+                let nest_phase = outer_row.map_or(0.0, |r| r.1);
+                let nest_rows = outer_row.map(|r| r.0).filter(|_| {
                     col_h.is_none() && e.style.column_wrap.is_none() && !col_vert
                 });
                 let rows = match nest_rows {
@@ -22559,6 +22666,52 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             .as_ref()
                             .map(|_| crate::interact::gap_items_for(e.node_id ^ opts.doc_salt ^ 0x4D43_4F4C));
                         let rule = rule.filter(|_| gap_spec.is_none());
+                        // Где начинается ребёнок в первой внешней колонке — для
+                        // вложенного рядами с заданной высотой (`nest_row`): все
+                        // предыдущие встают целиком в первую колонку, без
+                        // принудительных разрывов и параллельных строк flex.
+                        // Внешний многоколоночник с БАЛАНСОМ и единственным ребёнком —
+                        // вложенным заданной высоты `h` без точек разреза: баланс
+                        // делит его поровну, и высота внешней колонки известна до
+                        // укладки — `h / cols` (не выше потолка коробки; css-multicol-1
+                        // §7.1; `multicol-breaking-005`: 300 в трёх колонках по 100).
+                        let balanced_frag: Option<f32> = (fixed.is_none()
+                            && rows.is_none_or(|r| r.cap)
+                            && cols > 1
+                            && kids.len() == 1)
+                            .then(|| {
+                                let (c, s) = &kids[0];
+                                (nested_rows_box(c)
+                                    && matches!(c.style.height, Some(Len::Px(_)))
+                                    && s.3.is_empty()
+                                    && s.1.abs() < 0.01)
+                                    .then(|| {
+                                        let per = s.0 / cols as f32;
+                                        rows.and_then(|r| r.h).map_or(per, |cap| per.min(cap))
+                                    })
+                            })
+                            .flatten()
+                            .filter(|h| *h > 1.0);
+                        let fixed_nest = fixed.or(balanced_frag);
+                        let nest_at: Vec<Option<f32>> = {
+                            let mut v = Vec::with_capacity(kids.len());
+                            let (mut y, mut prev_mb, mut ok) = (0.0f32, 0.0f32, true);
+                            for (i, (c, s)) in kids.iter().enumerate() {
+                                let lead = if i == 0 { s.1 } else { prev_mb.max(s.1) };
+                                let hh = fixed_nest.unwrap_or(0.0);
+                                v.push((ok && fixed_nest.is_some() && y + lead < hh - 0.01).then_some(y + lead));
+                                if edge_break(c, false)
+                                    || edge_break(c, true)
+                                    || kid_par.get(i).is_some_and(|p| p.group != 0)
+                                    || y + lead + s.0 > hh + 0.01
+                                {
+                                    ok = false;
+                                }
+                                y += lead + s.0;
+                                prev_mb = s.2;
+                            }
+                            v
+                        };
                         let children: Vec<crate::flow::StackChild> = kids
                             .into_iter()
                             .enumerate()
@@ -22688,17 +22841,26 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // (`fill_at`, не монолит) точно по рядам; мера
                                 // коробки — её заданная высота. Сдвинутый вниз
                                 // (первый ряд = остаток колонки) — следующий шаг.
-                                let nest_row = fixed.filter(|hh| {
+                                let nest_row = fixed_nest.filter(|hh| {
                                     *hh > 0.0
-                                        && rows.is_none()
+                                        && (rows.is_none() || balanced_frag.is_some())
                                         && !col_vert
-                                        && ix == 0
-                                        && mt.abs() < 0.01
                                         && kid_par.get(ix).is_none_or(|p| p.group == 0)
                                         && nested_rows_box(&copy)
-                                        && (matches!(copy.style.height, Some(Len::Px(_)))
-                                            || nested_auto.borrow().contains(&copy.node_id))
+                                        && match nest_at.get(ix).copied().flatten() {
+                                            // С верха колонки — и заданная высота, и
+                                            // `auto` с мерой рядами.
+                                            Some(y0) if y0 < 0.01 => {
+                                                matches!(copy.style.height, Some(Len::Px(_)))
+                                                    || nested_auto.borrow().contains(&copy.node_id)
+                                            }
+                                            // Ниже верха — только заданная высота: мера
+                                            // коробки от рядов не зависит.
+                                            Some(_) => matches!(copy.style.height, Some(Len::Px(_))),
+                                            None => false,
+                                        }
                                 });
+                                let nest_phase_k = nest_at.get(ix).copied().flatten().unwrap_or(0.0);
                                 let inner = inline::inherit(&merged, &copy.style);
                                 // Копии на случай разреза между колонками:
                                 // элемент GPUI рисуется один раз, а фрагмент
@@ -22978,7 +23140,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                             mc.style.border_box = None;
                                         }
                                         drop(frag_gap_guard);
-                                        crate::flow::set_outer_row(Some(hh));
+                                        crate::flow::set_outer_row(Some((hh, nest_phase_k)));
                                         let el = element(&mc, &merged, opts);
                                         crate::flow::set_outer_row(None);
                                         return el;
@@ -23449,7 +23611,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     })
                                 }),
                             )
-                            .with_axis(col_axis),
+                            .with_axis(col_axis)
+                            .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 }),
                         );
                         // Флоаты — прежним ходом, соседями стопки.
                         for oof in &direct_oof {
