@@ -131,7 +131,9 @@ pub struct Paragraph {
     hyphen_w: std::cell::Cell<Pixels>,
     /// Куски ВНЕ потока: байтовое место в тексте → элемент. Рисуются поверх
     /// строк, места в них не занимают.
-    overlays: Vec<(usize, AnyElement)>,
+    /// Третье поле — блочный уровень: коробка встаёт в начало СЛЕДУЮЩЕЙ
+    /// строки (см. `inline::Piece::Overlay`).
+    overlays: Vec<(usize, AnyElement, crate::inline::OverlayAt)>,
     /// Трекинг (`letter-spacing`): добавка к каждому знаку.
     letter_spacing: Pixels,
     /// `word-spacing` — добавка к КАЖДОМУ пробелу. Шейпер о ней не знает,
@@ -1498,7 +1500,7 @@ impl Paragraph {
     }
 
     /// Куски вне потока: место в тексте → элемент.
-    pub fn overlays(mut self, overlays: Vec<(usize, AnyElement)>) -> Self {
+    pub fn overlays(mut self, overlays: Vec<(usize, AnyElement, crate::inline::OverlayAt)>) -> Self {
         self.overlays = overlays;
         self
     }
@@ -1956,6 +1958,43 @@ impl Paragraph {
             bounds.origin.x + lead + x,
             bounds.origin.y + self.line_height * visual as f32,
         )
+    }
+
+    /// Статическая позиция БЛОЧНОГО куска вне потока: строчное начало —
+    /// край содержимого (без `text-indent`: отступ — свойство первой
+    /// СТРОКИ, а гипотетическая коробка — блок), блочное — начало строки,
+    /// следующей за той, где кусок стоит в тексте (CSS 2.1 §10.6.4 «if
+    /// position had been static»: блок в строчном содержимом рвёт строку и
+    /// встаёт после неё). Кусок в самом начале строки ничего перед собой не
+    /// имеет — строка рвётся ДО него, и место — верх этой же строки.
+    /// Порядок строк на экране при `lines_reversed` зеркален (см. `point_of`).
+    fn next_line_point(&self, at: usize, bounds: Bounds<Pixels>) -> Point<Pixels> {
+        let count = self.lines.len();
+        let row = self
+            .lines
+            .iter()
+            .position(|l| at < l.range.end)
+            .unwrap_or(count.saturating_sub(1));
+        // Есть ли перед куском в его строке настоящее содержимое (служебные
+        // распорки `SPACER`/`ZWSP` места не занимают).
+        let after = self.lines.get(row).is_some_and(|l| {
+            let end = at.clamp(l.range.start, l.range.end);
+            self.text
+                .get(l.range.start..end)
+                .is_some_and(|t| t.chars().any(|c| !matches!(c, '\u{feff}' | '\u{200b}')))
+        });
+        let visual = if self.lines_reversed {
+            count.saturating_sub(1).saturating_sub(row) as f32
+        } else {
+            row as f32
+        };
+        // Следующая строка: при обратном порядке она ВЫШЕ на экране.
+        let step = match (after, self.lines_reversed) {
+            (false, _) => 0.0,
+            (true, false) => 1.0,
+            (true, true) => -1.0,
+        };
+        point(bounds.origin.x, bounds.origin.y + self.line_height * (visual + step))
     }
 
     /// `text-fit`: подбирать ли кегль под ширину коробки.
@@ -3594,12 +3633,30 @@ impl Element for Paragraph {
         if !self.overlays.is_empty() {
             let segs = self.measure(window);
             let mut placed = std::mem::take(&mut self.overlays);
-            for (at, el) in placed.iter_mut() {
-                let origin = self.point_of(&segs, *at, bounds);
+            let rotated = crate::interact::in_rotated_frame();
+            let scale = window.scale_factor().max(0.01);
+            for (at, el, how) in placed.iter_mut() {
+                let next = &how.next_line;
+                let origin = if *next {
+                    self.next_line_point(*at, bounds)
+                } else {
+                    self.point_of(&segs, *at, bounds)
+                };
+                // Повёрнутый абзац: до-поворотная y — блочная ось экрана.
+                // Коробка ложится краем туда же, куда глиф соседнего текста:
+                // глиф — целая часть физической точки (`paint_glyph`), а
+                // раскладка округлила бы до ближайшей. Расхождение в точку
+                // оставляло столбец красного (`static-position/vlr-*`).
+                let origin = if rotated {
+                    let y = f32::from(origin.y + px(how.rot_dy)) * scale;
+                    point(origin.x + px(how.rot_dx), px((y + 1e-3).floor() / scale))
+                } else {
+                    origin
+                };
                 // Ширина абсолютного элемента — «по содержимому» (CSS 2.1
                 // §10.3.7): по МИНИМАЛЬНОМУ содержимому он рвался бы по
                 // словам (`static-position/htb-*`).
-                el.layout_as_root(
+                let size = el.layout_as_root(
                     gpui::size(
                         gpui::AvailableSpace::MaxContent,
                         gpui::AvailableSpace::MaxContent,
@@ -3607,6 +3664,14 @@ impl Element for Paragraph {
                     window,
                     _cx,
                 );
+                // Блочная коробка при `rtl` вешается ПРАВЫМ краем на правый
+                // край содержимого (§10.3.7: `right` = статическая позиция).
+                let origin = if *next && self.wrap.rtl {
+                    // `origin.x` здесь — край содержимого плюс сдвиг предков.
+                    point(origin.x + bounds.size.width - size.width, origin.y)
+                } else {
+                    origin
+                };
                 el.prepaint_at(origin, window, _cx);
             }
             self.overlays = placed;
@@ -3674,12 +3739,21 @@ impl Element for Paragraph {
         // Надбавка сверху опускает НАБОР строки: поднятый знак занимает её,
         // а базовая линия остаётся на своём месте относительно кегля.
         let above = |i: usize| -> Pixels { px(pads.get(i).copied().unwrap_or((0.0, 0.0)).0) };
-        let mut y = if self.lines_reversed && count > 0 {
+        // Строки снизу вверх: место строки считается ОТ ВЕРХА коробки одним
+        // сложением (`origin + px(смещение)`), как у `point_of`. Прежде
+        // `origin + total - line_height` в f32 расходился с `point_of` в
+        // последнем знаке, а глиф (`paint_glyph`: `floor` физической точки)
+        // на ровной точке от этого падает на целую точку: текст стоял на
+        // точку от щупа статической позиции — столбец красного в
+        // `static-position/vlr-*` (замер по снимку: глиф x=49, коробка 48;
+        // после правки оба 48).
+        let mut rev_off: f32 = if self.lines_reversed && count > 0 {
             let total: f32 = (0..count).map(|i| f32::from(step(i))).sum();
-            bounds.origin.y + px(total) - self.line_height
+            total - f32::from(self.line_height)
         } else {
-            bounds.origin.y
+            0.0
         };
+        let mut y = bounds.origin.y + px(rev_off);
         let selection = id
             .map(|global| {
                 window.with_element_state::<Selection, _>(global, |state, _| {
@@ -3776,11 +3850,12 @@ impl Element for Paragraph {
                         cx,
                     );
                 }
-                y += if self.lines_reversed {
-                    -step(i)
+                if self.lines_reversed {
+                    rev_off -= f32::from(step(i));
+                    y = bounds.origin.y + px(rev_off);
                 } else {
-                    step(i)
-                };
+                    y += step(i);
+                }
                 continue;
             }
             let dx = line_offset(align, self.wrap.rtl, free_raw) + lead;
@@ -3830,16 +3905,17 @@ impl Element for Paragraph {
                 String::new()
             };
             self.paint_line(&visible, &runs, at, &mark, window, cx);
-            y += if self.lines_reversed {
-                -step(i)
+            if self.lines_reversed {
+                rev_off -= f32::from(step(i));
+                y = bounds.origin.y + px(rev_off);
             } else {
-                step(i)
-            };
+                y += step(i);
+            }
         }
         for slot in self.atoms.iter_mut().filter(|s| !s.hidden) {
             slot.el.paint(window, cx);
         }
-        for (_, el) in self.overlays.iter_mut() {
+        for (_, el, _) in self.overlays.iter_mut() {
             el.paint(window, cx);
         }
         if let (Some(global), Some(hitbox)) = (id, hitbox.clone()) {

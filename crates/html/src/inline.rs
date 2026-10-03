@@ -39,7 +39,31 @@ pub enum Piece {
     /// стоит в тексте (абсолютный элемент на статической позиции). В отличие
     /// от `Atom` не выводит абзац из текстового пути — иначе строка теряет
     /// пробелы и перенос по словам (`line-breaking-018`).
-    Overlay(AnyElement),
+    ///
+    /// Второе поле — БЛОЧНЫЙ уровень гипотетической коробки: её статическая
+    /// позиция — начало СЛЕДУЮЩЕЙ строки, а не точка в текущей (CSS 2.1
+    /// §10.6.4/§10.3.7 «if position had been static»; Blink
+    /// `LogicalStaticPosition` блочного OOF в строчном контексте — блок-
+    /// начало после текущей строки, строчное начало — край содержимого).
+    Overlay(AnyElement, OverlayAt),
+}
+
+/// Как кусок вне потока садится на своё место в тексте (`lines.rs`).
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub struct OverlayAt {
+    /// Гипотетическая коробка БЛОЧНАЯ: место — начало следующей строки.
+    pub next_line: bool,
+    /// Относительный сдвиг строчных предков по ДО-ПОВОРОТНОЙ оси y в
+    /// повёрнутом абзаце. Прикладывается в `lines.rs` вместе с округлением
+    /// до целой физической точки ВНИЗ — так же, как глиф соседнего текста
+    /// (`window.rs: paint_glyph` берёт `floor`, раскладка — `round`).
+    pub rot_dy: f32,
+    /// То же по до-поворотной x (строчная ось). Отбивкой его не задать:
+    /// при `direction: rtl` `inset-inline-start` даёт ОТРИЦАТЕЛЬНЫЙ сдвиг, а
+    /// отрицательная отбивка обнуляется — коробка оставалась на месте, текст
+    /// уезжал на 2px, и полоса красного проступала (`static-position/
+    /// v{lr,rl}-rtl-*`, `cb`-случаи).
+    pub rot_dx: f32,
 }
 
 /// Схлопывание пробелов ЧЕРЕЗ границу кусков (CSS 2.1 §16.6.1,
@@ -63,7 +87,7 @@ pub fn collapse_across_pieces(pieces: &mut [Piece]) {
     for piece in pieces.iter_mut() {
         match piece {
             // Кусок вне потока места не занимает и ряд пробелов не рвёт.
-            Piece::Overlay(_) => {}
+            Piece::Overlay(..) => {}
             // Замещаемая коробка — не пробел: ряд на ней кончается.
             Piece::Atom(_) => prev_space = false,
             Piece::Text { text, style } => {
@@ -437,7 +461,7 @@ pub fn collect(
                     let boxel = crate::render::styled_div_with(&copy, &sized)
                         .absolute()
                         .top(gpui::px(dy));
-                    out.push(Piece::Overlay(boxel.into_any_element()));
+                    out.push(Piece::Overlay(boxel.into_any_element(), OverlayAt::default()));
                 }
                 if lead != 0.0 {
                     out.push(Piece::Text {
@@ -461,6 +485,7 @@ pub fn collect(
                 out.extend(shift_overlays(
                     collect(&e.children, &merged, atom),
                     &e.style,
+                    merged.rotated_line == Some(true),
                 ));
                 if let Some(mark) = close {
                     out.push(Piece::Text {
@@ -517,7 +542,7 @@ fn leading_segment_break(raw: &str) -> bool {
 fn ends_with_zwsp(out: &[Piece]) -> bool {
     for p in out.iter().rev() {
         match p {
-            Piece::Overlay(_) => continue,
+            Piece::Overlay(..) => continue,
             Piece::Atom(_) => return false,
             Piece::Text { text, .. } => {
                 if text.is_empty() || text == SPACER || text.chars().all(bidi_format) {
@@ -603,7 +628,17 @@ pub(crate) fn relative_inset(style: &Computed) -> (f32, f32) {
 }
 
 /// Сдвинуть куски вне потока на относительный сдвиг их строчного предка.
-fn shift_overlays(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
+///
+/// `rotated` — абзац повёрнутого вертикального письма. Там до-поворотная
+/// ось y — БЛОЧНАЯ ось экрана, и сдвиг по ней обязан округляться так же, как
+/// глифы соседнего текста: `paint_glyph` кладёт глиф `floor` от физической
+/// точки, а раскладка ставит край отбивки `round` (`taffy.rs: layout_bounds`).
+/// На 2px при масштабе 1.25 (2.5 точки) коробка вставала на точку дальше
+/// текста, и столбец красного в одну точку проступал у всех `cb`-случаев
+/// `css-position/static-position/v{lr,rl}-*`. Поэтому сдвиг по y не идёт
+/// отбивкой, а копится в `OverlayAt::rot_dy` и прикладывается `lines.rs`
+/// одним округлением вместе с местом в строке.
+fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool) -> Vec<Piece> {
     if style.position != Some(crate::computed::Position::Relative) {
         return pieces;
     }
@@ -621,12 +656,21 @@ fn shift_overlays(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
     pieces
         .into_iter()
         .map(|p| match p {
-            Piece::Overlay(el) => Piece::Overlay(
+            Piece::Overlay(el, at) if rotated => Piece::Overlay(
+                el,
+                OverlayAt {
+                    rot_dx: at.rot_dx + dx,
+                    rot_dy: at.rot_dy + dy,
+                    ..at
+                },
+            ),
+            Piece::Overlay(el, at) => Piece::Overlay(
                 gpui::div()
                     .pl(gpui::px(dx))
                     .pt(gpui::px(dy))
                     .child(el)
                     .into_any_element(),
+                at,
             ),
             other => other,
         })
@@ -2097,7 +2141,7 @@ pub fn hyphenate_pieces(pieces: &mut [Piece]) {
             // текста абзаца он не составляет вовсе
             // (`hyphens-out-of-flow-002`: `high<span abspos>…</span>way` —
             // это по-прежнему одно слово `highway`).
-            Piece::Overlay(_) => {}
+            Piece::Overlay(..) => {}
             // А вот атомарная коробка (картинка, `inline-block`) в строке
             // стоит и соседство букв разрывает.
             Piece::Atom(_) => {
@@ -2893,7 +2937,7 @@ fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool, sol
         match piece {
             Piece::Atom(_) if solid_atoms => return,
             // Коробка без текста для ряда пробелов прозрачна.
-            Piece::Atom(_) | Piece::Overlay(_) => continue,
+            Piece::Atom(_) | Piece::Overlay(..) => continue,
             // Распорка полей строчной коробки и метка атома прозрачны так же:
             // место они занимают, содержимым строки не являются, и пробел за
             // ними по-прежнему стоит на КРАЮ строки (css-text-3 §4.1.3).
@@ -3530,7 +3574,7 @@ pub fn single_block(pieces: &[Piece], _base_size: f32) -> bool {
     // потока не мешает: место в строке он не занимает.
     pieces
         .iter()
-        .all(|p| matches!(p, Piece::Text { .. } | Piece::Overlay(_)))
+        .all(|p| matches!(p, Piece::Text { .. } | Piece::Overlay(..)))
 }
 
 /// Самый крупный кегль среди кусков — по нему считается высота строки.
@@ -3545,7 +3589,7 @@ pub fn max_font_size(pieces: &[Piece], strut: f32, em_base: f32) -> f32 {
             Some(Len::Em(k)) => acc.max(k * em_base),
             _ => acc,
         },
-        Piece::Atom(_) | Piece::Overlay(_) => acc,
+        Piece::Atom(_) | Piece::Overlay(..) => acc,
     })
 }
 
@@ -3572,7 +3616,7 @@ pub fn max_line_height(pieces: &[Piece], strut: f32, em_base: f32, fraction: f32
             };
             acc.max(own)
         }
-        Piece::Atom(_) | Piece::Overlay(_) => acc,
+        Piece::Atom(_) | Piece::Overlay(..) => acc,
     })
 }
 
@@ -3596,7 +3640,7 @@ pub fn text_and_runs(pieces: &[Piece], base: &TextStyle) -> Option<(String, Vec<
             }
             // Кусок вне потока в текст не входит: его место помечает нулевой
             // пробел, а сам он рисуется поверх (см. `overlays`).
-            Piece::Overlay(_) => {}
+            Piece::Overlay(..) => {}
             Piece::Atom(_) => return None,
         }
     }
@@ -3639,13 +3683,13 @@ pub fn spacers(pieces: &[Piece]) -> Vec<usize> {
 ///
 /// Считается по тем же правилам, что и `text_and_runs`: смещение равно длине
 /// текста, собранного до этого куска.
-pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement)> {
+pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement, OverlayAt)> {
     let mut at = 0usize;
     let mut out = Vec::new();
     for p in pieces {
         match p {
             Piece::Text { text, .. } => at += text.len(),
-            Piece::Overlay(el) => out.push((at, el)),
+            Piece::Overlay(el, how) => out.push((at, el, how)),
             Piece::Atom(_) => {}
         }
     }
@@ -3814,7 +3858,7 @@ pub fn as_wrapped_row(
         && pieces.iter().any(|p| matches!(p, Piece::Atom(_)))
         && pieces.iter().all(|p| match p {
             Piece::Atom(_) => true,
-            Piece::Overlay(_) => false,
+            Piece::Overlay(..) => false,
             Piece::Text { text, .. } => text
                 .chars()
                 .all(|c| c.is_whitespace() || c == '\u{200b}'),
@@ -3908,7 +3952,7 @@ pub fn as_wrapped_row(
             for p in group {
                 glued = match p {
                     Piece::Atom(el) => glued.child(el),
-                    Piece::Overlay(el) => glued.child(overlay_in_row(el)),
+                    Piece::Overlay(el, _) => glued.child(overlay_in_row(el)),
                     Piece::Text { text, style } => glued.child(render_text(text, &style)),
                 };
             }
@@ -3921,7 +3965,7 @@ pub fn as_wrapped_row(
                     line_empty = false;
                     row.child(el)
                 }
-                Piece::Overlay(el) => row.child(overlay_in_row(el)),
+                Piece::Overlay(el, _) => row.child(overlay_in_row(el)),
                 Piece::Text { text, style } => {
                     // Пробел остаётся при слове: без него слова слиплись бы.
                     for (n, part) in text.split('\n').enumerate() {
