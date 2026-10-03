@@ -2991,13 +2991,21 @@ fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<S
     let h = top + content + bot;
     let cut_need = if brk_end { tb } else { 0.0 };
     let cut_from = if brk_start { tt } else { 0.0 };
-    let cuts: Vec<(f32, f32)> = (orphans..=lines.saturating_sub(widows))
+    let mut cuts: Vec<(f32, f32)> = (orphans..=lines.saturating_sub(widows))
         .filter(|k| *k >= 1 && *k < lines && (*k as f32) * lh - shift < content - 0.01)
         .map(|k| {
             let at = top + k as f32 * lh - shift;
             ((at - cut_need).max(top), at + cut_from)
         })
         .collect();
+    // Разрыв ПЕРЕД первой строкой (блок целиком уходит в следующую колонку):
+    // и там строка у верха колонки срезается (`text-box-trim-multicol-012`:
+    // `orphans: 2` уводит все строки во вторую колонку, первая — от её верха).
+    // Точка в нуле: кусок нулевой высоты в текущей колонке, продолжение — с
+    // метрики первой строки.
+    if cut_from > 0.0 && shift <= 0.0 && top <= 0.0 && fixed_h.is_none() {
+        cuts.insert(0, (0.0, cut_from));
+    }
     // Строка неразрывна (css-break-3 §4.3: разрыв только МЕЖДУ строками), а
     // первые `orphans` и последние `widows` строк — одним куском (§4.4).
     // Монолитные диапазоны — промежутки между законными точками: край колонки
