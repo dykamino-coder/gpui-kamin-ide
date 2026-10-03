@@ -4747,6 +4747,11 @@ thread_local! {
 /// (`VerticalText::paint`): до-поворотная `(px, py)` от угла рамки становится
 /// экранной `(x + w - py - thickness, y + px)`. Толщина — колонка строки, в
 /// которую коробка встала.
+/// Идёт ли сейчас подготовка ПОВЁРНУТОГО абзаца (`VerticalText`).
+pub fn in_rotated_frame() -> bool {
+    VT_FRAME.with(|c| c.get()).is_some()
+}
+
 fn vt_map(hole: Bounds<Pixels>, thickness: Pixels) -> Bounds<Pixels> {
     let Some(vt) = VT_FRAME.with(|c| c.get()) else {
         return hole;

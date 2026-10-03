@@ -16862,9 +16862,21 @@ fn paragraph_pieces(
         // элемента (§10.3.7: «if position had been static») — блокификация
         // `display: inline` под absolute на неё не влияет, метка
         // inline_display возвращает такой элемент в строчный путь.
+        // БЛОЧНЫЙ абсолют в ПОВЁРНУТОМ абзаце вертикального письма — тоже
+        // кусок вне потока, но с местом в начале СЛЕДУЮЩЕЙ строки
+        // (`lines.rs: next_line_point`). Прежде он шёл атомом со щупом
+        // `Spot`: атом выводил абзац из текстового пути в ряд слов, щуп
+        // мерил до-поворотные координаты, а заместитель верхнего слоя
+        // ложился горизонтальной полосой поперёк вертикального контейнера —
+        // красное проступало у всех `css-position/static-position/v{lr,rl}-*`.
+        // В повёрнутом абзаце коробка поворачивается вместе со строками, и её
+        // до-поворотное место — ровно гипотетическая коробка §10.6.4.
+        let rot_block = inherited.rotated_line == Some(true)
+            && !inline_level(e)
+            && e.style.inline_display != Some(true);
         if plain_flow
             && at_static_position(&e.style)
-            && (inline_level(e) || e.style.inline_display == Some(true))
+            && (inline_level(e) || e.style.inline_display == Some(true) || rot_block)
         {
             let mut merged = inline::inherit(inherited, &e.style);
             merged.position = None;
@@ -16916,7 +16928,7 @@ fn paragraph_pieces(
             // `GetStaticPositionInsetBias` переводит его в `InsetBias::kEnd`.
             // Сторону задаёт направление СОДЕРЖАЩЕГО блока, а не собственное
             // письмо коробки (css-writing-modes-4 §7.1, строки 1926-1931).
-            let inner = if inherited.rtl == Some(true) {
+            let inner = if inherited.rtl == Some(true) && !rot_block {
                 crate::interact::InlineStartHang::new(inner).into_any_element()
             } else {
                 inner
@@ -16933,7 +16945,13 @@ fn paragraph_pieces(
             } else {
                 inner
             };
-            return Some(inline::Piece::Overlay(inner));
+            return Some(inline::Piece::Overlay(
+                inner,
+                inline::OverlayAt {
+                    next_line: rot_block,
+                    ..Default::default()
+                },
+            ));
         }
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО: контр-поворот физических четвёрок краёв
         // (`margin`/`padding`/`border-width` и четвёрки цвета, стиля,
@@ -17140,7 +17158,7 @@ fn paragraph_pieces(
                     "svg" | "img" | "canvas" | "video" | "embed" | "object" | "iframe"
                 )
             {
-                return inline::Piece::Overlay(el);
+                return inline::Piece::Overlay(el, inline::OverlayAt::default());
             }
             inline::Piece::Atom(el)
         })
