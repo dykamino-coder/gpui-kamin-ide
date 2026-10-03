@@ -593,11 +593,15 @@ impl Color {
                 p.parse::<f32>().ok()
             }
         })?;
+        // Каналы и альфа зажимаются в допустимый диапазон (css-color-4
+        // §5.1: «Values outside these ranges are not invalid, but are clamped
+        // … at parsed-value time»). Незажатая альфа 30 красила текст в 30
+        // слоёв (`t422-rgba-clamping-a1.0-b`: строки 4–6 жирнее).
         Some(Color {
-            r: chan(parts[0])?,
-            g: chan(parts[1])?,
-            b: chan(parts[2])?,
-            a: alpha,
+            r: chan(parts[0])?.clamp(0.0, 1.0),
+            g: chan(parts[1])?.clamp(0.0, 1.0),
+            b: chan(parts[2])?.clamp(0.0, 1.0),
+            a: alpha.clamp(0.0, 1.0),
         })
     }
 }
