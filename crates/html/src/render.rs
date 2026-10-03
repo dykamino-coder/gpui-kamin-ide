@@ -12227,6 +12227,70 @@ fn band_host_m(
         if !next.style.float.is_some_and(|f| f != 0) {
             break;
         }
+        band_float_m(next, em)?;
+        floaters.push(next.clone());
+        j += 1;
+    }
+    if floaters.is_empty() {
+        return None;
+    }
+    // Щупы ширины строчного содержимого перед флоатами (`Kid::lead`):
+    // (номера флоатов, узлы перед ними в той же строке). Флоаты пробега
+    // стоят после `lead` (`wrap_floats`).
+    let mut probes: Vec<(usize, usize, Vec<Node>)> = vec![];
+    if !lead.is_empty() {
+        probes.push((0, floaters.len(), lead.to_vec()));
+    }
+    let mut rest: Vec<Node> = vec![];
+    while j < nodes.len() {
+        // С шагом F6 очищающая коробка остаётся в хосте: clearance считают
+        // полосы (`band_flow::plan`), а не распорка флекс-ряда.
+        if let Node::Element(next) = &nodes[j]
+            && (next.style.float.is_some_and(|f| f != 0)
+                || (next.style.clear.is_some() && !band_f6()))
+        {
+            // Флоат дальше по той же строке прогона («BEF<float>Inner
+            // <float>AFTER», `::after { float: right }` за текстом): пока
+            // перед ним только строчное содержимое без разрывов, он встаёт
+            // на ту же строку (правило 6 §9.5.1) — в этот же хост, со своим
+            // щупом ширины набранного до него. Отдельный хост начинал бы
+            // его с новой строки (`before-after-floated-001`).
+            // Атомы в набранном — нет: щуп высоты их ряда (`FlowRow`) не
+            // спускает строки под вырезы ранних флоатов, и второй флоат
+            // вставал прямо под первым (`shape-outside-border-box-001-ref`:
+            // 7.02 с атомами в щупе).
+            let inline_only = rest.iter().all(|n| match n {
+                Node::Text(_) => true,
+                Node::Element(c) => {
+                    (c.tag == "br" && c.style.clear.is_none())
+                        || (!block_level_in_flow(c)
+                            && !out_of_flow(&c.style)
+                            && band_piece(n) != Some(BandPiece::Atom))
+                }
+            });
+            if next.style.float.is_some_and(|f| f != 0)
+                && inline_only
+                && rest.iter().any(|n| !is_blank(n))
+                && band_float_m(next, em).is_some()
+            {
+                let mut pre = lead.to_vec();
+                pre.extend(rest.iter().cloned());
+                probes.push((floaters.len(), floaters.len() + 1, pre));
+                floaters.push(next.clone());
+                j += 1;
+                continue;
+            }
+            break;
+        }
+        rest.push(nodes[j].clone());
+        j += 1;
+    }
+    band_host_m_tail(nodes, i, j, em, lead, floaters, rest, probes)
+}
+
+/// Годится ли флоат в измеряемый хост: `None` — хост отменяется.
+fn band_float_m(next: &Element, em: f32) -> Option<()> {
+    {
         // Ортогональный флоат (своё письмо вертикально в горизонтальном
         // контейнере) С ТЕКСТОМ: строчный размер его строк (§7.3.1, от
         // начального содержащего блока) каркас пробы не считает, и ширина
@@ -12248,25 +12312,22 @@ fn band_host_m(
             return None;
         }
         band_margins(&next.style, em)?;
-        floaters.push(next.clone());
-        j += 1;
     }
-    if floaters.is_empty() {
-        return None;
-    }
-    let mut rest: Vec<Node> = vec![];
-    while j < nodes.len() {
-        // С шагом F6 очищающая коробка остаётся в хосте: clearance считают
-        // полосы (`band_flow::plan`), а не распорка флекс-ряда.
-        if let Node::Element(next) = &nodes[j]
-            && (next.style.float.is_some_and(|f| f != 0)
-                || (next.style.clear.is_some() && !band_f6()))
-        {
-            break;
-        }
-        rest.push(nodes[j].clone());
-        j += 1;
-    }
+    Some(())
+}
+
+/// Хвост `band_host_m`: хост из собранных флоатов, хвоста и щупов.
+#[allow(clippy::too_many_arguments)]
+fn band_host_m_tail(
+    nodes: &[Node],
+    i: usize,
+    j: usize,
+    em: f32,
+    lead: &[Node],
+    floaters: Vec<Element>,
+    rest: Vec<Node>,
+    probes: Vec<(usize, usize, Vec<Node>)>,
+) -> Option<(Element, usize, Vec<Node>)> {
     if {
         static ON: std::sync::LazyLock<bool> =
             std::sync::LazyLock::new(|| std::env::var("BF_DBG").is_ok());
@@ -12287,7 +12348,10 @@ fn band_host_m(
                 .collect::<Vec<_>>()
         );
     }
-    if floaters.len() < 2 && !rest.iter().any(|n| !is_blank(n)) {
+    // Одинокий флоат без хвоста полосам не нужен — если перед ним в строке
+    // ничего нет: флоат ПОСЛЕ текста («Inner<float>») встаёт на его строку
+    // только в хосте.
+    if floaters.len() < 2 && !rest.iter().any(|n| !is_blank(n)) && lead.is_empty() {
         return None;
     }
     // Хвост: куски своего контекста, блоки потока и строчные прогоны
@@ -12295,24 +12359,46 @@ fn band_host_m(
     let mut lifted: Vec<Node> = vec![];
     // Строчное содержимое перед флоатом в той же строке (`wrap_floats`):
     // оно — начало первого прогона хоста, флоаты встают на его строку.
-    let lead_probe = (!lead.is_empty()).then(|| {
-        Node::Element(Element {
-            list_item: None,
-            node_id: 0,
-            anim: None,
-            tag: "div".into(),
-            style: Computed::default(),
-            hover: None,
-            first_letter: None,
-            first_line: None,
-            children: lead.to_vec(),
-            attrs: vec![
-                ("anon".into(), "1".into()),
-                ("lead-probe".into(), "1".into()),
-            ],
-            inline: false,
+    let lead_probe = (!lead.is_empty()).then_some(());
+    let probe_nodes: Vec<Node> = probes
+        .into_iter()
+        .flat_map(|(a, b, pre)| {
+            // Последний `<br>` верхнего уровня делит набранное: до него —
+            // основание (`lead-base`), после — строка флоата (`lead-for`).
+            let cut = pre
+                .iter()
+                .rposition(|n| matches!(n, Node::Element(c) if c.tag == "br"))
+                .map(|p| p + 1);
+            let (base, line) = match cut {
+                Some(p) => (Some(pre[..p].to_vec()), pre[p..].to_vec()),
+                None => (None, pre),
+            };
+            let probe = |children: Vec<Node>, key: &str| {
+                Node::Element(Element {
+                    list_item: None,
+                    node_id: 0,
+                    anim: None,
+                    tag: "div".into(),
+                    style: Computed::default(),
+                    hover: None,
+                    first_letter: None,
+                    first_line: None,
+                    children,
+                    attrs: vec![
+                        ("anon".into(), "1".into()),
+                        ("lead-probe".into(), "1".into()),
+                        (key.into(), format!("{a}-{b}")),
+                    ],
+                    inline: false,
+                })
+            };
+            let mut v = vec![probe(line, "lead-for")];
+            if let Some(base) = base {
+                v.push(probe(base, "lead-base"));
+            }
+            v
         })
-    });
+        .collect();
     let rest = if lead.is_empty() {
         rest
     } else {
@@ -12384,7 +12470,7 @@ fn band_host_m(
     };
     host.children = floaters.into_iter().map(Node::Element).collect();
     host.children.extend(rest);
-    host.children.extend(lead_probe);
+    host.children.extend(probe_nodes);
     Some((host, j, lifted))
 }
 
@@ -12940,26 +13026,58 @@ fn band_kids(
         .iter()
         .any(|n| matches!(n, Node::Element(p) if p.attr("lead-probe") == Some("1")));
     let nowrap = inherited.nowrap == Some(true);
-    let lead_build: Option<crate::band_flow::Build> = nodes.iter().find_map(|n| match n {
-        Node::Element(p)
-            if (!nowrap && p.attr("lead-probe") == Some("1"))
-                || (nowrap
-                    && has_lead
-                    && p.attr("anon") == Some("1")
-                    && p.attr("lead-probe").is_none()) =>
-        {
-            let p = p.clone();
-            let inherited = inherited.clone();
-            let opts = opts.clone();
-            let b: crate::band_flow::Build =
-                std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
-                    let _depth = DepthScope::enter(depth);
-                    element(&p, &inherited, &opts)
-                });
-            Some(b)
+    let mk_build = |p: &Element| -> crate::band_flow::Build {
+        let p = p.clone();
+        let inherited = inherited.clone();
+        let opts = opts.clone();
+        std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
+            let _depth = DepthScope::enter(depth);
+            element(&p, &inherited, &opts)
+        })
+    };
+    // Первый прогон — щуп для всех флоатов при `nowrap`.
+    let nowrap_probe: Option<crate::band_flow::Build> = (nowrap && has_lead)
+        .then(|| {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(p)
+                    if p.attr("anon") == Some("1") && p.attr("lead-probe").is_none() =>
+                {
+                    Some(mk_build(p))
+                }
+                _ => None,
+            })
+        })
+        .flatten();
+    // Щупы по номерам флоатов (`lead-for`/`lead-base` = «a-b»).
+    let probes_of = |key: &str| -> Vec<(usize, usize, crate::band_flow::Build)> {
+        nodes
+            .iter()
+            .filter_map(|n| match n {
+                Node::Element(p) if p.attr("lead-probe") == Some("1") => {
+                    let (a, b) = p.attr(key)?.split_once('-')?;
+                    Some((a.parse().ok()?, b.parse().ok()?, mk_build(p)))
+                }
+                _ => None,
+            })
+            .collect()
+    };
+    let lead_probes = probes_of("lead-for");
+    let base_probes = probes_of("lead-base");
+    let base_for = |idx: usize| -> Option<crate::band_flow::Build> {
+        base_probes
+            .iter()
+            .find(|(a, b, _)| (*a..*b).contains(&idx))
+            .map(|(_, _, b)| b.clone())
+    };
+    let lead_for = |idx: usize| -> Option<crate::band_flow::Build> {
+        if let Some(b) = nowrap_probe.as_ref() {
+            return Some(b.clone());
         }
-        _ => None,
-    });
+        lead_probes
+            .iter()
+            .find(|(a, b, _)| (*a..*b).contains(&idx))
+            .map(|(_, _, b)| b.clone())
+    };
     for (idx, n) in nodes.iter().enumerate() {
         let Node::Element(c) = n else {
             continue;
@@ -13224,7 +13342,8 @@ fn band_kids(
             nest,
             anon: c.attr("anon") == Some("1"),
             head,
-            lead: if float { lead_build.clone() } else { None },
+            lead: if float { lead_for(idx) } else { None },
+            lead_base: if float { base_for(idx) } else { None },
         });
     }
     kids
