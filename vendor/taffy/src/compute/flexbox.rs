@@ -1618,9 +1618,18 @@ fn determine_container_main_size(
                             .iter()
                             .map(|child| {
                                 let padding_border_sum = (child.padding + child.border).main_axis_sum(constants.dir);
-                                (child.flex_basis.maybe_max(child.min_size.main(constants.dir))
-                                    + child.margin.main_axis_sum(constants.dir))
-                                .max(padding_border_sum)
+                                // KaminIDE patch: НЕГИБКИЙ элемент (`flex: 0 0 N`)
+                                // занимает гипотетический размер — базу, зажатую
+                                // `max-*` (css-flexbox-1 §9.2.3 E, §9.9.1; Blink
+                                // flex_layout_algorithm.cc:2949), а не сырую базу:
+                                // `flex: 0 0 200px; max-width: 100px` раздувал
+                                // контейнер по содержимому до 200 (`row-007`).
+                                let main = if child.flex_grow == 0.0 && child.flex_shrink == 0.0 {
+                                    child.hypothetical_inner_size.main(constants.dir)
+                                } else {
+                                    child.flex_basis.maybe_max(child.min_size.main(constants.dir))
+                                };
+                                (main + child.margin.main_axis_sum(constants.dir)).max(padding_border_sum)
                             })
                             .sum::<f32>();
                         total_target_size + line_main_axis_gap
@@ -1674,7 +1683,16 @@ fn determine_container_main_size(
                         // Spec modification: https://www.w3.org/TR/css-flexbox-1/#change-2016-max-contribution
                         // Issue: https://github.com/w3c/csswg-drafts/issues/1435
                         // Gentest: padding_border_overrides_size_flex_basis_0.html
-                        let clamping_basis = Some(item.flex_basis).maybe_max(style_preferred);
+                        // KaminIDE patch: негибкий элемент вносит ГИПОТЕТИЧЕСКИЙ
+                        // главный размер — базу, зажатую своими min/max
+                        // (css-flexbox-1 §9.9.1 «intrinsic-item-contributions»;
+                        // Blink flex_layout_algorithm.cc:2936-2953 берёт
+                        // `hypothetical_main_size_border_box`). Без зажима
+                        // `flex: 0 0 200px; max-width: 100px` вносил 200
+                        // (`intrinsic-size/row-007`). Гипотетический размер уже
+                        // учёл автоминимум и пол отбивок (`determine_flex_base_size`).
+                        let clamping_basis = Some(item.hypothetical_inner_size.main(constants.dir))
+                            .maybe_max(style_preferred.maybe_min(style_max));
                         let flex_basis_min = clamping_basis.filter(|_| item.flex_shrink == 0.0);
                         let flex_basis_max = clamping_basis.filter(|_| item.flex_grow == 0.0);
 
@@ -1804,7 +1822,13 @@ fn determine_container_main_size(
                             let flex_contribution = if item.content_flex_fraction > 0.0 {
                                 f32_max(1.0, item.flex_grow) * flex_fraction
                             } else if item.content_flex_fraction < 0.0 {
-                                let scaled_shrink_factor = f32_max(1.0, item.flex_shrink) * item.inner_flex_basis;
+                                // KaminIDE patch: тот же множитель, что и при делении
+                                // выше (`max(1, shrink × inner_basis)`). Было
+                                // `max(1, shrink) × inner_basis`: при `flex-shrink: 0`
+                                // доля −100 умножалась на всю базу, и вклад негибкого
+                                // элемента уходил в минус на порядки
+                                // (`intrinsic-size/row-007`: 200 − 180×100).
+                                let scaled_shrink_factor = f32_max(1.0, item.flex_shrink * item.inner_flex_basis);
                                 scaled_shrink_factor * flex_fraction
                             } else {
                                 0.0

@@ -4133,16 +4133,12 @@ impl Computed {
             // values are not allowed») — объявление отбрасывается целиком
             // (`flex-shrink-002`, `flex-basis-004`).
             "flex-grow" => {
-                if let Ok(g) = v.trim().parse::<f32>()
-                    && g >= 0.0
-                {
+                if let Some(g) = flex_factor(v) {
                     self.flex_grow = Some(g);
                 }
             }
             "flex-shrink" => {
-                if let Ok(g) = v.trim().parse::<f32>()
-                    && g >= 0.0
-                {
+                if let Some(g) = flex_factor(v) {
                     self.flex_shrink = Some(g);
                 }
             }
@@ -4174,7 +4170,7 @@ impl Computed {
                     // двух числах оставалась `auto`, и `flex: 0 1` держал
                     // ширину элемента вместо нуля.
                     let parts: Vec<&str> = v.split_whitespace().collect();
-                    let number = |t: &str| t.parse::<f32>().ok();
+                    let number = |t: &str| flex_factor(t);
                     match parts.as_slice() {
                         [one] => match number(one) {
                             Some(g) => {
@@ -4205,7 +4201,7 @@ impl Computed {
                             // Безразмерная основа кроме нуля делает ВСЁ
                             // объявление невалидным (`flex: 0 0 4` не
                             // применяется вовсе, flexbox_flex-*-unitless-basis).
-                            if number(c).is_some_and(|n| n != 0.0) {
+                            if crate::value::number(c).is_some_and(|n| n != 0.0) {
                                 return;
                             }
                             self.flex_grow = number(a);
@@ -13551,4 +13547,17 @@ mod border_image_tests {
         assert_eq!(bi.slice[1], BorderImageSlice::Pct(0.3));
         assert_eq!(bi.repeat, (Tiling::Round, Tiling::Space));
     }
+}
+
+/// Множитель роста/сжатия гибкого элемента: `<number>` или `calc()` из чисел
+/// (css-values-4 §10.1), неотрицательный. `calc(infinity)` (§10.7.1) —
+/// наибольшее представимое: здесь — конечное большое, чтобы сумма
+/// множителей и доли свободного места не уходили в бесконечность и `NaN`
+/// (`flex-grow-009`: `flex: calc(infinity) 0 0px` забирает всё место).
+fn flex_factor(v: &str) -> Option<f32> {
+    let g = crate::value::number(v)?;
+    if g.is_nan() || g < 0.0 {
+        return None;
+    }
+    Some(g.min(1.0e18))
 }
