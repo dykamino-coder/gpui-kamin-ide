@@ -22467,13 +22467,36 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         // вложенного рядами с заданной высотой (`nest_row`): все
                         // предыдущие встают целиком в первую колонку, без
                         // принудительных разрывов и параллельных строк flex.
+                        // Внешний многоколоночник с БАЛАНСОМ и единственным ребёнком —
+                        // вложенным заданной высоты `h` без точек разреза: баланс
+                        // делит его поровну, и высота внешней колонки известна до
+                        // укладки — `h / cols` (не выше потолка коробки; css-multicol-1
+                        // §7.1; `multicol-breaking-005`: 300 в трёх колонках по 100).
+                        let balanced_frag: Option<f32> = (fixed.is_none()
+                            && rows.is_none_or(|r| r.cap)
+                            && cols > 1
+                            && kids.len() == 1)
+                            .then(|| {
+                                let (c, s) = &kids[0];
+                                (nested_rows_box(c)
+                                    && matches!(c.style.height, Some(Len::Px(_)))
+                                    && s.3.is_empty()
+                                    && s.1.abs() < 0.01)
+                                    .then(|| {
+                                        let per = s.0 / cols as f32;
+                                        rows.and_then(|r| r.h).map_or(per, |cap| per.min(cap))
+                                    })
+                            })
+                            .flatten()
+                            .filter(|h| *h > 1.0);
+                        let fixed_nest = fixed.or(balanced_frag);
                         let nest_at: Vec<Option<f32>> = {
                             let mut v = Vec::with_capacity(kids.len());
                             let (mut y, mut prev_mb, mut ok) = (0.0f32, 0.0f32, true);
                             for (i, (c, s)) in kids.iter().enumerate() {
                                 let lead = if i == 0 { s.1 } else { prev_mb.max(s.1) };
-                                let hh = fixed.unwrap_or(0.0);
-                                v.push((ok && fixed.is_some() && y + lead < hh - 0.01).then_some(y + lead));
+                                let hh = fixed_nest.unwrap_or(0.0);
+                                v.push((ok && fixed_nest.is_some() && y + lead < hh - 0.01).then_some(y + lead));
                                 if edge_break(c, false)
                                     || edge_break(c, true)
                                     || kid_par.get(i).is_some_and(|p| p.group != 0)
@@ -22615,9 +22638,9 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // (`fill_at`, не монолит) точно по рядам; мера
                                 // коробки — её заданная высота. Сдвинутый вниз
                                 // (первый ряд = остаток колонки) — следующий шаг.
-                                let nest_row = fixed.filter(|hh| {
+                                let nest_row = fixed_nest.filter(|hh| {
                                     *hh > 0.0
-                                        && rows.is_none()
+                                        && (rows.is_none() || balanced_frag.is_some())
                                         && !col_vert
                                         && kid_par.get(ix).is_none_or(|p| p.group == 0)
                                         && nested_rows_box(&copy)
