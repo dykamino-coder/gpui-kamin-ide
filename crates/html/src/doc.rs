@@ -324,6 +324,8 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
                 take.bg_clip = s.bg_clip.take();
                 take.bg_origin = s.bg_origin.take();
                 take.bg_fixed = s.bg_fixed.take();
+                // Списки слоёв переезжают вместе с верхним слоем (§14.2).
+                take.bg_lists = std::mem::take(&mut s.bg_lists);
                 moved = Some(take);
                 break;
             }
@@ -341,6 +343,7 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
             s.bg_clip = take.bg_clip;
             s.bg_origin = take.bg_origin;
             s.bg_fixed = take.bg_fixed;
+            s.bg_lists = take.bg_lists;
             s.canvas_bg = true;
         }
     }

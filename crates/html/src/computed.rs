@@ -2757,6 +2757,9 @@ pub struct Computed {
     /// при отрисовке (`render::view_box_rect`). Флаг — вид записи:
     /// 0 `inset`, 1 `rect`, 2 `xywh`.
     pub(crate) object_view_box: Option<(u8, [Len; 4])>,
+    /// Сырые СПИСКИ фоновых свойств со слоями через запятую: (свойство,
+    /// запись). Поля `bg_*` несут верхний слой; все слои строит `bg_layers`.
+    pub(crate) bg_lists: Vec<(String, String)>,
     pub bg_repeat: Option<BgRepeat>,
     /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
@@ -2820,6 +2823,11 @@ impl Computed {
     /// Градиент, которому нужна МЕХАНИКА ПЛИТКИ (размер, повтор, позиция,
     /// свой край): сплошная заливка её не умеет, рисует слой-картинка.
     pub(crate) fn gradient_as_tile(&self) -> bool {
+        // Несколько слоёв рисует стопка плиток (`bg_layers`): заливка коробки
+        // верхним градиентом легла бы ПОД нижние слои.
+        if self.gradient.is_some() && self.bg_lists.iter().any(|(k, _)| k == "background" || k == "background-image") {
+            return true;
+        }
         self.gradient_raw.is_some()
             && (self.bg_size != crate::computed::BgSize::Auto
                 || self.bg_repeat.is_some()
@@ -3777,6 +3785,29 @@ impl Computed {
             && let Some(start) = initial_value(key)
         {
             return self.apply_one(key, start);
+        }
+        // Фон — СПИСОК слоёв (css-backgrounds-3 §2.1: «comma-separated list
+        // of values … the first value represents the top layer»). Одиночные
+        // поля стиля несут верхний слой, а список целиком хранится сырым —
+        // по нему рисуются все слои (`Computed::bg_layers`). Запись без
+        // запятой список своего свойства снимает; сокращение — все.
+        if BG_LIST_KEYS.contains(&key) {
+            if key == "background" {
+                self.bg_lists.clear();
+            } else {
+                self.bg_lists.retain(|(k, _)| k != key);
+            }
+            if top_level_comma(v).is_some() {
+                if key != "background" {
+                    // Верхний слой — обычным разбором; список кладётся ПОСЛЕ:
+                    // вложенный вызов того же свойства его бы снял.
+                    let first = background_layers(v)[0].to_string();
+                    self.apply_one(key, &first);
+                    self.bg_lists.push((key.to_string(), v.to_string()));
+                    return;
+                }
+                self.bg_lists.push((key.to_string(), v.to_string()));
+            }
         }
         match key {
             // css-break-3 §4.4: `<integer [1,∞]>`; ноль и отрицательное
@@ -11177,6 +11208,92 @@ fn four<T: Copy>(words: &[&str], one: impl Fn(&str) -> Option<T>) -> Option<[T; 
         3 => Some([v[0], v[1], v[2], v[1]]),
         4 => Some([v[0], v[1], v[2], v[3]]),
         _ => None,
+    }
+}
+
+/// Фоновые свойства со списком слоёв (css-backgrounds-3 §2.1).
+const BG_LIST_KEYS: [&str; 8] = [
+    "background",
+    "background-image",
+    "background-size",
+    "background-position",
+    "background-repeat",
+    "background-origin",
+    "background-clip",
+    "background-attachment",
+];
+
+impl Computed {
+    /// Слои фона СВЕРХУ ВНИЗ, когда их больше одного: каждый — копия стиля с
+    /// одним слоем (картинка, размер, положение, повтор, область) и без
+    /// цвета фона — цвет лежит под всеми слоями и красится коробкой
+    /// (css-backgrounds-3 §3.1, §2.1: значения списков, которых меньше
+    /// слоёв, повторяются по кругу). Градиент слоя уходит в растровую плитку
+    /// (`bg_image` с сырой записью), чтобы все слои шли одним путём и в
+    /// своём порядке. `None` — слой один.
+    pub(crate) fn bg_layers(&self) -> Option<Vec<Computed>> {
+        let short = self.bg_lists.iter().find(|(k, _)| k == "background").map(|(_, v)| v.clone());
+        let image = self.bg_lists.iter().find(|(k, _)| k == "background-image").map(|(_, v)| v.clone());
+        let images: Vec<String> = match (&image, &short) {
+            (Some(v), _) | (None, Some(v)) => background_layers(v).into_iter().map(str::to_string).collect(),
+            _ => return None,
+        };
+        if images.len() < 2 {
+            return None;
+        }
+        let mut out = vec![];
+        for (i, _) in images.iter().enumerate() {
+            let mut c = self.clone();
+            c.bg_lists.clear();
+            c.background = None;
+            if let Some(v) = &short {
+                c.bg_image = None;
+                c.gradient = None;
+                c.gradient_raw = None;
+                c.bg_size = BgSize::Auto;
+                c.bg_pos = BgPos::default();
+                c.bg_repeat = None;
+                c.bg_origin = None;
+                let layers = background_layers(v);
+                c.apply_one("background", layers[i % layers.len()]);
+                c.background = None;
+            }
+            for (k, v) in self.bg_lists.iter().filter(|(k, _)| k != "background") {
+                let layers = background_layers(v);
+                c.apply_one(k, layers[i % layers.len()]);
+            }
+            c.bg_lists.clear();
+            // Градиент слоя — плиткой: источником идёт сама функция
+            // градиента из записи слоя (в сокращении рядом с ней размер,
+            // положение и повтор).
+            if c.bg_image.is_none()
+                && c.gradient.is_some()
+                && let Some(r) = images.get(i)
+                && let Some(at) = r.find("gradient(")
+            {
+                let start = r[..at].rfind(|ch: char| ch.is_whitespace() || ch == ',').map_or(0, |p| p + 1);
+                let mut depth = 0i32;
+                let mut end = r.len();
+                for (j, ch) in r[at..].char_indices() {
+                    match ch {
+                        '(' => depth += 1,
+                        ')' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = at + j + 1;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                c.bg_image = Some(r[start..end].to_string());
+            }
+            c.gradient = None;
+            c.gradient_raw = None;
+            out.push(c);
+        }
+        Some(out)
     }
 }
 

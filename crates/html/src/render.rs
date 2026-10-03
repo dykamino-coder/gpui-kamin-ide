@@ -413,7 +413,15 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     }
     // Фоновая картинка идёт первой: она поверх цвета фона и под всем
     // остальным — тот же порядок, что в браузере.
-    if let Some(layer) = crate::background::layer(c) {
+    // Несколько слоёв (css-backgrounds-3 §2.1): плитки каждого слоя своей
+    // механикой, снизу вверх — первый в списке рисуется последним, поверх.
+    if let Some(layers) = c.bg_layers() {
+        for l in layers.iter().rev() {
+            if let Some(layer) = crate::background::layer(l) {
+                out.push(layer);
+            }
+        }
+    } else if let Some(layer) = crate::background::layer(c) {
         out.push(layer);
     } else if c.gradient_as_tile() {
         // Градиент с размером/повтором/позицией — той же механикой плитки:
@@ -8060,7 +8068,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // здесь, от СОБСТВЕННОГО фильтра корня.
                 let root_filter = e.style.filter;
                 let mut layer = div().absolute().top_0().left_0().right_0().bottom_0();
-                if let Some(g) = &e.style.gradient {
+                // Слоёв несколько — их рисуют плитки (`bg_layers` ниже), а
+                // заливка всего холста верхним градиентом их закрыла бы
+                // (`background-position-right-in-body`: 97.92).
+                let canvas_layers = e.style.bg_layers();
+                if let Some(g) = e.style.gradient.as_ref().filter(|_| canvas_layers.is_none()) {
                     let mut g = g.clone();
                     if let Some(f) = root_filter {
                         g.from = f.apply(g.from);
@@ -8092,7 +8104,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // его слой лежит в детях корня, и отсчёт от padding-box корня
                 // получается сам (см. записи о двух откатах ниже).
                 if e.tag == "html"
-                    && e.style.bg_image.is_some()
+                    && (e.style.bg_image.is_some() || canvas_layers.is_some())
                     && let Some(tiles) = {
                         // Единицы шрифта тоже длина: `html { margin-top: 1em }`
                         // роняло отсчёт в ноль, и плитка начиналась с края
@@ -8129,7 +8141,20 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                             },
                             from_right: e.style.vertical_rl == Some(true),
                         };
-                        crate::background::canvas_layer(&e.style, area)
+                        match &canvas_layers {
+                            // Снизу вверх, каждый слой — своей плиткой от
+                            // коробки корня (§14.2).
+                            Some(layers) => {
+                                let mut stack = div().absolute().top_0().left_0().right_0().bottom_0();
+                                for l in layers.iter().rev() {
+                                    if let Some(t) = crate::background::canvas_layer(l, area) {
+                                        stack = stack.child(t);
+                                    }
+                                }
+                                Some(stack.into_any_element())
+                            }
+                            None => crate::background::canvas_layer(&e.style, area),
+                        }
                     }
                 {
                     layer = div()
