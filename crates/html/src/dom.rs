@@ -317,6 +317,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     let _ = crate::css::take_page_decls();
     let _ = crate::css::take_try_rules();
     let _ = crate::css::take_property_rules();
+    crate::value::set_dark_scheme(false);
     // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
     // и у страницы свой корень, и чужие четыре точки на кегль испортили бы
     // весь разбор. Пишет их `walk` ниже, на элементе `html`.
@@ -2923,6 +2924,41 @@ fn walk(
                 own
             };
             let vars = &own_vars;
+            // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
+            // своё `color-scheme` — последнее по каскаду, иначе родительская
+            // (свойство наследуемое). Тёмная — когда названа только `dark`:
+            // при `light dark` берётся предпочтение пользователя, у стенда
+            // светлое. Держится на время узла и его потомков.
+            let scheme = {
+                let mut by_cascade: Vec<&&Rule> = matched.iter().collect();
+                by_cascade.sort_by_key(|r| (r.origin, r.sel.specificity(), r.order));
+                let mut last: Option<String> = None;
+                for rule in by_cascade {
+                    if let Some(v) = rule.decls.get("color-scheme") {
+                        last = Some(v.clone());
+                    }
+                }
+                if let Some(v) = inline_decls.get("color-scheme") {
+                    last = Some(v.clone());
+                }
+                last
+            };
+            struct SchemeGuard(bool);
+            impl Drop for SchemeGuard {
+                fn drop(&mut self) {
+                    crate::value::set_dark_scheme(self.0);
+                }
+            }
+            let parent_dark = crate::value::dark_scheme();
+            let _scheme = SchemeGuard(parent_dark);
+            if let Some(v) = scheme {
+                let low = v.to_ascii_lowercase();
+                let words: Vec<&str> = low.split_whitespace().collect();
+                let dark = words.contains(&"dark") && !words.contains(&"light");
+                if !low.contains("inherit") {
+                    crate::value::set_dark_scheme(dark);
+                }
+            }
             // Типизированный `attr()` читает атрибуты ЭТОГО элемента
             // (css-values-5 §7.7): слот ставится только на время его каскада.
             crate::computed::set_current_attrs(&attrs);
