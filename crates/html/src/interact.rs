@@ -594,6 +594,39 @@ impl Element for Grouped {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // Слой маски-картинки, которая НЕ загрузилась (файла нет, формат не
+        // читается), — «image layer of transparent black» (css-masking-1
+        // §7.1). Все слои такие — элемент скрыт целиком (`mask-image-4a`:
+        // `url(non-existent.png)` рисовался без маски). Ссылки на
+        // определения, градиенты и формы сюда не входят.
+        if let Some(src) = self.mask.as_deref()
+            && src.contains("url(")
+        {
+            let layers: Vec<String> = crate::css::split_args(src)
+                .iter()
+                .filter_map(|l| mask_layer_source(l))
+                .collect();
+            let plain = |l: &str| {
+                !l.contains("-gradient(")
+                    && !l.contains("snap:")
+                    && !l.contains("def:")
+                    && !l.contains('#')
+                    && !l.starts_with("data:")
+                    // Только ЛОКАЛЬНЫЙ файл без схемы и запроса: `invalid://`
+                    // у SVG-элемента одиночным слоем игнорируется
+                    // (`bad-mask-image-svg-2/3`), а серверный путь с
+                    // `?pipe=` стенду недоступен вовсе
+                    // (`mask-image-svg-loading-error`) — их держит прежняя
+                    // ветка «маски нет».
+                    && !l.contains("://")
+                    && !l.contains('?')
+            };
+            if !layers.is_empty()
+                && layers.iter().all(|l| plain(l) && crate::background::source(l).is_none())
+            {
+                return;
+            }
+        }
         // Размытая картинка выходит за края элемента — в браузере тоже.
         // Вчетверо шире радиуса: маска композита обязана лежать там, где
         // размытая картинка уже сошла на нет, иначе край режется прямоугольником.
