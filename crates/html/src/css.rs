@@ -37,6 +37,79 @@ pub struct Rule {
     /// специфичностью, `* { margin: 0 }` со специфичностью (0,0,0) проигрывал
     /// нашему `p { margin: 6px 0 }` — то есть не работал ни один reset.
     pub origin: u8,
+    /// Каскадный слой (css-cascade-5 §6.4): путь индексов от корня слоёв,
+    /// собственные правила слоя — с хвостом `u32::MAX`, поэтому они идут
+    /// ПОСЛЕ своих подслоёв; правила вне слоёв — `[u32::MAX]`, последний
+    /// неявный слой. Обычные объявления сравниваются по возрастанию пути,
+    /// важные — по убыванию.
+    pub layer: Vec<u32>,
+}
+
+thread_local! {
+    /// Реестр слоёв документа: полное имя → путь индексов (порядок —
+    /// по ПЕРВОМУ объявлению, css-cascade-5 §6.4.3).
+    static LAYERS: std::cell::RefCell<HashMap<String, Vec<u32>>> =
+        std::cell::RefCell::new(HashMap::new());
+    /// Следующий индекс ребёнка у каждого родителя (ключ — полное имя).
+    static LAYER_NEXT: std::cell::RefCell<HashMap<String, u32>> =
+        std::cell::RefCell::new(HashMap::new());
+    /// Текущий слой разбора: полное имя и путь.
+    static LAYER_NOW: std::cell::RefCell<(String, Vec<u32>)> =
+        const { std::cell::RefCell::new((String::new(), Vec::new())) };
+    static LAYER_ANON: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Сбросить реестр слоёв — на входе разбора документа.
+pub fn reset_layers() {
+    LAYERS.with(|l| l.borrow_mut().clear());
+    LAYER_NEXT.with(|l| l.borrow_mut().clear());
+    LAYER_NOW.with(|l| *l.borrow_mut() = (String::new(), Vec::new()));
+    LAYER_ANON.with(|c| c.set(0));
+}
+
+/// Путь слоя по имени (возможно с точками) внутри текущего; регистрирует
+/// незнакомые звенья. Пустое имя — анонимный слой, всегда новый.
+fn layer_enter_path(name: &str) -> (String, Vec<u32>) {
+    let (mut full, mut path) = LAYER_NOW.with(|l| l.borrow().clone());
+    let segs: Vec<String> = if name.trim().is_empty() {
+        let n = LAYER_ANON.with(|c| {
+            let v = c.get();
+            c.set(v + 1);
+            v
+        });
+        vec![format!("\u{1}anon{n}")]
+    } else {
+        name.split('.').map(|s| s.trim().to_string()).collect()
+    };
+    for seg in segs {
+        let child = if full.is_empty() { seg } else { format!("{full}.{seg}") };
+        let known = LAYERS.with(|l| l.borrow().get(&child).cloned());
+        path = match known {
+            Some(p) => p,
+            None => {
+                let idx = LAYER_NEXT.with(|n| {
+                    let mut n = n.borrow_mut();
+                    let e = n.entry(full.clone()).or_insert(0);
+                    let v = *e;
+                    *e += 1;
+                    v
+                });
+                let mut p = path.clone();
+                p.push(idx);
+                LAYERS.with(|l| l.borrow_mut().insert(child.clone(), p.clone()));
+                p
+            }
+        };
+        full = child;
+    }
+    (full, path)
+}
+
+/// Путь для правил ТЕКУЩЕГО места разбора (с хвостом «собственные»).
+fn layer_of_rules() -> Vec<u32> {
+    let mut p = LAYER_NOW.with(|l| l.borrow().1.clone());
+    p.push(u32::MAX);
+    p
 }
 
 /// Простой селектор — ровно то подмножество, которое встречается на практике.
@@ -1577,7 +1650,20 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
         // ничего не задаёт нашей отрисовке, поэтому запись просто пропускается
         // вместе со всей своей преамбулой.
         let (head, body) = match piece {
-            Piece::Statement { .. } => continue,
+            // `@layer a, b.c;` — объявление порядка слоёв без правил
+            // (css-cascade-5 §6.4.2): имена регистрируются по месту.
+            Piece::Statement { head } => {
+                let h = head.trim();
+                if h.len() > 6 && h[..6].eq_ignore_ascii_case("@layer") {
+                    for name in h[6..].split(',') {
+                        let name = name.trim();
+                        if !name.is_empty() {
+                            let _ = layer_enter_path(name);
+                        }
+                    }
+                }
+                continue;
+            }
             Piece::Block { head, body } => (head.trim(), body),
         };
         // Незакрытый блок в КОНЦЕ таблицы закрывается неявно (CSS Syntax
@@ -1693,8 +1779,18 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
                 // расползётся за свою область.
                 name.starts_with("@layer") || name == "@scope"
             };
+            // Блок `@layer имя { … }`: правила внутри — в своём слое.
+            let layer_block = name.starts_with("@layer");
+            let saved_layer = layer_block.then(|| {
+                let entered = layer_enter_path(head[6..].trim());
+                LAYER_NOW.with(|l| std::mem::replace(&mut *l.borrow_mut(), entered))
+            });
+            let inner_rules = if inner { parse_stylesheet_media(body, media) } else { vec![] };
+            if let Some(saved) = saved_layer {
+                LAYER_NOW.with(|l| *l.borrow_mut() = saved);
+            }
             if inner {
-                for r in parse_stylesheet_media(body, media) {
+                for r in inner_rules {
                     out.push(Rule {
                         order: order + r.order,
                         ..r
@@ -1732,6 +1828,7 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
                     // Разбор не знает, чья это таблица: происхождение ставит
                     // тот, кто её подключает (см. `dom.rs`).
                     origin: 0,
+                    layer: layer_of_rules(),
                 });
                 order += 1;
             }

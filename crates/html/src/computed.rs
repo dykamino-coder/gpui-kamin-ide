@@ -3495,7 +3495,12 @@ impl Computed {
 
     /// То же с переменными темы.
     pub fn resolve_with_vars(matched: &mut Vec<&Rule>, inline: &Decls, vars: &Decls) -> Computed {
-        matched.sort_by_key(|r| (r.origin, r.sel.specificity(), r.order));
+        // Слой старше специфичности (css-cascade-5 §6.4): у обычных
+        // объявлений поздний слой сильнее, у важных — ранний.
+        matched.sort_by(|a, b| {
+            (a.origin, &a.layer, a.sel.specificity(), a.order)
+                .cmp(&(b.origin, &b.layer, b.sel.specificity(), b.order))
+        });
         let mut c = Computed::default();
         // Два прохода по ВСЕМУ каскаду, а не внутри каждого правила: важность
         // — самый старший ключ сравнения (CSS Cascade §6.1), поэтому важное
@@ -3509,7 +3514,10 @@ impl Computed {
         // Важные идут в ОБРАТНОМ порядке происхождений: важное правило агента
         // старше важного авторского (§6.4.4), поэтому применяется последним.
         let mut important: Vec<&&Rule> = matched.iter().collect();
-        important.sort_by_key(|r| (std::cmp::Reverse(r.origin), r.sel.specificity(), r.order));
+        important.sort_by(|a, b| {
+            (std::cmp::Reverse(a.origin), std::cmp::Reverse(&a.layer), a.sel.specificity(), a.order)
+                .cmp(&(std::cmp::Reverse(b.origin), std::cmp::Reverse(&b.layer), b.sel.specificity(), b.order))
+        });
         for rule in important {
             c.apply_pass(&rule.decls, vars, true);
         }
@@ -12834,12 +12842,14 @@ mod tests {
             decls: super::super::css::parse_decls("color: red !important"),
             order: 0,
             origin: 1,
+            layer: vec![u32::MAX],
         };
         let late = super::super::css::Rule {
             sel: super::super::css::Selector::parse("p.x").expect("селектор класса"),
             decls: super::super::css::parse_decls("color: green"),
             order: 1,
             origin: 1,
+            layer: vec![u32::MAX],
         };
         let mut matched = vec![&early, &late];
         let c = super::Computed::resolve(&mut matched, &super::super::css::Decls::new());
@@ -12857,12 +12867,14 @@ mod tests {
             decls: super::super::css::parse_decls("margin-top: 6px"),
             order: 0,
             origin: 0,
+            layer: vec![u32::MAX],
         };
         let author = super::super::css::Rule {
             sel: super::super::css::Selector::parse("*").expect("универсальный селектор"),
             decls: super::super::css::parse_decls("margin-top: 0"),
             order: 1,
             origin: 1,
+            layer: vec![u32::MAX],
         };
         let mut matched = vec![&ua, &author];
         let c = super::Computed::resolve(&mut matched, &super::super::css::Decls::new());

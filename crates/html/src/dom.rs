@@ -323,6 +323,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     let _ = crate::css::take_page_decls();
     let _ = crate::css::take_try_rules();
     let _ = crate::css::take_property_rules();
+    crate::css::reset_layers();
     crate::value::set_dark_scheme(false);
     // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
     // и у страницы свой корень, и чужие четыре точки на кегль испортили бы
@@ -2887,7 +2888,10 @@ fn walk(
             let own_vars = {
                 let mut own = vars.clone();
                 let mut by_cascade: Vec<&&Rule> = matched.iter().collect();
-                by_cascade.sort_by_key(|r| (r.origin, r.sel.specificity(), r.order));
+                by_cascade.sort_by(|a, b| {
+                    (a.origin, &a.layer, a.sel.specificity(), a.order)
+                        .cmp(&(b.origin, &b.layer, b.sel.specificity(), b.order))
+                });
                 for rule in by_cascade {
                     for (k, v) in &rule.decls {
                         if k.starts_with("--") {
@@ -2937,7 +2941,10 @@ fn walk(
             // светлое. Держится на время узла и его потомков.
             let scheme = {
                 let mut by_cascade: Vec<&&Rule> = matched.iter().collect();
-                by_cascade.sort_by_key(|r| (r.origin, r.sel.specificity(), r.order));
+                by_cascade.sort_by(|a, b| {
+                    (a.origin, &a.layer, a.sel.specificity(), a.order)
+                        .cmp(&(b.origin, &b.layer, b.sel.specificity(), b.order))
+                });
                 let mut last: Option<String> = None;
                 for rule in by_cascade {
                     if let Some(v) = rule.decls.get("color-scheme") {
