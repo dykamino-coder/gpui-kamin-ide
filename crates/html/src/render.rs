@@ -18182,12 +18182,18 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
             out.push(std::mem::replace(cur, fresh()));
         }
     }
-    // База после аннотаций — новый сегмент (§2.3.1).
-    fn base_starts(cur: &mut RubySegment, out: &mut Vec<RubySegment>, loose_level: &mut bool) {
-        if !cur.levels.is_empty() {
+    // База после аннотаций — новый сегмент (§2.3.1). Явный `<rbc>` — свой
+    // контейнер баз, а сегмент — ОДИН контейнер баз с аннотациями за ним
+    // (§2.3.1): база после `<rbc>` его не продолжает, даже без аннотаций.
+    // Прежде `<rbc>e</rbc><rbc>f</rbc><rbc>g</rbc><rtc>h</rtc>` склеивались
+    // в один сегмент, и `h` вставала над `e`, а не над `g`
+    // (`ruby-box-generation-001-ref`).
+    fn base_starts(cur: &mut RubySegment, out: &mut Vec<RubySegment>, loose_level: &mut bool, sealed: &mut bool) {
+        if !cur.levels.is_empty() || *sealed {
             close_segment(cur, out);
             *loose_level = false;
         }
+        *sealed = false;
     }
     let mut out: Vec<RubySegment> = Vec::new();
     let mut cur = fresh();
@@ -18195,21 +18201,27 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
     let mut run: RubyUnit = Vec::new();
     // Открыт ли анонимный уровень из `<rt>` прямо в контейнере.
     let mut loose_level = false;
+    // Базы текущего сегмента пришли из явного `<rbc>`.
+    let mut sealed = false;
     for (i, node) in children.iter().enumerate() {
         match kinds[i] {
             Kind::Drop => {}
             Kind::Text => {
-                base_starts(&mut cur, &mut out, &mut loose_level);
+                base_starts(&mut cur, &mut out, &mut loose_level, &mut sealed);
                 run.push(node.clone());
             }
             Kind::Rb => {
-                base_starts(&mut cur, &mut out, &mut loose_level);
+                base_starts(&mut cur, &mut out, &mut loose_level, &mut sealed);
                 flush_run(&mut run, &mut cur);
                 cur.bases.push(vec![node.clone()]);
             }
             Kind::Rbc => {
-                base_starts(&mut cur, &mut out, &mut loose_level);
+                base_starts(&mut cur, &mut out, &mut loose_level, &mut sealed);
                 flush_run(&mut run, &mut cur);
+                // Анонимные базы перед `<rbc>` — свой сегмент.
+                close_segment(&mut cur, &mut out);
+                loose_level = false;
+                sealed = true;
                 let Node::Element(k) = node else { continue };
                 // Внутри `<rbc>`: каждый `<rb>` — база, пробел между двумя
                 // `<rb>` — своя база, краевые пробелы — вон, прочее —
@@ -18286,25 +18298,49 @@ fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                 (None, _) | (_, None) => {}
                 // Межуровневый: база → аннотация (п.5).
                 (Some(p), Some(n)) if base_kind(p) && ann_kind(n) => {}
+                // Пробел у явного `<rbc>` — между двумя контейнерами баз, то
+                // есть межсегментный (п.6): свой сегмент, иначе аннотация
+                // после следующей базы спарилась бы с ним (эталон
+                // `ruby-box-generation-001`: `<rbc><rb><span> </span></rb></rbc>`).
+                (Some(p @ (Kind::Rb | Kind::Rbc)), Some(n @ (Kind::Rb | Kind::Rbc)))
+                    if p == Kind::Rbc || n == Kind::Rbc =>
+                {
+                    flush_run(&mut run, &mut cur);
+                    close_segment(&mut cur, &mut out);
+                    loose_level = false;
+                    sealed = false;
+                    out.push(RubySegment { bases: vec![vec![node.clone()]], levels: Vec::new() });
+                }
                 // Межбазовый (п.6): своя единица, спаривается по порядку.
                 (Some(Kind::Rb | Kind::Rbc), Some(Kind::Rb | Kind::Rbc)) => {
-                    base_starts(&mut cur, &mut out, &mut loose_level);
+                    base_starts(&mut cur, &mut out, &mut loose_level, &mut sealed);
                     flush_run(&mut run, &mut cur);
                     cur.bases.push(vec![node.clone()]);
                 }
                 // Пробел внутри анонимной базы.
                 (Some(p), Some(n)) if base_kind(p) && base_kind(n) => {
-                    base_starts(&mut cur, &mut out, &mut loose_level);
+                    base_starts(&mut cur, &mut out, &mut loose_level, &mut sealed);
                     run.push(node.clone());
                 }
                 // Межаннотационный (п.6) — только между двумя `<rt>` контейнера.
                 (Some(Kind::Rt), Some(Kind::Rt)) if loose_level => {
                     cur.levels.last_mut().expect("уровень открыт").units.push(vec![node.clone()]);
                 }
+                // Аннотация → строчное содержимое: пробел открывает анонимную
+                // базу следующего сегмента вместе с этим содержимым (§2.2
+                // п.3: анонимная база оборачивает ПОДРЯД идущие строчные
+                // коробки, пробел — тоже строчный текст). Эталон
+                // `ruby-box-generation-001` так и пишет:
+                // `<rb><span> <span>l</span> </span></rb>`.
+                (Some(p), Some(Kind::Text)) if ann_kind(p) => {
+                    base_starts(&mut cur, &mut out, &mut loose_level, &mut sealed);
+                    run.push(node.clone());
+                }
                 // Межсегментный (п.6): аннотация → база — свой сегмент.
                 (Some(p), Some(n)) if ann_kind(p) && base_kind(n) => {
                     close_segment(&mut cur, &mut out);
                     loose_level = false;
+                    sealed = false;
                     out.push(RubySegment { bases: vec![vec![node.clone()]], levels: Vec::new() });
                 }
                 _ => {}
@@ -19074,7 +19110,60 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
             // Содержимое единицы не рвётся: разрыв внутри базы — только
             // вынужденный (§3.5.2), а атом монолитен; без `nowrap` анонимная
             // база `あい` рвалась внутри колонки (эталон `rbc-rtc-basic-001`).
+            // Единица из одних пробелов (межбазовая, межаннотационная,
+            // межсегментная — css-ruby-1 §2.2 п.6) — это ПРОБЕЛ строки, а не
+            // пустота: у нас единица — свой блок, и пробел в нём срезался как
+            // краевой, единица выходила нулевой, а колонка без строки ломала
+            // общую базовую линию ряда (`ruby-box-generation-*`). Пробел
+            // заменяется неразрывным: ширина пробела, строка и базовая на месте.
+            // Пробельной считается и единица, где пробел обёрнут строчным
+            // элементом: эталоны пишут межбазовый пробел как
+            // `<rb><span> </span></rb>`, и пустая колонка без строки рядом с
+            // колонкой «e» роняла базовую ряда (`ruby-box-generation-001-ref`).
+            // Остаётся ОДИН неразрывный пробел — прочие пробельные тексты
+            // единицы схлопнулись бы с ним (css-text-3 §4.1.1).
+            fn only_space(nodes: &[Node]) -> bool {
+                nodes.iter().all(|n| match n {
+                    Node::Text(t) => blank_text(t),
+                    Node::Element(k) => {
+                        let plain = ruby_role(k).is_some_and(|r| r != crate::computed::RubyRole::Container)
+                            || (k.style.display.is_none() && k.style.inline_display != Some(false) && !replaced_tag(k));
+                        plain && only_space(&k.children)
+                    }
+                })
+            }
+            fn has_space(nodes: &[Node]) -> bool {
+                nodes.iter().any(|n| match n {
+                    Node::Text(t) => !t.is_empty(),
+                    Node::Element(k) => has_space(&k.children),
+                })
+            }
+            fn spaced(nodes: &[Node], done: &mut bool) -> Vec<Node> {
+                nodes
+                    .iter()
+                    .map(|n| match n {
+                        Node::Text(t) if !t.is_empty() && !*done => {
+                            *done = true;
+                            Node::Text("\u{a0}".into())
+                        }
+                        Node::Text(_) => Node::Text(String::new()),
+                        Node::Element(k) => {
+                            let mut k = k.clone();
+                            k.children = spaced(&k.children, done);
+                            Node::Element(k)
+                        }
+                    })
+                    .collect()
+            }
             let unit_box = |nodes: &[Node], style: &Computed| -> AnyElement {
+                let blank_space = !nodes.is_empty() && only_space(nodes) && has_space(nodes);
+                let owned;
+                let nodes = if blank_space {
+                    owned = spaced(nodes, &mut false);
+                    &owned[..]
+                } else {
+                    nodes
+                };
                 let mut style = style.clone();
                 style.nowrap = Some(true);
                 if let [Node::Element(k)] = nodes

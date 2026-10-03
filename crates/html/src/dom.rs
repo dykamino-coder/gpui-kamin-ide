@@ -1383,6 +1383,81 @@ fn content_box_static_position(nodes: &mut [Node]) {
 
 /// Сумма двух длин. Складываются только точки: смешивать доли и кегли здесь
 /// не с чем — контейнера в этот момент нет.
+/// Руби-роль коробки (css-ruby-1 §2.1): своё `display: ruby*`, иначе тег
+/// без авторского `display` (A.1). Зеркало `render::ruby_role`.
+fn ruby_box_role(tag: &str, style: &Computed) -> Option<crate::computed::RubyRole> {
+    use crate::computed::RubyRole;
+    if let Some(role) = style.ruby_role {
+        return Some(role);
+    }
+    if style.display.is_some() {
+        return None;
+    }
+    match tag {
+        "ruby" => Some(RubyRole::Container),
+        "rb" => Some(RubyRole::Base),
+        "rt" => Some(RubyRole::Text),
+        "rbc" => Some(RubyRole::BaseContainer),
+        "rtc" => Some(RubyRole::TextContainer),
+        _ => None,
+    }
+}
+
+/// css-ruby-1 §2.2 п.2: подряд идущие базы, аннотации и их контейнеры ВНЕ
+/// руби-контейнера (вместе с пробелами между ними) оборачиваются в
+/// анонимный руби-контейнер. Прежде `<rt>` прямо в `<p>` рисовалась мелким
+/// строчным текстом в ряду (`ruby-box-generation-*`, вторая строка: эталон
+/// пишет те же коробки внутри `<ruby>`). Краевые пробелы серии остаются
+/// снаружи, строчное содержимое серию обрывает.
+fn wrap_misparented_ruby(children: Vec<Node>) -> Vec<Node> {
+    use crate::computed::RubyRole;
+    let internal = |n: &Node| {
+        matches!(n, Node::Element(e)
+            if ruby_box_role(&e.tag, &e.style).is_some_and(|r| r != RubyRole::Container))
+    };
+    if !children.iter().any(internal) {
+        return children;
+    }
+    let blank = |n: &Node| matches!(n, Node::Text(t) if t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n' | '\x0c')));
+    let mut out: Vec<Node> = Vec::with_capacity(children.len());
+    let mut run: Vec<Node> = Vec::new();
+    // Пробелы после последней руби-коробки серии: войдут в серию, только
+    // если за ними снова руби-коробка.
+    let mut pending: Vec<Node> = Vec::new();
+    let flush = |run: &mut Vec<Node>, out: &mut Vec<Node>| {
+        if !run.is_empty() {
+            out.push(Node::Element(Element {
+                list_item: None,
+                node_id: 0,
+                anim: None,
+                inline: true,
+                tag: "ruby".to_string(),
+                style: Computed::default(),
+                hover: None,
+                first_letter: None,
+                first_line: None,
+                children: std::mem::take(run),
+                attrs: vec![],
+            }));
+        }
+    };
+    for n in children {
+        if internal(&n) {
+            run.append(&mut pending);
+            run.push(n);
+        } else if blank(&n) && !run.is_empty() {
+            pending.push(n);
+        } else {
+            flush(&mut run, &mut out);
+            out.append(&mut pending);
+            out.push(n);
+        }
+    }
+    flush(&mut run, &mut out);
+    out.append(&mut pending);
+    out
+}
+
 fn add_len(a: Option<Len>, b: Option<Len>) -> Option<Len> {
     match (a, b) {
         (Some(Len::Px(x)), Some(Len::Px(y))) => Some(Len::Px(x + y)),
@@ -3559,6 +3634,11 @@ fn walk(
                     children,
                     attrs: vec![],
                 })]
+            } else {
+                children
+            };
+            let children = if ruby_box_role(&tag, &style).is_none() {
+                wrap_misparented_ruby(children)
             } else {
                 children
             };
