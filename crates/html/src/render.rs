@@ -24320,12 +24320,25 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             );
             continue;
         }
+        // Знаки маркера без своего семейства — шрифтом ДОКУМЕНТА: голый
+        // `apply_text` без семейства брал шрифт интерфейса (Segoe UI), и
+        // строковый маркер выходил чужой гарнитурой рядом с Times пункта
+        // (`list-style-type-string-*`).
+        let mut mark_style = marker_style.clone().unwrap_or_else(|| merged.clone());
+        if mark_style.font_family.as_deref().is_none_or(str::is_empty)
+            && mark_style.monospace != Some(true)
+        {
+            mark_style.font_family = Some(opts.text.font_family.to_string());
+        }
+        // Внешний маркер (css-lists-3 §list-style-position `outside`) висит
+        // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
+        // не двигает. Прежде маркер стоял колонкой в строке пункта (`gap 6`,
+        // `min_w 14`) и отодвигал содержимое на свою ширину.
         rows.push(
             shrink0(styled_div_with(li, &merged), li, e)
+                .relative()
                 .flex()
-                .flex_row()
-                .gap_x(px(6.))
-                .items_start()
+                .flex_col()
                 .children((!no_marker).then(|| {
                     // Знаки маркера набираются шрифтом и цветом ПУНКТА:
                     // отдельной коробке текстовые свойства не достаются сами,
@@ -24336,10 +24349,15 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     // стилем слоя: разрядка, межсловный пробел, шрифт и цвет
                     // маркера объявлены на нём (css-lists-3
                     // §marker-properties).
-                    crate::apply::apply_text(div(), marker_style.as_ref().unwrap_or(&merged))
-                        .text_left()
-                        .flex_shrink_0()
-                        .min_w(px(14.))
+                    crate::apply::apply_text(div(), &mark_style)
+                        .absolute()
+                        .top_0()
+                        .right(gpui::relative(1.))
+                        // Строки многострочного маркера равняются по КОНЦУ —
+                        // к началу содержимого пункта (`marker-text-align-001`:
+                        // `"[m] longtext"` при `white-space: pre`).
+                        .text_right()
+                        .whitespace_nowrap()
                         // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
                         // (обычный пробел после номера пункта). Авторская
                         // строка `list-style-type: "..."` идёт дословно:
@@ -24348,12 +24366,21 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         // Замер нейтрален (срез 2268 пар, +0/-0: у
                         // `list-style-type-string-005a/b/-006` остаток не
                         // здесь), но срезать значащий знак всё равно нельзя.
-                        .child(SharedString::from(
-                            marker.trim_end_matches(' ').to_string(),
-                        ))
+                        // Отбивка после номера (`1. `) — часть маркера: она и
+                        // даёт зазор до содержимого. Пробел в конце строки
+                        // свернулся бы, поэтому он неразрывный.
+                        .child(SharedString::from(match marker.strip_suffix(' ') {
+                            Some(head) => format!("{head}\u{a0}"),
+                            None => marker.clone(),
+                        }))
                 }))
+                // Содержимое — своей колонкой, как прежде: выключка пункта
+                // (`text-align: end` у `<li>`) иначе становится выравниванием
+                // его детей, и блок с `text-align: initial` уезжал к концу
+                // (`marker-text-align-001-ref`).
                 .child(
                     div()
+                        .w_full()
                         .flex()
                         .flex_col()
                         .children(blocks(&li.children, &merged, opts)),
