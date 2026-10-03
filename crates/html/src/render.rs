@@ -9492,6 +9492,54 @@ fn orthogonal_children(children: Vec<Node>, container: &Computed, icb_w: f32) ->
     out
 }
 
+/// Строчная ось вертикального контейнера по СОДЕРЖИМОМУ: кому из детей
+/// повёрнутый абзац обязан заявить высоту строкой (`hug_inline`).
+///
+/// Высоту повёрнутый абзац не заявляет (`VerticalText::request_layout`):
+/// длину строки решает родитель. Когда родитель сам размером в содержимое по
+/// строчной оси, решать некому — коробка схлопывалась в свои рамки, а глиф
+/// висел ниже (`target/mt/gr.html`, случай 2). Такой родитель — вертикальная
+/// СЕТКА с невытягивающим `justify-self`/`justify-items`: строчная ось
+/// элемента — по содержимому (css-grid-1 §6.6, css-align-3 §6.1 —
+/// растягивает только `stretch`/`normal`). Пометка идёт и вниз по цепочке
+/// потоковых блоков с `auto` высотой (`merged.hug_inline` — собственный флаг
+/// контейнера, `inline::inherit` начинает с `own.clone()`): их строчный
+/// размер — тот же shrink-to-fit. Вертикальный флоат (случай 4) сюда не
+/// доходит: его строит хост полос, и `float` до сборщика детей не доезжает.
+fn vertical_hug_children(children: Vec<Node>, own: &Computed, merged: &Computed) -> Vec<Node> {
+    let auto_inline = |c: &Computed| matches!(c.height, None | Some(Len::Auto));
+    let grid = matches!(own.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    let shrink = merged.hug_claim && auto_inline(own) && !grid;
+    if !grid && !shrink {
+        return children;
+    }
+    let mut out = children;
+    for node in out.iter_mut() {
+        let Node::Element(ch) = node else { continue };
+        // Ортогональный ребёнок (своё горизонтальное письмо) — не наш случай:
+        // его строчная ось горизонтальна.
+        if ch.inline || ch.style.vertical == Some(false) || !in_flow(&ch.style) || !auto_inline(&ch.style) {
+            continue;
+        }
+        let hug = if grid {
+            matches!(
+                ch.style.justify_self.or(own.justify_items),
+                Some(Align::Start) | Some(Align::Center) | Some(Align::End) | Some(Align::Baseline)
+            )
+        } else {
+            !matches!(
+                ch.style.display,
+                Some(Display::Flex) | Some(Display::Grid) | Some(Display::Table)
+            )
+        };
+        if hug {
+            ch.style.hug_inline = true;
+            ch.style.hug_claim = true;
+        }
+    }
+    out
+}
+
 /// Зеркальный ортогональный случай: ВЕРТИКАЛЬНЫЙ блок внутри горизонтального
 /// контейнера. Его строчная ось — высота, и авто-размер по ней зажимается
 /// высотой контейнера за вычетом вертикальных полей (css-writing-modes-3
@@ -16607,6 +16655,12 @@ fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElem
         // ячейка мерила коробку нулём и justify уводил глиф из виду.
         let vt = if let Some(l) = inherited.ortho_limit {
             vt.fit_within(px(l))
+        } else if inherited.hug_claim {
+            // Родитель размером в содержимое по строчной оси
+            // (`vertical_hug_children`): длину строки решать некому, и
+            // коробка заявляет её сама — max-content под пределом `limit`
+            // (обёртка выше уже `max_w`, замер по содержимому).
+            vt.fit_within(px(limit))
         } else {
             vt
         };
@@ -24162,14 +24216,18 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 };
                 // Доли полей/отступов — в точки от высоты контейнера ДО
                 // схлопывания (см. `resolve_inline_pct`).
-                orthogonal_children(
-                    collapse_flow_margins(
-                        resolve_inline_pct(children, &merged, true),
-                        reverse,
-                        lead_margin,
+                vertical_hug_children(
+                    orthogonal_children(
+                        collapse_flow_margins(
+                            resolve_inline_pct(children, &merged, true),
+                            reverse,
+                            lead_margin,
+                        ),
+                        &merged,
+                        opts.viewport.0,
                     ),
+                    &e.style,
                     &merged,
-                    opts.viewport.0,
                 )
             } else {
                 orthogonal_vertical_children(resolve_inline_pct(children, &merged, false), &merged)
