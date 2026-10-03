@@ -2751,6 +2751,15 @@ pub struct Computed {
     pub bg_pos: BgPos,
     /// `object-position` замещаемого содержимого (css-images-3 §5.2).
     pub object_position: Option<BgPos>,
+    /// `object-view-box` (css-images-4 §object-view-box): видимая область
+    /// природного объекта как вырез `inset(top right bottom left)` в точках
+    /// или долях природного размера — `rect()` и `xywh()` сводятся к нему
+    /// при отрисовке (`render::view_box_rect`). Флаг — вид записи:
+    /// 0 `inset`, 1 `rect`, 2 `xywh`.
+    pub(crate) object_view_box: Option<(u8, [Len; 4])>,
+    /// Сырые СПИСКИ фоновых свойств со слоями через запятую: (свойство,
+    /// запись). Поля `bg_*` несут верхний слой; все слои строит `bg_layers`.
+    pub(crate) bg_lists: Vec<(String, String)>,
     pub bg_repeat: Option<BgRepeat>,
     /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
@@ -2814,6 +2823,11 @@ impl Computed {
     /// Градиент, которому нужна МЕХАНИКА ПЛИТКИ (размер, повтор, позиция,
     /// свой край): сплошная заливка её не умеет, рисует слой-картинка.
     pub(crate) fn gradient_as_tile(&self) -> bool {
+        // Несколько слоёв рисует стопка плиток (`bg_layers`): заливка коробки
+        // верхним градиентом легла бы ПОД нижние слои.
+        if self.gradient.is_some() && self.bg_lists.iter().any(|(k, _)| k == "background" || k == "background-image") {
+            return true;
+        }
         self.gradient_raw.is_some()
             && (self.bg_size != crate::computed::BgSize::Auto
                 || self.bg_repeat.is_some()
@@ -3759,7 +3773,7 @@ impl Computed {
                 // Типизированный `attr()` подставляется тем же шагом, что и
                 // `var()` (css-values-5 §7.7): после него значение разбирается
                 // как обычное.
-                let resolved = resolve_attrs(k.as_str(), &resolve_vars(strip_important(part), vars));
+                let resolved = resolve_sibling(resolve_attrs(k.as_str(), &resolve_vars(strip_important(part), vars)));
                 self.apply_one(k, &resolved);
             }
         }
@@ -3802,6 +3816,29 @@ impl Computed {
             }
         {
             return self.apply_one(key, start);
+        }
+        // Фон — СПИСОК слоёв (css-backgrounds-3 §2.1: «comma-separated list
+        // of values … the first value represents the top layer»). Одиночные
+        // поля стиля несут верхний слой, а список целиком хранится сырым —
+        // по нему рисуются все слои (`Computed::bg_layers`). Запись без
+        // запятой список своего свойства снимает; сокращение — все.
+        if BG_LIST_KEYS.contains(&key) {
+            if key == "background" {
+                self.bg_lists.clear();
+            } else {
+                self.bg_lists.retain(|(k, _)| k != key);
+            }
+            if top_level_comma(v).is_some() {
+                if key != "background" {
+                    // Верхний слой — обычным разбором; список кладётся ПОСЛЕ:
+                    // вложенный вызов того же свойства его бы снял.
+                    let first = background_layers(v)[0].to_string();
+                    self.apply_one(key, &first);
+                    self.bg_lists.push((key.to_string(), v.to_string()));
+                    return;
+                }
+                self.bg_lists.push((key.to_string(), v.to_string()));
+            }
         }
         match key {
             // css-break-3 §4.4: `<integer [1,∞]>`; ноль и отрицательное
@@ -7129,6 +7166,9 @@ impl Computed {
             }
             // `object-position` — та же грамматика, но для замещаемого
             // содержимого (css-images-3 §5.2).
+            "object-view-box" => {
+                self.object_view_box = parse_view_box(v);
+            }
             "object-position" => {
                 self.object_position = Some(parse_pos_words(v));
             }
@@ -11202,6 +11242,92 @@ fn four<T: Copy>(words: &[&str], one: impl Fn(&str) -> Option<T>) -> Option<[T; 
     }
 }
 
+/// Фоновые свойства со списком слоёв (css-backgrounds-3 §2.1).
+const BG_LIST_KEYS: [&str; 8] = [
+    "background",
+    "background-image",
+    "background-size",
+    "background-position",
+    "background-repeat",
+    "background-origin",
+    "background-clip",
+    "background-attachment",
+];
+
+impl Computed {
+    /// Слои фона СВЕРХУ ВНИЗ, когда их больше одного: каждый — копия стиля с
+    /// одним слоем (картинка, размер, положение, повтор, область) и без
+    /// цвета фона — цвет лежит под всеми слоями и красится коробкой
+    /// (css-backgrounds-3 §3.1, §2.1: значения списков, которых меньше
+    /// слоёв, повторяются по кругу). Градиент слоя уходит в растровую плитку
+    /// (`bg_image` с сырой записью), чтобы все слои шли одним путём и в
+    /// своём порядке. `None` — слой один.
+    pub(crate) fn bg_layers(&self) -> Option<Vec<Computed>> {
+        let short = self.bg_lists.iter().find(|(k, _)| k == "background").map(|(_, v)| v.clone());
+        let image = self.bg_lists.iter().find(|(k, _)| k == "background-image").map(|(_, v)| v.clone());
+        let images: Vec<String> = match (&image, &short) {
+            (Some(v), _) | (None, Some(v)) => background_layers(v).into_iter().map(str::to_string).collect(),
+            _ => return None,
+        };
+        if images.len() < 2 {
+            return None;
+        }
+        let mut out = vec![];
+        for (i, _) in images.iter().enumerate() {
+            let mut c = self.clone();
+            c.bg_lists.clear();
+            c.background = None;
+            if let Some(v) = &short {
+                c.bg_image = None;
+                c.gradient = None;
+                c.gradient_raw = None;
+                c.bg_size = BgSize::Auto;
+                c.bg_pos = BgPos::default();
+                c.bg_repeat = None;
+                c.bg_origin = None;
+                let layers = background_layers(v);
+                c.apply_one("background", layers[i % layers.len()]);
+                c.background = None;
+            }
+            for (k, v) in self.bg_lists.iter().filter(|(k, _)| k != "background") {
+                let layers = background_layers(v);
+                c.apply_one(k, layers[i % layers.len()]);
+            }
+            c.bg_lists.clear();
+            // Градиент слоя — плиткой: источником идёт сама функция
+            // градиента из записи слоя (в сокращении рядом с ней размер,
+            // положение и повтор).
+            if c.bg_image.is_none()
+                && c.gradient.is_some()
+                && let Some(r) = images.get(i)
+                && let Some(at) = r.find("gradient(")
+            {
+                let start = r[..at].rfind(|ch: char| ch.is_whitespace() || ch == ',').map_or(0, |p| p + 1);
+                let mut depth = 0i32;
+                let mut end = r.len();
+                for (j, ch) in r[at..].char_indices() {
+                    match ch {
+                        '(' => depth += 1,
+                        ')' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = at + j + 1;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                c.bg_image = Some(r[start..end].to_string());
+            }
+            c.gradient = None;
+            c.gradient_raw = None;
+            out.push(c);
+        }
+        Some(out)
+    }
+}
+
 /// Слои фона: значение режется по запятым ВНЕ скобок.
 ///
 /// Запятая внутри `rgba(…)` или `linear-gradient(…)` слой не кончает, поэтому
@@ -11238,6 +11364,33 @@ thread_local! {
     /// запасное значение.
     static CURRENT_ATTRS: std::cell::RefCell<Vec<(String, String)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    /// Номер элемента среди братьев и их число — для `sibling-index()` и
+    /// `sibling-count()` (css-values-5 §tree-counting). Ставит `dom::walk`
+    /// на время каскада элемента, как и атрибуты.
+    static CURRENT_SIBLING: std::cell::Cell<Option<(usize, usize)>> = const { std::cell::Cell::new(None) };
+}
+
+pub fn set_current_sibling(at: Option<(usize, usize)>) {
+    CURRENT_SIBLING.with(|c| c.set(at));
+}
+
+/// `sibling-index()` / `sibling-count()` — целым числом (css-values-5
+/// §tree-counting: «sibling-index() … returns an <integer> … the index of the
+/// element among its inclusive siblings, starting at 1»). Без хозяина
+/// (вне каскада элемента) запись остаётся как есть и роняет объявление.
+fn resolve_sibling(value: String) -> String {
+    if !value.contains("sibling-") {
+        return value;
+    }
+    match CURRENT_SIBLING.with(|c| c.get()) {
+        Some((i, n)) => value
+            .replace("sibling-index()", &i.to_string())
+            .replace("sibling-count()", &n.to_string()),
+        None => value,
+    }
 }
 
 pub fn set_current_attrs(attrs: &[(String, String)]) {
@@ -12641,6 +12794,38 @@ fn calc_size_arg(v: &str) -> Option<CalcSize> {
     }
     matches!(basis, "auto" | "fit-content" | "min-content" | "max-content" | "content")
         .then_some(CalcSize::Over(f))
+}
+
+/// `object-view-box: none | <basic-shape-rect>` — `inset()`, `rect()`,
+/// `xywh()` (css-images-4 §object-view-box; css-shapes-1 §basic-shape-rect).
+/// Длины — точки или доли; `inset` с 1-3 значениями раскрывается как поля.
+fn parse_view_box(v: &str) -> Option<(u8, [Len; 4])> {
+    let v = v.trim();
+    let (kind, inner) = if let Some(r) = v.strip_prefix("inset(") {
+        (0u8, r)
+    } else if let Some(r) = v.strip_prefix("rect(") {
+        (1u8, r)
+    } else if let Some(r) = v.strip_prefix("xywh(") {
+        (2u8, r)
+    } else {
+        return None;
+    };
+    let inner = inner.strip_suffix(')')?;
+    let parts: Vec<Len> = inner
+        .split_whitespace()
+        .map(|t| match Len::parse(t) {
+            Some(l @ (Len::Px(_) | Len::Pct(_))) => Some(l),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let four = match (kind, parts.as_slice()) {
+        (_, [a, b, c, d]) => [*a, *b, *c, *d],
+        (0, [a]) => [*a, *a, *a, *a],
+        (0, [a, b]) => [*a, *b, *a, *b],
+        (0, [a, b, c]) => [*a, *b, *c, *b],
+        _ => return None,
+    };
+    Some((kind, four))
 }
 
 fn assign_size(slot: &mut Option<Len>, v: &str) {

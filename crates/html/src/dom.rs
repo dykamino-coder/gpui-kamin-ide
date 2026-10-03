@@ -2975,8 +2975,10 @@ fn walk(
             // Типизированный `attr()` читает атрибуты ЭТОГО элемента
             // (css-values-5 §7.7): слот ставится только на время его каскада.
             crate::computed::set_current_attrs(&attrs);
+            crate::computed::set_current_sibling((spot.index > 0).then_some((spot.index, spot.total)));
             let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
             crate::computed::clear_current_attrs();
+            crate::computed::set_current_sibling(None);
             // Корневые метрики для `rem`/`rlh` (css-values-4 §6.1.4).
             // Записываются ЗДЕСЬ, а не в наследовании: `Len::parse` работает
             // на разборе объявлений, а `walk` идёт в порядке документа —

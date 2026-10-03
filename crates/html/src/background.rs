@@ -2403,7 +2403,12 @@ fn exif_orientation(bytes: &[u8]) -> Option<u16> {
             if kind == b"eXIf" {
                 break bytes.get(i + 8..i + 8 + len)?;
             }
-            if kind == b"IEND" {
+            // `eXIf` ПОСЛЕ данных изображения не действует: PNG 3rd ed.
+            // §11.3.6 «The eXIf chunk … shall be before the first IDAT
+            // chunk», и браузеры позднюю метку игнорируют
+            // (`image-orientation-exif-png-2/3`: `F-exif-late.png` обязан
+            // остаться неповёрнутым).
+            if kind == b"IDAT" || kind == b"IEND" {
                 return None;
             }
             i += 12 + len;
