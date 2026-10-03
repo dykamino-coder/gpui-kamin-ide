@@ -2693,6 +2693,16 @@ impl Paragraph {
         let which = |i: usize| self.spans.iter().position(|(r, _)| r.contains(&i));
         let left = which(at.saturating_sub(1));
         let right = which(at);
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.10): точку переноса после ПРОБЕЛА решает
+        // `white-space` элемента с самим пробелом (css-text-3 §5.1, «for soft
+        // wrap opportunities created by characters that disappear or are
+        // preserved spaces»), а не общий предок. Срез 1973 пар (css-text,
+        // CSS2/text, <pre>): +1/−3 — white-space-wrap-after-nowrap-001
+        // 0.62 -> 0.28, но white-space-007 0.04 -> 11.99,
+        // white-space-collapsing-breaks-001 0.00 -> «красное видно». Причина
+        // не разобрана; подозрение — после схлопывания через границу куска
+        // (`collapse_across_pieces`) уцелевший пробел лежит не в том куске,
+        // что у браузера.
         match (left, right) {
             (Some(a), Some(b)) if a == b => self.spans[a].1.nowrap,
             _ => self.wrap.nowrap,

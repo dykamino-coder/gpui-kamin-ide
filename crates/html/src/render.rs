@@ -7202,6 +7202,12 @@ thread_local! {
     static AVAIL_W: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
 }
 
+/// Доступная ширина текущего уровня `blocks()` (см. `AVAIL_W`) — для долей
+/// у строчных коробок абзаца: их содержащий блок — блок абзаца.
+pub(crate) fn avail_width() -> Option<f32> {
+    AVAIL_W.get()
+}
+
 /// Вернуть прежнюю доступную ширину по выходе из `blocks()`.
 struct AvailWGuard(Option<f32>);
 impl Drop for AvailWGuard {
