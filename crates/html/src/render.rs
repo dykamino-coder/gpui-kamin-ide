@@ -2711,6 +2711,8 @@ impl ShapeCx {
 struct LineFrame {
     inh: Computed,
     w: Option<f32>,
+    /// Анонимный блок строк хоста (`group_inline_runs`): его срез — срез хоста.
+    anon: bool,
 }
 
 /// Контекст меры строк для `shape_full`: включается только вокруг меры детей
@@ -2732,7 +2734,7 @@ fn with_lines<T>(base: &Computed, w: Option<f32>, opts: &RenderOpts, f: impl FnO
     let prev = LINE_CX.with(|l| {
         l.borrow_mut().replace(LineCx {
             opts: opts.clone(),
-            frames: vec![LineFrame { inh: base.clone(), w }],
+            frames: vec![LineFrame { inh: base.clone(), w, anon: false }],
         })
     });
     let out = f();
@@ -2789,7 +2791,7 @@ impl LineScope {
             };
             let inh = crate::inline::inherit(&top.inh, &c.style);
             let w = top.w.and_then(|pw| line_content_w(c, pw));
-            cx.frames.push(LineFrame { inh, w });
+            cx.frames.push(LineFrame { inh, w, anon: c.tag == "anon-block" });
             LineScope(true)
         })
     }
@@ -2831,7 +2833,11 @@ fn line_text(nodes: &[Node]) -> Option<String> {
                     if !e.inline
                         || s.display.is_some()
                         || out_of_flow(&s)
-                        || s.position.is_some()
+                        // Относительный сдвиг куска строку не меняет (CSS 2.1
+                        // §9.4.3: «after laying out … shifted»), рисует его копия
+                        // (`text-box-trim-multicol-002-ref`: `<span
+                        // style="position: relative">`).
+                        || !matches!(s.position, None | Some(crate::computed::Position::Relative))
                         || s.font_size.is_some()
                         || s.font_family.is_some()
                         || s.font_weight.is_some()
@@ -2915,11 +2921,27 @@ fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<S
     {
         return None;
     }
-    let (inh, w, opts) = LINE_CX.with(|l| {
+    // Срез строк на РАЗРЫВАХ колонок: `text-box-trim` САМОГО многоколоночника
+    // (первый кадр `with_lines`) режет строки у верха и низа каждой колонки
+    // (csswg-drafts#5335, comment-2380160677; `text-box-trim-multicol-001`:
+    // в первой колонке 4 строки вместо 3, вторая — от самого верха). Срез у
+    // блока-ребёнка на разрывах повторяется только при `box-decoration-break:
+    // clone` — каждый его фрагмент целая коробка со своей первой и последней
+    // строкой (css-break-4 §break-decoration; `-003`); при `slice` — лишь у
+    // первой и последней строки (`-002-ref`: вторая колонка с полулидингом).
+    // Сторона решается БЛИЖАЙШЕЙ коробкой со срезом этой стороны
+    // (`brk_trim`).
+    let (inh, w, opts, brk_start, brk_end) = LINE_CX.with(|l| {
         let g = l.borrow();
         let cx = g.as_ref()?;
         let f = cx.frames.last()?;
-        Some((f.inh.clone(), f.w?, cx.opts.clone()))
+        Some((
+            f.inh.clone(),
+            f.w?,
+            cx.opts.clone(),
+            brk_trim(&cx.frames, |s| s.text_box_trim_start),
+            brk_trim(&cx.frames, |s| s.text_box_trim_end),
+        ))
     })?;
     if inh.nowrap == Some(true)
         || inh.keep_spaces == Some(true)
@@ -2949,11 +2971,32 @@ fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<S
     let lines = crate::metrics::line_count(&font, size, &text, w)?.max(1);
     let orphans = inh.orphans.unwrap_or(2).max(1) as usize;
     let widows = inh.widows.unwrap_or(2).max(1) as usize;
-    let content = fixed_h.unwrap_or(lines as f32 * lh);
+    // Свой срез первой/последней строки (`blocks()` кладёт его отрицательным
+    // полем у первого и последнего ребёнка — коробка ужимается) и срез у
+    // разрыва: строка до разрыва кончается на своей метрике, строка после —
+    // с неё начинается (`text-box-trim-multicol-001…012`).
+    let tt = trim_amount(&inh, size, lh, true);
+    let tb = trim_amount(&inh, size, lh, false);
+    let shift = if c.style.text_box_trim_start || c.attr("kamin-host-trim-start").is_some() {
+        tt
+    } else {
+        0.0
+    };
+    let tail = if c.style.text_box_trim_end || c.attr("kamin-host-trim-end").is_some() {
+        tb
+    } else {
+        0.0
+    };
+    let content = fixed_h.unwrap_or((lines as f32 * lh - shift - tail).max(0.0));
     let h = top + content + bot;
+    let cut_need = if brk_end { tb } else { 0.0 };
+    let cut_from = if brk_start { tt } else { 0.0 };
     let cuts: Vec<(f32, f32)> = (orphans..=lines.saturating_sub(widows))
-        .filter(|k| *k >= 1 && *k < lines && (*k as f32) * lh < content - 0.01)
-        .map(|k| (top + k as f32 * lh, top + k as f32 * lh))
+        .filter(|k| *k >= 1 && *k < lines && (*k as f32) * lh - shift < content - 0.01)
+        .map(|k| {
+            let at = top + k as f32 * lh - shift;
+            ((at - cut_need).max(top), at + cut_from)
+        })
         .collect();
     // Строка неразрывна (css-break-3 §4.3: разрыв только МЕЖДУ строками), а
     // первые `orphans` и последние `widows` строк — одним куском (§4.4).
@@ -2963,12 +3006,58 @@ fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<S
     // margin-001`, кусок 13.33 из строки 20).
     let mut solid = Vec::new();
     let mut from = 0.0f32;
-    for &(c, _) in &cuts {
-        solid.push((from, c));
-        from = c;
+    for &(need, next) in &cuts {
+        solid.push((from, need));
+        // Срезанная полоса у разрыва — тоже без разрыва внутри: край колонки в
+        // ней уводит разрыв к её началу, то есть ровно в точку (`need`), а не
+        // режет по краю (`fill_at`: край вне диапазонов — срез по краю).
+        if next > need + 0.01 {
+            solid.push((need, next));
+        }
+        from = next;
     }
     solid.push((from, h));
     Some((h, mt, mb, cuts, Vec::new(), solid))
+}
+
+/// Срез строк у разрыва колонки с одной стороны: ближайшая к строке коробка
+/// со срезом этой стороны решает — многоколоночник (первый кадр: каждая
+/// колонка — его фрагментаинер) или коробка с `box-decoration-break: clone`
+/// режут у каждого разрыва, коробка `slice` — только у своих первой/последней
+/// строки, и срез многоколоночника под ней не действует
+/// (`text-box-trim-multicol-004`: блок `trim-start` под `trim-both` — низ
+/// первой колонки срезан, верх второй нет; `-005` — наоборот).
+fn brk_trim(frames: &[LineFrame], side: impl Fn(&Computed) -> bool) -> bool {
+    // Анонимный блок строк — строки самого хоста, его флаг — копия хостового.
+    match frames.iter().rposition(|f| side(&f.inh) && !f.anon) {
+        Some(0) => true,
+        Some(i) => frames[i].inh.bdb_clone,
+        None => false,
+    }
+}
+
+/// Срез `text-box-trim` с одной стороны строки (css-inline-3 §4.2): полулидинг
+/// плюс расстояние от подъёма/спуска до метрики края — та же арифметика, что у
+/// `blocks()` (`trim_for`).
+fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool) -> f32 {
+    let family = s.font_family.clone().unwrap_or_default();
+    let (ascent, descent, cap) = crate::metrics::vmetrics_px(&family, size);
+    let half = (lh - (ascent + descent)) / 2.0;
+    let edge = if start {
+        match s.text_box_over {
+            crate::computed::TextEdge::Cap => ascent - cap,
+            crate::computed::TextEdge::Ex => ascent - crate::metrics::ch_ex_px(&family, size).1,
+            _ => 0.0,
+        }
+    } else {
+        match s.text_box_under {
+            crate::computed::TextEdge::Alphabetic => {
+                descent + crate::fonts::alphabetic_em(&family) * size
+            }
+            _ => 0.0,
+        }
+    };
+    (half + edge).max(0.0)
 }
 
 /// Сплошной строчный набор (без блочных детей) — монолит в стопке, ПОКА его
@@ -3228,6 +3317,33 @@ fn group_inline_runs(e: &Element) -> Option<Element> {
         }
     }
     flush(&mut run, &mut out);
+    // `text-box-trim` хоста режет его ПЕРВУЮ/ПОСЛЕДНЮЮ отформатированную
+    // строку (css-inline-3 §4.2). Строки ушли в анонимные блоки — флаг едет
+    // туда, где строка: первому анонимному, если он первый ребёнок, и
+    // последнему, если последний (`text-box-trim-multicol-001`).
+    if e.style.text_box_trim_start || e.style.text_box_trim_end {
+        let flow: Vec<usize> = out
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| !is_blank(n))
+            .map(|(i, _)| i)
+            .collect();
+        let anon = |n: &Node| matches!(n, Node::Element(k) if k.tag == "anon-block");
+        if e.style.text_box_trim_start
+            && let Some(&i) = flow.first()
+            && anon(&out[i])
+            && let Node::Element(k) = &mut out[i]
+        {
+            k.style.text_box_trim_start = true;
+        }
+        if e.style.text_box_trim_end
+            && let Some(&i) = flow.last()
+            && anon(&out[i])
+            && let Node::Element(k) = &mut out[i]
+        {
+            k.style.text_box_trim_end = true;
+        }
+    }
     let mut g = e.clone();
     g.children = out;
     Some(g)
@@ -21563,8 +21679,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     d = d.child(div().flex());
                     return d.into_any_element();
                 }
+                // Текстовый путь `text-box-trim` не знает (ни у краёв колонок, ни у
+                // первой/последней строки) — такой многоколоночник идёт стопкой
+                // со строками (`line_run_shape`; `text-box-trim-multicol-009/010`).
+                let trim_host = merged.text_box_trim_start || merged.text_box_trim_end;
                 if let Some(el) = column_flow(e, &merged, opts, want, col_w_px)
-                    .filter(|_| nest_rows.is_none())
+                    .filter(|_| nest_rows.is_none() && !trim_host)
                 {
                     // Коробка элемента остаётся своей: отступы и фон
                     // принадлежат ей, поток живёт внутри.
@@ -21609,7 +21729,39 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     // Строчный размер колонки для меры строк (`with_lines`):
                     // css-multicol-1 §3.4 (11) «W := max(0, (U + column-gap)/N −
                     // column-gap)» при U в точках; иначе строки не меряются.
-                    let line_col_w = match col_inline_size {
+                    // Ширина `auto` блока в потоке — ширина содержимого родителя
+                    // (CSS 2.1 §10.3.3), когда та в точках и у коробки нет боковых
+                    // полей, рамок и отбивок (`text-box-trim-multicol-011-ref`:
+                    // многоколоночник без ширины в `.container` 640).
+                    let line_inline_size = col_inline_size.or_else(|| {
+                        let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
+                        let b = e.style.borders();
+                        (!col_vert
+                            && matches!(e.style.width, None | Some(Len::Auto))
+                            && matches!(e.style.display, None | Some(Display::Block))
+                            && e.style.float.unwrap_or(0) == 0
+                            && !out_of_flow(&e.style)
+                            && [&e.style.margin.left, &e.style.margin.right, &e.style.padding.left, &e.style.padding.right, &b.left, &b.right]
+                                .into_iter()
+                                .all(zero)
+                            // Только простой поток: строки и листья с высотой в точках.
+                            // Блок с переполнением своей высоты (`css-break/block-max-
+                            // height-001-ref`: 160 с ребёнком 200) стопка рисует иначе,
+                            // чем прежний путь рисует тест с `max-height` (0.00 -> 11).
+                            && e.children.iter().all(|n| match n {
+                                Node::Text(_) => true,
+                                Node::Element(k) => {
+                                    k.inline
+                                        || inline_content(k)
+                                        || (k.children.iter().all(is_blank)
+                                            && matches!(k.style.height, Some(Len::Px(_))))
+                                }
+                            }))
+                        .then_some(inherited.width)
+                        .flatten()
+                        .filter(|w| matches!(w, Len::Px(_)))
+                    });
+                    let line_col_w = match line_inline_size {
                         Some(Len::Px(u)) if merged.border_box != Some(true) && cols > 0 => {
                             Some(((u + used_gap) / cols as f32 - used_gap).max(0.0))
                         }
@@ -21670,6 +21822,12 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                         .map(|n| n as *const Node);
                     // Чью меру дала `nested_rows_shape` — только их копии рядами.
                     let nested_auto: std::cell::RefCell<Vec<u64>> = Default::default();
+                    let last_flow = ge
+                        .children
+                        .iter()
+                        .rev()
+                        .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style)))
+                        .map(|n| n as *const Node);
                     let stackable: Option<Vec<(Element, Shape)>> = with_lines(&merged, line_col_w, opts, || ge
                         .children
                         .iter()
@@ -21715,7 +21873,23 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // клоном (`transpose_tree`), рисуется исходным.
                                 // Длины коробки — в точках (`resolved_lengths`):
                                 // и мере, и копиям, и распоркам роста — одно дерево.
-                                let c = &resolved_lengths(c, &merged);
+                                let mut c = resolved_lengths(c, &merged);
+                                // `text-box-trim` многоколоночника режет его ПЕРВУЮ и
+                                // ПОСЛЕДНЮЮ отформатированную строку (css-inline-3
+                                // §4.2) — у строчного блока-ребёнка с края потока они
+                                // его же. Метка, а не флаг стиля: срез на разрывах
+                                // решает ближайшая коробка со своим флагом
+                                // (`brk_trim`), и флаг ребёнка отнял бы его у хоста
+                                // (`text-box-trim-multicol-005`).
+                                if inline_content(&c) {
+                                    if merged.text_box_trim_start && first_flow == Some(n as *const Node) {
+                                        c.attrs.push(("kamin-host-trim-start".into(), "1".into()));
+                                    }
+                                    if merged.text_box_trim_end && last_flow == Some(n as *const Node) {
+                                        c.attrs.push(("kamin-host-trim-end".into(), "1".into()));
+                                    }
+                                }
+                                let c = &c;
                                 if col_vert {
                                     let t = transpose_tree(c, col_rl)?;
                                     shape_full(&t, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h))
@@ -22025,6 +22199,14 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                 // (css-break-3 §5.5): его кладёт `ColumnStack`
                                 // вместе со срезом.
                                 let rel = hoist_relative(&mut copy);
+                                // Срез строки хоста (`kamin-host-trim-*`) — рисует
+                                // `blocks()` копии по её флагам.
+                                if copy.attr("kamin-host-trim-start").is_some() {
+                                    copy.style.text_box_trim_start = true;
+                                }
+                                if copy.attr("kamin-host-trim-end").is_some() {
+                                    copy.style.text_box_trim_end = true;
+                                }
                                 // Вложенный многоколоночник с ВЕРХА внешней колонки
                                 // (первый ребёнок без поля) и заданной высотой —
                                 // рядами во внешний фрагментаинер (`flow::OUTER_ROW`).
