@@ -23505,6 +23505,79 @@ fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
 /// То же, но с базовым кеглем для разрешения долей: атом строится от СЫРОГО
 /// стиля, и `padding-right: 1em` без разрешения терялся вовсе
 /// (wm-propagation-body-040: сосед вставал на 16 точек левее эталона).
+/// `object-view-box` (css-images-4 §object-view-box, `csswg-drafts/css-images-4/
+/// Overview.bs` «object-view-box»): видимая часть природного объекта
+/// становится его НОВЫМ природным размером, а рисуется только она — вырез
+/// растягивается на коробку (`object-fit: fill`). Вид записи сводится к
+/// прямоугольнику в точках природного растра: `inset(t r b l)`, `rect(t r b l)`
+/// (правый и нижний края от левого/верхнего края объекта), `xywh(x y w h)`.
+/// Коробка: размер из обособления (`contain-intrinsic-size`) или заданный,
+/// иначе из выреза — с соотношением выреза для одной заданной стороны.
+/// Только растр (`background::Source::Raster`); иначе — прежний путь.
+fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
+    let src = e.attr("src")?;
+    let local = src
+        .strip_prefix("file:///")
+        .or_else(|| src.strip_prefix("file://"))
+        .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
+    let source = crate::background::source(&crate::background::key(local.unwrap_or(src), &e.style))?;
+    let nat = source.intrinsic();
+    let (w0, h0) = (nat.w?, nat.h?);
+    let crate::background::Source::Raster(ready) = source else {
+        return None;
+    };
+    let at = |l: Len, base: f32| match l {
+        Len::Px(v) => v,
+        Len::Pct(k) => k * base,
+        _ => 0.0,
+    };
+    let [a, b, c, d] = vb.1;
+    let (vx, vy, vw, vh) = match vb.0 {
+        // inset(top right bottom left)
+        0 => (at(d, w0), at(a, h0), w0 - at(d, w0) - at(b, w0), h0 - at(a, h0) - at(c, h0)),
+        // rect(top right bottom left)
+        1 => (at(d, w0), at(a, h0), at(b, w0) - at(d, w0), at(c, h0) - at(a, h0)),
+        // xywh(x y w h)
+        _ => (at(a, w0), at(b, h0), at(c, w0), at(d, h0)),
+    };
+    if !(vw > 0.0 && vh > 0.0) {
+        return None;
+    }
+    let px_of = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let (bw, bh) = if e.style.contains_width() || e.style.contains_height() {
+        (
+            px_of(e.style.width).or(e.style.contain_intrinsic.0).unwrap_or(0.0),
+            px_of(e.style.height).or(e.style.contain_intrinsic.1).unwrap_or(0.0),
+        )
+    } else {
+        match (px_of(e.style.width), px_of(e.style.height)) {
+            (Some(w), Some(h)) => (w, h),
+            (Some(w), None) => (w, w * vh / vw),
+            (None, Some(h)) => (h * vw / vh, h),
+            (None, None) => (vw, vh),
+        }
+    };
+    let mut boxed = e.clone();
+    boxed.style.object_view_box = None;
+    boxed.style.width = Some(Len::Px(bw));
+    boxed.style.height = Some(Len::Px(bh));
+    boxed.style.contain_size = Some(false);
+    boxed.style.contain_inline_size = Some(false);
+    let (sx, sy) = (bw / vw, bh / vh);
+    let picture = gpui::img(ready)
+        .absolute()
+        .left(px(-vx * sx))
+        .top(px(-vy * sy))
+        .w(px(w0 * sx))
+        .h(px(h0 * sy))
+        .object_fit(gpui::ObjectFit::Fill);
+    let window = div().size_full().relative().overflow_hidden().child(picture);
+    Some(styled_div(&boxed).flex_shrink_0().child(window).into_any_element())
+}
+
 fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     // Ключевое слово содержимого в оси замещаемого — его природный (или
     // перенесённый через соотношение) размер, то есть `auto` (css-sizing-3
@@ -23547,6 +23620,11 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     } else {
         e
     };
+    if let Some(vb) = e.style.object_view_box
+        && let Some(el) = view_boxed(e, vb)
+    {
+        return el;
+    }
     let d = styled_div(e);
     // Замещаемый элемент в СТРОКЕ не сжимается: браузер даёт строке
     // переполниться или перенести коробку целиком (CSS 2.1 §10.3.2, замер

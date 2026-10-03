@@ -2751,6 +2751,12 @@ pub struct Computed {
     pub bg_pos: BgPos,
     /// `object-position` замещаемого содержимого (css-images-3 §5.2).
     pub object_position: Option<BgPos>,
+    /// `object-view-box` (css-images-4 §object-view-box): видимая область
+    /// природного объекта как вырез `inset(top right bottom left)` в точках
+    /// или долях природного размера — `rect()` и `xywh()` сводятся к нему
+    /// при отрисовке (`render::view_box_rect`). Флаг — вид записи:
+    /// 0 `inset`, 1 `rect`, 2 `xywh`.
+    pub(crate) object_view_box: Option<(u8, [Len; 4])>,
     pub bg_repeat: Option<BgRepeat>,
     /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
@@ -7098,6 +7104,9 @@ impl Computed {
             }
             // `object-position` — та же грамматика, но для замещаемого
             // содержимого (css-images-3 §5.2).
+            "object-view-box" => {
+                self.object_view_box = parse_view_box(v);
+            }
             "object-position" => {
                 self.object_position = Some(parse_pos_words(v));
             }
@@ -12610,6 +12619,38 @@ fn calc_size_arg(v: &str) -> Option<CalcSize> {
     }
     matches!(basis, "auto" | "fit-content" | "min-content" | "max-content" | "content")
         .then_some(CalcSize::Over(f))
+}
+
+/// `object-view-box: none | <basic-shape-rect>` — `inset()`, `rect()`,
+/// `xywh()` (css-images-4 §object-view-box; css-shapes-1 §basic-shape-rect).
+/// Длины — точки или доли; `inset` с 1-3 значениями раскрывается как поля.
+fn parse_view_box(v: &str) -> Option<(u8, [Len; 4])> {
+    let v = v.trim();
+    let (kind, inner) = if let Some(r) = v.strip_prefix("inset(") {
+        (0u8, r)
+    } else if let Some(r) = v.strip_prefix("rect(") {
+        (1u8, r)
+    } else if let Some(r) = v.strip_prefix("xywh(") {
+        (2u8, r)
+    } else {
+        return None;
+    };
+    let inner = inner.strip_suffix(')')?;
+    let parts: Vec<Len> = inner
+        .split_whitespace()
+        .map(|t| match Len::parse(t) {
+            Some(l @ (Len::Px(_) | Len::Pct(_))) => Some(l),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let four = match (kind, parts.as_slice()) {
+        (_, [a, b, c, d]) => [*a, *b, *c, *d],
+        (0, [a]) => [*a, *a, *a, *a],
+        (0, [a, b]) => [*a, *b, *a, *b],
+        (0, [a, b, c]) => [*a, *b, *c, *b],
+        _ => return None,
+    };
+    Some((kind, four))
 }
 
 fn assign_size(slot: &mut Option<Len>, v: &str) {
