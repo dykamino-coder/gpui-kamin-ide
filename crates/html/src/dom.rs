@@ -1418,10 +1418,10 @@ pub(crate) fn lanes_row_dir(s: &Computed) -> bool {
 /// путём, что у сетки-эталона (`grid-subgridded-to-grid-lanes/**` — та же
 /// разметка на `inline-grid`), а не рукописной оценкой `render::lanes`.
 ///
-/// Гейт — то, чего taffy-путь пока не умеет; такой контейнер остаётся на
-/// `render::lanes`: `rtl` контейнера (у сетки taffy зеркала строчной оси
-/// нет). Вертикальное письмо идёт сюда: оси переставляет `apply.rs`
-/// (`grid_style`, `placement_flip`), как у сетки. Подсетки среди
+/// Все контейнеры лунок идут сюда: вертикальное письмо — осями из
+/// `apply.rs` (`grid_style`, `placement_flip`), `rtl` — как у сетки-эталона
+/// (зеркала строчной оси у сетки taffy нет, и эталоны `inline-grid` с `rtl`
+/// рисуются тем же путём; ★ ЗАМЕРЕНО: 57 пар лунок с `rtl` +3/−0). Подсетки среди
 /// детей идут тем же путём: срез им режет `subgrid_takes_parent_tracks`
 /// ровно как у сетки-эталона; интрин-дорожки в `repeat(auto-*)` считает
 /// taffy (css-grid-3 §7.2.1).
@@ -1432,17 +1432,18 @@ fn lanes_as_grid(nodes: &mut [Node]) {
         if el.style.display != Some(Display::GridLanes) {
             continue;
         }
-        let s = &el.style;
-        if s.rtl == Some(true) {
-            continue;
-        }
-        el.style.display = Some(if el.style.lanes_inline {
-            Display::InlineGrid
-        } else {
-            Display::Grid
-        });
-        el.style.lanes_taffy = true;
+        lanes_to_grid(&mut el.style);
     }
+}
+
+/// Перевод контейнера лунок на путь сетки (см. `lanes_as_grid`).
+pub(crate) fn lanes_to_grid(style: &mut Computed) {
+    style.display = Some(if style.lanes_inline {
+        Display::InlineGrid
+    } else {
+        Display::Grid
+    });
+    style.lanes_taffy = true;
 }
 
 fn hoist_grid_abspos(nodes: &mut [Node]) {
