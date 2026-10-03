@@ -8737,7 +8737,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 // эталонный зелёный стоял без своих margin: 50px).
                 let ml = margin_px(e.style.margin.left, &e.style).unwrap_or(0.0);
                 let mt = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);
-                let built = if ml != 0.0 || mt != 0.0 {
+                // Под потоком (`below`) коробка остаётся абсолютной на месте
+                // распорки, и поле от статической позиции ей уже даёт сама
+                // раскладка (taffy: `static_position + margin`); обёртка
+                // прибавляла его второй раз (`tab-size-inheritance-001`:
+                // красная подложка на 50 точек правее).
+                let built = if (ml != 0.0 || mt != 0.0) && !below {
                     div()
                         .absolute()
                         .left(px(ml))
