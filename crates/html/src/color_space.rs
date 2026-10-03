@@ -893,11 +893,20 @@ pub(crate) fn apply_icc(
         let xyz50 = mul(m, lin);
         let xyz = mul(D50_TO_D65, xyz50);
         let srgb = mul(XYZ_TO_LINEAR_SRGB, xyz);
-        let (r, g, b) = gamut_map(
-            srgb_gamma(srgb[0]),
-            srgb_gamma(srgb[1]),
-            srgb_gamma(srgb[2]),
-        );
+        let (r, g, b) = (srgb_gamma(srgb[0]), srgb_gamma(srgb[1]), srgb_gamma(srgb[2]));
+        // Погрешность пути профиль → D50 → D65 → sRGB (округление колорантов
+        // в профиле, s15Fixed16) выводит чистые цвета чуть за край охвата:
+        // у профиля «sRGB IEC61966-2.1» синий 0000ff выходил (−0.01, 0.003,
+        // 1.0x). Охватное отображение (OKLCh) по такой мелочи сдвигало тон —
+        // 0033e6 вместо 0000ff (`order-of-images`). Вблизи края — простой
+        // зажим; отображение — только настоящему выходу за охват.
+        const SLACK: f32 = 0.02;
+        let near = |v: f32| (-SLACK..=1.0 + SLACK).contains(&v);
+        let (r, g, b) = if near(r) && near(g) && near(b) {
+            (r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0))
+        } else {
+            gamut_map(r, g, b)
+        };
         out.push((b * a * 255.0).round() as u8);
         out.push((g * a * 255.0).round() as u8);
         out.push((r * a * 255.0).round() as u8);

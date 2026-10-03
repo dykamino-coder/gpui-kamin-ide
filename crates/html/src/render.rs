@@ -10316,6 +10316,21 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
             .flatten(),
         ..Computed::default()
     };
+    // Картинки фона слоя первой буквы (css-pseudo-4 §3.6: к `::first-letter`
+    // применимы все свойства фона) — со своими размером, положением,
+    // повтором и списками слоёв. Прежде переносился только цвет, и вместо
+    // зелёных картинок проступал красный цвет фона (`background-image-007`).
+    if first.bg_image.is_some() || first.gradient.is_some() || !first.bg_lists.is_empty() {
+        style.bg_image = first.bg_image.clone();
+        style.gradient = first.gradient.clone();
+        style.gradient_raw = first.gradient_raw.clone();
+        style.bg_size = first.bg_size;
+        style.bg_pos = first.bg_pos;
+        style.bg_repeat = first.bg_repeat;
+        style.bg_origin = first.bg_origin;
+        style.bg_clip = first.bg_clip;
+        style.bg_lists = first.bg_lists.clone();
+    }
     // Сдвиг ложится на поле БЛОК-СТАРТА и СКЛАДЫВАЕТСЯ с полем слоя — ровно
     // так же, как в эталонах: `block-position-margins-vrl` задаёт слою
     // `margin-right: 45px`, а его эталон пишет `margin-right: 41px`
