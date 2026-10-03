@@ -11931,9 +11931,14 @@ fn band_host_m(
             break;
         }
         // Ортогональный флоат (своё письмо вертикально в горизонтальном
-        // контейнере): shrink-to-fit по чужой оси каркас пробы не считает
-        // (css-writing-modes-4 §7.3) — уходит на прежний путь.
-        if band_orthogonal(&next.style) {
+        // контейнере) С ТЕКСТОМ: строчный размер его строк (§7.3.1, от
+        // начального содержащего блока) каркас пробы не считает, и ширина
+        // (блочный размер) выходила по горизонтальной мере текста — на
+        // прежний путь (`float-contiguous-vlr-011`: пять флоатов `abcde`).
+        // Без текста блочный размер — сумма блочных размеров детей, и
+        // проба считает его верно: такой флоат идёт в хост
+        // (`float-shrink-to-fit-vrl-002…`, `contiguous-floated-table-v*`).
+        if band_orthogonal(&next.style) && subtree_has_text(next) {
             return None;
         }
         // Флоат с трансформацией — на прежнем пути: трансформацию даёт
@@ -12317,6 +12322,14 @@ fn band_f10() -> bool {
     static ON: std::sync::LazyLock<bool> =
         std::sync::LazyLock::new(|| std::env::var("BF_F10").map_or(true, |v| v != "0"));
     *ON
+}
+
+/// Есть ли в поддереве непустой текст.
+fn subtree_has_text(e: &Element) -> bool {
+    e.children.iter().any(|n| match n {
+        Node::Text(t) => !t.trim().is_empty(),
+        Node::Element(c) => subtree_has_text(c),
+    })
 }
 
 /// Включён ли шаг F11 — буквица в измеряемом хосте. По умолчанию включён
