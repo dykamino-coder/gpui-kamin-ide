@@ -64,6 +64,14 @@ pub struct OverlayAt {
     /// уезжал на 2px, и полоса красного проступала (`static-position/
     /// v{lr,rl}-rtl-*`, `cb`-случаи).
     pub rot_dx: f32,
+    /// Строчный абсолют на статической точке повёрнутого rtl-абзаца: сторону,
+    /// которой коробка висит на точке, решает УРОВЕНЬ bidi в точке
+    /// (`lines.rs: rtl_level_at`), а не направление блока. Гипотетическая
+    /// коробка стоит В ПРОГОНЕ: в ltr-прогоне (латиница, Ahem) она уходит от
+    /// точки вправо, и строчное начало rtl-блока — её правый край — лежит на
+    /// ширину правее точки (CSS 2.1 §10.3.7 «set 'right' to the static
+    /// position»: статическая позиция — край гипотетической коробки).
+    pub bidi_hang: bool,
 }
 
 /// Схлопывание пробелов ЧЕРЕЗ границу кусков (CSS 2.1 §16.6.1,
@@ -2111,8 +2119,13 @@ pub fn bidi_marks(own: &Computed, merged: &Computed) -> (Option<char>, Option<ch
         let open = if rtl { '\u{2067}' } else { '\u{2066}' };
         return (Some(open), Some('\u{2069}'));
     }
-    if own.rtl.is_some() {
-        // Своя сторона письма: RLE/LRE … PDF.
+    // Своя сторона письма: RLE/LRE … PDF — только при `unicode-bidi: embed`
+    // (или атрибуте `dir`). У `normal` (по умолчанию) `direction` строчного
+    // элемента порядка знаков не меняет: `<span style="direction: rtl">`
+    // в rtl-блоке обкладывался RLE, латиница внутри уходила своим прогоном,
+    // и статическая точка абсолюта оказывалась не там, где текст
+    // (`static-position/v{lr,rl}-rtl-*`).
+    if own.rtl.is_some() && own.bidi_embed == Some(true) {
         let open = if rtl { '\u{202b}' } else { '\u{202a}' };
         return (Some(open), Some('\u{202c}'));
     }

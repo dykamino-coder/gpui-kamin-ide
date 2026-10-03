@@ -1991,6 +1991,14 @@ fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String, String)]) 
         }
         return;
     };
+    // Атрибут `dir` (и `auto`: сторону потом решает первый сильный знак,
+    // `render.rs`) — встраивание (прежний ход: RLE/LRE … PDF), пока стиль
+    // не задал `unicode-bidi` сам. HTML UA-лист даёт `[dir] { unicode-bidi:
+    // isolate }`; здесь сохранено прежнее встраивание — переход на
+    // изоляцию отдельный шаг с замером.
+    if style.bidi_embed.is_none() && matches!(value.to_ascii_lowercase().as_str(), "rtl" | "ltr" | "auto") {
+        style.bidi_embed = Some(true);
+    }
     match value.to_ascii_lowercase().as_str() {
         "rtl" => {
             if style.rtl.is_none() {

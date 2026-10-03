@@ -1936,6 +1936,27 @@ impl Paragraph {
         let shift = self.span(segs, line.range.start, line.range.start + hang);
         let lead =
             if self.wrap.rtl { px(0.) } else { line.indent } - shift + px(self.flow_cut(row).0);
+        // Повёрнутый абзац при `direction: rtl`: место считается ВИЗУАЛЬНО
+        // (`visual_x_rtl`) — строка прижата к правому краю до-поворотной
+        // коробки и переставлена разбором UAX#9, а логическое продвижение от
+        // левого края верно только для одного rtl-прогона.
+        if self.wrap.rtl && crate::interact::in_rotated_frame() {
+            let free_raw =
+                bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
+            let left = bounds.origin.x
+                + line_offset(self.line_align(row, line), true, free_raw)
+                - shift
+                + px(self.flow_cut(row).0);
+            let visual = if self.lines_reversed {
+                self.lines.len().saturating_sub(1).saturating_sub(row)
+            } else {
+                row
+            };
+            return point(
+                left + self.visual_x_rtl(segs, at, line),
+                bounds.origin.y + self.line_height * visual as f32,
+            );
+        }
         // ЗАМЕРЕНО И ОТКАЧЕНО (04.09): прибавлять сюда долю ВЫКЛЮЧКИ
         // (`text-align: center|right`) тем же счётом, что и отрисовка
         // (`free/2` и `free`). Срез из 633 пар статической позиции и
@@ -1958,6 +1979,76 @@ impl Paragraph {
             bounds.origin.x + lead + x,
             bounds.origin.y + self.line_height * visual as f32,
         )
+    }
+
+    /// Визуальное продвижение места `at` от ЛЕВОГО края rtl-строки.
+    ///
+    /// На место куска ставится нейтральный U+FFFC (так UAX#9 видит
+    /// замещаемый объект), строка разбирается с базой rtl, и прогоны идут в
+    /// ВИЗУАЛЬНОМ порядке (L2), как у отрисовки (`paint_line`): слева
+    /// складываются ширины прогонов до прогона метки, внутри него — знаки
+    /// до метки (ltr-прогон) или после неё (rtl-прогон). Пример
+    /// `abs-pos-non-replaced-vrl-008`: строка «34» + абсолют — метка уровня 1
+    /// после числа уровня 2 встаёт ЛЕВЕЕ числа, и коробка висит от левого
+    /// края строки, а не от правого.
+    fn visual_x_rtl(&self, segs: &[Seg], at: usize, line: &Line) -> Pixels {
+        let start = line.range.start;
+        let end = start + trim_hanging(&self.text[line.range.clone()]);
+        let at = at.clamp(start, end);
+        const MARK: usize = 3; // U+FFFC в UTF-8
+        let mut probe = String::with_capacity(self.text.len() + MARK);
+        probe.push_str(&self.text[..at]);
+        probe.push('\u{fffc}');
+        probe.push_str(&self.text[at..]);
+        let info = unicode_bidi::BidiInfo::new(&probe, Some(unicode_bidi::Level::rtl()));
+        let Some(para) = info
+            .paragraphs
+            .iter()
+            .find(|p| p.range.start <= start && start < p.range.end)
+            .or_else(|| info.paragraphs.first())
+        else {
+            return px(0.);
+        };
+        let (levels, runs) = info.visual_runs(para, start..end + MARK);
+        // Отрезок метки-строки обратно в отрезок исходного текста.
+        let orig = |p: usize| if p <= at { p } else { p - MARK };
+        let width = |a: usize, b: usize| self.span(segs, orig(a), orig(b));
+        let mut x = px(0.);
+        for run in runs {
+            let mark_in = run.start <= at && at < run.end;
+            if !mark_in {
+                x += width(run.start, run.end);
+                continue;
+            }
+            let rtl = levels.get(run.start).is_some_and(|l| l.is_rtl());
+            x += if rtl {
+                width(at + MARK, run.end)
+            } else {
+                width(run.start, at)
+            };
+            break;
+        }
+        x
+    }
+
+    /// Уровень bidi у места куска вне потока — справа налево ли? Сам кусок
+    /// в тексте знака не имеет, поэтому на его место ставится нейтральный
+    /// U+FFFC (так UAX#9 видит замещаемый объект): его уровень решают
+    /// соседи по правилам N1/N2.
+    fn rtl_level_at(&self, at: usize) -> bool {
+        let at = at.min(self.text.len());
+        let mut probe = String::with_capacity(self.text.len() + 3);
+        probe.push_str(&self.text[..at]);
+        probe.push('\u{fffc}');
+        probe.push_str(&self.text[at..]);
+        let base = if self.wrap.rtl {
+            unicode_bidi::Level::rtl()
+        } else {
+            unicode_bidi::Level::ltr()
+        };
+        let forced = if self.plaintext.is_some() { None } else { Some(base) };
+        let info = unicode_bidi::BidiInfo::new(&probe, forced);
+        info.levels.get(at).map_or(self.wrap.rtl, |l| l.is_rtl())
     }
 
     /// Статическая позиция БЛОЧНОГО куска вне потока: строчное начало —
@@ -3669,6 +3760,8 @@ impl Element for Paragraph {
                 let origin = if *next && self.wrap.rtl {
                     // `origin.x` здесь — край содержимого плюс сдвиг предков.
                     point(origin.x + bounds.size.width - size.width, origin.y)
+                } else if how.bidi_hang && self.rtl_level_at(*at) {
+                    point(origin.x - size.width, origin.y)
                 } else {
                     origin
                 };
