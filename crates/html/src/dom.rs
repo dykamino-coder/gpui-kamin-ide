@@ -443,7 +443,43 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     subgrid_takes_parent_tracks(&mut out);
     filter_ref_only_empty(&mut out);
     fold_run_ins(&mut out, None);
+    if quirks() {
+        quirks_percent_heights(&mut out, None);
+    }
     out
+}
+
+/// Quirks Mode §3.5 «The percentage height calculation quirk»: в режиме quirks
+/// доля высоты элемента в потоке ищет опору через предков-блоков с
+/// `height: auto` до ближайшего с заданной высотой. Сводится к точкам ЗДЕСЬ, в
+/// стиле узла: флоаты и картинки строятся из сырого стиля (`wrap_floats`,
+/// `image_with`), и пересчёт только в слитом (`inline::inherit`) до них не
+/// доходил (`float-percentage-resolution-quirks-mode`,
+/// `intrinsic-percent-replaced-003`). `base` — высота содержимого опоры для
+/// детей; гибкий/сеточный/табличный предок с `auto` и абсолют цепочку рвут.
+fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
+    for n in nodes.iter_mut() {
+        let Node::Element(e) = n else { continue };
+        let st = &mut e.style;
+        let out_of_flow = matches!(st.position, Some(Position::Absolute) | Some(Position::Fixed));
+        let blockish = matches!(st.display, None | Some(Display::Block) | Some(Display::InlineBlock) | Some(Display::ListItem));
+        if let (Some(Len::Pct(k)), Some(b), false, true) = (st.height, base, out_of_flow, blockish) {
+            st.height = Some(Len::Px(k * b));
+        }
+        // Табличные коробки квирка не дают: доля внука ячейки с заданной
+        // высотой остаётся `auto` (`percentages-grandchildren-quirks-mode-001`).
+        let tabular = matches!(
+            st.display,
+            Some(Display::Table | Display::InlineTable | Display::TableCell | Display::TableRow | Display::TableRowGroup)
+        );
+        let child_base = match st.height {
+            _ if tabular => None,
+            Some(Len::Px(h)) => Some(h),
+            None | Some(Len::Auto) if blockish && !out_of_flow && e.tag != "html" => base,
+            _ => None,
+        };
+        quirks_percent_heights(&mut e.children, child_base);
+    }
 }
 
 /// `display` родителя вместе с метками ролей: то, что переносит `inherit`.
