@@ -946,6 +946,20 @@ fn default_bounds(display_id: Option<DisplayId>, cx: &mut App) -> Bounds<Pixels>
         })
 }
 
+/// KaminIDE patch: снимок контекста краски окна (см. `Window::paint_ctx`).
+pub(crate) struct PaintCtx {
+    element_id_stack: SmallVec<[ElementId; 32]>,
+    text_style_stack: Vec<TextStyleRefinement>,
+    rendered_entity_stack: Vec<EntityId>,
+    element_offset_stack: Vec<Point<Pixels>>,
+    transformation_stack: Vec<TransformationMatrix>,
+    mask_scale: Option<(Point<Pixels>, f32)>,
+    mask_map: Option<TransformationMatrix>,
+    element_opacity: f32,
+    content_mask_stack: Vec<ContentMask<Pixels>>,
+    image_cache_stack: Vec<AnyImageCache>,
+}
+
 impl Window {
     pub(crate) fn new(
         handle: AnyWindowHandle,
@@ -2587,6 +2601,50 @@ impl Window {
         } else {
             f(self)
         }
+    }
+
+    /// KaminIDE patch: снимок контекста краски — всё, что `paint` предков
+    /// кладёт в окно вокруг ребёнка (маски, прозрачность, стиль текста,
+    /// преобразования, путь id). Перенесённый ребёнок (`PaintLast` в
+    /// собирателе) рисуется позже ровно в том окружении, где стоял.
+    pub(crate) fn paint_ctx(&self) -> PaintCtx {
+        PaintCtx {
+            element_id_stack: self.element_id_stack.clone(),
+            text_style_stack: self.text_style_stack.clone(),
+            rendered_entity_stack: self.rendered_entity_stack.clone(),
+            element_offset_stack: self.element_offset_stack.clone(),
+            transformation_stack: self.transformation_stack.clone(),
+            mask_scale: self.mask_scale,
+            mask_map: self.mask_map,
+            element_opacity: self.element_opacity,
+            content_mask_stack: self.content_mask_stack.clone(),
+            image_cache_stack: self.image_cache_stack.clone(),
+        }
+    }
+
+    /// KaminIDE patch: выполнить `f` в снятом `paint_ctx` окружении и вернуть
+    /// прежнее.
+    pub(crate) fn with_paint_ctx<R>(
+        &mut self,
+        mut ctx: PaintCtx,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        fn swap_all(w: &mut Window, c: &mut PaintCtx) {
+            std::mem::swap(&mut w.element_id_stack, &mut c.element_id_stack);
+            std::mem::swap(&mut w.text_style_stack, &mut c.text_style_stack);
+            std::mem::swap(&mut w.rendered_entity_stack, &mut c.rendered_entity_stack);
+            std::mem::swap(&mut w.element_offset_stack, &mut c.element_offset_stack);
+            std::mem::swap(&mut w.transformation_stack, &mut c.transformation_stack);
+            std::mem::swap(&mut w.mask_scale, &mut c.mask_scale);
+            std::mem::swap(&mut w.mask_map, &mut c.mask_map);
+            std::mem::swap(&mut w.element_opacity, &mut c.element_opacity);
+            std::mem::swap(&mut w.content_mask_stack, &mut c.content_mask_stack);
+            std::mem::swap(&mut w.image_cache_stack, &mut c.image_cache_stack);
+        }
+        swap_all(self, &mut ctx);
+        let r = f(self);
+        swap_all(self, &mut ctx);
+        r
     }
 
     /// KaminIDE patch: подменить маску содержимого БЕЗ пересечения с

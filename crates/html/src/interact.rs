@@ -5340,7 +5340,11 @@ impl Element for LatePlace {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.child.as_mut().unwrap().paint(window, cx);
+        // Заместитель своего контекста краски не заводит (сдвиг — в
+        // подготовке): собиратель шага 8 (`gpui::PaintLast`) проходит его
+        // насквозь, как обычную коробку.
+        let child = self.child.as_mut().unwrap();
+        gpui::paint_reopen(|| child.paint(window, cx));
     }
 }
 
