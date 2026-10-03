@@ -1788,7 +1788,23 @@ fn determine_container_main_size(
                                 // Ultimately, this was not found by reading the spec, but by trial and error fixing tests to align with Webkit/Firefox output.
                                 // (see the `flex_basis_unconstraint_row` and `flex_basis_uncontraint_column` generated tests which demonstrate this)
                                 if constants.is_row {
-                                    content_main_size.maybe_clamp(style_min, style_max).max(main_content_box_inset)
+                                    // KaminIDE patch: вклад зажат и базой — сверху у
+                                    // НЕРАСТУЩЕГО элемента, снизу у НЕСЖИМАЕМОГО
+                                    // (css-flexbox-1 §9.9.1 «…clamped by its flex base
+                                    // size as a maximum (if it is not growable) and/or
+                                    // as a minimum (if it is not shrinkable)»; Blink
+                                    // flex_layout_algorithm.cc:2922-2940 `cant_move` →
+                                    // гипотетический размер). Пределы `min_main_size`/
+                                    // `max_main_size` выше уже посчитаны, но сюда не
+                                    // доходили: `flex: 0 1 100px` с ребёнком 200 вносил
+                                    // в min-content ряда 200 вместо 100, флоат вокруг
+                                    // выходил вдвое шире (`intrinsic-size/row-004`).
+                                    let margins = item.margin.main_axis_sum(constants.dir);
+                                    content_main_size
+                                        .maybe_clamp(style_min, style_max)
+                                        .min(max_main_size + margins)
+                                        .max(min_main_size + margins)
+                                        .max(main_content_box_inset)
                                 } else {
                                     content_main_size
                                         .max(item.flex_basis)
