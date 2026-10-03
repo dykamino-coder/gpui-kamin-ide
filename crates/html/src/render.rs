@@ -24151,10 +24151,33 @@ fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             _ if e.style.aspect_ratio.is_some() => image.object_fit(gpui::ObjectFit::Fill),
             _ => image.object_fit(gpui::ObjectFit::Contain),
         };
-        let d = match узкая {
+        let mut d = match узкая {
             Some((w, h)) => d.w(px(w + sub_w)).h(px(h + sub_h)),
             None => d,
         };
+        // Элемент ГИБКОГО контейнера (`flex_item`): гибкий элемент — это держатель, а соотношение сторон стояло
+        // только на внутреннем рисунке, и раскладка flex его не видела. Рост
+        // `flex: 1` не тянул вторую сторону, растяжка колонки не давала высоты
+        // (css-flexbox-1 §9.4 п.7 и §9.8 с css-sizing-4 §5.1:
+        // `flex-aspect-ratio-023/024`). Соотношение переезжает на держатель,
+        // рисунок его заполняет.
+        if e.style.flex_item && узкая.is_none() {
+            let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
+            let (aw, ah) = (auto(e.style.width), auto(e.style.height));
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО: то же при ОБЕИХ авто-сторонах (рисунок
+            // природный с `max-w/max-h: 100%`) — `flex-aspect-ratio-027/028`
+            // 6.25 → 2.08: потолок режет только ширину, высота остаётся
+            // природной; нужен держатель с природным вкладом и рисунок по
+            // соотношению.
+            if let Some(r) = ratio_of().filter(|r| *r > 0.0)
+                && aw != ah
+                && !matches!(e.style.width, Some(Len::Pct(_)))
+                && !matches!(e.style.height, Some(Len::Pct(_)))
+            {
+                d.style().aspect_ratio = Some(r);
+                image = image.size_full().object_fit(gpui::ObjectFit::Fill);
+            }
+        }
         return d.child(image).into_any_element();
     }
     // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки
