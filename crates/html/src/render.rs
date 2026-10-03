@@ -8225,6 +8225,13 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // полями. Слой absolute от родителя-корня растягивается на всё
             // окно, с самой коробки краска снимается (иначе двойная альфа).
             let canvas_paint = e.style.canvas_bg;
+            // Тело под корнем-донором фона холста при `vertical-rl`: его
+            // margin-box (плюс рамка/отбивка корня) — коробка корня по
+            // содержимому; её левый край пишется на подготовке тела.
+            let record_root = e.tag == "body"
+                && inherited.canvas_bg
+                && inherited.vertical_rl == Some(true)
+                && !matches!(inherited.width, Some(Len::Px(_)));
             let canvas_stripped;
             let e = if canvas_paint {
                 // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
@@ -8306,6 +8313,11 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                                 _ => None,
                             },
                             from_right: e.style.vertical_rl == Some(true),
+                            // Корень `vertical-rl` без заданной ширины — по
+                            // содержимому у правого края (css-writing-modes-4
+                            // §7, auto block-size): левый край его коробки
+                            // пишет обёртка тела ниже при подготовке.
+                            left_key: (e.style.vertical_rl == Some(true)).then_some(opts.doc_salt),
                         };
                         match &canvas_layers {
                             // Снизу вверх, каждый слой — своей плиткой от
@@ -8907,6 +8919,19 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             } else {
                 content_sized(layered_built, &e.style, placement)
             };
+            // Тело под корнем-донором фона холста при `vertical-rl`: записать
+            // левый край коробки корня для отрисовки холста (см. `canvas_paint`).
+            // Корень по содержимому = margin-box тела плюс рамка и отбивка
+            // корня слева.
+            if record_root {
+                let side = |l: Option<Len>| match l {
+                    Some(Len::Px(v)) => v,
+                    _ => 0.0,
+                };
+                let root_b = inherited.borders();
+                let offset = side(e.style.margin.left) + side(inherited.padding.left) + side(root_b.left);
+                done = crate::interact::record_root_left(done, opts.doc_salt, offset);
+            }
             // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
             // flow): свой анкор-ряд вокруг ОДНОГО узла — соседей не трогает.
             // Корню с фоном-картинкой не ставится (гасил canvas-слой).
