@@ -3767,8 +3767,31 @@ impl Computed {
         // нас берётся от родителя, поэтому такое объявление молча наследовало
         // вместо сброса — на `static-position` отступ первой строки уходил в
         // абсолютный блок, и красное проступало из-под него.
+        // `unset` у НАСЛЕДУЕМОГО свойства — это `inherit`, у ненаследуемого —
+        // `initial` (css-cascade-4 §7.3.3). Прежде любое `unset` шло в
+        // начальное значение, и `color: unset` давал чёрный вместо цвета
+        // родителя (`unset-val-001`).
+        if v == "unset" && inherited_property(key) {
+            return self.apply_one(key, "inherit");
+        }
         if matches!(v, "initial" | "unset" | "revert" | "revert-layer")
             && let Some(start) = initial_value(key)
+        {
+            return self.apply_one(key, start);
+        }
+        // Начальные значения, которые годятся ТОЛЬКО для `initial`/`unset`:
+        // `revert` у автора откатывает к таблице агента, а там у `div`
+        // `display: block`, не начальное `inline`.
+        if matches!(v, "initial" | "unset")
+            && let Some(start) = match key {
+                "background-color" => Some("transparent"),
+                "background-image" => Some("none"),
+                "display" => Some("inline"),
+                "float" => Some("none"),
+                "position" => Some("static"),
+                "opacity" => Some("1"),
+                _ => None,
+            }
         {
             return self.apply_one(key, start);
         }
@@ -13081,6 +13104,49 @@ mod gradient_tests {
 ///
 /// Значения взяты из спецификаций; свойства, начальное значение которых у нас
 /// и так «поле не задано», сюда не входят — им сброс не нужен.
+/// Наследуется ли свойство по умолчанию (столбец «Inherited» таблиц
+/// свойств CSS). Нужен `unset`: у наследуемого он значит `inherit`.
+fn inherited_property(key: &str) -> bool {
+    matches!(
+        key,
+        "color"
+            | "font"
+            | "font-family"
+            | "font-size"
+            | "font-style"
+            | "font-variant"
+            | "font-weight"
+            | "font-stretch"
+            | "letter-spacing"
+            | "word-spacing"
+            | "line-height"
+            | "text-align"
+            | "text-align-last"
+            | "text-indent"
+            | "text-transform"
+            | "visibility"
+            | "white-space"
+            | "list-style"
+            | "list-style-type"
+            | "list-style-position"
+            | "list-style-image"
+            | "direction"
+            | "writing-mode"
+            | "quotes"
+            | "cursor"
+            | "tab-size"
+            | "word-break"
+            | "overflow-wrap"
+            | "word-wrap"
+            | "hyphens"
+            | "text-orientation"
+            | "border-collapse"
+            | "border-spacing"
+            | "caption-side"
+            | "empty-cells"
+    )
+}
+
 fn initial_value(key: &str) -> Option<&'static str> {
     Some(match key {
         "border" => "0 none",
