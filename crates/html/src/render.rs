@@ -4234,7 +4234,13 @@ fn shape_full(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
         // нужно: точки разреза и монолиты хвоста.
         Some(Some(v)) => (
             if unclamp {
-                (v + top + bot).max(stacked.map_or(0.0, |s| s.0) + bot)
+                // Отрицательное поле первого ребёнка, схлопнутое сквозь верх
+                // коробки (`through`), поднимает всё содержимое: его низ —
+                // `end + through` от верха коробки (`css-break/float-001`:
+                // коробка `height: 0` с ребёнком 40px и `margin-top: -40px`
+                // — содержимое кончается на её верху, а мера давала поток
+                // 40, и коробка с края колонки уезжала в следующую).
+                (v + top + bot).max(stacked.map_or(0.0, |s| s.0 + s.1.min(0.0)) + bot)
             } else {
                 v + top + bot
             },
@@ -22906,6 +22912,49 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     // §9.2.1.1), только когда строки можно измерить.
                     let grouped_e = line_col_w.and_then(|_| group_inline_runs(e));
                     let ge: &Element = grouped_e.as_ref().unwrap_or(e);
+                    // Плавающий прямой ребёнок во всю ширину колонки рядом с
+                    // собой ничего не терпит: строки и блоки встают под ним,
+                    // как под блоком, — в стопку колонок он идёт БЛОКОМ и
+                    // рвётся по колонкам вместе с потоком (css-break-3 §4:
+                    // флоат — фрагментируемая коробка; `css-break/float-001`:
+                    // флоат 200px в колонках по 100 — прежний путь рисовал его
+                    // соседом стопки одним куском).
+                    let zero_m = |l: &Option<Len>| match l {
+                        None => true,
+                        Some(Len::Px(v)) => v.abs() < 0.01,
+                        _ => false,
+                    };
+                    let full_float = |c: &Element| {
+                        c.style.float.is_some_and(|f| f != 0)
+                            && matches!(c.style.width, Some(Len::Pct(k)) if (k - 1.0).abs() < 1e-4)
+                            && zero_m(&c.style.margin.left)
+                            && zero_m(&c.style.margin.right)
+                            // Поля флоата не схлопываются и у края колонки не
+                            // усекаются (CSS 2.1 §8.3.1), а у блока стопки —
+                            // да: флоат с вертикальными полями — прежним путём
+                            // (`multicol-fill-balance-037`: `margin: 40px 0`).
+                            && zero_m(&c.style.margin.top)
+                            && zero_m(&c.style.margin.bottom)
+                            && c.style.shape_outside.is_none()
+                            && !positioned(&c.style)
+                    };
+                    let floats_blocked = ge
+                        .children
+                        .iter()
+                        .any(|n| matches!(n, Node::Element(c) if full_float(c)))
+                    .then(|| {
+                        let mut g = ge.clone();
+                        for n in g.children.iter_mut() {
+                            if let Node::Element(c) = n
+                                && full_float(c)
+                            {
+                                c.style.float = None;
+                                c.style.clear = None;
+                            }
+                        }
+                        g
+                    });
+                    let ge: &Element = floats_blocked.as_ref().unwrap_or(ge);
                     // Плавающие прямые дети — как прежде: не в стопку,
                     // рисуются её соседями.
                     let direct_oof: Vec<Element> = ge
