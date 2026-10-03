@@ -803,7 +803,13 @@ impl Drop for StackScope {
 thread_local! {
     /// Высота ряда вложенного многоколоночника, заданная ВНЕШНЕЙ колонкой
     /// (`set_outer_row` → `take_outer_row` первой строкой `render::element`).
-    static OUTER_ROW: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+    static OUTER_ROW: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
+    /// Сколько первых колонок укладки стоят НЕ с верха фрагментаинера (первый
+    /// ряд вложенного многоколоночника, начатого ниже верха внешней колонки):
+    /// не влезший с верха такой колонки монолит уходит дальше, а не
+    /// переполняет её (Blink: `is_at_fragmentainer_start` ложно —
+    /// `BreakBeforeChildIfNeeded`, css-break-3 §4.1 «may be pushed»).
+    static NOT_TOP: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Передать следующему `element()` высоту внешнего фрагментаинера: копия
@@ -811,12 +817,25 @@ thread_local! {
 /// «when a multi-column container breaks across pages, it generates a new row
 /// of columns on the next page»; Blink `column_layout_algorithm.cc:1741-1748`
 /// `ConstrainColumnBlockSize` → `min(size, available_outer_space)`).
-pub fn set_outer_row(h: Option<f32>) {
+/// Сторож `NOT_TOP` на время укладки.
+struct NotTop(usize);
+impl NotTop {
+    fn set(n: usize) -> Self {
+        NotTop(NOT_TOP.with(|c| c.replace(n)))
+    }
+}
+impl Drop for NotTop {
+    fn drop(&mut self) {
+        NOT_TOP.with(|c| c.set(self.0));
+    }
+}
+
+pub fn set_outer_row(h: Option<(f32, f32)>) {
     OUTER_ROW.with(|r| r.set(h));
 }
 
 /// Забрать переданную высоту (одноразово).
-pub fn take_outer_row() -> Option<f32> {
+pub fn take_outer_row() -> Option<(f32, f32)> {
     OUTER_ROW.with(|r| r.take())
 }
 
@@ -891,6 +910,12 @@ pub struct ColumnStack {
     /// Ось прогрессии колонок (`StackAxis`); при вертикальном письме —
     /// вертикальная. Ставится `with_axis`.
     axis: StackAxis,
+    /// Смещение начала рядов: вложенный многоколоночник начат на `row_phase`
+    /// ниже верха внешней колонки, и его ПЕРВЫЙ ряд — остаток `h − row_phase`
+    /// (Blink `column_layout_algorithm.cc:818-828` `available_outer_space =
+    /// FragmentainerSpaceLeftForChildren() − line_offset`). Ставится
+    /// `with_row_phase`; ноль — ряды от верха.
+    row_phase: f32,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
     fixed_height: Option<f32>,
     /// Линейка между колонками: ширина и цвет.
@@ -955,6 +980,7 @@ impl ColumnStack {
             rule,
             rows,
             axis: StackAxis::Horizontal,
+            row_phase: 0.0,
             copies,
             gap_items,
             intrinsic,
@@ -976,6 +1002,7 @@ impl ColumnStack {
         rows: Rows,
     ) -> f32 {
         let mut probe = ColumnStack::new(Vec::new(), count, gap, fixed, None, Some(rows), None, None);
+        probe.row_phase = 0.0;
         // Копий — как у `render.rs` для стопки с рядами: сколько колонок
         // ребёнок может занять, с запасом на поля и срезы.
         let per = rows.h.unwrap_or(f32::MAX).max(1.0);
@@ -987,6 +1014,12 @@ impl ColumnStack {
         // `multicol-breaking-006`: ряд 100 + хвост 80 + рамка 20).
         let (h, lines, _, _) = probe.balance(kids);
         lines.iter().map(|l| l.0 + l.1).fold(0.0f32, f32::max).min(h).max(0.0)
+    }
+
+    /// Смещение начала рядов (`row_phase`).
+    pub fn with_row_phase(mut self, phase: f32) -> Self {
+        self.row_phase = phase.max(0.0);
+        self
     }
 
     /// Ось прогрессии колонок (см. `StackAxis`).
@@ -1300,7 +1333,8 @@ impl ColumnStack {
         let mut y = 0.0f32;
         let mut prev_mb = 0.0f32;
         let mut first = true;
-        let mut placed = false;
+        let not_top = NOT_TOP.with(|c| c.get());
+        let mut placed = not_top > 0;
         let mut shortage = f32::MAX;
         let mut out: Vec<Frag> = Vec::with_capacity(kids.len());
         let mut force_next = false;
@@ -1335,7 +1369,7 @@ impl ColumnStack {
             if (k.force_before && !line_head || force_next) && placed {
                 col += 1;
                 y = 0.0;
-                placed = false;
+                placed = col < not_top;
                 prev_mb = 0.0;
                 first = true;
             }
@@ -1432,7 +1466,7 @@ impl ColumnStack {
                     if croom <= 0.01 && placed {
                         col += 1;
                         cur = 0.0;
-                        placed = false;
+                        placed = col < not_top;
                         continue;
                     }
                     // Пустая колонка, где украшению не хватило места, всё равно
@@ -1479,7 +1513,7 @@ impl ColumnStack {
                     copy += 1;
                     col += 1;
                     cur = 0.0;
-                    placed = false;
+                    placed = col < not_top;
                     continue;
                 }
                 let rest = flow - from;
@@ -1524,7 +1558,7 @@ impl ColumnStack {
                     copy += 1;
                     col += 1;
                     cur = rg.head_at(from);
-                    placed = false;
+                    placed = col < not_top;
                     continue;
                 }
                 if rest <= room_all + 0.01 {
@@ -1702,7 +1736,7 @@ impl ColumnStack {
                         // границе колонки съедается.
                         col += 1;
                         cur = 0.0;
-                        placed = false;
+                        placed = col < not_top;
                         continue;
                     }
                     None if !mono && rest > target + 0.01 && room > 0.01 => {
@@ -1727,7 +1761,7 @@ impl ColumnStack {
                 copy += 1;
                 col += 1;
                 cur = rg.head_at(from);
-                placed = false;
+                placed = col < not_top;
             }
             // Откат курсора на конец КОРОБКИ: параллельный поток уехал
             // дальше, но сосед по css-break-3 §3 продолжается там, где
@@ -2133,7 +2167,12 @@ impl ColumnStack {
             let p = phase(y);
             if p > 0.01 { y - p + stride } else { y + rows.gap }
         };
-        let mut y = 0.0f32;
+        // Начало рядов со сдвигом `row_phase`: курсор встаёт на фазу внутри
+        // первого ряда, и его остаток — первая линия (`balance_run(first)`);
+        // в конце координаты возвращаются к верху коробки.
+        let phase0 = if h > 0.0 { self.row_phase.min(h - 0.01).max(0.0) } else { 0.0 };
+        let _not_top = NotTop::set(if phase0 > 0.01 { count } else { 0 });
+        let mut y = phase0;
         let mut lines: Vec<(f32, f32)> = Vec::new();
         let mut plan: Vec<Frag> = Vec::new();
         let mut spans: Vec<(usize, f32)> = Vec::new();
@@ -2200,7 +2239,13 @@ impl ColumnStack {
         if p > 0.01 {
             y += h - p;
         }
-        (y, lines, plan, spans)
+        for l in lines.iter_mut() {
+            l.0 -= phase0;
+        }
+        for s in spans.iter_mut() {
+            s.1 -= phase0;
+        }
+        (y - phase0, lines, plan, spans)
     }
 
     /// Точки роста от вытолкнутых монолитов (Blink `FinishFragmentation`,
@@ -2232,6 +2277,7 @@ impl ColumnStack {
             count: count.max(1),
             gap: 0.0,
             axis: StackAxis::Horizontal,
+            row_phase: 0.0,
             fixed_height,
             rule: None,
             rows,
@@ -2327,6 +2373,7 @@ impl ColumnStack {
             count: count.max(1),
             gap: 0.0,
             axis: StackAxis::Horizontal,
+            row_phase: 0.0,
             fixed_height,
             rule: None,
             rows,
@@ -2630,6 +2677,7 @@ impl Element for ColumnStack {
         let rows = self.rows;
         let copies = self.copies;
         let axis = self.axis;
+        let row_phase = self.row_phase;
         // Внутренние размеры многоколоночного контейнера. Спека их не
         // определяет (css-multicol-1 §3.4: «This specification does not
         // define how U is calculated»), единственное письменное определение —
@@ -2718,6 +2766,7 @@ impl Element for ColumnStack {
                         count,
                         gap,
                         axis,
+                        row_phase,
                         fixed_height: fixed,
                         rule: None,
                         rows,
@@ -2750,6 +2799,7 @@ impl Element for ColumnStack {
                     count,
                     gap,
                     axis,
+                    row_phase,
                     fixed_height: fixed,
                     rule: None,
                     rows,

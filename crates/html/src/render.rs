@@ -21771,7 +21771,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 // «wrap … if we're participating in an outer fragmentation
                 // context»). Последний ряд балансируется (css-multicol-1 §7.1
                 // «only the last fragment is balanced»).
-                let nest_rows = outer_row.filter(|_| {
+                let nest_phase = outer_row.map_or(0.0, |r| r.1);
+                let nest_rows = outer_row.map(|r| r.0).filter(|_| {
                     col_h.is_none() && e.style.column_wrap.is_none() && !col_vert
                 });
                 let rows = match nest_rows {
@@ -22462,6 +22463,29 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                             .as_ref()
                             .map(|_| crate::interact::gap_items_for(e.node_id ^ opts.doc_salt ^ 0x4D43_4F4C));
                         let rule = rule.filter(|_| gap_spec.is_none());
+                        // Где начинается ребёнок в первой внешней колонке — для
+                        // вложенного рядами с заданной высотой (`nest_row`): все
+                        // предыдущие встают целиком в первую колонку, без
+                        // принудительных разрывов и параллельных строк flex.
+                        let nest_at: Vec<Option<f32>> = {
+                            let mut v = Vec::with_capacity(kids.len());
+                            let (mut y, mut prev_mb, mut ok) = (0.0f32, 0.0f32, true);
+                            for (i, (c, s)) in kids.iter().enumerate() {
+                                let lead = if i == 0 { s.1 } else { prev_mb.max(s.1) };
+                                let hh = fixed.unwrap_or(0.0);
+                                v.push((ok && fixed.is_some() && y + lead < hh - 0.01).then_some(y + lead));
+                                if edge_break(c, false)
+                                    || edge_break(c, true)
+                                    || kid_par.get(i).is_some_and(|p| p.group != 0)
+                                    || y + lead + s.0 > hh + 0.01
+                                {
+                                    ok = false;
+                                }
+                                y += lead + s.0;
+                                prev_mb = s.2;
+                            }
+                            v
+                        };
                         let children: Vec<crate::flow::StackChild> = kids
                             .into_iter()
                             .enumerate()
@@ -22595,13 +22619,22 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     *hh > 0.0
                                         && rows.is_none()
                                         && !col_vert
-                                        && ix == 0
-                                        && mt.abs() < 0.01
                                         && kid_par.get(ix).is_none_or(|p| p.group == 0)
                                         && nested_rows_box(&copy)
-                                        && (matches!(copy.style.height, Some(Len::Px(_)))
-                                            || nested_auto.borrow().contains(&copy.node_id))
+                                        && match nest_at.get(ix).copied().flatten() {
+                                            // С верха колонки — и заданная высота, и
+                                            // `auto` с мерой рядами.
+                                            Some(y0) if y0 < 0.01 => {
+                                                matches!(copy.style.height, Some(Len::Px(_)))
+                                                    || nested_auto.borrow().contains(&copy.node_id)
+                                            }
+                                            // Ниже верха — только заданная высота: мера
+                                            // коробки от рядов не зависит.
+                                            Some(_) => matches!(copy.style.height, Some(Len::Px(_))),
+                                            None => false,
+                                        }
                                 });
+                                let nest_phase_k = nest_at.get(ix).copied().flatten().unwrap_or(0.0);
                                 let inner = inline::inherit(&merged, &copy.style);
                                 // Копии на случай разреза между колонками:
                                 // элемент GPUI рисуется один раз, а фрагмент
@@ -22881,7 +22914,7 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                             mc.style.border_box = None;
                                         }
                                         drop(frag_gap_guard);
-                                        crate::flow::set_outer_row(Some(hh));
+                                        crate::flow::set_outer_row(Some((hh, nest_phase_k)));
                                         let el = element(&mc, &merged, opts);
                                         crate::flow::set_outer_row(None);
                                         return el;
@@ -23352,7 +23385,8 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                                     })
                                 }),
                             )
-                            .with_axis(col_axis),
+                            .with_axis(col_axis)
+                            .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 }),
                         );
                         // Флоаты — прежним ходом, соседями стопки.
                         for oof in &direct_oof {
