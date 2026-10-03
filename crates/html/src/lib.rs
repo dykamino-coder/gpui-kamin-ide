@@ -116,7 +116,10 @@ pub const BROWSER_CSS: &str = r#"
     fieldset { margin-inline: 2px; border: 2px groove; padding: 0.35em 0.75em 0.625em }
     legend { padding-inline: 2px }
     a[href] { color: #0000ee }
-    button { padding: 1px 6px; border-radius: 0 }
+    /* `button` — строчный блок (HTML §15.5.2 «expected to render as an
+       'inline-block' box»): без вида кнопка шла строчной коробкой, и доля
+       высоты картинки внутри не решалась (`intrinsic-percent-replaced-021`). */
+    button { display: inline-block; padding: 1px 6px; border-radius: 0 }
     canvas { background: none; border: none }
     mark { background: yellow; color: black }
     textarea { background: white; color: black; white-space: pre-wrap;
