@@ -148,8 +148,15 @@ fn select(e: &Element, style: &Computed) -> AnyElement {
             .child(div().text_color(rgb(MUTED)).child(SharedString::from("⌄")))
             .into_any_element();
     }
-    field_box(style)
-        .justify_between()
+    let mut b = field_box(style);
+    // Пол `min_h(24)` у поля — для ПУСТОГО списка. С подписью он лишь
+    // подменял автоминимум элемента гибкого контейнера (css-flexbox-1 §4.5:
+    // `min-height: auto` = высота содержимого) явным 24, и в колонке высоты 0
+    // список сжимался ниже своей строки (`select-element-zero-height-001/002`).
+    if !text.is_empty() && style.min_height.is_none() {
+        b.style().min_size.height = None;
+    }
+    b.justify_between()
         .child(SharedString::from(text))
         // Стрелка рисуется символом: своей иконки у документа нет, а без неё
         // список неотличим от обычного поля.

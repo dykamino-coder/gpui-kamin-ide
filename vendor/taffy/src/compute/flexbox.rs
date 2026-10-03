@@ -1725,10 +1725,26 @@ fn determine_container_main_size(
                                 let cross_axis_margin_sum = constants.margin.cross_axis_sum(dir);
                                 let child_min_cross = item.min_size.cross(dir).maybe_add(cross_axis_margin_sum);
                                 let child_max_cross = item.max_size.cross(dir).maybe_add(cross_axis_margin_sum);
-                                let cross_axis_available_space: AvailableSpace = available_space
-                                    .cross(dir)
-                                    .map_definite_value(|val| cross_axis_parent_size.unwrap_or(val))
-                                    .maybe_clamp(child_min_cross, child_max_cross);
+                                // KaminIDE patch: у ОДНОСТРОЧНОГО контейнера с
+                                // определённым поперечным размером растянутый элемент
+                                // определён поперёк и при замере по содержимому
+                                // (css-flexbox-1 §9.8 п.1: «if a single-line flex
+                                // container has a definite cross size, the outer cross
+                                // size of any stretched flex items is the flex
+                                // container's inner cross size»). Прежде определённость
+                                // бралась только из ДОСТУПНОГО места, а при замере
+                                // `inline-flex` оно max-content — картинка 60×60 под
+                                // `height: 100px` вносила 60 вместо 100
+                                // (`aspect-ratio-intrinsic-size-006`).
+                                let stretched_definite = !constants.is_wrap
+                                    && item.align_self == AlignSelf::Stretch
+                                    && cross_axis_parent_size.is_some();
+                                let cross_axis_available_space: AvailableSpace = if stretched_definite {
+                                    AvailableSpace::Definite(cross_axis_parent_size.unwrap_or(0.0))
+                                } else {
+                                    available_space.cross(dir).map_definite_value(|val| cross_axis_parent_size.unwrap_or(val))
+                                }
+                                .maybe_clamp(child_min_cross, child_max_cross);
 
                                 let child_available_space = available_space.with_cross(dir, cross_axis_available_space);
 
@@ -2482,6 +2498,21 @@ fn distribute_remaining_free_space(flex_lines: &mut [FlexLine], constants: &Algo
 
         if free_space > 0.0 && num_auto_margins > 0 {
             let margin = free_space / num_auto_margins as f32;
+            // KaminIDE patch: промежуток (`gap`) стоит между элементами и при
+            // авто-полях (css-align-3 §8.1 «gutters»; css-flexbox-1 §9.5:
+            // авто-поля делят место, ОСТАВШЕЕСЯ после промежутков — оно и
+            // посчитано в `used_space`). Ветка не трогала `offset_main`, и
+            // промежуток выпадал из ряда целиком: строка с авто-полем шла
+            // встык (`flexbox-column-row-gap-001`).
+            let gap = constants.gap.main(constants.dir);
+            let set_gap = |(i, child): (usize, &mut FlexItem)| {
+                child.offset_main = if i == 0 { 0.0 } else { gap };
+            };
+            if constants.dir.is_reverse() {
+                line.items.iter_mut().rev().enumerate().for_each(set_gap);
+            } else {
+                line.items.iter_mut().enumerate().for_each(set_gap);
+            }
 
             for child in line.items.iter_mut() {
                 if child.margin_is_auto.main_start(constants.dir) {

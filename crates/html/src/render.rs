@@ -19303,6 +19303,16 @@ fn content_sized(
         (true, true) => gpui::AlignItems::Center,
         _ => gpui::AlignItems::FlexStart,
     });
+    // Прижим внутри дорожки ничего не двигает, когда дорожка `max-content`
+    // ровно по коробке, а сама обёртка растянута на строку родителя:
+    // свободное место — между ДОРОЖКОЙ и краем сетки. Его делит
+    // `justify-content` (css-grid-1 §10.5); без него `margin-left: auto;
+    // width: max-content` оставался у левого края (`align-baseline-ref`).
+    match (auto(c.margin.left), auto(c.margin.right)) {
+        (true, false) => wrap.style().justify_content = Some(gpui::AlignContent::FlexEnd),
+        (true, true) => wrap.style().justify_content = Some(gpui::AlignContent::Center),
+        _ => {}
+    }
     // Выравнивание элемента поперёк РОДИТЕЛЯ переезжает на обёртку: во
     // флексе родителя стоит она, и без переноса `justify-items: center` в
     // лунках глох на min-content-элементах
@@ -23955,10 +23965,14 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             // Ряд по умолчанию — но не тогда, когда письмо справа налево:
             // там ряд обязан идти в обратную сторону, и общая ветка его
-            // разворот отменяла.
+            // разворот отменяла. Письмо — СЛИТОЕ: `direction` наследуется
+            // (css-writing-modes-4 §2.1), и ряд под `body { direction: rtl }`
+            // без своего `direction` шёл слева направо — поля
+            // `margin-inline-start` эталонов вставали не между элементами
+            // (`gap-001-rtl-ref`, `gap-003-rtl-ref`).
             if e.style.display == Some(Display::Flex)
                 && e.style.flex_dir.is_none()
-                && e.style.rtl != Some(true)
+                && merged.rtl != Some(true)
             {
                 // При вертикальном письме умолчание `row` — это ось строки, а
                 // она идёт сверху вниз.
