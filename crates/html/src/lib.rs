@@ -91,7 +91,10 @@ pub const BROWSER_CSS: &str = r#"
     blockquote { margin-block: 1em; margin-inline: 40px; padding-left: 0; border-left: none }
     figure { margin-block: 1em; margin-inline: 40px }
     figcaption { font-size: 1em; margin: 0 }
-    pre { margin-block: 1em; margin-inline: 0; padding: 0; font-size: 1em; white-space: pre }
+    /* `overflow-x: auto` чатового листа браузер у `pre` не ставит: прокручиваемая
+       коробка теряла прижим к концу в rtl-родителе (`text-align-start-014`). */
+    pre { margin-block: 1em; margin-inline: 0; padding: 0; font-size: 1em; white-space: pre;
+          overflow: visible }
     code, kbd, samp { font-size: 1em }
     small { font-size: 0.83em }
     hr { height: 0; margin: 0.5em 0; background: none; border: 1px inset gray }

@@ -373,7 +373,21 @@ pub fn collect(
                 // отступы и рамки строчного в неё не входят).
                 let mut inner_text = String::new();
                 crate::render::gather_text_public(&e.children, &mut inner_text);
-                if inner_text.is_empty() && (lead != 0.0 || trail != 0.0) {
+                // Из одних СХЛОПЫВАЕМЫХ пробелов — тоже пустая: пробелы
+                // схлопнутся в соседний или срежутся у края строки (§4.1.1,
+                // §4.1.3), а рамка без фона прогоном не рисуется
+                // (`line-edge-white-space-collapse-001/002`: зелёная рамка
+                // `<span>  </span>` пропадала).
+                // Коробка с элементами внутри (атомы, `<br>`) не пустая, даже
+                // без текста: слой нарисовал бы её одной строкой поверх
+                // настоящих фрагментов (`border-radius-012`).
+                let only_text = e.children.iter().all(|n| matches!(n, Node::Text(_)));
+                let blank = only_text
+                    && (inner_text.is_empty()
+                        || (merged.keep_spaces != Some(true)
+                            && merged.inline_bg.is_none()
+                            && inner_text.chars().all(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))));
+                if blank && (lead != 0.0 || trail != 0.0) {
                     let px_of = |l: Option<Len>| match l {
                         Some(Len::Px(v)) => v,
                         _ => 0.0,
@@ -384,21 +398,43 @@ pub fn collect(
                     };
                     let bs = e.style.borders();
                     let top = px_of(e.style.padding.top) + px_of(bs.top);
+                    // Высота области содержимого — подъём плюс спуск шрифта, как
+                    // у полосы непустого куска (`run_background_quad`); кегль
+                    // вместо неё оставлял под пустой коробкой светлую черту
+                    // рядом с полосой соседа (`word-spacing-characters-001`).
+                    let family = merged.font_family.clone().unwrap_or_else(|| {
+                        if merged.monospace == Some(true) {
+                            crate::metrics::mono_family().to_string()
+                        } else {
+                            String::new()
+                        }
+                    });
+                    let (asc, desc, _) = crate::metrics::vmetrics_px(&family, size);
+                    let content = if asc + desc > 0.0 { asc + desc } else { size };
                     let line = match merged.line_height {
                         Some(Len::Px(v)) => v,
                         Some(Len::Em(k)) => k * size,
-                        _ => size * 1.2,
+                        _ => size * crate::metrics::normal_line(&family),
                     };
                     // Коробка стоит на области содержимого: она в середине
                     // строки, а полулидинг делит остаток поровну (§10.8).
-                    let dy = ((line - size) / 2.0 - top).max(-line);
+                    let dy = ((line - content) / 2.0 - top).max(-line);
                     let mut copy = e.clone();
                     copy.style.width = Some(Len::Px(0.0));
-                    copy.style.height = Some(Len::Px(size));
+                    copy.style.height = Some(Len::Px(content));
                     copy.style.margin = Default::default();
                     copy.style.position = None;
                     copy.style.display = None;
-                    let boxel = crate::render::styled_div_with(&copy, &merged)
+                    // Размер коробки читается из СЛИТОГО стиля: без этого
+                    // заданные выше ширина и высота терялись, и коробка
+                    // выходила нулевой высоты — рамка `border-left` и фон
+                    // под отступом не рисовались вовсе.
+                    let mut sized = merged.clone();
+                    sized.width = copy.style.width;
+                    sized.height = copy.style.height;
+                    sized.margin = Default::default();
+                    sized.position = None;
+                    let boxel = crate::render::styled_div_with(&copy, &sized)
                         .absolute()
                         .top(gpui::px(dy));
                     out.push(Piece::Overlay(boxel.into_any_element()));
@@ -1642,6 +1678,12 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     // значение на ряде до заголовка не доходит).
     c.caption_bottom = own.caption_bottom.or(parent.caption_bottom);
     c.text_transform = own.text_transform.or(parent.text_transform);
+    // Добавки — часть того же значения: своё объявление заменяет их целиком.
+    c.text_transform_flags = if own.text_transform.is_some() {
+        own.text_transform_flags
+    } else {
+        parent.text_transform_flags
+    };
     c.text_indent = own.text_indent.or(parent.text_indent);
     // `text-box-edge` наследуется (css-inline-3 §text-box-edge, Inherited:
     // yes); срез берёт край у корневой строчной коробки СТРОКИ, то есть у
@@ -3025,10 +3067,19 @@ pub fn space_transform_pieces(pieces: &mut [Piece]) {
         let Some(sep) = style.word_space_char else {
             continue;
         };
-        if k > 0 && k + 1 < seq.len() && ideographic(seq[k - 1].2) && ideographic(seq[k + 1].2) {
+        // `space` — разделитель слов ЛЮБОЙ письменности (css-text-4
+        // §word-space-transform: «word separators … are replaced with
+        // U+0020»): латинское `aa<wbr>bb` тоже получает пробел
+        // (`word-space-transform-014`). Соседи-иероглифы нужны только
+        // идеографическому.
+        let between = k > 0 && k + 1 < seq.len();
+        if between && (sep == ' ' || (ideographic(seq[k - 1].2) && ideographic(seq[k + 1].2))) {
             edits.push((piece, at, sep));
         }
     }
+    // С конца: обычный пробел короче нулевого (1 байт против 3), и правка
+    // впереди сдвигала бы смещения следующих правок того же куска.
+    edits.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
     for (piece, at, sep) in edits {
         if let Piece::Text { text, .. } = &mut pieces[piece] {
             let mut buf = [0u8; 4];
@@ -3062,6 +3113,164 @@ fn titlecase(ch: char) -> Option<char> {
 
 /// `text-transform`: регистр меняется до шейпинга — шрифт про него не знает.
 pub fn transform_case(text: &str, style: &Computed) -> String {
+    let flags = style.text_transform_flags;
+    let cased = transform_case_only(text, style);
+    if flags == 0 {
+        return cased;
+    }
+    // Порядок css-text-3 §2.1: регистр, затем `full-width`, затем
+    // `full-size-kana`. `math-auto` — только у текста из ОДНОГО знака
+    // (MathML Core §2.1.5 «If the text consists of a single character»).
+    let single = {
+        let mut it = cased.trim().chars();
+        it.next().is_some() && it.next().is_none()
+    };
+    cased
+        .chars()
+        .map(|ch| {
+            let mut ch = ch;
+            if flags & crate::computed::TT_FULL_WIDTH != 0 {
+                ch = full_width(ch);
+            }
+            if flags & crate::computed::TT_KANA != 0 {
+                ch = full_size_kana(ch);
+            }
+            if flags & crate::computed::TT_MATH != 0 && single {
+                ch = math_italic(ch);
+            }
+            ch
+        })
+        .collect()
+}
+
+/// Полноширинный двойник знака (css-text-3 §2.1 `full-width`: знаки,
+/// у которых есть «fullwidth» форма по UAX #11, и полуширинные формы,
+/// раскрытые обратно — как ICU `Halfwidth-Fullwidth`).
+fn full_width(ch: char) -> char {
+    let c = ch as u32;
+    let m = match c {
+        0x20 => 0x3000,
+        0x21..=0x7E => c + 0xFEE0,
+        0x2985 => 0xFF5F,
+        0x2986 => 0xFF60,
+        0xA2 => 0xFFE0,
+        0xA3 => 0xFFE1,
+        0xAC => 0xFFE2,
+        0xAF => 0xFFE3,
+        0xA6 => 0xFFE4,
+        0xA5 => 0xFFE5,
+        0x20A9 => 0xFFE6,
+        0xFF61..=0xFF9F => HALF_KATAKANA[(c - 0xFF61) as usize] as u32,
+        0xFFA0 => 0x3164,
+        0xFFA1..=0xFFBE => c - 0xFFA1 + 0x3131,
+        0xFFC2..=0xFFC7 => c - 0xFFC2 + 0x314F,
+        0xFFCA..=0xFFCF => c - 0xFFCA + 0x3155,
+        0xFFD2..=0xFFD7 => c - 0xFFD2 + 0x315B,
+        0xFFDA..=0xFFDC => c - 0xFFDA + 0x3161,
+        0xFFE8 => 0x2502,
+        0xFFE9..=0xFFEC => c - 0xFFE9 + 0x2190,
+        0xFFED => 0x25A0,
+        0xFFEE => 0x25CB,
+        _ => c,
+    };
+    char::from_u32(m).unwrap_or(ch)
+}
+
+/// Полуширинная катакана U+FF61..U+FF9F → полноширинная (UnicodeData,
+/// разложение `<narrow>`).
+const HALF_KATAKANA: [u16; 63] = [
+    0x3002, 0x300C, 0x300D, 0x3001, 0x30FB, 0x30F2, 0x30A1, 0x30A3, 0x30A5, 0x30A7, 0x30A9,
+    0x30E3, 0x30E5, 0x30E7, 0x30C3, 0x30FC, 0x30A2, 0x30A4, 0x30A6, 0x30A8, 0x30AA, 0x30AB,
+    0x30AD, 0x30AF, 0x30B1, 0x30B3, 0x30B5, 0x30B7, 0x30B9, 0x30BB, 0x30BD, 0x30BF, 0x30C1,
+    0x30C4, 0x30C6, 0x30C8, 0x30CA, 0x30CB, 0x30CC, 0x30CD, 0x30CE, 0x30CF, 0x30D2, 0x30D5,
+    0x30D8, 0x30DB, 0x30DE, 0x30DF, 0x30E0, 0x30E1, 0x30E2, 0x30E4, 0x30E6, 0x30E8, 0x30E9,
+    0x30EA, 0x30EB, 0x30EC, 0x30ED, 0x30EF, 0x30F3, 0x3099, 0x309A,
+];
+
+/// Малая кана → полноразмерная (css-text-3 §2.1 `full-size-kana`, таблица
+/// «Full-Size Kana Mappings» приложения G).
+fn full_size_kana(ch: char) -> char {
+    match ch {
+        'ぁ' => 'あ',
+        'ぃ' => 'い',
+        'ぅ' => 'う',
+        'ぇ' => 'え',
+        'ぉ' => 'お',
+        'ゕ' => 'か',
+        'ゖ' => 'け',
+        'っ' => 'つ',
+        'ゃ' => 'や',
+        'ゅ' => 'ゆ',
+        'ょ' => 'よ',
+        'ゎ' => 'わ',
+        'ァ' => 'ア',
+        'ィ' => 'イ',
+        'ゥ' => 'ウ',
+        'ェ' => 'エ',
+        'ォ' => 'オ',
+        'ヵ' => 'カ',
+        'ㇰ' => 'ク',
+        'ヶ' => 'ケ',
+        'ㇱ' => 'シ',
+        'ㇲ' => 'ス',
+        'ッ' => 'ツ',
+        'ㇳ' => 'ト',
+        'ㇴ' => 'ヌ',
+        'ㇵ' => 'ハ',
+        'ㇶ' => 'ヒ',
+        'ㇷ' => 'フ',
+        'ㇸ' => 'ヘ',
+        'ㇹ' => 'ホ',
+        'ㇺ' => 'ム',
+        'ャ' => 'ヤ',
+        'ュ' => 'ユ',
+        'ョ' => 'ヨ',
+        'ㇻ' => 'ラ',
+        'ㇼ' => 'リ',
+        'ㇽ' => 'ル',
+        'ㇾ' => 'レ',
+        'ㇿ' => 'ロ',
+        'ヮ' => 'ワ',
+        'ｧ' => 'ｱ',
+        'ｨ' => 'ｲ',
+        'ｩ' => 'ｳ',
+        'ｪ' => 'ｴ',
+        'ｫ' => 'ｵ',
+        'ｯ' => 'ﾂ',
+        'ｬ' => 'ﾔ',
+        'ｭ' => 'ﾕ',
+        'ｮ' => 'ﾖ',
+        _ => ch,
+    }
+}
+
+/// Курсивный математический двойник (MathML Core §2.1.5, «italic mappings»).
+fn math_italic(ch: char) -> char {
+    let c = ch as u32;
+    let m = match c {
+        0x68 => 0x210E,
+        0x41..=0x5A => 0x1D434 + (c - 0x41),
+        0x61..=0x7A => 0x1D44E + (c - 0x61),
+        0x131 => 0x1D6A4,
+        0x237 => 0x1D6A5,
+        0x391..=0x3A1 => 0x1D6E2 + (c - 0x391),
+        0x3F4 => 0x1D6F3,
+        0x3A3..=0x3A9 => 0x1D6F4 + (c - 0x3A3),
+        0x2207 => 0x1D6FB,
+        0x3B1..=0x3C9 => 0x1D6FC + (c - 0x3B1),
+        0x2202 => 0x1D715,
+        0x3F5 => 0x1D716,
+        0x3D1 => 0x1D717,
+        0x3F0 => 0x1D718,
+        0x3D5 => 0x1D719,
+        0x3F1 => 0x1D71A,
+        0x3D6 => 0x1D71B,
+        _ => c,
+    };
+    char::from_u32(m).unwrap_or(ch)
+}
+
+fn transform_case_only(text: &str, style: &Computed) -> String {
     match style.text_transform {
         Some(TextTransform::Upper) => text.to_uppercase(),
         // Полноширинные двойники лежат ровно на 0xFEE0 выше своих знаков

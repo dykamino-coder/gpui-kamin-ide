@@ -332,6 +332,13 @@ pub enum AutoFlow {
     ColDense,
 }
 
+/// `text-transform: full-width` (см. `Computed::text_transform_flags`).
+pub const TT_FULL_WIDTH: u8 = 1;
+/// `text-transform: full-size-kana`.
+pub const TT_KANA: u8 = 2;
+/// `text-transform: math-auto`.
+pub const TT_MATH: u8 = 4;
+
 /// `text-transform`: регистр меняется при отрисовке текста, не в шрифте.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TextTransform {
@@ -2038,6 +2045,11 @@ pub struct Computed {
     /// Сырая запись градиента фона: источник для слоя-картинки там, где
     /// градиент рисуется плиткой (фон ряда таблицы).
     pub gradient_raw: Option<String>,
+    /// Градиент фона с длинами в единицах шрифта (`green 4em`): позиция
+    /// стопа в `em` разбором не читается и терялась (стоп становился «без
+    /// позиции»). Ждёт своего кегля и переразбирается в `resolve_em`
+    /// (`white-space-intrinsic-size-017/018`).
+    pub gradient_em: Option<String>,
     /// `border-spacing` таблицы: горизонтальный и вертикальный зазор.
     pub border_spacing: Option<(Option<Len>, Option<Len>)>,
     pub outline: Option<Outline>,
@@ -2057,6 +2069,11 @@ pub struct Computed {
     /// оно не приходит и по дереву не наследуется.
     pub letter_spacing_after: Option<Len>,
     pub text_transform: Option<TextTransform>,
+    /// Добавки `text-transform` к регистру (css-text-3 §2.1: значение —
+    /// `[ case ] || full-width || full-size-kana`, плюс `math-auto`
+    /// MathML Core §2.1.5): `TT_FULL_WIDTH` | `TT_KANA` | `TT_MATH`. Живут
+    /// вместе с `text_transform` и наследуются вместе с ним.
+    pub text_transform_flags: u8,
     pub text_indent: Option<Len>,
     /// `text-indent: … each-line` — отступ повторяется после жёстких разрывов.
     pub text_indent_each_line: Option<bool>,
@@ -3229,6 +3246,21 @@ impl Computed {
             if let Some(raw) = self.text_shadow_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("text-shadow", &px);
+            }
+        }
+        if let Some(raw) = self.gradient_em.take() {
+            let own_font = match self.font_size {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) => k * parent_font_px,
+                _ => parent_font_px,
+            };
+            let (ch, ex) = crate::metrics::ch_ex_px(&family, own_font);
+            let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+            if let Some(g) = parse_gradient(&px) {
+                self.gradient = Some(g);
+                if self.gradient_raw.is_some() {
+                    self.gradient_raw = Some(px);
+                }
             }
         }
         for list in [self.grid_tracks.as_mut(), self.grid_rows.as_mut()]
@@ -5209,6 +5241,7 @@ impl Computed {
                 let bottom = layers.last().copied().unwrap_or(v);
                 if top.starts_with("linear-gradient(") || top.starts_with("radial-gradient(") {
                     self.gradient = parse_gradient(top);
+                    self.gradient_em = has_font_units(top).then(|| top.to_string());
                     // Пространство смешения, которого GPU-путь не выражает
                     // (всё, кроме гамма-sRGB и OKLab — css-color-4 §12.1),
                     // рисуется растровой плиткой, как у длинного
@@ -6429,6 +6462,7 @@ impl Computed {
                     // четыре негодных угла обязаны оставить зелёный.
                     if let Some(g) = parse_gradient(v) {
                         self.gradient = Some(g);
+                        self.gradient_em = has_font_units(v).then(|| v.to_string());
                         // Сырая запись нужна фону РЯДА таблицы: он рисуется
                         // слоем картинки, и градиент туда идёт источником.
                         self.gradient_raw = Some(v.to_string());
@@ -6677,20 +6711,32 @@ impl Computed {
                 // прежнее объявление того же правила его переживало.
                 if v == "inherit" {
                     self.text_transform = None;
+                    self.text_transform_flags = 0;
                     return;
                 }
-                // Значений бывает несколько сразу (`capitalize full-width`):
-                // разбираются все, неизвестное пропускается, а не обнуляет
-                // объявление целиком.
+                // Значений бывает несколько сразу (`uppercase full-width`):
+                // регистр и добавки складываются, а не вытесняют друг друга —
+                // прежде действовало только последнее слово
+                // (`text-transform-multiple-001`).
+                let mut case: Option<TextTransform> = None;
+                let mut flags = 0u8;
+                let mut any = false;
                 for word in v.split_ascii_whitespace() {
-                    self.text_transform = Some(match word {
-                        "uppercase" => TextTransform::Upper,
-                        "lowercase" => TextTransform::Lower,
-                        "capitalize" => TextTransform::Capitalize,
-                        "full-width" | "fullwidth" => TextTransform::FullWidth,
-                        "none" => TextTransform::None,
+                    match word.to_ascii_lowercase().as_str() {
+                        "uppercase" => case = Some(TextTransform::Upper),
+                        "lowercase" => case = Some(TextTransform::Lower),
+                        "capitalize" => case = Some(TextTransform::Capitalize),
+                        "full-width" | "fullwidth" => flags |= TT_FULL_WIDTH,
+                        "full-size-kana" => flags |= TT_KANA,
+                        "math-auto" => flags |= TT_MATH,
+                        "none" => {}
                         _ => continue,
-                    });
+                    }
+                    any = true;
+                }
+                if any {
+                    self.text_transform = Some(case.unwrap_or(TextTransform::None));
+                    self.text_transform_flags = flags;
                 }
             }
             // Отступ первой строки. Кроме длины значение несёт до двух
