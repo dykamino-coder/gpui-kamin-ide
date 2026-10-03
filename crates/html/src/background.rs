@@ -1449,12 +1449,25 @@ pub fn source(src: &str) -> Option<Source> {
         || src.starts_with("repeating-linear-gradient(")
         || src.starts_with("repeating-radial-gradient(")
         || src.starts_with("repeating-conic-gradient(")
+        || src.starts_with("cross-fade(")
     {
         Some(Source::Gradient {
             raw: src.to_string(),
         })
     } else {
-        read_bytes(src_plain)
+        // Фрагмент адреса рисунка — его `<view>` (SVG 2 §8.2 «Linking into
+        // SVG content»: `file.svg#id` показывает вид с тем `viewBox`): без
+        // разбора путь с `#` не читался вовсе, и фон пропадал
+        // (`background-size-cover-svg-view`, `-contain-svg-view`).
+        let (path, view) = match src_plain.split_once('#') {
+            Some((p, f)) if !src_plain.starts_with("data:") => (p, Some(f)),
+            _ => (src_plain, None),
+        };
+        read_bytes(path)
+            .map(|b| match view {
+                Some(id) => svg_view(b, id),
+                None => b,
+            })
             .as_deref()
             .and_then(|b| decode(b, orient))
     };
@@ -2082,7 +2095,104 @@ fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
 /// равно растягиваются под свои места, поэтому мелкого растра достаточно.
 /// Линейный и конический считаются честно; радиальный отдаёт осевой ход
 /// цвета — девятке рамки радиальной решётки и не нужно.
+/// `cross-fade(<cf-image>#)` (css-images-4 §2.6, `csswg-drafts/css-images-4/
+/// Overview.bs` «cross-fade»): взвешенная сумма картинок в
+/// премультиплицированных цветах. Доли: без своей доли картинка делит
+/// остаток до 100% поровну с такими же; сумма больше 100% нормируется к 100%;
+/// меньше — результат частично прозрачен. Слагаемое — цвет (или
+/// `image(<color>)`), градиент или `url()`; растр приводится к размеру плитки
+/// ближайшей точкой.
+fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
+    let inner = src.strip_prefix("cross-fade(")?;
+    let inner = &inner[..inner.rfind(')')?];
+    let n = (w * h) as usize;
+    let mut items: Vec<(Option<f32>, Vec<u8>)> = vec![];
+    for part in crate::css::split_args(inner) {
+        let mut pct = None;
+        let mut img = None;
+        for t in split_top(part.trim()) {
+            match t.strip_suffix('%').and_then(|v| v.parse::<f32>().ok()) {
+                Some(p) => pct = Some((p / 100.0).clamp(0.0, 1.0)),
+                None => img = Some(t),
+            }
+        }
+        let img = img?;
+        let colour = crate::value::Color::parse(
+            img.strip_prefix("image(").and_then(|t| t.strip_suffix(')')).unwrap_or(img),
+        );
+        let buf = if let Some(c) = colour {
+            let px = [
+                (c.b * 255.0).round() as u8,
+                (c.g * 255.0).round() as u8,
+                (c.r * 255.0).round() as u8,
+                (c.a * 255.0).round() as u8,
+            ];
+            px.iter().copied().cycle().take(n * 4).collect()
+        } else {
+            let image = if img.contains("gradient(") {
+                rasterize_gradient(img, w, h)?
+            } else {
+                let url = crate::computed::parse_url(img)?;
+                source(&url)?.raster((w as f32, h as f32))?
+            };
+            let size = image.size(0);
+            let (iw, ih) = (size.width.0.max(1) as u32, size.height.0.max(1) as u32);
+            let bytes = image.as_bytes(0)?;
+            let mut out = Vec::with_capacity(n * 4);
+            for y in 0..h {
+                let sy = (y * ih / h.max(1)).min(ih - 1);
+                for x in 0..w {
+                    let sx = (x * iw / w.max(1)).min(iw - 1);
+                    let at = ((sy * iw + sx) * 4) as usize;
+                    out.extend_from_slice(bytes.get(at..at + 4)?);
+                }
+            }
+            out
+        };
+        items.push((pct, buf));
+    }
+    if items.is_empty() {
+        return None;
+    }
+    let given: f32 = items.iter().filter_map(|i| i.0).sum();
+    let free = items.iter().filter(|i| i.0.is_none()).count() as f32;
+    let weights: Vec<f32> = items
+        .iter()
+        .map(|i| match i.0 {
+            Some(p) if given > 1.0 => p / given,
+            Some(p) => p,
+            None if given >= 1.0 => 0.0,
+            None => (1.0 - given) / free,
+        })
+        .collect();
+    // Точки слоёв и результата — с ПРЯМОЙ альфой (так их отдаёт растеризатор
+    // и так их ждёт отрисовка плитки); сумма — в премультиплицированных
+    // (css-images-4 §2.6), назад к прямой — делением на итоговую альфу.
+    // Без премультипликации полупрозрачный красный 1% тянул смесь к красному
+    // (`cross-fade-premultiplied-alpha`), а запись в премультиплицированных
+    // темнила итог дважды (`cross-fade-target-alpha`).
+    let mut out = vec![0u8; n * 4];
+    for p in 0..n {
+        let (mut acc, mut alpha) = ([0.0f32; 3], 0.0f32);
+        for (it, wt) in items.iter().zip(&weights) {
+            let a = it.1[p * 4 + 3] as f32 / 255.0 * wt;
+            for ch in 0..3 {
+                acc[ch] += it.1[p * 4 + ch] as f32 * a;
+            }
+            alpha += a;
+        }
+        for ch in 0..3 {
+            out[p * 4 + ch] = if alpha > 0.0 { (acc[ch] / alpha).round().clamp(0.0, 255.0) as u8 } else { 0 };
+        }
+        out[p * 4 + 3] = (alpha * 255.0).round().clamp(0.0, 255.0) as u8;
+    }
+    gpui::bgra_bytes_to_image(w, h, out)
+}
+
 fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
+    if src.starts_with("cross-fade(") {
+        return rasterize_cross_fade(src, w, h);
+    }
     enum Mode {
         /// Ход цвета вдоль оси под углом.
         Axis { dx: f32, dy: f32 },
@@ -2584,6 +2694,47 @@ fn svg_size(markup: &str) -> Intrinsic {
             _ => ratio,
         },
     }
+}
+
+/// Подставить корню SVG `viewBox` его `<view id="…">` (SVG 2 §8.2). Не SVG
+/// или вида нет — байты как есть.
+fn svg_view(bytes: Vec<u8>, id: &str) -> Vec<u8> {
+    let Ok(text) = std::str::from_utf8(&bytes) else {
+        return bytes;
+    };
+    let attr = |tag: &str, name: &str| -> Option<String> {
+        let at = tag.find(&format!("{name}=\""))? + name.len() + 2;
+        Some(tag[at..at + tag[at..].find('"')?].to_string())
+    };
+    let mut from = 0;
+    let mut view_box = None;
+    while let Some(at) = text[from..].find("<view") {
+        let start = from + at;
+        let Some(end) = text[start..].find('>') else { break };
+        let tag = &text[start..start + end];
+        if attr(tag, "id").as_deref() == Some(id) {
+            view_box = attr(tag, "viewBox");
+            break;
+        }
+        from = start + end;
+    }
+    let Some(vb) = view_box else {
+        return bytes;
+    };
+    let Some(root) = text.find("<svg") else {
+        return bytes;
+    };
+    let root_end = root + text[root..].find('>').unwrap_or(4);
+    let tag = &text[root..root_end];
+    let new_tag = match tag.find("viewBox=\"") {
+        Some(at) => {
+            let v0 = at + 9;
+            let v1 = v0 + tag[v0..].find('"').unwrap_or(0);
+            format!("{}{}{}", &tag[..v0], vb, &tag[v1..])
+        }
+        None => format!("<svg viewBox=\"{vb}\"{}", &tag[4..]),
+    };
+    format!("{}{}{}", &text[..root], new_tag, &text[root_end..]).into_bytes()
 }
 
 fn read_bytes(src: &str) -> Option<Vec<u8>> {
@@ -3119,10 +3270,12 @@ pub fn paint_tiles(
     // соотношение (`viewBox` в миллиарды) давало размер за пределами
     // точности float, и координаты копий разваливались. Видима всё равно
     // только часть в коробке.
-    let tile = (
-        tile.0.min(box_size.0.max(1.0) * 8.0),
-        tile.1.min(box_size.1.max(1.0) * 8.0),
-    );
+    // Потолок — от БОЛЬШЕЙ стороны коробки: при нулевой высоте места под фон
+    // (`height: 0; padding-bottom: 100px; background-origin: content-box`)
+    // потолок по своей оси выходил 8 точек, и `cover` 100×50 рисовался
+    // полоской 100×8 (`background-size-cover-003`).
+    let cap = box_size.0.max(box_size.1).max(1.0) * 8.0;
+    let tile = (tile.0.min(cap), tile.1.min(cap));
     // Нулевая плитка не рисуется вовсе, а вот МЕЛКАЯ — рисуется: браузер
     // мостит и долями точки. Ограничивается не размер плитки, а их ЧИСЛО.
     if tile.0 <= 0.0 || tile.1 <= 0.0 {

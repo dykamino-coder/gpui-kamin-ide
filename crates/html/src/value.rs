@@ -521,6 +521,12 @@ impl Color {
 
     /// `hsl(210 40% 50% / 80%)` и `hsl(210, 40%, 50%)`.
     fn parse_hsl(inner: &str) -> Option<Self> {
+        // Компонент `calc(<число><ед.> * <число>)` и родня — сворачивается
+        // заранее (css-values-4 §10: «calc() … can be used wherever <angle>,
+        // <percentage> … are allowed»): `hsl(calc(50deg * 2) 100% 50%)` после
+        // подстановки `sibling-index()` (`conic-gradient-color-with-sibling-index`).
+        let folded = fold_simple_calc(inner);
+        let inner = folded.as_str();
         // `none` — отсутствующий компонент, при счёте он ноль
         // (CSS Color 4 §4.4).
         let cleaned = inner.replace('/', " ").replace("none", "0");
@@ -1565,4 +1571,51 @@ mod calc_tests {
         assert_eq!(Len::parse("50vw"), Some(Len::Vw(0.5)));
         assert_eq!(Len::parse("100vh"), Some(Len::Vh(1.0)));
     }
+}
+
+/// Свернуть простые `calc(a op b)` (одно действие, единица не больше чем у
+/// одного операнда) в число с единицей: компоненту цвета больше и не нужно.
+/// Сложнее запись остаётся как есть — разбор её отвергнет, как и прежде.
+fn fold_simple_calc(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(at) = rest.find("calc(") {
+        out.push_str(&rest[..at]);
+        let body = &rest[at + 5..];
+        let Some(end) = body.find(')') else {
+            out.push_str(&rest[at..]);
+            return out;
+        };
+        let expr = &body[..end];
+        let split = |t: &str| -> Option<(f32, String)> {
+            let t = t.trim();
+            let cut = t
+                .find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-' || c == '+'))
+                .unwrap_or(t.len());
+            Some((t[..cut].parse::<f32>().ok()?, t[cut..].to_string()))
+        };
+        let folded = ['*', '/', '+', '-'].iter().find_map(|op| {
+            let (a, b) = expr.split_once(&format!(" {op} "))?;
+            let ((x, ux), (y, uy)) = (split(a)?, split(b)?);
+            let unit = if ux.is_empty() { uy.clone() } else { ux.clone() };
+            if !ux.is_empty() && !uy.is_empty() && matches!(op, '*' | '/') {
+                return None;
+            }
+            let v = match op {
+                '*' => x * y,
+                '/' if y != 0.0 => x / y,
+                '+' if ux == uy => x + y,
+                '-' if ux == uy => x - y,
+                _ => return None,
+            };
+            Some(format!("{v}{unit}"))
+        });
+        match folded {
+            Some(v) => out.push_str(&v),
+            None => out.push_str(&rest[at..at + 5 + end + 1]),
+        }
+        rest = &body[end + 1..];
+    }
+    out.push_str(rest);
+    out
 }

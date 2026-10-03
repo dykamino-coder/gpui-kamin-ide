@@ -6535,45 +6535,6 @@ impl Computed {
                         // css-values-4 §6.3): объявление не применяется (§4.2).
                         None => {}
                     }
-                } else if let Some(rest) = v.strip_prefix("cross-fade(") {
-                    // `cross-fade(p% A, B)`: смесь ЦВЕТОВ выражается сплошной
-                    // заливкой; с картинками берётся первая (приближение).
-                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
-                    let parts = crate::css::split_args(inner);
-                    let mut p = 0.5f32;
-                    let mut colors: Vec<Color> = vec![];
-                    let mut url = None;
-                    for part in &parts {
-                        for tok in part.split_whitespace() {
-                            if let Some(pc) = tok.strip_suffix('%') {
-                                if let Ok(v) = pc.parse::<f32>() {
-                                    p = (v / 100.0).clamp(0.0, 1.0);
-                                }
-                            } else if let Some(c) = Color::parse(
-                                tok.strip_prefix("image(")
-                                    .and_then(|t| t.strip_suffix(')'))
-                                    .unwrap_or(tok),
-                            ) {
-                                // `image(<color>)` — та же сплошная картинка,
-                                // что и голый `<color>` (css-images-4 §2.6).
-                                colors.push(c);
-                            } else if let Some(u) = parse_url(tok) {
-                                url.get_or_insert(u);
-                            }
-                        }
-                    }
-                    if colors.len() >= 2 {
-                        let (a, b) = (colors[0], colors[1]);
-                        let mix = Color {
-                            r: a.r * p + b.r * (1.0 - p),
-                            g: a.g * p + b.g * (1.0 - p),
-                            b: a.b * p + b.b * (1.0 - p),
-                            a: a.a * p + b.a * (1.0 - p),
-                        };
-                        self.gradient = Some(solid_gradient(mix));
-                    } else if let Some(u) = url {
-                        self.bg_image = Some(u);
-                    }
                 } else if v.trim_end().ends_with(')')
                     && let Some(url) = parse_url(v)
                 {
@@ -12342,7 +12303,10 @@ fn image_resolution(token: &str) -> Option<f32> {
 /// css-images-3 §3.6). Такие рисуются растровой плиткой — тем же путём,
 /// которым уже ходит `conic-gradient()`.
 pub(crate) fn gradient_as_raster(v: &str) -> bool {
-    v.starts_with("conic-gradient(")
+    // `cross-fade()` (css-images-4 §2.6) — смесь картинок растром той же
+    // плиткой (`background::rasterize_cross_fade`).
+    v.starts_with("cross-fade(")
+        || v.starts_with("conic-gradient(")
         || v.starts_with("repeating-linear-gradient(")
         || v.starts_with("repeating-radial-gradient(")
         || v.starts_with("repeating-conic-gradient(")
