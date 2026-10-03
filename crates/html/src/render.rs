@@ -19814,6 +19814,14 @@ fn stays_positioned(rest: &[Node]) -> bool {
             if positioned && !hoisted {
                 return true;
             }
+            // Вынесенный сосед уезжает в слой ВМЕСТЕ с поддеревом: его
+            // позиционированные потомки рисуются внутри него и порядок с
+            // выносимым не ломают. Прежде абсолютный ребёнок такого соседа
+            // держал элемент на месте, и края считались от `body`, а не от
+            // окна (`backdrop-filters-*`: квадрат съезжал на поле тела).
+            if hoisted {
+                return false;
+            }
             walk(
                 &e.children,
                 under_cb || crate::inline::establishes_cb(&e.style),
