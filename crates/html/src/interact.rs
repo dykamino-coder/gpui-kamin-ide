@@ -402,6 +402,8 @@ pub struct Grouped {
     pub mask_repeat_list: Vec<(bool, bool)>,
     /// `mask-mode: luminance` — гасит светимостью, а не альфой.
     pub mask_luminance: bool,
+    /// `mask-mode: alpha`: ссылка на `<mask>` маскирует альфой.
+    pub mask_alpha_mode: bool,
     /// `mask-position`: смещение плитки; доля — от свободного места.
     pub mask_pos: Option<(crate::value::Len, crate::value::Len)>,
     /// Смещение от правого/нижнего края (`right 30px bottom 25px`).
@@ -463,6 +465,7 @@ impl Grouped {
             mask_no_repeat: (false, false),
             mask_repeat_list: Vec::new(),
             mask_luminance: false,
+            mask_alpha_mode: false,
             mask_pos_far: (false, false),
             mask_pos_list: Vec::new(),
             mask_origin_off: [0.0; 4],
@@ -858,10 +861,15 @@ impl Element for Grouped {
                         // Ссылка на определение в документе: растр под
                         // коробку, светимость вместо альфы.
                         let (image, tile, lum) = if let Some(id) = l.strip_prefix("svgsnap:") {
+                            // css-masking-1 §7.2: `match-source` у ссылки на
+                            // `<mask>` — его `mask-type` (светимость по
+                            // умолчанию); явный `mask-mode` главнее.
+                            let alpha = !self.mask_luminance
+                                && (self.mask_alpha_mode || id.ends_with('A'));
                             (
                                 rasterize_mask_def(id, bw, bh, false)?,
                                 [0.0, 0.0, bw * sf, bh * sf],
-                                true,
+                                !alpha,
                             )
                         } else if let Some(id) = l.strip_prefix("clipsnap:") {
                             (

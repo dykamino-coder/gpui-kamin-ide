@@ -2620,6 +2620,11 @@ pub struct Computed {
     pub mask_fit: Option<u8>,
     /// `mask-mode: luminance` — маскирует светимость, а не альфа.
     pub mask_luminance: Option<bool>,
+    /// `mask-mode: alpha` — альфа и для ссылки на `<mask>` (css-masking-1
+    /// §7.2: `match-source` берёт `mask-type` определения).
+    pub mask_alpha_mode: Option<bool>,
+    /// `mask-type: alpha` у элемента `<mask>` (css-masking-1 §7.16).
+    pub mask_type_alpha: Option<bool>,
     /// `mask-origin`: коробка укладки плитки (0 border, 2 padding, 3 content).
     pub mask_origin: Option<u8>,
     /// Готовые коробки маски в CSS-точках (укладка t/r/b/l от коробки
@@ -9112,7 +9117,11 @@ impl Computed {
                     }
                 }
             },
-            "mask-mode" => self.mask_luminance = Some(v.trim() == "luminance"),
+            "mask-mode" => {
+                self.mask_luminance = Some(v.trim() == "luminance");
+                self.mask_alpha_mode = Some(v.trim() == "alpha");
+            }
+            "mask-type" => self.mask_type_alpha = Some(v.trim() == "alpha"),
             "mask-composite" | "-webkit-mask-composite" => {
                 self.mask_composite = Some(
                     v.split(',')

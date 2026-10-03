@@ -6886,6 +6886,10 @@ thread_local! {
     /// БЛОКАМ (`render_block`) — сбор на каждый блок каждого кадра был бы
     /// расточительным, а документ между кадрами один и тот же.
     static MASK_DEFS_FOR: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Определения `<mask>` с `mask-type: alpha`: их снимок помечается, и
+    /// `match-source` маскирует альфой, а не светимостью.
+    static MASK_ALPHA_IDS: std::cell::RefCell<std::collections::HashSet<String>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
 }
 
 thread_local! {
@@ -7004,10 +7008,12 @@ thread_local! {
 /// Снять снимок определения; ключ живёт до конца кадра и дольше.
 fn snapshot_mask_def(id: &str) -> Option<String> {
     let markup = mask_def(id)?;
+    let alpha = MASK_ALPHA_IDS.with(|s| s.borrow().contains(id));
     let key = MASK_SNAP_N.with(|c| {
         let n = c.get() + 1;
         c.set(n);
-        format!("k{n}")
+        // Хвост `A` — `mask-type: alpha` определения (см. `interact`).
+        if alpha { format!("k{n}A") } else { format!("k{n}") }
     });
     MASK_SNAPS.with(|m| {
         let mut map = m.borrow_mut();
@@ -7034,19 +7040,22 @@ fn resolve_mask_refs(raw: &str) -> String {
             None => raw.to_string(),
         };
     }
+    // Ссылка на определение в документе — `url(#id)` в любом виде записи:
+    // и в кавычках (`url("#id")`, `url('#id')`). Прежде узнавалась только
+    // голая форма, и маска в кавычках не применялась вовсе
+    // (`mask-mode-to-mask-type`: все шесть квадратов сплошные).
     let mut out = String::with_capacity(raw.len());
     let mut rest = raw;
-    while let Some(at) = rest.find("url(#") {
-        out.push_str(&rest[..at]);
-        let tail = &rest[at + 5..];
+    while let Some(at) = rest.find("url(") {
+        let tail = &rest[at + 4..];
         let Some(end) = tail.find(')') else {
-            out.push_str(&rest[at..]);
-            return out;
+            break;
         };
-        let id = tail[..end].trim().trim_matches(|c| c == '"' || c == '\'');
-        match snapshot_mask_def(id) {
+        let inner = tail[..end].trim().trim_matches(|c| c == '"' || c == '\'');
+        out.push_str(&rest[..at]);
+        match inner.strip_prefix('#').and_then(snapshot_mask_def) {
             Some(key) => out.push_str(&format!("url(svgsnap:{key})")),
-            None => out.push_str(&rest[at..at + 5 + end + 1]),
+            None => out.push_str(&rest[at..at + 4 + end + 1]),
         }
         rest = &tail[end + 1..];
     }
@@ -7066,6 +7075,12 @@ fn collect_mask_defs(nodes: &[Node]) {
         for n in nodes {
             let Node::Element(e) = n else { continue };
             let tag = e.tag.to_ascii_lowercase();
+            if tag == "mask"
+                && e.style.mask_type_alpha == Some(true)
+                && let Some(id) = e.attr("id")
+            {
+                MASK_ALPHA_IDS.with(|s| s.borrow_mut().insert(id.to_string()));
+            }
             if (tag == "mask" || tag == "clippath")
                 && let Some(id) = e.attr("id")
             {
@@ -7087,6 +7102,7 @@ fn collect_mask_defs(nodes: &[Node]) {
             walk(&e.children, out);
         }
     }
+    MASK_ALPHA_IDS.with(|s| s.borrow_mut().clear());
     MASK_DEFS.with(|m| {
         let mut map = m.borrow_mut();
         map.clear();
@@ -21111,6 +21127,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.mask_no_repeat = c.mask_no_repeat.unwrap_or((false, false));
     wrapper.mask_repeat_list = c.mask_repeat_list.clone().unwrap_or_default();
     wrapper.mask_luminance = c.mask_luminance == Some(true);
+    wrapper.mask_alpha_mode = c.mask_alpha_mode == Some(true);
     wrapper.mask_pos = c.mask_pos;
     wrapper.mask_pos_far = c.mask_pos_far;
     wrapper.mask_pos_list = c.mask_pos_list.clone().unwrap_or_default();
