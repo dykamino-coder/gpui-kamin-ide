@@ -1201,6 +1201,7 @@ fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
 /// каждый кадр, поэтому стоимость кадра обязана зависеть от видимой части, а
 /// не от размера документа.
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
+    crate::metrics::set_doc_family(&opts.text.font_family);
     let root = opts.root_style();
     crate::interact::frame_sanitize();
     // Пойманная паника кадра внутри рамки оставляла счётчик глубины

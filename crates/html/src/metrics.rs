@@ -205,7 +205,33 @@ pub fn adjust_aspect(family: &str, metric: u8) -> Option<f32> {
 ///
 /// Замер запоминается по НАСТОЯЩЕМУ имени: придуманное на соседней странице
 /// значит другой файл, а имя семейства в системе одно на всех.
+thread_local! {
+    /// Семейство ДОКУМЕНТА (`RenderOpts::text.font_family`): им набирается
+    /// текст без своего `font-family`. Ставит `render::render`.
+    static DOC_FAMILY: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+/// Запомнить семейство документа для замеров без своего семейства.
+pub fn set_doc_family(family: &str) {
+    DOC_FAMILY.with(|d| {
+        if d.borrow().as_str() != family {
+            *d.borrow_mut() = family.to_string();
+        }
+    });
+}
+
 fn fractions(family: &str) -> (f32, f32, f32, f32) {
+    // Пустое семейство — это шрифт документа, а не родовой sans: щуп мерил
+    // его как Segoe UI, и `1ch` выходил 0.56 кегля при наборе Times New Roman
+    // с нулём в 0.5 (`white-space-wrap-after-nowrap-001`: «12345 67890»
+    // влезало в `width: 10ch`). Та же развилка, что у `normal_fraction`.
+    let doc;
+    let family = if family.is_empty() {
+        doc = DOC_FAMILY.with(|d| d.borrow().clone());
+        if doc.is_empty() { family } else { doc.as_str() }
+    } else {
+        family
+    };
     let real = crate::fonts::alias(family);
     let family = real.as_deref().unwrap_or(family);
     if let Some(hit) = CACHE.with(|c| c.borrow().get(family).copied()) {
