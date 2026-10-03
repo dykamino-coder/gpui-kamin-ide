@@ -134,6 +134,9 @@ pub struct Kid {
     /// одно, анонимным прогоном. По его ширине план решает, остаётся ли
     /// флоат на этой строке (правило 6 §9.5.1) или уходит под неё.
     pub lead: Option<Build>,
+    /// Набранное ДО последнего `<br>` перед флоатом: строка флоата
+    /// начинается под ним (`Kid::lead` — только хвост после `<br>`).
+    pub lead_base: Option<Build>,
 }
 
 /// Место ребёнка в плане: левый верх border-box, доступная ширина (по ней
@@ -370,11 +373,28 @@ fn place_seq(
                 // иначе — под неё). Набранное до флоата — `Kid::lead`; не
                 // влезло рядом — потолок опускается на его высоту.
                 let mut ceil = y;
+                // Высота набранного — с вырезами уже поставленных флоатов:
+                // строки рядом с ними у́же и их больше.
+                let height_of = |b: &Build,
+                                 bands: &mut FloatBands,
+                                 window: &mut Window,
+                                 cx: &mut App| {
+                    let walls = bands.set_walls(x0, x1);
+                    let shapes = bands.shapes(y);
+                    bands.set_walls(walls.0, walls.1);
+                    probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), window, cx).1
+                };
+                // Строка флоата начинается под набранным до последнего
+                // `<br>` (`floats-placement-vertical-004-ref`: «H<br>» и
+                // флоат на второй строке рядом с первым флоатом).
+                if let Some(base) = kid.lead_base.as_ref() {
+                    ceil = y + height_of(base, bands, window, cx);
+                }
                 if let Some(lead) = kid.lead.as_ref() {
                     let lw = intrinsic_of(lead, window, cx).1;
-                    let (l, r) = bands.available(y, 0.0);
-                    if lw + ml + bw + mr > r - l + EPS {
-                        ceil = y + probe_of(Kind::Flow, lead, cbw, cbw, None, window, cx).1;
+                    let (l, r) = bands.available(ceil, 0.0);
+                    if lw > EPS && lw + ml + bw + mr > r - l + EPS {
+                        ceil += height_of(lead, bands, window, cx);
                     }
                 }
                 bands.set_flow_ceiling(ceil);
