@@ -7514,6 +7514,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             _ => None,
         })
     }));
+    let _cbw_guard = BandCbwGuard(BAND_CBW.with(|w| {
+        w.replace(match inherited.width {
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        })
+    }));
     let _wm_guard = BandWmGuard(BAND_WM.with(|w| {
         w.replace(match (inherited.vertical, inherited.vertical_rl) {
             (Some(true), Some(true)) => 1,
@@ -11786,6 +11792,13 @@ fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize, Vec
                     .with(std::cell::Cell::get)
                     .map_or(String::new(), |v| v.to_string()),
             ),
+            // И ширина (`BAND_CBW`) — блочный размер в вертикальном письме.
+            (
+                "cbw".into(),
+                BAND_CBW
+                    .with(std::cell::Cell::get)
+                    .map_or(String::new(), |v| v.to_string()),
+            ),
             // Метка измеряемого хоста: `shape_flow` отдаёт его `band_flow`.
             ("bands".into(), "m".into()),
         ],
@@ -11975,6 +11988,22 @@ impl Drop for BandFlGuard {
     }
 }
 
+thread_local! {
+    /// Ширина содержащего блока хоста в точках, если задана. В вертикальном
+    /// письме это его БЛОЧНЫЙ размер: от неё доли `block-size` флоатов
+    /// (`width` после перевода логических свойств, §10.5 по блочной оси).
+    /// Хост несёт её атрибутом `cbw`.
+    static BAND_CBW: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+}
+
+/// Вернуть прежнюю ширину содержащего блока хоста по выходе из `blocks()`.
+struct BandCbwGuard(Option<f32>);
+impl Drop for BandCbwGuard {
+    fn drop(&mut self) {
+        BAND_CBW.with(|w| w.set(self.0));
+    }
+}
+
 /// Вернуть прежнюю высоту содержащего блока хоста по выходе из `blocks()`.
 struct BandCbhGuard(Option<f32>);
 impl Drop for BandCbhGuard {
@@ -12078,10 +12107,19 @@ fn flow_interior_plain(c: &Element) -> bool {
             if k.style.float.is_some_and(|f| f != 0) {
                 return false;
             }
-            // `<br style="clear">` очищает флоаты СНАРУЖИ (§9.5.2 для
-            // строчного разрыва, HTML `clear` на `br`): высота блока растёт
-            // до их низа (`text-box-trim-float-clear-br-003`).
-            if k.style.clear.is_some() {
+            // `<br style="clear">` под срезом конца строки по НЕ-текстовому
+            // краю (`text-box-trim: trim-end` + `text-box-edge: … alphabetic`):
+            // css-inline-3 §text-box-trim — срез не трогает clearance, конец
+            // блока = max(срезанная строка, низ флоатов). Блок потока хоста
+            // срезает строку, а clearance разрыва не видит — такой блок
+            // уходит на прежний путь (`text-box-trim-float-clear-br-003`).
+            // Срез по краю `text` (у Ahem он нулевой) хост держит верно:
+            // гейт на любой `clear` отправлял и его на прежний путь, и
+            // `text-box-trim-float-clear-br-001` терял 0.00 → 16.21.
+            if k.style.clear.is_some()
+                && c.style.text_box_trim_end
+                && c.style.text_box_under != crate::computed::TextEdge::Text
+            {
                 return false;
             }
             if block_level_in_flow(k) {
@@ -12254,9 +12292,13 @@ fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEl
         .and_then(|c| c.parse().ok())
         .unwrap_or(opts.base_size());
     let cbh: Option<f32> = e.attr("cbh").and_then(|c| c.parse().ok());
+    let cbw: Option<f32> = e.attr("cbw").and_then(|c| c.parse().ok());
     let mut inherited = inherited.clone();
     if let Some(h) = cbh {
         inherited.height = Some(Len::Px(h));
+    }
+    if let Some(w) = cbw {
+        inherited.width = Some(Len::Px(w));
     }
     let inherited = &inherited;
     let kids = band_kids(&e.children, count, inherited, opts, em);
@@ -12399,6 +12441,7 @@ fn band_kids(
         let is_nest = nest.is_some();
         let vertical = vert.is_some();
         let cb_height = inherited.height;
+        let cb_block_w = inherited.width;
         let build: crate::band_flow::Build =
             std::rc::Rc::new(move |cb: f32, avail: f32, shapes, height: Option<f32>| {
                 let _depth = DepthScope::enter(depth);
@@ -12463,6 +12506,18 @@ fn band_kids(
                 {
                     copy.style.height = Some(Len::Px(k * h));
                 }
+                // В вертикальном письме блочный размер — физическая ширина:
+                // её доля — от ширины содержащего блока (§10.5 по блочной
+                // оси). Каркас пробы ширины не задаёт, и `block-size: 100%`
+                // у флоата вырождалась в ноль — флоат с детьми пропадал
+                // (эталон `css-break/background-image-001`: колонки-флоаты
+                // `block-size: 100%` во `flow-root` `vertical-rl`).
+                if vertical
+                    && let Some(Len::Pct(k)) = copy.style.width
+                    && let Some(Len::Px(w)) = cb_block_w
+                {
+                    copy.style.width = Some(Len::Px(k * w));
+                }
                 // Вырезы полос — строкам ЭТОЙ коробки, от её верха (шаг F4):
                 // `inline::inherit` начинает слитый стиль с собственного, и
                 // вырезы доезжают до прямых строк коробки.
@@ -12497,7 +12552,14 @@ fn band_kids(
                 // `object-fit-*-00Ne/o/p` (88 пар `css-images`) теряли
                 // содержимое.
                 let replaced = replaced_tag(&copy) && copy.tag != "img";
-                if float && !table && !replaced {
+                // Вертикальный флоат — общим путём `element`: только там блок
+                // вертикального письма раскладывает детей рядом по
+                // горизонтальной оси блочного потока. Каркас `styled_div_with`
+                // + `blocks` клал их горизонтальным блоком, строчный размер
+                // пустого ребёнка выходил нулём, и флоат с детьми не
+                // рисовался вовсе (эталон `css-break/background-image-001`:
+                // колонка-флоат с `<div style="block-size:100%; background">`).
+                if float && !table && !replaced && !vertical {
                     // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
                     // же путём, что у статического хоста (`shape_flow`).
                     // Таблица — своей веткой `element` ниже: каркас блока её
@@ -22852,7 +22914,18 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 && (matches!(
                     e.style.display,
                     None | Some(Display::InlineBlock) | Some(Display::TableCell)
-                ) || e.style.is_caption == Some(true))
+                ) || e.style.is_caption == Some(true)
+                    // Объявленный `display: flow-root` — тот же блок со своим
+                    // контекстом (`computed.rs` ставит ему `Some(Block)` с
+                    // меткой `flow_root`); блокифицированный абсолют метки не
+                    // несёт, откат выше его не касается. Без этого
+                    // `flow-root` в `vertical-rl` раскладывал детей
+                    // горизонтальным блоком: хост полос мерился по
+                    // min-content, флоаты-колонки эталона
+                    // `css-break/background-image-001` вставали поперёк строки
+                    // и пропадали.
+                    || (e.style.flow_root == Some(true)
+                        && e.style.display == Some(Display::Block)))
             {
                 // Вертикальное письмо: ось блочного потока — горизонтальная.
                 // Дети идут слева направо (`vertical-lr`) или справа налево
