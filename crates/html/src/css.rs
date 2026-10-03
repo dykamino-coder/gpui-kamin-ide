@@ -909,6 +909,28 @@ pub fn take_page_decls() -> Vec<PageRule> {
 pub static TRY_RULES: std::sync::Mutex<Option<HashMap<String, Decls>>> =
     std::sync::Mutex::new(None);
 
+/// Зарегистрированное свойство `@property` (css-properties-values-api-1 §3):
+/// синтаксис, наследуется ли, начальное значение.
+#[derive(Clone, Debug)]
+pub struct Registered {
+    pub syntax: String,
+    pub inherits: bool,
+    pub initial: Option<String>,
+}
+
+/// Реестр `@property` последнего разобранного документа.
+pub static PROPERTY_RULES: std::sync::Mutex<Option<HashMap<String, Registered>>> =
+    std::sync::Mutex::new(None);
+
+pub fn take_property_rules() -> HashMap<String, Registered> {
+    PROPERTY_RULES.lock().unwrap().take().unwrap_or_default()
+}
+
+/// Копия реестра `@property` — его читает сборка переменных узла.
+pub fn property_rules() -> HashMap<String, Registered> {
+    PROPERTY_RULES.lock().unwrap().clone().unwrap_or_default()
+}
+
 pub fn take_try_rules() -> HashMap<String, Decls> {
     TRY_RULES.lock().unwrap().take().unwrap_or_default()
 }
@@ -1604,6 +1626,34 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
                             margins,
                         });
                     }
+                }
+                false
+            } else if name.starts_with("@property") {
+                // css-properties-values-api-1 §3: правило действительно, только
+                // если заданы `syntax` и `inherits`, а при синтаксисе не `*` —
+                // ещё и `initial-value`. Имя — с исходным регистром.
+                let ident = head["@property".len()..].trim();
+                let decls = parse_decls(body);
+                let syntax = decls
+                    .get("syntax")
+                    .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_string());
+                let inherits = decls.get("inherits").map(|s| s.trim().to_ascii_lowercase());
+                let initial = decls.get("initial-value").map(|s| s.trim().to_string());
+                if ident.starts_with("--")
+                    && let (Some(syntax), Some(inherits)) = (syntax, inherits)
+                    && matches!(inherits.as_str(), "true" | "false")
+                    && (syntax == "*" || initial.is_some())
+                {
+                    PROPERTY_RULES
+                        .lock()
+                        .unwrap()
+                        .get_or_insert_with(HashMap::new)
+                        .entry(ident.to_string())
+                        .or_insert(Registered {
+                            syntax,
+                            inherits: inherits == "true",
+                            initial,
+                        });
                 }
                 false
             } else if name.starts_with("@position-try") {

@@ -316,6 +316,7 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     // пул и та же чистка.
     let _ = crate::css::take_page_decls();
     let _ = crate::css::take_try_rules();
+    let _ = crate::css::take_property_rules();
     // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
     // и у страницы свой корень, и чужие четыре точки на кегль испортили бы
     // весь разбор. Пишет их `walk` ниже, на элементе `html`.
@@ -2892,6 +2893,33 @@ fn walk(
                         own.insert(k.clone(), v.clone());
                     }
                 }
+                // Зарегистрированные `@property` (css-properties-values-api-1
+                // §2.4): значение, не подходящее под синтаксис, недействительно
+                // во время вычисления — свойство берёт унаследованное (если
+                // наследуется) или начальное; ненаследуемое у потомка без своего
+                // объявления — начальное; не заданное нигде — начальное.
+                for (name, reg) in crate::css::property_rules() {
+                    let set_here = matched.iter().any(|r| r.decls.contains_key(&name))
+                        || inline_decls.contains_key(&name);
+                    let parent = vars.get(&name).cloned();
+                    let fallback = if reg.inherits { parent.clone() } else { None }
+                        .or_else(|| reg.initial.clone());
+                    let value = if set_here {
+                        own.get(&name).cloned().filter(|v| syntax_accepts(&reg.syntax, v))
+                    } else if reg.inherits {
+                        parent
+                    } else {
+                        None
+                    };
+                    match value.or(fallback) {
+                        Some(v) => {
+                            own.insert(name, v);
+                        }
+                        None => {
+                            own.remove(&name);
+                        }
+                    }
+                }
                 own
             };
             let vars = &own_vars;
@@ -3890,6 +3918,36 @@ fn content_text(
         }
     }
     text
+}
+
+/// Подходит ли значение под синтаксис `@property` (css-properties-values-api-1
+/// §5). Проверяются однозначные типы; значение с `var()` решается позже и
+/// принимается; незнакомый синтаксис — тоже (лучше принять, чем потерять).
+fn syntax_accepts(syntax: &str, value: &str) -> bool {
+    let v = value.trim();
+    if v.contains("var(") || syntax.trim() == "*" {
+        return true;
+    }
+    let one = |ty: &str| -> bool {
+        match ty.trim() {
+            "<color>" => {
+                crate::value::Color::parse(v).is_some()
+                    || v.eq_ignore_ascii_case("currentcolor")
+                    || v.to_ascii_lowercase().starts_with("light-dark(")
+            }
+            "<length>" => {
+                !v.ends_with('%')
+                    && (v == "0" || matches!(crate::value::Len::parse_mixed(v), Some(l) if !matches!(l, crate::value::Len::Pct(_) | crate::value::Len::Auto)))
+            }
+            "<length-percentage>" => crate::value::Len::parse_mixed(v)
+                .is_some_and(|l| l != crate::value::Len::Auto),
+            "<percentage>" => v.ends_with('%') && v[..v.len() - 1].trim().parse::<f32>().is_ok(),
+            "<number>" => v.parse::<f32>().is_ok(),
+            "<integer>" => v.parse::<i64>().is_ok(),
+            _ => true,
+        }
+    };
+    syntax.split('|').any(one)
 }
 
 /// Адрес картинки из `content: url()` в форме `src` для `<img>`: загрузчик
