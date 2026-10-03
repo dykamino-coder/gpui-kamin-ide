@@ -925,6 +925,22 @@ fn resolve_links(html: &str, path: &str) -> String {
             } else {
                 "src"
             };
+            // Таблица `data:text/css,…` (RFC 2397): содержимое — прямо в адресе,
+            // файла нет, поэтому `resolve` её не находил и правила пропадали
+            // (`layer-stylesheet-sharing*`). Разворачивается в `<style>`.
+            if lower.starts_with("<link")
+                && is_stylesheet_link(tag)
+                && let Some(href) = attr_value(tag, "href")
+                && let Some(body) = href
+                    .strip_prefix("data:text/css,")
+                    .or_else(|| href.strip_prefix("data:text/css;charset=utf-8,"))
+            {
+                out.push_str("<style>");
+                out.push_str(&percent_decode(body));
+                out.push_str("</style>");
+                rest = &tail[end + 1..];
+                continue;
+            }
             match attr_value(tag, attr).and_then(|v| resolve(&v).map(|p| (v, p))) {
                 Some((href, file))
                     if lower.starts_with("<img")
@@ -940,7 +956,7 @@ fn resolve_links(html: &str, path: &str) -> String {
                     let uri = format!("file:///{}", file.display()).replace('\\', "/");
                     out.push_str(&tag.replace(&href, &uri));
                 }
-                Some((_, file)) if lower.contains("stylesheet") => {
+                Some((_, file)) if is_stylesheet_link(tag) => {
                     let css = read_stylesheet(&file);
                     // Адреса внутри ПОДКЛЮЧЁННОГО файла считаются от ЕГО
                     // папки: после вставки в документ база сместилась бы на
@@ -1294,6 +1310,20 @@ fn url_head(text: &str) -> Option<usize> {
 }
 
 /// Адрес с раскодированными процентами.
+/// `<link>` подключает таблицу стилей — по атрибуту `rel`, а не по тексту
+/// тега: имя файла эталона `layer-stylesheet-sharing-ref.html` содержит слово
+/// «stylesheet», и `<link rel="match">` разворачивался в таблицу —
+/// эталон вклеивался прямо в тест.
+fn is_stylesheet_link(tag: &str) -> bool {
+    // `alternate stylesheet` по умолчанию не применяется (HTML §4.6.7.1:
+    // «alternative style sheet … not applied by default»).
+    attr_value(tag, "rel").is_some_and(|rel| {
+        let mut toks = rel.split_ascii_whitespace();
+        toks.clone().any(|t| t.eq_ignore_ascii_case("stylesheet"))
+            && !toks.any(|t| t.eq_ignore_ascii_case("alternate"))
+    })
+}
+
 fn percent_decode(raw: &str) -> String {
     if !raw.contains('%') {
         return raw.to_string();
