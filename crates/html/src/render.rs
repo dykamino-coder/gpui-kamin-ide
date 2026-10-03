@@ -157,7 +157,12 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // же, гаснет только СВОЯ краска — иначе ранний возврат из отрисовки
     // уносит и потомка (`visufx/visibility-005`).
     let bare;
-    let c = if style.hidden == Some(true) && shows_inside(&e.children) {
+    // Скрытая коробка с `filter: url()`: исходная картинка прозрачна, но
+    // примитивы без источника (`feFlood`) свой выход дают — фильтр остаётся
+    // (`visibility-hidden-element-with-filter-001`: зелёная заливка видна).
+    let c = if style.hidden == Some(true)
+        && (shows_inside(&e.children) || style.filter_ref.is_some())
+    {
         bare = style.paint_off();
         &bare
     } else {
