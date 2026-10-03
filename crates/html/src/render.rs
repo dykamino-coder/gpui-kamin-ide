@@ -1214,10 +1214,121 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // Корень документа получает ширину области просмотра: от неё цепочка
     // `AVAIL_W` вычитает поля/рамки/отступы `html` и `body`.
     let avail_prev = AVAIL_W.replace(Some(opts.viewport.0).filter(|w| *w > 0.0));
+    // Шаг 8 приложения E: позиционированные `z-index: auto | 0` красятся
+    // после потока корневого контекста в порядке разметки — собиратель
+    // `gpui::PaintCollect` между парой меток. Внешняя сборка идёт вне краски
+    // и сбрасывает собиратели (пойманная паника кадра оставила бы их
+    // открытыми); вложенный документ (рамка) собирает своё внутри.
+    let depth = RENDER_DEPTH.with(|d| {
+        d.set(d.get() + 1);
+        d.get()
+    });
+    if depth == 1 {
+        gpui::paint_collect_reset();
+    }
+    let unkeyed_prev = UNKEYED.replace(unkeyed_positions(nodes));
     let mut out = blocks(nodes, &root, opts);
     AVAIL_W.set(avail_prev);
     out.extend(crate::interact::icb_close());
+    UNKEYED.replace(unkeyed_prev);
+    RENDER_DEPTH.with(|d| d.set(d.get() - 1));
+    let (open, close) = gpui::PaintCollect::pair();
+    out.insert(0, open.into_any_element());
+    out.push(close.into_any_element());
     out
+}
+
+thread_local! {
+    /// Глубина вложенных `render` (документ в рамке собирается внутри).
+    static RENDER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    /// Номер элемента в порядке сборки — ключ краски шага 8 (`PaintLast`).
+    static PAINT_KEY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
+    /// позиционированного, который ключа краски не получает (см.
+    /// `unkeyed_positions`).
+    static UNKEYED: std::cell::RefCell<(std::collections::HashMap<u64, usize>, Option<usize>)> =
+        std::cell::RefCell::new((std::collections::HashMap::new(), None));
+}
+
+/// Следующий ключ краски: зовётся при входе в элемент, до сборки детей, —
+/// предок получает ключ меньше потомков (прямой обход).
+fn next_paint_key() -> u64 {
+    PAINT_KEY.with(|k| {
+        let v = k.get().wrapping_add(1);
+        k.set(v);
+        v
+    })
+}
+
+/// Позиционированный с `z-index: auto | 0`, которого сборщик не оборачивает
+/// в `PaintLast`: части таблицы (их строит табличный сборщик),
+/// `relative`/`sticky` строчного уровня и строчный абсолют — те идут в
+/// абзац. Такие красятся первым проходом там, где стоят.
+fn unkeyed_positioned(e: &Element) -> bool {
+    if e.style.z_index.unwrap_or(0) != 0 {
+        return false;
+    }
+    let table_part = matches!(
+        e.style.display,
+        Some(Display::TableRow) | Some(Display::TableCell) | Some(Display::TableRowGroup)
+    ) || (e.style.display.is_none()
+        && matches!(
+            e.tag.as_str(),
+            "tr" | "td" | "th" | "tbody" | "thead" | "tfoot" | "caption" | "col" | "colgroup"
+        ));
+    match e.style.position {
+        Some(crate::computed::Position::Relative) | Some(crate::computed::Position::Sticky) => {
+            table_part || !block_level_in_flow(e)
+        }
+        Some(crate::computed::Position::Absolute) => {
+            table_part || (e.style.display.is_none() && e.inline)
+        }
+        _ => false,
+    }
+}
+
+/// Прямой обход документа: конец поддерева каждого узла (позиция за его
+/// последним потомком) и позиция последнего позиционированного без ключа
+/// краски.
+fn unkeyed_positions(nodes: &[Node]) -> (std::collections::HashMap<u64, usize>, Option<usize>) {
+    fn walk(
+        nodes: &[Node],
+        at: &mut usize,
+        map: &mut std::collections::HashMap<u64, usize>,
+        last: &mut Option<usize>,
+    ) {
+        for n in nodes {
+            let Node::Element(e) = n else { continue };
+            if unkeyed_positioned(e) {
+                *last = Some(*at);
+            }
+            *at += 1;
+            walk(&e.children, at, map, last);
+            // Конец поддерева: свои потомки порядок не ломают — они рисуются
+            // вместе с элементом.
+            map.insert(e.node_id, *at);
+        }
+    }
+    let mut map = std::collections::HashMap::new();
+    let mut last = None;
+    walk(nodes, &mut 0, &mut map, &mut last);
+    (map, last)
+}
+
+/// Можно ли поднять краску элемента в собиратель шага 8: ПОЗЖЕ по документу
+/// нет позиционированного, который останется в первом проходе (иначе
+/// порядок разметки перевернётся — `position-relative-table-*`: ячейка
+/// `relative` после абсолютного красного индикатора). Узел вне обхода
+/// (порождённый сборщиком) — по братьям, как прежде.
+fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
+    let known = UNKEYED.with(|u| {
+        let u = u.borrow();
+        u.0.get(&e.node_id).map(|&end| u.1.is_none_or(|last| last < end))
+    });
+    match known {
+        Some(ok) => ok,
+        None => !positioned_later(rest),
+    }
 }
 
 /// Копий ребёнка в стопке страниц — потолок числа страниц, на которые может
@@ -8118,6 +8229,8 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             crate::interact::late_open();
         }
         if let Node::Element(e) = n {
+            // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
+            let paint_key = next_paint_key();
             // Слой разрешён, только если ни один предок сам не отложен:
             // вложенная отложенная отрисовка в GPUI запрещена.
             let layer_ok = !inside_deferred();
@@ -8733,10 +8846,26 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     let _ = crate::interact::icb_push(spot.clone(), built);
                     FIXED_LAYER.with(|f| f.borrow_mut().extend(crate::interact::icb_close()));
                     None
-                } else if to_icb {
-                    crate::interact::icb_push(spot.clone(), built)
                 } else {
-                    crate::interact::cb_push(spot.clone(), built)
+                    // Слой содержащего блока рисуется после его потока, но
+                    // позиционированные красятся в порядке разметки (шаг 8):
+                    // ключ ставит коробку слоя среди них. `fixed` в слое ICB —
+                    // тоже: без ключа он красился раньше собирателя, и
+                    // поднятый в собиратель предок ложился поверх.
+                    // ★ ЗАМЕРЕНО И ОТКАЧЕНО: `fixed` без ключа — кусок 1704
+                    // пары +4/−2 (`static-fixed-inside-abspos`,
+                    // `position-fixed-001`: 0.00 -> «красное видно»); с
+                    // ключом +4/−0.
+                    let built = if paint_last_ok(e, &nodes[idx + 1..]) {
+                        gpui::PaintLast::new(built).key(paint_key).into_any_element()
+                    } else {
+                        built
+                    };
+                    if to_icb {
+                        crate::interact::icb_push(spot.clone(), built)
+                    } else {
+                        crate::interact::cb_push(spot.clone(), built)
+                    }
                 };
                 match sent {
                     None => {
@@ -8828,8 +8957,16 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 } else {
                     built
                 };
+                // Абсолют на статической позиции — тоже шаг 8: в собирателе
+                // он встаёт среди позиционированных по ключу, а не поверх
+                // всех соседей контейнера.
                 let taken = if below {
                     Some(built)
+                } else if paint_last_ok(e, &nodes[idx + 1..]) {
+                    crate::interact::late_push(
+                        spot,
+                        gpui::PaintLast::new(built).key(paint_key).into_any_element(),
+                    )
                 } else {
                     crate::interact::late_push(spot, built)
                 };
@@ -8978,9 +9115,9 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                     | Some(crate::computed::Position::Sticky)
             ) && e.style.z_index.unwrap_or(0) == 0
                 && !matches!(e.tag.as_str(), "html" | "body")
-                && !positioned_later(&nodes[idx + 1..]);
+                && paint_last_ok(e, &nodes[idx + 1..]);
             if step8 {
-                done = gpui::PaintLast::new(done).into_any_element();
+                done = gpui::PaintLast::new(done).key(paint_key).into_any_element();
             }
             out.push(done);
         }

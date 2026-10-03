@@ -7,7 +7,7 @@ mod image_cache;
 mod img;
 mod list;
 // KaminIDE patch: второй проход краски детей `Div`.
-mod paint_last;
+pub(crate) mod paint_last;
 mod surface;
 mod svg;
 mod text;

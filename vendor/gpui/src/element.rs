@@ -692,6 +692,21 @@ impl AnyElement {
 
     /// Paints the element stored in this `AnyElement`.
     pub fn paint(&mut self, window: &mut Window, cx: &mut App) {
+        // KaminIDE patch: собиратель `PaintLast` проходит насквозь только
+        // обычные коробки и свои метки; любой другой элемент может рисовать
+        // в особом контексте (фрагменты, подложка, преобразование) — его
+        // поддерево собирает своё само (`elements::paint_last`).
+        if crate::elements::paint_last::hoist_open() {
+            let inner = self.0.inner_element();
+            let through = inner.is::<crate::Div>()
+                || inner.is::<crate::Stateful<crate::Div>>()
+                || inner.is::<crate::PaintLast>()
+                || inner.is::<crate::PaintCollect>();
+            if !through {
+                crate::elements::paint_last::hoist_boundary(|| self.0.paint(window, cx));
+                return;
+            }
+        }
         self.0.paint(window, cx);
     }
 
