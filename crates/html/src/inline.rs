@@ -2698,10 +2698,17 @@ fn inline_sides(e: &Element, merged: &Computed) -> ((f32, f32), (f32, f32)) {
         _ => 16.0,
     };
     let family = merged.font_family.clone().unwrap_or_default();
+    // Доля поля и отступа строчной коробки — от ширины содержащего блока
+    // (CSS 2.1 §8.3, §8.4: «percentage … refer to the width of the
+    // containing block»), то есть блока абзаца. Прежде доля молча давала
+    // ноль (`text-indent-percentage-001`: эталон `margin-left: 50%` на
+    // `<span>` стоял у края).
+    let cb = crate::render::avail_width();
     let px_of = |l: Option<Len>| match l {
         Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_)) => {
             crate::metrics::spacing_px(l, &family, size)
         }
+        Some(Len::Pct(k)) => cb.map_or(0.0, |w| k * w),
         _ => 0.0,
     };
     let border = e.style.borders();
