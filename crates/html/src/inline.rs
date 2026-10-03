@@ -114,6 +114,18 @@ pub fn collect(
         let from = out.len();
         match child {
             Node::Text(t) => {
+                // Возврат каретки (U+000D) — ПРОБЕЛ при любом `white-space`
+                // (css-text-3 §4.1: «carriage returns … are treated
+                // identically to spaces»): разбор HTML сводит CR к LF только в
+                // разметке, а `&#x0D;` доезжает знаком и при `pre*` рвал
+                // строку (`control-chars-00D`).
+                let cr_free;
+                let t: &str = if t.contains('\r') {
+                    cr_free = t.replace('\r', " ");
+                    &cr_free
+                } else {
+                    t
+                };
                 // `white-space: pre*` сохраняет пробелы как есть: отступы кода
                 // иначе схлопывались в один пробел и текст терял форму.
                 let raw = if inherited.preserve_newlines == Some(true)
@@ -3446,8 +3458,13 @@ fn normalize_spaces(raw: &str) -> String {
         // остаётся (css-text-4 §4.1.3 «If the character immediately before or
         // immediately after the segment break is the zero-width space
         // character (U+200B), then the break is removed»).
+        // Широкий ЗНАК ПРЕПИНАНИЯ с любой стороны — тоже удаление (Gecko,
+        // bug 1935148, `segment-break-transformation-punctuation-001`:
+        // «場合、⏎Edge» и «ID⏎｢smith｣» без пробела).
         let drop = had_break
             && ((before.is_some_and(wide_cjk) && after.is_some_and(wide_cjk))
+                || before.is_some_and(wide_punct)
+                || after.is_some_and(wide_punct)
                 || before == Some('\u{200b}')
                 || after == Some('\u{200b}'));
         if !drop {
@@ -3477,8 +3494,24 @@ fn wide_cjk(ch: char) -> bool {
         || (0xF900..=0xFAFF).contains(&c)
         || (0xFE30..=0xFE4F).contains(&c)
         || (0xFF01..=0xFF60).contains(&c)
+        // Полуширинная кана и её знаки (East Asian Width H; полуширинный
+        // хангыль U+FFA0.. — Hangul, в счёт не идёт).
+        || (0xFF61..=0xFF9F).contains(&c)
         || (0xFFE0..=0xFFE6).contains(&c)
         || (0x20000..=0x3FFFD).contains(&c)
+}
+
+/// Широкий (F/W/H) знак препинания письма CJK.
+fn wide_punct(ch: char) -> bool {
+    let c = ch as u32;
+    (0x3000..=0x303F).contains(&c)
+        || c == 0x30A0
+        || c == 0x30FB
+        || (0xFE30..=0xFE4F).contains(&c)
+        || (0xFF01..=0xFF0F).contains(&c)
+        || (0xFF1A..=0xFF20).contains(&c)
+        || (0xFF3B..=0xFF40).contains(&c)
+        || (0xFF5B..=0xFF65).contains(&c)
 }
 
 /// Табуляция до ближайшей ПОЗИЦИИ табуляции, а не в `tab-size` пробелов.

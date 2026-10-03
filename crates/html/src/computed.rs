@@ -112,6 +112,24 @@ pub(crate) mod wc {
     pub(crate) const BOX: u8 = 1 << 4;
 }
 
+/// Функция картинки в начале слоя и хвост за её закрывающей скобкой.
+fn split_image_func(v: &str) -> (&str, &str) {
+    let mut depth = 0i32;
+    for (i, ch) in v.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return (&v[..=i], &v[i + 1..]);
+                }
+            }
+            _ => {}
+        }
+    }
+    (v, "")
+}
+
 /// Есть ли в записи длины в единицах шрифта (`em`, `rem`, `ex`, `ch`).
 fn has_font_units(v: &str) -> bool {
     v.split(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '-'))
@@ -5240,6 +5258,62 @@ impl Computed {
                 let top = layers.first().copied().unwrap_or(v);
                 let bottom = layers.last().copied().unwrap_or(v);
                 if top.starts_with("linear-gradient(") || top.starts_with("radial-gradient(") {
+                    // Слой сокращения — функция градиента И положение, размер,
+                    // повтор за ней (`linear-gradient(green, green) 1ch 0 /
+                    // 4ch 1ch no-repeat`). Вся запись целиком градиентом не
+                    // разбиралась (хвост за скобкой), и слой пропадал вместе с
+                    // остальными (`hanging-whitespace-001..004`). Функция —
+                    // градиент, хвост — свои длинные свойства; при хвосте слой
+                    // рисуется плиткой (`gradient_raw`).
+                    let (func, rest) = split_image_func(top);
+                    let top = func;
+                    let mut tiled = false;
+                    if !rest.trim().is_empty() {
+                        let (pos_part, size_part) = match rest.split_once('/') {
+                            Some((a, b)) => (a, Some(b)),
+                            None => (rest, None),
+                        };
+                        let mut pos: Vec<String> = vec![];
+                        for token in split_outside_parens(pos_part) {
+                            match token.as_str() {
+                                "no-repeat" => self.bg_repeat = Some(BgRepeat::NoRepeat),
+                                "repeat-x" => self.bg_repeat = Some(BgRepeat::RepeatX),
+                                "repeat-y" => self.bg_repeat = Some(BgRepeat::RepeatY),
+                                "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
+                                "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
+                                t if Len::parse(t).is_some() => pos.push(token.clone()),
+                                _ => {}
+                            }
+                        }
+                        if !pos.is_empty() {
+                            self.bg_pos = parse_pos_words(&pos.join(" "));
+                            tiled = true;
+                        }
+                        if let Some(size) = size_part {
+                            let mut lens: Vec<String> = vec![];
+                            for token in split_outside_parens(size) {
+                                match token.as_str() {
+                                    "no-repeat" => self.bg_repeat = Some(BgRepeat::NoRepeat),
+                                    "repeat-x" => self.bg_repeat = Some(BgRepeat::RepeatX),
+                                    "repeat-y" => self.bg_repeat = Some(BgRepeat::RepeatY),
+                                    "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
+                                    "cover" => self.bg_size = BgSize::Cover,
+                                    "contain" => self.bg_size = BgSize::Contain,
+                                    t if Len::parse_mixed(t).is_some() || t == "auto" => {
+                                        lens.push(token.clone())
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if !lens.is_empty() {
+                                let w = lens.first().and_then(|t| Len::parse_mixed(t));
+                                let h = lens.get(1).and_then(|t| Len::parse_mixed(t));
+                                self.bg_size = BgSize::Fixed(w, h);
+                            }
+                            tiled = true;
+                        }
+                        tiled |= self.bg_repeat.is_some();
+                    }
                     self.gradient = parse_gradient(top);
                     self.gradient_em = has_font_units(top).then(|| top.to_string());
                     // Пространство смешения, которого GPU-путь не выражает
@@ -5255,7 +5329,9 @@ impl Computed {
                         .gradient
                         .as_ref()
                         .filter(|g| {
-                            !g.radial && !matches!(g.space, GradSpace::Srgb | GradSpace::Oklab)
+                            tiled
+                                || (!g.radial
+                                    && !matches!(g.space, GradSpace::Srgb | GradSpace::Oklab))
                         })
                         .map(|_| top.to_string());
                     // Цвет ищется в НИЖНЕМ слое (он один его допускает);
@@ -11411,6 +11487,29 @@ impl Computed {
         if images.len() < 2 {
             return None;
         }
+        // Длины слоёв в единицах шрифта (`1ch 0 / 4ch 1ch`): слой разбирается
+        // заново из сырой записи уже ПОСЛЕ `resolve_em`, и `ch` в положении и
+        // размере оставался нерешённым — слой выходил нулевым
+        // (`hanging-whitespace-001..004`). Решаем по своему кеглю.
+        let font_px = match self.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let family = self.font_family.clone().unwrap_or_else(|| {
+            if self.monospace == Some(true) {
+                crate::metrics::mono_family().to_string()
+            } else {
+                String::new()
+            }
+        });
+        let (ch, ex) = crate::metrics::ch_ex_px(&family, font_px);
+        let px_of = |v: &str| -> String {
+            if has_font_units(v) {
+                font_lengths_to_px(v, font_px, 16.0, ex, ch)
+            } else {
+                v.to_string()
+            }
+        };
         let mut out = vec![];
         for (i, _) in images.iter().enumerate() {
             let mut c = self.clone();
@@ -11425,12 +11524,12 @@ impl Computed {
                 c.bg_repeat = None;
                 c.bg_origin = None;
                 let layers = background_layers(v);
-                c.apply_one("background", layers[i % layers.len()]);
+                c.apply_one("background", &px_of(layers[i % layers.len()]));
                 c.background = None;
             }
             for (k, v) in self.bg_lists.iter().filter(|(k, _)| k != "background") {
                 let layers = background_layers(v);
-                c.apply_one(k, layers[i % layers.len()]);
+                c.apply_one(k, &px_of(layers[i % layers.len()]));
             }
             c.bg_lists.clear();
             // Градиент слоя — плиткой: источником идёт сама функция
