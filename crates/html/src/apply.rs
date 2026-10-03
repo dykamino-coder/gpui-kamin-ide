@@ -1143,8 +1143,21 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // рамку. Без компенсации блок с рамкой 4px выходил на 8 точек уже, чем в
     // браузере, и всё правее него уезжало (поймано сравнением с Chrome).
     let content_box = c.border_box != Some(true);
+    // Доля отступа (`padding: 20%`) в точки здесь не переводится — её база,
+    // ширина содержащего блока, известна только раскладке. Тогда пересчёт
+    // `content-box` отдаётся ей целиком (`taffy::BoxSizing::ContentBox`):
+    // прежде такая коробка оставалась border-box, и её содержимое ужималось
+    // на ширину отступов (`padding-percentage-inherit-001`: 30 → 6 точек у
+    // ребёнка).
+    let pct_pad = content_box
+        && [c.padding.left, c.padding.right, c.padding.top, c.padding.bottom]
+            .iter()
+            .any(|p| matches!(p, Some(Len::Pct(_))));
+    if pct_pad {
+        d.style().content_box = Some(true);
+    }
     let extra = |sides: &[Option<Len>]| -> f32 {
-        if !content_box {
+        if !content_box || pct_pad {
             return 0.0;
         }
         sides

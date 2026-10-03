@@ -251,6 +251,10 @@ pub struct Style {
     /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
     /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
     pub flex_cross_reverse: bool,
+    /// KaminIDE patch: размеры — `content-box` (CSS `box-sizing`). Обычно
+    /// html-слой сам прибавляет отбивки к размеру, но долю отступа он в точки
+    /// не переведёт — тогда пересчёт делает раскладка (`taffy::BoxSizing`).
+    pub content_box: bool,
     /// KaminIDE patch: анонимный ряд строки — не коробка CSS (CSS 2.1 §10.1:
     /// содержащий блок строчного атома — блок-контейнер). Доли высоты детей
     /// решаются от высоты РОДИТЕЛЯ ряда, а не от самого ряда.
@@ -972,6 +976,7 @@ impl Default for Style {
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
             flex_cross_reverse: false,
+            content_box: false,
             percent_basis_from_parent: false,
             calc_size: [None; 4],
             hides_baseline: false,

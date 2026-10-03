@@ -6938,9 +6938,14 @@ impl Drop for AvailWGuard {
 /// Внутренняя (content-box) ширина `st` для его блочных детей; `outer` — ширина,
 /// доступная самому `st` как блочному ребёнку своего родителя.
 fn avail_inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
+    // Доли полей и отступов — от ширины содержащего блока (CSS 2.1 §8.3,
+    // §8.4), то есть от `outer`. Прежде доля роняла всю цепочку в `None`, и
+    // у детей процентные отступы считались от случайной базы
+    // (`padding-percentage-inherit-001`: 6 точек вместо 30).
     let side = |l: Option<Len>| match l {
         None | Some(Len::Auto) => Some(0.0),
         Some(Len::Px(v)) => Some(v),
+        Some(Len::Pct(k)) => outer.map(|o| k * o),
         _ => None,
     };
     match st.display {

@@ -600,6 +600,12 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_balance_lines: self.flex_balance_lines,
             // KaminIDE patch: обратная поперечная ось однострочного контейнера.
             flex_cross_reverse: self.flex_cross_reverse,
+            // KaminIDE patch: `box-sizing: content-box` силами раскладки.
+            box_sizing: if self.content_box {
+                taffy::style::BoxSizing::ContentBox
+            } else {
+                taffy::style::BoxSizing::BorderBox
+            },
             // KaminIDE patch: анонимный ряд строки прозрачен для долей высоты.
             percent_basis_from_parent: self.percent_basis_from_parent,
             // KaminIDE patch: `calc-size()`; длины выражения — в точки
