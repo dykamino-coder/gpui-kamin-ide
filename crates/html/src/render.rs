@@ -12514,10 +12514,20 @@ fn band_flow_rest_lift(
         if run.iter().any(|n| !is_blank(n)) {
             // `<br>` — строка, пусть и пустая: прогон `[<br>]` после разреза
             // по `<br>` — строчный, а не «пустой» (иначе хост отменялся).
-            let text = run
-                .iter()
-                .any(|n| matches!(n, Node::Text(t) if !t.trim().is_empty()))
-                || run
+            // Строчный элемент с текстом внутри (`<span>Inline box</span>`)
+            // — тоже строки: прогон без ГОЛОГО текста отменял хост, и флоат
+            // за таким прогоном уходил на следующую строку вместе с блоком
+            // (`box-generation-002`: флоат обязан встать на строку прогона
+            // слева от неё, §9.5.1 правило 6).
+            let text = run.iter().any(|n| match n {
+                Node::Text(t) => !t.trim().is_empty(),
+                Node::Element(c) => {
+                    inline_level(c)
+                        && band_piece(n) != Some(BandPiece::Atom)
+                        && !replaced_tag(c)
+                        && subtree_has_text(c)
+                }
+            }) || run
                     .iter()
                     .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));
             let atoms = !text
