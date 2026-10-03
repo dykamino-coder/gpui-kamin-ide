@@ -2934,6 +2934,12 @@ pub struct RootArea {
     pub height: Option<f32>,
     /// `vertical-rl`: заданная ширина отмеряется от ПРАВОГО края холста.
     pub from_right: bool,
+    /// Ключ замера левого края padding-box корня (`interact::root_left_prev`):
+    /// корень `vertical-rl` без заданной ширины — по содержимому и прижат
+    /// вправо, его край известен только после раскладки. Читается при
+    /// ОТРИСОВКЕ: подготовка тела (`interact::RecordRootLeft`) идёт раньше
+    /// отрисовки холста в том же кадре.
+    pub left_key: Option<u64>,
 }
 
 impl RootArea {
@@ -2941,14 +2947,26 @@ impl RootArea {
         let (cw, ch) = (f32::from(clip.size.width), f32::from(clip.size.height));
         let w = self.width.unwrap_or(cw - self.left - self.right).max(0.0);
         let h = self.height.unwrap_or(ch - self.top - self.bottom).max(0.0);
-        let x = if self.from_right && self.width.is_some() {
-            cw - self.right - w
-        } else {
-            self.left
+        let left_abs = self
+            .left_key
+            .filter(|_| self.width.is_none())
+            .and_then(crate::interact::root_left_prev)
+            .map(|l| l - f32::from(clip.origin.x));
+        let (x, w) = match left_abs {
+            Some(l) => (l, (cw - l - self.right).max(0.0)),
+            None => (self.left_x(cw, w), w),
         };
         Bounds {
             origin: gpui::point(clip.origin.x + px(x), clip.origin.y + px(self.top)),
             size: gpui::size(px(w), px(h)),
+        }
+    }
+
+    fn left_x(&self, cw: f32, w: f32) -> f32 {
+        if self.from_right && self.width.is_some() {
+            cw - self.right - w
+        } else {
+            self.left
         }
     }
 }
