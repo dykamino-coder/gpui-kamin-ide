@@ -16928,7 +16928,8 @@ fn paragraph_pieces(
             // `GetStaticPositionInsetBias` переводит его в `InsetBias::kEnd`.
             // Сторону задаёт направление СОДЕРЖАЩЕГО блока, а не собственное
             // письмо коробки (css-writing-modes-4 §7.1, строки 1926-1931).
-            let inner = if inherited.rtl == Some(true) && !rot_block {
+            let rotated_rtl = inherited.rtl == Some(true) && inherited.rotated_line == Some(true);
+            let inner = if inherited.rtl == Some(true) && !rot_block && !rotated_rtl {
                 crate::interact::InlineStartHang::new(inner).into_any_element()
             } else {
                 inner
@@ -16949,6 +16950,7 @@ fn paragraph_pieces(
                 inner,
                 inline::OverlayAt {
                     next_line: rot_block,
+                    bidi_hang: rotated_rtl && !rot_block,
                     ..Default::default()
                 },
             ));

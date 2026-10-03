@@ -2091,6 +2091,12 @@ pub struct Computed {
     pub bidi_override: Option<bool>,
     /// `unicode-bidi: isolate` — кусок не влияет на порядок соседей.
     pub bidi_isolate: Option<bool>,
+    /// `unicode-bidi: embed` — свой уровень встраивания (RLE/LRE … PDF). Без
+    /// него (`normal`) `direction` строчного элемента порядка знаков НЕ
+    /// меняет (css-writing-modes-3 §2.2: «normal — the element does not open
+    /// an additional level of embedding»). Атрибут `dir` ставит его сам
+    /// (`dom.rs: apply_direction`).
+    pub bidi_embed: Option<bool>,
     /// `unicode-bidi: plaintext` — сторона письма решается для каждого абзаца
     /// между жёсткими разрывами. HTML ставит это правило на `dir="auto"`.
     pub bidi_plaintext: Option<bool>,
@@ -3459,6 +3465,7 @@ impl Computed {
             balance_lines: self.balance_lines,
             bidi_override: self.bidi_override,
             bidi_isolate: self.bidi_isolate,
+            bidi_embed: self.bidi_embed,
             hanging: self.hanging,
             nowrap: self.nowrap,
             monospace: self.monospace,
@@ -3741,6 +3748,7 @@ impl Computed {
                 self.bidi_override,
                 self.bidi_isolate,
                 self.bidi_plaintext,
+                self.bidi_embed,
                 self.decl_seq,
             );
             *self = Computed::default();
@@ -3749,6 +3757,7 @@ impl Computed {
                 self.bidi_override,
                 self.bidi_isolate,
                 self.bidi_plaintext,
+                self.bidi_embed,
                 self.decl_seq,
             ) = keep;
             self.apply_one("display", "inline");
@@ -8011,6 +8020,7 @@ impl Computed {
                 // LRI/PDI, и в узкой коробке строка не рисовалась вовсе.
                 self.bidi_isolate = Some(matches!(v, "isolate" | "isolate-override"));
                 self.bidi_plaintext = Some(v == "plaintext");
+                self.bidi_embed = Some(v == "embed");
             }
             "resize" => {
                 self.resize = match v {
