@@ -171,6 +171,12 @@ head, title, meta, link, template { display: none }
     rb, rt, rtc { white-space: nowrap }
     rt, rtc { font-size: 50%; line-height: 1; text-emphasis: none }
     rtc > rt { font-size: 100% }
+    /* Языковые правила A.1: чжуинь (zh-TW) — 30% кегля, у китайского
+       аннотация по центру. Без них строка под аннотацию росла на кегль
+       50% (`ruby-lang-specific-style-001`). */
+    rt:lang(zh-TW), rtc:lang(zh-TW) { font-size: 30% }
+    rtc:lang(zh-TW) > rt { font-size: 100% }
+    rt:lang(zh), rtc:lang(zh) { ruby-align: center }
     "#
 }
 

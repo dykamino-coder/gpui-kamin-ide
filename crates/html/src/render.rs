@@ -15862,10 +15862,14 @@ fn line_box_spans(
 /// направо, без раздачи по ширине (места атомов считаются от продвижения
 /// распорки, а растяжку пробелов `Paragraph` раздаёт уже при отрисовке) и с
 /// выделяемым текстом — путь `StyledText` атомов не несёт.
-fn atoms_fit_line(inherited: &Computed) -> bool {
+///
+/// Абзац с руби идёт в строку и при `rtl`: иначе он остаётся в
+/// ряду, где строка под аннотацию не растёт, а такой же абзац слева направо
+/// растёт (`ruby-bidi-002`: эталон из ltr-абзаца с `text-align: right`).
+fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
     inherited.vertical != Some(true)
         && inherited.rotated_line != Some(true)
-        && inherited.rtl != Some(true)
+        && (ruby || inherited.rtl != Some(true))
         && inherited.no_select != Some(true)
         && inherited.pointer_events_none != Some(true)
         && crate::lines::align_for(inherited) != crate::lines::Align::Justify
@@ -15899,7 +15903,21 @@ fn atom_line_align(
         e.tag.as_str(),
         "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
     );
-    if !(atomic || replaced) || st.ruby_role.is_some() {
+    // Контейнер руби — тоже атом строки: колонки баз с аннотациями
+    // монолитны (§3.5), а строка обязана вырасти под аннотацию (§3.4), чего
+    // гибкий ряд слов не умеет. Прочие роли (база, аннотация вне контейнера)
+    // остаются в ряду.
+    let ruby = ruby_role(e) == Some(crate::computed::RubyRole::Container);
+    if !(atomic || replaced || ruby) || (st.ruby_role.is_some() && !ruby) {
+        return None;
+    }
+    // Внутри `line-clamp` руби остаётся в ряду: вычислитель среза
+    // (`interact::ClampCut`) делит высоту абзаца на РАВНЫЕ строки, а строка с
+    // аннотацией выше прочих. ★ ЗАМЕРЕНО (03.10, 147 пар руби): в строке
+    // `line-clamp-auto-with-ruby-001/003` зеленеют (5.2 → 0.13/0.26), но
+    // `-002` (руби за срезом) уходит 0.09 → 5.23 — срез встаёт строкой выше.
+    // Возвращать вместе с настоящими низами строк в `ClampEntry`.
+    if ruby && crate::interact::clamp_context().is_some() {
         return None;
     }
     // Ортогональный поток внутри атома меряется от ДОСТУПНОГО места (§7.3
@@ -16340,11 +16358,20 @@ fn paragraph_pieces(
     };
     // Каждому атому — признак, можно ли поставить его В СТРОКУ абзаца
     // (`atom_line_align`): порядок записей совпадает с порядком `Piece::Atom`.
-    let mut atom_aligns: Vec<Option<crate::lines::AtomAlign>> = Vec::new();
+    // Руби несёт ещё и узлы своих аннотаций: по ним строка растёт
+    // (`lines::ruby_extent`). Чужие узлы (руби вне строки внутри атома) атому
+    // не достаются.
+    let mut atom_aligns: Vec<Option<(crate::lines::AtomAlign, crate::lines::RubyExtents)>> =
+        Vec::new();
     let mut atom_noted = |e: &Element| -> Option<inline::Piece> {
-        let piece = atom(e);
+        let (piece, extents) = crate::lines::collect_ruby_extents(|| atom(e));
         if matches!(piece, Some(inline::Piece::Atom(_))) {
-            atom_aligns.push(atom_line_align(e, inherited, opts));
+            let extents = if ruby_role(e) == Some(crate::computed::RubyRole::Container) {
+                extents
+            } else {
+                Vec::new()
+            };
+            atom_aligns.push(atom_line_align(e, inherited, opts).map(|a| (a, extents)));
         }
         piece
     };
@@ -16373,7 +16400,12 @@ fn paragraph_pieces(
         count > 0
             && count == atom_aligns.len()
             && atom_aligns.iter().all(Option::is_some)
-            && atoms_fit_line(inherited)
+            && atoms_fit_line(
+                inherited,
+                atom_aligns
+                    .iter()
+                    .any(|a| a.as_ref().is_some_and(|(_, ex)| !ex.is_empty())),
+            )
     };
     if atoms_in_line {
         inline::trim_edge_spaces_solid_atoms(&mut pieces);
@@ -16486,7 +16518,12 @@ fn paragraph_pieces(
     // Прежде абзац с атомом уходил в гибкий ряд слов (`as_wrapped_row`): одна
     // высота строки на ряд, базовая линия текста taffy не видна, `top`/
     // `bottom`/`text-top` не выражались.
-    let mut line_atoms: Vec<(usize, AnyElement, crate::lines::AtomAlign)> = Vec::new();
+    let mut line_atoms: Vec<(
+        usize,
+        AnyElement,
+        crate::lines::AtomAlign,
+        crate::lines::RubyExtents,
+    )> = Vec::new();
     let atom_count = pieces
         .iter()
         .filter(|p| matches!(p, inline::Piece::Atom(_)))
@@ -16503,8 +16540,10 @@ fn paragraph_pieces(
         for p in pieces {
             match p {
                 inline::Piece::Atom(el) => {
-                    let align = aligns.next().unwrap_or(crate::lines::AtomAlign::Shift(0.0));
-                    line_atoms.push((at, el, align));
+                    let (align, extents) = aligns
+                        .next()
+                        .unwrap_or((crate::lines::AtomAlign::Shift(0.0), Vec::new()));
+                    line_atoms.push((at, el, align, extents));
                     out.push(inline::Piece::Text {
                         text: inline::SPACER.to_string(),
                         style: mark.clone(),
@@ -16672,6 +16711,14 @@ fn paragraph_pieces(
                 v.retain(|(r, _)| !in_edge(&edges, r));
                 v
             })
+            // В повёрнутом абзаце руби в строку не идёт и строку не растит
+            // (`atoms_fit_line`), а эталоны акцента сделаны из руби: рост
+            // только у горизонтального (`text-emphasis-line-height-003*/004*`).
+            .emph_spans(if inherited.rotated_line == Some(true) || inherited.vertical == Some(true) {
+                Vec::new()
+            } else {
+                inline::emphasis_spans(&pieces, biggest)
+            })
             .edge_spans(edges)
             .line_boxes(
                 boxes.as_ref().map(|b| b.0.clone()).unwrap_or_default(),
@@ -16755,6 +16802,7 @@ fn paragraph_pieces(
             }))
             .overlays(inline::overlays(pieces))
             .atoms(line_atoms)
+            .ruby_trim(inherited.text_box_trim_start, inherited.text_box_trim_end)
             .selectable(id, opts.selection_color());
             return para.into_any_element();
         }
@@ -17889,6 +17937,26 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                 div().children(blocks(nodes, &style, opts)).into_any_element()
             };
             let empty: RubyUnit = Vec::new();
+            // Стопка уровней одной стороны — узел, чью высоту знает строка
+            // (`lines::ruby_extent`, css-ruby-1 §3.4).
+            // Полулидинг базы: стопка стоит на краю её коробки строки.
+            let base_half = {
+                let size = match merged.font_size {
+                    Some(Len::Px(v)) => v,
+                    _ => opts.base_size(),
+                };
+                let family = merged.font_family.clone().unwrap_or_default();
+                let (asc, desc, _) = crate::metrics::vmetrics_px(&family, size);
+                let line = match merged.line_height {
+                    Some(Len::Px(v)) => v,
+                    Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+                    _ => size * normal_fraction(&merged, opts),
+                };
+                (line - (asc + desc)) / 2.0
+            };
+            let extent = |d: gpui::Div, under: bool| {
+                crate::lines::ruby_extent(d.into_any_element(), under, base_half)
+            };
             let mut row = div().flex().flex_row().items_baseline().flex_shrink_0();
             for seg in &segments {
                 // Стиль уровня: аннотации внутри `<rtc>` наследуют от него.
@@ -17935,14 +18003,20 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                     // в обратном порядке: нулевой (ближний к базе) — внизу.
                     let mut over = stack(false).child(unit_box(seg.bases.get(i).unwrap_or(&empty), &merged));
                     if !over_anns.is_empty() {
-                        over = over.child(level_wrap(false).children(over_anns.into_iter().rev()));
+                        over = over.child(level_wrap(false).child(extent(
+                            div().flex().flex_col().flex_shrink_0().children(over_anns.into_iter().rev()),
+                            false,
+                        )));
                     }
                     let col = if under.is_empty() {
                         over.into_any_element()
                     } else {
                         stack(true)
                             .child(over)
-                            .child(level_wrap(true).children(under))
+                            .child(level_wrap(true).child(extent(
+                                div().flex().flex_col().flex_shrink_0().children(under),
+                                true,
+                            )))
                             .into_any_element()
                     };
                     cols = cols.child(col);
@@ -17952,10 +18026,14 @@ fn atom_element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<
                     if l.spanning {
                         seg_el = stack(level_under(k))
                             .child(seg_el)
-                            .child(
-                                level_wrap(level_under(k))
+                            .child(level_wrap(level_under(k)).child(extent(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .flex_shrink_0()
                                     .child(unit_box(l.units.first().unwrap_or(&empty), style)),
-                            )
+                                level_under(k),
+                            )))
                             .into_any_element();
                     }
                 }
