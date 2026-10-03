@@ -8962,6 +8962,26 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             {
                 done = crate::interact::Underlay::new(done).into_any_element();
             }
+            // Позиционированный блок с `z-index: auto | 0` рисуется на шаге 8
+            // приложения E CSS 2.1 — ПОСЛЕ блоков и строк потока, — а у нас
+            // порядок краски был порядком детей: следующий блок закрашивал
+            // сдвинутый `relative` (`position-relative-035`) и абсолют с одной
+            // свободной осью (`right-offset-003`). `PaintLast` меняет только
+            // краску — раскладка и место в потоке те же, поэтому строки он не
+            // рвёт (запись про распорку выше): внутри строки элементы идут
+            // через `pending`, а не сюда. Положительный `z-index` и `fixed`
+            // уже отложены `layered`, отрицательный — подложка выше.
+            let step8 = matches!(
+                e.style.position,
+                Some(crate::computed::Position::Relative)
+                    | Some(crate::computed::Position::Absolute)
+                    | Some(crate::computed::Position::Sticky)
+            ) && e.style.z_index.unwrap_or(0) == 0
+                && !matches!(e.tag.as_str(), "html" | "body")
+                && !positioned_later(&nodes[idx + 1..]);
+            if step8 {
+                done = gpui::PaintLast::new(done).into_any_element();
+            }
             out.push(done);
         }
     }
@@ -19124,6 +19144,50 @@ fn at_static_position(c: &Computed) -> bool {
 /// прежде `clear` был двузначным, и любая сторона обрывала любой ряд.
 fn clears_side(clear: Option<i8>, side: i8) -> bool {
     matches!(clear, Some(c) if c == 0 || c == side)
+}
+
+/// Рисуется ли ДАЛЬШЕ по разметке позиционированное содержимое первым
+/// проходом родителя — тогда `PaintLast` перевернул бы порядок шага 8.
+///
+/// Шаг 8 приложения E CSS 2.1 красит позиционированные потомки контекста В
+/// ПОРЯДКЕ РАЗМЕТКИ, а второй проход `Div` поднимает обёрнутого лишь над
+/// братьями: позиционированный ВНУТРИ следующего обычного брата (ячейка
+/// `relative` в таблице после абсолютного красного индикатора,
+/// `position-relative-table-*`) или абсолют на статической позиции в позднем
+/// слое (`font-029`) оказались бы под ним. Брат-блок `relative`/`sticky` с
+/// `z-index: auto | 0` сам уходит во второй проход и порядок сохраняет — его
+/// поддерево рисуется вместе с ним. `fixed` отложен и так.
+///
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО: `PaintLast` без этого гейта — на срезе 890 пар
+/// +2/−20 (все `position-relative-table-*` и `font-029` в «красное видно»);
+/// с гейтом срез 3483 пары: 2757 → 2764, +7/−0.
+fn positioned_later(rest: &[Node]) -> bool {
+    fn positioned(e: &Element) -> bool {
+        matches!(
+            e.style.position,
+            Some(crate::computed::Position::Relative)
+                | Some(crate::computed::Position::Sticky)
+                | Some(crate::computed::Position::Absolute)
+        )
+    }
+    fn walk(nodes: &[Node]) -> bool {
+        nodes.iter().any(|n| {
+            let Node::Element(e) = n else { return false };
+            positioned(e) || walk(&e.children)
+        })
+    }
+    rest.iter().any(|n| {
+        let Node::Element(e) = n else { return false };
+        let late_sibling = matches!(
+            e.style.position,
+            Some(crate::computed::Position::Relative) | Some(crate::computed::Position::Sticky)
+        ) && e.style.z_index.unwrap_or(0) == 0
+            && block_level_in_flow(e);
+        if late_sibling {
+            return false;
+        }
+        positioned(e) || walk(&e.children)
+    })
 }
 
 /// Есть ли ДАЛЬШЕ по разметке позиционированный элемент, который останется на
