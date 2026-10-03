@@ -129,6 +129,11 @@ pub struct Kid {
     /// Первое слово анонимного прогона (`render.rs` `band_kids`): по его
     /// min-content решается, влезает ли первая строка в окно (§9.5).
     pub head: Option<Build>,
+    /// Строчное содержимое ПЕРЕД флоатом в той же строке (`render.rs`
+    /// `wrap_floats`, «Hello<float>Kitty»): у флоата посреди строки — оно
+    /// одно, анонимным прогоном. По его ширине план решает, остаётся ли
+    /// флоат на этой строке (правило 6 §9.5.1) или уходит под неё.
+    pub lead: Option<Build>,
 }
 
 /// Место ребёнка в плане: левый верх border-box, доступная ширина (по ней
@@ -210,13 +215,21 @@ fn probe(
     window: &mut Window,
     cx: &mut App,
 ) -> (f32, f32) {
+    probe_of(kid.kind, &kid.build, cb, avail, shapes, window, cx)
+}
+
+/// `probe` для любого построителя: каркас по виду `kind`.
+fn probe_of(
+    kind: Kind,
+    build: &Build,
+    cb: f32,
+    avail: f32,
+    shapes: Option<Shapes>,
+    window: &mut Window,
+    cx: &mut App,
+) -> (f32, f32) {
     let tap = Rc::new(Cell::new(None));
-    let mut el = frame(
-        kid.kind,
-        avail,
-        (kid.build)(cb, avail, shapes, None),
-        tap.clone(),
-    );
+    let mut el = frame(kind, avail, build(cb, avail, shapes, None), tap.clone());
     let vert = VERT.with(Cell::get).is_some();
     let room = AvailableSpace::Definite(px(avail.max(0.0)));
     let space = if vert {
@@ -351,7 +364,20 @@ fn place_seq(
                 // Правила 5 и 6 §9.5.1: флоат не выше низа предыдущего блока
                 // потока (Servo `set_ceiling_from_non_floats`,
                 // `flow/float.rs:371`). У пробега хоста `y` — ноль.
-                bands.set_flow_ceiling(y);
+                // Флоат посреди строки (правило 6 §9.5.1, Blink
+                // `NGLineBreaker::HandleFloat`: флоат встаёт на текущую
+                // строку, если влезает в её остаток рядом с уже набранным,
+                // иначе — под неё). Набранное до флоата — `Kid::lead`; не
+                // влезло рядом — потолок опускается на его высоту.
+                let mut ceil = y;
+                if let Some(lead) = kid.lead.as_ref() {
+                    let lw = intrinsic_of(lead, window, cx).1;
+                    let (l, r) = bands.available(y, 0.0);
+                    if lw + ml + bw + mr > r - l + EPS {
+                        ceil = y + probe_of(Kind::Flow, lead, cbw, cbw, None, window, cx).1;
+                    }
+                }
+                bands.set_flow_ceiling(ceil);
                 // Посадка margin-box: правила 1-9 §9.5.1 и clear §9.5.2 — в
                 // `bands.add_float`.
                 let (fx, fy) = if letter {
