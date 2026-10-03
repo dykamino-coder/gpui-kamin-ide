@@ -3765,7 +3765,7 @@ impl Computed {
                 // Типизированный `attr()` подставляется тем же шагом, что и
                 // `var()` (css-values-5 §7.7): после него значение разбирается
                 // как обычное.
-                let resolved = resolve_attrs(k.as_str(), &resolve_vars(strip_important(part), vars));
+                let resolved = resolve_sibling(resolve_attrs(k.as_str(), &resolve_vars(strip_important(part), vars)));
                 self.apply_one(k, &resolved);
             }
         }
@@ -11333,6 +11333,33 @@ thread_local! {
     /// запасное значение.
     static CURRENT_ATTRS: std::cell::RefCell<Vec<(String, String)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    /// Номер элемента среди братьев и их число — для `sibling-index()` и
+    /// `sibling-count()` (css-values-5 §tree-counting). Ставит `dom::walk`
+    /// на время каскада элемента, как и атрибуты.
+    static CURRENT_SIBLING: std::cell::Cell<Option<(usize, usize)>> = const { std::cell::Cell::new(None) };
+}
+
+pub fn set_current_sibling(at: Option<(usize, usize)>) {
+    CURRENT_SIBLING.with(|c| c.set(at));
+}
+
+/// `sibling-index()` / `sibling-count()` — целым числом (css-values-5
+/// §tree-counting: «sibling-index() … returns an <integer> … the index of the
+/// element among its inclusive siblings, starting at 1»). Без хозяина
+/// (вне каскада элемента) запись остаётся как есть и роняет объявление.
+fn resolve_sibling(value: String) -> String {
+    if !value.contains("sibling-") {
+        return value;
+    }
+    match CURRENT_SIBLING.with(|c| c.get()) {
+        Some((i, n)) => value
+            .replace("sibling-index()", &i.to_string())
+            .replace("sibling-count()", &n.to_string()),
+        None => value,
+    }
 }
 
 pub fn set_current_attrs(attrs: &[(String, String)]) {
