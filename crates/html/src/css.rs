@@ -1654,7 +1654,10 @@ fn sheet_rules(css: &str, media: Media) -> Vec<Rule> {
             // (css-cascade-5 §6.4.2): имена регистрируются по месту.
             Piece::Statement { head } => {
                 let h = head.trim();
-                if h.len() > 6 && h[..6].eq_ignore_ascii_case("@layer") {
+                // `get`, а не срез: шестой байт бывает внутри многобайтового
+                // знака (`@chars…` в чужой кодировке, `at-charset-029`), и
+                // срез ронял весь стенд паникой.
+                if h.len() > 6 && h.get(..6).is_some_and(|p| p.eq_ignore_ascii_case("@layer")) {
                     for name in h[6..].split(',') {
                         let name = name.trim();
                         if !name.is_empty() {

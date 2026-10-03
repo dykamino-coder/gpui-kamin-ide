@@ -1618,9 +1618,18 @@ fn determine_container_main_size(
                             .iter()
                             .map(|child| {
                                 let padding_border_sum = (child.padding + child.border).main_axis_sum(constants.dir);
-                                (child.flex_basis.maybe_max(child.min_size.main(constants.dir))
-                                    + child.margin.main_axis_sum(constants.dir))
-                                .max(padding_border_sum)
+                                // KaminIDE patch: НЕГИБКИЙ элемент (`flex: 0 0 N`)
+                                // занимает гипотетический размер — базу, зажатую
+                                // `max-*` (css-flexbox-1 §9.2.3 E, §9.9.1; Blink
+                                // flex_layout_algorithm.cc:2949), а не сырую базу:
+                                // `flex: 0 0 200px; max-width: 100px` раздувал
+                                // контейнер по содержимому до 200 (`row-007`).
+                                let main = if child.flex_grow == 0.0 && child.flex_shrink == 0.0 {
+                                    child.hypothetical_inner_size.main(constants.dir)
+                                } else {
+                                    child.flex_basis.maybe_max(child.min_size.main(constants.dir))
+                                };
+                                (main + child.margin.main_axis_sum(constants.dir)).max(padding_border_sum)
                             })
                             .sum::<f32>();
                         total_target_size + line_main_axis_gap
@@ -1674,7 +1683,16 @@ fn determine_container_main_size(
                         // Spec modification: https://www.w3.org/TR/css-flexbox-1/#change-2016-max-contribution
                         // Issue: https://github.com/w3c/csswg-drafts/issues/1435
                         // Gentest: padding_border_overrides_size_flex_basis_0.html
-                        let clamping_basis = Some(item.flex_basis).maybe_max(style_preferred);
+                        // KaminIDE patch: негибкий элемент вносит ГИПОТЕТИЧЕСКИЙ
+                        // главный размер — базу, зажатую своими min/max
+                        // (css-flexbox-1 §9.9.1 «intrinsic-item-contributions»;
+                        // Blink flex_layout_algorithm.cc:2936-2953 берёт
+                        // `hypothetical_main_size_border_box`). Без зажима
+                        // `flex: 0 0 200px; max-width: 100px` вносил 200
+                        // (`intrinsic-size/row-007`). Гипотетический размер уже
+                        // учёл автоминимум и пол отбивок (`determine_flex_base_size`).
+                        let clamping_basis = Some(item.hypothetical_inner_size.main(constants.dir))
+                            .maybe_max(style_preferred.maybe_min(style_max));
                         let flex_basis_min = clamping_basis.filter(|_| item.flex_shrink == 0.0);
                         let flex_basis_max = clamping_basis.filter(|_| item.flex_grow == 0.0);
 
@@ -1707,10 +1725,26 @@ fn determine_container_main_size(
                                 let cross_axis_margin_sum = constants.margin.cross_axis_sum(dir);
                                 let child_min_cross = item.min_size.cross(dir).maybe_add(cross_axis_margin_sum);
                                 let child_max_cross = item.max_size.cross(dir).maybe_add(cross_axis_margin_sum);
-                                let cross_axis_available_space: AvailableSpace = available_space
-                                    .cross(dir)
-                                    .map_definite_value(|val| cross_axis_parent_size.unwrap_or(val))
-                                    .maybe_clamp(child_min_cross, child_max_cross);
+                                // KaminIDE patch: у ОДНОСТРОЧНОГО контейнера с
+                                // определённым поперечным размером растянутый элемент
+                                // определён поперёк и при замере по содержимому
+                                // (css-flexbox-1 §9.8 п.1: «if a single-line flex
+                                // container has a definite cross size, the outer cross
+                                // size of any stretched flex items is the flex
+                                // container's inner cross size»). Прежде определённость
+                                // бралась только из ДОСТУПНОГО места, а при замере
+                                // `inline-flex` оно max-content — картинка 60×60 под
+                                // `height: 100px` вносила 60 вместо 100
+                                // (`aspect-ratio-intrinsic-size-006`).
+                                let stretched_definite = !constants.is_wrap
+                                    && item.align_self == AlignSelf::Stretch
+                                    && cross_axis_parent_size.is_some();
+                                let cross_axis_available_space: AvailableSpace = if stretched_definite {
+                                    AvailableSpace::Definite(cross_axis_parent_size.unwrap_or(0.0))
+                                } else {
+                                    available_space.cross(dir).map_definite_value(|val| cross_axis_parent_size.unwrap_or(val))
+                                }
+                                .maybe_clamp(child_min_cross, child_max_cross);
 
                                 let child_available_space = available_space.with_cross(dir, cross_axis_available_space);
 
@@ -1754,7 +1788,23 @@ fn determine_container_main_size(
                                 // Ultimately, this was not found by reading the spec, but by trial and error fixing tests to align with Webkit/Firefox output.
                                 // (see the `flex_basis_unconstraint_row` and `flex_basis_uncontraint_column` generated tests which demonstrate this)
                                 if constants.is_row {
-                                    content_main_size.maybe_clamp(style_min, style_max).max(main_content_box_inset)
+                                    // KaminIDE patch: вклад зажат и базой — сверху у
+                                    // НЕРАСТУЩЕГО элемента, снизу у НЕСЖИМАЕМОГО
+                                    // (css-flexbox-1 §9.9.1 «…clamped by its flex base
+                                    // size as a maximum (if it is not growable) and/or
+                                    // as a minimum (if it is not shrinkable)»; Blink
+                                    // flex_layout_algorithm.cc:2922-2940 `cant_move` →
+                                    // гипотетический размер). Пределы `min_main_size`/
+                                    // `max_main_size` выше уже посчитаны, но сюда не
+                                    // доходили: `flex: 0 1 100px` с ребёнком 200 вносил
+                                    // в min-content ряда 200 вместо 100, флоат вокруг
+                                    // выходил вдвое шире (`intrinsic-size/row-004`).
+                                    let margins = item.margin.main_axis_sum(constants.dir);
+                                    content_main_size
+                                        .maybe_clamp(style_min, style_max)
+                                        .min(max_main_size + margins)
+                                        .max(min_main_size + margins)
+                                        .max(main_content_box_inset)
                                 } else {
                                     content_main_size
                                         .max(item.flex_basis)
@@ -1804,7 +1854,13 @@ fn determine_container_main_size(
                             let flex_contribution = if item.content_flex_fraction > 0.0 {
                                 f32_max(1.0, item.flex_grow) * flex_fraction
                             } else if item.content_flex_fraction < 0.0 {
-                                let scaled_shrink_factor = f32_max(1.0, item.flex_shrink) * item.inner_flex_basis;
+                                // KaminIDE patch: тот же множитель, что и при делении
+                                // выше (`max(1, shrink × inner_basis)`). Было
+                                // `max(1, shrink) × inner_basis`: при `flex-shrink: 0`
+                                // доля −100 умножалась на всю базу, и вклад негибкого
+                                // элемента уходил в минус на порядки
+                                // (`intrinsic-size/row-007`: 200 − 180×100).
+                                let scaled_shrink_factor = f32_max(1.0, item.flex_shrink * item.inner_flex_basis);
                                 scaled_shrink_factor * flex_fraction
                             } else {
                                 0.0
@@ -2458,6 +2514,21 @@ fn distribute_remaining_free_space(flex_lines: &mut [FlexLine], constants: &Algo
 
         if free_space > 0.0 && num_auto_margins > 0 {
             let margin = free_space / num_auto_margins as f32;
+            // KaminIDE patch: промежуток (`gap`) стоит между элементами и при
+            // авто-полях (css-align-3 §8.1 «gutters»; css-flexbox-1 §9.5:
+            // авто-поля делят место, ОСТАВШЕЕСЯ после промежутков — оно и
+            // посчитано в `used_space`). Ветка не трогала `offset_main`, и
+            // промежуток выпадал из ряда целиком: строка с авто-полем шла
+            // встык (`flexbox-column-row-gap-001`).
+            let gap = constants.gap.main(constants.dir);
+            let set_gap = |(i, child): (usize, &mut FlexItem)| {
+                child.offset_main = if i == 0 { 0.0 } else { gap };
+            };
+            if constants.dir.is_reverse() {
+                line.items.iter_mut().rev().enumerate().for_each(set_gap);
+            } else {
+                line.items.iter_mut().enumerate().for_each(set_gap);
+            }
 
             for child in line.items.iter_mut() {
                 if child.margin_is_auto.main_start(constants.dir) {
