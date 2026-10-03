@@ -3222,7 +3222,7 @@ impl Computed {
         // тому шрифту, которым текст в самом деле наберётся.
         let family = self.font_family.clone().unwrap_or_else(|| {
             if self.monospace == Some(true) {
-                crate::metrics::mono_family().to_string()
+                crate::metrics::mono_family_for(self.lang.as_deref()).to_string()
             } else {
                 String::new()
             }
@@ -11497,7 +11497,7 @@ impl Computed {
         };
         let family = self.font_family.clone().unwrap_or_else(|| {
             if self.monospace == Some(true) {
-                crate::metrics::mono_family().to_string()
+                crate::metrics::mono_family_for(self.lang.as_deref()).to_string()
             } else {
                 String::new()
             }

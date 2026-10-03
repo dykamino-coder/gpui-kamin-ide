@@ -108,6 +108,24 @@ pub fn mono_family() -> &'static str {
     MONO.with(|m| *m.borrow())
 }
 
+/// Семейство за родовое `monospace` с учётом языка текста. Хром на Windows
+/// берёт моноширинный шрифт ПО ПИСЬМЕННОСТИ (настройка «fixed font» для
+/// японского — MS Gothic, `chrome/app/resources/locale_settings_win.grd`):
+/// кана и иероглифы в нём полноширинные, а системная подстановка за
+/// Consolas давала пропорциональную кану в 0.82 кегля
+/// (`hanging-punctuation-block-bound-001`: пять знаков в строке вместо
+/// четырёх).
+pub fn mono_family_for(lang: Option<&str>) -> &'static str {
+    let ja = lang.is_some_and(|l| {
+        let l = l.trim().to_ascii_lowercase();
+        l == "ja" || l.starts_with("ja-")
+    });
+    if ja && font_installed("MS Gothic") {
+        return "MS Gothic";
+    }
+    mono_family()
+}
+
 /// Поставить щуп метрик. Вызывается один раз при старте: замер шрифта
 /// возможен только там, где живёт система шрифтов.
 pub fn install_probe(probe: impl Fn(&str, f32) -> (f32, f32, f32, f32) + 'static) {

@@ -13373,7 +13373,7 @@ fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
             .unwrap_or_else(|| family.clone())
             .into();
     } else if c.monospace == Some(true) {
-        font.family = crate::metrics::mono_family().into();
+        font.family = crate::metrics::mono_family_for(c.lang.as_deref()).into();
     }
     if let Some(w) = c.font_weight {
         font.weight = gpui::FontWeight(w as f32);
@@ -29375,7 +29375,7 @@ fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
         .filter(|f| !f.is_empty())
         .unwrap_or_else(|| {
             if style.monospace == Some(true) {
-                crate::metrics::mono_family().to_string()
+                crate::metrics::mono_family_for(style.lang.as_deref()).to_string()
             } else {
                 opts.text.font_family.to_string()
             }
