@@ -21170,15 +21170,21 @@ fn scrollable(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<An
             // целиком (`min-height-104/106`: красный третий «X» Ahem на
             // 200…300 px). Ширина ленты — рамочная ширина коробки; считается
             // только из точек, иначе лента остаётся прежней.
-            if h && let Some(Len::Px(w)) = inner.style.width {
+            // Размеры — из СЛИТОГО стиля: в собственном стиле узла `16ch` и
+            // `10em` ещё не решены в точки (их решает `inherit`), и лента без
+            // ширины не резала ничего (`white-space-pre-wrap-trailing-spaces-
+            // 021`: висящие пробелы `overflow: auto`-коробки шириной в `ch`
+            // выходили за её край).
+            let sized = crate::inline::inherit(&inherited, &inner.style);
+            if h && let Some(Len::Px(w)) = sized.width {
                 let side = |l: Option<Len>| match l {
                     None | Some(Len::Auto) => Some(0.0),
                     Some(Len::Px(v)) => Some(v),
                     _ => None,
                 };
-                let b = inner.style.borders();
-                let edges = side(inner.style.padding.left)
-                    .zip(side(inner.style.padding.right))
+                let b = sized.borders();
+                let edges = side(sized.padding.left)
+                    .zip(side(sized.padding.right))
                     .zip(side(b.left).zip(side(b.right)))
                     .map(|((pl, pr), (bl, br))| pl + pr + bl + br);
                 let lane = if inner.style.border_box == Some(true) {
