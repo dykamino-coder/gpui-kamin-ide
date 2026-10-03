@@ -1455,8 +1455,23 @@ impl Element for Div {
                         return;
                     }
 
+                    // KaminIDE patch: обёртки `PaintLast` рисуются вторым
+                    // проходом (CSS 2.1 прил. E, шаг 8 — позиционированные
+                    // поверх потока), раскладка их не меняется.
+                    let mut late = false;
                     for child in &mut self.children {
+                        if child.downcast_mut::<crate::PaintLast>().is_some() {
+                            late = true;
+                            continue;
+                        }
                         child.paint(window, cx);
+                    }
+                    if late {
+                        for child in &mut self.children {
+                            if child.downcast_mut::<crate::PaintLast>().is_some() {
+                                child.paint(window, cx);
+                            }
+                        }
                     }
                 },
             )
