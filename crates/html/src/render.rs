@@ -8373,6 +8373,32 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                         .child(layer)
                         .into_any_element();
                 }
+                // `clip-path` корня режет и холст (css-masking-1 §the-clip-path +
+                // compositing-1 §rootgroup: фон корня — часть корневой группы):
+                // слой холста получает ту же обрезку, что и коробка корня.
+                // Начало координат у них общее — левый верхний угол окна.
+                if e.style.clip_polygon.is_some()
+                    || e.style.clip_shape.is_some()
+                    || e.style.clip_inset.is_some()
+                    || e.style.clip_xywh.is_some()
+                {
+                    let mut clip = Computed::default();
+                    clip.clip_polygon = e.style.clip_polygon.clone();
+                    clip.clip_shape = e.style.clip_shape.clone();
+                    clip.clip_inset = e.style.clip_inset.clone();
+                    clip.clip_xywh = e.style.clip_xywh.clone();
+                    layer = grouped(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .right_0()
+                            .bottom_0()
+                            .child(layer)
+                            .into_any_element(),
+                        &clip,
+                    );
+                }
                 out.push(layer);
                 let mut copy = e.clone();
                 copy.style.background = None;
