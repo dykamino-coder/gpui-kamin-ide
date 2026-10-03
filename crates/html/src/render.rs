@@ -10774,25 +10774,51 @@ fn wrap_floats(
         let has_lead = out[lead_at..]
             .iter()
             .any(|n| band_piece(n) == Some(BandPiece::Atom));
+        // Флоат посреди строки ТЕКСТА («Hello<float>Kitty»): набранное до
+        // него строчное содержимое (от последнего блока или `<br>`) уходит в
+        // измеряемый хост началом прогона, флоат — на его строку
+        // (`floats-placement-vertical-001a`).
+        let text_at = out
+            .iter()
+            .rposition(|n| match n {
+                Node::Text(_) => false,
+                Node::Element(c) => {
+                    !inline_level(c)
+                        || c.tag == "br"
+                        || out_of_flow(&c.style)
+                        || c.attr("bands").is_some()
+                }
+            })
+            .map_or(0, |p| p + 1);
+        // Атомы тоже: статический хост с атомами впереди (`band_host`) мог
+        // не сойтись по размерам (`floats-placement-006`).
+        let text_lead = out[text_at..].iter().any(|n| !is_blank(n));
         let hosted = has_lead
             .then(|| band_host(&nodes, i, cb_width, &out[lead_at..]))
             .flatten()
-            .map(|(h, n)| (h, n, true))
-            .or_else(|| band_host(&nodes, i, cb_width, &[]).map(|(h, n)| (h, n, false)))
+            .map(|(h, n)| (h, n, Some(lead_at), Vec::new()))
+            .or_else(|| {
+                (measured_ok && text_lead)
+                    .then(|| band_host_m(&nodes, i, em, &out[text_at..]))
+                    .flatten()
+                    .map(|(h, n, l)| (h, n, Some(text_at), l))
+            })
+            .or_else(|| {
+                band_host(&nodes, i, cb_width, &[]).map(|(h, n)| (h, n, None, Vec::new()))
+            })
             // Статический гейт не сошёлся из-за НЕИЗВЕСТНЫХ стилю размеров
             // (ширина содержащего блока, shrink-to-fit флоата, коробка
             // своего контекста без размеров) — их меряет раскладка
             // (`band_flow.rs`, шаги F2/F3/F5).
-            .map(|(h, n, t)| (h, n, t, Vec::new()))
             .or_else(|| {
                 measured_ok
-                    .then(|| band_host_m(&nodes, i, em))
+                    .then(|| band_host_m(&nodes, i, em, &[]))
                     .flatten()
-                    .map(|(h, n, l)| (h, n, false, l))
+                    .map(|(h, n, l)| (h, n, None, l))
             });
         if let Some((mut host, next, took_lead, lifted)) = hosted {
-            if took_lead {
-                out.truncate(lead_at);
+            if let Some(at) = took_lead {
+                out.truncate(at);
             }
             // Хост измеряемый и до него в блоке ничего нет — первая строка
             // блока внутри хоста: слой `::first-line` едет с ним
@@ -11865,7 +11891,12 @@ fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
 /// * одинокий флоат с пустым хвостом полосам не нужен (как у `band_host`).
 ///
 /// Ширина содержащего блока не требуется вовсе: её отдаёт замер.
-fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize, Vec<Node>)> {
+fn band_host_m(
+    nodes: &[Node],
+    i: usize,
+    em: f32,
+    lead: &[Node],
+) -> Option<(Element, usize, Vec<Node>)> {
     let mut floaters: Vec<Element> = vec![];
     let mut j = i;
     while j < nodes.len() {
@@ -11940,7 +11971,41 @@ fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize, Vec
     // Хвост: куски своего контекста, блоки потока и строчные прогоны
     // (шаг F4: строки блоков потока режутся полосами, `band_flow::Kind::Flow`).
     let mut lifted: Vec<Node> = vec![];
+    // Строчное содержимое перед флоатом в той же строке (`wrap_floats`):
+    // оно — начало первого прогона хоста, флоаты встают на его строку.
+    let lead_probe = (!lead.is_empty()).then(|| {
+        Node::Element(Element {
+            list_item: None,
+            node_id: 0,
+            anim: None,
+            tag: "div".into(),
+            style: Computed::default(),
+            hover: None,
+            first_letter: None,
+            first_line: None,
+            children: lead.to_vec(),
+            attrs: vec![
+                ("anon".into(), "1".into()),
+                ("lead-probe".into(), "1".into()),
+            ],
+            inline: false,
+        })
+    });
+    let rest = if lead.is_empty() {
+        rest
+    } else {
+        let mut r = lead.to_vec();
+        r.extend(rest);
+        r
+    };
     let rest = band_flow_rest_lift(rest, em, Some(&mut lifted))?;
+    // С содержимым перед флоатом первый кусок хвоста — его прогон: иначе
+    // флоат не на той строке.
+    if lead_probe.is_some()
+        && !matches!(rest.first(), Some(Node::Element(c)) if c.attr("anon") == Some("1"))
+    {
+        return None;
+    }
     // Блок потока или строчный прогон в хвосте (не кусок своего контекста).
     let flows = rest
         .iter()
@@ -11997,6 +12062,7 @@ fn band_host_m(nodes: &[Node], i: usize, em: f32) -> Option<(Element, usize, Vec
     };
     host.children = floaters.into_iter().map(Node::Element).collect();
     host.children.extend(rest);
+    host.children.extend(lead_probe);
     Some((host, j, lifted))
 }
 
@@ -12522,10 +12588,45 @@ fn band_kids(
     let vert = (inherited.vertical == Some(true)).then_some(inherited.vertical_rl == Some(true));
     // Был ли уже ребёнок потока со строками (не флоат и не распорка).
     let mut seen_inflow = false;
+    // Строчное содержимое перед флоатами пробега (`lead-probe`,
+    // `band_host_m`): щуп ширины, сам он не рисуется — его узлы идут в
+    // начале первого прогона.
+    // При `white-space: nowrap` мягких разрывов нет, и строка флоата — весь
+    // первый прогон: щуп — он целиком, флоат влезает рядом, только если
+    // влезает вся строка, иначе уходит под неё (Blink откладывает флоат до
+    // возможности разрыва; `float-nowrap-8` против эталона
+    // `float-nowrap-1`: флоат после всей строки).
+    let has_lead = nodes
+        .iter()
+        .any(|n| matches!(n, Node::Element(p) if p.attr("lead-probe") == Some("1")));
+    let nowrap = inherited.nowrap == Some(true);
+    let lead_build: Option<crate::band_flow::Build> = nodes.iter().find_map(|n| match n {
+        Node::Element(p)
+            if (!nowrap && p.attr("lead-probe") == Some("1"))
+                || (nowrap
+                    && has_lead
+                    && p.attr("anon") == Some("1")
+                    && p.attr("lead-probe").is_none()) =>
+        {
+            let p = p.clone();
+            let inherited = inherited.clone();
+            let opts = opts.clone();
+            let b: crate::band_flow::Build =
+                std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
+                    let _depth = DepthScope::enter(depth);
+                    element(&p, &inherited, &opts)
+                });
+            Some(b)
+        }
+        _ => None,
+    });
     for (idx, n) in nodes.iter().enumerate() {
         let Node::Element(c) = n else {
             continue;
         };
+        if c.attr("lead-probe") == Some("1") {
+            continue;
+        }
         let Some(margin) = band_margins(&c.style, em) else {
             continue;
         };
@@ -12783,6 +12884,7 @@ fn band_kids(
             nest,
             anon: c.attr("anon") == Some("1"),
             head,
+            lead: if float { lead_build.clone() } else { None },
         });
     }
     kids
