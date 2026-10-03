@@ -387,11 +387,16 @@ fn determine_content_based_container_width(
     for item in items.iter().filter(|item| item.position != Position::Absolute) {
         let known_dimensions = item.size.maybe_clamp(item.min_size, item.max_size);
 
-        let width = known_dimensions.width.unwrap_or_else(|| {
-            let item_x_margin_sum = item
-                .margin
-                .resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis))
-                .horizontal_axis_sum();
+        // KaminIDE patch: the child's horizontal margins belong to its
+        // contribution in BOTH branches (css-sizing-3 §5.1: «outer size»).
+        // Upstream added them only for an `auto` width, so a shrink-to-fit
+        // container (inline-block, float) lost the margins of a child with a
+        // definite width (`flexbox-justify-content-horiz-002-ref`).
+        let item_x_margin_sum = item
+            .margin
+            .resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis))
+            .horizontal_axis_sum();
+        let width = known_dimensions.width.map(|w| w + item_x_margin_sum).unwrap_or_else(|| {
             let size_and_baselines = tree.perform_child_layout(
                 item.node_id,
                 known_dimensions,

@@ -2148,9 +2148,12 @@ fn apply_font_features(
     features: &FontFeatures,
 ) -> Result<()> {
     let tag_values = features.tag_value_list();
-    if tag_values.is_empty() {
-        return Ok(());
-    }
+    // KaminIDE patch: no early return for an empty list. The typography object
+    // is ALWAYS attached to the layout (`SetTypography`), and an empty one
+    // switches DirectWrite's default `liga`/`clig`/`calt` OFF — only required
+    // features (`ccmp`, marks) stayed on. Text without its own features then
+    // lost the ligatures and contextual forms browsers apply by default
+    // (css-fonts-4 §7.1; `font-default-01`: C/D/G of FontWithFancyFeatures).
 
     // All of these features are enabled by default by DirectWrite.
     // If you want to (and can) peek into the source of DirectWrite

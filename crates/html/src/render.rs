@@ -15389,8 +15389,20 @@ fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
 fn with_inner_cb<T>(c: &Computed, f: impl FnOnce() -> T) -> T {
     let level = COLLAPSE_CB_WIDTH_PX.with(std::cell::Cell::get);
     let prev = COLLAPSE_CB_WIDTH_PX.with(|w| w.replace(inner_width_px(c, level)));
+    // Кегль уровня — тоже от спуска: поля детей в `em` без своего кегля (и
+    // с кеглем в `em`) меряются от кегля ЭТОЙ коробки, а не уровня выше.
+    // Прежде `html{font-size:2em} p{font-size:.5em}` схлопывал поле абзаца
+    // сквозь `body` по 8 точкам вместо 16 (`numbers-units-021`).
+    let font = COLLAPSE_FONT_PX.with(std::cell::Cell::get);
+    let own = match c.font_size {
+        Some(Len::Px(v)) => v,
+        Some(Len::Em(k)) | Some(Len::Pct(k)) => k * font,
+        _ => font,
+    };
+    let prev_font = COLLAPSE_FONT_PX.with(|w| w.replace(own));
     let out = f();
     COLLAPSE_CB_WIDTH_PX.with(|w| w.set(prev));
+    COLLAPSE_FONT_PX.with(|w| w.set(prev_font));
     out
 }
 
@@ -16723,10 +16735,18 @@ fn atom_line_align(
     if replaced && (st.aspect_ratio.is_some() || st.aspect_ratio_auto.is_some()) {
         return None;
     }
+    // Абсолютная замещаемая коробка с заданными краями места в строке не
+    // занимает (`atom_element` отдаёт пустышку нулевого размера): атомом
+    // строки она абзац с текстового пути не уводит. Прежде ряд слов набирал
+    // соседний текст шире и ниже, чем эталон с тем же текстом без картинки
+    // (`background-bg-pos-204-ref`).
     if matches!(
         st.position,
         Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
     ) {
+        if replaced && !at_static_position(st) {
+            return Some(AtomAlign::Shift(0.0));
+        }
         return None;
     }
     let fixed = |l: Option<Len>| !matches!(l, Some(Len::Pct(_)) | Some(Len::Calc(_)));
@@ -17140,7 +17160,22 @@ fn paragraph_pieces(
             } else {
                 Vec::new()
             };
-            atom_aligns.push(atom_line_align(e, inherited, opts).map(|a| (a, extents)));
+            // Абсолютная замещаемая — атом строки только РЯДОМ с текстом в
+            // потоке: строка из одних внепоточных коробок нулевая (CSS 2.1
+            // §9.4.2), а атом завёл бы ей струт (`clear-applies-to-001-ref`:
+            // `<div>` с одной абсолютной картинкой вырастал на строку).
+            let lone_abs = !flow_text
+                && matches!(
+                    e.style.position,
+                    Some(crate::computed::Position::Absolute)
+                        | Some(crate::computed::Position::Fixed)
+                );
+            atom_aligns.push(
+                (!lone_abs)
+                    .then(|| atom_line_align(e, inherited, opts))
+                    .flatten()
+                    .map(|a| (a, extents)),
+            );
         }
         piece
     };
@@ -25323,15 +25358,25 @@ fn list(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                     // стилем слоя: разрядка, межсловный пробел, шрифт и цвет
                     // маркера объявлены на нём (css-lists-3
                     // §marker-properties).
-                    crate::apply::apply_text(div(), &mark_style)
-                        .absolute()
-                        .top_0()
-                        .right(gpui::relative(1.))
-                        // Строки многострочного маркера равняются по КОНЦУ —
-                        // к началу содержимого пункта (`marker-text-align-001`:
-                        // `"[m] longtext"` при `white-space: pre`).
-                        .text_right()
-                        .whitespace_nowrap()
+                    // Сторона начала строки пункта: при `direction: rtl`
+                    // маркер висит СПРАВА от коробки и равняется к ней своим
+                    // левым краем (`list-style-type-string-003`: строка
+                    // маркера уходила за левый край окна).
+                    {
+                        let m = crate::apply::apply_text(div(), &mark_style)
+                            .absolute()
+                            .top_0();
+                        if merged.rtl == Some(true) {
+                            m.left(gpui::relative(1.)).text_left()
+                        } else {
+                            // Строки многострочного маркера равняются по
+                            // КОНЦУ, к началу содержимого пункта
+                            // (`marker-text-align-001`: `"[m] longtext"` при
+                            // `white-space: pre`).
+                            m.right(gpui::relative(1.)).text_right()
+                        }
+                    }
+                    .whitespace_nowrap()
                         // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
                         // (обычный пробел после номера пункта). Авторская
                         // строка `list-style-type: "..."` идёт дословно:

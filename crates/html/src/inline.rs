@@ -3285,9 +3285,24 @@ fn transform_case_only(text: &str, style: &Computed) -> String {
             .collect(),
         Some(TextTransform::Lower) => text.to_lowercase(),
         Some(TextTransform::Capitalize) => {
+            // Начало слова — первая БУКВА (css-text-3 §2.1: «first typographic
+            // letter unit of each word»): открывающая скобка и прочая
+            // пунктуация перед ней пропускаются (`(é` → `(É`). Границы слов —
+            // по UAX #29: `.`, `'`, `:` между буквами слово НЕ рвут (WB6/WB7,
+            // `x.x.` → `X.x.`), прочая пунктуация рвёт (`foo-bar` → `Foo-Bar`).
+            // Прежде началом считался только знак после пробела.
             let mut out = String::with_capacity(text.len());
-            let mut at_start = true;
+            let mut prev: Option<char> = None;
+            let mut prev2: Option<char> = None;
+            let mid = |c: char| matches!(c, '.' | '\'' | '\u{2019}' | ':' | '\u{b7}');
             for ch in text.chars() {
+                let at_start = ch.is_alphabetic()
+                    && match prev {
+                        None => true,
+                        Some(p) if p.is_alphanumeric() => false,
+                        Some(p) if mid(p) => !prev2.is_some_and(char::is_alphanumeric),
+                        Some(_) => true,
+                    };
                 if at_start {
                     // ТИТУЛЬНЫЙ регистр, а не прописной (css-text-3 §2.1).
                     // У диграфов и у греческого с приданной йотой это разные
@@ -3300,7 +3315,8 @@ fn transform_case_only(text: &str, style: &Computed) -> String {
                 } else {
                     out.push(ch);
                 }
-                at_start = ch.is_whitespace();
+                prev2 = prev;
+                prev = Some(ch);
             }
             out
         }
