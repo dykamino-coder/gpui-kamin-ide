@@ -106,6 +106,8 @@ pub fn collect(
     atom: &mut dyn FnMut(&Element) -> Option<Piece>,
 ) -> Vec<Piece> {
     let mut out = vec![];
+    // Место последней распорки зазора за коробкой (см. ниже).
+    let mut gap_at: Option<usize> = None;
     for child in children {
         // Куски ЭТОГО ребёнка: по ним ставится зазор на границе с тем, что
         // идёт следом (см. `set_boundary_spacing` ниже).
@@ -135,7 +137,18 @@ pub fn collect(
                 // абзаца (`space_transform_pieces`): соседи точки переноса
                 // сплошь и рядом лежат в других кусках, и проход по одному
                 // узлу их не видит.
-                let text = breakable(&transform_case(&raw, inherited), inherited);
+                let mut text = breakable(&transform_case(&raw, inherited), inherited);
+                // То же правило нулевого пробела СКВОЗЬ границу строчной
+                // коробки (css-text-4 §4.1.3; границ коробок для него нет —
+                // `seg-break-transformation-018`): перевод строки в начале
+                // узла, а нулевой пробел — последний знак предыдущего куска.
+                if inherited.preserve_newlines != Some(true)
+                    && leading_segment_break(t)
+                    && ends_with_zwsp(&out)
+                    && text.starts_with(' ')
+                {
+                    text.remove(0);
+                }
                 if !text.is_empty() {
                     out.push(Piece::Text {
                         text,
@@ -176,6 +189,20 @@ pub fn collect(
                 }
                 if let Some(piece) = atom(e) {
                     out.push(piece);
+                    // Строчный `<span>`, ушедший в свою коробку (узорный фон,
+                    // `has_own_box`), атомом в CSS не является: зазор между его
+                    // последним знаком и следующим — ПРЕДКА (css-text-3 §8.2),
+                    // а внутренний абзац коробки последний знак не трекует.
+                    // Без распорки следующее слово вставало вплотную
+                    // (`letter-spacing-nesting-003`). Хвостовая распорка у
+                    // конца узла снимается ниже — за ней границы нет.
+                    if let Some(gap) = boundary_gap_after_box(e, inherited) {
+                        gap_at = Some(out.len());
+                        out.push(Piece::Text {
+                            text: SPACER.into(),
+                            style: spacer_style(inherited, gap),
+                        });
+                    }
                     continue;
                 }
                 let mut merged = inherit(inherited, &e.style);
@@ -435,7 +462,62 @@ pub fn collect(
     // предок, у которого дальше идёт своё содержимое. Он и поставит его на
     // этот же кусок, когда сборка вернётся к нему.
     set_boundary_spacing(&mut out, None);
+    if gap_at.is_some_and(|at| at + 1 == out.len()) {
+        out.pop();
+    }
     out
+}
+
+/// Начинается ли текст узла пробельным рядом с переводом строки.
+fn leading_segment_break(raw: &str) -> bool {
+    raw.chars()
+        .take_while(|c| is_collapsible(*c))
+        .any(|c| matches!(c, '\n' | '\r'))
+}
+
+/// Последний ЗНАЧАЩИЙ знак собранных кусков — нулевой пробел. Распорки полей
+/// и рамок, метки направления и куски вне потока — это границы коробок, а
+/// для преобразования перевода строки их нет.
+fn ends_with_zwsp(out: &[Piece]) -> bool {
+    for p in out.iter().rev() {
+        match p {
+            Piece::Overlay(_) => continue,
+            Piece::Atom(_) => return false,
+            Piece::Text { text, .. } => {
+                if text.is_empty() || text == SPACER || text.chars().all(bidi_format) {
+                    continue;
+                }
+                return text.ends_with('\u{200b}');
+            }
+        }
+    }
+    false
+}
+
+/// Зазор предка за строчной коробкой, ушедшей в раскладку (см. `collect`).
+/// Только НЕатомарный строчный элемент без замещения: у атома и картинки
+/// межбуквенного интервала по краям Blink не ставит (интервал живёт в наборе
+/// текста, `shape_result.cc` `ApplySpacing`).
+fn boundary_gap_after_box(e: &Element, inherited: &Computed) -> Option<f32> {
+    let inline_level = e.style.display.is_none() || e.style.inline_display == Some(true);
+    let replaced = matches!(
+        e.tag.as_str(),
+        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input" | "button"
+            | "select" | "textarea"
+    );
+    if !inline_level || replaced || e.style.ruby_role.is_some() {
+        return None;
+    }
+    let size = match inherited.font_size {
+        Some(Len::Px(v)) => v,
+        _ => 16.0,
+    };
+    let gap = crate::metrics::spacing_px(
+        inherited.letter_spacing,
+        &inherited.font_family.clone().unwrap_or_default(),
+        size,
+    );
+    (gap != 0.0).then_some(gap)
 }
 
 /// Зазор на границе элементов — на последний ЗНАЧАЩИЙ кусок набора.
@@ -2445,6 +2527,34 @@ fn zero_width_format(ch: char) -> bool {
     )
 }
 
+/// Куски со знаком акцента: отрезок байт → (снизу?, высота знака). Знак
+/// набирается в половину кегля своей базы (css-text-decor-3 §5.3, как
+/// аннотация руби с `font-size: 50%`).
+pub fn emphasis_spans(
+    pieces: &[Piece],
+    base_size: f32,
+) -> Vec<(std::ops::Range<usize>, bool, f32)> {
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    for p in pieces {
+        let Piece::Text { text, style } = p else {
+            continue;
+        };
+        let end = at + text.len();
+        if style.text_emphasis.as_deref().is_some_and(|m| !m.is_empty())
+            && text.chars().any(|c| !c.is_whitespace() && c != '\u{feff}')
+        {
+            let size = match style.font_size {
+                Some(Len::Px(v)) => v,
+                _ => base_size,
+            };
+            out.push((at..end, style.emphasis_under, size * 0.5));
+        }
+        at = end;
+    }
+    out
+}
+
 /// Межсловный интервал ПО КУСКАМ: отрезок байт → добавка к каждому пробелу.
 ///
 /// `word-spacing` на вложенном `<span>` действует только на его пробелы. Пока
@@ -3123,7 +3233,14 @@ fn normalize_spaces(raw: &str) -> String {
         // ШИРОКИМИ знаками перевод УДАЛЯЕТСЯ, а не становится пробелом —
         // иначе японский текст, набранный в несколько строк, получает лишние
         // пробелы на каждом переводе.
-        let drop = had_break && before.is_some_and(wide_cjk) && after.is_some_and(wide_cjk);
+        // Перевод строки рядом с нулевым пробелом удаляется, нулевой пробел
+        // остаётся (css-text-4 §4.1.3 «If the character immediately before or
+        // immediately after the segment break is the zero-width space
+        // character (U+200B), then the break is removed»).
+        let drop = had_break
+            && ((before.is_some_and(wide_cjk) && after.is_some_and(wide_cjk))
+                || before == Some('\u{200b}')
+                || after == Some('\u{200b}'));
         if !drop {
             out.push(' ');
         }

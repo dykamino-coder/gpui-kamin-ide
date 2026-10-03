@@ -207,6 +207,17 @@ pub struct Paragraph {
     /// (`true` — верх) и высота их строчной коробки (`line-height` куска).
     /// Равняются по краю ГОТОВОЙ строки и растят её, только если выше неё.
     edge_spans: Vec<(std::ops::Range<usize>, bool, f32)>,
+    /// `text-box-trim` блока (начало, конец): аннотация руби и знак акцента
+    /// первой строки сверху и последней снизу её не растят — срез идёт по краю текста
+    /// корневой строчной коробки, и выход аннотации срезался бы всё равно
+    /// (css-inline-3 §text-box-trim, `text-box-trim-ruby-start-001`).
+    ruby_trim: (bool, bool),
+    /// Куски со знаком акцента (`text-emphasis`): (отрезок, снизу?, высота
+    /// знака). Знак растит строку так же, как аннотация руби
+    /// (css-text-decor-3 §5.3 «If emphasis marks … do not fit, the UA must
+    /// increase the line height»): эталоны семьи `text-emphasis-line-height-*`
+    /// строятся именно из руби.
+    emph_spans: Vec<(std::ops::Range<usize>, bool, f32)>,
     /// Строчные коробки кусков ПОСТРОЧНО (CSS 2.1 §10.8.1): отрезок байт →
     /// `line-height` куска в точках. Непусто — у абзаца куски разного кегля,
     /// гарнитуры или высоты строки, и `line_height` абзаца — это СТРУТ блока,
@@ -249,6 +260,53 @@ struct AtomSlot {
     probe: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
     /// Узел самой обёртки (см. `LayoutTap`).
     root: std::rc::Rc<std::cell::Cell<Option<LayoutId>>>,
+    /// Узлы уровней аннотаций руби (`ruby_extent`): `true` — под базой.
+    extents: RubyExtents,
+    /// Атом за последней строкой (оборван `line-clamp`): не ставится и не
+    /// рисуется.
+    hidden: bool,
+}
+
+/// Узлы стопок аннотаций одного руби: (под базой?, полулидинг базы, узел).
+/// Полулидинг вычитается: стопка стоит на краю коробки строки базы, а
+/// аннотация в браузере — на краю её СОДЕРЖИМОГО.
+pub type RubyExtents = Vec<(bool, f32, std::rc::Rc<std::cell::Cell<Option<LayoutId>>>)>;
+
+thread_local! {
+    /// Сбор узлов аннотаций для атома, который сейчас строится
+    /// (`collect_ruby_extents`). `None` — сбора нет: руби вне строки абзаца
+    /// своих аннотаций никому не отдаёт.
+    static RUBY_EXTENTS: std::cell::RefCell<Option<RubyExtents>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Построить атом, собрав узлы аннотаций руби, которые он заведёт.
+/// Вложенный сбор (атом внутри атома) своё забирает сам: прежний список
+/// восстанавливается после вызова.
+pub fn collect_ruby_extents<T>(build: impl FnOnce() -> T) -> (T, RubyExtents) {
+    let saved = RUBY_EXTENTS.with(|r| r.replace(Some(Vec::new())));
+    let out = build();
+    let mine = RUBY_EXTENTS.with(|r| r.replace(saved)).unwrap_or_default();
+    (out, mine)
+}
+
+/// Стопка аннотаций руби, чью высоту строка должна знать (css-ruby-1 §3.4):
+/// аннотации в высоту строки не входят, но «the UA must increase the line's
+/// spacing … so that the ruby annotation fits» — строка растёт ровно на то,
+/// чем аннотация выходит за её коробку (Blink `ruby_utils.cc`
+/// `ComputeAnnotationOverflow`). Без сбора — сам элемент как есть.
+pub fn ruby_extent(el: AnyElement, under: bool, inset: f32) -> AnyElement {
+    let slot = std::rc::Rc::new(std::cell::Cell::new(None));
+    let collecting = RUBY_EXTENTS.with(|r| {
+        r.borrow_mut()
+            .as_mut()
+            .map(|v| v.push((under, inset, slot.clone())))
+            .is_some()
+    });
+    if !collecting {
+        return el;
+    }
+    LayoutTap { child: el, slot }.into_any_element()
 }
 
 /// Замер атома в точках: высота коробки полей (по §10.8 выравнивается
@@ -260,6 +318,9 @@ struct AtomBox {
     h: f32,
     base: f32,
     align: AtomAlign,
+    /// Аннотации руби над и под коробкой (`ruby_extent`).
+    over: f32,
+    under: f32,
 }
 
 /// Щуп базовой линии атома: пустой лист с базовой линией на своём верху.
@@ -470,6 +531,8 @@ impl Paragraph {
             strut: (0.0, 0.0, 0.0),
             run_metrics: Vec::new(),
             edge_spans: Vec::new(),
+            ruby_trim: (false, false),
+            emph_spans: Vec::new(),
             box_spans: Vec::new(),
             strut_run: None,
             strut_box: (0.0, 0.0),
@@ -522,6 +585,18 @@ impl Paragraph {
     ) -> Self {
         self.box_spans = spans;
         self.strut_run = strut;
+        self
+    }
+
+    /// Куски со знаком акцента (см. поле `emph_spans`).
+    pub fn emph_spans(mut self, spans: Vec<(std::ops::Range<usize>, bool, f32)>) -> Self {
+        self.emph_spans = spans;
+        self
+    }
+
+    /// `text-box-trim` блока (см. поле `ruby_trim`).
+    pub fn ruby_trim(mut self, start: bool, end: bool) -> Self {
+        self.ruby_trim = (start, end);
         self
     }
 
@@ -678,13 +753,16 @@ impl Paragraph {
             && self.atom_boxes.is_empty()
             && self.edge_spans.is_empty()
             && self.box_spans.is_empty()
+            && self.emph_spans.is_empty()
         {
             return vec![(0.0, 0.0); self.lines.len()];
         }
         let lh = f32::from(self.line_height);
+        let last_line = self.lines.len().saturating_sub(1);
         self.lines
             .iter()
-            .map(|line| {
+            .enumerate()
+            .map(|(line_no, line)| {
                 let (mut above, mut below) = (0.0f32, 0.0f32);
                 let boxes = !self.box_spans.is_empty() && self.run_metrics.len() == self.runs.len();
                 if boxes {
@@ -728,8 +806,42 @@ impl Paragraph {
                         continue;
                     }
                     let t = self.atom_top(b);
-                    above = above.max(-t - a);
-                    below = below.max(t + b.h - (lh - a));
+                    // Аннотация руби растит строку, только выходя за неё:
+                    // полулидинг строки она занимает даром (css-ruby-1 §3.4).
+                    let over = if line_no == 0 && self.ruby_trim.0 { 0.0 } else { b.over };
+                    let under = if line_no == last_line && self.ruby_trim.1 {
+                        0.0
+                    } else {
+                        b.under
+                    };
+                    above = above.max(-(t - over) - a);
+                    below = below.max(t + b.h + under - (lh - a));
+                }
+                // Знак акцента стоит над (под) коробкой содержимого своего
+                // прогона и растит строку, только выходя за неё.
+                for (range, under, h) in &self.emph_spans {
+                    if range.end <= line.range.start || range.start >= line.range.end {
+                        continue;
+                    }
+                    let mut at = 0usize;
+                    let metrics = self.runs.iter().zip(&self.run_metrics).find_map(|(run, m)| {
+                        let s = at;
+                        at += run.len;
+                        (range.start >= s && range.start < at).then_some(*m)
+                    });
+                    let Some((ra, rd)) = metrics else { continue };
+                    // Срез текстовой коробки знак не растит так же, как
+                    // аннотацию (`text-box-trim-ruby-start-002`).
+                    if (*under && line_no == last_line && self.ruby_trim.1)
+                        || (!*under && line_no == 0 && self.ruby_trim.0)
+                    {
+                        continue;
+                    }
+                    if *under {
+                        below = below.max(rd + h - (lh - a));
+                    } else {
+                        above = above.max(ra + h - a);
+                    }
                 }
                 // Прижатые к краю — атомы и куски текста — после всех
                 // остальных: строка растёт, только если такой кусок выше.
@@ -1395,15 +1507,15 @@ impl Paragraph {
     /// `vertical-align`. Каждый заворачивается в ряд `align-items: baseline`
     /// со щупом базовой линии (см. `BaselineProbe`): обёртка обтягивает
     /// коробку полей атома, щуп отдаёт её базовую линию.
-    pub fn atoms(mut self, atoms: Vec<(usize, AnyElement, AtomAlign)>) -> Self {
+    pub fn atoms(mut self, atoms: Vec<(usize, AnyElement, AtomAlign, RubyExtents)>) -> Self {
         use gpui::{ParentElement, Styled};
         // Распорка атома — не распорка полей: из текста для переноса её не
         // вынимают, а читают знаком-заместителем (см. `linebreaks`).
         self.spacers
-            .retain(|s| !atoms.iter().any(|(at, _, _)| at == s));
+            .retain(|s| !atoms.iter().any(|(at, _, _, _)| at == s));
         self.atoms = atoms
             .into_iter()
-            .map(|(at, el, align)| {
+            .map(|(at, el, align, extents)| {
                 let probe = std::rc::Rc::new(std::cell::Cell::new(None));
                 let root = std::rc::Rc::new(std::cell::Cell::new(None));
                 let el = LayoutTap {
@@ -1424,6 +1536,8 @@ impl Paragraph {
                     align,
                     probe,
                     root,
+                    extents,
+                    hidden: false,
                 }
             })
             .collect();
@@ -1594,11 +1708,25 @@ impl Paragraph {
                 base
             };
             let w = f32::from(s.width);
+            // Уровни одной стороны стоят стопкой в каждой колонке; выход за
+            // коробку — по самой высокой стопке.
+            let (mut over, mut under) = (0.0f32, 0.0f32);
+            for (below, inset, id) in &slot.extents {
+                let Some(id) = id.get() else { continue };
+                let h = f32::from(window.layout_exact(id).1.height) - inset;
+                if *below {
+                    under = under.max(h);
+                } else {
+                    over = over.max(h);
+                }
+            }
             self.atom_boxes.push(AtomBox {
                 at: slot.at,
                 h: f32::from(s.height),
                 base,
                 align: slot.align,
+                over,
+                under,
             });
             // Продвижение распорки — ширина атома. Идёт ПЕРВЫМ: поиск
             // диапазона берёт первое попадание.
@@ -1627,7 +1755,7 @@ impl Paragraph {
             *ON
         } {
             eprintln!(
-                "ATOMS lh={lh} fs={:?} strut={:?} runs={:?} boxes={:?} pads={pads:?} bounds={bounds:?} fonts={:?} text={:?} lines={:?}",
+                "ATOMS lh={lh} fs={:?} strut={:?} runs={:?} boxes={:?} pads={pads:?} bounds={bounds:?} fonts={:?} text={:?} lines={:?} emph={:?} trim={:?}",
                 self.font_size,
                 self.strut,
                 self.run_metrics,
@@ -1640,7 +1768,9 @@ impl Paragraph {
                 self.lines
                     .iter()
                     .map(|l| l.range.clone())
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>(),
+                self.emph_spans,
+                self.ruby_trim
             );
         }
         let mut tops = Vec::with_capacity(self.lines.len());
@@ -1654,11 +1784,14 @@ impl Paragraph {
             let Some(b) = self.atom_boxes.get(k).copied() else {
                 continue;
             };
-            let row = self
-                .lines
-                .iter()
-                .position(|l| b.at < l.range.end)
-                .unwrap_or(self.lines.len() - 1);
+            // Атом за концом последней строки остался в оборванном
+            // `line-clamp` хвосте: прежде он вставал на последнюю видимую
+            // строку поверх её текста (`line-clamp-auto-with-ruby-002`).
+            let Some(row) = self.lines.iter().position(|l| b.at < l.range.end) else {
+                self.atoms[k].hidden = true;
+                continue;
+            };
+            self.atoms[k].hidden = false;
             let line = self.lines[row].clone();
             let (p, q) = pads.get(row).copied().unwrap_or((0.0, 0.0));
             let align = self.line_align(row, &line);
@@ -2156,7 +2289,14 @@ impl Paragraph {
                     // `white-space: nowrap` запрещает и аварийный разрыв:
                     // `overflow-wrap` действует, только когда перенос вообще
                     // разрешён (`overflow-wrap-002`).
-                    if self.emergency_ok(start) || self.emergency_ok(at.saturating_sub(1)) {
+                    // …и ВНУТРИ строки тоже: `<span>` с `overflow-wrap:
+                    // anywhere` посреди неразрывного ряда не касается ни его
+                    // начала, ни конца (`overflow-wrap-anywhere-inline-002/004`:
+                    // ряд «X<span>XX</span>XX» уходил одной строкой за край).
+                    if self.emergency_ok(start)
+                        || self.emergency_ok(at.saturating_sub(1))
+                        || self.emergency_inside(start, at)
+                    {
                         self.cut_by_char(start, at, limit, &x)
                     } else {
                         at
@@ -2336,7 +2476,26 @@ impl Paragraph {
             }
             last = at;
         }
+        // Хвост за последней разрешённой точкой не влез — разрыв по ней.
+        // Прежде возвращался весь отрезок: ряд «XX<span>XX</span>XXX» с
+        // `overflow-wrap: anywhere` на `<span>` рвался внутри него, но
+        // последняя точка (между `<span>` и хвостом) терялась, и хвост
+        // уезжал за край вместе с частью `<span>`.
+        if last > start && x(end) - from > limit {
+            return last;
+        }
         end
+    }
+
+    /// Есть ли между `start` и `end` кусок с разрешённым аварийным разрывом
+    /// (см. `emergency_ok`).
+    fn emergency_inside(&self, start: usize, end: usize) -> bool {
+        self.spans.iter().any(|(r, w)| {
+            r.start < end
+                && r.end > start
+                && !w.nowrap
+                && (w.break_all || w.anywhere || w.break_word || w.wrap_anywhere)
+        })
     }
 
     /// Конец измеряемой части строки: висящий хвост срезается ПО МЕСТУ.
@@ -3144,6 +3303,8 @@ impl Element for Paragraph {
         }
         let atom_boxes = self.atom_boxes.clone();
         let edge_spans = self.edge_spans.clone();
+        let ruby_trim = self.ruby_trim;
+        let emph_spans = self.emph_spans.clone();
         let box_spans = self.box_spans.clone();
         let strut_box = self.strut_box;
         let run_metrics = self.run_metrics.clone();
@@ -3207,6 +3368,8 @@ impl Element for Paragraph {
                 probe.flow = flow.clone();
                 probe.atom_boxes = atom_boxes.clone();
                 probe.edge_spans = edge_spans.clone();
+                probe.ruby_trim = ruby_trim;
+                probe.emph_spans = emph_spans.clone();
                 probe.box_spans = box_spans.clone();
                 probe.strut_box = strut_box;
                 probe.run_metrics = run_metrics.clone();
@@ -3673,7 +3836,7 @@ impl Element for Paragraph {
                 step(i)
             };
         }
-        for slot in self.atoms.iter_mut() {
+        for slot in self.atoms.iter_mut().filter(|s| !s.hidden) {
             slot.el.paint(window, cx);
         }
         for (_, el) in self.overlays.iter_mut() {
@@ -3779,6 +3942,8 @@ impl Paragraph {
             strut: self.strut,
             run_metrics: self.run_metrics.clone(),
             edge_spans: self.edge_spans.clone(),
+            ruby_trim: self.ruby_trim,
+            emph_spans: self.emph_spans.clone(),
             box_spans: self.box_spans.clone(),
             strut_run: None,
             strut_box: self.strut_box,
@@ -4303,7 +4468,14 @@ impl Paragraph {
         let line_base = self.base_of(range);
         for (wi, word) in words.iter().enumerate() {
             let slice: SharedString = self.text[word.range.clone()].to_string().into();
-            let runs = slice_runs(&self.runs, &word.range);
+            // Полоса строчной коробки продолжается сквозь слова (см.
+            // `slice_runs_banded`); при rtl слова зеркалятся, и стороны
+            // меняются местами — там прежний счёт.
+            let runs = if self.wrap.rtl {
+                slice_runs(&self.runs, &word.range)
+            } else {
+                slice_runs_banded(&self.runs, &word.range)
+            };
             let shaped = window.text_system().shape_line_spaced(
                 slice,
                 self.font_size,
@@ -4371,6 +4543,45 @@ impl Paragraph {
             // Подложка прогона — отдельным вызовом, см. выше.
             let _ = shaped.paint_background(at, self.line_height, window, cx);
             let _ = shaped.paint(at, self.line_height, window, cx);
+            // Пробелы между словами тоже принадлежат полосе коробки: без
+            // этого фон и рамка `<span>` рвались на каждом пробеле. Промежуток
+            // набирается своими прогонами (обе стороны — продолжение полосы) и
+            // красит только подложку. Растянутые выключкой промежутки красит
+            // ветка ниже.
+            if step == px(0.)
+                && !self.wrap.rtl
+                && let Some(next) = words.get(wi + 1)
+                && next.range.start > word.range.end
+            {
+                let gap = word.range.end..next.range.start;
+                let gap_runs = slice_runs_banded(&self.runs, &gap);
+                if gap_runs.iter().any(|r| r.background_color.is_some()) {
+                    let gap_text: SharedString = self.text[gap.clone()].to_string().into();
+                    let gap_shaped = window.text_system().shape_line_spaced(
+                        gap_text,
+                        self.font_size,
+                        &gap_runs,
+                        None,
+                        self.letter_spans
+                            .iter()
+                            .find(|(r, _)| r.contains(&gap.start))
+                            .map(|(_, v)| *v)
+                            .unwrap_or(self.letter_spacing),
+                    );
+                    let gap_x =
+                        bounds.origin.x + dx + (self.x_at(segs, gap.start, Edge::Start) - from);
+                    let gap_y = match (line_base, self.base_of(&gap)) {
+                        (Some(l), Some(w)) => y + px(l - w),
+                        _ => y,
+                    };
+                    let _ = gap_shaped.paint_background(
+                        point(gap_x, gap_y),
+                        self.line_height,
+                        window,
+                        cx,
+                    );
+                }
+            }
             // Растянутый выключкой пробел тоже принадлежит прогону, и его
             // подложка обязана быть сплошной. Красим ТОЛЬКО когда пробел
             // целиком внутри одного прогона с фоном — иначе фон соседнего
@@ -4493,6 +4704,59 @@ impl Paragraph {
 }
 
 /// Куски оформления, попавшие в отрезок строки.
+/// Прогоны отрезка для ПОСЛОВНОЙ отрисовки полосы строчной коробки.
+///
+/// Слово, вырезанное из середины `<span>` с фоном или рамкой, — не начало и не
+/// конец коробки: полоса продолжается в соседние знаки той же коробки, и поле
+/// с боковой гранью на этой стороне не ставится (css-break-3
+/// `box-decoration-break: slice`; на переносе то же делает сплошной набор,
+/// `vendor/gpui` `line.rs` `run_background_quad` `pad_left/pad_right`).
+/// Прежде каждое слово рисовало полную коробку — с рамкой и полем с обеих
+/// сторон, и `<span>` с рамкой распадался на коробки по словам.
+///
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (03.10): полоса для `<span>` с рамкой БЕЗ фона —
+/// прозрачная подложка прогона плюс `inline_pad` в `inline.rs`, чтобы
+/// `run_background_quad` рисовал и такую рамку. Даже с отсечкой rtl,
+/// `unicode-bidi: bidi-override`, сильных R/AL и знаков направления срез 3000
+/// пар дал +1/−14, срез 125 строчных пар +7/−16: теряет семья `bidi-*` —
+/// пословная отрисовка ltr-абзаца со знаками RLO/LRO идёт в ЛОГИЧЕСКОМ
+/// порядке, и полоса на каждый видимый прогон рисует боковые грани дважды.
+/// Возвращаться вместе с двунаправленной раскладкой полос (box-decoration по
+/// видимым фрагментам, css-break-3 §5.4).
+fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
+    let mut out = slice_runs(runs, range);
+    let band_at = |at: usize| -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {
+        let mut start = 0usize;
+        for run in runs {
+            if at < start + run.len {
+                return Some((run.background_color, run.background_border));
+            }
+            start += run.len;
+        }
+        None
+    };
+    if range.start > 0
+        && let Some(first) = out.first_mut()
+        && first.background_color.is_some()
+        && band_at(range.start - 1) == Some((first.background_color, first.background_border))
+    {
+        first.background_pad[3] = px(0.);
+        if let Some(b) = first.background_border.as_mut() {
+            b.1[3] = px(0.);
+        }
+    }
+    if let Some(last) = out.last_mut()
+        && last.background_color.is_some()
+        && band_at(range.end) == Some((last.background_color, last.background_border))
+    {
+        last.background_pad[1] = px(0.);
+        if let Some(b) = last.background_border.as_mut() {
+            b.1[1] = px(0.);
+        }
+    }
+    out
+}
+
 fn slice_runs(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
     let mut out = Vec::new();
     let mut at = 0usize;
