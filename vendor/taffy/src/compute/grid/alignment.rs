@@ -325,11 +325,10 @@ pub(super) fn align_and_position_item(
             AbsoluteAxis::Horizontal,
             Line::FALSE,
         );
-        // ★ MEASURED (03.10): known loss `css-flexbox/intrinsic-size/row-004`
-        // (0.00 -> 2.08): a float holding a row flexbox (`flex: 0 1 100px`,
-        // child 200px) measures min-content 200 here, Blink 100 (§9.9.1
-        // clamps the contribution by the flex base size). Fix the flex
-        // min-content, not this floor.
+        // ★ MEASURED (03.10): `css-flexbox/intrinsic-size/row-004` went
+        // 0.00 -> 2.08 here until the flex row min-content clamped a
+        // non-growable item by its flex base size (§9.9.1, flexbox.rs,
+        // 7c3bf67) — the floor itself was right.
         let floor = min_content.min(max_content);
         if floor > fit + 0.01 { Some(floor) } else { None }
     } else {
