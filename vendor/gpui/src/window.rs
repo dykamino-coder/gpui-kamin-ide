@@ -2834,14 +2834,19 @@ impl Window {
         let (task, is_first) = cx.fetch_asset::<A>(source);
         task.clone().now_or_never().or_else(|| {
             if is_first {
-                let entity_id = self.current_view();
+                // KaminIDE patch: a measure callback (detached layout during
+                // `compute_layout`) has no current view; then the window is
+                // refreshed instead (`contain-size-replaced-006` aborted the
+                // stand: float host measuring a `<picture>` source).
+                let entity_id = self.current_view_opt();
                 self.spawn(cx, {
                     let task = task.clone();
                     async move |cx| {
                         task.await;
 
-                        cx.on_next_frame(move |_, cx| {
-                            cx.notify(entity_id);
+                        cx.on_next_frame(move |window, cx| match entity_id {
+                            Some(entity_id) => cx.notify(entity_id),
+                            None => window.refresh(),
                         });
                     }
                 })
@@ -4193,6 +4198,14 @@ impl Window {
     pub fn set_view_id(&mut self, view_id: EntityId) {
         self.invalidator.debug_assert_prepaint();
         self.next_frame.dispatch_tree.set_view_id(view_id);
+    }
+
+    /// KaminIDE patch: the rendering view, if any. Layout of a detached
+    /// root (a measure taken outside the view's render, e.g. by the HTML
+    /// engine's probes) has none, and `current_view()` panicked there
+    /// (`contain-size-replaced-006`: a loading `<img>` without `src`).
+    pub fn current_view_opt(&self) -> Option<EntityId> {
+        self.rendered_entity_stack.last().copied()
     }
 
     /// Get the entity ID for the currently rendering view

@@ -420,8 +420,7 @@ impl Element for Img {
                                         replacement_id = Some(element.request_layout(window, cx));
                                         layout_state.replacement = Some(element);
                                     }
-                                } else {
-                                    let current_view = window.current_view();
+                                } else if let Some(current_view) = window.current_view_opt() {
                                     let task = window.spawn(cx, async move |cx| {
                                         cx.background_executor().timer(LOADING_DELAY).await;
                                         cx.update(move |_, cx| {
@@ -430,6 +429,10 @@ impl Element for Img {
                                         .ok();
                                     });
                                     state.started_loading = Some((Instant::now(), task));
+                                } else {
+                                    // KaminIDE patch: detached measure — no view to
+                                    // notify; the next frame re-lays out anyway.
+                                    window.request_animation_frame();
                                 }
                             }
                         }
