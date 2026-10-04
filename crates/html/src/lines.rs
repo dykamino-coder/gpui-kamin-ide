@@ -20,6 +20,8 @@
 //! разрыва, а на отрисовке каждая строка набирается своим `shape_line` и
 //! рисуется на своём месте.
 
+pub mod tabs;
+
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior, Hsla,
     InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
@@ -124,7 +126,7 @@ pub struct Paragraph {
     /// число — считаются от использованного кегля и растут с ним.
     fit_line_height_fixed: bool,
     /// Шаг позиций табуляции (`tab-size` в точках).
-    tab_stop: Pixels,
+    tab_stop: tabs::TabStops,
     /// Чем показывать перенос слова (`hyphenate-character`).
     hyphen: SharedString,
     /// Ширина этого знака — считается при раскладке, где есть окно.
@@ -548,7 +550,7 @@ impl Paragraph {
             fit: None,
             fit_spacing_scalable: true,
             fit_line_height_fixed: false,
-            tab_stop: px(8. * 8.),
+            tab_stop: tabs::TabStops::uniform(64.0),
             hyphen: SharedString::from("\u{2010}"),
             hyphen_w: std::cell::Cell::new(px(0.)),
             overlays: Vec::new(),
@@ -1000,7 +1002,7 @@ impl Paragraph {
         f32::from(self.font_size).to_bits().hash(&mut h);
         f32::from(self.letter_spacing).to_bits().hash(&mut h);
         f32::from(self.word_spacing).to_bits().hash(&mut h);
-        f32::from(self.tab_stop).to_bits().hash(&mut h);
+        self.tab_stop.hash_into(&mut h);
         for run in &self.runs {
             run.len.hash(&mut h);
             run.font_size.map(|s| f32::from(s).to_bits()).hash(&mut h);
@@ -1107,8 +1109,8 @@ impl Paragraph {
                 SOFT_HYPHEN => offset += width,
                 _ => {
                     let x = f32::from(offset + width);
-                    let step = f32::from(self.tab_stop).max(1.0);
-                    offset = px((x / step).floor() * step + step);
+                    let next = self.tab_stop.next(end, x);
+                    offset = px(next);
                 }
             }
             start = end + mark.len_utf8();
@@ -1524,7 +1526,7 @@ impl Paragraph {
     }
 
     /// Шаг позиций табуляции.
-    pub fn tab_stop(mut self, step: Pixels) -> Self {
+    pub fn tab_stops(mut self, step: tabs::TabStops) -> Self {
         self.tab_stop = step;
         self
     }
@@ -3504,7 +3506,7 @@ impl Element for Paragraph {
         let clamp = self.clamp;
         let clamp_force = self.clamp_force;
         let fit = self.fit;
-        let tab_stop = self.tab_stop;
+        let tab_stop = self.tab_stop.clone();
         // Отступ первой строки решает и число строк, и ширину коробки —
         // без него щуп мерил абзац по чужой раскладке.
         let indent = self.indent;
@@ -3532,7 +3534,7 @@ impl Element for Paragraph {
                 probe.clamp = clamp;
                 probe.clamp_force = clamp_force;
                 probe.fit = fit;
-                probe.tab_stop = tab_stop;
+                probe.tab_stop = tab_stop.clone();
                 probe.indent = indent;
                 probe.hanging = hanging;
                 probe.flow = flow.clone();
@@ -4182,7 +4184,7 @@ impl Paragraph {
             marker_font: None,
             marker_size: None,
             fit: self.fit,
-            tab_stop: self.tab_stop,
+            tab_stop: self.tab_stop.clone(),
             hyphen: self.hyphen.clone(),
             hyphen_w: std::cell::Cell::new(self.hyphen_w.get()),
             overlays: Vec::new(),

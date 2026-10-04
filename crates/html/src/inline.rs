@@ -19,6 +19,9 @@
 //! Первая ветка покрывает подавляющее большинство: жирный, курсив, ссылка,
 //! цвет. Вторая включается там, где без неё пришлось бы врать про размер.
 
+mod tabs;
+pub use tabs::tab_stops;
+
 use crate::computed::{Computed, TextAlign, TextTransform};
 use crate::dom::{Element, Node};
 use crate::value::{Color, Len};
@@ -1843,7 +1846,11 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
     c.lang = own.lang.clone().or(parent.lang.clone());
     c.break_after_spaces = own.break_after_spaces.or(parent.break_after_spaces);
     c.hyphenate = own.hyphenate.or(parent.hyphenate);
-    c.tab_size = own.tab_size.or(parent.tab_size);
+    c.tab_size = if own.tab_size_len.is_some() {
+        None
+    } else {
+        own.tab_size.or(parent.tab_size)
+    };
     c.list_style_type = own
         .list_style_type
         .clone()
@@ -2096,6 +2103,7 @@ pub fn inherit(parent: &Computed, own: &Computed) -> Computed {
             &c.font_family.clone().unwrap_or_default(),
             own_px,
         ))),
+        None if own.tab_size.is_some() => None,
         None => parent.tab_size_len,
     };
     c

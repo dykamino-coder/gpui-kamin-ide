@@ -10705,7 +10705,7 @@ fn initial_letter_float(nodes: Vec<Node>, inherited: &Computed, opts: &RenderOpt
         let space = crate::metrics::ch_ex_px(&family, font_px).0;
         let stop = match inherited.tab_size_len {
             Some(Len::Px(v)) if v > 0.0 => v,
-            _ => inherited.tab_size.unwrap_or(8).max(1) as f32 * space,
+            _ => inherited.tab_size.unwrap_or(8.0).max(0.0) * space,
         };
         lead.chars().fold(0.0f32, |x, c| match c {
             '\t' if stop > 0.0 => ((x / stop).floor() + 1.0) * stop,
@@ -17965,23 +17965,7 @@ fn paragraph_pieces(
                 ),
             )
             .hyphen_char(inherited.hyphen_char.clone())
-            .tab_stop(gpui::px(match inherited.tab_size_len {
-                // Длина задаёт шаг НАПРЯМУЮ, ширина знака к ней не примешана.
-                Some(Len::Px(v)) if v > 0.0 => v,
-                _ => {
-                    // Число — кратное ПОЛНОЙ ширины пробела: с letter-spacing
-                    // и word-spacing (css-text-3 §tab-size,
-                    // tab-size-spacing-001 — вскрылось честным calc(8ch+...)).
-                    let spacing = |l: Option<Len>| match l {
-                        Some(Len::Px(v)) => v,
-                        _ => 0.0,
-                    };
-                    inherited.tab_size.unwrap_or(8).max(1) as f32
-                        * (crate::metrics::ch_ex_px(&family, biggest).0
-                            + spacing(inherited.letter_spacing)
-                            + spacing(inherited.word_spacing))
-                }
-            }))
+            .tab_stops(inline::tab_stops(&pieces, inherited, biggest))
             .overlays(inline::overlays(pieces))
             .atoms(line_atoms)
             .ruby_trim(inherited.text_box_trim_start, inherited.text_box_trim_end)

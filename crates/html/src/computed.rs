@@ -5,6 +5,8 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
+mod tab_size;
+
 use crate::css::{Decls, Rule};
 use crate::value::{Color, Len};
 
@@ -2536,7 +2538,7 @@ pub struct Computed {
     /// Пусто, пока используемый кегль равен вычисленному.
     pub font_adjust_base: Option<(f32, Option<Len>)>,
     /// `tab-size` — во сколько пробелов раскрывается табуляция.
-    pub tab_size: Option<u8>,
+    pub tab_size: Option<f32>,
     /// `tab-size` в ДЛИНЕ: шаг табуляции задан не числом знаков, а величиной.
     /// Наследуется абсолютным (`tab-size-inheritance-001`), поэтому к детям
     /// уходит уже в точках — перевод делает `inline::inherit`.
@@ -8836,20 +8838,7 @@ impl Computed {
                 // флагом `auto` и `manual` вели себя одинаково.
                 self.hyphens_auto = Some(v == "auto");
             }
-            "tab-size" => match v.parse::<u8>() {
-                // Число — множитель ширины знака, длина — готовый шаг. Одно
-                // отменяет другое: последнее объявление и есть значение.
-                Ok(n) => {
-                    self.tab_size = Some(n);
-                    self.tab_size_len = None;
-                }
-                Err(_) => {
-                    if let Some(len) = Len::parse(v) {
-                        self.tab_size_len = Some(len);
-                        self.tab_size = None;
-                    }
-                }
-            },
+            "tab-size" => tab_size::apply(self, v),
             "contain" => {
                 // Разбор по словам: подстрочный поиск ловил «size» в
                 // «inline-size» и не видел paint внутри `content`

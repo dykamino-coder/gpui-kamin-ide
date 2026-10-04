@@ -46,3 +46,27 @@ a relaxed comparison threshold. JavaScript integration is a later milestone.
 The older family maps and scout plans are starting hypotheses. Their failure
 counts must be regenerated against the recovered candidate before prioritising
 new work. No final corpus improvement is inferred by adding slice improvements.
+
+## First measured checkpoint
+
+The identical ordered tab/ruby control list contains 22 pairs: 20 without
+JavaScript and two script-dependent exclusions. Exact passes increased from
+8 to 11, with three gained passes and no lost passes. The newly passing pairs
+are `tab-size-block-ancestor`, `tab-size-inline-001` and `tab-size-inline-002`.
+This is a control-slice result, not a corpus-wide improvement claim.
+
+The changes preserve fractional numeric tab sizes, apply inline tab intervals
+from a shared block origin, cancel inherited lengths when overridden by a
+number, and use the selected monospace family. `ic` spacing now uses measured
+ideographic advances. Some remaining failures have larger pixel differences;
+their captures remain available for investigation.
+
+The HTML library run produced 170 passing tests and one failing coverage audit.
+That audit's consumer list omits newer engine modules, while some reported
+fields also require an actual implementation audit. The failure remains open;
+the suite and integration are not declared accepted. The recovered build also
+has pre-existing warnings that must be addressed before its applicable gates.
+
+Next: use the actual space advance rather than a zero-glyph approximation for
+numeric tabs, check minimum tab advances and text indentation, broaden the
+control set, and resolve the coverage audit without suppressing its assertion.

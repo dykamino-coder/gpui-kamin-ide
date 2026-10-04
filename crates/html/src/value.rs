@@ -70,7 +70,7 @@ pub enum Len {
 /// `6 ` вместе с внутренним пробелом. Из-за этого `height: 6.px` и
 /// `height: 6 px` применялись шестью точками, тогда как оба объявления
 /// НЕГОДНЫ и должны отбрасываться целиком (`units-003`).
-fn css_number(s: &str) -> Option<f32> {
+pub(crate) fn css_number(s: &str) -> Option<f32> {
     let b = s.as_bytes();
     if b.is_empty() {
         return None;
