@@ -9,6 +9,9 @@
 //! Пока щуп не поставлен, работает запасное значение спецификации (полкегля):
 //! CSS сам разрешает его, когда нужного глифа в шрифте не нашлось.
 
+mod spacing;
+pub use spacing::spacing_px;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -146,24 +149,6 @@ pub fn ch_ex_px(family: &str, size_px: f32) -> (f32, f32) {
 /// (`ic-unit-*`).
 pub fn ic_px(family: &str, size_px: f32) -> f32 {
     fractions(family).3 * size_px
-}
-
-/// Межбуквенный и межсловный интервал в точках.
-///
-/// Единицы шрифта (`ch`, `ex`) сюда входят наравне с `em`: пока они молча
-/// отбрасывались, `word-spacing: -1ch` не действовал вовсе
-/// (`word-spacing-002`). Доля берётся от кегля — как `em`: в модели ширина
-/// пробела шрифта отдельно не хранится.
-pub fn spacing_px(len: Option<crate::value::Len>, family: &str, size_px: f32) -> f32 {
-    use crate::value::Len;
-    let (ch, ex) = ch_ex_px(family, size_px);
-    match len {
-        Some(Len::Px(v)) => v,
-        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size_px,
-        Some(Len::Ch(k)) => k * ch,
-        Some(Len::Ex(k)) => k * ex,
-        _ => 0.0,
-    }
 }
 
 /// Длина в точках при НЕИЗВЕСТНОМ контексте (узел вне наследования, фон,
