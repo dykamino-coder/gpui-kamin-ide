@@ -17965,7 +17965,7 @@ fn paragraph_pieces(
                 ),
             )
             .hyphen_char(inherited.hyphen_char.clone())
-            .tab_stops(inline::tab_stops(&pieces, inherited, biggest))
+            .tab_stops(inline::tab_stops(&pieces, inherited, &opts.text))
             .overlays(inline::overlays(pieces))
             .atoms(line_atoms)
             .ruby_trim(inherited.text_box_trim_start, inherited.text_box_trim_end)

@@ -11,6 +11,8 @@
 
 mod spacing;
 pub use spacing::spacing_px;
+mod space;
+pub use space::{install_space_probe, space_advance};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -295,6 +297,7 @@ pub fn fonts_known() -> bool {
 /// Вызывается один раз при старте приложения, ПОСЛЕ регистрации своих
 /// шрифтов: до неё `Ahem` ещё не найден и замер вернул бы метрики подмены.
 pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
+    space::use_text_system(text_system.clone());
     let names = text_system.all_font_names();
     // Список семейств из каскада разбирается ДО отрисовки, а выбирать из него
     // надо УСТАНОВЛЕННОЕ: `font-family: Courier New, Ahem` при отсутствующем

@@ -3,10 +3,10 @@
 use super::Piece;
 use crate::{computed::Computed, lines::tabs::TabStops, metrics, value::Len};
 
-pub fn tab_stops(pieces: &[Piece], block: &Computed, base_size: f32) -> TabStops {
+pub fn tab_stops(pieces: &[Piece], block: &Computed, base: &gpui::TextStyle) -> TabStops {
     let size = match block.font_size {
         Some(Len::Px(v)) => v,
-        _ => base_size,
+        _ => f32::from(base.font_size.to_pixels(gpui::px(16.0))),
     };
     let family = block.font_family.as_deref().unwrap_or_else(|| {
         if block.monospace == Some(true) {
@@ -15,7 +15,9 @@ pub fn tab_stops(pieces: &[Piece], block: &Computed, base_size: f32) -> TabStops
             ""
         }
     });
-    let space = metrics::ch_ex_px(family, size).0
+    let font = super::strut_font(block, base);
+    let space = metrics::space_advance(&font, size)
+        .unwrap_or_else(|| metrics::ch_ex_px(family, size).0)
         + metrics::spacing_px(block.letter_spacing, family, size)
         + metrics::spacing_px(block.word_spacing, family, size);
     let step = |style: &Computed| match style.tab_size_len {
@@ -41,6 +43,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn numeric_tabs_use_shaped_spaces_with_the_block_font() {
+        metrics::install_space_probe(|font, size| {
+            assert_eq!(font.weight, gpui::FontWeight(700.0));
+            size * 0.25
+        });
+        let block = Computed {
+            font_size: Some(Len::Px(20.0)),
+            font_weight: Some(700),
+            letter_spacing: Some(Len::Px(2.0)),
+            word_spacing: Some(Len::Px(3.0)),
+            tab_size: Some(4.0),
+            ..Default::default()
+        };
+        let pieces = vec![Piece::Text {
+            text: "\t".into(),
+            style: Computed {
+                font_size: Some(Len::Px(80.0)),
+                tab_size: Some(4.0),
+                ..Default::default()
+            },
+        }];
+        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default());
+        assert_eq!(stops.default, 40.0);
+        assert_eq!(stops.next(0, 0.0), 40.0);
+    }
+
+    #[test]
     fn generic_monospace_uses_the_same_family_as_the_text_run() {
         let expected = metrics::mono_family_for(None).to_string();
         metrics::install_probe(move |family, size| {
@@ -57,7 +86,10 @@ mod tests {
             text: "\t".into(),
             style: block.clone(),
         }];
-        assert_eq!(tab_stops(&pieces, &block, 20.0).next(0, 0.0), 30.0);
+        assert_eq!(
+            tab_stops(&pieces, &block, &gpui::TextStyle::default()).next(0, 0.0),
+            30.0
+        );
     }
 
     #[test]
@@ -92,7 +124,7 @@ mod tests {
                 ..Default::default()
             },
         }];
-        let stops = tab_stops(&pieces, &block, 80.0);
+        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default());
         assert_eq!(stops.default, 30.0);
         assert_eq!(stops.next(3, 0.0), 75.0);
     }

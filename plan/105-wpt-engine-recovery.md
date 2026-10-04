@@ -70,3 +70,25 @@ has pre-existing warnings that must be addressed before its applicable gates.
 Next: use the actual space advance rather than a zero-glyph approximation for
 numeric tabs, check minimum tab advances and text indentation, broaden the
 control set, and resolve the coverage audit without suppressing its assertion.
+
+The shaped-space measurement subsequently raised the same control slice to
+12/20 exact passes. The fourth gained pair is `tab-size-integer-004`. The HTML
+library then had 174 passing tests and the same unresolved coverage-audit failure.
+
+## Scale of the next cycle
+
+The target is approximately 1,000 additional passing pairs in a substantial
+engine cycle. Small local fixes are checkpoints, not the throughput target.
+Prioritise mechanisms that affect whole layout families and verify their gains
+on identical ordered base/candidate lists.
+
+Historical v229 diagnostics identify 590 failures among 1,617 eligible
+fragmentation pairs and 807 among 4,047 eligible axes/sizing pairs. These groups
+are hypotheses for prioritisation, not current exact results or promised gains.
+The next baseline covers fragmentation (`css-break`, `css-multicol`, `css-page`);
+the next broad set covers grid, flexbox, sizing, writing modes and alignment.
+
+Neighbouring Blink, Servo and Blitz source checkouts are independent references
+for disputed algorithms. Their implementations do not override specifications
+or replace verification of this engine's output. Use subagents selectively for
+independent research; keep resource-sensitive builds and rendering serial.
