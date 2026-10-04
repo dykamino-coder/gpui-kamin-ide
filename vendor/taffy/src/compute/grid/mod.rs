@@ -13,13 +13,11 @@ use crate::{
     JustifyContent, LayoutGridContainer,
 };
 use alignment::{align_and_position_item, align_tracks};
-use explicit_grid::{compute_explicit_grid_size_in_axis, initialize_grid_tracks, AutoRepeatStrategy};
-use implicit_grid::compute_grid_size_estimate;
-use placement::place_grid_items;
+use explicit_grid::{initialize_grid_tracks, AutoRepeatStrategy};
 use track_sizing::{
     determine_if_item_crosses_flexible_or_intrinsic_tracks, resolve_item_track_indexes, track_sizing_algorithm,
 };
-use types::{CellOccupancyMatrix, GridTrack, NamedLineResolver};
+use types::{GridTrack, NamedLineResolver};
 
 #[cfg(feature = "detailed_layout_info")]
 use types::{GridItem, GridTrackKind, TrackCounts};
@@ -29,7 +27,11 @@ pub(crate) use types::{GridCoordinate, GridLine, OriginZeroLine};
 mod alignment;
 mod explicit_grid;
 mod implicit_grid;
+// KaminIDE patch: раскладка лунками (css-grid-3) на общем алгоритме дорожек.
+mod lanes;
 mod placement;
+// KaminIDE patch: подсетка (css-grid-2 §9) — дерево размеров на общем пути.
+mod subgrid;
 mod track_sizing;
 mod types;
 mod util;
@@ -48,6 +50,13 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     let LayoutInput { known_dimensions, parent_size, available_space, run_mode, .. } = inputs;
 
     let style = tree.get_grid_container_style(node);
+
+    // KaminIDE patch: контейнер ЛУНОК (css-grid-3 `display: grid-lanes`) —
+    // своя раскладка поверх тех же дорожек (`lanes.rs`).
+    if let Some(lanes) = style.grid_lanes() {
+        drop(style);
+        return lanes::compute_grid_lanes_layout(tree, node, inputs, lanes);
+    }
 
     // 1. Compute "available grid space"
     // https://www.w3.org/TR/css-grid-1/#available-grid-space
@@ -91,10 +100,31 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     content_box_inset.right += scrollbar_gutter.x;
     content_box_inset.bottom += scrollbar_gutter.y;
 
-    let align_content = style.align_content().unwrap_or(AlignContent::Stretch);
-    let justify_content = style.justify_content().unwrap_or(JustifyContent::Stretch);
+    // KaminIDE patch: `margin-trim` — снять до `drop(style)`.
+    let margin_trim = style.margin_trim();
+    // KaminIDE patch: подсетка — дорожки подсеточных осей выдал родитель
+    // (css-grid-2 §9 (a)); выравнивание содержимого в такой оси не действует
+    // («the align-content/justify-content properties on it are also ignored
+    // in the subgridded dimensions», §subgrid-grid-alignment).
+    let own_subgrid = subgrid::own_subgrid_tracks(tree, node, style.subgrid());
+    let sub_cols = own_subgrid.as_ref().and_then(|s| s.columns.clone());
+    let sub_rows = own_subgrid.as_ref().and_then(|s| s.rows.clone());
+    let align_content =
+        if sub_rows.is_some() { AlignContent::Start } else { style.align_content().unwrap_or(AlignContent::Stretch) };
+    let justify_content = if sub_cols.is_some() {
+        JustifyContent::Start
+    } else {
+        style.justify_content().unwrap_or(JustifyContent::Stretch)
+    };
     let align_items = style.align_items();
     let justify_items = style.justify_items();
+    // KaminIDE patch: `safe` у выравнивания дорожек (css-align-3 §4.4); у
+    // лунок его решает `lanes.rs` до этого пути. Подсеточная ось выравнивания
+    // содержимого не знает вовсе (выше — `Start`).
+    let safe_content = {
+        let (_, _, align_safe, justify_safe) = style.safe_alignment();
+        (align_safe && sub_rows.is_none(), justify_safe && sub_cols.is_none())
+    };
 
     // Note: we avoid accessing the grid rows/columns methods more than once as this can
     // cause an expensive-ish computation
@@ -135,11 +165,9 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         return LayoutOutput::from_outer_size(Size { width, height });
     }
 
-    let get_child_styles_iter =
-        |node| tree.child_ids(node).map(|child_node: NodeId| tree.get_grid_child_style(child_node));
-    let child_styles_iter = get_child_styles_iter(node);
-
-    // 2. Resolve the explicit grid
+    // 2-4. Explicit grid, implicit grid estimate, item placement.
+    // KaminIDE patch: вынесено в `subgrid::place_items` — тем же кодом
+    // родитель сплющивает элементы подсетки (css-grid-2 §9 (h)).
 
     // This is very similar to the inner_node_size except if the inner_node_size is not definite but the node
     // has a min- or max- size style then that will be used in it's place.
@@ -161,81 +189,70 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         None => AutoRepeatStrategy::MinRepetitionsThatDoOverflow,
     });
 
-    // Compute the number of rows and columns in the explicit grid *template*
-    // (explicit tracks from grid_areas are computed separately below)
-    let (col_auto_repetition_count, grid_template_col_count) = compute_explicit_grid_size_in_axis(
+    let subgrid::PlacedGrid {
+        mut items,
+        cell_occupancy_matrix,
+        name_resolver,
+        col_counts: final_col_counts,
+        row_counts: final_row_counts,
+    } = subgrid::place_items(
+        tree,
+        node,
         &style,
-        auto_fit_container_size.width,
-        auto_repeat_fit_strategy.width,
-        |val, basis| tree.calc(val, basis),
-        AbsoluteAxis::Horizontal,
-    );
-    let (row_auto_repetition_count, grid_template_row_count) = compute_explicit_grid_size_in_axis(
-        &style,
-        auto_fit_container_size.height,
-        auto_repeat_fit_strategy.height,
-        |val, basis| tree.calc(val, basis),
-        AbsoluteAxis::Vertical,
-    );
-
-    // type CustomIdent<'a> = <<Tree as LayoutPartialTree>::CoreContainerStyle<'_> as CoreStyle>::CustomIdent;
-    let mut name_resolver = NamedLineResolver::new(&style, col_auto_repetition_count, row_auto_repetition_count);
-
-    let explicit_col_count = grid_template_col_count.max(name_resolver.area_column_count());
-    let explicit_row_count = grid_template_row_count.max(name_resolver.area_row_count());
-
-    name_resolver.set_explicit_column_count(explicit_col_count);
-    name_resolver.set_explicit_row_count(explicit_row_count);
-
-    // 3. Implicit Grid: Estimate Track Counts
-    // Estimate the number of rows and columns in the implicit grid (= the entire grid)
-    // This is necessary as part of placement. Doing it early here is a perf optimisation to reduce allocations.
-    let (est_col_counts, est_row_counts) =
-        compute_grid_size_estimate(explicit_col_count, explicit_row_count, child_styles_iter);
-
-    // 4. Grid Item Placement
-    // Match items (children) to a definite grid position (row start/end and column start/end position)
-    let mut items = Vec::with_capacity(tree.child_count(node));
-    let mut cell_occupancy_matrix = CellOccupancyMatrix::with_track_counts(est_col_counts, est_row_counts);
-    let in_flow_children_iter = || {
-        tree.child_ids(node)
-            .enumerate()
-            .map(|(index, child_node)| (index, child_node, tree.get_grid_child_style(child_node)))
-            .filter(|(_, _, style)| {
-                style.box_generation_mode() != BoxGenerationMode::None && style.position() != Position::Absolute
-            })
-    };
-    place_grid_items(
-        &mut cell_occupancy_matrix,
-        &mut items,
-        in_flow_children_iter,
-        style.grid_auto_flow(),
+        auto_fit_container_size,
+        auto_repeat_fit_strategy,
+        own_subgrid.as_ref(),
         align_items.unwrap_or(AlignItems::Stretch),
         justify_items.unwrap_or(AlignItems::Stretch),
-        &name_resolver,
     );
-
-    // Extract track counts from previous step (auto-placement can expand the number of tracks)
-    let final_col_counts = *cell_occupancy_matrix.track_counts(AbsoluteAxis::Horizontal);
-    let final_row_counts = *cell_occupancy_matrix.track_counts(AbsoluteAxis::Vertical);
+    // KaminIDE patch: использованные зазоры контейнера — для зазора `normal`
+    // подсеток-детей и разницы зазоров (css-grid-2 §subgrid-gaps).
+    let container_gap = Size {
+        width: sub_cols.as_ref().map(|a| a.gap).unwrap_or_else(|| {
+            style.gap().width.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis))
+        }),
+        height: sub_rows.as_ref().map(|a| a.gap).unwrap_or_else(|| {
+            style.gap().height.resolve_or_zero(inner_node_size.height, |val, basis| tree.calc(val, basis))
+        }),
+    };
 
     // 5. Initialize Tracks
     // Initialize (explicit and implicit) grid tracks (and gutters)
     // This resolves the min and max track sizing functions for all tracks and gutters
     let mut columns = GridTrackVec::new();
     let mut rows = GridTrackVec::new();
-    initialize_grid_tracks(&mut columns, final_col_counts, &style, AbsoluteAxis::Horizontal, |column_index| {
-        cell_occupancy_matrix.column_is_occupied(column_index)
-    });
-    initialize_grid_tracks(&mut rows, final_row_counts, &style, AbsoluteAxis::Vertical, |row_index| {
-        cell_occupancy_matrix.row_is_occupied(row_index)
-    });
+    // KaminIDE patch: подсеточная ось — дорожки, выданные родителем.
+    match &sub_cols {
+        Some(axis) => subgrid::initialize_subgrid_tracks(&mut columns, axis),
+        None => {
+            initialize_grid_tracks(&mut columns, final_col_counts, &style, AbsoluteAxis::Horizontal, |column_index| {
+                cell_occupancy_matrix.column_is_occupied(column_index)
+            })
+        }
+    }
+    match &sub_rows {
+        Some(axis) => subgrid::initialize_subgrid_tracks(&mut rows, axis),
+        None => initialize_grid_tracks(&mut rows, final_row_counts, &style, AbsoluteAxis::Vertical, |row_index| {
+            cell_occupancy_matrix.row_is_occupied(row_index)
+        }),
+    }
 
     drop(grid_template_rows);
     drop(grid_template_columms);
     drop(grid_auto_rows);
     drop(grid_auto_columms);
     drop(style);
+
+    // KaminIDE patch: элементы подсеток-детей вкладываются в дорожки этой
+    // сетки (css-grid-2 §9 (h)); сами подсетки в подсеточной оси пусты (§9 (g)).
+    let own_item_count = items.len();
+    let subgrid_edges =
+        subgrid::flatten_subgrid_items(tree, &mut items, container_gap, inner_node_size, 3, Some(&name_resolver));
+    let has_subgrids = items.len() > own_item_count || items.iter().any(|item| item.sizing_axes != 3);
+    if !subgrid_edges.is_empty() {
+        subgrid::apply_subgrid_floors(&mut columns, &subgrid_edges, true, final_col_counts);
+        subgrid::apply_subgrid_floors(&mut rows, &subgrid_edges, false, final_row_counts);
+    }
 
     // 6. Track Sizing
 
@@ -244,12 +261,103 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     // each axis, and doing it up-front here means we don't have to keep repeating that calculation
     resolve_item_track_indexes(&mut items, final_col_counts, final_row_counts);
 
+    // KaminIDE patch: `margin-trim` сетки (css-box-4 §margin-trim, «Grid
+    // Containers»): обнуляются поля элементов у краёв контейнера — в первой
+    // и последней ЖИВОЙ дорожке каждой оси; схлопнутые (`auto-fit` без
+    // элементов) не в счёт (`grid-trim-ignores-collapsed-tracks`). Биты
+    // физические: 1 верх, 2 право, 4 низ, 8 лево (`html::apply`). В векторе
+    // дорожек нечётные индексы — дорожки, чётные — линии: элемент с линии `s`
+    // начинается дорожкой `s + 1` и кончается дорожкой `e - 1`.
+    if margin_trim != 0 {
+        let first_live = |tracks: &[GridTrack]| {
+            tracks.iter().enumerate().find(|(i, t)| i % 2 == 1 && !t.is_collapsed).map(|(i, _)| i as u16)
+        };
+        let last_live = |tracks: &[GridTrack]| {
+            tracks.iter().enumerate().rev().find(|(i, t)| i % 2 == 1 && !t.is_collapsed).map(|(i, _)| i as u16)
+        };
+        let (col_first, col_last) = (first_live(&columns[..]), last_live(&columns[..]));
+        let (row_first, row_last) = (first_live(&rows[..]), last_live(&rows[..]));
+        let zero = crate::style::LengthPercentageAuto::length(0.0);
+        for item in items.iter_mut().filter(|item| !item.flattened) {
+            let mut sides = 0u8;
+            if row_first == Some(item.row_indexes.start + 1) {
+                sides |= 1;
+            }
+            if row_last == Some(item.row_indexes.end - 1) {
+                sides |= 4;
+            }
+            if col_first == Some(item.column_indexes.start + 1) {
+                sides |= 8;
+            }
+            if col_last == Some(item.column_indexes.end - 1) {
+                sides |= 2;
+            }
+            sides &= margin_trim;
+            if sides & 1 != 0 {
+                item.margin.top = zero;
+            }
+            if sides & 2 != 0 {
+                item.margin.right = zero;
+            }
+            if sides & 4 != 0 {
+                item.margin.bottom = zero;
+            }
+            if sides & 8 != 0 {
+                item.margin.left = zero;
+            }
+            item.margin_trim = sides;
+        }
+    }
+
     // For each item, and in each axis, determine whether the item crosses any flexible (fr) tracks
     // Record this as a boolean (per-axis) on each item for later use in the track-sizing algorithm
     determine_if_item_crosses_flexible_or_intrinsic_tracks(&mut items, &columns, &rows);
 
+    // KaminIDE patch: css-grid-2 — элемент, чей размер по оси выравнивания
+    // зависит от размера ВНУТРЕННЕ-размерной дорожки (процентная высота в
+    // `auto`/`min-content`/`max-content`-ряду), в выравнивании по базовой
+    // линии не участвует и берёт запасное выравнивание (`first baseline` →
+    // `safe self-start`). Иначе цикл: ряд зависит от сдвига, сдвиг — от ряда
+    // (`grid-align-baseline-005`: `<canvas height:100%>` в `auto`-ряду).
+    // Выравнивание в `align_and_position_item` для `Baseline` и так даёт
+    // `start`; здесь элемент лишь выводится из группы и шима.
+    for item in items.iter_mut() {
+        if matches!(item.align_self, AlignSelf::Baseline | AlignSelf::LastBaseline)
+            && item.crosses_intrinsic_row
+            && item.size.height.tag() == crate::CompactLength::PERCENT_TAG
+        {
+            // KaminIDE patch: у `last baseline` запасное — `safe self-end`
+            // (Blink grid_item.cc `SetAlignmentFallback`: kMinor → kEnd).
+            item.align_self =
+                if item.align_self == AlignSelf::LastBaseline { AlignSelf::End } else { AlignSelf::Start };
+        }
+    }
+
     // Determine if the grid has any baseline aligned items
-    let has_baseline_aligned_item = items.iter().any(|item| item.align_self == AlignSelf::Baseline);
+    let has_baseline_aligned_item =
+        items.iter().any(|item| matches!(item.align_self, AlignSelf::Baseline | AlignSelf::LastBaseline));
+    // KaminIDE patch: и по оси x (`justify-self: baseline`; у вертикальной
+    // сетки — `align-self`, оси переставлены движком).
+    let has_justify_baseline_item = items.iter().any(|item| item.justify_self == AlignSelf::Baseline);
+
+    // KaminIDE patch: подсеткам-детям — пролёты без размеров (ни одна ось
+    // ещё не размерена), чтобы их замер во вкладе шёл по их числу дорожек.
+    if has_subgrids {
+        subgrid::publish_subgrid_tracks(
+            tree,
+            &items,
+            &columns,
+            &rows,
+            (false, false),
+            false,
+            container_gap,
+            inner_node_size,
+            &name_resolver,
+        );
+    }
+    // KaminIDE patch: в размер дорожек оси идут только вкладывающиеся в неё
+    // элементы (`GridItem::sizing_axes`, css-grid-2 §9 (g)/(h)).
+    let inline_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Inline);
 
     // Run track sizing algorithm for Inline axis
     track_sizing_algorithm(
@@ -263,16 +371,35 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         inner_node_size,
         &mut columns,
         &mut rows,
-        &mut items,
+        &mut items[..inline_count],
         |track: &GridTrack, parent_size: Option<f32>, tree: &Tree| {
             track.max_track_sizing_function.definite_value(parent_size, |val, basis| tree.calc(val, basis))
         },
-        has_baseline_aligned_item,
+        // KaminIDE patch: базовые линии рядов решаются в проходе РЯДОВ, когда
+        // ширины колонок уже известны (см. `resolve_item_baselines`); здесь —
+        // только группы по оси x (`resolve_item_baselines_x`).
+        has_justify_baseline_item,
     );
     let initial_column_sum = columns.iter().map(|track| track.base_size).sum::<f32>();
     inner_node_size.width = inner_node_size.width.or_else(|| initial_column_sum.into());
 
     items.iter_mut().for_each(|item| item.available_space_cache = None);
+
+    // KaminIDE patch: колонки размерены — подсеткам их размеры до замера рядов.
+    if has_subgrids {
+        subgrid::publish_subgrid_tracks(
+            tree,
+            &items,
+            &columns,
+            &rows,
+            (true, false),
+            false,
+            container_gap,
+            inner_node_size,
+            &name_resolver,
+        );
+    }
+    let block_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Block);
 
     // Run track sizing algorithm for Block axis
     track_sizing_algorithm(
@@ -286,9 +413,9 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         inner_node_size,
         &mut rows,
         &mut columns,
-        &mut items,
+        &mut items[..block_count],
         |track: &GridTrack, _, _| Some(track.base_size),
-        false, // TODO: Support baseline alignment in the vertical axis
+        has_baseline_aligned_item,
     );
     let initial_row_sum = rows.iter().map(|track| track.base_size).sum::<f32>();
     inner_node_size.height = inner_node_size.height.or_else(|| initial_row_sum.into());
@@ -358,9 +485,26 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     let parent_width_indefinite = !available_space.width.is_definite();
     rerun_column_sizing = parent_width_indefinite && has_percentage_column;
 
+    // KaminIDE patch: ряды размерены — подсеткам обе оси (их вклад в колонки
+    // при повторном проходе меряется уже по своим рядам).
+    if has_subgrids {
+        subgrid::publish_subgrid_tracks(
+            tree,
+            &items,
+            &columns,
+            &rows,
+            (true, true),
+            false,
+            container_gap,
+            inner_node_size,
+            &name_resolver,
+        );
+    }
     if !rerun_column_sizing {
-        let min_content_contribution_changed =
-            items.iter_mut().filter(|item| item.crosses_intrinsic_column).any(|item| {
+        let min_content_contribution_changed = items
+            .iter_mut()
+            .filter(|item| item.crosses_intrinsic_column && item.sizes_axis(AbstractAxis::Inline))
+            .any(|item| {
                 let available_space = item.available_space(
                     AbstractAxis::Inline,
                     &rows,
@@ -391,6 +535,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     }
 
     if rerun_column_sizing {
+        let inline_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Inline);
         // Re-run track sizing algorithm for Inline axis
         track_sizing_algorithm(
             tree,
@@ -403,9 +548,9 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             inner_node_size,
             &mut columns,
             &mut rows,
-            &mut items,
+            &mut items[..inline_count],
             |track: &GridTrack, _, _| Some(track.base_size),
-            has_baseline_aligned_item,
+            false,
         );
 
         // Row sizing must be re-run (once) if:
@@ -418,9 +563,24 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         let parent_height_indefinite = !available_space.height.is_definite();
         rerun_row_sizing = parent_height_indefinite && has_percentage_row;
 
+        if has_subgrids {
+            subgrid::publish_subgrid_tracks(
+                tree,
+                &items,
+                &columns,
+                &rows,
+                (true, true),
+                false,
+                container_gap,
+                inner_node_size,
+                &name_resolver,
+            );
+        }
         if !rerun_row_sizing {
-            let min_content_contribution_changed =
-                items.iter_mut().filter(|item| item.crosses_intrinsic_column).any(|item| {
+            let min_content_contribution_changed = items
+                .iter_mut()
+                .filter(|item| item.crosses_intrinsic_column && item.sizes_axis(AbstractAxis::Block))
+                .any(|item| {
                     let available_space = item.available_space(
                         AbstractAxis::Block,
                         &columns,
@@ -451,6 +611,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         }
 
         if rerun_row_sizing {
+            let block_count = subgrid::partition_for_axis(&mut items, AbstractAxis::Block);
             // Re-run track sizing algorithm for Block axis
             track_sizing_algorithm(
                 tree,
@@ -463,9 +624,9 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                 inner_node_size,
                 &mut rows,
                 &mut columns,
-                &mut items,
+                &mut items[..block_count],
                 |track: &GridTrack, _, _| Some(track.base_size),
-                false, // TODO: Support baseline alignment in the vertical axis
+                has_baseline_aligned_item,
             );
         }
     }
@@ -479,6 +640,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         Line { start: border.left, end: border.right },
         &mut columns,
         justify_content,
+        safe_content.1,
     );
     // Align rows
     align_tracks(
@@ -487,7 +649,26 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         Line { start: border.top, end: border.bottom },
         &mut rows,
         align_content,
+        safe_content.0,
     );
+
+    // KaminIDE patch: дорожки выровнены — подсеткам окончательные размеры
+    // по смещениям (доля распределения содержимого входит в зазоры).
+    if has_subgrids {
+        subgrid::publish_subgrid_tracks(
+            tree,
+            &items,
+            &columns,
+            &rows,
+            (true, true),
+            true,
+            container_gap,
+            inner_node_size,
+            &name_resolver,
+        );
+        // Сплющенные элементы раскладывает их подсетка.
+        items.retain(|item| !item.flattened);
+    }
 
     // 9. Size, Align, and Position Grid Items
 
@@ -507,17 +688,45 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             left: columns[item.column_indexes.start as usize + 1].offset,
             right: columns[item.column_indexes.end as usize].offset,
         };
+        // KaminIDE patch: `justify-items: baseline` не действует на элемент,
+        // параллельный горизонтальной сетке (см. `GridItem::justify_self`).
+        let item_alignment_styles = if item.baseline_x_flags & 8 != 0
+            && container_alignment_styles.horizontal == Some(AlignItems::Baseline)
+        {
+            InBothAbsAxis { horizontal: None, vertical: container_alignment_styles.vertical }
+        } else {
+            container_alignment_styles
+        };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-        let (content_size_contribution, y_position, height) = align_and_position_item(
+        let (content_size_contribution, y_position, height, _first_baseline, last_baseline) = align_and_position_item(
             tree,
             item.node,
             index as u32,
             grid_area,
-            container_alignment_styles,
-            item.baseline_shim,
+            item_alignment_styles,
+            Rect {
+                top: item.baseline_shim,
+                bottom: item.baseline_shim_end,
+                left: item.baseline_shim_x,
+                right: item.baseline_shim_x_end,
+            },
+            item.baseline_x_flags & 1 != 0,
+            item.margin_trim,
         );
         item.y_position = y_position;
         item.height = height;
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (01.10, пакет 3 ст.1, P1 `scout-grid-baseline`):
+        // первая базовая контейнера из ИТОГОВОЙ раскладки элемента
+        // (`item.baseline = _first_baseline`) и выбор «первого» в порядке сетки
+        // (css-grid-2 §10.8). Срез 5003 пары (flex/grid/align/inline/wm/
+        // multicol/CSS2 linebox/contain): +1 (`grid-inline-items-002`) / −8:
+        // `grid-container-baseline-synthesized-001..004` 0.00 → 16.06 (пустая
+        // `display: table` в элементе отдаёт базовую у ВЕРХА — наш стол
+        // базовую не прячет), `display-inline-grid` и
+        // `row/column-subgrid-auto-fill-005/007` (эталоны на `inline-block` со
+        // столом). Возвращать вместе с базовой пустого стола.
+        // ПОСЛЕДНЯЯ базовая элемента — из итоговой раскладки (ст.3).
+        item.last_baseline = last_baseline;
 
         #[cfg(feature = "content_size")]
         {
@@ -584,8 +793,8 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
 
             // TODO: Baseline alignment support for absolutely positioned items (should check if is actuallty specified)
             #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-            let (content_size_contribution, _, _) =
-                align_and_position_item(tree, child, order, grid_area, container_alignment_styles, 0.0);
+            let (content_size_contribution, _, _, _, _) =
+                align_and_position_item(tree, child, order, grid_area, container_alignment_styles, Rect::ZERO, false, 0);
             #[cfg(feature = "content_size")]
             {
                 item_content_size_contribution = item_content_size_contribution.f32_max(content_size_contribution);
@@ -634,10 +843,26 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         item.y_position + item.baseline.unwrap_or(item.height)
     };
 
-    LayoutOutput::from_sizes_and_baselines(
+    // KaminIDE patch: ПОСЛЕДНЯЯ базовая контейнера (css-grid-2 §10.8 «last
+    // baseline set … the last row»): элементы, КОНЧАЮЩИЕСЯ в последнем ряду;
+    // предпочтение участникам `last baseline`; последний в порядке сетки —
+    // с наибольшей стартовой колонкой. Без своей — синтез у низа рамки.
+    let grid_container_last_baseline: f32 = {
+        let last_row = items.iter().map(|item| item.row_indexes.end).max().unwrap_or(0);
+        let in_last_row = || items.iter().filter(move |item| item.row_indexes.end == last_row);
+        let item = in_last_row()
+            .filter(|item| item.align_self == AlignSelf::LastBaseline)
+            .max_by_key(|item| item.column_indexes.start)
+            .or_else(|| in_last_row().max_by_key(|item| item.column_indexes.start))
+            .unwrap();
+        item.y_position + item.last_baseline.unwrap_or(item.height)
+    };
+
+    LayoutOutput::from_sizes_and_all_baselines(
         container_border_box,
         item_content_size_contribution,
         Point { x: None, y: Some(grid_container_baseline) },
+        Point { x: None, y: Some(grid_container_last_baseline) },
     )
 }
 

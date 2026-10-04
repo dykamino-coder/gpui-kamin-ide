@@ -10,7 +10,7 @@ use crate::{BoxSizing, GridItemStyle, LengthPercentage};
 use core::ops::Range;
 
 /// Represents a single grid item
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(in super::super) struct GridItem {
     /// The id of the node that this item represents
     pub node: NodeId,
@@ -58,6 +58,27 @@ pub(in super::super) struct GridItem {
     /// Shim for baseline alignment that acts like an extra top margin
     /// TODO: Support last baseline and vertical text baselines
     pub baseline_shim: f32,
+    /// KaminIDE patch: прокладка `last baseline` — лишнее НИЖНЕЕ поле: группа
+    /// последних базовых ряда прижимается к его концу (css-align-3 §9.3;
+    /// Blink grid_layout_algorithm.cc `CalculateBaselineShim` с
+    /// `IsLastBaselineSpecified` и `BaselineGroup::kMinor`).
+    pub baseline_shim_end: f32,
+    /// KaminIDE patch: ПОСЛЕДНЯЯ базовая элемента из итоговой раскладки (от
+    /// верха рамки) — для последней базовой контейнера (css-grid-2 §10.8).
+    pub last_baseline: Option<f32>,
+    /// KaminIDE patch: биты выравнивания по базовой по оси x (стиль
+    /// `baseline_x_flags`: 1 — группа у правого края, 2 — центральный синтез,
+    /// 4 — своя базовая по x).
+    pub baseline_x_flags: u8,
+    /// KaminIDE patch: расстояние базовой по x до края группы (с полем) —
+    /// мера группы колонки (`resolve_item_baselines_x`).
+    pub baseline_x: Option<f32>,
+    /// KaminIDE patch: прокладки по x — лишнее левое (группа у левого края)
+    /// или правое (у правого) поле: `justify-self: baseline` в горизонтальной
+    /// сетке и `align-self: baseline` в вертикальной (оси переставлены
+    /// движком), css-align-3 §9.3.
+    pub baseline_shim_x: f32,
+    pub baseline_shim_x_end: f32,
 
     /// The item's definite row-start and row-end (same as `row` field, except in a different coordinate system)
     /// (as indexes into the Vec<GridTrack> stored in a grid's AbstractAxisTracks)
@@ -89,6 +110,42 @@ pub(in super::super) struct GridItem {
     pub y_position: f32,
     /// Final height. Used to compute baseline alignment for the container.
     pub height: f32,
+    /// KaminIDE patch: обрезанные `margin-trim` стороны элемента (биты
+    /// физических сторон контейнера) — для финального выравнивания.
+    pub margin_trim: u8,
+    /// KaminIDE patch: оси, в которых элемент ВКЛАДЫВАЕТСЯ в размер дорожек
+    /// этого контейнера (биты `SUBGRID_COLUMNS`/`SUBGRID_ROWS`). Подсетка в
+    /// своей подсеточной оси «acts as if it was completely empty» (css-grid-2
+    /// §9 (g) `#subgrid-size-contribution`) — бит снят; элемент подсетки,
+    /// сплющенный в этот контейнер, вкладывается только в подсеточные оси.
+    pub sizing_axes: u8,
+    /// KaminIDE patch: элемент ПОДСЕТКИ, сплющенный в дорожки этого
+    /// контейнера (§9 (h) `#subgrid-item-contribution`). Он только вкладывает
+    /// размеры; раскладывает и ставит его сама подсетка.
+    pub flattened: bool,
+    /// KaminIDE patch: накопленные края подсеток над элементом — «an extra
+    /// layer of (potentially negative) margin» (§subgrid-margins,
+    /// §subgrid-gaps), в точках, по физическим сторонам.
+    pub extra_margin: Rect<f32>,
+    /// KaminIDE patch: размер области сплющенного элемента в НЕподсеточной
+    /// оси его подсетки — её собственная дорожка, когда она известна без
+    /// содержимого (Blink меряет такой элемент по дорожкам «standalone»-оси
+    /// подсетки, `grid_layout_algorithm.cc` `IsSubgridWithStandaloneAxis`).
+    /// Перекрывает оценку по дорожкам контейнера в `available_space`.
+    pub subgrid_cross: Size<Option<f32>>,
+    /// KaminIDE patch: НЕподсеточная ось подсетки — одни неявные `auto`-
+    /// дорожки (шаблона нет), и своя дорожка элемента не уже его min-content
+    /// (css-grid-2 §12.5: база `auto`-дорожки — min-content вклад, §12.6
+    /// растяжка добирает до области). Сплющенный элемент меряется поперёк по
+    /// `max(область − края, min-content)`, а не по одной области: иначе текст
+    /// подсетки переносился уже своей колонки (`subgrid/auto-track-sizing-001`:
+    /// колонка 100px, коробка содержимого 58px, слово «separated» шире).
+    pub subgrid_cross_auto: Size<bool>,
+    /// KaminIDE patch: подсетка-ребёнок контейнера, через которую элемент
+    /// сплющен (у собственного элемента — `None`). Лункам: элементы
+    /// АВТО-размещённой подсетки вкладываются во все дорожки (css-grid-3
+    /// Overview.bs:686-694).
+    pub subgrid_root: Option<NodeId>,
 }
 
 impl GridItem {
@@ -118,9 +175,25 @@ impl GridItem {
             border: style.border(),
             margin: style.margin(),
             align_self: style.align_self().unwrap_or(parent_align_items),
-            justify_self: style.justify_self().unwrap_or(parent_justify_items),
+            // KaminIDE patch: `justify-items: baseline` горизонтальной сетки не
+            // действует на ПАРАЛЛЕЛЬНЫЙ ей элемент (бит 8 `baseline_x_flags`):
+            // ★ ЗАМЕРЕНО прежде (`70c2987`) — сдвиг таких элементов вредил;
+            // ортогональные (вертикальные) элементы в группу по x входят.
+            justify_self: match style.justify_self() {
+                Some(own) => own,
+                None if parent_justify_items == AlignItems::Baseline && style.baseline_x_flags() & 8 != 0 => {
+                    AlignItems::Stretch
+                }
+                None => parent_justify_items,
+            },
             baseline: None,
             baseline_shim: 0.0,
+            baseline_shim_end: 0.0,
+            last_baseline: None,
+            baseline_x_flags: style.baseline_x_flags(),
+            baseline_x: None,
+            baseline_shim_x: 0.0,
+            baseline_shim_x_end: 0.0,
             row_indexes: Line { start: 0, end: 0 }, // Properly initialised later
             column_indexes: Line { start: 0, end: 0 }, // Properly initialised later
             crosses_flexible_row: false,            // Properly initialised later
@@ -133,7 +206,26 @@ impl GridItem {
             minimum_contribution_cache: Size::NONE,
             y_position: 0.0,
             height: 0.0,
+            margin_trim: 0,
+            sizing_axes: 3,
+            flattened: false,
+            extra_margin: Rect::ZERO,
+            subgrid_cross: Size::NONE,
+            subgrid_cross_auto: Size { width: false, height: false },
+            subgrid_root: None,
         }
+    }
+
+    /// KaminIDE patch: вкладывается ли элемент в размер дорожек оси `axis`
+    /// (см. [`GridItem::sizing_axes`]). Оси сетки taffy физические: `Inline`
+    /// — колонки, `Block` — ряды.
+    #[inline(always)]
+    pub fn sizes_axis(&self, axis: AbstractAxis) -> bool {
+        let bit = match axis {
+            AbstractAxis::Inline => 1,
+            AbstractAxis::Block => 2,
+        };
+        self.sizing_axes & bit != 0
     }
 
     /// This item's placement in the specified axis in OriginZero coordinates
@@ -281,6 +373,19 @@ impl GridItem {
             //  - The node is not absolutely positioned
             //  - The node does not have auto margins in this axis.
             if !self.margin.left.is_auto() && !self.margin.right.is_auto() && self.justify_self == AlignSelf::Stretch {
+                // KaminIDE patch: см. `GridItem::subgrid_cross_auto`.
+                if self.subgrid_cross_auto.width {
+                    let floor = tree.measure_child_size(
+                        self.node,
+                        Size::NONE,
+                        inner_node_size,
+                        Size { width: AvailableSpace::MinContent, height: AvailableSpace::MinContent },
+                        SizingMode::InherentSize,
+                        crate::geometry::AbsoluteAxis::Horizontal,
+                        Line::FALSE,
+                    );
+                    return grid_area_minus_item_margins_size.width.map(|w| w.max(floor));
+                }
                 return grid_area_minus_item_margins_size.width;
             }
 
@@ -321,6 +426,12 @@ impl GridItem {
         other_axis_available_space: Option<f32>,
         get_track_size_estimate: impl Fn(&GridTrack, Option<f32>) -> Option<f32>,
     ) -> Size<Option<f32>> {
+        // KaminIDE patch: см. `GridItem::subgrid_cross`.
+        if let Some(cross) = self.subgrid_cross.get(axis.other()) {
+            let mut size = Size::NONE;
+            size.set(axis.other(), Some(cross));
+            return size;
+        }
         let item_other_axis_size: Option<f32> = {
             other_axis_tracks[self.track_range_excluding_lines(axis.other())]
                 .iter()
@@ -360,12 +471,21 @@ impl GridItem {
         inner_node_width: Option<f32>,
         tree: &impl LayoutPartialTree,
     ) -> Size<f32> {
+        // KaminIDE patch: края подсеток над сплющенным элементом —
+        // дополнительный слой поля (css-grid-2 §subgrid-margins).
         Rect {
-            left: self.margin.left.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
-            right: self.margin.right.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
+            left: self.margin.left.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis))
+                + self.baseline_shim_x
+                + self.extra_margin.left,
+            right: self.margin.right.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis))
+                + self.baseline_shim_x_end
+                + self.extra_margin.right,
             top: self.margin.top.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
-                + self.baseline_shim,
-            bottom: self.margin.bottom.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis)),
+                + self.baseline_shim
+                + self.extra_margin.top,
+            bottom: self.margin.bottom.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
+                + self.baseline_shim_end
+                + self.extra_margin.bottom,
         }
         .sum_axes()
     }
@@ -379,10 +499,19 @@ impl GridItem {
         inner_node_size: Size<Option<f32>>,
     ) -> f32 {
         let known_dimensions = self.known_dimensions(tree, inner_node_size, available_space);
+        // KaminIDE patch (css-sizing-3 §5.2.1 «cyclic percentage», css-grid-2
+        // §11.5): содержащий блок элемента — грид-ОБЛАСТЬ, в размеряемой оси её
+        // ещё нет, и доля `width`/`height` при подсчёте вклада ведёт себя как
+        // `auto`. Прежде база доли — весь КОНТЕЙНЕР (`inner_node_size`): `span 2;
+        // width: 100%` в `repeat(2, max-content)` шириной 300 давал две дорожки по
+        // 150 вместо 120 (эталон `column-auto-repeat-max-content-002-ref`).
+        // То же правило уже стоит в `minimum_contribution` ниже.
+        let mut pct_basis = inner_node_size;
+        pct_basis.set(axis, None);
         tree.measure_child_size(
             self.node,
             known_dimensions,
-            inner_node_size,
+            pct_basis,
             available_space.map(|opt| match opt {
                 Some(size) => AvailableSpace::Definite(size),
                 None => AvailableSpace::MinContent,
@@ -418,10 +547,13 @@ impl GridItem {
         inner_node_size: Size<Option<f32>>,
     ) -> f32 {
         let known_dimensions = self.known_dimensions(tree, inner_node_size, available_space);
+        // KaminIDE patch: то же для max-content-вклада (см. `min_content_contribution`).
+        let mut pct_basis = inner_node_size;
+        pct_basis.set(axis, None);
         tree.measure_child_size(
             self.node,
             known_dimensions,
-            inner_node_size,
+            pct_basis,
             available_space.map(|opt| match opt {
                 Some(size) => AvailableSpace::Definite(size),
                 None => AvailableSpace::MaxContent,
@@ -469,15 +601,31 @@ impl GridItem {
         let padding_border_size = (padding + border).sum_axes();
         let box_sizing_adjustment =
             if self.box_sizing == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
+        // KaminIDE patch (css-grid-2 §12.5 «minimum contribution», css-sizing-3
+        // §5.2.1 «cyclic percentage»): процент у `width`/`height` элемента
+        // считается от ГРИД-ОБЛАСТИ, а в размеряемой оси она ещё не известна —
+        // такой размер «depends on the size of its containing block» и ведёт
+        // себя как `auto`: вклад берётся из минимального размера. Раньше доля
+        // резолвилась против `inner_node_size` — размера всего КОНТЕЙНЕРА, и
+        // `width: 100%` в трёх auto-дорожках давал три дорожки по ширине
+        // контейнера (grid-item-percentage-sizes-001, fr-unit, эталоны
+        // column-auto-repeat-021/022). Базис — `known_dimensions`: в нём
+        // размеряемая ось `None`, другая — оценка дорожек (как в
+        // `min_content_contribution`; Blink `CreateConstraintSpaceForMeasure`).
+        // Для `min-*` циклическая доля резолвится против нуля (§5.2.1 (d)).
+        let mut pct_basis = known_dimensions;
+        pct_basis.set(axis, None);
+        let mut min_basis = known_dimensions;
+        min_basis.set(axis, Some(0.0));
         let size = self
             .size
-            .maybe_resolve(inner_node_size, |val, basis| tree.calc(val, basis))
+            .maybe_resolve(pct_basis, |val, basis| tree.calc(val, basis))
             .maybe_apply_aspect_ratio(self.aspect_ratio)
             .maybe_add(box_sizing_adjustment)
             .get(axis)
             .or_else(|| {
                 self.min_size
-                    .maybe_resolve(inner_node_size, |val, basis| tree.calc(val, basis))
+                    .maybe_resolve(min_basis, |val, basis| tree.calc(val, basis))
                     .maybe_apply_aspect_ratio(self.aspect_ratio)
                     .maybe_add(box_sizing_adjustment)
                     .get(axis)

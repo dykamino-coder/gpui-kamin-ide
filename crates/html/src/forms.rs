@@ -126,8 +126,37 @@ fn select(e: &Element, style: &Computed) -> AnyElement {
         }
     }
     let text = chosen.or(first).unwrap_or_default();
-    field_box(style)
-        .justify_between()
+    // «Sizing as if empty»: под обособлением СТРОЧНОЙ оси коробка мерится
+    // так, будто содержимого нет вовсе — «not even through pseudo-elements»
+    // (css-contain-2 Overview.bs:627-630). Подпись выбранного пункта уходит в
+    // наложенный слой: мериться перестаёт, рисоваться продолжает — это второй
+    // такт, «laying out in-place» (там же, :702-707). Без этого
+    // `<select style="width:100px; contain:size">` растягивался по самому
+    // длинному `option`.
+    if style.contains_width() {
+        return field_box(style)
+            .relative()
+            .justify_between()
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .overflow_hidden()
+                    .child(SharedString::from(text)),
+            )
+            .child(div().text_color(rgb(MUTED)).child(SharedString::from("⌄")))
+            .into_any_element();
+    }
+    let mut b = field_box(style);
+    // Пол `min_h(24)` у поля — для ПУСТОГО списка. С подписью он лишь
+    // подменял автоминимум элемента гибкого контейнера (css-flexbox-1 §4.5:
+    // `min-height: auto` = высота содержимого) явным 24, и в колонке высоты 0
+    // список сжимался ниже своей строки (`select-element-zero-height-001/002`).
+    if !text.is_empty() && style.min_height.is_none() {
+        b.style().min_size.height = None;
+    }
+    b.justify_between()
         .child(SharedString::from(text))
         // Стрелка рисуется символом: своей иконки у документа нет, а без неё
         // список неотличим от обычного поля.
@@ -281,7 +310,10 @@ fn progress(e: &Element, style: &Computed) -> AnyElement {
 /// шли безусловно и затирали фон, рамку, скругление и отступы из CSS.
 fn field_box(style: &Computed) -> gpui::Div {
     let mut d = apply(div(), style).flex().items_center().min_h(px(24.));
-    if style.background.is_none() && style.gradient.is_none() {
+    // Служебная заливка поля — только когда автор о фоне НЕ говорил:
+    // `background: linear-gradient(...)` сбрасывает цвет в прозрачный, и
+    // заливка поверх него закрашивала бы страницу под полем.
+    if !style.bg_explicit && style.background.is_none() && style.gradient.is_none() {
         d = d.bg(rgb(FIELD_BG));
     }
     // «Автор ничего не сказал» — это когда не заданы НИ толщина, НИ рисунок.

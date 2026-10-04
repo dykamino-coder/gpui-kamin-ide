@@ -18,8 +18,10 @@ pub struct DecorationRun {
 
     /// The background color for this run
     pub background_color: Option<Hsla>,
-    /// KaminIDE patch: поля вокруг фона прогона (строчный бокс).
-    pub background_pad: Point<Pixels>,
+    /// KaminIDE patch: поля вокруг фона прогона (строчный бокс) по четырём
+    /// сторонам, `[верх, право, низ, лево]`. Одной парой их держать нельзя:
+    /// `padding-top: 20px` без нижнего раздувал полосу вниз на те же 20 px.
+    pub background_pad: [Pixels; 4],
     /// KaminIDE patch: скругление фона прогона (строчный бокс).
     pub background_radius: Pixels,
     /// KaminIDE patch: рамка строчного бокса — цвет и толщина. Рисуется по
@@ -452,7 +454,17 @@ fn paint_line(
                 };
 
                 let content_mask = window.content_mask();
-                if max_glyph_bounds.intersects(&content_mask.bounds) {
+                // KaminIDE patch: маска окна под масштабом стопки страниц —
+                // в ИТОГОВЫХ координатах (`Window::scaled_mask`), а глиф ещё в
+                // своих; сравнивать надо образ глифа, иначе под масштабом < 1
+                // строки у низа листа отбрасывались целиком (печать:
+                // `fixedpos-004-print-ref`, абсолюты `bottom: 0` при трёх листах).
+                let glyph_view = window
+                    .scaled_mask(crate::ContentMask {
+                        bounds: max_glyph_bounds,
+                    })
+                    .bounds;
+                if glyph_view.intersects(&content_mask.bounds) {
                     if glyph.is_emoji {
                         window.paint_emoji(
                             glyph_origin + baseline_offset,
@@ -520,11 +532,33 @@ fn paint_line_background(
     window: &mut Window,
     cx: &mut App,
 ) -> Result<()> {
+    // KaminIDE patch: высота коробки СОДЕРЖИМОГО строчной коробки — подъём
+    // плюс спуск шрифта (CSS 2.1 §10.6.1), а не доля кегля. Теми же числами
+    // кладутся глифы (`padding_top + ascent` ниже), поэтому верх полосы
+    // совпадает с верхом глифов точно.
+    let content_height = if layout.ascent + layout.descent > px(0.) {
+        layout.ascent + layout.descent
+    } else {
+        layout.font_size * 1.16
+    };
+    // KaminIDE patch: полоса строчной коробки переливается за строку — по
+    // §10.8 отступ и рамка строчного высоту строки не меняют. Слой фона
+    // обязан ВКЛЮЧАТЬ перелив: иначе `BoundsTree` даёт ему порядок ниже
+    // глифов соседней строки, и фон уходит под чужой текст.
+    let bleed = decoration_runs.iter().fold((px(0.), px(0.)), |(t, b), r| {
+        let (bt, bb) = r
+            .background_border
+            .map_or((px(0.), px(0.)), |(_, w)| (w[0], w[2]));
+        (
+            t.max(r.background_pad[0] + bt),
+            b.max(r.background_pad[2] + bb),
+        )
+    });
     let line_bounds = Bounds::new(
-        origin,
+        point(origin.x, origin.y - bleed.0),
         size(
             layout.width,
-            line_height * (wrap_boundaries.len() as f32 + 1.),
+            line_height * (wrap_boundaries.len() as f32 + 1.) + bleed.0 + bleed.1,
         ),
     );
         // KaminIDE patch: выключка по ширине — остаток строки раздаётся её
@@ -538,6 +572,7 @@ fn paint_line_background(
             )
         });
     window.paint_layer(line_bounds, |window| {
+        let all_style_runs = decoration_runs;
         let mut decoration_runs = decoration_runs.iter();
         let mut wraps = wrap_boundaries.iter().peekable();
         let mut run_end = 0;
@@ -545,7 +580,7 @@ fn paint_line_background(
         // режется переносом так же, как он.
         let mut current_background: Option<(
             Point<Pixels>,
-            (Hsla, Point<Pixels>, Pixels, bool, Option<(Hsla, [Pixels; 4])>),
+            (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>),
         )> = None;
         let text_system = cx.text_system().clone();
         let mut glyph_origin = point(
@@ -565,6 +600,39 @@ fn paint_line_background(
         let mut line_ix = 0usize;
         let mut gaps_passed = 0usize;
         let mut prev_space = false;
+        // KaminIDE patch: набор БЕЗ ЕДИНОГО глифа. «Default ignorable» (U+FEFF
+        // и родня) выбрасывается набором целиком, цикл ниже не идёт ни разу, и
+        // фон такого прогона не рисовался вовсе. Для CSS это полоса строчной
+        // коробки: место под своё поле и отступ она держит знаком-распоркой, а
+        // ширину распорке даёт трекинг (§8.4 — боковые поля, рамки и отступы
+        // строчной коробки занимают место в строке и красятся).
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v138, `scout-ui-2026-09.md` план K2):
+        // заводить полосу прогона не только от фона, но и от
+        // `background_border` (контур/рамка строчной коробки без заливки).
+        // Срез css-ui+css-overflow+css-backgrounds+css-text+CSS2 8331: +2
+        // (`outline-004`, `inlines-002`) при −15 — вся семья `CSS2/bidi/
+        // bidi-00*` (0.26…0.42 → 0.52…1.02), `split-inline-borders`,
+        // `inlines-017`, `clip-border-area-box-decoration-break`: обычная
+        // рамка строчной коробки начинает рисоваться дважды.
+        if layout.runs.iter().all(|r| r.glyphs.is_empty())
+            && let Some(style_run) = all_style_runs
+                .iter()
+                .find(|r| r.background_color.is_some())
+            && let Some(bg) = style_run.background_color
+        {
+            window.paint_quad(run_background_quad(
+                glyph_origin,
+                layout.width,
+                line_height,
+                content_height,
+                bg,
+                style_run.background_pad,
+                style_run.background_radius,
+                true,
+                true,
+                style_run.background_border,
+            ));
+        }
         for (run_ix, run) in layout.runs.iter().enumerate() {
             max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
 
@@ -596,7 +664,7 @@ fn paint_line_background(
                             *background_origin,
                             glyph_origin.x - background_origin.x,
                             line_height,
-                            layout.font_size,
+                            content_height,
                             background_color.0,
                             background_color.1,
                             background_color.2,
@@ -623,7 +691,7 @@ fn paint_line_background(
 
                 let mut finished_background: Option<(
                     Point<Pixels>,
-                    (Hsla, Point<Pixels>, Pixels, bool, Option<(Hsla, [Pixels; 4])>),
+                    (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>),
                 )> = None;
                 if glyph.index >= run_end {
                     let mut style_run = decoration_runs.next();
@@ -673,7 +741,7 @@ fn paint_line_background(
                         background_origin,
                         width,
                         line_height,
-                        layout.font_size,
+                        content_height,
                         background_color.0,
                         background_color.1,
                         background_color.2,
@@ -700,7 +768,7 @@ fn paint_line_background(
                 background_origin,
                 last_line_end_x - background_origin.x,
                 line_height,
-                layout.font_size,
+                content_height,
                 background_color.0,
                 background_color.1,
                 background_color.2,
@@ -725,22 +793,26 @@ fn run_background_quad(
     origin: Point<Pixels>,
     width: Pixels,
     line_height: Pixels,
-    font_size: Pixels,
+    content_height: Pixels,
     color: Hsla,
-    pad: Point<Pixels>,
+    pad: [Pixels; 4],
     radius: Pixels,
     pad_left: bool,
     pad_right: bool,
     border: Option<(Hsla, [Pixels; 4])>,
 ) -> crate::PaintQuad {
-    // 1.16 кегля — высота коробки содержимого у типовых интерфейсных
-    // шрифтов; она же центрируется в строке, как половинный интерлиньяж.
-    let band = font_size * 1.16 + pad.y * 2.0;
-    let top = origin.y + (line_height - band).half();
+    // Высота коробки содержимого приходит замеренной (подъём + спуск);
+    // центрируется она в строке, как половинный интерлиньяж.
+    // Отступ строчной коробки — по своей стороне (CSS 2.1 §8.4): половинный
+    // интерлиньяж принадлежит СТРОКЕ и в коробку отступа не входит, поэтому
+    // верх считается от коробки содержимого, а не от раздутой полосы. При
+    // равных верхе и низе формула совпадает с прежней.
+    let band = content_height + pad[0] + pad[2];
+    let top = origin.y + (line_height - content_height).half() - pad[0];
     // Поля стоят на КОНЦАХ прогона: на переносе подсветка идёт впритык, иначе
     // она вылезала бы за край колонки с обеих сторон каждой строки.
-    let left = if pad_left { pad.x } else { px(0.) };
-    let right = if pad_right { pad.x } else { px(0.) };
+    let left = if pad_left { pad[3] } else { px(0.) };
+    let right = if pad_right { pad[1] } else { px(0.) };
     let quad = crate::fill(
         Bounds {
             origin: point(origin.x - left, top),
@@ -756,16 +828,30 @@ fn run_background_quad(
         // KaminIDE patch: ширины по сторонам [верх, право, низ, лево] —
         // строчная коробка бывает с частичной рамкой (`border-left` у
         // первого куска). На переносе боковые грани не ставятся.
-        Some((border_color, w)) => crate::PaintQuad {
-            border_widths: crate::Edges {
+        Some((border_color, w)) => {
+            // KaminIDE patch: рамка лежит СНАРУЖИ коробки отступа (§8.1), а
+            // квад рисует её внутрь — поэтому прямоугольник раздувается на
+            // ширины сторон. Прежде рамка съедала полосу изнутри, и коробка
+            // выходила ровно на свою рамку ниже.
+            let e = crate::Edges {
                 top: w[0],
                 right: if pad_right { w[1] } else { px(0.) },
                 bottom: w[2],
                 left: if pad_left { w[3] } else { px(0.) },
-            },
-            border_color,
-            ..quad
-        },
+            };
+            crate::PaintQuad {
+                bounds: Bounds {
+                    origin: point(quad.bounds.origin.x - e.left, quad.bounds.origin.y - e.top),
+                    size: size(
+                        quad.bounds.size.width + e.left + e.right,
+                        quad.bounds.size.height + e.top + e.bottom,
+                    ),
+                },
+                border_widths: e,
+                border_color,
+                ..quad
+            }
+        }
         None => quad,
     }
 }

@@ -844,6 +844,16 @@ pub struct Window {
     /// текст и картинки. Раскладка её не видит — элемент занимает своё место,
     /// а рисуется преобразованным, ровно как в CSS.
     transformation_stack: Vec<TransformationMatrix>,
+    /// KaminIDE patch: подобие для масок содержимого — `(начало, коэффициент)`.
+    /// Шейдер сравнивает маску с УЖЕ преобразованной позицией
+    /// (`shaders.hlsl` `distance_from_clip_rect_transformed`), поэтому маска,
+    /// заданная ребёнком в немасштабированных точках под масштабом стопки
+    /// страниц, обязана быть переведена в итоговые координаты окна.
+    mask_scale: Option<(Point<Pixels>, f32)>,
+    /// KaminIDE patch: итоговая матрица `with_transformation_masked`, пока
+    /// рисуется её содержимое: маски детей переводятся ею в координаты окна
+    /// (см. `with_content_mask`). None — маски как есть.
+    mask_map: Option<TransformationMatrix>,
     pub(crate) element_opacity: f32,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
@@ -934,6 +944,20 @@ fn default_bounds(display_id: Option<DisplayId>, cx: &mut App) -> Bounds<Pixels>
                 .map(|display| display.default_bounds())
                 .unwrap_or_else(|| Bounds::new(point(px(0.), px(0.)), DEFAULT_WINDOW_SIZE))
         })
+}
+
+/// KaminIDE patch: снимок контекста краски окна (см. `Window::paint_ctx`).
+pub(crate) struct PaintCtx {
+    element_id_stack: SmallVec<[ElementId; 32]>,
+    text_style_stack: Vec<TextStyleRefinement>,
+    rendered_entity_stack: Vec<EntityId>,
+    element_offset_stack: Vec<Point<Pixels>>,
+    transformation_stack: Vec<TransformationMatrix>,
+    mask_scale: Option<(Point<Pixels>, f32)>,
+    mask_map: Option<TransformationMatrix>,
+    element_opacity: f32,
+    content_mask_stack: Vec<ContentMask<Pixels>>,
+    image_cache_stack: Vec<AnyImageCache>,
 }
 
 impl Window {
@@ -1243,6 +1267,8 @@ impl Window {
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
             transformation_stack: Vec::new(),
+            mask_scale: None,
+            mask_map: None,
             content_mask_stack: Vec::new(),
             element_opacity: 1.0,
             requested_autoscroll: None,
@@ -2558,7 +2584,16 @@ impl Window {
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
         if let Some(mask) = mask {
-            let mask = mask.intersect(&self.content_mask());
+            // KaminIDE patch: под `with_transformation_masked` маска ребёнка
+            // задана в его НЕпреобразованных точках, а шейдер сравнивает её с
+            // уже преобразованной позицией (`distance_from_clip_rect_transformed`):
+            // переводим той же матрицей, что и квады. Подобие стопки страниц
+            // в итоговой матрице уже есть, `scaled_mask` второй раз не нужен.
+            let mask = match self.mask_map {
+                Some(m) => self.mapped_mask(mask, &m),
+                None => self.scaled_mask(mask),
+            }
+            .intersect(&self.content_mask());
             self.content_mask_stack.push(mask);
             let result = f(self);
             self.content_mask_stack.pop();
@@ -2566,6 +2601,133 @@ impl Window {
         } else {
             f(self)
         }
+    }
+
+    /// KaminIDE patch: снимок контекста краски — всё, что `paint` предков
+    /// кладёт в окно вокруг ребёнка (маски, прозрачность, стиль текста,
+    /// преобразования, путь id). Перенесённый ребёнок (`PaintLast` в
+    /// собирателе) рисуется позже ровно в том окружении, где стоял.
+    pub(crate) fn paint_ctx(&self) -> PaintCtx {
+        PaintCtx {
+            element_id_stack: self.element_id_stack.clone(),
+            text_style_stack: self.text_style_stack.clone(),
+            rendered_entity_stack: self.rendered_entity_stack.clone(),
+            element_offset_stack: self.element_offset_stack.clone(),
+            transformation_stack: self.transformation_stack.clone(),
+            mask_scale: self.mask_scale,
+            mask_map: self.mask_map,
+            element_opacity: self.element_opacity,
+            content_mask_stack: self.content_mask_stack.clone(),
+            image_cache_stack: self.image_cache_stack.clone(),
+        }
+    }
+
+    /// KaminIDE patch: выполнить `f` в снятом `paint_ctx` окружении и вернуть
+    /// прежнее.
+    pub(crate) fn with_paint_ctx<R>(
+        &mut self,
+        mut ctx: PaintCtx,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        fn swap_all(w: &mut Window, c: &mut PaintCtx) {
+            std::mem::swap(&mut w.element_id_stack, &mut c.element_id_stack);
+            std::mem::swap(&mut w.text_style_stack, &mut c.text_style_stack);
+            std::mem::swap(&mut w.rendered_entity_stack, &mut c.rendered_entity_stack);
+            std::mem::swap(&mut w.element_offset_stack, &mut c.element_offset_stack);
+            std::mem::swap(&mut w.transformation_stack, &mut c.transformation_stack);
+            std::mem::swap(&mut w.mask_scale, &mut c.mask_scale);
+            std::mem::swap(&mut w.mask_map, &mut c.mask_map);
+            std::mem::swap(&mut w.element_opacity, &mut c.element_opacity);
+            std::mem::swap(&mut w.content_mask_stack, &mut c.content_mask_stack);
+            std::mem::swap(&mut w.image_cache_stack, &mut c.image_cache_stack);
+        }
+        swap_all(self, &mut ctx);
+        let r = f(self);
+        swap_all(self, &mut ctx);
+        r
+    }
+
+    /// KaminIDE patch: подменить маску содержимого БЕЗ пересечения с
+    /// текущей. Нужно собственному фону коробки с `overflow: hidden`: маска
+    /// коробки — её padding-box, а фон по `background-clip` красится до
+    /// border-box (css-backgrounds-3 §3.7; overflow режет содержимое, не
+    /// собственный фон).
+    pub fn with_content_mask_replaced<R>(
+        &mut self,
+        mask: ContentMask<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint_or_prepaint();
+        let mask = self.scaled_mask(mask);
+        self.content_mask_stack.push(mask);
+        let result = f(self);
+        self.content_mask_stack.pop();
+        result
+    }
+
+    /// KaminIDE patch: перевести маску ребёнка в итоговые координаты окна,
+    /// когда стопка страниц рисует под масштабом (`with_mask_scale`). Вне
+    /// стопки — тождество.
+    pub(crate) fn scaled_mask(&self, mask: ContentMask<Pixels>) -> ContentMask<Pixels> {
+        let Some((o, s)) = self.mask_scale else {
+            return mask;
+        };
+        let b = mask.bounds;
+        ContentMask {
+            bounds: Bounds {
+                origin: Point::new(
+                    Pixels(o.x.0 + (b.origin.x.0 - o.x.0) * s),
+                    Pixels(o.y.0 + (b.origin.y.0 - o.y.0) * s),
+                ),
+                size: Size {
+                    width: Pixels(b.size.width.0 * s),
+                    height: Pixels(b.size.height.0 * s),
+                },
+            },
+        }
+    }
+
+    /// KaminIDE patch: образ маски под матрицей `with_transformation_masked`.
+    /// Матрица живёт в точках устройства, маска — в логических: туда и
+    /// обратно через масштаб окна. Матрица сохраняет оси (иначе `mask_map`
+    /// не ставится), поэтому образ двух противоположных углов — снова
+    /// противоположные углы прямоугольника.
+    fn mapped_mask(&self, mask: ContentMask<Pixels>, m: &TransformationMatrix) -> ContentMask<Pixels> {
+        let s = self.scale_factor();
+        let b = mask.bounds;
+        let at = |x: f32, y: f32| {
+            let (x, y) = (x * s, y * s);
+            (
+                (m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y) / s,
+                (m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y) / s,
+            )
+        };
+        let (x0, y0) = at(b.origin.x.0, b.origin.y.0);
+        let (x1, y1) = at(b.origin.x.0 + b.size.width.0, b.origin.y.0 + b.size.height.0);
+        ContentMask {
+            bounds: Bounds {
+                origin: Point::new(Pixels(x0.min(x1)), Pixels(y0.min(y1))),
+                size: Size {
+                    width: Pixels((x1 - x0).abs()),
+                    height: Pixels((y1 - y0).abs()),
+                },
+            },
+        }
+    }
+
+    /// KaminIDE patch: на время `f` маски детей отображаются тем же подобием
+    /// (центр `origin`, коэффициент `scale`), которым матрица
+    /// `with_transformation` стопки страниц преобразует их квады.
+    pub fn with_mask_scale<R>(
+        &mut self,
+        origin: Point<Pixels>,
+        scale: f32,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let prev = self.mask_scale.replace((origin, scale));
+        let result = f(self);
+        self.mask_scale = prev;
+        result
     }
 
     /// Updates the global element offset relative to the current offset. This is used to implement
@@ -2672,14 +2834,19 @@ impl Window {
         let (task, is_first) = cx.fetch_asset::<A>(source);
         task.clone().now_or_never().or_else(|| {
             if is_first {
-                let entity_id = self.current_view();
+                // KaminIDE patch: a measure callback (detached layout during
+                // `compute_layout`) has no current view; then the window is
+                // refreshed instead (`contain-size-replaced-006` aborted the
+                // stand: float host measuring a `<picture>` source).
+                let entity_id = self.current_view_opt();
                 self.spawn(cx, {
                     let task = task.clone();
                     async move |cx| {
                         task.await;
 
-                        cx.on_next_frame(move |_, cx| {
-                            cx.notify(entity_id);
+                        cx.on_next_frame(move |window, cx| match entity_id {
+                            Some(entity_id) => cx.notify(entity_id),
+                            None => window.refresh(),
                         });
                     }
                 })
@@ -2718,9 +2885,48 @@ impl Window {
         transformation: TransformationMatrix,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v122, `scout-transforms-2026-09d.md`
+        // шаг 3): порядок `outer·inner` вместо `inner·outer`. css-transforms
+        // +2/−1 (`transform-compound-001`, `transform3d-sorting-002`), но
+        // css-writing-modes −9: весь `text-combine-upright-*` (вертикальный
+        // текст рисуется вложенными `with_transformation`, и наш порядок
+        // подобран под них). Менять только вместе с `lines.rs`/`flow.rs`.
         let combined = transformation.compose(self.current_transformation());
         self.transformation_stack.push(combined);
+        // KaminIDE patch: обычное вложение маски не переводит — ни своё, ни
+        // унаследованное от `with_transformation_masked` снаружи: вертикальный
+        // абзац, `CombinedUpright`, стопка страниц и объёмный путь рисуются
+        // байт в байт как прежде.
+        let prev_map = self.mask_map.take();
         let result = f(self);
+        self.mask_map = prev_map;
+        self.transformation_stack.pop();
+        result
+    }
+
+    /// KaminIDE patch: `with_transformation`, под которым маски детей
+    /// (`overflow`, плитки фона, полосы рамки) едут вместе с содержимым.
+    ///
+    /// Шейдер сравнивает маску с УЖЕ преобразованной позицией, а дети
+    /// задают маски в своих непреобразованных точках — обрезка стояла на
+    /// месте коробки до `transform` (`transform-clip-001`: 190×190 вместо
+    /// полосы 200×10; `transform-background-001`: видна половина плиток).
+    /// Маска переводится ИТОГОВОЙ матрицей (та же свёртка `transformation ∘
+    /// current`, что у квадов, — порядок вложений не меняется) и только когда
+    /// она сохраняет оси; при косом повороте — прежнее поведение.
+    pub fn with_transformation_masked<R>(
+        &mut self,
+        transformation: TransformationMatrix,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let combined = transformation.compose(self.current_transformation());
+        let r = combined.rotation_scale;
+        let keeps_axes = (r[0][1].abs() < 1e-4 && r[1][0].abs() < 1e-4)
+            || (r[0][0].abs() < 1e-4 && r[1][1].abs() < 1e-4);
+        self.transformation_stack.push(combined);
+        let prev_map = std::mem::replace(&mut self.mask_map, keeps_axes.then_some(combined));
+        let result = f(self);
+        self.mask_map = prev_map;
         self.transformation_stack.pop();
         result
     }
@@ -3082,6 +3288,8 @@ impl Window {
             self.next_frame.scene.insert_primitive(Shadow {
                 // KaminIDE patch: внутренняя тень отмечена в самой тени.
                 inset: u32::from(inset),
+                // KaminIDE patch: своя коробка — вырез наружной тени.
+                box_bounds: bounds.scale(scale_factor),
                 order: 0,
                 blur_radius: shadow.blur_radius.scale(scale_factor),
                 bounds: shadow_bounds.scale(scale_factor),
@@ -3554,7 +3762,49 @@ impl Window {
             blur_radius: blur_radius * scale_factor,
             group: 0,
             opacity: 1.0,
+            color_matrix: None,
         });
+    }
+
+    /// KaminIDE patch: `backdrop-filter` с цветовыми функциями — матрица 4×5
+    /// над подложкой (и размытие, если оно тоже задано). Прозрачность
+    /// элемента входит в композит (filter-effects-2 §3 шаг 5: эффекты
+    /// самого элемента применяются к отфильтрованной подложке).
+    ///
+    /// `hoist`: элемент сам — группа (`paint_group`, своя маска-изображение).
+    /// Внутри группы подложку копировать не из чего — буфер группы рисуется
+    /// до кадра, — и она уходит в кадр перед меткой группы (см. `paint_group`).
+    pub fn paint_backdrop_filter(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        blur_radius: f32,
+        color_matrix: [f32; 20],
+        hoist: bool,
+    ) {
+        use crate::PaintSurface;
+
+        self.invalidator.debug_assert_paint();
+
+        let scale_factor = self.scale_factor();
+        let bounds = bounds.scale(scale_factor);
+        let content_mask = self.content_mask().scale(scale_factor);
+        let opacity = self.element_opacity();
+        let surface = PaintSurface {
+            order: 0,
+            bounds,
+            content_mask,
+            corner_radii: corner_radii.scale(scale_factor),
+            blur_radius: blur_radius * scale_factor,
+            group: 0,
+            opacity,
+            color_matrix: Some(color_matrix),
+        };
+        if hoist && self.next_frame.scene.in_group {
+            self.next_frame.scene.hoisted_backdrops.push(surface);
+        } else {
+            self.next_frame.scene.insert_primitive(surface);
+        }
     }
 
     /// KaminIDE patch: нарисовать поддерево в отдельный буфер и положить в
@@ -3578,6 +3828,8 @@ impl Window {
         opacity: f32,
         blend: u32,
         polygon: &[Point<Pixels>],
+        mask: Option<(std::sync::Arc<crate::RenderImage>, Bounds<Pixels>, u32)>,
+        mask_clip: Option<[f32; 4]>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         use crate::{PaintGroup, PaintSurface};
@@ -3589,12 +3841,16 @@ impl Window {
         let content_mask = self.content_mask().scale(scale_factor);
 
         let mut outer = crate::Scene::default();
+        outer.in_group = true;
         std::mem::swap(&mut self.next_frame.scene, &mut outer);
         let result = f(self);
         std::mem::swap(&mut self.next_frame.scene, &mut outer);
 
         let mut inner = outer;
         inner.finish();
+        // KaminIDE patch: подложки, поднятые из группы (`paint_backdrop_filter`
+        // с `hoist`), — в объемлющую сцену; до кадра — сквозь все уровни.
+        let hoisted = std::mem::take(&mut inner.hoisted_backdrops);
         // Группы, вложенные в эту, переезжают в общий список кадра ПЕРЕД ней:
         // их номера были местными, поэтому сдвигаются на длину списка.
         let mut nested = std::mem::take(&mut inner.groups);
@@ -3607,13 +3863,31 @@ impl Window {
             self.next_frame.scene.groups.append(&mut nested);
         }
         let index = self.next_frame.scene.groups.len() as u32;
+        let (mask, mask_bounds, mask_once) = match mask {
+            Some((img, b, once)) => (Some(img), b.scale(scale_factor), once),
+            None => (None, Bounds::default(), 0),
+        };
         self.next_frame.scene.groups.push(PaintGroup {
             scene: inner,
             bounds: scaled,
             blur_radius: blur_radius * scale_factor,
             blend,
             polygon: polygon.iter().map(|p| p.scale(scale_factor)).collect(),
+            mask,
+            mask_bounds,
+            mask_once,
+            mask_clip,
         });
+        // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
+        // копирует кадр, уже нарисованный под элементом, а буфер группы
+        // (фон, рамка, дети — filter-effects-2 §3 шаг 5) композитится поверх.
+        if self.next_frame.scene.in_group {
+            self.next_frame.scene.hoisted_backdrops.extend(hoisted);
+        } else {
+            for surface in hoisted {
+                self.next_frame.scene.insert_primitive(surface);
+            }
+        }
         self.next_frame.scene.insert_primitive(PaintSurface {
             order: 0,
             bounds: scaled,
@@ -3622,6 +3896,7 @@ impl Window {
             blur_radius: 0.0,
             group: index + 1,
             opacity,
+            color_matrix: None,
         });
         result
     }
@@ -3740,8 +4015,76 @@ impl Window {
             .request_measured_layout_with_baseline(style, rem_size, scale_factor, measure)
     }
 
+    /// KaminIDE patch: то же, но замер отдаёт ПЕРВУЮ и ПОСЛЕДНЮЮ базовые
+    /// линии содержимого (от верха коробки содержимого) — для `last baseline`
+    /// (css-align-3 §9.1).
+    pub fn request_measured_layout_with_baselines<
+        F: FnMut(
+                Size<Option<Pixels>>,
+                Size<AvailableSpace>,
+                &mut Window,
+                &mut App,
+            ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>)
+            + 'static,
+    >(
+        &mut self,
+        style: Style,
+        measure: F,
+    ) -> LayoutId {
+        self.invalidator.debug_assert_prepaint();
+
+        let rem_size = self.rem_size();
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_mut()
+            .unwrap()
+            .request_measured_layout_with_baselines(style, rem_size, scale_factor, measure)
+    }
+
     /// Compute the layout for the given id within the given available space.
     /// This method is called for its side effect, typically by the framework prior to painting.
+    /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
+    ///
+    /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
+    /// движок вынут из окна (`compute_layout` ниже держит его `take()`-нутым), и
+    /// `layout_as_root` в нём паникует на `unwrap`. Хосту полос обтекания
+    /// (`crates/html/src/band_flow.rs`) размер детей нужен именно там: высота
+    /// контекста с флоатами зависит от ширины содержащего блока, а её знает
+    /// только замер. Здесь на время `f` в окно кладётся свежий движок, после —
+    /// возвращается прежний (`None` внутри замера, основной вне его). Узлы
+    /// свежего движка живут только внутри `f`: элемент, разложенный в нём,
+    /// в основное дерево не годится — его надо строить заново (так делает и
+    /// Blink: пробная раскладка флоата до посадки, `floats_utils.cc:173-189`).
+    pub fn with_nested_layout<R>(&mut self, f: impl FnOnce(&mut Window) -> R) -> R {
+        let outer = self.layout_engine.replace(TaffyLayoutEngine::new());
+        let r = f(self);
+        self.layout_engine = outer;
+        r
+    }
+
+    /// KaminIDE patch: размер узла без округления к физической точке (см.
+    /// `TaffyLayoutEngine::layout_size_unrounded`).
+    pub fn layout_size_unrounded(&mut self, layout_id: LayoutId) -> Size<Pixels> {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_ref()
+            .unwrap()
+            .layout_size_unrounded(layout_id, scale_factor)
+    }
+
+    /// KaminIDE patch: начало узла в окне без округления к физической точке
+    /// (см. `TaffyLayoutEngine::layout_origin_unrounded`); как `layout_bounds`,
+    /// со смещением текущего элемента.
+    pub fn layout_origin_unrounded(&mut self, layout_id: LayoutId) -> Point<Pixels> {
+        let scale_factor = self.scale_factor();
+        let origin = self
+            .layout_engine
+            .as_mut()
+            .unwrap()
+            .layout_origin_unrounded(layout_id, scale_factor);
+        origin + self.element_offset()
+    }
+
     /// After calling it, you can request the bounds of the given layout node id or any descendant.
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
@@ -3756,6 +4099,27 @@ impl Window {
         let mut layout_engine = self.layout_engine.take().unwrap();
         layout_engine.compute_layout(layout_id, available_space, self, cx);
         self.layout_engine = Some(layout_engine);
+    }
+
+    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
+    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
+    /// надо с нулевым смещением — его границы уже абсолютные.
+    pub fn set_layout_root_origin(&mut self, layout_id: LayoutId, origin: Point<Pixels>) {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_mut()
+            .unwrap()
+            .set_root_origin(layout_id, origin, scale_factor);
+    }
+
+    /// KaminIDE patch: смещение узла от родителя и его размер без округления
+    /// к точке устройства (см. `TaffyLayoutEngine::layout_exact`).
+    pub fn layout_exact(&mut self, layout_id: LayoutId) -> (Point<Pixels>, Size<Pixels>) {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_ref()
+            .unwrap()
+            .layout_exact(layout_id, scale_factor)
     }
 
     /// Obtain the bounds computed for the given LayoutId relative to the window. This method will usually be invoked by
@@ -3834,6 +4198,14 @@ impl Window {
     pub fn set_view_id(&mut self, view_id: EntityId) {
         self.invalidator.debug_assert_prepaint();
         self.next_frame.dispatch_tree.set_view_id(view_id);
+    }
+
+    /// KaminIDE patch: the rendering view, if any. Layout of a detached
+    /// root (a measure taken outside the view's render, e.g. by the HTML
+    /// engine's probes) has none, and `current_view()` panicked there
+    /// (`contain-size-replaced-006`: a loading `<img>` without `src`).
+    pub fn current_view_opt(&self) -> Option<EntityId> {
+        self.rendered_entity_stack.last().copied()
     }
 
     /// Get the entity ID for the currently rendering view

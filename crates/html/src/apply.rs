@@ -30,10 +30,30 @@ fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         // Единицы окна разрешает сборщик дерева; сюда они доходят только у
         // узлов вне его — доля родителя ближе всего по смыслу.
         Len::Vw(k) | Len::Vh(k) => relative(k),
+        // Смешанный остаток calc (обычно px+%): честно ляжет только в
+        // taffy-calc (фаза 2); пока — процентная часть, при её отсутствии
+        // точечная (ближе, чем прежний сброс всего объявления).
+        Len::Calc(i) => {
+            let s = crate::value::calc_get(i);
+            match s.pct_px() {
+                // Доля с точками — настоящий calc раскладки (css-values-4
+                // §10.9): KaminIDE patch `DefiniteLength::Calc` + решатель в
+                // taffy. Прежняя подмена половиной замерена в минус
+                // (`gap-003-ltr`), поэтому только через calc.
+                Some((pct, add)) => gpui::DefiniteLength::Calc(add, pct),
+                None if s.pct != 0.0 => relative(s.pct),
+                None => px(s.px).into(),
+            }
+        }
         // `auto` в размере значит «пусть решает раскладка» — это отсутствие
         // ограничения, а не значение; вызывающий такие поля не применяет.
         // Размер по содержимому — то же самое: его ставит обёртка-сетка
         // (`render::content_sized`), а не длина.
+        // `anchor()` во вставке: раскладке отдаётся НОЛЬ — коробка встаёт к
+        // краю содержащего блока, а сдвиг до края якоря считает
+        // `anchor::AnchorPlace` на подготовке кадра; там же от этого нуля
+        // отсчитывается и запасное значение `anchor(left, 20px)`.
+        Len::Anchor(_) => px(0.0).into(),
         Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => relative(1.0),
     }
 }
@@ -49,6 +69,9 @@ fn bound(t: &Track) -> gpui::GridTrack {
         Track::MaxContent => gpui::GridTrack::MaxContent,
         Track::Fr(f) => gpui::GridTrack::Fraction(*f),
         Track::Pct(p) => gpui::GridTrack::Percent(*p),
+        // Сюда единица шрифта дойти не должна: её переводит в точки
+        // разрешение кегля. Если всё же дошла — ведём себя как `auto`.
+        Track::Font(_) => gpui::GridTrack::Auto,
     }
 }
 
@@ -67,6 +90,10 @@ fn track(t: &TrackSize) -> gpui::GridTrack {
             gpui::GridTrack::Fraction(*f),
         ))),
         TrackSize::Single(one) => bound(one),
+        TrackSize::AutoRepeat { fit, tracks } => gpui::GridTrack::AutoRepeat {
+            fit: *fit,
+            tracks: tracks.iter().map(track).collect(),
+        },
     }
 }
 
@@ -114,8 +141,8 @@ fn to_content(j: Justify) -> gpui::AlignContent {
         Justify::End => gpui::AlignContent::FlexEnd,
         // Начало и конец ОСИ ПИСЬМА: у раскладки это отдельные значения, и
         // при обратном направлении ряда они не совпадают с гибкими.
-        Justify::WmStart => gpui::AlignContent::Start,
-        Justify::WmEnd => gpui::AlignContent::End,
+        Justify::WmStart | Justify::Left => gpui::AlignContent::Start,
+        Justify::WmEnd | Justify::Right => gpui::AlignContent::End,
         Justify::Between => gpui::AlignContent::SpaceBetween,
         Justify::Around => gpui::AlignContent::SpaceAround,
         // `space-evenly` отличается от `space-around` шириной крайних
@@ -127,12 +154,89 @@ fn to_content(j: Justify) -> gpui::AlignContent {
 
 fn to_items(a: Align) -> gpui::AlignItems {
     match a {
-        Align::Center => gpui::AlignItems::Center,
+        // §anchor-center вне абсолюта с якорем «behaves as center»; у
+        // абсолюта с якорем сдвиг довозит `anchor::AnchorPlace` поверх.
+        Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
         Align::Start => gpui::AlignItems::FlexStart,
         Align::End => gpui::AlignItems::FlexEnd,
         Align::Stretch => gpui::AlignItems::Stretch,
         Align::Baseline => gpui::AlignItems::Baseline,
     }
+}
+
+/// Имена линий контейнера-сетки и именованные грани элемента — раскладке
+/// (css-grid-2 §7.2.2, §8.3; разрешает taffy `NamedLineResolver`, через
+/// подсетки — с наследованием имён родителя, §9 (d)). Оси контейнера
+/// ЛОГИЧЕСКИЕ и переставляются при вертикальном письме, как его дорожки
+/// (`grid_style`); у подсеточной оси список — `<line-name-list>`. Грани
+/// элемента идут той же осью, что и его числовые (`grid_location`).
+fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
+    let mut out = gpui::GridLineNames::default();
+    let grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    if grid {
+        let flip = c.vertical == Some(true);
+        let subgrid_ok = !crate::dom::subgrid_inhibited(c);
+        let (cols, rows) = (c.grid_col_line_names.clone(), c.grid_row_line_names.clone());
+        let (cols_sub, rows_sub) = (c.subgrid_cols && subgrid_ok, c.subgrid_rows && subgrid_ok);
+        // Логическая ось → (шаблон, подсетка) физической оси.
+        let mut put = |names: Option<gpui::GridAxisLineNames>, sub: bool, physical_cols: bool| {
+            let Some(names) = names else { return };
+            match (sub, physical_cols) {
+                (true, true) => out.subgrid_columns = Some(names),
+                (true, false) => out.subgrid_rows = Some(names),
+                (false, true) => out.columns = Some(names),
+                (false, false) => out.rows = Some(names),
+            }
+        };
+        put(cols, cols_sub, !flip);
+        put(rows, rows_sub, flip);
+    }
+    if placement_flip(c) {
+        out.column = c.grid_row_named.clone();
+        out.row = c.grid_col_named.clone();
+    } else {
+        out.column = c.grid_col_named.clone();
+        out.row = c.grid_row_named.clone();
+    }
+    let empty = out.columns.is_none()
+        && out.rows.is_none()
+        && out.subgrid_columns.is_none()
+        && out.subgrid_rows.is_none()
+        && out.column.iter().all(Option::is_none)
+        && out.row.iter().all(Option::is_none);
+    (!empty).then_some(out)
+}
+
+/// Размещение элемента сетки — для обёртки `render::content_sized`: в
+/// дорожках родителя стоит ОНА, а не сам элемент (css-grid-2 §8: размещение —
+/// свойство элемента сетки, а элементом здесь служит обёртка). Числовые грани
+/// и именованные (без имён линий самого элемента: обёртка — своя сетка).
+pub(crate) fn grid_item_placement(c: &Computed) -> (Option<gpui::GridLocation>, Option<gpui::GridLineNames>) {
+    let location = (c.grid_col.is_some() || c.grid_row.is_some()).then(|| {
+        let span = |p: Option<(Placement, Placement)>| {
+            let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
+            to_placement(a)..to_placement(b)
+        };
+        if placement_flip(c) {
+            gpui::GridLocation { row: span(c.grid_col), column: span(c.grid_row) }
+        } else {
+            gpui::GridLocation { row: span(c.grid_row), column: span(c.grid_col) }
+        }
+    });
+    let named = c.grid_col_named.iter().chain(c.grid_row_named.iter()).any(Option::is_some);
+    let (column, row) = if placement_flip(c) {
+        (c.grid_row_named.clone(), c.grid_col_named.clone())
+    } else {
+        (c.grid_col_named.clone(), c.grid_row_named.clone())
+    };
+    let names = named.then(|| gpui::GridLineNames { column, row, ..Default::default() });
+    (location, names)
+}
+
+/// Элемент вертикальной сетки (и лунок на её пути): его логические грани
+/// ложатся на переставленные физические оси (см. `grid_style`, `flip`).
+fn placement_flip(c: &Computed) -> bool {
+    c.parent_grid >= 2
 }
 
 fn to_placement(p: Placement) -> gpui::GridPlacement {
@@ -162,6 +266,14 @@ pub fn fill(g: &Gradient) -> gpui::Background {
     } else {
         gpui::linear_gradient(g.angle_deg, from, to)
     };
+    // Пространство смешения (css-color-4 §12.2). GPU-путь выражает два:
+    // гамма-sRGB и OKLab — шейдер переводит цвета в вершинном и обратно
+    // после смешения. Прочие пространства сюда не доходят: `gradient_as_tile`
+    // уводит их на растровый путь, где цвет считается на точку.
+    let base = match g.space {
+        crate::computed::GradSpace::Oklab => base.color_space(gpui::ColorSpace::Oklab),
+        _ => base,
+    };
     // Промежуточные цвета: до четырёх стопов заливка несёт сама (патч GPUI),
     // сверх того сборщик дерева по-прежнему кладёт полосы.
     if g.stops.len() > 2 {
@@ -176,6 +288,20 @@ pub fn fill(g: &Gradient) -> gpui::Background {
     base
 }
 
+/// `align-self` в раскладку. `last baseline` — отдельный вариант: группа
+/// последних базовых прижимается к концу оси (css-align-3 §9.3); прежде
+/// `last` сводился к первой базовой.
+pub fn self_align(a: Align, last: bool) -> gpui::AlignItems {
+    match a {
+        Align::Center | Align::AnchorCenter => gpui::AlignItems::Center,
+        Align::Start => gpui::AlignItems::FlexStart,
+        Align::End => gpui::AlignItems::FlexEnd,
+        Align::Baseline if last => gpui::AlignItems::LastBaseline,
+        Align::Baseline => gpui::AlignItems::Baseline,
+        Align::Stretch => gpui::AlignItems::Stretch,
+    }
+}
+
 pub fn apply(d: Div, c: &Computed) -> Div {
     let mut d = d;
     d = apply_layout(d, c);
@@ -187,6 +313,45 @@ pub fn apply(d: Div, c: &Computed) -> Div {
 /// Стиль контейнера-сетки: дорожки, неявные дорожки, направление.
 fn grid_style(mut d: Div, c: &Computed) -> Div {
     d = d.grid();
+    // Контейнер лунок на пути сетки (`dom::lanes_as_grid`): раскладку лунками
+    // делает taffy. Порог `flow-tolerance: normal` — 1em (css-grid-3
+    // Overview.bs:828-831), `infinite` разбор держит бесконечными точками.
+    if c.lanes_taffy {
+        let em = match c.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let (tolerance, tolerance_pct) = match c.lanes_tolerance {
+            Some(Len::Px(v)) => (v, None),
+            Some(Len::Em(k)) => (k * em, None),
+            Some(Len::Pct(k)) => (0.0, Some(k)),
+            _ => (em, None),
+        };
+        // Ось решётки taffy — ФИЗИЧЕСКАЯ, а `grid-lanes-direction` —
+        // логическая: при вертикальном письме колонки идут по y, ряды — по x
+        // (та же перестановка, что у дорожек сетки ниже, `flip`).
+        // ★ ЗАМЕРЕНО: `vertical-rl` как `fill-reverse` колоночных лунок —
+        // лунки вертикального письма (116 пар) +1/−1, не взято.
+        let vertical = c.vertical == Some(true);
+        let logical_rows = crate::dom::lanes_row_dir(c);
+        d.style().grid_lanes = Some(gpui::GridLanesFlow {
+            rows: logical_rows != vertical,
+            track_reverse: c.lanes_track_reverse,
+            fill_reverse: c.lanes_fill_reverse,
+            dense: c.lanes_dense,
+            tolerance,
+            tolerance_pct,
+            stack_block: vertical && !logical_rows,
+        });
+        // По оси укладки `normal` — это НЕ растяжка (css-grid-3
+        // Overview.bs:1161-1225: самовыравнивание лишь у элементов над
+        // проёмом; Blink `ResolvedAlignSelf(normal)` :1056-1060), а общий
+        // путь `align-items: stretch` в стиль не пишет — для сетки это
+        // умолчание. Лункам явная растяжка нужна в стиле.
+        if c.align_items == Some(crate::computed::Align::Stretch) {
+            d.style().align_items = Some(gpui::AlignItems::Stretch);
+        }
+    }
     // Оси сетки ЛОГИЧЕСКИЕ: «колонки» идут вдоль строки, «ряды» — вдоль
     // потока. При вертикальном письме строка идёт сверху вниз, а поток —
     // поперёк, поэтому колонки становятся физическими рядами и наоборот.
@@ -219,45 +384,181 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
     // прежде зелёные пары совпадали с эталоном ИМЕННО одноколоночным
     // поведением, а свои дорожки без настоящих ширин родителя их разломали.
     // Возвращаться только с настоящей передачей дорожек родителя вниз.
+    // Явная сетка — не меньше `grid-template-areas`: «The size of the explicit
+    // grid is determined by the larger of the number of rows/columns defined
+    // by 'grid-template-areas' and the number of rows/columns sized by
+    // 'grid-template-rows'/'grid-template-columns'», лишние берут размер
+    // `grid-auto-*` (css-grid-2 Overview.bs:1495-1499; Blink
+    // `grid_line_resolver.cc:525-538`). Раскладке области не передаются, и их
+    // лишние колонки были у неё НЕЯВНЫМИ: размер тот же, но линия `-1`
+    // считалась от шаблона (`subgrid/abs-pos-001`: `3 / -1` абсолюта во внешней
+    // сетке кончался на линии 11, а не 12). Список `grid-auto-*` из нескольких
+    // значений и повтор `auto-fill/fit` не трогаем: там счёт другой.
+    let (area_rows, area_cols) = c.grid_areas.as_ref().map_or((0, 0), |a| {
+        (a.len(), a.iter().map(|r| r.len()).max().unwrap_or(0))
+    });
+    let with_areas =
+        |tracks: &[TrackSize], want: usize, auto: &Option<TrackSize>, list: &[TrackSize]| {
+            let mut out: Vec<gpui::GridTrack> = tracks.iter().map(track).collect();
+            let plain = tracks
+                .iter()
+                .all(|t| !matches!(t, TrackSize::AutoRepeat { .. }));
+            if plain && list.is_empty() && want > out.len() {
+                let fill = auto.as_ref().map(track).unwrap_or(gpui::GridTrack::Auto);
+                out.resize(want, fill);
+            }
+            out
+        };
     match (&c.grid_tracks, c.grid_cols, auto_fill) {
-        (Some(tracks), _, _) => d = along_line(d, tracks.iter().map(track).collect()),
+        (Some(tracks), _, _) => {
+            d = along_line(
+                d,
+                with_areas(tracks, area_cols, &c.grid_auto_cols, &c.grid_auto_cols_list),
+            )
+        }
         // «Сколько влезет» умеет сама раскладка — короткая форма GPUI.
-        (None, _, Some(min)) if !flip => d = d.grid_cols_min(px(min)),
+        // Тело повтора из НЕСКОЛЬКИХ дорожек: своего «минимума» оно не даёт
+        // (`auto_fill_min` разбирает одну дорожку), поэтому идёт своей ветвью.
+        // Раскладка список принимает как есть — `GridTrack::AutoRepeat`
+        // хранит `Vec` (`grid-auto-repeat-multiple-values-*` рисовались одной
+        // плитой во всю ширину).
+        // Поток ЛУНОК разворачивает повтор своим кодом (`render::lanes`), и
+        // список дорожек ему только мешает: `column-auto-repeat-013`
+        // уходил 0.00 → 10.92. Признак — `lanes_row`/`lanes_inline` и родня,
+        // они выставлены только у лунок.
+        (None, _, None)
+            if !flip
+                && c.grid_auto_fill_tracks.len() > 1
+                // Поток ЛУНОК доходит сюда уже с `display: grid` (печать
+                // `KAMIN_REPEAT_DIAG` показала `Some(Grid)`), поэтому вид его
+                // не отсекает: `column-auto-repeat-013` (лунки, черновик)
+                // уходит 0.00 → 10.92 — это записанная цена жилы.
+                && !matches!(c.display, Some(crate::computed::Display::GridLanes)) =>
+        {
+            d = along_line(
+                d,
+                vec![gpui::GridTrack::AutoRepeat {
+                    fit: c.auto_repeat_cols.is_some_and(|r| r.fit),
+                    tracks: c
+                        .grid_auto_fill_tracks
+                        .iter()
+                        .map(|v| gpui::GridTrack::Pixels(px(*v)))
+                        .collect(),
+                }],
+            )
+        }
+        (None, _, Some(min)) if !flip => {
+            // Повтор отдаётся раскладке СВОИМ видом: она считает, сколько
+            // дорожек влезет, и при `auto-fit` схлопывает пустые
+            // (css-grid-2 §auto-repeat). Прежняя короткая форма подменяла
+            // дорожку растяжкой `minmax(min, 1fr)`, и уцелевшие дорожки
+            // забирали весь остаток — раздавать было нечего.
+            let r = c.auto_repeat_cols;
+            // Тело повтора бывает из НЕСКОЛЬКИХ дорожек
+            // (`repeat(auto-fill, 50px 50px)`) — раскладка это уже умеет,
+            // список идёт в неё как есть.
+            let lo = match r.and_then(|r| r.track_pct) {
+                Some(k) => gpui::GridTrack::Percent(k),
+                None => gpui::GridTrack::Pixels(px(min)),
+            };
+            // `minmax(N, auto | k fr)`: максимум остаётся у дорожки — растяжка
+            // остатком (§12.8) и доли считает сама раскладка.
+            let track = match r {
+                Some(r) if r.max_auto => {
+                    gpui::GridTrack::MinMax(Box::new((lo, gpui::GridTrack::Auto)))
+                }
+                Some(r) if r.max_fr.is_some() => gpui::GridTrack::MinMax(Box::new((
+                    lo,
+                    gpui::GridTrack::Fraction(r.max_fr.unwrap_or(1.0)),
+                ))),
+                _ => lo,
+            };
+            let tracks: Vec<gpui::GridTrack> = vec![track];
+            d = along_line(
+                d,
+                vec![gpui::GridTrack::AutoRepeat {
+                    fit: r.is_some_and(|r| r.fit),
+                    tracks,
+                }],
+            )
+        }
         (None, Some(n), _) if !flip => d = d.grid_cols(n),
         (None, Some(n), _) => {
             d = d.grid_template_rows((0..n).map(|_| gpui::GridTrack::Auto).collect())
         }
         _ => {}
     }
+    // Повтор по ОСИ РЯДОВ: у классической сетки его не было вовсе, и
+    // `grid-template-rows: repeat(auto-fill, …)` уходил в никуда — ряды
+    // становились неявными, нулевой высоты.
+    if let Some(r) = c.grid_rows_repeat() {
+        let lo = match r.track_pct {
+            Some(k) => gpui::GridTrack::Percent(k),
+            None => gpui::GridTrack::Pixels(px(r.track.unwrap_or(0.0))),
+        };
+        // Максимум `minmax(N, auto | k fr)` — как у колонок выше.
+        let unit = if r.max_auto {
+            gpui::GridTrack::MinMax(Box::new((lo, gpui::GridTrack::Auto)))
+        } else if let Some(k) = r.max_fr {
+            gpui::GridTrack::MinMax(Box::new((lo, gpui::GridTrack::Fraction(k))))
+        } else {
+            lo
+        };
+        let line = vec![gpui::GridTrack::AutoRepeat {
+            fit: r.fit,
+            tracks: vec![unit],
+        }];
+        d = if flip {
+            d.grid_template_cols(line)
+        } else {
+            d.grid_template_rows(line)
+        };
+    } else if let (None, Some(r), Some(body)) = (&c.grid_rows, c.auto_repeat_rows, &c.auto_repeat_body_rows)
+        && body.len() > 1
+        && body.iter().all(|t| matches!(t, TrackSize::Single(crate::computed::Track::Px(_))))
+    {
+        // Тело повтора рядов из НЕСКОЛЬКИХ точечных дорожек
+        // (`repeat(auto-fill, [v] 10px [w] 10px [x] 10px [y])`) — тем же видом,
+        // что у колонок выше: прежде ряды такой записи не получали шаблона
+        // вовсе, и имена линий повтора (css-grid-2 §7.2.3.1 «names … in the
+        // repeat() are repeated as well») разрешались по пустой явной сетке —
+        // у лунок и у сетки-эталона по-разному (`row-auto-repeat-014`).
+        let line = vec![gpui::GridTrack::AutoRepeat { fit: r.fit, tracks: body.iter().map(track).collect() }];
+        d = if flip {
+            d.grid_template_cols(line)
+        } else {
+            d.grid_template_rows(line)
+        };
+    }
     // Строчная сетка ОБНИМАЕТ свои Px-дорожки (shrink-to-fit): блочная
     // ширина на всю строку ломала все пары с `display: inline grid` в
     // разметке эталонов (subgrid-alignment-in-subgridded-axis: серый фон до
     // края страницы вместо 100px). gpui-размер — border-box: паддинги и
     // рамки сверху.
-    if c.display == Some(Display::InlineGrid)
-        && c.width.is_none()
-        && let Some(tracks) = &c.grid_tracks
-    {
-        let all_px: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
-            crate::computed::TrackSize::Single(crate::computed::Track::Px(w)) => Some(acc + w),
-            _ => None,
-        });
-        if let Some(mut total) = all_px.filter(|t| *t > 0.0) {
-            let px_of = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
-            let b = c.borders();
-            total += px_of(c.column_gap) * (tracks.len().saturating_sub(1)) as f32
-                + px_of(c.padding.left)
-                + px_of(c.padding.right)
-                + px_of(b.left)
-                + px_of(b.right);
-            d = d.w(px(total));
+    if c.display == Some(Display::InlineGrid) && c.width.is_none() {
+        if let Some(tracks) = &c.grid_tracks {
+            let all_px: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
+                crate::computed::TrackSize::Single(crate::computed::Track::Px(w)) => Some(acc + w),
+                _ => None,
+            });
+            if let Some(mut total) = all_px.filter(|t| *t > 0.0) {
+                let px_of = |l: Option<Len>| match l {
+                    Some(Len::Px(v)) => v,
+                    _ => 0.0,
+                };
+                let b = c.borders();
+                total += px_of(c.column_gap) * (tracks.len().saturating_sub(1)) as f32
+                    + px_of(c.padding.left)
+                    + px_of(c.padding.right)
+                    + px_of(b.left)
+                    + px_of(b.right);
+                d = d.w(px(total));
+            }
         }
     }
     if let Some(rows) = &c.grid_rows {
-        let tracks: Vec<gpui::GridTrack> = rows.iter().map(track).collect();
+        // Ряды областей сверх шаблона — тоже явные (см. `with_areas` выше).
+        let tracks = with_areas(rows, area_rows, &c.grid_auto_rows, &c.grid_auto_rows_list);
         d = if flip {
             d.grid_template_cols(tracks)
         } else {
@@ -273,9 +574,54 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
     };
     if let Some(t) = auto_line {
         d.style().grid_auto_rows = Some(track(t));
+        if !c.grid_auto_rows_list.is_empty() {
+            d.style().grid_auto_rows_list =
+                Some(c.grid_auto_rows_list.iter().map(track).collect());
+        }
     }
     if let Some(t) = auto_flow_axis {
         d.style().grid_auto_cols = Some(track(t));
+        if !c.grid_auto_cols_list.is_empty() {
+            d.style().grid_auto_cols_list =
+                Some(c.grid_auto_cols_list.iter().map(track).collect());
+        }
+    }
+    // Лунки на пути сетки: одинокий `repeat(auto-*)` с дорожками ПО
+    // СОДЕРЖИМОМУ (css-grid-3 §7.2.1 «Intrinsic Tracks and repeat()»,
+    // Overview.bs:444-500) отдаётся раскладке телом как есть — число повторов
+    // по гипотетическим размерам считает `taffy::compute::grid::lanes`. Ветки
+    // выше умеют только точечное тело и подменяли его счётом колонок.
+    if c.lanes_taffy {
+        let row_dir = crate::dom::lanes_row_dir(c);
+        let (repeat, body, list) = if row_dir {
+            (c.auto_repeat_rows, &c.auto_repeat_body_rows, &c.grid_rows)
+        } else {
+            (c.auto_repeat_cols, &c.auto_repeat_body_cols, &c.grid_tracks)
+        };
+        if let (None, Some(r), Some(body)) = (list, repeat, body)
+            && r.track.is_none()
+            && r.track_pct.is_none()
+            && !body.is_empty()
+            // Только тело с дорожкой ПО СОДЕРЖИМОМУ: точечное тело ведут
+            // ветки выше (★ ЗАМЕРЕНО: `row-auto-repeat-014`, тело
+            // `[v] 10px [w] 10px [x] 10px`, 0.00 → 18.83 при отдаче сюда).
+            && body.iter().any(|t| {
+                !matches!(
+                    t,
+                    TrackSize::Single(crate::computed::Track::Px(_) | crate::computed::Track::Pct(_))
+                )
+            })
+        {
+            let line = vec![gpui::GridTrack::AutoRepeat {
+                fit: r.fit,
+                tracks: body.iter().map(track).collect(),
+            }];
+            d = if row_dir != flip {
+                d.grid_template_rows(line)
+            } else {
+                d.grid_template_cols(line)
+            };
+        }
     }
     if let Some(f) = c.grid_auto_flow {
         // Направление наполнения тоже логическое: «по рядам» значит «вдоль
@@ -297,6 +643,26 @@ fn grid_style(mut d: Div, c: &Computed) -> Div {
             AutoFlow::ColDense => gpui::GridAutoFlow::ColumnDense,
         });
     }
+    // Подсетка (css-grid-2 §9): раскладке — ФИЗИЧЕСКИЕ подсеточные оси и
+    // признак зазора `normal` (§subgrid-gaps: «same size gutters as its
+    // parent grid»). Дорожки подсеточной оси taffy берёт у родительской
+    // сетки уже размеренными (`taffy::compute::grid::subgrid`), а элементы
+    // подсетки вкладываются в дорожки родителя. Оси логические: при
+    // вертикальном письме колонки подсетки — физические ряды (Blink
+    // `grid_item.cc:192-197`). Обособленная подсетка подсеткой не является
+    // (§subgrid-listing, `dom::subgrid_inhibited`).
+    if (c.subgrid_cols || c.subgrid_rows) && !crate::dom::subgrid_inhibited(c) {
+        let col_gap_normal = c.gap.and_then(|g| g.1).or(c.column_gap).is_none();
+        let row_gap_normal = c.gap.and_then(|g| g.0).is_none();
+        let (cols, rows, col_gap, row_gap) = if flip {
+            (c.subgrid_rows, c.subgrid_cols, row_gap_normal, col_gap_normal)
+        } else {
+            (c.subgrid_cols, c.subgrid_rows, col_gap_normal, row_gap_normal)
+        };
+        d.style().grid_subgrid = Some(
+            u8::from(cols) | (u8::from(rows) << 1) | (u8::from(col_gap) << 2) | (u8::from(row_gap) << 3),
+        );
+    }
     d
 }
 
@@ -305,7 +671,30 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // Блок в GPUI — дефолт; отдельного вызова не требует.
         Some(Display::Flex) | Some(Display::InlineFlex) => d = d.flex(),
         // Инлайновая коробка в строке не растягивается по ширине родителя.
-        Some(Display::InlineBlock) => d = d.flex_shrink_0(),
+        // Базовая `inline-block` — ПОСЛЕДНЕЙ строки (CSS 2.1 §10.8.1: «the
+        // baseline of its last line box in the normal flow»; css-inline-3
+        // `baseline-source: auto` → `last` у `inline-block`). При обрезке —
+        // нижний край margin-бокса: тогда флаг не ставится, базовую прячет
+        // путь прокрутки.
+        Some(Display::InlineBlock) => {
+            d = d.flex_shrink_0();
+            let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
+            // Элемент гибкого контейнера и сетки блокифицирован (css-display-3
+            // §2.7): его базовая — первая, как у блока.
+            // Руби и строчная коробка, сыгранная `inline-block`
+            // (`inline_display`), — не атомы: их базовая — базовая основы
+            // (★ ЗАМЕРЕНО: `initial-letter-block-position-raise-over/under-ruby`
+            // 0.24 → 1.25 / 0.25 → 0.60).
+            if visible(c.overflow_x)
+                && visible(c.overflow_y)
+                && !c.scroller
+                && !c.parent_flex_grid
+                && c.ruby_role.is_none()
+                && c.inline_display != Some(true)
+            {
+                d.style().baseline_from_last = Some(true);
+            }
+        }
         Some(Display::InlineGrid) => {
             d = d.flex_shrink_0();
             d = grid_style(d, c);
@@ -395,6 +784,22 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         Some(FlexDir::ColReverse) => d = d.flex_col_reverse(),
         None => {}
     }
+    // Однострочная гибкая КОЛОНКА при `direction: rtl` (горизонтальное
+    // письмо): cross-start — inline-start письма, то есть ПРАВЫЙ край
+    // (css-flexbox-1 §2, §9.6). Раскладка поперёк идёт от физического
+    // начала, разворот ей сообщает флаг (`flex_cross_reverse`, taffy
+    // `compute_constants`); многострочной колонке то же делает `flip` ниже.
+    // Вертикальное письмо сюда не входит: там прижим держит `items_end`
+    // ниже (записи откатов 04.09).
+    if c.rtl == Some(true)
+        && c.vertical != Some(true)
+        && c.flex_wrap != Some(true)
+        && c.webkit_box != Some(true)
+        && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
+        && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
+    {
+        d.style().flex_cross_reverse = Some(true);
+    }
     if c.flex_wrap == Some(true) {
         d = d.flex_wrap();
         // При `vertical-rl` поперечная ось строки идёт справа налево — обратно
@@ -404,24 +809,86 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         // потока: она разворачивается при `vertical-rl`. У КОЛОНКИ (ось
         // потока) поперечная — ось строки, и её разворачивает `direction: rtl`
         // (`flexbox-writing-mode-004/005`: контейнеры-колонки шли зеркально).
+        // `sideways-lr` — единственное письмо, где строчная ось идёт СНИЗУ
+        // ВВЕРХ (css-writing-modes-4 §3.1), поэтому поперечная ось колонки
+        // разворачивается им так же, как `direction: rtl`.
+        let inline_reversed =
+            (c.rtl == Some(true)) != (c.sideways == Some(true) && c.vertical_rl != Some(true));
         let flip = if matches!(c.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse)) {
-            c.rtl == Some(true)
+            inline_reversed
         } else {
             c.vertical_rl == Some(true)
         };
         if (c.flex_wrap_reverse == Some(true)) != flip {
             d.style().flex_wrap = Some(gpui::FlexWrap::WrapReverse);
         }
+        // `flex-wrap: balance` — балансировщик строк в раскладке;
+        // `flex-line-count` (умолчание 1) — минимум строк. У legacy
+        // `-webkit-box` balance не действует (Blink `IsDeprecatedFlexbox`).
+        if c.flex_balance == Some(true) && c.webkit_box != Some(true) {
+            d.style().flex_balance_lines = Some(c.flex_line_count.unwrap_or(1).max(1));
+        }
+    }
+    // `calc-size()` (css-values-5 §calc-size): выражение над размером основы
+    // применяет раскладка (`vendor/taffy` — `Style::calc_size`).
+    if c.calc_size.iter().any(Option::is_some) {
+        d.style().calc_size = Some(c.calc_size);
+    }
+    // `margin-trim` гибкого контейнера и сетки (css-box-4 §margin-trim):
+    // раскладка физическая, поэтому логические края переводятся ЗДЕСЬ, по
+    // письму самого контейнера. Биты раскладки: 1 верх, 2 право, 4 низ,
+    // 8 лево (`flex-*-trimmed-only`, `flex-*-multiline`, `grid-*-start`).
+    if c.margin_trim != 0
+        && matches!(
+            c.display,
+            Some(Display::Flex)
+                | Some(Display::InlineFlex)
+                | Some(Display::Grid)
+                | Some(Display::InlineGrid)
+        )
+    {
+        let vertical = c.vertical == Some(true);
+        let (block_start, block_end) = match (vertical, c.vertical_rl == Some(true)) {
+            (false, _) => (1u8, 4u8),
+            (true, true) => (2, 8),
+            (true, false) => (8, 2),
+        };
+        let (inline_start, inline_end) = match (vertical, c.rtl == Some(true)) {
+            (false, false) => (8u8, 2u8),
+            (false, true) => (2, 8),
+            (true, false) => (1, 4),
+            (true, true) => (4, 1),
+        };
+        let mut physical = 0u8;
+        for (bit, side) in [
+            (1u8, block_start),
+            (2, block_end),
+            (4, inline_start),
+            (8, inline_end),
+        ] {
+            if c.margin_trim & bit != 0 {
+                physical |= side;
+            }
+        }
+        d.style().margin_trim = Some(physical);
+    }
+    if let Some(names) = grid_line_names(c) {
+        d.style().grid_line_names = Some(Box::new(names));
     }
     if c.grid_col.is_some() || c.grid_row.is_some() {
         let span = |p: Option<(Placement, Placement)>| {
             let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
             to_placement(a)..to_placement(b)
         };
-        d.style().grid_location = Some(gpui::GridLocation {
-            row: span(c.grid_row),
-            column: span(c.grid_col),
-        });
+        // Грани элемента ЛОГИЧЕСКИЕ (css-grid-2 §8.3: `grid-row` — блочная
+        // ось сетки), а дорожки вертикальной сетки уже переставлены
+        // (`grid_style`, `flip`): ряды — физические колонки.
+        let (row, column) = if placement_flip(c) {
+            (span(c.grid_col), span(c.grid_row))
+        } else {
+            (span(c.grid_row), span(c.grid_col))
+        };
+        d.style().grid_location = Some(gpui::GridLocation { row, column });
     }
     if let Some(g) = c.flex_grow {
         // `flex_grow()` в GPUI ставит жёсткую единицу, а `flex: 2` встречается —
@@ -439,29 +906,73 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // элемент, который не растягивается, прижимается к концу — это и есть
     // правый край (замерено пробой: ряд в `vertical-rl` против колонки с
     // прижимом вправо расходился на 5.42%).
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): обратная поперечная ось «по спеке» —
+    // колонка при `direction: rtl` и ряд при `vertical-rl` зеркалят
+    // `start`/`end` у `align-items` и у `align-self` детей (css-flexbox-1
+    // §9.6). css-flexbox 733 -> 733 (+1/−1), css-writing-modes 570 -> 564:
+    // шесть `text-orientation-*-100` с явным `flex-start` в vertical-rl
+    // ушли в «красное видно». Зеркало умолчания ниже — единственное, что
+    // подтверждено замером; явные значения оставлять физическими.
     if c.vertical_rl == Some(true)
         && c.align_items.is_none()
         && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
     {
         d = d.items_end();
     }
+    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (повторно, теперь узко): зеркало поперечной оси у
+    // гибкой КОЛОНКИ при `direction: rtl` (css-flexbox-1 §5.1: cross-start
+    // колонки — inline-start письма, то есть правый край) — умолчание
+    // `items_end` и зеркало явных `start/end` у `align-items` и `align-self`
+    // детей (флаг `cross_mirror` из `inline::inherit`). Срез из 15 пар
+    // (`flexbox_rtl-direction`, `flexbox-align-self-vert-rtl-002..005`,
+    // `flexbox-align-self-vert-002`, `flexbox-align-self-horiz-002`,
+    // `gap-001-rtl` + заложники `text-orientation-*-100`): 6 -> 6, ноль
+    // сдвигов. Те пары держит другое (у `flexbox_rtl-direction` расходятся
+    // поля и высота коробки, а не сторона прижима).
+    // Возвращено 02.10 иначе — флагом раскладки `flex_cross_reverse` выше
+    // (разворачивает и растяжение/базовую линию, а не только `start/end`),
+    // вместе с гашением авторского `align-self` у блока (`dom.rs`), словом
+    // `inherit`, комментариями XHTML и физическим рядом флоатов: срез 10511
+    // пар против свода v229 — +11/−1 (`flexbox_rtl-direction`,
+    // `-align-self-vert-001/002`, `-vert-rtl-001` и др.; потеря
+    // `flexbox-writing-mode-013` — у эталона блок `span` с шириной в rtl
+    // стоит слева, сам тест теперь верен).
     match c.align_items {
         Some(Align::Center) => d = d.items_center(),
         Some(Align::Start) => d = d.items_start(),
         Some(Align::End) => d = d.items_end(),
+        // `last baseline` — своя группа с прижимом к концу (css-align-3 §9.3).
+        // Не у лунок: их дорожки — гибкие ряды движка, и прижим к концу уводил
+        // лунки целиком (★ ЗАМЕРЕНО: `row-grid-lanes-item-baseline-001/003`
+        // 0.00 → 8.02/7.56, `column-fill-reverse-justify-items-002` 0.00 → 3.87).
+        Some(Align::Baseline) if c.align_items_last && c.display != Some(Display::GridLanes) && !c.parent_lanes => {
+            d.style().align_items = Some(gpui::AlignItems::LastBaseline);
+        }
         Some(Align::Baseline) => d = d.items_baseline(),
-        Some(Align::Stretch) | None => {}
+        // `anchor-center` у `align-items` спекой не предусмотрен — как не задано.
+        Some(Align::Stretch) | Some(Align::AnchorCenter) | None => {}
+    }
+    // Приставка `safe` (css-align-3 §4.4): при переполнении области
+    // выравнивание падает к началу, иначе содержимое уезжает за край и
+    // становится недоступным. Раскладка читает это из стиля
+    // (`flexbox-safe-overflow-position-*`).
+    // Лунки решают `safe` сами (`render.rs`: раздача не ставится, когда лунка
+    // переполнена) — второй заход в раскладке им мешает (★ ЗАМЕРЕНО:
+    // `grid-lanes-justify-content-001` 0.00 -> 1.37).
+    if c.display != Some(Display::GridLanes)
+        && (c.align_items_safe || c.align_self_safe || c.align_content_safe || c.justify_content_safe)
+    {
+        d.style().safe_alignment = Some((
+            c.align_items_safe,
+            c.align_self_safe,
+            c.align_content_safe,
+            c.justify_content_safe,
+        ));
     }
     // `align-self` — про САМ элемент, а не про его детей. Раньше оба свойства
     // писались в одно поле, и элемент выравнивал содержимое вместо себя.
     if let Some(a) = c.align_self {
-        d.style().align_self = Some(match a {
-            Align::Center => gpui::AlignItems::Center,
-            Align::Start => gpui::AlignItems::FlexStart,
-            Align::End => gpui::AlignItems::FlexEnd,
-            Align::Baseline => gpui::AlignItems::Baseline,
-            Align::Stretch => gpui::AlignItems::Stretch,
-        });
+        d.style().align_self = Some(self_align(a, c.align_self_last));
     }
     // `flex-basis: auto` — это ОТСУТСТВИЕ основы, а не «во всю ширину»:
     // без отсева `flex: none` растягивал кнопку на всю строку.
@@ -469,6 +980,40 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         d = d.flex_basis(len_to_gpui(b));
     }
     if let Some(j) = c.justify_content {
+        // `left`/`right` (css-align-3 §5.2): вдоль строчной оси — как
+        // `start`/`end` письма (в ряду); «if the property's axis is not
+        // parallel with the inline axis, this value behaves as start» —
+        // в КОЛОНКЕ это `flex-start` (`flexbox_justifycontent-right-002`).
+        // Только горизонтальное письмо: в вертикальном оси уже переставлены
+        // поворотом, и `left/right` там держит прежний путь (★ ЗАМЕРЕНО:
+        // без этой отсечки `flexbox-justify-content-wmvert-001` 0.00 -> 1.12).
+        let main_vertical = c.vertical.is_none()
+            && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
+        let j = match j {
+            // Не вдоль строчной оси — `start` ПИСЬМА, а не `flex-start`: у
+            // `column-reverse` они смотрят в разные стороны, а спека требует
+            // именно начало письма (`flexbox_justifycontent-left-002`:
+            // «boxes … in the top left corner … top-to-bottom order»).
+            Justify::Left | Justify::Right if main_vertical => Justify::WmStart,
+            Justify::Left => Justify::WmStart,
+            Justify::Right => Justify::WmEnd,
+            other => other,
+        };
+        // `start`/`end` — начало и конец ОСИ ПИСЬМА (css-align-3 §4), а
+        // `AlignContent::Start`/`End` у раскладки физические: смещение всегда
+        // считается от `padding_border.main_start`, разворот выражен только
+        // обратным обходом. Ось выше уже переведена в физическую (`rtl_row`
+        // разворачивает ряд), поэтому при письме справа налево начало и конец
+        // надо поменять местами (`flexbox_justifycontent-start-rtl`).
+        let j = if rtl_row {
+            match j {
+                Justify::WmStart => Justify::WmEnd,
+                Justify::WmEnd => Justify::WmStart,
+                other => other,
+            }
+        } else {
+            j
+        };
         d.style().justify_content = Some(to_content(j));
     }
     // `align-content` — распределение СТРОК, когда их несколько: без него
@@ -482,16 +1027,68 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // применение как items двигало содержимое вправо. У ЛУНОК инлайн-ось
     // живёт своим каналом (column-grid-lanes-item-baseline-002 полагается).
     let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    // Теперь фильтр уже: у ГОРИЗОНТАЛЬНОЙ сетки `baseline` доходит до
+    // раскладки — ортогональные (вертикальные) элементы образуют группы по
+    // оси x (css-align-3 §9.1), а параллельные его не видят (бит 8 ниже;
+    // `grid-justify-baseline-001`: одиночные группы `vertical-rl`/`-lr` берут
+    // запасное `safe self-start` — правый и левый край, а не растяжение).
     if let Some(a) = c
         .justify_items
-        .filter(|a| *a != Align::Baseline || !real_grid)
+        .filter(|a| *a != Align::Baseline || !real_grid || c.vertical != Some(true))
     {
         d.style().justify_items = Some(to_items(a));
     }
     if let Some(a) = c.justify_self {
         d.style().justify_self = Some(to_items(a));
     }
-    if let Some(r) = c.aspect_ratio {
+    // Оси ВЕРТИКАЛЬНОЙ сетки: дорожки уже переставлены (`grid_style`, `flip`),
+    // и раскладка под нами считает оси физическими. `align-*` в CSS — про
+    // БЛОЧНУЮ ось, а она здесь горизонтальна, то есть это `justify-*`
+    // раскладки, и наоборот (css-grid-2 §10.1: align — block axis, justify —
+    // inline axis). Прежде `align-items: baseline` вертикальной сетки шёл по
+    // строчной оси, где каждый элемент стоит в своём ряду один, и не делал
+    // ничего (`grid-self-baseline-vertical-lr/rl-*`).
+    if real_grid && c.vertical == Some(true) {
+        let s = d.style();
+        std::mem::swap(&mut s.align_items, &mut s.justify_items);
+        // То же у распределения дорожек: `justify-content` — строчная ось
+        // (css-align-3 §5.1), у вертикальной сетки — физические ряды.
+        std::mem::swap(&mut s.align_content, &mut s.justify_content);
+        if let Some(safe) = s.safe_alignment.as_mut() {
+            std::mem::swap(&mut safe.2, &mut safe.3);
+        }
+    }
+    if c.parent_grid >= 2 {
+        let s = d.style();
+        std::mem::swap(&mut s.align_self, &mut s.justify_self);
+    }
+    // Биты базовой по оси x для элемента сетки (css-align-3 §9.1; Blink
+    // baseline_utils.h `DetermineBaselineWritingMode`/`DetermineBaselineGroup`):
+    // письмо базовой — своё у вертикального элемента, у горизонтального —
+    // письмо вертикальной сетки (у горизонтальной сетки — `vertical-lr`).
+    // Группа у правого края — когда это письмо `vertical-rl`. Синтез
+    // центральный, когда у сетки вертикальное письмо не `sideways` (Blink
+    // `parent_grid_font_baseline` = `GetFontBaseline()` сетки).
+    if c.parent_grid != 0 {
+        let item_vertical = c.vertical == Some(true);
+        let rl = if item_vertical { c.vertical_rl == Some(true) } else { c.parent_grid == 3 };
+        let mut bits = 0u8;
+        if rl {
+            bits |= 1;
+        }
+        if c.parent_grid >= 2 && !c.cb_sideways && c.text_sideways != Some(true) {
+            bits |= 2;
+        }
+        if item_vertical {
+            bits |= 4;
+        } else if c.parent_grid == 1 {
+            bits |= 8;
+        }
+        d.style().baseline_x_flags = Some(bits);
+    }
+    if let Some(r) = c.aspect_ratio
+        && !ratio_as_auto_min(c)
+    {
         d.style().aspect_ratio = Some(r);
     }
     if let Some((row, col)) = c.gap {
@@ -504,11 +1101,40 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         } else {
             (row, col)
         };
-        if let Some(r) = down {
-            d = d.gap_y(len_to_gpui(r));
+        // `calc(доля + точки)` в зазоре: доля — от своей стороны КОНТЕНТ-бокса
+        // (css-gaps-1 §gap-percent: «'gap' always resolves percentages against
+        // the corresponding size of the content box»). gpui знает «точки ИЛИ
+        // доля», поэтому смесь разрешается здесь, когда сторона в точках
+        // (`grid-gutters-011`: `calc(15% + 7px)` от 220 = 40). Сторона не
+        // известна — зазор не ставится, как и прежде, когда запись
+        // отбрасывалась целиком (`gap-010-ltr` держит ровно это).
+        let px_or_0 = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let edges = c.borders();
+        let content = |size: Option<Len>, sides: [Option<Len>; 4]| match size {
+            Some(Len::Px(v)) if c.border_box == Some(true) => {
+                Some((v - sides.iter().map(|s| px_or_0(*s)).sum::<f32>()).max(0.0))
+            }
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        };
+        let basis_y = content(c.height, [c.padding.top, c.padding.bottom, edges.top, edges.bottom]);
+        let basis_x = content(c.width, [c.padding.left, c.padding.right, edges.left, edges.right]);
+        let gap_len = |l: Len, basis: Option<f32>| -> Option<gpui::DefiniteLength> {
+            if let Len::Calc(i) = l
+                && let Some((k, add)) = crate::value::calc_get(i).pct_px()
+            {
+                return basis.map(|b| px((add + k * b).max(0.0)).into());
+            }
+            Some(len_to_gpui(l))
+        };
+        if let Some(r) = down.and_then(|r| gap_len(r, basis_y)) {
+            d = d.gap_y(r);
         }
-        if let Some(cg) = across {
-            d = d.gap_x(len_to_gpui(cg));
+        if let Some(cg) = across.and_then(|cg| gap_len(cg, basis_x)) {
+            d = d.gap_x(cg);
         }
     }
 
@@ -517,8 +1143,21 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // рамку. Без компенсации блок с рамкой 4px выходил на 8 точек уже, чем в
     // браузере, и всё правее него уезжало (поймано сравнением с Chrome).
     let content_box = c.border_box != Some(true);
+    // Доля отступа (`padding: 20%`) в точки здесь не переводится — её база,
+    // ширина содержащего блока, известна только раскладке. Тогда пересчёт
+    // `content-box` отдаётся ей целиком (`taffy::BoxSizing::ContentBox`):
+    // прежде такая коробка оставалась border-box, и её содержимое ужималось
+    // на ширину отступов (`padding-percentage-inherit-001`: 30 → 6 точек у
+    // ребёнка).
+    let pct_pad = content_box
+        && [c.padding.left, c.padding.right, c.padding.top, c.padding.bottom]
+            .iter()
+            .any(|p| matches!(p, Some(Len::Pct(_))));
+    if pct_pad {
+        d.style().content_box = Some(true);
+    }
     let extra = |sides: &[Option<Len>]| -> f32 {
-        if !content_box {
+        if !content_box || pct_pad {
             return 0.0;
         }
         sides
@@ -533,9 +1172,65 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
     let pad_x = extra(&[c.padding.left, c.padding.right, bw.left, bw.right]);
     let pad_y = extra(&[c.padding.top, c.padding.bottom, bw.top, bw.bottom]);
 
+    // Природный размер холста под порогами — таблица CSS 2.1 §10.4 для
+    // замещаемых с соотношением сторон. Обе оси `<canvas>` пришли из
+    // атрибутов (`attr_sized`), то есть это natural size, а не заданный
+    // автором размер (HTML §4.12.5; холста нет среди «dimension attributes»
+    // HTML Rendering §15.3.10): нарушенный порог одной оси переносится на
+    // другую через соотношение, а не просто режет свою ось. Раньше
+    // `<canvas width=200 height=200 style="max-height: 100px">` выходил
+    // 200×100 вместо 100×100 (`percent-height-replaced-in-percent-cell-002`).
+    // Пороги и размеры здесь — content-box, отбивки добавит цикл ниже.
+    let natural_fit: Option<(f32, f32)> = if c.attr_sized.0
+        && c.attr_sized.1
+        && let (Some(Len::Px(w)), Some(Len::Px(h))) = (c.width, c.height)
+        && w > 0.0
+        && h > 0.0
+    {
+        let px_of = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => Some(v),
+            _ => None,
+        };
+        let min_w = px_of(c.min_width).unwrap_or(0.0);
+        let min_h = px_of(c.min_height).unwrap_or(0.0);
+        // §10.4: «max-width/max-height … less than min-* is treated as min-*».
+        let max_w = px_of(c.max_width).unwrap_or(f32::INFINITY).max(min_w);
+        let max_h = px_of(c.max_height).unwrap_or(f32::INFINITY).max(min_h);
+        let r = w / h;
+        let fit = if w > max_w && h > max_h {
+            if max_w / w <= max_h / h {
+                (max_w, (max_w / r).max(min_h))
+            } else {
+                ((max_h * r).max(min_w), max_h)
+            }
+        } else if w < min_w && h < min_h {
+            if min_w / w <= min_h / h {
+                ((min_h * r).min(max_w), min_h)
+            } else {
+                (min_w, (min_w / r).min(max_h))
+            }
+        } else if w < min_w && h > max_h {
+            (min_w, max_h)
+        } else if w > max_w && h < min_h {
+            (max_w, min_h)
+        } else if w > max_w {
+            (max_w, (max_w / r).max(min_h))
+        } else if w < min_w {
+            (min_w, (min_w / r).min(max_h))
+        } else if h > max_h {
+            ((max_h * r).max(min_w), max_h)
+        } else if h < min_h {
+            ((min_h * r).min(max_w), min_h)
+        } else {
+            (w, h)
+        };
+        (fit != (w, h) && fit.0.is_finite() && fit.1.is_finite()).then_some(fit)
+    } else {
+        None
+    };
     for (val, f) in [
-        (c.width, 0u8),
-        (c.height, 1),
+        (natural_fit.map(|f| Len::Px(f.0)).or(c.width), 0u8),
+        (natural_fit.map(|f| Len::Px(f.1)).or(c.height), 1),
         (c.min_width, 2),
         (c.min_height, 3),
         (c.max_width, 4),
@@ -552,13 +1247,78 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
         ) {
             continue;
         }
+        // ПРОБОВАЛИ И ОТКАТИЛИ (§10.5: доля высоты от содержащего блока
+        // НЕОПРЕДЕЛЁННОЙ высоты считается как `auto`): признак
+        // `cb_height_def`, ставится при наследовании по цепочке долей.
+        // Проба по 450 парам семей `*height*`: приобретено 2, потеряно 2
+        // (`max-height-percentage-002` 1.92 -> 0.00 и `height-percentage-002`
+        // против `height-percentage-003a` и `min-height-percentage-003`,
+        // обе 0.00 -> «красное видно»). Сужение до одной `height` — хуже,
+        // 1 против 2. «Определённость» у нас не полна: её дают ещё
+        // растяжение элемента гибкого контейнера и высота ячейки, а их
+        // признак не видит.
+        // §10.5: доля ВЫСОТЫ от содержащего блока неопределённой высоты
+        // считается как `auto`. Прежде она уходила в раскладку и решалась от
+        // высоты, посчитанной по содержимому, — то есть от самой себя.
+        // Оговорка спеки — про САМ элемент: абсолютно позиционированный
+        // считает долю всегда, его блок определён по построению.
+        // ПРОБОВАЛИ И ОТКАТИЛИ: гейт «правило только для слитого стиля»
+        // (признак `merged`, ставился в `inline::inherit`). Задумывался как
+        // защита сырого стиля — рамки, замещаемого и подписи таблицы, — но
+        // замерено полным сводом: CSS3 2355 -> 2354, `row-auto-repeat-auto-023`
+        // 0.32 -> 9.86, приобретений ноль. Сырому стилю правило тоже нужно.
+        if (matches!(l, Len::Pct(_))
+            || matches!(l, Len::Calc(i) if crate::value::calc_get(i).pct != 0.0))
+            && f % 2 == 1
+            && !c.cb_height_def
+            && !c.root_box
+            && !matches!(
+                c.position,
+                Some(Position::Absolute) | Some(Position::Fixed)
+            )
+        {
+            continue;
+        }
         // Доли считаются от родителя и компенсации не требуют.
         let l = match l {
             Len::Px(v) if f % 2 == 0 => Len::Px(v + pad_x),
             Len::Px(v) => Len::Px(v + pad_y),
             other => other,
         };
-        let g = len_to_gpui(l);
+        // Ключевое слово содержимого в `min-height`/`max-height` (css-sizing-3
+        // §4.1): в блочной оси min-content = max-content = высота содержимого,
+        // поэтому `min-height: max-content` даёт used = max(H, содержимое),
+        // а `max-height: max-content` — min(H, содержимое). Заданная высота
+        // становится соответствующим пределом, сама ось — auto
+        // (`block-size-with-min-or-max-content-*`).
+        let kw = |l: Option<Len>| {
+            matches!(
+                l,
+                Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+            )
+        };
+        if f == 1 && let Len::Px(h) = l {
+            if kw(c.min_height) {
+                d = d.min_h(px(h));
+                continue;
+            }
+            if kw(c.max_height) {
+                d = d.max_h(px(h));
+                continue;
+            }
+        }
+        // Смесь «доля ± точки»: поправка `content-box` едет в точечную часть,
+        // доля считается от родителя и поправки не требует. Новая пара НЕ
+        // кладётся в арену (`calc_store` на каждом кадре раздувал бы её).
+        let g = match l {
+            Len::Calc(i) => match crate::value::calc_get(i).pct_px() {
+                Some((pct, add)) => {
+                    gpui::DefiniteLength::Calc(add + if f % 2 == 0 { pad_x } else { pad_y }, pct)
+                }
+                None => len_to_gpui(l),
+            },
+            _ => len_to_gpui(l),
+        };
         d = match f {
             0 => d.w(g),
             1 => d.h(g),
@@ -568,7 +1328,172 @@ fn apply_layout(mut d: Div, c: &Computed) -> Div {
             _ => d.max_h(g),
         };
     }
+    // Автоминимум по содержимому в ratio-зависимой оси (css-sizing-4 §5.2:
+    // «its min-content size capped by its maximum size»): размер из
+    // соотношения идёт МИНИМУМОМ этой оси, сам размер остаётся auto — used =
+    // max(ratio-размер, содержимое). Отношение в раскладку при этом не
+    // отдаётся, иначе taffy зафиксировал бы ось (`block-aspect-ratio-009/…`,
+    // `flex-aspect-ratio-040/…`).
+    if ratio_as_auto_min(c)
+        && let Some(r) = c.aspect_ratio
+    {
+        // Определённая ось сперва зажимается своими min/max (§5.1 «size
+        // transfers»: `block-aspect-ratio-033`); при `box-sizing: border-box`
+        // отношение считается по border-box (§5.1), размеры здесь —
+        // content-box, поэтому отбивки прибавляются до переноса и
+        // вычитаются после (`intrinsic-size-012`).
+        let clamp = |v: f32, lo: Option<Len>, hi: Option<Len>| {
+            let v = match lo {
+                Some(Len::Px(l)) => v.max(l),
+                _ => v,
+            };
+            match hi {
+                Some(Len::Px(h)) => v.min(h),
+                _ => v,
+            }
+        };
+        let bb = c.border_box == Some(true);
+        match (c.width, c.height) {
+            (Some(Len::Px(w)), _) => {
+                let w = clamp(w, c.min_width, c.max_width);
+                let mh = if bb { (w + pad_x) / r - pad_y } else { w / r };
+                let mh = clamp(mh.max(0.0), None, c.max_height);
+                d = d.min_h(px(mh + pad_y));
+            }
+            (_, Some(Len::Px(h))) => {
+                let h = clamp(h, c.min_height, c.max_height);
+                let mw = if bb { (h + pad_y) * r - pad_x } else { h * r };
+                let mw = clamp(mw.max(0.0), None, c.max_width);
+                d = d.min_w(px(mw + pad_x));
+            }
+            _ => {}
+        }
+    }
     d
+}
+
+/// Идёт ли `aspect-ratio` автоминимумом (css-sizing-4 §5.2): незамещаемая
+/// коробка без прокрутки, ровно одна ось задана в точках, а минимум
+/// ratio-зависимой оси не задан явно.
+fn set_len(l: Option<Len>) -> bool {
+    matches!(l, Some(x) if x != Len::Auto)
+}
+
+fn ratio_as_auto_min(c: &Computed) -> bool {
+    let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
+    let px_w = matches!(c.width, Some(Len::Px(_)));
+    let px_h = matches!(c.height, Some(Len::Px(_)));
+    c.aspect_ratio.is_some_and(|r| r.is_finite() && r > 0.0)
+        // `calc-size()` считает раскладка от размера, выведенного
+        // соотношением (`vendor/taffy` — `calc_size_derived`, автоминимум):
+        // эмуляция явным минимумом спрятала бы соотношение от неё
+        // (`calc-size-aspect-ratio-001…004`).
+        && c.calc_size.iter().all(Option::is_none)
+        && visible(c.overflow_x)
+        && visible(c.overflow_y)
+        && !c.scroller
+        && !c.flex_item_ratio
+        // Абсолют с краями по ОБЕИМ сторонам зависимой оси растягивается
+        // краями, и отношение обязано победить растяжку (`abspos-005/006`)
+        // — ему отношение остаётся в раскладке; без краёв автоминимум
+        // действует как у блока (`abspos-012/013`).
+        && !(matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed))
+            && (if px_w {
+                set_len(c.inset.top) && set_len(c.inset.bottom)
+            } else {
+                set_len(c.inset.left) && set_len(c.inset.right)
+            }))
+        && (px_w != px_h)
+        && (if px_w {
+            !matches!(c.min_height, Some(Len::Px(_)))
+        } else {
+            !matches!(c.min_width, Some(Len::Px(_)))
+        })
+        // Процентный предел зависимой оси эмуляцией не выразить: явный
+        // минимум из соотношения сильнее любого максимума (CSS 2.1 §10.4), а
+        // доля предела во вкладе должна игнорироваться и решаться только в
+        // раскладке (css-sizing-3 §5.2.1; `intrinsic-percent-non-replaced-007`:
+        // `height:100px; 2/1; max-width:50%` в `max-content` — 100×100, а не
+        // 200×100). Такой коробке соотношение остаётся в раскладке.
+        && (if px_w {
+            !matches!(c.max_height, Some(Len::Pct(_)))
+        } else {
+            !matches!(c.max_width, Some(Len::Pct(_)))
+        })
+}
+
+/// Внутренний размер ПУСТОЙ коробки с `contain: size` по оси (без отступов).
+///
+/// css-contain-2 §3.1: коробка меряется «as if it had no contents» —
+/// выбрасывается вклад СОДЕРЖИМОГО, но не собственная геометрия коробки:
+/// явные дорожки сетки со щелями (css-grid-2 §11/§12: у пустой сетки дорожка
+/// `auto`/`fr`/по содержимому — ноль, фиксированная — своя длина) и
+/// «число × ширина колонки + щели» многоколонника (css-multicol-1 §3.4).
+/// Шрифтовые дорожки и `repeat(auto-*)` без раскладки не посчитать — ноль, как
+/// было.
+///
+/// `inline` — строчная ось (ширина при горизонтальном письме).
+fn empty_contained_size(c: &Computed, inline: bool) -> f32 {
+    let px_of = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    // `gap` хранит пару (ряды, колонки); `column-gap` пишет и пару, и своё
+    // поле (`computed.rs`, ветки `"gap"`/`"column-gap"`).
+    let gap = if inline {
+        c.gap.and_then(|g| g.1).or(c.column_gap)
+    } else {
+        c.gap.and_then(|g| g.0)
+    };
+    if inline
+        && let (Some(count), Some(Len::Px(w))) = (c.column_count, c.column_width)
+        && count > 0
+        && w > 0.0
+    {
+        // `column-gap: normal` — кегль (css-align-3 §8.3), как в блочном пути.
+        let g = match c.column_gap {
+            Some(Len::Px(v)) => v,
+            _ => match c.font_size {
+                Some(Len::Px(size)) => size,
+                _ => 16.0,
+            },
+        };
+        return count as f32 * w + (count as f32 - 1.0) * g;
+    }
+    let grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
+    if !grid {
+        return 0.0;
+    }
+    let tracks = if inline {
+        c.grid_tracks.as_ref()
+    } else {
+        c.grid_rows.as_ref()
+    };
+    let Some(tracks) = tracks.filter(|t| !t.is_empty()) else {
+        return 0.0;
+    };
+    let one = |t: &Track| -> Option<f32> {
+        match t {
+            Track::Px(v) => Some(*v),
+            Track::Font(_) => None,
+            _ => Some(0.0),
+        }
+    };
+    let sum: Option<f32> = tracks.iter().try_fold(0.0f32, |acc, t| match t {
+        TrackSize::Single(x) => one(x).map(|v| acc + v),
+        // У пустой дорожки `minmax(a, b)` размер по max-content — верхняя
+        // граница, если она фиксирована, иначе нижняя.
+        TrackSize::MinMax(lo, hi) => match (one(lo), hi) {
+            (_, Track::Px(v)) => Some(acc + v),
+            (Some(v), _) => Some(acc + v),
+            (None, _) => None,
+        },
+        _ => None,
+    });
+    match sum {
+        Some(total) => total + px_of(gap) * tracks.len().saturating_sub(1) as f32,
+        None => 0.0,
+    }
 }
 
 fn apply_box(mut d: Div, c: &Computed) -> Div {
@@ -576,8 +1501,85 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // подменяется `contain-intrinsic-size` (или нулём). Подмена касается
     // размера ПО СОДЕРЖИМОМУ: высота auto считается от содержимого — её и
     // задаём; ширина блока в потоке и так не от содержимого, её не трогаем.
-    if c.contain_size == Some(true) && c.height.is_none() {
-        d = d.h(px(c.contain_intrinsic.1.unwrap_or(0.0)));
+    // Явное `height: auto` — та же высота от содержимого: подмена нужна и
+    // ему (`contain-size-replaced-003*` пишут auto буквально).
+    // `contain-intrinsic-size` — ВНУТРЕННИЙ размер (css-sizing-4): отступы
+    // и рамка прибавляются к нему независимо от `box-sizing`. Раньше
+    // ставилась голая величина, и taffy подпирал её суммой отступов —
+    // выходило max(ci, pad) вместо ci + pad (`cis-007`, `cis-008`).
+    if c.contains_height() && matches!(c.height, None | Some(Len::Auto)) {
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let b = c.borders();
+        let pad = side(c.padding.top) + side(c.padding.bottom) + side(b.top) + side(b.bottom);
+        let ci = px(c
+            .contain_intrinsic
+            .1
+            .unwrap_or_else(|| empty_contained_size(c, false))
+            + pad);
+        // `contain-intrinsic-size` — ВНУТРЕННИЙ размер (css-sizing-4
+        // §intrinsic-size-override), а не использованный: у растянутого
+        // строкой элемента ряда высоту даёт строка (css-flexbox-1 §9.4 п.11).
+        // Явная высота глушила растяжку (`contain-intrinsic-size-010/016`:
+        // 13 точек вместо 100); нижней гранью подмена держит строку
+        // авто-высоты от схлопывания в ноль.
+        d = if c.cross_stretched { d.min_h(ci) } else { d.h(ci) };
+    }
+    // По строчной оси то же самое, но только когда ширина ЯВНО названа
+    // размером по содержимому: обычная блочная ширина и так берётся от
+    // родителя, а не от содержимого.
+    // Ширина от содержимого бывает не только по ключевому слову: строчный
+    // контейнер, плавающий и позиционированный ужимаются по нему сами
+    // (shrink-to-fit). Под обособлением содержимого у них нет — ширина
+    // становится `contain-intrinsic-size`.
+    let shrink_to_fit = matches!(
+        c.display,
+        Some(Display::InlineBlock)
+            | Some(Display::InlineFlex)
+            | Some(Display::InlineGrid)
+            | Some(Display::InlineTable)
+    ) || c.float.is_some()
+        || matches!(
+            c.position,
+            Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
+        );
+    if c.contains_width()
+        && (matches!(
+            c.width,
+            Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
+        ) || (shrink_to_fit && matches!(c.width, None | Some(Len::Auto))))
+    {
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let b = c.borders();
+        let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
+        d = d.w(px(c
+            .contain_intrinsic
+            .0
+            .unwrap_or_else(|| empty_contained_size(c, true))
+            + pad));
+    }
+    // Вклад обособленной коробки в измеряющего родителя — тоже
+    // `contain-intrinsic-size`: он же перебивает автоминимум элемента ряда
+    // или сетки (`min-width: auto` = размер по содержимому, а содержимого
+    // здесь нет). При ЯВНОЙ ширине вклад не нужен — она и есть ответ, а
+    // подпорка снизу растягивала коробку против написанного.
+    if c.contains_width()
+        && matches!(c.min_width, None | Some(Len::Auto))
+        && matches!(c.width, None | Some(Len::Auto))
+        && !shrink_to_fit
+    {
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let b = c.borders();
+        let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
+        d = d.min_w(px(c.contain_intrinsic.0.unwrap_or(0.0) + pad));
     }
     d = apply_sides(d, &c.padding, SideKind::Padding);
     d = apply_sides(d, &c.margin, SideKind::Margin);
@@ -614,8 +1616,30 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
         d = d.rounded(px(radius.max(own))).overflow_hidden();
     }
     // `contain: paint` — содержимое не выходит за коробку.
+    // `contain: layout` (и `strict`/`content`, которые раскрываются в него):
+    // коробка «is treated as having no baseline» (css-contain-2 §3.2 п.7).
+    // Родитель — строка, flex, grid — синтезирует её от края коробки. Прежде
+    // базовая линия текста внутри уходила наружу: `inline-block` с «a»
+    // вставал выше пустого соседа (`contain-layout-baseline-001..003`).
+    if c.contain_layout == Some(true) {
+        d.style().hides_baseline = Some(true);
+    }
     if c.contain_paint == Some(true) {
-        d = d.overflow_hidden();
+        // Обрезка по краю БЕЗ контейнера прокрутки (css-contain-2 §3.3
+        // paint containment: «contents … clipped to the overflow clip
+        // edge»; вычисленный `overflow` остаётся `visible`) — это `clip`, а
+        // не `hidden`. `hidden` в taffy — контейнер прокрутки, а у него
+        // базовой линии нет (`compute/block.rs` `hides_baseline`), и
+        // `inline-block` с `contain: paint` садился на строку низом полей
+        // (`contain-paint-independent-formatting-context-002`). Ось с уже
+        // заданным `overflow` не трогается.
+        let o = &mut d.style().overflow;
+        if o.x.is_none_or(|x| x == gpui::Overflow::Visible) {
+            o.x = Some(gpui::Overflow::Clip);
+        }
+        if o.y.is_none_or(|y| y == gpui::Overflow::Visible) {
+            o.y = Some(gpui::Overflow::Clip);
+        }
     }
 
     match c.position {
@@ -627,7 +1651,9 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
             // определённой ширины — раскладка сжимает его до самого узкого
             // содержимого, и текст встаёт столбиком по букве. В браузере такой
             // элемент занимает ширину содержимого без переносов; повторяем это.
-            let horizontal = c.inset.left.is_some() && c.inset.right.is_some();
+            // Явный `auto` краем не считается (CSS 2.1 §9.3.2).
+            let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
+            let horizontal = edge(c.inset.left) && edge(c.inset.right);
             if !horizontal && c.width.is_none() {
                 d = d.flex_shrink_0().whitespace_nowrap();
             }
@@ -651,26 +1677,42 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     // Обрезка с ПОЛЕМ снимается с коробки: раскладка режет ровно по её краю,
     // а поле требует резать дальше наружу. Маску ставит свой слой
     // (`interact::ClipMargin`), его заводит сборщик дерева.
-    if c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll) {
+    // `border-shape`: переполнение режет ВНУТРЕННИЙ контур фигуры
+    // (css-borders-4 §border-shape-overflow-interaction) — маска группы
+    // (`render::grouped`), а не прямоугольник padding-box: тот срезал бы и
+    // кольцо рамки (абсолютный слой с выносом), и углы фигуры шире него
+    // (border-shape-overflow-child-clip, -replaced-img/-iframe).
+    let shaped = c.border_shape.is_some();
+    if !shaped && (c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll)) {
         d = d.overflow_x_hidden();
     }
-    if c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll) {
+    if !shaped && (c.overflow_y == Some(Overflow::Hidden) || c.overflow_y == Some(Overflow::Scroll)) {
         d = d.overflow_y_hidden();
     }
     // `clip` режет краску, но НЕ создаёт скролл-контейнер: авто-минимум
     // flex/grid-элемента остаётся по содержимому — у gpui/taffy для этого
     // отдельный вариант (CSSWG #7714; min-size-auto-overflow-clip).
-    if c.overflow_x == Some(Overflow::Clip) {
+    if !shaped && c.overflow_x == Some(Overflow::Clip) {
         d.style().overflow.x = Some(gpui::Overflow::Clip);
     }
-    if c.overflow_y == Some(Overflow::Clip) {
+    if !shaped && c.overflow_y == Some(Overflow::Clip) {
         d.style().overflow.y = Some(gpui::Overflow::Clip);
     }
     // Поле обрезки: край отодвигается от коробки отсчёта (css-overflow-3 §5).
     // Сдвиг несёт РОДНАЯ маска (патч GPUI): рамка и фон самой коробки
     // рисуются вне маски, режется только содержимое — обёртка снаружи резала
     // и рамку.
-    if let Some(m) = c.clip_margin {
+    // У СКРОЛЛЕРА (`hidden`/`scroll`) коробка `border-box` игнорируется
+    // ВМЕСТЕ со сдвигом (css-overflow-3 §overflow-clip-margin; названия
+    // `overflow-clip-margin-021/022`: «border-box is ignored on a scroller,
+    // including the offset»): край остаётся на padding-box. `content-box` и
+    // отрицательный сдвиг у скроллера действуют — `-018/-019/-020` зелёные.
+    let scroller = matches!(c.overflow_x, Some(Overflow::Hidden) | Some(Overflow::Scroll))
+        || matches!(c.overflow_y, Some(Overflow::Hidden) | Some(Overflow::Scroll));
+    if let Some(m) = c
+        .clip_margin
+        .filter(|_| !(scroller && c.clip_margin_box == Some(2)))
+    {
         let side = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,
             _ => 0.0,
@@ -697,20 +1739,101 @@ fn apply_box(mut d: Div, c: &Computed) -> Div {
     }
     // Края двигают только позиционированный элемент. У обычного (`static`)
     // браузер их игнорирует, а мы сдвигали — блок с `top` в потоке уезжал.
+    // `translate` (css-transforms-2 §individual-transforms) действует и на
+    // СТАТИКЕ: он визуальный, как `transform`, и от `position` не зависит.
+    // Ранний выход стоял ПЕРЕД блоком сдвига, поэтому ветка
+    // `if c.position.is_none() { d.relative() }` была недостижима.
     if !matches!(
         c.position,
         Some(Position::Relative) | Some(Position::Absolute) | Some(Position::Fixed)
     ) {
+        if let Some((x, y)) = c.translate {
+            let px_of = |l: Len| match l {
+                Len::Px(v) => v,
+                _ => 0.0,
+            };
+            let (dx, dy) = (px_of(x), px_of(y));
+            if dx != 0.0 || dy != 0.0 {
+                d = d.relative();
+                if dx != 0.0 {
+                    d = d.left(gpui::px(dx));
+                }
+                if dy != 0.0 {
+                    d = d.top(gpui::px(dy));
+                }
+            }
+        }
         return d;
     }
+    // §9.4.3: у относительно сдвинутой коробки с ОБОИМИ горизонтальными
+    // краями один из них избыточен — «if neither is auto, one of them must be
+    // ignored: for direction ltr `right`, for rtl `left`». Раскладка под нами
+    // всегда берёт начальный край, поэтому при rtl левый край снимается здесь.
+    let set = |l: Option<Len>| matches!(l, Some(x) if x != Len::Auto);
+    // У АБСОЛЮТНОЙ коробки то же правило §10.3.7: избыточен один из краёв,
+    // и при rtl это левый. Но избыток возникает, только когда заданы все три
+    // величины — при `width: auto` края решают ширину, и отбрасывать нечего.
+    let over = match c.position {
+        Some(Position::Relative) => true,
+        Some(Position::Absolute) | Some(Position::Fixed) => set(c.width),
+        _ => false,
+    };
+    // В ВЕРТИКАЛЬНОМ содержащем блоке оси меняются ролями
+    // (css-writing-modes-4 §7.1: правила §10.3 горизонтали действуют по
+    // вертикали). Горизонталь — БЛОЧНАЯ ось: отбрасывается её конец (§10.6.4
+    // «ignore the value for 'bottom'»), а он у `vertical-rl` слева, у
+    // `vertical-lr` справа, и от `direction` не зависит. Вертикаль — СТРОЧНАЯ:
+    // по §10.3.7 при `rtl` отбрасывается её конец, то есть `top` (у
+    // `sideways-lr` строка идёт снизу вверх, и конец — верх уже при `ltr`).
+    // Прежнее правило по `cb_rtl` в вертикали угадывало только `vrl`+`rtl`:
+    // `abs-pos-non-replaced-vrl-214/220` (ltr) и `vlr-223/227/229` (rtl)
+    // уезжали на 80, `vlr-093/097`, `vrl-092/096` (rtl, `top`+`bottom`+
+    // `height`) — тоже. Ровно так и в корпусе: `dynamic-offset-vrl-002`
+    // (`left … /* ignored */`), `dynamic-offset-vrl-rtl-002` (`top …
+    // /* ignored */`).
+    // Относительный сдвиг решает переопределённую ось по тем же сторонам
+    // (§9.4.3 в логических осях, Blink `relative_utils.cc:71-88`):
+    // `overconstrained-rel-pos-*-vrl-*`, `-rtl-*-vlr-*`.
+    let vertical_cb = matches!(
+        c.position,
+        Some(Position::Absolute) | Some(Position::Fixed) | Some(Position::Relative)
+    ) && c.cb_vertical;
+    let drop_left = over
+        && set(c.inset.left)
+        && set(c.inset.right)
+        && if vertical_cb {
+            c.cb_vertical_rl
+        } else {
+            c.cb_rtl
+        };
+    // У относительного сдвига переопределение от размера не зависит (`over`
+    // для него всегда истинно) — только у абсолюта нужен `height`.
+    let drop_top = vertical_cb
+        && (c.position == Some(Position::Relative) || set(c.height))
+        && set(c.inset.top)
+        && set(c.inset.bottom)
+        && c.cb_rtl != (c.cb_sideways && !c.cb_vertical_rl);
     for (val, f) in [
-        (c.inset.top, 0u8),
+        (if drop_top { None } else { c.inset.top }, 0u8),
         (c.inset.right, 1),
         (c.inset.bottom, 2),
-        (c.inset.left, 3),
+        (if drop_left { None } else { c.inset.left }, 3),
     ] {
         let Some(l) = val else { continue };
         if l == Len::Auto {
+            continue;
+        }
+        // Доля края по оси БЛОКА у относительно сдвинутой коробки считается
+        // от высоты содержащего блока, а когда та не задана — край
+        // вычисляется в `auto`, то есть в ноль (CSS2 §9.3.2: «If the height
+        // of the containing block is not specified explicitly … the value
+        // computes to auto»; Blink `relative_utils.cc::ResolveInset` отдаёт
+        // `nullopt` при неопределённом размере).
+        if c.position == Some(Position::Relative)
+            && matches!(f, 0 | 2)
+            && matches!(l, Len::Pct(_))
+            && !c.cb_height_def
+        {
             continue;
         }
         let g = len_to_gpui(l);
@@ -808,23 +1931,46 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
 /// абсолютную длину, поэтому долю разрешаем сами по заданному размеру, а без
 /// него берём заведомо большое значение — растеризатор обрежет его половиной
 /// меньшей стороны, что и даёт круг.
-fn apply_radius(mut d: Div, c: &Computed) -> Div {
-    let r = &c.radius;
+/// Радиус угла в точках: доля — от BORDER-BOX (css-backgrounds-3 §5.1), а
+/// `c.width` — содержимое, поэтому отбивки и рамка прибавляются. Проба
+/// `probe-bg-radiuspct` (`width:20; padding:20; border:20;
+/// border-radius:100% 0 0 0`) давала радиус 20 вместо 100. Без заданного
+/// размера берётся заведомо большое значение — растеризатор обрежет его
+/// половиной меньшей стороны, что и даёт круг.
+pub(crate) fn radius_px(c: &Computed, l: Option<Len>) -> Option<f32> {
+    let px_len = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let b = c.borders();
+    let extra_w = px_len(c.padding.left) + px_len(c.padding.right) + px_len(b.left) + px_len(b.right);
+    let extra_h = px_len(c.padding.top) + px_len(c.padding.bottom) + px_len(b.top) + px_len(b.bottom);
     let base = match (c.width, c.height) {
-        (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
-        (Some(Len::Px(w)), _) => w,
-        (_, Some(Len::Px(h))) => h,
+        (Some(Len::Px(w)), Some(Len::Px(h))) => (w + extra_w).min(h + extra_h),
+        (Some(Len::Px(w)), _) => w + extra_w,
+        (_, Some(Len::Px(h))) => h + extra_h,
         _ => f32::NAN,
     };
-    let resolve = |l: Option<Len>| -> Option<f32> {
-        match l? {
-            Len::Px(v) => Some(v),
-            Len::Pct(p) if base.is_nan() => Some(9999.0 * p.min(1.0)),
-            Len::Pct(p) => Some(base * p),
-            // Шрифтовые единицы — от запасного кегля, единой точкой.
-            l => crate::metrics::fallback_len_px(l, "", 16.0),
-        }
-    };
+    match l? {
+        Len::Px(v) => Some(v),
+        Len::Pct(p) if base.is_nan() => Some(9999.0 * p.min(1.0)),
+        Len::Pct(p) => Some(base * p),
+        // Шрифтовые единицы — от запасного кегля, единой точкой.
+        l => crate::metrics::fallback_len_px(l, "", 16.0),
+    }
+}
+
+fn apply_radius(mut d: Div, c: &Computed) -> Div {
+    // Эллиптические углы и большой неоднородный радиус режет альфа-маска
+    // буфера группы; круглое скругление сверху обрезало бы форму вторым
+    // лезвием (см. `Computed::radius_masked`).
+    // `border-shape` не совместим с `border-radius`: радиус — «as if it was
+    // set to 0» (css-borders-4 §border-shape-radius-interaction).
+    if c.radius_masked() || c.border_shape.is_some() {
+        return d;
+    }
+    let r = &c.radius;
+    let resolve = |l: Option<Len>| radius_px(c, l);
     for (val, corner) in [(r.tl, 0u8), (r.tr, 1), (r.br, 2), (r.bl, 3)] {
         let Some(v) = resolve(val) else { continue };
         d = match corner {
@@ -835,6 +1981,123 @@ fn apply_radius(mut d: Div, c: &Computed) -> Div {
         };
     }
     d
+}
+
+/// Рамка `double` (css-backgrounds-3 §4.2): «two parallel solid lines with
+/// some space between them». Квад GPUI умеет только сплошную, поэтому обе
+/// линии рисуют кольца в `render::decorations`, а квад и слой рамки цвета не
+/// получают. `Some((цвет, толщины))`, когда КАЖДАЯ видимая сторона `double`
+/// толщиной от 3 px (тоньше линии не разойтись — Blink рисует сплошной) и
+/// цвет у сторон один (иначе поверх легли бы полосы сторон).
+pub(crate) fn double_border(c: &Computed) -> Option<(crate::value::Color, [f32; 4])> {
+    if c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty())
+        || c.corner_shaped()
+        || c.border_shape.is_some()
+    {
+        return None;
+    }
+    let w = c.borders();
+    let side_px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let widths = [side_px(w.top), side_px(w.right), side_px(w.bottom), side_px(w.left)];
+    let mut any = false;
+    for (i, width) in widths.iter().enumerate() {
+        if *width <= 0.0 {
+            continue;
+        }
+        if c.border_side_styles[i] != Some(10) || *width < 3.0 {
+            return None;
+        }
+        any = true;
+    }
+    if !any {
+        return None;
+    }
+    let sides: Vec<_> = c.border_colors.iter().flatten().collect();
+    let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
+    if !(sides.is_empty() || sides.len() == 4) || (sides.len() > 1 && uniform.is_none()) {
+        return None;
+    }
+    let colour = uniform
+        .copied()
+        .copied()
+        .or(c.border_color)
+        .or(c.color)
+        .unwrap_or(crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
+    Some((crate::background::border_paint(c, colour), widths))
+}
+
+/// Рамка ПОВЕРХ слоя картинки: цвет и толщины сторон, если рамку надо
+/// рисовать отдельным слоем после плиток фона, а не квадом коробки.
+///
+/// Квад красит фон и рамку одним примитивом ДО детей, а слой плиток —
+/// ребёнок (`render::decorations`), поэтому полупрозрачная или пунктирная
+/// рамка оказывалась ПОД картинкой (`origin-border-box`: голубая rgba-рамка
+/// накрыта жёлтой плиткой; `css3-background-origin-*`: зелёный квадрат
+/// поверх пунктира). css-backgrounds-3 §3.7, прим.: «The background is
+/// always drawn behind the border»; Blink `box_fragment_painter.cc`:
+/// `PaintFillLayers` → `PaintBorder`. Сплошную непрозрачную рамку
+/// `paint_tiles` и раньше обходил ужатием области краски — слой делает то же
+/// для любой рамки. `None` — рисовать по-старому.
+pub(crate) fn border_layer(c: &Computed) -> Option<(crate::value::Color, [f32; 4])> {
+    // Рамку `double` рисуют кольца (`double_border`) — поверх плиток и так.
+    if double_border(c).is_some() {
+        return None;
+    }
+    // Слой картинки бывает только у этих двух (см. `render::decorations`).
+    if c.bg_image.is_none() && !c.gradient_as_tile() {
+        return None;
+    }
+    // Особые рамки несут свои слои, разные цвета сторон — полосы поверх:
+    // всё это уже лежит над плитками (`apply_paint` о них знает).
+    if c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty())
+        || c.corner_shaped()
+        || c.border_shape.is_some()
+    {
+        return None;
+    }
+    // Обрезка содержимого срезала бы и слой: он лежит В коробке, на
+    // отрицательных отступах (`css3-background-size-contain`: пунктирная
+    // рамка исчезала при `overflow: hidden`). Такие коробки красит квад.
+    if !matches!(c.overflow_x, None | Some(crate::computed::Overflow::Visible))
+        || !matches!(c.overflow_y, None | Some(crate::computed::Overflow::Visible))
+    {
+        return None;
+    }
+    let sides: Vec<_> = c.border_colors.iter().flatten().collect();
+    let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
+    if sides.len() > 1 && uniform.is_none() {
+        return None;
+    }
+    let w = c.borders();
+    let side_px = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => v,
+        _ => 0.0,
+    };
+    let widths = [side_px(w.top), side_px(w.right), side_px(w.bottom), side_px(w.left)];
+    if !widths.iter().any(|v| *v > 0.0) {
+        return None;
+    }
+    // Без цвета — цвет текста, без него чёрный (как у квада).
+    let colour = uniform
+        .copied()
+        .copied()
+        .or(c.border_color)
+        .or(c.color)
+        .unwrap_or(crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
+    Some((crate::background::border_paint(c, colour), widths))
 }
 
 fn apply_paint(mut d: Div, c: &Computed) -> Div {
@@ -868,8 +2131,54 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     let sides: Vec<_> = c.border_colors.iter().flatten().collect();
     let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
     let border_image_on = c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty());
-    if !border_image_on && let Some(bc) = uniform.copied().copied().or(c.border_color) {
-        d = d.border_color(bc.to_hsla());
+    // При РАЗНЫХ цветах сторон квад не красится вовсе: его рамка рисуется
+    // поверх детей, и красная полоса накрывала цветную
+    // (clip-path-polygon-007: `border: red` + `border-left: lime`).
+    let mixed = sides.len() > 1 && uniform.is_none();
+    // Цвет не задан вовсе — рамка красится цветом текста, а без него
+    // чёрным: начальное значение `border-color` — `currentColor`, начальное
+    // `color` — чёрный. Прежде такая рамка не красилась ничем и пропадала,
+    // хотя место в раскладке держала (строчный путь это уже делал —
+    // `inline::uniform_border`).
+    let any_border = {
+        let w = c.borders();
+        [w.top, w.right, w.bottom, w.left]
+            .iter()
+            .any(|l| matches!(l, Some(Len::Px(v)) if *v > 0.0))
+    };
+    let current = any_border.then(|| {
+        c.color.unwrap_or(crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        })
+    });
+    // Фигурные углы (`corner-shape`): рамку красит кольцевой слой по контуру
+    // (`render::decorations`), квад цвета не получает — иначе его прямой
+    // внутренний угол проступал бы из-под контура (corner-shape-bevel:
+    // красный треугольник ~240 px² на угол при допуске 200 px на пару).
+    // `border-shape`: рамку целиком рисует слой контура (`render::decorations`),
+    // прямоугольная рамка квада проступала бы из-под фигуры.
+    // Рамка над слоем картинки — отдельным слоем (`border_layer`,
+    // `render::decorations`): квад цвета не получает, иначе рамка легла бы
+    // ПОД плитки, а слой — второй раз поверх (полупрозрачная потемнела бы).
+    // Полосы сторон (`render::decorations`) рисуются, когда цвет задан не у
+    // всех четырёх сторон одинаково, — тогда квад цвета не получает: иначе
+    // полупрозрачная сторона ложилась дважды, полосой поверх квада (эталоны
+    // `grid-gap-decorations-*` с `border-right: 6px solid rgba(…/.5)` темнели
+    // до двух слоёв). Полосы красят и стороны без своего цвета — см. там же.
+    let strips = !sides.is_empty() && !(sides.len() == 4 && uniform.is_some()) && c.border_shape.is_none();
+    if !border_image_on
+        && !mixed
+        && !strips
+        && !c.corner_shaped()
+        && c.border_shape.is_none()
+        && border_layer(c).is_none()
+        && double_border(c).is_none()
+        && let Some(bc) = uniform.copied().copied().or(c.border_color).or(current)
+    {
+        d = d.border_color(crate::background::border_paint(c, bc).to_hsla());
     }
     if c.border_dashed == Some(true) {
         d = d.border_dashed();
@@ -935,20 +2244,33 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
             sh.color
         }
     };
-    if !c.inset_shadows.is_empty() {
+    // У `border-shape` обе тени повторяют фигуру и рисуются растром
+    // (`render::grouped` — наружные, `render::decorations` — внутренние);
+    // прямоугольные примитивы квада легли бы поверх и мимо фигуры.
+    if !c.inset_shadows.is_empty() && c.border_shape.is_none() {
         d.style().inset_box_shadow = Some(
             c.inset_shadows
                 .iter()
+                // Резкую внутреннюю рисует слой-кольцо в декорациях: примитив
+                // с нулевым размытием вырождается в шейдере (как у внешней).
+                .filter(|s| s.blur > 0.0)
                 .map(|s| gpui::BoxShadow {
                     color: shadow_colour(s).to_hsla(),
                     offset: gpui::point(px(s.x), px(s.y)),
-                    blur_radius: px(s.blur),
+                    // Шейдер gpui читает `blur_radius` как σ гаусса, а в CSS
+                    // радиус размытия — вдвое больше σ (css-backgrounds-3
+                    // §box-shadow: «blur radius … resulting shadow must
+                    // approximate … a Gaussian blur with a standard deviation
+                    // equal to half the blur radius»; Blink `BlurAsSigma`).
+                    // Прежде тень выходила вдвое шире — как у `text-shadow`
+                    // (`text_shadow_layers`), которая σ уже делит.
+                    blur_radius: px(s.blur * 0.5),
                     spread_radius: px(s.spread),
                 })
                 .collect(),
         );
     }
-    if !c.shadows.is_empty() {
+    if !c.shadows.is_empty() && c.border_shape.is_none() {
         d = d.shadow(
             c.shadows
                 .iter()
@@ -958,7 +2280,14 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
                 .map(|s| gpui::BoxShadow {
                     color: shadow_colour(s).to_hsla(),
                     offset: gpui::point(px(s.x), px(s.y)),
-                    blur_radius: px(s.blur),
+                    // Шейдер gpui читает `blur_radius` как σ гаусса, а в CSS
+                    // радиус размытия — вдвое больше σ (css-backgrounds-3
+                    // §box-shadow: «blur radius … resulting shadow must
+                    // approximate … a Gaussian blur with a standard deviation
+                    // equal to half the blur radius»; Blink `BlurAsSigma`).
+                    // Прежде тень выходила вдвое шире — как у `text-shadow`
+                    // (`text_shadow_layers`), которая σ уже делит.
+                    blur_radius: px(s.blur * 0.5),
                     spread_radius: px(s.spread),
                 })
                 .collect::<Vec<_>>(),
@@ -967,7 +2296,11 @@ fn apply_paint(mut d: Div, c: &Computed) -> Div {
     d
 }
 
-fn apply_text(mut d: Div, c: &Computed) -> Div {
+/// Текстовые свойства коробки: шрифт, кегль, цвет, начертание.
+///
+/// Открыта наружу для маркера списка: он рисуется отдельной коробкой и
+/// свойства пункта сам не получает.
+pub fn apply_text(mut d: Div, c: &Computed) -> Div {
     // Оформление текста нужно и на блоке: в ветке «строка из кусков» текст
     // рисуется обычными `div`, и подчёркивание, живущее только в прогонах,
     // там пропадало.
@@ -992,12 +2325,15 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
     }
     // Возможности шрифта: капитель, старостильные цифры, ширина начертания —
     // всё это таблицы OpenType, и GPUI умеет их включать.
-    if let Some(family) = &c.font_family {
+    if let Some(family) = c.font_family.as_ref().filter(|f| !f.is_empty()) {
         // Имя из разметки — придуманное (`@font-face`): в набор обязано уйти
         // имя, под которым файл знает система шрифтов. Без подмены весь
         // текст, идущий гpui-раскладкой (не резчиком), набирался подменным
         // системным шрифтом.
-        d = d.font_family(crate::fonts::alias(family).unwrap_or_else(|| family.clone()));
+        d = d.font_family(
+            crate::fonts::alias_stretch(family, c.font_stretch)
+                .unwrap_or_else(|| family.clone()),
+        );
     }
     if let Some(pct) = c.font_stretch {
         d.style()
@@ -1005,13 +2341,12 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
             .get_or_insert_with(Default::default)
             .font_stretch = Some(gpui::FontStretch::from_percent(pct));
     }
-    if !c.font_features.is_empty() {
+    let features = c.used_features();
+    if !features.is_empty() {
         d.style()
             .text
             .get_or_insert_with(Default::default)
-            .font_features = Some(gpui::FontFeatures(std::sync::Arc::new(
-            c.font_features.clone(),
-        )));
+            .font_features = Some(gpui::FontFeatures(std::sync::Arc::new(features)));
     }
     if let Some(col) = c.color {
         d = d.text_color(col.to_hsla());
@@ -1035,7 +2370,14 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
             )),
             Len::Lh(k) | Len::LhPx(k, _) => d.line_height(relative(k)),
             Len::Vw(k) | Len::Vh(k) => d.line_height(relative(k)),
-            Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => d,
+            // `anchor()` в `line-height` не бывает (css-anchor-position-1 §anchor-fn:
+            // только вставки) — как незнакомая длина, без сдвига.
+            Len::Calc(_)
+            | Len::Auto
+            | Len::MinContent
+            | Len::MaxContent
+            | Len::FitContent
+            | Len::Anchor(_) => d,
         };
     }
     if c.nowrap == Some(true) {
@@ -1067,7 +2409,7 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
         None => {}
     }
     if c.monospace == Some(true) {
-        d = d.font_family(crate::metrics::mono_family());
+        d = d.font_family(crate::metrics::mono_family_for(c.lang.as_deref()));
     }
     if let Some(Len::Px(v)) = c.letter_spacing {
         d = d.letter_spacing(px(v));
@@ -1080,7 +2422,12 @@ fn apply_text(mut d: Div, c: &Computed) -> Div {
         && c.overflow_x
             .is_some_and(|o| o != crate::computed::Overflow::Visible)
     {
-        d = d.text_ellipsis();
+        // Строковый маркер `text-overflow: "…текст…"` рисуется вместо
+        // многоточия (css-overflow-4): gpui умеет любой текст усечения.
+        d = match &c.overflow_marker {
+            Some(m) => d.text_overflow(gpui::TextOverflow::Truncate(m.clone().into())),
+            None => d.text_ellipsis(),
+        };
     }
     d
 }

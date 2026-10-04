@@ -31,6 +31,9 @@ pub use traits::LayoutBlockContainer;
 mod taffy_tree;
 #[cfg(feature = "taffy_tree")]
 pub use taffy_tree::{TaffyError, TaffyResult, TaffyTree};
+// KaminIDE patch: дескрипторы calc(<точки> + <доля>) для gpui.
+#[cfg(all(feature = "taffy_tree", feature = "std"))]
+pub use taffy_tree::calc_handle;
 
 #[cfg(feature = "detailed_layout_info")]
 pub use layout::DetailedLayoutInfo;

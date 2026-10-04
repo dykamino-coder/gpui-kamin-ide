@@ -10,6 +10,9 @@ use crate::util::ResolveOrZero;
 use crate::{GenericGridTemplateComponent, GenericRepetition, GridContainerStyle};
 
 /// The auto-repeat fit strategy to use
+// KaminIDE patch: `Copy` — лункам стратегия нужна второй раз, для счёта
+// интрин-повтора (`lanes.rs::intrinsic_repetitions`).
+#[derive(Clone, Copy)]
 pub(crate) enum AutoRepeatStrategy {
     /// If the grid container has a definite size or max size in the relevant axis:
     ///   - then the number of repetitions is the largest possible positive integer that does not cause the grid to overflow the content
@@ -168,10 +171,21 @@ pub(crate) fn compute_explicit_grid_size_in_axis(
                 //   - Then we return the minimum number of repetitions required to overflow the size.
                 //
                 // In all cases we add the additional repetition that was already accounted for in the special-case computation above
-                match auto_fit_strategy {
-                    AutoRepeatStrategy::MaxRepetitionsThatDoNotOverflow => (floor(num_repetition_that_fit) as u16) + 1,
-                    AutoRepeatStrategy::MinRepetitionsThatDoOverflow => (ceil(num_repetition_that_fit) as u16) + 1,
+                // KaminIDE patch: шаг репетиции может выйти НУЛЕВЫМ
+                // (`repeat(auto-fit, minmax(0, 1fr))` при нулевом зазоре) —
+                // тогда «наибольшее число повторений без переполнения»
+                // бесконечно, деление даёт inf, а `inf as u16` = 65535, и
+                // прибавление единицы роняло раскладку целиком
+                // (`contain-inline-size-grid-auto-fit` уносил всю шарду).
+                // Бесконечная репетиция смысла не имеет: берём одну.
+                if !num_repetition_that_fit.is_finite() {
+                    return (1, non_auto_repeating_track_count + repetition_track_count);
                 }
+                let fitting = match auto_fit_strategy {
+                    AutoRepeatStrategy::MaxRepetitionsThatDoNotOverflow => floor(num_repetition_that_fit),
+                    AutoRepeatStrategy::MinRepetitionsThatDoOverflow => ceil(num_repetition_that_fit),
+                };
+                (fitting.clamp(0.0, u16::MAX as f32 - 1.0) as u16) + 1
             }
         }
     };
@@ -292,6 +306,32 @@ pub(super) fn initialize_grid_tracks(
     } else {
         let iter = auto_tracks.clone().cycle();
         create_implicit_tracks(tracks, counts.positive_implicit + grid_area_tracks, iter, gap)
+    }
+
+    // KaminIDE patch: зазоры по обе стороны схлопнутой дорожки схлопываются
+    // (css-grid-2 §7.2.3.2, «When a collapsed track's gutters collapse, they
+    // coincide exactly»): между двумя ЖИВЫМИ дорожками остаётся ровно один
+    // зазор, а перед первой/после последней живой — ни одного. Прежде
+    // схлопывался только зазор ПОСЛЕ схлопнутой дорожки, и хвостовой зазор
+    // перед ней оставался (`grid-content-distribution-with-collapsed-tracks-*`).
+    if tracks.iter().any(|t| t.is_collapsed) {
+        let mut seen_live = false;
+        let mut pending: Option<usize> = None;
+        for i in 0..tracks.len() {
+            if i % 2 == 0 {
+                if seen_live && pending.is_none() {
+                    pending = Some(i);
+                } else {
+                    tracks[i].collapse();
+                }
+            } else if !tracks[i].is_collapsed {
+                seen_live = true;
+                pending = None;
+            }
+        }
+        if let Some(i) = pending {
+            tracks[i].collapse();
+        }
     }
 
     // Mark first and last grid lines as collapsed

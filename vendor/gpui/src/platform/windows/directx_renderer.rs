@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     mem::ManuallyDrop,
     sync::{Arc, OnceLock},
 };
@@ -52,6 +53,11 @@ pub(crate) struct DirectXRenderer {
     /// возвращающие цель кадра (пути через MSAA), уводили бы примитивы
     /// группы прямо в кадр.
     group_target: Option<[Option<ID3D11RenderTargetView>; 1]>,
+    /// KaminIDE patch: текстура под `group_target`. Смешивание вложенной
+    /// группы берёт цвет назначения ИЗ НЕЁ: бэкбуфер во время
+    /// `render_groups` ещё пуст (`pre_draw` очистил его в ноль), и смешиваемый
+    /// потомок изолирующего родителя видел прозрачную подложку.
+    group_target_tex: Option<ID3D11Texture2D>,
     /// KaminIDE patch: блендер для картинок с уже умноженным на прозрачность
     /// цветом (буферы групп). Обычный блендер умножает на неё второй раз —
     /// края группы уходили в чёрный ореол.
@@ -78,6 +84,16 @@ struct BlurScratch {
     group_blend: Vec<u32>,
     /// Обрезающий многоугольник каждой группы: вершины парами и их число.
     group_poly: Vec<([[f32; 4]; 4], u32)>,
+    /// Маска-изображение каждой группы: SRV плитки, её прямоугольник
+    /// (угол и размер в device px) и флаг «одна плитка» (no-repeat).
+    group_mask: Vec<Option<([Option<ID3D11ShaderResourceView>; 1], [f32; 4], f32)>>,
+    /// Коробка окраски маски / `clip: rect` каждой группы (device px);
+    /// нулевой размер — без клипа. Живёт отдельно от текстуры: старый
+    /// `clip` режет и группу БЕЗ маски-изображения.
+    group_clip: Vec<[f32; 4]>,
+    /// Текстуры масок по картинке-источнику: заливать пиксели каждый кадр
+    /// незачем, картинка неизменна (`ImageId` уникален на содержимое).
+    mask_cache: HashMap<ImageId, [Option<ID3D11ShaderResourceView>; 1]>,
 }
 
 struct BlurTexture {
@@ -103,9 +119,29 @@ struct BlurQuad {
     blend_mode: u32,
     /// Число вершин обрезающего многоугольника (0 — не обрезать).
     poly_count: u32,
+    /// x > 0.5 — у группы есть маска-изображение (t3).
     pad2: [f32; 2],
     /// Вершины парами: (x0, y0, x1, y1).
     poly: [[f32; 4]; 4],
+    /// Плитка маски: угол x, y и размер w, h в device px; повторяется.
+    mask_rect: [f32; 4],
+    /// Коробка окраски маски: вне её маска пуста; нулевой размер — нет клипа.
+    mask_clip: [f32; 4],
+}
+
+/// KaminIDE patch: матрица 4×5 подложки в поля `BlurQuad`, свободные в
+/// проходах подложки: строки множителей — в `poly`, сдвиги — в `mask_rect`
+/// (см. shaders.hlsl `backdrop_matrix`).
+fn matrix_rows(m: &[f32; 20]) -> ([[f32; 4]; 4], [f32; 4]) {
+    (
+        [
+            [m[0], m[1], m[2], m[3]],
+            [m[5], m[6], m[7], m[8]],
+            [m[10], m[11], m[12], m[13]],
+            [m[15], m[16], m[17], m[18]],
+        ],
+        [m[4], m[9], m[14], m[19]],
+    )
 }
 
 fn create_blur_texture(
@@ -153,6 +189,44 @@ fn create_blur_texture(
         rtv,
         srv: [srv],
     })
+}
+
+/// KaminIDE patch: статичная текстура из готовых пикселей (маска-изображение).
+///
+/// Байты картинки — BGRA с уже умноженной прозрачностью, ровно формат
+/// бэкбуфера; заливаются один раз при создании (`D3D11_SUBRESOURCE_DATA`).
+fn create_mask_texture(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+    bytes: &[u8],
+) -> Result<[Option<ID3D11ShaderResourceView>; 1]> {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: RENDER_TARGET_FORMAT,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_IMMUTABLE,
+        BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+        CPUAccessFlags: 0,
+        MiscFlags: 0,
+    };
+    let data = D3D11_SUBRESOURCE_DATA {
+        pSysMem: bytes.as_ptr() as *const _,
+        SysMemPitch: width * 4,
+        SysMemSlicePitch: 0,
+    };
+    let mut texture: Option<ID3D11Texture2D> = None;
+    unsafe { device.CreateTexture2D(&desc, Some(&data), Some(&mut texture))? };
+    let texture = texture.unwrap();
+    let mut srv = None;
+    unsafe { device.CreateShaderResourceView(&texture, None, Some(&mut srv))? };
+    Ok([srv])
 }
 
 /// KaminIDE patch: один даунсемпл-проход каскада blur (квад на весь dest,
@@ -206,6 +280,8 @@ fn blur_down_pass(
         poly_count: 0,
         pad2: [0.0; 2],
         poly: [[0.0; 4]; 4],
+        mask_rect: [0.0; 4],
+        mask_clip: [0.0; 4],
     };
     pipeline.update_buffer(device, dc, &[quad])?;
     unsafe {
@@ -349,6 +425,7 @@ impl DirectXRenderer {
             font_info: Self::get_font_info(),
             blur: BlurScratch::default(),
             group_target: None,
+            group_target_tex: None,
             blend_premultiplied: None,
             blend_replace: None,
         })
@@ -609,6 +686,8 @@ impl DirectXRenderer {
             self.blur.group_slots.clear();
             self.blur.group_blend.clear();
             self.blur.group_poly.clear();
+            self.blur.group_mask.clear();
+            self.blur.group_clip.clear();
             return Ok(());
         }
         let device = self.devices.device.clone();
@@ -633,6 +712,13 @@ impl DirectXRenderer {
         self.blur.group_slots.clear();
         self.blur.group_blend.clear();
         self.blur.group_poly.clear();
+        self.blur.group_mask.clear();
+        self.blur.group_clip.clear();
+        // Кэш текстур масок не растёт без предела: смена страницы рождает
+        // новые `ImageId`, старые записи никому не нужны.
+        if self.blur.mask_cache.len() > 64 {
+            self.blur.mask_cache.clear();
+        }
 
         for (i, group) in scene.groups.iter().enumerate() {
             let raw_rtv = self.blur.groups[i * 2].rtv.clone();
@@ -642,8 +728,10 @@ impl DirectXRenderer {
                 dc.RSSetViewports(Some(&self.resources.viewport));
             }
             self.group_target = Some(raw_rtv);
+            self.group_target_tex = Some(self.blur.groups[i * 2].texture.clone());
             let drawn = self.draw_scene(&group.scene);
             self.group_target = None;
+            self.group_target_tex = None;
             drawn?;
 
             let slot = if group.blur_radius > 0.0 {
@@ -662,6 +750,36 @@ impl DirectXRenderer {
             self.blur
                 .group_poly
                 .push((poly, group.polygon.len().min(8) as u32));
+            let mask = group.mask.as_ref().and_then(|img| {
+                let srv = match self.blur.mask_cache.get(&img.id) {
+                    Some(srv) => srv.clone(),
+                    None => {
+                        let size = img.size(0);
+                        let (mw, mh) = (size.width.0.max(1) as u32, size.height.0.max(1) as u32);
+                        let bytes = img.as_bytes(0)?;
+                        if bytes.len() < (mw * mh * 4) as usize {
+                            return None;
+                        }
+                        let srv = create_mask_texture(&device, mw, mh, bytes).log_err()?;
+                        self.blur.mask_cache.insert(img.id, srv.clone());
+                        srv
+                    }
+                };
+                Some((
+                    srv,
+                    [
+                        group.mask_bounds.origin.x.0,
+                        group.mask_bounds.origin.y.0,
+                        group.mask_bounds.size.width.0.max(1.0),
+                        group.mask_bounds.size.height.0.max(1.0),
+                    ],
+                    group.mask_once as f32,
+                ))
+            });
+            self.blur.group_mask.push(mask);
+            self.blur
+                .group_clip
+                .push(group.mask_clip.unwrap_or([0.0; 4]));
         }
 
         // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
@@ -730,6 +848,8 @@ impl DirectXRenderer {
             poly_count: 0,
             pad2: [0.0; 2],
             poly: [[0.0; 4]; 4],
+        mask_rect: [0.0; 4],
+        mask_clip: [0.0; 4],
         };
         self.pipelines
             .blur_pipeline
@@ -1153,6 +1273,8 @@ impl DirectXRenderer {
             // размытие фона, а «положить сюда готовый буфер группы».
             let drawn = if surface.group > 0 {
                 self.draw_group_composite(surface)
+            } else if surface.color_matrix.is_some() && surface.blur_radius <= 0.0 {
+                self.draw_backdrop_matrix(surface)
             } else {
                 self.draw_backdrop_blur(surface)
             };
@@ -1174,10 +1296,12 @@ impl DirectXRenderer {
                 _pad: 0,
             }],
         )?;
+        // KaminIDE patch: цель — текущая (`current_target`): внутри группы это
+        // её буфер, и примитивы, идущие после пачки Surfaces, остаются в ней.
         unsafe {
             self.devices
                 .device_context
-                .OMSetRenderTargets(Some(&self.resources.render_target_view), None);
+                .OMSetRenderTargets(Some(self.current_target()), None);
             self.devices
                 .device_context
                 .RSSetViewports(Some(&self.resources.viewport));
@@ -1284,8 +1408,12 @@ impl DirectXRenderer {
             pad: 0.0,
             blend_mode: 0,
             poly_count: 0,
-            pad2: [0.0; 2],
-            poly: [[0.0; 4]; 4],
+            // KaminIDE patch: размытие + цветовые функции `backdrop-filter`
+            // — матрица в свободных полях (pad2.x = 1 — она есть).
+            pad2: [if s.color_matrix.is_some() { 1.0 } else { 0.0 }, 0.0],
+            poly: s.color_matrix.map_or([[0.0; 4]; 4], |m| matrix_rows(&m).0),
+            mask_rect: s.color_matrix.map_or([0.0; 4], |m| matrix_rows(&m).1),
+            mask_clip: [0.0; 4],
         };
         self.pipelines
             .blur_pipeline
@@ -1296,6 +1424,98 @@ impl DirectXRenderer {
         self.pipelines.blur_pipeline.draw_with_texture(
             &dc,
             &last.srv,
+            &self.resources.viewport,
+            &self.blur.globals,
+            &self.globals.sampler,
+            1,
+        )
+    }
+
+    /// KaminIDE patch: `backdrop-filter` из одних цветовых функций
+    /// (filter-effects-2 §3): копия кадра под областью — один в один, без
+    /// каскада уменьшений; матрица 4×5 в шейдере (blur_pass 4), маска
+    /// скруглений border-box и прозрачность элемента (`pad`).
+    fn draw_backdrop_matrix(&mut self, s: &PaintSurface) -> Result<()> {
+        let Some(m) = s.color_matrix else {
+            return Ok(());
+        };
+        // Нулевая коробка не фильтрует ничего (`backdrop-filter-zero-size`).
+        if s.bounds.size.width.0 < 1.0 || s.bounds.size.height.0 < 1.0 {
+            return Ok(());
+        }
+        let device = self.devices.device.clone();
+        let dc = self.devices.device_context.clone();
+        let (vw, vh) = (self.resources.width, self.resources.height);
+        if self
+            .blur
+            .copy
+            .as_ref()
+            .is_none_or(|t| t.width != vw || t.height != vh)
+        {
+            self.blur.copy = Some(create_blur_texture(&device, vw, vh, false)?);
+        }
+        // Подложка матричного прохода: копия цели (сэмплить связанный RTV нельзя).
+        let copy_srv = {
+            let copy = self.blur.copy.as_ref().unwrap();
+            unsafe {
+                dc.CopyResource(&copy.texture, &*self.resources.render_target);
+            }
+            copy.srv.clone()
+        };
+        self.ensure_blur_globals(&device)?;
+        let (fw, fh) = (vw as f32, vh as f32);
+        update_buffer(
+            &dc,
+            self.blur.globals[0].as_ref().unwrap(),
+            &[GlobalParams {
+                gamma_ratios: self.font_info.gamma_ratios,
+                viewport_size: [fw, fh],
+                grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
+                _pad: 0,
+            }],
+        )?;
+        let (poly, shift) = matrix_rows(&m);
+        let quad = BlurQuad {
+            bounds: [
+                s.bounds.origin.x.0,
+                s.bounds.origin.y.0,
+                s.bounds.size.width.0,
+                s.bounds.size.height.0,
+            ],
+            content_mask: [
+                s.content_mask.bounds.origin.x.0,
+                s.content_mask.bounds.origin.y.0,
+                s.content_mask.bounds.size.width.0,
+                s.content_mask.bounds.size.height.0,
+            ],
+            corner_radii: [
+                s.corner_radii.top_left.0,
+                s.corner_radii.top_right.0,
+                s.corner_radii.bottom_right.0,
+                s.corner_radii.bottom_left.0,
+            ],
+            src_origin: [s.bounds.origin.x.0 / fw, s.bounds.origin.y.0 / fh],
+            src_scale: [s.bounds.size.width.0 / fw, s.bounds.size.height.0 / fh],
+            texel: [1.0 / fw, 1.0 / fh],
+            blur_pass: 4.0,
+            pad: s.opacity,
+            blend_mode: 0,
+            poly_count: 0,
+            pad2: [1.0, 0.0],
+            poly,
+            mask_rect: shift,
+            mask_clip: [0.0; 4],
+        };
+        self.pipelines
+            .blur_pipeline
+            .update_buffer(&device, &dc, &[quad])?;
+        // Матричный проход пишет в кадр.
+        unsafe {
+            dc.OMSetRenderTargets(Some(&self.resources.render_target_view), None);
+        }
+        self.pipelines.blur_pipeline.draw_with_texture(
+            &dc,
+            &copy_srv,
             &self.resources.viewport,
             &self.blur.globals,
             &self.globals.sampler,
@@ -1330,6 +1550,25 @@ impl DirectXRenderer {
             .get(s.group as usize - 1)
             .copied()
             .unwrap_or(([[0.0; 4]; 4], 0));
+        let mask = self
+            .blur
+            .group_mask
+            .get(s.group as usize - 1)
+            .cloned()
+            .flatten();
+        let (has_mask, mask_rect, mask_once) = match &mask {
+            Some((srv, rect, once)) => {
+                unsafe { dc.PSSetShaderResources(3, Some(srv)) };
+                (1.0, *rect, *once)
+            }
+            None => (0.0, [0.0; 4], 0.0),
+        };
+        let mask_clip = self
+            .blur
+            .group_clip
+            .get(s.group as usize - 1)
+            .copied()
+            .unwrap_or([0.0; 4]);
         let (vw, vh) = (self.resources.width as f32, self.resources.height as f32);
 
         // Смешивание считается в шейдере, а ему нужен цвет назначения:
@@ -1345,8 +1584,14 @@ impl DirectXRenderer {
                 self.blur.copy = Some(create_blur_texture(&device, rw, rh, false)?);
             }
             let copy = self.blur.copy.as_ref().unwrap();
+            // KaminIDE patch: подложка — буфер ОБЪЕМЛЮЩЕЙ группы, когда
+            // композит идёт в него (css-compositing-1 §mix-blend-mode:
+            // смешивание только с содержимым своего контекста наложения).
             unsafe {
-                dc.CopyResource(&copy.texture, &*self.resources.render_target);
+                match self.group_target_tex.as_ref() {
+                    Some(tex) => dc.CopyResource(&copy.texture, tex),
+                    None => dc.CopyResource(&copy.texture, &*self.resources.render_target),
+                }
                 dc.PSSetShaderResources(2, Some(&copy.srv));
             }
         }
@@ -1388,14 +1633,20 @@ impl DirectXRenderer {
             pad: s.opacity,
             blend_mode,
             poly_count,
-            pad2: [0.0; 2],
+            pad2: [has_mask, mask_once],
             poly,
+            mask_rect,
+            mask_clip,
         };
         self.pipelines
             .blur_pipeline
             .update_buffer(&device, &dc, &[quad])?;
+        // KaminIDE patch: вложенная группа (`clip-path` у потомка внутри
+        // `clip-path` предка) композитится в буфер ОБЪЕМЛЮЩЕЙ группы, а не в
+        // кадр: `render_groups` идёт до отрисовки кадра, и уложенный в
+        // бэкбуфер результат закрашивал фон страницы (corner-shape-bevel-ref).
         unsafe {
-            dc.OMSetRenderTargets(Some(&self.resources.render_target_view), None);
+            dc.OMSetRenderTargets(Some(self.current_target()), None);
         }
         // Смешанный цвет шейдер считает целиком, вместе с прозрачностью —
         // блендеру тут делать нечего, результат пишется поверх.

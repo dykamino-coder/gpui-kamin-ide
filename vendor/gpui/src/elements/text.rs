@@ -340,7 +340,14 @@ impl TextLayout {
             vec![text_style.to_run(text.len())]
         };
 
-        window.request_measured_layout(Default::default(), {
+        // KaminIDE patch: лист текста отдаёт замеру ещё и ПЕРВУЮ БАЗОВУЮ
+        // ЛИНИЮ. Без неё taffy берёт базовой линией нижний край margin-бокса
+        // (`compute/flexbox.rs:1756`, `height + margin.bottom`), и строка,
+        // выровненная `align-items: baseline`, теряет всё, что лежит НИЖЕ
+        // базовой: css-inline-3 §3 «Line Box Sizing» требует, чтобы короб
+        // строки вмещал ОБЕ половины (A′ над базовой и D′ под ней,
+        // §Calculating the Logical Height Contributions).
+        window.request_measured_layout_with_baseline(Default::default(), {
             let element_state = self.clone();
 
             move |known_dimensions, available_space, window, cx| {
@@ -396,7 +403,21 @@ impl TextLayout {
                     && text_layout.size.is_some()
                     && wrap_width == text_layout.wrap_width
                 {
-                    return text_layout.size.unwrap();
+                    // KaminIDE patch: базовая линия готового замера — по
+                    // ПЕРВОМУ ДОСТУПНОМУ шрифту стиля, той же формулой, что и
+                    // в свежем замере ниже. Метрики набранной строки сюда не
+                    // годятся: запасной шрифт под отсутствующий знак поднимал
+                    // бы базовую линию куска над базовой линией атома
+                    // (`line-breaking-atomic-004/015/019/021/023/025/027`).
+                    let ts = cx.text_system().clone();
+                    let fid = ts.resolve_font(&text_style.font());
+                    let (asc, desc) =
+                        (ts.ascent(fid, font_size), ts.descent(fid, font_size).abs());
+                    let baseline = text_layout
+                        .lines
+                        .first()
+                        .map(|_| (text_layout.line_height - asc - desc) / 2. + asc);
+                    return (text_layout.size.unwrap(), baseline);
                 }
 
                 let mut line_wrapper = cx.text_system().line_wrapper(text_style.font(), font_size);
@@ -434,7 +455,7 @@ impl TextLayout {
                         size: Some(Size::default()),
                         bounds: None,
                     });
-                    return Size::default();
+                    return (Size::default(), None);
                 };
 
                 let mut size: Size<Pixels> = Size::default();
@@ -443,6 +464,39 @@ impl TextLayout {
                     size.height += line_size.height;
                     size.width = size.width.max(line_size.width).ceil();
                 }
+
+                // KaminIDE patch: базовая линия ПЕРВОЙ строки от верха коробки
+                // содержимого — полулидинг плюс подъём (css-inline-3
+                // §Calculating the Logical Height Contributions:
+                // A′ = A + L/2, где L = line-height − (A + D); L бывает
+                // отрицательным, поэтому величину НЕ зажимаем).
+                //
+                // A и D берутся у ПЕРВОГО ДОСТУПНОГО шрифта стиля, а НЕ у
+                // набранной строки. Запасной шрифт, подставленный
+                // DirectWrite под отсутствующий в основном шрифте знак,
+                // короб строки не поднимает: CSS 2.1 §10.8 считает полулидинг
+                // от шрифта КОРОБКИ, а Blink объединяет метрики
+                // использованных шрифтов только при `line-height: normal`
+                // (`inline_box_state.cc:164`,
+                // `include_used_fonts = styleref.LineHeight().IsAuto()`;
+                // объединение — `AccumulateUsedFonts` :250-265, вызов под
+                // гейтом в `logical_line_builder.cc:239`), тогда как
+                // `ComputeTextMetrics` (:121-131) всегда читает
+                // `PrimaryFont()->GetFontMetrics()`.
+                //
+                // `DWRITE_LINE_METRICS::baseline` (`direct_write.rs:811`) —
+                // как раз объединённая величина, из-за неё кусок текста с
+                // тибетским или пробельным знаком отдавал базовую линию ниже
+                // атома, атом тонул в ряду `items_baseline`, и короб строки
+                // рос выше `line-height`
+                // (`line-breaking-atomic-004/015/019/021/023/025/027`).
+                //
+                // `FontMetrics::descent` в gpui знаковый (DirectWrite отдаёт
+                // его со знаком минус, `direct_write.rs:897`) — берём модуль.
+                let ts = cx.text_system().clone();
+                let fid = ts.resolve_font(&text_style.font());
+                let (asc, desc) = (ts.ascent(fid, font_size), ts.descent(fid, font_size).abs());
+                let baseline = lines.first().map(|_| (line_height - asc - desc) / 2. + asc);
 
                 let measured = TextLayoutInner {
                     lines,
@@ -462,11 +516,11 @@ impl TextLayout {
                     if slot.is_none() {
                         slot.replace(measured);
                     }
-                    return size;
+                    return (size, baseline);
                 }
                 element_state.0.borrow_mut().replace(measured);
 
-                size
+                (size, baseline)
             }
         })
     }

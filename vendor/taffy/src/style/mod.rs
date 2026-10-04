@@ -67,6 +67,16 @@ pub trait CheapCloneStr {}
 #[cfg(not(any(feature = "alloc", feature = "std")))]
 impl<T> CheapCloneStr for T {}
 
+/// KaminIDE patch: выражение `calc-size()` над размером основы:
+/// `(size·mul + add)` с зажимом `[min, max]`, не меньше нуля
+/// (css-values-5 §calc-size: «size» — размер, который дало бы ключевое
+/// слово основы).
+#[inline]
+pub fn apply_calc_size(f: (f32, f32, f32, f32), size: f32) -> f32 {
+    let (mul, add, max, min) = f;
+    (size * mul + add).min(max).max(min).max(0.0)
+}
+
 /// The core set of styles that are shared between all CSS layout nodes
 ///
 /// Note that all methods come with a default implementation which simply returns the default value for that style property
@@ -96,6 +106,12 @@ pub trait CoreStyle {
     #[inline(always)]
     fn box_sizing(&self) -> BoxSizing {
         BoxSizing::BorderBox
+    }
+    /// KaminIDE patch: `calc-size()` у `width`, `height`, `min-width`,
+    /// `min-height` (см. [`Style::calc_size`]).
+    #[inline(always)]
+    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
+        [None; 4]
     }
 
     // Overflow properties
@@ -161,6 +177,162 @@ pub trait CoreStyle {
     fn border(&self) -> Rect<LengthPercentage> {
         Style::<Self::CustomIdent>::DEFAULT.border
     }
+    /// KaminIDE patch: приставка `safe` у выравнивания
+    /// (`align_items`, `align_self`, `align_content`, `justify_content`) —
+    /// css-align-3 §4.4.
+    #[inline(always)]
+    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
+        (false, false, false, false)
+    }
+    /// KaminIDE patch: `margin-trim` контейнера (css-box-4 §margin-trim) —
+    /// ФИЗИЧЕСКИЕ края: 1 верх, 2 право, 4 низ, 8 лево; 0 — `none`.
+    #[inline(always)]
+    fn margin_trim(&self) -> u8 {
+        0
+    }
+    /// KaminIDE patch: собственная базовая линия узла по оси x — смещение и
+    /// «от правого края» (см. `Style::baseline_x_hint`).
+    #[inline(always)]
+    fn baseline_x_hint(&self) -> Option<(f32, bool)> {
+        None
+    }
+    /// KaminIDE patch: биты выравнивания по базовой по оси x (см.
+    /// `Style::baseline_x_flags`).
+    #[inline(always)]
+    fn baseline_x_flags(&self) -> u8 {
+        0
+    }
+    /// KaminIDE patch: раскладка ЛУНКАМИ (css-grid-3 «grid lanes»): сетка
+    /// с дорожками только по ОДНОЙ оси. `None` — обычная сетка.
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn grid_lanes(&self) -> Option<GridLanes> {
+        None
+    }
+    /// KaminIDE patch: ПОДСЕТКА (css-grid-2 §9) — физические биты:
+    /// [`SUBGRID_COLUMNS`], [`SUBGRID_ROWS`] (ось подсеточная) и
+    /// [`SUBGRID_COLUMN_GAP_NORMAL`], [`SUBGRID_ROW_GAP_NORMAL`] (зазор оси —
+    /// `normal`, то есть зазор родителя, §subgrid-gaps). 0 — не подсетка.
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn subgrid(&self) -> u8 {
+        0
+    }
+}
+
+/// KaminIDE patch: бит подсеточных КОЛОНОК (горизонтальная ось) в [`CoreStyle::subgrid`].
+#[cfg(feature = "grid")]
+pub const SUBGRID_COLUMNS: u8 = 1;
+/// KaminIDE patch: бит подсеточных РЯДОВ (вертикальная ось) в [`CoreStyle::subgrid`].
+#[cfg(feature = "grid")]
+pub const SUBGRID_ROWS: u8 = 2;
+/// KaminIDE patch: `column-gap: normal` у подсетки — зазор колонок родителя.
+#[cfg(feature = "grid")]
+pub const SUBGRID_COLUMN_GAP_NORMAL: u8 = 4;
+/// KaminIDE patch: `row-gap: normal` у подсетки — зазор рядов родителя.
+#[cfg(feature = "grid")]
+pub const SUBGRID_ROW_GAP_NORMAL: u8 = 8;
+
+/// KaminIDE patch: дорожки ОДНОЙ подсеточной оси, выданные подсетке её
+/// родительской сеткой (css-grid-2 §9 (a) `#subgrid-tracks`: «its track sizes
+/// are governed by the parent grid»). Размеры уже в координатах коробки
+/// содержимого подсетки: из крайних дорожек вычтены её поля, рамки и
+/// отбивки, внутренние сдвинуты на половину разницы зазоров (§subgrid-gaps),
+/// так что линии подсетки совпадают с линиями родителя (Blink
+/// `grid_track_collection.cc` `CreateSubgridTrackCollection`).
+#[cfg(feature = "grid")]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SubgridAxisTracks {
+    /// Число явных дорожек подсетки — её пролёт в родителе (§9 (b) `#subgrid-span`).
+    pub count: u16,
+    /// Использованные размеры дорожек; `None` — родитель эту ось ещё не
+    /// размерил (подсетку меряют до того), дорожки тогда `auto`.
+    pub sizes: Option<Vec<f32>>,
+    /// Использованный зазор подсетки в этой оси.
+    pub gap: f32,
+    /// Явные имена линий родителя на линиях пролёта (`count + 1` список) —
+    /// подсетка их наследует (§9 (d) `#subgrid-line-name-inheritance`).
+    pub names: Vec<Vec<String>>,
+}
+
+/// KaminIDE patch: `<line-name-list>` подсеточной оси (css-grid-2
+/// §subgrid-listing): `subgrid [a] [b] repeat(auto-fill, [c]) [d]`. Каждый
+/// элемент списка — имена ОДНОЙ линии; `repeat` — тело `repeat(auto-fill, …)`,
+/// которое повторяется, пока список не сравняется с пролётом подсетки
+/// (§auto-repeat: «repeats enough times for the name list to match the
+/// subgrid's specified grid span»).
+#[cfg(feature = "grid")]
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct SubgridLineNames<S: CheapCloneStr> {
+    /// Линии до повтора.
+    pub before: Vec<Vec<S>>,
+    /// Тело авто-повтора.
+    pub repeat: Option<Vec<Vec<S>>>,
+    /// Линии после повтора.
+    pub after: Vec<Vec<S>>,
+}
+
+#[cfg(feature = "grid")]
+impl<S: CheapCloneStr> SubgridLineNames<S> {
+    /// Имена линий подсетки из `count` дорожек (`count + 1` линия): авто-повтор
+    /// разворачивается по Blink `ComputeAutomaticRepetitionsForSubgrid`
+    /// (`grid_layout_algorithm.cc:905-935`), лишнее отрезается (§9 (b):
+    /// «the used value is truncated to match the used number of explicit
+    /// tracks»).
+    pub fn expand(&self, count: u16) -> Vec<Vec<S>> {
+        let span = count as usize;
+        let mut out: Vec<Vec<S>> = self.before.clone();
+        if let Some(body) = &self.repeat {
+            let fixed = self.before.len() + self.after.len();
+            let reps =
+                if fixed > span || body.is_empty() || body.len() > span { 0 } else { (span - fixed + 1) / body.len() };
+            for _ in 0..reps {
+                out.extend(body.iter().cloned());
+            }
+        }
+        out.extend(self.after.iter().cloned());
+        out.truncate(span + 1);
+        out
+    }
+}
+
+/// KaminIDE patch: подсеточные оси узла (см. [`SubgridAxisTracks`]); оси физические.
+#[cfg(feature = "grid")]
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct SubgridTracks {
+    /// Колонки (горизонтальная ось).
+    pub columns: Option<SubgridAxisTracks>,
+    /// Ряды (вертикальная ось).
+    pub rows: Option<SubgridAxisTracks>,
+}
+
+/// KaminIDE patch: параметры раскладки лунками (css-grid-3 §grid-lanes-model,
+/// `csswg-drafts/css-grid-3/Overview.bs:203`). Контейнер остаётся сеткой
+/// (`Display::Grid`): дорожки ОСИ РЕШЁТКИ размеряются тем же алгоритмом
+/// css-grid-2 §12 по «виртуальным» элементам (Overview.bs:619-745), а вдоль
+/// ОСИ УКЛАДКИ элементы встают в самую короткую лунку (Overview.bs:885-968).
+/// Оси ФИЗИЧЕСКИЕ: письмо переставляет их до нас.
+#[cfg(feature = "grid")]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct GridLanes {
+    /// Ось решётки — РЯДЫ (`grid-lanes-direction: row`): лунки идут
+    /// горизонтальными полосами, укладка — слева направо.
+    pub rows: bool,
+    /// `track-reverse`: авто-перебор дорожек от последней к первой.
+    pub track_reverse: bool,
+    /// `fill-reverse`: укладка от КОНЦА оси укладки.
+    pub fill_reverse: bool,
+    /// `grid-auto-flow: dense` — добор в пропуски (Overview.bs:871-883).
+    pub dense: bool,
+    /// Порог «равных» лунок (`flow-tolerance`, Overview.bs:787-869), уже в
+    /// точках раскладки; `f32::INFINITY` — `infinite`.
+    pub tolerance: f32,
+    /// Порог долей размера контейнера по оси решётки (`flow-tolerance: N%`);
+    /// при `Some` перекрывает `tolerance`.
+    pub tolerance_pct: Option<f32>,
+    /// Ось укладки — блочная ось контейнера при ФИЗИЧЕСКИХ рядах (лунки
+    /// колонками в вертикальном письме): элемент по ней — по содержимому.
+    pub stack_block: bool,
 }
 
 /// Sets the layout used for the children of this node
@@ -445,10 +617,72 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// How should content contained within this item be aligned in the main/inline axis
     #[cfg(any(feature = "flexbox", feature = "grid"))]
     pub justify_content: Option<JustifyContent>,
+    /// KaminIDE patch: приставка `safe` у выравнивания (css-align-3 §4.4):
+    /// при переполнении области выравнивание падает к `start`, чтобы
+    /// содержимое не уезжало за начало и не становилось недоступным.
+    /// Порядок: `align_items`, `align_self`, `align_content`,
+    /// `justify_content`.
+    #[cfg(any(feature = "flexbox", feature = "grid"))]
+    pub safe_alignment: (bool, bool, bool, bool),
+    /// KaminIDE patch: `calc-size(<basis>, <expr>)` (css-values-5 §calc-size)
+    /// у `width`, `height`, `min-width`, `min-height` (в этом порядке). Само
+    /// свойство при этом `auto`: размер считается как для ключевого слова
+    /// основы, а затем проходит выражение `(size·mul + add)`, зажатое сверху
+    /// и снизу — `(mul, add, max, min)` в точках раскладки (см.
+    /// [`apply_calc_size`]).
+    pub calc_size: [Option<(f32, f32, f32, f32)>; 4],
     /// How large should the gaps between items in a grid or flex container be?
     #[cfg(any(feature = "flexbox", feature = "grid"))]
     #[cfg_attr(feature = "serde", serde(default = "style_helpers::zero"))]
     pub gap: Size<LengthPercentage>,
+    /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
+    /// балансировка строк с минимумом N строк (`flex-line-count`).
+    #[cfg(feature = "flexbox")]
+    pub flex_balance_lines: u16,
+    /// KaminIDE patch: поперечная ось ОДНОСТРОЧНОГО контейнера идёт
+    /// от физического конца (cross-start справа): гибкая колонка при
+    /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
+    /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
+    #[cfg(feature = "flexbox")]
+    pub flex_cross_reverse: bool,
+    /// KaminIDE patch: анонимный ряд строки — доли высоты детей решаются от
+    /// высоты родителя ряда (CSS 2.1 §10.1: строка не содержащий блок).
+    #[cfg(feature = "flexbox")]
+    pub percent_basis_from_parent: bool,
+    /// KaminIDE patch: `margin-trim` гибкого контейнера и сетки — физические
+    /// края: 1 верх, 2 право, 4 низ, 8 лево.
+    #[cfg(any(feature = "flexbox", feature = "grid"))]
+    pub margin_trim: u8,
+    /// KaminIDE patch: раскладка лунками (см. [`GridLanes`]).
+    #[cfg(feature = "grid")]
+    pub grid_lanes: Option<GridLanes>,
+    /// KaminIDE patch: коробка не отдаёт базовые линии наружу — родитель их
+    /// синтезирует (css-contain-2 §3.2 п.7: «the containment box is treated as
+    /// having no baseline»). Ставится движком для `contain: layout`.
+    pub hides_baseline: bool,
+    /// KaminIDE patch: базовая для выравнивания снаружи — ПОСЛЕДНЯЯ
+    /// (css-inline-3 §baseline-source: `auto` у `inline-block` — `last`;
+    /// CSS 2.1 §10.8.1: «The baseline of an 'inline-block' is the baseline
+    /// of its last line box in the normal flow»). Узел отдаёт последнюю
+    /// базовую вместо первой.
+    pub baseline_from_last: bool,
+    /// KaminIDE patch: собственная базовая линия по оси x у узла без своей
+    /// раскладки текста (повёрнутый вертикальный абзац движка): смещение и
+    /// флаг «от правого края» — у `vertical-rl` первая строка справа, и
+    /// отсчёт от правого края переживает любую итоговую ширину.
+    pub baseline_x_hint: Option<(f32, bool)>,
+    /// KaminIDE patch: выравнивание по базовой по оси x (css-align-3 §9.1,
+    /// Blink baseline_utils.h): 1 — группа у ПРАВОГО края (письмо базовой —
+    /// `vertical-rl`), 2 — синтез центральный (у контейнера вертикальное
+    /// письмо не `sideways`), 4 — у элемента своя базовая по x (вертикальное
+    /// письмо самого элемента; иначе — только синтез, Blink
+    /// `LogicalBoxFragment::FirstBaseline` при `!IsWritingModeEqual()`),
+    /// 8 — элемент параллелен горизонтальной сетке: `justify-items:
+    /// baseline` контейнера на него не действует.
+    pub baseline_x_flags: u8,
+    /// KaminIDE patch: подсетка — биты [`CoreStyle::subgrid`].
+    #[cfg(feature = "grid")]
+    pub subgrid: u8,
 
     // Block container properties
     /// How items elements should aligned in the inline axis
@@ -505,6 +739,12 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// The named lines between the rows
     #[cfg(feature = "grid")]
     pub grid_template_row_names: GridTrackVec<GridTrackVec<S>>,
+    /// KaminIDE patch: `<line-name-list>` подсеточных колонок (см. [`SubgridLineNames`]).
+    #[cfg(feature = "grid")]
+    pub subgrid_column_names: Option<SubgridLineNames<S>>,
+    /// KaminIDE patch: `<line-name-list>` подсеточных рядов.
+    #[cfg(feature = "grid")]
+    pub subgrid_row_names: Option<SubgridLineNames<S>>,
 
     // Grid child properties
     /// Defines which row in the grid the item should start and end at
@@ -538,6 +778,8 @@ impl<S: CheapCloneStr> Style<S> {
         gap: Size::zero(),
         // Alignment
         #[cfg(any(feature = "flexbox", feature = "grid"))]
+        safe_alignment: (false, false, false, false),
+        calc_size: [None; 4],
         align_items: None,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         align_self: None,
@@ -558,6 +800,21 @@ impl<S: CheapCloneStr> Style<S> {
         #[cfg(feature = "flexbox")]
         flex_wrap: FlexWrap::NoWrap,
         #[cfg(feature = "flexbox")]
+        flex_balance_lines: 0,
+        #[cfg(feature = "flexbox")]
+        flex_cross_reverse: false,
+        percent_basis_from_parent: false,
+        #[cfg(any(feature = "flexbox", feature = "grid"))]
+        margin_trim: 0,
+        #[cfg(feature = "grid")]
+        grid_lanes: None,
+        hides_baseline: false,
+        baseline_from_last: false,
+        baseline_x_hint: None,
+        baseline_x_flags: 0,
+        #[cfg(feature = "grid")]
+        subgrid: 0,
+        #[cfg(feature = "flexbox")]
         flex_grow: 0.0,
         #[cfg(feature = "flexbox")]
         flex_shrink: 1.0,
@@ -574,6 +831,10 @@ impl<S: CheapCloneStr> Style<S> {
         grid_template_column_names: GridTrackVec::new(),
         #[cfg(feature = "grid")]
         grid_template_row_names: GridTrackVec::new(),
+        #[cfg(feature = "grid")]
+        subgrid_column_names: None,
+        #[cfg(feature = "grid")]
+        subgrid_row_names: None,
         #[cfg(feature = "grid")]
         grid_auto_rows: GridTrackVec::new(),
         #[cfg(feature = "grid")]
@@ -595,6 +856,11 @@ impl<S: CheapCloneStr> Default for Style<S> {
 
 impl<S: CheapCloneStr> CoreStyle for Style<S> {
     type CustomIdent = S;
+
+    #[inline(always)]
+    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
+        self.calc_size
+    }
 
     #[inline(always)]
     fn box_generation_mode(&self) -> BoxGenerationMode {
@@ -660,10 +926,41 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn border(&self) -> Rect<LengthPercentage> {
         self.border
     }
+    #[inline(always)]
+    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
+        self.safe_alignment
+    }
+    #[inline(always)]
+    fn margin_trim(&self) -> u8 {
+        self.margin_trim
+    }
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn grid_lanes(&self) -> Option<GridLanes> {
+        self.grid_lanes
+    }
+    #[inline(always)]
+    fn baseline_x_hint(&self) -> Option<(f32, bool)> {
+        self.baseline_x_hint
+    }
+    #[inline(always)]
+    fn baseline_x_flags(&self) -> u8 {
+        self.baseline_x_flags
+    }
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn subgrid(&self) -> u8 {
+        self.subgrid
+    }
 }
 
 impl<T: CoreStyle> CoreStyle for &'_ T {
     type CustomIdent = T::CustomIdent;
+
+    #[inline(always)]
+    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
+        (*self).calc_size()
+    }
 
     #[inline(always)]
     fn box_generation_mode(&self) -> BoxGenerationMode {
@@ -725,6 +1022,32 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     fn border(&self) -> Rect<LengthPercentage> {
         (*self).border()
     }
+    #[inline(always)]
+    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
+        (*self).safe_alignment()
+    }
+    #[inline(always)]
+    fn margin_trim(&self) -> u8 {
+        (*self).margin_trim()
+    }
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn grid_lanes(&self) -> Option<GridLanes> {
+        (*self).grid_lanes()
+    }
+    #[inline(always)]
+    fn baseline_x_hint(&self) -> Option<(f32, bool)> {
+        (*self).baseline_x_hint()
+    }
+    #[inline(always)]
+    fn baseline_x_flags(&self) -> u8 {
+        (*self).baseline_x_flags()
+    }
+    #[cfg(feature = "grid")]
+    #[inline(always)]
+    fn subgrid(&self) -> u8 {
+        (*self).subgrid()
+    }
 }
 
 #[cfg(feature = "block_layout")]
@@ -770,6 +1093,18 @@ impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
         self.flex_wrap
     }
     #[inline(always)]
+    fn flex_balance_lines(&self) -> u16 {
+        self.flex_balance_lines
+    }
+    #[inline(always)]
+    fn flex_cross_reverse(&self) -> bool {
+        self.flex_cross_reverse
+    }
+    #[inline(always)]
+    fn percent_basis_from_parent(&self) -> bool {
+        self.percent_basis_from_parent
+    }
+    #[inline(always)]
     fn gap(&self) -> Size<LengthPercentage> {
         self.gap
     }
@@ -798,6 +1133,18 @@ impl<T: FlexboxContainerStyle> FlexboxContainerStyle for &'_ T {
         (*self).flex_wrap()
     }
     #[inline(always)]
+    fn flex_balance_lines(&self) -> u16 {
+        (*self).flex_balance_lines()
+    }
+    #[inline(always)]
+    fn flex_cross_reverse(&self) -> bool {
+        (*self).flex_cross_reverse()
+    }
+    #[inline(always)]
+    fn percent_basis_from_parent(&self) -> bool {
+        (*self).percent_basis_from_parent()
+    }
+    #[inline(always)]
     fn gap(&self) -> Size<LengthPercentage> {
         (*self).gap()
     }
@@ -822,6 +1169,10 @@ impl<S: CheapCloneStr> FlexboxItemStyle for Style<S> {
         self.flex_basis
     }
     #[inline(always)]
+    fn is_line_row(&self) -> bool {
+        self.percent_basis_from_parent
+    }
+    #[inline(always)]
     fn flex_grow(&self) -> f32 {
         self.flex_grow
     }
@@ -833,6 +1184,10 @@ impl<S: CheapCloneStr> FlexboxItemStyle for Style<S> {
     fn align_self(&self) -> Option<AlignSelf> {
         self.align_self
     }
+    #[inline(always)]
+    fn is_table_item(&self) -> bool {
+        self.item_is_table
+    }
 }
 
 #[cfg(feature = "flexbox")]
@@ -840,6 +1195,10 @@ impl<T: FlexboxItemStyle> FlexboxItemStyle for &'_ T {
     #[inline(always)]
     fn flex_basis(&self) -> Dimension {
         (*self).flex_basis()
+    }
+    #[inline(always)]
+    fn is_line_row(&self) -> bool {
+        (*self).is_line_row()
     }
     #[inline(always)]
     fn flex_grow(&self) -> f32 {
@@ -852,6 +1211,10 @@ impl<T: FlexboxItemStyle> FlexboxItemStyle for &'_ T {
     #[inline(always)]
     fn align_self(&self) -> Option<AlignSelf> {
         (*self).align_self()
+    }
+    #[inline(always)]
+    fn is_table_item(&self) -> bool {
+        (*self).is_table_item()
     }
 }
 
@@ -944,6 +1307,15 @@ impl<S: CheapCloneStr> GridContainerStyle for Style<S> {
     fn grid_template_row_names(&self) -> Option<Self::TemplateLineNames<'_>> {
         Some(self.grid_template_row_names.iter().map(|names| names.iter()))
     }
+
+    #[inline(always)]
+    fn subgrid_line_names(&self, columns: bool) -> Option<SubgridLineNames<S>> {
+        if columns {
+            self.subgrid_column_names.clone()
+        } else {
+            self.subgrid_row_names.clone()
+        }
+    }
 }
 
 #[cfg(feature = "grid")]
@@ -1029,6 +1401,10 @@ impl<T: GridContainerStyle> GridContainerStyle for &'_ T {
     #[inline(always)]
     fn justify_items(&self) -> Option<AlignItems> {
         (*self).justify_items()
+    }
+    #[inline(always)]
+    fn subgrid_line_names(&self, columns: bool) -> Option<SubgridLineNames<Self::CustomIdent>> {
+        (*self).subgrid_line_names(columns)
     }
 }
 

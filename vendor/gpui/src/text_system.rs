@@ -707,35 +707,25 @@ impl WindowTextSystem {
         force_width: Option<Pixels>,
         letter_spacing: Pixels,
     ) -> Arc<LineLayout> {
-        let mut last_run = None::<&TextRun>;
-        let mut last_font: Option<FontId> = None;
         let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
         font_runs.clear();
 
         for run in runs.iter() {
-            let decoration_changed = if let Some(last_run) = last_run
-                && last_run.color == run.color
-                && last_run.underline == run.underline
-                && last_run.strikethrough == run.strikethrough
-            // we do not consider differing background color relevant, as it does not affect glyphs
-            // && last_run.background_color == run.background_color
-            {
-                false
-            } else {
-                last_run = Some(run);
-                true
-            };
-
             let run_size = run.font_size.unwrap_or(font_size);
+            // KaminIDE patch: шрифт прогона разрешается ДО сравнения — прежде
+            // сравнивался `last_font` с самим собой, и после первого прогона
+            // все сливались в один независимо от семейства/веса/курсива
+            // (`abc<b>def</b>ghi` набирался одним начертанием по всему корпусу).
+            // Прогоны одного шрифта и кегля НЕ рвутся по цвету/подчёркиванию:
+            // декорации красятся по `TextRun`, а лишняя граница диапазона в
+            // DirectWrite ломает кернинг и лигатуры через `<span>`.
+            let font_id = self.resolve_font(&run.font);
             if let Some(font_run) = font_runs.last_mut()
-                && Some(font_run.font_id) == last_font
+                && font_run.font_id == font_id
                 && font_run.font_size == run_size
-                && !decoration_changed
             {
                 font_run.len += run.len;
             } else {
-                let font_id = self.resolve_font(&run.font);
-                last_font = Some(font_id);
                 font_runs.push(FontRun {
                     len: run.len,
                     font_id,
@@ -744,6 +734,46 @@ impl WindowTextSystem {
             }
         }
 
+        // KaminIDE patch: неразрывный дефис (U+2011) без своего глифа в шрифте
+        // прогона набирается глифом дефиса U+2010 того же шрифта — так делает
+        // HarfBuzz (`hb-ot-shape-normalize.cc`, `decompose_current_character`:
+        // «U+2011 is the only sensible character that is a no-break version
+        // of another character»), а за ним Blink. DirectWrite уводил знак в
+        // шрифт-подмену, и в Ahem вместо квадрата вставала узкая чёрточка
+        // (`line-break-anywhere-overrides-uax-behavior-013/014`). Длина в UTF-8
+        // у обоих знаков одна, смещения прогонов не меняются; перенос
+        // считается раньше и по исходному тексту.
+        let substituted;
+        let text = if text.contains('\u{2011}') {
+            let mut out = String::with_capacity(text.len());
+            let mut at = 0usize;
+            let mut runs_iter = font_runs.iter();
+            let mut run = runs_iter.next();
+            let mut run_end = run.map_or(usize::MAX, |r| r.len);
+            for (i, ch) in text.char_indices() {
+                while i >= run_end {
+                    run = runs_iter.next();
+                    at = run_end;
+                    run_end = run.map_or(usize::MAX, |r| at + r.len);
+                }
+                // Отсутствующий знак DirectWrite отдаёт глифом 0 (.notdef), а
+                // не `None`.
+                let has = |font_id: FontId, c: char| {
+                    self.platform_text_system
+                        .glyph_for_char(font_id, c)
+                        .is_some_and(|g| g.0 != 0)
+                };
+                let swap = ch == '\u{2011}'
+                    && run.is_some_and(|r| {
+                        !has(r.font_id, '\u{2011}') && has(r.font_id, '\u{2010}')
+                    });
+                out.push(if swap { '\u{2010}' } else { ch });
+            }
+            substituted = out;
+            substituted.as_str()
+        } else {
+            text
+        };
         let layout = self.line_layout_cache.layout_line_spaced(
             &SharedString::new(text),
             font_size,
@@ -921,7 +951,7 @@ pub struct TextRun {
     /// У строчного бокса CSS нет коробки: фон тянется по строкам и рвётся на
     /// переносах. Прогон это умеет, но рисовал фон впритык к глифам, и
     /// подсветка выходила уже браузерной.
-    pub background_pad: Point<Pixels>,
+    pub background_pad: [Pixels; 4],
     /// KaminIDE patch: скругление фона прогона (`border-radius`).
     pub background_radius: Pixels,
     /// KaminIDE patch: рамка строчного бокса (цвет, толщина).

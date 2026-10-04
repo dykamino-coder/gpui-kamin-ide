@@ -14,6 +14,27 @@ pub trait FlexboxContainerStyle: CoreStyle {
     fn flex_wrap(&self) -> FlexWrap {
         Style::<Self::CustomIdent>::DEFAULT.flex_wrap
     }
+    /// KaminIDE patch: `flex-wrap: balance` (css-flexbox-2 §5.2) — 0 =
+    /// обычный перенос; N ≥ 1 = балансировка строк с минимумом N строк
+    /// (`flex-line-count`). Ортогонально режиму `flex_wrap`, как в Blink.
+    #[inline(always)]
+    fn flex_balance_lines(&self) -> u16 {
+        Style::<Self::CustomIdent>::DEFAULT.flex_balance_lines
+    }
+    /// KaminIDE patch: поперечная ось ОДНОСТРОЧНОГО контейнера идёт
+    /// от физического конца (cross-start справа): гибкая колонка при
+    /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
+    /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
+    #[inline(always)]
+    fn flex_cross_reverse(&self) -> bool {
+        Style::<Self::CustomIdent>::DEFAULT.flex_cross_reverse
+    }
+    /// KaminIDE patch: анонимный ряд строки — доли высоты детей решаются от
+    /// высоты родителя ряда, а не от самого ряда (CSS 2.1 §10.1).
+    #[inline(always)]
+    fn percent_basis_from_parent(&self) -> bool {
+        Style::<Self::CustomIdent>::DEFAULT.percent_basis_from_parent
+    }
 
     /// How large should the gaps between items in a grid or flex container be?
     #[inline(always)]
@@ -42,6 +63,13 @@ pub trait FlexboxContainerStyle: CoreStyle {
 
 /// The set of styles required for a Flexbox item (child of a Flexbox container)
 pub trait FlexboxItemStyle: CoreStyle {
+    /// KaminIDE patch: элемент — анонимный ряд строки
+    /// (`percent_basis_from_parent`): родителю надо отдать ему свою высоту
+    /// как базу долей и в проходе основы.
+    #[inline(always)]
+    fn is_line_row(&self) -> bool {
+        false
+    }
     /// Sets the initial main axis size of the item
     #[inline(always)]
     fn flex_basis(&self) -> Dimension {
@@ -63,6 +91,12 @@ pub trait FlexboxItemStyle: CoreStyle {
     #[inline(always)]
     fn align_self(&self) -> Option<AlignSelf> {
         Style::<Self::CustomIdent>::DEFAULT.align_self
+    }
+    /// KaminIDE patch: элемент — наружная коробка таблицы; по главной оси он
+    /// не ужимается ниже min-content своего содержимого (css-tables-3 §3.9).
+    #[inline(always)]
+    fn is_table_item(&self) -> bool {
+        false
     }
 }
 

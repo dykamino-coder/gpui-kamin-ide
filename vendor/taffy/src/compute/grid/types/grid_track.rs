@@ -57,6 +57,12 @@ pub(in super::super) struct GridTrack {
     /// A temporary scratch value when "distributing space"
     /// See: https://www.w3.org/TR/css3-grid-layout/#infinitely-growable
     pub infinitely_growable: bool,
+    /// KaminIDE patch: пол начального размера от краёв подсетки, чей край
+    /// лежит в этой дорожке (Blink `AccommodateSubgridExtraMargins`,
+    /// `grid_layout_utils.cc:1260-1356`): дорожка с внутренним минимумом не
+    /// бывает меньше накопленного «extra margin» подсетки, даже когда у края
+    /// подсетки нет элементов (css-grid-2 §subgrid-edge-placeholders).
+    pub subgrid_floor: f32,
 }
 
 impl GridTrack {
@@ -79,6 +85,7 @@ impl GridTrack {
             base_size_planned_increase: 0.0,
             growth_limit_planned_increase: 0.0,
             infinitely_growable: false,
+            subgrid_floor: 0.0,
         }
     }
 

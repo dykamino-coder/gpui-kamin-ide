@@ -114,14 +114,24 @@ float4 distance_from_clip_rect_transformed(float2 unit_vertex, Bounds bounds, Bo
     return distance_from_clip_rect_impl(transformed, clip_bounds);
 }
 
+// KaminIDE patch: кривые sRGB шли НАОБОРОТ (показатели 2.2 и 1/2.2 стояли
+// местами), и OKLab-градиент выходил вдвое темнее: середина red→lime давала
+// (93,33,0) вместо (208,168,0). Кривая — точная, css-color-4 §10.2; вход
+// зажимается, иначе `pow` от отрицательного даёт NaN вне охвата.
 // Convert linear RGB to sRGB
 float3 linear_to_srgb(float3 color) {
-    return pow(color, float3(2.2, 2.2, 2.2));
+    color = saturate(color);
+    float3 lo = color * 12.92;
+    float3 hi = 1.055 * pow(color, float3(1.0 / 2.4, 1.0 / 2.4, 1.0 / 2.4)) - 0.055;
+    return lerp(hi, lo, step(color, float3(0.0031308, 0.0031308, 0.0031308)));
 }
 
 // Convert sRGB to linear RGB
 float3 srgb_to_linear(float3 color) {
-    return pow(color, float3(1.0 / 2.2, 1.0 / 2.2, 1.0 / 2.2));
+    color = saturate(color);
+    float3 lo = color / 12.92;
+    float3 hi = pow((color + 0.055) / 1.055, float3(2.4, 2.4, 2.4));
+    return lerp(hi, lo, step(color, float3(0.04045, 0.04045, 0.04045)));
 }
 
 /// Hsla to linear RGBA conversion.
@@ -330,12 +340,23 @@ GradientColor prepare_gradient_color(uint tag, uint color_space, Hsla solid, Lin
 /// готовыми. Промежуточные встречаются заметно реже, и ради них не стоит
 /// растить вершинные выходы: нужный отрезок ищется здесь, и переводятся
 /// только два его цвета.
+/// KaminIDE patch: доля смешения ЦВЕТА при премультиплицированной
+/// интерполяции (css-images-3 §3.5.3, css-color-4 §12.3). Смешать
+/// `a0·c0` и `a1·c1` и поделить на итоговую прозрачность — то же самое, что
+/// взять обычную долю `u·a1 / lerp(a0, a1, u)`. Прозрачность смешивается
+/// своей, обычной долей.
+float premul_u(float u, float a0, float a1) {
+    float a = lerp(a0, a1, u);
+    return a > 0.0 ? u * a1 / a : u;
+}
+
 float4 gradient_mix(Background background, float t, float4 color0, float4 color1) {
     if (background.stop_count <= 2u) {
         float u = (t - background.colors[0].percentage)
                 / max(background.colors[1].percentage - background.colors[0].percentage, 0.0001);
         u = clamp(u, 0.0, 1.0);
-        float4 mixed = lerp(color0, color1, u);
+        float4 mixed = lerp(color0, color1, premul_u(u, color0.a, color1.a));
+        mixed.a = lerp(color0.a, color1.a, u);
         return background.color_space == 1u ? oklab_to_srgb(mixed) : mixed;
     }
     uint last = background.stop_count - 1u;
@@ -356,12 +377,18 @@ float4 gradient_mix(Background background, float t, float4 color0, float4 color1
     float u = clamp((t - lo) / max(hi - lo, 0.0001), 0.0, 1.0);
     float4 a = hsla_to_rgba(background.colors[i].color);
     float4 b = hsla_to_rgba(background.colors[i + 1u].color);
+    float w = premul_u(u, a.a, b.a);
+    float alpha = lerp(a.a, b.a, u);
     if (background.color_space == 1u) {
         a = srgb_to_oklab(a);
         b = srgb_to_oklab(b);
-        return oklab_to_srgb(lerp(a, b, u));
+        float4 m = lerp(a, b, w);
+        m.a = alpha;
+        return oklab_to_srgb(m);
     }
-    return lerp(a, b, u);
+    float4 m = lerp(a, b, w);
+    m.a = alpha;
+    return m;
 }
 
 float2x2 rotate2d(float angle) {
@@ -656,7 +683,23 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
     //
     // 0-width borders are turned into width -1 so that inner_sdf is > 1.0 near
     // the border. Without this, antialiasing pixels would be drawn.
-    float2 straight_border_inner_corner_to_point = corner_to_point + reduced_border;
+    // KaminIDE patch: внутренний прямоугольник рамки строится из ЧЕТЫРЁХ ширин
+    // сразу, а не из одной на полукоробку. Прежде ширина выбиралась по знаку
+    // `center_to_point`, и сторона обрезалась по средней линии коробки:
+    // `border-bottom: 96px` на коробке высотой 96 красил только нижние 48 px.
+    // Симметричную рамку формула повторяет бит в бит, а перекрывающие коробку
+    // ширины вырождают внутренний прямоугольник — разность даёт сплошную
+    // заливку сама, без отдельной ветки.
+    float4 reduced_edges = float4(
+        quad.border_widths.left == 0.0 ? -antialias_threshold : quad.border_widths.left,
+        quad.border_widths.top == 0.0 ? -antialias_threshold : quad.border_widths.top,
+        quad.border_widths.right == 0.0 ? -antialias_threshold : quad.border_widths.right,
+        quad.border_widths.bottom == 0.0 ? -antialias_threshold : quad.border_widths.bottom
+    );
+    float2 inner_min = reduced_edges.xy - half_size;
+    float2 inner_max = half_size - reduced_edges.zw;
+    float2 straight_border_inner_corner_to_point =
+        max(inner_min - center_to_point, center_to_point - inner_max);
 
     // Whether the point is beyond the inner edge of the straight border
     bool is_beyond_inner_straight_border =
@@ -906,6 +949,9 @@ struct Shadow {
     // KaminIDE patch: внутренняя тень. Раскладка обязана совпадать с
     // `struct Shadow` в scene.rs.
     uint inset;
+    // KaminIDE patch: коробка самого элемента — наружная тень под ней не
+    // рисуется (css-backgrounds-3 §box-shadow).
+    Bounds box_bounds;
 };
 
 struct ShadowVertexOutput {
@@ -979,6 +1025,13 @@ float4 shadow_fragment(ShadowFragmentInput input): SV_TARGET {
         inside *= saturate(0.5 - shape);
         return input.color * float4(1., 1., 1., inside);
     }
+    // KaminIDE patch: наружная тень вырезается коробкой самого элемента
+    // (css-backgrounds-3 §box-shadow: «the shadow is not painted inside the
+    // border box»; Blink `BoxPainterBase::PaintNormalBoxShadow` →
+    // `ClipToBorderEdge`). Сквозь прозрачный фон тень больше не видна
+    // сплошным пятном; край — тот же полупиксельный переход, что у квада.
+    float own = quad_sdf(input.position.xy, shadow.box_bounds, shadow.corner_radii);
+    alpha *= saturate(own + 0.5);
     return input.color * float4(1., 1., 1., alpha);
 }
 
@@ -1313,13 +1366,17 @@ struct BlurQuad {
     float pad;            // при blur_pass == 3 — прозрачность группы
     uint blend_mode;      // режим смешивания группы с кадром (0 — обычный)
     uint poly_count;      // вершин обрезающего многоугольника (0 — не обрезать)
-    float2 pad2;
+    float2 pad2;          // x > 0.5 — есть маска-изображение (t3)
     float4 poly[4];       // вершины парами: (x0, y0, x1, y1)
+    float4 mask_rect;     // плитка маски: угол x, y + размер w, h (device px)
+    float4 mask_clip;     // коробка окраски маски; нулевой размер — нет клипа
 };
 
 StructuredBuffer<BlurQuad> blur_quads: register(t1);
 // KaminIDE patch: копия кадра — цвет назначения для формул смешивания.
 Texture2D<float4> t_backdrop: register(t2);
+// KaminIDE patch: маска-изображение группы (`mask-image`) — альфа гасит буфер.
+Texture2D<float4> t_maskimg: register(t3);
 
 // KaminIDE patch: расстояние со знаком до многоугольника (`clip-path`).
 //
@@ -1448,9 +1505,29 @@ BlurVertexOutput blur_vertex(uint vertex_id: SV_VertexID, uint quad_id: SV_Insta
     return output;
 }
 
+// KaminIDE patch: цветовые функции `backdrop-filter` (filter-effects-1
+// §«Supported filter functions»: все — аффинные матрицы 4×5 над НЕумноженным
+// RGBA). Строки множителей едут в poly[0..3], сдвиги — в mask_rect: у
+// проходов подложки многоугольника и маски-изображения нет. Выход —
+// НЕумноженный цвет с альфой (блендер пайплайна — SRC_ALPHA).
+float4 backdrop_matrix(BlurQuad q, float4 c) {
+    float3 rgb = c.a > 0.0 ? c.rgb / c.a : float3(0.0, 0.0, 0.0);
+    float4 u = float4(rgb, c.a);
+    return saturate(float4(dot(q.poly[0], u), dot(q.poly[1], u),
+                           dot(q.poly[2], u), dot(q.poly[3], u)) + q.mask_rect);
+}
+
 float4 blur_fragment(BlurFragmentInput input): SV_Target {
     BlurQuad q = blur_quads[input.quad_id];
     float2 t = q.texel;
+    // KaminIDE patch: подложка без размытия (blur_pass 4) — копия кадра
+    // один в один, матрица, маска скруглений и прозрачность элемента (pad).
+    // Стоит ДО ветки групп (blur_pass > 2.5).
+    if (q.blur_pass > 3.5) {
+        float4 o = backdrop_matrix(q, t_sprite.Sample(s_sprite, input.uv));
+        float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
+        return float4(o.rgb, o.a * saturate(0.5 - distance) * q.pad);
+    }
     // KaminIDE patch: композит буфера группы. Картинка уже готова — её
     // нельзя размазывать, поэтому выборка одна, а маска скруглений и
     // прозрачность группы гасят и цвет, и альфу (цвет премультиплирован).
@@ -1460,6 +1537,34 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         float mask = saturate(0.5 - distance) * q.pad;
         if (q.poly_count >= 3u) {
             mask *= saturate(0.5 - poly_sdf(q.poly, q.poly_count, input.position.xy));
+        }
+        // Маска-изображение: плитка лежит от угла коробки своим размером и
+        // повторяется по обеим осям (`mask-repeat: repeat` — начальное
+        // значение css-masking); запрет мощения пооосный (pad2.y: бит 0 —
+        // x, бит 1 — y) — за краем первой плитки маска пуста. Гасится вся
+        // картинка, альфа её умножена.
+        // Коробка окраски (`mask-clip`) и старый `clip: rect` режут группу
+        // и БЕЗ маски-изображения: вне коробки картинка пуста.
+        if (q.mask_clip.z > 0.0 && (
+            input.position.x < q.mask_clip.x ||
+            input.position.x >= q.mask_clip.x + q.mask_clip.z ||
+            input.position.y < q.mask_clip.y ||
+            input.position.y >= q.mask_clip.y + q.mask_clip.w)) {
+            mask = 0.0;
+        }
+        if (q.pad2.x > 0.5) {
+            float2 mt = (input.position.xy - q.mask_rect.xy) / q.mask_rect.zw;
+            uint norep = uint(q.pad2.y + 0.5);
+            float inside = 1.0;
+            if ((norep & 1u) && (mt.x < 0.0 || mt.x >= 1.0)) { inside = 0.0; }
+            if ((norep & 2u) && (mt.y < 0.0 || mt.y >= 1.0)) { inside = 0.0; }
+            float4 mc = t_maskimg.Sample(s_sprite, frac(mt));
+            // Светимость (`mask-mode: luminance`, бит 2): цвет уже умножен
+            // на альфа, поэтому взвешенная сумма сразу равна lum * a.
+            float mval = (norep & 4u)
+                ? dot(mc.rgb, float3(0.2126, 0.7152, 0.0722))
+                : mc.a;
+            mask *= inside * mval;
         }
         src *= mask;
         if (q.blend_mode == 0u) {
@@ -1500,7 +1605,14 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
     if (q.blur_pass < 0.5) {
         float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
         float mask = saturate(0.5 - distance);
-        c = float4(c.rgb * mask, mask);
+        if (q.pad2.x > 0.5) {
+            // Размытие + цветовые функции: подложка непрозрачна (каскад
+            // ставит a = 1), матрица — поверх размытого.
+            float4 o = backdrop_matrix(q, float4(c.rgb, 1.0));
+            c = float4(o.rgb, o.a * mask);
+        } else {
+            c = float4(c.rgb * mask, mask);
+        }
     } else if (q.blur_pass < 1.5) {
         // Фон непрозрачен по определению: копия кадра.
         c.a = 1.0;

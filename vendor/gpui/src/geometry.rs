@@ -3324,6 +3324,10 @@ pub enum DefiniteLength {
     Absolute(AbsoluteLength),
     /// A relative length specified as a fraction of the parent's size, between 0 and 1.
     Fraction(f32),
+    /// KaminIDE patch: `calc(<доля> + <точки>)` — (точки, доля). Раскладке
+    /// уходит calc-дескриптором taffy (`taffy::tree::calc_handle`), решается как
+    /// точки + доля × база (css-values-4 §10.9: доля доживает до used-value).
+    Calc(f32, f32),
 }
 
 impl DefiniteLength {
@@ -3362,6 +3366,13 @@ impl DefiniteLength {
                 AbsoluteLength::Pixels(px) => px * fraction,
                 AbsoluteLength::Rems(rems) => rems * rem_size * fraction,
             },
+            DefiniteLength::Calc(add, fraction) => {
+                let base = match base_size {
+                    AbsoluteLength::Pixels(px) => px,
+                    AbsoluteLength::Rems(rems) => rems * rem_size,
+                };
+                base * fraction + Pixels::from(add)
+            }
         }
     }
 }
@@ -3377,6 +3388,9 @@ impl Display for DefiniteLength {
         match self {
             DefiniteLength::Absolute(length) => write!(f, "{length}"),
             DefiniteLength::Fraction(fraction) => write!(f, "{}%", (fraction * 100.0) as i32),
+            DefiniteLength::Calc(add, fraction) => {
+                write!(f, "calc({}% + {}px)", fraction * 100.0, add)
+            }
         }
     }
 }
@@ -3675,6 +3689,15 @@ pub enum GridTrack {
     MaxContent,
     /// `minmax(min, max)` — пара из двух дорожек выше.
     MinMax(Box<(GridTrack, GridTrack)>),
+    /// KaminIDE patch: `repeat(auto-fill | auto-fit, …)` — сколько дорожек
+    /// влезет. При `fit` пустые дорожки схлопываются в ноль, и остаток
+    /// делят непустые (css-grid-2 §auto-repeat).
+    AutoRepeat {
+        /// Схлопывать пустые дорожки (`auto-fit`).
+        fit: bool,
+        /// Что именно повторяется: одна дорожка или их набор.
+        tracks: Vec<GridTrack>,
+    },
 }
 
 impl Default for GridTrack {
@@ -3698,6 +3721,74 @@ pub enum GridAutoFlow {
     RowDense,
     /// По колонкам, затыкая дыры.
     ColumnDense,
+}
+
+/// KaminIDE patch: раскладка ЛУНКАМИ (css-grid-3 `display: grid-lanes`) —
+/// сетка с дорожками по одной оси; см. `taffy::GridLanes`. Оси ФИЗИЧЕСКИЕ:
+/// письмо переставляет их в `crates/html`.
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
+pub struct GridLanesFlow {
+    /// Ось решётки — ряды (лунки идут горизонтальными полосами).
+    pub rows: bool,
+    /// `track-reverse`.
+    pub track_reverse: bool,
+    /// `fill-reverse`.
+    pub fill_reverse: bool,
+    /// `grid-auto-flow: dense`.
+    pub dense: bool,
+    /// Порог `flow-tolerance` в пикселях; `f32::INFINITY` — `infinite`.
+    pub tolerance: f32,
+    /// `flow-tolerance: N%` — доля размера контейнера по оси решётки.
+    pub tolerance_pct: Option<f32>,
+    /// Ось укладки — блочная ось контейнера при физических рядах
+    /// (вертикальное письмо): элемент по ней — по содержимому.
+    pub stack_block: bool,
+}
+
+/// KaminIDE patch: имена линий одной оси сетки (css-grid-2 §7.2.2
+/// `<line-names>`): по списку имён на линию. Для шаблона — по линиям между
+/// компонентами списка дорожек (как `taffy::Style::grid_template_*_names`),
+/// `repeat` — имена внутри `repeat(auto-fill|auto-fit, …)`; для
+/// `<line-name-list>` подсетки — по линии на запись, `repeat` — тело
+/// `repeat(auto-fill, …)`. Оси ФИЗИЧЕСКИЕ.
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
+pub struct GridAxisLineNames {
+    /// Линии до авто-повтора (без повтора — все).
+    pub before: Vec<Vec<String>>,
+    /// Имена линий тела авто-повтора.
+    pub repeat: Option<Vec<Vec<String>>>,
+    /// Линии после авто-повтора.
+    pub after: Vec<Vec<String>>,
+}
+
+/// KaminIDE patch: грань размещения по ИМЕНИ линии (css-grid-2 §8.3):
+/// `a`, `a 2`, `-1 a` — `Line`, `span a`, `span 2 a` — `Span`. Число 0 у
+/// `Line` — «число не задано» (голое имя ищется сперва как `a-start`/`a-end`).
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema)]
+pub enum GridNamedLine {
+    /// Линия с именем.
+    Line(String, i16),
+    /// Пролёт до N-й линии с именем.
+    Span(String, u16),
+}
+
+/// KaminIDE patch: имена линий контейнера и именованные грани элемента —
+/// их разрешает taffy (`NamedLineResolver`), в том числе через подсетки
+/// (§9 (d) наследование имён). Оси ФИЗИЧЕСКИЕ.
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize, JsonSchema, Default)]
+pub struct GridLineNames {
+    /// Имена линий шаблона колонок.
+    pub columns: Option<GridAxisLineNames>,
+    /// Имена линий шаблона рядов.
+    pub rows: Option<GridAxisLineNames>,
+    /// `<line-name-list>` подсеточных колонок.
+    pub subgrid_columns: Option<GridAxisLineNames>,
+    /// `<line-name-list>` подсеточных рядов.
+    pub subgrid_rows: Option<GridAxisLineNames>,
+    /// Именованные грани по колонкам: начало, конец.
+    pub column: [Option<GridNamedLine>; 2],
+    /// Именованные грани по рядам: начало, конец.
+    pub row: [Option<GridNamedLine>; 2],
 }
 
 /// A location in a grid layout.
@@ -3876,6 +3967,7 @@ impl IsZero for DefiniteLength {
         match self {
             DefiniteLength::Absolute(length) => length.is_zero(),
             DefiniteLength::Fraction(fraction) => *fraction == 0.,
+            DefiniteLength::Calc(add, fraction) => *add == 0. && *fraction == 0.,
         }
     }
 }

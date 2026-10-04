@@ -301,6 +301,9 @@ impl Element for Img {
                 cx,
                 |mut style, window, cx| {
                     let mut replacement_id = None;
+                    // KaminIDE patch: природный размер для листа с замером
+                    // (авто-ширина при высоте-доле, см. ниже).
+                    let mut natural_for_measure: Option<crate::Size<Pixels>> = None;
 
                     match self.source.use_data(
                         self.image_cache
@@ -333,9 +336,39 @@ impl Element for Img {
                             }
 
                             let image_size = data.render_size(frame_index);
-                            style.aspect_ratio = Some(image_size.width / image_size.height);
+                            // KaminIDE patch: соотношение сторон влияет ТОЛЬКО
+                            // когда хотя бы одна сторона автоматическая
+                            // (css-sizing-4 §aspect-ratio: «only ever has an
+                            // effect if at least one of the box's sizes is
+                            // automatic»). Прежде оно ставилось всегда и
+                            // вдобавок затирало заданное свойством
+                            // `aspect-ratio`: картинка с обеими заданными
+                            // сторонами тянулась к своей пропорции.
+                            let both_definite = !matches!(style.size.width, Length::Auto)
+                                && !matches!(style.size.height, Length::Auto);
+                            if !both_definite {
+                                style
+                                    .aspect_ratio
+                                    .get_or_insert(image_size.width / image_size.height);
+                            }
 
-                            if let Length::Auto = style.size.width {
+                            // KaminIDE patch: авто-ширина при высоте-ДОЛЕ
+                            // остаётся авто — её даёт соотношение от решённой
+                            // доли (css-sizing-4 §5.1 transferred size; Blink
+                            // `ComputeReplacedSize`). Прежде ширина становилась
+                            // природной, и `height: 100%` картинки 200×200 в
+                            // коробке 100 давал коробку шириной 200
+                            // (`intrinsic-percent-replaced-024/026`,
+                            // `grid-in-table-cell-with-img`). Не решилась доля
+                            // (блок неопределён, CSS 2.1 §10.5 — `auto`) —
+                            // лист отдаёт природный размер через замер.
+                            let pct_height = matches!(
+                                style.size.height,
+                                Length::Definite(DefiniteLength::Fraction(_))
+                            );
+                            if matches!(style.size.width, Length::Auto) && pct_height {
+                                natural_for_measure = Some(image_size);
+                            } else if let Length::Auto = style.size.width {
                                 style.size.width = match style.size.height {
                                     Length::Definite(DefiniteLength::Absolute(abs_length)) => {
                                         let height_px = abs_length.to_pixels(window.rem_size());
@@ -387,8 +420,7 @@ impl Element for Img {
                                         replacement_id = Some(element.request_layout(window, cx));
                                         layout_state.replacement = Some(element);
                                     }
-                                } else {
-                                    let current_view = window.current_view();
+                                } else if let Some(current_view) = window.current_view_opt() {
                                     let task = window.spawn(cx, async move |cx| {
                                         cx.background_executor().timer(LOADING_DELAY).await;
                                         cx.update(move |_, cx| {
@@ -397,11 +429,35 @@ impl Element for Img {
                                         .ok();
                                     });
                                     state.started_loading = Some((Instant::now(), task));
+                                } else {
+                                    // KaminIDE patch: detached measure — no view to
+                                    // notify; the next frame re-lays out anyway.
+                                    window.request_animation_frame();
                                 }
                             }
                         }
                     }
 
+                    // KaminIDE patch: лист с замером — природный размер,
+                    // когда доля высоты не решилась; при известной стороне
+                    // вторая — через природное соотношение.
+                    if let (Some(natural), None) = (natural_for_measure, replacement_id) {
+                        let ratio = if natural.height.0 > 0.0 {
+                            natural.width.0 / natural.height.0
+                        } else {
+                            1.0
+                        };
+                        return window.request_measured_layout(style, move |known, _, _, _| {
+                            match (known.width, known.height) {
+                                (Some(w), Some(h)) => crate::Size { width: w, height: h },
+                                (None, Some(h)) => crate::Size { width: px(h.0 * ratio), height: h },
+                                (Some(w), None) if ratio > 0.0 => {
+                                    crate::Size { width: w, height: px(w.0 / ratio) }
+                                }
+                                _ => natural,
+                            }
+                        });
+                    }
                     window.request_layout(style, replacement_id, cx)
                 },
             );

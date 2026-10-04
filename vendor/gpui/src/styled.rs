@@ -676,6 +676,16 @@ pub trait Styled: Sized {
     /// Sets `grid-template-columns: repeat(auto-fill, minmax(<min>, 1fr))`:
     /// as many equal tracks as fit, each at least `min` wide. Unlike
     /// flex-wrap, a trailing partial row keeps the track width.
+    /// KaminIDE patch: схлопывать пустые дорожки повтора (`auto-fit`).
+    fn grid_cols_fit(mut self, on: bool) -> Self
+    where
+        Self: Sized,
+    {
+        self.style().grid_cols_fit = Some(on);
+        self
+    }
+
+    /// Минимальная ширина дорожки в повторе «сколько влезет».
     fn grid_cols_min(mut self, min: crate::Pixels) -> Self {
         self.style().grid_cols_min = Some(min);
         self

@@ -157,18 +157,46 @@ fn any_side(s: &crate::computed::Sides) -> bool {
 /// форматирования, отступ первого абзаца переставал схлопываться с полем тела,
 /// и вся страница уезжала вниз на этот отступ.
 fn viewport_overflow(mut nodes: Vec<Node>) -> Vec<Node> {
-    fn strip(nodes: &mut [Node]) {
+    fn strip(nodes: &mut [Node], root_contained: bool) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
             if matches!(e.tag.as_str(), "html" | "body") {
-                e.style.overflow_x = None;
-                e.style.overflow_y = None;
-                strip(&mut e.children);
+                // Любое ограничение РВЁТ цепочку распространения: своё — у
+                // элемента, корневое — у тела тоже (значение тела уезжает
+                // во вьюпорт ЧЕРЕЗ корень; css-contain-1 §3.1,
+                // contain-{body,html}-overflow-001..004).
+                let own = any_containment(e);
+                // Значение тела уезжает во вьюпорт лишь когда у корня своё
+                // `overflow` — visible по обеим осям (css-overflow-3 §Overflow
+                // Viewport Propagation): иначе во вьюпорт идёт корневое, а
+                // тело держит своё (`overflow-body-propagation-012`).
+                let root_own_overflow = e.tag == "html"
+                    && (matches!(e.style.overflow_x, Some(o) if o != crate::computed::Overflow::Visible)
+                        || matches!(e.style.overflow_y, Some(o) if o != crate::computed::Overflow::Visible));
+                if !own && !root_contained {
+                    e.style.overflow_x = None;
+                    e.style.overflow_y = None;
+                }
+                strip(
+                    &mut e.children,
+                    root_contained || (e.tag == "html" && (own || root_own_overflow)),
+                );
             }
         }
     }
-    strip(&mut nodes);
+    strip(&mut nodes, false);
     nodes
+}
+
+/// Есть ли на элементе хоть одно ограничение (`contain`, включая
+/// `content-visibility: hidden`): оно выключает распространение свойств
+/// элемента в область просмотра.
+fn any_containment(e: &crate::dom::Element) -> bool {
+    e.style.contain_paint == Some(true)
+        || e.style.contain_size == Some(true)
+        || e.style.contain_layout == Some(true)
+        || e.style.contain_style == Some(true)
+        || e.style.skip_content == Some(true)
 }
 
 /// Главное письмо страницы задаёт `<body>`, а не корень.
@@ -200,24 +228,123 @@ fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
     }
     for n in nodes.iter_mut() {
         let Node::Element(html) = n else { continue };
+        // §10.5: «A percentage height on the root element is relative to the
+        // initial containing block» — высота начального блока определена
+        // всегда. Пометка живёт на самом узле: снимаемая обёртка уносит её с
+        // собой, и дети `body` верхнего уровня её не получают.
+        if html.tag == "html" {
+            html.style.root_box = true;
+            // css-display-3 §2.7: «a display of contents computes to block on
+            // the root element». Без коробки корня слой канваса (`canvas_bg`
+            // ниже) не заводился, и фон-картинка корня пропадала целиком
+            // (`display-contents-root-background` 99.93).
+            if html.style.display == Some(crate::computed::Display::Contents) {
+                html.style.display = Some(crate::computed::Display::Block);
+            }
+        }
+        // Фон переносится только от элемента С КОРОБКОЙ: `display: none` и
+        // `display: contents` коробки не дают, и канвас остаётся чистым
+        // (`background-color-body-propagation-007`, `-root-propagation-001`).
+        let boxed = |e: &crate::Element| {
+            !matches!(
+                e.style.display,
+                Some(crate::computed::Display::None) | Some(crate::computed::Display::Contents)
+            )
+        };
         if html.tag != "html" {
-            if html.tag == "body" && has_bg(html) && html.style.contain_paint != Some(true) {
+            // css-contain-2 §2.1: распространение свойств тела в область
+            // просмотра и на канвас глушит ЛЮБОЕ обособление на `html` или
+            // `body`, а не только `paint`. Узкая проверка оставляла зелёной
+            // одну `contain-{body,html}-bg-002`, где написан именно
+            // `contain: paint`; `layout`, `size` и `style` пролезали.
+            if html.tag == "body" && has_bg(html) && boxed(html) && !any_containment(html) {
                 html.style.canvas_bg = true;
             }
             continue;
         }
-        if html.style.contain_paint == Some(true) {
+        // Обособление на КОРНЕ рвёт ту же цепочку: значение тела уезжает во
+        // вьюпорт ЧЕРЕЗ корень (`contain-html-bg-001/003/004`).
+        if any_containment(html) {
             continue;
         }
-        if has_bg(html) {
+        if has_bg(html) && boxed(html) {
             html.style.canvas_bg = true;
             continue;
         }
+        // §14.2: «the propagated values are treated as if they were specified
+        // on the root element». Фон тела ПЕРЕЕЗЖАЕТ на корень целиком, а не
+        // помечается на месте: иначе область отсчёта плитки считалась бы от
+        // полей ТЕЛА.
+        let mut moved: Option<crate::computed::Computed> = None;
         for c in html.children.iter_mut() {
             let Node::Element(body) = c else { continue };
-            if body.tag == "body" && has_bg(body) && body.style.contain_paint != Some(true) {
-                body.style.canvas_bg = true;
+            // Переезд фона тела НА КОРЕНЬ — это и есть распространение
+            // (CSS 2.1 §14.2, «treated as if they were specified on the root
+            // element»). Любое обособление тела его отменяет.
+            if body.tag == "body" && has_bg(body) && boxed(body) && !any_containment(body) {
+                let s = &mut body.style;
+                let mut take = crate::computed::Computed::default();
+                take.background = s.background.take();
+                take.background_rcs = s.background_rcs.take();
+                take.gradient = s.gradient.take();
+                take.gradient_raw = s.gradient_raw.take();
+                take.bg_image = s.bg_image.take();
+                take.bg_size = std::mem::take(&mut s.bg_size);
+                // Шрифтовые единицы позиции решаются по кеглю ТЕЛА, на
+                // котором они написаны: после переезда их посчитали бы от
+                // кегля корня (`background-position-001`: `6.25ex` при 20px
+                // Ahem у тела давало 100 вместо 200).
+                // ★ ЗАМЕРЕНО И ОТКАЧЕНО: разрешать СВОЙ кегль тела по кеглю
+                // корня (`body { font-size: 2.5ex }` при `html { font: 20px/1
+                // Ahem }` — это 40 точек, и уже от них `6.25ex` = 200).
+                // Разрешение написано и считает именно так; `background-
+                // position-001` ушла 1.99 → 2.09, то есть 200 точек эталон НЕ
+                // ждёт. Значит корень пары не в кегле, а в области отсчёта
+                // перенесённого фона. Возвращать вместе с ней.
+                let em = match s.font_size {
+                    Some(crate::value::Len::Px(v)) => v,
+                    _ => 16.0,
+                };
+                let fam = s.font_family.clone().unwrap_or_default();
+                let to_px = |l: Option<crate::value::Len>| match l {
+                    Some(
+                        crate::value::Len::Em(_)
+                        | crate::value::Len::Ex(_)
+                        | crate::value::Len::Ch(_),
+                    ) => Some(crate::value::Len::Px(crate::metrics::spacing_px(
+                        l, &fam, em,
+                    ))),
+                    other => other,
+                };
+                let mut pos = std::mem::take(&mut s.bg_pos);
+                pos.x = to_px(pos.x);
+                pos.y = to_px(pos.y);
+                take.bg_pos = pos;
+                take.bg_repeat = s.bg_repeat.take();
+                take.bg_clip = s.bg_clip.take();
+                take.bg_origin = s.bg_origin.take();
+                take.bg_fixed = s.bg_fixed.take();
+                // Списки слоёв переезжают вместе с верхним слоем (§14.2).
+                take.bg_lists = std::mem::take(&mut s.bg_lists);
+                moved = Some(take);
+                break;
             }
+        }
+        if let Some(take) = moved {
+            let s = &mut html.style;
+            s.background = take.background;
+            s.background_rcs = take.background_rcs;
+            s.gradient = take.gradient;
+            s.gradient_raw = take.gradient_raw;
+            s.bg_image = take.bg_image;
+            s.bg_size = take.bg_size;
+            s.bg_pos = take.bg_pos;
+            s.bg_repeat = take.bg_repeat;
+            s.bg_clip = take.bg_clip;
+            s.bg_origin = take.bg_origin;
+            s.bg_fixed = take.bg_fixed;
+            s.bg_lists = take.bg_lists;
+            s.canvas_bg = true;
         }
     }
     nodes
@@ -232,7 +359,20 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     }
     // Ограничение на корне гасит распространение: корень с ним — сам себе
     // область, и наружу его письмо не выходит.
-    if html.style.contain_paint == Some(true) {
+    if any_containment(html) {
+        // Тело своё письмо СОХРАНЯЕТ — гасится распространение, а не
+        // вычисленное значение (css-writing-modes §3.1). Значит главным
+        // потоком тело не стало, и полагающийся главному потоку прижим к
+        // краю окна ему не положен. Рисователь обособления КОРНЯ уже не
+        // видит, поэтому пометку ставим здесь
+        // (contain-html-w-m-001..004).
+        for n in html.children.iter_mut() {
+            if let Node::Element(b) = n
+                && b.tag == "body"
+            {
+                b.style.wm_contained = true;
+            }
+        }
         return nodes;
     }
     // `html::before`/`::after` — СОСЕДИ body в потоке страницы: растяжка
@@ -260,12 +400,38 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     }) else {
         return nodes;
     };
-    let taken = (
-        body.style.vertical.or(html.style.vertical),
-        body.style.vertical_rl.or(html.style.vertical_rl),
-        body.style.rtl.or(html.style.rtl),
-        body.style.sideways.or(html.style.sideways),
-    );
+    // Ограничение на теле оставляет письмо ему: наверх идёт только
+    // собственное письмо корня (contain-body-{w-m,t-o}-001..004).
+    let body_contained = any_containment(body);
+    let taken = if body_contained {
+        (
+            html.style.vertical,
+            html.style.vertical_rl,
+            html.style.rtl,
+            html.style.sideways,
+        )
+    } else {
+        (
+            body.style.vertical.or(html.style.vertical),
+            body.style.vertical_rl.or(html.style.vertical_rl),
+            body.style.rtl.or(html.style.rtl),
+            body.style.sideways.or(html.style.sideways),
+        )
+    };
+    // Та же пометка, что и при обособлении корня: письмо тела осталось при
+    // теле, область просмотра его не приняла (css-contain-2
+    // §containment-types), и тело — обычный блок в потоке корня. Ставится
+    // ПОСЛЕ вычисления `taken`, чтобы неизменяемый заём `body` уже кончился
+    // (contain-body-w-m-001..004).
+    if body_contained {
+        for n in html.children.iter_mut() {
+            if let Node::Element(b) = n
+                && b.tag == "body"
+            {
+                b.style.wm_contained = true;
+            }
+        }
+    }
     let own = (
         html.style.vertical,
         html.style.vertical_rl,
@@ -346,19 +512,36 @@ fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
 /// Проход идёт после каскада и после распространения письма с `<body>` —
 /// то есть в единственной точке, где письмо узла уже окончательно.
 fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
-    fn walk(nodes: &mut [Node], mode: (Option<bool>, Option<bool>, Option<bool>)) {
+    fn walk(
+        nodes: &mut [Node],
+        mode: (Option<bool>, Option<bool>, Option<bool>, Option<bool>),
+    ) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
             // Письмо и направление наследуются; свои значения сильнее.
+            // `sideways` — часть ЗНАЧЕНИЯ `writing-mode`, а оно наследуемое
+            // (css-writing-modes-4 §3.1, `Inherited: yes`). Без него потомок
+            // блока `sideways-lr`, у которого своего письма нет, разбирал
+            // логические стороны по строке `vertical-lr` таблицы
+            // §Abstract-Physical Mapping: `inline-start` уезжал с НИЖНЕГО
+            // края на верхний (эталон `initial-letter-block-position-
+            // margins-slr-ref` ставил `margin-inline-start: 15px` сверху).
             let own = (
                 e.style.vertical.or(mode.0),
                 e.style.vertical_rl.or(mode.1),
                 e.style.rtl.or(mode.2),
+                e.style.sideways.or(mode.3),
             );
-            let (was_v, was_rl, was_rtl) = (e.style.vertical, e.style.vertical_rl, e.style.rtl);
+            let (was_v, was_rl, was_rtl, was_sw) = (
+                e.style.vertical,
+                e.style.vertical_rl,
+                e.style.rtl,
+                e.style.sideways,
+            );
             e.style.vertical = own.0;
             e.style.vertical_rl = own.1;
             e.style.rtl = own.2;
+            e.style.sideways = own.3;
             if {
                 static ON: std::sync::LazyLock<bool> =
                     std::sync::LazyLock::new(|| std::env::var("LOG_DBG").is_ok());
@@ -380,29 +563,137 @@ fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
                     e.style.logical.as_ref().map(|l| l.border.clone())
                 );
             }
-            e.style.resolve_logical();
+            // Табличность ячейки на этом шаге держится ТЕГОМ:
+            // `Display::TableCell` приходит только из авторского CSS
+            // (замеренный откат в шапке `resolve_logical`), поэтому
+            // проверяются оба признака.
+            let is_cell = matches!(e.tag.as_str(), "td" | "th")
+                || e.style.display == Some(crate::computed::Display::TableCell);
+            e.style.resolve_logical(mode.0, is_cell);
+            // Слои `:hover`, `::first-letter` и `::first-line` — ТЕМ ЖЕ
+            // проходом. Слой собирается копией стиля элемента ДО этого
+            // прохода (`dom.rs:2473 layer()`), поэтому логические стороны
+            // остаются у него в `Computed::logical` и на физические поля не
+            // ложатся НИКОГДА. Из-за этого `::first-letter
+            // { margin-block-start: 10px }` не доезжал до буквицы:
+            // `render::initial_letter_float` читает у слоя `margin.top` и
+            // родню, а там `None`.
+            for layer in [
+                e.hover.as_mut(),
+                e.first_letter.as_mut(),
+                e.first_line.as_mut(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let (lv, lrl, lrtl, lsw) =
+                    (layer.vertical, layer.vertical_rl, layer.rtl, layer.sideways);
+                layer.vertical = own.0;
+                layer.vertical_rl = own.1;
+                layer.rtl = own.2;
+                layer.sideways = own.3;
+                layer.resolve_logical(mode.0, is_cell);
+                layer.vertical = lv;
+                layer.vertical_rl = lrl;
+                layer.rtl = lrtl;
+                layer.sideways = lsw;
+            }
             // Унаследованное обратно снимается: наследованием занимается
             // сборщик дерева, и оставленное здесь значение завело бы узлу
             // собственную коробку (см. `has_box_style`).
             e.style.vertical = was_v;
             e.style.vertical_rl = was_rl;
             e.style.rtl = was_rtl;
+            e.style.sideways = was_sw;
             walk(&mut e.children, own);
         }
     }
-    walk(&mut nodes, (None, None, None));
+    walk(&mut nodes, (None, None, None, None));
+    // `zoom` (css-viewport-1): длины под зумом домножаются ЗДЕСЬ, отдельным
+    // проходом по собственным стилям — до слияния и до раскладки, а не в
+    // `inline::inherit` (см. ★ перед ней). Идёт после `walk`: логические
+    // стороны уже физические. Страницу без `zoom` проход не меняет: у неё ни
+    // одного элемента с `zoom`, и ни одна ветка записи не исполняется.
+    crate::zoom::resolve(&mut nodes);
+    // `z-index: inherit` и `clip: inherit` разбор выражает только разрядом
+    // `inherit_bits`, а значение родителя кладёт слияние (`inline::inherit`) —
+    // в СЛИТЫЙ стиль. Сборщик же дерева решает слой и обрезку по
+    // СОБСТВЕННОМУ (`defers(&e.style, …)`, `below`, `grouped(…, &e.style)`),
+    // и там оставалось прежнее объявление: `z-index: -1; z-index: inherit`
+    // клал зелёный под поток (`z-index-014`), `clip: inherit` не резал
+    // ничего (`clip-102`). CSS 2.1 §6.2.1: «the property takes the same
+    // computed value as the property for the element's parent».
+    settle_explicit_inherit(&mut nodes, None);
+    // Якорные вставки, которым не разрешиться никогда (нет имени и якоря
+    // по умолчанию; имя, которого в документе нет), сводятся к запасному
+    // значению или к `auto` ЗДЕСЬ — сборщик дерева выбирает статическую
+    // позицию по `edge_set`, а логические вставки к этому шагу уже легли на
+    // физические стороны (`Computed::resolve_logical` выше).
+    crate::anchor::settle_static(&mut nodes);
+    // motion-1: offset-трансформ — вторым проходом по СОБРАННОМУ дереву, где у
+    // каждой коробки есть родитель. Идёт после `zoom::resolve` (длины уже
+    // домножены) и после `resolve_logical` (стороны уже физические).
+    crate::motion::settle(&mut nodes);
     nodes
+}
+
+/// Явное `inherit` у `z-index` и `clip` — в собственный стиль элемента.
+///
+/// Оба свойства ненаследуемые, поэтому собственный стиль родителя и есть его
+/// вычисленное значение (как у `zoom::explicit`). Проход сверху вниз: у
+/// родителя цепочка `inherit` к этому шагу уже разрешена.
+fn settle_explicit_inherit(nodes: &mut [Node], parent: Option<&crate::computed::Computed>) {
+    use crate::computed::inh;
+    for n in nodes.iter_mut() {
+        let Node::Element(e) = n else { continue };
+        if let Some(p) = parent {
+            if e.style.inherit_bits & inh::Z_INDEX != 0 {
+                e.style.z_index = p.z_index;
+            }
+            if e.style.inherit_bits & inh::CLIP != 0 {
+                e.style.clip_rect = p.clip_rect;
+                e.style.clip_len = p.clip_len;
+            }
+            if e.style.grid_areas_inherit {
+                e.style.grid_areas = p.grid_areas.clone();
+            }
+        }
+        settle_explicit_inherit(&mut e.children, Some(&e.style));
+    }
 }
 
 /// Разбор ВЛОЖЕННОГО документа (`<iframe>`): тот же конвейер, что у
 /// `Document::new`, но БЕЗ сброса буферов замеров и проб — они принадлежат
 /// внешнему документу, и сброс посреди его отрисовки крал его состояние.
-pub fn parse_embedded(html: &str, theme_css: &str) -> (Vec<Node>, u64) {
+///
+/// `viewport` — коробка рамки: `@media (width)` вложенного документа
+/// меряется ЕГО областью просмотра (mediaqueries-4 §width — «the width of
+/// the targeted display area»; у рамки свой контекст просмотра, HTML
+/// §4.8.5), а не внешним окном (`css-page/media-queries-002-print`: рамка
+/// 100x100 и `@media (width: 100px) and (height: 100px)`).
+pub fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> (Vec<Node>, u64) {
     crate::fonts::load_faces_additive(html);
     crate::color_space::load_profiles(html);
-    let (nodes, _root) = unwrap_document(mark_canvas_background(resolve_logical(
-        propagate_writing_mode(viewport_overflow(crate::dom::parse(html, theme_css))),
+    // Пулы `@page` ВНЕШНЕГО документа: `parse_media` начинает с их очистки
+    // (`take_page_decls`), а рамка разбирается на КАЖДОМ кадре — лист
+    // печатной пары со второго кадра терял size/margin/фон. Правила `@page`
+    // самой рамки к листам внешнего документа не относятся (css-page-3: page
+    // context — только у корневого документа), поэтому пулы возвращаются.
+    let outer_rules = crate::css::page_rules_snapshot();
+    let media = crate::css::Media {
+        width: viewport.0,
+        height: viewport.1,
+        ..crate::css::Media::default()
+    };
+    let parsed = crate::dom::parse_media(html, theme_css, media);
+    *crate::css::PAGE_RULES.lock().unwrap() = outer_rules;
+    let (mut nodes, _root) = unwrap_document(mark_canvas_background(resolve_logical(
+        propagate_writing_mode(viewport_overflow(parsed)),
     )));
+    // Вложенному документу offset-трансформ нужен ровно так же: проход по
+    // дереву переехал сюда из разбора стиля (`dom.rs`), и без этой строки
+    // `<iframe>` потерял бы всё, что раньше работало.
+    crate::motion::settle(&mut nodes);
     (nodes, hash_of(html, theme_css))
 }
 

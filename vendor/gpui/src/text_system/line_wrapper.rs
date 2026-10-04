@@ -169,8 +169,36 @@ impl LineWrapper {
                     }
                 };
 
+                // KaminIDE patch: prev_c коммитится ДО ветки переноса — иначе
+                // на строке-границе символ после переноса видит фантомный
+                // пробел и рождает ложный кандидат (слово ровно в ширину
+                // колонки рвалось как «x»+«xxxx»).
+                prev_c = new_prev_c;
                 width += item_width;
-                if width > wrap_width && ix > last_wrap_ix {
+                // KaminIDE patch: пробел за краем строки висит (css-text §3:
+                // trailing spaces hang) и сам перенос не вызывает — иначе он
+                // переезжает в начало следующей строки и крадёт её ширину.
+                let hanging_space =
+                    matches!(candidate, WrapBoundaryCandidate::Char { character: ' ' });
+                // KaminIDE patch: АВАРИЙНЫЙ разрыв (слово шире строки,
+                // законного кандидата нет) не ставится перед знаком, которым
+                // строка начаться не может: UAX #14 LB11 `× WJ` и LB12a
+                // `[^SP BA HY] × GL` запрещают это безусловно, слово обязано
+                // вылезти за край, как в браузере. `line-breaking-atomic-001`:
+                // кусок `AB&nbsp;` шириной 150 в коробке 100 рвался на `AB` и
+                // `&nbsp;`, становился вдвое выше `line-height`, и атом уезжал
+                // на вторую строку ряда — на 100 точек вместо 50 (снимок
+                // `target/wpt-shots/line-breaking-atomic-001.png`: зелёное 50,
+                // красное 50, зелёное 50). Законный кандидат
+                // (`last_candidate_ix > 0`) по-прежнему сильнее: там переносим
+                // как раньше.
+                let glue_ahead = last_candidate_ix == 0
+                    && matches!(
+                        candidate,
+                        WrapBoundaryCandidate::Char { character: c }
+                            if Self::is_glue_before(c)
+                    );
+                if width > wrap_width && ix > last_wrap_ix && !hanging_space && !glue_ahead {
                     if let (None, Some(first_non_whitespace_ix)) = (indent, first_non_whitespace_ix)
                     {
                         indent = Some(
@@ -193,8 +221,6 @@ impl LineWrapper {
 
                     return Some(Boundary::new(last_wrap_ix, indent.unwrap_or(0)));
                 }
-
-                prev_c = new_prev_c;
             }
 
             None
@@ -265,6 +291,16 @@ impl LineWrapper {
         // classes, not a hand-written list: the set spans the whole of
         // Unicode (CJK, fullwidth forms, quotes, small kana).
         Self::is_no_break_before(c)
+    }
+
+    /// KaminIDE patch: перед этими знаками нельзя переносить НИКОГДА —
+    /// UAX #14 LB11 (`× WJ`) и LB12a (`[^SP BA HY] × GL`).
+    fn is_glue_before(c: char) -> bool {
+        use unicode_linebreak::BreakClass::*;
+        matches!(
+            unicode_linebreak::break_property(c as u32),
+            NonBreakingGlue | WordJoiner
+        )
     }
 
     /// KaminIDE patch: a line may not END with these (UAX #14 class OP/GL).

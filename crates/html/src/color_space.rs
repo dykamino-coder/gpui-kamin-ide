@@ -30,7 +30,7 @@ const XYZ_TO_LINEAR_SRGB: [f32; 9] = [
 const LINEAR_SRGB_TO_XYZ: [f32; 9] = [
     0.412_390_8,
     0.357_584_33,
-    0.180_480_8,
+    0.180_480_79,
     0.212_639,
     0.715_168_65,
     0.072_192_32,
@@ -40,8 +40,22 @@ const LINEAR_SRGB_TO_XYZ: [f32; 9] = [
 ];
 
 /// XYZ D50 → XYZ D65 (преобразование Брэдфорда).
+/// XYZ D65 → XYZ D50 по Брэдфорду — обратная к `D50_TO_D65`. Нужна прямому
+/// переводу sRGB → Lab: сам Lab определён при D50 (css-color-4 §10.3).
+const D65_TO_D50: [f32; 9] = [
+    1.047_930_9,
+    0.022_949_2,
+    -0.050_147_1,
+    0.029_627_0,
+    0.990_434_4,
+    -0.017_073_1,
+    -0.009_243_4,
+    0.015_055_9,
+    0.751_739_3,
+];
+
 const D50_TO_D65: [f32; 9] = [
-    0.955_473_4,
+    0.955_473_45,
     -0.023_098_537,
     0.063_259_31,
     -0.028_369_707,
@@ -73,7 +87,7 @@ const A98_TO_XYZ: [f32; 9] = [
     0.297_345,
     0.627_363_6,
     0.075_291_46,
-    0.027_031_36,
+    0.027_031_361,
     0.070_688_85,
     0.991_337_53,
 ];
@@ -278,7 +292,7 @@ fn lab_to_srgb(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
     let fy = (l + 16.0) / 116.0;
     let fx = a / 500.0 + fy;
     let fz = fy - b / 200.0;
-    let cube = |f: f32, _k: f32| {
+    let cube = |f: f32, k: f32| {
         let c = f * f * f;
         if c > E { c } else { (116.0 * f - 16.0) / K }
     };
@@ -310,11 +324,11 @@ fn oklab_to_srgb(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
 /// Линейный sRGB (возможно, вне охвата) → OKLab.
 fn linear_srgb_to_oklab(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let l = 0.412_221_47 * r + 0.536_332_54 * g + 0.051_445_995 * b;
-    let m = 0.211_903_5 * r + 0.680_699_5 * g + 0.107_396_96 * b;
+    let m = 0.211_903_5 * r + 0.680_699_55 * g + 0.107_396_96 * b;
     let s = 0.088_302_46 * r + 0.281_718_84 * g + 0.629_978_7 * b;
     let (l_, m_, s_) = (l.cbrt(), m.cbrt(), s.cbrt());
     (
-        0.210_454_26 * l_ + 0.793_617_8 * m_ - 0.004_072_047 * s_,
+        0.210_454_26 * l_ + 0.793_617_79 * m_ - 0.004_072_047 * s_,
         1.977_998_5 * l_ - 2.428_592_2 * m_ + 0.450_593_7 * s_,
         0.025_904_037 * l_ + 0.782_771_77 * m_ - 0.808_675_77 * s_,
     )
@@ -446,13 +460,50 @@ fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
     Some((r, g, b, a))
 }
 
-/// `color-mix(in <пространство>, <цвет> <доля>?, <цвет> <доля>?)` (§12).
+/// `color-mix(in <пространство> [<дуга> hue]?, <цвет> <доля>?, <цвет> <доля>?)`
+/// (css-color-5 §2).
 ///
-/// Смешиваем в sRGB независимо от заявленного пространства: разница видна
-/// лишь на насыщенных парах, а без смешивания цвета нет вовсе.
+/// Смешение идёт В ЗАЯВЛЕННОМ пространстве и заявленной дугой тона — тем же
+/// `mix_in`, что считает точки градиента: смесь-стоп эталона и точка
+/// градиента теста сходятся по построению.
 fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
+    use crate::computed::GradSpace as S;
     let mut it = crate::css::split_args(body).into_iter();
-    let _space = it.next()?;
+    // css-color-5 §2.1: пара смешивается «as described in
+    // [[css-color-4#interpolation]]», дугой тона управляет
+    // <hue-interpolation-method>, по умолчанию shorter. Blink несёт
+    // пространство и дугу до самого вычисления (`core/css/style_color.cc:301-303`,
+    // `Color::FromColorMix(color_interpolation_space_, hue_interpolation_method_, …)`).
+    // Прежде пространство выбрасывалось и смесь шла в гамма-sRGB:
+    // `color-mix(in hsl longer hue, red, blue)` давал пурпур вместо лайма, и
+    // эталон `gradient-longer-hue-{hsl,lch}-001-ref` рисовал ДРУГУЮ дугу, чем
+    // тест, как только обе стороны ушли на растр (`gradient_as_tile`): 0.75/0.81.
+    let head = it.next()?.trim().to_ascii_lowercase();
+    let method = head.strip_prefix("in ").unwrap_or("");
+    let space = match method.split_whitespace().next() {
+        Some(
+            "srgb-linear" | "xyz" | "xyz-d50" | "xyz-d65" | "display-p3-linear"
+            | "rec2020-linear" | "a98-rgb-linear" | "prophoto-rgb-linear",
+        ) => S::Linear,
+        Some("oklab") => S::Oklab,
+        Some("oklch") => S::Oklch,
+        Some("lab") => S::Lab,
+        Some("lch") => S::Lch,
+        Some("hsl") => S::Hsl,
+        Some("hwb") => S::Hwb,
+        _ => S::Srgb,
+    };
+    // Дуга тона — коды `hue_arc`: 0 shorter, 1 longer, 2 increasing,
+    // 3 decreasing (css-color-4 §12.4).
+    let hue = if method.contains("longer") {
+        1
+    } else if method.contains("increasing") {
+        2
+    } else if method.contains("decreasing") {
+        3
+    } else {
+        0
+    };
     let one = |raw: &str| -> Option<((f32, f32, f32, f32), Option<f32>)> {
         let raw = raw.trim();
         // Доля стоит рядом с цветом и записывается процентом.
@@ -473,20 +524,28 @@ fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
         let c = crate::value::Color::parse(color)?;
         Some(((c.r, c.g, c.b, c.a), share))
     };
-    let (first, p1) = one(it.next()?)?;
-    let (second, p2) = one(it.next()?)?;
+    let (first, p1) = one(&it.next()?)?;
+    let (second, p2) = one(&it.next()?)?;
     let (w1, w2) = match (p1, p2) {
         (Some(a), Some(b)) if a + b > 0.0 => (a / (a + b), b / (a + b)),
         (Some(a), None) => (a, 1.0 - a),
         (None, Some(b)) => (1.0 - b, b),
         _ => (0.5, 0.5),
     };
-    Some((
-        first.0 * w1 + second.0 * w2,
-        first.1 * w1 + second.1 * w2,
-        first.2 * w1 + second.2 * w2,
-        first.3 * w1 + second.3 * w2,
-    ))
+    let alpha = first.3 * w1 + second.3 * w2;
+    // Премультипликация (css-color-4 §12.3): для прямоугольных осей она
+    // сводится к доле `w2·a2 / alpha` — тот же приём, что у `colour_at`
+    // (background.rs). У непрозрачной пары доля остаётся `w2`, и `in srgb`
+    // даёт прежнее `first·w1 + second·w2`.
+    let k = if alpha > 0.0 { w2 * second.3 / alpha } else { w2 };
+    let colour = |c: (f32, f32, f32, f32)| crate::value::Color {
+        r: c.0,
+        g: c.1,
+        b: c.2,
+        a: c.3,
+    };
+    let (r, g, b) = mix_in(space, hue, colour(first), colour(second), k);
+    Some((r, g, b, alpha))
 }
 
 /// Относительный цвет (css-color-5 §4): `hsl(from currentColor h s l)`.
@@ -617,6 +676,142 @@ pub(crate) fn resolve_relative(
     }
 }
 
+/// Смешать два цвета в заданном пространстве интерполяции (css-color-4 §12).
+///
+/// Оси цвета переводятся в пространство, складываются с долей `k` и
+/// переводятся обратно; полярные пространства ведут тон по выбранной дуге
+/// (§12.4). Прозрачность сюда не входит — она линейна всегда и считается
+/// вызывающим.
+pub(crate) fn mix_in(
+    space: crate::computed::GradSpace,
+    hue: u8,
+    a: crate::value::Color,
+    b: crate::value::Color,
+    k: f32,
+) -> (f32, f32, f32) {
+    use crate::computed::GradSpace as S;
+    let lerp = |x: f32, y: f32| x + (y - x) * k;
+    match space {
+        S::Srgb => (lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b)),
+        // Линейный свет: кривая sRGB снимается и возвращается. Все линейные
+        // пространства дают тут один ответ (см. `GradSpace::Linear`).
+        S::Linear => {
+            let (ar, ag, ab) = (srgb_linear(a.r), srgb_linear(a.g), srgb_linear(a.b));
+            let (br, bg, bb) = (srgb_linear(b.r), srgb_linear(b.g), srgb_linear(b.b));
+            gamut_map(
+                srgb_gamma(lerp(ar, br)),
+                srgb_gamma(lerp(ag, bg)),
+                srgb_gamma(lerp(ab, bb)),
+            )
+        }
+        S::Oklab | S::Oklch => {
+            let (al, aa, ab) = srgb_to_oklab(a);
+            let (bl, ba, bb) = srgb_to_oklab(b);
+            let (l, x, y) = if matches!(space, S::Oklch) {
+                polar_mix(al, aa, ab, bl, ba, bb, hue, k)
+            } else {
+                (lerp(al, bl), lerp(aa, ba), lerp(ab, bb))
+            };
+            gamut_map_tuple(oklab_to_srgb(l, x, y))
+        }
+        S::Lab | S::Lch => {
+            let (al, aa, ab) = srgb_to_lab(a);
+            let (bl, ba, bb) = srgb_to_lab(b);
+            let (l, x, y) = if matches!(space, S::Lch) {
+                polar_mix(al, aa, ab, bl, ba, bb, hue, k)
+            } else {
+                (lerp(al, bl), lerp(aa, ba), lerp(ab, bb))
+            };
+            gamut_map_tuple(lab_to_srgb(l, x, y))
+        }
+        S::Hsl | S::Hwb => {
+            let (ah, as_, al) = rgb_to_hsl(a);
+            let (bh, bs, bl) = rgb_to_hsl(b);
+            let h = hue_arc(ah, bh, hue, k);
+            hsl_to_rgb(h, lerp(as_, bs), lerp(al, bl))
+        }
+    }
+}
+
+/// Смешение в ПОЛЯРНОЙ форме прямоугольного пространства: светлота и
+/// цветность линейны, тон идёт по дуге (css-color-4 §12.4). Возврат — снова
+/// прямоугольные оси, чтобы обратное преобразование было одно.
+#[allow(clippy::too_many_arguments)]
+fn polar_mix(
+    al: f32,
+    aa: f32,
+    ab: f32,
+    bl: f32,
+    ba: f32,
+    bb: f32,
+    hue: u8,
+    k: f32,
+) -> (f32, f32, f32) {
+    let (ac, ah) = ((aa * aa + ab * ab).sqrt(), ab.atan2(aa).to_degrees());
+    let (bc, bh) = ((ba * ba + bb * bb).sqrt(), bb.atan2(ba).to_degrees());
+    let l = al + (bl - al) * k;
+    let c = ac + (bc - ac) * k;
+    let h = hue_arc(ah, bh, hue, k).to_radians();
+    (l, c * h.cos(), c * h.sin())
+}
+
+/// Тон на доле `k` по выбранной дуге (css-color-4 §12.4): 0 shorter,
+/// 1 longer, 2 increasing, 3 decreasing. Углы приводятся к обороту, дуга
+/// выбирается разностью, и только потом берётся доля — иначе `350°→10°`
+/// поехало бы через весь круг.
+fn hue_arc(from: f32, to: f32, method: u8, k: f32) -> f32 {
+    let mut d = (to - from).rem_euclid(360.0);
+    match method {
+        1 => {
+            if d > 180.0 {
+                d -= 360.0;
+            }
+            if d > 0.0 {
+                d -= 360.0;
+            } else {
+                d += 360.0;
+            }
+        }
+        2 => {}
+        3 => {
+            if d > 0.0 {
+                d -= 360.0;
+            }
+        }
+        _ => {
+            if d > 180.0 {
+                d -= 360.0;
+            }
+        }
+    }
+    (from + d * k).rem_euclid(360.0)
+}
+
+/// sRGB → OKLab: кривая снимается, дальше готовая матрица (§9.2).
+fn srgb_to_oklab(c: crate::value::Color) -> (f32, f32, f32) {
+    linear_srgb_to_oklab(srgb_linear(c.r), srgb_linear(c.g), srgb_linear(c.b))
+}
+
+/// sRGB → CIE Lab при точке белого D50 (§10.3) — обратное к `lab_to_srgb`.
+fn srgb_to_lab(c: crate::value::Color) -> (f32, f32, f32) {
+    const K: f32 = 24389.0 / 27.0;
+    const E: f32 = 216.0 / 24389.0;
+    let lin = [srgb_linear(c.r), srgb_linear(c.g), srgb_linear(c.b)];
+    let xyz65 = mul(LINEAR_SRGB_TO_XYZ, lin);
+    let xyz = mul(D65_TO_D50, xyz65);
+    let f = |v: f32, w: f32| {
+        let r = v / w;
+        if r > E { r.cbrt() } else { (K * r + 16.0) / 116.0 }
+    };
+    let (fx, fy, fz) = (f(xyz[0], D50[0]), f(xyz[1], D50[1]), f(xyz[2], D50[2]));
+    (116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
+}
+
+/// Втянуть тройку в охват sRGB, не переписывая вызовы с кортежем.
+fn gamut_map_tuple(v: (f32, f32, f32)) -> (f32, f32, f32) {
+    gamut_map(v.0, v.1, v.2)
+}
+
 /// sRGB → HSL: тон в градусах, насыщенность и светлота в долях.
 pub(crate) fn rgb_to_hsl(c: crate::value::Color) -> (f32, f32, f32) {
     let (max, min) = (c.r.max(c.g).max(c.b), c.r.min(c.g).min(c.b));
@@ -698,11 +893,20 @@ pub(crate) fn apply_icc(
         let xyz50 = mul(m, lin);
         let xyz = mul(D50_TO_D65, xyz50);
         let srgb = mul(XYZ_TO_LINEAR_SRGB, xyz);
-        let (r, g, b) = gamut_map(
-            srgb_gamma(srgb[0]),
-            srgb_gamma(srgb[1]),
-            srgb_gamma(srgb[2]),
-        );
+        let (r, g, b) = (srgb_gamma(srgb[0]), srgb_gamma(srgb[1]), srgb_gamma(srgb[2]));
+        // Погрешность пути профиль → D50 → D65 → sRGB (округление колорантов
+        // в профиле, s15Fixed16) выводит чистые цвета чуть за край охвата:
+        // у профиля «sRGB IEC61966-2.1» синий 0000ff выходил (−0.01, 0.003,
+        // 1.0x). Охватное отображение (OKLCh) по такой мелочи сдвигало тон —
+        // 0033e6 вместо 0000ff (`order-of-images`). Вблизи края — простой
+        // зажим; отображение — только настоящему выходу за охват.
+        const SLACK: f32 = 0.02;
+        let near = |v: f32| (-SLACK..=1.0 + SLACK).contains(&v);
+        let (r, g, b) = if near(r) && near(g) && near(b) {
+            (r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0))
+        } else {
+            gamut_map(r, g, b)
+        };
         out.push((b * a * 255.0).round() as u8);
         out.push((g * a * 255.0).round() as u8);
         out.push((r * a * 255.0).round() as u8);
@@ -711,9 +915,9 @@ pub(crate) fn apply_icc(
     gpui::bgra_bytes_to_image(w, h, out)
 }
 
-// Реестр профилей `@color-profile`: имя (`--foo`) — байты ICC.
-//
-// Живёт одну страницу, как и подмена шрифтов: имена придумывает страница.
+/// Реестр профилей `@color-profile`: имя (`--foo`) — байты ICC.
+///
+/// Живёт одну страницу, как и подмена шрифтов: имена придумывает страница.
 thread_local! {
     static PROFILES: std::cell::RefCell<std::collections::HashMap<String, Vec<u8>>> =
         std::cell::RefCell::new(std::collections::HashMap::new());

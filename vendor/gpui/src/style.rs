@@ -231,6 +231,9 @@ pub struct Style {
     pub align_content: Option<AlignContent>,
     /// How should contained within this item be aligned in the main/inline axis
     pub justify_content: Option<JustifyContent>,
+    /// KaminIDE patch: приставка `safe` у выравнивания (css-align-3 §4.4) —
+    /// `align_items`, `align_self`, `align_content`, `justify_content`.
+    pub safe_alignment: (bool, bool, bool, bool),
     /// How large should the gaps between items in a flex container be?
     #[refineable]
     pub gap: Size<DefiniteLength>,
@@ -240,6 +243,56 @@ pub struct Style {
     pub flex_direction: FlexDirection,
     /// Should elements wrap, or stay in a single line?
     pub flex_wrap: FlexWrap,
+    /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
+    /// балансировка строк с минимумом N строк (`flex-line-count`).
+    pub flex_balance_lines: u16,
+    /// KaminIDE patch: поперечная ось ОДНОСТРОЧНОГО контейнера идёт
+    /// от физического конца (cross-start справа): гибкая колонка при
+    /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
+    /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
+    pub flex_cross_reverse: bool,
+    /// KaminIDE patch: размеры — `content-box` (CSS `box-sizing`). Обычно
+    /// html-слой сам прибавляет отбивки к размеру, но долю отступа он в точки
+    /// не переведёт — тогда пересчёт делает раскладка (`taffy::BoxSizing`).
+    pub content_box: bool,
+    /// KaminIDE patch: анонимный ряд строки — не коробка CSS (CSS 2.1 §10.1:
+    /// содержащий блок строчного атома — блок-контейнер). Доли высоты детей
+    /// решаются от высоты РОДИТЕЛЯ ряда, а не от самого ряда.
+    pub percent_basis_from_parent: bool,
+    /// KaminIDE patch: `calc-size()` у `width`, `height`, `min-width`,
+    /// `min-height`: `(mul, add, max, min)` в логических точках (см.
+    /// `taffy::Style::calc_size`).
+    pub calc_size: [Option<(f32, f32, f32, f32)>; 4],
+    /// KaminIDE patch: узел не отдаёт базовые линии родителю
+    /// (css-contain-2 §3.2 п.7, `contain: layout`).
+    pub hides_baseline: bool,
+    /// KaminIDE patch: наружу отдаётся ПОСЛЕДНЯЯ базовая (`inline-block`,
+    /// css-inline-3 §baseline-source).
+    pub baseline_from_last: bool,
+    /// KaminIDE patch: собственная базовая линия по оси x (повёрнутый
+    /// вертикальный абзац): смещение и «от правого края».
+    pub baseline_x_hint: Option<(f32, bool)>,
+    /// KaminIDE patch: биты выравнивания по базовой по оси x (taffy
+    /// `Style::baseline_x_flags`): 1 — группа у правого края, 2 —
+    /// центральный синтез, 4 — своя базовая по x.
+    pub baseline_x_flags: u8,
+    /// KaminIDE patch: `margin-trim` (css-box-4 §margin-trim) гибкого
+    /// контейнера и сетки — ФИЗИЧЕСКИЕ края: 1 верх, 2 право, 4 низ, 8 лево.
+    pub margin_trim: u8,
+    /// KaminIDE patch: контейнер-сетка раскладывается ЛУНКАМИ (css-grid-3).
+    pub grid_lanes: Option<crate::GridLanesFlow>,
+    /// KaminIDE patch: ПОДСЕТКА (css-grid-2 §9) — физические биты taffy:
+    /// 1 колонки, 2 ряды подсеточные; 4 / 8 — зазор колонок / рядов `normal`
+    /// (зазор родителя). 0 — не подсетка.
+    pub grid_subgrid: u8,
+    /// KaminIDE patch: имена линий и именованные грани сетки (см.
+    /// [`crate::GridLineNames`]).
+    pub grid_line_names: Option<Box<crate::GridLineNames>>,
+    /// KaminIDE patch: наружная коробка ТАБЛИЦЫ (`crates/html` `render::table`).
+    /// Гибкая раскладка не ужимает такой элемент по главной оси ниже
+    /// min-content его содержимого (css-tables-3 §3.9: GRIDMIN сильнее
+    /// `min-width`/`max-width`/`flex-shrink`).
+    pub item_is_table: bool,
     /// Sets the initial main axis size of the item
     pub flex_basis: Length,
     /// The relative rate at which this item grows when it is expanding to fill space, 0.0 is the default value, and this value must be positive.
@@ -287,6 +340,9 @@ pub struct Style {
     /// repeat(auto-fill, minmax(<min>, 1fr))`.
     /// Takes precedence over `grid_cols` when set.
     pub grid_cols_min: Option<Pixels>,
+    /// KaminIDE patch: `repeat(auto-fit, …)` — пустые дорожки схлопываются,
+    /// остаток делят непустые (css-grid-2 §auto-repeat).
+    pub grid_cols_fit: bool,
 
     /// The row span of this element
     /// Equivalent to the Tailwind `grid-rows-<number>`
@@ -319,6 +375,14 @@ pub struct Style {
 
     /// KaminIDE patch: размер неявных колонок (`grid-auto-columns`).
     pub grid_auto_cols: Option<GridTrack>,
+
+    /// KaminIDE patch: `grid-auto-columns: A B C` — НЕСКОЛЬКО неявных дорожек,
+    /// раскладка их циклит. Одиночного `grid_auto_cols` для этого мало, а
+    /// менять его тип значило бы трогать всех, кто его читает.
+    pub grid_auto_cols_list: Vec<GridTrack>,
+
+    /// KaminIDE patch: то же для неявных РЯДОВ (`grid-auto-rows: A B C`).
+    pub grid_auto_rows_list: Vec<GridTrack>,
 
     /// The grid location of this element
     pub grid_location: Option<GridLocation>,
@@ -717,11 +781,6 @@ impl Style {
             .clamp_radii_for_quad_size(bounds.size);
 
         window.paint_shadows(bounds, corner_radii, &self.box_shadow);
-        // KaminIDE patch: внутренние тени рисуются ПОСЛЕ фона — они лежат
-        // поверх заливки, как в браузере.
-        if !self.inset_box_shadow.is_empty() {
-            window.paint_shadows_inset(bounds, corner_radii, &self.inset_box_shadow, true);
-        }
 
         let background_color = self.background.as_ref().and_then(Fill::color);
         if background_color.is_some_and(|color| !color.is_transparent()) {
@@ -755,8 +814,38 @@ impl Style {
             ));
         }
 
-        continuation(window, cx);
+        // KaminIDE patch: внутренние тени рисуются ПОСЛЕ квада фона — они
+        // лежат поверх заливки (css-backgrounds-3 §box-shadow: «inner
+        // shadows … immediately above the background»). Прежде вызов стоял
+        // до квада, и непрозрачный фон закрывал тень целиком
+        // (border-shape-inset-shadow-blur: красная тень не видна вовсе).
+        if !self.inset_box_shadow.is_empty() {
+            // KaminIDE patch: внутренняя тень отсчитывается от PADDING-box
+            // (css-backgrounds-3 §box-shadow: «an inner box-shadow casts a
+            // shadow as if everything outside the padding edge were opaque»),
+            // радиусы внутреннего края — внешние минус рамка (§5.4). Прежде
+            // тень шла от border-box и первые `border-width` точек прятались
+            // под рамкой (border-shape-inset-shadow-blur: тень бледнее эталона).
+            let bw = self.border_widths.to_pixels(rem_size);
+            let inner = Bounds::from_corners(
+                bounds.origin + point(bw.left, bw.top),
+                bounds.bottom_right() - point(bw.right, bw.bottom),
+            );
+            let shrink = |r: Pixels, a: Pixels, b: Pixels| (r - a.max(b)).max(Pixels::ZERO);
+            let inner_radii = Corners {
+                top_left: shrink(corner_radii.top_left, bw.top, bw.left),
+                top_right: shrink(corner_radii.top_right, bw.top, bw.right),
+                bottom_right: shrink(corner_radii.bottom_right, bw.bottom, bw.right),
+                bottom_left: shrink(corner_radii.bottom_left, bw.bottom, bw.left),
+            };
+            window.paint_shadows_inset(inner, inner_radii, &self.inset_box_shadow, true);
+        }
 
+        // KaminIDE patch: рамка коробки рисуется ДО потомков (CSS 2.1
+        // Appendix E: фон и рамка — шаги 2-3, потомки — 4-9). Прежде она
+        // шла после, и рамка родителя ложилась поверх детей: у всей семьи
+        // отступов и полей красная рамка эталона перекрывала чёрную рамку
+        // содержимого, хотя геометрия совпадала.
         if self.is_border_visible() {
             let border_widths = self.border_widths.to_pixels(rem_size);
             let max_border_width = border_widths.max();
@@ -790,34 +879,47 @@ impl Style {
                 self.border_style,
             );
 
-            window.with_content_mask(Some(ContentMask { bounds: top_bounds }), |window| {
-                window.paint_quad(quad.clone());
-            });
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: right_bounds,
-                }),
-                |window| {
+            // KaminIDE patch: четыре полосы-маски — оптимизация перерисовки
+            // (полосы не пересекаются, итог равен одному проходу). Под
+            // преобразованием они лежат в точках окна, а квад — под матрицей:
+            // повёрнутое кольцо резалось полосами неповёрнутой коробки
+            // (`2d-rotate-001`: рамка 10px под `rotate(30deg)`). Тогда — один
+            // проход без масок.
+            if window.current_transformation() != crate::TransformationMatrix::unit() {
+                window.paint_quad(quad);
+            } else {
+                window.with_content_mask(Some(ContentMask { bounds: top_bounds }), |window| {
                     window.paint_quad(quad.clone());
-                },
-            );
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: bottom_bounds,
-                }),
-                |window| {
-                    window.paint_quad(quad.clone());
-                },
-            );
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: left_bounds,
-                }),
-                |window| {
-                    window.paint_quad(quad);
-                },
-            );
+                });
+                window.with_content_mask(
+                    Some(ContentMask {
+                        bounds: right_bounds,
+                    }),
+                    |window| {
+                        window.paint_quad(quad.clone());
+                    },
+                );
+                window.with_content_mask(
+                    Some(ContentMask {
+                        bounds: bottom_bounds,
+                    }),
+                    |window| {
+                        window.paint_quad(quad.clone());
+                    },
+                );
+                window.with_content_mask(
+                    Some(ContentMask {
+                        bounds: left_bounds,
+                    }),
+                    |window| {
+                        window.paint_quad(quad);
+                    },
+                );
+            }
         }
+
+
+        continuation(window, cx);
 
         #[cfg(debug_assertions)]
         if self.debug_below {
@@ -835,6 +937,7 @@ impl Style {
 impl Default for Style {
     fn default() -> Self {
         Style {
+            safe_alignment: (false, false, false, false),
             display: Display::Block,
             visibility: Visibility::Visible,
             overflow: Point {
@@ -866,11 +969,27 @@ impl Default for Style {
             grid_auto_flow: None,
             grid_auto_rows: None,
             grid_auto_cols: None,
+            grid_auto_cols_list: Vec::new(),
+            grid_auto_rows_list: Vec::new(),
             // Flexbox
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::NoWrap,
+            flex_balance_lines: 0,
+            flex_cross_reverse: false,
+            content_box: false,
+            percent_basis_from_parent: false,
+            calc_size: [None; 4],
+            hides_baseline: false,
+            baseline_from_last: false,
+            baseline_x_hint: None,
+            baseline_x_flags: 0,
+            margin_trim: 0,
+            grid_lanes: None,
+            grid_subgrid: 0,
+            grid_line_names: None,
             flex_grow: 0.0,
             flex_shrink: 1.0,
+            item_is_table: false,
             flex_basis: Length::Auto,
             background: None,
             border_color: None,
@@ -884,6 +1003,7 @@ impl Default for Style {
             grid_rows: None,
             grid_cols: None,
             grid_cols_min: None,
+            grid_cols_fit: false,
             grid_template_cols: None,
             grid_template_rows: None,
             grid_location: None,
@@ -1132,6 +1252,9 @@ pub enum AlignItems {
     Baseline,
     /// Stretch to fill the container
     Stretch,
+    /// KaminIDE patch: `last baseline` — выравнивание по ПОСЛЕДНИМ базовым
+    /// линиям с прижимом группы к концу оси (css-align-3 §4.2, §9.3).
+    LastBaseline,
 }
 /// Used to control how child nodes are aligned.
 /// Does not apply to Flexbox, and will be ignored if specified on a flex container
@@ -1331,6 +1454,7 @@ impl From<AlignItems> for taffy::style::AlignItems {
             AlignItems::Center => Self::Center,
             AlignItems::Baseline => Self::Baseline,
             AlignItems::Stretch => Self::Stretch,
+            AlignItems::LastBaseline => Self::LastBaseline,
         }
     }
 }

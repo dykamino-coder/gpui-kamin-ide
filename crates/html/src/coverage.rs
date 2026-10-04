@@ -258,23 +258,30 @@ pub const PROPERTIES: &[Prop] = &[
     ),
     m("table-layout", "fixed"),
     // --- Разбирается и ничего не делает ----------------------------------
-    no(
+    part(
         "will-change",
-        "подсказка движку о будущих правках — рисовать нечего",
+        "transform",
+        "обещание даёт то же, что само свойство: содержащий блок для absolute/fixed и контекст наложения (css-will-change-1 §2.1); слоёв композитора нет",
     ),
     part(
         "contain",
         "paint",
         "`paint` и `strict` обрезают содержимое; `size` и `layout` на пересчёт          не влияют — он и так по узлу",
     ),
+    part(
+        "container-type",
+        "size",
+        "включает обособление размера и стиля, как велит css-conditional-5          §container-type; самого правила `@container` движок пока не разбирает",
+    ),
     m("isolation", "isolate"),
     no(
         "appearance",
         "системного вида у элементов и так нет — рисуем сами",
     ),
-    no(
+    part(
         "box-decoration-break",
-        "элемент не разрывается между страницами",
+        "clone",
+        "`clone` — у блочной коробки, прямого ребёнка многоколоночной стопки; у строчных коробок и на страницах — как `slice`",
     ),
     no(
         "font-smooth",
@@ -341,6 +348,7 @@ pub const PROPERTIES: &[Prop] = &[
     m("columns", "200px 3"),
     m("column-count", "3"),
     m("column-width", "200px"),
+    m("zoom", "2"),
     part(
         "writing-mode",
         "vertical-rl",
@@ -466,6 +474,9 @@ const ACCESSORS: &[(&str, &str)] = &[
     // Логические свойства ложатся на физические поля отдельным проходом
     // сборщика документа (`doc::resolve_logical`).
     ("logical", "resolve_logical()"),
+    // Обособление осей читается предикатами: физическая ось зависит ещё и
+    // от направления письма.
+    ("contain_inline_size", "contains_width()"),
 ];
 
 /// Поля разрешённого стиля, которые никто не читает.

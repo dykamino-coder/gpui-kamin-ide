@@ -100,6 +100,7 @@ where
                 #[cfg(feature = "content_size")]
                 content_size: Size::ZERO,
                 first_baselines: Point::NONE,
+                last_baselines: Point::NONE,
                 top_margin: CollapsibleMarginSet::ZERO,
                 bottom_margin: CollapsibleMarginSet::ZERO,
                 margins_can_collapse_through: false,
@@ -159,6 +160,9 @@ where
         // отсчитывается от верха коробки СОДЕРЖИМОГО, поэтому к ней
         // прибавляется верхний внутренний отступ с рамкой.
         first_baselines: Point { x: None, y: measured.baseline.map(|b| b + content_box_inset.top) },
+        // KaminIDE patch: последняя базовая — тоже из замера (последняя строка
+        // абзаца), тем же отсчётом от верха коробки содержимого.
+        last_baselines: Point { x: None, y: measured.last_baseline.map(|b| b + content_box_inset.top) },
         top_margin: CollapsibleMarginSet::ZERO,
         bottom_margin: CollapsibleMarginSet::ZERO,
         margins_can_collapse_through: !has_styles_preventing_being_collapsed_through

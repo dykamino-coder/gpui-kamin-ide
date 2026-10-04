@@ -32,6 +32,13 @@ struct BlockItem {
     min_size: Size<Option<f32>>,
     /// The maximum allowable size of this item
     max_size: Size<Option<f32>>,
+    /// KaminIDE patch: соотношение сторон элемента. Ширина блока в потоке
+    /// добирается РАСТЯЖЕНИЕМ до содержащего блока, и по css-sizing-4 §4
+    /// полученный размер обязан вернуться в соотношение сторон — иначе
+    /// высота остаётся авто и коробка выходит не той формы. Абсолютный путь
+    /// в этом же файле так и делает, потоковый — нет, потому что поля с
+    /// соотношением у него просто не было.
+    aspect_ratio: Option<f32>,
 
     /// The overflow style of the item
     overflow: Point<Overflow>,
@@ -169,6 +176,12 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
         .maybe_apply_aspect_ratio(aspect_ratio)
         .maybe_add(box_sizing_adjustment);
 
+    // KaminIDE patch: коробка с НЕпрозрачным переполнением своей базовой
+    // линии наружу не отдаёт — ею служит нижний край margin-бокса
+    // (CSS 2.1 §10.8.1: у `inline-block` с `overflow != visible` базовая
+    // линия это низ коробки, а не последняя строка содержимого).
+    let hides_baseline = style.overflow().y.is_scroll_container();
+
     // Determine margin collapsing behaviour
     let own_margins_collapse_with_children = Line {
         start: vertical_margins_are_collapsible.start
@@ -225,7 +238,7 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
         intrinsic_outer_height,
         first_child_top_margin_set,
         last_child_bottom_margin_set,
-        first_baseline,
+        (first_baseline, last_baseline, first_baseline_x),
     ) = perform_final_layout_on_in_flow_children(
             tree,
             &mut items,
@@ -283,7 +296,11 @@ fn compute_inner(tree: &mut impl LayoutBlockContainer, node_id: NodeId, inputs: 
         size: final_outer_size,
         #[cfg(feature = "content_size")]
         content_size,
-        first_baselines: Point { x: None, y: first_baseline },
+        first_baselines: Point {
+            x: if hides_baseline { None } else { first_baseline_x },
+            y: if hides_baseline { None } else { first_baseline },
+        },
+        last_baselines: Point { x: None, y: if hides_baseline { None } else { last_baseline } },
         top_margin: if own_margins_collapse_with_children.start {
             first_child_top_margin_set
         } else {
@@ -338,6 +355,7 @@ fn generate_item_list(
                     .maybe_resolve(node_inner_size, |val, basis| tree.calc(val, basis))
                     .maybe_apply_aspect_ratio(aspect_ratio)
                     .maybe_add(box_sizing_adjustment),
+                aspect_ratio,
                 overflow: child_style.overflow(),
                 scrollbar_width: child_style.scrollbar_width(),
                 position: child_style.position(),
@@ -369,11 +387,16 @@ fn determine_content_based_container_width(
     for item in items.iter().filter(|item| item.position != Position::Absolute) {
         let known_dimensions = item.size.maybe_clamp(item.min_size, item.max_size);
 
-        let width = known_dimensions.width.unwrap_or_else(|| {
-            let item_x_margin_sum = item
-                .margin
-                .resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis))
-                .horizontal_axis_sum();
+        // KaminIDE patch: the child's horizontal margins belong to its
+        // contribution in BOTH branches (css-sizing-3 §5.1: «outer size»).
+        // Upstream added them only for an `auto` width, so a shrink-to-fit
+        // container (inline-block, float) lost the margins of a child with a
+        // definite width (`flexbox-justify-content-horiz-002-ref`).
+        let item_x_margin_sum = item
+            .margin
+            .resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis))
+            .horizontal_axis_sum();
+        let width = known_dimensions.width.map(|w| w + item_x_margin_sum).unwrap_or_else(|| {
             let size_and_baselines = tree.perform_child_layout(
                 item.node_id,
                 known_dimensions,
@@ -403,7 +426,7 @@ fn perform_final_layout_on_in_flow_children(
     resolved_content_box_inset: Rect<f32>,
     text_align: TextAlign,
     own_margins_collapse_with_children: Line<bool>,
-) -> (Size<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Option<f32>) {
+) -> (Size<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, (Option<f32>, Option<f32>, Option<f32>)) {
     // Resolve container_inner_width for sizing child nodes using initial content_box_inset
     let container_inner_width = container_outer_width - content_box_inset.horizontal_axis_sum();
     let parent_size = Size { width: Some(container_outer_width), height: None };
@@ -420,6 +443,13 @@ fn perform_final_layout_on_in_flow_children(
     // KaminIDE patch: базовая линия ПЕРВОГО потокового ребёнка — она же
     // базовая линия блока.
     let mut first_baseline: Option<f32> = None;
+    // KaminIDE patch: и ПОСЛЕДНЕГО — с последней базовой линией (css-align-3
+    // §9.1 «last baseline set»: у блочного контейнера — последняя строчная
+    // коробка, то есть последний потоковый ребёнок, у которого она есть).
+    let mut last_baseline: Option<f32> = None;
+    // KaminIDE patch: первая базовая по оси x — от первого потокового
+    // ребёнка, у которого она есть (вертикальный абзац в обёртке-блоке).
+    let mut first_baseline_x: Option<f32> = None;
     for item in items.iter_mut() {
         if item.position == Position::Absolute {
             item.static_position = Point { x: resolved_content_box_inset.left, y: y_offset_for_absolute }
@@ -442,6 +472,10 @@ fn perform_final_layout_on_in_flow_children(
                                 .maybe_clamp(item.min_size.width, item.max_size.width),
                         )
                     })
+                    // KaminIDE patch: добранная растяжением ширина возвращается
+                    // в соотношение сторон (css-sizing-4 §4), как это уже
+                    // делает абсолютный путь ниже по файлу.
+                    .maybe_apply_aspect_ratio(item.aspect_ratio)
                     .maybe_clamp(item.min_size, item.max_size)
             };
 
@@ -531,6 +565,12 @@ fn perform_final_layout_on_in_flow_children(
             if first_baseline.is_none() {
                 first_baseline = item_first_baseline.map(|b| location.y + b);
             }
+            if let Some(b) = item_layout.last_or_first_y() {
+                last_baseline = Some(location.y + b);
+            }
+            if first_baseline_x.is_none() {
+                first_baseline_x = item_layout.first_baselines.x.map(|b| location.x + b);
+            }
             tree.set_unrounded_layout(
                 item.node_id,
                 &Layout {
@@ -588,7 +628,13 @@ fn perform_final_layout_on_in_flow_children(
 
     committed_y_offset += resolved_content_box_inset.bottom + bottom_y_margin_offset;
     let content_height = f32_max(0.0, committed_y_offset);
-    (inflow_content_size, content_height, first_child_top_margin_set, last_child_bottom_margin_set, first_baseline)
+    (
+        inflow_content_size,
+        content_height,
+        first_child_top_margin_set,
+        last_child_bottom_margin_set,
+        (first_baseline, last_baseline, first_baseline_x),
+    )
 }
 
 /// Perform absolute layout on all absolutely positioned children.
@@ -687,7 +733,8 @@ fn perform_absolute_layout_on_absolute_children(
             left: if left.is_some() { margin.left.unwrap_or(0.0) } else { 0.0 },
             right: if right.is_some() { margin.right.unwrap_or(0.0) } else { 0.0 },
             top: if top.is_some() { margin.top.unwrap_or(0.0) } else { 0.0 },
-            bottom: if bottom.is_some() { margin.left.unwrap_or(0.0) } else { 0.0 },
+            // KaminIDE patch: было `margin.left` — опечатка, нижнее поле бралось левым.
+            bottom: if bottom.is_some() { margin.bottom.unwrap_or(0.0) } else { 0.0 },
         };
 
         // Expand auto margins to fill available space
@@ -704,48 +751,26 @@ fn perform_absolute_layout_on_absolute_children(
                 height: absolute_auto_margin_space.y - final_size.height - non_auto_margin.vertical_axis_sum(),
             };
 
-            let auto_margin_size = Size {
-                // If all three of 'left', 'width', and 'right' are 'auto': First set any 'auto' values for 'margin-left' and 'margin-right' to 0.
-                // Then, if the 'direction' property of the element establishing the static-position containing block is 'ltr' set 'left' to the
-                // static position and apply rule number three below; otherwise, set 'right' to the static position and apply rule number one below.
-                //
-                // If none of the three is 'auto': If both 'margin-left' and 'margin-right' are 'auto', solve the equation under the extra constraint
-                // that the two margins get equal values, unless this would make them negative, in which case when direction of the containing block is
-                // 'ltr' ('rtl'), set 'margin-left' ('margin-right') to zero and solve for 'margin-right' ('margin-left'). If one of 'margin-left' or
-                // 'margin-right' is 'auto', solve the equation for that value. If the values are over-constrained, ignore the value for 'left' (in case
-                // the 'direction' property of the containing block is 'rtl') or 'right' (in case 'direction' is 'ltr') and solve for that value.
-                width: {
-                    let auto_margin_count = margin.left.is_none() as u8 + margin.right.is_none() as u8;
-                    if auto_margin_count == 2
-                        && (style_size.width.is_none() || style_size.width.unwrap() >= free_space.width)
-                    {
-                        0.0
-                    } else if auto_margin_count > 0 {
-                        free_space.width / auto_margin_count as f32
-                    } else {
-                        0.0
-                    }
-                },
-                height: {
-                    let auto_margin_count = margin.top.is_none() as u8 + margin.bottom.is_none() as u8;
-                    if auto_margin_count == 2
-                        && (style_size.height.is_none() || style_size.height.unwrap() >= free_space.height)
-                    {
-                        0.0
-                    } else if auto_margin_count > 0 {
-                        free_space.height / auto_margin_count as f32
-                    } else {
-                        0.0
-                    }
-                },
+            // KaminIDE patch: CSS 2.1 §10.3.7/§10.6.4 — `auto`-поля делят остаток,
+            // только когда заданы ОБА края оси; иначе они нули. Прежде пара
+            // решалась по ЗАЯВЛЕННОЙ ширине (`style_size`): при `width: auto` с
+            // `max-width` поля обнулялись, хотя после зажима правила повторяются
+            // с `max-width` как шириной (`absolute-non-replaced-width-025`), а при
+            // одном краю «остаток» выходил отрицательным. Остаток меньше нуля —
+            // начальное поле ноль, конечное забирает остаток (ltr).
+            let solve = |start: Option<f32>, end: Option<f32>, both: bool, free: f32| -> (f32, f32) {
+                match (start, end) {
+                    _ if !both => (0.0, 0.0),
+                    (None, None) if free >= 0.0 => (free / 2.0, free / 2.0),
+                    (None, None) => (0.0, free),
+                    (None, Some(_)) => (free, 0.0),
+                    (Some(_), None) => (0.0, free),
+                    (Some(_), Some(_)) => (0.0, 0.0),
+                }
             };
-
-            Rect {
-                left: margin.left.map(|_| 0.0).unwrap_or(auto_margin_size.width),
-                right: margin.right.map(|_| 0.0).unwrap_or(auto_margin_size.width),
-                top: margin.top.map(|_| 0.0).unwrap_or(auto_margin_size.height),
-                bottom: margin.bottom.map(|_| 0.0).unwrap_or(auto_margin_size.height),
-            }
+            let (ml, mr) = solve(margin.left, margin.right, left.is_some() && right.is_some(), free_space.width);
+            let (mt, mb) = solve(margin.top, margin.bottom, top.is_some() && bottom.is_some(), free_space.height);
+            Rect { left: ml, right: mr, top: mt, bottom: mb }
         };
 
         let resolved_margin = Rect {

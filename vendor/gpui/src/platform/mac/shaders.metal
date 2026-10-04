@@ -159,7 +159,17 @@ fragment float4 quad_fragment(QuadFragmentInput input [[stage_in]],
   //
   // 0-width borders are turned into width -1 so that inner_sdf is > 1.0 near
   // the border. Without this, antialiasing pixels would be drawn.
-  float2 straight_border_inner_corner_to_point = corner_to_point + reduced_border;
+  // KaminIDE patch: см. windows/shaders.hlsl.
+  float2 reduced_min = float2(
+    quad.border_widths.left == 0.0 ? -antialias_threshold : quad.border_widths.left,
+    quad.border_widths.top == 0.0 ? -antialias_threshold : quad.border_widths.top);
+  float2 reduced_max = float2(
+    quad.border_widths.right == 0.0 ? -antialias_threshold : quad.border_widths.right,
+    quad.border_widths.bottom == 0.0 ? -antialias_threshold : quad.border_widths.bottom);
+  float2 inner_min = reduced_min - half_size;
+  float2 inner_max = half_size - reduced_max;
+  float2 straight_border_inner_corner_to_point =
+    max(inner_min - center_to_point, center_to_point - inner_max);
 
   // Whether the point is beyond the inner edge of the straight border
   bool is_beyond_inner_straight_border =

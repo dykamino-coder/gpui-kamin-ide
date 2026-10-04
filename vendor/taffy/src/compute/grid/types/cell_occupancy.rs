@@ -244,7 +244,15 @@ impl CellOccupancyMatrix {
         let track_computed_index = track_counts.oz_line_to_next_track(start_at);
 
         // Index out of boudnds: no track to search
-        if track_computed_index < 0 || track_computed_index >= self.inner.rows() as i16 {
+        // KaminIDE patch: граница — по той оси, вдоль которой идёт поиск:
+        // `iter_col` у вертикального поиска берёт КОЛОНКУ, и сверка с числом
+        // рядов пропускала индекс за краем (паника `grid::iter_col` при
+        // именованной колонке за явной сеткой и автопотоке по колонкам).
+        let limit = match track_type {
+            AbsoluteAxis::Horizontal => self.inner.rows(),
+            AbsoluteAxis::Vertical => self.inner.cols(),
+        };
+        if track_computed_index < 0 || track_computed_index >= limit as i16 {
             return None;
         }
 

@@ -54,3 +54,6 @@ gpui-component = { path = "vendor/gpui-component" }
 # Вендорён ради базовой линии текста: замер ЛИСТА теперь может её отдать
 # (`MeasureOutput`), иначе `align-items: baseline` выравнивает по нижним краям.
 taffy = { path = "vendor/taffy" }
+# Vendored resvg: feDisplacementMap — двойное умножение на scale + карта
+# без демультипликации (target/scout-svg-filter-probe.md).
+resvg = { path = "vendor/resvg" }

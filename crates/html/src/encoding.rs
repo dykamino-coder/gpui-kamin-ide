@@ -118,7 +118,7 @@ fn prescan(bytes: &[u8]) -> Option<&'static Encoding> {
 }
 
 /// Метка кодировки из значения `content` у `http-equiv=content-type`.
-fn from_content_type(text: &str) -> Option<&'static Encoding> {
+pub fn from_content_type(text: &str) -> Option<&'static Encoding> {
     let lower = text.to_ascii_lowercase();
     let mut from = 0;
     while let Some(found) = lower[from..].find("charset") {
@@ -214,7 +214,7 @@ fn attribute(bytes: &[u8], cursor: &mut usize) -> Option<(String, String)> {
 ///
 /// Так велит спецификация: метка `utf-16` внутри самого документа значила бы,
 /// что документ не мог быть прочитан однобайтовым предпросмотром вовсе.
-fn fix_utf16(found: &'static Encoding) -> &'static Encoding {
+pub fn fix_utf16(found: &'static Encoding) -> &'static Encoding {
     match found {
         e if e == encoding_rs::UTF_16LE || e == encoding_rs::UTF_16BE => UTF_8,
         e if e == encoding_rs::X_USER_DEFINED => WINDOWS_1252,

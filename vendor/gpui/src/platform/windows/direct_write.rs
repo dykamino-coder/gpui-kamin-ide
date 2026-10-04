@@ -35,6 +35,11 @@ struct FontInfo {
     /// требует css-writing-modes-3 §7.3: «In vertical typographic mode,
     /// fonts are used with their vertical metrics».
     vert_advance: bool,
+    /// KaminIDE patch: физическая грань (PostScript-имя) — у синтетических
+    /// bold/oblique она та же, что у исходной: ID глифов совпадают.
+    face_key: String,
+    /// KaminIDE patch: запрошенные возможности OpenType — ключ шейпинга.
+    features_key: String,
 }
 
 pub(crate) struct DirectWriteTextSystem(RwLock<DirectWriteState>);
@@ -289,31 +294,28 @@ impl PlatformTextSystem for DirectWriteTextSystem {
 impl DirectWriteState {
     fn add_fonts(&mut self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()> {
         for font_data in fonts {
-            match font_data {
-                Cow::Borrowed(data) => unsafe {
-                    let font_file = self
-                        .components
-                        .in_memory_loader
-                        .CreateInMemoryFontFileReference(
-                            &self.components.factory,
-                            data.as_ptr() as _,
-                            data.len() as _,
-                            None,
-                        )?;
-                    self.components.builder.AddFontFile(&font_file)?;
-                },
-                Cow::Owned(data) => unsafe {
-                    let font_file = self
-                        .components
-                        .in_memory_loader
-                        .CreateInMemoryFontFileReference(
-                            &self.components.factory,
-                            data.as_ptr() as _,
-                            data.len() as _,
-                            None,
-                        )?;
-                    self.components.builder.AddFontFile(&font_file)?;
-                },
+            // KaminIDE patch: `CreateInMemoryFontFileReference` с
+            // `ownerObject: None` НЕ копирует данные — память обязана жить,
+            // пока жива фабрика. Владеющий буфер здесь дропался в конце
+            // итерации, DirectWrite оставался с висячим указателем, и
+            // добавленный шрифт молча выпадал из коллекции (страничные
+            // `@font-face` не работали вовсе). Шрифты добавляются считанные
+            // разы за процесс — утечка осознанная.
+            let data: &'static [u8] = match font_data {
+                Cow::Borrowed(data) => data,
+                Cow::Owned(data) => Box::leak(data.into_boxed_slice()),
+            };
+            unsafe {
+                let font_file = self
+                    .components
+                    .in_memory_loader
+                    .CreateInMemoryFontFileReference(
+                        &self.components.factory,
+                        data.as_ptr() as _,
+                        data.len() as _,
+                        None,
+                    )?;
+                self.components.builder.AddFontFile(&font_file)?;
             }
         }
         let set = unsafe { self.components.builder.CreateFontSet()? };
@@ -421,6 +423,56 @@ impl DirectWriteState {
                 )
                 .log_err()?
         };
+        // KaminIDE patch: запрет подмены начертания (`font-synthesis-weight`
+        // и `-style`, css-fonts-4 §6.5) приходит своими тегами возможностей
+        // `nsyw`/`nsys`: настоящих тегов OpenType для этого нет, а иного
+        // канала к подбору грани у нас нет. Поддельная грань (у DirectWrite
+        // это `DWRITE_FONT_SIMULATIONS_BOLD`/`_OBLIQUE`) при запрете
+        // пропускается — берётся настоящая, пусть и обычного начертания.
+        let no_synth = |tag: &str| {
+            font_features
+                .tag_value_list()
+                .iter()
+                .any(|(t, v)| t == tag && *v > 0)
+        };
+        let (no_bold, no_oblique) = (no_synth("nsyw"), no_synth("nsys"));
+        // Если поддельны ВСЕ грани запроса (в семействе нет настоящего
+        // жирного/курсивного), заново спрашиваем обычную грань: иначе подбор
+        // возвращал пустоту и шрифт подменялся чужим целиком
+        // (`font-face-local-not-family`, `italic-oblique-fallback`).
+        let font = if no_bold || no_oblique {
+            let plain = unsafe {
+                fontset
+                    .GetMatchingFonts(
+                        &HSTRING::from(family_name),
+                        if no_bold { FontWeight::NORMAL } else { font_weight }.into(),
+                        to_dwrite_stretch(font_stretch),
+                        if no_oblique { FontStyle::Normal } else { font_style }.into(),
+                    )
+                    .log_err()
+            };
+            let all_simulated = {
+                let count = unsafe { font.GetFontCount() };
+                (0..count).all(|i| {
+                    let sim = unsafe {
+                        font.GetFontFaceReference(i)
+                            .ok()
+                            .and_then(|r| r.CreateFontFace().ok())
+                            .map(|f| f.GetSimulations())
+                    };
+                    sim.is_none_or(|s| {
+                        (no_bold && s.0 & DWRITE_FONT_SIMULATIONS_BOLD.0 != 0)
+                            || (no_oblique && s.0 & DWRITE_FONT_SIMULATIONS_OBLIQUE.0 != 0)
+                    })
+                })
+            };
+            match plain {
+                Some(p) if all_simulated => p,
+                _ => font,
+            }
+        } else {
+            font
+        };
         let total_number = unsafe { font.GetFontCount() };
         for index in 0..total_number {
             let Some(font_face_ref) = (unsafe { font.GetFontFaceReference(index).log_err() })
@@ -430,6 +482,12 @@ impl DirectWriteState {
             let Some(font_face) = (unsafe { font_face_ref.CreateFontFace().log_err() }) else {
                 continue;
             };
+            let sims = unsafe { font_face.GetSimulations() };
+            if (no_bold && sims.0 & DWRITE_FONT_SIMULATIONS_BOLD.0 != 0)
+                || (no_oblique && sims.0 & DWRITE_FONT_SIMULATIONS_OBLIQUE.0 != 0)
+            {
+                continue;
+            }
             let Some(identifier) = get_font_identifier(&font_face, &self.components.locale) else {
                 continue;
             };
@@ -450,6 +508,8 @@ impl DirectWriteState {
                     .tag_value_list()
                     .iter()
                     .any(|(tag, value)| tag == "vert" && *value > 0),
+                face_key: identifier.postscript_name.clone(),
+                features_key: format!("{:?}", font_features.tag_value_list()),
             };
             let font_id = FontId(self.fonts.len());
             self.fonts.push(font_info);
@@ -512,7 +572,10 @@ impl DirectWriteState {
                         target_font.fallbacks.as_ref(),
                         true,
                     )
-                    .unwrap()
+                    // KaminIDE patch: пустое/битое имя семейства роняло
+                    // рендер целиком (`font: 0 x` в WPT); первый
+                    // зарегистрированный шрифт всегда существует.
+                    .unwrap_or(FontId(0))
                 })
             }
         }
@@ -668,6 +731,18 @@ impl DirectWriteState {
                 text_layout.SetFlowDirection(DWRITE_FLOW_DIRECTION_RIGHT_TO_LEFT)?;
             }
 
+            // KaminIDE patch: шейпинг через границу коробок (css-text-3 §7.4
+            // «boundary shaping»). DirectWrite рвёт шейпинг на границе диапазона
+            // формата, и `ع<b>ع</b>ع` набирался изолированными формами
+            // (Blink шейпит с контекстом соседей). Прогон той же ФИЗИЧЕСКОЙ
+            // грани — отличие лишь синтетическим bold/oblique, ID глифов
+            // совпадают — диапазона не получает: он набирается гранью
+            // действующего формата, а после раскладки его глифы переводятся
+            // на свой `font_id` (растеризация — уже с симуляцией).
+            // Настоящая другая грань (свой файл) рвёт шейпинг, как и прежде.
+            let mut folded: Vec<(usize, usize, FontId)> = Vec::new();
+            let mut applied = font_runs[0].font_id;
+            let mut applied_size = font_runs[0].font_size;
             let mut first_run = true;
             for run in font_runs {
                 if first_run {
@@ -678,8 +753,23 @@ impl DirectWriteState {
                 let current_text = text
                     .get(utf8_offset..(utf8_offset + run.len))
                     .unwrap_or("");
+                let run_utf8_start = utf8_offset;
                 utf8_offset += run.len;
                 let current_text_utf16_length = current_text.encode_utf16().count() as u32;
+                let base = &self.fonts[applied.0];
+                if run.font_size == applied_size
+                    && font_info.is_system_font == base.is_system_font
+                    && font_info.face_key == base.face_key
+                    && font_info.features_key == base.features_key
+                {
+                    if run.font_id != applied {
+                        folded.push((run_utf8_start, run.len, run.font_id));
+                    }
+                    utf16_offset += current_text_utf16_length;
+                    continue;
+                }
+                applied = run.font_id;
+                applied_size = run.font_size;
 
                 let collection = if font_info.is_system_font {
                     &self.system_font_collection
@@ -701,25 +791,52 @@ impl DirectWriteState {
                 text_layout.SetTypography(&font_info.features, text_range)?;
             }
 
-            // KaminIDE patch: подъём и спуск строки считаются, когда все
-            // прогоны уже расставлены: кусок крупнее поднимает всю строку,
-            // как и в браузере. Раньше метрики снимались по первому прогону,
-            // и высокий кусок вылезал за строку.
-            let mut metrics = vec![DWRITE_LINE_METRICS::default(); 4];
-            let mut line_count = 0u32;
-            // KaminIDE patch: буфер на 4 строки — при большем числе строк
-            // вызов возвращал ошибку, и строка МОЛЧА пропадала (log_err у
-            // вызывающего); второй заход берёт фактическое число.
-            if text_layout
-                .GetLineMetrics(Some(&mut metrics), &mut line_count as _)
-                .is_err()
-                && line_count as usize > metrics.len()
-            {
-                metrics = vec![DWRITE_LINE_METRICS::default(); line_count as usize];
-                text_layout.GetLineMetrics(Some(&mut metrics), &mut line_count as _)?;
+            // KaminIDE patch: подъём и спуск строки — от ПЕРВОГО ДОСТУПНОГО
+            // шрифта каждого прогона (`FontRun.font_id` кладёт туда
+            // `resolve_font`), а НЕ от набранной строки. Максимум по прогонам
+            // сохраняет прежнее свойство: кусок крупнее поднимает всю строку,
+            // как и в браузере.
+            //
+            // `DWRITE_LINE_METRICS` описывает строку ПОСЛЕ подстановки: в неё
+            // входят метрики запасного шрифта, взятого DirectWrite под знак,
+            // которого в основном шрифте нет. css-inline-3 §3 дословно: «When
+            // its computed 'line-height' is not ''normal'', its layout bounds
+            // are derived solely from metrics of its first available font
+            // (ignoring glyphs from other fonts)»; заметка там же — «Metrics
+            // from fonts other than the first available font only impact the
+            // layout bounds of an inline box with ''line-height: normal''».
+            // Blink так и делает: `ComputeTextMetrics` всегда читает
+            // `PrimaryFont()->GetFontMetrics()` (`inline_box_state.cc:121-131`),
+            // а объединение использованных шрифтов (`AccumulateUsedFonts`
+            // :250-266) стоит под гейтом `include_used_fonts =
+            // styleref.LineHeight().IsAuto()` (:164).
+            //
+            // Замер листа текста (`elements/text.rs:495-499`) уже считает
+            // базовую линию по этому же шрифту, а отрисовка
+            // (`text_system/line.rs:274`) — по `layout.ascent/descent`:
+            // `A&#x2007;<span>B</span>` при `font: 100px/1 Ahem` рисовало
+            // зелёный квадрат на 11.4 точки ниже короба, и сверху оставалась
+            // красная полоса (`line-breaking-atomic-003/014/018`, снимки
+            // `target/wpt-shots/q4,q5,q6,p5.png`).
+            //
+            // Зазор строк (`line_gap`) сюда не входит: css-inline-3 разрешает
+            // подмешивать его в A и D только при `line-height: normal`, а сам
+            // `normal` наш движок и так считает как A+D первого доступного
+            // шрифта (`crates/html/src/metrics.rs:261`).
+            //
+            // `FontMetrics::descent` знаковый (DirectWrite отдаёт со знаком
+            // минус, `direct_write.rs:897`) — берём модуль.
+            let (mut ascent, mut descent) = (px(0.), px(0.));
+            for run in font_runs {
+                let m = self.font_metrics(run.font_id);
+                let size = if run.font_size > px(0.) {
+                    run.font_size
+                } else {
+                    font_size
+                };
+                ascent = ascent.max(m.ascent(size));
+                descent = descent.max(m.descent(size).abs());
             }
-            let ascent = px(metrics[0].baseline);
-            let descent = px(metrics[0].height - metrics[0].baseline);
 
             let mut runs = Vec::new();
             // KaminIDE patch: контекст ОБЯЗАН быть &mut с рождения — колбэк
@@ -746,6 +863,43 @@ impl DirectWriteState {
             }
             drawn?;
             let width = px(renderer_context.width);
+            if !folded.is_empty() {
+                let mut out: Vec<ShapedRun> = Vec::with_capacity(runs.len());
+                for run in runs.drain(..) {
+                    let (base_id, size) = (run.font_id, run.font_size);
+                    let base_key = &self.fonts[base_id.0].face_key;
+                    let mut cur: Option<ShapedRun> = None;
+                    for g in run.glyphs {
+                        // Только глифы ТОЙ ЖЕ грани: запасной шрифт DirectWrite
+                        // для недостающих знаков остаётся при своём.
+                        let id = folded
+                            .iter()
+                            .find(|&&(s, l, fid)| {
+                                g.index >= s
+                                    && g.index < s + l
+                                    && self.fonts[fid.0].face_key == *base_key
+                            })
+                            .map_or(base_id, |&(_, _, fid)| fid);
+                        match cur.as_mut() {
+                            Some(c) if c.font_id == id => c.glyphs.push(g),
+                            _ => {
+                                if let Some(c) = cur.take() {
+                                    out.push(c);
+                                }
+                                cur = Some(ShapedRun {
+                                    font_id: id,
+                                    glyphs: vec![g],
+                                    font_size: size,
+                                });
+                            }
+                        }
+                    }
+                    if let Some(c) = cur {
+                        out.push(c);
+                    }
+                }
+                runs = out;
+            }
 
             Ok(LineLayout {
                 font_size,
@@ -1994,9 +2148,12 @@ fn apply_font_features(
     features: &FontFeatures,
 ) -> Result<()> {
     let tag_values = features.tag_value_list();
-    if tag_values.is_empty() {
-        return Ok(());
-    }
+    // KaminIDE patch: no early return for an empty list. The typography object
+    // is ALWAYS attached to the layout (`SetTypography`), and an empty one
+    // switches DirectWrite's default `liga`/`clig`/`calt` OFF — only required
+    // features (`ccmp`, marks) stayed on. Text without its own features then
+    // lost the ligatures and contextual forms browsers apply by default
+    // (css-fonts-4 §7.1; `font-default-01`: C/D/G of FontWithFancyFeatures).
 
     // All of these features are enabled by default by DirectWrite.
     // If you want to (and can) peek into the source of DirectWrite

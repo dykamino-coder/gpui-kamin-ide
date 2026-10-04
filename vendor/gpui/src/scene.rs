@@ -45,6 +45,14 @@ pub(crate) struct PaintGroup {
     /// Прямоугольной маской многоугольник не выразить, а буфер группы даёт
     /// готовую картинку, которую можно погасить по любой форме.
     pub(crate) polygon: Vec<Point<ScaledPixels>>,
+    /// Маска-изображение (`mask-image`): альфа гасит буфер при композите.
+    pub(crate) mask: Option<std::sync::Arc<crate::RenderImage>>,
+    /// Плитка маски: угол коробки + размер плитки; повторяется по обеим осям.
+    pub(crate) mask_bounds: Bounds<ScaledPixels>,
+    /// Пооосный запрет мощения маски: бит 0 — по x, бит 1 — по y.
+    pub(crate) mask_once: u32,
+    /// Коробка окраски маски (`mask-clip`) в device px; вне её маска пуста.
+    pub(crate) mask_clip: Option<[f32; 4]>,
 }
 
 #[derive(Default)]
@@ -65,6 +73,13 @@ pub(crate) struct Scene {
     pub(crate) monochrome_sprites: Vec<MonochromeSprite>,
     pub(crate) polychrome_sprites: Vec<PolychromeSprite>,
     pub(crate) surfaces: Vec<PaintSurface>,
+    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
+    pub(crate) in_group: bool,
+    /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
+    /// группы рисуется ДО кадра, и копировать подложку в нём не из чего
+    /// (filter-effects-2 §3 шаг 1 — «Backdrop Root Image» лежит ПОД
+    /// элементом). Кладутся в кадр перед меткой группы.
+    pub(crate) hoisted_backdrops: Vec<PaintSurface>,
 }
 
 impl Scene {
@@ -100,6 +115,7 @@ impl Scene {
         self.monochrome_sprites.clear();
         self.polychrome_sprites.clear();
         self.surfaces.clear();
+        self.hoisted_backdrops.clear();
     }
 
     pub fn len(&self) -> usize {
@@ -138,13 +154,56 @@ impl Scene {
     }
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
+        // KaminIDE patch: границы примитива ПОСЛЕ трансформации — обход
+        // четырёх углов матрицей.
+        fn placed_by(
+            b: Bounds<ScaledPixels>,
+            m: &TransformationMatrix,
+        ) -> Bounds<ScaledPixels> {
+            let corners = [
+                (b.origin.x.0, b.origin.y.0),
+                (b.origin.x.0 + b.size.width.0, b.origin.y.0),
+                (b.origin.x.0, b.origin.y.0 + b.size.height.0),
+                (
+                    b.origin.x.0 + b.size.width.0,
+                    b.origin.y.0 + b.size.height.0,
+                ),
+            ];
+            let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+            for (x, y) in corners {
+                let tx = m.translation[0] + m.rotation_scale[0][0] * x + m.rotation_scale[0][1] * y;
+                let ty = m.translation[1] + m.rotation_scale[1][0] * x + m.rotation_scale[1][1] * y;
+                x0 = x0.min(tx);
+                y0 = y0.min(ty);
+                x1 = x1.max(tx);
+                y1 = y1.max(ty);
+            }
+            Bounds {
+                origin: point(ScaledPixels(x0), ScaledPixels(y0)),
+                size: crate::Size {
+                    width: ScaledPixels(x1 - x0),
+                    height: ScaledPixels(y1 - y0),
+                },
+            }
+        }
         let mut primitive = primitive.into();
         // KaminIDE patch: порядок и обрезка считаются по МЕСТУ НА ЭКРАНЕ.
         // У спрайта с трансформацией (повёрнутый текст) границы хранятся
         // ДО-трансформными — дерево границ видело глиф в чужой клетке, и фон
         // соседа получал порядок ПОВЕРХ глифа (table-cell-align-005: с
         // третьей ортогональной ячейки текст пропадал под градиентом).
+        // Квад и цветной спрайт с трансформацией — так же (коробка за окном
+        // до трансформа выбрасывалась, хотя трансформ возвращал её в окно:
+        // `transform-origin`, `transform-table-*`).
         let placed_bounds = match &primitive {
+            Primitive::Quad(q) if q.transformation != TransformationMatrix::unit() => {
+                placed_by(q.bounds, &q.transformation)
+            }
+            Primitive::PolychromeSprite(s)
+                if s.transformation != TransformationMatrix::unit() =>
+            {
+                placed_by(s.bounds, &s.transformation)
+            }
             Primitive::MonochromeSprite(s) if s.transformation != TransformationMatrix::unit() => {
                 let b = s.bounds;
                 let corners = [
@@ -641,6 +700,13 @@ pub(crate) struct Shadow {
     /// поэтому это флаг, а не новый примитив. Поле идёт последним и обязано
     /// совпадать с концом `struct Shadow` в шейдере.
     pub inset: u32,
+    /// KaminIDE patch: коробка самого элемента (без смещения и разлёта).
+    /// Наружная тень не рисуется ПОД коробкой (css-backgrounds-3
+    /// §box-shadow: «the shadow is not painted inside the border box»;
+    /// Blink `ClipToBorderEdge`) — прежде она просвечивала сквозь
+    /// прозрачный фон сплошным пятном. Поле идёт за `inset`, раскладка
+    /// обязана совпадать с шейдером.
+    pub box_bounds: Bounds<ScaledPixels>,
 }
 
 impl From<Shadow> for Primitive {
@@ -893,6 +959,10 @@ pub(crate) struct PaintSurface {
     /// KaminIDE patch: прозрачность группы целиком.
     #[cfg(not(target_os = "macos"))]
     pub opacity: f32,
+    /// KaminIDE patch: цветовые функции `backdrop-filter` матрицей 4×5 над
+    /// НЕумноженным RGBA (строки R, G, B, A: четыре множителя и сдвиг).
+    #[cfg(not(target_os = "macos"))]
+    pub color_matrix: Option<[f32; 20]>,
 }
 
 impl From<PaintSurface> for Primitive {

@@ -21,7 +21,13 @@ impl Sides {
     /// Раскрытие сокращённой записи: 1 значение — все стороны, 2 — верт/гориз,
     /// 3 — верх/гориз/низ, 4 — по часовой.
     fn shorthand(raw: &str) -> Sides {
-        let v: Vec<Option<Len>> = raw.split_whitespace().map(Len::parse).collect();
+        // Разрез — по пробелам ВНЕ скобок: `calc(10px + 1%) 0 0 0` — четыре
+        // значения, а не шесть обрывков (`calc-margin-block-1`). Смесь с долей
+        // доживает индексом (`parse_mixed`) — раскладка складывает её сама.
+        let v: Vec<Option<Len>> = split_outside_parens(raw)
+            .iter()
+            .map(|t| Len::parse_mixed(t))
+            .collect();
         match v.len() {
             1 => Sides {
                 top: v[0],
@@ -61,6 +67,116 @@ pub struct Corners {
     pub bl: Option<Len>,
 }
 
+/// Разряды `inherit_bits`: ненаследуемые свойства, у которых слово `inherit`
+/// обязано скопировать вычисленное значение родителя (§6.2.1).
+pub(crate) mod inh {
+    pub(crate) const BG_REPEAT: u16 = 1 << 0;
+    pub(crate) const Z_INDEX: u16 = 1 << 1;
+    pub(crate) const OUTLINE_W: u16 = 1 << 2;
+    pub(crate) const DISPLAY: u16 = 1 << 3;
+    pub(crate) const BG_IMAGE: u16 = 1 << 4;
+    pub(crate) const BG_POS: u16 = 1 << 5;
+    pub(crate) const CLIP: u16 = 1 << 6;
+    pub(crate) const BG_ORIGIN: u16 = 1 << 7;
+    pub(crate) const BG_CLIP: u16 = 1 << 8;
+    pub(crate) const BG_SIZE: u16 = 1 << 9;
+    pub(crate) const TRANSFORM: u16 = 1 << 10;
+    pub(crate) const TRANSFORM_ORIGIN: u16 = 1 << 11;
+    pub(crate) const OUTLINE_C: u16 = 1 << 12;
+    pub(crate) const OUTLINE_S: u16 = 1 << 13;
+    pub(crate) const OUTLINE_O: u16 = 1 << 14;
+    /// `overflow-clip-margin: inherit` — коробка отсчёта и поле родителя.
+    pub(crate) const CLIP_MARGIN: u16 = 1 << 15;
+}
+
+/// Разряды `will_change` (css-will-change-1 §2.1): чего ждать от коробки,
+/// которая свойство только ОБЕЩАЕТ. «If any non-initial value of a property
+/// would create a stacking context on the element, specifying that property
+/// in will-change must create a stacking context on the element» — и то же
+/// дословно про содержащий блок для `absolute` и для `fixed`.
+pub(crate) mod wc {
+    /// Содержащий блок для `position: absolute`.
+    pub(crate) const CB_ABS: u8 = 1 << 0;
+    /// Содержащий блок для `position: fixed`.
+    pub(crate) const CB_FIXED: u8 = 1 << 1;
+    /// Контекст наложения.
+    pub(crate) const STACK: u8 = 1 << 2;
+    /// `z-index`: контекст только там, где `z-index` действует
+    /// (позиционированная коробка, элемент flex/grid) — решает
+    /// `inline::inherit`, где известен вид родителя.
+    pub(crate) const STACK_Z: u8 = 1 << 3;
+    /// Обещано свойство семьи `transform` или `contain`: к строчной
+    /// НЕатомарной коробке они не применяются (css-transforms-1
+    /// «transformable element»), поэтому три разряда выше ставит `dom::walk`,
+    /// когда вид коробки уже известен (`will-change-transform-inline`).
+    pub(crate) const BOX: u8 = 1 << 4;
+}
+
+/// Функция картинки в начале слоя и хвост за её закрывающей скобкой.
+fn split_image_func(v: &str) -> (&str, &str) {
+    let mut depth = 0i32;
+    for (i, ch) in v.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return (&v[..=i], &v[i + 1..]);
+                }
+            }
+            _ => {}
+        }
+    }
+    (v, "")
+}
+
+/// Есть ли в записи длины в единицах шрифта (`em`, `rem`, `ex`, `ch`).
+fn has_font_units(v: &str) -> bool {
+    v.split(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '-'))
+        .any(|t| {
+            let unit = t.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-');
+            unit.len() < t.len()
+                && matches!(unit.to_ascii_lowercase().as_str(), "em" | "rem" | "ex" | "ch")
+        })
+}
+
+/// Заменить длины в единицах шрифта на пиксели: `1em` → `16px`.
+pub(crate) fn font_lengths_to_px(v: &str, em: f32, rem: f32, ex: f32, ch: f32) -> String {
+    let mut out = String::with_capacity(v.len() + 8);
+    let mut token = String::new();
+    let flush = |token: &mut String, out: &mut String| {
+        if token.is_empty() {
+            return;
+        }
+        let unit_at = token
+            .find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+            .unwrap_or(token.len());
+        let (num, unit) = token.split_at(unit_at);
+        let k = match unit.to_ascii_lowercase().as_str() {
+            "em" => Some(em),
+            "rem" => Some(rem),
+            "ex" => Some(ex),
+            "ch" => Some(ch),
+            _ => None,
+        };
+        match (k, num.parse::<f32>()) {
+            (Some(k), Ok(n)) if unit_at > 0 => out.push_str(&format!("{}px", n * k)),
+            _ => out.push_str(token),
+        }
+        token.clear();
+    };
+    for c in v.chars() {
+        if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+            token.push(c);
+        } else {
+            flush(&mut token, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut token, &mut out);
+    out
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Display {
     Block,
@@ -94,6 +210,87 @@ pub enum Display {
     None,
 }
 
+/// Список значений линейки промежутков (css-gaps-1 §lists): ведущие значения,
+/// тело `repeat(auto, …)` и хвостовые. Без авто-повтора список ЦИКЛИТСЯ по
+/// промежуткам («repeat beginning from the first item in values»); с ним
+/// ведущие идут от первого промежутка, хвостовые — от последнего, а тело
+/// заполняет середину по кругу.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GapList<T> {
+    pub lead: Vec<T>,
+    pub auto: Vec<T>,
+    pub tail: Vec<T>,
+}
+
+impl<T: Copy> GapList<T> {
+    pub fn single(v: T) -> Self {
+        GapList { lead: vec![v], auto: vec![], tail: vec![] }
+    }
+
+    /// Первое значение — им живёт многоколонник, знающий одну линейку.
+    pub fn first(&self) -> Option<T> {
+        self.lead
+            .first()
+            .or(self.auto.first())
+            .or(self.tail.first())
+            .copied()
+    }
+
+    /// Больше одного значения или авто-повтор: скаляра недостаточно.
+    pub fn is_plural(&self) -> bool {
+        !self.auto.is_empty() || self.lead.len() + self.tail.len() > 1
+    }
+
+    pub fn any(&self, f: impl Fn(&T) -> bool) -> bool {
+        self.lead.iter().chain(&self.auto).chain(&self.tail).any(f)
+    }
+
+    pub fn map<U: Copy>(&self, f: impl Fn(&T) -> U) -> GapList<U> {
+        GapList {
+            lead: self.lead.iter().map(&f).collect(),
+            auto: self.auto.iter().map(&f).collect(),
+            tail: self.tail.iter().map(&f).collect(),
+        }
+    }
+
+    /// Значение промежутка `k` из `n` (§value-assignment).
+    pub fn at(&self, k: usize, n: usize) -> Option<T> {
+        if self.auto.is_empty() {
+            let m = self.lead.len() + self.tail.len();
+            if m == 0 {
+                return None;
+            }
+            let i = k % m;
+            return Some(if i < self.lead.len() {
+                self.lead[i]
+            } else {
+                self.tail[i - self.lead.len()]
+            });
+        }
+        if k < self.lead.len() {
+            return Some(self.lead[k]);
+        }
+        let tail_from = n.saturating_sub(self.tail.len()).max(self.lead.len());
+        if k >= tail_from {
+            return self
+                .tail
+                .get(k - tail_from)
+                .copied()
+                .or(self.auto.first().copied());
+        }
+        Some(self.auto[(k - self.lead.len()) % self.auto.len()])
+    }
+}
+
+/// Втяжка конца линейки (css-gaps-1 §inset): длина, доля ширины
+/// пересекающего зазора или `overlap-join` — дотянуть до дальнего края
+/// поперечной линейки.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum GapInset {
+    Len(Len),
+    OverlapJoin,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FlexDir {
     Row,
@@ -109,6 +306,10 @@ pub enum Align {
     End,
     Stretch,
     Baseline,
+    /// css-anchor-position-1 §anchor-center: центр по якорю по умолчанию в
+    /// пределах inset-modified containing block; без якоря или не у
+    /// абсолюта — как `center` (так его и видит раскладка, `apply::to_items`).
+    AnchorCenter,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -116,6 +317,10 @@ pub enum Justify {
     Start,
     Center,
     End,
+    /// `left`/`right` — физические стороны; поперёк строчной оси (гибкая
+    /// колонка) ведут себя как `start` (css-align-3 §5.2).
+    Left,
+    Right,
     /// `start`/`end` — оси ПИСЬМА, а не гибкой раскладки: при `row-reverse`
     /// они смотрят в другую сторону, чем `flex-start`/`flex-end`.
     WmStart,
@@ -145,17 +350,12 @@ pub enum AutoFlow {
     ColDense,
 }
 
-/// Вид маркера списка (`list-style-type`).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Marker {
-    Disc,
-    Circle,
-    Square,
-    Decimal,
-    LowerAlpha,
-    UpperAlpha,
-    LowerRoman,
-}
+/// `text-transform: full-width` (см. `Computed::text_transform_flags`).
+pub const TT_FULL_WIDTH: u8 = 1;
+/// `text-transform: full-size-kana`.
+pub const TT_KANA: u8 = 2;
+/// `text-transform: math-auto`.
+pub const TT_MATH: u8 = 4;
 
 /// `text-transform`: регистр меняется при отрисовке текста, не в шрифте.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -180,6 +380,11 @@ pub enum TextTransform {
 pub struct Logical {
     pub inline_size: Option<Len>,
     pub block_size: Option<Len>,
+    /// `contain-intrinsic-inline-size` / `-block-size`: подменная величина
+    /// по логическим осям — раскладывается по физическим после наследования
+    /// письма, как и остальные логические свойства.
+    pub ci_inline: Option<f32>,
+    pub ci_block: Option<f32>,
     pub min_inline: Option<Len>,
     pub min_block: Option<Len>,
     pub max_inline: Option<Len>,
@@ -201,6 +406,11 @@ pub struct LogicalSides {
     pub inline_end: Option<Len>,
     pub block_start: Option<Len>,
     pub block_end: Option<Len>,
+    /// Порядковый номер объявления каждой стороны (inline_start, inline_end,
+    /// block_start, block_end) — спор с физической стороной решает более
+    /// позднее объявление, а на какую физическую сторону ляжет логическая,
+    /// известно только после наследования письма.
+    pub seq: [u32; 4],
 }
 
 /// `outline`: рамка ВНЕ коробки, не влияющая на раскладку.
@@ -209,6 +419,14 @@ pub struct Outline {
     pub width: Option<Len>,
     pub color: Option<Color>,
     pub offset: Option<Len>,
+    /// `outline-offset: inset` (css-ui-4; WPT `outline-offset-inset-*`):
+    /// сдвиг равен минус толщине. Толщина известна только к отрисовке,
+    /// поэтому здесь метка, а не длина.
+    pub inset: bool,
+    /// 0 — none/hidden (гасят), 1 — сплошные и прочие (double/groove/…
+    /// рисуются сплошной — приближение), 2 — `auto`, 3 — `dotted`,
+    /// 4 — `dashed`.
+    pub style: Option<u8>,
 }
 
 /// `text-fit` (css-text-5): кегль подбирается так, чтобы строка заполняла
@@ -225,8 +443,10 @@ pub struct TextFit {
     pub per_line: bool,
     /// `per-line-all`: подбор идёт и для ПОСЛЕДНЕЙ строки тоже.
     pub all: bool,
-    /// Доля ширины коробки, которую надо заполнить (`text-fit: grow 75%`).
-    pub target: f32,
+    /// Процент — ЗАЖИМ множителя, а не доля заполнения (css-text-5
+    /// §text-fit): при `grow` и значении ≥ 100% это максимум, при `shrink` и
+    /// значении ≤ 100% — минимум; иначе, и когда не задан, предела нет.
+    pub target: Option<f32>,
 }
 
 /// Какая пунктуация свисает за край строки (`hanging-punctuation`).
@@ -240,6 +460,32 @@ pub struct Hanging {
     pub force_end: bool,
     /// То же, но только если иначе строка не влезает.
     pub allow_end: bool,
+}
+
+/// Роль коробки в руби по `display` (css-ruby-1 §2.1, `ruby | ruby-base |
+/// ruby-text | ruby-base-container | ruby-text-container`, а также `block
+/// ruby`). Роль по ТЕГУ (`ruby/rb/rt/rbc/rtc`) сюда не пишется — её даёт
+/// `render::ruby_role`, чтобы авторский `display: block` на `<rt>` роль
+/// снимал, а не дописывал.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RubyRole {
+    Container,
+    Base,
+    Text,
+    BaseContainer,
+    TextContainer,
+}
+
+/// `ruby-align` (css-ruby-1 §4.3): выключка содержимого руби-коробки, когда
+/// оно уже своей колонки.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RubyAlign {
+    Start,
+    Center,
+    SpaceBetween,
+    /// Начальное значение: как `space-between`, плюс по половине зазора с
+    /// краёв; без точек выключки (латиница) — по центру.
+    SpaceAround,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -279,6 +525,18 @@ pub enum Position {
     Sticky,
 }
 
+/// `position-anchor` (css-anchor-position-1 §position-anchor): якорь по
+/// умолчанию для `anchor()` без имени. `normal` без `position-area` ведёт
+/// себя как `none`; `match-parent` пока не решается (нет пар).
+#[derive(Clone, Debug, PartialEq)]
+pub enum PositionAnchor {
+    Normal,
+    None,
+    Auto,
+    Named(String),
+    MatchParent,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Overflow {
     Visible,
@@ -306,7 +564,7 @@ pub struct Shadow {
 /// полосами — по слою на пару соседних стопов, и картинка совпадает с
 /// браузером. Для наклонного градиента с тремя и более стопами полосами не
 /// обойтись, там доезжают крайние цвета.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Gradient {
     pub angle_deg: f32,
     /// Радиальный: угол не участвует, цвет идёт от центра к краям.
@@ -326,6 +584,36 @@ pub struct Gradient {
     /// точечная позиция теряется и стоп встаёт «поровну» (blue 170px в
     /// 50px-градиенте красил край синим вместо интерполяции).
     pub stops_raw: Vec<(Color, Option<f32>, Option<f32>)>,
+    /// Пространство, в котором смешиваются цвета (css-color-4 §12.2).
+    pub space: GradSpace,
+    /// Дуга тона для полярных пространств: 0 shorter (умолчание), 1 longer,
+    /// 2 increasing, 3 decreasing (css-color-4 §12.4).
+    pub hue: u8,
+}
+
+/// Пространство интерполяции цвета градиента (css-color-4 §12.2).
+///
+/// Умолчание решается СОСТАВОМ стопов, а не записью: пока все цвета заданы
+/// устаревшими формами sRGB (имя, `#hex`, `rgb()`, `rgba()`, `hsl()`,
+/// `hsla()`, `hwb()`), смешение обязано идти в гамма-кодированном sRGB — этим
+/// спека держит совместимость с вебом. Стоит хоть одному цвету быть записанным
+/// современной формой — умолчанием становится OKLab.
+///
+/// `Linear` — любое пространство, линейное по свету (`srgb-linear`, `xyz`,
+/// `xyz-d50`, `xyz-d65`, `display-p3-linear`, `rec2020-linear`): они связаны
+/// ЛИНЕЙНЫМ преобразованием, а линейная интерполяция с ним коммутирует, так
+/// что результат у них общий (набор и держит на них один эталон).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GradSpace {
+    #[default]
+    Srgb,
+    Linear,
+    Oklab,
+    Oklch,
+    Lab,
+    Lch,
+    Hsl,
+    Hwb,
 }
 
 /// `border-image`: картинка вместо рамки (css-backgrounds-3 §6).
@@ -376,16 +664,19 @@ pub enum BgClip {
     PaddingBox,
     /// До края содержимого — внутрь ещё и на поля.
     ContentBox,
-    /// По форме текста. Своей отрисовки для него нет: фон под текстом мы
-    /// показать не умеем, поэтому такой фон не рисуется вовсе — это ближе к
-    /// правде, чем закрасить всю коробку.
+    /// По форме текста (css-backgrounds-4). Сплошную непрозрачную заливку
+    /// несёт цвет глифов (`background::text_clip_fill`); узорный фон не
+    /// рисуется вовсе — маски глифов нет.
     Text,
+    /// По области, которую красит рамка (css-backgrounds-4 `border-area`).
+    /// Сплошную заливку несёт краска рамки (`background::border_paint`);
+    /// узорный фон красит border-box, как прежде.
+    BorderArea,
 }
 
 /// `background-size`.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BgSize {
-    #[default]
     Auto,
     Cover,
     Contain,
@@ -398,6 +689,99 @@ pub enum BgSize {
 pub struct BgPos {
     pub x: Option<Len>,
     pub y: Option<Len>,
+}
+
+/// Разбор позиции пары слов/длин: ключевые слова НЕСУТ СВОЮ ОСЬ
+/// (css-backgrounds-3 §3.6): `bottom center` и `center bottom` — одно и то
+/// же. Длины и `center` ложатся по порядку в свободные оси; одно значение
+/// задаёт свою ось, вторая — по центру.
+pub fn parse_pos_words(v: &str) -> BgPos {
+    // Процентная смесь `calc(50px + 50%)` доживает до растра: смещение
+    // плитки складывает `доля × свободное место + точки` (`background::origin`,
+    // css-values-4 §10.9 — именно `background-position` спека приводит
+    // примером «preserves the percentage in a calc()»).
+    // ★ НЕ ДЕЛАТЬ: сворачивать `min()`/`max()` из одних процентов
+    // при разборе. Сравниваются РАЗРЕШЁННЫЕ длины, а база доли — свободное
+    // место, и при картинке больше коробки она отрицательна: `min(0%, 100%)`
+    // там равно 100% (`background-position-calc-minmax-001` ловит именно это).
+    let length = |t: &str| -> Option<Len> { Len::parse_mixed(t) };
+    let is_kw = |t: &str| matches!(t, "left" | "right" | "top" | "bottom" | "center");
+    // Список слоёв (`a, b`): здесь — позиция ПЕРВОГО слоя, как и картинка,
+    // которую берёт разбор фона.
+    let first = crate::css::split_args(v).into_iter().next().unwrap_or_default();
+    let tokens = split_outside_parens(first.trim());
+    // Форма из трёх-четырёх значений (css-backgrounds-3 §3.6): ключевое слово
+    // края с СМЕЩЕНИЕМ от него — `right 10px top 20%`. Прежде смещение
+    // терялось, и `right 100%` давало правый край вместо левого
+    // (`background-position-right-in-body`, `-three-four-values`).
+    if tokens.len() >= 3 {
+        let mut pairs: Vec<(String, Option<Len>)> = vec![];
+        let mut i = 0;
+        while i < tokens.len() {
+            let t = tokens[i].as_str();
+            if !is_kw(t) {
+                return BgPos { x: Some(Len::Pct(0.5)), y: Some(Len::Pct(0.5)) };
+            }
+            let off = tokens.get(i + 1).filter(|n| !is_kw(n.as_str())).and_then(|n| length(n));
+            i += if off.is_some() { 2 } else { 1 };
+            pairs.push((t.to_string(), off));
+        }
+        // Смещение от дальнего края: `100% - смещение`.
+        let from_end = |off: Option<Len>| -> Option<Len> {
+            match off {
+                None => Some(Len::Pct(1.0)),
+                Some(Len::Pct(k)) => Some(Len::Pct(1.0 - k)),
+                Some(Len::Px(px)) => Len::parse_mixed(&format!("calc(100% - {px}px)")),
+                Some(other) => Some(other),
+            }
+        };
+        let (mut x, mut y) = (None, None);
+        for (kw, off) in pairs {
+            match kw.as_str() {
+                "left" => x = Some(off.unwrap_or(Len::Pct(0.0))),
+                "right" => x = from_end(off),
+                "top" => y = Some(off.unwrap_or(Len::Pct(0.0))),
+                "bottom" => y = from_end(off),
+                // `center` оставляет свою ось серединой (умолчание ниже).
+                _ => {}
+            }
+        }
+        return BgPos {
+            x: x.or(Some(Len::Pct(0.5))),
+            y: y.or(Some(Len::Pct(0.5))),
+        };
+    }
+    let word = |t: &str| -> Option<Len> {
+        match t {
+            "left" | "top" => Some(Len::Pct(0.0)),
+            "center" => Some(Len::Pct(0.5)),
+            "right" | "bottom" => Some(Len::Pct(1.0)),
+            other => length(other),
+        }
+    };
+    let mut x: Option<Len> = None;
+    let mut y: Option<Len> = None;
+    let mut free: Vec<Option<Len>> = vec![];
+    // Резка ВНЕ скобок: по пробелам `calc(50px + 50%)` рассыпался на три
+    // слова, и позиция падала в центр.
+    for t in tokens {
+        match t.as_str() {
+            "left" | "right" => x = word(&t),
+            "top" | "bottom" => y = word(&t),
+            other => free.push(word(other)),
+        }
+    }
+    let mut free = free.into_iter();
+    if x.is_none() {
+        x = free.next().flatten();
+    }
+    if y.is_none() {
+        y = free.next().flatten();
+    }
+    BgPos {
+        x: x.or(Some(Len::Pct(0.5))),
+        y: y.or(Some(Len::Pct(0.5))),
+    }
 }
 
 /// `background-repeat`.
@@ -451,6 +835,27 @@ impl BgRepeat {
 /// Сдвиг хранится вместе с поворотом: в CSS `translate()` внутри `transform`
 /// и отдельное свойство `translate` складываются.
 #[derive(Clone, Copy, Debug, PartialEq)]
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): шаг 1 объёмных трансформаций
+// (css-transforms-2) — полная накопленная 4x4 `m4`/`m4_pct`/`has_3d` рядом с
+// плоской 2x3, `perspective`/`perspective-origin`/`transform-style`,
+// `translateZ`/`scaleZ`/`rotateX|Y|3d`/`matrix3d` целиком, `preserve-3d`
+// через потоко-локальный стек накопленных матриц и сплющивание плоскости
+// z=0 на отрисовке (`interact::Transformed`), обёртка `transformed()` и без
+// собственного `transform`. Срез 3029 пар (transforms/contain/overflow/
+// masking/position/backgrounds): 2102 -> 2053, **+11/-60**; из потерь
+// одиннадцать — 99.00 (`css-rotate-2d-3d-001`, `rotate3d-Z-*`,
+// `css3-transform-rotateY`, `perspective-children-only-*`,
+// `preserve3d-and-flattening-z-order-001/002`): страница разъезжается
+// целиком, а не сдвигается. Возвращаться по одному рукаву: сначала
+// `matrix3d`/`perspective()` внутри ОДНОГО элемента без стека, затем стек.
+// План и патч — `target/scout-3d-2026-09.md` §7.
+// Корень провала нашёл второй заход (`scout-3d-2026-09b.md`): хунк 7.18
+// домножал на масштаб устройства весь столбец сдвига, включая m44
+// (1 -> 1.25), а сплющивание делило на него всю матрицу — каждая коробка
+// на объёмном пути сжималась в 0.8 вокруг transform-origin (0.75 % = ровно
+// 125² − 100²). Узкий шаг 1' — 4x4 внутри ОДНОГО элемента, без стека и без
+// обёртки элементов без `transform`, свёртка `S·M·S⁻¹` с нетронутым m44 —
+// на том же срезе дал +14/-1 и внесён ниже.
 pub struct Transform {
     pub rotate_rad: f32,
     /// Скос по осям в радианах (`skew`, `skewX`, `skewY`).
@@ -460,6 +865,97 @@ pub struct Transform {
     /// Сдвиг, заданный долями СОБСТВЕННОГО размера: `translate(-50%, -50%)`.
     /// Разрешается при отрисовке, когда размер известен.
     pub translate_pct: (f32, f32),
+    /// Аффинная матрица всех функций В ПОРЯДКЕ ЗАПИСИ (css-transforms-1
+    /// §transform-rendering: «multiply … from left to right»): линейная
+    /// часть и сдвиг. Разложение выше складывает функции покомпонентно и
+    /// порядок теряет (`translate(200px) rotate(180deg)` уводило коробку за
+    /// экран) — рисует отрисовка по матрице, разложение остаётся для SVG и
+    /// сдвига клипа.
+    pub lin: [[f32; 2]; 2],
+    /// Сдвиг по осям: пиксели, доля СОБСТВЕННОЙ ширины, доля высоты —
+    /// проценты внутри цепочки складываются линейно и разрешаются при
+    /// отрисовке.
+    pub tr: [[f32; 3]; 2],
+    /// Элемент m33 накопленной 4x4-матрицы. Плоская отрисовка его не видит,
+    /// но `backface-visibility: hidden` прячет элемент ровно при m33 < 0
+    /// (css-transforms-2 §backface-visibility). У плоских функций m33 = 1,
+    /// поэтому множители перемножаются без потери точности.
+    pub m33: f32,
+    /// Полная 4×4 ОДНОГО элемента (css-transforms-2 §3d-transform-rendering),
+    /// `m4[строка][столбец]`, столбец 3 — сдвиг в css-точках. Плоские функции
+    /// вкладываются как есть, объёмные (`rotateX/Y/3d`, `translateZ`,
+    /// `scaleZ`, `perspective()`, `matrix3d`) живут только здесь;
+    /// `lin`/`tr` остаются для SVG, клипа и плоского пути отрисовки.
+    pub m4: [[f32; 4]; 4],
+    /// Доли СОБСТВЕННОГО размера в столбце сдвига: `m4_pct[строка] =
+    /// [доля ширины, доля высоты]` (как `tr[i][1..3]`).
+    pub m4_pct: [[f32; 2]; 4],
+    /// Встретилась действительно объёмная функция: отрисовка идёт по `m4`,
+    /// иначе — прежний плоский путь по `lin`/`tr`.
+    pub has_3d: bool,
+}
+
+/// Ячейка матрицы перспективы элемента в точках устройства
+/// (css-transforms-2 §perspective-matrix-computation): заводится при
+/// разборе `perspective`, наполняется его `Transformed::paint`, читается
+/// объёмным путём ПРЯМЫХ детей. Разделяемая ячейка, а не стек кадра:
+/// абсолютный ребёнок с `z-index`/`fixed` рисуется отложенным слоем
+/// (`defers`), когда `paint` родителя уже вышел; ячейка переживает кадр.
+pub type PerspectiveFrame = std::rc::Rc<std::cell::Cell<Option<[[f32; 4]; 4]>>>;
+
+/// Ячейка объёмного контекста `transform-style: preserve-3d`
+/// (css-transforms-2 §accumulated-3d-transformation-matrix): накопленная
+/// 4×4 в точках устройства И собственная аффинная доля
+/// `[[a, b, tx], [c, d, ty]]`, которую владелец уже втолкнул в gpui.
+/// Ребёнок кладёт себя по `flatten(A · C)`, а родительскую долю обязан
+/// снять сам: `with_transformation` складывает вложения как `inner∘outer`
+/// (`vendor/gpui/src/window.rs:2789`; обратный порядок ЗАМЕРЕН И ОТКАЧЕН —
+/// css-writing-modes −9). Ячейка, а не стек кадра, — по той же причине,
+/// что у перспективы: абсолютный ребёнок с `z-index`/`fixed` рисуется
+/// отложенным слоем, когда `paint` владельца уже вышел.
+pub type Frame3d = std::rc::Rc<std::cell::Cell<Option<([[f32; 4]; 4], [[f32; 3]; 2])>>>;
+
+/// Единичная 4×4.
+pub const IDENTITY4: [[f32; 4]; 4] = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+];
+
+/// Произведение 4×4: `a · b`.
+pub fn mul4(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+    let mut r = [[0.0f32; 4]; 4];
+    for i in 0..4 {
+        for j in 0..4 {
+            r[i][j] = (0..4).map(|k| a[i][k] * b[k][j]).sum();
+        }
+    }
+    r
+}
+
+/// Определитель 4×4 (разложение по первой строке через миноры 3×3).
+pub fn det4(m: &[[f32; 4]; 4]) -> f32 {
+    let minor = |r: [usize; 3], c: [usize; 3]| -> f32 {
+        let a = |i: usize, j: usize| m[r[i]][c[j]];
+        a(0, 0) * (a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1))
+            - a(0, 1) * (a(1, 0) * a(2, 2) - a(1, 2) * a(2, 0))
+            + a(0, 2) * (a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0))
+    };
+    m[0][0] * minor([1, 2, 3], [1, 2, 3]) - m[0][1] * minor([1, 2, 3], [0, 2, 3])
+        + m[0][2] * minor([1, 2, 3], [0, 1, 3])
+        - m[0][3] * minor([1, 2, 3], [0, 1, 2])
+}
+
+/// Гомография плоскости z=0 → экран: строки/столбцы 0,1,3 полной матрицы.
+/// Её вырождение — плоскость видна ребром (`rotateX(90deg)`), даже когда
+/// сама 4×4 обратима.
+pub fn det3_plane(m: &[[f32; 4]; 4]) -> f32 {
+    let idx = [0usize, 1, 3];
+    let a = |i: usize, j: usize| m[idx[i]][idx[j]];
+    a(0, 0) * (a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1))
+        - a(0, 1) * (a(1, 0) * a(2, 2) - a(1, 2) * a(2, 0))
+        + a(0, 2) * (a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0))
 }
 
 impl Default for Transform {
@@ -470,9 +966,275 @@ impl Default for Transform {
             scale: (1.0, 1.0),
             translate: (0.0, 0.0),
             translate_pct: (0.0, 0.0),
+            lin: [[1.0, 0.0], [0.0, 1.0]],
+            tr: [[0.0; 3]; 2],
+            m33: 1.0,
+            m4: IDENTITY4,
+            m4_pct: [[0.0; 2]; 4],
+            has_3d: false,
         }
     }
 }
+
+impl Transform {
+    /// Поворот вокруг произвольной оси, СПЛЮЩЕННЫЙ на плоскость экрана.
+    ///
+    /// Сплющивание (css-transforms-2 §3d-transform-rendering) — это
+    /// вычёркивание третьей строки и третьего столбца 4x4-матрицы, поэтому
+    /// плоская часть — ровно верхний 2x2 блок матрицы поворота Родрига, а
+    /// m33 = z²(1-cos a) + cos a нужен для `backface-visibility`.
+    /// Проверка: ось Z даёт обычный поворот, ось Y — diag(cos a, 1), ось X —
+    /// diag(1, cos a), то есть ровно `rotateZ`/`rotateY`/`rotateX`.
+    pub fn axis_rot(x: f32, y: f32, z: f32, a: f32) -> ([[f32; 2]; 2], f32) {
+        let len = (x * x + y * y + z * z).sqrt();
+        if len <= 0.0 {
+            return ([[1.0, 0.0], [0.0, 1.0]], 1.0);
+        }
+        let (x, y, z) = (x / len, y / len, z / len);
+        let (c, s) = (a.cos(), a.sin());
+        let k = 1.0 - c;
+        (
+            [
+                [x * x * k + c, x * y * k - z * s],
+                [y * x * k + z * s, y * y * k + c],
+            ],
+            z * z * k + c,
+        )
+    }
+    /// Дописать плоскую функцию справа в ОБЕ матрицы: `M := M · [l | v]`.
+    fn push(&mut self, l: [[f32; 2]; 2], v: [[f32; 3]; 2]) {
+        self.push2(l, v);
+        let mut f = IDENTITY4;
+        f[0][0] = l[0][0];
+        f[0][1] = l[0][1];
+        f[1][0] = l[1][0];
+        f[1][1] = l[1][1];
+        f[0][3] = v[0][0];
+        f[1][3] = v[1][0];
+        let pct = [[v[0][1], v[0][2]], [v[1][1], v[1][2]], [0.0, 0.0], [0.0, 0.0]];
+        self.push4(f, pct);
+    }
+
+    /// Только плоская 2×3 (`lin`/`tr`) — для объёмных функций, чья
+    /// сплющенная тень нужна SVG и клипу.
+    fn push2(&mut self, l: [[f32; 2]; 2], v: [[f32; 3]; 2]) {
+        let m = self.lin;
+        self.lin = [
+            [
+                m[0][0] * l[0][0] + m[0][1] * l[1][0],
+                m[0][0] * l[0][1] + m[0][1] * l[1][1],
+            ],
+            [
+                m[1][0] * l[0][0] + m[1][1] * l[1][0],
+                m[1][0] * l[0][1] + m[1][1] * l[1][1],
+            ],
+        ];
+        for i in 0..2 {
+            for k in 0..3 {
+                self.tr[i][k] += m[i][0] * v[0][k] + m[i][1] * v[1][k];
+            }
+        }
+    }
+
+    /// Дописать 4×4 справа: `M4 := M4 · f`. Столбец сдвига несёт доли размера:
+    /// `(M·F)[i][3] = Σ_k M[i][k]·F[k][3]`, где `F[k][3]` для k<3 — «точки +
+    /// доля», а `F[3][3]` домножает уже накопленные доли самой `M`.
+    fn push4(&mut self, f: [[f32; 4]; 4], pct: [[f32; 2]; 4]) {
+        let m = self.m4;
+        let mut p = [[0.0f32; 2]; 4];
+        for i in 0..4 {
+            for a in 0..2 {
+                p[i][a] = self.m4_pct[i][a] * f[3][3]
+                    + (0..3).map(|k| m[i][k] * pct[k][a]).sum::<f32>();
+            }
+        }
+        self.m4 = mul4(m, f);
+        self.m4_pct = p;
+    }
+
+    /// `translate3d(x, y, z)` в точках.
+    pub fn translate4(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
+        let mut m = IDENTITY4;
+        m[0][3] = x;
+        m[1][3] = y;
+        m[2][3] = z;
+        m
+    }
+
+    /// `scale3d(x, y, z)`.
+    pub fn scale4(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
+        let mut m = IDENTITY4;
+        m[0][0] = x;
+        m[1][1] = y;
+        m[2][2] = z;
+        m
+    }
+
+    /// `perspective(d)`: m34 = −1/d (css-transforms-2 §perspective()); d уже
+    /// не меньше 1px — clamp делает вызывающий.
+    pub fn perspective4(d: f32) -> [[f32; 4]; 4] {
+        let mut m = IDENTITY4;
+        m[3][2] = -1.0 / d;
+        m
+    }
+
+    /// `rotate3d(x, y, z, a)`: R = cos·I + sin·[u]× + (1−cos)·u·uᵀ — верхний
+    /// 2×2 блок и m33 ровно те же, что в `axis_rot`.
+    pub fn rot4(x: f32, y: f32, z: f32, a: f32) -> [[f32; 4]; 4] {
+        let len = (x * x + y * y + z * z).sqrt();
+        if len <= 0.0 {
+            return IDENTITY4;
+        }
+        let (x, y, z) = (x / len, y / len, z / len);
+        let (c, s) = (a.cos(), a.sin());
+        let k = 1.0 - c;
+        [
+            [x * x * k + c, x * y * k - z * s, x * z * k + y * s, 0.0],
+            [y * x * k + z * s, y * y * k + c, y * z * k - x * s, 0.0],
+            [z * x * k - y * s, z * y * k + x * s, z * z * k + c, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    }
+
+    /// Домножить СПРАВА на уже накопленную матрицу другого объявления.
+    ///
+    /// Нужно слоению motion-1: offset-трансформ идёт ПЕРЕД авторским
+    /// `transform`, а разбор авторского уже сложил свою матрицу — её
+    /// приходится приставлять целиком, а не по одной функции.
+    pub fn then(mut self, other: &Transform) -> Transform {
+        self.push(other.lin, other.tr);
+        self.rotate_rad += other.rotate_rad;
+        self.skew_rad.0 += other.skew_rad.0;
+        self.skew_rad.1 += other.skew_rad.1;
+        self.scale.0 *= other.scale.0;
+        self.scale.1 *= other.scale.1;
+        self.translate.0 += other.translate.0;
+        self.translate.1 += other.translate.1;
+        self.translate_pct.0 += other.translate_pct.0;
+        self.translate_pct.1 += other.translate_pct.1;
+        self.m33 *= other.m33;
+        self
+    }
+
+    /// Отдельные `rotate`/`scale` СЛЕВА от этого списка (css-transforms-2
+    /// §ctm: п.4 — `rotate`, п.5 — `scale`, п.7 — функции `transform`; Blink
+    /// `ComputedStyle::ApplyTransform`, style/computed_style.cc:1464-1487 —
+    /// `Rotate()`, `Scale()`, затем `Transform().Operations()`). Обе матрицы —
+    /// плоская и 4×4 — получают одну и ту же свёртку; разложение, m33 и
+    /// `has_3d` остаются от самого списка (SVG, клип, изнанка).
+    pub fn after_individual(self, rotate: Option<f32>, scale: Option<(f32, f32)>) -> Transform {
+        if rotate.is_none() && scale.is_none() {
+            return self;
+        }
+        let mut out = Transform::default();
+        if let Some(a) = rotate {
+            out.push(Self::rot(a), NO_SHIFT);
+        }
+        if let Some((x, y)) = scale {
+            out.push(Self::diag(x, y), NO_SHIFT);
+        }
+        out.push2(self.lin, self.tr);
+        out.push4(self.m4, self.m4_pct);
+        Transform {
+            lin: out.lin,
+            tr: out.tr,
+            m4: out.m4,
+            m4_pct: out.m4_pct,
+            ..self
+        }
+    }
+
+    /// Промежуточная ПЛОСКАЯ матрица между `self` и `other` на доле `k`
+    /// (css-transforms-1 §matrix-interpolation): обе раскладываются на
+    /// масштаб, угол и остаток 2×2 (§decomposing-a-2d-matrix, «unmatrix»),
+    /// компоненты смешиваются линейно — со сменой флипа и без «длинного пути»
+    /// (§interpolation-of-decomposed-2d-matrix-values) — и собираются обратно:
+    /// `lin = K·R(угол)·diag(sx, sy)`. `none` приходит сюда тождеством
+    /// (§interpolation-of-transforms). Сдвиг вместе с долями размера —
+    /// линейно. Необратимая сторона — `None`: анимация дискретна.
+    pub fn lerp_2d(&self, other: &Transform, k: f32) -> Option<Transform> {
+        use std::f32::consts::{PI, TAU};
+        // Столбцы `lin` — образы осей: `row0` псевдокода = (a, b) записи
+        // `matrix(a, b, c, d, e, f)`, `row1` = (c, d).
+        let unmatrix = |l: [[f32; 2]; 2]| -> Option<((f32, f32), f32, [f32; 4])> {
+            let (r0x, r0y, r1x, r1y) = (l[0][0], l[1][0], l[0][1], l[1][1]);
+            let det = r0x * r1y - r0y * r1x;
+            if det.abs() < 1e-9 {
+                return None;
+            }
+            let mut sx = (r0x * r0x + r0y * r0y).sqrt();
+            let mut sy = (r1x * r1x + r1y * r1y).sqrt();
+            if det < 0.0 {
+                if r0x < r1y {
+                    sx = -sx;
+                } else {
+                    sy = -sy;
+                }
+            }
+            let (r0x, r0y, r1x, r1y) = (r0x / sx, r0y / sx, r1x / sy, r1y / sy);
+            let angle = r0y.atan2(r0x);
+            let (sn, cs) = (-r0y, r0x);
+            let m = [
+                cs * r0x + sn * r1x,
+                cs * r0y + sn * r1y,
+                -sn * r0x + cs * r1x,
+                -sn * r0y + cs * r1y,
+            ];
+            Some(((sx, sy), angle, m))
+        };
+        let (mut sa, mut aa, ma) = unmatrix(self.lin)?;
+        let (sb, mut ab, mb) = unmatrix(other.lin)?;
+        if (sa.0 < 0.0 && sb.1 < 0.0) || (sa.1 < 0.0 && sb.0 < 0.0) {
+            sa = (-sa.0, -sa.1);
+            aa += if aa < 0.0 { PI } else { -PI };
+        }
+        if aa == 0.0 {
+            aa = TAU;
+        }
+        if ab == 0.0 {
+            ab = TAU;
+        }
+        if (aa - ab).abs() > PI {
+            if aa > ab {
+                aa -= TAU;
+            } else {
+                ab -= TAU;
+            }
+        }
+        let mix = |x: f32, y: f32| x + (y - x) * k;
+        let (sx, sy) = (mix(sa.0, sb.0), mix(sa.1, sb.1));
+        let m: [f32; 4] = std::array::from_fn(|i| mix(ma[i], mb[i]));
+        let angle = mix(aa, ab);
+        let r = Self::rot(angle);
+        // K·R — остаток столбцами (m11, m12) и (m21, m22), как в псевдокоде.
+        let kr = [
+            [m[0] * r[0][0] + m[2] * r[1][0], m[0] * r[0][1] + m[2] * r[1][1]],
+            [m[1] * r[0][0] + m[3] * r[1][0], m[1] * r[0][1] + m[3] * r[1][1]],
+        ];
+        let lin = [[kr[0][0] * sx, kr[0][1] * sy], [kr[1][0] * sx, kr[1][1] * sy]];
+        let tr: [[f32; 3]; 2] =
+            std::array::from_fn(|i| std::array::from_fn(|j| mix(self.tr[i][j], other.tr[i][j])));
+        let mut out = Transform::default();
+        out.push(lin, tr);
+        Some(Transform {
+            rotate_rad: angle,
+            scale: (sx, sy),
+            translate: (tr[0][0], tr[1][0]),
+            translate_pct: (tr[0][1], tr[1][2]),
+            ..out
+        })
+    }
+
+    fn rot(a: f32) -> [[f32; 2]; 2] {
+        [[a.cos(), -a.sin()], [a.sin(), a.cos()]]
+    }
+
+    fn diag(x: f32, y: f32) -> [[f32; 2]; 2] {
+        [[x, 0.0], [0.0, y]]
+    }
+}
+
+const NO_SHIFT: [[f32; 3]; 2] = [[0.0; 3]; 2];
 
 /// `filter`: цветовое преобразование элемента.
 ///
@@ -495,6 +1257,8 @@ pub struct Filter {
     pub opacity: f32,
     /// Поворот тона в градусах.
     pub hue_rotate: f32,
+    /// Множитель контраста.
+    pub contrast: f32,
     /// Радиус размытия поддерева в точках: `filter: blur(N)`.
     ///
     /// Цветовые функции считаются по цвету каждого примитива, а размытию
@@ -514,8 +1278,108 @@ impl Filter {
             sepia: 0.0,
             opacity: 1.0,
             hue_rotate: 0.0,
+            contrast: 1.0,
             blur: 0.0,
         }
+    }
+
+    /// Цветовые функции одной аффинной матрицей 4×5 над НЕумноженным RGBA:
+    /// строки R, G, B, A по пять чисел (четыре множителя и сдвиг), порядок
+    /// функций — как в `apply`. None — матрица единичная (остаётся разве что
+    /// размытие). filter-effects-1 §«Supported filter functions»: каждая
+    /// цветовая функция — `feColorMatrix`/`feComponentTransfer` с линейной
+    /// формулой, их цепочка — произведение матриц.
+    pub fn color_matrix(&self) -> Option<[f32; 20]> {
+        // Три строки RGB: множители при r, g, b и сдвиг.
+        type M = [[f32; 4]; 3];
+        const ID: M = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+        ];
+        // `a` поверх `b`: a·(b·x + tb) + ta.
+        fn then(a: &M, b: &M) -> M {
+            std::array::from_fn(|i| {
+                std::array::from_fn(|j| {
+                    let s: f32 = (0..3).map(|k| a[i][k] * b[k][j]).sum();
+                    if j == 3 { s + a[i][3] } else { s }
+                })
+            })
+        }
+        // (1 − k)·I + k·T — доля `k` пути к матрице `t` (без сдвига).
+        fn toward(t: [[f32; 3]; 3], k: f32) -> M {
+            std::array::from_fn(|i| {
+                std::array::from_fn(|j| {
+                    if j == 3 {
+                        return 0.0;
+                    }
+                    let id = if i == j { 1.0 } else { 0.0 };
+                    id + (t[i][j] - id) * k
+                })
+            })
+        }
+        let diag = |k: f32, shift: f32| -> M {
+            [
+                [k, 0.0, 0.0, shift],
+                [0.0, k, 0.0, shift],
+                [0.0, 0.0, k, shift],
+            ]
+        };
+        let mut m = ID;
+        if self.sepia > 0.0 {
+            let t = [
+                [0.393, 0.769, 0.189],
+                [0.349, 0.686, 0.168],
+                [0.272, 0.534, 0.131],
+            ];
+            m = then(&toward(t, self.sepia), &m);
+        }
+        if self.grayscale > 0.0 || self.saturate != 1.0 {
+            let l = [0.2126f32, 0.7152, 0.0722];
+            m = then(&toward([l, l, l], self.grayscale), &m);
+            // lum + (c − lum)·s = I + (L − I)·(1 − s)
+            m = then(&toward([l, l, l], 1.0 - self.saturate), &m);
+        }
+        if self.invert > 0.0 {
+            m = then(&diag(1.0 - 2.0 * self.invert, self.invert), &m);
+        }
+        if self.contrast != 1.0 {
+            m = then(&diag(self.contrast, 0.5 - 0.5 * self.contrast), &m);
+        }
+        if self.hue_rotate != 0.0 {
+            let a = self.hue_rotate.to_radians();
+            let (cos, sin) = (a.cos(), a.sin());
+            let h = [
+                [
+                    0.213 + cos * 0.787 - sin * 0.213,
+                    0.715 - cos * 0.715 - sin * 0.715,
+                    0.072 - cos * 0.072 + sin * 0.928,
+                ],
+                [
+                    0.213 - cos * 0.213 + sin * 0.143,
+                    0.715 + cos * 0.285 + sin * 0.140,
+                    0.072 - cos * 0.072 - sin * 0.283,
+                ],
+                [
+                    0.213 - cos * 0.213 - sin * 0.787,
+                    0.715 - cos * 0.715 + sin * 0.715,
+                    0.072 + cos * 0.928 + sin * 0.072,
+                ],
+            ];
+            m = then(&toward(h, 1.0), &m);
+        }
+        if self.brightness != 1.0 {
+            m = then(&diag(self.brightness, 0.0), &m);
+        }
+        if m == ID && self.opacity == 1.0 {
+            return None;
+        }
+        Some([
+            m[0][0], m[0][1], m[0][2], 0.0, m[0][3], //
+            m[1][0], m[1][1], m[1][2], 0.0, m[1][3], //
+            m[2][0], m[2][1], m[2][2], 0.0, m[2][3], //
+            0.0, 0.0, 0.0, self.opacity, 0.0,
+        ])
     }
 
     /// Применить к цвету.
@@ -552,6 +1416,14 @@ impl Filter {
             r += (1.0 - r - r) * k;
             g += (1.0 - g - g) * k;
             b += (1.0 - b - b) * k;
+        }
+        if self.contrast != 1.0 {
+            // Аффинный контраст: растяжение вокруг середины (filter-effects-1
+            // §contrast: c*k + 0.5 - 0.5k).
+            let k = self.contrast;
+            r = (r - 0.5) * k + 0.5;
+            g = (g - 0.5) * k + 0.5;
+            b = (b - 0.5) * k + 0.5;
         }
         if self.hue_rotate != 0.0 {
             // Матрица поворота тона из спецификации фильтров.
@@ -590,15 +1462,108 @@ pub struct AnimSpec {
     pub infinite: bool,
     /// `alternate` — обратный ход через раз.
     pub alternate: bool,
+    /// `animation-delay`: отрицательная — старт с середины.
+    pub delay: f32,
+    /// `animation-play-state: paused` — живой анимации нет, рисуется один
+    /// кадр на месте `(-delay)/duration` (reftest'ы иначе недетерминированы).
+    pub paused: bool,
+    /// `animation-name: a, b` — все имена списка по порядку; пусто, когда имя
+    /// одно (тогда работает `name`).
+    pub names: Vec<String>,
+}
+
+impl AnimSpec {
+    /// Анимация, которая за жизнь страницы не сдвинется ни на точку, по сути
+    /// остановлена: пауза или `animation: a 2000000s; animation-delay:
+    /// -1000000s`. Один предикат на разрешение кадров (`dom.rs`) и отрисовку.
+    pub fn frozen(&self) -> bool {
+        self.paused || (!self.infinite && self.seconds >= 3600.0 && self.delay <= 0.0)
+    }
+
+    /// Доля пути остановленной анимации: `(-delay)/duration`.
+    pub fn frozen_t(&self) -> f32 {
+        if self.seconds > 0.0 {
+            ((-self.delay) / self.seconds).clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    }
+}
+
+/// Одна составляющая `content` (css-content-3 §2 `<content-list>`).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ContentItem {
+    /// Литеральная строка.
+    Str(String),
+    /// `counter(имя, стиль)`.
+    Counter(String, String),
+    /// `counters(имя, разделитель, стиль)`.
+    Counters(String, String, String),
+    /// `attr(имя)`.
+    Attr(String),
+    /// `open-quote`/`close-quote` (`emit`) и `no-open-quote`/`no-close-quote`
+    /// (только сдвиг глубины) — css-content-3 §4.2.
+    Quote { open: bool, emit: bool },
+    /// `url(…)` — картинка-атом в `::before`/`::after` (css-content-3 §2).
+    /// Строится настоящим `<img>`-ребёнком псевдоэлемента: природный размер
+    /// меряет обычный путь картинок. В маркере и тексте не печатается.
+    Image(String),
+}
+
+/// Порядковые номера объявлений физических сторон (top, right, bottom, left)
+/// для полей, отступов и краёв — см. `LogicalSides::seq`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SideSeq {
+    pub padding: [u32; 4],
+    pub margin: [u32; 4],
+    pub inset: [u32; 4],
+}
+
+/// Метрика края текста (`<text-edge>`, css-inline-3 §4.3).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum TextEdge {
+    /// Подъём/спуск шрифта — начальное значение.
+    #[default]
+    Text,
+    /// Высота прописной (только верхний край).
+    Cap,
+    /// Высота строчной (только верхний край).
+    Ex,
+    /// Алфавитная базовая линия (только нижний край).
+    Alphabetic,
+}
+
+/// `border-shape` (css-borders-4 §border-shape): одна фигура — рамка
+/// обводкой по её контуру толщиной «relevant side»; две — заливка между
+/// внешней и внутренней. Текст фигуры хранится как есть, доли резолвит
+/// отрисовка от опорной коробки (`geometry-box`: 0 border, 1 margin,
+/// 2 padding, 3 content, 4 half-border-box).
+#[derive(Clone, Debug, PartialEq)]
+pub struct BorderShape {
+    pub outer: String,
+    pub outer_box: u8,
+    pub inner: Option<(String, u8)>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
+    /// Счётчик объявлений этого узла: порядок каскада между логическими и
+    /// физическими сторонами (UA `padding-inline-start: 40px` против
+    /// авторского `padding-top: 0` в вертикальном письме —
+    /// `line-box-direction-vrl-019`).
+    pub decl_seq: u32,
+    pub side_seq: SideSeq,
     pub display: Option<Display>,
     pub flex_dir: Option<FlexDir>,
     pub flex_wrap: Option<bool>,
     /// `wrap-reverse` — строки укладываются с противоположного края.
     pub flex_wrap_reverse: Option<bool>,
+    /// `flex-wrap: balance` (css-flexbox-2 §5.2) — строки режет
+    /// балансировщик; ортогонально `wrap`/`wrap-reverse`.
+    pub flex_balance: Option<bool>,
+    /// `flex-line-count` (css-flexbox-2 §5.3) — минимум строк у balance;
+    /// умолчание 1.
+    pub flex_line_count: Option<u16>,
     pub flex_grow: Option<f32>,
     pub flex_shrink: Option<f32>,
     /// `flex-basis: content` — основа берётся ПО СОДЕРЖИМОМУ, и заданный
@@ -611,11 +1576,23 @@ pub struct Computed {
     /// пиксель оставляет.
     pub attr_width: Option<Len>,
     pub attr_height: Option<Len>,
+    /// Размер по оси пришёл из АТРИБУТА (`<canvas width>`), а не из CSS:
+    /// у холста атрибуты — природный размер (HTML §4.12.5), не `width`
+    /// (§15.3.10 их к нему не относит), и в сетке ось может растянуться.
+    pub attr_sized: (bool, bool),
     pub basis_content: Option<bool>,
     pub align_items: Option<Align>,
     /// `align-self` — про сам элемент; отдельное поле, иначе он выравнивал
     /// бы своих детей вместо себя.
     pub align_self: Option<Align>,
+    /// Авторское `align-self: normal` (css-align-3 §6.2): у элемента гибкого
+    /// контейнера оно ведёт себя как `stretch`, а не «взять у родителя».
+    pub align_self_normal: bool,
+    /// Элемент гибкого РЯДА, поперечный размер которого тянет строка
+    /// (`stretch` при `height: auto`). Взводит сборщик детей гибкого
+    /// контейнера (`render.rs`, ветка `flex_context`), где виден родитель;
+    /// читает обособление размера в `apply::apply_box`.
+    pub(crate) cross_stretched: bool,
     pub flex_basis: Option<Len>,
     pub justify_content: Option<Justify>,
     pub gap: Option<(Option<Len>, Option<Len>)>,
@@ -632,11 +1609,31 @@ pub struct Computed {
     /// разворачиваются в номера линий при сборке дерева — там, где известны и
     /// контейнер, и его дети.
     pub grid_areas: Option<Vec<Vec<String>>>,
+    /// `grid-template-areas: inherit` (css-cascade-4 §7.3 «explicit
+    /// inheritance»): свойство не наследуемое, запись родителя переносит
+    /// `doc::settle_explicit_inherit`.
+    pub grid_areas_inherit: bool,
     /// Имя области у ребёнка: `grid-area: header`.
     pub grid_area_name: Option<String>,
+    /// Имена линий `grid-template-columns` (логические колонки): у
+    /// подсеточной оси — её `<line-name-list>` (`subgrid [a] [b]`). Разрешает
+    /// их раскладка (taffy `NamedLineResolver`), в том числе через подсетки
+    /// (css-grid-2 §9 (d)); прежде имена выбрасывались при разборе.
+    pub grid_col_line_names: Option<gpui::GridAxisLineNames>,
+    /// То же для `grid-template-rows`.
+    pub grid_row_line_names: Option<gpui::GridAxisLineNames>,
+    /// Именованные грани `grid-column-start`/`-end` (css-grid-2 §8.3):
+    /// `Placement` у такой грани — `Auto`, имя разрешает раскладка.
+    pub grid_col_named: [Option<gpui::GridNamedLine>; 2],
+    /// То же для рядов.
+    pub grid_row_named: [Option<gpui::GridNamedLine>; 2],
     /// `repeat(auto-fill, minmax(N, 1fr))` — сколько влезет колонок шириной
     /// не меньше N. Число колонок здесь считает раскладка, а не разметка.
     pub grid_auto_fill_min: Option<f32>,
+    /// Тело повтора из НЕСКОЛЬКИХ дорожек: `repeat(auto-fill, 50px 50px)`
+    /// повторяет пару, а не одну дорожку. Пусто — тело из одной дорожки, её
+    /// размер лежит в `grid_auto_fill_min`.
+    pub grid_auto_fill_tracks: Vec<f32>,
     /// То же по рядам: `grid-template-rows: repeat(auto-fill, 100px)`.
     pub grid_auto_fill_row: Option<f32>,
     /// Повтор «сколько влезет» по колонкам и по рядам целиком: нужен и вид
@@ -646,8 +1643,37 @@ pub struct Computed {
     /// Своей раскладки подсетки нет, но знать о ней надо: абсолютных потомков
     /// она размещает по СВОИМ линиям, а не по линиям внешней сетки.
     pub subgrid: bool,
+    /// Подсеточность ПООСЕВАЯ: `grid-template-columns: subgrid` и
+    /// `grid-template-rows: subgrid` — разные объявления, и правило
+    /// css-grid-2 §subgrid-box-alignment («в подсеточной оси свой размер и
+    /// self-выравнивание игнорируются») действует ровно в СВОЕЙ оси.
+    /// Скалярный `subgrid` этого не выражает: у пяти зелёных
+    /// `standalone-axis-size-*` подсеточны РЯДЫ, а размер задан по КОЛОНКАМ,
+    /// и гасить его нельзя.
+    ///
+    /// ВАЖНО: маршрут СРЕЗА дорожек эти поля не меняют — срез по-прежнему на
+    /// скалярном `subgrid`. Перевод среза на поосевые признаки замерен и
+    /// откачен (шапка `dom.rs: subgrid_takes_parent_tracks`, +2/−3).
+    pub subgrid_cols: bool,
+    pub subgrid_rows: bool,
+    /// `container-type: size | inline-size` — элемент стал контейнером
+    /// запросов размера и подсеткой быть не может (css-grid-2
+    /// §subgrid-listing). Отдельным полем, а НЕ через `contain_size`: голое
+    /// `contain: size` подсетку не отменяет — это отдельно проверяют случаи
+    /// 8 и 9 `independent-formatting-context.html`.
+    pub container_size_query: bool,
     pub auto_repeat_cols: Option<AutoRepeat>,
     pub auto_repeat_rows: Option<AutoRepeat>,
+    /// Тело авто-повтора ДОРОЖКА ЗА ДОРОЖКОЙ: `repeat(auto-fill, max-content
+    /// min-content)` — это два РАЗНЫХ размера, а не два одинаковых.
+    /// css-grid-3 §7.2.1 («The hypothetical size of each track in the repeat()
+    /// listing is given by the largest track corresponding to that entry (by
+    /// index)», `csswg-drafts/css-grid-3/Overview.bs:469-471`) требует считать
+    /// каждую запись тела по ЕЁ функции; скалярные `track`/`intrinsic_min`
+    /// этого не выражают. Пишется РЯДОМ с `AutoRepeat` и `grid_tracks` не
+    /// трогает: тот путь замерен и откачен (патч II 07.09, v143).
+    pub auto_repeat_body_cols: Option<Vec<TrackSize>>,
+    pub auto_repeat_body_rows: Option<Vec<TrackSize>>,
 
     pub width: Option<Len>,
     pub height: Option<Len>,
@@ -664,16 +1690,81 @@ pub struct Computed {
 
     pub position: Option<Position>,
     pub inset: Sides,
+    /// `anchor-name` (css-anchor-position-1 §anchor-name): имена якоря,
+    /// `none` — отсутствие. Коробка с именем получает пробу
+    /// (`anchor::probe_for`), пишущую её рамку в реестр кадра.
+    pub anchor_name: Option<Vec<String>>,
+    /// `position-anchor`; начальное `normal`.
+    pub position_anchor: Option<PositionAnchor>,
+    /// Неявный якорь псевдоэлемента — `node_id` порождающего элемента
+    /// (§implicit: «The implicit anchor element of a pseudo-element is its
+    /// originating element»). Ставит `dom::walk` после обхода детей.
+    pub implicit_anchor: Option<u64>,
+    /// `position-area` (§position-area): два слова области, разбор и смысл —
+    /// `anchor::parse_area`. `none`/не задано — `None`.
+    pub position_area: Option<crate::anchor::PositionArea>,
+    /// `position-try-fallbacks` (§position-try-fallbacks): варианты позиции —
+    /// имя `@position-try`-правила и/или тактика, либо `<position-area>`.
+    /// Перебор — `anchor::AnchorPlace` на подготовке кадра, выбранный
+    /// вариант накладывается на стиль следующей сборки (`anchor::apply_chosen`).
+    pub position_try_fallbacks: Vec<crate::anchor::TryFallback>,
+    /// `position-try-order` (§position-try-order-property): 0 normal,
+    /// 1 most-width, 2 most-height, 3 most-block-size, 4 most-inline-size.
+    pub position_try_order: u8,
+    /// `position-visibility` (§position-visibility), биты `anchor::VIS_*`:
+    /// 1 anchor-valid, 2 anchor-visible, 4 no-overflow; 0 — `always`
+    /// (начальное значение Blink; спека просит `anchor-visible`, но без
+    /// явного свойства гасить коробки по обрезке якоря слишком дорого).
+    pub position_visibility: u8,
+    /// Стиль ДО наложения выбранного варианта `position-try` — из него
+    /// `anchor::place` строит остальные кандидаты. Ставит `anchor::apply_chosen`.
+    pub try_base: Option<std::rc::Rc<Computed>>,
+    /// Служебные поля якорного шага, ставит `render::element`: свой `node_id`
+    /// (ключ реестра содержащих блоков `anchor::CB`), `node_id` ближайшего
+    /// содержащего блока абсолюта (`inline::inherit`; 0 — начальный, окно),
+    /// порядковый номер сборки в кадре («последний якорь раньше по дереву» в
+    /// реестре прошлого кадра) и ключ коробки в реестре размеров клетки.
+    pub self_node: u64,
+    pub cb_node: u64,
+    pub anchor_seq: u32,
+    pub anchor_key: u64,
     pub overflow_x: Option<Overflow>,
+    /// Внутренняя копия прокручиваемой коробки (`render` снимает с неё
+    /// `overflow`, чтобы обёртка `ScrollArea` резала сама): по спеке она
+    /// остаётся scroll container — автоминимум по `aspect-ratio` к ней не
+    /// применяется (css-sizing-4 §5.2; `block-aspect-ratio-011/012`).
+    pub scroller: bool,
     pub overflow_y: Option<Overflow>,
     pub opacity: Option<f32>,
 
     pub background: Option<Color>,
+    /// Фон ЗАЯВЛЕН автором (`background` или `background-color`), пусть даже
+    /// прозрачным. Умолчание UA у полей ввода ставится только тогда, когда
+    /// автор не сказал ничего: сокращение `background: linear-gradient(...)`
+    /// сбрасывает цвет в прозрачный (§2.1), и подставлять поверх него
+    /// служебную заливку нельзя.
+    pub bg_explicit: bool,
     /// `border: inherit` / `padding: inherit`: свойства не наследуемые, слово
     /// копирует вычисленное значение родителя — оно известно только при
     /// слиянии стилей.
     pub(crate) border_inherit: bool,
+    /// То же по СТОРОНАМ и по частям рамки: `border-width: inherit`,
+    /// `border-bottom: inherit`, `border-left-color: inherit`. Порядок сторон
+    /// всюду один: верх, право, низ, лево.
+    pub(crate) border_inherit_w: [bool; 4],
+    pub(crate) border_inherit_s: [bool; 4],
+    pub(crate) border_inherit_c: [bool; 4],
     pub(crate) padding_inherit: bool,
+    /// `inherit` по СТОРОНАМ у полей и отступов, порядок [верх, право, низ,
+    /// лево]. Сокращение ставит все четыре.
+    pub(crate) margin_inherit: [bool; 4],
+    /// `inherit` у ненаследуемых свойств, которым своей ветки не было:
+    /// повтор мостовой (`background-repeat`), слой (`z-index`), обводка,
+    /// вид (`display`), плитка и её место (`background-image`,
+    /// `background-position`), обрезка (`clip`), сокращение шрифта,
+    /// преобразование регистра.
+    pub(crate) inherit_bits: u16,
+    pub(crate) padding_inherit_side: [bool; 4],
     /// `box-shadow: inherit`.
     pub(crate) shadow_inherit: bool,
     /// Относительный цвет фона (css-color-5): функция с `from currentColor`
@@ -683,6 +1774,28 @@ pub struct Computed {
     /// `background-color: inherit`: фон не наследуемый, слово переносит
     /// вычисленное значение родителя (включая нерешённую функцию).
     pub(crate) background_inherit: bool,
+    /// `background: inherit` — сокращение, значит наследуется весь фон, а не
+    /// только цвет.
+    pub(crate) background_all_inherit: bool,
+    /// Явное `inherit` на ненаследуемых размерах и краях: значение берётся
+    /// от родителя при слиянии (`inline::inherit`), как у padding/border.
+    pub(crate) width_inherit: bool,
+    pub(crate) height_inherit: bool,
+    /// То же у пределов: `min-width`, `min-height`, `max-width`, `max-height`.
+    pub(crate) minmax_inherit: [bool; 4],
+    /// Сторона письма СОДЕРЖАЩЕГО БЛОКА: избыточный край выбирается по ней,
+    /// а не по своей (§9.4.3). Ставится при наследовании.
+    pub(crate) cb_rtl: bool,
+    /// Письмо СОДЕРЖАЩЕГО БЛОКА: вертикальное ли (в том числе повёрнутый
+    /// абзац, чей стиль собран горизонтальным клоном с `rotated_line`), идут ли
+    /// блоки справа налево, `sideways-*` ли. По ним у переопределённой оси
+    /// абсолюта выбирается отбрасываемый край (css-writing-modes-4 §7.1).
+    /// Ставится при наследовании, как `cb_rtl`.
+    pub(crate) cb_vertical: bool,
+    pub(crate) cb_vertical_rl: bool,
+    pub(crate) cb_sideways: bool,
+    /// top/right/bottom/left.
+    pub(crate) inset_inherit: [bool; 4],
     pub gradient: Option<Gradient>,
     pub shadows: Vec<Shadow>,
     /// Внутренние тени (`box-shadow: inset`) — отдельным списком: рисуются
@@ -693,9 +1806,19 @@ pub struct Computed {
     pub font_size: Option<Len>,
     pub font_weight: Option<u16>,
     pub italic: Option<bool>,
+    /// `font-style: oblique` отдельно от `italic`: набору наклон один
+    /// (`italic` держит оба), а подбору лица это РАЗНЫЕ запросы (css-fonts-4
+    /// §font-style-matching) — от выбранного лица зависит `size-adjust`
+    /// (`fonts::size_adjust`, `italic-oblique-fallback`).
+    pub oblique: Option<bool>,
     pub underline: Option<bool>,
     pub line_through: Option<bool>,
     pub line_height: Option<Len>,
+    /// `orphans`/`widows` (css-break-3 §4.4 «Breaks Between Lines»): сколько
+    /// строк блока обязано остаться до/после разрыва внутри него. Наследуются,
+    /// начальное значение 2 (`None` = 2).
+    pub orphans: Option<u16>,
+    pub widows: Option<u16>,
     pub text_align: Option<TextAlign>,
     /// `text-align-last` — выключка ПОСЛЕДНЕЙ строки абзаца. Отдельное
     /// свойство, потому что по умолчанию последняя строка не растягивается:
@@ -704,6 +1827,17 @@ pub struct Computed {
     /// `text-justify: none` — выключка запрещена, строка идёт как `start`.
     pub no_justify: Option<bool>,
     /// `hanging-punctuation` — какая пунктуация выходит за край строки.
+    /// `text-box-trim` — срезать полулидинг первой/последней строки блока.
+    pub text_box_trim_start: bool,
+    pub text_box_trim_end: bool,
+    /// `text-box-edge` — метрики верхнего и нижнего краёв среза.
+    pub text_box_over: TextEdge,
+    pub text_box_under: TextEdge,
+    /// `text-box-edge` задан явно (в т.ч. `auto`/`text`): свойство
+    /// наследуемое, и явное значение перекрывает унаследованное, а начальное
+    /// `Text` от него неотличимо без флага
+    /// (`text-box-trim-not-ignore-nested-text-box-edge`).
+    pub text_box_edge_set: bool,
     pub hanging: Option<Hanging>,
     pub nowrap: Option<bool>,
     /// Переводы строк значимы (`white-space: pre*`).
@@ -724,8 +1858,16 @@ pub struct Computed {
     /// Внутренний флаг каскада, а не свойство отрисовки: к моменту выхода из
     /// `resolve` он уже подставлен в `border_color`.
     pub(crate) border_color_is_current: bool,
+    /// Сторона получила `currentColor` из БОКОВОГО сокращения без цвета
+    /// (`border-top: solid 1em`) поверх общего `border-color`, пришедшего
+    /// раньше. Внутренний флаг каскада: цвет текста в `border_colors`
+    /// подставляет `inline::inherit`, когда тот известен.
+    pub(crate) border_side_current: [bool; 4],
     /// `border-collapse: collapse` — зазор между ячейками пропадает.
     pub border_collapse: Option<bool>,
+    /// `empty-cells: hide` — у ПУСТОЙ ячейки не рисуются ни фон, ни рамка
+    /// (CSS 2.1 §17.6.1.1). Свойство наследуемое.
+    pub empty_cells_hide: Option<bool>,
     /// Форма курсора: у GPUI набор совпадает с CSS почти буква в букву.
     pub cursor: Option<String>,
     /// `visibility: hidden` — место занимает, но не рисуется.
@@ -735,21 +1877,94 @@ pub struct Computed {
     pub collapsed: Option<bool>,
     /// Опорная коробка clip-path: 0 border, 1 margin, 2 padding, 3 content.
     pub clip_ref: Option<u8>,
+    /// `clip-path` задан ОДНИМ словом коробки (`margin-box`, `padding-box`,
+    /// …): обрезка краями этой коробки (css-masking-1 §5.1 «If specified by
+    /// itself, uses the edges of the specified box … as clipping path»).
+    pub clip_bare_box: bool,
+    /// Маска-изображение (`mask-image: url(...)|<gradient>`): источник
+    /// строкой до растра при сборке группы.
+    pub mask_image: Option<String>,
     pub letter_spacing: Option<Len>,
     pub ellipsis: Option<bool>,
+    /// Маркер обрезки `text-overflow: <string>` (css-overflow-4 §5);
+    /// None при ellipsis — многоточие по умолчанию.
+    pub overflow_marker: Option<String>,
     /// `list-style: none` — навигация, свёрстанная на списках, иначе идёт с
     /// точками.
     pub no_marker: Option<bool>,
     /// Вид маркера, если документ его задал.
-    pub marker: Option<Marker>,
+    pub list_style_type: Option<String>,
+    /// `list-style-position: inside` — маркер идёт первым куском содержимого
+    /// пункта, а не отдельной колонкой снаружи (css-lists-3 §4).
+    pub list_style_inside: Option<bool>,
+    /// Строковый маркер: `list-style-type: "→ "` (css-lists-3 §3).
+    pub marker_text: Option<String>,
+    /// Слой `::marker` (css-lists-3 §marker-properties): ТОЛЬКО объявления
+    /// самих правил `::marker` поверх таблицы агента, без копии стиля
+    /// хозяина — при отрисовке накладывается на стиль пункта через
+    /// `inline::inherit`. Копия стиля пункта сюда не годится: она утянула бы
+    /// в маркер рамку, поля и размеры самого `<li>`. Blink делает то же —
+    /// текст маркера набирается стилем САМОГО `::marker`
+    /// (`CreateAnonymousStyleWithDisplay(marker.StyleRef(), …)`,
+    /// `list_marker.cc:267-336`). Не наследуется.
+    pub marker_layer: Option<Box<Computed>>,
+    /// `content: none` против `content: normal`. У `::before`/`::after`
+    /// разницы нет — коробки нет в обоих случаях, — а у `::marker` `none`
+    /// гасит маркер, `normal` возвращает к `list-style-*` (css-lists-3
+    /// §content-property). Оба сбрасывают `content` в None, поэтому нужна
+    /// отдельная метка.
+    pub content_none: Option<bool>,
     pub object_fit: Option<String>,
+    /// `image-orientation: none` (css-images-3 §5.4) — НЕ разворачивать растр
+    /// по метке EXIF. Начальное значение свойства — `from-image`, поэтому
+    /// хранится именно отказ, а не разрешение.
+    pub image_orient_none: Option<bool>,
 
     /// `aspect-ratio` — отношение ширины к высоте.
     pub aspect_ratio: Option<f32>,
+    /// Отношение из записи `auto <ratio>` (css-sizing-4 §5.1): у замещаемого
+    /// оно ЗАПАСНОЕ — природное сильнее. Отдельным полем, потому что
+    /// НЕзамещаемой коробке отношение из этой записи наша раскладка пока не
+    /// выражает (★ ЗАМЕРЕНО: в общем поле `block-aspect-ratio-002/015/016/018/
+    /// 043/047`, `grid-aspect-ratio-005/008` уходили с 0.00 в 14.25).
+    pub aspect_ratio_auto: Option<f32>,
+    /// Коробка с `aspect-ratio` — элемент ГИБКОГО контейнера (ставит
+    /// `render.rs` при раскладке детей ряда/колонки). Её автоминимум по
+    /// соотношению считает раскладка (css-flexbox-1 §4.5: подсказка по
+    /// содержимому), а не явный минимум `apply::ratio_as_auto_min`
+    /// (`flex-aspect-ratio-002/004`).
+    pub flex_item_ratio: bool,
+    /// Коробка АБСОЛЮТНА, но позиционирование с неё снято ради статической
+    /// позиции (`render.rs`). Само `position` там обнуляется, а знать о нём
+    /// нужно: размер по свободной строчной оси у абсолюта считается по
+    /// содержимому, и без этой пометки вертикальный абзац снова растягивался
+    /// бы на весь предел ортогонального потока.
+    pub abs_static: bool,
+    /// Ортогональный элемент СЕТКИ с невытягивающим выравниванием
+    /// (`place-items: start` и родня): по строчной оси он размером в
+    /// содержимое, а не в область сетки (css-grid-1 §6.6, css-align-3 §6.1).
+    /// Ставится сборщиком детей сетки, глубже не наследуется.
+    pub hug_inline: bool,
+    /// Родитель — ВЕРТИКАЛЬНАЯ сетка с невытягивающим `justify-*` (или блок
+    /// по цепочке под ней, `render.rs: vertical_hug_children`): повёрнутый
+    /// абзац заявляет высотой длину своей строки. Отдельно от `hug_inline`:
+    /// ортогональным элементам горизонтальной сетки (и лункам) такая заявка
+    /// противопоказана (`grid-lanes/.../column-explicit-placement-002`
+    /// 0.00 -> 10.02 при общем флаге).
+    pub hug_claim: bool,
     /// `order`: визуальный порядок в гибкой строке. Раскладка под нами его не
     /// знает, поэтому детей переставляет сам сборщик дерева.
     pub order: Option<i32>,
     pub align_content: Option<Justify>,
+    /// Задано ли `align-content` значением, ОТЛИЧНЫМ от `normal`
+    /// (css-align-3 §align-block). Отдельно от `align_content`, потому что
+    /// `parse_justify` роняет в `None` два разных случая: `normal`
+    /// (выравнивания нет — и контекста тоже) и `baseline`/`first`/`last`
+    /// (выравнивание есть, раскладка его пока не знает, но КОНТЕКСТ по спеке
+    /// заводится). На блочном контейнере флаг делает коробку корнем блочного
+    /// контекста форматирования; у флекса и сетки он безразличен — они и так
+    /// заводят свой контекст первой же веткой `own_context`.
+    pub align_content_block: bool,
     /// `justify-items`/`justify-self` — поперечная ось В СЕТКЕ.
     pub justify_items: Option<Align>,
     /// Модификатор `safe` у выравниваний (css-align §5.3): при переполнении
@@ -758,6 +1973,41 @@ pub struct Computed {
     pub justify_self_safe: bool,
     pub justify_items_safe: bool,
     pub align_self_safe: bool,
+    /// `align-self: self-start`/`self-end` — начало и конец берутся по письму
+    /// САМОГО элемента, а не контейнера (css-align-3 §6.2). Значение при этом
+    /// остаётся физическим, а «мерить по себе» помнится здесь: зеркалит его
+    /// `inline::inherit`, где известны письмо элемента И письмо родителя.
+    pub align_self_own_axis: bool,
+    /// Ключевое слово `align-self` — ГИБКОЕ (`flex-start`/`flex-end`): его
+    /// концы следуют `wrap-reverse` строки, а `start`/`end`/`self-*` — нет
+    /// (css-align-3 §6.1). `Align` различия не несёт, его зеркалит
+    /// `inline::inherit` (`self-align-start-end-flex-001`).
+    pub align_self_flex_kw: bool,
+    /// `justify-self: self-start`/`self-end` — по письму САМОГО элемента, как
+    /// `align_self_own_axis` (`align-self-static-position-006`).
+    pub justify_self_own_axis: bool,
+    /// `last baseline`: запасное выравнивание — `end`, а не `start`
+    /// (css-align-3 §9.3; `align-self-static-position-008`,
+    /// `justify-self-static-position-001`). `Align::Baseline` его не различает.
+    pub align_self_last: bool,
+    /// Авторское объявление `align-self` (внешний `Some`), с его значением.
+    /// Нужно, чтобы отличать значение автора от приёмов сборки, которые
+    /// пишут в то же поле `align_self` (блок собран колонкой flex): только
+    /// авторское значение гасится у коробки вне гибкого контейнера и сетки
+    /// (`inline::inherit`), и только оно же переходит по `inherit` к детям —
+    /// вычисленное значение родителя от гашения не меняется (css-align-3
+    /// §6.1 «Applies to: flex items, grid items, and absolutely-positioned
+    /// boxes»; css-cascade-4 §7.3).
+    pub(crate) align_self_decl: Option<Option<Align>>,
+    /// `align-self: inherit` — значение берёт `inline::inherit` у родителя
+    /// (свойство ненаследуемое, слово копирует вычисленное значение).
+    pub(crate) align_self_inherit: bool,
+    pub justify_self_last: bool,
+    /// `align-items: last baseline` — то же для умолчания детей: раскладка
+    /// получает `LastBaseline` (css-align-3 §4.2), а не первую базовую.
+    pub align_items_last: bool,
+    /// `justify-items: last baseline` — для лунок-колонок (поперёк лунки).
+    pub justify_items_last: bool,
     pub align_items_safe: bool,
     pub justify_content_safe: bool,
     pub align_content_safe: bool,
@@ -779,10 +2029,20 @@ pub struct Computed {
     /// `display: inline grid-lanes` — контейнер лунок строчного уровня:
     /// ширина по дорожкам, не на всю строку.
     pub lanes_inline: bool,
+    /// Контейнер лунок, переведённый на путь СЕТКИ: `display` уже
+    /// `Grid`/`InlineGrid`, а раскладку лунками делает taffy
+    /// (`vendor/taffy/src/compute/grid/lanes.rs`). Ставит
+    /// `dom::lanes_as_grid`.
+    pub lanes_taffy: bool,
     pub justify_self: Option<Align>,
 
     pub grid_rows: Option<Vec<TrackSize>>,
     pub grid_auto_cols: Option<TrackSize>,
+    /// Список неявных дорожек, когда их больше одной: `grid-auto-columns: A B C`.
+    /// Пусто — дорожка одна, она в `grid_auto_cols`.
+    pub grid_auto_cols_list: Vec<TrackSize>,
+    /// То же для неявных РЯДОВ.
+    pub grid_auto_rows_list: Vec<TrackSize>,
     pub grid_auto_rows: Option<TrackSize>,
     pub grid_auto_flow: Option<AutoFlow>,
     pub grid_col: Option<(Placement, Placement)>,
@@ -794,6 +2054,9 @@ pub struct Computed {
     /// Цвета рамки по сторонам. У GPUI цвет рамки один на элемент, поэтому
     /// разные цвета сторон дорисовываются полосами.
     pub border_colors: [Option<Color>; 4],
+    /// `font-size: larger` (+1) / `smaller` (−1): шаг по таблице ключевых
+    /// кеглей от кегля родителя (§15.7). Разрешает `inline::inherit`.
+    pub(crate) font_size_step: i8,
     /// Ранги стилей кромок по сторонам [верх, право, низ, лево] для
     /// разбора конфликтов сросшихся рамок (CSS 2.1 §17.6.2.1):
     /// 0 none, 1 hidden, 3 inset, 4 groove, 5 outset, 6 ridge, 7 dotted,
@@ -807,11 +2070,19 @@ pub struct Computed {
     /// Сырая запись градиента фона: источник для слоя-картинки там, где
     /// градиент рисуется плиткой (фон ряда таблицы).
     pub gradient_raw: Option<String>,
+    /// Градиент фона с длинами в единицах шрифта (`green 4em`): позиция
+    /// стопа в `em` разбором не читается и терялась (стоп становился «без
+    /// позиции»). Ждёт своего кегля и переразбирается в `resolve_em`
+    /// (`white-space-intrinsic-size-017/018`).
+    pub gradient_em: Option<String>,
     /// `border-spacing` таблицы: горизонтальный и вертикальный зазор.
     pub border_spacing: Option<(Option<Len>, Option<Len>)>,
     pub outline: Option<Outline>,
     /// `backdrop-filter: blur(N)` — размытие того, что под элементом.
     pub backdrop_blur: Option<f32>,
+    /// `backdrop-filter`: цветовые функции списка (без размытия). Рисуются
+    /// матрицей 4×5 тем же проходом подложки (`Filter::color_matrix`).
+    pub backdrop_color: Option<Filter>,
 
     pub word_spacing: Option<Len>,
     /// Межбуквенный интервал ПОСЛЕ последнего знака этого куска.
@@ -823,6 +2094,11 @@ pub struct Computed {
     /// оно не приходит и по дереву не наследуется.
     pub letter_spacing_after: Option<Len>,
     pub text_transform: Option<TextTransform>,
+    /// Добавки `text-transform` к регистру (css-text-3 §2.1: значение —
+    /// `[ case ] || full-width || full-size-kana`, плюс `math-auto`
+    /// MathML Core §2.1.5): `TT_FULL_WIDTH` | `TT_KANA` | `TT_MATH`. Живут
+    /// вместе с `text_transform` и наследуются вместе с ним.
+    pub text_transform_flags: u8,
     pub text_indent: Option<Len>,
     /// `text-indent: … each-line` — отступ повторяется после жёстких разрывов.
     pub text_indent_each_line: Option<bool>,
@@ -840,6 +2116,12 @@ pub struct Computed {
     pub bidi_override: Option<bool>,
     /// `unicode-bidi: isolate` — кусок не влияет на порядок соседей.
     pub bidi_isolate: Option<bool>,
+    /// `unicode-bidi: embed` — свой уровень встраивания (RLE/LRE … PDF). Без
+    /// него (`normal`) `direction` строчного элемента порядка знаков НЕ
+    /// меняет (css-writing-modes-3 §2.2: «normal — the element does not open
+    /// an additional level of embedding»). Атрибут `dir` ставит его сам
+    /// (`dom.rs: apply_direction`).
+    pub bidi_embed: Option<bool>,
     /// `unicode-bidi: plaintext` — сторона письма решается для каждого абзаца
     /// между жёсткими разрывами. HTML ставит это правило на `dir="auto"`.
     pub bidi_plaintext: Option<bool>,
@@ -847,6 +2129,9 @@ pub struct Computed {
     /// соседство с пробелом. Это НЕ то же самое, что `word-break: break-all`:
     /// тот рвёт только внутри слова.
     pub break_anywhere_strict: Option<bool>,
+    /// `line-break: normal` (1) / `loose` (2): уровень строгости переноса
+    /// CJK (css-text-3 §5.2); `auto`/`strict`/`anywhere` — `None`.
+    pub line_break_loose: Option<u8>,
     /// `word-break: keep-all` — иероглифическое письмо переносится ТОЛЬКО по
     /// пробелам, между знаками разрыв запрещён.
     pub keep_all: Option<bool>,
@@ -859,12 +2144,25 @@ pub struct Computed {
     /// `-webkit-line-clamp`: действует ТОЛЬКО в паре с
     /// `display: -webkit-box` и `-webkit-box-orient: vertical`
     /// (css-overflow-3 §webkit-line-clamp) — поэтому своё поле и гейт.
-    pub webkit_line_clamp: Option<u32>,
+    /// Какое сокращение записало `line_clamp` последним: `-webkit-line-clamp`
+    /// ставит `continue: -webkit-legacy`, который действует только при
+    /// `display: -webkit-box` с вертикальной ориентацией (css-overflow-4
+    /// §5.1); оба сокращения — одни лонгхенды, побеждает последнее.
+    pub clamp_legacy: Option<bool>,
     /// `line-clamp: auto` — обрезка по max-height контейнера
     /// (css-overflow-4 §line-clamp), без счёта строк.
     pub clamp_auto: Option<bool>,
     /// `fill` для SVG-фигур (CSS-презентация, SVG 2).
     pub svg_fill: Option<String>,
+    /// `stroke` и `stroke-width` фигуры (SVG 2 §presentation attributes):
+    /// правила из `<style>` с селекторами до растеризатора иначе не доедут —
+    /// он видит только сериализованную разметку.
+    pub svg_stroke: Option<String>,
+    pub svg_stroke_width: Option<String>,
+    /// CSS-геометрия фигуры (SVG 2 §Geometry properties): `x` и `y`.
+    /// Ширина и высота уже живут в `width`/`height`.
+    pub svg_x: Option<Len>,
+    pub svg_y: Option<Len>,
     pub webkit_box: Option<bool>,
     pub webkit_box_vertical: Option<bool>,
     /// `text-fit` — подбор кегля под ширину коробки.
@@ -884,13 +2182,31 @@ pub struct Computed {
     pub column_count: Option<u16>,
     /// `column-width` — минимальная ширина колонки.
     pub column_width: Option<Len>,
+    /// `column-height` (css-multicol-2 §ch) — заданная высота колонки;
+    /// `auto` хранится отсутствием значения.
+    pub column_height: Option<Len>,
+    /// `column-wrap` (css-multicol-2 §cwr): `Some(true)` — `wrap`, лишние
+    /// колонки уходят в новый ряд; `Some(false)` — `nowrap`, вбок; `None` —
+    /// `auto`: как `wrap` при заданном `column-height`, иначе `nowrap`.
+    pub column_wrap: Option<bool>,
     /// `column-gap` — зазор между колонками многоколоночного потока.
     /// Умолчание CSS — `normal`, то есть один кегль.
     pub column_gap: Option<Len>,
     /// `translate` — визуальный сдвиг, не меняющий раскладку.
     pub translate: Option<(Len, Len)>,
-    /// `text-shadow`: смещение, размытие и цвет.
+    /// `text-shadow`: смещение, размытие и цвет — ПЕРВАЯ (верхняя) тень списка.
     pub text_shadow: Option<Shadow>,
+    /// Остальные тени `text-shadow` в порядке записи: свойство — СПИСОК, и
+    /// «the first shadow is on top» (css-text-decor-3 Overview.bs:881-882).
+    /// Первая живёт в `text_shadow`: на неё смотрят зум и наследование.
+    /// Прежде хвост отбрасывался — `-1em 0em orange, 1em 0em blue` у эталона
+    /// `box-shadow-multiple-001-ref` рисовал одну оранжевую.
+    pub text_shadow_rest: Vec<Shadow>,
+    /// `text-shadow` с длинами в единицах шрифта ждёт своего кегля, как
+    /// `shadow_raw` у `box-shadow` (вычисленное значение — «three absolute
+    /// lengths», css-text-decor-3 Overview.bs:868-869), и разбирается в
+    /// `resolve_em`.
+    pub text_shadow_raw: Option<String>,
     /// `animation` — ссылка на набор кадров.
     pub animation: Option<AnimSpec>,
     /// `transition` — длительность перехода в секундах.
@@ -901,15 +2217,91 @@ pub struct Computed {
     pub resize: Option<(bool, bool)>,
     /// `transform`/`rotate`/`scale`: поворот в радианах и масштаб по осям.
     pub transform: Option<Transform>,
+    /// `rotate` вокруг оси z (радианы) и `scale` по осям — отдельными полями:
+    /// разложение в `transform` порядок теряет, а css-transforms-2 §ctm ставит
+    /// их СЛЕВА от списка `transform` (п.4-5 перед п.7). `None` — `none`.
+    pub rotate_prop: Option<f32>,
+    pub scale_prop: Option<(f32, f32)>,
+    /// `offset-path` как записано (motion-1 §offset-path): `path('…')`,
+    /// `ray(…)`, `<basic-shape>` или `url(#id)`. Разбирается не здесь:
+    /// сэмплеру нужны все остальные `offset-*`, а каскад сводит их вразнобой.
+    pub offset_path: Option<String>,
+    /// `offset-distance`: длина или доля ДЛИНЫ ПУТИ (а не коробки).
+    pub offset_distance: Option<Len>,
+    /// `offset-rotate` как записано: `auto | reverse | <angle> | auto <angle>`.
+    pub offset_rotate: Option<String>,
+    /// `offset-anchor` как записано; `auto` — это точка `transform-origin`.
+    pub offset_anchor: Option<String>,
+    /// `offset-position` как записано: `normal | auto | <position>`.
+    pub offset_position: Option<String>,
+    /// `backface-visibility: hidden`.
+    pub backface_hidden: Option<bool>,
     /// `transform-origin` в долях размера элемента.
     pub transform_origin: Option<(f32, f32)>,
+    /// `transform`/`transform-origin` с длинами в единицах шрифта: запись
+    /// ждёт своего кегля и разбирается в `resolve_em` (css-transforms-1
+    /// §computed value: относительные длины становятся абсолютными).
+    pub transform_raw: Option<String>,
+    /// `box-shadow` с длинами в единицах шрифта — так же ждёт своего кегля и
+    /// разбирается в `resolve_em` (`box-shadow-calc`: `calc(1em + 10px)`
+    /// прежде ронял тень целиком — `parse_shadows` пропускает `em`).
+    pub shadow_raw: Option<String>,
+    /// Есть ли выше трансформированный предок: он — содержащий блок и для
+    /// `position: fixed` (css-transforms-1 §transform-rendering: «…for all
+    /// of its absolute-position descendants, fixed-position descendants»).
+    pub transform_ancestor: bool,
+    pub transform_origin_raw: Option<String>,
     /// Точка отсчёта преобразования В ТОЧКАХ по осям — когда записана длиной,
     /// а не долей. Долю из неё делает отрисовка: размер коробки известен там.
     pub transform_origin_px: (Option<f32>, Option<f32>),
+    /// Третья координата `transform-origin` в точках (css-transforms-2);
+    /// на плоскую матрицу не влияет, на 4×4 — `T(o)·M·T(−o)` по трём осям.
+    pub transform_origin_z: Option<f32>,
+    /// `perspective` (css-transforms-2 §perspective-property) — расстояние
+    /// до глаза в css-точках для ОБЪЁМНЫХ ДЕТЕЙ, уже не меньше 1px («values
+    /// less than 1px must be treated as 1px»); `none` = None.
+    pub perspective: Option<f32>,
+    /// `perspective-origin` долями коробки (умолчание 50% 50%) и в точках по
+    /// осям, когда записан длиной — как `transform_origin`/`_px`.
+    pub perspective_origin: Option<(f32, f32)>,
+    pub perspective_origin_px: (Option<f32>, Option<f32>),
+    /// `transform-box: fill-box` у SVG-фигуры (css-transforms-1
+    /// §transform-box): длины `transform-origin` отсчитываются от рамки
+    /// фигуры, а не от вьюпорта.
+    pub transform_box_fill: Option<bool>,
+    /// Опорная коробка `transform-box` целиком (css-transforms-1
+    /// §transform-box) — для SVG-элементов без CSS-коробки: 0 — `view-box`,
+    /// 1 — `fill-box` (и `content-box`: «the used value for content-box is
+    /// fill-box»), 2 — `stroke-box` (и `border-box`). None — не задано.
+    pub transform_box: Option<u8>,
+    /// `vector-effect: non-scaling-stroke` (SVG 2 §vector-effect): толщина
+    /// обводки задана в точках экрана.
+    pub svg_non_scaling: Option<bool>,
+    /// Ячейка матрицы перспективы (см. `PerspectiveFrame`); один и тот же
+    /// `Rc` у `e.style` родителя, его `merged` и `inherited` детей.
+    pub perspective_frame: Option<PerspectiveFrame>,
+    /// `transform-style: preserve-3d` — элемент образует объёмный контекст
+    /// (css-transforms-2 §transform-style-property). ИСПОЛЬЗУЕМОЕ значение
+    /// гасят «групповые» свойства — это решает `render::flattens_3d`,
+    /// потому что они могут быть записаны в блоке ПОСЛЕ `transform-style`.
+    pub preserve_3d: Option<bool>,
+    /// Ячейка накопленной 4×4 (см. `Frame3d`): заводится при разборе
+    /// `transform-style`, наполняется `Transformed::paint` владельца,
+    /// читается объёмным путём ПРЯМЫХ детей.
+    pub frame_3d: Option<Frame3d>,
     /// `float`: -1 — влево, 1 — вправо, 0 — не обтекается.
     pub float: Option<i8>,
-    /// `clear` — прервать обтекание перед этим блоком.
-    pub clear: Option<bool>,
+    /// `clear: inherit` — сторону берёт родитель. Своего наследования у
+    /// `clear` нет (свойство ненаследуемое), поэтому ключевое слово помнится
+    /// отдельно и разрешается там, где родительский стиль под рукой.
+    pub(crate) clear_inherit: bool,
+    /// `background-attachment: fixed` — плитка считается от области
+    /// просмотра, а не от коробки.
+    pub bg_fixed: Option<bool>,
+    /// `clear` — сторона, с которой обтекание обрывается перед этим блоком:
+    /// -1 слева, 1 справа, 0 с обеих. Стороны различаются, потому что
+    /// `clear: left` мимо правого флоата проходит насквозь (CSS 2.1 §9.5.2).
+    pub clear: Option<i8>,
     /// `writing-mode`: вертикальное письмо — блоки идут по горизонтали.
     pub vertical: Option<bool>,
     /// `writing-mode: vertical-rl` — блоки идут справа налево.
@@ -928,6 +2320,22 @@ pub struct Computed {
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
     /// момент раскладки ребёнка предков уже не видно.
     pub ortho_limit: Option<f32>,
+    /// Ячейка таблицы, ПАРАЛЛЕЛЬНОЙ своему письму: доступное инлайн-место у
+    /// неё ОПРЕДЕЛЕНО — это мера её КОЛОНКИ (css-tables-3
+    /// §computing-column-measures), — и запасной предел §7.3
+    /// (`ortho_limit`) применять нельзя: тот стоит на месте НЕОПРЕДЕЛЁННОГО
+    /// инлайн-места (css-writing-modes-4 §7.3.1, «an additional constraint is
+    /// used as a fallback in place of the available inline space»). Blink
+    /// делит эти случаи ровно так же: `space_utils.h:36
+    /// SetOrthogonalFallbackInlineSizeIfNeeded` выходит НЕ СДЕЛАВ НИЧЕГО при
+    /// `IsParallelWritingMode(таблица, ячейка)`, а
+    /// `table_layout_utils.cc:1363 SetupTableCellConstraintSpaceBuilder`
+    /// кладёт ячейке `SetAvailableSize({cell_inline_size, …})`, где
+    /// `cell_inline_size` собран из `column_locations` — то есть из дорожки.
+    /// Флаг ставит `table()` своим ячейкам; ГЛУБЖЕ НЕ НАСЛЕДУЕТСЯ (как
+    /// `hug_inline`): `inline::inherit` начинает с `own.clone()`, а у
+    /// вложенного элемента поле пусто.
+    pub ortho_col: bool,
     /// Повёрнутый абзац `vertical-lr`: строки-колонки идут слева направо —
     /// подача строк снизу вверх (см. `Paragraph::reversed_lines`).
     pub lines_reversed: Option<bool>,
@@ -946,10 +2354,53 @@ pub struct Computed {
     /// Сдвиг куска по вертикали в долях кегля: `vertical-align: super` и
     /// `sub`. Не наследуется — принадлежит самому куску.
     pub vertical_shift: Option<f32>,
+    /// То же, но ПРОЦЕНТОМ: доля считается от `line-height` куска, а не от
+    /// кегля (§10.8.1), и хранить её вместе с `em` нельзя.
+    pub vertical_shift_pct: Option<f32>,
+    /// Сдвиг от базовой линии, названный ДЛИНОЙ: хранится в точках, потому
+    /// что доля кегля на момент разбора ещё неизвестна — у строчного своего
+    /// кегля обычно нет, он приходит наследованием.
+    pub vertical_shift_px: Option<f32>,
+    /// Сдвиг, названный единицей ШРИФТА (`ex`, `ch`): хранится сырым —
+    /// метрики гарнитуры и кегль известны только при наборе строки.
+    pub vertical_shift_len: Option<Len>,
+    /// `vertical-align: text-top` (`true`) и `text-bottom` (`false`): край
+    /// куска равняется по краю ТЕКСТОВОЙ области родителя, а не строки, —
+    /// величина зависит от кеглей обоих и считается при наборе.
+    pub vertical_align_text: Option<bool>,
+    /// Кегль РОДИТЕЛЯ строчного куска: `text-top`/`text-bottom` равняются по
+    /// его текстовой области, а не по самой высокой в строке.
+    pub vertical_align_base: Option<f32>,
+    /// Накопленный относительный сдвиг строчных предков куска в точках
+    /// (CSS 2.1 §9.4.3): двигает ТОЛЬКО отрисовку, места в потоке не меняет
+    /// и строку не растит.
+    pub rel_shift: Option<(f32, f32)>,
     /// `text-orientation: upright` — глифы стоят прямо, а не лежат боком.
     /// Меняет и меру `ch`: продвижение нуля идёт вдоль оси СТРОКИ, а она в
     /// вертикальном письме вертикальна, то есть равна кеглю.
     pub upright: Option<bool>,
+    /// `text-orientation: sideways` — у вертикального текста ДОМИНАНТНАЯ
+    /// базовая алфавитная, а не центральная (css-writing-modes-4 §4.2:
+    /// «In vertical typographic mode, the central baseline is used as the
+    /// dominant baseline when text-orientation is mixed or upright»).
+    /// `upright` этого не различает: `Some(false)` — и `mixed`, и `sideways`.
+    pub text_sideways: Option<bool>,
+    /// Родитель — сетка (не лунки): 1 — горизонтальная, 2 — `vertical-lr`,
+    /// 3 — `vertical-rl`. Ставится при наследовании; по нему элементу
+    /// переставляются оси выравнивания вертикальной сетки и пишутся биты
+    /// базовой по оси x (`apply.rs`).
+    pub(crate) parent_grid: u8,
+    /// Родитель — гибкий контейнер, сетка или лунки: элемент блокифицирован
+    /// (css-display-3 §2.7), хотя `display` в стиле остаётся строчным.
+    pub(crate) parent_flex_grid: bool,
+    /// Родитель — лунки (`display: grid-lanes`).
+    pub(crate) parent_lanes: bool,
+    /// Родитель — подсетка (`grid-template-*: subgrid`).
+    pub(crate) parent_subgrid: bool,
+    /// Абзац вертикального письма набирается САМ, по оси строки решённой
+    /// раскладкой (`lines::Paragraph::vertical`): `Some(rl)`. Ставится только
+    /// на копию стиля внутри `render::paragraph`.
+    pub(crate) para_vertical: Option<bool>,
     /// Логические стороны и размеры до перевода в физические.
     pub logical: Option<Box<Logical>>,
     /// Ширина пришла из ЛОГИЧЕСКОГО `inline-size` при вертикальном письме:
@@ -968,6 +2419,10 @@ pub struct Computed {
     pub first_letter: Option<Box<Computed>>,
     /// Стиль первой строки абзаца (`::first-line`).
     pub first_line: Option<Box<Computed>>,
+    /// `initial-letter` (css-inline-3 §initial-letter): размер буквицы в
+    /// строках и её осадка (sink) — на базовой какой строки она стоит.
+    /// `None` — `normal`, обычная буква. Живёт в слое `::first-letter`.
+    pub initial_letter: Option<(f32, u32)>,
     /// Фон строчного бокса: `<span style="background">` внутри абзаца.
     ///
     /// Обычный фон принадлежит коробке, а у строчного бокса коробки нет — он
@@ -979,10 +2434,18 @@ pub struct Computed {
     /// своя. Коробки в раскладке у такого `<span>` нет — иначе его текст
     /// перестаёт переноситься вместе с абзацем.
     pub inline_border: Option<(Color, [f32; 4])>,
-    /// Поля вокруг фона строчного бокса: `padding` у `<span>`.
-    pub inline_pad: Option<(f32, f32)>,
+    /// Поля вокруг фона строчного бокса: `padding` у `<span>`, по четырём
+    /// сторонам в порядке `[верх, право, низ, лево]`.
+    pub inline_pad: Option<[f32; 4]>,
     /// Скругление фона строчного бокса.
     pub inline_radius: Option<f32>,
+    /// Сплошная заливка предка с `background-clip: text` (css-backgrounds-4
+    /// §background-clip): глифы поддерева красятся цветом текста ПОВЕРХ неё.
+    /// Ставит и снимает `inline::inherit`; `None` — такого предка нет.
+    pub text_clip_fill: Option<Color>,
+    /// Цвет текста ДО наложения на `text_clip_fill`: его получают внепоточные
+    /// потомки — в геометрию текста они не входят.
+    pub text_clip_raw: Option<Color>,
     /// `background-clip`: до какого края красится фон. `None` — до внешнего
     /// края рамки, как по умолчанию в CSS.
     pub bg_clip: Option<BgClip>,
@@ -995,22 +2458,83 @@ pub struct Computed {
     /// Узел, чей фон красит КАНВАС (CSS 2.2 §14.2): корневой html, а без
     /// его фона — body. Ставится сборкой документа, не каскадом.
     pub(crate) canvas_bg: bool,
+    /// Письмо `<body>` НЕ стало письмом области просмотра: обособление есть
+    /// либо на `<html>`, либо на самом `<body>`, и распространение свойств
+    /// тела наружу выключено (css-contain-2 §containment-types: «when any
+    /// containments are active on either the HTML html or body elements,
+    /// propagation of properties from the body element to the initial
+    /// containing block, the viewport, or the canvas background, is
+    /// disabled»). Вычисленное письмо тела при этом остаётся при нём
+    /// (css-writing-modes §3.1 — распространяется только used корневой
+    /// коробки), поэтому отличить главный поток по одному лишь письму тела
+    /// нельзя, и признак приходится нести пометкой. Ставится сборкой
+    /// документа, не каскадом.
+    pub(crate) wm_contained: bool,
+    /// Коробка КОРНЯ документа: её содержащий блок — начальный, и высота его
+    /// определена всегда (§10.5). Ставится вместе с пометкой канваса, чтобы
+    /// снимаемая обёртка уносила признак с собой.
+    pub(crate) root_box: bool,
+    /// ОПРЕДЕЛЕНА ли высота содержащего блока: от неё зависит, считается ли
+    /// доля высоты вообще (§10.5 — иначе значение равно `auto`).
+    pub(crate) cb_height_def: bool,
+    /// Режим quirks: высота, от которой ДЕТИ этой коробки решают долю
+    /// высоты при неопределённом содержащем блоке (Quirks Mode §3.5 «The
+    /// percentage height calculation quirk» — ближайший предок с не-`auto`
+    /// высотой). `None` — квирка нет или опоры не нашлось.
+    pub(crate) quirk_pct_base: Option<f32>,
+    /// `calc-size(<basis>, <expr>)` у `width`, `height`, `min-width`,
+    /// `min-height` (css-values-5 §calc-size): `(mul, add, max, min)` над
+    /// размером основы-ключевого слова; само свойство при этом `auto`, а
+    /// выражение применяет раскладка (`taffy::Style::calc_size`).
+    pub(crate) calc_size: [Option<(f32, f32, f32, f32)>; 4],
+    /// Коробка РАСТЯНУТА раскладкой: элемент гибкого контейнера или сетки без
+    /// своей высоты получает её от полосы, и для потомков она определена.
+    pub(crate) stretched: bool,
+    /// Элемент КОЛОНКИ гибкого контейнера: определён ли главный размер
+    /// контейнера (css-flexbox-1 §9.8 п.1). `None` — не элемент колонки.
+    pub(crate) flex_main_def: Option<bool>,
+    /// Элемент ГИБКОГО контейнера (родитель `display: flex | inline-flex`).
+    /// Ставится сборкой детей ряда/колонки в `render::blocks`, не каскадом и
+    /// не наследуется (`inline::inherit` клонирует СВОЙ стиль ребёнка). Нужен
+    /// таблице: у неё гибким элементом становится обёртка с подписями
+    /// (css-flexbox-1 §4).
+    pub(crate) flex_item: bool,
+    /// Довод `fit-content(<length-percentage>)` у `width`, `min-width`,
+    /// `max-width` (по порядку); само значение остаётся `Len::FitContent`.
+    /// Новый вариант `Len` потянул бы правку полусотни `match` по крейту, а
+    /// потребитель у довода один — обёртка-сетка `render::content_sized`.
+    pub(crate) fit_arg: [Option<Len>; 3],
     pub clip_margin: Option<f32>,
     /// Коробка отсчёта края обрезки: 0 content, 1 padding, 2 border;
     /// None — умолчание (padding-box).
     pub clip_margin_box: Option<u8>,
     /// `clip-path: polygon(…)`: вершины в долях или точках коробки.
     pub clip_polygon: Option<Vec<(Len, Len)>>,
+    /// Правило намотки полигона `clip-path: polygon(evenodd, …)`.
+    pub clip_polygon_evenodd: bool,
     /// `mix-blend-mode`: как слой смешивается с тем, что под ним.
     pub blend: Option<u8>,
     /// `isolation: isolate`: поддерево смешивается внутри себя, а с кадром —
     /// уже готовой картинкой.
     pub isolate: Option<bool>,
+    /// `will-change` (css-will-change-1): разряды `wc::*`; ноль — `auto`.
+    /// Слоёв композитора у нас нет, поэтому от обещания остаётся ровно то,
+    /// что дало бы само свойство: содержащий блок и контекст наложения.
+    pub will_change: u8,
     /// `font-stretch` — ширина начертания в процентах от обычной.
     ///
     /// Это НЕ возможность OpenType: узкое начертание — отдельный шрифт
     /// семейства, и выбирается он при подборе.
     pub font_stretch: Option<f32>,
+    /// `font-size-adjust` (css-fonts-5): метрика (0 ex-height, 1 cap-height,
+    /// 2 ch-width, 3 ic-width, 4 ic-height; `u8::MAX` — `none`) и желаемая
+    /// доля кегля (`NaN` — `from-font`). Наследуется.
+    pub font_size_adjust: Option<(u8, f32)>,
+    /// Вычисленный кегль и заданная высота строки ДО подгонки кегля. Детям
+    /// уходит ИМЕННО вычисленный кегль («otherwise the effect would
+    /// compound»), и от него же считаются `em` и числовой `line-height`.
+    /// Пусто, пока используемый кегль равен вычисленному.
+    pub font_adjust_base: Option<(f32, Option<Len>)>,
     /// `tab-size` — во сколько пробелов раскрывается табуляция.
     pub tab_size: Option<u8>,
     /// `tab-size` в ДЛИНЕ: шаг табуляции задан не числом знаков, а величиной.
@@ -1022,43 +2546,361 @@ pub struct Computed {
     /// `contain: size` — коробка меряется ПУСТОЙ (css-contain-1 §3):
     /// размер задают явные свойства и `contain-intrinsic-size`.
     pub contain_size: Option<bool>,
+    /// `contain: inline-size` — обособлена только СТРОЧНАЯ ось
+    /// (css-contain-2 §inline-size): содержимое не влияет на неё, но
+    /// блочную ось по-прежнему задаёт.
+    pub contain_inline_size: Option<bool>,
+    /// `contain: layout|content` — независимый контекст форматирования.
+    pub contain_layout: Option<bool>,
+    /// `display: flow-root` — свой контекст форматирования (коробка Block).
+    pub flow_root: Option<bool>,
+    /// `display: inline` дословно (не inline-block): §9.7/§10.2 дорешиваются
+    /// после каскада — см. `dom::finish_inline_display`.
+    pub inline_display: Option<bool>,
+    /// `display: run-in` — вбегание решает `dom::fold_run_ins`.
+    pub run_in: Option<bool>,
+    /// Есть ли выше по дереву коробка, устанавливающая содержащий блок для
+    /// внепоточных потомков (§10.1 п.4). Ставится при наследовании: сам
+    /// каскад предков не видит.
+    pub(crate) cb_ancestor: bool,
+    /// Есть ли выше по дереву корень подложки (filter-effects-2
+    /// §BackdropRoot): прозрачность, фильтр, маска, clip-path, смешивание,
+    /// `backdrop-filter`, `will-change` с ними. Ставится при наследовании.
+    pub(crate) backdrop_root_above: bool,
+    /// `will-change` называет свойство, создающее корень подложки.
+    pub(crate) will_change_root: bool,
+    /// `backdrop-filter` задан (не `none`): корень подложки при ЛЮБОМ списке,
+    /// даже тождественном `invert(0)`, у которого матрицы нет
+    /// (filter-effects-2 Overview.bs:119; Blink
+    /// paint_property_tree_builder.cc:1846 `!BackdropFilter().IsEmpty()`).
+    pub(crate) backdrop_filter_set: bool,
+    /// `view-transition-name` не `none` — тоже корень подложки
+    /// (css-view-transitions-1 Overview.bs:582).
+    pub(crate) vt_name: bool,
+    /// `backdrop-filter: url(#id)` — ссылка на SVG `<filter>`; сводится к
+    /// матрице 4×5 на отрисовке (`render::svg_filter_matrix`).
+    pub(crate) backdrop_ref: Option<String>,
+    /// `display: table-caption` — метка для таблицы.
+    pub is_caption: Option<bool>,
+    /// Род группы рядов: 0 — шапка, 1 — тело, 2 — подвал. `Display` у всех
+    /// трёх ОДИН (`TableRowGroup`), раскладка у них одинаковая, — а §17.5.3
+    /// требует переставить шапку вверх, подвал вниз. Различить их по
+    /// `Display` нечем, поэтому род хранится отдельно.
+    pub row_group_kind: Option<u8>,
+    /// Колоночная роль: 0 — `display: table-column`, 1 —
+    /// `table-column-group`. `Display` при этом ОСТАЁТСЯ `None`: коробки
+    /// колонка не порождает (§17.2.1), и весь поток обходит её ровно как
+    /// раньше. Метка — единственное, что сохраняет узел в дереве: из него
+    /// берутся ширина дорожки (§17.5.2.1), слой краски (§17.5.1) и рамка
+    /// для разбора сросшихся кромок (§17.6.2.1).
+    pub col_role: Option<u8>,
+    /// `contain: style` — счётчики и кавычки не выходят из поддерева.
+    pub contain_style: Option<bool>,
     /// `contain-intrinsic-size`: подменная своя величина (css-sizing-5 §5).
     pub contain_intrinsic: (Option<f32>, Option<f32>),
+    /// `content-visibility: hidden` — детей не собирать вовсе.
+    pub skip_content: Option<bool>,
     /// `clip-path`/`mask`: обрезка по кругу или скруглённому прямоугольнику.
     /// Хранится долей радиуса от меньшей стороны либо радиусом в точках.
     pub clip_round: Option<f32>,
+    /// `clip-path: circle(...)|ellipse(...)` с параметрами: сырые аргументы
+    /// формы (`shape:circle(...)`). Радиусы и центр зависят от размера
+    /// коробки — он известен только отрисовке, поэтому форма растрируется
+    /// маской буфера группы (см. `background::source`).
+    pub clip_shape: Option<String>,
+    /// `mask-size`: размер плитки маски; None — auto (интринзик картинки).
+    pub mask_size: Option<(Len, Len)>,
+    /// `mask-repeat`: пооосный запрет мощения (no-x, no-y) — ПЕРВОГО слоя.
+    pub mask_no_repeat: Option<(bool, bool)>,
+    /// То же ПО СЛОЯМ (css-masking-1 §7.6, `<repeat-style>#`): запись
+    /// `no-repeat, repeat` задаёт свою укладку каждому слою. Список короче
+    /// набора слоёв повторяется (css-backgrounds-3 §2.2).
+    pub mask_repeat_list: Option<Vec<(bool, bool)>>,
+    /// `mask-size: contain|cover` (1|2): вписывание по интринзику.
+    pub mask_fit: Option<u8>,
+    /// `mask-mode: luminance` — маскирует светимость, а не альфа.
+    pub mask_luminance: Option<bool>,
+    /// `mask-mode: alpha` — альфа и для ссылки на `<mask>` (css-masking-1
+    /// §7.2: `match-source` берёт `mask-type` определения).
+    pub mask_alpha_mode: Option<bool>,
+    /// `mask-type: alpha` у элемента `<mask>` (css-masking-1 §7.16).
+    pub mask_type_alpha: Option<bool>,
+    /// `mask-origin`: коробка укладки плитки (0 border, 2 padding, 3 content).
+    pub mask_origin: Option<u8>,
+    /// Готовые коробки маски в CSS-точках (укладка t/r/b/l от коробки
+    /// слоя внутрь; окраска — то же либо None = без обрезки) — для SVG-детей,
+    /// у которых fill-/stroke-/view-box считает `svg::masked_layers`, а не
+    /// рамка и отбивка (`render::grouped`).
+    pub mask_box_override: Option<([f32; 4], Option<[f32; 4]>)>,
+    /// Блок, вынесенный расщеплением строчного хозяина (block-in-inline,
+    /// `render::blocks`): в дереве отрисовки он брат хозяина, а по DOM — его
+    /// ребёнок. Объёмный контекст и перспектива деда на него не действуют:
+    /// плоский строчный хозяин — лист контекста, поддерево сплющивается в его
+    /// плоскость (css-transforms-2 §3d-rendering-context; §perspective — только
+    /// прямые дети). Ставится при выносе, читает `render::transformed`.
+    pub hoisted_block: bool,
+    /// Пользовательская единица SVG-ребёнка в CSS-точках (масштаб `viewBox`
+    /// или `zoom`); 0 — не задано (= 1). Интринзик плитки маски у такого
+    /// ребёнка считается в его единицах (`interact::Grouped::mask_scale`).
+    pub mask_user_scale: f32,
+    /// `mask-clip`: коробка окраски маски; вне её элемент скрыт. 255 — no-clip.
+    pub mask_clip: Option<u8>,
+    /// `mask-composite` по слоям: 0 add, 1 subtract, 2 intersect, 3 exclude.
+    pub mask_composite: Option<Vec<u8>>,
+    /// `clip: rect(t r b l)` (CSS 2.1 §11.1.2, только absolute): координаты
+    /// видимой области от углов border-box; None в позиции — auto (край).
+    pub clip_rect: Option<[Option<f32>; 4]>,
+    /// Тот же прямоугольник, но КАК НАПИСАН: единицы шрифта на разборе ещё не
+    /// меряются, а `clip: rect(1em, …)` без них читался как `auto` и не
+    /// обрезал вовсе (`visufx/clip-079/080/091/092`). Сводится к точкам в
+    /// `resolve_em`, где кегль и метрики семейства уже известны.
+    pub clip_len: Option<[Option<Len>; 4]>,
+    /// `clip-path: inset(t r b l ...)`: срезы краёв видимой области.
+    pub clip_inset: Option<[Len; 4]>,
+    /// `clip-path: rect(t r b l)` — координаты КРАЁВ от верхнего-левого
+    /// угла; None = auto (край коробки).
+    pub clip_edges: Option<[Option<Len>; 4]>,
+    /// `clip-path: xywh(x y w h)` — прямоугольник от угла.
+    pub clip_xywh: Option<[Len; 4]>,
+    /// `column-fill: auto` — колонки заполняются по очереди, без баланса.
+    pub column_fill_auto: Option<bool>,
+    /// `scroll-marker-group` (css-overflow-5): `Some(true)` — группа маркеров
+    /// ПЕРЕД скроллером (`before`), `Some(false)` — после (`after`), `None` —
+    /// `none`. Не наследуется.
+    pub scroll_marker_group: Option<bool>,
+    /// `column-span: all` — блок растянут на все колонки.
+    pub column_span: Option<bool>,
+    /// `page: <custom-ident>` — именованная страница (css-page-3 §"Using named
+    /// pages"). `auto` хранится отсутствием значения: используемое значение
+    /// берётся у ближайшего предка с именем (там же, шаг 1 алгоритма).
+    pub page: Option<String>,
+    /// ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v153, `scout-boxdeco-2026-09.md`):
+    /// `box-decoration-break: clone` — украшение на каждом фрагменте
+    /// (21 хунк: разбор, `Kid::clone_dec`, ветка в `fill_at`, `frags_of`,
+    /// `clone_fragment`). Срез `L-brk` 2874: +2/−2 при ожидании +6…+19 —
+    /// `clone-004`, `-012` взяты, но `clone-005.tentative` 0.00 → 99.00 и
+    /// `clone-007` 0.00 → 2.08. Ветка `clone` в `fill_at` ломает уже
+    /// работавший `slice` у вложенных случаев; нужен отдельный проход
+    /// планирования фрагментов, а не правка общей укладки.
+    /// `break-inside: avoid*` — коробку нельзя разрывать между колонками и
+    /// страницами (css-break-3 §4.1). Свойство не разбиралось вовсе, и
+    /// отличить монолит от обычной коробки было нечем.
+    pub break_inside_avoid: bool,
+    /// `box-decoration-break: clone` (css-break-4 §break-decoration): «Each
+    /// box fragment is independently wrapped with the border, padding, and
+    /// margin … The background is drawn independently in each fragment».
+    /// Не наследуется; начальное `slice` = `false`.
+    pub bdb_clone: bool,
+    /// `break-before`/`break-after` (css-break-4 §3.1): принудительный разрыв
+    /// колонки/страницы перед или после коробки.
+    pub break_before_force: bool,
+    pub break_after_force: bool,
+    /// Те же свойства со ЗАПРЕЩАЮЩИМИ значениями — css-break-4 §3.1 «avoid
+    /// break values»: `avoid`, `avoid-page`, `avoid-column`, `avoid-region`.
+    /// Правило 1 §4.3: «A fragmented flow may break at a class A break point
+    /// only if all the break-after and break-before values applicable to this
+    /// break point allow it». Разбирались ТОЛЬКО принудительные значения, и
+    /// сообщить движку запрет разрыва МЕЖДУ соседями было нечем.
+    pub break_before_avoid: bool,
+    pub break_after_avoid: bool,
+    /// `margin-trim` (css-box-4 §margin-trim): биты обрезаемых ЛОГИЧЕСКИХ
+    /// краёв: 1 — `block-start`, 2 — `block-end`, 4 — `inline-start`,
+    /// 8 — `inline-end`. Начальное `none` (0). Блочный контейнер исполняет
+    /// только блочные биты (`render::collapse_margins`), гибкий и сетка —
+    /// все четыре (раскладка, `apply` переводит их в физические).
+    pub margin_trim: u8,
+    /// `zoom` (css-viewport-1 §zoom-property): СВОЙ множитель элемента, как
+    /// написан; `None` — не задан. `0`/`0%` по спеке читаются единицей.
+    /// Читает его ТОЛЬКО проход `zoom::resolve` после каскада.
+    pub zoom: Option<f32>,
+    /// Действующий зум («effective zoom», §599): произведение по цепочке
+    /// предков вместе со своим. `None` ≡ 1 — выведенный `Default`
+    /// тождество, и страница без `zoom` не несёт ни множителя, ни ветки.
+    /// Ставится проходом `zoom::resolve` на каждый элемент под зумом; в
+    /// слитый стиль попадает через `own.clone()` в `inline::inherit` —
+    /// своей строки там не имеет. Читатели шага 2: природный размер
+    /// картинки, `resolve_viewport`.
+    pub zoom_eff: Option<f32>,
+    /// `column-rule-*`: линейка между колонками.
+    pub column_rule_width: Option<Len>,
+    pub column_rule_visible: Option<bool>,
+    pub column_rule_color: Option<Color>,
+    /// `row-rule-*` (css-gaps-1 §color-style-width): линейка в ПОПЕРЕЧНОМ
+    /// промежутке сетки/гибкого контейнера. Начальные значения те же, что у
+    /// `column-rule-*`: `currentcolor`, `none`, `medium` — то есть без
+    /// заданного стиля линейки нет.
+    pub row_rule_width: Option<Len>,
+    pub row_rule_visible: Option<bool>,
+    pub row_rule_color: Option<Color>,
+    /// `column-rule-break`/`row-rule-break` (css-gaps-1 §break): 0 — `none`,
+    /// 1 — `normal` (начальное), 2 — `intersection`. Шаг 1 разбирает
+    /// значение, но рисует всегда непрерывно: в сетке БЕЗ спанов все стыки
+    /// крестовые, и `normal` по спеке проходит сквозь них.
+    pub column_rule_break: Option<u8>,
+    pub row_rule_break: Option<u8>,
+    /// Списки значений линеек по промежуткам (css-gaps-1 §lists); `None` —
+    /// значение одно и лежит в скалярных полях выше. Цвет `None` в списке —
+    /// `currentcolor`.
+    pub column_rule_widths: Option<GapList<Len>>,
+    pub column_rule_styles: Option<GapList<bool>>,
+    pub column_rule_colors: Option<GapList<Option<Color>>>,
+    pub row_rule_widths: Option<GapList<Len>>,
+    pub row_rule_styles: Option<GapList<bool>>,
+    pub row_rule_colors: Option<GapList<Option<Color>>>,
+    /// §inset: [cap-start, cap-end, junction-start, junction-end]; начальное 0.
+    pub column_rule_inset: Option<[GapInset; 4]>,
+    pub row_rule_inset: Option<[GapInset; 4]>,
+    /// §visibility-items: 0 `normal`, 1 `all`, 2 `around`, 3 `between`.
+    pub column_rule_visibility: Option<u8>,
+    pub row_rule_visibility: Option<u8>,
+    /// `rule-overlap: column-over-row` — колонки поверх рядов.
+    pub rule_column_over_row: Option<bool>,
+    /// `shape-outside`: сырая запись формы обтекания плавающего блока.
+    pub shape_outside: Option<String>,
+    /// `shape-margin`: поле вокруг формы обтекания; доля — от ширины
+    /// содержащего блока.
+    pub shape_margin: Option<Len>,
+    /// `shape-image-threshold`: порог альфы для формы из картинки.
+    pub shape_threshold: Option<f32>,
+    /// Вырезы обтекания для абзацев ПОД этим элементом: формы слева и
+    /// справа от верха первого абзаца (заполняет сборка shape-flow).
+    pub flow_shapes:
+        Option<std::sync::Arc<(Vec<crate::flow::FloatShape>, Vec<crate::flow::FloatShape>)>>,
+    /// `mask-position`: смещение плитки; доля — от свободного места
+    /// (коробка минус плитка), как у `background-position`.
+    pub mask_pos: Option<(Len, Len)>,
+    /// Смещение отсчитано от ПРАВОГО/НИЖНЕГО края (`right 30px bottom 25px`).
+    pub mask_pos_far: (bool, bool),
+    /// `mask-position` ПО СЛОЯМ (css-masking-1 §7.7, `<position>#`):
+    /// `(x, y, от правого края, от нижнего края)`. Список короче набора
+    /// слоёв повторяется (css-backgrounds-3 §2.2).
+    pub mask_pos_list: Option<Vec<(Len, Len, bool, bool)>>,
+    /// Эллиптические радиусы углов (`border-radius: H / V`), tl/tr/br/bl:
+    /// растеризатор круглит только окружностью — такой угол уходит
+    /// альфа-маской буфера группы (`shape:rrect(...)`).
+    pub radius_ell: Option<[Option<(f32, f32)>; 4]>,
+    /// Форма углов `corner-shape` (css-borders-4 §corner-shaping): параметр
+    /// суперэллипса K по углам tl/tr/br/bl — `round`=1, `squircle`=2,
+    /// `square`=+∞, `bevel`=0, `scoop`=−1, `notch`=−∞, `superellipse(K)`.
+    /// `None` — все углы круглые (начальное значение). Угол с K≠1 при
+    /// ненулевом радиусе рисуется растровой маской (`Computed::corner_shaped`).
+    pub corner_shape: Option<[f32; 4]>,
+    /// `border-shape` (css-borders-4 §border-shape); `None` — начальное `none`.
+    /// Контур режет буфер группы (`render::grouped`), рамку красит слой
+    /// (`render::decorations`), `border-radius` при этом игнорируется.
+    pub border_shape: Option<BorderShape>,
     /// `filter`: цветовые преобразования, применённые к собственным цветам.
     pub filter: Option<Filter>,
+    /// `filter: url(#id)` — ссылка на SVG-`<filter>` документа; рисуется
+    /// растровым слоем поверх коробки (`interact::FilterLayer`).
+    pub filter_ref: Option<String>,
+    /// `filter: drop-shadow(...)` — тень фильтра; у коробки со сплошным
+    /// фоном становится внешней тенью (`inline::inherit`).
+    pub drop_shadow: Option<Shadow>,
 
     /// `background-image: url(...)` — ссылка на картинку-заливку.
     pub bg_image: Option<String>,
     pub bg_size: BgSize,
     pub bg_pos: BgPos,
+    /// `object-position` замещаемого содержимого (css-images-3 §5.2).
+    pub object_position: Option<BgPos>,
+    /// `object-view-box` (css-images-4 §object-view-box): видимая область
+    /// природного объекта как вырез `inset(top right bottom left)` в точках
+    /// или долях природного размера — `rect()` и `xywh()` сводятся к нему
+    /// при отрисовке (`render::view_box_rect`). Флаг — вид записи:
+    /// 0 `inset`, 1 `rect`, 2 `xywh`.
+    pub(crate) object_view_box: Option<(u8, [Len; 4])>,
+    /// Сырые СПИСКИ фоновых свойств со слоями через запятую: (свойство,
+    /// запись). Поля `bg_*` несут верхний слой; все слои строит `bg_layers`.
+    pub(crate) bg_lists: Vec<(String, String)>,
     pub bg_repeat: Option<BgRepeat>,
-    /// `content` псевдоэлемента: строка, `attr(имя)` либо `counter(имя)`.
-    pub content: Option<String>,
+    /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
+    /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
+    pub content: Option<Vec<ContentItem>>,
+    /// `quotes` (css-content-3 §4.1): пары кавычек по уровням вложенности.
+    /// `None` — наследуется, `Some(None)` — `none` (кавычек нет, но глубина
+    /// всё равно считается). Наследование ведёт обход дерева
+    /// (`Counters::quote`): кавычки нужны уже на сборке псевдоэлемента.
+    pub quotes: Option<Option<Vec<(String, String)>>>,
     /// `counter-reset` — обнулить счётчик с этого узла.
     pub counter_reset: Option<String>,
     /// `counter-increment` — увеличить счётчик на этом узле.
     pub counter_increment: Option<String>,
+    /// `counter-set` — присвоить счётчику значение (css-lists-3 §5).
+    pub counter_set: Option<String>,
     /// Возможности шрифта (`font-feature-settings`, `font-variant`).
     pub font_features: Vec<(String, u32)>,
+    /// Значение СВОЙСТВА `font-feature-settings` целиком (`normal` — пустой
+    /// список). Отдельно от `font_features`: по css-fonts-4 §7.2 оно старше
+    /// `font-variant-*` при ЛЮБОМ порядке объявлений и наследуется своим
+    /// значением, а не пропадает, стоит ребёнку задать `font-variant`
+    /// (`font-variant-04`).
+    pub font_settings: Option<Vec<(String, u32)>>,
+    /// `font-synthesis-weight|style|small-caps: none` — подмена начертания
+    /// запрещена (css-fonts-4 §6.5). Ложь = `none`, пусто = `auto`.
+    pub font_synth: (Option<bool>, Option<bool>, Option<bool>),
+    /// `font-kerning` (css-fonts-4 §6.4): 0 `none`, 1 `normal`, 2 `auto`. Сам
+    /// кернинг уходит тегом `kern`; поле — ради оракула `@supports`: `auto`
+    /// тега не кладёт, и без поля свойство выглядело неподдержанным.
+    pub font_kerning: Option<u8>,
+    /// Знак акцента (`text-emphasis-style`, css-text-decor-3 §5): рисуется
+    /// над каждым знаком базы, как надстрочная аннотация руби.
+    pub text_emphasis: Option<String>,
+    /// Акцент СНИЗУ (`text-emphasis-position: under`).
+    pub emphasis_under: bool,
+    /// `ruby-position` (css-ruby-1 §4.1): `Some(true)` — аннотация ПОД базой
+    /// (`under`), `Some(false)` — над (`over`/`alternate`/`inter-character`),
+    /// `None` — не задано. Наследуется (`inline::inherit`). Прежде делил флаг
+    /// с акцентом, и `text-emphasis-position: under` переворачивал руби.
+    pub ruby_under: Option<bool>,
+    /// `ruby-align` (css-ruby-1 §4.3); `None` — начальное `space-around`.
+    pub ruby_align: Option<RubyAlign>,
+    /// Роль руби-коробки из `display: ruby*` (css-ruby-1 §2.1). Не
+    /// наследуется. `display` при этом остаётся строчным (`InlineBlock` +
+    /// `inline_display`), у `block ruby` — `Block`: все `match` по `Display`
+    /// остаются как есть, роль читается отдельно.
+    pub ruby_role: Option<RubyRole>,
     /// `caret-color` поля ввода.
     pub caret_color: Option<Color>,
     /// `accent-color` флажков и переключателей.
     pub accent_color: Option<Color>,
 }
 
+impl Default for BgSize {
+    fn default() -> Self {
+        BgSize::Auto
+    }
+}
+
 impl Computed {
     /// Градиент, которому нужна МЕХАНИКА ПЛИТКИ (размер, повтор, позиция,
     /// свой край): сплошная заливка её не умеет, рисует слой-картинка.
     pub(crate) fn gradient_as_tile(&self) -> bool {
+        // Несколько слоёв рисует стопка плиток (`bg_layers`): заливка коробки
+        // верхним градиентом легла бы ПОД нижние слои.
+        if self.gradient.is_some() && self.bg_lists.iter().any(|(k, _)| k == "background" || k == "background-image") {
+            return true;
+        }
         self.gradient_raw.is_some()
             && (self.bg_size != crate::computed::BgSize::Auto
                 || self.bg_repeat.is_some()
                 || self.bg_pos.x.is_some()
                 || self.bg_pos.y.is_some()
-                || self.bg_origin.is_some())
+                || self.bg_origin.is_some()
+                // Пространство смешения, которого GPU-путь не выражает
+                // (всё, кроме гамма-sRGB и OKLab — css-color-4 §12.2):
+                // цвет обязан считаться на точку, иначе полярную дугу и
+                // линейный свет пришлось бы изображать полосами, а
+                // квантование полос уже замерено в минус (см. `HSL_ARC`).
+                || !matches!(
+                    self.gradient.as_ref().map(|g| g.space),
+                    None | Some(crate::computed::GradSpace::Srgb)
+                        | Some(crate::computed::GradSpace::Oklab)
+                )
+                // Цвет фона лежит ПОД всеми слоями (css-backgrounds-3 §3.1):
+                // у заливки коробки место одно, поэтому цвет — ей, градиент —
+                // слоем сверху (`bg-color-with-gradient`).
+                || self.background.is_some_and(|c| c.a > 0.0))
     }
 
     /// Место под логические значения — заводится по первому обращению: у
@@ -1072,7 +2914,34 @@ impl Computed {
     /// Зовётся ПОСЛЕ того, как письмо унаследовано: до этого неизвестно, какая
     /// ось строчная. Физическое значение, если оно задано, не трогается —
     /// логическое лишь заполняет пустое место.
-    pub fn resolve_logical(&mut self) {
+    /// Стиль без СВОЕЙ краски: `visibility: hidden` прячет коробку, но не
+    /// поддерево — потомок с `visibility: visible` обязан рисоваться (§11.2).
+    /// Гасить целиком нельзя: раскладка обязана остаться прежней, поэтому
+    /// снимается только краска, а размеры и рамки по толщине не трогаются.
+    pub fn paint_off(&self) -> Computed {
+        let mut c = self.clone();
+        c.hidden = None;
+        c.background = None;
+        c.bg_image = None;
+        c.gradient = None;
+        c.gradient_raw = None;
+        c.border_color = Some(crate::value::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.0,
+        });
+        c.border_colors = [c.border_color; 4];
+        c.outline = None;
+        c.shadows.clear();
+        c.text_shadow = None;
+        c.text_shadow_rest.clear();
+        c.underline = None;
+        c.line_through = None;
+        c
+    }
+
+    pub fn resolve_logical(&mut self, parent_vertical: Option<bool>, is_cell: bool) {
         let Some(logical) = self.logical.take() else {
             return;
         };
@@ -1088,7 +2957,42 @@ impl Computed {
         // Теряются `css-flexbox/gap-001-lr`, `gap-007-lr`, `gap-007-rl`
         // (получает `gap-002-rl`): размер там задан логическим свойством, и
         // после перестановки он ложится поперёк уже повёрнутой раскладки.
-        let vertical = false;
+        // ОТКАТ ПРОТУХ (проверено 30.08 по свежему своду): из трёх названных
+        // выше потерь `gap-007-lr` (0.99) и `gap-007-rl` (0.56) красные и без
+        // перестановки, а «приобретение» `gap-002-rl` зелено само.
+        // ЗАМЕРЕНО И ОТКАЧЕНО: исключать отсюда ячейку таблицы, чтобы вернуть
+        // `table-cell-align-005` и `table-cell-valign-003`. Полный свод CSS3:
+        // те же 4 потери — на этом шаге у ячейки ещё нет `display` (табличность
+        // движок держит по ТЕГУ, а `Display::TableCell` приходит только из
+        // авторского CSS).
+        //
+        // Переставляем только у УНАСЛЕДОВАВШЕГО письмо: у ортогонального узла
+        // (письмо объявлено на нём самом, родитель горизонтален) перестановку
+        // ниже по течению делает табличный и блочный код, и вторая здесь
+        // складывалась с ней в поворот на месте.
+        // РАЗМЕРЫ отображаются по СВОЕМУ письму, а не по письму родителя.
+        // Таблица Abstract-Physical Mapping (css-writing-modes-4,
+        // Overview.bs:1790-1827) даёт `block-size` -> width и
+        // `inline-size` -> height ВСЕМ вертикальным письмам, а колонку
+        // выбирает used-значение `writing-mode` САМОГО элемента: письма
+        // родителя в таблице нет. Blink делает ровно это одним предикатом —
+        // `computed_style.h:1270` `LogicalWidth() = IsHorizontalWritingMode()
+        // ? Width() : Height()` (и так же Logical{Min,Max}{Width,Height},
+        // строки 1275-1287).
+        // Нашей поворотной модели это не мешает: коробки физические на всех
+        // уровнях, вертикальный контейнер кладёт детей `flex_row`
+        // (`render.rs:14461`), поэтому у ортогонального узла (письмо
+        // объявлено на нём, родитель горизонтален) физическая ширина — его
+        // БЛОЧНАЯ ось, а высота — СТРОЧНАЯ, ровно как у унаследовавшего
+        // письмо. Стороны так считаются давно — `side_vertical` ниже.
+        // Ячейка таблицы — единственное исключение: у неё логический
+        // inline-size перекладывает в высоту сам табличный код
+        // (`render.rs:16790-16800` по флагу `width_from_inline`), и второй
+        // перевод здесь сложился бы с ним в поворот на месте
+        // (`table-cell-align-005`, `table-cell-valign-003` — замеренный
+        // откат в шапке функции).
+        let vertical =
+            self.vertical == Some(true) && (parent_vertical == Some(true) || !is_cell);
         let rtl = self.rtl == Some(true);
         // Стороны (поля/отступы/края) переставляются ПО-НАСТОЯЩЕМУ: блочный
         // поток вертикального письма собирается транспонированным рядом
@@ -1110,6 +3014,28 @@ impl Computed {
         };
         // Размеры: строчная ось горизонтальна при обычном письме и
         // вертикальна при вертикальном.
+        let set_ci = |slot: &mut Option<f32>, val: Option<f32>| {
+            if val.is_some() {
+                *slot = val;
+            }
+        };
+        // `contain-intrinsic-*-size` переставляется по СВОЕМУ письму, а не по
+        // общему гейту `vertical` (тот требует ещё и вертикального родителя).
+        // Причина: читается пара через `contains_width()`/`contains_height()`,
+        // а те смотрят ТОЛЬКО на `self.vertical`. У ортогонального узла
+        // (письмо объявлено на нём, родитель горизонтален) условия расходились,
+        // и `contain-intrinsic-inline-size` приезжал поперёк — так падали
+        // `contain-intrinsic-size-logical-002` и
+        // `grid-lanes-contain-intrinsic-size-logical-001`. Размеры и стороны
+        // ниже остаются на прежнем гейте: их перестановку у ортогонального
+        // узла делает код ниже по течению (замер описан выше по функции).
+        if side_vertical {
+            set_ci(&mut self.contain_intrinsic.1, logical.ci_inline);
+            set_ci(&mut self.contain_intrinsic.0, logical.ci_block);
+        } else {
+            set_ci(&mut self.contain_intrinsic.0, logical.ci_inline);
+            set_ci(&mut self.contain_intrinsic.1, logical.ci_block);
+        }
         if vertical {
             set(&mut self.height, logical.inline_size);
             set(&mut self.width, logical.block_size);
@@ -1131,12 +3057,17 @@ impl Computed {
         // Стороны. Начало строчной оси: слева (обычное письмо), справа (оно же
         // справа налево) или сверху (вертикальное). Начало оси блока: сверху,
         // а в вертикальном — справа при `vertical-rl` и слева при `-lr`.
+        // Логическая сторона ложится на физическую, только если объявлена
+        // ПОЗЖЕ её (порядок каскада): UA `padding-inline-start: 40px` у `ul`
+        // против авторского `padding-top: 0` в `vertical-rl`
+        // (`line-box-direction-vrl-019`, `block-flow-direction-vrl-021`).
+        let phys_seq = self.side_seq;
         let sides = [
-            (&logical.padding, 0u8),
-            (&logical.margin, 1),
-            (&logical.inset, 2),
+            (&logical.padding, 0u8, phys_seq.padding),
+            (&logical.margin, 1, phys_seq.margin),
+            (&logical.inset, 2, phys_seq.inset),
         ];
-        for (from, which) in sides {
+        for (from, which, pseq) in sides {
             let to = match which {
                 0 => &mut self.padding,
                 1 => &mut self.margin,
@@ -1156,11 +3087,11 @@ impl Computed {
             } else {
                 (3u8, 1u8, 0u8, 2u8)
             };
-            for (side, val) in [
-                (i_start, from.inline_start),
-                (i_end, from.inline_end),
-                (b_start, from.block_start),
-                (b_end, from.block_end),
+            for (side, val, lseq) in [
+                (i_start, from.inline_start, from.seq[0]),
+                (i_end, from.inline_end, from.seq[1]),
+                (b_start, from.block_start, from.seq[2]),
+                (b_end, from.block_end, from.seq[3]),
             ] {
                 let slot = match side {
                     0 => &mut to.top,
@@ -1168,7 +3099,9 @@ impl Computed {
                     2 => &mut to.bottom,
                     _ => &mut to.left,
                 };
-                set(slot, val);
+                if lseq >= pseq[side as usize] {
+                    set(slot, val);
+                }
             }
         }
         // Логические кромки: раскладываются той же картой сторон — сырое
@@ -1210,6 +3143,19 @@ impl Computed {
         let fix = |l: &mut Option<Len>| match *l {
             Some(Len::Vw(k)) => *l = Some(Len::Px(k * viewport.0)),
             Some(Len::Vh(k)) => *l = Some(Len::Px(k * viewport.1)),
+            Some(Len::Calc(i)) => {
+                let mut s = crate::value::calc_get(i);
+                // Без слагаемых окна складывать нечего: индекс остаётся
+                // (арена append-only, `resolve_viewport` идёт на каждом
+                // слитом стиле), а `collapse` стёр бы процентную смесь
+                // `calc(50% - 3px)` в `None` уже после разбора.
+                if s.vw != 0.0 || s.vh != 0.0 {
+                    s.px += s.vw * viewport.0 + s.vh * viewport.1;
+                    s.vw = 0.0;
+                    s.vh = 0.0;
+                    *l = s.collapse_mixed();
+                }
+            }
             _ => {}
         };
         let sides = |s: &mut Sides| {
@@ -1217,6 +3163,16 @@ impl Computed {
                 match *one {
                     Some(Len::Vw(k)) => *one = Some(Len::Px(k * viewport.0)),
                     Some(Len::Vh(k)) => *one = Some(Len::Px(k * viewport.1)),
+                    Some(Len::Calc(i)) => {
+                        let mut s = crate::value::calc_get(i);
+                        // То же, что у размеров: смесь с долей доживает.
+                        if s.vw != 0.0 || s.vh != 0.0 {
+                            s.px += s.vw * viewport.0 + s.vh * viewport.1;
+                            s.vw = 0.0;
+                            s.vh = 0.0;
+                            *one = s.collapse_mixed();
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1235,10 +3191,45 @@ impl Computed {
         }
         sides(&mut self.padding);
         sides(&mut self.margin);
+        // Толщина рамки в единицах окна (`border-bottom: 50vh solid`,
+        // `monolithic-overflow-021`): без перевода рамка выходила нулевой.
+        sides(&mut self.border_width);
         sides(&mut self.inset);
         if let Some((row, col)) = self.gap.as_mut() {
             fix(row);
             fix(col);
+        }
+    }
+
+    /// Во сколько раз ИСПОЛЬЗУЕМЫЙ кегль отличается от вычисленного.
+    ///
+    /// css-fonts-5 §font-size-adjust: `u = (m / m′) s` — желаемая доля `m`,
+    /// делённая на ту же метрику шрифта `m′`. `none` и `from-font` (метрика
+    /// своего же первого доступного шрифта, отношение ровно 1) кегль не
+    /// трогают. Метрику, которую не удалось снять, спека велит не подгонять.
+    pub fn used_font_factor(&self, family: &str) -> f32 {
+        // Дескриптор `size-adjust` масштабирует ВСЕ метрики лица; поверх него
+        // `font-size-adjust` сводит метрику к заданной доле, и множитель
+        // дескриптора сокращается: `m / (m′·k) · k = m / m′`
+        // (`size-adjust-02/03`). `from-font` — метрика того же лица, то есть
+        // остаётся один дескриптор.
+        // Множитель — свойство лица, лицо выбирает наклон запроса.
+        let slope = if self.oblique == Some(true) {
+            2
+        } else if self.italic == Some(true) {
+            1
+        } else {
+            0
+        };
+        let size_adjust = crate::fonts::size_adjust(family, slope);
+        match self.font_size_adjust {
+            Some((metric, want)) if want.is_finite() => {
+                match crate::metrics::adjust_aspect(family, metric) {
+                    Some(have) if have > 0.0 => want / have,
+                    _ => size_adjust,
+                }
+            }
+            _ => size_adjust,
         }
     }
 
@@ -1249,11 +3240,73 @@ impl Computed {
         // тому шрифту, которым текст в самом деле наберётся.
         let family = self.font_family.clone().unwrap_or_else(|| {
             if self.monospace == Some(true) {
-                crate::metrics::mono_family().to_string()
+                crate::metrics::mono_family_for(self.lang.as_deref()).to_string()
             } else {
                 String::new()
             }
         });
+        // Дорожки сетки в единицах шрифта: считаются от СВОЕГО кегля, он к
+        // этому моменту уже разрешён вызывающим (см. ниже по функции).
+        let own_px = match self.font_size {
+            Some(Len::Px(v)) => v,
+            _ => parent_font_px,
+        };
+        // Длины в единицах шрифта внутри transform/transform-origin: свой
+        // кегль известен только теперь.
+        if self.transform_raw.is_some()
+            || self.transform_origin_raw.is_some()
+            || self.shadow_raw.is_some()
+            || self.text_shadow_raw.is_some()
+        {
+            let own_font = match self.font_size {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) => k * parent_font_px,
+                _ => parent_font_px,
+            };
+            let (ch, ex) = crate::metrics::ch_ex_px(&family, own_font);
+            if let Some(raw) = self.transform_raw.take() {
+                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                self.apply_one("transform", &px);
+            }
+            if let Some(raw) = self.transform_origin_raw.take() {
+                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                self.apply_one("transform-origin", &px);
+            }
+            if let Some(raw) = self.shadow_raw.take() {
+                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                self.apply_one("box-shadow", &px);
+            }
+            // `text-shadow` наследуется ВЫЧИСЛЕННЫМ значением: `em` решается
+            // кеглем того элемента, где тень объявлена, а потомки получают уже
+            // точки (сырая запись есть только у своего стиля).
+            if let Some(raw) = self.text_shadow_raw.take() {
+                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                self.apply_one("text-shadow", &px);
+            }
+        }
+        if let Some(raw) = self.gradient_em.take() {
+            let own_font = match self.font_size {
+                Some(Len::Px(v)) => v,
+                Some(Len::Em(k)) => k * parent_font_px,
+                _ => parent_font_px,
+            };
+            let (ch, ex) = crate::metrics::ch_ex_px(&family, own_font);
+            let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+            if let Some(g) = parse_gradient(&px) {
+                self.gradient = Some(g);
+                if self.gradient_raw.is_some() {
+                    self.gradient_raw = Some(px);
+                }
+            }
+        }
+        for list in [self.grid_tracks.as_mut(), self.grid_rows.as_mut()]
+            .into_iter()
+            .flatten()
+        {
+            for t in list.iter_mut() {
+                t.resolve_font(&family, own_px);
+            }
+        }
         match self.font_size {
             Some(Len::Em(k)) => self.font_size = Some(Len::Px(k * parent_font_px)),
             Some(Len::Ch(k)) => {
@@ -1277,21 +3330,62 @@ impl Computed {
         // нуль занимает целый кегль, у текстового шрифта — около половины.
         // Семейство здесь уже унаследовано, поэтому замер возможен только на
         // этом шаге, вместе с `em`.
-        let (mut ch, ex) = crate::metrics::ch_ex_px(&family, base);
+        // Повторный вызов на уже подогнанном стиле: база — сохранённый
+        // вычисленный кегль, а не подогнанный.
+        let base = self.font_adjust_base.map_or(base, |b| b.0);
+        // Используемый кегль (css-fonts-5 §font-size-adjust): «affects the
+        // size of relative units that are based on font metrics such as ex
+        // and ch but does not affect the size of em units». `em` и числовой
+        // `line-height` остаются от `base`, метрики шрифта — от `used`, и сам
+        // текст набирается `used` (`font_size`), а детям уходит `base`.
+        let used = base * self.used_font_factor(&family);
+        if used != base && self.font_adjust_base.is_none() {
+            self.font_adjust_base = Some((base, self.line_height));
+            if let Some(Len::Pct(m)) = self.line_height {
+                self.line_height = Some(Len::Px(m * base));
+            }
+            self.font_size = Some(Len::Px(used.max(0.01)));
+        }
+        let (mut ch, ex) = crate::metrics::ch_ex_px(&family, used);
         // `ch` — продвижение нуля вдоль оси строки. При стоящих глифах в
         // вертикальном письме строка идёт сверху вниз, и продвижение равно
         // кеглю, а не ширине глифа (CSS Writing Modes §7.4).
         if self.vertical == Some(true) && self.upright == Some(true) {
-            ch = base;
+            ch = used;
         }
         // `ic` меряется по тому же семейству и тем же шагом, что `ch` и `ex`.
-        let ic = crate::metrics::ic_px(&family, base);
+        let ic = crate::metrics::ic_px(&family, used);
+        // `cap` — высота прописной того же лица (css-values-4 §6.1.4). Щуп
+        // вертикальных метрик её уже отдаёт третьим числом (по нему
+        // `text-box-trim` считает срез `cap`), своего замера не нужно.
+        let cap = crate::metrics::vmetrics_px(&family, used).2;
         let to_px = move |l: &mut Option<Len>| match *l {
             Some(Len::Em(k)) => *l = Some(Len::Px(k * base)),
             Some(Len::EmPx(k, add)) => *l = Some(Len::Px(k * base + add)),
             Some(Len::Ch(k)) => *l = Some(Len::Px(k * ch)),
             Some(Len::Ex(k)) => *l = Some(Len::Px(k * ex)),
             Some(Len::Ic(k)) => *l = Some(Len::Px(k * ic)),
+            // Смешанный calc: шрифтовые слагаемые складываются здесь — база
+            // и метрики известны; остаток сворачивается заново.
+            Some(Len::Calc(i)) => {
+                let mut s = crate::value::calc_get(i);
+                // Без шрифтовых слагаемых складывать нечего — индекс остаётся
+                // прежним: арена append-only, а `resolve_em` идёт на каждом
+                // наследовании, и повторное хранение раздувало бы её впустую.
+                if s.em != 0.0 || s.ch != 0.0 || s.ex != 0.0 || s.ic != 0.0 || s.cap != 0.0 {
+                    s.px += s.em * base + s.ch * ch + s.ex * ex + s.ic * ic + s.cap * cap;
+                    s.em = 0.0;
+                    s.ch = 0.0;
+                    s.ex = 0.0;
+                    s.ic = 0.0;
+                    s.cap = 0.0;
+                    // Процентная смесь обязана ДОЖИТЬ: `collapse` вернул бы
+                    // `None` и стёр `text-indent: calc(1em + 50%)`. Для всего,
+                    // что пришло из `Len::parse`, `pct == 0`, и обе свёртки
+                    // совпадают.
+                    *l = s.collapse_mixed();
+                }
+            }
             _ => {}
         };
         let fix = to_px;
@@ -1313,6 +3407,7 @@ impl Computed {
             &mut self.text_indent,
             &mut self.line_height,
             &mut self.column_width,
+            &mut self.column_height,
             &mut self.column_gap,
         ] {
             fix(l);
@@ -1344,12 +3439,53 @@ impl Computed {
     /// Нужен там, где абзац разбит на куски: фон, отступы, рамка и размеры
     /// принадлежат абзацу целиком, и повторять их на каждом слове нельзя —
     /// иначе у каждого слова появляется своя подложка и своё поле.
+    /// Итоговые возможности OpenType куска — в порядке старшинства
+    /// css-fonts-4 §7.2: `font-variant-*` и прочие свойства, затем свойство
+    /// `font-feature-settings`. Повтор тега схлопывается, побеждает
+    /// последний: прежде в gpui уходило `liga 0, …, liga 1`, а
+    /// `apply_font_features` дописывал после них ещё `liga 0`
+    /// (`font-features-across-space-3`).
+    pub fn used_features(&self) -> Vec<(String, u32)> {
+        // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
+        let mut all: Vec<(String, u32)> =
+            crate::fonts::face_features(self.font_family.as_deref().unwrap_or(""));
+        all.extend(self.font_features.iter().cloned());
+        // Шаг 4 §7.2: «setting a non-default value for the letter-spacing
+        // property disables optional ligatures» (css-text-3 §8.2). Старше
+        // `font-variant-ligatures`, младше `font-feature-settings`
+        // (`font-feature-resolution-001/002`: `fvl-1 ls-1` — без лигатуры,
+        // `ls-1 ffs-1` — с ней).
+        if matches!(self.letter_spacing, Some(Len::Px(v) | Len::Em(v)) if v != 0.0) {
+            for tag in ["liga", "clig", "dlig", "hlig"] {
+                all.push((tag.to_string(), 0));
+            }
+        }
+        if let Some(settings) = &self.font_settings {
+            all.extend(settings.iter().cloned());
+        }
+        let mut out: Vec<(String, u32)> = Vec::with_capacity(all.len());
+        for (tag, value) in all {
+            out.retain(|(t, _)| *t != tag);
+            out.push((tag, value));
+        }
+        out
+    }
+
     pub fn text_only(&self) -> Computed {
         Computed {
             color: self.color,
+            // Видимость — свойство ТЕКСТА тоже: скрытый кусок держит место, но
+            // не красится, а запасная ветка «строка из слов» флаг теряла.
+            hidden: self.hidden,
             font_size: self.font_size,
+            // Гарнитура — свойство ТЕКСТА: без неё кусок в строчном ряду
+            // набирался подменным системным шрифтом, и `@font-face` (в том
+            // числе Ahem у стенда) не доезжал никуда, где рядом стоит
+            // картинка или иной атом.
+            font_family: self.font_family.clone(),
             font_weight: self.font_weight,
             italic: self.italic,
+            oblique: self.oblique,
             underline: self.underline,
             line_through: self.line_through,
             line_height: self.line_height,
@@ -1359,21 +3495,41 @@ impl Computed {
             balance_lines: self.balance_lines,
             bidi_override: self.bidi_override,
             bidi_isolate: self.bidi_isolate,
+            bidi_embed: self.bidi_embed,
             hanging: self.hanging,
             nowrap: self.nowrap,
             monospace: self.monospace,
             letter_spacing: self.letter_spacing,
             font_features: self.font_features.clone(),
+            font_settings: self.font_settings.clone(),
             text_transform: self.text_transform,
             ellipsis: self.ellipsis,
+            overflow_marker: self.overflow_marker.clone(),
             line_clamp: self.line_clamp,
-            webkit_line_clamp: self.webkit_line_clamp,
+            clamp_legacy: self.clamp_legacy,
             clamp_auto: self.clamp_auto,
             svg_fill: self.svg_fill.clone(),
+            // `stroke` и `stroke-width` в SVG НАСЛЕДУЮТСЯ (SVG 2 §Painting),
+            // как и `fill`. Геометрия (`x`, `y`) — нет, её здесь нет намеренно.
+            svg_stroke: self.svg_stroke.clone(),
+            svg_stroke_width: self.svg_stroke_width.clone(),
             webkit_box: self.webkit_box,
             webkit_box_vertical: self.webkit_box_vertical,
+            // Сдвиг от базовой линии — свойство ТЕКСТА: без него строчный
+            // кусок в общем прогоне остаётся на базовой линии.
+            vertical_shift: self.vertical_shift,
+            vertical_shift_pct: self.vertical_shift_pct,
+            vertical_shift_px: self.vertical_shift_px,
+            vertical_shift_len: self.vertical_shift_len,
+            vertical_align_text: self.vertical_align_text,
+            vertical_align_base: self.vertical_align_base,
+            rel_shift: self.rel_shift,
             text_fit: self.text_fit,
             hyphen_char: self.hyphen_char.clone(),
+            // Кусок, собранный из `text_only`, бывает родителем: без базы он
+            // отдал бы детям ПОДОГНАННЫЙ кегль, и подгонка накопилась бы.
+            font_size_adjust: self.font_size_adjust,
+            font_adjust_base: self.font_adjust_base,
             ..Computed::default()
         }
     }
@@ -1422,7 +3578,22 @@ impl Computed {
 
     /// То же с переменными темы.
     pub fn resolve_with_vars(matched: &mut Vec<&Rule>, inline: &Decls, vars: &Decls) -> Computed {
-        matched.sort_by_key(|r| (r.origin, r.sel.specificity(), r.order));
+        // Слой старше специфичности (css-cascade-5 §6.4): у обычных
+        // объявлений поздний слой сильнее, у важных — ранний.
+        matched.sort_by(|a, b| {
+            (a.origin, &a.layer, a.sel.specificity(), a.order)
+                .cmp(&(b.origin, &b.layer, b.sel.specificity(), b.order))
+        });
+        // `revert-layer` (css-cascade-5 §revert-layer) решается ДО прохода:
+        // объявления откатываемого слоя (а у важного — и всё между его
+        // обычным и важным уровнями) снимаются с копий правил.
+        let reverted = revert_layers(matched);
+        let owned_refs: Vec<&crate::css::Rule> = reverted.iter().flatten().collect();
+        let matched: &mut Vec<&crate::css::Rule> = &mut if reverted.is_some() {
+            owned_refs
+        } else {
+            matched.clone()
+        };
         let mut c = Computed::default();
         // Два прохода по ВСЕМУ каскаду, а не внутри каждого правила: важность
         // — самый старший ключ сравнения (CSS Cascade §6.1), поэтому важное
@@ -1436,7 +3607,10 @@ impl Computed {
         // Важные идут в ОБРАТНОМ порядке происхождений: важное правило агента
         // старше важного авторского (§6.4.4), поэтому применяется последним.
         let mut important: Vec<&&Rule> = matched.iter().collect();
-        important.sort_by_key(|r| (std::cmp::Reverse(r.origin), r.sel.specificity(), r.order));
+        important.sort_by(|a, b| {
+            (std::cmp::Reverse(a.origin), std::cmp::Reverse(&a.layer), a.sel.specificity(), a.order)
+                .cmp(&(std::cmp::Reverse(b.origin), std::cmp::Reverse(&b.layer), b.sel.specificity(), b.order))
+        });
         for rule in important {
             c.apply_pass(&rule.decls, vars, true);
         }
@@ -1446,32 +3620,33 @@ impl Computed {
         if c.border_color_is_current {
             c.border_color = c.color;
         }
-        // Фильтр — последнее, что происходит с элементом: он преобразует уже
-        // готовые цвета, а не участвует в каскаде.
-        if let Some(f) = c.filter {
-            c.background = c.background.map(|col| f.apply(col));
-            c.color = c.color.map(|col| f.apply(col));
-            c.border_color = c.border_color.map(|col| f.apply(col));
-            for side in c.border_colors.iter_mut() {
-                *side = side.map(|col| f.apply(col));
-            }
-            if let Some(g) = c.gradient.as_mut() {
-                g.from = f.apply(g.from);
-                g.to = f.apply(g.to);
-                for stop in g.stops.iter_mut() {
-                    stop.0 = f.apply(stop.0);
-                }
-            }
-            for sh in c.shadows.iter_mut() {
-                sh.color = f.apply(sh.color);
-            }
-        }
+
+        // Окраска фильтром здесь НЕ делается: результат оседал в
+        // долгоживущем стиле узла, и покадровая окраска в `inline::inherit`
+        // применяла фильтр ВТОРОЙ раз (grayscale темнил вдвое). Единственная
+        // точка окраски — слияние при отрисовке.
         c
     }
 
+    // ПРОБОВАЛИ И ОТКАТИЛИ: блокификация под `float` и абсолютным
+    // позиционированием (CSS 2.1 §9.7) — сворачивать `inline`, `inline-block`
+    // и внутренние табличные виды в блок после каскада.
+    //
+    // Замер со всеми элементами: CSS2 4614 -> 4615 (+29/-28), oldfront
+    // 2336 -> 2324. Без замещаемых (их размеры считает свой путь): CSS2
+    // 4614 -> 4618, oldfront 2336 -> 2325. Потери обоих заходов — семья
+    // `left-applies-to-*` и плавающие куски строки: у нас плавающий кусок
+    // остаётся в общей строке текста нарочно, и блочным он рвёт соединение
+    // букв (тот же корень, что у отката в `render.rs::wrap_floats`).
+    //
+    // Возвращаться, когда у флоатов появится своя коробка блока
+    // (`bands.rs` + `BfcFlow`), а не ряд флекса.
+
     pub fn apply_decls(&mut self, d: &Decls) {
         for (k, v) in d {
-            self.apply_one(k, v);
+            for part in v.split(crate::css::DECL_SEP) {
+                self.apply_one(k, part);
+            }
         }
     }
 
@@ -1497,40 +3672,295 @@ impl Computed {
     }
 
     /// Один проход: только обычные объявления либо только важные.
-    fn apply_pass(&mut self, d: &Decls, vars: &Decls, important: bool) {
+    fn apply_pass<'a>(&mut self, d: &'a Decls, vars: &Decls, important: bool) {
+        // Порядок ЗАПИСИ решает только между СОКРАЩЕНИЕМ и его длинным
+        // свойством (`background` и `background-color`, `border` и
+        // `border-width`): там он и виден — `background-color: red;
+        // background: green` обязано дать зелёный, а обратная запись красный,
+        // и словарь без порядка давал одно и то же.
+        //
+        // Между СОСЕДЯМИ (`border-width` и `border-style`, `white-space` и
+        // `overflow-wrap`) порядок записи НЕ применяется: замерено, что от
+        // него CSS2 теряет `border-width-012`, а CSS3 — девять пар
+        // `textarea-pre-wrap-*`; наши свойства кое-где читают состояние друг
+        // друга на применении, и полный порядок вскрывает эту зависимость.
+        // Возвращать полный порядок вместе с независимым применением
+        // объявлений.
+        let order: Vec<&str> = d
+            .get(crate::css::ORDER_KEY)
+            .map(|s| s.split(crate::css::DECL_SEP).collect())
+            .unwrap_or_default();
         let mut keys: Vec<&String> = d.keys().collect();
-        keys.sort_by_key(|k| (k.matches('-').count(), k.as_str()));
-        for k in &keys {
+        // Внутри СЕМЬИ (сокращение и его длинные свойства) порядок — по
+        // записи; сами семьи идут прежним порядком «сперва общее».
+        // Семья — только НАСТОЯЩЕЕ сокращение со своими длинными свойствами.
+        // По одному лишь общему началу судить нельзя: `overflow-wrap` не
+        // часть `overflow`, и перестановка этой пары ЗАМЕРЕНА в минус —
+        // девять пар `textarea-pre-wrap-*` уходят 0.00 → 0.76. Список
+        // расширять по одному, каждое имя — со своим замером.
+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО: добавить сюда `border` и `grid` (со своими
+        // исключениями: `border-spacing`/`border-collapse`/`border-radius`/
+        // `border-image` не части `border`, `grid-gap` не часть `grid`).
+        // Статический просмотр нашёл 6 красных пар, где длинное свойство
+        // `border-*` стоит ПЕРЕД сокращением, и 13 таких же с `grid`, но срез
+        // из 1817 пар (border/grid/gap/margin-collapse/ch-units/line-names)
+        // дал 1290 → 1290: ни одной пары в любую сторону. Значит порядок в
+        // этих парах не решает — держат их другие корни.
+        const SHORTHANDS: &[&str] = &["background"];
+        let семья = |k: &'a str| -> &'a str {
+            for root in SHORTHANDS {
+                if k.len() > root.len()
+                    && k.starts_with(root)
+                    && k.as_bytes().get(root.len()) == Some(&b'-')
+                    && d.contains_key(*root)
+                {
+                    return root;
+                }
+            }
+            k
+        };
+        let место = |k: &str| order.iter().position(|n| *n == k).unwrap_or(usize::MAX);
+        let mut keys: Vec<&'a String> = d.keys().collect();
+        keys.sort_by_cached_key(|k| {
+            let root = семья(k.as_str());
+            (
+                root.matches('-').count(),
+                root,
+                if order.is_empty() { 0 } else { место(k) },
+                k.as_str(),
+            )
+        });
+        let ordered = keys;
+        // `all: revert` / `all: revert-layer` (css-cascade-5 §3.2 «all»,
+        // §7.2): откат КАЖДОГО свойства, кроме `direction` и `unicode-bidi`,
+        // тем же правилом, что откат одного свойства ниже, — всё, что этот
+        // блок сказал о свойстве ДО `all`, снимается. Ключ `all` не
+        // разбирался вовсе, и `background-color: red; border-color: red;
+        // all: revert` оставлял красные поля ввода (`appearance-revert-001`).
+        // Порядок — по первому появлению ключа (`ORDER_KEY`): повтор
+        // свойства ПОСЛЕ `all` в том же блоке этим не различается (редкость).
+        let all_at = d
+            .get("all")
+            .and_then(|v| {
+                v.split(crate::css::DECL_SEP)
+                    .filter(|part| is_important(part) == important)
+                    .last()
+            })
+            .filter(|part| {
+                matches!(
+                    strip_important(part).trim(),
+                    "revert" | "revert-layer" | "initial" | "unset"
+                )
+            })
+            .map(|part| (место("all"), strip_important(part).trim() == "initial"));
+        // `all: initial` / `all: unset` (css-cascade-5 §3.2) сбрасывает ВСЁ,
+        // что каскад сказал до него, — не только в этом блоке, но и в ранних
+        // правилах и в таблице агента: `div` становится строчным, цвет и
+        // шрифт — начальными (`initial`) или наследуемыми (`unset`). Кроме
+        // `direction` и `unicode-bidi`. Прежде ключ `all` понимал только
+        // откат, и `.test { all: initial }` оставлял красную рамку, фон и
+        // флоат раннего правила (`all-prop-001/002`). Сброс — СВОЙ шаг
+        // прохода: важные объявления ранних правил применяются позже и
+        // переживают его, как велит §6.1.
+        let all_reset = all_at.filter(|_| {
+            d.get("all")
+                .and_then(|v| {
+                    v.split(crate::css::DECL_SEP)
+                        .filter(|part| is_important(part) == important)
+                        .last()
+                })
+                .is_some_and(|part| matches!(strip_important(part).trim(), "initial" | "unset"))
+        });
+        let all_at = all_at.map(|(at, _)| at);
+        if let Some((_, initial)) = all_reset {
+            let keep = (
+                self.rtl,
+                self.bidi_override,
+                self.bidi_isolate,
+                self.bidi_plaintext,
+                self.bidi_embed,
+                self.decl_seq,
+            );
+            *self = Computed::default();
+            (
+                self.rtl,
+                self.bidi_override,
+                self.bidi_isolate,
+                self.bidi_plaintext,
+                self.bidi_embed,
+                self.decl_seq,
+            ) = keep;
+            self.apply_one("display", "inline");
+            if initial {
+                // Наследуемые свойства: пустое поле у нас значит «от
+                // родителя», поэтому начальное значение ставится явно.
+                for key in [
+                    "color",
+                    "font-family",
+                    "font-size",
+                    "font-style",
+                    "font-variant",
+                    "font-weight",
+                    "letter-spacing",
+                    "line-height",
+                    "list-style-position",
+                    "list-style-type",
+                    "text-align",
+                    "text-indent",
+                    "text-transform",
+                    "visibility",
+                    "white-space",
+                    "word-spacing",
+                ] {
+                    if let Some(start) = initial_value(key) {
+                        self.apply_one(key, start);
+                    }
+                }
+            }
+        }
+        for k in &ordered {
             let Some(v) = d.get(*k) else { continue };
-            if k.starts_with("--") || is_important(v) != important {
+            if k.starts_with("--") || k.as_str() == crate::css::ORDER_KEY {
                 continue;
             }
-            let resolved = resolve_vars(strip_important(v), vars);
-            self.apply_one(k, &resolved);
+            if let Some(at) = all_at
+                && место(k.as_str()) < at
+                && !matches!(k.as_str(), "direction" | "unicode-bidi")
+            {
+                continue;
+            }
+            // `revert`/`revert-layer` — не ЗНАЧЕНИЕ, а откат каскада
+            // (css-cascade-5 §7.2, §7.3): объявление отменяет всё, что этот же
+            // блок сказал о свойстве в ту же важность, — блок целиком лежит в
+            // одном слое и одном происхождении, откатывать внутри него некуда.
+            // Пока слово уезжало в разбор значения, оно там не читалось,
+            // объявление выходило негодным (§4.1.7) — и прежнее `red` из того
+            // же блока переживало откат (`revert-layer-001`: сплошной красный
+            // квадрат вместо зелёного).
+            let parts: Vec<&str> = v
+                .split(crate::css::DECL_SEP)
+                .filter(|part| is_important(part) == important)
+                .collect();
+            // САМО слово откатa по-прежнему уходит в `apply_one`: для 33
+            // свойств из `initial_value()` он значит сброс к начальному, и
+            // трогать это поведение здесь незачем.
+            let from = parts
+                .iter()
+                .rposition(|part| {
+                    matches!(strip_important(part).trim(), "revert" | "revert-layer")
+                })
+                .unwrap_or(0);
+            for part in parts[from..].iter().copied() {
+                // Типизированный `attr()` подставляется тем же шагом, что и
+                // `var()` (css-values-5 §7.7): после него значение разбирается
+                // как обычное.
+                let resolved = resolve_sibling(resolve_attrs(k.as_str(), &resolve_vars(strip_important(part), vars)));
+                self.apply_one(k, &resolved);
+            }
         }
     }
 
-    fn apply_one(&mut self, key: &str, val: &str) {
+    // `pub(crate)`: `motion` синтезирует строку `transform` и кормит её тем же
+    // разборщиком — отдельного конвейера под offset-трансформ нет.
+    pub(crate) fn apply_one(&mut self, key: &str, val: &str) {
+        self.decl_seq += 1;
         let v = val.trim();
         // Общие для всех свойств слова `initial`/`unset`/`revert`. Для
         // НАСЛЕДУЕМОГО свойства это не «оставить как есть»: незаданное поле у
         // нас берётся от родителя, поэтому такое объявление молча наследовало
         // вместо сброса — на `static-position` отступ первой строки уходил в
         // абсолютный блок, и красное проступало из-под него.
+        // `unset` у НАСЛЕДУЕМОГО свойства — это `inherit`, у ненаследуемого —
+        // `initial` (css-cascade-4 §7.3.3). Прежде любое `unset` шло в
+        // начальное значение, и `color: unset` давал чёрный вместо цвета
+        // родителя (`unset-val-001`).
+        if v == "unset" && inherited_property(key) {
+            return self.apply_one(key, "inherit");
+        }
         if matches!(v, "initial" | "unset" | "revert" | "revert-layer")
             && let Some(start) = initial_value(key)
         {
             return self.apply_one(key, start);
         }
+        // Начальные значения, которые годятся ТОЛЬКО для `initial`/`unset`:
+        // `revert` у автора откатывает к таблице агента, а там у `div`
+        // `display: block`, не начальное `inline`.
+        if matches!(v, "initial" | "unset")
+            && let Some(start) = match key {
+                "background-color" => Some("transparent"),
+                "background-image" => Some("none"),
+                "display" => Some("inline"),
+                "float" => Some("none"),
+                "position" => Some("static"),
+                "opacity" => Some("1"),
+                _ => None,
+            }
+        {
+            return self.apply_one(key, start);
+        }
+        // Фон — СПИСОК слоёв (css-backgrounds-3 §2.1: «comma-separated list
+        // of values … the first value represents the top layer»). Одиночные
+        // поля стиля несут верхний слой, а список целиком хранится сырым —
+        // по нему рисуются все слои (`Computed::bg_layers`). Запись без
+        // запятой список своего свойства снимает; сокращение — все.
+        if BG_LIST_KEYS.contains(&key) {
+            if key == "background" {
+                self.bg_lists.clear();
+            } else {
+                self.bg_lists.retain(|(k, _)| k != key);
+            }
+            if top_level_comma(v).is_some() {
+                if key != "background" {
+                    // Верхний слой — обычным разбором; список кладётся ПОСЛЕ:
+                    // вложенный вызов того же свойства его бы снял.
+                    let first = background_layers(v)[0].to_string();
+                    self.apply_one(key, &first);
+                    self.bg_lists.push((key.to_string(), v.to_string()));
+                    return;
+                }
+                self.bg_lists.push((key.to_string(), v.to_string()));
+            }
+        }
         match key {
+            // css-break-3 §4.4: `<integer [1,∞]>`; ноль и отрицательное
+            // невалидны — объявление отбрасывается.
+            "orphans" | "widows" => {
+                if let Ok(n) = v.parse::<u16>()
+                    && n >= 1
+                {
+                    if key == "orphans" {
+                        self.orphans = Some(n);
+                    } else {
+                        self.widows = Some(n);
+                    }
+                }
+            }
             "box-sizing" => self.border_box = Some(v == "border-box"),
             "display"
                 if v.trim().eq_ignore_ascii_case("-webkit-box")
                     || v.trim().eq_ignore_ascii_case("-webkit-inline-box") =>
             {
                 self.webkit_box = Some(true);
+                // `-webkit-inline-box` — та же легаси-коробка, но ВСТРОЕННАЯ
+                // (по факту `inline-block`): соседний текст обязан стоять с
+                // ней в одной строке (`webkit-line-clamp-024`).
+                if v.trim().eq_ignore_ascii_case("-webkit-inline-box") {
+                    self.display = Some(Display::InlineBlock);
+                }
             }
             "display" => {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::DISPLAY;
+                    return;
+                }
+                self.inline_display = None;
+                // Каскад мог поставить группу выше по важности, а ниже —
+                // обычный блок: метка рода не переживает своё значение.
+                self.row_group_kind = None;
+                self.col_role = None;
+                // Роль руби живёт вместе со значением `display`: более
+                // важное `display: block` на `span.rt` снимает её.
+                self.ruby_role = None;
                 // Запись из ДВУХ слов (CSS Display 3): `inline grid-lanes`,
                 // `block flow` и родня — внешний вид и внутренний.
                 //
@@ -1566,12 +3996,31 @@ impl Computed {
                     // БЕЗ обтяжки InlineGrid — теперь строчная сетка обнимает
                     // Px-дорожки, и разбор снимается с полки (эталоны
                     // subgrid-alignment-* пишут `display: inline grid`).
+                    // ★ ЗАМЕРЕНО И ОТКАЧЕНО: разбирать `display: inline
+                    // grid-lanes` и `inline masonry` (сейчас запись не
+                    // разбирается вовсе — `_ => self.display`, и 150 пар свода
+                    // получают обычный блок вместо лунок). Отдавали блочные
+                    // лунки, БЕЗ обтяжки `lanes_inline` (её прошлый замер:
+                    // grid-семья 573 → 558). Срез из этих 150 пар: 28 зелёных
+                    // → 18. Приобретено НОЛЬ, потеряно десять — все
+                    // подсеточные и по содержимому (`grid-lanes-subgrid-001b/
+                    // c/d` 0.09 → 11.10, `grid-lanes-subgrid-intrinsic-sizing`
+                    // 0.28 → 10.27, `column-subgrid-extra-margin-002/004`).
+                    // То есть этим 122 красным мешает не отсутствие лунок, а
+                    // подсетка и вклад содержимого: настоящий контейнер лунок
+                    // им пока ХУЖЕ блока. Возвращать вместе с подсеткой лунок.
                     "inline grid" => Some(Display::InlineGrid),
                     "inline flex" => Some(Display::InlineFlex),
                     "none" => Some(Display::None),
                     "block" => Some(Display::Block),
                     "inline-block" => Some(Display::InlineBlock),
-                    "inline" => Some(Display::InlineBlock),
+                    "inline" => {
+                        // Метка «настоящий строчный»: блокификация под
+                        // float/abspos (§9.7) и запрет width/height на
+                        // незамещаемом (§10.2) решаются после каскада.
+                        self.inline_display = Some(true);
+                        Some(Display::InlineBlock)
+                    }
                     "inline-grid" => Some(Display::InlineGrid),
                     // Элемент исчезает, дети встают на его место.
                     "contents" => Some(Display::Contents),
@@ -1582,16 +4031,83 @@ impl Computed {
                     "table" => Some(Display::Table),
                     // Таблица, стоящая В СТРОКЕ, как inline-block.
                     "inline-table" => Some(Display::InlineTable),
+                    // css-ruby-1 §2.1: руби-виды. Контейнер и внутренние
+                    // коробки — настоящие строчные (как `display: inline`),
+                    // роль хранится отдельно (`ruby_role`); `block ruby`
+                    // (§2.1.2) — блок с ролью контейнера, строчный контейнер
+                    // внутри него синтезирует `dom::walk`. Blink знает только
+                    // `ruby`, `block ruby` и `ruby-text` (`css_value_keywords`),
+                    // остальные роли — по спеке и A.1.
+                    "ruby" | "inline ruby" | "ruby-base" | "ruby-text" | "ruby-base-container"
+                    | "ruby-text-container" => {
+                        self.ruby_role = Some(match v {
+                            "ruby-base" => RubyRole::Base,
+                            "ruby-text" => RubyRole::Text,
+                            "ruby-base-container" => RubyRole::BaseContainer,
+                            "ruby-text-container" => RubyRole::TextContainer,
+                            _ => RubyRole::Container,
+                        });
+                        self.inline_display = Some(true);
+                        Some(Display::InlineBlock)
+                    }
+                    "block ruby" => {
+                        self.ruby_role = Some(RubyRole::Container);
+                        Some(Display::Block)
+                    }
                     "table-row-group" | "table-header-group" | "table-footer-group" => {
+                        self.row_group_kind = Some(match v {
+                            "table-header-group" => 0,
+                            "table-footer-group" => 2,
+                            _ => 1,
+                        });
                         Some(Display::TableRowGroup)
                     }
-                    "flow-root" => Some(Display::Block),
+                    // run-in решается ПОСЛЕ построения дерева: вбегает
+                    // первым строчным в следующий блок или остаётся блоком
+                    // (dom::fold_run_ins).
+                    "run-in" => {
+                        self.run_in = Some(true);
+                        Some(Display::Block)
+                    }
+                    "flow-root" => {
+                        // Коробка блочная, но признак не теряется: это
+                        // свой контекст форматирования (css-display-3).
+                        self.flow_root = Some(true);
+                        Some(Display::Block)
+                    }
                     "table-row" => Some(Display::TableRow),
                     "table-cell" => Some(Display::TableCell),
                     // Заголовок таблицы — обычный блок. Колонки коробок не
                     // порождают вовсе: они только задают ширину столбцам.
-                    "table-caption" => Some(Display::Block),
-                    "table-column" | "table-column-group" => Some(Display::None),
+                    "table-caption" => {
+                        // Заголовок — блочная коробка с МЕТКОЙ: таблица ищет
+                        // его по ней, а не только по тегу caption.
+                        self.is_caption = Some(true);
+                        Some(Display::Block)
+                    }
+                    // Колонка коробки НЕ порождает (§17.2.1): `Display`
+                    // остаётся `None`. Метка живёт отдельно — по ней узел
+                    // переживает разбор дерева, и только по ней его находит
+                    // таблица.
+                    "table-column" | "table-column-group" => {
+                        self.col_role = Some(u8::from(v == "table-column-group"));
+                        Some(Display::None)
+                    }
+                    // Блочный пункт списка со своим контекстом (css-display-3
+                    // §2.3: `flow-root list-item`, `block flow-root
+                    // list-item` — любые перестановки слов). Прежде запись
+                    // уходила в `_ => self.display`, и `<span class=li>`
+                    // оставался строчным (`display-flow-root-list-item-001`
+                    // 10.88 против 5.86 у той же разметки без `list-item`).
+                    two if {
+                        let mut w: Vec<&str> = two.split_whitespace().collect();
+                        w.sort_unstable();
+                        w == ["flow-root", "list-item"] || w == ["block", "flow-root", "list-item"]
+                    } =>
+                    {
+                        self.flow_root = Some(true);
+                        Some(Display::ListItem)
+                    }
                     // Запись из ДВУХ слов: из неё берётся только внутренний
                     // вид «лунки» — его иначе не выразить вовсе. Полный разбор
                     // двух слов ЗАМЕРЕН и откачен (см. комментарий выше).
@@ -1617,13 +4133,54 @@ impl Computed {
                 }
             }
             "flex-wrap" => {
-                self.flex_wrap = Some(v == "wrap" || v == "wrap-reverse");
-                // Обратный перенос кладёт строки с другого края: одна строка
-                // в контейнере уезжает вниз, а не остаётся вверху.
-                self.flex_wrap_reverse = Some(v == "wrap-reverse");
+                // css-flexbox-2 §5.2: `nowrap | [ wrap | wrap-reverse ] || balance`;
+                // `balance` без `wrap*` ведёт себя как `wrap`. Невалидное
+                // сочетание (`nowrap balance`, два режима) отбрасывается.
+                let (mut wrap, mut reverse, mut balance, mut nowrap, mut modes, mut valid) =
+                    (false, false, 0u8, false, 0u8, true);
+                for word in v.split_ascii_whitespace() {
+                    match word {
+                        "wrap" => modes += 1,
+                        "wrap-reverse" => {
+                            modes += 1;
+                            reverse = true;
+                        }
+                        "balance" => balance += 1,
+                        "nowrap" => nowrap = true,
+                        _ => valid = false,
+                    }
+                }
+                wrap |= modes > 0 || balance > 0;
+                if valid && modes <= 1 && balance <= 1 && (!nowrap || (modes == 0 && balance == 0)) {
+                    self.flex_wrap = Some(wrap);
+                    // Обратный перенос кладёт строки с другого края: одна строка
+                    // в контейнере уезжает вниз, а не остаётся вверху.
+                    self.flex_wrap_reverse = Some(reverse);
+                    self.flex_balance = Some(balance > 0);
+                }
             }
-            "flex-grow" => self.flex_grow = v.parse().ok(),
-            "flex-shrink" => self.flex_shrink = v.parse().ok(),
+            "flex-line-count" => {
+                // css-flexbox-2 §5.3: `<integer [1,∞]>`; действует только у
+                // balance (как в Blink — `balance-min-line-count-007/008`).
+                if let Ok(n) = v.trim().parse::<u32>()
+                    && n >= 1
+                {
+                    self.flex_line_count = Some(n.min(u32::from(u16::MAX)) as u16);
+                }
+            }
+            // Отрицательные значения невалидны (css-flexbox-1 §7.2: «Negative
+            // values are not allowed») — объявление отбрасывается целиком
+            // (`flex-shrink-002`, `flex-basis-004`).
+            "flex-grow" => {
+                if let Some(g) = flex_factor(v) {
+                    self.flex_grow = Some(g);
+                }
+            }
+            "flex-shrink" => {
+                if let Some(g) = flex_factor(v) {
+                    self.flex_shrink = Some(g);
+                }
+            }
             // `flex: 1` — сокращение для grow/shrink/basis; берём первое число.
             // `flex: <рост> <сжатие> <основа>` со всеми сокращёнными формами.
             // Раньше бралось только первое число, и `flex: 0 0 200px` терял
@@ -1652,7 +4209,7 @@ impl Computed {
                     // двух числах оставалась `auto`, и `flex: 0 1` держал
                     // ширину элемента вместо нуля.
                     let parts: Vec<&str> = v.split_whitespace().collect();
-                    let number = |t: &str| t.parse::<f32>().ok();
+                    let number = |t: &str| flex_factor(t);
                     match parts.as_slice() {
                         [one] => match number(one) {
                             Some(g) => {
@@ -1680,9 +4237,26 @@ impl Computed {
                             }
                         }
                         [a, b, c] => {
+                            // Безразмерная основа кроме нуля делает ВСЁ
+                            // объявление невалидным (`flex: 0 0 4` не
+                            // применяется вовсе, flexbox_flex-*-unitless-basis).
+                            if crate::value::number(c).is_some_and(|n| n != 0.0) {
+                                return;
+                            }
                             self.flex_grow = number(a);
                             self.flex_shrink = number(b);
-                            self.flex_basis = Len::parse(c);
+                            // `content` — ключевое слово основы (css-flexbox-1 §7.2),
+                            // а не длина: `Len::parse` его не знает, и `flex: 0 0
+                            // content` падал в `auto` с заданной шириной
+                            // (`flexbox-flex-basis-content-001b/002b`,
+                            // `percentage-heights-016`). Смысл тот же, что у длинной
+                            // формы `flex-basis: content` ниже.
+                            if c.eq_ignore_ascii_case("content") {
+                                self.flex_basis = Some(Len::Auto);
+                                self.basis_content = Some(true);
+                            } else {
+                                self.flex_basis = Len::parse(c);
+                            }
                         }
                         _ => {}
                     }
@@ -1692,17 +4266,41 @@ impl Computed {
                 self.flex_basis = Some(Len::Auto);
                 self.basis_content = Some(true);
             }
-            "flex-basis" => self.flex_basis = Len::parse(v),
+            "flex-basis" => {
+                if let Some(l) = Len::parse(v)
+                    && !matches!(l, Len::Px(x) | Len::Pct(x) if x < 0.0)
+                {
+                    self.flex_basis = Some(l);
+                }
+            }
+            "align-self" if v.trim() == "inherit" => {
+                self.align_self_inherit = true;
+            }
             "align-self" => {
-                if let Ok(a) = align_keyword(v) {
+                // `left`/`right` у `align-self` недействительны: это
+                // `<self-position>` без них, физические стороны есть только у
+                // `justify-self` (css-align-3 §6.1) — объявление отбрасывается
+                // (`align-self-static-position-008`: `right` ждёт `start`;
+                // `grid-abspos-staticpos-align-self-rtl-*`).
+                let last = v.split_whitespace().last();
+                if !matches!(last, Some("left") | Some("right"))
+                    && let Ok(a) = align_keyword(v)
+                {
                     self.align_self = a;
+                    self.align_self_decl = Some(a);
+                    self.align_self_inherit = false;
                     self.align_self_safe = is_safe(v);
+                    self.align_self_normal = v.trim() == "normal";
+                    self.align_self_own_axis = matches!(last, Some("self-start") | Some("self-end"));
+                    self.align_self_flex_kw = matches!(last, Some("flex-start") | Some("flex-end"));
+                    self.align_self_last = v.split_whitespace().any(|w| w == "last");
                 }
             }
             "align-items" => {
                 if let Ok(a) = align_keyword(v) {
                     self.align_items = a;
                     self.align_items_safe = is_safe(v);
+                    self.align_items_last = v.split_whitespace().any(|w| w == "last");
                 }
             }
             // `space-evenly` и `space-around` различаются шириной крайних
@@ -1713,12 +4311,29 @@ impl Computed {
                 self.justify_content_safe = is_safe(v);
             }
             "gap" => {
-                let parts: Vec<Option<Len>> = v.split_whitespace().map(Len::parse).collect();
+                // Куски — по пробелам ВНЕ скобок: `calc(15% + 7px) calc(10px +
+                // 5%)` рвался на шесть кусков, и объявление молча отбрасывалось
+                // (`grid-gutters-011/012`). Смесь долей с точками доживает
+                // индексом (`parse_mixed`): зазор разрешает её от своей стороны
+                // контент-бокса в `apply.rs` (css-gaps-1 §gap-percent).
+                let tokens = split_outside_parens(v);
+                let parts: Vec<Option<Len>> = tokens.iter().map(|t| Len::parse_mixed(t)).collect();
                 self.gap = match parts.len() {
                     1 => Some((parts[0], parts[0])),
                     2 => Some((parts[0], parts[1])),
                     _ => self.gap,
                 };
+                // Короткая форма задаёт и `column-gap` многоколоночника
+                // (css-align-3 §8.3: `gap` = `row-gap` + `column-gap`).
+                // Колонки читают только `column_gap` (`render.rs` `used_gap`,
+                // `column_flow`), и `gap: 20px 0` прежде оставлял кегль —
+                // `column-wrap-no-constraints-001`, красная полоса между
+                // колонками.
+                // Многоколоночнику — прежний разбор без смеси: его зазор долю
+                // с точками не читает.
+                if parts.len() == 1 || parts.len() == 2 {
+                    self.column_gap = Len::parse(&tokens[tokens.len() - 1]);
+                }
             }
             "row-gap" => self.gap = Some((Len::parse(v), self.gap.and_then(|g| g.1))),
             // Одно свойство служит двум раскладкам: в сетке и гибкой строке
@@ -1732,30 +4347,150 @@ impl Computed {
             // `repeat(auto-fill | auto-fit, minmax(N, 1fr))` — «сколько
             // влезет»: число колонок известно только раскладке. Раньше запись
             // не разбиралась вовсе, и вся сетка схлопывалась в одну колонку.
+            //
+            // СДЕЛАНО (прежний откат снят): списку СЛОЖНЕЕ одинокого повтора
+            // (`10px repeat(auto-fill, 30px) 50px`) пишется и `grid_tracks`,
+            // и `grid_cols`, а сам повтор внутри непустого списка
+            // разворачивает раскладка лунок. Замерено по css-grid (1133 пары)
+            // 645 -> 648 и по всему css3 2417 -> 2420: приобретено 3
+            // (`grid-auto-repeat-multiple-values-002/003`,
+            // `row-auto-repeat-013`), потеряно 0.
+            //
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО: писать список ВСЕГДА, в том числе для
+            // одинокого повтора. По css-grid 645 -> 604: приобретено 6,
+            // потеряно 47 (`column-auto-repeat-001/013/017/018/027..030`,
+            // `-auto-001/011..014/025/026`, `-fit-content-004/005`,
+            // `-max-content-001/002` и далее). Записанный список уводит
+            // одинокий повтор с прежнего пути раскладки, а тот считает число
+            // повторов точнее: по долям, по содержимому и по `fit-content`.
+            // Отсюда условие `l.len() > 1` ниже — оно не заплатка, а граница
+            // между двумя честными путями счёта повторов.
             "grid-template-columns" if v.contains("auto-fill") || v.contains("auto-fit") => {
+                // `subgrid [a] repeat(auto-fill, [b])` — повтор СПИСКА ИМЁН
+                // подсетки (css-grid-2 §subgrid-listing, `<line-name-list>`),
+                // а не дорожек: такой элемент — подсетка, и дорожки ей выдаёт
+                // родитель (`taffy::compute::grid::subgrid`). Прежде запись
+                // уходила в разбор авто-повтора, и элемент подсеткой не был
+                // (`subgrid/repeat-auto-fill-005`).
+                self.grid_col_line_names = parse_line_names(v);
+                if v.trim_start().starts_with("subgrid") {
+                    self.subgrid_cols = true;
+                    self.subgrid = true;
+                    self.grid_cols = count_tracks(v);
+                    self.grid_tracks = parse_tracks(v);
+                    return;
+                }
+                // css-grid-1 `<auto-track-list>`: ВОКРУГ авто-повтора допустим
+                // только `<fixed-size>`. css-grid-3 §7.2.1 ослабила запись
+                // ВНУТРИ `repeat()`, снаружи всё по-прежнему — голая
+                // интрин-дорожка делает объявление негодным, и оно целиком
+                // падает в `none`. Сами тесты пишут это комментарием: «This is
+                // not currently a valid track definition and will fall back to
+                // none». Перепись корпуса
+                // (`target/scout-lanes-9e-invalid.txt`): таких объявлений 14,
+                // шесть из них — законные `minmax(…)`, которых правило не
+                // касается; остаются ровно восемь целевых файлов.
+                if auto_repeat_outside_intrinsic(v) {
+                    return;
+                }
                 self.grid_auto_fill_min = auto_fill_min(v);
+                self.grid_auto_fill_tracks = auto_fill_tracks(v);
+                self.auto_repeat_body_cols = auto_fill_body_tracks(v);
+                // Список пишется и при авто-повторе: дорожки ДО и ПОСЛЕ него
+                // (`max-content repeat(auto-fill, max-content) max-content`)
+                // иначе теряются целиком. Разворот самого повтора при
+                // непустом списке делает раскладка лунок — это и есть
+                // условие возврата из прежнего отката.
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v143, `scout-lanes-2026-09e.md`
+            // патч II): писать одинокий `AutoRepeat` с телом > 1 дорожки
+            // списком. Срез css-viewport+css-transforms+css-grid+css-position+
+            // CSS2 8273: +3 при −6 — `column/row-auto-repeat-auto-011` (0.00 →
+            // 7.78), `column-auto-repeat-fit-content-004` (→ 34.01),
+            // `-max-content-004` (→ 33.54), `column/row-auto-repeat-minmax-005`
+            // (→ 7.78). Синтаксической границы между целями и заложниками нет
+            // (`auto 50px` красен в колонках и зелен в рядах) — нужен разбор
+            // по контексту, а не по форме тела.
+                if let Some(list) = parse_tracks(v).filter(|l| l.len() > 1) {
+                    self.grid_cols = count_tracks(v);
+                    self.grid_tracks = Some(list);
+                }
+                let (max_auto, max_fr) = auto_fill_max(v);
                 self.auto_repeat_cols = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_min,
+                    body: auto_fill_body(v),
                     track_pct: auto_fill_pct(v),
                     intrinsic: auto_fill_intrinsic(v),
+                    intrinsic_min: auto_fill_intrinsic(v) && v.contains("min-content"),
                     fit_px: auto_fill_fit_px(v),
+                    max_auto,
+                    max_fr,
                 });
             }
             // То же по РЯДАМ: у раскладки лунками дорожки задают ряды, когда
             // `grid-lanes-direction: row` (`row-auto-repeat-001`).
             "grid-template-rows" if v.contains("auto-fill") || v.contains("auto-fit") => {
+                // Подсетка со списком имён в повторе — см. колонки выше.
+                self.grid_row_line_names = parse_line_names(v);
+                if v.trim_start().starts_with("subgrid") {
+                    self.subgrid_rows = true;
+                    self.subgrid = true;
+                    self.grid_rows = parse_tracks(v);
+                    return;
+                }
+                // Та же негодность по РЯДАМ (`row-auto-repeat-auto-005`,
+                // `row-auto-repeat-{fit,max,min}-content-003`).
+                if auto_repeat_outside_intrinsic(v) {
+                    return;
+                }
                 self.grid_auto_fill_row = auto_fill_min(v);
+                self.auto_repeat_body_rows = auto_fill_body_tracks(v);
+                // Только когда вокруг повтора ЕСТЬ свои дорожки: одинокий
+                // повтор целиком ведёт прежний путь раскладки, он считает
+                // число повторов точнее (доли, содержимое, `fit-content`).
+                if let Some(list) = parse_tracks(v).filter(|l| l.len() > 1) {
+                    self.grid_rows = Some(list);
+                }
+                let (max_auto, max_fr) = auto_fill_max(v);
                 self.auto_repeat_rows = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_row,
+                    body: auto_fill_body(v),
                     track_pct: auto_fill_pct(v),
                     intrinsic: auto_fill_intrinsic(v),
+                    intrinsic_min: auto_fill_intrinsic(v) && v.contains("min-content"),
                     fit_px: auto_fill_fit_px(v),
+                    max_auto,
+                    max_fr,
                 });
             }
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО: ИМЕНА ЛИНИЙ целиком (план — в
+            // `target/scout-linenames.md`, шаги A1-A3). Написано и работало:
+            // разбор имён списка дорожек (`[a] 50px 50px [a] 50px 50px [a]` →
+            // `[["a"],[],["a"],[],["a"]]`, с раскрытием счётного `repeat`),
+            // разбор именованной грани (`span a`, `a -1`, голое имя с поиском
+            // `имя-start`/`имя-end`), поле `NamedEdge` рядом с `Placement`
+            // (чтобы тот остался `Copy`), разрешитель имён в номера линий с
+            // неявными именами от `grid-template-areas`, вызванный и для
+            // классической сетки, и для лунок. Печатью подтверждено, что
+            // разрешитель ДОХОДИТ до контейнера с именами и разрешает грани.
+            // Срез css-grid (1133 пары, 646 зелёных): 646 — ноль приобретено,
+            // ноль потеряно; поимённо не сдвинулась НИ ОДНА из 33 пар с
+            // именами линий, а `grid-lanes-grid-placement-named-lines-001/002`
+            // ушли 16.30 → 17.92 и 14.11 → 14.54.
+            // Значит эти пары держат не имена: `column-line-names-011` —
+            // субсетка (шаг B), `-016` — имена внутри `repeat(auto-fill, …)`
+            // (шаг C), а `-003` при верно разрешённых гранях (span a / a -1 →
+            // линии 3..5) остаётся на 0.52. Возвращать вместе с шагами B и C.
             "grid-template-columns" => {
-                self.subgrid |= v.contains("subgrid");
+                // Признак ПОСЛЕДНЕГО объявления, а не накопленный: каскад
+                // берёт последнее (`grid-lanes-subgrid-001b`: правило класса
+                // `grid: subgrid / subgrid` и встроенное `grid: auto/subgrid`
+                // — ряды у подсетки СВОИ, а ИЛИ оставлял их подсеточными, и
+                // с настоящей подсеткой taffy ряд сжимался в один).
+                self.subgrid_cols = v.contains("subgrid");
+                self.subgrid = self.subgrid_cols || self.subgrid_rows;
+                self.grid_col_line_names = parse_line_names(v);
                 self.grid_cols = count_tracks(v);
                 self.grid_tracks = parse_tracks(v);
             }
@@ -1764,8 +4499,15 @@ impl Computed {
             // Формы с `auto-flow` описывают неявные дорожки: там сторона со
             // словом задаёт направление автопотока, а вторая — шаблон.
             "grid" | "grid-template" => {
-                self.subgrid |= v.contains("subgrid");
                 let (rows, cols) = split_slash(v);
+                // `grid: subgrid / subgrid`, `grid-template: subgrid / 20% 30%`
+                // — слово стоит на СВОЕЙ стороне косой черты, и ось у него
+                // своя. Без косой черты `split_slash` кладёт всё в `rows`, что
+                // и верно: сокращение начинается с рядов. Сокращение задаёт
+                // обе оси заново (см. `grid-template-columns`).
+                self.subgrid_rows = rows.contains("subgrid");
+                self.subgrid_cols = cols.contains("subgrid");
+                self.subgrid = self.subgrid_cols || self.subgrid_rows;
                 match (rows.contains("auto-flow"), cols.contains("auto-flow")) {
                     (true, _) => {
                         self.grid_auto_flow = Some(if rows.contains("dense") {
@@ -1794,47 +4536,165 @@ impl Computed {
                 }
             }
 
-            "width" => self.width = Len::parse(v),
-            "height" => self.height = Len::parse(v),
-            "min-width" => self.min_width = Len::parse(v),
-            "min-height" => self.min_height = Len::parse(v),
-            "max-width" => self.max_width = Len::parse(v),
-            "max-height" => self.max_height = Len::parse(v),
+            // Отрицательная длина делает объявление размера невалидным
+            // (CSS 2.1 §10): `max-height: -1px` доезжал до раскладки и
+            // схлопывал коробку в ноль. У `min-*` отрицательное поднимает
+            // сама раскладка, но объявление всё равно отбрасывается.
+            "width" | "height" | "min-width" | "min-height" if calc_size_arg(v).is_some() => {
+                let i = match key {
+                    "width" => 0,
+                    "height" => 1,
+                    "min-width" => 2,
+                    _ => 3,
+                };
+                let slot = match i {
+                    0 => &mut self.width,
+                    1 => &mut self.height,
+                    2 => &mut self.min_width,
+                    _ => &mut self.min_height,
+                };
+                match calc_size_arg(v) {
+                    Some(CalcSize::Fixed(px)) => {
+                        *slot = Some(Len::Px(px));
+                        self.calc_size[i] = None;
+                    }
+                    Some(CalcSize::Over(f)) => {
+                        *slot = if i < 2 { Some(Len::Auto) } else { None };
+                        self.calc_size[i] = Some(f);
+                    }
+                    None => {}
+                }
+            }
+            "width" => {
+                self.width_inherit = v == "inherit";
+                self.fit_arg[0] = fit_content_arg(v);
+                self.calc_size[0] = None;
+                assign_size(&mut self.width, v);
+            }
+            "height" => {
+                self.height_inherit = v == "inherit";
+                self.calc_size[1] = None;
+                assign_size(&mut self.height, v);
+            }
+            // Пределы не наследуются, но `inherit` берёт значение родителя
+            // явно (§6.2.1). Без этой ветки `assign_size` стирал слот в
+            // `None`, и `max-height: inherit` снимал предел вовсе.
+            "min-width" => {
+                self.minmax_inherit[0] = v == "inherit";
+                self.fit_arg[1] = fit_content_arg(v);
+                self.calc_size[2] = None;
+                assign_size(&mut self.min_width, v);
+            }
+            "min-height" => {
+                self.minmax_inherit[1] = v == "inherit";
+                self.calc_size[3] = None;
+                assign_size(&mut self.min_height, v);
+            }
+            "max-width" => {
+                self.minmax_inherit[2] = v == "inherit";
+                self.fit_arg[2] = fit_content_arg(v);
+                assign_size(&mut self.max_width, v);
+            }
+            "max-height" => {
+                self.minmax_inherit[3] = v == "inherit";
+                assign_size(&mut self.max_height, v);
+            }
 
             "padding" => {
                 if v == "inherit" {
                     self.padding_inherit = true;
                     return;
                 }
-                self.padding = Sides::shorthand(v);
-                // Гашение логических слотов — как у полей (порядок каскада).
-                if let Some(l) = self.logical.as_mut() {
-                    l.padding = Default::default();
+                let parsed = Sides::shorthand(v);
+                let neg = |l: &Option<Len>| {
+                    matches!(l, Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if *n < 0.0)
+                };
+                if neg(&parsed.top)
+                    || neg(&parsed.right)
+                    || neg(&parsed.bottom)
+                    || neg(&parsed.left)
+                {
+                    return;
                 }
+                self.padding = parsed;
+                // Спор с логическими сторонами решает порядок объявлений.
+                self.side_seq.padding = [self.decl_seq; 4];
             }
             "padding-top" => {
-                self.padding.top = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.padding.block_start = None;
+                // `inherit` разбором не выражается: слово копирует вычисленное
+                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
+                // `None`, и отступ обнулялся.
+                if v == "inherit" {
+                    self.padding_inherit_side[0] = true;
+                    return;
                 }
+                // Отрицательный внутренний отступ невалиден (§8.4) — слот
+                // не трогается (ref-no-vert-space-between и родня).
+                if matches!(
+                    Len::parse(v),
+                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
+                ) {
+                    return;
+                }
+                self.padding.top = Len::parse(v);
+                self.side_seq.padding[0] = self.decl_seq;
             }
             "padding-right" => {
-                self.padding.right = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.padding.inline_end = None;
+                // `inherit` разбором не выражается: слово копирует вычисленное
+                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
+                // `None`, и отступ обнулялся.
+                if v == "inherit" {
+                    self.padding_inherit_side[1] = true;
+                    return;
                 }
+                // Отрицательный внутренний отступ невалиден (§8.4) — слот
+                // не трогается (ref-no-vert-space-between и родня).
+                if matches!(
+                    Len::parse(v),
+                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
+                ) {
+                    return;
+                }
+                self.padding.right = Len::parse(v);
+                self.side_seq.padding[1] = self.decl_seq;
             }
             "padding-bottom" => {
-                self.padding.bottom = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.padding.block_end = None;
+                // `inherit` разбором не выражается: слово копирует вычисленное
+                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
+                // `None`, и отступ обнулялся.
+                if v == "inherit" {
+                    self.padding_inherit_side[2] = true;
+                    return;
                 }
+                // Отрицательный внутренний отступ невалиден (§8.4) — слот
+                // не трогается (ref-no-vert-space-between и родня).
+                if matches!(
+                    Len::parse(v),
+                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
+                ) {
+                    return;
+                }
+                self.padding.bottom = Len::parse(v);
+                self.side_seq.padding[2] = self.decl_seq;
             }
             "padding-left" => {
-                self.padding.left = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.padding.inline_start = None;
+                // `inherit` разбором не выражается: слово копирует вычисленное
+                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
+                // `None`, и отступ обнулялся.
+                if v == "inherit" {
+                    self.padding_inherit_side[3] = true;
+                    return;
                 }
+                // Отрицательный внутренний отступ невалиден (§8.4) — слот
+                // не трогается (ref-no-vert-space-between и родня).
+                if matches!(
+                    Len::parse(v),
+                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
+                ) {
+                    return;
+                }
+                self.padding.left = Len::parse(v);
+                self.side_seq.padding[3] = self.decl_seq;
             }
             // Физическая запись ГАСИТ логический слот той же стороны: разбор
             // идёт в порядке каскада, и авторский `margin: 0` обязан бить
@@ -1843,34 +4703,49 @@ impl Computed {
             // Соответствие сторон берётся горизонтальное: письмо на разборе
             // ещё неизвестно, а гасят почти всегда сбросом всех сторон.
             "margin" => {
-                self.margin = Sides::shorthand(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.margin = Default::default();
+                if v == "inherit" {
+                    self.margin_inherit = [true; 4];
+                    return;
                 }
+                self.margin = Sides::shorthand(v);
+                self.side_seq.margin = [self.decl_seq; 4];
             }
             "margin-top" => {
-                self.margin.top = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.margin.block_start = None;
+                if v == "inherit" {
+                    self.margin_inherit[0] = true;
+                    return;
                 }
+                self.margin.top = Len::parse(v);
+                self.side_seq.margin[0] = self.decl_seq;
             }
             "margin-right" => {
-                self.margin.right = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.margin.inline_end = None;
+                if v == "inherit" {
+                    self.margin_inherit[1] = true;
+                    return;
                 }
+                // Смесь «доля ± точки» доживает индексом: раскладка складывает
+                // её сама (css-values-4 §10.9), а вклад решает долю от нуля
+                // (css-sizing-3 §5.2.1, `calc-margins-*`). Вертикальные поля
+                // — по-прежнему `parse`: смесь там закрыла бы схлопывание.
+                self.margin.right = Len::parse_mixed(v);
+                self.side_seq.margin[1] = self.decl_seq;
             }
             "margin-bottom" => {
-                self.margin.bottom = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.margin.block_end = None;
+                if v == "inherit" {
+                    self.margin_inherit[2] = true;
+                    return;
                 }
+                self.margin.bottom = Len::parse(v);
+                self.side_seq.margin[2] = self.decl_seq;
             }
             "margin-left" => {
-                self.margin.left = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.margin.inline_start = None;
+                if v == "inherit" {
+                    self.margin_inherit[3] = true;
+                    return;
                 }
+                // Смесь «доля ± точки» доживает (см. `margin-right`).
+                self.margin.left = Len::parse_mixed(v);
+                self.side_seq.margin[3] = self.decl_seq;
             }
 
             "border" => {
@@ -1878,28 +4753,324 @@ impl Computed {
                 // вычисленное значение, самим разбором его не выразить.
                 if v == "inherit" {
                     self.border_inherit = true;
+                    self.border_inherit_w = [true; 4];
+                    self.border_inherit_s = [true; 4];
+                    self.border_inherit_c = [true; 4];
                     return;
                 }
                 self.apply_border_shorthand(v, None)
             }
-            "border-top" => self.apply_border_shorthand(v, Some(0)),
-            "border-right" => self.apply_border_shorthand(v, Some(1)),
-            "border-bottom" => self.apply_border_shorthand(v, Some(2)),
-            "border-left" => self.apply_border_shorthand(v, Some(3)),
-            "border-width" => self.border_width = Sides::shorthand(v),
+            "border-top" | "border-right" | "border-bottom" | "border-left" => {
+                let i = match key {
+                    "border-top" => 0,
+                    "border-right" => 1,
+                    "border-bottom" => 2,
+                    _ => 3,
+                };
+                // `border-bottom: inherit` — все три части ОДНОЙ стороны.
+                if v == "inherit" {
+                    self.border_inherit_w[i] = true;
+                    self.border_inherit_s[i] = true;
+                    self.border_inherit_c[i] = true;
+                    return;
+                }
+                self.apply_border_shorthand(v, Some(i))
+            }
+            "border-width" if v == "inherit" => self.border_inherit_w = [true; 4],
+            "border-style" if v == "inherit" => self.border_inherit_s = [true; 4],
+            "border-color" if v == "inherit" => self.border_inherit_c = [true; 4],
+            "border-top-width"
+            | "border-right-width"
+            | "border-bottom-width"
+            | "border-left-width"
+                if v == "inherit" =>
+            {
+                self.border_inherit_w[side_index(key)] = true;
+            }
+            "border-top-style"
+            | "border-right-style"
+            | "border-bottom-style"
+            | "border-left-style"
+                if v == "inherit" =>
+            {
+                self.border_inherit_s[side_index(key)] = true;
+            }
+            "border-top-color"
+            | "border-right-color"
+            | "border-bottom-color"
+            | "border-left-color"
+                if v == "inherit" =>
+            {
+                self.border_inherit_c[side_index(key)] = true;
+            }
+            "border-width" => {
+                // Толщина словом (`thin`/`medium`/`thick`, §8.5.1) до сюда не
+                // доезжала: общее сокращение по сторонам знает только длины, и
+                // запись `border-width: thin medium medium medium` стирала
+                // толщину на всех сторонах — рамка пропадала целиком.
+                let list: Vec<Option<Len>> = v.split_whitespace().map(line_width).collect();
+                // Недействительное значение делает НЕВАЛИДНЫМ всё объявление
+                // (§4.2), а не одну сторону: иначе опечатка гасила рамку.
+                if list.is_empty() || list.len() > 4 || list.iter().any(Option::is_none) {
+                    return;
+                }
+                let at = |i: usize| -> Option<Len> {
+                    let pick = match (list.len(), i) {
+                        (1, _) => 0,
+                        (2, 0 | 2) => 0,
+                        (2, _) => 1,
+                        (3, 0) => 0,
+                        (3, 2) => 2,
+                        (3, _) => 1,
+                        _ => i,
+                    };
+                    list[pick]
+                };
+                self.border_width = Sides {
+                    top: at(0),
+                    right: at(1),
+                    bottom: at(2),
+                    left: at(3),
+                };
+            }
             "border-collapse" => self.border_collapse = Some(v == "collapse"),
+            "empty-cells" => self.empty_cells_hide = Some(v.trim() == "hide"),
             "border-color" => {
-                if v.eq_ignore_ascii_case("currentcolor") {
-                    self.border_color_is_current = true;
-                } else {
-                    self.border_color = Color::parse(v);
+                // От одного до четырёх значений, как у всякого сокращения по
+                // сторонам (§8.5.2). Прежде строка разбиралась целиком, и
+                // запись `border-color: red orange red yellow` не давала
+                // НИЧЕГО: цвет пропадал на всех сторонах разом.
+                let list: Vec<&str> = v.split_whitespace().collect();
+                if list.is_empty() || list.len() > 4 {
+                    return;
+                }
+                if list.len() == 1 {
+                    if v.eq_ignore_ascii_case("currentcolor") {
+                        self.border_color_is_current = true;
+                    } else {
+                        self.border_color = Color::parse(v);
+                    }
+                    // Общий цвет, записанный ПОЗЖЕ бокового сокращения,
+                    // перебивает его `currentColor` на всех сторонах.
+                    if self.border_color_is_current || self.border_color.is_some() {
+                        self.border_side_current = [false; 4];
+                    }
+                    return;
+                }
+                let colors: Vec<Option<Color>> =
+                    list.iter().map(|t| side_color(t, self.color)).collect();
+                // Недействительное значение делает НЕВАЛИДНЫМ всё объявление
+                // (§4.2), а не одну сторону.
+                if colors.iter().any(Option::is_none) {
+                    return;
+                }
+                let at = |i: usize| -> Option<Color> {
+                    let pick = match (colors.len(), i) {
+                        (2, 0 | 2) => 0,
+                        (2, _) => 1,
+                        (3, 0) => 0,
+                        (3, 2) => 2,
+                        (3, _) => 1,
+                        _ => i,
+                    };
+                    colors[pick]
+                };
+                for i in 0..4 {
+                    self.border_colors[i] = at(i);
+                }
+                // Общий цвет остаётся у верхней стороны: его читают пути, не
+                // знающие о сторонах.
+                self.border_color = at(0);
+            }
+            // `border-shape` (css-borders-4 §border-shape): `none` либо одна-две
+            // базовые фигуры, каждая с необязательной опорной коробкой ПОСЛЕ
+            // неё. Дефолты — как в Blink `ConvertBorderShape`: одна фигура →
+            // half-border-box, две → border-box и padding-box. Неразобранное
+            // значение — объявление отбрасывается (прежнее остаётся).
+            "border-shape" => {
+                if v.eq_ignore_ascii_case("none") {
+                    self.border_shape = None;
+                } else if let Some(bs) = parse_border_shape(v) {
+                    self.border_shape = Some(bs);
                 }
             }
-            "border-radius" => self.radius = radius_shorthand(v),
-            "border-top-left-radius" => self.radius.tl = Len::parse(v),
-            "border-top-right-radius" => self.radius.tr = Len::parse(v),
-            "border-bottom-right-radius" => self.radius.br = Len::parse(v),
-            "border-bottom-left-radius" => self.radius.bl = Len::parse(v),
+            // `corner-shape` (css-borders-4 §corner-shaping-shorthand): 1–4
+            // значения раскладываются по углам как `border-radius`.
+            // Сокращение `corner` (css-borders-4 §corner-shorthand): до
+            // четырёх углов через `/` по часовой от верхнего левого (схема
+            // 1–4 значений — как у `border-radius`), в каждом — радиус
+            // `<length-percentage>{1,2}` и/или форма `<corner-shape-value>`
+            // в любом порядке; опущенное — начальное (`0`, `round`).
+            // Раскладывается в те же лонгхенды, что пишет эталон
+            // (`corner-shorthand-rendering`).
+            "corner" => {
+                let mut corners: Vec<(Vec<&str>, Option<&str>)> = Vec::new();
+                for part in v.split('/').map(str::trim) {
+                    let mut lens = Vec::new();
+                    let mut shape = None;
+                    for tok in part.split_whitespace() {
+                        if corner_shape_param(tok).is_some() {
+                            shape = Some(tok);
+                        } else if Len::parse(tok).is_some() {
+                            lens.push(tok);
+                        } else {
+                            return;
+                        }
+                    }
+                    corners.push((lens, shape));
+                }
+                let pick: [usize; 4] = match corners.len() {
+                    1 => [0, 0, 0, 0],
+                    2 => [0, 1, 0, 1],
+                    3 => [0, 1, 2, 1],
+                    4 => [0, 1, 2, 3],
+                    _ => return,
+                };
+                const NAMES: [&str; 4] = ["top-left", "top-right", "bottom-right", "bottom-left"];
+                for (slot, &i) in pick.iter().enumerate() {
+                    let (lens, shape) = &corners[i];
+                    let radius = if lens.is_empty() { "0".to_string() } else { lens.join(" ") };
+                    self.apply_one(&format!("border-{}-radius", NAMES[slot]), &radius);
+                    self.apply_one(
+                        &format!("corner-{}-shape", NAMES[slot]),
+                        shape.unwrap_or("round"),
+                    );
+                }
+            }
+            "corner-shape" => {
+                if let Some(k) = corner_shape_shorthand(v) {
+                    self.corner_shape = Some(k);
+                }
+            }
+            // Боковые шортхенды (§corner-shaping-side-shorthands): 1–2 значения
+            // на два угла стороны.
+            "corner-top-shape" | "corner-bottom-shape" | "corner-left-shape" | "corner-right-shape" => {
+                let vals: Vec<f32> = v.split_whitespace().filter_map(corner_shape_param).collect();
+                if let Some(first) = vals.first().copied() {
+                    let second = vals.get(1).copied().unwrap_or(first);
+                    let mut k = self.corner_shape.unwrap_or([1.0; 4]);
+                    // Порядок пар — по часовой от первого угла стороны.
+                    let (a, b) = match key {
+                        "corner-top-shape" => (0, 1),
+                        "corner-right-shape" => (1, 2),
+                        "corner-bottom-shape" => (3, 2),
+                        _ => (0, 3),
+                    };
+                    k[a] = first;
+                    k[b] = second;
+                    self.corner_shape = Some(k);
+                }
+            }
+            "corner-top-left-shape"
+            | "corner-top-right-shape"
+            | "corner-bottom-right-shape"
+            | "corner-bottom-left-shape" => {
+                if let Some(val) = corner_shape_param(v) {
+                    let mut k = self.corner_shape.unwrap_or([1.0; 4]);
+                    k[match key {
+                        "corner-top-left-shape" => 0,
+                        "corner-top-right-shape" => 1,
+                        "corner-bottom-right-shape" => 2,
+                        _ => 3,
+                    }] = val;
+                    self.corner_shape = Some(k);
+                }
+            }
+            // Сокращения стороны (css-borders-4 §corner-sizing, tentative):
+            // два угла одной стороны. До `/` — первый угол (`rx [ry]`), после —
+            // второй; без `/` оба одинаковы. Углы стороны идут слева направо
+            // (верх/низ) и сверху вниз (лево/право): `border-bottom-radius:
+            // 3em 2em / 4em 1em` ≡ `bottom-left: 3em 2em; bottom-right: 4em
+            // 1em` (`border-radius-side-shorthands-001`). Логические — по
+            // письму на момент объявления; вертикальное письмо пока как
+            // горизонтальное (`-002` горизонтальный).
+            "border-top-radius"
+            | "border-right-radius"
+            | "border-bottom-radius"
+            | "border-left-radius"
+            | "border-block-start-radius"
+            | "border-block-end-radius"
+            | "border-inline-start-radius"
+            | "border-inline-end-radius" => {
+                let rtl = self.rtl == Some(true);
+                let (a, b) = match (key, rtl) {
+                    ("border-top-radius", _) | ("border-block-start-radius", false) => (0, 1),
+                    ("border-block-start-radius", true) => (1, 0),
+                    ("border-bottom-radius", _) | ("border-block-end-radius", false) => (3, 2),
+                    ("border-block-end-radius", true) => (2, 3),
+                    ("border-left-radius", _)
+                    | ("border-inline-start-radius", false)
+                    | ("border-inline-end-radius", true) => (0, 3),
+                    _ => (1, 2),
+                };
+                let (first, second) = match v.split_once('/') {
+                    Some((x, y)) => (x.trim(), y.trim()),
+                    None => (v, v),
+                };
+                const LONG: [&str; 4] = [
+                    "border-top-left-radius",
+                    "border-top-right-radius",
+                    "border-bottom-right-radius",
+                    "border-bottom-left-radius",
+                ];
+                self.apply_one(LONG[a], first);
+                self.apply_one(LONG[b], second);
+            }
+            "border-radius" => {
+                // Эллиптические радиусы: `H / V` (css-backgrounds-3 §5.1) —
+                // углы с rx≠ry не выразить круглым скруглением растеризатора,
+                // форма уходит альфа-маской буфера группы.
+                if let Some((hs, vs)) = v.split_once('/') {
+                    let h = radius_shorthand(hs.trim());
+                    let vv = radius_shorthand(vs.trim());
+                    self.radius = h;
+                    let p = |a: Option<Len>, b: Option<Len>| match (a, b) {
+                        (Some(Len::Px(x)), Some(Len::Px(y))) if (x - y).abs() > 0.01 => {
+                            Some((x, y))
+                        }
+                        _ => None,
+                    };
+                    let ell = [
+                        p(h.tl, vv.tl),
+                        p(h.tr, vv.tr),
+                        p(h.br, vv.br),
+                        p(h.bl, vv.bl),
+                    ];
+                    if ell.iter().any(|c| c.is_some()) {
+                        self.radius_ell = Some(ell);
+                    }
+                } else {
+                    self.radius = radius_shorthand(v);
+                }
+            }
+            "border-top-left-radius"
+            | "border-top-right-radius"
+            | "border-bottom-right-radius"
+            | "border-bottom-left-radius" => {
+                // Двухзначный лонгхенд — эллиптический угол `rx ry`.
+                let mut it = v.split_whitespace();
+                let x = it.next().and_then(Len::parse);
+                let y = it.next().and_then(Len::parse);
+                let slot = match key {
+                    "border-top-left-radius" => 0,
+                    "border-top-right-radius" => 1,
+                    "border-bottom-right-radius" => 2,
+                    _ => 3,
+                };
+                match slot {
+                    0 => self.radius.tl = x,
+                    1 => self.radius.tr = x,
+                    2 => self.radius.br = x,
+                    _ => self.radius.bl = x,
+                }
+                if let (Some(Len::Px(rx)), Some(Len::Px(ry))) = (x, y)
+                    && (rx - ry).abs() > 0.01
+                {
+                    let mut ell = self.radius_ell.unwrap_or([None; 4]);
+                    ell[slot] = Some((rx, ry));
+                    self.radius_ell = Some(ell);
+                }
+            }
 
             "position" => {
                 self.position = match v {
@@ -1913,35 +5084,88 @@ impl Computed {
                     _ => self.position,
                 }
             }
-            "top" => {
-                self.inset.top = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.inset.block_start = None;
+            // css-anchor-position-1 §anchor-name: `none | <dashed-ident>#`.
+            "anchor-name" => {
+                self.anchor_name = (v != "none")
+                    .then(|| {
+                        v.split(',')
+                            .map(|n| n.trim().to_string())
+                            .filter(|n| n.starts_with("--"))
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|names| !names.is_empty());
+            }
+            // §position-anchor: значение хранится как есть, решается при
+            // сборке (`anchor::AnchorPlan::of`) и в `anchor::settle_static`.
+            "position-anchor" => {
+                self.position_anchor = Some(match v {
+                    "normal" => PositionAnchor::Normal,
+                    "none" => PositionAnchor::None,
+                    "auto" => PositionAnchor::Auto,
+                    "match-parent" => PositionAnchor::MatchParent,
+                    name if name.starts_with("--") => PositionAnchor::Named(name.to_string()),
+                    _ => return,
+                });
+            }
+            // §position-area: сетка 3×3 от якоря и содержащего блока; разбор
+            // и физическое разрешение — в `anchor`.
+            "position-area" => {
+                self.position_area = crate::anchor::parse_area(v);
+            }
+            // §position-try-fallbacks: список вариантов, разбор — в `anchor`.
+            "position-try-fallbacks" => {
+                self.position_try_fallbacks = crate::anchor::parse_try_fallbacks(v);
+            }
+            // §position-try-order-property.
+            "position-try-order" => {
+                if let Some(o) = crate::anchor::parse_try_order(v.trim()) {
+                    self.position_try_order = o;
                 }
+            }
+            // Сокращение `position-try: <order>? <fallbacks>` (§position-try-prop):
+            // опущенный порядок — `normal`.
+            "position-try" => {
+                let v = v.trim();
+                let (order, rest) = match v.split_once(char::is_whitespace) {
+                    Some((a, b)) if crate::anchor::parse_try_order(a).is_some() => {
+                        (crate::anchor::parse_try_order(a).unwrap_or(0), b.trim())
+                    }
+                    None if crate::anchor::parse_try_order(v).is_some() => {
+                        (crate::anchor::parse_try_order(v).unwrap_or(0), "none")
+                    }
+                    _ => (0, v),
+                };
+                self.position_try_order = order;
+                self.position_try_fallbacks = crate::anchor::parse_try_fallbacks(rest);
+            }
+            // §position-visibility; легаси `anchors-valid`/`anchors-visible` —
+            // псевдонимы (спека разрешает их узнавать).
+            "position-visibility" => {
+                self.position_visibility = crate::anchor::parse_visibility(v);
+            }
+            "top" => {
+                self.inset_inherit[0] = v == "inherit";
+                self.inset.top = Len::parse(v);
+                self.side_seq.inset[0] = self.decl_seq;
             }
             "right" => {
+                self.inset_inherit[1] = v == "inherit";
                 self.inset.right = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.inset.inline_end = None;
-                }
+                self.side_seq.inset[1] = self.decl_seq;
             }
             "bottom" => {
+                self.inset_inherit[2] = v == "inherit";
                 self.inset.bottom = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.inset.block_end = None;
-                }
+                self.side_seq.inset[2] = self.decl_seq;
             }
             "left" => {
+                self.inset_inherit[3] = v == "inherit";
                 self.inset.left = Len::parse(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.inset.inline_start = None;
-                }
+                self.side_seq.inset[3] = self.decl_seq;
             }
             "inset" => {
                 self.inset = Sides::shorthand(v);
-                if let Some(l) = self.logical.as_mut() {
-                    l.inset = Default::default();
-                }
+                self.side_seq.inset = [self.decl_seq; 4];
             }
             "overflow" => {
                 // Запись из двух слов — оси по отдельности
@@ -1959,6 +5183,14 @@ impl Computed {
             // отодвигается наружу (css-overflow-3 §5). Запись допускает и
             // указание коробки отсчёта — её мы не различаем, край один.
             "overflow-clip-margin" => {
+                // `inherit` у НЕнаследуемого свойства — вычисленное значение
+                // родителя целиком (css-cascade-4 §inherit). Ветка длины ниже
+                // слово не понимала, и объявление пропадало
+                // (`overflow-clip-margin-009`: поле 20 родителя не доезжало).
+                if v.trim() == "inherit" {
+                    self.inherit_bits |= inh::CLIP_MARGIN;
+                    return;
+                }
                 // `<visual-box> || <length>`: коробка отсчёта и поле, в любом
                 // порядке, любая часть может отсутствовать (умолчание —
                 // padding-box, поле 0).
@@ -1970,9 +5202,11 @@ impl Computed {
                         "padding-box" => bx = Some(1),
                         "content-box" => bx = Some(0),
                         t => {
-                            if let Some(Len::Px(px)) = Len::parse(t)
-                                && px >= 0.0
-                            {
+                            // Отрицательная длина — ВТЯЖКА внутрь коробки
+                            // (css-overflow-4 §overflow-clip-margin:
+                            // «Negative values indicate insets»), а не
+                            // негодное объявление.
+                            if let Some(Len::Px(px)) = Len::parse(t) {
                                 margin = Some(px);
                             }
                         }
@@ -1990,7 +5224,32 @@ impl Computed {
             "background" | "background-color" => {
                 if v == "inherit" {
                     self.background_inherit = true;
+                    // Сокращение наследует ВЕСЬ фон, а не только цвет
+                    // (css-backgrounds-3 §2.1): картинку, повтор, положение и
+                    // размер. Флага два, потому что `background-color:
+                    // inherit` чужую картинку тащить не должен.
+                    self.background_all_inherit = key == "background";
                     return;
+                }
+                // Сокращение СБРАСЫВАЕТ все свои длинные свойства
+                // (css-backgrounds-3 §2.1): `background-color: red;
+                // background: bottom fixed` оставляет фон ПРОЗРАЧНЫМ, а
+                // прежде красный переживал сокращение. Сбрасывает только
+                // `background`; `background-color` трогает лишь цвет.
+                // Сокращение СБРАСЫВАЕТ свои длинные свойства
+                // (css-backgrounds-3 §2.1): `background-color: red;
+                // background: bottom fixed` оставляет фон ПРОЗРАЧНЫМ.
+                // Сбрасывается только ЦВЕТ: остальные части разбор ниже берёт
+                // из записи не полностью, и полный сброс терял то, чего он не
+                // умеет прочесть обратно (замерено: девять пар
+                // `textarea-pre-wrap-*` уходили 0.00 → 0.76).
+                // Негодное объявление не сбрасывает ничего (§4.1.7).
+                if key == "background" && background_shorthand_valid(v) {
+                    self.background = None;
+                    self.background_rcs = None;
+                }
+                if key == "background-color" || background_shorthand_valid(v) {
+                    self.bg_explicit = true;
                 }
                 // Цвет от `currentColor` решается не здесь: цвет элемента
                 // известен только после каскада, а запись наследуется
@@ -2016,25 +5275,117 @@ impl Computed {
                 let top = layers.first().copied().unwrap_or(v);
                 let bottom = layers.last().copied().unwrap_or(v);
                 if top.starts_with("linear-gradient(") || top.starts_with("radial-gradient(") {
-                    self.gradient = parse_gradient(top);
-                    // Цвет ищется в НИЖНЕМ слое: он один его и допускает.
-                    if layers.len() > 1 {
-                        for token in split_outside_parens(bottom) {
-                            if let Some(c) = Color::parse(&token) {
-                                self.background = Some(c);
+                    // Слой сокращения — функция градиента И положение, размер,
+                    // повтор за ней (`linear-gradient(green, green) 1ch 0 /
+                    // 4ch 1ch no-repeat`). Вся запись целиком градиентом не
+                    // разбиралась (хвост за скобкой), и слой пропадал вместе с
+                    // остальными (`hanging-whitespace-001..004`). Функция —
+                    // градиент, хвост — свои длинные свойства; при хвосте слой
+                    // рисуется плиткой (`gradient_raw`).
+                    let (func, rest) = split_image_func(top);
+                    let top = func;
+                    let mut tiled = false;
+                    if !rest.trim().is_empty() {
+                        let (pos_part, size_part) = match rest.split_once('/') {
+                            Some((a, b)) => (a, Some(b)),
+                            None => (rest, None),
+                        };
+                        let mut pos: Vec<String> = vec![];
+                        for token in split_outside_parens(pos_part) {
+                            match token.as_str() {
+                                "no-repeat" => self.bg_repeat = Some(BgRepeat::NoRepeat),
+                                "repeat-x" => self.bg_repeat = Some(BgRepeat::RepeatX),
+                                "repeat-y" => self.bg_repeat = Some(BgRepeat::RepeatY),
+                                "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
+                                "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
+                                t if Len::parse(t).is_some() => pos.push(token.clone()),
+                                _ => {}
                             }
+                        }
+                        if !pos.is_empty() {
+                            self.bg_pos = parse_pos_words(&pos.join(" "));
+                            tiled = true;
+                        }
+                        if let Some(size) = size_part {
+                            let mut lens: Vec<String> = vec![];
+                            for token in split_outside_parens(size) {
+                                match token.as_str() {
+                                    "no-repeat" => self.bg_repeat = Some(BgRepeat::NoRepeat),
+                                    "repeat-x" => self.bg_repeat = Some(BgRepeat::RepeatX),
+                                    "repeat-y" => self.bg_repeat = Some(BgRepeat::RepeatY),
+                                    "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
+                                    "cover" => self.bg_size = BgSize::Cover,
+                                    "contain" => self.bg_size = BgSize::Contain,
+                                    t if Len::parse_mixed(t).is_some() || t == "auto" => {
+                                        lens.push(token.clone())
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if !lens.is_empty() {
+                                let w = lens.first().and_then(|t| Len::parse_mixed(t));
+                                let h = lens.get(1).and_then(|t| Len::parse_mixed(t));
+                                self.bg_size = BgSize::Fixed(w, h);
+                            }
+                            tiled = true;
+                        }
+                        tiled |= self.bg_repeat.is_some();
+                    }
+                    self.gradient = parse_gradient(top);
+                    self.gradient_em = has_font_units(top).then(|| top.to_string());
+                    // Пространство смешения, которого GPU-путь не выражает
+                    // (всё, кроме гамма-sRGB и OKLab — css-color-4 §12.1),
+                    // рисуется растровой плиткой, как у длинного
+                    // `background-image`: там сырая запись ставится всегда, а
+                    // сокращение её не заводило, и `in srgb-linear`/`in lch`
+                    // смешивались в гамма-sRGB. Радиальный растеризатор пока
+                    // рисует осью (`rasterize_gradient` — `Mode::Axis`), его
+                    // оставляем на GPU. Сокращение сбрасывает картинку
+                    // (css-backgrounds-3 §2.1), поэтому иначе — `None`.
+                    self.gradient_raw = self
+                        .gradient
+                        .as_ref()
+                        .filter(|g| {
+                            tiled
+                                || (!g.radial
+                                    && !matches!(g.space, GradSpace::Srgb | GradSpace::Oklab))
+                        })
+                        .map(|_| top.to_string());
+                    // Цвет ищется в НИЖНЕМ слое (он один его допускает);
+                    // при единственном слое нижний == верхний, и цвет стоит
+                    // там же, рядом с градиентом: `background: linear-… green`.
+                    for token in split_outside_parens(bottom) {
+                        if token.contains('(') {
+                            continue;
+                        }
+                        if let Some(c) = Color::parse(&token) {
+                            self.background = Some(c);
                         }
                     }
                     return;
                 }
+                // Сокращение принимает ЛЮБОЙ `<image>` (css-backgrounds-3
+                // §3.10), в том числе конический и повторяющиеся: длинное
+                // свойство их уже отдаёт растровой плиткой, а тут запись
+                // молча падала в разбор слов и терялась целиком — оттого
+                // эталоны `image-set-*-gradient-rendering-ref` выходили
+                // ПУСТЫМИ и сходились с пустым же тестом.
                 let v = top;
-                if let Some(url) = parse_url(v) {
+                if gradient_as_raster(v) {
+                    self.bg_image = Some(v.to_string());
+                } else if let Some(url) = parse_url(v) {
                     self.bg_image = Some(url);
                 }
                 // Значение режется по пробелам ВНЕ скобок: иначе
                 // `rgba(0, 0, 0, .5)` распадался на куски, ни один из которых
                 // не цвет, и фон терялся целиком — самая частая запись
                 // полупрозрачной подложки.
+                // Слова и длины ПОЛОЖЕНИЯ копятся отдельно и решаются одним
+                // разбором: ключевое слово несёт СВОЮ ось (css-backgrounds-3
+                // §3.6), поэтому `bottom repeat-x` и `repeat-x bottom` — одно
+                // и то же. Разбор тот же, что у отдельного свойства, иначе
+                // тест и эталон разойдутся механикой, а не раскладкой.
+                let mut pos: Vec<String> = vec![];
                 for token in split_outside_parens(v) {
                     match token.as_str() {
                         "no-repeat" => self.bg_repeat = Some(BgRepeat::NoRepeat),
@@ -2043,13 +5394,26 @@ impl Computed {
                         "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
                         "cover" => self.bg_size = BgSize::Cover,
                         "contain" => self.bg_size = BgSize::Contain,
+                        // Привязка и коробки положением НЕ являются: слово
+                        // съедается здесь, иначе уедет в разбор положения.
+                        "scroll" | "fixed" | "local" | "border-box" | "padding-box"
+                        | "content-box" => {}
                         t if t.starts_with("url(") => {}
+                        // Ключевые слова осей и длины — это положение.
+                        "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
+                        t if Len::parse(t).is_some() => pos.push(token.clone()),
                         t => {
                             if let Some(c) = Color::parse(t) {
                                 self.background = Some(c);
                             }
                         }
                     }
+                }
+                // Положение ставится ТОЛЬКО когда слово о нём в записи есть:
+                // разбор пустой строки отдаёт «по центру», и каждый фон без
+                // положения уехал бы в середину коробки.
+                if !pos.is_empty() {
+                    self.bg_pos = parse_pos_words(&pos.join(" "));
                 }
                 // Цвет живёт в НИЖНЕМ слое списка — верхний его не допускает.
                 if layers.len() > 1 {
@@ -2060,13 +5424,20 @@ impl Computed {
                     }
                 }
             }
+            "box-shadow" if has_font_units(v) => self.shadow_raw = Some(v.to_string()),
             "box-shadow" => {
+                self.shadow_raw = None;
                 if v == "inherit" {
                     self.shadow_inherit = true;
                     return;
                 }
                 // `inset` в записи означает тень ВНУТРИ фигуры: раньше такая
                 // запись просто не рисовалась.
+                // Негодная запись ОТБРАСЫВАЕТСЯ целиком, прежняя тень живёт
+                // (§7.1 `none | <shadow>#`; `box-shadow-invalid-001`).
+                if !box_shadow_valid(v) {
+                    return;
+                }
                 let (inset, outer): (Vec<&str>, Vec<&str>) = crate::css::split_args(v)
                     .into_iter()
                     .partition(|one| one.contains("inset"));
@@ -2074,8 +5445,74 @@ impl Computed {
                 self.inset_shadows = parse_shadows(&inset.join(",").replace("inset", " "));
             }
 
-            "color" => self.color = Color::parse(v),
-            "font-size" => self.font_size = Len::parse(v),
+            // Неразборный цвет делает объявление недействительным (§4.2):
+            // прежнее значение живёт, а не сменяется умолчанием. Пустой слот
+            // у нас и означает «взять у родителя», поэтому `inherit` его
+            // очищает (`color-174`).
+            "color" => {
+                self.color = if v == "inherit" {
+                    None
+                } else {
+                    Color::parse(v).or(self.color)
+                }
+            }
+            "font-size" => {
+                // Отрицательный кегль и неразборная запись делают объявление
+                // НЕВАЛИДНЫМ (§4.2, §15.7): прежнее значение остаётся, а не
+                // стирается в `None` (`c526-font-sz-003`: `-0.5in`).
+                let neg = |l: &Len| {
+                    matches!(
+                        l,
+                        Len::Px(v) | Len::Em(v) | Len::Pct(v) | Len::Ex(v) | Len::Ch(v)
+                            if *v < 0.0
+                    )
+                };
+                // Абсолютные и относительные СЛОВА кегля (CSS 2.1 §15.7,
+                // css-fonts-4 §absolute-size). Раньше слово давало `None`, а
+                // `None` в модели значит «не задано», то есть наследование.
+                // Из-за этого `font-size: initial` (через `initial_value` —
+                // `medium`) не сбрасывал кегль корня, и абзац
+                // `percentage-rem-low` набирался четырьмя точками вместо
+                // шестнадцати. Таблица — та же, что у Chrome при базовом 16.
+                let lower = v.to_ascii_lowercase();
+                let word = match lower.as_str() {
+                    "xx-small" => Some(Len::Px(9.0)),
+                    "x-small" => Some(Len::Px(10.0)),
+                    "small" => Some(Len::Px(13.0)),
+                    "medium" => Some(Len::Px(16.0)),
+                    "large" => Some(Len::Px(18.0)),
+                    "x-large" => Some(Len::Px(24.0)),
+                    "xx-large" => Some(Len::Px(32.0)),
+                    "xxx-large" => Some(Len::Px(48.0)),
+                    // Относительные — доли РОДИТЕЛЬСКОГО кегля: их сводит к
+                    // точкам `resolve_em`, как обычный `em`.
+                    "smaller" => Some(Len::Em(5.0 / 6.0)),
+                    "larger" => Some(Len::Em(1.2)),
+                    _ => None,
+                };
+                if let Some(l) = word {
+                    self.font_size = Some(l);
+                    // `larger`/`smaller` шагают по ТАБЛИЦЕ (§15.7: «if the
+                    // parent element has font size 'medium', then 'larger'
+                    // will make … 'large'»), а не множат: шесть шагов вверх от
+                    // `xx-small` (9 → 26.9) не сходились с шестью вниз от
+                    // `xx-large` (32 → 10.7) (`font-size-121`). Кегль родителя
+                    // известен в `inline::inherit`; `Len::Em` — запас вне таблицы.
+                    self.font_size_step = match lower.as_str() {
+                        "larger" => 1,
+                        "smaller" => -1,
+                        _ => 0,
+                    };
+                    return;
+                }
+                self.font_size = match Len::parse(v) {
+                    Some(l) if neg(&l) => self.font_size,
+                    other => {
+                        self.font_size_step = 0;
+                        other
+                    }
+                };
+            }
             "font-weight" => {
                 self.font_weight = match v {
                     "bold" | "bolder" => Some(700),
@@ -2083,8 +5520,21 @@ impl Computed {
                     n => n.parse().ok(),
                 }
             }
-            "font-style" => self.italic = Some(v == "italic" || v == "oblique"),
+            "font-style" => {
+                self.italic = Some(v == "italic" || v == "oblique");
+                // `oblique <angle>` — тоже наклон, а не курсив (css-fonts-4
+                // §font-style-prop): подбор лица различает их.
+                self.oblique = Some(v.starts_with("oblique"));
+            }
             "font-family" => {
+                // Имя семейства — либо строка в кавычках, либо ряд
+                // ИДЕНТИФИКАТОРОВ (§15.3). Неверное имя делает объявление
+                // недействительным целиком (§4.2): прежде разбор просто
+                // пропускал негодное имя и брал следующее из списка, из-за
+                // чего `font-family: 1Ahem, Ahem` набиралось шрифтом Ahem.
+                if !v.split(',').all(|part| family_name_ok(part.trim())) {
+                    return;
+                }
                 let lower = v.to_ascii_lowercase();
                 // Моноширинный запрос несёт смысл (код) и решает выбор
                 // встроенного шрифта, если названного в системе нет.
@@ -2093,12 +5543,103 @@ impl Computed {
                 // конкретный системный шрифт, и без подстановки разметка
                 // набиралась умолчанием движка, шире браузерного. Берётся то
                 // же семейство, что подставляет Chrome на этой системе.
+                // Родовое имя — только БЕЗ кавычек (css-fonts-4 §4.1.1: names
+                // that happen to be the same as a keyword value «must be quoted
+                // to prevent confusion with the keywords»): `"fantasy", serif` —
+                // семейство «fantasy», затем родовое `serif`
+                // (`quoted-generic-ignored`).
+                let quoted = |f: &str| f.starts_with('"') || f.starts_with('\'');
+                let first_generic = v
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|f| !quoted(f))
+                    .map(str::to_ascii_lowercase)
+                    .find(|f| is_generic(f));
                 let generic = v
                     .split(',')
-                    .map(|f| f.trim().trim_matches(is_quote).to_ascii_lowercase())
+                    .map(str::trim)
+                    .filter(|f| !quoted(f))
+                    .map(str::to_ascii_lowercase)
                     .find_map(|f| generic_family(&f));
                 // Первое НЕ родовое имя списка уходит в шрифт как есть:
                 // подстановкой недостающего занимается сама система шрифтов.
+                // Имя нормализуется до сравнения: неквотированное имя из
+                // нескольких слов — это один пробел между ними (§15.3).
+                let norm = |f: &str| {
+                    let un = crate::css::unescape(f);
+                    un.split_whitespace().collect::<Vec<_>>().join(" ")
+                };
+                // Годно ли имя списка как ИМЯ СЕМЕЙСТВА: в кавычках — всегда
+                // (даже `"serif"`), без кавычек — если это не родовое слово.
+                let usable = |raw: &str| {
+                    let f = raw.trim_matches(is_quote);
+                    let lower = f.to_ascii_lowercase();
+                    !f.is_empty()
+                        && (quoted(raw)
+                            || (!is_generic(&lower)
+                                && !matches!(lower.as_str(), "inherit" | "initial")))
+                };
+                // Первое ДОСТУПНОЕ имя списка: браузер идёт по списку, пока
+                // не найдёт шрифт (§15.3). Прежде бралось первое подходящее по
+                // виду, и `font-family: Courier New, Ahem` при отсутствующем
+                // `Courier New` набиралось подменой вместо `Ahem`.
+                //
+                // Доступность даёт не только система. Список установленных —
+                // это снимок `all_font_names()`, снятый ОДИН РАЗ на старте
+                // (`metrics::use_text_system`), и шрифт, принесённый самой
+                // страницей через `@font-face`, в него не попадает никогда.
+                // Без учёта подмен список семейств не доходил до второго
+                // имени: `font-family: "WOFF Test", "WOFF Test CFF Fallback"`
+                // при НЕГОДНОМ `woff2` обязан взять второе имя, а вместо
+                // этого отдавал системе первое, которого нет, — и весь набор
+                // WOFF2 держался на случайном совпадении подмен.
+                // Мало ИМЕТЬ шрифт: «первым доступным» (css-fonts-4
+                // §first-available-font) семейство становится, только если в
+                // нём есть знак U+0020 — от первого доступного считаются
+                // метрики строки, `line-height: normal`, `ch` и `ex`.
+                // Правило `@font-face` с `unicode-range` без пробела обязано
+                // быть ПРОПУЩЕНО: `font-family: 'A-no-space', 'B'` меряется
+                // по `B`, а не по первому имени списка. Прежде подмена от
+                // такого правила проходила как доступная, и после `7dbbfd2`
+                // (замер по настоящему имени) доли кегля брались с ЧУЖОГО
+                // файла — `first-available-font-002/007`, `ex-unit-004`.
+                let available = |f: &str| {
+                    (crate::metrics::font_installed(f) || crate::fonts::alias(f).is_some())
+                        && crate::fonts::covers_space(f)
+                };
+                let installed = v
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|raw| usable(raw))
+                    .map(|raw| norm(raw.trim_matches(is_quote)))
+                    .find(|f| available(f));
+                if let Some(found) = installed {
+                    self.font_family = Some(found);
+                    return;
+                }
+                // Ни одно имя не доступно. Первое родовое имя списка — его
+                // подстановка; `monospace` своего имени не даёт (семейство под
+                // него берёт `metrics::mono_family` по признаку). Родового нет —
+                // шрифт ДОКУМЕНТА (CSS 2.1 §15.3, «the user agent's default
+                // font»), а не неизвестное имя: DirectWrite заменял его
+                // системным UI-шрифтом (`select_font`, Segoe UI), тогда как
+                // эталон без `font-family` набирается базой документа
+                // (`font-family-name-017/018/022`, `standard-font-family`).
+                // Метка «шрифт документа» — ПУСТОЕ имя: оно задано (родителя
+                // не наследует, `-017`), а меряется и набирается как `None`.
+                // Пока список установленных не снят (`fonts_known`), о
+                // доступности судить нечем — ниже прежняя ветка.
+                if crate::metrics::fonts_known() && lower.trim() != "inherit" {
+                    self.font_family = match first_generic.as_deref() {
+                        Some("monospace" | "ui-monospace") => None,
+                        Some(_) => generic.map(str::to_string),
+                        None => {
+                            self.monospace = Some(false);
+                            Some(String::new())
+                        }
+                    };
+                    return;
+                }
                 self.font_family = v
                     .split(',')
                     .map(|f| f.trim().trim_matches(is_quote))
@@ -2108,19 +5649,104 @@ impl Computed {
                             && !is_generic(&lower)
                             && !matches!(lower.as_str(), "inherit" | "initial")
                     })
-                    .map(str::to_string)
+                    // Неквотированное имя из нескольких слов НОРМАЛИЗУЕТСЯ:
+                    // последовательность пробельных знаков (включая переводы
+                    // строк) — это один пробел (`Courier   New` == `Courier
+                    // New`, CSS2 §15.3; font-family-013 и родня). Экранирование
+                    // раскрывается как в любом идентификаторе.
+                    .map(|f| {
+                        let un = crate::css::unescape(f);
+                        un.split_whitespace().collect::<Vec<_>>().join(" ")
+                    })
                     .or_else(|| generic.map(str::to_string));
             }
             "text-decoration" | "text-decoration-line" => {
-                self.underline = Some(v.contains("underline"));
-                self.line_through = Some(v.contains("line-through"));
+                // Недействительный токен делает объявление НЕВАЛИДНЫМ целиком
+                // (§4.2): прежде свойство искалось подстрокой, и
+                // `text-decoration: diagonal` проезжало как «нет подчёркивания»
+                // вместо того, чтобы оставить прежнее значение
+                // (`c71-fwd-parsing-003`).
+                let line = |t: &str| {
+                    matches!(
+                        t,
+                        "none"
+                            | "underline"
+                            | "overline"
+                            | "line-through"
+                            | "blink"
+                            | "spelling-error"
+                            | "grammar-error"
+                    )
+                };
+                // У сокращения к линиям добавляются рисунок, толщина и цвет.
+                let extra = |t: &str| {
+                    key == "text-decoration"
+                        && (matches!(
+                            t,
+                            "solid"
+                                | "double"
+                                | "dotted"
+                                | "dashed"
+                                | "wavy"
+                                | "auto"
+                                | "from-font"
+                        ) || Len::parse(t).is_some()
+                            || Color::parse(t).is_some())
+                };
+                let lower = v.to_ascii_lowercase();
+                let mut words = lower.split_whitespace().peekable();
+                if words.peek().is_none() {
+                    return;
+                }
+                if !lower.split_whitespace().all(|t| line(t) || extra(t)) {
+                    return;
+                }
+                self.underline = Some(lower.split_whitespace().any(|t| t == "underline"));
+                self.line_through = Some(lower.split_whitespace().any(|t| t == "line-through"));
             }
             "line-height" => {
-                // Голое число в line-height — множитель, а не пиксели.
-                self.line_height = match v.parse::<f32>() {
-                    Ok(mult) if !v.ends_with("px") => Some(Len::Pct(mult)),
-                    _ => Len::parse(v),
+                // Голое число в line-height — множитель, а не пиксели, и
+                // наследуется оно множителем: у потомка своя высота строки.
+                //
+                // Доля — наоборот: §10.8.1 «Computed value: for <length> and
+                // <percentage> the absolute value», то есть `200%` считается
+                // от СВОЕГО кегля и наследуется уже точками. У нас обе записи
+                // давали `Len::Pct`, доля доживала до потомка и множилась на
+                // его кегль (`c548-ln-ht-003` против зелёной `-004` — та же
+                // разметка, разная запись). `Len::Em` сводится к точкам до
+                // наследования, поэтому доля тегируется им.
+                // `normal` — ЗАДАННОЕ значение, а не «не задано»: незаданное
+                // поле у нас берётся от родителя, и `p { line-height: normal }`
+                // молча наследовал `:root { line-height: 50px }` — документ
+                // уезжал вниз на полулидинг (`rlh-unit-001`: зелёный квадрат
+                // ниже эталона на 30 точек). Меткой служит `Len::Auto`: у всех
+                // потребителей высоты строки уже есть для неё запасная ветка
+                // «по метрикам шрифта» (`inline.rs:719`, `:1529`, `:2445`), а
+                // `apply.rs:1618` на `Len::Auto` явно ничего не задаёт.
+                if v.eq_ignore_ascii_case("normal") {
+                    self.line_height = Some(Len::Auto);
+                    return;
                 }
+                let parsed = match v.parse::<f32>() {
+                    Ok(mult) if !v.ends_with("px") => Some(Len::Pct(mult)),
+                    _ => match Len::parse(v) {
+                        Some(Len::Pct(k)) if v.trim_end().ends_with('%') => Some(Len::Em(k)),
+                        other => other,
+                    },
+                };
+                // Отрицательная высота строки недействительна (§10.8.1):
+                // объявление отбрасывается целиком, прежнее значение живёт.
+                let neg = |l: &Len| {
+                    matches!(
+                        l,
+                        Len::Px(v) | Len::Em(v) | Len::Pct(v) | Len::Ex(v) | Len::Ch(v)
+                            if *v < 0.0
+                    )
+                };
+                self.line_height = match parsed {
+                    Some(l) if neg(&l) => self.line_height,
+                    other => other,
+                };
             }
             // `text-justify: none` запрещает выключку целиком: строка с
             // `text-align: justify` прижимается к началу, как `start`
@@ -2169,31 +5795,178 @@ impl Computed {
             // Заливка SVG-геометрии: свойство презентации доезжает до
             // разметки при растеризации (SVG 2 §presentation attributes).
             "fill" => self.svg_fill = Some(v.to_string()),
+            // Обводка — то же семейство. Значение уходит в разметку как есть:
+            // разбирать цвет здесь незачем, его знает usvg.
+            "stroke" => self.svg_stroke = Some(v.to_string()),
+            // Вычисленное `stroke-width` — «the absolute length, or percentage»
+            // (fill-stroke-3 §stroke-width): `calc()` из точек сворачивается
+            // здесь. usvg его не понимает и рисовал толщину по умолчанию 1
+            // (`zoom/stroke`: эталон `calc(6px * var(--scale))`). В Blink —
+            // `UnzoomedLength` через `ConvertUnzoomedLength`
+            // (css_properties.json5:6150-6159).
+            "stroke-width" => {
+                self.svg_stroke_width = Some(match crate::value::calc_pct_px(v) {
+                    Some((pct, px)) if pct == 0.0 => format!("{px}"),
+                    _ => v.to_string(),
+                });
+            }
+            // `x`/`y` — геометрические СВОЙСТВА фигуры (SVG 2 §Geometry).
+            // У HTML-коробки таких свойств нет, поэтому имена свободны, а в
+            // разметку они уходят только внутри SVG-поддерева (гейт в svg.rs).
+            "x" => self.svg_x = crate::value::Len::parse(v),
+            "y" => self.svg_y = crate::value::Len::parse(v),
             "caption-side" => self.caption_bottom = Some(v.eq_ignore_ascii_case("bottom")),
             "visibility" => {
                 self.hidden = Some(v == "hidden" || v == "collapse");
                 self.collapsed = Some(v == "collapse");
             }
             "letter-spacing" => self.letter_spacing = Len::parse_spacing(v),
-            "text-overflow" => self.ellipsis = Some(v == "ellipsis"),
+            "text-overflow" => {
+                // css-overflow-4 §5: clip | ellipsis | <строка>, до двух
+                // сторон. Наша обрезка — конец строки: берётся последнее
+                // не-clip значение.
+                let mut on = false;
+                let mut marker = None;
+                // Резка по пробелам ВНЕ кавычек: маркер-строка может
+                // нести пробел; метка '\u{0}' отличает строку от ключевого слова.
+                let mut tokens: Vec<String> = vec![];
+                let mut cur = String::new();
+                let mut quote: Option<char> = None;
+                for ch in v.chars() {
+                    match quote {
+                        Some(q) if ch == q => quote = None,
+                        Some(_) => cur.push(ch),
+                        None if ch == '"' || ch == '\'' => {
+                            quote = Some(ch);
+                            if cur.is_empty() {
+                                cur.push('\u{0}');
+                            }
+                        }
+                        None if ch.is_whitespace() => {
+                            if !cur.is_empty() {
+                                tokens.push(std::mem::take(&mut cur));
+                            }
+                        }
+                        None => cur.push(ch),
+                    }
+                }
+                if !cur.is_empty() {
+                    tokens.push(cur);
+                }
+                for t in tokens {
+                    if let Some(text) = t.strip_prefix('\u{0}') {
+                        on = true;
+                        // Строка объявления несёт экранирование (css-syntax
+                        // §4.3.7: `\0A` — перевод строки, `\2026` — многоточие),
+                        // а разрывы сегмента в ней преобразуются, как в тексте
+                        // (css-text-3 §4.1.2; Blink `line_truncator.cc`
+                        // `SuppressLineBreaks`): ряд принудительных разрывов —
+                        // один пробел (`text-overflow-string-009…016`).
+                        marker = Some(collapse_segment_breaks(&unescape_content(text)));
+                    } else if t == "ellipsis" {
+                        on = true;
+                        marker = None;
+                    }
+                }
+                self.ellipsis = Some(on);
+                self.overflow_marker = marker;
+            }
+            "list-style-position" => {
+                self.list_style_inside = Some(v.trim() == "inside");
+            }
             "list-style" | "list-style-type" => {
+                // Сокращение задаёт ВСЕ составляющие: не названное в нём
+                // размещение возвращается к начальному `outside`
+                // (css-lists-3 §4). Долгая форма чужого значения не трогает.
+                if key == "list-style" {
+                    self.list_style_inside = Some(false);
+                    for token in v.split_whitespace() {
+                        match token {
+                            "inside" => self.list_style_inside = Some(true),
+                            "outside" => self.list_style_inside = Some(false),
+                            _ => {}
+                        }
+                    }
+                }
                 self.no_marker = Some(v.contains("none"));
-                // Вид маркера задаёт документ, а не приложение: у списка
-                // возможностей и у нумерованного перечня он разный.
+                // Строковый маркер: значение в кавычках берётся дословно,
+                // счётчик не участвует (list-style-type-string-*).
+                let t = v.trim();
+                if (t.starts_with('"') && t.ends_with('"') && t.len() >= 2)
+                    || (t.starts_with(char::from(39))
+                        && t.ends_with(char::from(39))
+                        && t.len() >= 2)
+                {
+                    // Экранирование снимает ТОКЕНИЗАЦИЯ (css-syntax-3 §4.3.7):
+                    // `\A0` — неразрывный пробел, `\9` — табуляция; до
+                    // свойства должны доезжать сами знаки, а не обратные
+                    // косые. Разрывы сегмента внутри строки сворачиваются в
+                    // пробел (css-text-3 §4.1.2) — ровно как в строке
+                    // `text-overflow` выше по этому же файлу.
+                    self.marker_text = Some(collapse_segment_breaks(&unescape_content(
+                        &t[1..t.len() - 1],
+                    )));
+                    self.no_marker = Some(false);
+                    return;
+                }
+                // Вид маркера — ИМЯ стиля счётчика (css-lists-3 §3): любое,
+                // а не восемь избранных. Ключевые слова размещения и `url()`
+                // именем не являются.
                 for token in v.split_whitespace() {
-                    self.marker = match token {
-                        "disc" => Some(Marker::Disc),
-                        "circle" => Some(Marker::Circle),
-                        "square" => Some(Marker::Square),
-                        "decimal" => Some(Marker::Decimal),
-                        "lower-alpha" | "lower-latin" => Some(Marker::LowerAlpha),
-                        "upper-alpha" | "upper-latin" => Some(Marker::UpperAlpha),
-                        "lower-roman" => Some(Marker::LowerRoman),
-                        _ => self.marker,
-                    };
+                    // Размещение, картинка и глобальные ключевые слова именем
+                    // стиля не являются: последние решает каскад, а до него
+                    // они означали бы «стиль по имени initial».
+                    if matches!(
+                        token,
+                        "inside"
+                            | "outside"
+                            | "none"
+                            | "inherit"
+                            | "initial"
+                            | "unset"
+                            | "revert"
+                            | "revert-layer"
+                    ) || token.starts_with("url(")
+                    {
+                        continue;
+                    }
+                    self.list_style_type = Some(token.to_string());
                 }
             }
             "object-fit" => self.object_fit = Some(v.to_string()),
+            // `image-orientation` (css-images-3 §5.4): `from-image | none |
+            // [<angle> || flip]`. Угол со `flip` спека сама помечает
+            // необязательным и устаревшим («optional to implement and
+            // deprecated»), и в корпусе его не просит ни один рефтест —
+            // разбираем два ключевых слова.
+            "image-orientation" => self.image_orient_none = Some(v.trim() == "none"),
+            // Долгая запись `white-space-collapse` (css-text-4 §3.1) трогает
+            // ТОЛЬКО схлопывание; перенос (`nowrap`) остаётся за
+            // `text-wrap-mode`. У `preserve-spaces` и `discard` своего пути в
+            // сборке текста нет — не трогаем.
+            "white-space-collapse" => match v {
+                "collapse" => {
+                    self.keep_spaces = Some(false);
+                    self.preserve_newlines = Some(false);
+                    self.break_after_spaces = Some(false);
+                }
+                "preserve" => {
+                    self.keep_spaces = Some(true);
+                    self.preserve_newlines = Some(true);
+                    self.break_after_spaces = Some(false);
+                }
+                "preserve-breaks" => {
+                    self.keep_spaces = Some(false);
+                    self.preserve_newlines = Some(true);
+                    self.break_after_spaces = Some(false);
+                }
+                "break-spaces" => {
+                    self.keep_spaces = Some(true);
+                    self.preserve_newlines = Some(true);
+                    self.break_after_spaces = Some(true);
+                }
+                _ => {}
+            },
             "white-space" => {
                 // `pre` не переносит строки — так же, как `nowrap`; переносят
                 // только `pre-wrap` и `pre-line`.
@@ -2222,6 +5995,7 @@ impl Computed {
                 let (a, b) = axis_pair(v);
                 let block = key.ends_with("block");
                 let which = key.split('-').next().unwrap_or("").to_string();
+                let seq = self.decl_seq;
                 let logical = self.logical();
                 let target = match which.as_str() {
                     "padding" => &mut logical.padding,
@@ -2231,32 +6005,76 @@ impl Computed {
                 if block {
                     target.block_start = a;
                     target.block_end = b;
+                    target.seq[2] = seq;
+                    target.seq[3] = seq;
                 } else {
                     target.inline_start = a;
                     target.inline_end = b;
+                    target.seq[0] = seq;
+                    target.seq[1] = seq;
                 }
             }
-            "padding-inline-start" => self.logical().padding.inline_start = Len::parse(v),
-            "padding-inline-end" => self.logical().padding.inline_end = Len::parse(v),
-            "padding-block-start" => self.logical().padding.block_start = Len::parse(v),
-            "padding-block-end" => self.logical().padding.block_end = Len::parse(v),
-            "margin-inline-start" => self.logical().margin.inline_start = Len::parse(v),
-            "margin-inline-end" => self.logical().margin.inline_end = Len::parse(v),
-            "margin-block-start" => self.logical().margin.block_start = Len::parse(v),
-            "margin-block-end" => self.logical().margin.block_end = Len::parse(v),
-            "inset-inline-start" => self.logical().inset.inline_start = Len::parse(v),
-            "inset-inline-end" => self.logical().inset.inline_end = Len::parse(v),
-            "inset-block-start" => self.logical().inset.block_start = Len::parse(v),
-            "inset-block-end" => self.logical().inset.block_end = Len::parse(v),
+            "padding-inline-start" | "padding-inline-end" | "padding-block-start"
+            | "padding-block-end" | "margin-inline-start" | "margin-inline-end"
+            | "margin-block-start" | "margin-block-end" | "inset-inline-start"
+            | "inset-inline-end" | "inset-block-start" | "inset-block-end" => {
+                let seq = self.decl_seq;
+                let parsed = Len::parse(v);
+                let logical = self.logical();
+                let target = if key.starts_with("padding") {
+                    &mut logical.padding
+                } else if key.starts_with("margin") {
+                    &mut logical.margin
+                } else {
+                    &mut logical.inset
+                };
+                let (slot, i) = if key.ends_with("inline-start") {
+                    (&mut target.inline_start, 0)
+                } else if key.ends_with("inline-end") {
+                    (&mut target.inline_end, 1)
+                } else if key.ends_with("block-start") {
+                    (&mut target.block_start, 2)
+                } else {
+                    (&mut target.block_end, 3)
+                };
+                *slot = parsed;
+                target.seq[i] = seq;
+            }
 
             // --- Раскладка --------------------------------------------------
             "aspect-ratio" => {
-                self.aspect_ratio = match v.split_once('/') {
+                // `auto <ratio>` (css-sizing-4 §5.1): слово `auto` означает,
+                // что у замещаемого ПРИРОДНОЕ соотношение сильнее заявленного,
+                // а у остальных коробок действует заявленное. Прошлый заход
+                // отбрасывал слово и отдавал отношение всем подряд — срез
+                // css-sizing 264 -> 259 (+3/−8, `replaced-element-020/029/030`);
+                // теперь слово живёт флагом, и отрисовка замещаемого его
+                // учитывает (`image_with::ratio_of`).
+                let body = v
+                    .split_whitespace()
+                    .filter(|t| !t.eq_ignore_ascii_case("auto"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let ratio = match body.split_once('/') {
                     Some((a, b)) => match (a.trim().parse::<f32>(), b.trim().parse::<f32>()) {
                         (Ok(a), Ok(b)) if b != 0.0 => Some(a / b),
                         _ => None,
                     },
-                    None => v.parse().ok(),
+                    None => body.trim().parse().ok(),
+                }
+                // Вырожденное отношение (ноль или бесконечность в любой части)
+                // ведёт себя как `auto` (css-sizing-4 Overview.bs:533: «If the
+                // <ratio> is degenerate, the property instead behaves as
+                // auto»; css-values-4 Overview.bs:1665): `0/1` давал
+                // соотношение 0, и коробка `width: 100px` получала бесконечную
+                // высоту (`zero-or-infinity-001`).
+                .filter(|r: &f32| r.is_finite() && *r > 0.0);
+                if v.split_whitespace().any(|t| t.eq_ignore_ascii_case("auto")) {
+                    self.aspect_ratio_auto = ratio;
+                    self.aspect_ratio = None;
+                } else {
+                    self.aspect_ratio_auto = None;
+                    self.aspect_ratio = ratio;
                 }
             }
             "order" => self.order = v.parse().ok(),
@@ -2273,10 +6091,22 @@ impl Computed {
             "align-content" => {
                 self.align_content = parse_justify(v);
                 self.align_content_safe = is_safe(v);
+                // css-align-3 §align-block: ЛЮБОЕ не-`normal` значение делает
+                // блочный контейнер корнем блочного контекста форматирования.
+                // `parse_justify` этого не покажет: `baseline`/`first`/`last`
+                // дают `None` так же, как `normal`. Приставка `safe`/`unsafe`
+                // снимается — она про переполнение, а не про значение.
+                let word = v
+                    .split_whitespace()
+                    .find(|w| !matches!(*w, "safe" | "unsafe"))
+                    .unwrap_or("");
+                self.align_content_block =
+                    self.align_content.is_some() || matches!(word, "baseline" | "first" | "last");
             }
             "justify-items" => {
                 self.justify_items = parse_align(v);
                 self.justify_items_safe = is_safe(v);
+                self.justify_items_last = v.split_whitespace().any(|w| w == "last");
             }
             // Значение бывает составным: `row fill-reverse`, `column
             // track-reverse`. Сверка со строкой ЦЕЛИКОМ путала ось на каждом
@@ -2304,6 +6134,11 @@ impl Computed {
             "justify-self" => {
                 self.justify_self = parse_align(v);
                 self.justify_self_safe = is_safe(v);
+                self.justify_self_own_axis = matches!(
+                    v.split_whitespace().last(),
+                    Some("self-start") | Some("self-end")
+                );
+                self.justify_self_last = v.split_whitespace().any(|w| w == "last");
             }
             // `place-*` — сокращения «поперёк / вдоль»; одно значение задаёт обе оси.
             "place-items" | "place-content" | "place-self" => {
@@ -2323,14 +6158,24 @@ impl Computed {
             "grid-row-gap" => self.apply_one("row-gap", v),
             "grid-column-gap" => self.apply_one("column-gap", v),
             "grid-template-rows" => {
-                self.subgrid |= v.contains("subgrid");
+                self.subgrid_rows = v.contains("subgrid");
+                self.subgrid = self.subgrid_cols || self.subgrid_rows;
+                self.grid_row_line_names = parse_line_names(v);
                 self.grid_rows = parse_tracks(v);
             }
             "grid-auto-columns" => {
-                self.grid_auto_cols = parse_tracks(v).and_then(|t| t.into_iter().next())
+                // `grid-auto-columns: A B C` задаёт НЕСКОЛЬКО неявных дорожек,
+                // и раскладка их циклит. Пока бралась первая, вторая колонка
+                // получала ширину первой (`grid-support-grid-auto-columns-
+                // rows-002`, `grid-floats-no-intrude-002`).
+                let all = parse_tracks(v).unwrap_or_default();
+                self.grid_auto_cols_list = if all.len() > 1 { all.clone() } else { Vec::new() };
+                self.grid_auto_cols = all.into_iter().next();
             }
             "grid-auto-rows" => {
-                self.grid_auto_rows = parse_tracks(v).and_then(|t| t.into_iter().next())
+                let all = parse_tracks(v).unwrap_or_default();
+                self.grid_auto_rows_list = if all.len() > 1 { all.clone() } else { Vec::new() };
+                self.grid_auto_rows = all.into_iter().next();
             }
             "grid-auto-flow" => {
                 let dense = v.contains("dense");
@@ -2341,25 +6186,43 @@ impl Computed {
                     (false, false) => AutoFlow::Row,
                 })
             }
-            "grid-column" => self.grid_col = parse_span(v),
-            "grid-row" => self.grid_row = parse_span(v),
+            "grid-column" => {
+                self.grid_col = parse_span(v);
+                self.grid_col_named = parse_named_pair(v);
+            }
+            "grid-row" => {
+                self.grid_row = parse_span(v);
+                self.grid_row_named = parse_named_pair(v);
+            }
             "grid-column-start" => {
                 let end = self.grid_col.map(|c| c.1).unwrap_or(Placement::Auto);
                 self.grid_col = Some((parse_placement(v), end));
+                self.grid_col_named[0] = parse_named_placement(v);
             }
             "grid-column-end" => {
                 let start = self.grid_col.map(|c| c.0).unwrap_or(Placement::Auto);
                 self.grid_col = Some((start, parse_placement(v)));
+                self.grid_col_named[1] = parse_named_placement(v);
             }
             "grid-row-start" => {
                 let end = self.grid_row.map(|c| c.1).unwrap_or(Placement::Auto);
                 self.grid_row = Some((parse_placement(v), end));
+                self.grid_row_named[0] = parse_named_placement(v);
             }
             "grid-row-end" => {
                 let start = self.grid_row.map(|c| c.0).unwrap_or(Placement::Auto);
                 self.grid_row = Some((start, parse_placement(v)));
+                self.grid_row_named[1] = parse_named_placement(v);
             }
             "grid-template-areas" => {
+                // Явное `inherit` — запись родителя (её переносит
+                // `doc::settle_explicit_inherit`): прежде слово само шло в
+                // область `inherit`, а `grid-area: a` у детей не находил
+                // области (`grid-placement-using-named-grid-lines-008`).
+                self.grid_areas_inherit = v.trim().eq_ignore_ascii_case("inherit");
+                if self.grid_areas_inherit {
+                    return;
+                }
                 // Каждая строка записи — ряд сетки: `"head head" "side main"`.
                 let rows: Vec<Vec<String>> = v
                     .split('"')
@@ -2379,6 +6242,20 @@ impl Computed {
                         .map(|p| parse_placement(p))
                         .unwrap_or(Placement::Auto)
                 };
+                // Именованные грани (css-grid-2 §8.4 `grid-area`): опущенная
+                // грань повторяет имя противоположной по оси стороны
+                // (`grid-area: a` — все четыре грани `a`).
+                let named = |i: usize| parts.get(i).and_then(|p| parse_named_placement(p));
+                let ident = |n: &Option<gpui::GridNamedLine>| match n {
+                    Some(gpui::GridNamedLine::Line(name, 0)) => Some(gpui::GridNamedLine::Line(name.clone(), 0)),
+                    _ => None,
+                };
+                let row_start = named(0);
+                let col_start = if parts.len() > 1 { named(1) } else { ident(&row_start) };
+                let row_end = if parts.len() > 2 { named(2) } else { ident(&row_start) };
+                let col_end = if parts.len() > 3 { named(3) } else { ident(&col_start) };
+                self.grid_row_named = [row_start, row_end];
+                self.grid_col_named = [col_start, col_end];
                 if parts.len() >= 2 {
                     self.grid_row = Some((at(0), at(2)));
                     self.grid_col = Some((at(1), at(3)));
@@ -2388,7 +6265,18 @@ impl Computed {
                     self.grid_area_name = Some((*name).to_string());
                 }
             }
-            "z-index" => self.z_index = v.parse().ok(),
+            "z-index" => {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::Z_INDEX;
+                    return;
+                }
+                // Целое за пределами i32 КЛАМПИТСЯ, а не падает в auto
+                // (z-index-001: -2147483649 обязан остаться меньше -100).
+                self.z_index = v
+                    .parse::<i64>()
+                    .ok()
+                    .map(|n| n.clamp(i32::MIN as i64, i32::MAX as i64) as i32);
+            }
 
             // --- Рамки и обводка --------------------------------------------
             // Толщина словом (`thin`/`medium`/`thick`) — законное значение;
@@ -2484,6 +6372,13 @@ impl Computed {
                     let one = side(&list, i);
                     let on = border_style(&one);
                     self.border_visible[i] = Some(on);
+                    // Ранг рисунка — участник разбора сросшихся кромок
+                    // (§17.6.2.1), и `hidden` там гасит соседей. Сокращение
+                    // его не писало вовсе, поэтому `border-style: hidden` на
+                    // ряде или группе до разбора не доезжал.
+                    if let Some(rank) = border_style_rank(&one) {
+                        self.border_side_styles[i] = Some(rank);
+                    }
                     // Свой рисунок рамки делает её видимой: начальная толщина
                     // `medium` — это 3px, и задавать её отдельно не требуется.
                     if on && w.is_none() {
@@ -2499,17 +6394,26 @@ impl Computed {
                 self.border_spacing = Some((a, b));
             }
             "outline" => {
+                // `outline: inherit` — вычисленное значение родителя целиком
+                // (§6.2.1): само свойство не наследуется, поэтому копируются
+                // все его части (`outline-002`).
+                if v == "inherit" {
+                    self.inherit_bits |= inh::OUTLINE_W | inh::OUTLINE_C | inh::OUTLINE_S;
+                    return;
+                }
                 // Умолчание CSS — `medium`, три точки: без него запись
                 // `outline: solid red` не рисовала ничего.
                 let mut o = self.outline.unwrap_or(Outline {
                     width: Some(Len::Px(3.0)),
                     color: None,
                     offset: None,
+                    inset: false,
+                    style: None,
                 });
-                for token in v.split_whitespace() {
-                    if token == "none" {
-                        o.width = Some(Len::Px(0.0));
-                    } else if let Some(l) = Len::parse(token) {
+                for token in split_ws_top(v) {
+                    if let Some(st) = outline_style_of(token) {
+                        o.style = Some(st);
+                    } else if let Some(l) = outline_width_of(token) {
                         o.width = Some(l);
                     } else if let Some(c) = Color::parse(token) {
                         o.color = Some(c);
@@ -2517,32 +6421,252 @@ impl Computed {
                 }
                 self.outline = Some(o);
             }
-            "outline-width" | "outline-color" | "outline-offset" => {
+            "outline-width" | "outline-color" | "outline-offset" | "outline-style" => {
+                // `outline-width: inherit` берёт у родителя ТОЛЬКО толщину:
+                // остальные части обводки остаются своими. Разбор слова здесь
+                // не выражается — `outline_width_of("inherit")` даёт `None`, и
+                // толщина пропадала.
+                if v == "inherit" {
+                    self.inherit_bits |= match key {
+                        "outline-width" => inh::OUTLINE_W,
+                        "outline-color" => inh::OUTLINE_C,
+                        "outline-style" => inh::OUTLINE_S,
+                        _ => inh::OUTLINE_O,
+                    };
+                    return;
+                }
                 let mut o = self.outline.unwrap_or_default();
                 match key {
-                    "outline-width" => o.width = Len::parse(v),
+                    // `initial`/`unset` ненаследуемой ширины — `medium`, 3px
+                    // (css-ui-4 §outline-width); слова разбор не знал, ширина
+                    // оставалась пустой, и обводка не рисовалась вовсе
+                    // (`zoom/outline-width-keywords`, коробка `.initial`).
+                    "outline-width" if matches!(v, "initial" | "unset") => {
+                        o.width = Some(Len::Px(3.0))
+                    }
+                    "outline-width" => o.width = outline_width_of(v).or(o.width),
                     "outline-color" => o.color = Color::parse(v),
-                    _ => o.offset = Len::parse(v),
+                    "outline-style" => o.style = outline_style_of(v),
+                    // `outline-offset: inset` — «внутрь на толщину»: слово
+                    // уходило в разбор длины, давало `None`, и контур ложился
+                    // СНАРУЖИ коробки (`outline-offset-inset-002` 0.93,
+                    // `-004` 3.31).
+                    _ => {
+                        o.inset = v == "inset";
+                        o.offset = if o.inset { None } else { Len::parse(v) };
+                    }
                 }
                 self.outline = Some(o);
             }
             "backdrop-filter" => {
-                self.backdrop_blur = v
-                    .strip_prefix("blur(")
-                    .and_then(|r| r.strip_suffix(')'))
-                    .and_then(Len::parse)
-                    .and_then(|l| match l {
-                        Len::Px(v) => Some(v),
-                        _ => None,
-                    })
+                // Тот же `<filter-value-list>`, что у `filter`
+                // (filter-effects-2 §BackdropFilterProperty): разбор общий,
+                // размытие идёт своим проходом, цветовые функции — матрицей.
+                let mut tmp = Self::default();
+                tmp.apply_one("filter", v);
+                let f = tmp.filter.unwrap_or_else(Filter::neutral);
+                self.backdrop_blur = (f.blur > 0.0).then_some(f.blur);
+                self.backdrop_color = f
+                    .color_matrix()
+                    .map(|_| Filter { blur: 0.0, ..f });
+                // Корень подложки — любое значение, кроме `none`
+                // (filter-effects-2 Overview.bs:119; Blink
+                // paint_property_tree_builder.cc:1846): тождественная
+                // `invert(0)` матрицы не даёт, но корнем остаётся
+                // (`backdrop-filter-backdrop-root-backdrop-filter`).
+                self.backdrop_filter_set = !v.trim().eq_ignore_ascii_case("none");
+                // `url(#id)` — SVG `<filter>` (`render::svg_filter_matrix`).
+                self.backdrop_ref = tmp.filter_ref;
+            }
+            // `view-transition-name` не `none` — корень подложки
+            // (css-view-transitions-1 Overview.bs:577-582 «Form a backdrop
+            // root»; Blink paint_property_tree_builder.cc:1858-1862
+            // `NeedsEffectForViewTransition`).
+            "view-transition-name" => {
+                self.vt_name = !v.trim().eq_ignore_ascii_case("none");
+            }
+            // css-will-change-1 §2.1: обещанное свойство даёт коробке то, что
+            // дало бы его неначальное значение, — содержащий блок для
+            // `absolute`/`fixed` и контекст наложения (`will-change-fixpos-cb-*`,
+            // `-abspos-cb-*`, `-fixedpos-cb-*`, `-stacking-context-z-index-2/3`).
+            // `position` даёт блок только абсолютам (`-fixpos-cb-position-1`).
+            // `auto`, `scroll-position`, `contents` и прочие свойства — ноль:
+            // `will-change: height` не меняет ничего (`-fixpos-cb-height-1`).
+            // Здесь же признак корня подложки (filter-effects-2
+            // Overview.bs:122: «will-change specifying any property that
+            // would create a Backdrop Root on non-initial value»). Арма ОДНА:
+            // вторая с тем же ключом в этом `match` недостижима — так с
+            // b47ecf2 разряды `wc::*` не ставились вовсе.
+            "will-change" => {
+                let mut bits = 0u8;
+                let mut root = false;
+                for part in v.split(',') {
+                    let name = part.trim().to_ascii_lowercase();
+                    root |= matches!(
+                        name.as_str(),
+                        "opacity"
+                            | "filter"
+                            | "mask"
+                            | "mask-image"
+                            | "-webkit-mask"
+                            | "-webkit-mask-image"
+                            | "mask-border"
+                            | "clip-path"
+                            | "-webkit-clip-path"
+                            | "backdrop-filter"
+                            | "-webkit-backdrop-filter"
+                            | "mix-blend-mode"
+                            | "view-transition-name"
+                    );
+                    bits |= match name.as_str() {
+                        "transform" | "translate" | "rotate" | "scale" | "perspective"
+                        | "-webkit-perspective" | "transform-style" | "offset-path"
+                        | "contain" => wc::BOX,
+                        "filter" | "backdrop-filter" | "-webkit-backdrop-filter" => {
+                            wc::CB_ABS | wc::CB_FIXED | wc::STACK
+                        }
+                        "position" => wc::CB_ABS | wc::STACK,
+                        "opacity" | "isolation" | "mix-blend-mode" | "clip-path"
+                        | "-webkit-clip-path" | "mask" | "mask-image" | "-webkit-mask"
+                        | "-webkit-mask-image" | "mask-border" | "view-transition-name" => {
+                            wc::STACK
+                        }
+                        "z-index" => wc::STACK_Z,
+                        _ => 0,
+                    };
+                }
+                self.will_change = bits;
+                self.will_change_root = root;
             }
             "background-image" => {
-                if v.starts_with("linear-gradient(") || v.starts_with("radial-gradient(") {
-                    self.gradient = parse_gradient(v);
-                    // Сырая запись нужна фону РЯДА таблицы: он рисуется
-                    // слоем картинки, и градиент туда идёт источником.
-                    self.gradient_raw = Some(v.to_string());
-                } else if let Some(url) = parse_url(v) {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::BG_IMAGE;
+                    return;
+                }
+                // `none` ГАСИТ картинку (§14.2.1): ветки под него не было
+                // вовсе, и заданный ранее адрес переживал отмену.
+                if v.trim().eq_ignore_ascii_case("none") {
+                    self.bg_image = None;
+                    self.gradient = None;
+                    self.gradient_raw = None;
+                } else if v.starts_with("linear-gradient(") || v.starts_with("radial-gradient(") {
+                    // Негодная запись роняет ОБЪЯВЛЕНИЕ (§4.2), прежняя
+                    // картинка живёт: `linear-gradient(green, green)` и следом
+                    // четыре негодных угла обязаны оставить зелёный.
+                    if let Some(g) = parse_gradient(v) {
+                        self.gradient = Some(g);
+                        self.gradient_em = has_font_units(v).then(|| v.to_string());
+                        // Сырая запись нужна фону РЯДА таблицы: он рисуется
+                        // слоем картинки, и градиент туда идёт источником.
+                        self.gradient_raw = Some(v.to_string());
+                    }
+                } else if let Some(rest) = v.strip_prefix("filter(") {
+                    // `filter(<image>, <filter-list>)` (filter-effects-1 §12):
+                    // фильтр применяется К КАРТИНКЕ, не к элементу — цвета
+                    // градиента пересчитываются на месте.
+                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
+                    let parts = crate::css::split_args(inner);
+                    if let Some(img) = parts.first().map(|p| p.trim())
+                        && (img.starts_with("linear-gradient(")
+                            || img.starts_with("radial-gradient("))
+                        && let Some(mut g) = parse_gradient(img)
+                    {
+                        let mut tmp = Self::default();
+                        tmp.apply_one("filter", &parts[1..].join(" "));
+                        if let Some(f) = tmp.filter {
+                            g.from = f.apply(g.from);
+                            g.to = f.apply(g.to);
+                            for stop in g.stops.iter_mut() {
+                                stop.0 = f.apply(stop.0);
+                            }
+                        }
+                        self.gradient = Some(g);
+                    } else if let Some(img) = parts.first().map(|p| p.trim())
+                        && gradient_as_raster(img)
+                    {
+                        // Конический и повторяющиеся идут растровой плиткой
+                        // (`gradient_as_raster`): фильтр доносится до цветов
+                        // стопов прямо в записи — растеризатор получает уже
+                        // пересчитанные цвета (filter-effects-1 §12
+                        // `filter()`: фильтр применяется к КАРТИНКЕ).
+                        let mut tmp = Self::default();
+                        tmp.apply_one("filter", &parts[1..].join(" "));
+                        self.bg_image = Some(match tmp.filter {
+                            Some(f) => filter_gradient_text(img, &f),
+                            None => img.to_string(),
+                        });
+                    }
+                } else if gradient_as_raster(v) {
+                    // Конический и ПОВТОРЯЮЩИЕСЯ GPU-путь не выражает — они
+                    // идут растровой плиткой (css-images-3 §3.6,
+                    // css-images-4 §2.3; растеризатор уже есть, а
+                    // `background::source` эти записи опознаёт с самого
+                    // начала — до `Computed` они просто не доезжали).
+                    self.bg_image = Some(v.to_string());
+                } else if let Some(rest) = v.strip_prefix("image(") {
+                    // `image(<url>? , <color>?)` (css-images-4 §2.4): цвет —
+                    // запасной слой; сплошная заливка выражается градиентом
+                    // из одного цвета.
+                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
+                    let mut url = None;
+                    let mut color = None;
+                    for part in crate::css::split_args(inner) {
+                        let part = part.trim();
+                        if let Some(u) = parse_url(part) {
+                            url = Some(u);
+                        } else if let Some(c) = Color::parse(part.trim_matches(is_quote)) {
+                            color = Some(c);
+                        }
+                    }
+                    match (url, color) {
+                        (Some(u), _) => self.bg_image = Some(u),
+                        (None, Some(c)) => {
+                            self.gradient = Some(solid_gradient(c));
+                            // Картинка цвета без природных размеров (css-images-4
+                            // §2.2) — ей положена механика плитки: размер,
+                            // положение, повтор и цвет фона ПОД ней. Без сырой
+                            // записи заливка шла на всю коробку, а
+                            // `background-color` её перебивал.
+                            let css = format!(
+                                "rgba({}, {}, {}, {})",
+                                (c.r * 255.0).round(),
+                                (c.g * 255.0).round(),
+                                (c.b * 255.0).round(),
+                                c.a
+                            );
+                            self.gradient_raw = Some(format!("linear-gradient({css}, {css})"));
+                        }
+                        _ => {}
+                    }
+                } else if let Some(rest) = v
+                    .strip_prefix("image-set(")
+                    .or_else(|| v.strip_prefix("-webkit-image-set("))
+                {
+                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
+                    match image_set_pick(inner) {
+                        // Функция ПРЕДСТАВЛЯЕТ выбранный `<image>` (§2.5,
+                        // шаг 4): он разбирается тем же кодом, что без
+                        // обёртки, — адрес, градиент, конический, повтор.
+                        // Кандидат приходит СЫРОЙ записью (`url(...)`): голый
+                        // путь ни одна ветка не принимает, и прошлый заход
+                        // (09.09, +9/−17) терял на этом все адреса.
+                        Some(Some(chosen)) => self.apply_one("background-image", &chosen),
+                        // Годная запись без пригодных кандидатов — «invalid
+                        // image» (шаг 3): слой ГАСНЕТ, прежний не выживает.
+                        Some(None) => {
+                            self.bg_image = None;
+                            self.gradient = None;
+                            self.gradient_raw = None;
+                        }
+                        // Негодная запись (отрицательное разрешение числом —
+                        // css-values-4 §6.3): объявление не применяется (§4.2).
+                        None => {}
+                    }
+                } else if v.trim_end().ends_with(')')
+                    && let Some(url) = parse_url(v)
+                {
+                    // Хвост после `url(...)` делает объявление недействительным
+                    // (§4.2): `background-image: url(x) repeat` не картинка.
                     self.bg_image = Some(url);
                 }
             }
@@ -2550,26 +6674,122 @@ impl Computed {
             // --- Текст -------------------------------------------------------
             // `font: [начертание] [вес] размер[/интерлиньяж] семейство`.
             "font" => {
+                // Все части сокращения наследуемые: `inherit` для них — это
+                // «своего значения нет», то есть ОЧИСТКА слота. Подстановка
+                // родительского значения тут не работает: ниже по разбору
+                // `own.font_size.or(parent.font_size)` вернул бы свой прежний
+                // (`font: 0 Ahem; font: inherit` оставлял нулевой кегль).
+                if v == "inherit" {
+                    self.font_size = None;
+                    self.font_family = None;
+                    self.font_weight = None;
+                    self.italic = None;
+                    self.oblique = None;
+                    self.line_height = None;
+                    return;
+                }
                 // `font: 50px / 1 Ahem` — вокруг косой черты разрешены пробелы,
                 // а кегль с высотой строки обязаны разбираться одним куском:
                 // иначе «/ 1 Ahem» уезжало в семейство шрифта целиком.
                 let value = join_slash(v);
                 let (head, family) = split_font(&value);
-                for token in head.split_whitespace() {
-                    match token {
-                        "italic" | "oblique" => self.italic = Some(true),
+                // Неизвестное слово в голове сокращения тоже валит его целиком
+                // (§4.2): `font: bold highlighted 100% serif` не задаёт ни
+                // начертания, ни кегля (`c71-fwd-parsing-003`). Слова головы —
+                // это начертание, наклон, вариант, растяжение и системные
+                // ключевые слова; всё прочее начинается с цифры или точки.
+                let head_word = |t: &str| {
+                    matches!(
+                        t,
+                        "normal"
+                            | "italic"
+                            | "oblique"
+                            | "small-caps"
+                            | "bold"
+                            | "bolder"
+                            | "lighter"
+                            | "ultra-condensed"
+                            | "extra-condensed"
+                            | "condensed"
+                            | "semi-condensed"
+                            | "semi-expanded"
+                            | "expanded"
+                            | "extra-expanded"
+                            | "ultra-expanded"
+                            | "xx-small"
+                            | "x-small"
+                            | "small"
+                            | "medium"
+                            | "large"
+                            | "x-large"
+                            | "xx-large"
+                            | "larger"
+                            | "smaller"
+                            | "caption"
+                            | "icon"
+                            | "menu"
+                            | "message-box"
+                            | "small-caption"
+                            | "status-bar"
+                    ) || t.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+                };
+                if split_outside_parens(head)
+                    .iter()
+                    .any(|t| !head_word(&t.to_ascii_lowercase()) && !font_size_token(t))
+                {
+                    return;
+                }
+                // Недействительная часть валит СОКРАЩЕНИЕ целиком (§4.2):
+                // `font: 4em/-2em serif` не задаёт ни кегля, ни семейства
+                // (`font-146`). Проверка идёт до записи любого куска.
+                if head.split_whitespace().any(|t| {
+                    t.split_once('/').is_some_and(|(_, lh)| {
+                        let neg = |l: &Len| {
+                            matches!(
+                                l,
+                                Len::Px(v) | Len::Em(v) | Len::Pct(v) | Len::Ex(v) | Len::Ch(v)
+                                    if *v < 0.0
+                            )
+                        };
+                        lh.parse::<f32>().is_ok_and(|m| m < 0.0)
+                            || Len::parse(lh).as_ref().is_some_and(neg)
+                    })
+                }) {
+                    return;
+                }
+                // Сокращение сперва сбрасывает ВСЕ свои части к начальным
+                // значениям (CSS 2.1 §15.8), и только потом пишет названные.
+                // Пустой слот у нас — «наследовать», поэтому сброс явный:
+                // `normal` у веса, наклона и высоты строки (`Len::Auto` —
+                // метка `normal`, см. `"line-height"`). Без него
+                // `p { font: 16px serif }` под `html { font: 20px/1 Ahem }`
+                // наследовал `line-height: 1` (`numbers-units-018`), а
+                // `em { font: 1em/1 Ahem }` — курсив UA-листа (`c42-ibx-ht-000`).
+                self.italic = Some(false);
+                self.oblique = Some(false);
+                self.font_weight = Some(400);
+                self.line_height = Some(Len::Auto);
+                for token in split_outside_parens(head) {
+                    let t = token.as_str();
+                    match t.to_ascii_lowercase().as_str() {
+                        "italic" => self.italic = Some(true),
+                        "oblique" => {
+                            self.italic = Some(true);
+                            self.oblique = Some(true);
+                        }
                         "bold" | "bolder" => self.font_weight = Some(700),
-                        t if t.starts_with(|c: char| c.is_ascii_digit()) => {
-                            if let Some((size, lh)) = t.split_once('/') {
+                        // Кегль — и `0` (`font: 0 Ahem`: вес 0 зацикливал
+                        // подбор шрифта, vars-font-shorthand-001).
+                        _ if font_size_token(t) => match font_slash(t) {
+                            Some((size, lh)) => {
                                 self.apply_one("font-size", size);
                                 self.apply_one("line-height", lh);
-                            } else if Len::parse(t).is_some()
-                                && !t.chars().all(|c| c.is_ascii_digit())
-                            {
-                                self.apply_one("font-size", t);
-                            } else {
-                                self.font_weight = t.parse().ok();
                             }
+                            None => self.apply_one("font-size", t),
+                        },
+                        _ if t.starts_with(|c: char| c.is_ascii_digit()) => {
+                            self.font_weight =
+                                t.parse().ok().filter(|w| (1..=1000).contains(w));
                         }
                         _ => {}
                     }
@@ -2580,18 +6800,36 @@ impl Computed {
             }
             "word-spacing" => self.word_spacing = Len::parse_spacing(v),
             "text-transform" => {
-                // Значений бывает несколько сразу (`capitalize full-width`):
-                // разбираются все, неизвестное пропускается, а не обнуляет
-                // объявление целиком.
+                // Свойство наследуемое: `inherit` очищает свой слот, иначе
+                // прежнее объявление того же правила его переживало.
+                if v == "inherit" {
+                    self.text_transform = None;
+                    self.text_transform_flags = 0;
+                    return;
+                }
+                // Значений бывает несколько сразу (`uppercase full-width`):
+                // регистр и добавки складываются, а не вытесняют друг друга —
+                // прежде действовало только последнее слово
+                // (`text-transform-multiple-001`).
+                let mut case: Option<TextTransform> = None;
+                let mut flags = 0u8;
+                let mut any = false;
                 for word in v.split_ascii_whitespace() {
-                    self.text_transform = Some(match word {
-                        "uppercase" => TextTransform::Upper,
-                        "lowercase" => TextTransform::Lower,
-                        "capitalize" => TextTransform::Capitalize,
-                        "full-width" | "fullwidth" => TextTransform::FullWidth,
-                        "none" => TextTransform::None,
+                    match word.to_ascii_lowercase().as_str() {
+                        "uppercase" => case = Some(TextTransform::Upper),
+                        "lowercase" => case = Some(TextTransform::Lower),
+                        "capitalize" => case = Some(TextTransform::Capitalize),
+                        "full-width" | "fullwidth" => flags |= TT_FULL_WIDTH,
+                        "full-size-kana" => flags |= TT_KANA,
+                        "math-auto" => flags |= TT_MATH,
+                        "none" => {}
                         _ => continue,
-                    });
+                    }
+                    any = true;
+                }
+                if any {
+                    self.text_transform = Some(case.unwrap_or(TextTransform::None));
+                    self.text_transform_flags = flags;
                 }
             }
             // Отступ первой строки. Кроме длины значение несёт до двух
@@ -2601,18 +6839,99 @@ impl Computed {
             // Порядок слов свободный, поэтому значение разбирается по словам.
             "text-indent" => {
                 let (mut each, mut hang) = (false, false);
-                for word in v.split_ascii_whitespace() {
+                // Резка ВНЕ скобок: `calc(50% - 3px)` — одно слово, а не три
+                // (по пробелам объявление роняли целиком). Процентная смесь
+                // доживает до раскладки строк: `Indent { px, pct }` складывает
+                // обе части сам (css-text-3 §2.1: доля — от ширины
+                // содержащего блока, она известна только на строке).
+                for word in split_outside_parens(v) {
                     match word.to_ascii_lowercase().as_str() {
                         "each-line" => each = true,
                         "hanging" => hang = true,
-                        len => self.text_indent = Len::parse(len).or(self.text_indent),
+                        len => self.text_indent = Len::parse_mixed(len).or(self.text_indent),
                     }
                 }
                 self.text_indent_each_line = each.then_some(true);
                 self.text_indent_hanging = hang.then_some(true);
             }
+            // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера
+            // срезается ПОЛУЛИДИНГ первой и/или последней строки, чтобы край
+            // содержимого сел на метрику текста. Свойство НЕ наследуется.
+            "text-box-trim" => {
+                self.text_box_trim_start = matches!(v, "trim-start" | "trim-both");
+                self.text_box_trim_end = matches!(v, "trim-end" | "trim-both");
+            }
+            // `text-box-edge` (css-inline-3 §4.3): по какой метрике срезать.
+            // Первое слово — верхний край, второе — нижний; при одном слове
+            // второй край берёт то же значение, а если оно ему не подходит —
+            // `text` (спека: «else 'text' is assumed as the missing value»).
+            // `auto` = `text` (начальное `line-fit-edge: leading` читается
+            // как `text`).
+            "text-box-edge" => {
+                self.text_box_edge_set = true;
+                let mut it = v.split_ascii_whitespace();
+                let over = it.next().unwrap_or("auto");
+                let under = it.next().unwrap_or(over);
+                self.text_box_over = match over {
+                    "cap" => TextEdge::Cap,
+                    "ex" => TextEdge::Ex,
+                    _ => TextEdge::Text,
+                };
+                self.text_box_under = match under {
+                    "alphabetic" => TextEdge::Alphabetic,
+                    _ => TextEdge::Text,
+                };
+            }
+            // Сокращение `text-box` (css-inline-3 §4.1): без `text-box-trim`
+            // подразумевается `trim-both` (НЕ начальное значение), без
+            // `text-box-edge` — `auto`. `normal` гасит оба.
+            "text-box" => {
+                if v == "normal" {
+                    self.text_box_trim_start = false;
+                    self.text_box_trim_end = false;
+                    self.text_box_over = TextEdge::Text;
+                    self.text_box_under = TextEdge::Text;
+                    self.text_box_edge_set = true;
+                } else {
+                    // Без края сокращение ставит `auto` (§4.1) — явно.
+                    self.text_box_over = TextEdge::Text;
+                    self.text_box_under = TextEdge::Text;
+                    self.text_box_edge_set = true;
+                    let trim = v
+                        .split_ascii_whitespace()
+                        .find(|w| w.starts_with("trim-"))
+                        .unwrap_or("trim-both");
+                    self.text_box_trim_start = matches!(trim, "trim-start" | "trim-both");
+                    self.text_box_trim_end = matches!(trim, "trim-end" | "trim-both");
+                    let edge: String = v
+                        .split_ascii_whitespace()
+                        .filter(|w| !w.starts_with("trim-"))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if !edge.is_empty() {
+                        self.apply_one("text-box-edge", &edge);
+                    }
+                }
+            }
             // Свисающая пунктуация: знак выходит ЗА край коробки, чтобы край
             // текста читался ровным. Значения складываются: `first last`.
+            // `zoom` (css-viewport-1 §zoom-property): число или доля, ноль
+            // читается единицей («A 0 value is treated as if it was 1»),
+            // отрицательное недействительно. `normal`/`reset` — старые слова
+            // IE/WebKit, равны единице. Здесь ТОЛЬКО запись поля: применяет
+            // его проход `zoom::resolve`, слияние стилей поля не читает.
+            "zoom" => {
+                let k = match v {
+                    "normal" | "reset" => Some(1.0),
+                    _ => match v.strip_suffix('%') {
+                        Some(p) => p.trim().parse::<f32>().ok().map(|p| p / 100.0),
+                        None => v.parse::<f32>().ok(),
+                    },
+                };
+                if let Some(k) = k.filter(|k| k.is_finite() && *k >= 0.0) {
+                    self.zoom = Some(if k == 0.0 { 1.0 } else { k });
+                }
+            }
             "hanging-punctuation" => {
                 let mut h = Hanging::default();
                 for word in v.split_ascii_whitespace() {
@@ -2648,11 +6967,15 @@ impl Computed {
                 // Точка переноса показывается пробелом: обычным или
                 // идеографическим (css-text-4). `none` и `auto-phrase`
                 // не показывают ничего.
-                self.word_space_char = match v {
+                // Значение из ДВУХ слов (`ideographic-space auto-phrase`,
+                // css-text-4 §word-space-transform) сравнением целиком не
+                // ловилось и падало в `none`. Ключевое слово ищем среди
+                // разделённых пробелом кусков.
+                self.word_space_char = v.split_whitespace().find_map(|w| match w {
                     "space" => Some(' '),
                     "ideographic-space" => Some('\u{3000}'),
                     _ => None,
-                };
+                });
             }
             "overflow-wrap" | "word-wrap" => {
                 self.break_word = Some(matches!(v, "break-word" | "anywhere"));
@@ -2682,6 +7005,14 @@ impl Computed {
             "line-break" => {
                 self.break_anywhere = Some(v == "anywhere");
                 self.break_anywhere_strict = Some(v == "anywhere");
+                // `auto` у Blink ведёт себя строго (`LineBreakStrictness::
+                // kDefault`), поэтому послабления — только у явных
+                // `normal`/`loose`; `line-break-normal-011`, `-loose-*`.
+                self.line_break_loose = Some(match v {
+                    "normal" => 1,
+                    "loose" => 2,
+                    _ => 0,
+                });
             }
             "hyphenate-character" => {
                 // Значение — строка в кавычках; `auto` значит «сам знак
@@ -2699,7 +7030,7 @@ impl Computed {
                         shrink: false,
                         per_line: false,
                         all: false,
-                        target: 1.0,
+                        target: None,
                     };
                     for word in v.split_whitespace() {
                         match word {
@@ -2712,10 +7043,10 @@ impl Computed {
                                 f.all = true;
                             }
                             other => {
-                                if let Some(pct) = other.strip_suffix('%')
-                                    && let Ok(n) = pct.parse::<f32>()
-                                {
-                                    f.target = n / 100.0;
+                                if let Some(pct) = other.strip_suffix('%') {
+                                    if let Ok(n) = pct.parse::<f32>() {
+                                        f.target = Some(n / 100.0);
+                                    }
                                 }
                             }
                         }
@@ -2731,26 +7062,111 @@ impl Computed {
                 // не должна оставаться коротким огрызком.
                 self.balance_lines = Some(v == "balance");
             }
-            "vertical-align" => {
+            // `baseline-shift` (css-inline-3 §5.2.2) — ТОТ ЖЕ разбор:
+            // спека сама пишет соответствие («''vertical-align/top''
+            // (''baseline-shift: top'')…», css-inline-3 §5.2). Значения
+            // совпадают дословно, кроме середины: у сокращения она
+            // `middle`, у длинной записи — `center`.
+            "vertical-align" | "baseline-shift" => {
                 // Надстрочный и подстрочный кусок остаются В СТРОКЕ, только
                 // сдвигаются от базовой линии, — это не выравнивание коробки,
                 // поэтому у них своё поле. Доли кегля браузерные.
+                // Сдвиг хранится ДОЛЕЙ кегля: у длины она считается при
+                // разборе, у процента она и есть написанное (CSS 2.1 §10.8.1
+                // считает процент от `line-height`, но у нас доля умножается
+                // на кегль — при `line-height: normal` это то же самое с
+                // точностью до полулидинга, а точная формула ждёт модели
+                // строчной коробки).
                 self.vertical_shift = match v {
                     "super" => Some(-1.0 / 3.0),
                     "sub" => Some(1.0 / 5.0),
+                    other => match Len::parse(other) {
+                        // Долей кегля пишутся процент и `em` — их и храним
+                        // долей. Ось сдвига смотрит вниз, а положительное
+                        // значение поднимает знак ВВЕРХ.
+                        Some(Len::Pct(k)) => {
+                            // Процент — доля `line-height`, и считается он
+                            // позже: кладём в своё поле.
+                            self.vertical_shift_pct = (k != 0.0).then_some(-k);
+                            None
+                        }
+                        Some(Len::Em(k)) => (k != 0.0).then_some(-k),
+                        _ => None,
+                    },
+                };
+                // Точки и единицы ШРИФТА считаются сразу в точках: доля
+                // кегля тут не годится — `ex` зависит от метрик гарнитуры, а
+                // кегль строчного приходит наследованием уже после разбора.
+                match Len::parse(v) {
+                    // Точки не зависят ни от чего — сразу в поле.
+                    Some(Len::Px(px)) => self.vertical_shift_px = (px != 0.0).then_some(-px),
+                    // Единицы шрифта ждут набора: у строчного своих метрик
+                    // обычно нет, они приходят наследованием уже после
+                    // разбора, и здесь вышли бы от чужой гарнитуры.
+                    Some(l @ (Len::Ex(_) | Len::Ch(_))) => self.vertical_shift_len = Some(l),
+                    _ => {}
+                }
+                self.vertical_align_text = match v {
+                    "text-top" => Some(true),
+                    "text-bottom" => Some(false),
                     _ => None,
                 };
                 self.vertical_align = match v {
-                    "middle" => Some(Align::Center),
+                    // `center` — написание середины в `baseline-shift`
+                    // (css-inline-3 §5.2.2): «Align the center of the aligned
+                    // subtree with the center of the line box».
+                    "middle" | "center" => Some(Align::Center),
                     "top" => Some(Align::Start),
                     "bottom" => Some(Align::End),
                     "baseline" => Some(Align::Baseline),
                     _ => None,
                 }
             }
-            "line-clamp" if v.trim().eq_ignore_ascii_case("auto") => self.clamp_auto = Some(true),
-            "line-clamp" => self.line_clamp = v.parse().ok(),
-            "-webkit-line-clamp" => self.webkit_line_clamp = v.parse().ok(),
+            // css-overflow-4 §5.1: `none | [<integer> || <'block-ellipsis'>]
+            // -webkit-legacy?`; `auto` — срез по высоте контейнера. Строка
+            // многоточия идёт маркером абзаца (`lines::marker_str`).
+            "line-clamp" => {
+                self.line_clamp = None;
+                self.clamp_auto = None;
+                self.clamp_legacy = Some(false);
+                // Одна строка многоточия без числа — `max-lines: none` при
+                // `continue: collapse` (§5.1: «Sets continue to collapse if
+                // either or both values are specified»), то есть срез по
+                // высоте, как у `auto` (`line-clamp-balance-009`).
+                let mut ellipsis_given = false;
+                let mut rest = v.trim();
+                while !rest.is_empty() {
+                    let quote = rest.as_bytes()[0];
+                    let (word, tail) = if quote == b'"' || quote == b'\'' {
+                        match rest[1..].find(quote as char) {
+                            Some(end) => (&rest[..end + 2], &rest[end + 2..]),
+                            None => (rest, ""),
+                        }
+                    } else {
+                        match rest.find(char::is_whitespace) {
+                            Some(end) => (&rest[..end], &rest[end..]),
+                            None => (rest, ""),
+                        }
+                    };
+                    rest = tail.trim_start();
+                    if word.len() >= 2 && (word.starts_with('"') || word.starts_with('\'')) {
+                        self.overflow_marker = Some(word[1..word.len() - 1].to_string());
+                        ellipsis_given = true;
+                    } else if word.eq_ignore_ascii_case("auto") {
+                        self.clamp_auto = Some(true);
+                    } else if let Ok(n) = word.parse::<u32>() {
+                        self.line_clamp = Some(n);
+                    }
+                }
+                if ellipsis_given && self.line_clamp.is_none() {
+                    self.clamp_auto = Some(true);
+                }
+            }
+            "-webkit-line-clamp" => {
+                self.line_clamp = v.trim().parse().ok();
+                self.clamp_auto = None;
+                self.clamp_legacy = Some(true);
+            }
             "-webkit-box-orient" => {
                 self.webkit_box_vertical = Some(v.eq_ignore_ascii_case("vertical"))
             }
@@ -2763,6 +7179,10 @@ impl Computed {
             // Запись бывает и ПОосевой: `repeat space`, `round no-repeat`.
             // Один keyword задаёт обе оси, два — свою каждой.
             "background-repeat" => {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::BG_REPEAT;
+                    return;
+                }
                 let word = |w: &str| match w {
                     "no-repeat" => Some(Tiling::None),
                     "space" => Some(Tiling::Space),
@@ -2795,6 +7215,15 @@ impl Computed {
             // перебить заданное ранее в том же наборе обязано.
             // Откуда отсчитывается картинка. Умолчание — внутренний край
             // рамки, и `padding-box` его же и означает.
+            "background-origin" if v.trim() == "inherit" => {
+                self.inherit_bits |= inh::BG_ORIGIN;
+            }
+            "background-clip" | "-webkit-background-clip" if v.trim() == "inherit" => {
+                self.inherit_bits |= inh::BG_CLIP;
+            }
+            "background-size" if v.trim() == "inherit" => {
+                self.inherit_bits |= inh::BG_SIZE;
+            }
             "background-origin" => {
                 self.bg_origin = match v.trim() {
                     "border-box" => Some(BgClip::BorderBox),
@@ -2807,6 +7236,7 @@ impl Computed {
                     "padding-box" => Some(BgClip::PaddingBox),
                     "content-box" => Some(BgClip::ContentBox),
                     "text" => Some(BgClip::Text),
+                    "border-area" => Some(BgClip::BorderArea),
                     _ => None,
                 }
             }
@@ -2815,9 +7245,20 @@ impl Computed {
                     "cover" => BgSize::Cover,
                     "contain" => BgSize::Contain,
                     _ => {
-                        let mut it = v.split_whitespace();
-                        let w = it.next().and_then(Len::parse);
-                        let h = it.next().and_then(Len::parse);
+                        // Отрицательная длина делает декларацию невалидной
+                        // целиком (css-backgrounds-3 §3.9) — размер не трогать.
+                        let neg = |l: &Option<Len>| matches!(l, Some(Len::Px(v) | Len::Pct(v)) if *v < 0.0);
+                        // Резка вне скобок и процентная смесь: `calc(50px +
+                        // 50%) calc(100% - 30px)` — две длины, а не шесть слов;
+                        // `background::len_px` в растре складывает доли с
+                        // точками сам (css-values-4 §10.9).
+                        let words = split_outside_parens(v);
+                        let mut it = words.iter().map(String::as_str);
+                        let w = it.next().and_then(Len::parse_mixed);
+                        let h = it.next().and_then(Len::parse_mixed);
+                        if neg(&w) || neg(&h) {
+                            return;
+                        }
                         if w.is_none() && h.is_none() {
                             BgSize::Auto
                         } else {
@@ -2827,40 +7268,19 @@ impl Computed {
                 }
             }
             "background-position" => {
-                let word = |t: &str| -> Option<Len> {
-                    match t {
-                        "left" | "top" => Some(Len::Pct(0.0)),
-                        "center" => Some(Len::Pct(0.5)),
-                        "right" | "bottom" => Some(Len::Pct(1.0)),
-                        other => Len::parse(other),
-                    }
-                };
-                // Ключевые слова НЕСУТ СВОЮ ОСЬ (css-backgrounds-3 §3.6):
-                // `bottom center` и `center bottom` — одно и то же, `bottom`
-                // всегда вертикаль. Длины и `center` ложатся по порядку в
-                // свободные оси.
-                let mut x: Option<Len> = None;
-                let mut y: Option<Len> = None;
-                let mut free: Vec<Option<Len>> = vec![];
-                for t in v.split_whitespace() {
-                    match t {
-                        "left" | "right" => x = word(t),
-                        "top" | "bottom" => y = word(t),
-                        other => free.push(word(other)),
-                    }
+                if v == "inherit" {
+                    self.inherit_bits |= inh::BG_POS;
+                    return;
                 }
-                let mut free = free.into_iter();
-                if x.is_none() {
-                    x = free.next().flatten();
-                }
-                if y.is_none() {
-                    y = free.next().flatten();
-                }
-                // Одно значение задаёт свою ось, вторая — по центру.
-                self.bg_pos = BgPos {
-                    x: x.or(Some(Len::Pct(0.5))),
-                    y: y.or(Some(Len::Pct(0.5))),
-                };
+                self.bg_pos = parse_pos_words(v);
+            }
+            // `object-position` — та же грамматика, но для замещаемого
+            // содержимого (css-images-3 §5.2).
+            "object-view-box" => {
+                self.object_view_box = parse_view_box(v);
+            }
+            "object-position" => {
+                self.object_position = Some(parse_pos_words(v));
             }
             // Пооосевые продольные свойства (css-backgrounds-4 §4.1):
             // одна ось, вторая не трогается.
@@ -2880,60 +7300,340 @@ impl Computed {
                 }
             }
             "background-attachment" => {
-                // `fixed` привязывает фон к окну, а не к элементу; ленты с
-                // таким фоном у нас нет, поэтому разбор есть, действия нет.
+                // `fixed` привязывает плитку к ОБЛАСТИ ПРОСМОТРА: считается
+                // она от окна, а красится всё равно только внутри коробки
+                // (css-backgrounds-3 §3.10).
+                self.bg_fixed = Some(v.eq_ignore_ascii_case("fixed"));
             }
 
             // --- Псевдоэлементы и шрифт ---------------------------------------
             "counter-reset" => self.counter_reset = Some(v.to_string()),
             "counter-increment" => self.counter_increment = Some(v.to_string()),
+            "counter-set" => self.counter_set = Some(v.to_string()),
+            "quotes" => {
+                match v {
+                    "none" => self.quotes = Some(None),
+                    // `auto` — кавычки языка; без разбора языка берутся
+                    // английские (`Counters::quote` при пустой записи).
+                    "auto" | "match-parent" => self.quotes = None,
+                    other => {
+                        // Только строки, и чётным числом (§4.1): иначе
+                        // объявление негодно и не применяется.
+                        let mut strs = vec![];
+                        let mut at = 0usize;
+                        let mut ok = true;
+                        while at < other.len() {
+                            let ch = other[at..].chars().next().unwrap_or(' ');
+                            if ch.is_whitespace() {
+                                at += ch.len_utf8();
+                                continue;
+                            }
+                            if ch != '"' && ch != '\'' {
+                                ok = false;
+                                break;
+                            }
+                            let body = at + 1;
+                            let len = crate::css::skip_string(&other[body..], ch);
+                            if !other[body..body + len].ends_with(ch) {
+                                ok = false;
+                                break;
+                            }
+                            strs.push(unescape_content(&other[body..body + len - 1]));
+                            at = body + len;
+                        }
+                        if ok && !strs.is_empty() && strs.len() % 2 == 0 {
+                            self.quotes = Some(Some(
+                                strs.chunks(2).map(|p| (p[0].clone(), p[1].clone())).collect(),
+                            ));
+                        }
+                    }
+                }
+            }
             "content" => {
-                self.content = match v {
+                match v {
                     // ПУСТАЯ строка — не то же самое, что `none`: коробка
                     // псевдоэлемента создаётся, просто в ней нет знаков. На
                     // этом стоит целый приём эталонов WPT — `::after` с
                     // `content: ""` и `inset: 0` накрывает красное зелёным
                     // (`overflow-wrap-anywhere-001` и родня).
-                    "none" | "normal" => None,
-                    other => Some(
-                        other
-                            .trim_matches(|c| c == '"' || c == '\'')
-                            .replace("\\A", "\n")
-                            .to_string(),
-                    ),
-                }
-            }
-            "font-feature-settings"
-            | "font-variant"
-            | "font-variant-caps"
-            | "font-variant-numeric" => {
-                // `font-variant: small-caps` — это возможность шрифта `smcp`;
-                // остальные записываются четырёхбуквенным тегом напрямую.
-                for token in v.split(',') {
-                    let token = token.trim();
-                    match token {
-                        "small-caps" => self.font_features.push(("smcp".into(), 1)),
-                        "all-small-caps" => self.font_features.push(("c2sc".into(), 1)),
-                        "oldstyle-nums" => self.font_features.push(("onum".into(), 1)),
-                        "lining-nums" => self.font_features.push(("lnum".into(), 1)),
-                        "tabular-nums" => self.font_features.push(("tnum".into(), 1)),
-                        "proportional-nums" => self.font_features.push(("pnum".into(), 1)),
-                        "slashed-zero" => self.font_features.push(("zero".into(), 1)),
-                        "normal" | "none" => {}
-                        raw => {
-                            let mut parts = raw.split_whitespace();
-                            let tag = parts.next().unwrap_or("").trim_matches('"');
-                            if tag.len() == 4 {
-                                let on = match parts.next() {
-                                    Some("off") | Some("0") => 0,
-                                    Some(n) => n.parse().unwrap_or(1),
-                                    None => 1,
-                                };
-                                self.font_features.push((tag.to_string(), on));
-                            }
+                    "none" | "normal" => {
+                        self.content = None;
+                        self.content_none = Some(v == "none");
+                    }
+                    // Негодная запись НЕ применяется вовсе, прежнее значение
+                    // остаётся (CSS 2.1 §4.1.8): иначе мусор вроде
+                    // `counter(a,b,c)` печатался литералом и `counters-002`
+                    // показывал слово FAIL.
+                    other => {
+                        if let Some(list) = parse_content(other) {
+                            self.content = Some(list);
                         }
                     }
                 }
+            }
+            "font-synthesis" | "font-synthesis-weight" | "font-synthesis-style"
+            | "font-synthesis-small-caps" => {
+                // css-fonts-4 §6.5: `auto` разрешает подмену, `none`
+                // запрещает; у сокращения перечислены разрешённые части.
+                let allow = |what: &str| match key {
+                    "font-synthesis" => v.contains(what),
+                    _ => v.trim() != "none",
+                };
+                match key {
+                    "font-synthesis-weight" => self.font_synth.0 = Some(allow("weight")),
+                    "font-synthesis-style" => self.font_synth.1 = Some(allow("style")),
+                    "font-synthesis-small-caps" => self.font_synth.2 = Some(allow("small-caps")),
+                    _ => {
+                        self.font_synth = (
+                            Some(allow("weight")),
+                            Some(allow("style")),
+                            Some(allow("small-caps")),
+                        )
+                    }
+                }
+                // Подмена ВЕСА и НАКЛОНА выражается своими тегами возможностей:
+                // подбор грани в gpui читает их и отвергает поддельную грань
+                // (`nsyw`/`nsys` — свои, не OpenType). Малые прописные мы не
+                // синтезируем вовсе, поэтому у них тега нет.
+                for (tag, on) in [("nsyw", self.font_synth.0), ("nsys", self.font_synth.1)] {
+                    self.font_features.retain(|(t, _)| t != tag);
+                    if on == Some(false) {
+                        self.font_features.push((tag.to_string(), 1));
+                    }
+                }
+            }
+            "text-emphasis" | "text-emphasis-style" | "text-emphasis-color"
+            | "text-emphasis-position" => {
+                // css-text-decor-3 §5: знак задаётся словом (форма +
+                // заливка) или строкой; `none` его снимает. Цвет знака —
+                // цвет текста, отдельного канала у нас нет.
+                if key == "text-emphasis-position" {
+                    self.emphasis_under = v.split_whitespace().any(|w| w == "under");
+                    return;
+                }
+                if key == "text-emphasis-color" {
+                    return;
+                }
+                let v = v.trim();
+                if v == "none" || v.is_empty() {
+                    self.text_emphasis = None;
+                    return;
+                }
+                // Строка в кавычках — первый её знак (§5.1: «only the first
+                // character is used»).
+                if let Some(q) = v.chars().next().filter(|c| *c == '"' || *c == '\'') {
+                    let body = v.trim_matches(q);
+                    self.text_emphasis = body.chars().next().map(|c| c.to_string());
+                    return;
+                }
+                let open = v.split_whitespace().any(|w| w == "open");
+                let shape = v
+                    .split_whitespace()
+                    .find(|w| {
+                        matches!(*w, "dot" | "circle" | "double-circle" | "triangle" | "sesame")
+                    })
+                    .unwrap_or("circle");
+                let mark = match (shape, open) {
+                    ("dot", false) => '\u{2022}',
+                    ("dot", true) => '\u{25E6}',
+                    ("circle", false) => '\u{25CF}',
+                    ("circle", true) => '\u{25CB}',
+                    ("double-circle", false) => '\u{25C9}',
+                    ("double-circle", true) => '\u{25CE}',
+                    ("triangle", false) => '\u{25B2}',
+                    ("triangle", true) => '\u{25B3}',
+                    ("sesame", false) => '\u{FE45}',
+                    _ => '\u{FE46}',
+                };
+                self.text_emphasis = Some(mark.to_string());
+            }
+            "ruby-position" => {
+                // css-ruby-1 §4.1: `under` — под базой; `over`, `alternate`
+                // (первый уровень) и `inter-character` (в горизонтали — пока
+                // как `over`) — над ней.
+                self.ruby_under = Some(v.split_whitespace().any(|w| w == "under"));
+            }
+            "ruby-align" => {
+                self.ruby_align = match v.trim() {
+                    "start" => Some(RubyAlign::Start),
+                    "center" => Some(RubyAlign::Center),
+                    "space-between" => Some(RubyAlign::SpaceBetween),
+                    "space-around" => Some(RubyAlign::SpaceAround),
+                    _ => self.ruby_align,
+                };
+            }
+            "font-kerning" => {
+                // css-fonts-4 §6.4: `none` гасит кернинг, `normal` включает,
+                // `auto` оставляет решение шрифту (у нас — включён).
+                let kern: u8 = match v.trim() {
+                    "none" => 0,
+                    "normal" => 1,
+                    "auto" => 2,
+                    // Негодное значение роняет объявление (§4.2), а не стирает
+                    // прежний `kern`.
+                    _ => return,
+                };
+                self.font_features.retain(|(t, _)| t != "kern");
+                if kern < 2 {
+                    self.font_features.push(("kern".to_string(), kern as u32));
+                }
+                self.font_kerning = Some(kern);
+            }
+            "font-feature-settings" => {
+                // Низкоуровневые теги через запятую: `"tnum" 1, "liga" off`.
+                if v == "inherit" {
+                    self.font_settings = None;
+                    return;
+                }
+                // Негодный список роняет объявление целиком (§4.2).
+                if let Some(list) = feature_list(v) {
+                    self.font_settings = Some(list);
+                }
+            }
+            "font-variant"
+            | "font-variant-caps"
+            | "font-variant-numeric"
+            | "font-variant-ligatures"
+            | "font-variant-east-asian"
+            | "font-variant-position"
+            | "font-variant-alternates" => {
+                // Значения разделяются ПРОБЕЛОМ (css-fonts-4 §6); каждое
+                // свойство сперва чистит СВОЮ подгруппу тегов — повтор и
+                // `normal` переопределяют, а не копятся при наследовании.
+                const CAPS: &[&str] = &["smcp", "c2sc", "pcap", "c2pc", "unic", "titl"];
+                const NUMERIC: &[&str] = &[
+                    "lnum", "onum", "pnum", "tnum", "frac", "afrc", "ordn", "zero",
+                ];
+                const LIGA: &[&str] = &["liga", "clig", "dlig", "hlig", "calt"];
+                const EAST: &[&str] = &[
+                    "jp78", "jp83", "jp90", "jp04", "smpl", "trad", "fwid", "pwid", "ruby",
+                ];
+                const POS: &[&str] = &["subs", "sups"];
+                const ALT: &[&str] = &["hist", "salt", "swsh", "ornm", "nalt"];
+                let alt_tag = |t: &str| {
+                    (t.len() == 4 && (t.starts_with("ss") || t.starts_with("cv")))
+                        && t[2..].bytes().all(|b| b.is_ascii_digit())
+                };
+                let groups: &[&[&str]] = match key {
+                    "font-variant-caps" => &[CAPS],
+                    "font-variant-numeric" => &[NUMERIC],
+                    "font-variant-ligatures" => &[LIGA],
+                    "font-variant-east-asian" => &[EAST],
+                    "font-variant-position" => &[POS],
+                    "font-variant-alternates" => &[ALT],
+                    _ => &[CAPS, NUMERIC, LIGA, EAST, POS, ALT],
+                };
+                self.font_features.retain(|(t, _)| {
+                    !groups.iter().any(|g| g.contains(&t.as_str()))
+                        && !(matches!(key, "font-variant" | "font-variant-alternates")
+                            && alt_tag(t))
+                });
+                for token in v.split_whitespace() {
+                    let push: &[(&str, u32)] = match token {
+                        "small-caps" => &[("smcp", 1)],
+                        "all-small-caps" => &[("smcp", 1), ("c2sc", 1)],
+                        "petite-caps" => &[("pcap", 1)],
+                        "all-petite-caps" => &[("pcap", 1), ("c2pc", 1)],
+                        "unicase" => &[("unic", 1)],
+                        "titling-caps" => &[("titl", 1)],
+                        "lining-nums" => &[("lnum", 1)],
+                        "oldstyle-nums" => &[("onum", 1)],
+                        "proportional-nums" => &[("pnum", 1)],
+                        "tabular-nums" => &[("tnum", 1)],
+                        "diagonal-fractions" => &[("frac", 1)],
+                        "stacked-fractions" => &[("afrc", 1)],
+                        "ordinal" => &[("ordn", 1)],
+                        "slashed-zero" => &[("zero", 1)],
+                        "common-ligatures" => &[("liga", 1), ("clig", 1)],
+                        "no-common-ligatures" => &[("liga", 0), ("clig", 0)],
+                        "discretionary-ligatures" => &[("dlig", 1)],
+                        "no-discretionary-ligatures" => &[("dlig", 0)],
+                        "historical-ligatures" => &[("hlig", 1)],
+                        "no-historical-ligatures" => &[("hlig", 0)],
+                        "contextual" => &[("calt", 1)],
+                        "no-contextual" => &[("calt", 0)],
+                        "jis78" => &[("jp78", 1)],
+                        "jis83" => &[("jp83", 1)],
+                        "jis90" => &[("jp90", 1)],
+                        "jis04" => &[("jp04", 1)],
+                        "simplified" => &[("smpl", 1)],
+                        "traditional" => &[("trad", 1)],
+                        "full-width" => &[("fwid", 1)],
+                        "proportional-width" => &[("pwid", 1)],
+                        "ruby" => &[("ruby", 1)],
+                        "sub" => &[("subs", 1)],
+                        "super" => &[("sups", 1)],
+                        "historical-forms" => &[("hist", 1)],
+                        // `none` выключает лигатуры по умолчанию.
+                        "none" => &[("liga", 0), ("clig", 0), ("calt", 0)],
+                        "normal" => &[],
+                        raw => {
+                            // Функциональные альтернаты: номер -> ssNN/cvNN.
+                            let func = |name: &str, pre: &str| {
+                                raw.strip_prefix(name)
+                                    .and_then(|r| r.strip_suffix(')'))
+                                    .and_then(|n| n.trim().parse::<u32>().ok())
+                                    .filter(|n| (1..=99).contains(n))
+                                    .map(|n| format!("{pre}{n:02}"))
+                            };
+                            if let Some(t) =
+                                func("styleset(", "ss").or_else(|| func("character-variant(", "cv"))
+                            {
+                                self.font_features.push((t, 1));
+                            } else if raw.starts_with("swash(") {
+                                self.font_features.push(("swsh".into(), 1));
+                            } else if raw.starts_with("ornaments(") {
+                                self.font_features.push(("ornm".into(), 1));
+                            } else if raw.starts_with("annotation(") {
+                                self.font_features.push(("nalt".into(), 1));
+                            }
+                            &[]
+                        }
+                    };
+                    for (t, on) in push {
+                        self.font_features.push(((*t).into(), *on));
+                    }
+                }
+            }
+            "font-size-adjust" => {
+                // css-fonts-5 §font-size-adjust:
+                //   none | [ ex-height | cap-height | ch-width | ic-width
+                //          | ic-height ]? [ from-font | <number [0,∞]> ]
+                // Негодная запись (доля, `auto`, отрицательное число) роняет
+                // объявление целиком, прежнее значение живёт (§4.2;
+                // `font-size-adjust-006/007/008`).
+                let lower = v.to_ascii_lowercase();
+                if lower == "inherit" {
+                    self.font_size_adjust = None;
+                    return;
+                }
+                if lower == "none" || lower == "initial" {
+                    self.font_size_adjust = Some((u8::MAX, 0.0));
+                    return;
+                }
+                let toks = split_outside_parens(&lower);
+                let (metric, number) = match toks.as_slice() {
+                    [n] => ("ex-height", n.as_str()),
+                    [m, n] => (m.as_str(), n.as_str()),
+                    _ => return,
+                };
+                let metric = match metric {
+                    "ex-height" => 0,
+                    "cap-height" => 1,
+                    "ch-width" => 2,
+                    "ic-width" => 3,
+                    "ic-height" => 4,
+                    _ => return,
+                };
+                let want = if number == "from-font" {
+                    f32::NAN
+                } else {
+                    match crate::value::number(number) {
+                        Some(k) if k >= 0.0 => k,
+                        _ => return,
+                    }
+                };
+                self.font_size_adjust = Some((metric, want));
             }
             "font-stretch" => {
                 // Ключевые слова CSS — это проценты от обычной ширины.
@@ -2955,15 +7655,326 @@ impl Computed {
             "accent-color" => self.accent_color = Color::parse(v),
 
             // --- Многоколоночный поток ----------------------------------------
-            "column-count" => self.column_count = v.parse().ok(),
-            "column-width" => self.column_width = Len::parse(v),
-            "columns" => {
-                // `columns: <ширина> <число>` в любом порядке.
-                for token in v.split_whitespace() {
-                    match token.parse::<u16>() {
-                        Ok(n) => self.column_count = Some(n),
-                        Err(_) => self.column_width = Len::parse(token),
+            // Невалидное значение НЕ затирает прежнее (каскад CSS
+            // отбрасывает объявление целиком): `column-count: -1` после
+            // `column-count: 2` оставляет двойку. Ноль и минус невалидны.
+            "column-count" => {
+                if v.trim() == "auto" {
+                    self.column_count = None;
+                } else if let Ok(n) = v.trim().parse::<u16>()
+                    && n > 0
+                {
+                    self.column_count = Some(n);
+                }
+            }
+            "column-width" => {
+                if v.trim() == "auto" {
+                    self.column_width = None;
+                } else if let Some(l) = Len::parse(v.trim()) {
+                    // Отрицательная и нулевая ширина колонки невалидны.
+                    if !matches!(l, Len::Px(w) if w <= 0.0) {
+                        self.column_width = Some(l);
                     }
+                }
+            }
+            // `column-height: auto | <length [0,∞]>` (css-multicol-2 §ch):
+            // отрицательная невалидна и не затирает прежнее; ноль — законная
+            // высота (`columns: 2 / 0`, `column-height-021…023`).
+            "column-height" => {
+                if v.trim() == "auto" {
+                    self.column_height = None;
+                } else if let Some(l) = Len::parse(v.trim())
+                    && !matches!(l, Len::Px(h) if h < 0.0)
+                {
+                    self.column_height = Some(l);
+                }
+            }
+            // `column-wrap: auto | nowrap | wrap` (css-multicol-2 §cwr);
+            // `auto` — отсутствие значения, решается в укладке по
+            // `column-height`.
+            "column-wrap" => {
+                self.column_wrap = match v.trim() {
+                    "wrap" => Some(true),
+                    "nowrap" => Some(false),
+                    _ => None,
+                };
+            }
+            // `page: auto | <custom-ident>` (css-page-3 §"Using named pages").
+            // Имя регистрозависимо; `auto` — ключевое слово без регистра и
+            // хранится отсутствием значения.
+            "page" => {
+                let t = v.trim();
+                self.page = (!t.is_empty() && !t.eq_ignore_ascii_case("auto"))
+                    .then(|| t.to_string());
+            }
+            // `column-fill`: балансировать ли колонки (дефолт balance).
+            "column-fill" => self.column_fill_auto = Some(v.trim() == "auto"),
+            // `scroll-marker-group: none | [before|after] || [links|tabs]`
+            // (css-overflow-5): нужна только сторона, `links`/`tabs` — роль.
+            "scroll-marker-group" => {
+                let words: Vec<&str> = v.split_whitespace().collect();
+                self.scroll_marker_group = if words.contains(&"before") {
+                    Some(true)
+                } else if words.contains(&"after") {
+                    Some(false)
+                } else {
+                    None
+                };
+            }
+            // `column-span: all` — растяжка на все колонки.
+            "column-span" => self.column_span = Some(v.trim() == "all"),
+            // `avoid`, `avoid-column`, `avoid-page`, `avoid-region` — все
+            // запрещают разрыв ВНУТРИ коробки; `auto` разрешает.
+            // `page-break-inside` — устаревшее написание того же (css-break-3
+            // §6.4 требует считать их одним свойством).
+    /// ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v153, `scout-boxdeco-2026-09.md`):
+    /// `box-decoration-break: clone` — украшение на каждом фрагменте
+    /// (21 хунк: разбор, `Kid::clone_dec`, ветка в `fill_at`, `frags_of`,
+    /// `clone_fragment`). Срез `L-brk` 2874: +2/−2 при ожидании +6…+19 —
+    /// `clone-004`, `-012` взяты, но `clone-005.tentative` 0.00 → 99.00 и
+    /// `clone-007` 0.00 → 2.08. Ветка `clone` в `fill_at` ломает уже
+    /// работавший `slice` у вложенных случаев; нужен отдельный проход
+    /// планирования фрагментов, а не правка общей укладки.
+            "break-inside" | "page-break-inside" => {
+                self.break_inside_avoid = v.trim().starts_with("avoid")
+            }
+            // Префиксное написание — то же свойство (`border-image-000`,
+            // `-webkit-box-decoration-break: clone`).
+            "box-decoration-break" | "-webkit-box-decoration-break" => {
+                self.bdb_clone = v.trim().eq_ignore_ascii_case("clone")
+            }
+            "break-before" | "page-break-before" => {
+                self.break_before_force = matches!(
+                    v.trim(),
+                    "column" | "page" | "always" | "left" | "right" | "recto" | "verso" | "region"
+                );
+                // css-break-4 §3.1 «avoid break values». Тип фрагментации не
+                // различаем — ровно как уже написанный `break_inside_avoid`
+                // (`starts_with("avoid")`). Blink здесь строже
+                // (`fragmentation_utils.cc:108-121 IsAvoidBreakValue`:
+                // `avoid-page` в колонках не действует); упрощение осознанное
+                // и безопасное, пока страницы вне зоны патча (§2 отчёта).
+                self.break_before_avoid = v.trim().starts_with("avoid");
+            }
+            "break-after" | "page-break-after" => {
+                self.break_after_force = matches!(
+                    v.trim(),
+                    "column" | "page" | "always" | "left" | "right" | "recto" | "verso" | "region"
+                );
+                self.break_after_avoid = v.trim().starts_with("avoid");
+            }
+            // Лонгхенды линеек промежутков (css-gaps-1 §color-style-width):
+            // список через запятую с `repeat()`, `rule-*` ставит обе оси.
+            // Первое значение уходит в скаляры — ими живёт многоколонник.
+            "column-rule-width" | "row-rule-width" | "rule-width" => {
+                if let Some(l) = gap_list(v, gap_width) {
+                    if key != "row-rule-width" {
+                        self.set_gap_widths(true, &l);
+                    }
+                    if key != "column-rule-width" {
+                        self.set_gap_widths(false, &l);
+                    }
+                }
+            }
+            "column-rule-style" | "row-rule-style" | "rule-style" => {
+                if let Some(l) = gap_list(v, gap_style) {
+                    if key != "row-rule-style" {
+                        self.set_gap_styles(true, &l);
+                    }
+                    if key != "column-rule-style" {
+                        self.set_gap_styles(false, &l);
+                    }
+                }
+            }
+            "column-rule-color" | "row-rule-color" | "rule-color" => {
+                if let Some(l) = gap_list(v, gap_color) {
+                    if key != "row-rule-color" {
+                        self.set_gap_colors(true, &l);
+                    }
+                    if key != "column-rule-color" {
+                        self.set_gap_colors(false, &l);
+                    }
+                }
+            }
+            // §inset: `[column-|row-]rule-inset[-cap|-junction][-start|-end]`.
+            // Без стороны — обе стороны, без вида — и концы, и стыки; два
+            // значения — начало и конец. Слоты: [cap-start, cap-end,
+            // junction-start, junction-end].
+            k if k
+                .strip_prefix("column-")
+                .or_else(|| k.strip_prefix("row-"))
+                .unwrap_or(k)
+                .starts_with("rule-inset") =>
+            {
+                let tail = k
+                    .strip_prefix("column-")
+                    .or_else(|| k.strip_prefix("row-"))
+                    .unwrap_or(k);
+                let tail = &tail["rule-inset".len()..];
+                let plain = tail.is_empty() || tail == "-start" || tail == "-end";
+                let cap = plain || tail.starts_with("-cap");
+                let junction = plain || tail.starts_with("-junction");
+                let start = !tail.ends_with("-end");
+                let end = !tail.ends_with("-start");
+                let toks = split_outside_parens(v);
+                let (vs, ve) = match toks.as_slice() {
+                    [a] => (gap_inset(a), gap_inset(a)),
+                    [a, b] => (gap_inset(a), gap_inset(b)),
+                    _ => (None, None),
+                };
+                if let (Some(vs), Some(ve)) = (vs, ve) {
+                    let slots = [cap && start, cap && end, junction && start, junction && end];
+                    for column in [true, false] {
+                        if (column && k.starts_with("row-")) || (!column && k.starts_with("column-")) {
+                            continue;
+                        }
+                        let arr = if column {
+                            &mut self.column_rule_inset
+                        } else {
+                            &mut self.row_rule_inset
+                        };
+                        let mut cur = arr.unwrap_or([GapInset::Len(Len::Px(0.0)); 4]);
+                        for (i, on) in slots.iter().enumerate() {
+                            if *on {
+                                cur[i] = if i % 2 == 0 { vs } else { ve };
+                            }
+                        }
+                        *arr = Some(cur);
+                    }
+                }
+            }
+            // §visibility-items: 0 normal, 1 all, 2 around, 3 between.
+            "rule-visibility-items" | "column-rule-visibility-items" | "row-rule-visibility-items" => {
+                let code = match v.trim() {
+                    "normal" => Some(0u8),
+                    "all" => Some(1),
+                    "around" => Some(2),
+                    "between" => Some(3),
+                    _ => None,
+                };
+                if let Some(code) = code {
+                    if key != "row-rule-visibility-items" {
+                        self.column_rule_visibility = Some(code);
+                    }
+                    if key != "column-rule-visibility-items" {
+                        self.row_rule_visibility = Some(code);
+                    }
+                }
+            }
+            // §overlap: порядок краски пересекающихся линеек.
+            "rule-overlap" => match v.trim() {
+                "row-over-column" => self.rule_column_over_row = Some(false),
+                "column-over-row" => self.rule_column_over_row = Some(true),
+                _ => {}
+            },
+            // §break: `none` 0, `normal` 1, `intersection` 2.
+            "column-rule-break" | "row-rule-break" | "rule-break" => {
+                let code = match v.trim() {
+                    "none" => Some(0u8),
+                    "normal" => Some(1),
+                    "intersection" => Some(2),
+                    _ => None,
+                };
+                if let Some(code) = code {
+                    if key != "row-rule-break" {
+                        self.column_rule_break = Some(code);
+                    }
+                    if key != "column-rule-break" {
+                        self.row_rule_break = Some(code);
+                    }
+                }
+            }
+            // §margin-trim: `none | block | [ block-start || block-end ]`.
+            "margin-trim" => {
+                let mut bits = 0u8;
+                let mut ok = true;
+                for token in v.split_whitespace() {
+                    match token {
+                        "none" => {}
+                        "block" => bits |= 3,
+                        "block-start" => bits |= 1,
+                        "block-end" => bits |= 2,
+                        // Строчные края — текущая редакция спеки: их
+                        // исполняют гибкий контейнер и сетка («Flex
+                        // Containers», «Grid Containers»); блочный контейнер
+                        // их не видит (`block-container-inline-001`).
+                        "inline" => bits |= 12,
+                        "inline-start" => bits |= 4,
+                        "inline-end" => bits |= 8,
+                        _ => ok = false,
+                    }
+                }
+                if ok {
+                    self.margin_trim = bits;
+                }
+            }
+            // Сокращения линеек (css-gaps-1 §rule-shorthands): список
+            // `<gap-rule>` через запятую с `repeat()`; `rule` — обе оси.
+            // Незнакомый токен делает недействительным ВСЁ объявление
+            // (CSS 2.1 §4.1.7), а токены с пробелами внутри скобок
+            // (`rgba(0, 0, 255, 0.5)`) больше не рвутся.
+            "column-rule" | "row-rule" | "rule" => self.gap_rule_shorthand(key, v),
+            "columns" => {
+                // `columns: [<ширина> || <число>] [/ <column-height>]?`
+                // (css-multicol-2 §columns): ширина и число в любом порядке;
+                // `auto` оставляет сторону нерешённой (не затирать уже
+                // разобранную ширину). Короткая форма сбрасывает
+                // `column-height` и `column-wrap` в начальные
+                // (`columns-shorthand-reset-wrap`, `columns: 2 / 0`).
+                let (head, tail) = v.split_once('/').map_or((v, None), |(a, b)| (a, Some(b)));
+                // Грамматика css-multicol-1 §columns: «<<'column-width'>> ||
+                // <<'column-count'>>» — не больше двух слов, каждое не больше раза.
+                // Иное объявление НЕВАЛИДНО и отбрасывается ЦЕЛИКОМ (css-syntax-3
+                // §consume-declaration), ничего не сбрасывая. Прежде слова брались
+                // поштучно: `columns: 8 auto 6em` давал `column-count: 8` и
+                // `column-width: 6em`, и с пакетом B (`column_width` из `merged`,
+                // в точках) колонок стало min(8, ⌊240/120⌋) = 2 вместо 4 —
+                // `multicol-columns-invalid-002` 0.00 (v39) → 0.67 (v40).
+                let words: Vec<&str> = head.split_whitespace().collect();
+                if words.is_empty() || words.len() > 2 {
+                    return;
+                }
+                let mut count: Option<u16> = None;
+                let mut width: Option<Len> = None;
+                for token in &words {
+                    if token.eq_ignore_ascii_case("auto") {
+                        continue;
+                    }
+                    match token.parse::<u16>() {
+                        Ok(n) if n > 0 && count.is_none() => count = Some(n),
+                        // `0` — как прежде: без действия (как длина `column-width: 0`
+                        // у нас отвергается и в полной форме).
+                        Ok(0) => {}
+                        Ok(_) => return,
+                        Err(_) => match Len::parse(token) {
+                            Some(l)
+                                if width.is_none()
+                                    && !matches!(
+                                        l,
+                                        Len::Auto
+                                            | Len::Pct(_)
+                                            | Len::MinContent
+                                            | Len::MaxContent
+                                            | Len::FitContent
+                                    )
+                                    && !matches!(l, Len::Px(w) | Len::Em(w) if w < 0.0) =>
+                            {
+                                width = Some(l)
+                            }
+                            _ => return,
+                        },
+                    }
+                }
+                self.column_height = None;
+                self.column_wrap = None;
+                if let Some(t) = tail {
+                    self.apply_one("column-height", t.trim());
+                }
+                if let Some(n) = count {
+                    self.column_count = Some(n);
+                }
+                if let Some(l) = width {
+                    self.column_width = Some(l);
                 }
             }
 
@@ -2974,28 +7985,59 @@ impl Computed {
                 let y = it.next().and_then(Len::parse).unwrap_or(Len::Px(0.0));
                 self.translate = Some((x, y));
             }
-            "text-shadow" => self.text_shadow = parse_shadows(v).into_iter().next(),
+            // Тень в единицах шрифта — строкой до своего кегля (`resolve_em`):
+            // `parse_shadows` такую тень пропускает, и `1em 0em purple` у
+            // эталона `box-shadow-multiple-001-ref` пропадала, пока тест после
+            // `shadow_raw` уже рисовал свою `box-shadow` в `em` (0.08 → 6.25).
+            "text-shadow" if has_font_units(v) => self.text_shadow_raw = Some(v.to_string()),
+            "text-shadow" => {
+                self.text_shadow_raw = None;
+                let mut list = parse_shadows(v).into_iter();
+                self.text_shadow = list.next();
+                self.text_shadow_rest = list.collect();
+            }
 
             // --- Время --------------------------------------------------------
             "animation"
             | "animation-name"
             | "animation-duration"
             | "animation-iteration-count"
-            | "animation-direction" => {
+            | "animation-direction"
+            | "animation-delay"
+            | "animation-play-state" => {
                 let mut a = self.animation.clone().unwrap_or(AnimSpec {
                     name: String::new(),
                     seconds: 0.0,
                     infinite: false,
                     alternate: false,
+                    delay: 0.0,
+                    paused: false,
+                    names: Vec::new(),
                 });
+                // В сокращении второе время — задержка (css-animations §5).
+                let mut times = 0usize;
+                let mut set_time = |a: &mut AnimSpec, sec: f32, times: &mut usize| match key {
+                    "animation-delay" => a.delay = sec,
+                    "animation-duration" => a.seconds = sec,
+                    _ => {
+                        if *times == 0 {
+                            a.seconds = sec;
+                        } else {
+                            a.delay = sec;
+                        }
+                        *times += 1;
+                    }
+                };
                 for token in v.split_whitespace() {
                     if let Some(sec) = token.strip_suffix("ms").and_then(|n| n.parse::<f32>().ok())
                     {
-                        a.seconds = sec / 1000.0;
+                        set_time(&mut a, sec / 1000.0, &mut times);
                     } else if let Some(sec) =
                         token.strip_suffix('s').and_then(|n| n.parse::<f32>().ok())
                     {
-                        a.seconds = sec;
+                        set_time(&mut a, sec, &mut times);
+                    } else if token == "paused" {
+                        a.paused = true;
                     } else if token == "infinite" {
                         a.infinite = true;
                     } else if token == "alternate" {
@@ -3021,7 +8063,21 @@ impl Computed {
                         a.name = token.to_string();
                     }
                 }
-                self.animation = (!a.name.is_empty()).then_some(a);
+                // `animation-name: a, b` — СПИСОК (css-animations-1 §3: при
+                // общем свойстве побеждает имя, стоящее в списке позже). Цикл
+                // выше оставил в `name` последнее имя — одиночный путь прежний;
+                // весь список нужен слоению остановленных анимаций (`dom.rs`).
+                if key == "animation-name" {
+                    let names: Vec<String> = v
+                        .split(',')
+                        .map(|n| n.trim().to_string())
+                        .filter(|n| !n.is_empty() && n != "none")
+                        .collect();
+                    a.names = if names.len() > 1 { names } else { Vec::new() };
+                }
+                // Свойства без имени (`animation-play-state` до сокращения)
+                // копят состояние: имя может прийти следующей декларацией.
+                self.animation = Some(a);
             }
             "transition" | "transition-duration" => {
                 // Из записи перехода нужна только длительность: какие свойства
@@ -3048,6 +8104,7 @@ impl Computed {
                 // LRI/PDI, и в узкой коробке строка не рисовалась вовсе.
                 self.bidi_isolate = Some(matches!(v, "isolate" | "isolate-override"));
                 self.bidi_plaintext = Some(v == "plaintext");
+                self.bidi_embed = Some(v == "embed");
             }
             "resize" => {
                 self.resize = match v {
@@ -3058,6 +8115,34 @@ impl Computed {
                 }
             }
             "filter" => {
+                // `drop-shadow(<color>? && <length>{2,3})` (filter-effects-1
+                // §funcdef-filter-drop-shadow) несёт скобки цвета внутри —
+                // режется по балансу скобок, а не по первой `)`. Значения —
+                // как у box-shadow, но 3-я длина — СИГМА: радиус box-shadow
+                // вдвое больше.
+                self.drop_shadow = v.find("drop-shadow(").and_then(|at| {
+                    let rest = &v[at + "drop-shadow(".len()..];
+                    let mut depth = 1usize;
+                    let end = rest.char_indices().find_map(|(i, ch)| {
+                        match ch {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    return Some(i);
+                                }
+                            }
+                            _ => {}
+                        }
+                        None
+                    })?;
+                    parse_shadows(&rest[..end])
+                        .first()
+                        .map(|sh| Shadow {
+                            blur: sh.blur * 2.0,
+                            ..*sh
+                        })
+                });
                 let mut f = self.filter.unwrap_or_else(Filter::neutral);
                 for call in v.split(')') {
                     let Some((name, arg)) = call.split_once('(') else {
@@ -3073,6 +8158,12 @@ impl Computed {
                         }
                     };
                     match name {
+                        "url" => {
+                            let id = arg.trim_matches(|c| c == '"' || c == '\'').trim();
+                            if let Some(id) = id.strip_prefix('#') {
+                                self.filter_ref = Some(id.to_string());
+                            }
+                        }
                         "grayscale" => f.grayscale = amount(),
                         "brightness" => f.brightness = amount(),
                         "saturate" => f.saturate = amount(),
@@ -3083,6 +8174,7 @@ impl Computed {
                             f.hue_rotate = arg.trim_end_matches("deg").parse().unwrap_or(0.0)
                         }
                         "blur" => f.blur = arg.trim_end_matches("px").trim().parse().unwrap_or(0.0),
+                        "contrast" => f.contrast = amount(),
                         // `drop-shadow` и цветовые матрицы — не наш случай.
                         _ => {}
                     }
@@ -3091,8 +8183,31 @@ impl Computed {
             }
 
             // --- Преобразования -----------------------------------------------
+            // motion-1 §2: свойства пути хранятся СЫРЫМИ. Сэмплер зовётся
+            // после каскада (`dom::walk`), когда известны и путь, и точка
+            // отсчёта, и авторский `transform` — раньше собрать нечего.
+            "offset-path" => self.offset_path = (v.trim() != "none").then(|| v.trim().to_string()),
+            // `<length-percentage>`: смесь `calc(12.5% + 200px)` доживает
+            // индексом арены — доля решается длиной пути во втором проходе
+            // (`motion::path_css`; offset-path-shape-xywh-002).
+            "offset-distance" => self.offset_distance = Len::parse_mixed(v.trim()),
+            "offset-rotate" => self.offset_rotate = Some(v.trim().to_string()),
+            "offset-anchor" => self.offset_anchor = Some(v.trim().to_string()),
+            "offset-position" => self.offset_position = Some(v.trim().to_string()),
+            "transform" if v.trim() == "inherit" => self.inherit_bits |= inh::TRANSFORM,
+            "transform-origin" if v.trim() == "inherit" => {
+                self.inherit_bits |= inh::TRANSFORM_ORIGIN
+            }
+            "transform" if has_font_units(v) => self.transform_raw = Some(v.to_string()),
+            "transform-origin" if has_font_units(v) => {
+                self.transform_origin_raw = Some(v.to_string())
+            }
             "transform" => {
                 let mut t = self.transform.unwrap_or_default();
+                // Невалидный аргумент отбрасывает ВСЁ объявление (CSS-каскад),
+                // а не превращается в ноль (`scale(invalid)` схлопывал фигуру,
+                // хотя обязан быть проигнорирован — svg-document-styles-005).
+                let mut invalid = false;
                 for call in v.split(')') {
                     let Some((name, arg)) = call.split_once('(') else {
                         continue;
@@ -3102,6 +8217,8 @@ impl Computed {
                         .split(',')
                         .filter_map(|n| {
                             n.trim()
+                                .trim_end_matches("grad")
+                                .trim_end_matches("turn")
                                 .trim_end_matches("deg")
                                 .trim_end_matches("rad")
                                 .trim_end_matches("px")
@@ -3110,89 +8227,269 @@ impl Computed {
                                 .ok()
                         })
                         .collect();
-                    let first = nums.first().copied().unwrap_or(0.0);
-                    // Угол в градусах — умолчание CSS; радианы помечены явно.
-                    let angle = if arg.contains("rad") {
-                        first
-                    } else {
-                        first.to_radians()
+                    // Угол i-го аргумента с ЕГО единицей: grad — 400 на
+                    // оборот, turn — целый оборот; rad проверяется после
+                    // grad («grad» кончается на «rad»).
+                    let angle_at = |i: usize| -> f32 {
+                        let t = arg.split(',').nth(i).unwrap_or("").trim();
+                        let v = nums.get(i).copied().unwrap_or(0.0);
+                        if t.ends_with("grad") {
+                            v * std::f32::consts::PI / 200.0
+                        } else if t.ends_with("turn") {
+                            v * std::f32::consts::TAU
+                        } else if t.ends_with("rad") {
+                            v
+                        } else {
+                            v.to_radians()
+                        }
                     };
+                    // Доля i-го аргумента: процент — сотая (scale(50%) = 0.5).
+                    let frac_at = |i: usize, def: f32| -> f32 {
+                        let t = arg.split(',').nth(i).unwrap_or("").trim();
+                        match nums.get(i) {
+                            None => def,
+                            Some(v) if t.ends_with('%') => v / 100.0,
+                            Some(v) => *v,
+                        }
+                    };
+                    if nums.is_empty() && !arg.is_empty() && name != "none" {
+                        invalid = true;
+                    }
+                    let first = nums.first().copied().unwrap_or(0.0);
+                    let angle = angle_at(0);
+                    // Имена функций регистронезависимы (css-transforms-1
+                    // §7, CSS Syntax §4): `scale3D`, `rotatex`, `translateY`
+                    // — одно и то же.
+                    let lower = name.to_ascii_lowercase();
+                    let name = lower.as_str();
+                    // `matrix()`/`matrix3d()` — только числа (css-transforms-1
+                    // §matrix): единица делает объявление невалидным
+                    // (`transform-matrix-008`).
+                    if matches!(name, "matrix" | "matrix3d")
+                        && arg.split(',').any(|a| a.trim().parse::<f32>().is_err())
+                    {
+                        invalid = true;
+                    }
                     match name {
-                        "rotate" | "rotateZ" => t.rotate_rad += angle,
+                        "rotate" | "rotatez" => {
+                            t.rotate_rad += angle;
+                            t.push(Transform::rot(angle), NO_SHIFT);
+                        }
                         "scale" => {
-                            t.scale.0 *= first;
-                            t.scale.1 *= nums.get(1).copied().unwrap_or(first);
+                            let sx = frac_at(0, 1.0);
+                            let sy = frac_at(1, sx);
+                            t.scale.0 *= sx;
+                            t.scale.1 *= sy;
+                            t.push(Transform::diag(sx, sy), NO_SHIFT);
                         }
                         "skew" => {
+                            let ay = angle_at(1);
                             t.skew_rad.0 += angle;
-                            let second = nums.get(1).copied().unwrap_or(0.0);
-                            t.skew_rad.1 += if arg.contains("rad") {
-                                second
-                            } else {
-                                second.to_radians()
-                            };
+                            t.skew_rad.1 += ay;
+                            t.push([[1.0, angle.tan()], [ay.tan(), 1.0]], NO_SHIFT);
                         }
-                        "skewX" => t.skew_rad.0 += angle,
-                        "skewY" => t.skew_rad.1 += angle,
-                        "scaleX" => t.scale.0 *= first,
-                        "scaleY" => t.scale.1 *= first,
+                        // matrix3d(...16): 4x4 в СТОЛБЦОВОМ порядке
+                        // (css-transforms-2 §matrix3d). Сплющивание —
+                        // вычёркивание третьей строки и третьего столбца,
+                        // то есть ровно matrix(m11 m12 m21 m22 m41 m42) =
+                        // аргументы 1,2,5,6,13,14. Раньше вызов не подходил
+                        // под `nums.len() == 6` и молча пропадал целиком.
+                        "matrix3d" if nums.len() == 16 => {
+                            let (a, b, c2, d) = (nums[0], nums[1], nums[4], nums[5]);
+                            let (e2, f2) = (nums[12], nums[13]);
+                            t.translate.0 += e2;
+                            t.translate.1 += f2;
+                            t.m33 *= nums[10];
+                            // Плоское вложение (третья строка/столбец и строка w
+                            // единичные) остаётся на 2D-пути; иначе — полная
+                            // 4×4 в СТОЛБЦОВОМ порядке аргументов:
+                            // m4[строка][столбец] = nums[столбец·4 + строка]
+                            // (m14/m24 = nums[3]/nums[7] — перспективная
+                            // строка, transform3d-matrix3d-003/-004; m44 =
+                            // nums[15] ≠ 1 — деление на w, -005).
+                            let flat2d = [2usize, 3, 6, 7, 8, 9, 11, 14].iter().all(|&i| nums[i] == 0.0)
+                                && nums[10] == 1.0
+                                && nums[15] == 1.0;
+                            if flat2d {
+                                t.push([[a, c2], [b, d]], [[e2, 0.0, 0.0], [f2, 0.0, 0.0]]);
+                            } else {
+                                t.push2([[a, c2], [b, d]], [[e2, 0.0, 0.0], [f2, 0.0, 0.0]]);
+                                let mut f = [[0.0f32; 4]; 4];
+                                for col in 0..4 {
+                                    for row in 0..4 {
+                                        f[row][col] = nums[col * 4 + row];
+                                    }
+                                }
+                                t.has_3d = true;
+                                t.push4(f, [[0.0; 2]; 4]);
+                            }
+                        }
+                        // matrix(a b c d e f): разложение на компоненты
+                        // (перенос, поворот, масштаб, скос) — QR-подобное,
+                        // как в css-transforms §16 (декомпозиция).
+                        "matrix" if nums.len() == 6 => {
+                            let (a, b, c, d, e2, f2) =
+                                (nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]);
+                            t.translate.0 += e2;
+                            t.translate.1 += f2;
+                            t.push([[a, c], [b, d]], [[e2, 0.0, 0.0], [f2, 0.0, 0.0]]);
+                            let sx = (a * a + b * b).sqrt();
+                            if sx > 1e-6 {
+                                t.rotate_rad += b.atan2(a);
+                                let det = a * d - b * c;
+                                let sy = det / sx;
+                                t.scale.0 *= sx;
+                                t.scale.1 *= sy;
+                                let shear = (a * c + b * d) / det.max(1e-6);
+                                t.skew_rad.0 += shear.atan();
+                            }
+                        }
+                        "skewx" => {
+                            t.skew_rad.0 += angle;
+                            t.push([[1.0, angle.tan()], [0.0, 1.0]], NO_SHIFT);
+                        }
+                        "skewy" => {
+                            t.skew_rad.1 += angle;
+                            t.push([[1.0, 0.0], [angle.tan(), 1.0]], NO_SHIFT);
+                        }
+                        "scalex" => {
+                            let k = frac_at(0, 1.0);
+                            t.scale.0 *= k;
+                            t.push(Transform::diag(k, 1.0), NO_SHIFT);
+                        }
+                        "scaley" => {
+                            let k = frac_at(0, 1.0);
+                            t.scale.1 *= k;
+                            t.push(Transform::diag(1.0, k), NO_SHIFT);
+                        }
                         // Поворот вокруг оси экрана БЕЗ перспективы — это
                         // прямая проекция на плоскость, то есть сжатие поперёк
                         // оси ровно на косинус угла (css-transforms-2 §11):
                         // `rotateX(60deg)` даёт половину высоты. Перспективы у
                         // нас нет, и приближением это не является — при
                         // `perspective: none` так считает и браузер.
-                        "rotateX" => t.scale.1 *= angle.cos(),
-                        "rotateY" => t.scale.0 *= angle.cos(),
-                        // Поворот вокруг произвольной оси: та же проекция, но
-                        // ось задана вектором. Ось экрана даёт обычный поворот,
-                        // остальные — сжатие поперёк себя.
+                        "rotatex" => {
+                            t.scale.1 *= angle.cos();
+                            t.m33 *= angle.cos();
+                            t.push2(Transform::diag(1.0, angle.cos()), NO_SHIFT);
+                            t.has_3d = true;
+                            t.push4(Transform::rot4(1.0, 0.0, 0.0, angle), [[0.0; 2]; 4]);
+                        }
+                        "rotatey" => {
+                            t.scale.0 *= angle.cos();
+                            t.m33 *= angle.cos();
+                            t.push2(Transform::diag(angle.cos(), 1.0), NO_SHIFT);
+                            t.has_3d = true;
+                            t.push4(Transform::rot4(0.0, 1.0, 0.0, angle), [[0.0; 2]; 4]);
+                        }
+                        // Поворот вокруг произвольной оси, сплющенный на
+                        // плоскость экрана: это ТОЧНО верхний 2x2 блок
+                        // матрицы Родрига (css-transforms-2
+                        // §3d-transform-rendering — сплющивание вычёркивает
+                        // третью строку и третий столбец). Прежняя формула
+                        // `1 - |y|·(1 - cos a)` теряла внедиагональные члены
+                        // и для косой оси давала не поворот, а сжатие.
+                        // Единица угла берётся из САМОГО аргумента: `contains
+                        // ("rad")` срабатывал на «grad» и читал 100grad как
+                        // 100 радиан.
                         "rotate3d" => {
                             let (x, y, z) = (
                                 nums.first().copied().unwrap_or(0.0),
                                 nums.get(1).copied().unwrap_or(0.0),
                                 nums.get(2).copied().unwrap_or(0.0),
                             );
-                            let len = (x * x + y * y + z * z).sqrt();
-                            if len > 0.0 {
-                                let last = nums.get(3).copied().unwrap_or(0.0);
-                                let a = if arg.contains("rad") {
-                                    last
+                            if (x * x + y * y + z * z) > 0.0 {
+                                let a = angle_at(3);
+                                let (l, m33) = Transform::axis_rot(x, y, z, a);
+                                let len = (x * x + y * y + z * z).sqrt();
+                                t.rotate_rad += a * z / len;
+                                t.scale.0 *= l[0][0];
+                                t.scale.1 *= l[1][1];
+                                t.m33 *= m33;
+                                // Ось строго Z — обычный `rotate`, остаётся на
+                                // 2D-пути (css-transform-3d-rotate3d-Z-*).
+                                if x == 0.0 && y == 0.0 {
+                                    t.push(l, NO_SHIFT);
                                 } else {
-                                    last.to_radians()
-                                };
-                                let (x, y, z) = (x / len, y / len, z / len);
-                                t.rotate_rad += a * z;
-                                t.scale.1 *= 1.0 - x.abs() * (1.0 - a.cos());
-                                t.scale.0 *= 1.0 - y.abs() * (1.0 - a.cos());
+                                    t.push2(l, NO_SHIFT);
+                                    t.has_3d = true;
+                                    t.push4(Transform::rot4(x, y, z, a), [[0.0; 2]; 4]);
+                                }
                             }
                         }
-                        // Третья ось без перспективы ничего не меняет: смещение
-                        // по ней не видно, а масштаб по ней не на что влиять.
-                        "translateZ" | "perspective" => {}
-                        "scaleZ" => {}
+                        // Третья ось видна только через `perspective()` в том
+                        // же списке — копится в 4×4; `translateZ(0)` остаётся
+                        // на 2D-пути (GPU-подсказка, не геометрия).
+                        "translatez" => {
+                            if first != 0.0 {
+                                t.has_3d = true;
+                                t.push4(Transform::translate4(0.0, 0.0, first), [[0.0; 2]; 4]);
+                            }
+                        }
+                        // perspective(d): m34 = −1/d; d < 1px считается 1px
+                        // (css-transforms-2 §perspective(): «treated as 1px»;
+                        // perspective-zero, -zero-point-five).
+                        "perspective" => {
+                            if !nums.is_empty() {
+                                t.has_3d = true;
+                                t.push4(Transform::perspective4(first.max(1.0)), [[0.0; 2]; 4]);
+                            }
+                        }
+                        // Масштаб по Z видом не правит, но участвует в m33
+                        // (обратная сторона) и вырождает 4×4 при нуле.
+                        "scalez" => {
+                            t.m33 *= first;
+                            if first != 1.0 {
+                                t.has_3d = true;
+                                t.push4(Transform::scale4(1.0, 1.0, first), [[0.0; 2]; 4]);
+                            }
+                        }
                         "scale3d" => {
+                            let sy = nums.get(1).copied().unwrap_or(1.0);
+                            let sz = nums.get(2).copied().unwrap_or(1.0);
                             t.scale.0 *= first;
-                            t.scale.1 *= nums.get(1).copied().unwrap_or(1.0);
+                            t.scale.1 *= sy;
+                            t.m33 *= sz;
+                            if sz == 1.0 {
+                                t.push(Transform::diag(first, sy), NO_SHIFT);
+                            } else {
+                                t.push2(Transform::diag(first, sy), NO_SHIFT);
+                                t.has_3d = true;
+                                t.push4(Transform::scale4(first, sy, sz), [[0.0; 2]; 4]);
+                            }
                         }
                         "translate3d" => {
                             let parts: Vec<&str> = arg.split(',').map(str::trim).collect();
+                            let mut v = NO_SHIFT;
                             for (i, dest) in [&mut t.translate.0, &mut t.translate.1]
                                 .into_iter()
                                 .enumerate()
                             {
                                 if let Some(raw) = parts.get(i) {
-                                    *dest +=
-                                        raw.trim_end_matches("px").parse::<f32>().unwrap_or(0.0);
+                                    let d = raw.trim_end_matches("px").parse::<f32>().unwrap_or(0.0);
+                                    *dest += d;
+                                    v[i][0] = d;
                                 }
+                            }
+                            let z = parts
+                                .get(2)
+                                .and_then(|raw| raw.trim_end_matches("px").parse::<f32>().ok())
+                                .unwrap_or(0.0);
+                            if z == 0.0 {
+                                t.push(Transform::diag(1.0, 1.0), v);
+                            } else {
+                                t.push2(Transform::diag(1.0, 1.0), v);
+                                t.has_3d = true;
+                                t.push4(Transform::translate4(v[0][0], v[1][0], z), [[0.0; 2]; 4]);
                             }
                         }
                         // Проценты в сдвиге считаются от СВОЕГО размера —
                         // на этом стоит типовое центрирование
                         // `translate(-50%, -50%)`. Раньше процент срезался как
                         // единица, и элемент уезжал на 50 точек.
-                        "translate" | "translateX" | "translateY" => {
+                        "translate" | "translatex" | "translatey" => {
                             let parts: Vec<&str> = arg.split(',').map(str::trim).collect();
+                            let mut v = NO_SHIFT;
                             let mut axis = |i: usize, x: bool| {
                                 let Some(raw) = parts.get(i) else { return };
                                 let value = raw
@@ -3200,35 +8497,57 @@ impl Computed {
                                     .trim_end_matches('%')
                                     .parse::<f32>()
                                     .unwrap_or(0.0);
+                                let row = if x { 0 } else { 1 };
                                 let dest = if raw.ends_with('%') {
+                                    // Доля своей ширины по x, высоты по y.
+                                    v[row][1 + row] = value / 100.0;
                                     if x {
                                         &mut t.translate_pct.0
                                     } else {
                                         &mut t.translate_pct.1
                                     }
-                                } else if x {
-                                    &mut t.translate.0
                                 } else {
-                                    &mut t.translate.1
+                                    v[row][0] = value;
+                                    if x {
+                                        &mut t.translate.0
+                                    } else {
+                                        &mut t.translate.1
+                                    }
                                 };
                                 *dest += value / if raw.ends_with('%') { 100.0 } else { 1.0 };
                             };
                             match name {
-                                "translateX" => axis(0, true),
-                                "translateY" => axis(0, false),
+                                "translatex" => axis(0, true),
+                                "translatey" => axis(0, false),
                                 _ => {
                                     axis(0, true);
                                     axis(1, false);
                                 }
                             }
+                            t.push(Transform::diag(1.0, 1.0), v);
                         }
                         // Скос выразить нечем: матрица GPUI хранит поворот и
                         // масштаб, но не сдвиг осей.
                         _ => {}
                     }
                 }
-                self.transform = Some(t);
+                if !invalid {
+                    self.transform = Some(t);
+                }
             }
+            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): доводить `rotate:`/`scale:` до
+            // матрицы отрисовки отдельными полями (`rotate_prop`/`scale_prop`)
+            // и прятать вырожденную матрицу. Срез 2327 пар
+            // (transforms/contain/overflow/masking/position): вместе с
+            // `backface-visibility` вышло 1563 -> 1571 (+14/-6), без него —
+            // 1563 -> 1575 (+13/-1). То есть сам этот рукав дал ОДНУ пару
+            // (`individual-transform-3`) против ШЕСТИ потерь, все —
+            // анимационные: `rotate-explicit-and-implicit-keyframes`,
+            // `scale-explicit-and-implicit-keyframes`,
+            // `scale-and-rotate-both-specified-on-animation-keyframes`,
+            // `change-rotate-property`, `change-scale-property`. Эталоны этих
+            // тестов ждут КОНЕЧНОЕ состояние анимации, а мы рисуем начальное:
+            // рукав вернётся вместе с проигрыванием ключевых кадров.
             "rotate" => {
                 let mut t = self.transform.unwrap_or_default();
                 let raw = v.trim();
@@ -3244,6 +8563,21 @@ impl Computed {
                     value.to_radians()
                 };
                 self.transform = Some(t);
+                // Угол вокруг оси z — ещё и отдельным полем: в матрицу
+                // отрисовки его приставляет `transformed()` СЛЕВА от списка
+                // `transform` (css-transforms-2 §ctm п.4). Рукав из ★ выше
+                // возвращён вместе с запеканием остановленных кадров
+                // (`render.rs`, `bake_frozen`); его шесть потерь 05.09 —
+                // скриптовые пары («вне цели: скрипт» в `rep-all-v219.txt`).
+                // Ось (`x 45deg`, `0 1 0 44deg`) плоскому пути не выразима.
+                let angle_only = raw.split_whitespace().count() == 1
+                    && raw
+                        .trim_end_matches("deg")
+                        .trim_end_matches("rad")
+                        .trim()
+                        .parse::<f32>()
+                        .is_ok();
+                self.rotate_prop = angle_only.then_some(t.rotate_rad);
             }
             "scale" => {
                 let mut t = self.transform.unwrap_or_default();
@@ -3258,6 +8592,18 @@ impl Computed {
                 let x = nums.first().copied().unwrap_or(1.0);
                 t.scale = (x, nums.get(1).copied().unwrap_or(x));
                 self.transform = Some(t);
+                // …и отдельным полем для матрицы отрисовки (css-transforms-2
+                // §ctm п.5). Ноль по третьей оси делает матрицу необратимой, и
+                // элемент не рисуется (css-transforms-1 §transform-rendering;
+                // `individual-transform-3`: `scale: 1 1 0`) — плоский путь
+                // выражает это нулевым масштабом, как `scale(0)`.
+                self.scale_prop = (!nums.is_empty()).then(|| {
+                    if nums.get(2).is_some_and(|z| *z == 0.0) {
+                        (0.0, 0.0)
+                    } else {
+                        t.scale
+                    }
+                });
             }
             "transform-origin" => {
                 // Точка отсчёта хранится ДОЛЯМИ коробки. Точечная запись
@@ -3265,6 +8611,78 @@ impl Computed {
                 // и молча превращалась в центр — скос и поворот шли вокруг
                 // другой точки (`css-skew-001`). Точки в доли переводит
                 // отрисовка (`transform_origin_px`) — размер известен там.
+                let axis = |t: &str, default: f32| -> f32 {
+                    match t {
+                        "left" | "top" => 0.0,
+                        "center" => 0.5,
+                        "right" | "bottom" => 1.0,
+                        other => match Len::parse(other) {
+                            Some(Len::Pct(p)) => p,
+                            // Точки заданы — доля НОЛЬ, а не центр: отрисовка
+                            // складывает долю с точками (css-transforms-1 §5.2).
+                            Some(Len::Px(_)) => 0.0,
+                            _ => pct_px_pair(other).map_or(default, |(p, _)| p),
+                        },
+                    }
+                };
+                let px_axis = |t: &str| -> Option<f32> {
+                    match Len::parse(t) {
+                        Some(Len::Px(v)) => Some(v),
+                        _ => pct_px_pair(t).map(|(_, x)| x),
+                    }
+                };
+                // Ключевые слова несут СВОЮ ось (css-transforms-1 §5.2):
+                // одиночное `top` значит `center top`, `top left` = `left top`.
+                let mut xs: Option<&str> = None;
+                let mut ys: Option<&str> = None;
+                let mut free: Vec<&str> = vec![];
+                // Резать вне скобок: `calc(50px + 50%)` — одно значение,
+                // а `split_whitespace` рассыпал его на три слова.
+                let parts = split_outside_parens(v);
+                for t in &parts {
+                    match t.as_str() {
+                        "left" | "right" => xs = Some(t.as_str()),
+                        "top" | "bottom" => ys = Some(t.as_str()),
+                        other => free.push(other),
+                    }
+                }
+                let mut free = free.into_iter();
+                let first = xs.or_else(|| free.next()).unwrap_or("center");
+                let second = ys.or_else(|| free.next()).unwrap_or("center");
+                self.transform_origin_px = (px_axis(first), px_axis(second));
+                self.transform_origin = Some((axis(first, 0.5), axis(second, 0.5)));
+                // Третье значение — только <length>, z точки отсчёта
+                // (css-transforms-2 §transform-origin); видна лишь объёмному
+                // пути (transform3d-translate3d-001: `0 0 0` против эталона
+                // `10px 30px -10px`).
+                self.transform_origin_z = free.next().and_then(px_axis);
+            }
+            // Трёхмерной сцены нет: без объёмных преобразований перспектива
+            // ничего не меняет, поэтому разбирается и не делает ничего.
+            // Трёхмерной сцены нет, но обратная сторона видна и на плоской
+            // проекции: `rotateY(180deg)` — это scaleX(-1), и элемент с
+            // `backface-visibility: hidden` обязан исчезнуть
+            // (css-transforms-2 §backface-visibility, признак m33 < 0).
+            "backface-visibility" => self.backface_hidden = Some(v == "hidden"),
+            // `perspective` (css-transforms-2 §perspective-property): длина в
+            // точках, «values less than 1px must be treated as 1px» — так и
+            // `perspective: 0` (perspective-zero-2/-3, transform3d-
+            // perspective-005). `none`, `inherit` и относительные единицы
+            // сюда не доезжают (None). Ячейка заводится здесь, при разборе:
+            // у родителя и его детей будет один и тот же Rc.
+            "perspective" => {
+                self.perspective = match Len::parse(v) {
+                    Some(Len::Px(d)) => Some(d.max(1.0)),
+                    _ => None,
+                };
+                self.perspective_frame = self.perspective.map(|_| PerspectiveFrame::default());
+            }
+            // `perspective-origin` (§perspective-origin-property) — та же
+            // грамматика <position>, что у `transform-origin` двумя осями:
+            // ключевые слова несут свою ось, длина остаётся точками до
+            // отрисовки, доля — от коробки самого элемента (она же — коробка
+            // родителя для его детей).
+            "perspective-origin" => {
                 let axis = |t: &str, default: f32| -> f32 {
                     match t {
                         "left" | "top" => 0.0,
@@ -3282,19 +8700,83 @@ impl Computed {
                         _ => None,
                     }
                 };
-                let mut px_it = v.split_whitespace();
-                let (a, b) = (px_it.next().unwrap_or(""), px_it.next().unwrap_or("center"));
-                self.transform_origin_px = (px_axis(a), px_axis(b));
-                let mut it = v.split_whitespace();
-                let first = it.next().unwrap_or("center");
-                let second = it.next().unwrap_or("center");
-                self.transform_origin = Some((axis(first, 0.5), axis(second, 0.5)));
+                let mut xs: Option<&str> = None;
+                let mut ys: Option<&str> = None;
+                let mut free: Vec<&str> = vec![];
+                for t in v.split_whitespace() {
+                    match t {
+                        "left" | "right" => xs = Some(t),
+                        "top" | "bottom" => ys = Some(t),
+                        other => free.push(other),
+                    }
+                }
+                let mut free = free.into_iter();
+                let first = xs.or_else(|| free.next()).unwrap_or("center");
+                let second = ys.or_else(|| free.next()).unwrap_or("center");
+                self.perspective_origin_px = (px_axis(first), px_axis(second));
+                self.perspective_origin = Some((axis(first, 0.5), axis(second, 0.5)));
             }
-            // Трёхмерной сцены нет: без объёмных преобразований перспектива
-            // ничего не меняет, поэтому разбирается и не делает ничего.
-            "perspective" | "transform-style" | "backface-visibility" => {}
+            // `transform-style` (css-transforms-2 §transform-style-property):
+            // `preserve-3d` держит детей в одном объёмном контексте с собой.
+            // Ячейка заводится здесь, при разборе, — тогда у `e.style`
+            // владельца, у его `merged` и у `inherited` детей один и тот же
+            // `Rc`, а `inline::inherit` начинает с `own.clone()`, поэтому
+            // внукам ячейка не достаётся: плоский ребёнок обрывает контекст
+            // (css-transforms-2 §3d-rendering-context, лист контекста).
+            "transform-style" => {
+                self.preserve_3d = Some(v.trim() == "preserve-3d");
+                self.frame_3d = match self.preserve_3d {
+                    Some(true) => Some(Frame3d::default()),
+                    _ => None,
+                };
+            }
+            // css-transforms-1 §transform-box: `fill-box` переносит опорную
+            // коробку и НАЧАЛО отсчёта на bounding box фигуры; по умолчанию
+            // (`view-box`) длины в `transform-origin` считаются от вьюпорта.
+            "transform-box" => {
+                self.transform_box_fill = Some(v.trim() == "fill-box");
+                self.transform_box = match v.trim() {
+                    "view-box" => Some(0),
+                    "fill-box" | "content-box" => Some(1),
+                    "stroke-box" | "border-box" => Some(2),
+                    _ => None,
+                };
+            }
+            // SVG 2 §vector-effect: `non-scaling-stroke` — толщина обводки в
+            // точках экрана; нужна опорной коробке и толщине в `svg.rs`.
+            "vector-effect" => self.svg_non_scaling = Some(v.trim() == "non-scaling-stroke"),
 
             // --- Обтекание и направление письма --------------------------------
+            // `initial-letter: normal | <size> [<sink> | drop | raise]`
+            // (css-inline-3 §initial-letter). Число — высота буквицы в
+            // строках (не меньше 1); целое — осадка; `raise` = 1; `drop` и
+            // умолчание — осадка равна размеру, округлённому вниз. Порядок
+            // слов свободный (`drop 3`). Кегль и строку буквицы считает
+            // раскладка (`render::initial_letter_float`).
+            "initial-letter" => {
+                self.initial_letter = None;
+                if v != "normal" {
+                    let mut size: Option<f32> = None;
+                    let mut sink: Option<u32> = None;
+                    for word in v.split_ascii_whitespace() {
+                        match word {
+                            "drop" => sink = Some(0),
+                            "raise" => sink = Some(1),
+                            w if size.is_none() => {
+                                size = w.parse::<f32>().ok().filter(|n| *n >= 1.0);
+                            }
+                            w => sink = w.parse::<u32>().ok().filter(|n| *n >= 1),
+                        }
+                    }
+                    if let Some(size) = size {
+                        let sink = match sink {
+                            Some(0) | None => (size.floor() as u32).max(1),
+                            Some(n) => n,
+                        };
+                        self.initial_letter = Some((size, sink));
+                    }
+                }
+            }
             "float" => {
                 self.float = match v {
                     "left" => Some(-1),
@@ -3302,8 +8784,32 @@ impl Computed {
                     _ => Some(0),
                 }
             }
-            "clear" => self.clear = Some(v != "none"),
-            "text-orientation" => self.upright = Some(v == "upright"),
+            // css-rhythm-1 §2: «A value other than `none` … causes the box to
+            // establish an independent formatting context». Сам шаг ритма мы
+            // не считаем, но ПРИЗНАК контекста нужен и без него: без него
+            // `block-step-size-establishes-*` неотличимы от обычного блока, и
+            // сосед флоата (`covered_flow_tail`, `render.rs`) накрывает их
+            // вместо того, чтобы встать сбоку. Проба
+            // (`target/scout-floatplace-2026-09.md` §5.3): с контекстом обе
+            // пары и обе их `-list-item`-разновидности дают 0.00.
+            "block-step-size" => {
+                if v != "none" && v != "auto" {
+                    self.flow_root = Some(true);
+                }
+            }
+            "clear" => {
+                self.clear_inherit = v == "inherit";
+                self.clear = match v {
+                    "left" => Some(-1),
+                    "right" => Some(1),
+                    "both" => Some(0),
+                    _ => None,
+                }
+            }
+            "text-orientation" => {
+                self.upright = Some(v == "upright");
+                self.text_sideways = Some(v == "sideways" || v == "sideways-right");
+            }
             "writing-mode" => {
                 // `sideways-*` отличается от `vertical-*` только поворотом
                 // глифов, а направление потока у них общее.
@@ -3345,12 +8851,119 @@ impl Computed {
                 }
             },
             "contain" => {
-                // `paint` и `strict` обрезают содержимое по коробке — это
-                // ровно то, что делает скрытое переполнение.
-                self.contain_paint = Some(v.contains("paint") || v.contains("strict"));
-                // `size` считает коробку ПУСТОЙ: её размер задают явные
-                // свойства и `contain-intrinsic-size`, содержимое не растит.
-                self.contain_size = Some(v.contains("size") || v.contains("strict"));
+                // Разбор по словам: подстрочный поиск ловил «size» в
+                // «inline-size» и не видел paint внутри `content`
+                // (css-contain-1 §3.1: strict = size layout paint style,
+                // content = layout paint style).
+                let mut bits = (false, false, false, false);
+                let mut inline_only = false;
+                for w in v.split_whitespace() {
+                    match w {
+                        // `paint` и `strict` обрезают содержимое по коробке —
+                        // это ровно то, что делает скрытое переполнение;
+                        // `size` считает коробку ПУСТОЙ: её размер задают
+                        // явные свойства и `contain-intrinsic-size`.
+                        "size" => bits.0 = true,
+                        "inline-size" => inline_only = true,
+                        "layout" => bits.1 = true,
+                        "paint" => bits.2 = true,
+                        "style" => bits.3 = true,
+                        "strict" => bits = (true, true, true, true),
+                        "content" => {
+                            bits.1 = true;
+                            bits.2 = true;
+                            bits.3 = true;
+                        }
+                        _ => {}
+                    }
+                }
+                self.contain_size = Some(bits.0);
+                self.contain_inline_size = Some(inline_only);
+                self.contain_layout = Some(bits.1);
+                self.contain_paint = Some(bits.2);
+                self.contain_style = Some(bits.3);
+            }
+            "container-type" => {
+                // css-conditional-5 §container-type:
+                // `normal | [ [ size | inline-size ] || scroll-state ]`.
+                // `size` — «Applies style containment and size containment to
+                // the principal box»; `inline-size` — то же, но обособление
+                // одной строчной оси. Обособления РАСКЛАДКИ в этом списке НЕТ,
+                // и ставить его нельзя: у нас `contain_layout` делает элемент
+                // содержащим блоком для `absolute` и `fixed`
+                // (`inline::establishes_cb`, `inline::inherit`), а корпус
+                // требует обратного — `no-layout-containment-abspos`,
+                // `-fixedpos`, `-baseline` (все 0.00) проверяют, что абсолют,
+                // `fixed` и базовая линия проходят СКВОЗЬ контейнер.
+                //
+                // Правило `@container` этим шагом ещё не разбирается: здесь
+                // только побочное действие свойства. Оно само по себе отвечает
+                // за `contain-size-014` (коробка с `container-type: size`
+                // обязана мериться пустой, а росла по `<img height=200>`) и
+                // делает истинным `@supports (container-type: …)`, на котором
+                // висят `chrome-legacy-skip-recalc` и обе
+                // `svg-*-no-size-container`.
+                let mut size = false;
+                let mut inline = false;
+                let mut known = false;
+                for w in v.split_whitespace() {
+                    match w {
+                        "size" => {
+                            size = true;
+                            known = true;
+                        }
+                        "inline-size" => {
+                            inline = true;
+                            known = true;
+                        }
+                        // `scroll-state` — контейнер по состоянию прокрутки, к
+                        // размеру отношения не имеет; `normal` — начальное
+                        // значение. Оба грамматически годны и не делают ничего.
+                        "scroll-state" | "normal" => known = true,
+                        // Слово вне грамматики (например `anchored` из
+                        // css-anchor-position-2) делает объявление негодным
+                        // ЦЕЛИКОМ (CSS 2.1 §4.1.7), а не «частично годным»:
+                        // `anchored-fallback-style-containment` (0.01) обязана
+                        // остаться нетронутой.
+                        _ => return,
+                    }
+                }
+                if !known {
+                    return;
+                }
+                // Только ВЗВОД: `container-type: normal` не имеет права снять
+                // обособление, объявленное в том же блоке через `contain`, —
+                // это разные свойства, и начальное значение одного ничего не
+                // отменяет у другого.
+                if size {
+                    self.contain_size = Some(true);
+                }
+                if inline {
+                    self.contain_inline_size = Some(true);
+                }
+                if size || inline {
+                    self.contain_style = Some(true);
+                    // css-conditional-5 §container-type: `size`/`inline-size`
+                    // делают элемент контейнером запросов размера. Такой
+                    // элемент обособлен, и css-grid-2 §subgrid-listing лишает
+                    // его подсеточности. Признак ОТДЕЛЬНЫЙ от `contain_size`,
+                    // потому что `contain: size` подсетку не отменяет; и
+                    // отдельный от `contain_layout`, который у нас делает
+                    // элемент содержащим блоком для абсолюта, а корпус требует
+                    // обратного (`no-layout-containment-abspos` и родня).
+                    self.container_size_query = true;
+                }
+            }
+            "content-visibility" => {
+                // `hidden` = size+layout+paint containment, содержимое
+                // пропускается целиком (css-contain-2 §4). `auto` для
+                // reftest без прокрутки всегда «релевантен» = visible.
+                if v.trim() == "hidden" {
+                    self.contain_size = Some(true);
+                    self.contain_paint = Some(true);
+                    self.contain_layout = Some(true);
+                    self.skip_content = Some(true);
+                }
             }
             "contain-intrinsic-size" => {
                 // Одно или два значения; `auto <длина>` — длина как запас.
@@ -3373,14 +8986,19 @@ impl Computed {
                     self.contain_intrinsic.0 = Some(w);
                 }
             }
-            "contain-intrinsic-height" | "contain-intrinsic-block-size" => {
+            "contain-intrinsic-height" => {
                 if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim()) {
                     self.contain_intrinsic.1 = Some(h);
                 }
             }
+            "contain-intrinsic-block-size" => {
+                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                    self.logical().ci_block = Some(h);
+                }
+            }
             "contain-intrinsic-inline-size" => {
                 if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim()) {
-                    self.contain_intrinsic.0 = Some(w);
+                    self.logical().ci_inline = Some(w);
                 }
             }
             "mix-blend-mode" => {
@@ -3407,8 +9025,237 @@ impl Computed {
                 }
             }
             "isolation" => self.isolate = Some(v == "isolate"),
+            // `will-change` (css-will-change-1 §2.1) разбирается ОДНОЙ армой
+            // рядом с `backdrop-filter`: вторая арма того же ключа в этом
+            // `match` недостижима.
+            "shape-outside" => {
+                let t = v.trim();
+                if t != "none" {
+                    self.shape_outside = Some(t.to_string());
+                }
+            }
+            "shape-margin" => self.shape_margin = Len::parse(v.trim()),
+            "shape-image-threshold" => {
+                self.shape_threshold = v.trim().parse::<f32>().ok().map(|t| t.clamp(0.0, 1.0));
+            }
+            // Устаревшее `clip` (CSS 2.1): rect с запятыми или пробелами;
+            // `auto` в позиции — соответствующий край коробки.
+            "clip" => {
+                if v == "inherit" {
+                    self.inherit_bits |= inh::CLIP;
+                    return;
+                }
+                if let Some(rest) = v.trim().strip_prefix("rect(") {
+                    let rest = rest.trim_end_matches(')');
+                    // Разделители — ЛИБО три запятые, ЛИБО одни пробелы:
+                    // смешанная запись невалидна, свойство игнорируется
+                    // (clip-rect-comma-002..004).
+                    let commas = rest.matches(',').count();
+                    if commas != 0 && commas != 3 {
+                        return;
+                    }
+                    let parts: Vec<&str> = rest
+                        .split([',', ' '])
+                        .map(str::trim)
+                        .filter(|t| !t.is_empty())
+                        .collect();
+                    if parts.len() == 4 {
+                        let side = |t: &str| match t {
+                            "auto" => None,
+                            // Нулевая длина есть ноль в любой единице, и
+                            // `rect(-0em, …)` обязан обрезать, а не читаться
+                            // как `auto` (`visufx/clip-076…102`). Кегель на
+                            // этом шаге ещё не известен, поэтому ненулевые
+                            // относительные единицы по-прежнему мимо.
+                            _ => match Len::parse(t) {
+                                Some(Len::Px(v)) => Some(v),
+                                Some(
+                                    Len::Em(v)
+                                    | Len::Ex(v)
+                                    | Len::Ch(v)
+                                    | Len::Ic(v)
+                                    | Len::Lh(v)
+                                    | Len::Vh(v)
+                                    | Len::Vw(v),
+                                ) if v == 0.0 => Some(0.0),
+                                _ => None,
+                            },
+                        };
+                        self.clip_rect = Some([
+                            side(parts[0]),
+                            side(parts[1]),
+                            side(parts[2]),
+                            side(parts[3]),
+                        ]);
+                        let raw = |t: &str| match t {
+                            "auto" => None,
+                            _ => Len::parse(t),
+                        };
+                        self.clip_len = Some([
+                            raw(parts[0]),
+                            raw(parts[1]),
+                            raw(parts[2]),
+                            raw(parts[3]),
+                        ]);
+                    }
+                }
+            }
+            // Плитка маски (css-masking §7.6–7.8). `cover`/`contain` пока не
+            // разобраны — им нужен интринзик картинки при вычислении.
+            "mask-size" | "-webkit-mask-size" => match v.trim() {
+                // Вписывание с сохранением пропорции (css-masking §7.8 ->
+                // css-backgrounds §3.9): считается от интринзика при отрисовке.
+                "contain" => self.mask_fit = Some(1),
+                "cover" => self.mask_fit = Some(2),
+                // `auto` (и `auto auto`) — начальное значение: интринзик.
+                "auto" | "auto auto" => self.mask_size = None,
+                _ => {
+                    let mut it = v.split_whitespace();
+                    if let Some(x) = it.next().and_then(Len::parse) {
+                        let y = it.next().and_then(Len::parse).unwrap_or(x);
+                        self.mask_size = Some((x, y));
+                    }
+                }
+            },
+            "mask-mode" => {
+                self.mask_luminance = Some(v.trim() == "luminance");
+                self.mask_alpha_mode = Some(v.trim() == "alpha");
+            }
+            "mask-type" => self.mask_type_alpha = Some(v.trim() == "alpha"),
+            "mask-composite" | "-webkit-mask-composite" => {
+                self.mask_composite = Some(
+                    v.split(',')
+                        .map(|t| match t.trim() {
+                            "subtract" => 1,
+                            "intersect" => 2,
+                            "exclude" => 3,
+                            _ => 0,
+                        })
+                        .collect(),
+                );
+            }
+            // SVG-коробки (css-masking-1 §7.10/7.11, `<geometry-box>`):
+            // у элемента с CSS-коробкой fill-box = content-box, stroke-box и
+            // view-box = border-box; у SVG-ребёнка их считает
+            // `svg::masked_layers` (mask-clip-2, mask-origin-3).
+            "mask-origin" | "-webkit-mask-origin" => {
+                self.mask_origin = match v.trim() {
+                    "padding-box" => Some(2),
+                    "content-box" => Some(3),
+                    "fill-box" => Some(4),
+                    "stroke-box" => Some(5),
+                    "view-box" => Some(6),
+                    _ => Some(0),
+                }
+            }
+            "mask-clip" | "-webkit-mask-clip" => {
+                self.mask_clip = match v.trim() {
+                    "padding-box" => Some(2),
+                    "content-box" => Some(3),
+                    "fill-box" => Some(4),
+                    "stroke-box" => Some(5),
+                    "view-box" => Some(6),
+                    "no-clip" => Some(255),
+                    _ => Some(0),
+                }
+            }
+            "mask-repeat" | "-webkit-mask-repeat" => {
+                // Пооосно (css-backgrounds §3.4): `repeat-x` = repeat по x,
+                // одна плитка по y; два слова — оси по порядку.
+                //
+                // Запись — СПИСОК по слоям (css-masking-1 §7.6:
+                // `<repeat-style>#`). Прежде строка резалась только по
+                // пробелам, и запятая уезжала внутрь самого слова
+                // (`"no-repeat,"` не равно `"no-repeat"`): весь список
+                // `no-repeat, repeat` читался как `repeat` по обеим осям, и
+                // плитка первого слоя мостила всю коробку
+                // (mask-image-3b/3e 1.27, mask-position-5 1.25).
+                let one = |layer: &str| {
+                    let t: Vec<&str> = layer.split_whitespace().collect();
+                    match t.as_slice() {
+                        ["repeat-x"] => (false, true),
+                        ["repeat-y"] => (true, false),
+                        [a] => (*a == "no-repeat", *a == "no-repeat"),
+                        [a, b] => (*a == "no-repeat", *b == "no-repeat"),
+                        _ => (false, false),
+                    }
+                };
+                let list: Vec<(bool, bool)> =
+                    crate::css::split_args(v).iter().map(|l| one(l)).collect();
+                self.mask_no_repeat = Some(list.first().copied().unwrap_or((false, false)));
+                self.mask_repeat_list = (!list.is_empty()).then_some(list);
+            }
+            "mask-position" | "-webkit-mask-position" => {
+                let word = |t: &str| match t {
+                    "left" | "top" => Some(Len::Pct(0.0)),
+                    "center" => Some(Len::Pct(0.5)),
+                    "right" | "bottom" => Some(Len::Pct(1.0)),
+                    _ => Len::parse(t),
+                };
+                // Запись — СПИСОК по слоям (css-masking-1 §7.7:
+                // `<position>#`): `top, bottom` — своя точка у каждого слоя.
+                let one = |layer: &str| -> Option<(Len, Len, bool, bool)> {
+                    let toks: Vec<&str> = layer.split_whitespace().collect();
+                    // Четырёхзначная запись — пары «край смещение»: `left 40%
+                    // bottom 60%` (css-backgrounds-3 §3.6); от правого/нижнего
+                    // края доля зеркалится.
+                    if toks.len() == 4 {
+                        let pair = |edge: &str, off: &str| -> Option<(Len, bool)> {
+                            let l = Len::parse(off)?;
+                            Some((l, matches!(edge, "right" | "bottom")))
+                        };
+                        let horiz = matches!(toks[0], "left" | "right");
+                        let (xe, xo, ye, yo) = if horiz {
+                            (toks[0], toks[1], toks[2], toks[3])
+                        } else {
+                            (toks[2], toks[3], toks[0], toks[1])
+                        };
+                        let ((x, fx), (y, fy)) = (pair(xe, xo)?, pair(ye, yo)?);
+                        return Some((x, y, fx, fy));
+                    }
+                    let first = toks.first().and_then(|t| word(t))?;
+                    // ОДИНОЧНОЕ слово осевое (css-backgrounds-3 §3.6):
+                    // `top` — это `center top`, а не `top center`. Прежде оно
+                    // уходило в ось X, и плитка вставала в (0, середина)
+                    // вместо (середина, 0) — проба `target/probe/pmask-axis.html`
+                    // против эталона корпуса даёт 1.71 против 0.03 у `center top`.
+                    let (x, y) = match (toks.len(), toks.get(1).and_then(|t| word(t))) {
+                        (_, Some(second)) => (first, second),
+                        (1, None) if matches!(toks[0], "top" | "bottom") => {
+                            (Len::Pct(0.5), first)
+                        }
+                        (_, None) => (first, Len::Pct(0.5)),
+                    };
+                    Some((x, y, false, false))
+                };
+                let list: Vec<(Len, Len, bool, bool)> = crate::css::split_args(v)
+                    .iter()
+                    .filter_map(|l| one(l))
+                    .collect();
+                if let Some((x, y, fx, fy)) = list.first().copied() {
+                    self.mask_pos = Some((x, y));
+                    self.mask_pos_far = (fx, fy);
+                }
+                self.mask_pos_list = (!list.is_empty()).then_some(list);
+            }
             "user-select" | "-webkit-user-select" => self.no_select = Some(matches!(v, "none")),
             "clip-path" | "mask" | "mask-image" => {
+                // Маска-ИЗОБРАЖЕНИЕ (url/градиент): источник хранится строкой,
+                // растрируется при сборке группы, альфа умножается в композите
+                // буфера (css-masking §7.1; mask-image-1a).
+                if key != "clip-path" {
+                    if v.contains("-gradient(") {
+                        self.mask_image = Some(v.trim().to_string());
+                    } else if v.contains("url(") {
+                        // Слоёв может быть несколько (`url(a), url(b)`) —
+                        // строка хранится ЦЕЛИКОМ, разбор при отрисовке.
+                        self.mask_image = Some(v.trim().to_string());
+                    }
+                    // Сокращение `mask` несёт и укладку (css-masking §7.9).
+                    if v.contains("no-repeat") {
+                        self.mask_no_repeat = Some((true, true));
+                    }
+                }
                 // Круг и эллипс — это скруглённый прямоугольник с радиусом в
                 // половину стороны; `inset(… round R)` — он же с заданным
                 // радиусом. Многоугольник прямоугольной маской не выразить —
@@ -3417,21 +9264,89 @@ impl Computed {
                 // Опорная коробка формы (css-masking §1.3.1.1): слово до или
                 // после функции; точки полигона отсчитываются от неё
                 // (clip-path-polygon-008: margin-box).
+                // У элемента с CSS-коробкой `fill-box` = content-box,
+                // `stroke-box`/`view-box` = border-box (css-masking-1 §1.3.1.1).
                 self.clip_ref = if v.contains("margin-box") {
                     Some(1)
                 } else if v.contains("padding-box") {
                     Some(2)
-                } else if v.contains("content-box") {
+                } else if v.contains("content-box") || v.contains("fill-box") {
                     Some(3)
-                } else if v.contains("border-box") {
+                } else if v.contains("border-box")
+                    || v.contains("stroke-box")
+                    || v.contains("view-box")
+                {
                     Some(0)
                 } else {
                     self.clip_ref
                 };
+                if key == "clip-path" {
+                    self.clip_bare_box = !v.is_empty()
+                        && !v.contains('(')
+                        && v.split_whitespace().all(|w| w.ends_with("-box"));
+                }
+                // `clip-path: shape(...)` (css-shapes-2): команды хранятся
+                // с `;` вместо запятых (по ним режутся слои), доли резолвит
+                // отрисовка по размеру коробки.
+                if key == "clip-path"
+                    && let Some(rest) = v.trim().strip_prefix("shape(")
+                {
+                    // После скобки может стоять опорная коробка
+                    // (`shape(...) content-box`) — режем по ПОСЛЕДНЕЙ скобке.
+                    let rest = match rest.rfind(')') {
+                        Some(i) => &rest[..i],
+                        None => rest,
+                    }
+                    .trim();
+                    let (rule, body) = match rest.split_once(' ') {
+                        Some((r @ ("nonzero" | "evenodd"), b)) => (r, b),
+                        _ => ("nonzero", rest),
+                    };
+                    self.clip_shape = Some(format!("shapedef:{rule}:{}", body.replace(',', ";")));
+                }
+                // `clip-path: path(правило, 'd')` — контур SVG: форма
+                // растрируется маской покрытия; запятые в d заменяются
+                // пробелами (грамматика SVG им равнозначна), потому что по
+                // запятым верхнего уровня режутся СЛОИ маски.
+                if key == "clip-path"
+                    && let Some(rest) = v.trim().strip_prefix("path(")
+                {
+                    let rest = match rest.rfind(')') {
+                        Some(i) => &rest[..i],
+                        None => rest,
+                    }
+                    .trim();
+                    let (rule, d) = match rest.split_once(',') {
+                        Some((r, d)) if matches!(r.trim(), "nonzero" | "evenodd") => {
+                            (r.trim(), d.trim())
+                        }
+                        _ => ("nonzero", rest),
+                    };
+                    let d = d.trim_matches(|c| c == '"' || c == '\'').replace(',', " ");
+                    self.clip_shape = Some(format!("pathdef:{rule}:{d}"));
+                }
+                // `clip-path: url(#id)` — ссылка на <clipPath>: форма
+                // растрируется маской покрытия при отрисовке.
+                if key == "clip-path"
+                    && let Some(url) = parse_url(v)
+                    && let Some(id) = url.strip_prefix('#')
+                {
+                    self.clip_shape = Some(format!("clipref:{id}"));
+                }
                 if let Some(rest) = v.strip_prefix("polygon(") {
                     let rest = match rest.rfind(')') {
                         Some(i) => &rest[..i],
                         None => rest,
+                    };
+                    // Первым может стоять правило намотки (css-shapes-1
+                    // §3.1): `polygon(evenodd, …)`. Вершин любое число —
+                    // больше восьми (предел шейдера) и `evenodd` уходят
+                    // растровой маской-путём при отрисовке.
+                    let (rule, rest) = match rest.trim_start().split_once(',') {
+                        Some((r, tail)) if matches!(r.trim(), "nonzero" | "evenodd") => {
+                            (r.trim(), tail)
+                        }
+                        _ => ("nonzero", rest),
                     };
                     let points: Vec<(Len, Len)> = rest
                         .split(',')
@@ -3441,14 +9356,91 @@ impl Computed {
                             let y = Len::parse(it.next()?)?;
                             Some((x, y))
                         })
-                        .take(8)
                         .collect();
                     if points.len() >= 3 {
                         self.clip_polygon = Some(points);
+                        self.clip_polygon_evenodd = rule == "evenodd";
                     }
                 } else if v.starts_with("circle(") || v.starts_with("ellipse(") {
-                    self.clip_round = Some(0.5);
+                    // Форма растрируется маской: радиус и центр считаются от
+                    // размеров коробки при отрисовке.
+                    //
+                    // Голая `circle()`/`ellipse()` шла запасным путём
+                    // скруглённой коробки, где радиус — половина МЕНЬШЕЙ из
+                    // заданных `width`/`height`. При `box-sizing: content-box`
+                    // это содержимое, а не опорная коробка: у 40×40 с
+                    // отбивкой 20 и рамкой 20 выходило 20 вместо 60, и
+                    // `circle()` рисовалась слегка скруглённым прямоугольником
+                    // вместо вписанного круга. `shape_params` с пустым списком
+                    // радиусов даёт ровно `closest-side` (css-shapes-1
+                    // §3.1.1.3) от border-box — то, что и требуется.
+                    self.clip_shape = Some(format!("shape:{}", v.trim()));
+                } else if let Some(rest) = v.strip_prefix("rect(") {
+                    // Края видимой области (css-shapes-1 §basic-shape):
+                    // top/right/bottom/left от верхнего-левого угла, auto —
+                    // край опорной коробки; хвост `round R` — скругление.
+                    let inner = rest.trim_end_matches(')');
+                    let sides_part = inner.split("round").next().unwrap_or("").trim();
+                    let vals: Vec<Option<Len>> = sides_part
+                        .split_whitespace()
+                        .map(|t| if t == "auto" { None } else { Len::parse(t) })
+                        .collect();
+                    if vals.len() == 4 {
+                        self.clip_edges = Some([vals[0], vals[1], vals[2], vals[3]]);
+                        self.clip_round = inner
+                            .split("round")
+                            .nth(1)
+                            .and_then(|r| Len::parse(r.trim()))
+                            .and_then(|l| match l {
+                                Len::Px(v) => Some(v),
+                                _ => None,
+                            })
+                            .or(self.clip_round);
+                    }
+                } else if let Some(rest) = v.strip_prefix("xywh(") {
+                    let inner = rest.trim_end_matches(')');
+                    let sides_part = inner.split("round").next().unwrap_or("").trim();
+                    let vals: Vec<Len> = sides_part
+                        .split_whitespace()
+                        .filter_map(Len::parse)
+                        .collect();
+                    if vals.len() == 4 {
+                        self.clip_xywh = Some([vals[0], vals[1], vals[2], vals[3]]);
+                        self.clip_round = inner
+                            .split("round")
+                            .nth(1)
+                            .and_then(|r| Len::parse(r.trim()))
+                            .and_then(|l| match l {
+                                Len::Px(v) => Some(v),
+                                _ => None,
+                            })
+                            .or(self.clip_round);
+                    }
                 } else if let Some(rest) = v.strip_prefix("inset(") {
+                    // Стороны вырезки (css-shapes-1 §3.1.1.1): 1-4 значения
+                    // TRBL до слова round; доли резолвит отрисовка.
+                    let sides_part = rest
+                        .trim_end_matches(')')
+                        .split("round")
+                        .next()
+                        .unwrap_or("")
+                        .trim();
+                    let vals: Vec<Len> = sides_part
+                        .split_whitespace()
+                        .filter_map(Len::parse)
+                        .collect();
+                    let pick = |i: usize| -> Len {
+                        match vals.len() {
+                            1 => vals[0],
+                            2 => vals[i % 2],
+                            3 => vals[i.min(2)].to_owned(),
+                            4 => vals[i],
+                            _ => Len::Px(0.0),
+                        }
+                    };
+                    if !vals.is_empty() {
+                        self.clip_inset = Some([pick(0), pick(1), pick(2), pick(3)]);
+                    }
                     let inner = rest.trim_end_matches(')');
                     let radius = inner
                         .split("round")
@@ -3464,7 +9456,7 @@ impl Computed {
                             | Len::Ex(_)
                             | Len::Lh(_)
                             | Len::LhPx(..)) => crate::metrics::fallback_len_px(l, "", 16.0),
-                            Len::Vw(_) | Len::Vh(_) => None,
+                            Len::Vw(_) | Len::Vh(_) | Len::Calc(_) | Len::Anchor(_) => None,
                             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
                         });
                     self.clip_round = Some(radius.unwrap_or(0.0));
@@ -3629,7 +9621,7 @@ impl Computed {
             // Слова укладки вынимаются из хвостовых частей, остаток — ширина
             // и вылет.
             let mut tail_repeat: Vec<String> = vec![];
-            let strip = |part: &str, reps: &mut Vec<String>| -> String {
+            let mut strip = |part: &str, reps: &mut Vec<String>| -> String {
                 let (found, rest): (Vec<&str>, Vec<&str>) = part
                     .split_whitespace()
                     .partition(|w| matches!(*w, "stretch" | "repeat" | "round" | "space"));
@@ -3638,6 +9630,7 @@ impl Computed {
             };
             let width = parts.get(1).map(|p| strip(p, &mut tail_repeat));
             let outset = parts.get(2).map(|p| strip(p, &mut tail_repeat));
+            drop(strip);
             if let Some(width) = width.filter(|w| !w.is_empty()) {
                 set("border-image-width", &width);
             }
@@ -3650,6 +9643,7 @@ impl Computed {
         } else {
             set(name, v);
         }
+        drop(set);
         // Запись хранится и БЕЗ источника: лонгхенды приходят в любом порядке,
         // и `border-image-slice` до `border-image-source` иначе выбрасывался —
         // источник, пришедший следом, получал срезы по умолчанию (вся
@@ -3662,11 +9656,359 @@ impl Computed {
     /// Активный кламп строк: стандартный `line-clamp` всегда, а
     /// `-webkit-line-clamp` — только в паре с `-webkit-box` по вертикали.
     pub fn clamp_lines(&self) -> Option<u32> {
-        self.line_clamp.or_else(|| {
-            (self.webkit_box == Some(true) && self.webkit_box_vertical == Some(true))
-                .then_some(self.webkit_line_clamp)
-                .flatten()
+        let legacy_ok = self.webkit_box == Some(true) && self.webkit_box_vertical == Some(true);
+        self.line_clamp
+            .filter(|_| self.clamp_legacy != Some(true) || legacy_ok)
+    }
+
+    /// Обводка `border-shape` по «relevant side» (css-borders-4
+    /// §border-shape-relevant-side): первая сторона в порядке block-start,
+    /// inline-start, block-end, inline-end со стилем не `none`, иначе
+    /// block-start; берутся её толщина и цвет (Blink
+    /// `RelevantSideForBorderShape`). Физические индексы t/r/b/l = 0..3;
+    /// без цвета — цвет текста, без него чёрный (`currentColor`).
+    pub fn border_shape_stroke(&self) -> (f32, Color) {
+        let vertical = self.vertical == Some(true);
+        let rl = self.vertical_rl == Some(true);
+        let rtl = self.rtl == Some(true);
+        let (block_start, block_end) = match (vertical, rl) {
+            (false, _) => (0usize, 2usize),
+            (true, true) => (1, 3),
+            (true, false) => (3, 1),
+        };
+        let (inline_start, inline_end) = match (vertical, rtl) {
+            (false, false) => (3usize, 1usize),
+            (false, true) => (1, 3),
+            (true, false) => (0, 2),
+            (true, true) => (2, 0),
+        };
+        let order = [block_start, inline_start, block_end, inline_end];
+        let side = order
+            .iter()
+            .copied()
+            .find(|i| self.border_visible[*i] == Some(true))
+            .unwrap_or(block_start);
+        let w = self.borders();
+        let width = match [w.top, w.right, w.bottom, w.left][side] {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let colour = self.border_colors[side]
+            .or(self.border_color)
+            .or(self.color)
+            .unwrap_or(Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            });
+        (width, colour)
+    }
+
+    /// Края опорной коробки `<geometry-box>` относительно border-box, t/r/b/l,
+    /// наружу положительные: margin-box шире на поля, padding-box уже на
+    /// рамку, content-box — на рамку и отбивку, half-border-box — на половину
+    /// рамки (Blink `GeometryBoxUtils::ReferenceBoxBorderBoxOutsets`).
+    pub fn geometry_outsets(&self, kind: u8) -> [f32; 4] {
+        let px = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let b = self.borders();
+        let bw = [px(b.top), px(b.right), px(b.bottom), px(b.left)];
+        let pd = [
+            px(self.padding.top),
+            px(self.padding.right),
+            px(self.padding.bottom),
+            px(self.padding.left),
+        ];
+        let mg = [
+            px(self.margin.top),
+            px(self.margin.right),
+            px(self.margin.bottom),
+            px(self.margin.left),
+        ];
+        let mut out = [0.0f32; 4];
+        for i in 0..4 {
+            out[i] = match kind {
+                1 => mg[i],
+                2 => -bw[i],
+                3 => -(bw[i] + pd[i]),
+                4 => -bw[i] / 2.0,
+                _ => 0.0,
+            };
+        }
+        out
+    }
+
+    /// Вынос слоёв `border-shape` за border-box (t/r/b/l): половина обводки
+    /// наружу у одной фигуры, опорная коробка шире border-box (margin-box) и
+    /// запас под митры прямолинейного контура — Blink держит предел митры 1e10
+    /// у polygon, шип длиной w/sin(θ/2); 5w покрывает углы от ~23°
+    /// (border-shape-polygon-miter-limit: шип ~80 px при w=20).
+    pub fn border_shape_ext(&self) -> [f32; 4] {
+        let Some(bs) = &self.border_shape else {
+            return [0.0; 4];
+        };
+        let out = self.geometry_outsets(bs.outer_box);
+        let stroke = if bs.inner.is_some() {
+            0.0
+        } else {
+            self.border_shape_stroke().0
+        };
+        let spike = if stroke > 0.0 && crate::background::shape_is_linear(&bs.outer) {
+            stroke * 5.0
+        } else {
+            0.0
+        };
+        let mut ext = out.map(|o| o.max(0.0) + stroke / 2.0 + spike);
+        // Тени повторяют фигуру (css-borders-4 §border-shape-shadow-interaction)
+        // и рисуются растром на той же области (`background::
+        // border_shape_shadow_svg`): наружная уходит за border-box на разлёт,
+        // смещение и хвост размытия (3σ = 1.5·blur); у внутренней хвост
+        // размытия тоже нужен — область фильтра обрезает бросающий
+        // прямоугольник, и без запаса край холста просвечивал бы.
+        for sh in &self.shadows {
+            let tail = sh.spread.max(0.0) + sh.blur.max(0.0) * 1.5 + 1.0;
+            ext[0] = ext[0].max(tail - sh.y);
+            ext[1] = ext[1].max(tail + sh.x);
+            ext[2] = ext[2].max(tail + sh.y);
+            ext[3] = ext[3].max(tail - sh.x);
+        }
+        for sh in &self.inset_shadows {
+            let tail = sh.blur.max(0.0) * 1.5 + 1.0;
+            for e in &mut ext {
+                *e = e.max(tail);
+            }
+        }
+        // Контур `outline` повторяет фигуру (слой над группой,
+        // `background::border_shape_outline_svg`) — вынос на сдвиг и толщину.
+        if let Some((w, off, _)) = self.shaped_outline() {
+            let reach = (off + w).max(0.0) + 1.0;
+            for e in &mut ext {
+                *e = e.max(reach);
+            }
+        }
+        ext
+    }
+
+    /// Контур `outline` коробки с `border-shape`, который рисуется по
+    /// фигуре: (толщина, сдвиг, цвет). Только сплошной/`auto`/`double`
+    /// (css-ui-4; Blink `BorderShapePainter::PaintOutline` остальные стили
+    /// отдаёт обычному контуру) и видимый. Толщина без значения — `medium`
+    /// (3 px), цвет без своего — `accent-color` при `auto`, иначе цвет текста,
+    /// иначе чёрный (как у `render::decorations`); `outline-offset: inset` —
+    /// минус толщина. Шрифтовые единицы — своим кеглем.
+    pub fn shaped_outline(&self) -> Option<(f32, f32, Color)> {
+        let o = self.outline.as_ref()?;
+        self.border_shape.as_ref()?;
+        if !matches!(o.style, Some(1) | Some(2)) {
+            return None;
+        }
+        let em = match self.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let px_of = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            Some(Len::Em(k)) => k * em,
+            _ => 0.0,
+        };
+        let w = match o.width {
+            None => 3.0,
+            other => px_of(other),
+        };
+        if w <= 0.0 {
+            return None;
+        }
+        let off = if o.inset { -w } else { px_of(o.offset) };
+        let colour = o
+            .color
+            .or(if o.style == Some(2) { self.accent_color } else { None })
+            .or(self.color)
+            .unwrap_or(Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            });
+        Some((w, off, colour))
+    }
+
+    /// Переполнение коробки с `border-shape` режется внутренним контуром
+    /// фигуры (css-borders-4 §border-shape-overflow-interaction: «The inner
+    /// border-shape clips the overflow content of the element»): маска
+    /// группы берёт внутренний контур, а кольцо рамки ложится НАД буфером
+    /// (`Grouped::over`). `scroll`/`auto` идут лентой прокрутки мимо группы.
+    pub fn border_shape_clips(&self) -> bool {
+        self.border_shape.is_some()
+            && (matches!(self.overflow_x, Some(Overflow::Hidden) | Some(Overflow::Clip))
+                || matches!(self.overflow_y, Some(Overflow::Hidden) | Some(Overflow::Clip)))
+    }
+
+    /// Тени `box-shadow` с решённым цветом: без своего цвета — цвет текста
+    /// (css-backgrounds-3 §box-shadow, `currentColor`; метка — отрицательная
+    /// альфа, как у `apply::shadow_colour`). `inset` — внутренние.
+    pub fn resolved_shadows(&self, inset: bool) -> Vec<(Shadow, Color)> {
+        let list = if inset { &self.inset_shadows } else { &self.shadows };
+        list.iter()
+            .map(|sh| {
+                let colour = if sh.color.a < 0.0 {
+                    self.color.unwrap_or(Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    })
+                } else {
+                    sh.color
+                };
+                (sh.clone(), colour)
+            })
+            .collect()
+    }
+
+    /// Есть ли угол с формой, отличной от круглой, при ненулевом радиусе
+    /// (css-borders-4 §corner-shaping: «if border-radius is 0, corner-shape
+    /// won't have any effect»). Такой угол уходит растровой маской контура,
+    /// а рамка красится кольцом по контуру (`render::decorations`).
+    pub fn corner_shaped(&self) -> bool {
+        let Some(k) = self.corner_shape else {
+            return false;
+        };
+        let radii = [self.radius.tl, self.radius.tr, self.radius.br, self.radius.bl];
+        k.iter().zip(radii).any(|(k, r)| {
+            let shaped = (*k - 1.0).abs() > 1e-3;
+            let has_radius = match r {
+                Some(Len::Px(v)) => v > 0.0,
+                Some(Len::Pct(p)) => p > 0.0,
+                _ => false,
+            };
+            shaped && has_radius
         })
+    }
+
+    /// Уходит ли скругление углов альфа-маской буфера группы.
+    ///
+    /// Растеризатор круглит только окружностью и жмёт каждый угол к половине
+    /// меньшей стороны; эллиптические углы (`H / V`), большой НЕОДНОРОДНЫЙ
+    /// радиус (спека жмёт одним множителем от суммы смежных, §5.5) и фигурные
+    /// углы (`corner-shape`) рисуются точной растровой маской, а обычное
+    /// скругление при этом снимается.
+    pub fn radius_masked(&self) -> bool {
+        if self.radius_ell.is_some() || self.corner_shaped() {
+            return true;
+        }
+        // `contain: paint` со скруглением: обрезка содержимого обязана учесть
+        // углы (css-contain-2 §3.3: «clipped to the overflow clip edge … taking
+        // corner clipping into account»). Маска gpui — только прямоугольник
+        // (`ContentMask`), и `overflow_hidden` оставлял переполнение в углах
+        // (`contain-paint-001`: красная полоса за кругом). Маска группы по
+        // `rrect` режет и фон, и детей; без рамки padding-box = border-box, и
+        // край маски — ровно край обрезки. Тень и контур лежат ВНЕ коробки —
+        // маска их съела бы, такие коробки идут прежним путём.
+        // Решение обязано СОВПАСТЬ на двух стилях одной коробки: `apply_radius`
+        // читает слитый (`inline::inherit` → `resolve_em`, радиус уже в
+        // точках), а `render::grouped` — собственный `e.style`, где `4em`
+        // доживает как `Len::Em`. Гейт по одним точкам и долям снимал
+        // скругление квада, а маски на `e.style` не заводил — зелёный квадрат
+        // без обрезки углов (`contain-paint-clip-002`: `border-radius: 4em`,
+        // 0.00 → 0.65 = площадь углов 120² − π·60²). Blink решает по одному
+        // стилю (`paint_property_tree_builder.cc:3010-3012`,
+        // `NeedsInnerBorderRadiusClip`). Для гейта важен лишь знак длины —
+        // меряем единой точкой, как `apply::radius_px`. Тень в единицах шрифта
+        // до `resolve_em` лежит строкой (`shadow_raw`) — исключается и она.
+        // Внутренняя копия прокрутки (`scroller`) идёт мимо `grouped`: маски
+        // там нет, снимать скругление квада нельзя.
+        let font_len = |l: Option<Len>| match l {
+            Some(Len::Pct(p)) => Some(p),
+            Some(l) => crate::metrics::fallback_len_px(l, "", 16.0),
+            None => None,
+        };
+        if self.contain_paint == Some(true)
+            && self.shadows.is_empty()
+            && self.shadow_raw.is_none()
+            && self.outline.is_none()
+            && !self.scroller
+            && self.overflow_x != Some(Overflow::Scroll)
+            && self.overflow_y != Some(Overflow::Scroll)
+        {
+            let rounded = |l: Option<Len>| font_len(l).is_some_and(|v| v > 0.0);
+            let bare = |l: Option<Len>| font_len(l).is_none_or(|v| v <= 0.0);
+            let b = self.borders();
+            if [self.radius.tl, self.radius.tr, self.radius.br, self.radius.bl]
+                .into_iter()
+                .any(rounded)
+                && bare(b.top)
+                && bare(b.right)
+                && bare(b.bottom)
+                && bare(b.left)
+            {
+                return true;
+            }
+        }
+        let side = |l: Option<Len>| match l {
+            Some(Len::Px(v)) => v,
+            _ => 0.0,
+        };
+        let round = [
+            side(self.radius.tl),
+            side(self.radius.tr),
+            side(self.radius.br),
+            side(self.radius.bl),
+        ];
+        let (w, h) = (side(self.width), side(self.height));
+        let max_r = round.iter().cloned().fold(0.0f32, f32::max);
+        let uniform = round.iter().all(|r| (r - round[0]).abs() < 0.01);
+        w > 0.0 && h > 0.0 && !uniform && max_r > w.min(h) * 0.5 + 0.01
+    }
+
+    /// Обособление размера не действует на таблицу: её размер задают
+    /// дорожки, а не «содержимое как таковое» (css-contain-2 §size
+    /// containment; Blink `layout_table.h` — таблица не годится под него).
+    fn size_containment_applies(&self) -> bool {
+        !matches!(
+            self.display,
+            Some(Display::Table) | Some(Display::InlineTable)
+        )
+    }
+
+    /// Повтор «сколько влезет» по оси РЯДОВ, если он задан и годен к
+    /// передаче раскладке (есть размер дорожки).
+    pub fn grid_rows_repeat(&self) -> Option<AutoRepeat> {
+        let r = self.auto_repeat_rows?;
+        (r.track.is_some() || r.track_pct.is_some()).then_some(r)
+    }
+
+    /// Обособлена ли СТРОЧНАЯ ось: `contain: size` держит обе, `inline-size`
+    /// только её (css-contain-2 §containment-types).
+    pub fn contains_inline_size(&self) -> bool {
+        self.size_containment_applies()
+            && (self.contain_size == Some(true) || self.contain_inline_size == Some(true))
+    }
+
+    /// Обособлена ли БЛОЧНАЯ ось.
+    pub fn contains_block_size(&self) -> bool {
+        self.size_containment_applies() && self.contain_size == Some(true)
+    }
+
+    /// То же по ФИЗИЧЕСКИМ осям: при вертикальном письме строчная ось идёт
+    /// сверху вниз, и обособление меняется местами.
+    pub fn contains_width(&self) -> bool {
+        if self.vertical == Some(true) {
+            self.contains_block_size()
+        } else {
+            self.contains_inline_size()
+        }
+    }
+
+    /// Обособлена ли высота (физическая ось).
+    pub fn contains_height(&self) -> bool {
+        if self.vertical == Some(true) {
+            self.contains_inline_size()
+        } else {
+            self.contains_block_size()
+        }
     }
 
     pub fn borders(&self) -> Sides {
@@ -3714,6 +10056,43 @@ impl Computed {
     /// `border: 1px solid #333` — ширина и цвет; стиль линии GPUI различает
     /// только solid/dashed на весь элемент, поэтому его не разбираем.
     fn apply_border_shorthand(&mut self, v: &str, side: Option<usize>) {
+        // Негодная часть роняет ВСЁ объявление (§4.2), а не пропускается:
+        // `border: -1px solid red` не даёт ни рамки `medium`, ни красного
+        // цвета. Проверка отдельным проходом — применение ниже правит поля по
+        // ходу разбора, и откатить его на середине уже нельзя.
+        let known = |token: &str| {
+            token == "none"
+                || token == "hidden"
+                || border_style(token)
+                || line_width(token).is_some()
+                || Color::parse(token).is_some()
+        };
+        if !split_outside_parens(v)
+            .iter()
+            .all(|t| known(t.as_str().trim()))
+        {
+            return;
+        }
+        // Каждая часть встречается не больше ОДНОГО раза (§8.5.4: сокращение
+        // это `<border-width> || <border-style> || <border-color>`).
+        // `border: 1px solid red green` негодно целиком, а прежде вторая
+        // краска просто побеждала первую.
+        {
+            let (mut w, mut st, mut c) = (0usize, 0usize, 0usize);
+            for token in split_outside_parens(v) {
+                let t = token.as_str().trim();
+                if t == "none" || t == "hidden" || border_style(t) {
+                    st += 1;
+                } else if line_width(t).is_some() {
+                    w += 1;
+                } else if Color::parse(t).is_some() {
+                    c += 1;
+                }
+            }
+            if w > 1 || st > 1 || c > 1 {
+                return;
+            }
+        }
         let mut width = None;
         let mut color = None;
         let mut visible_style = false;
@@ -3755,13 +10134,29 @@ impl Computed {
         // Цвет из БОКОВОГО сокращения принадлежит своей стороне: раньше он
         // писался в общий цвет, и `border-bottom: 2px solid red` красил все
         // четыре стороны.
+        // Опущенная часть сокращения возвращается к НАЧАЛЬНОМУ значению
+        // (§1.4.2, §8.5.4): у цвета это `currentColor`, то есть пусто — цвет
+        // решает отрисовка. Прежде запись `border: solid 1em` оставляла цвет
+        // от менее специфичного правила.
         match (color, side) {
             (Some(c), None) => {
                 self.border_color = Some(c);
                 self.border_colors = [Some(c); 4];
             }
             (Some(c), Some(i)) => self.border_colors[i] = Some(c),
-            (None, _) => {}
+            (None, None) => {
+                self.border_color = None;
+                self.border_colors = [None; 4];
+            }
+            // Боковое сокращение без цвета даёт стороне `currentColor`
+            // (§8.5.4), и он обязан перебить общий цвет менее специфичного
+            // правила: `div { border-color: red }` + `.test { border-top: solid
+            // 1em }` — верх цвета ТЕКСТА (`border-shorthands-003`). Пустой слот
+            // стороны значит «взять общий», поэтому сторона помечается.
+            (None, Some(i)) => {
+                self.border_colors[i] = None;
+                self.border_side_current[i] = true;
+            }
         }
         let Some(w) = width else { return };
         match side {
@@ -3811,12 +10206,32 @@ fn border_style(v: &str) -> bool {
 }
 
 /// Толщина рамки словом: `thin`, `medium`, `thick` (css-backgrounds-3 §4.1).
+/// Сторона по имени свойства: верх, право, низ, лево.
+fn side_index(key: &str) -> usize {
+    match key.split('-').nth(1) {
+        Some("right") => 1,
+        Some("bottom") => 2,
+        Some("left") => 3,
+        _ => 0,
+    }
+}
+
 fn line_width(v: &str) -> Option<Len> {
+    // Отрицательная толщина недействительна (§8.5.1) и делает объявление
+    // НЕВАЛИДНЫМ целиком (§4.2): `border-width: -1px` доживало до отрисовки
+    // вместо отката к прежнему значению.
+    let non_negative = |l: Len| {
+        (!matches!(
+            l,
+            Len::Px(v) | Len::Em(v) | Len::Pct(v) | Len::Ex(v) | Len::Ch(v) if v < 0.0
+        ))
+        .then_some(l)
+    };
     match v.to_ascii_lowercase().as_str() {
         "thin" => Some(Len::Px(1.0)),
         "medium" => Some(Len::Px(3.0)),
         "thick" => Some(Len::Px(5.0)),
-        _ => Len::parse(v),
+        _ => Len::parse(v).and_then(non_negative),
     }
 }
 
@@ -3863,11 +10278,21 @@ fn align_keyword(v: &str) -> Result<Option<Align>, ()> {
     }
     Ok(match word {
         "center" => Some(Align::Center),
+        // §anchor-center (только `align-self`/`justify-self`; у `*-items`
+        // значение отброшено спекой — `apply` его там игнорирует).
+        "anchor-center" => Some(Align::AnchorCenter),
         // `self-start`/`self-end` считаются по письму САМОГО элемента,
-        // `start`/`end` — по письму контейнера. Пока обе оси физические, это
-        // одно и то же.
-        "start" | "flex-start" | "self-start" | "left" => Some(Align::Start),
-        "end" | "flex-end" | "self-end" | "right" => Some(Align::End),
+        // `start`/`end` — по письму контейнера (css-align-3 §6.2). Разница
+        // видна, как только элемент несёт своё `direction`/`writing-mode`:
+        // `flexbox-align-self-vert-002` ждёт `self-start` СПРАВА у элемента
+        // с `direction: rtl`. Само значение остаётся физическим, а «мерить
+        // по себе» помнится отдельным флагом `align_self_own_axis` — его
+        // зеркалит `inline::inherit`, где известны письмо элемента И письмо
+        // родителя.
+        "start" | "flex-start" | "left" => Some(Align::Start),
+        "end" | "flex-end" | "right" => Some(Align::End),
+        "self-start" => Some(Align::Start),
+        "self-end" => Some(Align::End),
         "stretch" => Some(Align::Stretch),
         // `first baseline` — обычное выравнивание по базовой линии. `last`
         // честно раскладке неизвестен, но для ОДНОСТРОЧНЫХ участников первая
@@ -3895,8 +10320,15 @@ fn parse_justify(v: &str) -> Option<Justify> {
         "flex-end" => Some(Justify::End),
         // `left`/`right` физические; при письме слева направо они совпадают
         // с началом и концом строки.
-        "start" | "left" => Some(Justify::WmStart),
-        "end" | "right" => Some(Justify::WmEnd),
+        //
+        // ЗАМЕРЕНО И ОТКАЧЕНО: развести их в отдельные значения, чтобы при
+        // rtl они НЕ переставлялись вместе с `start`/`end` (css-align-3 §4).
+        // Правка верна по спеке, но полный свод обоих: 0 и 0 —
+        // `flexbox_justifycontent-right-002` (8.53) держит не это.
+        "start" => Some(Justify::WmStart),
+        "end" => Some(Justify::WmEnd),
+        "left" => Some(Justify::Left),
+        "right" => Some(Justify::Right),
         "space-between" => Some(Justify::Between),
         "space-around" => Some(Justify::Around),
         "space-evenly" => Some(Justify::Evenly),
@@ -3906,6 +10338,237 @@ fn parse_justify(v: &str) -> Option<Justify> {
 }
 
 /// Одна грань размещения: `3`, `span 2`, `auto`.
+/// Годно ли значение сокращения `background` целиком.
+///
+/// Негодное объявление ОТБРАСЫВАЕТСЯ, а не сбрасывает свои длинные свойства
+/// (CSS 2.1 §4.1.7): `background: green` в одном правиле и `background: red\;`
+/// (значение с экранированной точкой с запятой, то есть цвет `red;`) в
+/// другом обязаны оставить фон зелёным. Разбор ниже намеренно снисходителен —
+/// он берёт из записи всё, что узнал, — поэтому годность проверяется
+/// отдельно, и только ею решается сброс (`escapes-002/014`, `keywords-000`).
+fn background_shorthand_valid(v: &str) -> bool {
+    if v.contains("gradient(") || v.contains("url(") {
+        return true;
+    }
+    let mut any = false;
+    for token in split_outside_parens(v) {
+        // Запятая слоя (`none, none`) — не часть слова.
+        let t = token.trim().trim_end_matches(',').trim();
+        if t.is_empty() || t == "/" {
+            continue;
+        }
+        any = true;
+        let known = matches!(
+            t,
+            "none"
+                | "transparent"
+                | "initial"
+                | "unset"
+                | "revert"
+                | "no-repeat"
+                | "repeat"
+                | "repeat-x"
+                | "repeat-y"
+                | "space"
+                | "round"
+                | "cover"
+                | "contain"
+                | "scroll"
+                | "fixed"
+                | "local"
+                | "border-box"
+                | "padding-box"
+                | "content-box"
+                | "text"
+                | "left"
+                | "right"
+                | "top"
+                | "bottom"
+                | "center"
+        ) || Len::parse(t).is_some()
+            || Color::parse(t).is_some();
+        if !known {
+            return false;
+        }
+    }
+    any
+}
+
+/// Токены записи шаблона для имён линий: `[имена]`, `функция(…)`, слова.
+fn line_name_tokens(v: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let (mut paren, mut bracket) = (0i32, 0i32);
+    let flush = |cur: &mut String, out: &mut Vec<String>| {
+        let t = cur.trim();
+        if !t.is_empty() {
+            out.push(t.to_string());
+        }
+        cur.clear();
+    };
+    for ch in v.chars() {
+        match ch {
+            '(' => {
+                paren += 1;
+                cur.push(ch);
+            }
+            ')' => {
+                paren -= 1;
+                cur.push(ch);
+            }
+            '[' if paren == 0 => {
+                if bracket == 0 {
+                    flush(&mut cur, &mut out);
+                }
+                bracket += 1;
+                cur.push(ch);
+            }
+            ']' if paren == 0 => {
+                bracket -= 1;
+                cur.push(ch);
+                if bracket == 0 {
+                    flush(&mut cur, &mut out);
+                }
+            }
+            c if c.is_whitespace() && paren == 0 && bracket == 0 => flush(&mut cur, &mut out),
+            _ => cur.push(ch),
+        }
+    }
+    flush(&mut cur, &mut out);
+    out
+}
+
+/// `[a b]` → `["a", "b"]`.
+fn bracket_names(t: &str) -> Option<Vec<String>> {
+    let inner = t.strip_prefix('[')?.strip_suffix(']')?;
+    Some(inner.split_whitespace().map(str::to_string).collect())
+}
+
+/// Имена линий тела `repeat(…)`: у шаблона — по линиям вокруг дорожек тела
+/// (дорожек + 1), у `<line-name-list>` подсетки — по записи на линию.
+fn repeat_body_names(rest: &str, subgrid: bool) -> Vec<Vec<String>> {
+    let mut lines: Vec<Vec<String>> = if subgrid { Vec::new() } else { vec![Vec::new()] };
+    for t in line_name_tokens(rest) {
+        match bracket_names(&t) {
+            Some(names) if subgrid => lines.push(names),
+            Some(names) => {
+                if let Some(last) = lines.last_mut() {
+                    last.extend(names);
+                }
+            }
+            None if !subgrid => lines.push(Vec::new()),
+            None => {}
+        }
+    }
+    lines
+}
+
+/// Имена линий записи `grid-template-*` (css-grid-2 §7.2.2 `<line-names>`,
+/// §subgrid-listing `<line-name-list>`): по списку имён на линию между
+/// КОМПОНЕНТАМИ шаблона — `repeat(N, …)` раскрыт на месте, как в
+/// `parse_tracks`, а `repeat(auto-fill|auto-fit, …)` остаётся одним
+/// компонентом со своими именами (`repeat`). `None` — имён нет.
+fn parse_line_names(v: &str) -> Option<gpui::GridAxisLineNames> {
+    let tokens = line_name_tokens(v);
+    let subgrid = tokens.first().is_some_and(|t| t.eq_ignore_ascii_case("subgrid"));
+    let mut out = gpui::GridAxisLineNames::default();
+    let mut lines: Vec<Vec<String>> = if subgrid { Vec::new() } else { vec![Vec::new()] };
+    let mut any = false;
+    let mut after = false;
+    for t in tokens.iter().skip(usize::from(subgrid)) {
+        if let Some(names) = bracket_names(t) {
+            any |= !names.is_empty();
+            if subgrid {
+                lines.push(names);
+            } else if let Some(last) = lines.last_mut() {
+                last.extend(names);
+            }
+            continue;
+        }
+        if let Some(inner) = t.strip_prefix("repeat(").and_then(|r| r.strip_suffix(')')) {
+            let (count, rest) = inner.split_once(',')?;
+            let body = repeat_body_names(rest, subgrid);
+            any |= body.iter().any(|b| !b.is_empty());
+            let count = count.trim();
+            if count.eq_ignore_ascii_case("auto-fill") || count.eq_ignore_ascii_case("auto-fit") {
+                if after {
+                    return None;
+                }
+                out.before = std::mem::take(&mut lines);
+                out.repeat = Some(body);
+                lines = if subgrid { Vec::new() } else { vec![Vec::new()] };
+                after = true;
+            } else {
+                let n: usize = count.parse().ok()?;
+                for _ in 0..n.min(64) {
+                    if subgrid {
+                        lines.extend(body.iter().cloned());
+                    } else {
+                        if let (Some(last), Some(first)) = (lines.last_mut(), body.first()) {
+                            last.extend(first.iter().cloned());
+                        }
+                        lines.extend(body.iter().skip(1).cloned());
+                    }
+                }
+            }
+            continue;
+        }
+        if !subgrid {
+            lines.push(Vec::new());
+        }
+    }
+    if !any {
+        return None;
+    }
+    if after {
+        out.after = lines;
+    } else {
+        out.before = lines;
+    }
+    Some(out)
+}
+
+/// Грань размещения по имени линии (css-grid-2 §8.3): `a`, `a 2`, `-1 a`,
+/// `span a`, `span 2 a`. Без имени — `None` (числовую грань разбирает
+/// `parse_placement`).
+fn parse_named_placement(v: &str) -> Option<gpui::GridNamedLine> {
+    let (mut span, mut num, mut name) = (false, None::<i16>, None::<String>);
+    for t in v.split_whitespace() {
+        if t.eq_ignore_ascii_case("span") {
+            span = true;
+        } else if let Ok(n) = t.parse::<i16>() {
+            num = Some(n);
+        } else if t.eq_ignore_ascii_case("auto") {
+            return None;
+        } else {
+            name = Some(t.to_string());
+        }
+    }
+    let name = name?;
+    Some(if span {
+        gpui::GridNamedLine::Span(name, num.unwrap_or(1).max(1) as u16)
+    } else {
+        gpui::GridNamedLine::Line(name, num.unwrap_or(0))
+    })
+}
+
+/// Обе грани `grid-column`/`grid-row`: при одном значении-имени конец — то
+/// же имя («if the first value is a <custom-ident>, the grid-row-end/
+/// grid-column-end longhand is also set to that <custom-ident>», §8.4).
+fn parse_named_pair(v: &str) -> [Option<gpui::GridNamedLine>; 2] {
+    match v.split_once('/') {
+        Some((a, b)) => [parse_named_placement(a), parse_named_placement(b)],
+        None => {
+            let start = parse_named_placement(v);
+            let end = match &start {
+                Some(gpui::GridNamedLine::Line(name, 0)) => Some(gpui::GridNamedLine::Line(name.clone(), 0)),
+                _ => None,
+            };
+            [start, end]
+        }
+    }
+}
+
 fn parse_placement(v: &str) -> Placement {
     let v = v.trim();
     if let Some(n) = v.strip_prefix("span") {
@@ -3943,15 +10606,252 @@ fn join_slash(v: &str) -> String {
 
 fn split_font(v: &str) -> (&str, &str) {
     let mut end = 0;
-    for token in v.split_whitespace() {
-        let at = v[end..].find(token).map(|i| end + i).unwrap_or(end);
+    for token in split_outside_parens(v) {
+        let at = v[end..].find(token.as_str()).map(|i| end + i).unwrap_or(end);
         end = at + token.len();
-        let numeric = token.starts_with(|c: char| c.is_ascii_digit());
-        if numeric && (token.contains('/') || Len::parse(token).is_some()) {
+        if font_size_token(&token) {
             return (&v[..end], v[end..].trim());
         }
     }
     (v, "")
+}
+
+/// Кусок головы сокращения `font`, который задаёт КЕГЛЬ (быть может, с
+/// `/высотой строки`). Голое число — ВЕС, а не кегль (§15.6: 100…900):
+/// `Len::parse("900")` даёт точки, и `font: 900 2em Ahem` отдавал кегль
+/// весу, а `2em Ahem` — семейству, после чего гибло всё
+/// (`font-family-011`). Ключевые кегли и математические функции — тоже
+/// кегль (§15.8; `font: calc(10 * 10px) sans-serif`, `font-148`).
+fn font_size_token(token: &str) -> bool {
+    let size = font_slash(token).map_or(token, |(s, _)| s);
+    let lower = size.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "xx-small" | "x-small" | "small" | "medium" | "large" | "x-large" | "xx-large"
+            | "xxx-large" | "larger" | "smaller"
+    ) || ["calc(", "min(", "max(", "clamp("].iter().any(|f| lower.starts_with(f))
+    {
+        return true;
+    }
+    size.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+        && (token.contains('/')
+            || size == "0"
+            || (Len::parse(size).is_some() && !size.chars().all(|c| c.is_ascii_digit())))
+}
+
+/// Косая черта ВНЕ скобок: `20px/1.5` делится, `calc(100px/2)` — нет.
+fn font_slash(t: &str) -> Option<(&str, &str)> {
+    let mut depth = 0i32;
+    for (i, ch) in t.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            '/' if depth == 0 => return Some((&t[..i], &t[i + 1..])),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Разбор значения `content` в список составляющих (css-content-3 §2).
+///
+/// `None` — запись негодна целиком: неизвестная функция, лишний или
+/// недостающий аргумент, незакрытая кавычка. Такое объявление применять
+/// нельзя, иначе его остатки печатаются литеральным текстом.
+// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): `content: url()`/`image-set()` как
+// замещаемый строчный атом (`ContentItem::Image`, картинка через
+// `background::source`; патч `target/scout-content-2026-09.md` §6). Срез 1509
+// пар (lists/pseudo/content/counter-styles/images): 1192 -> 1190, +0/-2 —
+// `cross-fade-natural-size` 0.00 -> 38.95, `disclosure-styles` 0.19 -> 0.62;
+// ни одна из ожидаемых `element-replacement*` не позеленела. Картинка в
+// `content` требует природного размера ДО раскладки строки (`cross-fade` —
+// от двух источников), а атом меряется после.
+pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
+    let bytes = raw.as_bytes();
+    let mut at = 0usize;
+    let mut out = vec![];
+    while at < bytes.len() {
+        let ch = raw[at..].chars().next()?;
+        if ch.is_whitespace() {
+            at += ch.len_utf8();
+            continue;
+        }
+        if ch == '"' || ch == '\'' {
+            let body = at + ch.len_utf8();
+            let len = crate::css::skip_string(&raw[body..], ch);
+            // Незакрытая строка обрывается переводом строки — значение негодно.
+            if !raw[body..body + len].ends_with(ch) {
+                return None;
+            }
+            out.push(ContentItem::Str(unescape_content(
+                &raw[body..body + len - ch.len_utf8()],
+            )));
+            at = body + len;
+            continue;
+        }
+        // Слова кавычек (css-content-3 §4.2). Прежде они не разбирались, и
+        // весь `content` с ними выбрасывался (`content-159`, `quotes-*`).
+        let rest = &raw[at..];
+        let word_end = rest
+            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == '(')
+            .unwrap_or(rest.len());
+        let quote = match rest[..word_end].to_ascii_lowercase().as_str() {
+            "open-quote" => Some((true, true)),
+            "close-quote" => Some((false, true)),
+            "no-open-quote" => Some((true, false)),
+            "no-close-quote" => Some((false, false)),
+            _ => None,
+        };
+        if let Some((open, emit)) = quote {
+            out.push(ContentItem::Quote { open, emit });
+            at += word_end;
+            continue;
+        }
+        // Дальше только функция: `counter(`, `counters(`, `attr(`.
+        let open = rest.find('(')?;
+        let name = rest[..open].trim().to_ascii_lowercase();
+        let close = at + open + 1 + find_close(&rest[open + 1..])?;
+        let args = crate::css::split_args(&raw[at + open + 1..close]);
+        let arg = |i: usize| -> Option<String> {
+            let a = args.get(i)?.trim();
+            let unq = a
+                .strip_prefix('"')
+                .and_then(|r| r.strip_suffix('"'))
+                .or_else(|| a.strip_prefix('\'').and_then(|r| r.strip_suffix('\'')));
+            Some(unq.map_or_else(|| a.to_string(), unescape_content))
+        };
+        match name.as_str() {
+            "counter" if args.len() == 1 || args.len() == 2 => out.push(ContentItem::Counter(
+                arg(0)?,
+                arg(1).unwrap_or_else(|| "decimal".to_string()),
+            )),
+            "counters" if args.len() == 2 || args.len() == 3 => out.push(ContentItem::Counters(
+                arg(0)?,
+                arg(1)?,
+                arg(2).unwrap_or_else(|| "decimal".to_string()),
+            )),
+            "attr" if args.len() == 1 => out.push(ContentItem::Attr(arg(0)?)),
+            "url" if args.len() <= 1 => out.push(ContentItem::Image(arg(0).unwrap_or_default())),
+            // ПРОБОВАЛИ И ОТКАТИЛИ: принимать `url()` (§12.2 объявляет его
+            // действительным) и класть в псевдоэлемент синтетический `<img>`.
+            // Проба по 195 парам `generated-content`: флипов ноль, потеряна
+            // `before-after-table-whitespace-001` (0.15 -> 0.58) и просела
+            // `before-after-images-001` (0.00 -> 0.41). Обе требуют, чтобы
+            // НЕНАЙДЕННАЯ картинка давала коробку НУЛЕВОГО размера — сперва
+            // это, потом уже `url()`.
+            _ => return None,
+        }
+        at = close + 1;
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Индекс парной закрывающей скобки от места ПОСЛЕ открывающей.
+fn find_close(after_open: &str) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut at = 0usize;
+    while at < after_open.len() {
+        let ch = after_open[at..].chars().next()?;
+        match ch {
+            '"' | '\'' => {
+                at += ch.len_utf8();
+                at += crate::css::skip_string(&after_open[at..], ch);
+                continue;
+            }
+            '(' => depth += 1,
+            ')' if depth == 0 => return Some(at),
+            ')' => depth -= 1,
+            _ => {}
+        }
+        at += ch.len_utf8();
+    }
+    None
+}
+
+/// Экранирование внутри строки содержимого: `\A` — перевод строки, прочие
+/// коды — свои знаки, `\"` — сама кавычка.
+/// Разбить значение по пробелам ВНЕ скобок: `rgba(0, 128, 0, .5)` —
+/// один токен, а `split_whitespace` рассыпал его, и цвет пропадал
+/// (`outline` с функциональным цветом).
+fn split_ws_top(v: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut depth, mut start) = (0i32, None::<usize>);
+    for (i, ch) in v.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = (depth - 1).max(0),
+            _ => {}
+        }
+        if ch.is_whitespace() && depth == 0 {
+            if let Some(st) = start.take() {
+                out.push(&v[st..i]);
+            }
+        } else if start.is_none() {
+            start = Some(i);
+        }
+    }
+    if let Some(st) = start {
+        out.push(&v[st..]);
+    }
+    out
+}
+
+/// Разрывы сегмента в строке-маркере: ряд принудительных разрывов — один
+/// пробел (css-text-3 §4.1.2, «Segment Break Transformation Rules»).
+fn collapse_segment_breaks(text: &str) -> String {
+    if !text.contains(['\n', '\r']) {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut in_break = false;
+    for ch in text.chars() {
+        if matches!(ch, '\n' | '\r') {
+            if !in_break {
+                out.push(' ');
+                in_break = true;
+            }
+        } else {
+            in_break = false;
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn unescape_content(text: &str) -> String {
+    if !text.contains('\\') {
+        return text.to_string();
+    }
+    // Экранированный перевод строки внутри строки CSS — ПРОДОЛЖЕНИЕ, а не
+    // знак: CSS 2.1 §4.1.3 «the newline itself has to be escaped with a
+    // backslash (\). The newline is subsequently removed from the string»
+    // (css-syntax-3 §4.3.5: newline после `\` потребляется). `css::unescape`
+    // общий с именами и оставлял `\n`; в `white-space: pre` он становился
+    // жёстким разрывом, и кошка `content-173` рвалась лишними строками.
+    // Остальные экранирования уходят в `unescape` как есть; `\` в конце
+    // строки (EOF) пропадает.
+    let mut joined = String::with_capacity(text.len());
+    let mut it = text.chars().peekable();
+    while let Some(ch) = it.next() {
+        if ch != '\\' {
+            joined.push(ch);
+            continue;
+        }
+        match it.next() {
+            Some('\n') | Some('\u{c}') => {}
+            Some('\r') => {
+                if it.peek() == Some(&'\n') {
+                    it.next();
+                }
+            }
+            Some(c) => {
+                joined.push('\\');
+                joined.push(c);
+            }
+            None => {}
+        }
+    }
+    crate::css::unescape(&joined)
 }
 
 /// `url(...)` из значения фона; кавычки внутри необязательны.
@@ -3978,10 +10878,19 @@ pub(crate) fn parse_url(v: &str) -> Option<String> {
             }
             _ if crate::css::at_url(&v[at..]) => {
                 let end = at + crate::css::skip_url(&v[at..]);
-                let inner = v[at + 4..end.saturating_sub(1).max(at + 4)].trim();
+                // Обрыв на конце файла закрывает запись сам (§4.2): скобки
+                // может не быть, и тогда резать последний знак нельзя, а
+                // кавычка остаётся только открывающая (`uri-017`).
+                let inner_end = if v[..end].ends_with(')') {
+                    end - 1
+                } else {
+                    end
+                };
+                let inner = v[at + 4..inner_end.max(at + 4)].trim();
                 let inner = match inner.chars().next() {
-                    Some(q @ ('"' | '\'')) if inner.ends_with(q) && inner.len() > 1 => {
-                        &inner[1..inner.len() - 1]
+                    Some(q @ ('"' | '\'')) if inner.len() > 1 => {
+                        let body = &inner[1..];
+                        body.strip_suffix(q).unwrap_or(body)
                     }
                     _ => inner,
                 };
@@ -3994,6 +10903,128 @@ pub(crate) fn parse_url(v: &str) -> Option<String> {
 }
 
 /// Помечено ли объявление как важное.
+/// Снять с копий правил объявления, откатанные `revert-layer`
+/// (css-cascade-5 §revert-layer): «as if no rules were specified in the
+/// current cascade layer — or between its normal and important levels».
+/// Обычный откат в слое L снимает обычные объявления свойства в L; важный —
+/// важные в L и в слоях после него (у важных они слабее) и обычные в L и
+/// после него. `all: revert-layer` откатывает каждое свойство, чьё
+/// объявление в том же слое стоит до него. `None` — откатывать нечего.
+fn revert_layers(matched: &[&crate::css::Rule]) -> Option<Vec<crate::css::Rule>> {
+    use crate::css::DECL_SEP;
+    let is_rl = |part: &str| strip_important(part).trim().eq_ignore_ascii_case("revert-layer");
+    if !matched
+        .iter()
+        .any(|r| r.decls.values().any(|v| v.split(DECL_SEP).any(is_rl)))
+    {
+        return None;
+    }
+    let mut rules: Vec<crate::css::Rule> = matched.iter().map(|r| (*r).clone()).collect();
+    // Порядки каскада: обычный — по возрастанию, важный — слой по убыванию.
+    let normal_key = |r: &crate::css::Rule| (r.origin, r.layer.clone(), r.sel.specificity(), r.order);
+    let mut keys: Vec<String> = rules
+        .iter()
+        .flat_map(|r| r.decls.keys().cloned())
+        .filter(|k| !k.starts_with("--") && k != crate::css::ORDER_KEY)
+        .collect();
+    keys.sort();
+    keys.dedup();
+    // Снять части свойства `key` важности `imp` у правил, прошедших фильтр.
+    let strip = |rules: &mut Vec<crate::css::Rule>, key: &str, imp: bool, keep: &dyn Fn(&crate::css::Rule) -> bool| {
+        for r in rules.iter_mut().filter(|r| !keep(r)) {
+            if let Some(v) = r.decls.get(key) {
+                let rest: Vec<&str> = v.split(DECL_SEP).filter(|p| is_important(p) != imp).collect();
+                if rest.is_empty() {
+                    r.decls.remove(key);
+                } else {
+                    let joined = rest.join(&DECL_SEP.to_string());
+                    r.decls.insert(key.to_string(), joined);
+                }
+            }
+        }
+    };
+    // Победитель свойства: (индекс правила, слой, значение) по порядку каскада.
+    let winner = |rules: &Vec<crate::css::Rule>, key: &str, imp: bool| -> Option<(Vec<u32>, String)> {
+        let mut best: Option<(&crate::css::Rule, String)> = None;
+        for r in rules {
+            let Some(v) = r.decls.get(key) else { continue };
+            let Some(part) = v.split(DECL_SEP).filter(|p| is_important(p) == imp).last() else {
+                continue;
+            };
+            let better = match &best {
+                None => true,
+                Some((b, _)) if imp => {
+                    (std::cmp::Reverse(r.origin), std::cmp::Reverse(&r.layer), r.sel.specificity(), r.order)
+                        >= (std::cmp::Reverse(b.origin), std::cmp::Reverse(&b.layer), b.sel.specificity(), b.order)
+                }
+                Some((b, _)) => normal_key(r) >= normal_key(b),
+            };
+            if better {
+                best = Some((r, part.to_string()));
+            }
+        }
+        best.map(|(r, v)| (r.layer.clone(), v))
+    };
+    // `all: revert-layer` (обычный): каждое свойство слоя, объявленное в
+    // правиле НЕ позже правила с `all`, снимается в этом слое.
+    let alls: Vec<(Vec<u32>, (u8, Vec<u32>, (u32, u32, u32), usize))> = rules
+        .iter()
+        .filter(|r| {
+            r.decls
+                .get("all")
+                .is_some_and(|v| v.split(DECL_SEP).filter(|p| !is_important(p)).last().is_some_and(is_rl))
+        })
+        .map(|r| (r.layer.clone(), normal_key(r)))
+        .collect();
+    for (layer, at) in alls {
+        for r in rules.iter_mut().filter(|r| r.layer == layer && normal_key(r) <= at) {
+            let props: Vec<String> = r
+                .decls
+                .keys()
+                .filter(|k| !k.starts_with("--") && *k != crate::css::ORDER_KEY && *k != "direction" && *k != "unicode-bidi")
+                .cloned()
+                .collect();
+            for k in props {
+                if let Some(v) = r.decls.get(&k) {
+                    let rest: Vec<&str> = v.split(DECL_SEP).filter(|p| is_important(p)).collect();
+                    if rest.is_empty() {
+                        r.decls.remove(&k);
+                    } else {
+                        let joined = rest.join(&DECL_SEP.to_string());
+                        r.decls.insert(k, joined);
+                    }
+                }
+            }
+        }
+    }
+    for key in keys {
+        if key == "direction" || key == "unicode-bidi" || key == "all" {
+            continue;
+        }
+        for _ in 0..16 {
+            if let Some((layer, v)) = winner(&rules, &key, true) {
+                if is_rl(&v) {
+                    let l = layer.clone();
+                    strip(&mut rules, &key, true, &|r| r.layer < l);
+                    let l = layer.clone();
+                    strip(&mut rules, &key, false, &|r| r.layer < l);
+                    continue;
+                }
+                break;
+            }
+            if let Some((layer, v)) = winner(&rules, &key, false) {
+                if is_rl(&v) {
+                    let l = layer.clone();
+                    strip(&mut rules, &key, false, &|r| r.layer != l);
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+    Some(rules)
+}
+
 fn is_important(v: &str) -> bool {
     v.to_ascii_lowercase()
         .replace(' ', "")
@@ -4013,6 +11044,7 @@ fn strip_important(v: &str) -> &str {
 /// `rgba(0, 0, 0, .5)` — это один токен, а не четыре: обычное деление по
 /// пробелам разрывало функции с пробелами после запятых, и значение молча
 /// пропадало.
+
 pub(crate) fn split_outside_parens(v: &str) -> Vec<String> {
     let mut out = vec![];
     let mut depth = 0usize;
@@ -4039,6 +11071,17 @@ pub(crate) fn split_outside_parens(v: &str) -> Vec<String> {
         out.push(cur);
     }
     out
+}
+
+/// Процентная смесь `calc(A% ± Bpx)` парой (доля, точки) — для свойств,
+/// которые доли решают САМИ при отрисовке, зная размер коробки
+/// (css-values-4 §10.9). Любая другая природа в сумме (`ch`, `vw`, `em`…) —
+/// `None`: её здесь сложить не с чем, и запись, как прежде, не применяется.
+fn pct_px_pair(t: &str) -> Option<(f32, f32)> {
+    match Len::parse_mixed(t)? {
+        Len::Calc(i) => crate::value::calc_get(i).pct_px(),
+        _ => None,
+    }
 }
 
 /// Кавычка вокруг имени шрифта: `font-family: "Segoe UI", sans-serif`.
@@ -4078,10 +11121,133 @@ fn parse_overflow(v: &str) -> Option<Overflow> {
     match v {
         "hidden" => Some(Overflow::Hidden),
         "clip" => Some(Overflow::Clip),
-        "scroll" | "auto" => Some(Overflow::Scroll),
+        // `overlay` — устаревший синоним `auto` (css-overflow-3 §overflow:
+        // «legacy value alias of auto»; `overflow-overlay`).
+        "scroll" | "auto" | "overlay" => Some(Overflow::Scroll),
         "visible" => Some(Overflow::Visible),
         _ => None,
     }
+}
+
+/// Опорная коробка `<geometry-box>` (css-masking-1 §1.3.1.1 плюс
+/// `half-border-box` css-borders-4): 0 border, 1 margin, 2 padding,
+/// 3 content, 4 half-border. У элемента с CSS-коробкой `fill-box` =
+/// content-box, `stroke-box`/`view-box` = border-box.
+fn geometry_box_kind(word: &str) -> Option<u8> {
+    Some(match word.trim().to_ascii_lowercase().as_str() {
+        "border-box" | "stroke-box" | "view-box" => 0,
+        "margin-box" => 1,
+        "padding-box" => 2,
+        "content-box" | "fill-box" => 3,
+        "half-border-box" => 4,
+        _ => return None,
+    })
+}
+
+/// `border-shape: [ <basic-shape> <geometry-box>? ]{1,2}`. Фигура — функция
+/// со скобками, режется по ПАРНОЙ закрывающей (внутри `polygon(...)`
+/// запятые, внутри `path('...')` — что угодно); слово коробки — следом за
+/// ней. Хвост, не разобранный в две фигуры, делает значение недействительным.
+fn parse_border_shape(v: &str) -> Option<BorderShape> {
+    let mut items: Vec<(String, Option<u8>)> = Vec::new();
+    let mut rest = v.trim();
+    while !rest.is_empty() && items.len() < 2 {
+        let open = rest.find('(')?;
+        let mut depth = 0usize;
+        let mut close = None;
+        for (i, ch) in rest[open..].char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth = depth.checked_sub(1)?;
+                    if depth == 0 {
+                        close = Some(open + i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let close = close?;
+        let shape = rest[..=close].trim().to_string();
+        // Прямоугольные фигуры пишутся через пробел (css-shapes-1 §basic-shape:
+        // `rect( [ <length-percentage> | auto ]{4} … )`, так же `inset()` и
+        // `xywh()`); запятая делает всё объявление недействительным, и
+        // `border-shape` остаётся `none` — Blink `ConsumeBasicShapeRect`
+        // (`css_parsing_utils.cc:651-668`) берёт четыре длины подряд без
+        // запятой. Прежде `rect(0, 0, 100%, 100%)` разбирался в пустой
+        // прямоугольник, и маска фигуры прятала коробку целиком
+        // (border-shape-inset-shadow-blur, -negative-spread: пустая страница).
+        let head = shape[..open].trim_start().to_ascii_lowercase();
+        if matches!(head.as_str(), "rect" | "inset" | "xywh") && shape.contains(',') {
+            return None;
+        }
+        rest = rest[close + 1..].trim_start();
+        let word_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        let bx = geometry_box_kind(&rest[..word_end]);
+        if bx.is_some() {
+            rest = rest[word_end..].trim_start();
+        }
+        items.push((shape, bx));
+    }
+    if !rest.is_empty() {
+        return None;
+    }
+    let mut it = items.into_iter();
+    let (outer, outer_box) = it.next()?;
+    Some(match it.next() {
+        Some((inner, inner_box)) => BorderShape {
+            outer,
+            outer_box: outer_box.unwrap_or(0),
+            inner: Some((inner, inner_box.unwrap_or(2))),
+        },
+        None => BorderShape {
+            outer,
+            outer_box: outer_box.unwrap_or(4),
+            inner: None,
+        },
+    })
+}
+
+/// Параметр суперэллипса из одного значения `<corner-shape-value>`
+/// (css-borders-4 §corner-shaping): ключевые слова — их числовые
+/// эквиваленты по спеке, `superellipse(<number> | infinity | -infinity)` —
+/// само число. `None` — не форма угла (запись отбрасывается).
+fn corner_shape_param(tok: &str) -> Option<f32> {
+    let t = tok.trim().to_ascii_lowercase();
+    Some(match t.as_str() {
+        "round" => 1.0,
+        "squircle" => 2.0,
+        "square" => f32::INFINITY,
+        "bevel" => 0.0,
+        "scoop" => -1.0,
+        "notch" => f32::NEG_INFINITY,
+        _ => {
+            let inner = t.strip_prefix("superellipse(")?.strip_suffix(')')?.trim();
+            match inner {
+                "infinity" => f32::INFINITY,
+                "-infinity" => f32::NEG_INFINITY,
+                n => n.parse::<f32>().ok()?,
+            }
+        }
+    })
+}
+
+/// `corner-shape: a [b [c [d]]]` → K по углам tl/tr/br/bl — раскладка та же,
+/// что у `border-radius` (§corner-shaping-shorthand). Функции со скобками
+/// внутри пробелов не содержат, поэтому режем по пробелам.
+fn corner_shape_shorthand(raw: &str) -> Option<[f32; 4]> {
+    let v: Vec<f32> = raw
+        .split_whitespace()
+        .map(corner_shape_param)
+        .collect::<Option<Vec<_>>>()?;
+    Some(match v.len() {
+        1 => [v[0]; 4],
+        2 => [v[0], v[1], v[0], v[1]],
+        3 => [v[0], v[1], v[2], v[1]],
+        4 => [v[0], v[1], v[2], v[3]],
+        _ => return None,
+    })
 }
 
 fn radius_shorthand(raw: &str) -> Corners {
@@ -4137,6 +11303,168 @@ fn balanced_close(after_open: &str) -> Option<usize> {
     None
 }
 
+/// Ширина линейки промежутка: ключевые слова css-gaps-1 §width те же, что у
+/// рамок; отрицательная недействительна.
+fn gap_width(t: &str) -> Option<Len> {
+    match t.trim() {
+        "thin" => Some(Len::Px(1.0)),
+        "medium" => Some(Len::Px(3.0)),
+        "thick" => Some(Len::Px(5.0)),
+        t => Len::parse(t).filter(|l| {
+            matches!(l, Len::Px(w) if *w >= 0.0) || matches!(l, Len::Em(k) if *k >= 0.0)
+        }),
+    }
+}
+
+/// Стиль линейки: `none`/`hidden` — не рисовать, прочие — рисовать (все
+/// стили пока красятся сплошной полосой).
+fn gap_style(t: &str) -> Option<bool> {
+    match t.trim() {
+        "none" | "hidden" => Some(false),
+        "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset" | "outset" => {
+            Some(true)
+        }
+        _ => None,
+    }
+}
+
+/// Цвет линейки; `currentcolor` — `None` (цвет текста контейнера).
+fn gap_color(t: &str) -> Option<Option<Color>> {
+    let t = t.trim();
+    if t.eq_ignore_ascii_case("currentcolor") {
+        return Some(None);
+    }
+    Color::parse(t).map(Some)
+}
+
+/// Втяжка конца (css-gaps-1 §inset): длина/доля или `overlap-join`.
+fn gap_inset(t: &str) -> Option<GapInset> {
+    let t = t.trim();
+    if t == "overlap-join" {
+        return Some(GapInset::OverlapJoin);
+    }
+    if t == "0" {
+        return Some(GapInset::Len(Len::Px(0.0)));
+    }
+    Len::parse(t)
+        .filter(|l| matches!(l, Len::Px(_) | Len::Pct(_) | Len::Em(_)))
+        .map(GapInset::Len)
+}
+
+/// `<gap-rule> = <line-width> || <line-style> || <color>`: любой порядок,
+/// каждая часть не более одного раза; лишний токен — недействительно.
+fn gap_rule(entry: &str) -> Option<(Option<Len>, Option<bool>, Option<Option<Color>>)> {
+    let (mut w, mut s, mut c) = (None, None, None);
+    for token in split_outside_parens(entry) {
+        if s.is_none() && let Some(v) = gap_style(&token) {
+            s = Some(v);
+        } else if w.is_none() && let Some(v) = gap_width(&token) {
+            w = Some(v);
+        } else if c.is_none() && let Some(v) = gap_color(&token) {
+            c = Some(v);
+        } else {
+            return None;
+        }
+    }
+    Some((w, s, c))
+}
+
+/// Список css-gaps-1 §lists: значения через запятую вне скобок; `repeat(N, …)`
+/// раскрывается на месте, `repeat(auto, …)` допустим один раз и делит список
+/// на ведущие и хвостовые. Любой неразобранный элемент — весь список
+/// недействителен.
+fn gap_list<T: Copy>(v: &str, one: impl Fn(&str) -> Option<T>) -> Option<GapList<T>> {
+    let mut out = GapList { lead: vec![], auto: vec![], tail: vec![] };
+    let mut seen_auto = false;
+    for entry in crate::css::split_args(v) {
+        let entry = entry.trim();
+        let Some(inner) = entry
+            .strip_prefix("repeat(")
+            .and_then(|r| r.strip_suffix(')'))
+        else {
+            let val = one(entry)?;
+            if seen_auto {
+                out.tail.push(val);
+            } else {
+                out.lead.push(val);
+            }
+            continue;
+        };
+        let args = crate::css::split_args(inner);
+        let (count, vals) = args.split_first()?;
+        let vals: Vec<T> = vals.iter().map(|s| one(s.trim())).collect::<Option<Vec<T>>>()?;
+        if vals.is_empty() {
+            return None;
+        }
+        if count.trim() == "auto" {
+            if seen_auto {
+                return None;
+            }
+            seen_auto = true;
+            out.auto = vals;
+        } else {
+            let n: usize = count.trim().parse().ok().filter(|n| *n >= 1)?;
+            let dst = if seen_auto { &mut out.tail } else { &mut out.lead };
+            for _ in 0..n {
+                dst.extend_from_slice(&vals);
+            }
+        }
+    }
+    (out.lead.len() + out.auto.len() + out.tail.len() > 0).then_some(out)
+}
+
+impl Computed {
+    /// Ширины линеек одной оси: первое значение — в скаляр (многоколонник),
+    /// список — только когда значений больше одного или есть авто-повтор.
+    fn set_gap_widths(&mut self, column: bool, l: &GapList<Len>) {
+        let (scalar, list) = if column {
+            (&mut self.column_rule_width, &mut self.column_rule_widths)
+        } else {
+            (&mut self.row_rule_width, &mut self.row_rule_widths)
+        };
+        *scalar = l.first().or(*scalar);
+        *list = l.is_plural().then(|| l.clone());
+    }
+
+    fn set_gap_styles(&mut self, column: bool, l: &GapList<bool>) {
+        let (scalar, list) = if column {
+            (&mut self.column_rule_visible, &mut self.column_rule_styles)
+        } else {
+            (&mut self.row_rule_visible, &mut self.row_rule_styles)
+        };
+        *scalar = l.first().or(*scalar);
+        *list = l.is_plural().then(|| l.clone());
+    }
+
+    fn set_gap_colors(&mut self, column: bool, l: &GapList<Option<Color>>) {
+        let (scalar, list) = if column {
+            (&mut self.column_rule_color, &mut self.column_rule_colors)
+        } else {
+            (&mut self.row_rule_color, &mut self.row_rule_colors)
+        };
+        *scalar = l.first().flatten();
+        *list = l.is_plural().then(|| l.clone());
+    }
+
+    /// `column-rule`/`row-rule`/`rule` (css-gaps-1 §rule-shorthands): каждая
+    /// часть сокращения ставит СВОЙ список; неназванные части сбрасываются в
+    /// начальные (`medium`, `none`, `currentcolor`), как у любого сокращения.
+    pub(crate) fn gap_rule_shorthand(&mut self, key: &str, v: &str) {
+        let Some(list) = gap_list(v, gap_rule) else { return };
+        let widths = list.map(|r| r.0.unwrap_or(Len::Px(3.0)));
+        let styles = list.map(|r| r.1.unwrap_or(false));
+        let colors = list.map(|r| r.2.flatten());
+        for column in [true, false] {
+            if (column && key == "row-rule") || (!column && key == "column-rule") {
+                continue;
+            }
+            self.set_gap_widths(column, &widths);
+            self.set_gap_styles(column, &styles);
+            self.set_gap_colors(column, &colors);
+        }
+    }
+}
+
 /// Смещение первой запятой ВНЕ вложенных скобок.
 /// Раскрытие записи в четыре стороны: 1 значение — все, 2 — верт/гориз,
 /// 3 — верх/гориз/низ, 4 — по часовой. `None`, если разобрать не удалось.
@@ -4148,6 +11476,115 @@ fn four<T: Copy>(words: &[&str], one: impl Fn(&str) -> Option<T>) -> Option<[T; 
         3 => Some([v[0], v[1], v[2], v[1]]),
         4 => Some([v[0], v[1], v[2], v[3]]),
         _ => None,
+    }
+}
+
+/// Фоновые свойства со списком слоёв (css-backgrounds-3 §2.1).
+const BG_LIST_KEYS: [&str; 8] = [
+    "background",
+    "background-image",
+    "background-size",
+    "background-position",
+    "background-repeat",
+    "background-origin",
+    "background-clip",
+    "background-attachment",
+];
+
+impl Computed {
+    /// Слои фона СВЕРХУ ВНИЗ, когда их больше одного: каждый — копия стиля с
+    /// одним слоем (картинка, размер, положение, повтор, область) и без
+    /// цвета фона — цвет лежит под всеми слоями и красится коробкой
+    /// (css-backgrounds-3 §3.1, §2.1: значения списков, которых меньше
+    /// слоёв, повторяются по кругу). Градиент слоя уходит в растровую плитку
+    /// (`bg_image` с сырой записью), чтобы все слои шли одним путём и в
+    /// своём порядке. `None` — слой один.
+    pub(crate) fn bg_layers(&self) -> Option<Vec<Computed>> {
+        let short = self.bg_lists.iter().find(|(k, _)| k == "background").map(|(_, v)| v.clone());
+        let image = self.bg_lists.iter().find(|(k, _)| k == "background-image").map(|(_, v)| v.clone());
+        let images: Vec<String> = match (&image, &short) {
+            (Some(v), _) | (None, Some(v)) => background_layers(v).into_iter().map(str::to_string).collect(),
+            _ => return None,
+        };
+        if images.len() < 2 {
+            return None;
+        }
+        // Длины слоёв в единицах шрифта (`1ch 0 / 4ch 1ch`): слой разбирается
+        // заново из сырой записи уже ПОСЛЕ `resolve_em`, и `ch` в положении и
+        // размере оставался нерешённым — слой выходил нулевым
+        // (`hanging-whitespace-001..004`). Решаем по своему кеглю.
+        let font_px = match self.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let family = self.font_family.clone().unwrap_or_else(|| {
+            if self.monospace == Some(true) {
+                crate::metrics::mono_family_for(self.lang.as_deref()).to_string()
+            } else {
+                String::new()
+            }
+        });
+        let (ch, ex) = crate::metrics::ch_ex_px(&family, font_px);
+        let px_of = |v: &str| -> String {
+            if has_font_units(v) {
+                font_lengths_to_px(v, font_px, 16.0, ex, ch)
+            } else {
+                v.to_string()
+            }
+        };
+        let mut out = vec![];
+        for (i, _) in images.iter().enumerate() {
+            let mut c = self.clone();
+            c.bg_lists.clear();
+            c.background = None;
+            if let Some(v) = &short {
+                c.bg_image = None;
+                c.gradient = None;
+                c.gradient_raw = None;
+                c.bg_size = BgSize::Auto;
+                c.bg_pos = BgPos::default();
+                c.bg_repeat = None;
+                c.bg_origin = None;
+                let layers = background_layers(v);
+                c.apply_one("background", &px_of(layers[i % layers.len()]));
+                c.background = None;
+            }
+            for (k, v) in self.bg_lists.iter().filter(|(k, _)| k != "background") {
+                let layers = background_layers(v);
+                c.apply_one(k, &px_of(layers[i % layers.len()]));
+            }
+            c.bg_lists.clear();
+            // Градиент слоя — плиткой: источником идёт сама функция
+            // градиента из записи слоя (в сокращении рядом с ней размер,
+            // положение и повтор).
+            if c.bg_image.is_none()
+                && c.gradient.is_some()
+                && let Some(r) = images.get(i)
+                && let Some(at) = r.find("gradient(")
+            {
+                let start = r[..at].rfind(|ch: char| ch.is_whitespace() || ch == ',').map_or(0, |p| p + 1);
+                let mut depth = 0i32;
+                let mut end = r.len();
+                for (j, ch) in r[at..].char_indices() {
+                    match ch {
+                        '(' => depth += 1,
+                        ')' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = at + j + 1;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                c.bg_image = Some(r[start..end].to_string());
+            }
+            c.gradient = None;
+            c.gradient_raw = None;
+            out.push(c);
+        }
+        Some(out)
     }
 }
 
@@ -4177,6 +11614,180 @@ fn top_level_comma(inner: &str) -> Option<usize> {
         }
     }
     None
+}
+
+thread_local! {
+    /// Атрибуты элемента, чей стиль сейчас собирается, — источник для
+    /// типизированного `attr()` (css-values-5 §7.7). Ставит `dom::walk` на
+    /// время `resolve_with_vars` и сразу снимает: у стилей вне этого окна
+    /// (наведение, кадры анимации, псевдоэлементы) хозяина нет, и там берётся
+    /// запасное значение.
+    static CURRENT_ATTRS: std::cell::RefCell<Vec<(String, String)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    /// Номер элемента среди братьев и их число — для `sibling-index()` и
+    /// `sibling-count()` (css-values-5 §tree-counting). Ставит `dom::walk`
+    /// на время каскада элемента, как и атрибуты.
+    static CURRENT_SIBLING: std::cell::Cell<Option<(usize, usize)>> = const { std::cell::Cell::new(None) };
+}
+
+pub fn set_current_sibling(at: Option<(usize, usize)>) {
+    CURRENT_SIBLING.with(|c| c.set(at));
+}
+
+/// `sibling-index()` / `sibling-count()` — целым числом (css-values-5
+/// §tree-counting: «sibling-index() … returns an <integer> … the index of the
+/// element among its inclusive siblings, starting at 1»). Без хозяина
+/// (вне каскада элемента) запись остаётся как есть и роняет объявление.
+fn resolve_sibling(value: String) -> String {
+    if !value.contains("sibling-") {
+        return value;
+    }
+    match CURRENT_SIBLING.with(|c| c.get()) {
+        Some((i, n)) => value
+            .replace("sibling-index()", &i.to_string())
+            .replace("sibling-count()", &n.to_string()),
+        None => value,
+    }
+}
+
+pub fn set_current_attrs(attrs: &[(String, String)]) {
+    CURRENT_ATTRS.with(|a| *a.borrow_mut() = attrs.to_vec());
+}
+
+pub fn clear_current_attrs() {
+    CURRENT_ATTRS.with(|a| a.borrow_mut().clear());
+}
+
+/// Значение атрибута по имени из `attr()`.
+///
+/// Префикс пространства имён (`foo|bar`): у атрибутов HTML пространства нет,
+/// а реестра `@namespace` здесь не видно — атрибут считается отсутствующим, и
+/// берётся запасное значение (`attr-namespace-non-existing`). `|bar` — по
+/// локальному имени; `*|bar` сюда не доходит (`resolve_attrs`). Сравнение
+/// ASCII-регистронезависимое: HTML-парсер опускает в нижний регистр только
+/// ASCII, и запрос опускается так же, а не-ASCII знаки сравниваются как есть
+/// (`html-attr-case-insensitivity`).
+fn attr_value(name: &str) -> Option<String> {
+    let local = match name.split_once('|') {
+        Some(("", local)) => local,
+        Some(_) => return None,
+        None => name,
+    };
+    CURRENT_ATTRS.with(|a| {
+        a.borrow()
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(local))
+            .map(|(_, v)| v.clone())
+    })
+}
+
+/// Значение атрибута под типом `attr()`; `None` — не разбирается этим типом.
+fn attr_cast(value: &str, ty: &str) -> Option<String> {
+    let v = value.trim();
+    let ty: String = ty
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    // `<length>`: голое число длиной не бывает, кроме нуля (css-values-4
+    // §6.1); `Len::parse` принимает его точками — отсекаем здесь.
+    let length = |v: &str| match Len::parse(v) {
+        Some(Len::Px(n)) if v.parse::<f32>().is_ok() => (n == 0.0).then(|| v.to_string()),
+        Some(
+            Len::Pct(_)
+            | Len::Auto
+            | Len::MinContent
+            | Len::MaxContent
+            | Len::FitContent
+            | Len::Anchor(_),
+        )
+        | None => None,
+        Some(_) => Some(v.to_string()),
+    };
+    let percentage = |v: &str| {
+        v.strip_suffix('%')
+            .and_then(|n| n.trim().parse::<f32>().ok())
+            .map(|_| v.to_string())
+    };
+    match ty.as_str() {
+        // Любые токены; `url()` из атрибута запрещён (attr-tainted).
+        "type(*)" => (!v.is_empty() && !v.to_ascii_lowercase().contains("url("))
+            .then(|| v.to_string()),
+        "type(<length>)" => length(v),
+        "type(<percentage>)" => percentage(v),
+        "type(<length-percentage>)" => length(v).or_else(|| percentage(v)),
+        "type(<number>)" | "number" => v.parse::<f32>().ok().map(|_| v.to_string()),
+        "type(<integer>)" => v.parse::<i64>().ok().map(|_| v.to_string()),
+        "type(<color>)" => Color::parse(v).map(|_| v.to_string()),
+        // `attr(x px)` — число из атрибута с единицей из записи.
+        unit if !unit.is_empty()
+            && (unit == "%" || unit.chars().all(|c| c.is_ascii_alphabetic())) =>
+        {
+            v.parse::<f32>().ok().map(|_| format!("{v}{unit}"))
+        }
+        _ => None,
+    }
+}
+
+/// Типизированный `attr()` (css-values-5 §7.7): `attr(<имя> <тип>, <запас>?)`
+/// подставляется ДО разбора значения, как `var()`. Нетипизированная запись
+/// (`attr(x)` — строка) остаётся как есть: её разбирают `content` и счётчики.
+/// Негодный атрибут без запаса делает объявление недействительным на
+/// вычислении — значение становится `unset`.
+fn resolve_attrs(key: &str, value: &str) -> String {
+    if key == "content"
+        || !value
+            .as_bytes()
+            .windows(5)
+            .any(|w| w.eq_ignore_ascii_case(b"attr("))
+    {
+        return value.to_string();
+    }
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    loop {
+        // ASCII-опускание не сдвигает байтов: индекс годен и для `rest`.
+        let Some(at) = rest.to_ascii_lowercase().find("attr(") else {
+            break;
+        };
+        let after = &rest[at + 5..];
+        let Some(close) = balanced_close(after) else {
+            break;
+        };
+        let inner = &after[..close];
+        let (head, fallback) = match top_level_comma(inner) {
+            Some(i) => (inner[..i].trim(), Some(inner[i + 1..].trim())),
+            None => (inner.trim(), None),
+        };
+        let (name, ty) = match head.split_once(char::is_whitespace) {
+            Some((n, t)) => (n.trim(), t.trim()),
+            None => (head, ""),
+        };
+        // `<attr-name>` — как `<wq-name>`, «but without the possibility of a
+        // wildcard prefix» (css-values-5 §attr-notation, Overview.bs:2057-2059):
+        // `attr(*|bar …)` негоден при разборе, запас не спасает
+        // (`attr-namespace-wildcard`). Выброс объявления здесь выражается
+        // `unset`, как у негодного атрибута без запаса.
+        if name.starts_with("*|") {
+            return "unset".to_string();
+        }
+        out.push_str(&rest[..at]);
+        if ty.is_empty() {
+            out.push_str(&rest[at..at + 5 + close + 1]);
+        } else {
+            match (attr_value(name).and_then(|v| attr_cast(&v, ty)), fallback) {
+                (Some(v), _) => out.push_str(&v),
+                (None, Some(f)) => out.push_str(f),
+                (None, None) => return "unset".to_string(),
+            }
+        }
+        rest = &after[close + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn resolve_vars(value: &str, vars: &Decls) -> String {
@@ -4236,9 +11847,40 @@ pub enum Track {
     Fr(f32),
     /// Доля ШИРИНЫ СЕТКИ (`25%`) — не путать с долей остатка (`fr`).
     Pct(f32),
+    /// Длина в единицах ШРИФТА (`2ch`, `1em`, `8rem`): кегль и метрики на
+    /// разборе ещё неизвестны, величина считается вместе с прочими `em`.
+    Font(Len),
     Auto,
     MinContent,
     MaxContent,
+}
+
+impl Track {
+    /// Перевести отложенную длину в точки: единицы шрифта известны только
+    /// после разрешения кегля узла.
+    fn resolve_font_one(&mut self, family: &str, size_px: f32) {
+        if let Track::Font(l) = *self {
+            *self = Track::Px(crate::metrics::spacing_px(Some(l), family, size_px));
+        }
+    }
+}
+
+impl TrackSize {
+    /// То же для обеих граней записи.
+    fn resolve_font(&mut self, family: &str, size_px: f32) {
+        match self {
+            TrackSize::Single(t) => t.resolve_font_one(family, size_px),
+            TrackSize::MinMax(a, b) => {
+                a.resolve_font_one(family, size_px);
+                b.resolve_font_one(family, size_px);
+            }
+            TrackSize::AutoRepeat { tracks, .. } => {
+                for t in tracks.iter_mut() {
+                    t.resolve_font(family, size_px);
+                }
+            }
+        }
+    }
 }
 
 /// Дорожка целиком: одиночная либо пара граней `minmax(a, b)`.
@@ -4249,6 +11891,13 @@ pub enum Track {
 pub enum TrackSize {
     Single(Track),
     MinMax(Track, Track),
+    /// `repeat(auto-fill | auto-fit, …)` — сколько дорожек влезет; при
+    /// `fit` пустые схлопываются (css-grid-2 §auto-repeat). Считает это
+    /// раскладка: на разборе ширины контейнера ещё нет.
+    AutoRepeat {
+        fit: bool,
+        tracks: Vec<TrackSize>,
+    },
 }
 
 /// Разрезать короткую запись сетки по косой черте ВНЕ скобок.
@@ -4300,14 +11949,125 @@ pub struct AutoRepeat {
     /// число повторов задают сами элементы — по дорожке на каждого
     /// (row-auto-repeat-max-content-001).
     pub intrinsic: bool,
+    /// Дорожка названа `min-content`: меряется САМЫМ УЗКИМ местом
+    /// содержимого, а не самым широким.
+    pub intrinsic_min: bool,
     /// Потолок `fit-content(N)`: дорожка по содержимому, но не шире N.
     pub fit_px: Option<f32>,
+    /// Максимум `minmax(N, auto)`: дорожка растягивается остатком
+    /// (css-grid-2 §12.8 «Stretch auto Tracks»); прежде терялся, и живые
+    /// дорожки `auto-fit` оставались минимумом
+    /// (`grid-content-distribution-with-collapsed-tracks-004`).
+    pub max_auto: bool,
+    /// Максимум `minmax(N, k fr)`: доля остатка.
+    pub max_fr: Option<f32>,
+    /// Сколько дорожек в ТЕЛЕ повтора: `repeat(auto-fill, fit-content(100px)
+    /// fit-content(100px))` — две. Число повторов делит место на ВСЁ тело
+    /// (css-grid-2 §7.2.3.2; Blink `CalculateAutomaticRepetitions`,
+    /// `repeater_size`), а скалярная ветка раскладки видела одну дорожку.
+    pub body: usize,
+}
+
+/// Тело авто-повтора СПИСКОМ дорожек: `repeat(auto-fill, max-content
+/// min-content)` → `[Single(MaxContent), Single(MinContent)]`.
+///
+/// Нужно, чтобы раскладка считала гипотетический размер КАЖДОЙ записи тела по
+/// её собственной функции (css-grid-3 §7.2.1). `parse_tracks` уже знает и
+/// `minmax()`, и `fit-content(N)` (последний как `MinMax(Auto, hi)`), поэтому
+/// своего разбора здесь нет.
+fn auto_fill_body_tracks(v: &str) -> Option<Vec<TrackSize>> {
+    parse_tracks(v).as_deref().and_then(|l| {
+        l.iter().find_map(|t| match t {
+            TrackSize::AutoRepeat { tracks, .. } => Some(tracks.clone()),
+            _ => None,
+        })
+    })
+}
+
+/// Длина тела авто-повтора в дорожках (1, если тело не разобралось).
+fn auto_fill_body(v: &str) -> usize {
+    parse_tracks(v)
+        .as_deref()
+        .and_then(|l| {
+            l.iter().find_map(|t| match t {
+                TrackSize::AutoRepeat { tracks, .. } => Some(tracks.len()),
+                _ => None,
+            })
+        })
+        .unwrap_or(1)
+        .max(1)
+}
+
+/// Максимум `minmax(lo, hi)` в авто-повторе: `auto` или доля `fr`.
+fn auto_fill_max(v: &str) -> (bool, Option<f32>) {
+    let Some(rest) = v.split("minmax(").nth(1) else {
+        return (false, None);
+    };
+    let Some(inner) = rest.find(')').map(|i| &rest[..i]) else {
+        return (false, None);
+    };
+    let hi = inner.splitn(2, ',').nth(1).unwrap_or("").trim();
+    if hi == "auto" {
+        return (true, None);
+    }
+    let fr = hi
+        .strip_suffix("fr")
+        .and_then(|k| k.trim().parse::<f32>().ok());
+    (false, fr)
 }
 
 /// Размер повторяемой дорожки в `repeat(auto-fill | auto-fit, …)`.
 ///
 /// Берётся либо нижняя граница `minmax(N, …)`, либо сама дорожка, если она
 /// задана точкой: `repeat(auto-fill, 100px)` — три колонки в трёхстах точках.
+/// Все дорожки тела повтора `repeat(auto-fill | auto-fit, …)` в точках.
+///
+/// Тело бывает из нескольких дорожек — `repeat(auto-fill, 50px 50px)`
+/// повторяет ПАРУ. Пока бралась одна, `Len::parse("50px 50px")` не разбирался
+/// вовсе, и сетка не получала дорожек: `grid-auto-repeat-multiple-values-*`
+/// рисовались одной плитой во всю ширину. Имена линий (`[all x v]`) к размеру
+/// не относятся и выбрасываются.
+///
+/// Пусто, если тело из одной дорожки или хоть один кусок не разобрался: такой
+/// случай ведёт прежняя ветка по `auto_fill_min`.
+fn auto_fill_tracks(v: &str) -> Vec<f32> {
+    if v.contains("minmax(") || v.contains("fit-content(") {
+        return Vec::new();
+    }
+    let Some(rest) = v.split("repeat(").nth(1) else {
+        return Vec::new();
+    };
+    let Some(end) = rest.rfind(')') else {
+        return Vec::new();
+    };
+    let Some(body) = rest[..end].split_once(',').map(|(_, b)| b) else {
+        return Vec::new();
+    };
+    // Имена линий в квадратных скобках размера не несут.
+    let mut clean = String::with_capacity(body.len());
+    let mut depth = 0usize;
+    for ch in body.chars() {
+        match ch {
+            '[' => depth += 1,
+            ']' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => clean.push(ch),
+            _ => {}
+        }
+    }
+    let parts: Vec<&str> = clean.split_whitespace().collect();
+    if parts.len() < 2 {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(parts.len());
+    for t in parts {
+        match Len::parse(t) {
+            Some(Len::Px(px)) => out.push(px),
+            _ => return Vec::new(),
+        }
+    }
+    out
+}
+
 fn auto_fill_min(v: &str) -> Option<f32> {
     let px_of = |t: &str| match Len::parse(t.trim()) {
         Some(Len::Px(px)) => Some(px),
@@ -4323,7 +12083,12 @@ fn auto_fill_min(v: &str) -> Option<f32> {
         // она определённая, иначе по минимальной (css-grid-1 §7.2.3.2):
         // `minmax(min-content, 100px)` повторяется сотнями точек, а
         // `minmax(100px, 1fr)` — сотней из минимума.
-        return px_of(hi).or_else(|| px_of(lo));
+        // Максимум ниже минимума поднимается до него (css-grid-2 §7.2.3.1:
+        // «the max will be floored by the min» — `grid-auto-repeat-minmax`).
+        return match (px_of(hi), px_of(lo)) {
+            (Some(h), Some(l)) => Some(h.max(l)),
+            (h, l) => h.or(l),
+        };
     }
     let rest = v.split("repeat(").nth(1)?;
     let inner = &rest[..rest.rfind(')')?];
@@ -4338,6 +12103,34 @@ pub(crate) fn auto_fill_fit_px(v: &str) -> Option<f32> {
         Some(Len::Px(px)) => Some(px),
         _ => None,
     }
+}
+
+/// Голая интрин-дорожка СНАРУЖИ `repeat(auto-fill | auto-fit, …)`.
+///
+/// css-grid-1 `<auto-track-list>` разрешает вокруг авто-повтора только
+/// `<fixed-size>`; css-grid-3 §7.2.1 ослабила запись лишь ВНУТРИ `repeat()`.
+/// `minmax()` снаружи законен в обе стороны (`minmax(<fixed-breadth>,
+/// <track-breadth>)` и `minmax(<inflexible-breadth>, <fixed-breadth>)`) и сюда
+/// НЕ попадает: иначе под нож ушли бы валидные
+/// `css-grid/grid-definition/grid-auto-fill-columns-001` и родня, а также
+/// `grid-lanes/invalidation/grid-lanes-change-intrinsic-size-with-auto-repeat-tracks-001`
+/// (`repeat(auto-fill, 20px) minmax(min-content, 40px)`).
+/// Имена линий в скобках размера не несут и негодности не создают.
+fn auto_repeat_outside_intrinsic(v: &str) -> bool {
+    let toks = tokenize_tracks(v);
+    if !toks
+        .iter()
+        .any(|t| t.starts_with("repeat(") && (t.contains("auto-fill") || t.contains("auto-fit")))
+    {
+        return false;
+    }
+    toks.iter().any(|t| {
+        let t = t.trim();
+        if t.starts_with("repeat(") || (t.starts_with('[') && t.ends_with(']')) {
+            return false;
+        }
+        t == "auto" || t == "min-content" || t == "max-content" || t.starts_with("fit-content(")
+    })
 }
 
 /// Дорожка повтора задана ПО СОДЕРЖИМОМУ: `repeat(auto-fill, max-content)`
@@ -4382,12 +12175,24 @@ fn auto_fill_pct(v: &str) -> Option<f32> {
     pct_of(inner.split(',').nth(1)?)
 }
 
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v197, `scout-gridoof-2026-09.md` жила И1,
+/// 8 хунков): `fit-content(N)` теряет функцию дорожки в переводе CSS→gpui и
+/// доезжает как `minmax(auto, N)` — ЗАКРЕПЛЕНИЕ вместо ПОТОЛКА; патч заводил
+/// грани `Track::FitPx/FitPct`, вариант `GridTrack::FitContent` в
+/// `vendor/gpui/src/geometry.rs` и ветки в `vendor/gpui/src/taffy.rs`.
+/// Обещание +0…+2. Срез 1481 пара: **+27/−337**. Падение не логическое —
+/// целые семейства ушли в «красное видно»: `block-aspect-ratio-*`,
+/// `flex-aspect-ratio-*`, `grid-aspect-ratio-*`, `intrinsic-size-*`,
+/// `multicol-rule-*`, таблицы, `hanging-punctuation-*`, `boundary-shaping-*`.
+/// Новый вариант перечисления в вендорном `GridTrack` меняет раскладку далеко
+/// за пределами сетки: под него идут ВСЕ дорожечные размеры gpui. Возвращать
+/// только вместе с полным перебором потребителей `GridTrack` и своим сводом.
 fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
     fn single(t: &str) -> Option<Track> {
         let t = t.trim();
         // Именованная линия перед дорожкой: `[side] 240px`. Имя не несёт
         // размера, поэтому просто отбрасывается — но НЕ вместе с дорожкой.
-        let t = t.trim_start_matches('[');
+        let t = t.trim_start_matches(|c| c == '[');
         let t = match t.find(']') {
             Some(at) => t[at + 1..].trim(),
             None => t,
@@ -4401,20 +12206,16 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
         if t == "max-content" {
             return Some(Track::MaxContent);
         }
-        // `fit-content(N)` — дорожка не шире N и не шире содержимого.
-        if let Some(inner) = t
-            .strip_prefix("fit-content(")
-            .and_then(|r| r.strip_suffix(')'))
-            && let Some(Len::Px(px)) = Len::parse(inner.trim())
-        {
-            return Some(Track::Px(px));
-        }
+
         if let Some(fr) = t.strip_suffix("fr") {
             return fr.trim().parse().ok().map(Track::Fr);
         }
         match Len::parse(t) {
             Some(Len::Px(px)) => Some(Track::Px(px)),
             Some(Len::Pct(p)) => Some(Track::Pct(p)),
+            // Единицы шрифта откладываются: раньше они роняли разбор, а с
+            // ним и ВЕСЬ список дорожек — сетка выходила из равных долей.
+            Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_) | Len::Ic(_))) => Some(Track::Font(l)),
             _ => None,
         }
     }
@@ -4425,6 +12226,22 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
         if let Some(inner) = t.strip_prefix("minmax(").and_then(|s| s.strip_suffix(')')) {
             let (lo, hi) = inner.split_once(',')?;
             return Some(TrackSize::MinMax(single(lo)?, single(hi)?));
+        }
+        // `fit-content(N)` — дорожка по содержимому, но НЕ ШИРЕ N: раньше
+        // сводилась к `Px(N)`, и потолок работал полом
+        // (column-intrinsic-maximums).
+        // Аргумент — `<length-percentage>` (css-grid-1 §7.2.3), а не только
+        // точки: `fit-content(30%)` не разбирался и ронял `parse_tracks` на
+        // `None` для ВСЕГО списка (`out.push(one(&token)?)` ниже), после чего
+        // сетка сводилась к равным колонкам по `count_tracks`. Верхняя грань
+        // теперь идёт через `single`, который знает px, проценты и единицы
+        // шрифта; нераспознанный аргумент — это `auto`, а не потеря шаблона.
+        if let Some(inner) = t
+            .strip_prefix("fit-content(")
+            .and_then(|r| r.strip_suffix(')'))
+        {
+            let hi = single(inner).unwrap_or(Track::Auto);
+            return Some(TrackSize::MinMax(Track::Auto, hi));
         }
         single(t).map(TrackSize::Single)
     }
@@ -4440,7 +12257,7 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
             .and_then(|r| r.strip_suffix(')'))
         {
             let (count, rest) = inner.split_once(',')?;
-            let count: usize = count.trim().parse().ok()?;
+            let count = count.trim();
             let unit: Vec<TrackSize> = tokenize_tracks(rest)
                 .iter()
                 .filter_map(|t| one(t))
@@ -4448,6 +12265,16 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
             if unit.is_empty() {
                 return None;
             }
+            // Число повторов бывает не числом: `auto-fill` и `auto-fit`
+            // считает раскладка — ей известна ширина контейнера.
+            if count.eq_ignore_ascii_case("auto-fill") || count.eq_ignore_ascii_case("auto-fit") {
+                out.push(TrackSize::AutoRepeat {
+                    fit: count.eq_ignore_ascii_case("auto-fit"),
+                    tracks: unit,
+                });
+                continue;
+            }
+            let count: usize = count.parse().ok()?;
             for _ in 0..count.min(64) {
                 out.extend(unit.iter().cloned());
             }
@@ -4470,6 +12297,13 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
 }
 
 /// Разбить список дорожек по пробелам, не заходя внутрь скобок.
+/// ЗАМЕРЕНО И ОТКАЧЕНО: считать квадратную скобку так же, как круглую, чтобы
+/// многоимённая группа `[a b] 50px` не разрывалась по пробелу. Разрыв правда
+/// роняет ВЕСЬ список дорожек (`one(&token)?` на куске `[a`), но полный свод
+/// CSS3 дал приобретено 0, потеряно 1 —
+/// `grid-auto-repeat-multiple-values-005` 0.00 -> 3.60. Проверено по частям:
+/// счёт дорожек ни при чём, весь итог даёт сама группировка. Возвращаться
+/// вместе с настоящими именами линий (план — `target/scout-linenames.md`).
 fn tokenize_tracks(v: &str) -> Vec<String> {
     split_outside_parens(v)
 }
@@ -4483,12 +12317,236 @@ fn count_tracks(v: &str) -> Option<u16> {
     (n > 0).then_some(n as u16)
 }
 
+/// Выбор кандидата `image-set()` (css-images-4 §2.5).
+///
+/// * `None` — запись НЕГОДНА (отрицательное разрешение числом, вложенный
+///   `image-set()`, чужое слово): объявление отбрасывается, прежнее живёт;
+/// * `Some(None)` — запись годна, но пригодных кандидатов нет: «invalid image»;
+/// * `Some(Some(src))` — СЫРАЯ запись выбранного `<image>` (`url(...)`,
+///   градиент); строка-адрес оборачивается в `url(...)` (§2.5: «Each
+///   `<string>` inside image-set() represents a `<url>`»).
+fn image_set_pick(inner: &str) -> Option<Option<String>> {
+    let mut options: Vec<(String, f32)> = vec![];
+    for cand in crate::css::split_args(inner) {
+        let mut image: Option<String> = None;
+        let mut res: Option<f32> = None;
+        let mut type_ok = true;
+        for token in split_outside_parens(cand.trim()) {
+            let low = token.to_ascii_lowercase();
+            if let Some(body) = low.strip_prefix("type(") {
+                // Неподдержанный тип снимает КАНДИДАТА, а не запись (§2.5).
+                // Список — форматы, которые читает `background::decode`.
+                let mime = body.trim_end_matches(')').trim().trim_matches(is_quote);
+                type_ok &= matches!(
+                    mime,
+                    "image/png"
+                        | "image/jpeg"
+                        | "image/gif"
+                        | "image/webp"
+                        | "image/bmp"
+                        | "image/svg+xml"
+                );
+                continue;
+            }
+            if let Some(r) = image_resolution(&low) {
+                // Отрицательное ЧИСЛО вне диапазона по определению — ошибка
+                // разбора. Из `calc()` оно приходит вычисленным: запись годна,
+                // непригоден только кандидат (`negative-resolution-3`).
+                if r < 0.0 && !low.starts_with("calc(") {
+                    return None;
+                }
+                res = Some(r);
+                continue;
+            }
+            if image.is_none() {
+                if low.starts_with("image-set(") || low.starts_with("-webkit-image-set(") {
+                    return None;
+                }
+                if token.len() >= 2 && token.starts_with(is_quote) {
+                    image = Some(format!("url({token})"));
+                    continue;
+                }
+                if low.contains('(') {
+                    image = Some(token.clone());
+                    continue;
+                }
+            }
+            return None;
+        }
+        let Some(image) = image else { continue };
+        let res = res.unwrap_or(1.0);
+        // Шаг 1 (тип), нулевая/отрицательная плотность (картинке не из чего
+        // взять природный размер) и шаг 2 (дубль разрешения среди оставшихся).
+        if !type_ok || res <= 0.0 || options.iter().any(|(_, r)| *r == res) {
+            continue;
+        }
+        options.push((image, res));
+    }
+    // Шаг 4 отдан UA: наименьшее разрешение, которого хватает на плотность
+    // 1x, иначе наибольшее (Blink `CSSImageSetValue::GetBestOption`).
+    let best = options
+        .iter()
+        .filter(|(_, r)| *r >= 1.0)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .or_else(|| options.iter().max_by(|a, b| a.1.total_cmp(&b.1)));
+    Some(best.map(|(src, _)| src.clone()))
+}
+
+/// `<resolution>` в `dppx` (css-values-4 §6.3), в том числе внутри `calc()`.
+/// Единицы разрешения переписываются точками (`1x` → `1px`, `96dpi` → `1px`),
+/// арифметику считает готовый разборщик длин. `None` — в записи нет ни одного
+/// разрешения либо она не сводится к числу.
+fn image_resolution(token: &str) -> Option<f32> {
+    if !token.is_ascii() {
+        return None;
+    }
+    let b = token.as_bytes();
+    let mut expr = String::with_capacity(token.len() + 8);
+    let mut found = false;
+    let mut i = 0usize;
+    while i < b.len() {
+        let c = b[i];
+        // Имя (`calc`, `url`, слово пути) переписывается целиком: цифра внутри
+        // имени числом не начинается.
+        if c.is_ascii_alphabetic() || c == b'_' {
+            let s = i;
+            while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'-' || b[i] == b'_') {
+                i += 1;
+            }
+            expr.push_str(&token[s..i]);
+            continue;
+        }
+        let number = c.is_ascii_digit()
+            || (c == b'.' && b.get(i + 1).is_some_and(|n| n.is_ascii_digit()));
+        if !number {
+            expr.push(c as char);
+            i += 1;
+            continue;
+        }
+        let s = i;
+        while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'.') {
+            i += 1;
+        }
+        let n: f32 = token[s..i].parse().ok()?;
+        let u = i;
+        while i < b.len() && b[i].is_ascii_alphabetic() {
+            i += 1;
+        }
+        let k = match &token[u..i] {
+            "" => {
+                expr.push_str(&token[s..i]);
+                continue;
+            }
+            "x" | "dppx" => 1.0,
+            "dpi" => 1.0 / 96.0,
+            "dpcm" => 2.54 / 96.0,
+            _ => return None,
+        };
+        found = true;
+        expr.push_str(&format!("{}px", n * k));
+    }
+    if !found {
+        return None;
+    }
+    match Len::parse(&expr)? {
+        Len::Px(v) => Some(v),
+        _ => None,
+    }
+}
+
+/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v168, `scout-bgimg-2026-09.md` §4
+/// IMG-IMAGE-SET, 2 хунка): выбор кандидата `image-set()` по спеке — отсев по
+/// MIME, дублям разрешения и «кандидатов не осталось ⇒ негодная картинка».
+/// Обещание +13. Полный свод против v37: **+9/−17**. Плюсы — семья, где
+/// кандидат ДОЛЖЕН быть отвергнут (`image-set-type-unsupported-*`,
+/// `-zero-resolution-*`, `-negative-resolution-*`, градиенты). Минусы — 17
+/// пар с единственным годным кандидатом (`image-set-rendering`, `-dpi-*`,
+/// `-dppx-*`, `-calc-x-*`, `-no-res-*`, `-type-*`), все ровно 2.08: картинка
+/// встала не на место. Отбор верен, теряется адрес выбранного кандидата —
+/// возвращать вместе с разбором `<string>` как адреса (стенд `wptrun.rs:704`
+/// перебазирует только `url(...)`).
+/// Записи `<gradient>`, которых GPU-путь не выражает: коническая (обход по
+/// углу) и все повторяющиеся (узор стопов мостится вдоль линии —
+/// css-images-3 §3.6). Такие рисуются растровой плиткой — тем же путём,
+/// которым уже ходит `conic-gradient()`.
+pub(crate) fn gradient_as_raster(v: &str) -> bool {
+    // `cross-fade()` (css-images-4 §2.6) — смесь картинок растром той же
+    // плиткой (`background::rasterize_cross_fade`).
+    v.starts_with("cross-fade(")
+        || v.starts_with("conic-gradient(")
+        || v.starts_with("repeating-linear-gradient(")
+        || v.starts_with("repeating-radial-gradient(")
+        || v.starts_with("repeating-conic-gradient(")
+}
+
+/// Пересчитать фильтром цвета стопов в ЗАПИСИ растрового градиента: такие
+/// градиенты живут строкой в `bg_image`, а не полем `gradient`. Слова, не
+/// являющиеся цветом (направление, позиции, `from`/`at`), остаются как есть.
+pub(crate) fn filter_gradient_text(raw: &str, f: &Filter) -> String {
+    let (Some(open), Some(close)) = (raw.find('('), raw.rfind(')')) else {
+        return raw.to_string();
+    };
+    if close <= open {
+        return raw.to_string();
+    }
+    let parts: Vec<String> = crate::css::split_args(&raw[open + 1..close])
+        .into_iter()
+        .map(|part| {
+            split_outside_parens(part)
+                .into_iter()
+                .map(|w| match Color::parse(&w) {
+                    Some(c) => {
+                        let c = f.apply(c);
+                        format!(
+                            "rgba({},{},{},{})",
+                            (c.r * 255.0).round(),
+                            (c.g * 255.0).round(),
+                            (c.b * 255.0).round(),
+                            c.a
+                        )
+                    }
+                    None => w,
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect();
+    format!("{}{})", &raw[..=open], parts.join(", "))
+}
+
+
 /// `linear-gradient(90deg, #000, #fff)`. Направления словами приводим к углу.
 /// `linear-gradient(...)` и `radial-gradient(...)`.
 ///
 /// Позиции стопов сохраняются: без них полосы не расставить, а именно они
 /// задают, где цвет меняется.
+/// Угол направления градиента по единице (css-values-4 §7.1): `Some(Some(deg))`
+/// — законный угол, `Some(None)` — число с НЕЗНАКОМОЙ единицей (`90degree`,
+/// `0.25turns`): вся запись негодна; `None` — не размерность вовсе (цвет,
+/// `to right`), решают прочие ветки.
+fn gradient_angle(a: &str) -> Option<Option<f32>> {
+    let a = a.trim();
+    let cut = a.find(|c: char| c.is_ascii_alphabetic())?;
+    let (num, unit) = a.split_at(cut);
+    let n: f32 = num.parse().ok()?;
+    Some(match unit.to_ascii_lowercase().as_str() {
+        "deg" => Some(n),
+        "grad" => Some(n * 0.9),
+        "rad" => Some(n.to_degrees()),
+        "turn" => Some(n * 360.0),
+        _ => None,
+    })
+}
+
 pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
+    // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
+    // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
+    // повторение делает растеризатор, заворачивая долю точки.
+    let v = v.strip_prefix("repeating-").unwrap_or(v);
+    // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
+    // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
+    // повторение делает растеризатор, заворачивая долю точки.
+    let v = v.strip_prefix("repeating-").unwrap_or(v);
     let radial = v.starts_with("radial-gradient(");
     let inner = v
         .strip_prefix(if radial {
@@ -4516,9 +12574,58 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     // (в hsl, метод longer?) — интерполяция нужна ЛЮБОМУ `in hsl`:
     // shorter (дефолт) идёт короткой дугой тона, longer — длинной; эталоны
     // пишут ref через `in hsl` без метода (gradient-longer-hue-hsl-002-ref).
-    let hsl_interp: Option<bool> = interp
-        .filter(|i| i.split_whitespace().next() == Some("hsl"))
-        .map(|i| i.contains("longer"));
+    // Метод дуги тона (css-color-4 §hue-interpolation): shorter (дефолт),
+    // longer, increasing, decreasing.
+    let hsl_interp: Option<u8> = interp
+        .filter(|i| matches!(i.split_whitespace().next(), Some("hsl") | Some("hwb")))
+        .map(|i| {
+            if i.contains("longer") {
+                1
+            } else if i.contains("increasing") {
+                2
+            } else if i.contains("decreasing") {
+                3
+            } else {
+                0
+            }
+        });
+    // Дуга тона нужна ЛЮБОМУ полярному пространству, не только `hsl`
+    // (css-color-4 §12.4); умолчание — shorter.
+    let hue_arc: u8 = interp.map_or(0, |i| {
+        if i.contains("longer") {
+            1
+        } else if i.contains("increasing") {
+            2
+        } else if i.contains("decreasing") {
+            3
+        } else {
+            0
+        }
+    });
+    // Пространство смешения: явное из записи, иначе решается ниже по составу
+    // стопов (css-color-4 §12.2).
+    let named_space: Option<GradSpace> =
+        interp
+            .and_then(|i| i.split_whitespace().next())
+            .and_then(|s| match s {
+                "srgb" => Some(GradSpace::Srgb),
+                "srgb-linear" | "xyz" | "xyz-d50" | "xyz-d65" | "display-p3-linear"
+                | "rec2020-linear" | "a98-rgb-linear" | "prophoto-rgb-linear" => {
+                    Some(GradSpace::Linear)
+                }
+                "oklab" => Some(GradSpace::Oklab),
+                "oklch" => Some(GradSpace::Oklch),
+                "lab" => Some(GradSpace::Lab),
+                "lch" => Some(GradSpace::Lch),
+                "hsl" => Some(GradSpace::Hsl),
+                "hwb" => Some(GradSpace::Hwb),
+                // Пространства с собственным охватом (`display-p3`, `a98-rgb`,
+                // `rec2020`, `prophoto-rgb`) гамма-кодированы, и для цветов
+                // ВНУТРИ охвата sRGB смешение в них от sRGB не отличается:
+                // кривая одна и та же, а матрица первичных с интерполяцией
+                // коммутирует. Заводить их отдельно нечем.
+                _ => None,
+            });
     if interp.is_some() && head.is_empty() {
         idx = 1;
     }
@@ -4526,6 +12633,15 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         a if a.ends_with("deg") => {
             idx = 1;
             a.trim_end_matches("deg").trim().parse().unwrap_or(180.0)
+        }
+        // Размерность с другой единицей: `grad`/`rad`/`turn` — законный угол,
+        // прочее (`90degree`, `100gradian`, `1.57radian`, `0.25turns`) делает
+        // запись негодной целиком (`angle-units-001`). Прежде такой довод
+        // падал в `_ => 180.0`, не читался цветом и молча пропускался —
+        // градиент из оставшихся стопов КРАСИЛ.
+        a if !radial && gradient_angle(a).is_some() => {
+            idx = 1;
+            gradient_angle(a).flatten()?
         }
         "to right" => {
             idx = 1;
@@ -4546,6 +12662,16 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         "to bottom right" | "to right bottom" => {
             idx = 1;
             135.0
+        }
+        // Остальные два угла (css-images-3 §3.1): без них направление
+        // уходило в разбор стопов и выбрасывалось, а градиент шёл сверху вниз.
+        "to bottom left" | "to left bottom" => {
+            idx = 1;
+            225.0
+        }
+        "to top left" | "to left top" => {
+            idx = 1;
+            315.0
         }
         "to top right" | "to right top" => {
             idx = 1;
@@ -4568,11 +12694,16 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     let mut raw: Vec<(Color, Option<f32>)> = vec![];
     let mut raw_px: Vec<(Color, Option<f32>)> = vec![];
     let mut any_pct = false;
+    // Умолчание пространства держится на ЗАПИСИ цветов, а не на их значениях
+    // (css-color-4 §12.2), поэтому решается прямо здесь, пока текст стопа
+    // ещё под рукой.
+    let mut all_legacy = true;
     for p in &parts[idx..] {
         let words = split_outside_parens(p);
         let Some(colour) = words.first().and_then(|w| Color::parse(w)) else {
             continue;
         };
+        all_legacy &= legacy_srgb_color(words[0].as_str());
         if words.len() == 1 {
             raw.push((colour, None));
             raw_px.push((colour, None));
@@ -4591,6 +12722,15 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
                 // только при отрисовке. Хранится своим списком.
                 raw.push((colour, None));
                 raw_px.push((colour, Some(v)));
+            } else if let Some((pct, px)) = pct_px_pair(t) {
+                // `calc(100% - 10px)` (css-images-4 §3.4.1: `<color-stop-length>`
+                // = `<length-percentage>{1,2}`): доля и точки едут ПАРОЙ в
+                // `stops_raw`, растр сложит их по длине оси. Прежде такой стоп
+                // отбрасывался целиком, а градиент из одних `calc`-стопов
+                // (`#five` в calc-background-linear-gradient-1) гас вовсе.
+                any_pct = true;
+                raw.push((colour, Some(pct)));
+                raw_px.push((colour, Some(px)));
             } else if !t.trim().is_empty()
                 && Len::parse(t).is_none()
                 && t.trim().parse::<f32>().is_err()
@@ -4602,20 +12742,33 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
             }
         }
     }
-    if raw.len() < 2 {
+    // css-images-4 §3.4.1 «Color Stop Lists»: список из ОДНОГО и более
+    // стопов законен, и градиент из одного стопа красит этим цветом всю
+    // картинку. Разворачиваем в пару одинаковых стопов на краях линии:
+    // ниже `last = raw.len() - 1` при одном стопе давал 0/0 = NaN, а
+    // `return None` гасил фон вовсе (`gradient-single-stop-001/-002/-004`).
+    if raw.is_empty() {
         return None;
     }
-    // Стопы без позиции распределяются равномерно — так же, как в CSS.
+    if raw.len() == 1 {
+        let (colour, _) = raw[0];
+        raw = vec![(colour, Some(0.0)), (colour, Some(1.0))];
+        // Точечный список остаётся ПУСТЫМ: у сплошного цвета полос в точках
+        // нет, а `stops_px` собирается только когда позиция есть у всех.
+        raw_px = vec![(colour, None), (colour, None)];
+    }
+    // Фиксация по css-images-3 §3.5.3: позиция не меньше предыдущей, стопы
+    // без позиции — поровну между соседями С позициями (а не по номеру в
+    // списке). Тот же расклад, что у растра.
     let last = raw.len() - 1;
-    let mut stops: Vec<(Color, f32)> = raw
-        .iter()
-        .enumerate()
-        .map(|(i, (c, pos))| (*c, pos.unwrap_or(i as f32 / last as f32)))
-        .collect();
+    let mut stops: Vec<(Color, f32)> = crate::background::place_stops(raw.clone());
     // `in hsl longer hue`: тон идёт ДЛИННОЙ дугой (css-images-4 §3.4.1.1).
     // Растр интерполирует линейно в sRGB, поэтому дуга выкладывается
     // СИНТЕТИЧЕСКИМИ промежуточными стопами (gradient-longer-hue-hsl-001).
-    if let (Some(longer), true) = (
+    // ЗАМЕРЕНО В МИНУС без флага (−13/+2: дуга даёт 0.6–0.8% против
+    // эталонов — точность растеризации полос; single-stop 18.25) —
+    // остаётся за HSL_ARC до точной математики.
+    if let (Some(method), true) = (
         hsl_interp.filter(|_| std::env::var("HSL_ARC").is_ok()),
         stops.len() >= 2,
     ) {
@@ -4627,14 +12780,31 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
             let (h2, s2, l2) = crate::color_space::rgb_to_hsl(c2);
             // shorter: дуга в (-180,180]; longer — противоположная ей.
             let mut d = (h2 - h1).rem_euclid(360.0);
-            if d > 180.0 {
-                d -= 360.0;
-            }
-            if longer {
-                if d > 0.0 {
-                    d -= 360.0;
-                } else if d <= 0.0 {
-                    d += 360.0;
+            match method {
+                // shorter: дуга в (-180, 180].
+                0 => {
+                    if d > 180.0 {
+                        d -= 360.0;
+                    }
+                }
+                // longer: противоположная короткой.
+                1 => {
+                    if d > 180.0 {
+                        d -= 360.0;
+                    }
+                    if d > 0.0 {
+                        d -= 360.0;
+                    } else {
+                        d += 360.0;
+                    }
+                }
+                // increasing: тон только растёт (0..360).
+                2 => {}
+                // decreasing: тон только убывает.
+                _ => {
+                    if d > 0.0 {
+                        d -= 360.0;
+                    }
                 }
             }
             const K: usize = 48;
@@ -4671,42 +12841,388 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         stops,
         stops_px,
         stops_raw,
+        // §12.2: без записи — sRGB, пока ВСЕ цвета устаревших форм, иначе
+        // OKLab. Именно эта оговорка и держит совместимость: почти весь набор
+        // пишет градиенты именами, `#hex` и `rgb()`, и остаётся в sRGB.
+        space: named_space.unwrap_or(if all_legacy {
+            GradSpace::Srgb
+        } else {
+            GradSpace::Oklab
+        }),
+        hue: hue_arc,
     })
 }
+
+/// Записан ли цвет УСТАРЕВШЕЙ формой sRGB: имя, `#hex`, `rgb()`, `rgba()`,
+/// `hsl()`, `hsla()`, `hwb()` и их формы с прозрачностью (css-color-4 §12.2).
+/// От ответа зависит пространство интерполяции по умолчанию.
+fn legacy_srgb_color(token: &str) -> bool {
+    let t = token.trim().to_ascii_lowercase();
+    if t.starts_with('#') {
+        return true;
+    }
+    match t.split_once('(') {
+        // `rgb()` с `none` устаревшей записью не выражается: Blink вычисляет
+        // его в `color(srgb …)`, и умолчание смешения становится OKLab
+        // (`gradient-analogous-missing-components-004`, `gradient-eval-004`).
+        // У `hsl()`/`hwb()` пространство и с `none` остаётся устаревшим.
+        Some((name, body)) => match name.trim() {
+            "rgb" | "rgba" => !body.contains("none"),
+            "hsl" | "hsla" | "hwb" => true,
+            _ => false,
+        },
+        // Имя цвета, `transparent` и `currentcolor` — тоже устаревшие формы.
+        None => true,
+    }
+}
+/// Стиль обводки: 0 — не рисуется (none/hidden), 1 — сплошной (и все, что
+/// рисуются сплошной), 2 — `auto` (цвет от `accent-color`, css-ui-4
+/// §outline-color), 3 — `dotted`, 4 — `dashed`: узор тем же примитивом, что
+/// у рамки (`outline-style-012`: эталон — `border: 4px dotted`).
+fn outline_style_of(v: &str) -> Option<u8> {
+    match v {
+        "none" | "hidden" => Some(0),
+        "auto" => Some(2),
+        "dotted" => Some(3),
+        "dashed" => Some(4),
+        "solid" | "double" | "groove" | "ridge" | "inset" | "outset" => Some(1),
+        _ => None,
+    }
+}
+
+/// Ширина обводки: ключевые слова и любые шрифтовые/абсолютные длины.
+fn outline_width_of(v: &str) -> Option<Len> {
+    match v {
+        "thin" => Some(Len::Px(1.0)),
+        "medium" => Some(Len::Px(3.0)),
+        "thick" => Some(Len::Px(5.0)),
+        _ => Len::parse(v).filter(|l| !matches!(l, Len::Pct(_))),
+    }
+}
+
+/// Присвоить размер коробки: отрицательная длина делает объявление
+/// НЕВАЛИДНЫМ, и слот не трогается вовсе (§10) — повторное свойство
+/// `width: 0; width: -1px` обязано оставить нуль от первой записи, а
+/// сброс в None делал ширину авто и красил красное (width-001 и родня).
+/// Сплошная заливка как градиент из одного цвета (image()/cross-fade()).
+fn solid_gradient(c: Color) -> Gradient {
+    Gradient {
+        angle_deg: 180.0,
+        from: c,
+        to: c,
+        ..Default::default()
+    }
+}
+
+/// Список `font-feature-settings` (css-fonts-4 §7.1): `normal` — пустой,
+/// иначе `<opentype-tag> [ <integer [0,∞]> | on | off ]?` через запятую.
+/// Тег — СТРОКА ровно из четырёх печатных ASCII-знаков в ЛЮБЫХ кавычках:
+/// `'liga' off` прежде терялся целиком (`trim_matches('"')` оставлял шесть
+/// знаков — `font-feature-resolution-001/002`). Тот же разбор нужен
+/// дескриптору в `@font-face`.
+pub(crate) fn feature_list(v: &str) -> Option<Vec<(String, u32)>> {
+    let v = v.trim();
+    if v.eq_ignore_ascii_case("normal") {
+        return Some(Vec::new());
+    }
+    let mut out = Vec::new();
+    for token in v.split(',') {
+        let token = token.trim();
+        let q = token.chars().next()?;
+        if q != '"' && q != '\'' {
+            return None;
+        }
+        let rest = &token[1..];
+        let end = rest.find(q)?;
+        let tag = &rest[..end];
+        if tag.len() != 4 || !tag.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
+            return None;
+        }
+        let on = match rest[end + 1..].trim() {
+            "" | "on" => 1,
+            "off" => 0,
+            n => n.parse::<u32>().ok()?,
+        };
+        out.push((tag.to_string(), on));
+    }
+    Some(out)
+}
+
+/// Годное имя семейства: строка в кавычках либо ряд идентификаторов.
+///
+/// Идентификатор по §4.1.3 начинается с буквы, подчёркивания, не-ASCII знака
+/// или экранирования; за ними идут буквы, цифры, дефисы, подчёркивания и
+/// экранирования. Цифра первой запрещена, дефис с цифрой следом — тоже.
+fn family_name_ok(part: &str) -> bool {
+    if part.is_empty() {
+        return false;
+    }
+    if (part.starts_with('"') && part.ends_with('"') && part.len() >= 2)
+        || (part.starts_with('\'') && part.ends_with('\'') && part.len() >= 2)
+    {
+        return true;
+    }
+    part.split_whitespace().all(|word| {
+        let mut chars = word.chars();
+        let Some(first) = chars.next() else {
+            return false;
+        };
+        let head_ok = first.is_alphabetic()
+            || first == '_'
+            || first == '\\'
+            || first as u32 >= 0xa0
+            || (first == '-'
+                && word
+                    .chars()
+                    .nth(1)
+                    .is_some_and(|c| c.is_alphabetic() || c == '_' || c as u32 >= 0xa0));
+        head_ok
+            && word.chars().all(|c| {
+                c.is_alphanumeric() || c == '-' || c == '_' || c == '\\' || c as u32 >= 0xa0
+            })
+    })
+}
+
+/// Довод `fit-content(<length-percentage>)` (css-sizing-3 §4.1): только
+/// точки или доля, неотрицательные. Прочее (`em`, `calc`) — `None`, и
+/// значение ведёт себя, как прежде, голым `fit-content`.
+fn fit_content_arg(v: &str) -> Option<Len> {
+    let lower = v.trim().to_ascii_lowercase();
+    let arg = lower.strip_prefix("fit-content(")?.strip_suffix(')')?;
+    match Len::parse(arg) {
+        Some(l @ (Len::Px(n) | Len::Pct(n))) if n >= 0.0 => Some(l),
+        _ => None,
+    }
+}
+
+/// Разобранный `calc-size()`.
+enum CalcSize {
+    /// Основа — длина: значение известно сразу.
+    Fixed(f32),
+    /// Основа — ключевое слово размера: `(mul, add, max, min)` над ним.
+    Over((f32, f32, f32, f32)),
+}
+
+/// `calc-size(<basis>, <calc-sum>)` (css-values-5 §calc-size,
+/// `csswg-drafts/css-values-5/Overview.bs`). Понимаются линейные выражения
+/// над `size` (`size`, `size ± L`, `size * k`, `k * size`, `size / k`, их
+/// суммы) и `min(size, L)` / `max(size, L)`; длины — в точках. Основа —
+/// `auto`, `fit-content`, `min-content`, `max-content`, `content` или длина;
+/// вложенный `calc-size()` и проценты не понимаются — объявление роняется.
+fn calc_size_arg(v: &str) -> Option<CalcSize> {
+    let inner = v.trim().strip_prefix("calc-size(")?.strip_suffix(')')?;
+    let (basis, expr) = inner.split_once(',')?;
+    let basis = basis.trim();
+    let mut expr: String = expr.chars().filter(|c| !c.is_whitespace()).collect();
+    if let Some(e) = expr.strip_prefix("calc(").and_then(|e| e.strip_suffix(')')) {
+        expr = e.to_string();
+    }
+    let px = |t: &str| t.strip_suffix("px").and_then(|n| n.parse::<f32>().ok());
+    let f = if let Some(a) = expr.strip_prefix("min(size,").and_then(|e| e.strip_suffix(')')) {
+        (1.0, 0.0, px(a)?, f32::MIN)
+    } else if let Some(a) = expr.strip_prefix("max(size,").and_then(|e| e.strip_suffix(')')) {
+        (1.0, 0.0, f32::MAX, px(a)?)
+    } else {
+        // Сумма членов: `size`, `size*k`, `k*size`, `size/k`, `L`.
+        let (mut mul, mut add) = (0.0f32, 0.0f32);
+        let mut rest = expr.as_str();
+        let mut sign = 1.0f32;
+        if let Some(r) = rest.strip_prefix('-') {
+            sign = -1.0;
+            rest = r;
+        }
+        loop {
+            let end = rest.find(['+', '-']).unwrap_or(rest.len());
+            let term = &rest[..end];
+            if term == "size" {
+                mul += sign;
+            } else if let Some(k) = term.strip_prefix("size*").or_else(|| term.strip_suffix("*size")) {
+                mul += sign * k.parse::<f32>().ok()?;
+            } else if let Some(k) = term.strip_prefix("size/") {
+                mul += sign / k.parse::<f32>().ok()?;
+            } else {
+                add += sign * px(term)?;
+            }
+            if end == rest.len() {
+                break;
+            }
+            sign = if rest.as_bytes()[end] == b'-' { -1.0 } else { 1.0 };
+            rest = &rest[end + 1..];
+        }
+        (mul, add, f32::MAX, f32::MIN)
+    };
+    if let Some(b) = px(basis) {
+        let (mul, add, max, min) = f;
+        return Some(CalcSize::Fixed((b * mul + add).min(max).max(min).max(0.0)));
+    }
+    matches!(basis, "auto" | "fit-content" | "min-content" | "max-content" | "content")
+        .then_some(CalcSize::Over(f))
+}
+
+/// `object-view-box: none | <basic-shape-rect>` — `inset()`, `rect()`,
+/// `xywh()` (css-images-4 §object-view-box; css-shapes-1 §basic-shape-rect).
+/// Длины — точки или доли; `inset` с 1-3 значениями раскрывается как поля.
+fn parse_view_box(v: &str) -> Option<(u8, [Len; 4])> {
+    let v = v.trim();
+    let (kind, inner) = if let Some(r) = v.strip_prefix("inset(") {
+        (0u8, r)
+    } else if let Some(r) = v.strip_prefix("rect(") {
+        (1u8, r)
+    } else if let Some(r) = v.strip_prefix("xywh(") {
+        (2u8, r)
+    } else {
+        return None;
+    };
+    let inner = inner.strip_suffix(')')?;
+    let parts: Vec<Len> = inner
+        .split_whitespace()
+        .map(|t| match Len::parse(t) {
+            Some(l @ (Len::Px(_) | Len::Pct(_))) => Some(l),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let four = match (kind, parts.as_slice()) {
+        (_, [a, b, c, d]) => [*a, *b, *c, *d],
+        (0, [a]) => [*a, *a, *a, *a],
+        (0, [a, b]) => [*a, *b, *a, *b],
+        (0, [a, b, c]) => [*a, *b, *c, *b],
+        _ => return None,
+    };
+    Some((kind, four))
+}
+
+fn assign_size(slot: &mut Option<Len>, v: &str) {
+    // Смесь «доля ± точки» доживает индексом (`parse_mixed`): раскладка
+    // складывает её сама (`DefiniteLength::Calc`, css-values-4 §10.9).
+    // Прежде `calc(50% - 3px)` роняло объявление (`calc-width-block-1`).
+    let parsed = Len::parse_mixed(v);
+    // Отрицательный размер невалиден в ЛЮБОЙ единице (CSS 2.1 §10.4:
+    // `min-width`/`min-height` — «Value: <length> | <percentage> | inherit»,
+    // отрицательные значения не допускаются). Прежде отбраковывались только
+    // px, проценты и em, а `min-height: -1ex` доживал до раскладки.
+    let negative = match parsed {
+        Some(
+            Len::Px(n)
+            | Len::Pct(n)
+            | Len::Em(n)
+            | Len::Vh(n)
+            | Len::Vw(n)
+            | Len::Ch(n)
+            | Len::Ex(n)
+            | Len::Ic(n)
+            | Len::Lh(n),
+        ) => n < 0.0,
+        Some(Len::EmPx(a, b) | Len::LhPx(a, b)) => a < 0.0 || b < 0.0,
+        _ => false,
+    };
+    if negative {
+        return;
+    }
+    // `none` снимает предел (§10.4) — слот гаснет по праву. Прочая
+    // неразборная запись объявление роняет: слот сохраняет прежнее значение,
+    // а не гаснет (§4.2).
+    if v.trim().eq_ignore_ascii_case("none") {
+        *slot = None;
+        return;
+    }
+    if let Some(l) = parsed {
+        *slot = Some(l);
+    }
+}
+
+/// Годна ли запись `box-shadow` ЦЕЛИКОМ (css-backgrounds-3 §7.1:
+/// `none | <shadow>#`; тень — 2-4 длины, не больше одного цвета и одного
+/// `inset`). `none` внутри списка делает декларацию негодной.
+fn box_shadow_valid(v: &str) -> bool {
+    if v.trim().eq_ignore_ascii_case("none") {
+        return true;
+    }
+    crate::css::split_args(v).iter().all(|s| {
+        let (mut lens, mut colours, mut insets) = (0, 0, 0);
+        for token in tokenize_shadow(s) {
+            match Len::parse(&token) {
+                Some(Len::Pct(_)) => return false,
+                Some(_) => lens += 1,
+                None if token.eq_ignore_ascii_case("inset") => insets += 1,
+                None if token.eq_ignore_ascii_case("currentcolor")
+                    || Color::parse(&token).is_some() =>
+                {
+                    colours += 1
+                }
+                None => return false,
+            }
+        }
+        (2..=4).contains(&lens) && colours <= 1 && insets <= 1
+    })
+}
+
 fn parse_shadows(v: &str) -> Vec<Shadow> {
-    crate::css::split_args(v)
-        .iter()
-        .filter(|s| !s.contains("inset"))
-        .filter_map(|s| {
-            let mut lens = vec![];
-            let mut color = None;
-            for token in tokenize_shadow(s) {
-                if let Some(Len::Px(px)) = Len::parse(&token) {
-                    lens.push(px);
-                } else if let Some(c) = Color::parse(&token) {
-                    color = Some(c);
+    let mut out = vec![];
+    for s in crate::css::split_args(v) {
+        // Внутренние тени не рисуются — но синтаксис их проверяется: одна
+        // невалидная тень роняет ВСЮ декларацию (css-backgrounds-3 §7.2).
+        let inner = s.contains("inset");
+        let mut lens = vec![];
+        let mut color = None;
+        for token in tokenize_shadow(&s) {
+            match Len::parse(&token) {
+                Some(Len::Px(px)) => lens.push(Some(px)),
+                // calc() из абсолютных единиц уже свёрнут в px; примесь
+                // процентов невалидна для тени.
+                Some(Len::Calc(id)) => {
+                    let sum = crate::value::calc_get(id);
+                    if sum.pct != 0.0 {
+                        return vec![];
+                    }
+                    // Шрифтовые/оконные слагаемые здесь не резолвятся —
+                    // тень пропускается, но декларация остаётся валидной.
+                    let bare = crate::value::Sum {
+                        px: 0.0,
+                        pct: 0.0,
+                        ..sum
+                    };
+                    lens.push((bare == crate::value::Sum::default()).then_some(sum.px));
+                }
+                Some(Len::Pct(_)) => return vec![],
+                // em/vh и прочее — валидно, но контекста тут нет.
+                Some(_) => lens.push(None),
+                None => {
+                    if let Some(c) = Color::parse(&token) {
+                        color = Some(c);
+                    } else if token == "currentcolor" {
+                        // Явный `currentColor` = как отсутствие цвета:
+                        // метка a = -1 дорешается при слиянии стилей.
+                    } else if token != "inset" {
+                        return vec![];
+                    }
                 }
             }
-            if lens.len() < 2 {
-                return None;
-            }
-            Some(Shadow {
-                x: lens[0],
-                y: lens[1],
-                blur: lens.get(2).copied().unwrap_or(0.0),
-                spread: lens.get(3).copied().unwrap_or(0.0),
-                // Тень без цвета берёт currentColor (css-backgrounds-3
-                // §7): цвет текста известен только после слияния стилей,
-                // отрицательная альфа — метка «дорешать там».
-                color: color.unwrap_or(Color {
-                    r: 0.,
-                    g: 0.,
-                    b: 0.,
-                    a: -1.0,
-                }),
-            })
-        })
-        .collect()
+        }
+        // Длин бывает от двух до четырёх (§7.2).
+        if lens.len() < 2 || lens.len() > 4 {
+            return vec![];
+        }
+        if inner || lens.iter().any(Option::is_none) {
+            continue;
+        }
+        let lens: Vec<f32> = lens.into_iter().flatten().collect();
+        out.push(Shadow {
+            x: lens[0],
+            y: lens[1],
+            blur: lens.get(2).copied().unwrap_or(0.0),
+            spread: lens.get(3).copied().unwrap_or(0.0),
+            // Тень без цвета берёт currentColor (css-backgrounds-3
+            // §7): цвет текста известен только после слияния стилей,
+            // отрицательная альфа — метка «дорешать там».
+            color: color.unwrap_or(Color {
+                r: 0.,
+                g: 0.,
+                b: 0.,
+                a: -1.0,
+            }),
+        });
+    }
+    out
 }
 
 /// Разбиение тени на токены: `rgba(0, 0, 0, .4)` — один токен, а не четыре.
@@ -4774,12 +13290,14 @@ mod tests {
             decls: super::super::css::parse_decls("color: red !important"),
             order: 0,
             origin: 1,
+            layer: vec![u32::MAX],
         };
         let late = super::super::css::Rule {
             sel: super::super::css::Selector::parse("p.x").expect("селектор класса"),
             decls: super::super::css::parse_decls("color: green"),
             order: 1,
             origin: 1,
+            layer: vec![u32::MAX],
         };
         let mut matched = vec![&early, &late];
         let c = super::Computed::resolve(&mut matched, &super::super::css::Decls::new());
@@ -4797,12 +13315,14 @@ mod tests {
             decls: super::super::css::parse_decls("margin-top: 6px"),
             order: 0,
             origin: 0,
+            layer: vec![u32::MAX],
         };
         let author = super::super::css::Rule {
             sel: super::super::css::Selector::parse("*").expect("универсальный селектор"),
             decls: super::super::css::parse_decls("margin-top: 0"),
             order: 1,
             origin: 1,
+            layer: vec![u32::MAX],
         };
         let mut matched = vec![&ua, &author];
         let c = super::Computed::resolve(&mut matched, &super::super::css::Decls::new());
@@ -5044,10 +13564,55 @@ mod gradient_tests {
 ///
 /// Значения взяты из спецификаций; свойства, начальное значение которых у нас
 /// и так «поле не задано», сюда не входят — им сброс не нужен.
+/// Наследуется ли свойство по умолчанию (столбец «Inherited» таблиц
+/// свойств CSS). Нужен `unset`: у наследуемого он значит `inherit`.
+fn inherited_property(key: &str) -> bool {
+    matches!(
+        key,
+        "color"
+            | "font"
+            | "font-family"
+            | "font-size"
+            | "font-style"
+            | "font-variant"
+            | "font-weight"
+            | "font-stretch"
+            | "letter-spacing"
+            | "word-spacing"
+            | "line-height"
+            | "text-align"
+            | "text-align-last"
+            | "text-indent"
+            | "text-transform"
+            | "visibility"
+            | "white-space"
+            | "list-style"
+            | "list-style-type"
+            | "list-style-position"
+            | "list-style-image"
+            | "direction"
+            | "writing-mode"
+            | "quotes"
+            | "cursor"
+            | "tab-size"
+            | "word-break"
+            | "overflow-wrap"
+            | "word-wrap"
+            | "hyphens"
+            | "text-orientation"
+            | "border-collapse"
+            | "border-spacing"
+            | "caption-side"
+            | "empty-cells"
+    )
+}
+
 fn initial_value(key: &str) -> Option<&'static str> {
     Some(match key {
         "border" => "0 none",
         "border-radius" => "0",
+        "corner-shape" => "round",
+        "border-shape" => "none",
         "color" => "black",
         "margin" => "0",
         "padding" => "0",
@@ -5107,4 +13672,17 @@ mod border_image_tests {
         assert_eq!(bi.slice[1], BorderImageSlice::Pct(0.3));
         assert_eq!(bi.repeat, (Tiling::Round, Tiling::Space));
     }
+}
+
+/// Множитель роста/сжатия гибкого элемента: `<number>` или `calc()` из чисел
+/// (css-values-4 §10.1), неотрицательный. `calc(infinity)` (§10.7.1) —
+/// наибольшее представимое: здесь — конечное большое, чтобы сумма
+/// множителей и доли свободного места не уходили в бесконечность и `NaN`
+/// (`flex-grow-009`: `flex: calc(infinity) 0 0px` забирает всё место).
+fn flex_factor(v: &str) -> Option<f32> {
+    let g = crate::value::number(v)?;
+    if g.is_nan() || g < 0.0 {
+        return None;
+    }
+    Some(g.min(1.0e18))
 }

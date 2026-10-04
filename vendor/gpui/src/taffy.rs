@@ -15,7 +15,8 @@ use taffy::{
 
 /// KaminIDE patch: замер отдаёт не только размер, но и первую БАЗОВУЮ ЛИНИЮ
 /// (от верха коробки содержимого). Без неё `align-items: baseline` в taffy
-/// вырождается в выравнивание по нижним краям коробок.
+/// вырождается в выравнивание по нижним краям коробок. Третье значение —
+/// ПОСЛЕДНЯЯ базовая (последняя строка) для `last baseline`.
 type NodeMeasureFn = StackSafe<
     Box<
         dyn FnMut(
@@ -23,7 +24,7 @@ type NodeMeasureFn = StackSafe<
             Size<AvailableSpace>,
             &mut Window,
             &mut App,
-        ) -> (Size<Pixels>, Option<Pixels>),
+        ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>),
     >,
 >;
 
@@ -36,6 +37,9 @@ pub struct TaffyLayoutEngine {
     /// KaminIDE patch: абсолютная позиция узла в физических точках БЕЗ
     /// округления — из неё считается округление на границе кадра.
     absolute_unrounded: FxHashMap<LayoutId, (f32, f32)>,
+    /// KaminIDE patch: абсолютное начало КОРНЯ отдельного дерева (физические
+    /// точки, без округления) — см. `set_root_origin`.
+    root_origins: FxHashMap<LayoutId, (f32, f32)>,
     computed_layouts: FxHashSet<LayoutId>,
 }
 
@@ -55,6 +59,7 @@ impl TaffyLayoutEngine {
             taffy,
             absolute_layout_bounds: FxHashMap::default(),
             absolute_unrounded: FxHashMap::default(),
+            root_origins: FxHashMap::default(),
             computed_layouts: FxHashSet::default(),
         }
     }
@@ -63,7 +68,33 @@ impl TaffyLayoutEngine {
         self.taffy.clear();
         self.absolute_unrounded.clear();
         self.absolute_layout_bounds.clear();
+        self.root_origins.clear();
         self.computed_layouts.clear();
+    }
+
+    /// KaminIDE patch: поставить корень отдельного дерева (`layout_as_root`)
+    /// на ДРОБНОЕ абсолютное место окна. Края его потомков тогда округляются
+    /// на абсолютной координате — так же, как в основном дереве, — а не от
+    /// целого начала корня: атом строки (`kamin-html` `lines.rs`) иначе
+    /// расходился на точку с тем же атомом в гибком ряду
+    /// (`flexbox-justify-content-horiz-004-ref`, `grid-inline-items-001`).
+    /// Возвращаемые границы — абсолютные: смещение элемента ставить нулём.
+    pub fn set_root_origin(&mut self, id: LayoutId, origin: Point<Pixels>, scale_factor: f32) {
+        self.root_origins
+            .insert(id, (origin.x.0 * scale_factor, origin.y.0 * scale_factor));
+        let mut stack = SmallVec::<[LayoutId; 64]>::new();
+        stack.push(id);
+        while let Some(id) = stack.pop() {
+            self.absolute_layout_bounds.remove(&id);
+            self.absolute_unrounded.remove(&id);
+            stack.extend(
+                self.taffy
+                    .children(id.into())
+                    .expect(EXPECT_MESSAGE)
+                    .into_iter()
+                    .map(Into::into),
+            );
+        }
     }
 
     pub fn request_layout(
@@ -119,12 +150,38 @@ impl TaffyLayoutEngine {
         style: Style,
         rem_size: Pixels,
         scale_factor: f32,
-        measure: impl FnMut(
+        mut measure: impl FnMut(
             Size<Option<Pixels>>,
             Size<AvailableSpace>,
             &mut Window,
             &mut App,
         ) -> (Size<Pixels>, Option<Pixels>)
+        + 'static,
+    ) -> LayoutId {
+        self.request_measured_layout_with_baselines(
+            style,
+            rem_size,
+            scale_factor,
+            move |known, available, window, cx| {
+                let (size, first) = measure(known, available, window, cx);
+                (size, first, None)
+            },
+        )
+    }
+
+    /// KaminIDE patch: то же, но замер отдаёт ПЕРВУЮ и ПОСЛЕДНЮЮ базовые
+    /// линии содержимого (`last baseline`, css-align-3 §9.1).
+    pub fn request_measured_layout_with_baselines(
+        &mut self,
+        style: Style,
+        rem_size: Pixels,
+        scale_factor: f32,
+        measure: impl FnMut(
+            Size<Option<Pixels>>,
+            Size<AvailableSpace>,
+            &mut Window,
+            &mut App,
+        ) -> (Size<Pixels>, Option<Pixels>, Option<Pixels>)
         + 'static,
     ) -> LayoutId {
         let taffy_style = style.to_taffy(rem_size, scale_factor);
@@ -270,11 +327,12 @@ impl TaffyLayoutEngine {
                         untransform(available_space.height),
                     );
 
-                    let (a, baseline): (Size<Pixels>, Option<Pixels>) =
+                    let (a, baseline, last_baseline): (Size<Pixels>, Option<Pixels>, Option<Pixels>) =
                         (node_context.measure)(known_dimensions, available_space, window, cx);
                     taffy::MeasureOutput {
                         size: size(a.width.0 * scale_factor, a.height.0 * scale_factor).into(),
                         baseline: baseline.map(|b| b.0 * scale_factor),
+                        last_baseline: last_baseline.map(|b| b.0 * scale_factor),
                     }
                 },
             )
@@ -283,6 +341,49 @@ impl TaffyLayoutEngine {
             _taffy_started.elapsed().as_micros() as u32,
             std::sync::atomic::Ordering::Relaxed,
         );
+    }
+
+    /// KaminIDE patch: размер узла БЕЗ округления к физической точке.
+    ///
+    /// `layout_bounds` округляет края на абсолютной координате — для краски
+    /// это верно, а для арифметики полос обтекания (`crates/html/src/
+    /// band_flow.rs`) нет: десять флоатов по `0.87em` в контейнере `8.7em`
+    /// после округления каждого не влезают в строку (`units-005`).
+    pub fn layout_size_unrounded(&self, id: LayoutId, scale_factor: f32) -> Size<Pixels> {
+        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
+        size(
+            Pixels(layout.size.width / scale_factor),
+            Pixels(layout.size.height / scale_factor),
+        )
+    }
+
+    /// KaminIDE patch: размер узла и его смещение от родителя БЕЗ округления
+    /// к точке устройства. Строке нужны точные размеры атомов: округлённые
+    /// края дают +0.4px на атом при масштабе 1.25, и ряд атомов ровно в
+    /// ширину строки переставал в неё влезать.
+    pub fn layout_exact(&self, id: LayoutId, scale_factor: f32) -> (Point<Pixels>, Size<Pixels>) {
+        let layout = self.taffy.layout(id.into()).expect(EXPECT_MESSAGE);
+        (
+            point(
+                Pixels(layout.location.x / scale_factor),
+                Pixels(layout.location.y / scale_factor),
+            ),
+            size(
+                Pixels(layout.size.width / scale_factor),
+                Pixels(layout.size.height / scale_factor),
+            ),
+        )
+    }
+
+    /// KaminIDE patch: абсолютное начало узла БЕЗ округления к физической
+    /// точке. Хост полос (`band_flow.rs`) кладёт детей отдельным деревом от
+    /// своего начала; от округлённого начала их края округлялись бы второй
+    /// раз и уезжали на точку от соседей в основном дереве
+    /// (`float-nowrap-hyphen-rewind-1-ref2`: текст на 1 px левее и выше).
+    pub fn layout_origin_unrounded(&mut self, id: LayoutId, scale_factor: f32) -> Point<Pixels> {
+        let _ = self.layout_bounds(id, scale_factor);
+        let (ax, ay) = self.absolute_unrounded.get(&id).copied().unwrap_or((0.0, 0.0));
+        point(Pixels(ax / scale_factor), Pixels(ay / scale_factor))
     }
 
     pub fn layout_bounds(&mut self, id: LayoutId, scale_factor: f32) -> Bounds<Pixels> {
@@ -305,7 +406,8 @@ impl TaffyLayoutEngine {
                     .copied()
                     .unwrap_or((0.0, 0.0))
             }
-            None => (0.0, 0.0),
+            // KaminIDE patch: корень с заданным местом (`set_root_origin`).
+            None => self.root_origins.get(&id).copied().unwrap_or((0.0, 0.0)),
         };
         let ax = parent_x + layout.location.x;
         let ay = parent_y + layout.location.y;
@@ -401,6 +503,8 @@ impl ToTaffy<taffy::style::Style> for Style {
                         G::MaxContent => max_content(),
                         _ => auto(),
                     },
+                    // Повтор гранью быть не может: он раскрывается выше.
+                    G::AutoRepeat { .. } => auto(),
                 }
             };
             let side_max = move |t: &G| -> taffy::MaxTrackSizingFunction {
@@ -419,9 +523,27 @@ impl ToTaffy<taffy::style::Style> for Style {
                         G::MaxContent => max_content(),
                         _ => auto(),
                     },
+                    G::AutoRepeat { .. } => auto(),
                 }
             };
             match track {
+                // Повтор отдаётся раскладке своим видом: она сама считает,
+                // сколько дорожек влезет, и схлопывает пустые при `auto-fit`.
+                crate::GridTrack::AutoRepeat { fit, tracks } => {
+                    let count = if *fit {
+                        taffy::style::RepetitionCount::AutoFit
+                    } else {
+                        taffy::style::RepetitionCount::AutoFill
+                    };
+                    let inner: Vec<taffy::TrackSizingFunction> = tracks
+                        .iter()
+                        .map(|t| taffy::TrackSizingFunction {
+                            min: side(t),
+                            max: side_max(t),
+                        })
+                        .collect();
+                    taffy::style_helpers::repeat(count, inner)
+                }
                 crate::GridTrack::MinMax(pair) => {
                     taffy::GridTemplateComponent::Single(minmax(side(&pair.0), side_max(&pair.1)))
                 }
@@ -453,7 +575,7 @@ impl ToTaffy<taffy::style::Style> for Style {
                 .unwrap_or_default()
         }
 
-        taffy::style::Style {
+        let mut out = taffy::style::Style {
             display: self.display.into(),
             overflow: self.overflow.into(),
             scrollbar_width: self.scrollbar_width.to_taffy(rem_size, scale_factor),
@@ -470,10 +592,53 @@ impl ToTaffy<taffy::style::Style> for Style {
             align_self: self.align_self.map(|x| x.into()),
             align_content: self.align_content.map(|x| x.into()),
             justify_content: self.justify_content.map(|x| x.into()),
+            safe_alignment: self.safe_alignment,
             gap: self.gap.to_taffy(rem_size, scale_factor),
             flex_direction: self.flex_direction.into(),
             flex_wrap: self.flex_wrap.into(),
+            // KaminIDE patch: `flex-wrap: balance` + `flex-line-count`.
+            flex_balance_lines: self.flex_balance_lines,
+            // KaminIDE patch: обратная поперечная ось однострочного контейнера.
+            flex_cross_reverse: self.flex_cross_reverse,
+            // KaminIDE patch: `box-sizing: content-box` силами раскладки.
+            box_sizing: if self.content_box {
+                taffy::style::BoxSizing::ContentBox
+            } else {
+                taffy::style::BoxSizing::BorderBox
+            },
+            // KaminIDE patch: анонимный ряд строки прозрачен для долей высоты.
+            percent_basis_from_parent: self.percent_basis_from_parent,
+            // KaminIDE patch: `calc-size()`; длины выражения — в точки
+            // раскладки (тот же множитель, что у прочих длин `to_taffy`).
+            calc_size: self.calc_size.map(|f| {
+                f.map(|(mul, add, max, min)| (mul, add * scale_factor, max * scale_factor, min * scale_factor))
+            }),
+            // KaminIDE patch: `contain: layout` — базовых линий нет.
+            hides_baseline: self.hides_baseline,
+            // KaminIDE patch: `inline-block` — последняя базовая.
+            baseline_from_last: self.baseline_from_last,
+            // KaminIDE patch: базовая по оси x (вертикальное письмо).
+            baseline_x_hint: self
+                .baseline_x_hint
+                .map(|(offset, from_right)| (offset * scale_factor, from_right)),
+            baseline_x_flags: self.baseline_x_flags,
+            // KaminIDE patch: `margin-trim`, физические биты сторон.
+            margin_trim: self.margin_trim,
+            // KaminIDE patch: раскладка лунками; порог в точках раскладки.
+            grid_lanes: self.grid_lanes.map(|l| taffy::style::GridLanes {
+                rows: l.rows,
+                track_reverse: l.track_reverse,
+                fill_reverse: l.fill_reverse,
+                dense: l.dense,
+                tolerance: l.tolerance * scale_factor,
+                tolerance_pct: l.tolerance_pct,
+                stack_block: l.stack_block,
+            }),
+            // KaminIDE patch: подсетка (css-grid-2 §9), биты taffy.
+            subgrid: self.grid_subgrid,
             flex_basis: self.flex_basis.to_taffy(rem_size, scale_factor),
+            // KaminIDE patch: пол GRIDMIN у таблицы-элемента.
+            item_is_table: self.item_is_table,
             flex_grow: self.flex_grow,
             flex_shrink: self.flex_shrink,
             // KaminIDE patch: явный список дорожек имеет приоритет — он
@@ -488,7 +653,11 @@ impl ToTaffy<taffy::style::Style> for Style {
                 None => match self.grid_cols_min {
                     // repeat(auto-fill, minmax(<min>, 1fr))
                     Some(min) => vec![repeat(
-                        taffy::style::RepetitionCount::AutoFill,
+                        if self.grid_cols_fit {
+                            taffy::style::RepetitionCount::AutoFit
+                        } else {
+                            taffy::style::RepetitionCount::AutoFill
+                        },
                         vec![minmax(length(f32::from(min) * scale_factor), fr(1.0))],
                     )],
                     None => to_grid_repeat(&self.grid_cols),
@@ -503,8 +672,32 @@ impl ToTaffy<taffy::style::Style> for Style {
                 crate::GridAutoFlow::RowDense => taffy::GridAutoFlow::RowDense,
                 crate::GridAutoFlow::ColumnDense => taffy::GridAutoFlow::ColumnDense,
             },
-            grid_auto_rows: to_auto_track(&self.grid_auto_rows, scale_factor).into(),
-            grid_auto_columns: to_auto_track(&self.grid_auto_cols, scale_factor).into(),
+            // KaminIDE patch: список неявных дорожек сильнее одиночной.
+            grid_auto_rows: if self.grid_auto_rows_list.is_empty() {
+                to_auto_track(&self.grid_auto_rows, scale_factor).into()
+            } else {
+                self.grid_auto_rows_list
+                    .iter()
+                    .filter_map(|t| match to_grid_track::<String>(t, scale_factor) {
+                        taffy::GridTemplateComponent::Single(one) => Some(one),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .into()
+            },
+            // KaminIDE patch: список неявных дорожек сильнее одиночной.
+            grid_auto_columns: if self.grid_auto_cols_list.is_empty() {
+                to_auto_track(&self.grid_auto_cols, scale_factor).into()
+            } else {
+                self.grid_auto_cols_list
+                    .iter()
+                    .filter_map(|t| match to_grid_track::<String>(t, scale_factor) {
+                        taffy::GridTemplateComponent::Single(one) => Some(one),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .into()
+            },
             grid_row: self
                 .grid_location
                 .as_ref()
@@ -516,7 +709,90 @@ impl ToTaffy<taffy::style::Style> for Style {
                 .map(|location| to_grid_line(&location.column))
                 .unwrap_or_default(),
             ..Default::default()
+        };
+        if let Some(names) = self.grid_line_names.as_deref() {
+            apply_grid_line_names(&mut out, names);
         }
+        out
+    }
+}
+
+/// KaminIDE patch: имена линий сетки и именованные грани — в стиль taffy
+/// (его `NamedLineResolver` разрешает их, в том числе через подсетки).
+fn apply_grid_line_names(out: &mut taffy::style::Style, names: &crate::GridLineNames) {
+    use taffy::style::{GridTemplateComponent, RepetitionCount};
+    // Имена линий между КОМПОНЕНТАМИ шаблона (компонентов на один меньше,
+    // чем линий); имена внутри авто-повтора — в сам повтор.
+    fn template(components: &mut [GridTemplateComponent<String>], axis: &crate::GridAxisLineNames) -> Vec<Vec<String>> {
+        let mut lines = axis.before.clone();
+        if axis.repeat.is_some() {
+            lines.extend(axis.after.iter().cloned());
+        }
+        lines.resize(components.len() + 1, Vec::new());
+        // Разрешитель имён taffy ждёт у КАЖДОГО повтора список имён по его
+        // линиям (дорожек + 1): с пустым списком счётчик линий уходил в
+        // минус (`named.rs`, вычитание из `u16`).
+        for component in components.iter_mut() {
+            if let GridTemplateComponent::Repeat(repeat) = component {
+                repeat.line_names.resize(repeat.tracks.len() + 1, Vec::new());
+            }
+        }
+        if let Some(body) = &axis.repeat {
+            for component in components.iter_mut() {
+                if let GridTemplateComponent::Repeat(repeat) = component
+                    && matches!(repeat.count, RepetitionCount::AutoFill | RepetitionCount::AutoFit)
+                {
+                    let mut body = body.clone();
+                    body.resize(repeat.tracks.len() + 1, Vec::new());
+                    repeat.line_names = body;
+                    break;
+                }
+            }
+        }
+        lines
+    }
+    fn subgrid(axis: &crate::GridAxisLineNames) -> taffy::style::SubgridLineNames<String> {
+        taffy::style::SubgridLineNames {
+            before: axis.before.clone(),
+            repeat: axis.repeat.clone(),
+            after: axis.after.clone(),
+        }
+    }
+    fn placement(p: &crate::GridNamedLine) -> taffy::GridPlacement<String> {
+        match p {
+            crate::GridNamedLine::Line(name, n) => taffy::GridPlacement::NamedLine(name.clone(), *n),
+            crate::GridNamedLine::Span(name, n) => taffy::GridPlacement::NamedSpan(name.clone(), (*n).max(1)),
+        }
+    }
+    if let Some(axis) = &names.columns {
+        out.grid_template_column_names = template(&mut out.grid_template_columns, axis);
+    }
+    if let Some(axis) = &names.rows {
+        out.grid_template_row_names = template(&mut out.grid_template_rows, axis);
+    }
+    out.subgrid_column_names = names.subgrid_columns.as_ref().map(subgrid);
+    out.subgrid_row_names = names.subgrid_rows.as_ref().map(subgrid);
+    // Числовая грань сильнее имени: имя пишется только на месте `auto`.
+    let auto = |p: &taffy::GridPlacement<String>| matches!(p, taffy::GridPlacement::Auto);
+    if let Some(p) = &names.column[0]
+        && auto(&out.grid_column.start)
+    {
+        out.grid_column.start = placement(p);
+    }
+    if let Some(p) = &names.column[1]
+        && auto(&out.grid_column.end)
+    {
+        out.grid_column.end = placement(p);
+    }
+    if let Some(p) = &names.row[0]
+        && auto(&out.grid_row.start)
+    {
+        out.grid_row.start = placement(p);
+    }
+    if let Some(p) = &names.row[1]
+        && auto(&out.grid_row.end)
+    {
+        out.grid_row.end = placement(p);
     }
 }
 
@@ -573,6 +849,9 @@ impl ToTaffy<taffy::style::LengthPercentage> for DefiniteLength {
             DefiniteLength::Fraction(fraction) => {
                 taffy::style::LengthPercentage::percent(*fraction)
             }
+            DefiniteLength::Calc(add, fraction) => {
+                taffy::style::LengthPercentage::calc(taffy::tree::calc_handle(add * scale_factor, *fraction))
+            }
         }
     }
 }
@@ -593,6 +872,9 @@ impl ToTaffy<taffy::style::LengthPercentageAuto> for DefiniteLength {
             DefiniteLength::Fraction(fraction) => {
                 taffy::style::LengthPercentageAuto::percent(*fraction)
             }
+            DefiniteLength::Calc(add, fraction) => {
+                taffy::style::LengthPercentageAuto::calc(taffy::tree::calc_handle(add * scale_factor, *fraction))
+            }
         }
     }
 }
@@ -610,6 +892,9 @@ impl ToTaffy<taffy::style::Dimension> for DefiniteLength {
                 }
             },
             DefiniteLength::Fraction(fraction) => taffy::style::Dimension::percent(*fraction),
+            DefiniteLength::Calc(add, fraction) => {
+                taffy::style::Dimension::calc(taffy::tree::calc_handle(add * scale_factor, *fraction))
+            }
         }
     }
 }

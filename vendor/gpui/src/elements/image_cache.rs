@@ -270,7 +270,9 @@ impl RetainAllImageCache {
         let task = cx.background_executor().spawn(fut).shared();
         self.0.insert(hash, ImageCacheItem::Loading(task.clone()));
 
-        let entity = window.current_view();
+        // KaminIDE patch: a detached measure (layout of a root outside the
+        // view's render) has no current view — then refresh the window.
+        let entity = window.current_view_opt();
         window
             .spawn(cx, {
                 async move |cx| {
@@ -281,8 +283,9 @@ impl RetainAllImageCache {
                     // загрузка не показывалась НИКОГДА: новые иконки дерева
                     // оставались пустыми после раскрытия/смены icon-темы,
                     // пока что-нибудь не дёрнет окно (поймано юзером).
-                    let _ = cx.update(move |_, cx| {
-                        cx.notify(entity);
+                    let _ = cx.update(move |window, cx| match entity {
+                        Some(entity) => cx.notify(entity),
+                        None => window.refresh(),
                     });
                 }
             })

@@ -15,6 +15,49 @@ use crate::tree::{
 use crate::util::debug::{debug_log, debug_log_node};
 use crate::util::sys::{new_vec_with_capacity, ChildrenVec, Vec};
 
+/// KaminIDE patch: реестр пар `calc(<точки> + <доля>)` для calc-значений taffy.
+///
+/// `CompactLength::calc` хранит «указатель», выровненный на 8, а решает его
+/// `resolve_calc_value` этого дерева. Разыменовывать чужой адрес здесь нельзя
+/// (`#![deny(unsafe_code)]`), поэтому в указателе лежит НОМЕР пары в реестре,
+/// сдвинутый на три бита: нулевые младшие биты и ненулевое значение —
+/// ровно то, что проверяет `CompactLength::calc`. Одинаковые пары получают
+/// один номер, реестр растёт только новыми значениями и живёт весь процесс.
+#[cfg(feature = "std")]
+static CALC_PAIRS: std::sync::Mutex<Option<(std::vec::Vec<(f32, f32)>, std::collections::HashMap<(u32, u32), usize>)>> =
+    std::sync::Mutex::new(None);
+
+/// Дескриптор calc-значения «`px` + `fraction` × база» для
+/// `LengthPercentage::calc` и родни (css-values-4 §10.9: доля доживает до
+/// used-value и решается от базы раскладки).
+#[cfg(feature = "std")]
+pub fn calc_handle(px: f32, fraction: f32) -> *const () {
+    let mut guard = CALC_PAIRS.lock().unwrap_or_else(|e| e.into_inner());
+    let (pairs, index) = guard.get_or_insert_with(Default::default);
+    let key = (px.to_bits(), fraction.to_bits());
+    let at = *index.entry(key).or_insert_with(|| {
+        pairs.push((px, fraction));
+        pairs.len()
+    });
+    (at << 3) as *const ()
+}
+
+/// Пара по дескриптору `calc_handle`; чужой дескриптор — ноль.
+#[cfg(feature = "std")]
+fn calc_pair(val: *const ()) -> (f32, f32) {
+    let at = (val as usize) >> 3;
+    let guard = CALC_PAIRS.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .as_ref()
+        .and_then(|(pairs, _)| pairs.get(at.wrapping_sub(1)).copied())
+        .unwrap_or((0.0, 0.0))
+}
+
+#[cfg(not(feature = "std"))]
+fn calc_pair(_val: *const ()) -> (f32, f32) {
+    (0.0, 0.0)
+}
+
 use crate::compute::{
     compute_cached_layout, compute_hidden_layout, compute_leaf_layout, compute_root_layout, round_layout,
 };
@@ -110,6 +153,14 @@ struct NodeData {
     /// The computation result from layout algorithm
     #[cfg(feature = "detailed_layout_info")]
     pub(crate) detailed_layout_info: DetailedLayoutInfo,
+
+    /// KaminIDE patch: дорожки, выданные подсетке родителем (css-grid-2 §9).
+    #[cfg(feature = "grid")]
+    pub(crate) subgrid_tracks: Option<crate::style::SubgridTracks>,
+
+    /// KaminIDE patch: высота родителя, при которой посчитан кэш анонимного
+    /// ряда строки (`percent_basis_from_parent`) — см. `compute_child_layout`.
+    pub(crate) pct_parent_h: Option<Option<f32>>,
 }
 
 impl NodeData {
@@ -124,6 +175,9 @@ impl NodeData {
             has_context: false,
             #[cfg(feature = "detailed_layout_info")]
             detailed_layout_info: DetailedLayoutInfo::None,
+            #[cfg(feature = "grid")]
+            subgrid_tracks: None,
+            pct_parent_h: None,
         }
     }
 
@@ -341,17 +395,95 @@ where
     }
 
     #[inline(always)]
-    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
-        0.0
+    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
+        // KaminIDE patch: указатель — дескриптор `calc_handle` (индекс пары
+        // «точки + доля» в реестре, не адрес). Раньше здесь стоял ноль, и calc
+        // taffy был недоступен вовсе.
+        let (px, fraction) = calc_pair(val);
+        px + fraction * basis
     }
 
     #[inline(always)]
     fn compute_child_layout(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutOutput {
+        // KaminIDE patch: `calc-size(<basis>, <expr>)` у `width`/`height`
+        // (css-values-5 §calc-size). Свойство в стиле — `auto`; если родитель
+        // размер оси не задал, коробка сперва меряется как `auto` (это и
+        // есть «size» основы — и для вкладов min/max-content), затем ось
+        // фиксируется результатом выражения, и раскладка идёт уже при нём
+        // (`calc-size-min-max-sizes-*`, `calc-size-aspect-ratio-001`).
+        // Высота — после ширины: основа высоты зависит от решённой ширины.
+        let cs = self.taffy.nodes[node.into()].style.calc_size;
+        let (fw, fh) = (
+            cs[0].filter(|_| inputs.known_dimensions.width.is_none()),
+            cs[1].filter(|_| inputs.known_dimensions.height.is_none()),
+        );
+        if inputs.run_mode != RunMode::PerformHiddenLayout && (fw.is_some() || fh.is_some()) {
+            let mut known = inputs.known_dimensions;
+            if let Some(f) = fw {
+                let auto = self.compute_child_layout_inner(
+                    node,
+                    LayoutInput { known_dimensions: known, run_mode: RunMode::ComputeSize, ..inputs },
+                );
+                // Замер `ContentSize` соотношения сторон не знает: размер
+                // основы `auto` при известной второй оси — из соотношения
+                // (css-sizing-4 §5.1; `calc-size-aspect-ratio-001`).
+                let ratio = self.taffy.nodes[node.into()].style.aspect_ratio;
+                let base = match (ratio, known.height) {
+                    (Some(r), Some(h)) => auto.size.width.max(h * r),
+                    _ => auto.size.width,
+                };
+                known.width = Some(crate::style::apply_calc_size(f, base));
+            }
+            if let Some(f) = fh {
+                let auto = self.compute_child_layout_inner(
+                    node,
+                    LayoutInput { known_dimensions: known, run_mode: RunMode::ComputeSize, ..inputs },
+                );
+                let ratio = self.taffy.nodes[node.into()].style.aspect_ratio.filter(|r| *r > 0.0);
+                let base = match (ratio, known.width) {
+                    (Some(r), Some(w)) => auto.size.height.max(w / r),
+                    _ => auto.size.height,
+                };
+                known.height = Some(crate::style::apply_calc_size(f, base));
+            }
+            return self.compute_child_layout_inner(node, LayoutInput { known_dimensions: known, ..inputs });
+        }
+        self.compute_child_layout_inner(node, inputs)
+    }
+}
+
+impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
+where
+    MeasureFunction:
+        FnMut(Size<Option<f32>>, Size<AvailableSpace>, NodeId, Option<&mut NodeContext>, &Style) -> crate::tree::MeasureOutput,
+{
+    /// Раскладка узла без `calc-size()` (см. `compute_child_layout`).
+    #[inline(always)]
+    fn compute_child_layout_inner(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutOutput {
         // If RunMode is PerformHiddenLayout then this indicates that an ancestor node is `Display::None`
         // and thus that we should lay out this node using hidden layout regardless of it's own display style.
         if inputs.run_mode == RunMode::PerformHiddenLayout {
             debug_log!("HIDDEN");
             return compute_hidden_layout(self, node);
+        }
+
+        // KaminIDE patch: анонимный ряд строки решает доли высоты детей от
+        // `parent_size` (`percent_basis_from_parent`), а ключ кэша taffy
+        // `parent_size` не содержит: замер ряда в проходе, где высота
+        // родителя ещё неизвестна, отдавался и проходу, где она известна, и
+        // картинка `height: 100%` в растянутом flex-элементе выходила
+        // природной ширины (`intrinsic-percent-replaced-024/026`). Кэш ряда
+        // сбрасывается, когда высота родителя сменилась, и только у ряда, чьи
+        // дети (или дети склеенных групп) держат долю высоты — иначе база
+        // ни на что не влияет, а сброс на каждом проходе стоил ~20 % времени.
+        #[cfg(feature = "flexbox")]
+        if self.taffy.nodes[node.into()].style.percent_basis_from_parent && self.taffy.row_uses_pct_height(node) {
+            let h = inputs.parent_size.height;
+            let data = &mut self.taffy.nodes[node.into()];
+            if data.pct_parent_h != Some(h) {
+                let _ = data.cache.clear();
+                data.pct_parent_h = Some(h);
+            }
         }
 
         // We run the following wrapped in "compute_cached_layout", which will check the cache for an entry matching the node and inputs and:
@@ -372,8 +504,19 @@ where
                 inputs.sizing_mode
             );
 
+            // KaminIDE patch: `hides_baseline` — базовые линии узла гасятся
+            // ОДНОЙ точкой для всех алгоритмов (блок, flex, grid, лист):
+            // родитель увидит `None` и синтезирует их от края коробки
+            // (css-contain-2 §3.2 п.7; Blink `LayoutBox::ShouldApplyLayoutContainment`
+            // → `BoxFragmentBuilder` без базовых).
+            let hides_baseline = tree.taffy.nodes[node.into()].style.hides_baseline;
+            // KaminIDE patch: `inline-block` выравнивается по ПОСЛЕДНЕЙ строке.
+            let baseline_from_last = tree.taffy.nodes[node.into()].style.baseline_from_last;
+            // KaminIDE patch: собственная базовая по x (повёрнутый абзац движка —
+            // лист без замера, `interact::VerticalText`).
+            let baseline_x_hint = tree.taffy.nodes[node.into()].style.baseline_x_hint;
             // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
-            match (display_mode, has_children) {
+            let mut output = match (display_mode, has_children) {
                 (Display::None, _) => compute_hidden_layout(tree, node),
                 #[cfg(feature = "block_layout")]
                 (Display::Block, true) => compute_block_layout(tree, node, inputs),
@@ -381,6 +524,18 @@ where
                 (Display::Flex, true) => compute_flexbox_layout(tree, node, inputs),
                 #[cfg(feature = "grid")]
                 (Display::Grid, true) => compute_grid_layout(tree, node, inputs),
+                // KaminIDE patch: ПУСТАЯ сетка — тоже сетка: явные дорожки и
+                // повторы `auto-fill` задают её размер без элементов (css-grid-2
+                // §7.1 «explicit grid», §7.2.3.2: число повторов — от
+                // минимального размера контейнера). Путь листа их не видел:
+                // пустые лунки `aspect-ratio: 1/1; repeat(auto-fill, 50px);
+                // min-height: 60px` выходили квадратом 60, а не 100
+                // (`column-auto-repeat-003`). Узел с замером (`has_context`)
+                // остаётся листом.
+                #[cfg(feature = "grid")]
+                (Display::Grid, false) if !tree.taffy.nodes[node.into()].has_context => {
+                    compute_grid_layout(tree, node, inputs)
+                }
                 (_, false) => {
                     let node_key = node.into();
                     let style = &tree.taffy.nodes[node_key].style;
@@ -392,7 +547,18 @@ where
                     // TODO: implement calc() in high-level API
                     compute_leaf_layout(inputs, style, |_, _| 0.0, measure_function)
                 }
+            };
+            if let (None, Some((offset, from_right))) = (output.first_baselines.x, baseline_x_hint) {
+                output.first_baselines.x = Some(if from_right { output.size.width - offset } else { offset });
             }
+            if baseline_from_last {
+                output.first_baselines.y = output.last_or_first_y();
+            }
+            if hides_baseline {
+                output.first_baselines = crate::geometry::Point::NONE;
+                output.last_baselines = crate::geometry::Point::NONE;
+            }
+            output
         })
     }
 }
@@ -505,6 +671,22 @@ where
         &self.taffy.nodes[child_node_id.into()].style
     }
 
+    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
+        self.taffy.nodes[node_id.into()].subgrid_tracks.clone()
+    }
+
+    // KaminIDE patch: смена дорожек подсетки сбрасывает её кэш — ключ кэша
+    // (известные размеры, доступное место, режим) дорожек не содержит, и
+    // прежний результат, посчитанный по другим дорожкам, вернулся бы как
+    // годный.
+    fn set_subgrid_tracks(&mut self, node_id: NodeId, tracks: Option<crate::style::SubgridTracks>) {
+        let node = &mut self.taffy.nodes[node_id.into()];
+        if node.subgrid_tracks != tracks {
+            node.subgrid_tracks = tracks;
+            node.cache.clear();
+        }
+    }
+
     #[inline(always)]
     #[cfg(feature = "detailed_layout_info")]
     fn set_detailed_grid_info(&mut self, node_id: NodeId, detailed_grid_info: DetailedGridInfo) {
@@ -531,6 +713,21 @@ where
 
 #[allow(clippy::iter_cloned_collect)] // due to no-std support, we need to use `iter_cloned` instead of `collect`
 impl<NodeContext> TaffyTree<NodeContext> {
+    /// KaminIDE patch: держит ли ребёнок анонимного ряда строки (или ребёнок
+    /// вложенной склеенной группы) долю/`calc` в высоте или её пределах —
+    /// только тогда база долей ряда (высота родителя) влияет на замер.
+    #[cfg(feature = "flexbox")]
+    fn row_uses_pct_height(&self, node: NodeId) -> bool {
+        let pct = |d: crate::style::Dimension| !d.is_auto() && d.into_option().is_none();
+        self.children[node.into()].iter().any(|&child| {
+            let style = &self.nodes[child.into()].style;
+            pct(style.size.height)
+                || pct(style.min_size.height)
+                || pct(style.max_size.height)
+                || (style.percent_basis_from_parent && self.row_uses_pct_height(child))
+        })
+    }
+
     /// Creates a new [`TaffyTree`]
     ///
     /// The default capacity of a [`TaffyTree`] is 16 nodes.

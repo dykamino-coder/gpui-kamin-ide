@@ -1,0 +1,39 @@
+# Правка resvg для KaminIDE: feDisplacementMap
+#
+# Зачем. Два дефекта примитива `feDisplacementMap`, из-за которых он всегда
+# давал пустой выход (вся семья `tainting-*` в WPT):
+#
+# 1. Карта смещения приходит ПРЕМУЛЬТИПЛИЦИРОВАННОЙ, а `displacement_map::apply`
+#    по своему контракту ждёт unpremultiplied — как и соседние примитивы,
+#    которые демультиплексируют вход сами.
+# 2. `scale_coordinates(fe.scale(), fe.scale(), ts)` домножает на масштаб
+#    дважды: `displacement_map::apply` умножает на `fe.scale()` сам. Смещение
+#    улетало за пределы региона, и примитив возвращал пустой холст.
+#
+# Как накатывать при обновлении вендора:
+#   cd vendor/resvg && patch -p1 -l < ../resvg-kaminide.patch
+# Проверено на 0.45.1 и 0.48.1 — место правки в обеих версиях одинаковое.
+
+--- a/src/filter/mod.rs
++++ b/src/filter/mod.rs
+@@ -957,11 +957,18 @@
+     input2: Image,
+ ) -> Result<Image, Error> {
+     let pixmap1 = input1.into_color_space(cs)?.take()?;
+-    let pixmap2 = input2.into_color_space(cs)?.take()?;
++    // KaminIDE patch: карта смещения обязана быть unpremultiplied
++    // (контракт displacement_map::apply) — как у соседних примитивов.
++    let mut pixmap2 = input2.into_color_space(cs)?.take()?;
++    demultiply_alpha(pixmap2.data_mut().as_rgba_mut());
+ 
+     let mut pixmap = tiny_skia::Pixmap::try_create(region.width(), region.height())?;
+ 
+-    let (sx, sy) = match scale_coordinates(fe.scale(), fe.scale(), ts) {
++    // KaminIDE patch: scale_coordinates уже умножает на масштаб холста, а
++    // displacement_map::apply домножает на fe.scale() сам — передача
++    // fe.scale() сюда удваивала множитель, смещение всегда улетало за
++    // регион, и выход примитива был пустым (все tainting-* WPT).
++    let (sx, sy) = match scale_coordinates(1.0, 1.0, ts) {
+         Some(v) => v,
+         None => return Ok(Image::from_image(pixmap1, cs)),
+     };
