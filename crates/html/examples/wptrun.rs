@@ -1,7 +1,7 @@
 //! Прогон reftest-ов WPT: тест и эталон рисуются НАШИМ движком, снимки
 //! сравниваются между собой.
 //!
-//!     cargo run -p kamin-html --example wptrun -- <список.txt> [ширина] [высота]
+//!     cargo run --example wptrun -- <список.txt> [ширина] [высота]
 //!
 //! Формат списка: по строке на пару, `тест|эталон`. Эталон в reftest написан
 //! примитивной вёрсткой, дающей заведомо тот же результат, поэтому
@@ -11,6 +11,9 @@
 //! Всё в ОДНОМ процессе и одном окне: запуск окна стоит секунды, а пар —
 //! тысячи. Документ подменяется в той же сущности, кадр снимается прямо
 //! отсюда (`PrintWindow`), и следующая пара идёт без перезапуска.
+
+#[path = "wptrun/pixel_compare.rs"]
+mod pixel_compare;
 
 use gpui::{
     AppContext as _, Application, Bounds, Context, Entity, IntoElement, ParentElement, Render,
@@ -779,34 +782,6 @@ const INK_MIN: usize = 40;
 /// от зависшего стенда — на неё уже дважды жаловались.
 const SEPARATOR: &str = "<body style=\"background:#cfd8e8;margin:0\"></body>";
 
-/// Допуск, объявленный САМИМ тестом: `<meta name="fuzzy"
-/// content="maxDifference=0-2;totalPixels=0-1200">`. Это часть протокола
-/// reftest WPT, а не поблажка стенда: тест знает, что расходится с эталоном
-/// на антиалиасинге, и называет верхнюю границу расхождения. Возвращается
-/// наибольшее допустимое ЧИСЛО разошедшихся точек.
-fn fuzzy_pixels(source: &str) -> usize {
-    let lower = source.to_ascii_lowercase();
-    let Some(at) = lower
-        .find("name=\"fuzzy\"")
-        .or_else(|| lower.find("name=fuzzy"))
-    else {
-        return 0;
-    };
-    let tail = &lower[at..];
-    let Some(c) = tail.find("totalpixels=") else {
-        return 0;
-    };
-    let value = &tail[c + "totalpixels=".len()..];
-    let value = &value[..value
-        .find(|ch: char| !ch.is_ascii_digit() && ch != '-')
-        .unwrap_or(value.len())];
-    // Запись — диапазон `0-1200` или число; допуск — верхняя граница.
-    value
-        .rsplit('-')
-        .next()
-        .and_then(|n| n.parse().ok())
-        .unwrap_or(0)
-}
 
 fn diff(a: &[u8], b: &[u8]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
@@ -1424,6 +1399,8 @@ fn main() {
     // `WPT_DUMP=1` — снимки разошедшихся пар, `WPT_DUMP=all` — всех подряд.
     // Второе нужно ручному разбору: там проверяется и то, что стенд счёл
     // сошедшимся (см. `scripts/wpt_review.py`).
+    let exact = pixel_compare::exact_mode();
+    let passed = move |v: &str| pixel_compare::passed(exact, v);
     let dump_mode = std::env::var("WPT_DUMP").unwrap_or_default();
     let dumping = !dump_mode.is_empty();
     let dump_all = dump_mode == "all";
@@ -1828,13 +1805,14 @@ fn main() {
                             ink(b, blank.as_ref())
                         )
                     }
+                    (Some(a), Some(b)) if exact => pixel_compare::verdict(a, b),
                     (Some((_, _, a)), Some((_, _, b))) => {
                         let d = diff(a, b);
                         // Тест сам объявил допуск (`meta name=fuzzy`) — часть
                         // протокола reftest: расхождение в пределах названного
                         // ЧИСЛА точек не провал. Процент переводится в точки
                         // по размеру снимка.
-                        let allowed = fuzzy_pixels(&source);
+                        let allowed = pixel_compare::legacy_fuzzy_pixels(&source);
                         let points = (d as f64 / 400.0 * a.len() as f64) as usize;
                         if allowed > 0 && points <= allowed {
                             "0.00".to_string()
@@ -1846,7 +1824,9 @@ fn main() {
                 };
                 // Не сошлось с первым эталоном — пробуем остальные.
                 let mut verdict = verdict;
-                if verdict.parse::<f32>().is_ok_and(|d| d > 0.5) {
+                if (!exact && verdict.parse::<f32>().is_ok_and(|d| d > 0.5))
+                    || (exact && verdict.starts_with("pixel mismatch"))
+                {
                     for other in &alternates {
                         if !std::path::Path::new(other).is_file() {
                             continue;
@@ -1863,7 +1843,13 @@ fn main() {
                         let Some(shot) = show(html, blank.clone(), false).await else {
                             continue;
                         };
-                        let Some((_, _, a)) = &shots[0] else { continue };
+                        let Some(test_shot) = &shots[0] else { continue };
+                        if exact {
+                            let candidate = pixel_compare::verdict(test_shot, &shot);
+                            if passed(&candidate) { verdict = candidate; break; }
+                            continue;
+                        }
+                        let a = &test_shot.2;
                         let d = diff(a, &shot.2);
                         if d < verdict.parse::<f32>().unwrap_or(f32::MAX) {
                             verdict = format!("{d:.2}");
@@ -1887,7 +1873,7 @@ fn main() {
                 // Проверяется всегда, даже когда пара уже зелёная: именно
                 // зелёная пара и подозрительна — обе стороны могли сломаться
                 // одинаково.
-                if verdict.parse::<f32>().is_ok() {
+                if verdict.parse::<f32>().is_ok() || (exact && verdict.starts_with("pixel mismatch")) {
                     for other in &mismatches {
                         if !std::path::Path::new(other).is_file() {
                             continue;
@@ -1904,14 +1890,17 @@ fn main() {
                         let Some(shot) = show(html, blank.clone(), false).await else {
                             continue;
                         };
-                        let Some((_, _, a)) = &shots[0] else { continue };
-                        if diff(a, &shot.2) <= 0.5 {
+                        let Some(test_shot) = &shots[0] else { continue };
+                        let identical = if exact {
+                            passed(&pixel_compare::verdict(test_shot, &shot))
+                        } else { diff(&test_shot.2, &shot.2) <= 0.5 };
+                        if identical {
                             verdict = "совпал с анти-эталоном".into();
                             break;
                         }
                     }
                 }
-                if dumping && (dump_all || verdict.parse::<f32>().map_or(true, |d| d > 0.5)) {
+                if dumping && (dump_all || !passed(&verdict)) {
                     let stem = std::path::Path::new(test)
                         .file_stem()
                         .map(|s| s.to_string_lossy().to_string())
