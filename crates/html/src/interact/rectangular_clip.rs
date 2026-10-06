@@ -1,5 +1,5 @@
 //! Resolve basic rectangular clips before snapping their absolute device edges.
-use super::{Grouped, legacy_clip};
+use super::{Grouped, legacy_clip, polygon_clip};
 use gpui::{Bounds, LayoutId, Pixels, Window};
 
 fn rectangular(group: &Grouped) -> bool {
@@ -16,12 +16,19 @@ pub(super) fn reference_box(
     id: LayoutId,
     window: &mut Window,
 ) -> Bounds<Pixels> {
-    if rectangular(group) {
+    if rectangular(group) || group.polygon.len() == 4 {
         // CSS Shapes §3.1: percentages use the reference box, not its raster
         // bounds. Blink clip_path_clipper.cc:383 likewise retains layout geometry.
-        Bounds {
+        let reference = Bounds {
             origin: window.layout_origin_unrounded(id),
             size: window.layout_size_unrounded(id),
+        };
+        if rectangular(group)
+            || polygon_clip::rectangle(&polygon_clip::points(group, reference), 1.0).is_some()
+        {
+            reference
+        } else {
+            fallback
         }
     } else {
         fallback
@@ -41,6 +48,13 @@ pub(super) fn resolve(
     clip_bounds: Bounds<Pixels>,
     sf: f32,
 ) -> Option<[f32; 4]> {
+    // The polygon's reference box must not move the separate mask painting
+    // area, which follows the painted border-box rather than polygon geometry.
+    let clip_bounds = if group.mask_clip_off.is_some() {
+        bounds
+    } else {
+        clip_bounds
+    };
     group
         .mask_clip_off
         .map(|[ct, cr, cb, cl]| {

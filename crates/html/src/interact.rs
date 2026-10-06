@@ -20,6 +20,7 @@ mod spot_geometry;
 mod rectangular_clip;
 mod legacy_clip;
 mod mask_size;
+mod polygon_clip;
 mod orthogonal_measure;
 mod vertical_style;
 
@@ -718,31 +719,8 @@ impl Element for Grouped {
         // Вершины считаются от ОПОРНОЙ коробки формы (bounds ± края:
         // margin-box шире, content-box уже); проценты — доли её сторон,
         // точки — как есть (clip-path-polygon-008).
-        let [et, er, eb, el] = self.poly_expand;
-        let base = Bounds {
-            origin: gpui::point(bounds.origin.x - px(el), bounds.origin.y - px(et)),
-            size: gpui::size(
-                bounds.size.width + px(el + er),
-                bounds.size.height + px(et + eb),
-            ),
-        };
-        let coord = |l: crate::value::Len, side: Pixels| -> Pixels {
-            match l {
-                crate::value::Len::Pct(p) => side * p,
-                crate::value::Len::Px(v) => px(v),
-                _ => px(0.0),
-            }
-        };
-        let polygon: Vec<gpui::Point<Pixels>> = self
-            .polygon
-            .iter()
-            .map(|(fx, fy)| {
-                gpui::point(
-                    base.origin.x + coord(*fx, base.size.width),
-                    base.origin.y + coord(*fy, base.size.height),
-                )
-            })
-            .collect();
+        let (polygon, polygon_clip) =
+            polygon_clip::geometry(self, bounds, *_prepaint, window.scale_factor());
         // Плитка маски: у растра — его точки как CSS-точки (density 1), у
         // рисунка без размера и градиента — сама коробка (mask-size auto,
         // css-masking §7.4); `mask-size` подменяет размер, `mask-position`
@@ -1109,7 +1087,10 @@ impl Element for Grouped {
         });
         // Коробка окраски (`mask-clip`): вне её маска не красится — элемент
         // там скрыт (mask-size-contain-clip-padding).
-        let mask_clip = rectangular_clip::resolve(self, bounds, *_prepaint, window.scale_factor());
+        let mask_clip = polygon_clip::intersect(
+            rectangular_clip::resolve(self, bounds, *_prepaint, window.scale_factor()),
+            polygon_clip,
+        );
         // Подложка (наружные тени `border-shape`) — в текущий контекст ДО
         // композита группы: под буфером и вне его маски, на области выноса.
         let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
