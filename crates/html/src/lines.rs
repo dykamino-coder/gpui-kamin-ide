@@ -4381,7 +4381,12 @@ impl Paragraph {
                 // между половинками слова шов в точку — соседние отрезки
                 // округляются независимо (`text-autospace-001`: `XX`
                 // расходились).
-                if self.text[r.clone()].chars().nth(1).is_some() {
+                // A box spacer carries its entire advance in tracking (CSS 2.1
+                // section 8.3). Joining it to a preceding word discards that
+                // advance when the word is shaped with its own spacing.
+                if self.text[r.clone()].chars().nth(1).is_some()
+                    || self.spacers.binary_search(&r.start).is_ok()
+                {
                     cut(r.start);
                 }
                 cut(r.end);
