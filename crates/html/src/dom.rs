@@ -3990,7 +3990,7 @@ fn collect_scroll_markers(
 /// Общий для `::before`/`::after` и для `::marker { content }`: по
 /// css-lists-3 §content-property содержимое маркера строится «exactly as for
 /// ::before».
-fn content_text(
+pub(crate) fn content_text(
     items: &[crate::computed::ContentItem],
     counters: &mut crate::counters::Counters,
     attrs: &[(String, String)],
@@ -4062,7 +4062,7 @@ fn syntax_accepts(syntax: &str, value: &str) -> bool {
 /// ждёт `file:///` с прямыми косыми (как пишет стенд для `<img src>`), а
 /// разбор стиля отдаёт голый путь. `None` — файла нет: такая картинка коробки
 /// не даёт (Servo `components/layout/replaced.rs:348`).
-fn content_image_src(src: &str) -> Option<String> {
+pub(crate) fn content_image_src(src: &str) -> Option<String> {
     if src.starts_with("data:") {
         return Some(src.to_string());
     }
