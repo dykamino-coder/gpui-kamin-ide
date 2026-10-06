@@ -643,6 +643,7 @@ impl ToTaffy<taffy::style::Style> for Style {
             // KaminIDE patch: `inline-block` — последняя базовая.
             baseline_from_last: self.baseline_from_last,
             baseline_unavailable: self.baseline_unavailable,
+            no_inline_block_baseline: self.no_inline_block_baseline,
             // KaminIDE patch: базовая по оси x (вертикальное письмо).
             baseline_x_hint: self
                 .baseline_x_hint

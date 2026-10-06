@@ -92,6 +92,8 @@ impl BlockFlow {
         let x = value.baselines_x;
         value.baselines_x = reflect(value.baselines, value.size.width, self.block_reverse);
         value.baselines = x;
+        // The inline-block channel is a horizontal-flow y offset only.
+        value.inline_block_last_y = None;
         #[cfg(feature = "content_size")]
         {
             value.scrollable_overflow_rect = transpose_rect(value.scrollable_overflow_rect);
@@ -106,6 +108,7 @@ impl BlockFlow {
         let x = reflect(value.baselines_x, value.size.width, self.block_reverse);
         value.baselines_x = value.baselines;
         value.baselines = x;
+        value.inline_block_last_y = None;
         value.size = self.size(value.size);
         #[cfg(feature = "content_size")]
         {

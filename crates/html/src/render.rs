@@ -25774,7 +25774,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         }
     };
     let mut rows: Vec<(&Element, RowCarry)> = vec![];
-    collect_rows(&fixed, (0.0, 0.0, None, None), &mut rows);
+    collect_rows(&fixed, Some(e), (0.0, 0.0, None, None), &mut rows);
     // Сколько рядов от i-го до конца ЕГО группы (включая сам ряд): охват
     // ячейки по рядам урезается этим числом, а `rowspan=0` его и берёт (HTML
     // table model: «span all the remaining rows in the row group»). Без
@@ -27007,7 +27007,20 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             }
             // Сдвиг строки или её группы: собственного элемента у них нет,
             // поэтому край, заданный на `<tr>`/`<tbody>`, двигает ячейки.
-            if shift != (0.0, 0.0) {
+            // A relatively positioned cell's own percentage insets resolve
+            // against the row's specified height (`position-relative-013`),
+            // not the table grid the cell is laid out in; the row offset adds.
+            let own_pct = cell.style.position == Some(crate::computed::Position::Relative)
+                && [cell.style.inset.left, cell.style.inset.right, cell.style.inset.top, cell.style.inset.bottom]
+                    .iter()
+                    .any(|l| matches!(l, Some(Len::Pct(_))));
+            if own_pct {
+                let own = relative_shift(cell, Some(row));
+                d = d.relative().left(px(shift.0 + own.0)).top(px(shift.1 + own.1));
+                let s = d.style();
+                s.inset.right = None;
+                s.inset.bottom = None;
+            } else if shift != (0.0, 0.0) {
                 d = d.relative().left(px(shift.0)).top(px(shift.1));
             }
             // Умолчание браузера для ячейки — `vertical-align: middle`: без
@@ -28021,6 +28034,11 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     outer.style().item_is_table = Some(true);
     // Table baselines come from rows, never the empty grid/caption shim.
     outer.style().baseline_unavailable = Some(!have_rows);
+    // An enclosing `inline-block` takes no baseline from a table at any block
+    // depth (CSS 2.1 §10.8.1 counts line boxes only; Blink
+    // `block_layout_algorithm.cc` `PropagateBaselineFromBlockChild`: "table's
+    // don't contribute any baselines"). The wrappers below carry the same mark.
+    outer.style().no_inline_block_baseline = Some(true);
     // КОРНЕВОЙ стол (`<html display: table>`): родитель — блок стенда, где
     // `align-self` не работает, и стол растягивался на всё окно. Гибкая
     // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
@@ -28274,6 +28292,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         if vertical && e.style.vertical_rl == Some(true) {
             cap_wrap.reverse();
         }
+        wrap.style().no_inline_block_baseline = Some(true);
         wrap.children(cap_wrap).into_any_element()
     };
     // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
@@ -28283,11 +28302,9 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         wrap.position = e.style.position;
         wrap.inset = e.style.inset;
         wrap.z_index = e.style.z_index;
-        return crate::apply::apply(div(), &wrap)
-            .flex()
-            .flex_row()
-            .child(outer)
-            .into_any_element();
+        let mut wrap = crate::apply::apply(div(), &wrap).flex().flex_row();
+        wrap.style().no_inline_block_baseline = Some(true);
+        return wrap.child(outer).into_any_element();
     }
     // Стол с `width: auto` СЖИМАЕТСЯ по содержимому (§17.5.2): у нас это
     // делает гибкий ряд-обёртка. Приём `align_self: FlexStart` выше работает
@@ -28313,6 +28330,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
         if root_table {
             wrap = wrap.w_full();
         }
+        wrap.style().no_inline_block_baseline = Some(true);
         return wrap.child(outer).into_any_element();
     }
     outer.into_any_element()
@@ -28453,19 +28471,35 @@ fn track_list(
 /// у них не остаётся, и `position: relative` вместе с краями пропадал бы
 /// молча. Сдвиг переносится на ЯЧЕЙКИ: строка целиком сдвигается ровно
 /// настолько же, насколько каждая её ячейка.
-fn relative_shift(e: &Element) -> (f32, f32) {
+///
+/// Percentage insets resolve against the parent table part's SPECIFIED size
+/// (the table for a row group, the row group for a row), not its used size;
+/// an unspecified size makes them `auto` (CSS 2.1 §9.3.2, §10.5; Blink resolves
+/// against the parent's percentage-resolution size, crbug.com/1227884,
+/// `position-relative-011/012`).
+fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32) {
     if e.style.position != Some(crate::computed::Position::Relative) {
         return (0.0, 0.0);
     }
-    let side = |a: Option<Len>, b: Option<Len>| match (a, b) {
-        (Some(Len::Px(v)), _) => v,
+    let basis = |l: Option<Len>| match l {
+        Some(Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let (bw, bh) = parent.map_or((None, None), |p| (basis(p.style.width), basis(p.style.height)));
+    let len = |l: Option<Len>, base: Option<f32>| match l {
+        Some(Len::Px(v)) => Some(v),
+        Some(Len::Pct(p)) => base.map(|b| p * b),
+        _ => None,
+    };
+    let side = |a: Option<Len>, b: Option<Len>, base: Option<f32>| match (len(a, base), len(b, base)) {
+        (Some(v), _) => v,
         // Задан только противоположный край — сдвиг в обратную сторону.
-        (_, Some(Len::Px(v))) => -v,
+        (_, Some(v)) => -v,
         _ => 0.0,
     };
     (
-        side(e.style.inset.left, e.style.inset.right),
-        side(e.style.inset.top, e.style.inset.bottom),
+        side(e.style.inset.left, e.style.inset.right, bw),
+        side(e.style.inset.top, e.style.inset.bottom, bh),
     )
 }
 
@@ -28533,12 +28567,13 @@ type RowCarry<'a> = (f32, f32, Option<crate::value::Color>, Option<&'a Element>)
 
 fn collect_rows<'a>(
     nodes: &'a [Node],
+    parent: Option<&'a Element>,
     carry: RowCarry<'a>,
     out: &mut Vec<(&'a Element, RowCarry<'a>)>,
 ) {
     for n in nodes {
         if let Node::Element(e) = n {
-            let (dx, dy) = relative_shift(e);
+            let (dx, dy) = relative_shift(e, parent);
             // Фон группы строк рисуют ЯЧЕЙКИ: своей коробки у группы в общей
             // сетке не остаётся, и заливка пропадала молча
             // (`position-relative-table-tbody-left`: зелёная коробка не
@@ -28583,7 +28618,7 @@ fn collect_rows<'a>(
                     if picture { None } else { shift.2 },
                     Some(e),
                 );
-                collect_rows(&e.children, deeper, out);
+                collect_rows(&e.children, Some(e), deeper, out);
             }
         }
     }
