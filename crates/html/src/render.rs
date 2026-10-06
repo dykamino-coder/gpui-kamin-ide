@@ -13776,6 +13776,11 @@ fn column_flow_in(
             },
             whole,
         )
+        // `orphans`/`widows` наследуются (css-break-3 §4.4), начальное — 2.
+        .line_breaks(
+            inherited.orphans.unwrap_or(2) as usize,
+            inherited.widows.unwrap_or(2) as usize,
+        )
         .into_any_element(),
     )
 }

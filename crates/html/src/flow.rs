@@ -1010,7 +1010,14 @@ impl ColumnStack {
                 let w = if rl { w.flex_row_reverse() } else { w.flex_row() };
                 *el = w.child(inner).into_any_element();
             }
-            el.layout_as_root(
+            // Копия раскладывается ОТ своего абсолютного начала, как у
+            // горизонтальной стопки (`layout_as_root_at`): края её коробок
+            // округляются в той же сетке устройства, что и маска фрагмента
+            // (`fragment_mask::snap`). Прежде округление шло от нуля, а сдвиг
+            // на дробное начало колонки добавлялся потом — на стыке колонок
+            // оставалась строка точек фона (`transform-001`, `overflow-clip-002`).
+            el.layout_as_root_at(
+                point(b.origin.x + px(rel.0), b.origin.y + px(rel.1)),
                 size(
                     gpui::AvailableSpace::Definite(b.size.width),
                     gpui::AvailableSpace::Definite(b.size.height),
@@ -1018,14 +1025,15 @@ impl ColumnStack {
                 window,
                 cx,
             );
-            el.prepaint_at(point(b.origin.x + px(rel.0), b.origin.y + px(rel.1)), window, cx);
+            el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
         }
         // Спаннер — во всю СТРОЧНУЮ сторону коробки.
         for &(kid, sy) in &spans {
             let h = self.children[kid].h;
             let b = axis_box(axis, bounds.origin, block_avail, 0.0, inline_avail, sy, h);
             let kid = &mut self.children[kid];
-            kid.el.layout_as_root(
+            kid.el.layout_as_root_at(
+                b.origin,
                 size(
                     gpui::AvailableSpace::Definite(b.size.width),
                     gpui::AvailableSpace::Definite(b.size.height),
@@ -1033,7 +1041,7 @@ impl ColumnStack {
                 window,
                 cx,
             );
-            kid.el.prepaint_at(b.origin, window, cx);
+            kid.el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
         }
         if let Some(items) = &self.gap_items {
             let lines = self.lines_plan.borrow();
