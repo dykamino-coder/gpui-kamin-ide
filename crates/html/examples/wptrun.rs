@@ -14,6 +14,15 @@
 
 #[path = "wptrun/pixel_compare.rs"]
 mod pixel_compare;
+#[path = "wptrun/reference_result.rs"]
+mod reference_result;
+#[path = "wptrun/capture.rs"]
+mod capture;
+#[path = "wptrun/capture_name.rs"]
+mod capture_name;
+#[path = "wptrun/capture_dump.rs"]
+mod capture_dump;
+use capture::capture;
 
 use gpui::{
     AppContext as _, Application, Bounds, Context, Entity, IntoElement, ParentElement, Render,
@@ -637,97 +646,6 @@ fn page_box(decls: Vec<(String, String)>, root_margin: [f32; 4], wm: (bool, bool
         border,
         outline,
     }
-}
-
-/// Снимок клиентской области окна: массив байт BGRA и его размеры.
-fn capture(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::Graphics::Gdi::{
-        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleBitmap, CreateCompatibleDC,
-        DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
-    };
-    use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
-    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
-
-    let hwnd = HWND(hwnd as *mut _);
-    unsafe {
-        let mut rect = Default::default();
-        GetClientRect(hwnd, &mut rect).ok()?;
-        let (w, h) = (
-            (rect.right - rect.left) as u32,
-            (rect.bottom - rect.top) as u32,
-        );
-        if w == 0 || h == 0 {
-            return None;
-        }
-        let screen = GetDC(None);
-        let dc = CreateCompatibleDC(Some(screen));
-        let bitmap = CreateCompatibleBitmap(screen, w as i32, h as i32);
-        let old = SelectObject(dc, bitmap.into());
-        // Флаг 3 = PW_RENDERFULLCONTENT: без него аппаратно нарисованное окно
-        // снимается пустым.
-        let ok = PrintWindow(hwnd, dc, PRINT_WINDOW_FLAGS(3)).as_bool();
-        let mut info = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: w as i32,
-                // Отрицательная высота — строки сверху вниз.
-                biHeight: -(h as i32),
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB.0,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let mut pixels = vec![0u8; (w * h * 4) as usize];
-        let lines = GetDIBits(
-            dc,
-            bitmap,
-            0,
-            h,
-            Some(pixels.as_mut_ptr() as *mut _),
-            &mut info,
-            DIB_RGB_COLORS,
-        );
-        SelectObject(dc, old);
-        let _ = DeleteObject(bitmap.into());
-        let _ = DeleteDC(dc);
-        ReleaseDC(None, screen);
-        (ok && lines > 0).then_some((w, h, pixels))
-    }
-}
-
-/// Доля точек, разошедшихся сильнее допуска.
-/// Выгрузить снимок пары в PNG рядом с отчётом.
-///
-/// Число расхождения говорит только «не сошлось». Что именно разъехалось —
-/// видно лишь на картинке, и без неё правка идёт вслепую. Пишется по просьбе
-/// (`WPT_DUMP=1`) и только для разошедшихся пар: на полном прогоне это тысячи
-/// файлов.
-fn dump(name: &str, shot: &(u32, u32, Vec<u8>)) {
-    let dir = std::path::Path::new("target/wpt-shots");
-    if std::fs::create_dir_all(dir).is_err() {
-        return;
-    }
-    let Ok(file) = std::fs::File::create(dir.join(format!("{name}.png"))) else {
-        return;
-    };
-    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), shot.0, shot.1);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    let Ok(mut writer) = encoder.write_header() else {
-        return;
-    };
-    // Снимок приходит от системы в порядке BGRA, PNG ждёт RGBA. Заодно
-    // выставляется полная непрозрачность: у слоя окна альфа нулевая, и без
-    // этого картинка открывается пустой.
-    let mut rgba = shot.2.clone();
-    for px in rgba.chunks_exact_mut(4) {
-        px.swap(0, 2);
-        px[3] = 255;
-    }
-    let _ = writer.write_image_data(&rgba);
 }
 
 /// Своя рабочая память в мегабайтах — второй след деградации стенда рядом со
@@ -1381,6 +1299,9 @@ fn attr_value(tag: &str, name: &str) -> Option<String> {
 // НЕГОДНЫЙ шрифт НЕ применяется, и с подстановкой мы начали его принимать
 // (0.41 -> 4.29). Правильный порядок обратный: сперва научить `fonts.rs`
 // отвергать негодный woff2, и только потом подставлять `@import`.
+#[path = "wptrun/config.rs"]
+mod config;
+
 fn main() {
     // Паника В КАДРЕ не роняет процесс: оконный вызов Windows её глотает, и
     // на экране молча остаётся предыдущая страница — стенд считает её пустой.
@@ -1404,25 +1325,18 @@ fn main() {
     let dump_mode = std::env::var("WPT_DUMP").unwrap_or_default();
     let dumping = !dump_mode.is_empty();
     let dump_all = dump_mode == "all";
-    let pairs: Vec<(String, String)> = std::fs::read_to_string(&list)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| line.split_once('|'))
-        // Хвост после ВТОРОЙ черты отрезается: списки часто нарезаются из
-        // ОТЧЁТА, где третьим полем стоит вердикт, и он молча приклеивался к
-        // пути эталона. Путь становился битым, страница показывалась пустой,
-        // и пара выглядела сломанной по несуществующей причине.
-        .map(|(a, b)| {
-            let b = b.split('|').next().unwrap_or(b).trim();
-            (a.trim().to_string(), b.to_string())
-        })
-        .collect();
+    let pairs = config::pairs(&list);
+    let animation_elapsed = config::animation_elapsed();
     if pairs.is_empty() {
         eprintln!("пустой список пар: {list}");
         std::process::exit(1);
     }
 
     Application::new().run(move |cx| {
+        if let Some(elapsed) = animation_elapsed {
+            eprintln!("WPT animation elapsed override: {} ms", elapsed.as_millis());
+            cx.set_global(gpui::AnimationElapsedTime(elapsed));
+        }
         // Ahem — служебный шрифт набора: все его буквы одинаковые чёрные
         // квадраты в кегль. На нём построены сотни тестов: фигуры сходятся
         // ровно потому, что метрики предсказуемы. Без него текст набирается
@@ -1469,6 +1383,8 @@ fn main() {
                     }),
                     window_decorations: Some(WindowDecorations::Client),
                     window_background: WindowBackgroundAppearance::Opaque,
+                    is_resizable: false,
+                    is_minimizable: false,
                     ..Default::default()
                 },
                 |_, cx| -> Entity<Page> { cx.new(|_| Page { doc: empty }) },
@@ -1626,7 +1542,7 @@ fn main() {
             let mut slow: Vec<(u128, String)> = vec![];
             let mut timing = String::new();
             let mut timing_lines = 0usize;
-            for (test, reference) in &pairs {
+            for (pair_index, (test, reference)) in pairs.iter().enumerate() {
                 let started = std::time::Instant::now();
                 // Тест, которому нужен JavaScript, стенд исполнить не может.
                 // `<meta name="variant">` применяется скриптом
@@ -1731,6 +1647,7 @@ fn main() {
                 // списком слов и держим анти-эталоны отдельным оракулом.
                 let mut alternates: Vec<String> = vec![];
                 let mut mismatches: Vec<String> = vec![];
+                let mut has_match = false;
                 let source_for_refs = std::fs::read_to_string(test).unwrap_or_default();
                 for tag in source_for_refs.to_ascii_lowercase().split("<link").skip(1) {
                     let head = &tag[..tag.find('>').unwrap_or(tag.len())];
@@ -1753,6 +1670,7 @@ fn main() {
                     if !anti && !rel.split_whitespace().any(|t| t == "match") {
                         continue;
                     }
+                    has_match |= rel.split_whitespace().any(|t| t == "match");
                     let Some(at) = head.find("href") else {
                         continue;
                     };
@@ -1774,12 +1692,20 @@ fn main() {
                         if !mismatches.contains(&full) {
                             mismatches.push(full);
                         }
-                    } else if !full.eq_ignore_ascii_case(reference) && !alternates.contains(&full) {
+                    } else if !reference_result::same_file(&full, reference) && !alternates.contains(&full) {
                         alternates.push(full);
                     }
                 }
+                let negative_primary = !has_match
+                    && mismatches.iter().any(|path| reference_result::same_file(path, reference));
+                let primary_relation = if negative_primary {
+                    reference_result::Relation::Mismatch
+                } else {
+                    reference_result::Relation::Match
+                };
                 let verdict = match (&shots[0], &shots[1]) {
                     _ if red_seen => "красное видно".into(),
+                    _ if negative_primary && !exact => "negative references require exact comparison".into(),
                     // Пустая страница совпадает с разделителем, и такая пара
                     // дала бы ложный ноль. Это не «сошлось», это «нечего
                     // сравнивать»: страница не нарисовалась вовсе.
@@ -1805,7 +1731,7 @@ fn main() {
                             ink(b, blank.as_ref())
                         )
                     }
-                    (Some(a), Some(b)) if exact => pixel_compare::verdict(a, b),
+                    (Some(a), Some(b)) if exact => reference_result::verdict(a, b, primary_relation),
                     (Some((_, _, a)), Some((_, _, b))) => {
                         let d = diff(a, b);
                         // Тест сам объявил допуск (`meta name=fuzzy`) — часть
@@ -1824,6 +1750,7 @@ fn main() {
                 };
                 // Не сошлось с первым эталоном — пробуем остальные.
                 let mut verdict = verdict;
+                let mut matched_alternate = None;
                 if (!exact && verdict.parse::<f32>().is_ok_and(|d| d > 0.5))
                     || (exact && verdict.starts_with("pixel mismatch"))
                 {
@@ -1846,7 +1773,11 @@ fn main() {
                         let Some(test_shot) = &shots[0] else { continue };
                         if exact {
                             let candidate = pixel_compare::verdict(test_shot, &shot);
-                            if passed(&candidate) { verdict = candidate; break; }
+                            if passed(&candidate) {
+                                verdict = candidate;
+                                matched_alternate = Some((other.clone(), shot));
+                                break;
+                            }
                             continue;
                         }
                         let a = &test_shot.2;
@@ -1875,8 +1806,12 @@ fn main() {
                 // одинаково.
                 if verdict.parse::<f32>().is_ok() || (exact && verdict.starts_with("pixel mismatch")) {
                     for other in &mismatches {
-                        if !std::path::Path::new(other).is_file() {
+                        if negative_primary && reference_result::same_file(other, reference) {
                             continue;
+                        }
+                        if !std::path::Path::new(other).is_file() {
+                            verdict = "анти-эталон не найден".into();
+                            break;
                         }
                         // Разделитель — не печатная страница: флаг печати снимается, иначе
                         // он рисуется стопкой листов, `flat()` его не узнаёт и `show`
@@ -1888,9 +1823,14 @@ fn main() {
                             other,
                         );
                         let Some(shot) = show(html, blank.clone(), false).await else {
-                            continue;
+                            verdict = "снимок анти-эталона не получен".into();
+                            break;
                         };
                         let Some(test_shot) = &shots[0] else { continue };
+                        if exact && pixel_compare::compare(test_shot, &shot).is_none() {
+                            verdict = "invalid screenshot dimensions".into();
+                            break;
+                        }
                         let identical = if exact {
                             passed(&pixel_compare::verdict(test_shot, &shot))
                         } else { diff(&test_shot.2, &shot.2) <= 0.5 };
@@ -1901,16 +1841,8 @@ fn main() {
                     }
                 }
                 if dumping && (dump_all || !passed(&verdict)) {
-                    let stem = std::path::Path::new(test)
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    if let Some(shot) = &shots[0] {
-                        dump(&stem, shot);
-                    }
-                    if let Some(shot) = &shots[1] {
-                        dump(&format!("{stem}--ref"), shot);
-                    }
+                    let stem = capture_name::stem(pair_index, test);
+                    capture_dump::pair(&stem, &shots, matched_alternate.as_ref());
                 }
                 report.push_str(&format!("{test}|{reference}|{verdict}\n"));
                 // Отчёт пишется после каждой пары: падение на одном файле не
