@@ -7520,10 +7520,29 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                         Some(FlexDir::Col) | Some(FlexDir::ColReverse) => {
                             e.style.height = Some(Len::Px(0.0));
                             e.style.max_height = Some(Len::Px(0.0));
+                            e.style.min_height = Some(Len::Px(0.0));
+                            e.style.margin.top = Some(Len::Px(0.0));
+                            e.style.margin.bottom = Some(Len::Px(0.0));
+                            e.style.padding.top = Some(Len::Px(0.0));
+                            e.style.padding.bottom = Some(Len::Px(0.0));
+                            e.style.border_width.top = Some(Len::Px(0.0));
+                            e.style.border_width.bottom = Some(Len::Px(0.0));
                         }
+                        // Распорка в главной оси — ноль ЦЕЛИКОМ: элемент «as
+                        // if display:none» (css-flexbox-1 §4.4), значит и его
+                        // поля, отбивки и рамки по главной оси соседей не
+                        // раздвигают (`flexbox_visibility-collapse`: между
+                        // соседями только их собственные поля).
                         _ => {
                             e.style.width = Some(Len::Px(0.0));
                             e.style.max_width = Some(Len::Px(0.0));
+                            e.style.min_width = Some(Len::Px(0.0));
+                            e.style.margin.left = Some(Len::Px(0.0));
+                            e.style.margin.right = Some(Len::Px(0.0));
+                            e.style.padding.left = Some(Len::Px(0.0));
+                            e.style.padding.right = Some(Len::Px(0.0));
+                            e.style.border_width.left = Some(Len::Px(0.0));
+                            e.style.border_width.right = Some(Len::Px(0.0));
                         }
                     }
                     e.style.hidden = Some(true);
