@@ -75,6 +75,8 @@ fn bound(t: &Track) -> gpui::GridTrack {
         // Сюда единица шрифта дойти не должна: её переводит в точки
         // разрешение кегля. Если всё же дошла — ведём себя как `auto`.
         Track::Font(_) => gpui::GridTrack::Auto,
+        Track::FitPx(v) => gpui::GridTrack::FitContentPx(px(*v)),
+        Track::FitPct(p) => gpui::GridTrack::FitContentPercent(*p),
     }
 }
 

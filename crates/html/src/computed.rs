@@ -11904,6 +11904,11 @@ pub enum Track {
     Auto,
     MinContent,
     MaxContent,
+    /// Предел `fit-content(N)` — только как ВЕРХНЯЯ грань `minmax(auto, …)`:
+    /// дорожка по содержимому, зажатая N (css-grid-2 §7.2.4,
+    /// `fit-content( <length-percentage> )`), а не фиксированный максимум.
+    FitPx(f32),
+    FitPct(f32),
 }
 
 impl Track {
@@ -12291,7 +12296,11 @@ fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
             .strip_prefix("fit-content(")
             .and_then(|r| r.strip_suffix(')'))
         {
-            let hi = single(inner).unwrap_or(Track::Auto);
+            let hi = match single(inner).unwrap_or(Track::Auto) {
+                Track::Px(v) => Track::FitPx(v),
+                Track::Pct(v) => Track::FitPct(v),
+                other => other,
+            };
             return Some(TrackSize::MinMax(Track::Auto, hi));
         }
         single(t).map(TrackSize::Single)

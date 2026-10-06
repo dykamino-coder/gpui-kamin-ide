@@ -445,7 +445,9 @@ impl ToTaffy<taffy::style::Style> for Style {
                     G::Pixels(px) => length(f32::from(*px) * scale_factor),
                     // KaminIDE patch: процент от ширины сетки.
                     G::Percent(p) => taffy::style_helpers::percent(*p),
-                    G::Fraction(_) | G::Auto => auto(),
+                    G::Fraction(_) | G::Auto | G::FitContentPx(_) | G::FitContentPercent(_) => {
+                        auto()
+                    }
                     G::MinContent => min_content(),
                     G::MaxContent => max_content(),
                     // Вложенный `minmax` сводится к своим граням по отдельности.
@@ -468,8 +470,18 @@ impl ToTaffy<taffy::style::Style> for Style {
                     G::Auto => auto(),
                     G::MinContent => min_content(),
                     G::MaxContent => max_content(),
+                    G::FitContentPx(px) => {
+                        taffy::MaxTrackSizingFunction::fit_content_px(f32::from(*px) * scale_factor)
+                    }
+                    G::FitContentPercent(p) => taffy::MaxTrackSizingFunction::fit_content_percent(*p),
                     G::MinMax(pair) => match &pair.1 {
                         G::Pixels(px) => length(f32::from(*px) * scale_factor),
+                        G::FitContentPx(px) => taffy::MaxTrackSizingFunction::fit_content_px(
+                            f32::from(*px) * scale_factor,
+                        ),
+                        G::FitContentPercent(p) => {
+                            taffy::MaxTrackSizingFunction::fit_content_percent(*p)
+                        }
                         G::Fraction(f) => fr(*f),
                         G::MinContent => min_content(),
                         G::MaxContent => max_content(),

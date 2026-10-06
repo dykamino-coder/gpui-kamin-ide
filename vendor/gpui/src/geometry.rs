@@ -3687,6 +3687,11 @@ pub enum GridTrack {
     MinContent,
     /// Ширина содержимого без переносов: `max-content`.
     MaxContent,
+    /// KaminIDE patch: `fit-content(N)` — верхняя грань по содержимому,
+    /// зажатая длиной (в точках) или долей сетки.
+    FitContentPx(Pixels),
+    /// KaminIDE patch: `fit-content(N%)`.
+    FitContentPercent(f32),
     /// `minmax(min, max)` — пара из двух дорожек выше.
     MinMax(Box<(GridTrack, GridTrack)>),
     /// KaminIDE patch: `repeat(auto-fill | auto-fit, …)` — сколько дорожек
