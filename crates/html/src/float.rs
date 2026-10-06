@@ -584,9 +584,8 @@ fn measure_columns(
     // Разрыв после `k` строк. `orphans`/`widows` (css-break-3 §4.4): в колонке
     // до разрыва не меньше `orphans` строк блока, после — не меньше `widows`.
     // Строки идут одним блоком, и нарушить можно лишь `widows` у последнего
-    // разрыва: его переносят на `lines − widows`, если до него остаётся
-    // `orphans` (Blink `BreakBeforeChildIfNeeded` → `kBreakAppealViolatingOrphansAndWidows`
-    // уступает более ранней точке без нарушения). Иначе — прежний край.
+    // разрыва: его переносят к `lines − widows`, но не ближе `orphans` строк
+    // от начала колонки.
     let (orphans, widows) = line_breaks;
     let plain: Vec<usize> = (1..count).map(|i| i * per_col).take_while(|&k| k < lines).collect();
     let mut ks: Vec<usize> = Vec::with_capacity(plain.len());
@@ -597,8 +596,12 @@ fn measure_columns(
             break;
         }
         if lines - e < widows {
-            let alt = lines.saturating_sub(widows);
-            if alt > s && alt - s >= orphans {
+            // Ближе к `widows`, но не ценой `orphans`: когда обоих не
+            // соблюсти, разрыв встаёт сразу после `orphans` строк колонки
+            // (`widows-orphans-018`: orphans 3, widows 3 — разрыв между 7 и
+            // 8, а не между 6 и 7).
+            let alt = lines.saturating_sub(widows).max(s + orphans);
+            if alt > s && alt < e {
                 e = alt;
             }
         }
