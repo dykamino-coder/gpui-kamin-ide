@@ -286,7 +286,11 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         d = d.overflow_hidden();
     }
     if let Some(n) = e.style.clamp_lines().filter(|_| !multicol) {
-        d = d.line_clamp(n as usize);
+        // Без `Styled::line_clamp`: тот попутно включает `overflow_hidden`,
+        // а что прятать, решает срез ниже.
+        d.text_style()
+            .get_or_insert_with(Default::default)
+            .line_clamp = Some(n as usize);
         let font = match c.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
@@ -314,7 +318,15 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         if !sized && cut.is_finite() {
             d = d.max_h(px(cut + mbp_y));
         }
-        d = d.overflow_hidden();
+        // Счётный кламп прячет только то, что ЗА точкой среза; сами
+        // оставленные строки переполняют коробку как обычно (css-overflow-4
+        // §5.3 — `overflow` клампом не меняется). «Резать нечего»
+        // (бесконечная точка: за N-й строкой своего абзаца ничего нет, хвост
+        // абзаца уже снял бюджет строк) — обрезки нет, и «Line 4…» видна под
+        // коробкой с `height: 3lh` (`line-clamp-011/035`).
+        if cut.is_finite() {
+            d = d.overflow_hidden();
+        }
     }
     let empty = !e.children.iter().any(|n| !is_blank(n));
     // Корень документа — сам корень подложки (filter-effects-2
@@ -24146,8 +24158,15 @@ fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
                 } else {
                     0.0
                 };
+                // Потолок высоты участвует в выборе точки среза только в
+                // авто-режиме (`line-clamp: auto` / `4 auto`); счётный
+                // `line-clamp: 4` и `-webkit-line-clamp` режут ТОЛЬКО по числу
+                // строк, а не влезшее в `max-height` переполняет коробку
+                // (`line-clamp-035`, `webkit-line-clamp-with-max-height`).
                 let max_h = match merged.max_height {
-                    Some(Len::Px(v)) => Some((v - bb_y).max(0.0)),
+                    Some(Len::Px(v)) if e.style.clamp_auto == Some(true) => {
+                        Some((v - bb_y).max(0.0))
+                    }
                     _ => None,
                 };
                 // `text-box-trim: trim-end` клампа: последняя строка перед
