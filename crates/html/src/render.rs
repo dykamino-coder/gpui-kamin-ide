@@ -5,6 +5,8 @@
 //! свои правила — они и описаны в доке отдельными разделами.
 
 mod fragment_size;
+mod band_clearance;
+use band_clearance::supported as band_clear_supported;
 mod content_wrapper;
 use content_wrapper::{content_sized, content_sized_wraps};
 mod orthogonal_inline;
@@ -10981,8 +10983,9 @@ fn wrap_floats(
         // `floats-bfc-003`). Хост начинается с такого блока.
         if measured_ok {
             for i in 0..nodes.len() {
-                if let Some((host, j)) = band_host_nested(&nodes, i, em, parent_bfc) {
+                if let Some((mut host, j)) = band_host_nested(&nodes, i, em, parent_bfc) {
                     let mut out: Vec<Node> = nodes[..i].to_vec();
+                    band_clearance::mark_start(&mut host, cb_top_open, &out);
                     out.push(Node::Element(host));
                     out.extend(nodes[j..].iter().cloned());
                     return out;
@@ -11078,6 +11081,7 @@ fn wrap_floats(
             {
                 host.first_line = BAND_FL.with(|f| f.borrow().clone());
             }
+            band_clearance::mark_start(&mut host, cb_top_open, &out);
             out.push(Node::Element(host));
             out.extend(lifted);
             i = next;
@@ -12100,7 +12104,7 @@ fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
         c.style.position,
         Some(crate::computed::Position::Absolute) | Some(crate::computed::Position::Fixed)
     ) || c.style.float.is_some_and(|f| f != 0)
-        || (c.style.clear.is_some() && !band_f6())
+        || (c.style.clear.is_some() && !band_clear_supported(c))
         || matches!(
             c.style.display,
             Some(Display::InlineBlock)
@@ -12177,7 +12181,7 @@ fn band_host_m(
         // полосы (`band_flow::plan`), а не распорка флекс-ряда.
         if let Node::Element(next) = &nodes[j]
             && (next.style.float.is_some_and(|f| f != 0)
-                || (next.style.clear.is_some() && !band_f6()))
+                || (next.style.clear.is_some() && !band_clear_supported(next)))
         {
             // Флоат дальше по той же строке прогона («BEF<float>Inner
             // <float>AFTER», `::after { float: right }` за текстом): пока
@@ -12352,9 +12356,9 @@ fn band_host_m_tail(
     // (§9.5.2) решаются в паре с высотой хвоста, а хост их не видит —
     // остаётся распорке флекс-ряда (`adjoining-float-nested-forced-clearance-003`).
     if flows
-        && !band_f6()
         && let Some(Node::Element(next)) = nodes[j..].iter().find(|n| !is_blank(n))
         && next.style.clear.is_some()
+        && !band_clear_supported(next)
         && !zero_len(next.style.margin.top)
     {
         return None;
@@ -12437,7 +12441,7 @@ fn band_host_nested(
     while j < nodes.len() {
         if let Node::Element(next) = &nodes[j]
             && (next.style.float.is_some_and(|f| f != 0)
-                || (next.style.clear.is_some() && !band_f6()))
+                || (next.style.clear.is_some() && !band_clear_supported(next)))
         {
             break;
         }
@@ -12456,8 +12460,8 @@ fn band_host_nested(
     let rest = band_flow_rest(rest, em)?;
     if let Some(Node::Element(next)) = nodes[j..].iter().find(|n| !is_blank(n))
         && next.style.clear.is_some()
+        && !band_clear_supported(next)
         && !zero_len(next.style.margin.top)
-        && !band_f6()
     {
         return None;
     }
@@ -12657,26 +12661,6 @@ fn band_f11() -> bool {
     *ON
 }
 
-/// Включён ли шаг F6 — очищающие коробки внутри измеряемого хоста
-/// (`BF_F6=1`, только для замера ступени).
-///
-/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (02.10, по умолчанию выключен): очищающая коробка
-/// внутри хоста с `top = max(y + mt, низ флоатов)`. Срез флоатов/форм/clear
-/// (1173 пары) поверх F7: 863 -> 862, +4/-5. Приобретены
-/// `clear-on-child-with-margins`, `-2`, `clear-on-parent-with-margins`,
-/// `floats-wrap-bfc-007`; потеряны `adjoining-float-nested-forced-clearance`,
-/// `clearance-006`, `floats-029`, `negative-clearance-after-adjoining-float`,
-/// `zero-width-floats`. Гипотетическая позиция `y + mt` неверна, когда поле
-/// уже ушло схлопыванием на уровне узлов (`collapse_margins`) — нужен канал
-/// «поле как число» в точку полос (Servo `position_without_clearance` /
-/// `position_with_zero_clearance`, `flow/float.rs:997-1004`), а не правка
-/// здесь.
-fn band_f6() -> bool {
-    static ON: std::sync::LazyLock<bool> =
-        std::sync::LazyLock::new(|| std::env::var("BF_F6").is_ok_and(|v| v == "1"));
-    *ON
-}
-
 /// Блок обычного потока для измеряемого хоста (шаг F4): блочного уровня,
 /// в потоке, своего контекста не заводит, поля разрешимы.
 fn band_flow_block(c: &Element, em: f32) -> bool {
@@ -12689,7 +12673,7 @@ fn band_flow_block(c: &Element, em: f32) -> bool {
         && c.style.is_caption != Some(true)
         && c.tag != "caption"
         && flow_interior_plain(c)
-        && (c.style.clear.is_none() || band_f6())
+        && (c.style.clear.is_none() || band_clear_supported(c))
         && matches!(
             c.style.display,
             None | Some(Display::Block) | Some(Display::ListItem)
@@ -12914,7 +12898,9 @@ fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEl
         inherited.width = Some(Len::Px(w));
     }
     let inherited = &inherited;
-    let kids = band_kids(&e.children, count, inherited, opts, em);
+    let kids = band_kids(
+        &e.children, count, inherited, opts, em, e.attr("adjoining-start") == Some("1"),
+    );
     let flow = crate::band_flow::BandFlow::new(kids);
     if inherited.vertical == Some(true) {
         flow.vertical(inherited.vertical_rl == Some(true))
@@ -12933,6 +12919,7 @@ fn band_kids(
     inherited: &Computed,
     opts: &RenderOpts,
     em: f32,
+    start_open: bool,
 ) -> Vec<crate::band_flow::Kid> {
     use crate::band_flow::{Kid, Kind, Nest};
     let depth = defer_depth();
@@ -13276,6 +13263,8 @@ fn band_kids(
             head,
             lead: if float { lead_for(idx) } else { None },
             lead_base: if float { base_for(idx) } else { None },
+            margin_offset: c.style.float_margin_offset.unwrap_or(0.0),
+            start_open,
         });
     }
     kids
@@ -13308,7 +13297,7 @@ fn band_nest_block(c: &Element, em: f32) -> bool {
         && c.style.is_caption != Some(true)
         && c.tag != "caption"
         && matches!(c.style.display, None | Some(Display::Block))
-        && (c.style.clear.is_none() || band_f6())
+        && (c.style.clear.is_none() || band_clear_supported(c))
         && c.style.position.is_none()
         && c.style.transform.is_none()
         && c.style.opacity.is_none()
@@ -13362,7 +13351,7 @@ fn band_nest(
     let inner_em = band_em(&c.style, em)?;
     let seq = band_seq(collapse_margins(&c.children, false), inner_em)?;
     let merged = inline::inherit(inherited, &c.style);
-    let kids = band_kids(&seq, 0, &merged, opts, inner_em);
+    let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c));
     Some(crate::band_flow::Nest {
         kids,
         inset: band_inset(c, em)?,
@@ -15269,6 +15258,7 @@ fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
         // между блоками сплошь, и разрыв струны разводит их полями врозь.
         // Возвращаться вместе с настоящей строчной коробкой в раскладке.
         if !in_flow(&e.style) {
+            band_clearance::remember_float_margin(e, strut, emitted);
             continue;
         }
         let top = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);

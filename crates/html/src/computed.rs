@@ -2295,9 +2295,9 @@ pub struct Computed {
     pub frame_3d: Option<Frame3d>,
     /// `float`: -1 — влево, 1 — вправо, 0 — не обтекается.
     pub float: Option<i8>,
-    /// `clear: inherit` — сторону берёт родитель. Своего наследования у
-    /// `clear` нет (свойство ненаследуемое), поэтому ключевое слово помнится
-    /// отдельно и разрешается там, где родительский стиль под рукой.
+    /// Unemitted adjoining margin at the float's source position (CSS 2.1 §9.5.1).
+    pub(crate) float_margin_offset: Option<f32>,
+    /// Explicit `clear: inherit`; ordinary `clear` is non-inherited.
     pub(crate) clear_inherit: bool,
     /// `background-attachment: fixed` — плитка считается от области
     /// просмотра, а не от коробки.
