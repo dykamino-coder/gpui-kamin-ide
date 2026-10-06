@@ -7603,6 +7603,57 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                             || inherited.root_box;
                         e.style.flex_main_def = Some(definite);
                     }
+                    // Доля высоты элемента РЯДА при неопределённой высоте
+                    // контейнера ведёт себя как `auto` (CSS 2.1 §10.5;
+                    // css-flexbox-1 §9.8: определённой поперечную ось делает
+                    // лишь определённый размер контейнера), но вычисленное
+                    // значение — не `auto`, поэтому `stretch` к ней не
+                    // применяется и работает как `flex-start` (§9.4 п.11,
+                    // css-align-3 §6.1). Прежде доля решалась от высоты
+                    // строки (`stretch-requires-computed-auto-size`: красная
+                    // коробка в полвысоты соседа).
+                    if matches!(
+                        inherited.display,
+                        Some(Display::Flex) | Some(Display::InlineFlex)
+                    ) && matches!(
+                        inherited.flex_dir,
+                        None | Some(FlexDir::Row) | Some(FlexDir::RowReverse)
+                    ) && inherited.vertical != Some(true)
+                        && e.style.vertical != Some(true)
+                        && matches!(e.style.height, Some(Len::Pct(_)))
+                        && !matches!(
+                            e.style.position,
+                            Some(crate::computed::Position::Absolute)
+                                | Some(crate::computed::Position::Fixed)
+                        )
+                    {
+                        let edge = |l: Option<Len>| l.is_some_and(|v| v != Len::Auto);
+                        let cross_definite = matches!(inherited.height, Some(Len::Px(_)))
+                            || (matches!(inherited.height, Some(Len::Pct(_)))
+                                && inherited.cb_height_def)
+                            || (matches!(
+                                inherited.position,
+                                Some(crate::computed::Position::Absolute)
+                                    | Some(crate::computed::Position::Fixed)
+                            ) && edge(inherited.inset.top)
+                                && edge(inherited.inset.bottom))
+                            || inherited.stretched
+                            || inherited.root_box
+                            || inherited.aspect_ratio.is_some();
+                        if !cross_definite {
+                            e.style.height = None;
+                            let stretch = match e.style.align_self {
+                                Some(a) => a == crate::computed::Align::Stretch,
+                                None => matches!(
+                                    inherited.align_items,
+                                    None | Some(crate::computed::Align::Stretch)
+                                ),
+                            };
+                            if stretch {
+                                e.style.align_self = Some(crate::computed::Align::Start);
+                            }
+                        }
+                    }
                     // ★ Эти три правила жили в ветке ОБЫЧНОГО потока (`else`
                     // ниже) с проверками на Flex/Grid-родителя — и были
                     // недостижимы по построению (скаут flexbox: пробы
