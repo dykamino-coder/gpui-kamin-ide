@@ -3329,6 +3329,8 @@ fn walk(
             // Номер пункта снимается СРАЗУ после своих директив — до
             // псевдоэлементов и детей, которые счётчик двигают дальше.
             let list_item = is_list_item.then(|| counters.value_of("list-item"));
+            let style_scope = (box_level && style.contain_style == Some(true))
+                .then(|| counters.enter_style_scope());
             // Содержимое маркера — по первому верному условию css-lists-3
             // §content-property: `content` на `::marker` не `normal` →
             // «exactly as for ::before»; `none` → коробки нет; иначе
@@ -3487,13 +3489,11 @@ fn walk(
             if !holds_columns {
                 children.retain(|n| !matches!(n, Node::Element(c) if c.style.col_role.is_some()));
             }
-            // Область счётчика НЕ закрывается на выходе из элемента: по
-            // §12.4.1 она включает элемент, его потомков И СЛЕДУЮЩИХ СЕСТЁР.
-            // Ровно это делает ленивая чистка `remove_stale` — она держит
-            // запись, пока обход не вышел за РОДИТЕЛЯ создателя. Жадное
-            // снятие здесь её опережало, и `counter-reset` на спане умирал
-            // вместе с ним (`content-counter-008`: после `XLIX` шло `XIII`
-            // вместо `L`).
+            // CSS Lists §12.4.1: ordinary counters survive into following siblings.
+            // Restore only the isolated subtree; remove_stale handles ordinary scopes.
+            if let Some(scope) = style_scope {
+                counters.leave_style_scope(scope);
+            }
             if box_level {
                 counters.leave();
             }

@@ -1,0 +1,73 @@
+//! Style containment isolates counter mutations and quote depth in descendants.
+
+use super::{Counters, Entry, covers};
+use std::collections::HashMap;
+
+/// Saved outer counters remain readable inside the subtree (counter() is unscoped).
+pub(crate) struct Scope {
+    stack: HashMap<String, Vec<Entry>>,
+    quote_depth: usize,
+}
+
+impl Counters {
+    /// CSS Containment 2 §3.4: enter after the root's own counter directives.
+    /// Blink counters_attachment_context.cc:250-255 uses the same boundary.
+    pub(crate) fn enter_style_scope(&mut self) -> Scope {
+        self.boundaries.push(self.path.clone());
+        Scope {
+            stack: self.stack.clone(),
+            quote_depth: self.quote_depth,
+        }
+    }
+
+    pub(crate) fn leave_style_scope(&mut self, scope: Scope) {
+        self.boundaries.pop();
+        self.stack = scope.stack;
+        self.quote_depth = scope.quote_depth;
+    }
+
+    /// Узел задал `quotes`: действует на него и его потомков.
+    pub fn set_quotes(&mut self, value: Option<Vec<(String, String)>>) {
+        let cur = self.path.clone();
+        self.quotes.retain(|(o, _)| covers(o, &cur) && o != &cur);
+        self.quotes.push((cur, value));
+    }
+
+    /// Кавычка для `open-quote`/`close-quote` с учётом глубины; `own` —
+    /// `quotes` самого псевдоэлемента. Начальное `auto` — английские пары.
+    pub fn quote(
+        &mut self,
+        open: bool,
+        emit: bool,
+        own: Option<&Option<Vec<(String, String)>>>,
+    ) -> String {
+        let cur = self.path.clone();
+        self.quotes.retain(|(o, _)| covers(o, &cur));
+        let depth = if open {
+            self.quote_depth += 1;
+            self.quote_depth - 1
+        } else if self.quote_depth > 0 {
+            self.quote_depth -= 1;
+            self.quote_depth
+        } else {
+            // Лишняя закрывающая ничего не печатает и глубину не трогает.
+            return String::new();
+        };
+        if !emit {
+            return String::new();
+        }
+        let pick = |list: &[(String, String)]| -> String {
+            list.get(depth.min(list.len().saturating_sub(1)))
+                .map(|(o, c)| if open { o.clone() } else { c.clone() })
+                .unwrap_or_default()
+        };
+        match own.or(self.quotes.last().map(|(_, v)| v)) {
+            Some(Some(list)) => pick(list),
+            Some(None) => String::new(),
+            None => {
+                let (o, c) = [("\u{201c}", "\u{201d}"), ("\u{2018}", "\u{2019}")][depth.min(1)];
+                (if open { o } else { c }).to_string()
+            }
+        }
+    }
+}

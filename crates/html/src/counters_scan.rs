@@ -1,17 +1,7 @@
-//! Начальное значение обратного счётчика: предварительный обход области.
-//!
-//! `counter-reset: reversed(имя)` без числа означает «столько, сколько в
-//! области шагов» (css-lists-3 §instantiating-counters): значение нужно ЗНАТЬ
-//! в момент создания счётчика, а элементы, которые его двигают, идут дальше
-//! по документу. Поэтому область обходится заранее — отдельным лёгким
-//! проходом, который разрешает стиль, но ничего не рисует.
-//!
-//! От Blink (`counters_attachment_context.cc`
-//! `CalculateInitialValueForReversed`) отличаемся тремя местами, и каждое
-//! проверено парой набора: свой `counter-increment` создатель учитывает
-//! (Blink его пропускает — `counter-reset-reversed-pseudo-003`), пунктом
-//! считается всякий `display: list-item`, а не только `<li>`, и неявный
-//! счётчик списочного контейнера в счёт входит.
+//! Initial reversed-counter values require a prepass over their scope.
+//! CSS Lists 3 §instantiating-counters: reversed(name) starts from the number
+//! of increments in its scope. Unlike Blink CalculateInitialValueForReversed,
+//! this scan includes the creator's increment and all display:list-item boxes.
 
 use crate::computed::{Computed, Display};
 use crate::css::{Decls, Rule};
@@ -176,6 +166,11 @@ impl Scan<'_> {
         }
         let is_item = tag == "li" || style.display == Some(Display::ListItem);
         self.step(&style, is_item);
+        // CSS Containment 2 §3.4: descendant increments create local counters;
+        // they cannot contribute to an outer reversed counter's initial value.
+        if style.contain_style == Some(true) && style.display != Some(Display::Contents) {
+            return;
+        }
         // Порядок как в отрисовке: `::before`, дети, `::after`.
         if let Some(st) = pseudo_style(me, path, Sibs::EMPTY, "before", self.rules, self.vars) {
             self.step(&st, false);
