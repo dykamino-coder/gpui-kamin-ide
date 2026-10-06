@@ -7,6 +7,8 @@ use super::*;
 pub enum ImageSampling {
     /// Interpolate neighboring pixels when resizing an image.
     Linear,
+    /// Interpolate while preserving fractional destination geometry.
+    LinearSubpixel,
     /// Preserve source pixel boundaries without interpolation.
     Nearest,
 }
@@ -51,9 +53,13 @@ impl Window {
             order: 0,
             pad: u32::from(sampling == ImageSampling::Nearest),
             grayscale,
-            bounds: bounds
-                .map_origin(|origin| origin.floor())
-                .map_size(|size| size.ceil()),
+            bounds: if sampling == ImageSampling::LinearSubpixel {
+                bounds
+            } else {
+                bounds
+                    .map_origin(|origin| origin.floor())
+                    .map_size(|size| size.ceil())
+            },
             content_mask,
             corner_radii,
             tile,
