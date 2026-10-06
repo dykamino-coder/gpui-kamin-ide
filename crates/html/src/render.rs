@@ -17750,6 +17750,12 @@ fn paragraph_pieces_routed(
                 Some(measure_font(inherited, opts)),
                 Some(gpui::px(own_size(inherited, opts))),
             )
+            .marker_color(Some(
+                inherited
+                    .color
+                    .map(crate::value::Color::to_hsla)
+                    .unwrap_or_else(gpui::black),
+            ))
             .text_fit(inherited.text_fit)
             .fit_parts(
                 // Масштабируемы только интервалы в ДОЛЯХ кегля; `px` и `em`
