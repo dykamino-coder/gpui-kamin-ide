@@ -20937,7 +20937,16 @@ fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
     // (`rotate_rad`/`scale`), а `Transformed` рисует по `lin`/`tr`/`m4` —
     // до экрана они не доходили вовсе. `translate` здесь не нужен: он уже
     // сдвинул коробку (`apply.rs`).
-    let t = t.after_individual(c.rotate_prop, c.scale_prop);
+    let mut t = t.after_individual(c.rotate_prop, c.scale_prop);
+    // Чистый px-сдвиг уже сдвинул коробку в раскладке
+    // (`Computed::folded_shift`, `apply.rs`) — матрица остаётся единичной.
+    if c.folded_shift().is_some() {
+        t.tr[0][0] = 0.0;
+        t.tr[1][0] = 0.0;
+        t.m4[0][3] = 0.0;
+        t.m4[1][3] = 0.0;
+        t.translate = (0.0, 0.0);
+    }
     wrapper.rotate = t.rotate_rad;
     wrapper.skew = t.skew_rad;
     wrapper.scale = t.scale;

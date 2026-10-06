@@ -3102,6 +3102,28 @@ fn walk(
             promote_auto_ratio(&mut style, &tag);
             apply_presentational_colors(&mut style, &tag, &attrs);
             finish_inline_display(&mut style, &tag);
+            style.plain_block_box = {
+                use crate::computed::Display;
+                let special = matches!(
+                    tag.as_str(),
+                    "table" | "caption" | "colgroup" | "col" | "thead" | "tbody" | "tfoot"
+                        | "tr" | "td" | "th" | "hr" | "fieldset" | "legend" | "details"
+                        | "summary" | "dialog" | "option" | "optgroup" | "html" | "body"
+                        | "input" | "textarea" | "select" | "button" | "img" | "video"
+                        | "canvas" | "iframe" | "embed" | "object" | "svg" | "meter"
+                        | "progress"
+                );
+                let block = match style.display {
+                    Some(Display::Block)
+                    | Some(Display::GridLanes)
+                    | Some(Display::ListItem)
+                    | Some(Display::Flex)
+                    | Some(Display::Grid) => true,
+                    None => style.inline_display != Some(true) && BLOCK_TAGS.contains(&tag.as_str()),
+                    _ => false,
+                };
+                block && !special && style.float.is_none_or(|f| f == 0)
+            };
             // css-will-change-1: обещанный `transform`/`contain` делает коробку
             // содержащим блоком и контекстом наложения лишь там, где само
             // свойство применимо. У строчной НЕатомарной коробки его нет

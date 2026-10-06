@@ -1100,6 +1100,30 @@ impl Transform {
         ]
     }
 
+    /// Список — чистый плоский сдвиг в css-точках (`translate*()`/`matrix`
+    /// с единичной линейной частью, без долей размера и без объёма):
+    /// `Some((x, y))`.
+    pub fn pure_px_shift(&self) -> Option<(f32, f32)> {
+        let id2 = self.lin == [[1.0, 0.0], [0.0, 1.0]];
+        let no_pct = self.tr[0][1] == 0.0
+            && self.tr[0][2] == 0.0
+            && self.tr[1][1] == 0.0
+            && self.tr[1][2] == 0.0
+            && self.m4_pct.iter().all(|r| r[0] == 0.0 && r[1] == 0.0);
+        let mut m = self.m4;
+        m[0][3] = 0.0;
+        m[1][3] = 0.0;
+        let (x, y) = (self.tr[0][0], self.tr[1][0]);
+        (id2 && no_pct
+            && !self.has_3d
+            && m == IDENTITY4
+            && self.m4[0][3] == x
+            && self.m4[1][3] == y
+            && x.is_finite()
+            && y.is_finite())
+        .then_some((x, y))
+    }
+
     /// Домножить СПРАВА на уже накопленную матрицу другого объявления.
     ///
     /// Нужно слоению motion-1: offset-трансформ идёт ПЕРЕД авторским
@@ -2562,6 +2586,10 @@ pub struct Computed {
     pub contain_layout: Option<bool>,
     /// `display: flow-root` — свой контекст форматирования (коробка Block).
     pub flow_root: Option<bool>,
+    /// Статичная блочная коробка в потоке (не строчная, не таблица, не
+    /// поле формы, не float): её чистый px-`transform` раскладка берёт на
+    /// себя (`folded_shift`). Ставит `dom` после `finish_inline_display`.
+    pub plain_block_box: bool,
     /// `display: inline` дословно (не inline-block): §9.7/§10.2 дорешиваются
     /// после каскада — см. `dom::finish_inline_display`.
     pub inline_display: Option<bool>,
@@ -2880,6 +2908,40 @@ impl Default for BgSize {
 }
 
 impl Computed {
+    /// Сдвиг из `transform`, который раскладка берёт на себя как
+    /// относительное смещение — тем же путём, что и свойство `translate`
+    /// (`apply::apply_box`). Чистый сдвиг — это смена начала координат
+    /// (css-transforms-1 §transform-rendering), и разложенная на сдвинутом
+    /// месте коробка обязана рисоваться байт в байт как сдвинутая: иначе
+    /// при дробном масштабе экрана округление раскладки (до сдвига) и
+    /// дробный сдвиг матрицей (после) расходились на пиксель — края коробки и
+    /// глифы (Blink так же проносит дробное смещение сквозь 2D-сдвиг:
+    /// `PaintPropertyTreeBuilder`, subpixel accumulation). Только статичная
+    /// блочная коробка — её путь отрисовки один (`render.rs`, блочная ветка
+    /// `transformed(animated(e))`), и края у неё не заданы.
+    pub fn folded_shift(&self) -> Option<(f32, f32)> {
+        use crate::computed::inh;
+        if !matches!(self.position, None | Some(Position::Static))
+            || self.hoisted_block
+            || self.rotate_prop.is_some()
+            || self.scale_prop.is_some()
+            || self.animation.is_some()
+            || self.inherit_bits & inh::TRANSFORM != 0
+            || !self.plain_block_box
+        {
+            return None;
+        }
+        if let Some((x, y)) = self.translate {
+            if !matches!((x, y), (Len::Px(_), Len::Px(_))) {
+                return None;
+            }
+        }
+        self.transform
+            .as_ref()?
+            .pure_px_shift()
+            .filter(|&(x, y)| x != 0.0 || y != 0.0)
+    }
+
     /// Градиент, которому нужна МЕХАНИКА ПЛИТКИ (размер, повтор, позиция,
     /// свой край): сплошная заливка её не умеет, рисует слой-картинка.
     pub(crate) fn gradient_as_tile(&self) -> bool {
