@@ -61,7 +61,7 @@ pub fn fill_path(
             paint.shader = tiny_skia::Pattern::new(
                 pattern_pixmap.as_ref(),
                 tiny_skia::SpreadMode::Repeat,
-                tiny_skia::FilterQuality::Bicubic,
+                pattern_quality(transform, patt_ts),
                 fill.opacity().get(),
                 patt_ts,
             );
@@ -101,7 +101,7 @@ fn stroke_path(
             paint.shader = tiny_skia::Pattern::new(
                 pattern_pixmap.as_ref(),
                 tiny_skia::SpreadMode::Repeat,
-                tiny_skia::FilterQuality::Bicubic,
+                pattern_quality(transform, patt_ts),
                 stroke.opacity().get(),
                 patt_ts,
             );
@@ -174,6 +174,27 @@ fn convert_base_gradient(
     }
 
     Some((mode, points))
+}
+
+/// KaminIDE patch: the tile is rasterized at the device scale of the
+/// pattern (`render_pattern_pixmap`), so when tile space maps to device
+/// space 1:1 (axis-aligned, scale ±1 — flips included) every device pixel
+/// is a tile texel. Bicubic (Mitchell) sampling still blurs such a texel
+/// with its neighbours and with the wrapped opposite edge, bleeding colours
+/// across the pattern's own cell boundaries; browsers paint it crisp
+/// (WPT css-transforms `svg-matrix-*`). Nearest is exact there; any other
+/// mapping keeps the bicubic filter.
+fn pattern_quality(
+    transform: tiny_skia::Transform,
+    patt_ts: tiny_skia::Transform,
+) -> tiny_skia::FilterQuality {
+    let full = transform.pre_concat(patt_ts);
+    let unit = |v: f32| (v.abs() - 1.0).abs() < 1e-4;
+    if full.kx.abs() < 1e-6 && full.ky.abs() < 1e-6 && unit(full.sx) && unit(full.sy) {
+        tiny_skia::FilterQuality::Nearest
+    } else {
+        tiny_skia::FilterQuality::Bicubic
+    }
 }
 
 fn render_pattern_pixmap(
