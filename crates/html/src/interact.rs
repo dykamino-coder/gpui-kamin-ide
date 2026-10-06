@@ -1330,6 +1330,10 @@ pub struct Transformed {
     /// Ячейка объёмного контекста ПРЯМОГО родителя: своя матрица копится
     /// поверх неё, изнанка решается по накопленной, доля родителя снимается.
     pub under_3d: Option<crate::computed::Frame3d>,
+    /// Чистый плоский сдвиг уже перенесён в место раскладки на подготовке
+    /// (`prepaint`, `Window::set_layout_placed_origin`): `paint` рисует без
+    /// матрицы.
+    placed: bool,
 }
 
 /// Сплющивание плоскости z=0 в аффинную матрицу экрана
@@ -1416,12 +1420,25 @@ impl Transformed {
             under_perspective: None,
             frame_3d: None,
             under_3d: None,
+            placed: false,
         }
+    }
+
+    /// Плоская матрица — чистый сдвиг (линейная часть единичная с точностью
+    /// до ошибки `f32`: `rotate(360deg)` даёт sin ≈ 1e-7): сдвиг в css-точках
+    /// для коробки `w × h`.
+    fn pure_shift(&self, w: f32, h: f32) -> Option<(f32, f32)> {
+        let [[a, b], [c, d]] = self.lin;
+        let eps = 1e-5;
+        let id = (a - 1.0).abs() < eps && b.abs() < eps && c.abs() < eps && (d - 1.0).abs() < eps;
+        let sx = self.tr[0][0] + w * self.tr[0][1] + h * self.tr[0][2];
+        let sy = self.tr[1][0] + w * self.tr[1][1] + h * self.tr[1][2];
+        (id && sx.is_finite() && sy.is_finite()).then_some((sx, sy))
     }
 }
 
 impl Element for Transformed {
-    type RequestLayoutState = ();
+    type RequestLayoutState = LayoutId;
     type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
@@ -1438,9 +1455,9 @@ impl Element for Transformed {
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (LayoutId, ()) {
+    ) -> (LayoutId, LayoutId) {
         let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
-        (layout_id, ())
+        (layout_id, layout_id)
     }
 
     fn prepaint(
@@ -1448,7 +1465,7 @@ impl Element for Transformed {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
+        layout_id: &mut LayoutId,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -1460,6 +1477,31 @@ impl Element for Transformed {
         // `scale_factor`: x' = o + lin·(x − o) + сдвиг. Объёмный путь в стек
         // не идёт — его матрица решается на отрисовке по накопленной ячейке.
         let flat = !self.has_3d && self.frame_3d.is_none() && self.under_3d.is_none();
+        // Чистый плоский сдвиг — смена начала координат (css-transforms-1
+        // §transform-rendering): коробка обязана рисоваться байт в байт как
+        // разложенная на сдвинутом месте. Матрицей дробный сдвиг устройства
+        // (10px × 1.25) ложился ПОСЛЕ округления краёв раскладки и выбора
+        // подпикселя глифов — края и текст расходились на точку с эталоном
+        // на `top/left` (Blink так же проносит дробное смещение сквозь
+        // 2D-сдвиг: `PaintPropertyTreeBuilder`, subpixel accumulation).
+        // Поддерево переносится до округления (`set_layout_placed_origin`,
+        // тот же механизм у `LatePlace`), края округляются на конечном месте.
+        self.placed = false;
+        if flat && self.perspective.is_none() {
+            let size = window.layout_size_unrounded(*layout_id);
+            if let Some((sx, sy)) =
+                self.pure_shift(f32::from(size.width), f32::from(size.height))
+            {
+                let origin = window.layout_origin_unrounded(*layout_id);
+                window.set_layout_placed_origin(*layout_id, origin + gpui::point(px(sx), px(sy)));
+                self.placed = true;
+                self.child
+                    .as_mut()
+                    .unwrap()
+                    .prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
+                return;
+            }
+        }
         if flat {
             let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
             let ox = f32::from(bounds.origin.x) + w * self.origin.0 + self.origin_px.0.unwrap_or(0.0);
@@ -1483,11 +1525,15 @@ impl Element for Transformed {
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut LayoutId,
         _prepaint: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
+        if self.placed {
+            self.child.as_mut().unwrap().paint(window, cx);
+            return;
+        }
         let scale_factor = window.scale_factor();
         // Матрица живёт в физических точках устройства.
         let dev = |v: f32| px(v).scale(scale_factor);
