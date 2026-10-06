@@ -7,6 +7,7 @@
 mod fragment_size;
 mod band_clearance;
 use band_clearance::supported as band_clear_supported;
+mod mask_geometry;
 mod content_wrapper;
 use content_wrapper::{content_sized, content_sized_wraps};
 mod orthogonal_inline;
@@ -20309,10 +20310,6 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     // (circle/ellipse) идёт тем же путём — растровой альфа-маской, как и
     // эллиптический `border-radius: H / V` (углы rx≠ry растеризатор круглить
     // не умеет; круглые пары дополняются из обычного радиуса).
-    let side = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
     // Большой НЕОДНОРОДНЫЙ круглый радиус — тоже маской: растеризатор жмёт
     // каждый угол к половине меньшей стороны, а спека — одним множителем от
     // суммы СМЕЖНЫХ радиусов (§5.5): `border-radius: 100px 100px 0 0` на
@@ -20471,7 +20468,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         && c.clip_edges.is_none()
         && c.clip_xywh.is_none();
     let mut wrapper = crate::interact::Grouped::new(el);
-    wrapper.spill = pure_isolation;
+    wrapper.spill = pure_isolation || mask_geometry::unclipped(c);
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
     wrapper.mask = mask;
@@ -20578,21 +20575,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     wrapper.mask_pos_list = c.mask_pos_list.clone().unwrap_or_default();
     // Коробки маски (css-masking §7.10-7.11): сдвиги краёв от border-box
     // внутрь — рамка (padding-box) либо рамка+отступ (content-box).
-    let box_off = |kind: Option<u8>| -> [f32; 4] {
-        let b = c.borders();
-        match kind {
-            Some(2) => [side(b.top), side(b.right), side(b.bottom), side(b.left)],
-            // `fill-box` у коробки с CSS-раскладкой = content-box; `stroke-box`
-            // и `view-box` = border-box (css-masking-1 §7.10).
-            Some(3) | Some(4) => [
-                side(b.top) + side(c.padding.top),
-                side(b.right) + side(c.padding.right),
-                side(b.bottom) + side(c.padding.bottom),
-                side(b.left) + side(c.padding.left),
-            ],
-            _ => [0.0; 4],
-        }
-    };
+    let box_off = |kind| mask_geometry::offsets(c, kind);
     wrapper.mask_origin_off = box_off(c.mask_origin);
     wrapper.clip_rect = clip_rect;
     wrapper.clip_inset = clip_inset;

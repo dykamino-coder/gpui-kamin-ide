@@ -16,6 +16,7 @@ mod sampling;
 mod conic;
 mod sources;
 pub use sources::{key, key_exif, source};
+mod gradient_raster;
 mod svg_fragment;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
 use std::collections::HashMap;
@@ -86,6 +87,25 @@ pub enum Source {
 }
 
 impl Source {
+    pub(crate) fn mask_raster(&self, tile: (f32, f32), scale: f32) -> Option<Arc<RenderImage>> {
+        if let Source::Gradient { raw } = self
+            && !raw.starts_with("cross-fade(")
+            // Конический градиент и цвет-изображение растрируются своими путями
+            // (`conic`, `sources::raster_color`) — им обычный путь плитки.
+            && !conic::is_conic(raw)
+            && crate::computed::parse_image_color(raw).is_none()
+        {
+            // CSS Masking section 7.8 uses CSS image sizing, but coverage is sampled
+            // at device pixel centres. Avoid resizing a CSS-resolution alpha
+            // bitmap across sharp stops at fractional window scales.
+            let css = (tile.0.clamp(1.0, 2048.0), tile.1.clamp(1.0, 2048.0));
+            let w = (css.0 * scale).round().clamp(1.0, 4096.0) as u32;
+            let h = (css.1 * scale).round().clamp(1.0, 4096.0) as u32;
+            return gradient_raster::raster(raw, w, h, css, true);
+        }
+        self.raster(tile)
+    }
+
     /// Своя величина картинки.
     pub fn intrinsic(&self) -> Intrinsic {
         match self {
@@ -2129,55 +2149,7 @@ fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     if conic::is_conic(src) {
         return conic::rasterize(src, (w as f32, h as f32), 1.0);
     }
-    let repeating = src.starts_with("repeating-");
-    let src = src.strip_prefix("repeating-").unwrap_or(src);
-    let g = crate::computed::parse_gradient(src)?;
-    let angle = g.angle_deg.to_radians();
-    let (dx, dy) = (angle.sin(), -angle.cos());
-    // Смешанные позиции (точки + доли): точки переводятся в доли ТУТ —
-    // длина градиентной линии известна только по размеру плитки
-    // (css-images-3 §3.4.1: проекция коробки на ось).
-    let stops = if g.stops_raw.iter().any(|(_, _, p)| p.is_some()) {
-        let axis = (w as f32 * dx).abs() + (h as f32 * dy).abs();
-        // Доля и точки у ОДНОГО стопа складываются: `calc(100% - 10px)`
-        // приехал парой (1.0, −10) — css-values-4 §10.9, доля стопа
-        // решается только по длине оси. У стопов из `%` либо из точек
-        // вторая половина пуста, и `or` даёт прежний результат.
-        let raw: Vec<(crate::value::Color, Option<f32>)> = g
-            .stops_raw
-            .iter()
-            .map(|(c, f, p)| {
-                let px = p.map(|v| if axis > 0.0 { v / axis } else { 0.0 });
-                let at = match (f, px) {
-                    (Some(f), Some(px)) => Some(f + px),
-                    (f, px) => f.or(px),
-                };
-                (*c, at)
-            })
-            .collect();
-        place_stops(raw)
-    } else {
-        g.stops.clone()
-    };
-
-    let mut bytes = Vec::with_capacity((w * h * 4) as usize);
-    for y in 0..h {
-        for x in 0..w {
-            let (fx, fy) = (
-                x as f32 / (w.max(2) - 1) as f32 - 0.5,
-                y as f32 / (h.max(2) - 1) as f32 - 0.5,
-            );
-            let t = (fx * dx + fy * dy + 0.5).clamp(0.0, 1.0);
-            let t = if repeating { wrap_repeat(t, &stops) } else { t };
-            let colour = colour_at(&stops, t, g.space, g.hue);
-            // Порядок BGRA, премультипликация по прозрачности.
-            bytes.push((colour.b * colour.a * 255.0) as u8);
-            bytes.push((colour.g * colour.a * 255.0) as u8);
-            bytes.push((colour.r * colour.a * 255.0) as u8);
-            bytes.push((colour.a * 255.0) as u8);
-        }
-    }
-    gpui::bgra_bytes_to_image(w, h, bytes)
+    gradient_raster::raster(src, w, h, (w as f32, h as f32), false)
 }
 
 /// Угол позиции стопа в долях оборота: `90deg`, `25%`, `0.25turn`, голый `0`.
@@ -2669,7 +2641,7 @@ fn default_size(i: Intrinsic, area: (f32, f32)) -> (f32, f32) {
 }
 
 /// Размер одной плитки в точках по правилам `background-size`.
-fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
+pub(crate) fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
     let (bw, bh) = box_size;
     // Соотношение для растяжений: своё, иначе — из умолчального размера.
     let auto = default_size(i, box_size);

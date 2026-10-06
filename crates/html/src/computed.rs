@@ -8,6 +8,8 @@
 mod font_kerning;
 mod image_color;
 pub(crate) use image_color::parse as parse_image_color;
+mod mask_size;
+mod mask_shorthand;
 pub(crate) mod orthogonal;
 mod tab_size;
 
@@ -9157,23 +9159,7 @@ impl Computed {
                     }
                 }
             }
-            // Плитка маски (css-masking §7.6–7.8). `cover`/`contain` пока не
-            // разобраны — им нужен интринзик картинки при вычислении.
-            "mask-size" | "-webkit-mask-size" => match v.trim() {
-                // Вписывание с сохранением пропорции (css-masking §7.8 ->
-                // css-backgrounds §3.9): считается от интринзика при отрисовке.
-                "contain" => self.mask_fit = Some(1),
-                "cover" => self.mask_fit = Some(2),
-                // `auto` (и `auto auto`) — начальное значение: интринзик.
-                "auto" | "auto auto" => self.mask_size = None,
-                _ => {
-                    let mut it = v.split_whitespace();
-                    if let Some(x) = it.next().and_then(Len::parse) {
-                        let y = it.next().and_then(Len::parse).unwrap_or(x);
-                        self.mask_size = Some((x, y));
-                    }
-                }
-            },
+            "mask-size" | "-webkit-mask-size" => mask_size::apply(self, v),
             "mask-mode" => {
                 self.mask_luminance = Some(v.trim() == "luminance");
                 self.mask_alpha_mode = Some(v.trim() == "alpha");
@@ -9297,13 +9283,14 @@ impl Computed {
             }
             "user-select" | "-webkit-user-select" => self.no_select = Some(matches!(v, "none")),
             "clip-path" | "mask" | "mask-image" => {
+                if key == "mask" && mask_shorthand::apply(self, v) {
+                    return;
+                }
                 // Маска-ИЗОБРАЖЕНИЕ (url/градиент): источник хранится строкой,
                 // растрируется при сборке группы, альфа умножается в композите
                 // буфера (css-masking §7.1; mask-image-1a).
                 if key != "clip-path" {
-                    if v.contains("-gradient(") {
-                        self.mask_image = Some(v.trim().to_string());
-                    } else if v.contains("url(") {
+                    if v.contains("-gradient(") || v.contains("url(") {
                         // Слоёв может быть несколько (`url(a), url(b)`) —
                         // строка хранится ЦЕЛИКОМ, разбор при отрисовке.
                         self.mask_image = Some(v.trim().to_string());
