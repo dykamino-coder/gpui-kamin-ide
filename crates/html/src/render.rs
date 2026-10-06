@@ -11,6 +11,11 @@ mod content_wrapper;
 use content_wrapper::{content_sized, content_sized_wraps};
 mod orthogonal_inline;
 mod native_vertical;
+mod containment_paint;
+mod paint_scope;
+use paint_scope::{DepthScope, snapshot as defer_depth, inside as inside_deferred};
+mod page_boxes;
+mod page_counters;
 mod rotated_atom;
 mod combined_text;
 mod physical_atomic;
@@ -1423,6 +1428,7 @@ pub fn render_paged(
     let mut none = false;
     let mut canvas: Option<gpui::Hsla> = None;
     let mut root = opts.root_style();
+    let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interact::frame_sanitize();
     IFRAME_DEPTH.with(|d| d.set(0));
     collect_mask_defs(nodes);
@@ -1802,12 +1808,8 @@ pub fn render_paged(
     PAGED.with(|p| p.set(false));
     // Марджин-боксы: наследуют от контекста страницы, а тот — от корня
     // (css-page-3 §page-properties; Blink `StyleForPage` от documentElement).
-    let margin_for: Option<crate::flow::MarginFn> = margin_decls.map(|f| {
-        let root = root.clone();
-        let opts = opts.clone();
-        std::rc::Rc::new(move |i: usize, name: &str, pages: usize, g: &crate::flow::PageGeom| {
-            page_margin_boxes(&f(i, name), i, pages, g, &root, &opts)
-        }) as crate::flow::MarginFn
+    let margin_for = margin_decls.map(|f| {
+        page_boxes::builder(f, root.clone(), opts.clone(), document_counters)
     });
     crate::flow::PageStack::new(kids, geom_for, icb_copies, icb_reach, fixed_copies, margin_for)
         .into_any_element()
@@ -6693,183 +6695,6 @@ fn page_names(e: &Element, inherited: &str) -> (String, String) {
 pub type PageMarginDecls = (Vec<(String, String)>, Vec<(String, Vec<(String, String)>)>);
 pub type PageMarginDeclsFn = std::rc::Rc<dyn Fn(usize, &str) -> PageMarginDecls>;
 
-/// Марджин-боксы листа `page` из `pages` (css-page-3 §margin-boxes): элемент
-/// и мера каждой ПОРОЖДЁННОЙ коробки — `content` не `none`/`normal`
-/// (§populating-margin-boxes). Раскладку делает `flow::PageStack` по
-/// `page_margin`. Элемент — гибкая колонка во весь border box: так
-/// `vertical-align` коробки работает «как у ячейки таблицы» (§page-properties),
-/// а `text-align` наследует блок содержимого.
-fn page_margin_boxes(
-    decls: &PageMarginDecls,
-    page: usize,
-    pages: usize,
-    g: &crate::flow::PageGeom,
-    root: &Computed,
-    opts: &RenderOpts,
-) -> Vec<crate::flow::MarginBox> {
-    use crate::computed::ContentItem;
-    let (ctx, boxes) = decls;
-    let mut ctx_own = Computed::default();
-    for (k, v) in ctx {
-        ctx_own.apply_one(k, v);
-    }
-    let ctx_style = inline::inherit(root, &ctx_own);
-    let mut out = Vec::new();
-    for (slot, list) in boxes {
-        let Some(place) = crate::page_margin::place(slot) else { continue };
-        let last = |key: &str| {
-            list.iter()
-                .rev()
-                .find(|(k, _)| k == key)
-                .map(|(_, v)| v.trim().to_string())
-        };
-        let Some(content) = last("content") else { continue };
-        if content == "none" || content == "normal" {
-            continue;
-        }
-        let Some(items) = crate::computed::parse_content(&content) else { continue };
-        let text: String = items
-            .iter()
-            .map(|it| match it {
-                ContentItem::Str(s) => s.clone(),
-                // `page` — номер листа с единицы, `pages` — их число
-                // (§page-based-counters).
-                ContentItem::Counter(n, _) if n == "page" => (page + 1).to_string(),
-                ContentItem::Counter(n, _) if n == "pages" => pages.to_string(),
-                ContentItem::Counter(..) => "0".to_string(),
-                _ => String::new(),
-            })
-            .collect();
-        let (ta, va) = crate::page_margin::defaults(slot);
-        let va = last("vertical-align").unwrap_or_else(|| va.to_string());
-        let mut own = Computed::default();
-        own.apply_one("text-align", ta);
-        for (k, v) in list {
-            if k != "content" && k != "vertical-align" {
-                own.apply_one(k, v);
-            }
-        }
-        let resolved = inline::inherit(&ctx_style, &own);
-        let fs = match resolved.font_size {
-            Some(Len::Px(v)) => v,
-            _ => 16.0,
-        };
-        let cb = crate::page_margin::containing_block(place, g.size, g.margin);
-        // Длина по базе: `auto` — `None`; проценты — от содержащего блока по
-        // СВОЕЙ оси (Blink `kContainingBlockSize`).
-        let len = |l: &Option<Len>, base: f32| -> Option<f32> {
-            match l {
-                Some(Len::Px(v)) => Some(*v),
-                Some(Len::Pct(k)) => Some(k * base),
-                Some(Len::Em(k)) => Some(k * fs),
-                _ => None,
-            }
-        };
-        let zero = |l: &Option<Len>, base: f32| len(l, base).unwrap_or(0.0);
-        let b = own.borders();
-        let pad = [
-            zero(&own.padding.top, cb.3),
-            zero(&own.padding.right, cb.2),
-            zero(&own.padding.bottom, cb.3),
-            zero(&own.padding.left, cb.2),
-        ];
-        let edges = [
-            zero(&b.top, cb.3) + pad[0],
-            zero(&b.right, cb.2) + pad[1],
-            zero(&b.bottom, cb.3) + pad[2],
-            zero(&b.left, cb.2) + pad[3],
-        ];
-        let auto_m = |l: &Option<Len>| matches!(l, Some(Len::Auto));
-        let margin = [
-            (!auto_m(&own.margin.top)).then(|| zero(&own.margin.top, cb.3)),
-            (!auto_m(&own.margin.right)).then(|| zero(&own.margin.right, cb.2)),
-            (!auto_m(&own.margin.bottom)).then(|| zero(&own.margin.bottom, cb.3)),
-            (!auto_m(&own.margin.left)).then(|| zero(&own.margin.left, cb.2)),
-        ];
-        let bb = own.border_box == Some(true);
-        let w = len(&own.width, cb.2).map(|v| if bb { v } else { v + edges[1] + edges[3] });
-        let h = len(&own.height, cb.3).map(|v| if bb { v } else { v + edges[0] + edges[2] });
-        // `size` — border box в точках (итог раскладки) либо `None` для меры по
-        // содержимому: доли от обёртки не годятся, `blocks` кладёт коробку в
-        // свою обёртку, и `height: 100%` решалась от неё как `auto` —
-        // `vertical-align` терял высоту (`alignment-001`: буквы у верха).
-        let opts = opts.clone();
-        let ctx_style = ctx_style.clone();
-        let build = move |size: Option<(f32, f32)>| -> AnyElement {
-            let mut st = own.clone();
-            for (k, v) in [
-                ("padding-top", format!("{}px", pad[0])),
-                ("padding-right", format!("{}px", pad[1])),
-                ("padding-bottom", format!("{}px", pad[2])),
-                ("padding-left", format!("{}px", pad[3])),
-            ] {
-                st.apply_one(k, &v);
-            }
-            let (sw, sh) = match size {
-                Some((w, h)) => (format!("{w}px"), format!("{h}px")),
-                None => ("auto".to_string(), "auto".to_string()),
-            };
-            for (k, v) in [
-                ("width", sw.as_str()),
-                ("height", sh.as_str()),
-                ("min-width", "0"),
-                ("max-width", "none"),
-                ("min-height", "0"),
-                ("max-height", "none"),
-                ("margin", "0"),
-                ("box-sizing", "border-box"),
-                ("display", "flex"),
-                ("flex-direction", "column"),
-                (
-                    "justify-content",
-                    match va.as_str() {
-                        "top" => "flex-start",
-                        "bottom" => "flex-end",
-                        _ => "center",
-                    },
-                ),
-            ] {
-                st.apply_one(k, v);
-            }
-            let inner = Element {
-                tag: "div".to_string(),
-                inline: false,
-                node_id: 0,
-                style: Computed::default(),
-                hover: None,
-                first_letter: None,
-                first_line: None,
-                children: vec![Node::Text(text.clone())],
-                attrs: vec![],
-                anim: Default::default(),
-                list_item: None,
-            };
-            let outer = Element {
-                tag: "div".to_string(),
-                style: st,
-                children: vec![Node::Element(inner.clone())],
-                ..inner
-            };
-            let mut els = blocks(&[Node::Element(outer)], &ctx_style, &opts);
-            if els.len() == 1 {
-                els.pop().unwrap()
-            } else {
-                div().children(els).into_any_element()
-            }
-        };
-        let probe = build(None);
-        out.push(crate::flow::MarginBox {
-            place,
-            make: std::rc::Rc::new(move |w, h| build(Some((w, h)))),
-            probe,
-            w,
-            h,
-            margin,
-        });
-    }
-    out
-}
-
 /// Имя ПЕРВОЙ страницы (css-page-3 §using-named-pages, п. 3): start value
 /// первой поточной коробки класса A детей корня, иначе имя самого корня.
 fn first_kid_page_name(nodes: &[Node], root_page: &str) -> String {
@@ -8356,10 +8181,12 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
         if let Node::Element(e) = n {
             // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
             let paint_key = next_paint_key();
-            // Слой разрешён, только если ни один предок сам не отложен:
-            // вложенная отложенная отрисовка в GPUI запрещена.
+            // CSS2 Appendix E: descendants paint within their nearest stacking context.
             let layer_ok = !inside_deferred();
-            let _deferred_guard = DeferGuard::enter(defers(&e.style, inherited, under_tf));
+            let geometry_layer_ok = !paint_scope::deferred();
+            let _deferred_guard = paint_scope::Guard::enter(
+                defers(&e.style, inherited, under_tf), stacking_context(&e.style),
+            );
             // Ряд обтекания: текст рядом с плавающим блоком и остаток под ним.
             if e.tag == "kamin-float" {
                 out.push(float_flow(e, inherited, opts));
@@ -8948,7 +8775,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
                 && !crate::inline::establishes_cb(inherited)
                 && (x_set || y_set);
             let to_icb = !ordered_context
-                && layer_ok
+                && geometry_layer_ok
                 && (fixed || orphan_abs)
                 && e.style.z_index.unwrap_or(0) >= 0
                 && !stays_positioned(&nodes[idx + 1..]);
@@ -8960,7 +8787,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
             // розовый квадрат уезжал с `.inner` на 270 px).
             let to_cb = !to_icb
                 && (!ordered_context || (x_set && y_set))
-                && layer_ok
+                && geometry_layer_ok
                 && far_abs
                 && e.style.z_index.unwrap_or(0) >= 0
                 && !stays_positioned(&nodes[idx + 1..]);
@@ -9393,7 +9220,7 @@ fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyEle
     // Верхний слой: то, что обязано рисоваться поверх соседей, идёт последним
     // и возвращается на своё место замеренным сдвигом.
     out.extend(crate::interact::late_close());
-    out
+    containment_paint::collect(out, inherited)
 }
 
 /// `order`: визуальный порядок в гибкой строке.
@@ -9954,29 +9781,12 @@ fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement
     div().flex().flex_row().flex_shrink_0().child(el).into_any_element()
 }
 
-thread_local! {
-    /// Глубина вложенности отложенной отрисовки на время построения дерева.
-    ///
-    /// GPUI запрещает откладывать рисование изнутри уже отложенного —
-    /// `position: fixed` внутри `position: fixed` роняло окно
-    /// (`cannot call defer_draw during deferred drawing`). Отложен только
-    /// внешний слой, вложенные рисуются на месте: порядок наложения внутри
-    /// одного слоя всё равно задаётся порядком разметки.
-    static DEFERRED_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
-/// Строим ли мы сейчас поддерево отложенного элемента.
-fn inside_deferred() -> bool {
-    DEFERRED_DEPTH.with(|d| d.get()) > 0
-}
-
-/// Образует ли коробка контекст наложения (CSS 2.1 прил. E; css-transforms-1
-/// §transform-rendering; css-color-3 §3.2 opacity; css-compositing isolation).
+/// Stacking contexts isolate descendant paint order (CSS2 Appendix E).
 fn stacking_context(c: &Computed) -> bool {
-    // css-will-change-1 §2.1: обещание свойства, создающего контекст, создаёт
-    // его уже сейчас; `z-index` сюда доезжает лишь там, где действует
-    // (`inline::inherit`).
+    // CSS Will Change §2.1; CSS Containment 2 §§3.2/3.3 also create contexts.
     c.will_change & crate::computed::wc::STACK != 0
+        || c.contain_layout == Some(true)
+        || c.contain_paint == Some(true)
         || c.transform.is_some()
         || c.translate.is_some()
         || c.opacity.is_some_and(|o| o < 1.0)
@@ -10049,51 +9859,6 @@ fn defers(c: &Computed, parent: &Computed, under_tf: bool) -> bool {
     (c.position == Some(crate::computed::Position::Fixed) && !under_tf)
         || c.position == Some(crate::computed::Position::Sticky)
         || (c.z_index.is_some_and(|z| z > 0) && z_index_applies(c, parent))
-}
-
-/// Счётчик глубины на время построения детей элемента.
-struct DeferGuard(bool);
-
-impl DeferGuard {
-    fn enter(deferred: bool) -> Self {
-        if deferred {
-            DEFERRED_DEPTH.with(|d| d.set(d.get() + 1));
-        }
-        Self(deferred)
-    }
-}
-
-impl Drop for DeferGuard {
-    fn drop(&mut self) {
-        if self.0 {
-            DEFERRED_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
-        }
-    }
-}
-
-/// Текущая глубина — её запоминают поддеревья, которые строятся не сейчас.
-fn defer_depth() -> usize {
-    DEFERRED_DEPTH.with(|d| d.get())
-}
-
-/// Вернуть запомненную глубину на время отложенного построения поддерева.
-///
-/// Лента прокрутки, переход и ручка размера строят детей на ОТРИСОВКЕ, а не
-/// при сборке дерева: к тому времени счётчик уже обнулён, и вложенный
-/// `position: fixed` внутри прокручиваемого `position: fixed` снова просился
-/// в отложенный слой — окно падало.
-struct DepthScope(usize);
-
-impl DepthScope {
-    fn enter(depth: usize) -> Self {
-        Self(DEFERRED_DEPTH.with(|d| d.replace(depth)))
-    }
-}
-
-impl Drop for DepthScope {
-    fn drop(&mut self) {
-        DEFERRED_DEPTH.with(|d| d.set(self.0));
-    }
 }
 
 /// `z-index`: порядок наложения.
@@ -27562,7 +27327,7 @@ fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
             // (наследование caption-side).
             let cap_side_bottom =
                 cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
-            let built = styled_div(cap)
+            let built = styled_div_with(cap, &cm)
                 .flex()
                 .flex_col()
                 .children(blocks(&cap.children, &cm, opts))

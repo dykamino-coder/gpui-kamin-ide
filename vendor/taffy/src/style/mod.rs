@@ -274,6 +274,11 @@ pub trait CoreStyle {
     fn contain(&self) -> Contain {
         Contain::NONE
     }
+    /// Empty content-box intrinsic sizes for size-contained physical axes.
+    #[inline(always)]
+    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
+        Size::NONE
+    }
 }
 
 /// KaminIDE patch: бит подсеточных КОЛОНОК (горизонтальная ось) в [`CoreStyle::subgrid`].
@@ -842,6 +847,8 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     pub scrollbar_width: f32,
     /// The layout-affecting parts of the CSS `contain` property
     pub contain: Contain,
+    /// Empty content-box intrinsic sizes for size-contained physical axes.
+    pub contained_intrinsic_size: Size<Option<f32>>,
 
     #[cfg(feature = "float_layout")]
     /// Should the box be floated
@@ -1074,6 +1081,7 @@ impl<S: CheapCloneStr> Style<S> {
         },
         scrollbar_width: 0.0,
         contain: Contain::NONE,
+        contained_intrinsic_size: Size::NONE,
         #[cfg(feature = "float_layout")]
         float: Float::None,
         #[cfg(feature = "float_layout")]
@@ -1292,6 +1300,10 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn contain(&self) -> Contain {
         self.contain
     }
+    #[inline(always)]
+    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
+        self.contained_intrinsic_size
+    }
 }
 
 impl<T: CoreStyle> CoreStyle for &'_ T {
@@ -1404,6 +1416,10 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn contain(&self) -> Contain {
         (*self).contain()
+    }
+    #[inline(always)]
+    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
+        (*self).contained_intrinsic_size()
     }
 }
 
@@ -1947,6 +1963,7 @@ mod tests {
             overflow: Default::default(),
             scrollbar_width: 0.0,
             contain: Default::default(),
+            contained_intrinsic_size: Size::NONE,
             position: Default::default(),
             #[cfg(feature = "flexbox")]
             flex_direction: Default::default(),

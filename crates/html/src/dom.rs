@@ -8,6 +8,8 @@
 
 mod subgrid_axes;
 mod grid_static_position;
+#[path = "dom_containment.rs"]
+mod containment;
 
 use crate::computed::{Computed, Display, Position};
 use crate::css::{
@@ -2253,47 +2255,7 @@ fn finish_inline_display(style: &mut Computed, tag: &str) {
     {
         style.display = Some(Display::Block);
     }
-    // css-contain-2 §3.1/§3.2/§3.3, одинаковый список «has no effect if…»:
-    // обособление НЕ действует, если главная коробка — внутренняя руби-коробка
-    // или НЕАТОМАРНАЯ коробка строчного уровня. Blink держит то же самое
-    // виртуальным `IsEligibleForPaintOrLayoutContainment()`: `false` у всех, и
-    // `true` только у `LayoutBox` (`layout_box.h:1149`).
-    //
-    // Неатомарная строчная у нас — это либо дословный `display: inline`
-    // (пометка `inline_display`), либо тег строчного уровня без своего
-    // `display`. Замещаемые и виджеты формы — АТОМАРНЫЕ строчные: на них
-    // обособление действует (`contain-size-select-elem-*`,
-    // `contain-paint-023` на `inline-block`), поэтому они исключены.
-    // Вне потока коробка блокифицируется (§9.7) и перестаёт быть строчной —
-    // проверка `out_of_flow` обязана стоять здесь, до блокификации ниже.
-    let atomic_by_tag = matches!(
-        tag,
-        "img"
-            | "svg"
-            | "canvas"
-            | "video"
-            | "embed"
-            | "object"
-            | "iframe"
-            | "input"
-            | "select"
-            | "textarea"
-            | "button"
-            | "meter"
-            | "progress"
-    );
-    let non_atomic_inline = !out_of_flow
-        && !atomic_by_tag
-        && (style.inline_display == Some(true)
-            || (style.display.is_none() && !BLOCK_TAGS.contains(&tag)));
-    if non_atomic_inline {
-        // Гасим только обособление РАСКЛАДКИ и ОТРИСОВКИ: у Blink это одна
-        // «eligibility» (`ShouldApplyPaintContainment` / `…LayoutContainment`).
-        // Обособление размера у строчных трогаем отдельно — там завязаны
-        // виджеты формы, и цена ошибки выше.
-        style.contain_layout = None;
-        style.contain_paint = None;
-    }
+    containment::normalize(style, tag, out_of_flow);
     if style.inline_display != Some(true) {
         return;
     }
@@ -3320,6 +3282,8 @@ fn walk(
             // Номер пункта снимается СРАЗУ после своих директив — до
             // псевдоэлементов и детей, которые счётчик двигают дальше.
             let list_item = is_list_item.then(|| counters.value_of("list-item"));
+            let style_scope = (box_level && style.contain_style == Some(true))
+                .then(|| counters.enter_style_scope());
             // Содержимое маркера — по первому верному условию css-lists-3
             // §content-property: `content` на `::marker` не `normal` →
             // «exactly as for ::before»; `none` → коробки нет; иначе
@@ -3478,13 +3442,11 @@ fn walk(
             if !holds_columns {
                 children.retain(|n| !matches!(n, Node::Element(c) if c.style.col_role.is_some()));
             }
-            // Область счётчика НЕ закрывается на выходе из элемента: по
-            // §12.4.1 она включает элемент, его потомков И СЛЕДУЮЩИХ СЕСТЁР.
-            // Ровно это делает ленивая чистка `remove_stale` — она держит
-            // запись, пока обход не вышел за РОДИТЕЛЯ создателя. Жадное
-            // снятие здесь её опережало, и `counter-reset` на спане умирал
-            // вместе с ним (`content-counter-008`: после `XLIX` шло `XIII`
-            // вместо `L`).
+            // CSS Lists §12.4.1: ordinary counters survive into following siblings.
+            // Restore only the isolated subtree; remove_stale handles ordinary scopes.
+            if let Some(scope) = style_scope {
+                counters.leave_style_scope(scope);
+            }
             if box_level {
                 counters.leave();
             }
@@ -3675,7 +3637,7 @@ fn walk(
 /// Порядок именно такой (css-lists-3 §5): сперва создаются счётчики, затем
 /// накапливаются увеличения, затем присваиваются значения. Имена, которые
 /// узел СБРОСИЛ, возвращаются: на выходе из него область надо закрыть.
-fn apply_counter_decls(
+pub(crate) fn apply_counter_decls(
     style: &Computed,
     counters: &mut crate::counters::Counters,
     tag: &str,
@@ -4019,7 +3981,7 @@ fn collect_scroll_markers(
 /// Общий для `::before`/`::after` и для `::marker { content }`: по
 /// css-lists-3 §content-property содержимое маркера строится «exactly as for
 /// ::before».
-fn content_text(
+pub(crate) fn content_text(
     items: &[crate::computed::ContentItem],
     counters: &mut crate::counters::Counters,
     attrs: &[(String, String)],
@@ -4091,7 +4053,7 @@ fn syntax_accepts(syntax: &str, value: &str) -> bool {
 /// ждёт `file:///` с прямыми косыми (как пишет стенд для `<img src>`), а
 /// разбор стиля отдаёт голый путь. `None` — файла нет: такая картинка коробки
 /// не даёт (Servo `components/layout/replaced.rs:348`).
-fn content_image_src(src: &str) -> Option<String> {
+pub(crate) fn content_image_src(src: &str) -> Option<String> {
     if src.starts_with("data:") {
         return Some(src.to_string());
     }

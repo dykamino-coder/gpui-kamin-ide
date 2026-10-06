@@ -15,6 +15,9 @@
 
 use std::collections::HashMap;
 
+#[path = "counters_scope.rs"]
+mod scope;
+
 /// Сегмент пути для `::marker`: маркер — ПЕРВЫЙ ребёнок пункта, до
 /// `::before` (css-lists-3 §marker-pseudo), поэтому его номер меньше.
 const PSEUDO_MARKER: u32 = u32::MAX - 2;
@@ -34,9 +37,11 @@ struct Entry {
 }
 
 /// Счётчики документа и адрес текущего узла в дереве коробок.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Counters {
     stack: HashMap<String, Vec<Entry>>,
+    /// Active style-containment roots; their own directives stay outside.
+    boundaries: Vec<Vec<u32>>,
     /// Адрес текущего узла: номера коробок по пути от корня.
     path: Vec<u32>,
     /// Сколько коробок уже пройдено на каждом уровне.
@@ -86,52 +91,6 @@ impl Counters {
         // Внутри новой коробки нумерация детей начинается заново.
         self.next.truncate(level + 1);
         self.next.push(0);
-    }
-
-    /// Выйти из коробки.
-    /// Узел задал `quotes`: действует на него и его потомков.
-    pub fn set_quotes(&mut self, value: Option<Vec<(String, String)>>) {
-        let cur = self.path.clone();
-        self.quotes.retain(|(o, _)| covers(o, &cur) && o != &cur);
-        self.quotes.push((cur, value));
-    }
-
-    /// Кавычка для `open-quote`/`close-quote` с учётом глубины; `own` —
-    /// `quotes` самого псевдоэлемента. Начальное `auto` — английские пары.
-    pub fn quote(
-        &mut self,
-        open: bool,
-        emit: bool,
-        own: Option<&Option<Vec<(String, String)>>>,
-    ) -> String {
-        let cur = self.path.clone();
-        self.quotes.retain(|(o, _)| covers(o, &cur));
-        let depth = if open {
-            self.quote_depth += 1;
-            self.quote_depth - 1
-        } else if self.quote_depth > 0 {
-            self.quote_depth -= 1;
-            self.quote_depth
-        } else {
-            // Лишняя закрывающая ничего не печатает и глубину не трогает.
-            return String::new();
-        };
-        if !emit {
-            return String::new();
-        }
-        let pick = |list: &[(String, String)]| -> String {
-            list.get(depth.min(list.len().saturating_sub(1)))
-                .map(|(o, c)| if open { o.clone() } else { c.clone() })
-                .unwrap_or_default()
-        };
-        match own.or(self.quotes.last().map(|(_, v)| v)) {
-            Some(Some(list)) => pick(list),
-            Some(None) => String::new(),
-            None => {
-                let (o, c) = [("\u{201c}", "\u{201d}"), ("\u{2018}", "\u{2019}")][depth.min(1)];
-                (if open { o } else { c }).to_string()
-            }
-        }
     }
 
     pub fn leave(&mut self) {
@@ -186,7 +145,12 @@ impl Counters {
             return false;
         };
         remove_stale(st, &cur);
-        st.last().is_some_and(|e| e.reversed)
+        st.last().is_some_and(|e| {
+            self.boundaries
+                .last()
+                .is_none_or(|root| e.owner.len() > root.len() && covers(root, &e.owner))
+                && e.reversed
+        })
     }
 
     /// `counter-increment` и `counter-set` (Blink `UpdateCounterValue`):
@@ -195,7 +159,11 @@ impl Counters {
         let cur = self.path.clone();
         let st = self.stack.entry(name.to_string()).or_default();
         remove_stale(st, &cur);
-        match st.last_mut() {
+        let local = self.boundaries.last().is_none_or(|root| {
+            st.last()
+                .is_some_and(|e| e.owner.len() > root.len() && covers(root, &e.owner))
+        });
+        match st.last_mut().filter(|_| local) {
             Some(top) => {
                 top.value = if is_set {
                     delta
