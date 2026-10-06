@@ -34,6 +34,7 @@ mod ratio_basis;
 pub(crate) mod absolute_overflow;
 mod absolute_overflow_math;
 mod ruby_hiding;
+mod ruby_transform;
 use fragment_size::shape_full;
 
 use crate::apply::{apply, apply_hover};
@@ -17187,6 +17188,14 @@ fn paragraph_pieces_routed(
             }
             None => e,
         };
+        let ruby_atom;
+        let e = match ruby_transform::used(e) {
+            Some(used) => {
+                ruby_atom = used;
+                &ruby_atom
+            }
+            None => e,
+        };
         // Боковые поля атома с собственным прижимом несёт ОБЁРТКА: внутри
         // неё они сдвигают коробку, но в продвижение строки не входят —
         // следующий кусок наезжал на предыдущий ровно на его поле
@@ -19012,6 +19021,7 @@ fn atom_element_raw(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     )
                 {
                     let mut block = k.clone();
+                    ruby_transform::clear(&mut block.style);
                     block.style.display = Some(Display::Block);
                     block.style.inline_display = None;
                     block.style.ruby_role = None;
